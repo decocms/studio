@@ -61,6 +61,7 @@ export const CORE_TOOLS = [
   TaskBoardTools.TASK_BOARD_COMMENT_CREATE,
   TaskBoardTools.TASK_BOARD_COMMENT_UPDATE,
   TaskBoardTools.TASK_BOARD_COMMENT_DELETE,
+  TaskBoardTools.TASK_ADD_REPO,
   OrganizationTools.BRAND_CONTEXT_LIST,
   OrganizationTools.BRAND_CONTEXT_GET,
   OrganizationTools.BRAND_CONTEXT_CREATE,
@@ -229,6 +230,39 @@ export type CoreTools = typeof CORE_TOOLS;
 export const TOOL_BY_NAME: Map<string, RegistrableTool> = new Map(
   (CORE_TOOLS as unknown as RegistrableTool[]).map((tool) => [tool.name, tool]),
 );
+
+/**
+ * An MCP server exposing just the named management tools — no prompts, no brand
+ * prompts, no resources.
+ *
+ * For a machine consumer that needs a handful of tools and pays for the rest in
+ * context: the whole management surface is ~200 tools, and a harness handed all
+ * of them has to find the two it was told to call inside that list. Unknown
+ * names are skipped rather than thrown on, so a renamed tool degrades to a
+ * missing tool instead of a dead endpoint.
+ */
+export const toolSubsetMCP = (
+  name: string,
+  toolNames: readonly string[],
+): McpServer => {
+  const server = new McpServer(
+    { name, version: "1.0.0" },
+    {
+      capabilities: { tools: {} },
+      jsonSchemaValidator: sharedJsonSchemaValidator,
+    },
+  );
+  for (const toolName of toolNames) {
+    const tool = TOOL_BY_NAME.get(toolName);
+    if (!tool) {
+      console.warn(`[${name}] unknown tool "${toolName}" — not registered`);
+      continue;
+    }
+    const { config, handler } = getToolRegistration(tool);
+    server.registerTool(tool.name, config, handler);
+  }
+  return server;
+};
 
 export const managementMCP = async (ctx: StudioContext) => {
   // Create MCP server directly

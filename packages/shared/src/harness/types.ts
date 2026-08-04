@@ -76,7 +76,14 @@ export type ChatMessage = UIMessage;
 export type HarnessWorkspace =
   | {
       cwd: "/repo";
-      repo: {
+      /**
+       * Absent while the checkout is still to come: a sandbox-hosted task run
+       * can be dispatched before "which repo" is answered and clone one into
+       * this same directory mid-run (`TASK_ADD_REPO`). The directory exists
+       * either way — the daemon creates it at boot — so the harness can be
+       * pointed at it before it has contents.
+       */
+      repo?: {
         owner: string;
         name: string;
         connectedGithub: boolean;

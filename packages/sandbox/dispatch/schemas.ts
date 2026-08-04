@@ -98,13 +98,16 @@ const harnessWorkspaceSchema = z.discriminatedUnion("cwd", [
   z
     .object({
       cwd: z.literal("/repo"),
+      // Optional: a task run can be dispatched into the (empty) working
+      // directory before its repo is chosen — see HarnessWorkspace.
       repo: z
         .object({
           owner: z.string(),
           name: z.string(),
           connectedGithub: z.boolean(),
         })
-        .strict(),
+        .strict()
+        .optional(),
       branch: z.string().nullable(),
     })
     .strict(),

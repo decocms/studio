@@ -23,6 +23,7 @@ import { createOrgScopedWellKnownProtectedResourceRoutes } from "./oauth-proxy";
 import { createSsoRoutes } from "./org-sso";
 import { createProxyRoutes } from "./proxy";
 import { createSelfRoutes } from "./self";
+import { createTaskRunMcpRoutes } from "./task-run-mcp";
 import { createHomeNextActionsRoutes } from "./home-next-actions";
 import { createCommerceDiagnosticShareRoutes } from "./commerce-diagnostic-share";
 import { createTaskBoardImportRoutes } from "./task-board-import";
@@ -122,6 +123,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.use("/mcp/gateway/:virtualMcpId?", deps.mcpAuth);
   app.use("/mcp/virtual-mcp/:virtualMcpId?", deps.mcpAuth);
   app.use("/mcp/self", deps.mcpAuth);
+  app.use("/mcp/task-run/:threadId", deps.mcpAuth);
 
   // OAuth Protected-Resource discovery for connection MCPs (resource-relative
   // shape). Expands to
@@ -150,6 +152,9 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
     deps.betterAuthProtectedResourceHandler,
   );
 
+  // Before the proxy catch-all, whose `/mcp/:connectionId` would otherwise
+  // swallow `task-run` as a connection id.
+  app.route("/mcp/task-run", createTaskRunMcpRoutes());
   app.route("/mcp", createVirtualMcpRoutes());
   app.route("/mcp/self", createSelfRoutes());
   app.route("/mcp", createProxyRoutes());

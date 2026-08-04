@@ -28,10 +28,10 @@ export async function enqueueAgentRunForTask(
     /** Hosted harness for this run. Defaults to Decopilot. */
     harnessId?: HostedHarnessId;
     /**
-     * Repo to bind to the run's thread BEFORE dispatch. Required for
-     * `claude-code`, which resolves its sandbox branch (and therefore its
-     * checkout) at dispatch time and cannot pick a repo mid-run the way
-     * Decopilot's `load_repo` does.
+     * Repo to bind to the run's thread BEFORE dispatch, so the pod boots with
+     * the checkout already in it. Omitted for a `claude-code` run in an org with
+     * several repos: that run gets its own repo-less sandbox on the bare
+     * `thread:<id>` key and clones into it with `TASK_ADD_REPO`.
      */
     repo?: TaskRepo;
   },
@@ -79,11 +79,20 @@ export async function enqueueAgentRunForTask(
         }
       : {}),
   };
+  // A sandbox-hosted run with no repo still needs a sandbox of its OWN: it is
+  // about to clone into it (`TASK_ADD_REPO`), and the repo-less default is the
+  // "ephemeral" sandbox SHARED across the user's threads — two task runs cloning
+  // different repos into one pod. The bare `thread:<id>` key is what
+  // `resolveSandboxBranch` holds onto for the whole run even once a repo lands,
+  // so the claim handle can't move out from under the live pod.
+  const sandboxBranch = opts.repo
+    ? threadBranch(thread.id, opts.repo.connectionId)
+    : harnessRunsInSandbox(harnessId)
+      ? threadBranch(thread.id)
+      : null;
   await ctx.storage.threads.update(thread.id, {
     metadata,
-    ...(opts.repo
-      ? { branch: threadBranch(thread.id, opts.repo.connectionId) }
-      : {}),
+    ...(sandboxBranch ? { branch: sandboxBranch } : {}),
     updated_by: userId,
   });
 
@@ -128,6 +137,11 @@ export async function enqueueAgentRunForTask(
       userId,
       harnessId,
       sandboxProviderKind: "agent-sandbox",
+      // Only meaningful for the repo-less sandbox run above: `resolveSandboxBranch`
+      // derives the key from the thread's repo when there is one, and needs the
+      // explicit bare key when there isn't. Carried in the durable snapshot, so a
+      // recovered re-dispatch resolves the same pod.
+      ...(opts.repo ? {} : sandboxBranch ? { branch: sandboxBranch } : {}),
       taskId: thread.id,
       // Reports tasks carry the subscription-billing stamp: their AI usage
       // is included in the org subscription (billing/subsidized-runs.ts).

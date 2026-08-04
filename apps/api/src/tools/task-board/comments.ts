@@ -8,6 +8,8 @@ import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
 import type { StudioContext } from "@/core/studio-context";
+import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import { taskRunContextStore } from "./task-run-context";
 
 const TaskBoardCommentSchema = z.object({
   id: z.string(),
@@ -80,7 +82,14 @@ export const TASK_BOARD_COMMENT_CREATE = defineTool({
       taskBoardItemId: input.taskBoardItemId,
       organizationId: requireOrg(ctx),
       parentId: input.parentId ?? null,
-      authorId: getUserId(ctx)!,
+      // A comment from a task run is the Super Agent's, not the user's whose
+      // credential the run acts under (the assigner). Attributing it to that
+      // person reads as them writing about work they didn't do. Same id the
+      // board already uses for the agent as an assignee, so the UI renders it
+      // as the agent without a second concept.
+      authorId: taskRunContextStore.getStore()
+        ? SUPER_AGENT_ASSIGNEE_ID
+        : getUserId(ctx)!,
       body: input.body,
     });
     if (!comment) throw new Error("Task board item not found");

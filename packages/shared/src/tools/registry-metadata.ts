@@ -227,6 +227,7 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_COMMENT_CREATE",
   "TASK_BOARD_COMMENT_UPDATE",
   "TASK_BOARD_COMMENT_DELETE",
+  "TASK_ADD_REPO",
 ] as const;
 
 /**
@@ -1080,6 +1081,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "TASK_BOARD_COMMENT_DELETE",
     description: "Delete a comment (a thread root takes its replies)",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_ADD_REPO",
+    description:
+      "Clone an organization repository into the sandbox of the task run calling it",
     category: "Task Board",
   },
 ];

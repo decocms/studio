@@ -114,3 +114,44 @@ test("different threads of one repo-agent never share a branch", () => {
     resolveSandboxBranch({ threadId: "t2", threadRepo: null, agentRepo }),
   );
 });
+
+// A task run dispatched with no repo runs on the bare `thread:<id>` key and
+// clones into that pod mid-run (TASK_ADD_REPO). Re-deriving the key from the
+// repo it added would move the claim handle off the pod holding the agent loop.
+test("the bare thread key survives a repo bound mid-run", () => {
+  expect(
+    resolveSandboxBranch({
+      threadId: "t1",
+      threadRepo: { connectionId: "conn_a" } as GithubRepo,
+      runBranch: "thread:t1",
+    }),
+  ).toBe("thread:t1");
+});
+
+test("only the bare key pins — load_repo's repo-scoped key still switches", () => {
+  expect(
+    resolveSandboxBranch({
+      threadId: "t1",
+      threadRepo: { connectionId: "conn_b" } as GithubRepo,
+      runBranch: "thread:t1/conn_a",
+    }),
+  ).toBe("thread:t1/conn_b");
+  // Another thread's bare key must not pin this one.
+  expect(
+    resolveSandboxBranch({
+      threadId: "t1",
+      threadRepo: { connectionId: "conn_a" } as GithubRepo,
+      runBranch: "thread:t2",
+    }),
+  ).toBe("thread:t1/conn_a");
+});
+
+test("a repo-less run pinned to its own bare key does not join the ephemeral pool", () => {
+  expect(
+    resolveSandboxBranch({
+      threadId: "t1",
+      threadRepo: null,
+      runBranch: "thread:t1",
+    }),
+  ).toBe("thread:t1");
+});

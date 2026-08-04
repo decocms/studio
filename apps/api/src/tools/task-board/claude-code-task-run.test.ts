@@ -166,3 +166,40 @@ describe("pickSoleTaskRepo", () => {
     expect(picked?.name).toBe("web");
   });
 });
+
+describe("buildClaudeCodeTaskPrompt with no repo (several in the org)", () => {
+  test("says the working directory is empty and to call TASK_ADD_REPO first", () => {
+    const prompt = buildClaudeCodeTaskPrompt(task, null);
+    expect(prompt).toContain("EMPTY");
+    expect(prompt).toContain("TASK_ADD_REPO");
+    // The failure this wording exists to prevent: the model opening with a
+    // file hunt in a directory nothing has cloned into yet.
+    expect(prompt).toContain("Do not read files");
+    expect(prompt).not.toContain("is already cloned");
+  });
+
+  test("still says how to finish", () => {
+    const prompt = buildClaudeCodeTaskPrompt(task, null);
+    expect(prompt).toContain("TASK_BOARD_ITEM_UPDATE");
+    expect(prompt).toContain("in_review");
+  });
+});
+
+describe("buildClaudeCodeTaskPrompt repo choices", () => {
+  test("names the candidate repos so the run doesn't have to ask", () => {
+    const prompt = buildClaudeCodeTaskPrompt(task, null, {
+      repoChoices: [
+        { connectionId: "conn_1", repo: "acme/web" },
+        { connectionId: "conn_2", repo: "acme/api" },
+      ],
+    });
+    expect(prompt).toContain("acme/web (connectionId: conn_1)");
+    expect(prompt).toContain("acme/api (connectionId: conn_2)");
+    expect(prompt).toContain("Pick the one the task is about");
+  });
+
+  test("falls back to the listing call when no candidates were resolved", () => {
+    const prompt = buildClaudeCodeTaskPrompt(task, null);
+    expect(prompt).toContain("with no arguments to list them");
+  });
+});
