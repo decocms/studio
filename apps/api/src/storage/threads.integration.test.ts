@@ -180,39 +180,33 @@ describe("SqlThreadStorage", () => {
     });
   });
 
-  describe("hosted runtime pin", () => {
-    it("stores explicit runtime pins during create", async () => {
+  describe("hosted routing claim", () => {
+    it("derives canonical rollout selectors for a locked create", async () => {
+      const lockedAt = "2026-08-04T12:00:00.000Z";
       const thread = await storage.create({
         organization_id: "org_1",
         created_by: "user_1",
         branch: "main",
-        harness_id: "decopilot",
-        sandbox_provider_kind: "agent-sandbox",
+        routing_locked_at: lockedAt,
       });
 
       expect(thread.harness_id).toBe("decopilot");
       expect(thread.sandbox_provider_kind).toBe("agent-sandbox");
       expect(thread.branch).toBe("main");
-      expect(thread.routing_locked_at).not.toBeNull();
+      expect(thread.routing_locked_at).toBe(lockedAt);
       expect(thread.hosted_execution_disabled_at).toBeNull();
     });
 
-    it("keeps pristine drafts unlocked and retires incompatible creates", async () => {
+    it("keeps new API rows selector-free until routing is explicitly locked", async () => {
       const draft = await storage.create({
         organization_id: "org_1",
         created_by: "user_1",
+        status: "in_progress",
       });
+      expect(draft.harness_id).toBeNull();
+      expect(draft.sandbox_provider_kind).toBeNull();
       expect(draft.routing_locked_at).toBeNull();
       expect(draft.hosted_execution_disabled_at).toBeNull();
-
-      const retired = await storage.create({
-        organization_id: "org_1",
-        created_by: "user_1",
-        harness_id: "codex",
-        sandbox_provider_kind: "user-desktop",
-      });
-      expect(retired.routing_locked_at).not.toBeNull();
-      expect(retired.hosted_execution_disabled_at).not.toBeNull();
     });
 
     it("does not overwrite a concurrent native runtime claim", async () => {
@@ -222,7 +216,7 @@ describe("SqlThreadStorage", () => {
       });
 
       const [hostedClaim, nativeClaim] = await Promise.all([
-        storage.pinHostedRuntimeIfUnset(thread.id, "org_1", {
+        storage.claimHostedRoutingIfUnlocked(thread.id, "org_1", {
           branch: "hosted",
         }),
         database.db
@@ -273,31 +267,73 @@ describe("SqlThreadStorage", () => {
       });
       expect(thread.routing_locked_at).toBeNull();
 
-      const first = await storage.pinHostedRuntimeIfUnset(thread.id, "org_1", {
-        branch: "main",
-      });
+      const first = await storage.claimHostedRoutingIfUnlocked(
+        thread.id,
+        "org_1",
+        {
+          branch: "main",
+        },
+      );
       expect(first.claimed).toBe(true);
       expect(first.thread?.routing_locked_at).not.toBeNull();
       const lockedAt = first.thread?.routing_locked_at;
 
-      const second = await storage.pinHostedRuntimeIfUnset(thread.id, "org_1", {
-        branch: "other",
-      });
+      const second = await storage.claimHostedRoutingIfUnlocked(
+        thread.id,
+        "org_1",
+        {
+          branch: "other",
+        },
+      );
       expect(second.claimed).toBe(false);
       expect(second.thread?.routing_locked_at).toBe(lockedAt);
       expect(second.thread?.hosted_execution_disabled_at).toBeNull();
     });
 
-    it("preserves branch state written before the runtime claim", async () => {
+    it("does not reclaim a locked row when a legacy writer clears its selectors", async () => {
+      const lockedAt = "2026-08-04T12:00:00.000Z";
+      const thread = await storage.create({
+        organization_id: "org_1",
+        created_by: "user_1",
+        branch: "locked-branch",
+        routing_locked_at: lockedAt,
+      });
+      await database.db
+        .updateTable("threads")
+        .set({ harness_id: null, sandbox_provider_kind: null })
+        .where("id", "=", thread.id)
+        .execute();
+
+      const result = await storage.claimHostedRoutingIfUnlocked(
+        thread.id,
+        "org_1",
+        { branch: "replacement-branch" },
+      );
+
+      expect(result.claimed).toBe(false);
+      expect(result.thread).toMatchObject({
+        harness_id: "decopilot",
+        sandbox_provider_kind: "agent-sandbox",
+        routing_locked_at: lockedAt,
+        hosted_execution_disabled_at: null,
+        branch: "locked-branch",
+      });
+    });
+
+    it("preserves branch state written before the routing claim", async () => {
       const thread = await storage.create({
         organization_id: "org_1",
         created_by: "user_1",
         branch: "already-selected",
       });
-      const result = await storage.pinHostedRuntimeIfUnset(thread.id, "org_1", {
-        branch: "stale-branch",
-        messageStorageVersion: 2,
-      });
+      const result = await storage.claimHostedRoutingIfUnlocked(
+        thread.id,
+        "org_1",
+        {
+          branch: "stale-branch",
+          messageStorageVersion: 2,
+        },
+      );
 
       expect(result.claimed).toBe(true);
       expect(result.thread).toMatchObject({
@@ -308,7 +344,7 @@ describe("SqlThreadStorage", () => {
       });
     });
 
-    it("updates routing only while the runtime remains unlocked", async () => {
+    it("updates routing only while the routing lock remains unset", async () => {
       const unlocked = await storage.create({
         organization_id: "org_1",
         created_by: "user_1",
@@ -316,17 +352,17 @@ describe("SqlThreadStorage", () => {
         branch: "main",
       });
       expect(
-        await storage.updateRoutingIfRuntimeUnlocked(unlocked.id, "org_2", {
+        await storage.updateRoutingIfUnlocked(unlocked.id, "org_2", {
           virtual_mcp_id: "cross-tenant",
         }),
       ).toBeNull();
       expect(
-        await storage.updateRoutingIfRuntimeUnlocked("missing", "org_1", {
+        await storage.updateRoutingIfUnlocked("missing", "org_1", {
           virtual_mcp_id: "missing",
         }),
       ).toBeNull();
 
-      const updated = await storage.updateRoutingIfRuntimeUnlocked(
+      const updated = await storage.updateRoutingIfUnlocked(
         unlocked.id,
         "org_1",
         { virtual_mcp_id: "agent-after", branch: "feature" },
@@ -344,25 +380,32 @@ describe("SqlThreadStorage", () => {
         branch: "locked-branch",
         routing_locked_at: "2026-08-01T00:00:00.000Z",
       });
-      expect(selectorFreeLocked.harness_id).toBeNull();
+      await database.db
+        .updateTable("threads")
+        .set({ harness_id: null, sandbox_provider_kind: null })
+        .where("id", "=", selectorFreeLocked.id)
+        .execute();
       expect(
-        await storage.updateRoutingIfRuntimeUnlocked(
-          selectorFreeLocked.id,
-          "org_1",
-          { virtual_mcp_id: "too-late", branch: "too-late" },
-        ),
+        (await storage.get(selectorFreeLocked.id, "org_1"))?.harness_id,
+      ).toBe("decopilot");
+      expect(
+        await storage.updateRoutingIfUnlocked(selectorFreeLocked.id, "org_1", {
+          virtual_mcp_id: "too-late",
+          branch: "too-late",
+        }),
       ).toBeNull();
       expect(await storage.get(selectorFreeLocked.id, "org_1")).toMatchObject({
         virtual_mcp_id: "locked-agent",
         branch: "locked-branch",
-        harness_id: null,
+        harness_id: "decopilot",
+        sandbox_provider_kind: "agent-sandbox",
         routing_locked_at: "2026-08-01T00:00:00.000Z",
       });
 
-      await storage.pinHostedRuntimeIfUnset(unlocked.id, "org_1", {
+      await storage.claimHostedRoutingIfUnlocked(unlocked.id, "org_1", {
         branch: "feature",
       });
-      const lostRace = await storage.updateRoutingIfRuntimeUnlocked(
+      const lostRace = await storage.updateRoutingIfUnlocked(
         unlocked.id,
         "org_1",
         { virtual_mcp_id: "agent-too-late", branch: "other" },
@@ -380,17 +423,59 @@ describe("SqlThreadStorage", () => {
       const thread = await storage.create({
         organization_id: "org_1",
         created_by: "user_1",
-        sandbox_provider_kind: "user-desktop",
         branch: "native-branch",
       });
-      const result = await storage.pinHostedRuntimeIfUnset(thread.id, "org_1", {
-        branch: "hosted-branch",
-      });
+      await database.db
+        .updateTable("threads")
+        .set({ sandbox_provider_kind: "user-desktop" })
+        .where("id", "=", thread.id)
+        .execute();
+      const result = await storage.claimHostedRoutingIfUnlocked(
+        thread.id,
+        "org_1",
+        {
+          branch: "hosted-branch",
+        },
+      );
 
       expect(result.claimed).toBe(false);
       expect(result.thread?.harness_id).toBeNull();
       expect(result.thread?.sandbox_provider_kind).toBe("user-desktop");
       expect(result.thread?.branch).toBe("native-branch");
+    });
+
+    it("does not claim a selector-free hosted tombstone", async () => {
+      const disabledAt = "2026-08-04T12:00:00.000Z";
+      const thread = await storage.create({
+        organization_id: "org_1",
+        created_by: "user_1",
+      });
+      await database.db
+        .updateTable("threads")
+        .set({ hosted_execution_disabled_at: disabledAt })
+        .where("id", "=", thread.id)
+        .execute();
+      expect(await storage.get(thread.id, "org_1")).toMatchObject({
+        harness_id: null,
+        sandbox_provider_kind: null,
+        routing_locked_at: null,
+        hosted_execution_disabled_at: disabledAt,
+      });
+
+      const result = await storage.claimHostedRoutingIfUnlocked(
+        thread.id,
+        "org_1",
+        { branch: "hosted-branch" },
+      );
+
+      expect(result.claimed).toBe(false);
+      expect(result.thread).toMatchObject({
+        harness_id: null,
+        sandbox_provider_kind: null,
+        routing_locked_at: null,
+        hosted_execution_disabled_at: disabledAt,
+        branch: null,
+      });
     });
 
     it("returns no row for missing and cross-tenant targets", async () => {
@@ -403,10 +488,10 @@ describe("SqlThreadStorage", () => {
       };
 
       expect(
-        await storage.pinHostedRuntimeIfUnset("missing", "org_1", pin),
+        await storage.claimHostedRoutingIfUnlocked("missing", "org_1", pin),
       ).toEqual({ thread: null, claimed: false });
       expect(
-        await storage.pinHostedRuntimeIfUnset(thread.id, "org_2", pin),
+        await storage.claimHostedRoutingIfUnlocked(thread.id, "org_2", pin),
       ).toEqual({ thread: null, claimed: false });
       expect((await storage.get(thread.id, "org_1"))?.harness_id).toBeNull();
     });

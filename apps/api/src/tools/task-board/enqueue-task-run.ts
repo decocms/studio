@@ -23,6 +23,7 @@ export async function enqueueAgentRunForTask(
 
   const model = await resolveTier(ctx, "smart");
   const agentId = getDecopilotId(organizationId);
+  const routingLockedAt = new Date().toISOString();
 
   const thread = await ctx.storage.threads.create({
     organization_id: organizationId,
@@ -31,8 +32,7 @@ export async function enqueueAgentRunForTask(
     virtual_mcp_id: agentId,
     // Consume/terminal writer skips v1 threads — pin v2 or the run never completes.
     message_storage_version: 2,
-    harness_id: "decopilot",
-    sandbox_provider_kind: "agent-sandbox",
+    routing_locked_at: routingLockedAt,
     created_by: userId,
   });
 

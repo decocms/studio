@@ -1612,6 +1612,10 @@ export async function createApp(options: CreateAppOptions = {}) {
           branch: row?.branch ?? null,
           createdAt: row?.created_at,
           updatedAt: row?.updated_at,
+          routingLockedAt: row?.routing_locked_at,
+          hostedExecutionDisabledAt: row?.hosted_execution_disabled_at,
+          harnessId: row?.harness_id,
+          sandboxProviderKind: row?.sandbox_provider_kind,
         }),
       );
     },

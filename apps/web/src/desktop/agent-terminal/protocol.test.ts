@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
   appendTerminalReplay,
   chunkTerminalInput,
-  fromTerminalHarnessId,
   normalizeTerminalDimensions,
   parseTerminalServerFrame,
   shouldResetTerminalReplay,
@@ -251,14 +250,12 @@ describe("native terminal protocol", () => {
     });
   });
 
-  test("maps Studio and provider harness identifiers", () => {
+  test("accepts only terminal harness identifiers", () => {
     expect(toTerminalHarnessId("claude-code")).toBe("claude-code");
     expect(toTerminalHarnessId("codex")).toBe("codex");
     expect(toTerminalHarnessId("opencode")).toBe("opencode");
     expect(toTerminalHarnessId("claude")).toBeNull();
     expect(toTerminalHarnessId("decopilot")).toBeNull();
-    expect(fromTerminalHarnessId("claude-code")).toBe("claude-code");
-    expect(fromTerminalHarnessId("opencode")).toBe("opencode");
   });
 
   test("maps physical and logical lifecycle axes to sidebar status", () => {

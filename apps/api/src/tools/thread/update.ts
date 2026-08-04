@@ -124,7 +124,7 @@ export const COLLECTION_THREADS_UPDATE = defineTool({
 
     const routingChanged = changesThreadRouting(existing, data);
     const thread = routingChanged
-      ? await ctx.storage.threads.updateRoutingIfRuntimeUnlocked(id, updateData)
+      ? await ctx.storage.threads.updateRoutingIfUnlocked(id, updateData)
       : await ctx.storage.threads.update(id, updateData);
     if (!thread) {
       throw new Error(

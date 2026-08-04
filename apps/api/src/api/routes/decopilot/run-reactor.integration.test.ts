@@ -153,12 +153,14 @@ describe("reactAll (real Postgres)", () => {
       expect(sseEvents).toHaveLength(1);
     });
 
-    it("emitted status event reflects the real row (title, branch, created_at, updated_at)", async () => {
+    it("emitted status event reflects the real authoritative row", async () => {
       const { deps, sseEvents } = makeReactor();
+      const routingLockedAt = "2026-08-04T12:00:00.000Z";
       const thread = await createThread({
         title: "Test thread",
         branch: "main",
         virtual_mcp_id: "vmcp-1",
+        routing_locked_at: routingLockedAt,
       });
 
       await react(
@@ -180,6 +182,10 @@ describe("reactAll (real Postgres)", () => {
       expect(data.branch).toBe("main");
       expect(data.created_at).toBe(row?.created_at);
       expect(data.updated_at).toBe(row?.updated_at);
+      expect(data.routing_locked_at).toBe(routingLockedAt);
+      expect(data.hosted_execution_disabled_at).toBeNull();
+      expect(data.harness_id).toBe("decopilot");
+      expect(data.sandbox_provider_kind).toBe("agent-sandbox");
     });
   });
 

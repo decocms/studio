@@ -56,9 +56,9 @@ export function canRenderInteractiveThreadApp(
   return task?.canMutateThread === true;
 }
 
-/** A hosted thread captures its runtime on the first accepted submit. */
+/** A hosted thread locks its execution routing on the first accepted submit. */
 export function isHostedFirstSubmit(
-  thread: { harness_id?: string | null } | null | undefined,
+  thread: { routing_locked_at?: string | null } | null | undefined,
 ): boolean {
-  return !thread?.harness_id;
+  return !thread?.routing_locked_at;
 }

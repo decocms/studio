@@ -1,4 +1,3 @@
-import type { HarnessId } from "@decocms/shared/harness/types";
 import type { ThreadDisplayStatus } from "@/sdk";
 
 // Output arrives in bounded PTY chunks; replay gaps are an empty reset marker
@@ -144,15 +143,6 @@ function logicalState(value: unknown): TerminalLogicalState | null {
 export function toTerminalHarnessId(
   harnessId: unknown,
 ): TerminalHarnessId | null {
-  if (harnessId === "claude-code") return "claude-code";
-  if (harnessId === "codex") return "codex";
-  if (harnessId === "opencode") return "opencode";
-  return null;
-}
-
-export function fromTerminalHarnessId(
-  harnessId: TerminalHarnessId | null | undefined,
-): Extract<HarnessId, "claude-code" | "codex"> | "opencode" | null {
   if (harnessId === "claude-code") return "claude-code";
   if (harnessId === "codex") return "codex";
   if (harnessId === "opencode") return "opencode";

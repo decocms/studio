@@ -247,6 +247,10 @@ describe("run reactor", () => {
           organization_id: "org_1",
           created_by: "user_1",
           status: "in_progress",
+          routing_locked_at: "2026-08-04T12:00:00.000Z",
+          hosted_execution_disabled_at: null,
+          harness_id: "decopilot",
+          sandbox_provider_kind: "agent-sandbox",
         }),
       } as unknown as ThreadStoragePort,
       sseHub: {
@@ -281,5 +285,11 @@ describe("run reactor", () => {
     );
     expect(statusEvent).toBeDefined();
     expect(statusEvent!.data.message_id).toBe("m1");
+    expect(statusEvent!.data.routing_locked_at).toBe(
+      "2026-08-04T12:00:00.000Z",
+    );
+    expect(statusEvent!.data.hosted_execution_disabled_at).toBeNull();
+    expect(statusEvent!.data.harness_id).toBe("decopilot");
+    expect(statusEvent!.data.sandbox_provider_kind).toBe("agent-sandbox");
   });
 });

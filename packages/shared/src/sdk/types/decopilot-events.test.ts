@@ -75,4 +75,27 @@ describe("createDecopilotThreadStatusEvent — enriched fields", () => {
     });
     expect(e.data.branch).toBeNull();
   });
+
+  test("round-trips routing authority and compatibility fields", () => {
+    const e = createDecopilotThreadStatusEvent("task-1", "in_progress", {
+      routingLockedAt: "2026-05-19T00:05:00.000Z",
+      hostedExecutionDisabledAt: null,
+      harnessId: "decopilot",
+      sandboxProviderKind: "agent-sandbox",
+    });
+
+    expect(e.data.routing_locked_at).toBe("2026-05-19T00:05:00.000Z");
+    expect(e.data.hosted_execution_disabled_at).toBeNull();
+    expect(e.data.harness_id).toBe("decopilot");
+    expect(e.data.sandbox_provider_kind).toBe("agent-sandbox");
+  });
+
+  test("omits routing authority and compatibility fields when unknown", () => {
+    const e = createDecopilotThreadStatusEvent("task-1", "in_progress");
+
+    expect(e.data.routing_locked_at).toBeUndefined();
+    expect(e.data.hosted_execution_disabled_at).toBeUndefined();
+    expect(e.data.harness_id).toBeUndefined();
+    expect(e.data.sandbox_provider_kind).toBeUndefined();
+  });
 });

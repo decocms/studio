@@ -470,6 +470,10 @@ describe("ThreadManagerStore enriched thread.status events", () => {
           branch: "feature/login",
           created_at: "2026-05-19T00:00:00Z",
           updated_at: "2026-05-19T00:00:01Z",
+          routing_locked_at: "2026-05-19T00:00:00Z",
+          hosted_execution_disabled_at: null,
+          harness_id: "decopilot",
+          sandbox_provider_kind: "agent-sandbox",
         },
         "2026-05-19T00:00:00Z",
       ),
@@ -481,6 +485,48 @@ describe("ThreadManagerStore enriched thread.status events", () => {
     expect(row?.branch).toBe("feature/login");
     expect(row?.created_at).toBe("2026-05-19T00:00:00Z");
     expect(row?.updated_at).toBe("2026-05-19T00:00:01Z");
+    expect(row?.routing_locked_at).toBe("2026-05-19T00:00:00Z");
+    expect(row?.hosted_execution_disabled_at).toBeNull();
+    expect(row?.harness_id).toBe("decopilot");
+    expect(row?.sandbox_provider_kind).toBe("agent-sandbox");
+    store.dispose();
+  });
+
+  it("preserves explicit nulls that clear stale authority and compatibility fields", async () => {
+    const sse = makeFakePool();
+    const client = makeMcpClient([
+      {
+        id: "t-existing",
+        title: "Existing",
+        created_at: "2026-05-19T00:00:00Z",
+        updated_at: "2026-05-19T00:00:00Z",
+        routing_locked_at: "2026-05-19T00:00:00Z",
+        hosted_execution_disabled_at: "2026-05-19T00:00:00Z",
+        harness_id: "claude-code",
+        sandbox_provider_kind: "user-desktop",
+      },
+    ]);
+    const store = new ThreadManagerStore("acme", "loc-1", { client, sse });
+    await new Promise((r) => setTimeout(r, 10));
+
+    sse.emit(
+      "acme",
+      "decopilot.thread.status",
+      threadStatusEvent("t-existing", {
+        status: "completed",
+        updated_at: "2026-05-19T00:00:01Z",
+        routing_locked_at: null,
+        hosted_execution_disabled_at: null,
+        harness_id: null,
+        sandbox_provider_kind: null,
+      }),
+    );
+
+    const row = store.threads.get()[0];
+    expect(row?.routing_locked_at).toBeNull();
+    expect(row?.hosted_execution_disabled_at).toBeNull();
+    expect(row?.harness_id).toBeNull();
+    expect(row?.sandbox_provider_kind).toBeNull();
     store.dispose();
   });
 });
@@ -1024,10 +1070,10 @@ describe("ThreadManagerStore.mergeThreads", () => {
 // Regression: the CMS preview/blocks editor is reached by direct link, so its
 // thread is fetched by-id and merged into the slot (see `useEnsureTask`). A
 // branch hop on publish (`setBranch`) must patch that row IN-PLACE — preserving
-// harness_id / metadata — so the active-task branch actually flips and the view
-// re-points to the fresh branch. Before the merge fix, `setBranch` on a row
-// absent from the slot upserted a LOSSY synthetic row instead, corrupting the
-// active task and stranding the user on the just-published branch.
+// routing authority / metadata — so the active-task branch actually flips and
+// the view re-points to the fresh branch. Before the merge fix, `setBranch` on
+// a row absent from the slot upserted a LOSSY synthetic row instead, corrupting
+// the active task and stranding the user on the just-published branch.
 describe("ThreadManagerStore.setBranch on a deep-linked (by-id) thread", () => {
   afterEach(() => {
     __resetManagerRegistry();
@@ -1038,14 +1084,16 @@ describe("ThreadManagerStore.setBranch on a deep-linked (by-id) thread", () => {
     id: "t-cms",
     title: "CMS session",
     branch: "old-branch",
+    routing_locked_at: "2026-08-04T00:00:00.000Z",
+    hosted_execution_disabled_at: "2026-08-04T00:01:00.000Z",
     harness_id: "harness-x",
-    sandbox_provider_kind: "agent-sandbox",
+    sandbox_provider_kind: "user-desktop",
     metadata: { sandboxMap: { u1: { "old-branch": {} } } },
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
   } as unknown as Task;
 
-  it("patches the merged row in-place, preserving harness_id and metadata", async () => {
+  it("patches the merged row in-place, preserving routing authority and metadata", async () => {
     const sse = makeFakePool();
     const client = makeMcpClient([]);
     const store = new ThreadManagerStore("org", "loc", { client, sse });
@@ -1059,6 +1107,8 @@ describe("ThreadManagerStore.setBranch on a deep-linked (by-id) thread", () => {
     const row = store.threads.get().find((t) => t.id === "t-cms");
     expect(row?.branch).toBe("fresh-branch");
     // The full fields survive — the update is not the lossy synthetic path.
+    expect(row?.routing_locked_at).toBe("2026-08-04T00:00:00.000Z");
+    expect(row?.hosted_execution_disabled_at).toBe("2026-08-04T00:01:00.000Z");
     expect(row?.harness_id).toBe("harness-x");
     expect(row?.metadata).toEqual({ sandboxMap: { u1: { "old-branch": {} } } });
     store.dispose();
@@ -1076,8 +1126,9 @@ describe("ThreadManagerStore.setBranch on a deep-linked (by-id) thread", () => {
 
     const row = store.threads.get().find((t) => t.id === "t-cms");
     expect(row?.branch).toBe("fresh-branch");
-    // harness_id / metadata are gone — this is exactly why the active task
-    // (which reads these) breaks without the merge fix.
+    // Routing authority / metadata are gone — this is exactly why the active
+    // task (which reads these) breaks without the merge fix.
+    expect(row?.routing_locked_at).toBeUndefined();
     expect(row?.harness_id).toBeUndefined();
     expect(row?.metadata).toBeUndefined();
     store.dispose();
@@ -1098,8 +1149,10 @@ describe("ThreadManagerStore.fetchThreadIntoSlot", () => {
     id: "t-cms",
     title: "CMS session",
     branch: "old-branch",
+    routing_locked_at: "2026-08-04T00:00:00.000Z",
+    hosted_execution_disabled_at: "2026-08-04T00:01:00.000Z",
     harness_id: "harness-x",
-    sandbox_provider_kind: "agent-sandbox",
+    sandbox_provider_kind: "user-desktop",
     metadata: { sandboxMap: { u1: { "old-branch": {} } } },
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
@@ -1130,6 +1183,8 @@ describe("ThreadManagerStore.fetchThreadIntoSlot", () => {
     const returned = await store.fetchThreadIntoSlot("t-cms");
     expect(returned?.id).toBe("t-cms");
     const row = store.threads.get().find((t) => t.id === "t-cms");
+    expect(row?.routing_locked_at).toBe("2026-08-04T00:00:00.000Z");
+    expect(row?.hosted_execution_disabled_at).toBe("2026-08-04T00:01:00.000Z");
     expect(row?.harness_id).toBe("harness-x");
     store.dispose();
   });
@@ -1169,13 +1224,15 @@ describe("ThreadManagerStore.fetchThreadIntoSlot", () => {
       } as Task,
     ]);
     expect(
-      store.threads.get().find((t) => t.id === "t-cms")?.harness_id,
+      store.threads.get().find((t) => t.id === "t-cms")?.routing_locked_at,
     ).toBeUndefined();
 
     // The authoritative full row must win despite its OLDER updated_at, so the
-    // active task regains harness_id/metadata (otherwise the bug reappears).
+    // active task regains routing authority/metadata (otherwise the bug reappears).
     await store.fetchThreadIntoSlot("t-cms");
     const row = store.threads.get().find((t) => t.id === "t-cms");
+    expect(row?.routing_locked_at).toBe("2026-08-04T00:00:00.000Z");
+    expect(row?.hosted_execution_disabled_at).toBe("2026-08-04T00:01:00.000Z");
     expect(row?.harness_id).toBe("harness-x");
     expect(row?.metadata).toEqual({ sandboxMap: { u1: { "old-branch": {} } } });
     store.dispose();

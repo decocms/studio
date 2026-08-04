@@ -413,6 +413,8 @@ pub(crate) fn emit_thread_status(
         "trigger_id": thread.trigger_id,
         "title": thread.title,
         "branch": thread.branch,
+        "harness_id": thread.harness_id,
+        "sandbox_provider_kind": thread.sandbox_provider_kind,
         "routing_locked_at": thread.routing_locked_at,
         "created_at": thread.created_at,
         "updated_at": thread.updated_at,
@@ -540,6 +542,8 @@ mod tests {
         assert_eq!(parsed["data"]["created_by"], "alice");
         assert_eq!(parsed["data"]["title"], "Local thread");
         assert_eq!(parsed["data"]["branch"], "feature/native");
+        assert_eq!(parsed["data"]["harness_id"], "claude-code");
+        assert_eq!(parsed["data"]["sandbox_provider_kind"], "user-desktop");
         assert_eq!(
             parsed["data"]["routing_locked_at"],
             "2026-07-24T11:30:00.000Z"

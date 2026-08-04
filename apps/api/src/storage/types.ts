@@ -961,9 +961,9 @@ export interface ThreadTable {
   virtual_mcp_id: string;
   /** Git branch this thread is pinned to (GitHub-linked virtualmcps only) */
   branch: string | null;
-  /** Sandbox provider kind pinned on first message (e.g. "agent-sandbox", "user-desktop") */
+  /** Legacy rollout selector; hosted routing authority lives in routing_locked_at. */
   sandbox_provider_kind: string | null;
-  /** Harness id pinned on first message (e.g. "claude-code", "codex", "decopilot") */
+  /** Legacy rollout selector; hosted routing authority lives in routing_locked_at. */
   harness_id: string | null;
   /** Durable authority lock; null only while routing may still change. */
   routing_locked_at: ColumnType<
@@ -1051,9 +1051,9 @@ export interface Thread {
   virtual_mcp_id: string;
   /** Git branch this thread is pinned to (GitHub-linked virtualmcps only) */
   branch: string | null;
-  /** Sandbox provider kind pinned on first message (e.g. "agent-sandbox", "user-desktop") */
+  /** Legacy rollout selector; hosted routing authority lives in routing_locked_at. */
   sandbox_provider_kind: string | null;
-  /** Harness id pinned on first message (e.g. "claude-code", "codex", "decopilot") */
+  /** Legacy rollout selector; hosted routing authority lives in routing_locked_at. */
   harness_id: string | null;
   /** Durable authority lock; null only while routing may still change. */
   routing_locked_at: string | null;

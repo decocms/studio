@@ -32,8 +32,8 @@ import { createSideChannelWriter } from "@/harnesses/lib/side-channel-writer";
 import { ingestRun } from "@/api/routes/decopilot/ingest-run";
 import type { StreamBuffer } from "@/api/routes/decopilot/stream-buffer";
 import type { UIMessageChunk } from "ai";
-import { isHostedDecopilotRuntime } from "./hosted-runtime";
 import { resolveThreadAuthority } from "@/core/thread-authority";
+import { hasHostedExecutionAuthority } from "@/core/hosted-execution-authority";
 
 // Re-export from the side-effect-free `queue-names` module so `index.ts` can
 // reference the name without importing this module (which registers a workflow).
@@ -180,28 +180,12 @@ async function requireStudioContext(
   return studioCtx;
 }
 
-export function isHostedDecopilotThread(
-  thread:
-    | {
-        harness_id: string | null;
-        sandbox_provider_kind: string | null;
-      }
-    | null
-    | undefined,
-): boolean {
-  if (!thread) return false;
-  return isHostedDecopilotRuntime({
-    harnessId: thread.harness_id,
-    sandboxProviderKind: thread.sandbox_provider_kind,
-  });
-}
-
 async function requireHostedThreadContext(
   ctx: BackgroundToolContext,
 ): Promise<{ studioCtx: StudioContext; agentId: string }> {
   const studioCtx = await requireStudioContext(ctx);
   const thread = await studioCtx.storage.threads.get(ctx.threadId);
-  if (!thread || !isHostedDecopilotThread(thread)) {
+  if (!thread || !hasHostedExecutionAuthority(thread)) {
     throw new Error(
       `[background-tool] thread ${ctx.threadId} is not hosted Decopilot`,
     );
@@ -611,7 +595,7 @@ async function resolveReactionTargetStep(
   if (!studioCtx) return false;
 
   const thread = await studioCtx.storage.threads.get(ctx.threadId);
-  if (!thread || !isHostedDecopilotThread(thread)) return false;
+  if (!thread || !hasHostedExecutionAuthority(thread)) return false;
 
   // Keep transient storage failures retriable. Only a missing/non-hosted
   // thread is a deliberate no-op; invalid ownership or agent authority must

@@ -9,9 +9,9 @@ export function resolveNeedsRuntimeSetup({
   isThreadLocked: boolean;
   hasCloudProviderKeys: boolean;
 }): boolean {
-  // A locked thread has already run — it has history and a runtime pinned for
-  // life. It must never be replaced by the setup empty state, which would hide
-  // the conversation. Setup only gates fresh, un-run threads.
+  // A routing-locked thread has already run and may have history. It must never
+  // be replaced by the setup empty state, which would hide the conversation.
+  // Setup only gates fresh, un-run threads.
   if (isThreadLocked) return false;
 
   return !hasCloudProviderKeys;

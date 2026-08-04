@@ -13,14 +13,14 @@ const ran = (
   status: string | null,
   overrides: Partial<{
     messageStorageVersion: number;
-    harnessId: string | null;
-    sandboxProviderKind: string | null;
+    routingLockedAt: string | null;
+    hostedExecutionDisabledAt: string | null;
   }> = {},
 ) => ({
   status,
   messageStorageVersion: 2,
-  harnessId: "decopilot",
-  sandboxProviderKind: "agent-sandbox",
+  routingLockedAt: "2026-08-04T12:00:00.000Z",
+  hostedExecutionDisabledAt: null,
   ...overrides,
 });
 
@@ -51,27 +51,19 @@ describe("decideStallAction", () => {
     }
   });
 
-  test("failed native, unknown, or unpinned threads are never nudged", () => {
-    for (const harnessId of [
-      "claude-code",
-      "codex",
-      "opencode",
-      "future",
-      null,
-    ]) {
-      expect(decideStallAction(ran("failed", { harnessId }))).toBe("none");
-    }
+  test("an unlocked thread is never nudged", () => {
+    expect(decideStallAction(ran("failed", { routingLockedAt: null }))).toBe(
+      "none",
+    );
   });
 
-  test("a partial Decopilot pin is never nudged", () => {
+  test("a retired hosted row is never nudged", () => {
     expect(
-      decideStallAction(ran("failed", { sandboxProviderKind: null })),
-    ).toBe("none");
-  });
-
-  test("a retired linked Decopilot row is never nudged", () => {
-    expect(
-      decideStallAction(ran("failed", { sandboxProviderKind: "user-desktop" })),
+      decideStallAction(
+        ran("failed", {
+          hostedExecutionDisabledAt: "2026-08-04T12:01:00.000Z",
+        }),
+      ),
     ).toBe("none");
   });
 });

@@ -205,8 +205,7 @@ function VmEventsBridge({
   const userId = session?.user?.id;
   const executionEnabled = !shouldBlockHostedRuntime({
     isDesktopApp,
-    harnessId: activeTask?.harness_id,
-    sandboxProviderKind: activeTask?.sandbox_provider_kind,
+    hostedExecutionDisabledAt: activeTask?.hosted_execution_disabled_at,
   });
 
   // Overlay the thread's own sandbox record for the current branch. A thread has

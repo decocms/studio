@@ -7,27 +7,21 @@ import type { UIMessage } from "ai";
 export type { UIMessageChunk } from "ai";
 
 /**
- * Harness domain types shared by the API and web client: harness ids, model
- * slots, chat modes, and prompt context. Browser-safe; no cluster-only imports. The
- * cluster-side shapes (`ChatMessage` with metadata + tools) flow in via
- * structural compatibility: the cluster passes its richer types where these
+ * Decopilot domain types shared by the API and web client: model slots, chat
+ * modes, and prompt context. Browser-safe; no cluster-only imports. The
+ * API-side shapes (`ChatMessage` with metadata + tools) flow in via structural
+ * compatibility: the API passes its richer types where these
  * expect a UIMessage, and TS accepts the widening.
  *
  * The hosted adapter stays in apps/api/src/harnesses/decopilot — only the API
  * runs the hosted Decopilot stream.
  */
 
-/** Built-in harness identifiers. Open-ended on purpose — third-party harnesses
- *  may register additional ids later, but the v1 union covers what's in-tree. */
-export type HarnessId = "decopilot" | "claude-code" | "codex";
-
-/** Tool approval policy a harness should honor when forwarding to its CLI.
+/** Tool approval policy Decopilot enforces for tool calls.
  *  Mirrors `apps/api/src/harnesses/lib/decopilot/mcp-tools.ts:ToolApprovalLevel`. */
 export type ToolApprovalLevel = "auto" | "readonly";
 
-/** Mode flag forwarded into harnesses. The CLI harnesses only care about
- *  "plan" (sets `isPlanMode` for read-only restrictions); decopilot
- *  interprets the rest internally. Mirrors
+/** Mode flag interpreted by Decopilot. Mirrors
  *  `apps/api/src/harnesses/lib/decopilot/mode-config.ts:CHAT_MODES`. */
 export type ChatMode =
   | "default"
@@ -66,10 +60,10 @@ export interface ModelsConfig {
   deepResearch?: ModelSelection;
 }
 
-/** UI-shape message a harness receives. Structurally compatible with the
- *  cluster's richer `ChatMessage` (which carries Metadata + builtin tool
- *  types). The package only needs the `parts` + `role` + `id` shape, which
- *  the AI SDK's generic `UIMessage` already provides. */
+/** UI-shape message Decopilot receives. Structurally compatible with the API's
+ *  richer `ChatMessage` (which carries metadata + built-in tool types). The
+ *  package only needs the `parts` + `role` + `id` shape, which the AI SDK's
+ *  generic `UIMessage` already provides. */
 export type ChatMessage = UIMessage;
 
 /** One recent thread, pre-resolved agent-side for the prompt's history block.

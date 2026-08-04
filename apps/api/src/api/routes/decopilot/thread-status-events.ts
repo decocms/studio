@@ -14,6 +14,10 @@ export interface TerminalThreadStatusRow {
   branch?: string | null;
   created_at?: string;
   updated_at?: string;
+  routing_locked_at?: string | null;
+  hosted_execution_disabled_at?: string | null;
+  harness_id?: string | null;
+  sandbox_provider_kind?: string | null;
 }
 
 /**
@@ -47,6 +51,10 @@ export function emitTerminalThreadStatus(
       branch: row.branch ?? null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      routingLockedAt: row.routing_locked_at,
+      hostedExecutionDisabledAt: row.hosted_execution_disabled_at,
+      harnessId: row.harness_id,
+      sandboxProviderKind: row.sandbox_provider_kind,
     }),
   );
   return true;

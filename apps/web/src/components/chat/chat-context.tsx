@@ -43,7 +43,6 @@ import {
 import { deriveTerminalThreadStatus } from "./store/thread-status";
 import {
   AGENT_OPTION_HARNESSES,
-  agentOptionFor,
   resolveNativeAgentOption,
   type AgentOption,
   type AgentHarnessId,
@@ -197,10 +196,9 @@ export interface ChatTaskContextValue {
   /** Existing chats are mutable only by their creator. Unresolved route data
    *  fails closed; only an explicit no-id creation state is writable. */
   canMutateThread: boolean;
-  /** True iff the thread row has captured a `harness_id` — i.e. the first
-   *  message has been processed and the runtime is pinned for life. */
+  /** True iff the first accepted execution has made thread routing immutable. */
   isThreadLocked: boolean;
-  /** Locked harness for the active thread (null when unlocked / no thread). */
+  /** Compatibility harness field; consumed only by the native runtime. */
   lockedHarness: string | null;
   /** Locked branch (null when unlocked or thread has no branch). */
   lockedBranch: string | null;
@@ -520,11 +518,6 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
   // This is option (b) from the plan: read the inner context here rather
   // than hoist active-task knowledge into the outer provider, which would
   // require restructuring the standalone mount path.
-  const lockedAgentOption =
-    taskCtxForLock?.isThreadLocked && taskCtxForLock.lockedHarness != null
-      ? agentOptionFor(taskCtxForLock.lockedHarness)
-      : null;
-
   const isDesktopApp = useIsDesktopApp();
   // Native has no cloud/Decopilot surface. Ignore stale cloud prefs there and
   // recover early native threads that pinned a local harness without the
@@ -536,15 +529,11 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
       ? taskCtxForLock.lockedHarness
       : null,
   });
-  // Hosted web has exactly one runnable chat runtime: Decopilot. A locked
-  // thread still reflects its persisted harness so the hosted runtime guard can
-  // surface legacy/native rows as unavailable instead of relabelling them.
-  // Native recovers older rows by their local harness alone.
+  // Hosted web has exactly one runnable chat runtime: Decopilot. Native keeps
+  // its local harness choices and recovers older rows by their harness alone.
   const effectiveAgentOption: AgentOption | null = isDesktopApp
     ? nativeAgentOption
-    : taskCtxForLock?.isThreadLocked
-      ? lockedAgentOption
-      : "decopilot";
+    : "decopilot";
 
   const pendingHarnessId = effectiveAgentOption
     ? AGENT_OPTION_HARNESSES[effectiveAgentOption]
@@ -662,7 +651,7 @@ export function ChatContextProvider({
 
   const lockedHarness = activeTask?.harness_id ?? null;
   const lockedBranch = activeTask?.branch ?? null;
-  const isThreadLocked = lockedHarness != null;
+  const isThreadLocked = activeTask?.routing_locked_at != null;
 
   // Existing call sites still read `currentBranch` for create-task carry-over;
   // it stays a separate alias so we don't have to touch every reference.
@@ -782,8 +771,7 @@ export function ActiveTaskProvider({
   const { activeTask, canMutateThread, currentBranch } = useChatTask();
   const hostedRuntimeBlocked = shouldBlockHostedRuntime({
     isDesktopApp,
-    harnessId: activeTask?.harness_id,
-    sandboxProviderKind: activeTask?.sandbox_provider_kind,
+    hostedExecutionDisabledAt: activeTask?.hosted_execution_disabled_at,
   });
   const hostedRuntimeBlockedMessage = t(
     "chat.input.codingAgentRequiresDesktop",
@@ -980,7 +968,6 @@ export function ActiveTaskProvider({
                 branch?: string | null;
                 githubRepo?: unknown;
                 sandboxMap?: unknown;
-                sandboxProviderKind?: string | null;
               };
             }
           ).data;
@@ -991,12 +978,6 @@ export function ActiveTaskProvider({
             cb.manager.patchThread({
               id,
               ...(data?.branch ? { branch: data.branch } : {}),
-              ...(data?.sandboxProviderKind
-                ? {
-                    sandbox_provider_kind:
-                      data.sandboxProviderKind as Task["sandbox_provider_kind"],
-                  }
-                : {}),
               metadata: {
                 ...(current?.metadata ?? {}),
                 ...(data?.githubRepo ? { githubRepo: data.githubRepo } : {}),
@@ -1182,17 +1163,17 @@ export function ActiveTaskProvider({
       setChatMode("default");
     }
 
-    // The server owns hosted runtime selection and pins Decopilot on first
-    // submit. That pin does not flow back through `/watch`, so mirror the known
-    // hosted invariant into the live store. This keeps a submitted (including
-    // just-failed) thread from being reused as an empty "New chat" before the
-    // next authoritative LIST/GET refresh.
+    // The server owns hosted routing and locks it on first submit. Mirror that
+    // accepted claim immediately instead of waiting for the authoritative
+    // `/watch` frame. This keeps a submitted (including just-failed) thread
+    // from being reused as an empty "New chat" during that short gap.
     const firstHostedSubmit = isHostedFirstSubmit(activeTask);
     if (firstHostedSubmit) {
+      const lockedAt = new Date().toISOString();
       manager.patchThread({
         id: capturedTaskId,
-        harness_id: "decopilot",
-        updated_at: new Date().toISOString(),
+        routing_locked_at: lockedAt,
+        updated_at: lockedAt,
       });
     }
 

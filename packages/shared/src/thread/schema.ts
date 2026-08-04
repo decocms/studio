@@ -91,14 +91,14 @@ export const ThreadEntitySchema = z.object({
     .nullable()
     .optional()
     .describe(
-      "Pinned on first message; identifies which sandbox provider to dispatch to (e.g. 'agent-sandbox', 'user-desktop').",
+      "Legacy/native compatibility selector. Hosted execution uses routing_locked_at and does not dispatch from this field.",
     ),
   harness_id: z
     .string()
     .nullable()
     .optional()
     .describe(
-      "Pinned on first message; selects which harness runs the thread (e.g. 'claude-code', 'codex', 'decopilot').",
+      "Native harness identity and hosted rollout compatibility; not hosted routing authority.",
     ),
   routing_locked_at: z
     .string()
@@ -106,7 +106,7 @@ export const ThreadEntitySchema = z.object({
     .nullable()
     .optional()
     .describe(
-      "Timestamp when the thread's hosted runtime routing became immutable.",
+      "Timestamp when the thread's execution routing became immutable.",
     ),
   hosted_execution_disabled_at: z
     .string()

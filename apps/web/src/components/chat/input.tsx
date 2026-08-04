@@ -422,8 +422,7 @@ export function ChatInput({
   const isDesktopApp = useIsDesktopApp();
   const hostedRuntimeBlocked = shouldBlockHostedRuntime({
     isDesktopApp,
-    harnessId: task?.harness_id,
-    sandboxProviderKind: task?.sandbox_provider_kind,
+    hostedExecutionDisabledAt: task?.hosted_execution_disabled_at,
   });
 
   // tiptapDoc lives here (not in context) so keystrokes don't re-render

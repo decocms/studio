@@ -66,10 +66,11 @@ function applyPatch(list: Task[], patch: RowPatch): Task[] {
  * Upsert a full, authoritative row: insert if missing, else overwrite fields
  * unconditionally — NO recency guard. Used only by `fetchThreadIntoSlot` for a
  * by-id GET result, which is the source of truth for the rich fields
- * (`harness_id`, `sandbox_provider_kind`, `metadata`) that a concurrent
- * `/watch` synthetic drops. `applyPatch`'s `updated_at` guard would let that
- * newer-but-lossy synthetic win; here the full row always wins. The caller is
- * responsible for the tombstone check.
+ * (`routing_locked_at`, `hosted_execution_disabled_at`, native compatibility
+ * fields, and `metadata`) that older `/watch` producers may omit.
+ * `applyPatch`'s `updated_at` guard would let that newer-but-lossy synthetic
+ * win; here the full row always wins. The caller is responsible for the
+ * tombstone check.
  */
 function upsertFullRow(list: Task[], row: Task): Task[] {
   const idx = list.findIndex((t) => t.id === row.id);
@@ -528,7 +529,7 @@ export class ThreadManagerStore {
    *
    * Reads the authoritative row via `getThreadRemote` (NOT `fetchThread`): a
    * local row must not be trusted here, since a concurrent `/watch` event may
-   * have already upserted a lossy synthetic (status-only, no `harness_id` /
+   * have already upserted a lossy synthetic (status-only, no routing lock /
    * `metadata`) that raced ahead of us. Merged with `upsertFullRow`, NOT
    * `mergeThreads`, so the full row wins over that synthetic even if its
    * `updated_at` is newer (`mergeThreads`'s recency guard would drop it and
@@ -589,6 +590,18 @@ export class ThreadManagerStore {
       }),
       ...(parsed.data.created_at !== undefined && {
         created_at: parsed.data.created_at,
+      }),
+      ...(parsed.data.routing_locked_at !== undefined && {
+        routing_locked_at: parsed.data.routing_locked_at,
+      }),
+      ...(parsed.data.hosted_execution_disabled_at !== undefined && {
+        hosted_execution_disabled_at: parsed.data.hosted_execution_disabled_at,
+      }),
+      ...(parsed.data.harness_id !== undefined && {
+        harness_id: parsed.data.harness_id,
+      }),
+      ...(parsed.data.sandbox_provider_kind !== undefined && {
+        sandbox_provider_kind: parsed.data.sandbox_provider_kind,
       }),
       ...(parsed.data.metadata !== undefined && {
         metadata: parsed.data.metadata as Task["metadata"],

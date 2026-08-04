@@ -68,6 +68,10 @@ async function handleTerminalStatus(
       branch: thread?.branch ?? null,
       createdAt: thread?.created_at,
       updatedAt: thread?.updated_at,
+      routingLockedAt: thread?.routing_locked_at,
+      hostedExecutionDisabledAt: thread?.hosted_execution_disabled_at,
+      harnessId: thread?.harness_id,
+      sandboxProviderKind: thread?.sandbox_provider_kind,
     }),
   );
   sseHub.emit(orgId, createDecopilotFinishEvent(taskId, status));
@@ -106,6 +110,11 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
           branch: startedThread?.branch ?? null,
           createdAt: startedThread?.created_at,
           updatedAt: startedThread?.updated_at,
+          routingLockedAt: startedThread?.routing_locked_at,
+          hostedExecutionDisabledAt:
+            startedThread?.hosted_execution_disabled_at,
+          harnessId: startedThread?.harness_id,
+          sandboxProviderKind: startedThread?.sandbox_provider_kind,
           messageId: event.messageId,
         }),
       );
@@ -138,6 +147,11 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
           branch: resumedThread?.branch ?? null,
           createdAt: resumedThread?.created_at,
           updatedAt: resumedThread?.updated_at,
+          routingLockedAt: resumedThread?.routing_locked_at,
+          hostedExecutionDisabledAt:
+            resumedThread?.hosted_execution_disabled_at,
+          harnessId: resumedThread?.harness_id,
+          sandboxProviderKind: resumedThread?.sandbox_provider_kind,
         }),
       );
       return;
@@ -209,6 +223,10 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
           branch: failedThread?.branch ?? null,
           createdAt: failedThread?.created_at,
           updatedAt: failedThread?.updated_at,
+          routingLockedAt: failedThread?.routing_locked_at,
+          hostedExecutionDisabledAt: failedThread?.hosted_execution_disabled_at,
+          harnessId: failedThread?.harness_id,
+          sandboxProviderKind: failedThread?.sandbox_provider_kind,
         }),
       );
       sseHub.emit(

@@ -87,7 +87,7 @@ describe("dispatchRunAndWaitStep authority ordering", () => {
   it("checks the persisted hosted runtime before status or fence side effects", () => {
     const loadThreadIdx = body.indexOf("storage.threads.get(taskId)");
     const authorityIdx = body.indexOf("resolveThreadAuthority(thread");
-    const runtimeIdx = body.indexOf("isHostedDecopilotRuntime({");
+    const runtimeIdx = body.indexOf("hasHostedExecutionAuthority(thread)");
     const statusIdx = body.indexOf("publishRunStatusStage(");
     const fenceIdx = body.indexOf("storage.threads.setRunFence(");
 

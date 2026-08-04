@@ -59,7 +59,7 @@ describe("migration 157: drop thread link transport", () => {
       created_by: "user_1",
       title: "Adjacent data survives",
       status: "in_progress",
-      harness_id: "decopilot",
+      routing_locked_at: "2026-08-04T12:00:00.000Z",
     });
     await sql`
       UPDATE threads

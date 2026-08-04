@@ -9,8 +9,9 @@ import { sql, type Kysely } from "kysely";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import { DEFAULT_THREAD_TITLE } from "@/api/routes/decopilot/constants";
 import type {
-  HostedThreadRuntimePin,
-  HostedThreadRuntimePinResult,
+  HostedThreadRoutingClaim,
+  HostedThreadRoutingClaimResult,
+  ThreadCreateData,
   ThreadStoragePort,
   ThreadUpdateData,
 } from "./ports";
@@ -80,7 +81,7 @@ export class OrgScopedThreadStorage {
     return this.organizationId;
   }
 
-  create(data: Partial<Thread>): Promise<Thread & { isNew: boolean }> {
+  create(data: ThreadCreateData): Promise<Thread & { isNew: boolean }> {
     const orgId = this.requireOrg();
     return this.inner.create({ ...data, organization_id: orgId });
   }
@@ -93,22 +94,22 @@ export class OrgScopedThreadStorage {
     return this.inner.update(id, this.requireOrg(), data);
   }
 
-  updateRoutingIfRuntimeUnlocked(
+  updateRoutingIfUnlocked(
     id: string,
     data: ThreadUpdateData,
   ): Promise<Thread | null> {
-    return this.inner.updateRoutingIfRuntimeUnlocked(
-      id,
-      this.requireOrg(),
-      data,
-    );
+    return this.inner.updateRoutingIfUnlocked(id, this.requireOrg(), data);
   }
 
-  pinHostedRuntimeIfUnset(
+  claimHostedRoutingIfUnlocked(
     id: string,
-    pin: HostedThreadRuntimePin,
-  ): Promise<HostedThreadRuntimePinResult> {
-    return this.inner.pinHostedRuntimeIfUnset(id, this.requireOrg(), pin);
+    claim: HostedThreadRoutingClaim,
+  ): Promise<HostedThreadRoutingClaimResult> {
+    return this.inner.claimHostedRoutingIfUnlocked(
+      id,
+      this.requireOrg(),
+      claim,
+    );
   }
 
   completeRunIfNotCompleted(id: string): Promise<Thread | null> {
@@ -296,7 +297,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
   // Thread Operations
   // ==========================================================================
 
-  async create(data: Partial<Thread>): Promise<Thread & { isNew: boolean }> {
+  async create(data: ThreadCreateData): Promise<Thread & { isNew: boolean }> {
     const id = data.id ?? generatePrefixedId("thrd");
     const now = new Date().toISOString();
 
@@ -310,21 +311,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
       data.title = DEFAULT_THREAD_TITLE;
     }
 
-    const hasRoutingAuthorityEvidence =
-      data.harness_id != null ||
-      data.sandbox_provider_kind != null ||
-      (data.status !== undefined && data.status !== "completed") ||
-      data.context_start_message_id != null ||
-      data.run_owner_pod != null ||
-      data.run_config != null ||
-      data.run_started_at != null ||
-      data.last_progress_at != null;
-    const isHostedCompatibleRuntime =
-      (data.harness_id == null && data.sandbox_provider_kind == null) ||
-      (data.harness_id == null &&
-        data.sandbox_provider_kind === "agent-sandbox") ||
-      (data.harness_id === "decopilot" &&
-        data.sandbox_provider_kind === "agent-sandbox");
+    const routingLockedAt = data.routing_locked_at ?? null;
 
     const row = {
       id,
@@ -335,13 +322,12 @@ export class SqlThreadStorage implements ThreadStoragePort {
       trigger_id: data.trigger_id ?? null,
       virtual_mcp_id: data.virtual_mcp_id ?? "",
       branch: data.branch ?? null,
-      sandbox_provider_kind: data.sandbox_provider_kind ?? null,
-      harness_id: data.harness_id ?? null,
-      routing_locked_at:
-        data.routing_locked_at ?? (hasRoutingAuthorityEvidence ? now : null),
-      hosted_execution_disabled_at:
-        data.hosted_execution_disabled_at ??
-        (isHostedCompatibleRuntime ? null : now),
+      // Compatibility dual-write for old pods. New callers choose only whether
+      // routing is claimed; they cannot choose a runtime implementation.
+      sandbox_provider_kind: routingLockedAt === null ? null : "agent-sandbox",
+      harness_id: routingLockedAt === null ? null : "decopilot",
+      routing_locked_at: routingLockedAt,
+      hosted_execution_disabled_at: null,
       created_at: now,
       updated_at: now,
       created_by: data.created_by,
@@ -399,7 +385,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
     return thread;
   }
 
-  async updateRoutingIfRuntimeUnlocked(
+  async updateRoutingIfUnlocked(
     id: string,
     organizationId: string,
     data: ThreadUpdateData,
@@ -411,7 +397,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
     id: string,
     organizationId: string,
     data: ThreadUpdateData,
-    requireRuntimeUnlocked: boolean,
+    requireRoutingUnlocked: boolean,
   ): Promise<Thread | null> {
     const now = new Date().toISOString();
 
@@ -466,19 +452,6 @@ export class SqlThreadStorage implements ThreadStoragePort {
     if (data.virtual_mcp_id !== undefined) {
       updateData.virtual_mcp_id = data.virtual_mcp_id;
     }
-    if (data.sandbox_provider_kind !== undefined) {
-      updateData.sandbox_provider_kind = data.sandbox_provider_kind;
-    }
-    if (data.harness_id !== undefined) {
-      updateData.harness_id = data.harness_id;
-    }
-    if (data.routing_locked_at !== undefined) {
-      updateData.routing_locked_at = data.routing_locked_at;
-    }
-    if (data.hosted_execution_disabled_at !== undefined) {
-      updateData.hosted_execution_disabled_at =
-        data.hosted_execution_disabled_at;
-    }
     if (data.message_storage_version !== undefined) {
       updateData.message_storage_version = data.message_storage_version;
     }
@@ -487,20 +460,21 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .set(updateData)
       .where("id", "=", id)
       .where("organization_id", "=", organizationId);
-    if (requireRuntimeUnlocked) {
+    if (requireRoutingUnlocked) {
       query = query
         .where("routing_locked_at", "is", null)
+        .where("hosted_execution_disabled_at", "is", null)
         .where("harness_id", "is", null);
     }
     const row = await query.returningAll().executeTakeFirst();
     return row ? this.threadFromDbRow(row) : null;
   }
 
-  async pinHostedRuntimeIfUnset(
+  async claimHostedRoutingIfUnlocked(
     id: string,
     organizationId: string,
-    pin: HostedThreadRuntimePin,
-  ): Promise<HostedThreadRuntimePinResult> {
+    claim: HostedThreadRoutingClaim,
+  ): Promise<HostedThreadRoutingClaimResult> {
     const row = await this.db
       .updateTable("threads")
       .set({
@@ -512,15 +486,17 @@ export class SqlThreadStorage implements ThreadStoragePort {
           "routing_locked_at",
         )}, now())`,
         branch: sql<string | null>`coalesce(${sql.ref("branch")}, ${
-          pin.branch
+          claim.branch
         })`,
         updated_at: new Date().toISOString(),
-        ...(pin.messageStorageVersion !== undefined
-          ? { message_storage_version: pin.messageStorageVersion }
+        ...(claim.messageStorageVersion !== undefined
+          ? { message_storage_version: claim.messageStorageVersion }
           : {}),
       })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
+      .where("routing_locked_at", "is", null)
+      .where("hosted_execution_disabled_at", "is", null)
       .where("harness_id", "is", null)
       .where((eb) =>
         eb.or([

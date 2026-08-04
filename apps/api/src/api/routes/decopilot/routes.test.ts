@@ -13,10 +13,8 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  assertHostedDecopilotHarness,
-  assertHostedRuntime,
-  assertPersistedHostedRuntime,
-  assertHostedSandboxProvider,
+  assertHostedExecutionEnabled,
+  assertHostedExecutionLocked,
   computeIdempotencyKey,
   resolveHostedThreadBranch,
   shouldPersistRequestMessage,
@@ -144,87 +142,48 @@ describe("computeIdempotencyKey", () => {
   });
 });
 
-describe("assertHostedDecopilotHarness", () => {
-  test("allows only Decopilot or an unpinned hosted request", () => {
-    expect(() => assertHostedDecopilotHarness("decopilot")).not.toThrow();
-    expect(() => assertHostedDecopilotHarness(null)).not.toThrow();
-  });
-
-  test("rejects persisted native, unknown, and future harness ids", () => {
-    for (const harnessId of ["claude-code", "codex", "opencode", "future"]) {
-      expect(() => assertHostedDecopilotHarness(harnessId)).toThrow(
-        /Studio desktop app/,
-      );
-    }
-  });
-});
-
-describe("assertHostedSandboxProvider", () => {
-  test("allows managed or legacy-unpinned hosted sandboxes", () => {
-    expect(() => assertHostedSandboxProvider("agent-sandbox")).not.toThrow();
-    expect(() => assertHostedSandboxProvider(null)).not.toThrow();
-  });
-
-  test("rejects retired desktop and unknown sandbox ids", () => {
-    for (const kind of ["user-desktop", "cluster", "future-sandbox"]) {
-      expect(() => assertHostedSandboxProvider(kind)).toThrow(
-        /unsupported desktop runtime/,
-      );
-    }
-  });
-});
-
-describe("assertHostedRuntime", () => {
-  test("allows the exact hosted tuple", () => {
+describe("assertHostedExecutionEnabled", () => {
+  test("allows any thread without an explicit hosted tombstone", () => {
     expect(() =>
-      assertHostedRuntime("decopilot", "agent-sandbox"),
+      assertHostedExecutionEnabled({ hosted_execution_disabled_at: null }),
     ).not.toThrow();
   });
 
-  test("allows only the two pre-pin tuples needed before persistence migration", () => {
-    expect(() => assertHostedRuntime(null, null)).not.toThrow();
-    expect(() => assertHostedRuntime(null, "agent-sandbox")).not.toThrow();
-  });
-
-  test("rejects a partially persisted Decopilot tuple", () => {
-    expect(() => assertHostedRuntime("decopilot", null)).toThrow(
-      /incomplete hosted runtime pin/,
-    );
+  test("rejects an explicitly retired historical runtime", () => {
+    expect(() =>
+      assertHostedExecutionEnabled({
+        hosted_execution_disabled_at: "2026-08-04T12:00:00.000Z",
+      }),
+    ).toThrow(/previous runtime is no longer supported/);
   });
 });
 
-describe("assertPersistedHostedRuntime", () => {
-  test("allows only the exact persisted hosted tuple", () => {
+describe("assertHostedExecutionLocked", () => {
+  test("allows an enabled thread after routing is claimed", () => {
     expect(() =>
-      assertPersistedHostedRuntime("decopilot", "agent-sandbox"),
+      assertHostedExecutionLocked({
+        routing_locked_at: "2026-08-04T12:00:00.000Z",
+        hosted_execution_disabled_at: null,
+      }),
     ).not.toThrow();
   });
 
-  test("rejects every unpinned or partial tuple before a hosted control mutation", () => {
-    for (const [harnessId, sandboxProviderKind] of [
-      [null, null],
-      [null, "agent-sandbox"],
-      ["decopilot", null],
-    ] as const) {
-      expect(() =>
-        assertPersistedHostedRuntime(harnessId, sandboxProviderKind),
-      ).toThrow(/has not started a hosted run/);
-    }
+  test("rejects an unlocked thread before a hosted control mutation", () => {
+    expect(() =>
+      assertHostedExecutionLocked({
+        routing_locked_at: null,
+        hosted_execution_disabled_at: null,
+      }),
+    ).toThrow(/has not started a hosted run/);
   });
 
-  test("rejects native and retired desktop runtime rows", () => {
+  test("rejects a locked thread whose historical runtime was retired", () => {
     expect(() =>
-      assertPersistedHostedRuntime("decopilot", "user-desktop"),
-    ).toThrow(/unsupported desktop runtime/);
-    expect(() => assertHostedRuntime("decopilot", "user-desktop")).toThrow(
-      /unsupported desktop runtime/,
-    );
-    expect(() => assertPersistedHostedRuntime("codex", "user-desktop")).toThrow(
-      /Studio desktop app/,
-    );
-    expect(() => assertHostedRuntime(null, "user-desktop")).toThrow(
-      /unsupported desktop runtime/,
-    );
+      assertHostedExecutionLocked({
+        routing_locked_at: "2026-08-04T12:00:00.000Z",
+        hosted_execution_disabled_at: "2026-08-04T12:00:00.000Z",
+      }),
+    ).toThrow(/previous runtime is no longer supported/);
   });
 });
 
@@ -255,7 +214,10 @@ describe("resolveHostedThreadBranch", () => {
   test("the thread branch wins over a stale request hint", () => {
     expect(
       resolveHostedThreadBranch(
-        { branch: "main", harness_id: "decopilot" },
+        {
+          branch: "main",
+          routing_locked_at: "2026-08-04T12:00:00.000Z",
+        },
         "stale",
       ),
     ).toBe("main");
@@ -264,7 +226,7 @@ describe("resolveHostedThreadBranch", () => {
   test("the request may fill an unbranched thread during first pin", () => {
     expect(
       resolveHostedThreadBranch(
-        { branch: null, harness_id: null },
+        { branch: null, routing_locked_at: null },
         "feature-x",
       ),
     ).toBe("feature-x");
@@ -273,7 +235,10 @@ describe("resolveHostedThreadBranch", () => {
   test("a locked hosted thread keeps its null branch", () => {
     expect(
       resolveHostedThreadBranch(
-        { branch: null, harness_id: "decopilot" },
+        {
+          branch: null,
+          routing_locked_at: "2026-08-04T12:00:00.000Z",
+        },
         "stale",
       ),
     ).toBeNull();
@@ -281,7 +246,10 @@ describe("resolveHostedThreadBranch", () => {
 
   test("returns null when neither source has a branch", () => {
     expect(
-      resolveHostedThreadBranch({ branch: null, harness_id: null }, undefined),
+      resolveHostedThreadBranch(
+        { branch: null, routing_locked_at: null },
+        undefined,
+      ),
     ).toBeNull();
   });
 });

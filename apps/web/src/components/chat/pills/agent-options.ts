@@ -1,12 +1,10 @@
-import type { HarnessId } from "@decocms/shared/harness/types";
-
 export type AgentOption =
   | "decopilot"
   | "claude-code-desktop"
   | "codex-desktop"
   | "opencode-desktop";
 export type LocalAgentOption = Exclude<AgentOption, "decopilot">;
-export type AgentHarnessId = HarnessId | "opencode";
+export type AgentHarnessId = "decopilot" | "claude-code" | "codex" | "opencode";
 export type LocalHarnessId = Exclude<AgentHarnessId, "decopilot">;
 
 /**
@@ -20,24 +18,6 @@ export const AGENT_OPTION_HARNESSES: Record<AgentOption, AgentHarnessId> = {
   "codex-desktop": "codex",
   "opencode-desktop": "opencode",
 };
-
-/**
- * Inverse of `AGENT_OPTION_HARNESSES`. Maps a persisted thread harness back to
- * the canonical `AgentOption`.
- *
- * Returns `null` when the harness does not correspond to any known option (which
- * can happen for legacy or trigger-created rows that wrote a harness without
- * going through this picker).
- */
-export function agentOptionFor(harness: string | null): AgentOption | null {
-  if (!harness) return null;
-  for (const [option, pinnedHarness] of Object.entries(
-    AGENT_OPTION_HARNESSES,
-  ) as [AgentOption, AgentHarnessId][]) {
-    if (pinnedHarness === harness) return option;
-  }
-  return null;
-}
 
 /**
  * Resolve the only agent options a native build may expose.

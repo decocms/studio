@@ -8,10 +8,10 @@ import type { Thread } from "@/storage/types";
  * example, Decopilot's load_repo tool binds a selected repository branch).
  */
 export function assertThreadRoutingUpdateAllowed(
-  thread: Pick<Thread, "harness_id" | "virtual_mcp_id" | "branch">,
+  thread: Pick<Thread, "routing_locked_at" | "virtual_mcp_id" | "branch">,
   update: { virtual_mcp_id?: string; branch?: string | null },
 ): void {
-  if (!thread.harness_id) return;
+  if (thread.routing_locked_at === null) return;
 
   if (
     update.virtual_mcp_id !== undefined &&

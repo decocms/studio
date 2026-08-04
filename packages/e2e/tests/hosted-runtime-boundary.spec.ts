@@ -29,39 +29,6 @@ const LEGACY_REQUEST_FIELDS = [
   { label: "stream", fields: { stream: true } },
 ] as const;
 
-const PERSISTED_NON_HOSTED_ROWS = [
-  {
-    harnessId: "claude-code",
-    sandboxProviderKind: "user-desktop",
-    error: "This coding-agent chat can only run in the Studio desktop app",
-  },
-  {
-    harnessId: "codex",
-    sandboxProviderKind: null,
-    error: "This coding-agent chat can only run in the Studio desktop app",
-  },
-  {
-    harnessId: "opencode",
-    sandboxProviderKind: "user-desktop",
-    error: "This coding-agent chat can only run in the Studio desktop app",
-  },
-  {
-    harnessId: "future",
-    sandboxProviderKind: null,
-    error: "This coding-agent chat can only run in the Studio desktop app",
-  },
-  {
-    harnessId: "decopilot",
-    sandboxProviderKind: "user-desktop",
-    error: "This chat is pinned to an unsupported desktop runtime",
-  },
-  {
-    harnessId: "decopilot",
-    sandboxProviderKind: null,
-    error: "This chat has an incomplete hosted runtime pin",
-  },
-] as const;
-
 type DevDb = Awaited<ReturnType<typeof connectDevDb>>;
 
 async function createAgent(
@@ -123,6 +90,8 @@ async function readThreadAuthorityState(
     virtual_mcp_id: string;
     harness_id: string | null;
     sandbox_provider_kind: string | null;
+    routing_locked_at: Date | null;
+    hosted_execution_disabled_at: Date | null;
     status: string;
     part_count: number;
   }>(
@@ -130,6 +99,8 @@ async function readThreadAuthorityState(
             t.virtual_mcp_id,
             t.harness_id,
             t.sandbox_provider_kind,
+            t.routing_locked_at,
+            t.hosted_execution_disabled_at,
             t.status,
             (SELECT COUNT(*)::int
                FROM thread_message_parts p
@@ -221,7 +192,7 @@ async function expectNoQueuedRun(
 test.describe("hosted runtime boundary", () => {
   test.describe.configure({ mode: "serial" });
 
-  test("rejects every retired request field before pinning or persisting a message", async ({
+  test("rejects every retired request field before locking or persisting a message", async ({
     authedPage,
   }) => {
     const { page, orgSlug, user } = authedPage;
@@ -269,12 +240,20 @@ test.describe("hosted runtime boundary", () => {
       }
 
       const row = await db.query(
-        `SELECT harness_id
+        `SELECT harness_id,
+                routing_locked_at,
+                hosted_execution_disabled_at
            FROM threads
           WHERE id = $1 AND created_by = $2`,
         [thread.item.id, user.userId],
       );
-      expect(row.rows).toEqual([{ harness_id: null }]);
+      expect(row.rows).toEqual([
+        {
+          harness_id: null,
+          routing_locked_at: null,
+          hosted_execution_disabled_at: null,
+        },
+      ]);
 
       const parts = await db.query(
         `SELECT COUNT(*)::int AS count
@@ -377,6 +356,8 @@ test.describe("hosted runtime boundary", () => {
         virtual_mcp_id: foreignAgentId,
         harness_id: null,
         sandbox_provider_kind: null,
+        routing_locked_at: null,
+        hosted_execution_disabled_at: null,
         part_count: 0,
       });
       await expectNoQueuedRun(api, orgSlug, corruptThreadId);
@@ -774,7 +755,7 @@ test.describe("hosted runtime boundary", () => {
     }
   });
 
-  test("rejects persisted non-hosted and incomplete runtime rows without side effects", async ({
+  test("rejects hosted-disabled rows without consulting legacy selectors", async ({
     authedPage,
   }) => {
     const { page, orgSlug, user } = authedPage;
@@ -787,7 +768,7 @@ test.describe("hosted runtime boundary", () => {
         "COLLECTION_VIRTUAL_MCP_CREATE",
         {
           data: {
-            title: "persisted native runtime boundary",
+            title: "hosted-disabled runtime boundary",
             connections: [],
             status: "active",
             pinned: false,
@@ -795,11 +776,12 @@ test.describe("hosted runtime boundary", () => {
         },
       );
 
-      for (const {
-        harnessId,
-        sandboxProviderKind,
-        error,
-      } of PERSISTED_NON_HOSTED_ROWS) {
+      let firstError: unknown;
+      for (const [index, selectors] of [
+        { harnessId: null, sandboxProviderKind: null },
+        { harnessId: "decopilot", sandboxProviderKind: "agent-sandbox" },
+        { harnessId: "retired-harness", sandboxProviderKind: "cluster" },
+      ].entries()) {
         const thread = await callSelfMcpTool<{ item: { id: string } }>(
           api,
           orgSlug,
@@ -808,9 +790,17 @@ test.describe("hosted runtime boundary", () => {
         );
         const update = await db.query(
           `UPDATE threads
-              SET harness_id = $1, sandbox_provider_kind = $2
+              SET harness_id = $1,
+                  sandbox_provider_kind = $2,
+                  routing_locked_at = NOW(),
+                  hosted_execution_disabled_at = NOW()
             WHERE id = $3 AND created_by = $4`,
-          [harnessId, sandboxProviderKind, thread.item.id, user.userId],
+          [
+            selectors.harnessId,
+            selectors.sandboxProviderKind,
+            thread.item.id,
+            user.userId,
+          ],
         );
         expect(update.rowCount).toBe(1);
 
@@ -820,7 +810,7 @@ test.describe("hosted runtime boundary", () => {
             data: {
               messages: [
                 {
-                  id: `msg-persisted-${harnessId}`,
+                  id: `msg-hosted-disabled-${index}`,
                   role: "user",
                   parts: [{ type: "text", text: "Do not dispatch this" }],
                 },
@@ -830,18 +820,25 @@ test.describe("hosted runtime boundary", () => {
           },
         );
         expect(response.status()).toBe(409);
-        expect(await response.json()).toEqual({ error });
+        const error = await response.json();
+        firstError ??= error;
+        expect(error).toEqual(firstError);
 
         const row = await db.query(
-          `SELECT harness_id, sandbox_provider_kind
+          `SELECT harness_id,
+                  sandbox_provider_kind,
+                  routing_locked_at IS NOT NULL AS routing_locked,
+                  hosted_execution_disabled_at IS NOT NULL AS hosted_disabled
              FROM threads
             WHERE id = $1 AND created_by = $2`,
           [thread.item.id, user.userId],
         );
         expect(row.rows).toEqual([
           {
-            harness_id: harnessId,
-            sandbox_provider_kind: sandboxProviderKind,
+            harness_id: selectors.harnessId,
+            sandbox_provider_kind: selectors.sandboxProviderKind,
+            routing_locked: true,
+            hosted_disabled: true,
           },
         ]);
 
@@ -853,6 +850,9 @@ test.describe("hosted runtime boundary", () => {
         );
         expect(parts.rows[0]?.count).toBe(0);
       }
+      expect(firstError).toEqual({
+        error: "This chat's previous runtime is no longer supported",
+      });
     } finally {
       await db.end();
     }
@@ -922,6 +922,8 @@ test.describe("hosted runtime boundary", () => {
 
       const row = await db.query(
         `SELECT harness_id,
+                routing_locked_at,
+                hosted_execution_disabled_at,
                 (SELECT COUNT(*)::int
                    FROM thread_message_parts
                   WHERE thread_id = threads.id) AS part_count
@@ -929,7 +931,14 @@ test.describe("hosted runtime boundary", () => {
           WHERE id = $1 AND created_by = $2`,
         [thread.item.id, user.userId],
       );
-      expect(row.rows).toEqual([{ harness_id: null, part_count: 0 }]);
+      expect(row.rows).toEqual([
+        {
+          harness_id: null,
+          routing_locked_at: null,
+          hosted_execution_disabled_at: null,
+          part_count: 0,
+        },
+      ]);
     } finally {
       await db.end();
     }
@@ -991,7 +1000,9 @@ test.describe("hosted runtime boundary", () => {
           virtual_mcp_id: agentId,
           harness_id: "decopilot",
           sandbox_provider_kind: "agent-sandbox",
+          hosted_execution_disabled_at: null,
         });
+        expect(state.routing_locked_at).not.toBeNull();
         expect(state.part_count).toBeGreaterThanOrEqual(1);
       }).toPass({ timeout: 10_000, intervals: [100, 250, 500] });
 
@@ -1007,7 +1018,7 @@ test.describe("hosted runtime boundary", () => {
     }
   });
 
-  test("keeps a native runtime pin that races the first hosted message", async ({
+  test("keeps a hosted-execution tombstone that races the first message", async ({
     authedPage,
   }) => {
     test.setTimeout(60_000);
@@ -1030,7 +1041,7 @@ test.describe("hosted runtime boundary", () => {
         "AI_PROVIDER_KEY_CREATE",
         {
           providerId: "anthropic",
-          label: "hosted-runtime-race-e2e",
+          label: "hosted-routing-lock-race-e2e",
           apiKey: "sk-ant-e2e-fake-key-do-not-use",
         },
       );
@@ -1054,7 +1065,7 @@ test.describe("hosted runtime boundary", () => {
         "COLLECTION_VIRTUAL_MCP_CREATE",
         {
           data: {
-            title: "runtime pin race",
+            title: "routing lock race",
             connections: [],
             status: "active",
             pinned: false,
@@ -1070,13 +1081,14 @@ test.describe("hosted runtime boundary", () => {
 
       await locker.query("BEGIN");
       transactionOpen = true;
-      const nativePin = await locker.query(
+      const hostedDisable = await locker.query(
         `UPDATE threads
-            SET harness_id = 'codex', sandbox_provider_kind = 'user-desktop'
+            SET routing_locked_at = NOW(),
+                hosted_execution_disabled_at = NOW()
           WHERE id = $1 AND created_by = $2`,
         [thread.item.id, user.userId],
       );
-      expect(nativePin.rowCount).toBe(1);
+      expect(hostedDisable.rowCount).toBe(1);
 
       const responsePromise = api.post(
         `/api/${orgSlug}/decopilot/threads/${thread.item.id}/messages`,
@@ -1084,7 +1096,7 @@ test.describe("hosted runtime boundary", () => {
           data: {
             messages: [
               {
-                id: "msg-runtime-pin-race",
+                id: "msg-routing-lock-race",
                 role: "user",
                 parts: [{ type: "text", text: "Do not win this race" }],
               },
@@ -1107,7 +1119,7 @@ test.describe("hosted runtime boundary", () => {
           );
           if ((waiting.rows[0]?.count ?? 0) === 0) {
             throw new Error(
-              "hosted runtime claim has not reached the row lock",
+              "hosted routing claim has not reached the row lock",
             );
           }
         },
@@ -1125,11 +1137,14 @@ test.describe("hosted runtime boundary", () => {
       const response = await responsePromise;
       expect(response.status()).toBe(409);
       expect(await response.json()).toEqual({
-        error: "This coding-agent chat can only run in the Studio desktop app",
+        error: "This chat's previous runtime is no longer supported",
       });
 
       const row = await db.query(
-        `SELECT harness_id, sandbox_provider_kind,
+        `SELECT harness_id,
+                sandbox_provider_kind,
+                routing_locked_at IS NOT NULL AS routing_locked,
+                hosted_execution_disabled_at IS NOT NULL AS hosted_disabled,
                 (SELECT COUNT(*)::int
                    FROM thread_message_parts
                   WHERE thread_id = threads.id) AS part_count
@@ -1139,8 +1154,10 @@ test.describe("hosted runtime boundary", () => {
       );
       expect(row.rows).toEqual([
         {
-          harness_id: "codex",
-          sandbox_provider_kind: "user-desktop",
+          harness_id: null,
+          sandbox_provider_kind: null,
+          routing_locked: true,
+          hosted_disabled: true,
           part_count: 0,
         },
       ]);
@@ -1150,7 +1167,41 @@ test.describe("hosted runtime boundary", () => {
     }
   });
 
-  test("blocks every hosted control-plane mutation for a native chat", async ({
+  test("a selector-free routing lock reaches hosted control routes", async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug, user } = authedPage;
+    const api = page.context().request;
+    const db = await connectDevDb();
+    try {
+      const agentId = await createAgent(
+        api,
+        orgSlug,
+        "selector-free control route",
+      );
+      const threadId = await createThread(api, orgSlug, agentId);
+      const update = await db.query(
+        `UPDATE threads
+            SET routing_locked_at = NOW(),
+                hosted_execution_disabled_at = NULL
+          WHERE id = $1 AND created_by = $2`,
+        [threadId, user.userId],
+      );
+      expect(update.rowCount).toBe(1);
+
+      const response = await api.post(
+        `/api/${orgSlug}/decopilot/queue/${threadId}/cancel/fake-workflow`,
+      );
+      expect(response.status()).toBe(404);
+      expect(await response.text()).not.toContain(
+        "This chat has not started a hosted run",
+      );
+    } finally {
+      await db.end();
+    }
+  });
+
+  test("blocks every hosted control-plane operation for a hosted-disabled chat", async ({
     authedPage,
   }) => {
     const { page, orgSlug, user } = authedPage;
@@ -1163,7 +1214,7 @@ test.describe("hosted runtime boundary", () => {
         "COLLECTION_VIRTUAL_MCP_CREATE",
         {
           data: {
-            title: "native control-plane boundary",
+            title: "hosted-disabled control-plane boundary",
             connections: [],
             status: "active",
             pinned: false,
@@ -1198,27 +1249,27 @@ test.describe("hosted runtime boundary", () => {
         );
       }
 
-      const pinned = await db.query<{ organization_id: string }>(
+      const disabled = await db.query<{ organization_id: string }>(
         `UPDATE threads
-            SET harness_id = 'codex',
-                sandbox_provider_kind = 'user-desktop',
+            SET routing_locked_at = NOW(),
+                hosted_execution_disabled_at = NOW(),
                 status = 'in_progress',
                 cancel_requested_at = NULL
           WHERE id = $1 AND created_by = $2
       RETURNING organization_id`,
         [thread.item.id, user.userId],
       );
-      const organizationId = pinned.rows[0]?.organization_id;
+      const organizationId = disabled.rows[0]?.organization_id;
       expect(organizationId).toBeTruthy();
 
       await db.query(
         `INSERT INTO thread_message_parts
           (id, org_id, thread_id, run_id, message_id, role, kind, seq,
            payload, payload_ref, metadata, created_at)
-         VALUES ($1, $2, $3, $3, 'native-message', 'user', 'text', 0,
+         VALUES ($1, $2, $3, $3, 'hosted-disabled-message', 'user', 'text', 0,
                  $4, NULL, NULL, $5)`,
         [
-          `${thread.item.id}:native-message:0`,
+          `${thread.item.id}:hosted-disabled-message:0`,
           organizationId,
           thread.item.id,
           JSON.stringify({ type: "text", text: "keep me" }),
@@ -1283,7 +1334,7 @@ test.describe("hosted runtime boundary", () => {
     }
   });
 
-  test("web replaces a native thread workspace before sandbox-backed panels mount", async ({
+  test("web replaces a hosted-disabled workspace before sandbox-backed panels mount", async ({
     authedPage,
   }) => {
     const { page, orgSlug, user } = authedPage;
@@ -1291,7 +1342,7 @@ test.describe("hosted runtime boundary", () => {
     const db = await connectDevDb();
     try {
       const connection = await createHttpConnection(api, orgSlug, {
-        title: "native-boundary-github-placeholder",
+        title: "hosted-disabled-github-placeholder",
         url: "http://127.0.0.1:1/unused",
       });
       const agent = await callSelfMcpTool<{ item: { id: string } }>(
@@ -1300,7 +1351,7 @@ test.describe("hosted runtime boundary", () => {
         "COLLECTION_VIRTUAL_MCP_CREATE",
         {
           data: {
-            title: "native-only workspace boundary",
+            title: "hosted-disabled workspace boundary",
             connections: [{ connection_id: connection.id }],
             status: "active",
             pinned: false,
@@ -1323,7 +1374,8 @@ test.describe("hosted runtime boundary", () => {
       );
       const update = await db.query(
         `UPDATE threads
-            SET harness_id = 'codex', sandbox_provider_kind = 'user-desktop'
+            SET routing_locked_at = NOW(),
+                hosted_execution_disabled_at = NOW()
           WHERE id = $1 AND created_by = $2`,
         [thread.item.id, user.userId],
       );

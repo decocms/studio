@@ -24,6 +24,7 @@ use crate::routes::threads::authority::{self, ThreadAccess};
 use crate::routes::threads::db::{
     RtTerminalLogicalState, RtTerminalPhysicalState, RtTerminalResumeDecision, RtTerminalSession,
     RtTerminalSessionCasOutcome, RtTerminalSessionCreateOutcome, RtThreadFence, ThreadsDb,
+    DESKTOP_SANDBOX_PROVIDER_KIND,
 };
 use crate::state::AppState;
 use crate::terminal::launch_context::{self, LaunchRequest, PreparedLaunch};
@@ -37,7 +38,6 @@ const TERMINAL_INPUT_BYTES: usize = 64 * 1024;
 const BRACKETED_PASTE_OVERHEAD_BYTES: usize = 13;
 const MAX_PROMPT_BYTES: usize = TERMINAL_INPUT_BYTES - BRACKETED_PASTE_OVERHEAD_BYTES;
 const MAX_REQUEST_ID_BYTES: usize = 512;
-const DESKTOP_SANDBOX_PROVIDER: &str = "user-desktop";
 const MIN_ROWS: u16 = 2;
 const MAX_ROWS: u16 = 500;
 const MIN_COLS: u16 = 2;
@@ -1106,8 +1106,9 @@ fn reserve_durable_start(
         }
 
         // No process-local preparation or PTY owns this live durable row, so
-        // it is stale state left by a previous app process. Inspecting before
-        // create also heals an interrupted attempt for a different harness.
+        // it is stale state left by a previous app process. Close the orphan;
+        // the replacement reservation still has to match the thread's
+        // atomically pinned harness.
         crate::terminal::lifecycle::mark_exited(
             db,
             fence,
@@ -1555,7 +1556,7 @@ impl SessionSpawnOwner {
                 .rt_pin_harness_if_unset_fenced(
                     &fence,
                     options.harness.wire_id(),
-                    Some(DESKTOP_SANDBOX_PROVIDER),
+                    Some(DESKTOP_SANDBOX_PROVIDER_KIND),
                     None,
                 )
                 .and_then(|updated| {
@@ -3120,13 +3121,22 @@ mod tests {
     }
 
     #[test]
-    fn stale_starting_row_without_a_process_reservation_self_heals() {
+    fn stale_starting_row_preserves_the_pin_and_self_heals_for_the_same_harness() {
         let (db, fence, registry) = terminal_preparation_fixture("preparing-stale-restart");
         db.rt_create_terminal_session_fenced(&fence, "stale-session", "claude-code")
             .unwrap();
 
+        assert!(reserve_durable_start(&registry, db, &fence, HarnessId::Codex).is_err());
+        assert_eq!(
+            db.rt_harness_id_fenced(&fence)
+                .unwrap()
+                .flatten()
+                .as_deref(),
+            Some("claude-code")
+        );
+
         let (replacement_id, _preparation) =
-            reserve_durable_start(&registry, db, &fence, HarnessId::Codex).unwrap();
+            reserve_durable_start(&registry, db, &fence, HarnessId::ClaudeCode).unwrap();
 
         assert_ne!(replacement_id, "stale-session");
         assert_eq!(

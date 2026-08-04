@@ -50,16 +50,21 @@ describe("findReusableNewChat", () => {
   });
 
   // The regression this guard exists for: a first message that FAILED leaves
-  // the thread titled "New chat" but with a pinned harness_id, so it is
-  // non-empty and runtime-locked. Reusing it strands the user on the broken
-  // conversation.
-  it("does not reuse a New chat whose first message pinned a harness", () => {
-    const t = task({ id: "a", harness_id: "decopilot" });
+  // the thread titled "New chat" but with a routing lock, so it is non-empty.
+  // Reusing it strands the user on the broken conversation.
+  it("does not reuse a New chat whose first message locked routing", () => {
+    const t = task({
+      id: "a",
+      routing_locked_at: "2026-08-04T00:00:00.000Z",
+    });
     expect(findReusableNewChat([t], "agent-1", USER)).toBeUndefined();
   });
 
   it("picks the empty New chat over a failed same-titled one", () => {
-    const failed = task({ id: "failed", harness_id: "claude-code" });
+    const failed = task({
+      id: "failed",
+      routing_locked_at: "2026-08-04T00:00:00.000Z",
+    });
     const fresh = task({ id: "fresh" });
     expect(findReusableNewChat([failed, fresh], "agent-1", USER)?.id).toBe(
       "fresh",

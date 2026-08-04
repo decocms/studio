@@ -50,7 +50,6 @@ import { DEFAULT_WINDOW_SIZE, generateMessageId } from "./constants";
 import { mintRunFenceToken } from "./dispatch-fence";
 import { synthesizedErrorMessageId } from "./message-ids";
 import { loadDecopilotContext } from "@/harnesses/decopilot/context-loader";
-import { isHostedDecopilotRuntime } from "@/harnesses/decopilot/hosted-runtime";
 import { PartEmitter } from "./part-emitter";
 import { foldedToUIMessage } from "./projector-seed";
 import { uploadFileParts, resolveStorageRefs } from "./file-materializer";
@@ -88,6 +87,7 @@ import { safeMemoryUsage } from "@/observability/profiling/safe-memory";
 import { getPodId } from "@/core/pod-identity";
 import type { SSEEvent } from "@/event-bus";
 import { sleep } from "@decocms/shared/std";
+import { hasHostedExecutionAuthority } from "@/core/hosted-execution-authority";
 
 // Attributes onFinish event-loop cost by phase (settle = awaiting the
 // accumulated pendingOps; save = the synchronous message-serialization +
@@ -744,15 +744,10 @@ async function prepareRun(
       organizationId: input.organizationId,
       userId: input.userId,
     });
-    if (
-      !isHostedDecopilotRuntime({
-        harnessId: mem.thread.harness_id,
-        sandboxProviderKind: mem.thread.sandbox_provider_kind,
-      })
-    ) {
+    if (!hasHostedExecutionAuthority(mem.thread)) {
       throw new PermanentRunError(
         "invalid_runtime",
-        "Thread is not assigned to the hosted Decopilot runtime",
+        "Thread is not enabled and locked for hosted execution",
       );
     }
     // Normal rows are scoped by VirtualMCPStorage.findById's SQL predicate;
@@ -775,7 +770,6 @@ async function prepareRun(
     // optional client-only extras like `capabilities`). Everything below the
     // normalization call uses the per-slot v2 `models`.
     const clientModels = input.models;
-    rootSpan.setAttribute("decopilot.harnessId", "decopilot");
 
     // Normalize the client models payload into the v2 per-slot shape FIRST
     // (the HTTP layer still sends a root credentialId), so the permission

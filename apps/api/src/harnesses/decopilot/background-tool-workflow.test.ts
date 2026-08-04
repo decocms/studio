@@ -1,31 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { isHostedDecopilotThread } from "./background-tool-workflow";
-
-describe("isHostedDecopilotThread", () => {
-  test("accepts only the exact hosted Decopilot pin", () => {
-    expect(
-      isHostedDecopilotThread({
-        harness_id: "decopilot",
-        sandbox_provider_kind: "agent-sandbox",
-      }),
-    ).toBe(true);
-  });
-
-  test("rejects unpinned, native, partial, retired, and unknown runtimes", () => {
-    for (const thread of [
-      null,
-      { harness_id: null, sandbox_provider_kind: null },
-      { harness_id: "codex", sandbox_provider_kind: "user-desktop" },
-      { harness_id: "future", sandbox_provider_kind: null },
-      { harness_id: "decopilot", sandbox_provider_kind: null },
-      { harness_id: "decopilot", sandbox_provider_kind: "user-desktop" },
-    ]) {
-      expect(isHostedDecopilotThread(thread)).toBe(false);
-    }
-  });
-});
 
 describe("backgroundToolWorkflow runtime boundary", () => {
   const source = readFileSync(

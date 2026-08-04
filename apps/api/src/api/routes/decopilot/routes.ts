@@ -43,7 +43,6 @@ import { stringifyError } from "@/harnesses/lib/stream-error";
 import { cancelHostedHarness, enqueueThreadRun } from "@/dispatch-queue";
 import { publishRunStatusStage } from "./run-status-stage";
 import { wrapWithSseKeepalive } from "./sse-keepalive";
-import { isHostedDecopilotRuntime } from "@/harnesses/decopilot/hosted-runtime";
 import type { Thread } from "@/storage/types";
 import { cancelThreadBackgroundJobs } from "@/harnesses/decopilot/background-tool-workflow";
 import { abortBackgroundJobs } from "@/harnesses/decopilot/background-abort-registry";
@@ -60,6 +59,7 @@ import {
   ThreadAuthorityError,
   resolveThreadAuthority,
 } from "@/core/thread-authority";
+import { hasHostedExecutionAuthority } from "@/core/hosted-execution-authority";
 
 // Per-connection /stream tail diagnostics. Flip to "1" in an environment where
 // the live stream intermittently delivers no chunks — logs the resolved
@@ -280,75 +280,42 @@ async function resolvePerRequestModels(
 
 /**
  * The thread owns the hosted branch. The request branch remains a temporary
- * request hint only while pinning an unbranched, unlocked row for the first time.
+ * request hint only while claiming an unbranched, unlocked row for the first time.
  */
 export function resolveHostedThreadBranch(
-  thread: Pick<Thread, "branch" | "harness_id">,
+  thread: Pick<Thread, "branch" | "routing_locked_at">,
   requestBranch: string | null | undefined,
 ): string | null {
   if (thread.branch !== null && thread.branch !== undefined) {
     return thread.branch;
   }
-  return thread.harness_id ? null : (requestBranch ?? null);
+  return thread.routing_locked_at === null ? (requestBranch ?? null) : null;
 }
 
 /**
- * The hosted messages endpoint is Decopilot-only. Native coding-agent ids can
- * remain on persisted thread rows so the desktop app can resume them, but the
- * cloud route must reject those rows before model resolution or any write.
+ * Historical threads whose runtime cannot be represented by the single hosted
+ * execution path remain readable, but hosted control and execution routes fail
+ * closed on their explicit tombstone.
  */
-export function assertHostedDecopilotHarness(
-  harnessId: string | null,
-): asserts harnessId is "decopilot" | null {
-  if (harnessId !== null && harnessId !== "decopilot") {
-    throw new HTTPException(409, {
-      message: "This coding-agent chat can only run in the Studio desktop app",
-    });
-  }
-}
-
-export function assertHostedSandboxProvider(
-  sandboxProviderKind: string | null,
-): asserts sandboxProviderKind is "agent-sandbox" | null {
-  if (sandboxProviderKind !== null && sandboxProviderKind !== "agent-sandbox") {
-    throw new HTTPException(409, {
-      message: "This chat is pinned to an unsupported desktop runtime",
-    });
-  }
-}
-
-export function assertHostedRuntime(
-  harnessId: string | null,
-  sandboxProviderKind: string | null,
+export function assertHostedExecutionEnabled(
+  thread: Pick<Thread, "hosted_execution_disabled_at">,
 ): void {
-  assertHostedDecopilotHarness(harnessId);
-  assertHostedSandboxProvider(sandboxProviderKind);
-  if (
-    isHostedDecopilotRuntime({ harnessId, sandboxProviderKind }) ||
-    (harnessId === null &&
-      (sandboxProviderKind === null || sandboxProviderKind === "agent-sandbox"))
-  ) {
-    return;
+  if (thread.hosted_execution_disabled_at !== null) {
+    throw new HTTPException(409, {
+      message: "This chat's previous runtime is no longer supported",
+    });
   }
-  throw new HTTPException(409, {
-    message: "This chat has an incomplete hosted runtime pin",
-  });
 }
 
 /**
- * Mutating control routes operate only on a thread that has already been
- * claimed by hosted Decopilot. Unlike the message and stream routes, they do
- * not need to support an unpinned thread: accepting one would leave a race in
- * which native startup could claim the row after validation but before the
- * hosted mutation landed.
+ * Mutating control and dispatch paths operate only after hosted routing has
+ * been claimed. Read-only/live surfaces may still open before that first claim.
  */
-export function assertPersistedHostedRuntime(
-  harnessId: string | null,
-  sandboxProviderKind: string | null,
-): asserts harnessId is "decopilot" {
-  assertHostedDecopilotHarness(harnessId);
-  assertHostedSandboxProvider(sandboxProviderKind);
-  if (!isHostedDecopilotRuntime({ harnessId, sandboxProviderKind })) {
+export function assertHostedExecutionLocked(
+  thread: Pick<Thread, "routing_locked_at" | "hosted_execution_disabled_at">,
+): void {
+  assertHostedExecutionEnabled(thread);
+  if (!hasHostedExecutionAuthority(thread)) {
     throw new HTTPException(409, {
       message: "This chat has not started a hosted run",
     });
@@ -406,12 +373,10 @@ async function validate(
     userId,
   });
 
-  // Persisted native rows are readable by the shared thread surfaces but can
-  // never enter hosted model resolution or dispatch.
-  assertHostedRuntime(
-    lockedThread.harness_id,
-    lockedThread.sandbox_provider_kind,
-  );
+  // Explicitly retired historical runtimes can never enter hosted model
+  // resolution or dispatch. An unlocked thread is valid here: its first
+  // accepted message claims routing atomically below.
+  assertHostedExecutionEnabled(lockedThread);
 
   const resolvedModels = await resolvePerRequestModels(ctx, tier);
 
@@ -534,7 +499,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         throw new HTTPException(400, { message: "threadId is required" });
       }
 
-      // Re-read the canonical row for its pin, agent, and message-storage
+      // Re-read the canonical row for its routing lock, agent, and message-storage
       // version. A storage error must fail closed so a disappearing row cannot
       // enqueue hosted work.
       const existingThread = await ctx.storage.threads.get(taskId);
@@ -562,16 +527,11 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         resolveHostedThreadBranch(existingThread, input.branch) ?? "ephemeral";
 
       // The row may have changed between validate() and this canonical re-read.
-      // Re-assert before the initial-pin branch so a persisted non-hosted
-      // runtime cannot be mutated by this route before it returns 409.
-      assertHostedRuntime(
-        runtimeThread.harness_id,
-        runtimeThread.sandbox_provider_kind,
-      );
+      // Re-assert before the initial claim so a retired runtime cannot be
+      // mutated by this route before it returns 409.
+      assertHostedExecutionEnabled(runtimeThread);
 
-      // A non-null harness is the runtime lock. The hosted storage method owns
-      // the only tuple this route may claim: decopilot + agent-sandbox.
-      if (!runtimeThread.harness_id) {
+      if (runtimeThread.routing_locked_at === null) {
         // Stream-of-record v2 is the ONLY write path (Phase C cutover). Pin
         // every NEW thread (no prior messages, not already v2) to v2 so the
         // ingest → JetStream → durable-projector pipeline persists its parts.
@@ -590,10 +550,10 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
             pinV2 = false;
           }
         }
-        // Claim all runtime pins in one CAS. A native start can race this
-        // request, so an unconditional update would let the hosted path
-        // overwrite a runtime that became native after our preceding read.
-        const claimed = await ctx.storage.threads.pinHostedRuntimeIfUnset(
+        // Claim routing in one CAS. A concurrent routing update can race this
+        // request, so an unconditional update could overwrite authority that
+        // became locked after our preceding read.
+        const claimed = await ctx.storage.threads.claimHostedRoutingIfUnlocked(
           taskId,
           {
             branch,
@@ -612,10 +572,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           });
         }
       }
-      assertPersistedHostedRuntime(
-        runtimeThread.harness_id,
-        runtimeThread.sandbox_provider_kind,
-      );
+      assertHostedExecutionLocked(runtimeThread);
 
       if (runtimeThread.message_storage_version !== 2) {
         throw new HTTPException(409, {
@@ -730,10 +687,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
     organization: { id: string };
   }): Promise<void> {
     const { ctx, taskId, thread, organization } = args;
-    assertPersistedHostedRuntime(
-      thread.harness_id,
-      thread.sandbox_provider_kind,
-    );
+    assertHostedExecutionLocked(thread);
 
     // Persist durable cancel flag so the ingest backstop rejects 409.
     await ctx.storage.threads.setCancelRequested(taskId, organization.id);
@@ -858,10 +812,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   app.post("/:org/decopilot/cancel/:threadId", async (c) => {
     const { ctx, taskId, thread, organization } =
       await validateThreadOwnership(c);
-    assertPersistedHostedRuntime(
-      thread.harness_id,
-      thread.sandbox_provider_kind,
-    );
     await cancelActiveThreadRun({ ctx, taskId, thread, organization });
     return c.json({ cancelled: true, async: true }, 202);
   });
@@ -872,10 +822,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   // its inline run and re-runs it as a durable background job. Owner-only.
   app.post("/:org/decopilot/flip/:threadId", async (c) => {
     const { taskId, thread } = await validateThreadOwnership(c);
-    assertPersistedHostedRuntime(
-      thread.harness_id,
-      thread.sandbox_provider_kind,
-    );
+    assertHostedExecutionLocked(thread);
     const body = (await c.req.json().catch(() => null)) as {
       toolCallId?: unknown;
     } | null;
@@ -895,7 +842,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
   app.get("/:org/decopilot/queue/:threadId", async (c) => {
     const { ctx, taskId, thread } = await validateThreadOwnership(c);
-    assertHostedRuntime(thread.harness_id, thread.sandbox_provider_kind);
+    assertHostedExecutionEnabled(thread);
     const items = await listThreadGateQueue(taskId);
     if (items.length === 0) return c.json({ items: [] });
     // Hydrate tray display text + attachment presence from the persisted
@@ -923,10 +870,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   app.post("/:org/decopilot/queue/:threadId/cancel/:workflowId", async (c) => {
     const { ctx, taskId, thread, organization } =
       await validateThreadOwnership(c);
-    assertPersistedHostedRuntime(
-      thread.harness_id,
-      thread.sandbox_provider_kind,
-    );
+    assertHostedExecutionLocked(thread);
     const workflowId = c.req.param("workflowId");
 
     // The item must currently be pending for THIS thread (prefix-scoped list).
@@ -1000,7 +944,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   app.get("/:org/decopilot/threads/:threadId/stream", async (c) => {
     try {
       const { taskId, thread } = await validateThreadAccess(c);
-      assertHostedRuntime(thread.harness_id, thread.sandbox_provider_kind);
+      assertHostedExecutionEnabled(thread);
 
       // Use the DB's view, not pod-local registry state. A client attached
       // to a non-owner pod (any multi-pod deployment, including mid-deploy
@@ -1080,7 +1024,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   app.get("/:org/decopilot/threads/:threadId/jobs/:jobId/stream", async (c) => {
     try {
       const { taskId, thread } = await validateThreadAccess(c);
-      assertHostedRuntime(thread.harness_id, thread.sandbox_provider_kind);
+      assertHostedExecutionEnabled(thread);
       const jobId = c.req.param("jobId");
       if (!jobId || !jobId.startsWith(`bgtool:${taskId}:`)) {
         return c.body(null, 404);

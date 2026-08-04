@@ -3,8 +3,8 @@
   "automations/dbos-workflow.ts": "dd8535f7577bbd3c0270c60f14f480d4fb42e366666245c3efa77f0ce73a9da2",
   "billing/sync-org-benefits.ts": "53ebb1e30d7583e0db9f341f14272226602211f10a370c5220c22dda4fbcf8f6",
   "dispatch-queue/hosted-harness-workflow.ts": "5a196c0348f238670f2b68297a7fe001128996003567ab87bb6c0c6ba9d38810",
-  "dispatch-queue/thread-gate-workflow.ts": "ef4cb1191661f66fb2ddec25981162526275cd0a0dc20a3498e1f12bfb840865",
+  "dispatch-queue/thread-gate-workflow.ts": "3f3a0acbda0fc4d058b278df744475fb72356127365ef36c57becc28e84eb7aa",
   "file-storage/dbos-public-sets-sync.ts": "efd9c4bfd9ae29b13970e6b1072e067f43f151b3530d552efc1b4daf038bea7e",
-  "harnesses/decopilot/background-tool-workflow.ts": "19c2d3093a5a667cc9fd588f301c446c31bfdab46110c88673c90bfb780d0f1c",
+  "harnesses/decopilot/background-tool-workflow.ts": "9e51a2e0baba915f4e07c2812dcc0f6fd006df4f195638f7046c07382a62d893",
   "monitoring/dbos-retention-workflow.ts": "757e9999af900d9395c6629d4966b84c723512d0a5a8e488f70b7ba634752bd8"
 }

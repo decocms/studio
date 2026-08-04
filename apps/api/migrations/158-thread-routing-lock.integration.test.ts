@@ -68,14 +68,25 @@ describe("migration 158: thread routing lock", () => {
         harness_id?: string | null;
         sandbox_provider_kind?: string | null;
       } = {},
-    ) =>
-      storage.create({
+    ) => {
+      await storage.create({
         id,
         organization_id: "org_1",
         created_by: "user_1",
         title: id,
-        ...data,
+        ...(data.status ? { status: data.status } : {}),
       });
+      // Seed the pre-158 selector shapes beneath the current selector-free
+      // create port. These are historical database fixtures, not supported
+      // application inputs.
+      await sql`
+        UPDATE threads
+        SET harness_id = ${data.harness_id ?? null},
+            sandbox_provider_kind = ${data.sandbox_provider_kind ?? null}
+        WHERE id = ${id}
+          AND organization_id = 'org_1'
+      `.execute(database.db);
+    };
 
     await create("thrd_158_pristine");
     await create("thrd_158_canonical", {

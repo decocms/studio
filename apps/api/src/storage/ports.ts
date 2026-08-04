@@ -34,7 +34,15 @@ import type {
 } from "./types";
 import type { UserModelPreferences } from "@decocms/shared/organization/schema";
 
-export type ThreadUpdateData = Partial<Thread> & {
+export type ThreadUpdateData = Partial<
+  Omit<
+    Thread,
+    | "harness_id"
+    | "sandbox_provider_kind"
+    | "routing_locked_at"
+    | "hosted_execution_disabled_at"
+  >
+> & {
   /**
    * Internal liveness heartbeat. Exposed only on updates so RUN_STARTED can
    * clear progress from an older turn in the same write that marks the new run
@@ -47,12 +55,24 @@ export type ThreadUpdateData = Partial<Thread> & {
   failure_kind?: string | null;
 };
 
-export interface HostedThreadRuntimePin {
+/**
+ * Public API thread creation is selector-free. Runtime compatibility columns
+ * are derived internally from `routing_locked_at` until the old columns can be
+ * dropped after the rolling-deploy barrier.
+ */
+export type ThreadCreateData = Partial<
+  Omit<
+    Thread,
+    "harness_id" | "sandbox_provider_kind" | "hosted_execution_disabled_at"
+  >
+>;
+
+export interface HostedThreadRoutingClaim {
   branch: string | null;
   messageStorageVersion?: number;
 }
 
-export interface HostedThreadRuntimePinResult {
+export interface HostedThreadRoutingClaimResult {
   thread: Thread | null;
   claimed: boolean;
 }
@@ -61,7 +81,7 @@ export interface ThreadStoragePort {
   /** `isNew` is false when `data.id` collided with an existing row (the
    *  insert is `ON CONFLICT DO NOTHING`) — callers use it to skip
    *  create-only side effects (e.g. analytics) on a replayed/idempotent call. */
-  create(data: Partial<Thread>): Promise<Thread & { isNew: boolean }>;
+  create(data: ThreadCreateData): Promise<Thread & { isNew: boolean }>;
   get(id: string, organizationId: string): Promise<Thread | null>;
   update(
     id: string,
@@ -69,28 +89,27 @@ export interface ThreadStoragePort {
     data: ThreadUpdateData,
   ): Promise<Thread>;
   /**
-   * Apply an update only while both the durable routing lock and the legacy
-   * harness selector remain unset. The dual predicate is the expand-phase CAS:
-   * new pods honor `routing_locked_at`, while `harness_id IS NULL` keeps them
-   * safe when racing an older pod that has not learned to mint the lock yet.
+   * Apply an update only while hosted execution remains eligible and both the
+   * durable routing lock and legacy harness selector are unset. The selector
+   * predicate is a rolling-deploy guard for old pods that do not mint the lock.
    */
-  updateRoutingIfRuntimeUnlocked(
+  updateRoutingIfUnlocked(
     id: string,
     organizationId: string,
     data: ThreadUpdateData,
   ): Promise<Thread | null>;
   /**
-   * Atomically pin an unlocked thread to the hosted Decopilot runtime. The
-   * runtime identifiers are storage-owned constants; callers supply only the
-   * branch and optional message format. During the expand phase this also
-   * mints `routing_locked_at`, while the existing selector predicates remain
-   * the concurrency guard until every reader switches to the durable lock.
+   * Atomically claim an unlocked thread for hosted Decopilot routing. The
+   * runtime identifiers are storage-owned compatibility constants; callers
+   * supply only the branch and optional message format. The selector write and
+   * predicate remain only so this switch-version code can roll alongside old
+   * pods; `routing_locked_at` is the durable authority.
    */
-  pinHostedRuntimeIfUnset(
+  claimHostedRoutingIfUnlocked(
     id: string,
     organizationId: string,
-    pin: HostedThreadRuntimePin,
-  ): Promise<HostedThreadRuntimePinResult>;
+    claim: HostedThreadRoutingClaim,
+  ): Promise<HostedThreadRoutingClaimResult>;
   /**
    * Atomically transition an in-progress thread to completed.
    * Returns the updated row when this call won the transition, or null when the

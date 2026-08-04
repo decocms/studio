@@ -10,16 +10,16 @@ import type { Task } from "@/components/chat/task/types";
  * is what let duplicate empty chats pile up when the same agent was
  * re-selected). But title alone is too loose: a thread whose first message
  * FAILED keeps the "New chat" title forever, so we'd reuse a dead,
- * non-empty, runtime-locked thread — stranding the user on a broken
- * conversation. `harness_id` is pinned on the first message, so `!harness_id`
- * means the thread is genuinely empty. That excludes failed/in-flight threads
- * while still reusing real empty chats. `created_by` scopes the match to the
- * current user — the thread list is org-wide (it includes teammates' threads
- * for the activity view), so without this we'd reuse a teammate's empty "New
- * chat" and strand the user on a read-only thread that isn't theirs. Every
- * entry point that navigates to an agent (the breadcrumb picker, the org-home
- * resolver, the repo switcher, …) reuses this so re-selecting an agent focuses
- * its empty chat instead of minting another.
+ * non-empty, routing-locked thread — stranding the user on a broken
+ * conversation. `routing_locked_at` is set on the first accepted message, so
+ * its absence means the thread is genuinely empty. That excludes
+ * failed/in-flight threads while still reusing real empty chats. `created_by`
+ * scopes the match to the current user — the thread list is org-wide (it
+ * includes teammates' threads for the activity view), so without this we'd
+ * reuse a teammate's empty "New chat" and strand the user on a read-only thread
+ * that isn't theirs. Every entry point that navigates to an agent (the
+ * breadcrumb picker, the org-home resolver, the repo switcher, …) reuses this
+ * so re-selecting an agent focuses its empty chat instead of minting another.
  */
 export function findReusableNewChat(
   threads: Task[],
@@ -32,6 +32,6 @@ export function findReusableNewChat(
       t.virtual_mcp_id === agentId &&
       t.created_by === userId &&
       t.title === "New chat" &&
-      !t.harness_id,
+      !t.routing_locked_at,
   );
 }

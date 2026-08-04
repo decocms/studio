@@ -33,7 +33,6 @@ import {
   promptContentFromSendMessage,
 } from "./prompt";
 import {
-  fromTerminalHarnessId,
   terminalPromptFitsWire,
   toTerminalHarnessId,
   type TerminalHarnessId,
@@ -97,6 +96,7 @@ export function NativeAgentTerminalProvider({
     controller.snapshot.get,
   );
   const lockedHarness = toTerminalHarnessId(task.lockedHarness);
+  const routingLockedAt = task.activeTask?.routing_locked_at ?? null;
   const pendingHarness = toTerminalHarnessId(prefs.pendingHarnessId);
   const isReadOnly = !task.canMutateThread;
   const shouldAutosend = search.autosend === AUTOSEND_QUERY_VALUE;
@@ -142,9 +142,7 @@ export function NativeAgentTerminalProvider({
   // one-frame picker/sidebar lag after a successful native start.
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- external lifecycle frames update the shared thread store
   useEffect(() => {
-    const studioHarness = snapshot.hasSession
-      ? fromTerminalHarnessId(snapshot.harnessId)
-      : null;
+    const studioHarness = snapshot.hasSession ? snapshot.harnessId : null;
     if (!studioHarness && !snapshot.threadStatus) return;
     manager.patchThread({
       id: taskId,
@@ -152,6 +150,7 @@ export function NativeAgentTerminalProvider({
         ? {
             harness_id: studioHarness,
             sandbox_provider_kind: "user-desktop",
+            routing_locked_at: routingLockedAt ?? new Date().toISOString(),
           }
         : {}),
       ...(snapshot.threadStatus ? { status: snapshot.threadStatus } : {}),
@@ -162,6 +161,7 @@ export function NativeAgentTerminalProvider({
     snapshot.harnessId,
     snapshot.threadStatus,
     taskId,
+    routingLockedAt,
   ]);
 
   const selectedHarness = (

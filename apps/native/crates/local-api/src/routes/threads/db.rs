@@ -29,6 +29,7 @@ use uuid::Uuid;
 const CURRENT_SCHEMA_VERSION: u32 = 13;
 
 const NATIVE_TERMINAL_SESSION_ID_PREFIX: &str = "native-terminal:";
+pub(crate) const DESKTOP_SANDBOX_PROVIDER_KIND: &str = "user-desktop";
 
 struct Migration {
     version: u32,
@@ -2092,11 +2093,9 @@ impl ThreadsDb {
         .map_err(DbError::from)
     }
 
-    /// First-terminal thread-lock pin:
-    /// sets `harness_id`/`sandbox_provider_kind`/`branch` ONLY when each is
-    /// currently `NULL` and permanently records the first routing claim — a
-    /// later launch on the same thread leaves them untouched even if it names
-    /// a different harness.
+    /// Idempotent local-routing pin used by migration-oriented tests. The live
+    /// terminal path claims harness, provider, and routing lock atomically with
+    /// its durable session reservation below.
     #[cfg(test)]
     pub fn rt_pin_harness_if_unset_in_org(
         &self,
@@ -2157,11 +2156,12 @@ impl ThreadsDb {
         )? > 0)
     }
 
-    /// Creates one `starting` process attempt for a live thread generation.
-    /// The IMMEDIATE transaction serializes the existing-live check with the
-    /// insert, while the partial unique index remains the database-level
-    /// backstop for writers using another connection. Repeated starts attach
-    /// to the current live row instead of spawning a competing process.
+    /// Creates one `starting` process attempt and atomically pins the thread's
+    /// local routing. The IMMEDIATE transaction serializes both claims with the
+    /// existing-live check, while the partial unique index remains the
+    /// database-level backstop for writers using another connection. Repeated
+    /// starts attach to the current live row instead of spawning a competing
+    /// process.
     pub fn rt_create_terminal_session_fenced(
         &self,
         fence: &RtThreadFence,
@@ -2184,9 +2184,10 @@ impl ThreadsDb {
         let ts = now_rfc3339();
         let mut conn = self.lock();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let thread_gate: Option<(bool, Option<String>)> = tx
+        let thread_gate: Option<(bool, Option<String>, Option<String>)> = tx
             .query_row(
-                "SELECT delete_pending, harness_id FROM native_scoped_threads \
+                "SELECT delete_pending, harness_id, sandbox_provider_kind \
+                 FROM native_scoped_threads \
                  WHERE account_scope = ?1 AND organization_id = ?2 AND id = ?3 \
                    AND generation = ?4",
                 params![
@@ -2195,10 +2196,10 @@ impl ThreadsDb {
                     fence.thread_id,
                     fence.generation,
                 ],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .optional()?;
-        let Some((delete_pending, pinned_harness)) = thread_gate else {
+        let Some((delete_pending, pinned_harness, pinned_provider)) = thread_gate else {
             return Err(DbError::StaleThreadGeneration {
                 organization_id: fence.organization_id.clone(),
                 thread_id: fence.thread_id.clone(),
@@ -2218,6 +2219,15 @@ impl ThreadsDb {
             return Err(DbError::InvalidTerminalSessionData(format!(
                 "thread harness {:?} does not match terminal harness {harness_id:?}",
                 pinned_harness.as_deref().unwrap_or_default()
+            )));
+        }
+        if pinned_provider
+            .as_deref()
+            .is_some_and(|pinned| pinned != DESKTOP_SANDBOX_PROVIDER_KIND)
+        {
+            return Err(DbError::InvalidTerminalSessionData(format!(
+                "thread sandbox provider {:?} is not the local terminal provider",
+                pinned_provider.as_deref().unwrap_or_default()
             )));
         }
 
@@ -2274,15 +2284,19 @@ impl ThreadsDb {
         let thread_changed = tx.execute(
             "UPDATE native_scoped_threads SET \
                  status = ?1, updated_at = ?2, \
+                 harness_id = COALESCE(harness_id, ?3), \
+                 sandbox_provider_kind = COALESCE(sandbox_provider_kind, ?4), \
                  routing_locked_at = COALESCE(routing_locked_at, ?2) \
-             WHERE account_scope = ?3 AND organization_id = ?4 AND id = ?5 \
-               AND generation = ?6 AND delete_pending = 0",
+             WHERE account_scope = ?5 AND organization_id = ?6 AND id = ?7 \
+               AND generation = ?8 AND delete_pending = 0",
             params![
                 terminal_thread_status(
                     RtTerminalPhysicalState::Starting,
                     RtTerminalLogicalState::Idle,
                 ),
                 ts,
+                harness_id,
+                DESKTOP_SANDBOX_PROVIDER_KIND,
                 fence.account_scope,
                 fence.organization_id,
                 fence.thread_id,
@@ -6196,6 +6210,33 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
     }
 
     #[test]
+    fn terminal_session_reservation_rejects_a_non_desktop_provider() {
+        let db = ThreadsDb::open_in_memory().unwrap();
+        create_rt_thread(&db, "org", "provider-thread");
+        let fence = terminal_fence(&db, "org", "provider-thread");
+        db.lock()
+            .execute(
+                "UPDATE native_scoped_threads \
+                 SET sandbox_provider_kind = 'agent-sandbox' \
+                 WHERE id = 'provider-thread'",
+                [],
+            )
+            .unwrap();
+
+        assert!(matches!(
+            db.rt_create_terminal_session_fenced(&fence, "terminal-1", "claude-code"),
+            Err(DbError::InvalidTerminalSessionData(_))
+        ));
+        let thread = db.rt_thread_fenced(&fence).unwrap().unwrap();
+        assert!(thread.harness_id.is_none());
+        assert!(thread.routing_locked_at.is_none());
+        assert!(db
+            .rt_get_live_terminal_session_fenced(&fence)
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
     fn terminal_session_lifecycle_is_generation_cas_fenced_and_updates_thread_status() {
         let db = ThreadsDb::open_in_memory().unwrap();
         create_rt_thread(&db, "org", "terminal-thread");
@@ -6222,12 +6263,16 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
         assert_eq!(created.session.logical_state, RtTerminalLogicalState::Idle);
         assert_eq!(created.session.revision, 0);
         assert_eq!(created.thread.status, RT_THREAD_STATUS_COMPLETED);
-        assert_eq!(created.thread.harness_id, None);
+        assert_eq!(created.thread.harness_id.as_deref(), Some("claude-code"));
+        assert_eq!(
+            created.thread.sandbox_provider_kind.as_deref(),
+            Some(DESKTOP_SANDBOX_PROVIDER_KIND)
+        );
         let routing_locked_at = created
             .thread
             .routing_locked_at
             .clone()
-            .expect("terminal reservation must claim routing before harness pin");
+            .expect("terminal reservation must claim routing with the harness pin");
         assert!(db
             .rt_pin_harness_if_unset_fenced(&fence, "claude-code", None, None)
             .unwrap());

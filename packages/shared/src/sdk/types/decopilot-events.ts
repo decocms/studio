@@ -85,6 +85,14 @@ export interface DecopilotThreadStatusEvent extends BaseDecopilotEvent {
     created_at?: string;
     /** Last update timestamp; useful for the client to sort/dedupe. Absent if caller didn't load the row. */
     updated_at?: string;
+    /** Timestamp when execution routing became immutable. Explicit null means the thread is still unlocked. */
+    routing_locked_at?: string | null;
+    /** Fail-closed marker for historical hosted runtimes. Explicit null means no disable marker is recorded. */
+    hosted_execution_disabled_at?: string | null;
+    /** Native harness identity and hosted rolling-deploy compatibility selector. */
+    harness_id?: string | null;
+    /** Native sandbox provider and hosted rolling-deploy compatibility selector. */
+    sandbox_provider_kind?: string | null;
     /** Free-form thread metadata snapshot. The chat UI keys off
      *  metadata.kind to switch between agent-thread and tool_call_run
      *  renderings (avatar, message-renderer), so the workflow that
@@ -149,6 +157,10 @@ export function createDecopilotThreadStatusEvent(
     branch?: string | null;
     createdAt?: string;
     updatedAt?: string;
+    routingLockedAt?: string | null;
+    hostedExecutionDisabledAt?: string | null;
+    harnessId?: string | null;
+    sandboxProviderKind?: string | null;
     metadata?: Record<string, unknown>;
     messageId?: string;
   },
@@ -170,6 +182,16 @@ export function createDecopilotThreadStatusEvent(
       ...(opts?.branch !== undefined && { branch: opts.branch }),
       ...(opts?.createdAt !== undefined && { created_at: opts.createdAt }),
       ...(opts?.updatedAt !== undefined && { updated_at: opts.updatedAt }),
+      ...(opts?.routingLockedAt !== undefined && {
+        routing_locked_at: opts.routingLockedAt,
+      }),
+      ...(opts?.hostedExecutionDisabledAt !== undefined && {
+        hosted_execution_disabled_at: opts.hostedExecutionDisabledAt,
+      }),
+      ...(opts?.harnessId !== undefined && { harness_id: opts.harnessId }),
+      ...(opts?.sandboxProviderKind !== undefined && {
+        sandbox_provider_kind: opts.sandboxProviderKind,
+      }),
       ...(opts?.metadata !== undefined && { metadata: opts.metadata }),
     },
     time: new Date().toISOString(),

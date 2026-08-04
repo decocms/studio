@@ -94,13 +94,14 @@ describe("canRenderInteractiveThreadApp", () => {
 });
 
 describe("isHostedFirstSubmit", () => {
-  test("treats missing and unpinned rows as first submit", () => {
+  test("treats missing and unlocked rows as first submit", () => {
     expect(isHostedFirstSubmit(null)).toBe(true);
-    expect(isHostedFirstSubmit({ harness_id: null })).toBe(true);
+    expect(isHostedFirstSubmit({ routing_locked_at: null })).toBe(true);
   });
 
-  test("treats every persisted harness as locked", () => {
-    expect(isHostedFirstSubmit({ harness_id: "decopilot" })).toBe(false);
-    expect(isHostedFirstSubmit({ harness_id: "codex" })).toBe(false);
+  test("treats a persisted routing lock as already submitted", () => {
+    expect(
+      isHostedFirstSubmit({ routing_locked_at: "2026-08-04T00:00:00.000Z" }),
+    ).toBe(false);
   });
 });

@@ -5,10 +5,14 @@ import {
 } from "./runtime-lock";
 
 describe("assertThreadRoutingUpdateAllowed", () => {
-  test("allows routing changes before a runtime claims the thread", () => {
+  test("allows routing changes before routing is claimed", () => {
     expect(() =>
       assertThreadRoutingUpdateAllowed(
-        { harness_id: null, virtual_mcp_id: "agent-a", branch: "main" },
+        {
+          routing_locked_at: null,
+          virtual_mcp_id: "agent-a",
+          branch: "main",
+        },
         { virtual_mcp_id: "agent-b", branch: "feature" },
       ),
     ).not.toThrow();
@@ -18,7 +22,7 @@ describe("assertThreadRoutingUpdateAllowed", () => {
     expect(() =>
       assertThreadRoutingUpdateAllowed(
         {
-          harness_id: "decopilot",
+          routing_locked_at: "2026-08-04T12:00:00.000Z",
           virtual_mcp_id: "agent-a",
           branch: "main",
         },
@@ -31,7 +35,7 @@ describe("assertThreadRoutingUpdateAllowed", () => {
     expect(() =>
       assertThreadRoutingUpdateAllowed(
         {
-          harness_id: "decopilot",
+          routing_locked_at: "2026-08-04T12:00:00.000Z",
           virtual_mcp_id: "agent-a",
           branch: "main",
         },
@@ -45,7 +49,7 @@ describe("assertThreadRoutingUpdateAllowed", () => {
       expect(() =>
         assertThreadRoutingUpdateAllowed(
           {
-            harness_id: "codex",
+            routing_locked_at: "2026-08-04T12:00:00.000Z",
             virtual_mcp_id: "agent-a",
             branch: "main",
           },

@@ -21,9 +21,13 @@ export interface Task {
   trigger_id?: string | null;
   /** Git branch associated with this thread, when the vMCP is GitHub-linked. */
   branch?: string | null;
-  /** Sandbox provider kind pinned on first message (e.g. "agent-sandbox", "user-desktop"). */
+  /** When execution routing became immutable for this thread. */
+  routing_locked_at?: string | null;
+  /** Legacy hosted rows with retired routing remain readable but cannot execute. */
+  hosted_execution_disabled_at?: string | null;
+  /** Compatibility field retained for native and rolling hosted readers. */
   sandbox_provider_kind?: string | null;
-  /** Harness id pinned on first message (e.g. "claude-code", "codex", "decopilot"). */
+  /** Native harness selection; hosted Decopilot values are compatibility-only. */
   harness_id?: string | null;
   /** Per-thread metadata — layout tabs, expanded tools, etc. Loaded by COLLECTION_THREADS_GET. */
   metadata?: ThreadMetadata;
@@ -47,6 +51,8 @@ export type RowPatch = Pick<Task, "id"> &
       | "created_by"
       | "trigger_id"
       | "virtual_mcp_id"
+      | "routing_locked_at"
+      | "hosted_execution_disabled_at"
       | "harness_id"
       | "sandbox_provider_kind"
       | "metadata"

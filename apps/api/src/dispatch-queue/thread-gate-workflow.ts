@@ -32,8 +32,8 @@ import { publishRunStatusStage } from "@/api/routes/decopilot/run-status-stage";
 import { mintRunFenceToken } from "@/api/routes/decopilot/dispatch-fence";
 import { consumeRunProjection } from "@/api/routes/decopilot/consume-run-projection";
 import { PermanentRunError } from "@/core/dispatch-errors";
+import { hasHostedExecutionAuthority } from "@/core/hosted-execution-authority";
 import { resolveThreadAuthority } from "@/core/thread-authority";
-import { isHostedDecopilotRuntime } from "@/harnesses/decopilot/hosted-runtime";
 
 export { THREAD_GATE_QUEUE } from "./queue-names";
 import { THREAD_GATE_QUEUE } from "./queue-names";
@@ -181,15 +181,10 @@ async function dispatchRunAndWaitStep(
     organizationId: request.organizationId,
     userId: request.userId,
   });
-  if (
-    !isHostedDecopilotRuntime({
-      harnessId: thread.harness_id,
-      sandboxProviderKind: thread.sandbox_provider_kind,
-    })
-  ) {
+  if (!hasHostedExecutionAuthority(thread)) {
     throw new PermanentRunError(
       "invalid_runtime",
-      "Thread is not assigned to the hosted Decopilot runtime",
+      "Thread is not enabled and locked for hosted execution",
     );
   }
 
