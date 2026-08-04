@@ -594,6 +594,13 @@ export class ThreadManagerStore {
       ...(parsed.data.branch !== undefined && {
         branch: parsed.data.branch,
       }),
+      // Carries the batch-vs-streaming decision for the chat connection (see
+      // `ThreadConnection.enableBatch`) — a row this store only ever learns
+      // about through these events would otherwise stay harness-less until a
+      // reload, and its chat would never go live.
+      ...(parsed.data.harness_id !== undefined && {
+        harness_id: parsed.data.harness_id,
+      }),
       ...(parsed.data.created_at !== undefined && {
         created_at: parsed.data.created_at,
       }),

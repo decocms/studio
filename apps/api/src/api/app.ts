@@ -1615,6 +1615,7 @@ export async function createApp(options: CreateAppOptions = {}) {
           createdBy: row?.created_by,
           triggerId: row?.trigger_id,
           branch: row?.branch ?? null,
+          harnessId: row?.harness_id ?? undefined,
           createdAt: row?.created_at,
           updatedAt: row?.updated_at,
         }),
