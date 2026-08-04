@@ -171,8 +171,12 @@ jobs:
         # capping link parallelism each changed nothing, and that invariance is
         # the tell: the surviving variable is that one runner carried clippy's
         # dev-profile build of the whole GTK/WebKit tree AND the test profile's.
-        # Two runners halve the peak, and each saves its own cache — which also
-        # breaks the spiral where a job that never finishes never warms one.
+        # Two runners halve the peak — which also breaks the spiral where a job
+        # that never finishes never warms a cache. rust-cache keys on
+        # GITHUB_JOB, not on matrix values, so the `key:` input below is what
+        # actually gives each leg its own entry; without it both ubuntu legs
+        # compute the same key, the second restores the first's on a full match
+        # and saves nothing, and the test profile's target dir is never kept.
         include:
           - os: macos-latest
             task: all
@@ -241,6 +245,11 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/native
+          # rust-cache's default key covers GITHUB_JOB, the runner, the
+          # toolchain and the lockfiles — but NOT matrix values. Both ubuntu
+          # legs are the same job, so they would otherwise share one entry and
+          # only the first to finish would ever save.
+          key: ${{ matrix.task }}
 
       - name: cargo fmt --check
         if: matrix.task != 'test'
@@ -336,9 +345,14 @@ jobs:
           # and makes a failure name its chunk, not because the suite cannot
           # survive a single process. `setsid` bounds a stray group signal to
           # one chunk (see the note above the step).
-          for chunk in routes:: sandbox:: setup::; do
+          for chunk in routes:: sandbox::; do
             setsid --wait cargo test -p local-api "$chunk" -- --test-threads=1
           done
+          # Cargo test filters are substring matches, and `routes::setup` is a
+          # real module — so a bare `setup::` chunk would re-run the whole
+          # `routes::setup::` subtree the `routes::` chunk just ran.
+          setsid --wait cargo test -p local-api setup:: -- --test-threads=1 \
+            --skip routes::setup::
           setsid --wait cargo test -p local-api -- --test-threads=1 \
             --skip routes:: --skip sandbox:: --skip setup::
           cargo test -p deco -- --test-threads=1
@@ -685,7 +699,16 @@ jobs:
       # at all, so the smoke would fail first and mask the real diagnosis.
       # `ldd` exits non-zero on a static binary — that is the passing case
       # here, hence the `|| true` around both probes.
-      - name: Assert the AppImage runtime is statically linked
+      #
+      # Named for what it actually gates: the check greps for libfuse.so.2, it
+      # does not prove static linkage. Nor is a stricter rule available for
+      # free — measured on a static-PIE binary, the dynamic section has 22
+      # entries and ZERO DT_NEEDED, so "reject any DT_NEEDED" would pass it
+      # rather than false-fail it, and only "require no dynamic section at
+      # all" (which just a fully static non-PIE satisfies) would reject it.
+      # Not requiring libfuse2 is the property that actually matters to a user
+      # whose host lacks it, so that is what this step gates.
+      - name: Assert the AppImage runtime does not require libfuse2
         if: runner.os == 'Linux'
         working-directory: apps/native
         run: |
@@ -736,7 +759,10 @@ jobs:
       # only difference is the display. Linux runners are headless, so the
       # webview needs an X server — `xvfb-run -a` picks a free display
       # number. The smoke extracts the AppImage it just asserted on (no FUSE
-      # required) and launches the inner binary directly.
+      # required) and launches the extracted `AppRun` — not the inner binary:
+      # only `AppRun` exports the WebKit exec path and bundled library path
+      # the inner binary needs, and without them it dies spawning
+      # WebKitNetworkProcess. See scripts/boot-smoke-target.ts.
       - name: Boot smoke under Xvfb (DESKTOP_SELFTEST=1, hidden window)
         if: runner.os == 'Linux'
         env:
@@ -821,6 +847,14 @@ jobs:
     steps:
       - name: Verify rust-checks legs
         run: |
+          # `skipped` counts as pass ONLY when the gate itself decided to skip.
+          # These legs `needs: changes` without `always()`, so a failed or
+          # cancelled gate also leaves them `skipped` — and this job runs
+          # `if: always()`, so without this guard that would report the
+          # required check green with no leg having run.
+          if [ "${{ needs.changes.result }}" != "success" ]; then
+            echo "changes gate: ${{ needs.changes.result }}"; exit 1
+          fi
           case "${{ needs.rust-checks-os.result }}" in
             success|skipped) echo "rust-checks: ${{ needs.rust-checks-os.result }}"; exit 0 ;;
             *) echo "rust-checks: ${{ needs.rust-checks-os.result }}"; exit 1 ;;
@@ -838,6 +872,11 @@ jobs:
     steps:
       - name: Verify contract-suite legs
         run: |
+          # See the note in `rust-checks`: a non-success gate also leaves the
+          # legs `skipped`, which must not read as pass.
+          if [ "${{ needs.changes.result }}" != "success" ]; then
+            echo "changes gate: ${{ needs.changes.result }}"; exit 1
+          fi
           case "${{ needs.contract-suite-os.result }}" in
             success|skipped) echo "contract-suite: ${{ needs.contract-suite-os.result }}"; exit 0 ;;
             *) echo "contract-suite: ${{ needs.contract-suite-os.result }}"; exit 1 ;;
@@ -855,6 +894,11 @@ jobs:
     steps:
       - name: Verify tauri-build legs
         run: |
+          # See the note in `rust-checks`: a non-success gate also leaves the
+          # legs `skipped`, which must not read as pass.
+          if [ "${{ needs.changes.result }}" != "success" ]; then
+            echo "changes gate: ${{ needs.changes.result }}"; exit 1
+          fi
           case "${{ needs.tauri-build-os.result }}" in
             success|skipped) echo "tauri-build: ${{ needs.tauri-build-os.result }}"; exit 0 ;;
             *) echo "tauri-build: ${{ needs.tauri-build-os.result }}"; exit 1 ;;

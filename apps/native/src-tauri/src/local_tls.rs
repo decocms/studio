@@ -105,6 +105,26 @@ pub struct LocalTls {
     pub ca_cert: PathBuf,
     pub leaf_cert: PathBuf,
     pub leaf_key: PathBuf,
+    /// The PEM of the root that ACTUALLY signed this launch's leaf.
+    ///
+    /// Not the same thing as reading [`Self::ca_cert`] back: the reuse path
+    /// below existence-checks that file and never opens it, re-deriving the
+    /// issuer from `ca-key.pem` instead. A truncated `ca-cert.pem`, or the
+    /// cert/key skew a crash between the two writes leaves behind, would make
+    /// the file name a root that signed nothing.
+    ///
+    /// Scope, precisely: this covers [`ensure_child_ca_bundle`] and nothing
+    /// else. It does NOT make the on-disk file unused — `setup.rs` still puts
+    /// [`Self::ca_cert`], the PATH, in `local_api::TlsFiles::ca`, which
+    /// becomes `MountCredentials::ca_cert` and is exported to children as
+    /// `NODE_EXTRA_CA_CERTS` (`local-api`'s `terminal::launch_context`). That
+    /// is the claude CLI's only trust path for the local origin, and it reads
+    /// the file. So a skewed `ca-cert.pem` still breaks that consumer; what
+    /// this field buys is that the REPLACEMENT store handed to `SSL_CERT_FILE`
+    /// consumers can no longer be silently built without the real issuer.
+    /// Writing a per-boot `ca-current.pem` for the path-taking consumers too
+    /// is the fix for the rest, and is deliberately not attempted here.
+    pub ca_pem: String,
 }
 
 /// Ensure a usable CA + leaf exist under `app_root`: the CA is reused across
@@ -117,10 +137,11 @@ pub fn ensure(app_root: &Path) -> Result<LocalTls, TlsError> {
         source,
     })?;
 
-    let paths = LocalTls {
+    let mut paths = LocalTls {
         ca_cert: dir.join("ca-cert.pem"),
         leaf_cert: dir.join("leaf-cert.pem"),
         leaf_key: dir.join("leaf-key.pem"),
+        ca_pem: String::new(),
     };
     let ca_key = dir.join("ca-key.pem");
 
@@ -159,6 +180,7 @@ pub fn ensure(app_root: &Path) -> Result<LocalTls, TlsError> {
         (ca_params()?, keypair)
     };
     let ca_cert = ca_params.self_signed(&ca_keypair)?;
+    paths.ca_pem = ca_cert.pem();
 
     // Minted fresh on every launch rather than cached with a renewal window:
     // it costs milliseconds, and it removes an entire class of "the app served
@@ -315,7 +337,8 @@ const SYSTEM_CA_BUNDLES: &[&str] = &[
 ///
 /// FAILS CLOSED, and that is the whole design: `SSL_CERT_FILE` REPLACES a
 /// Go or rustls-native-certs consumer's root store rather than extending it
-/// (see `crates/harness/src/run.rs`'s constant). Writing a file holding only
+/// (see `crates/local-api/src/terminal/launch_context.rs`'s
+/// `SSL_CERT_FILE_ENV`). Writing a file holding only
 /// the local CA would therefore trade "the child cannot reach the LOCAL MCP
 /// origin" for "the child cannot reach the public internet" — strictly worse,
 /// and silently so. When no system store is found the caller exports nothing.
@@ -323,12 +346,18 @@ const SYSTEM_CA_BUNDLES: &[&str] = &[
 /// Rewritten on every boot rather than cached, so a rotated local CA and a
 /// distro's `update-ca-certificates` both land without any invalidation
 /// story. Plain (not `0600`) write: the contents are public certificates.
+///
+/// Takes [`LocalTls::ca_pem`], NOT the `ca-cert.pem` path: `ensure` never
+/// reads that file back on its reuse path, so a truncated or key-skewed one
+/// would produce a bundle of public roots WITHOUT the root that signed this
+/// launch's leaf — and both this function and `ensure` would still return
+/// `Ok`, so the `SSL_CERT_FILE` consumers would fail to verify the local
+/// origin with no error at boot. Scoped to those consumers only: the ones
+/// pointed at `NODE_EXTRA_CA_CERTS` still read `ca-cert.pem` itself, so this
+/// does not harden them — see [`LocalTls::ca_pem`].
 #[cfg(target_os = "linux")]
-pub fn ensure_child_ca_bundle(
-    app_root: &Path,
-    ca_cert: &Path,
-) -> Result<Option<PathBuf>, TlsError> {
-    let Some(body) = child_ca_bundle_body(system_ca_bundle().as_deref(), &read(ca_cert)?) else {
+pub fn ensure_child_ca_bundle(app_root: &Path, ca_pem: &str) -> Result<Option<PathBuf>, TlsError> {
+    let Some(body) = child_ca_bundle_body(system_ca_bundle().as_deref(), ca_pem) else {
         return Ok(None);
     };
     let dir = app_root.join("tls");
