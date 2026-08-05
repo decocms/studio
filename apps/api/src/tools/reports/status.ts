@@ -17,6 +17,11 @@ const CommerceDiscoveryStatusOutputSchema = z.object({
       resource: z.string().nullable(),
     }),
   ),
+  claimed: z
+    .boolean()
+    .describe(
+      "False when the site isn't claimed/upgraded for this org — providers is then empty because the status is unreadable, NOT because nothing is connected. The UI must warn instead of rendering existing bindings as disconnected.",
+    ),
 });
 
 export const COMMERCE_DISCOVERY_CONNECTION_STATUS = defineTool({
@@ -43,10 +48,9 @@ export const COMMERCE_DISCOVERY_CONNECTION_STATUS = defineTool({
       throw new Error(normalized.error);
     }
 
-    const providers = await fetchCommerceDiscoveryConnectionStatus({
+    return fetchCommerceDiscoveryConnectionStatus({
       siteUrl: normalized.value,
       orgId: organization.id,
     });
-    return { providers };
   },
 });

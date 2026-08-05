@@ -165,6 +165,8 @@ export const routes = {
   "routes.commerceOnboarding.companionSection.loadErrorDescription":
     "Algo deu errado ao carregar suas integrações.",
   "routes.commerceOnboarding.companionSection.retry": "Tentar novamente",
+  "routes.commerceOnboarding.companionSection.statusUnavailable":
+    "Não conseguimos verificar suas conexões do Google agora — fontes que você já conectou podem aparecer como desconectadas. Você ainda pode continuar.",
   "routes.oauthCallback.authenticationComplete": "Autenticação concluída.",
   "routes.oauthCallback.authenticationFailed": "Falha na autenticação do MCP",
   "routes.oauthCallback.authenticationFailedTitle": "Autenticação Falhou",

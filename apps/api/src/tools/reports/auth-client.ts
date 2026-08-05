@@ -388,13 +388,18 @@ export type CommerceDiscoveryConnectionStatus = z.infer<
  * Read per-provider connection status for a store — the single source of truth
  * the studio card renders as "Conectado", unifying both lanes (Studio-vault
  * OAuth and shared-SA binding). Read-only; soft-tolerant: a report that was
- * never upgraded (404/409) reports everything disconnected rather than throwing,
- * so the onboarding UI degrades cleanly before the first upgrade.
+ * never upgraded, or claimed by a different org (404/409), returns
+ * `claimed: false` with empty providers rather than throwing. `claimed` lets
+ * the UI tell "site not readable for this org" apart from "nothing connected"
+ * — without it, an existing SA binding silently renders as disconnected.
  */
 export async function fetchCommerceDiscoveryConnectionStatus(
   input: { siteUrl: string; orgId: string },
   options: CommerceDiscoveryAuthOptions = {},
-): Promise<CommerceDiscoveryConnectionStatus> {
+): Promise<{
+  providers: CommerceDiscoveryConnectionStatus;
+  claimed: boolean;
+}> {
   const baseUrl = resolveBaseUrl(options);
   const apiKey = resolveApiKey(options);
   const fetchImpl = options.fetchImpl ?? fetch;
@@ -409,11 +414,14 @@ export async function fetchCommerceDiscoveryConnectionStatus(
   });
 
   if (response.status === 404 || response.status === 409) {
-    return {};
+    return { providers: {}, claimed: false };
   }
   if (!response.ok) {
     throw new Error(await responseErrorMessage(response));
   }
   const parsed = ConnectionStatusSchema.safeParse(await response.json());
-  return parsed.success ? parsed.data.providers : {};
+  return {
+    providers: parsed.success ? parsed.data.providers : {},
+    claimed: true,
+  };
 }
