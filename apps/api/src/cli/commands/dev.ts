@@ -137,6 +137,15 @@ export async function startDevServer(
       DECOCMS_HOME: settings.dataDir,
       DATA_DIR: settings.dataDir,
       DECO_CLI: "1",
+      // The child re-derives Settings from env via initSettingsFromEnv, which
+      // does NOT run the local-secret persistence (that's buildSettings, parent
+      // only). Without this it would mint a fresh random Better Auth secret each
+      // boot — invalidating cookies + failing to decrypt the stored JWKS, the
+      // login loop this fix targets. Mirror the parent's resolved secret so the
+      // child signs with the same stable value. Empty (non-local) → omit.
+      ...(settings.betterAuthSecret
+        ? { BETTER_AUTH_SECRET: settings.betterAuthSecret }
+        : {}),
       // Object storage (managed MinIO or external S3). Pass from frozen
       // settings so the child server resolves the real S3Service for the
       // message-offload path instead of the DevObjectStorage fallback.
