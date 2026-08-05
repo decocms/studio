@@ -288,9 +288,11 @@ function SortableSectionItem({
                   ? t("sectionsEditor.sectionList.disableAsyncRender")
                   : t("sectionsEditor.sectionList.enableAsyncRender")
               }
-              className={actionButtonVisibilityClass(
-                reserveActionButtonSpace,
-                isAsyncRender,
+              className={cn(
+                actionButtonVisibilityClass(
+                  reserveActionButtonSpace,
+                  isAsyncRender,
+                ),
               )}
               onClick={(e) => {
                 e.stopPropagation();
@@ -326,9 +328,8 @@ function SortableSectionItem({
                   ? t("sectionsEditor.sectionList.showSection")
                   : t("sectionsEditor.sectionList.hideSection")
               }
-              className={actionButtonVisibilityClass(
-                reserveActionButtonSpace,
-                isHidden,
+              className={cn(
+                actionButtonVisibilityClass(reserveActionButtonSpace, isHidden),
               )}
               onClick={(e) => {
                 e.stopPropagation();
