@@ -118,7 +118,9 @@ export function CommentThreadCard({
       )}
       <CommentEntry
         comment={thread}
-        onDelete={() => onDelete(thread.id)}
+        onDelete={
+          thread.author.id === me.id ? () => onDelete(thread.id) : undefined
+        }
         resolved={thread.resolved}
         onToggleResolved={onToggleResolved}
       />
@@ -129,7 +131,9 @@ export function CommentThreadCard({
           <Divider inset={i > 0} />
           <CommentEntry
             comment={reply}
-            onDelete={() => onDelete(reply.id)}
+            onDelete={
+              reply.author.id === me.id ? () => onDelete(reply.id) : undefined
+            }
             isReply
           />
         </Fragment>
@@ -209,7 +213,9 @@ function CommentEntry({
   comment: TaskComment;
   isReply?: boolean;
   resolved?: boolean;
-  onDelete: () => void;
+  /** Omitted for a comment that isn't the current user's — the server
+   *  rejects deleting someone else's comment, so don't offer it. */
+  onDelete?: () => void;
   /** Thread roots only — resolving settles the whole conversation. */
   onToggleResolved?: () => void;
 }) {
@@ -223,11 +229,13 @@ function CommentEntry({
         <span className="text-sm text-muted-foreground">
           {formatTimeAgo(new Date(comment.createdAt))}
         </span>
-        <CommentActionsMenu
-          resolved={resolved}
-          onDelete={onDelete}
-          onToggleResolved={onToggleResolved}
-        />
+        {(onDelete || onToggleResolved) && (
+          <CommentActionsMenu
+            resolved={resolved}
+            onDelete={onDelete}
+            onToggleResolved={onToggleResolved}
+          />
+        )}
       </div>
       <div
         className={cn(
@@ -255,7 +263,7 @@ function CommentActionsMenu({
   onToggleResolved,
 }: {
   resolved?: boolean;
-  onDelete: () => void;
+  onDelete?: () => void;
   onToggleResolved?: () => void;
 }) {
   const t = useT();
@@ -283,10 +291,12 @@ function CommentActionsMenu({
             <DropdownMenuSeparator />
           </>
         )}
-        <DropdownMenuItem variant="destructive" onSelect={onDelete}>
-          <Trash03 size={16} />
-          {t("taskBoard.taskDialog.commentDelete")}
-        </DropdownMenuItem>
+        {onDelete && (
+          <DropdownMenuItem variant="destructive" onSelect={onDelete}>
+            <Trash03 size={16} />
+            {t("taskBoard.taskDialog.commentDelete")}
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
