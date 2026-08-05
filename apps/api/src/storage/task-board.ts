@@ -890,6 +890,27 @@ export class TaskBoardStorage {
     return { claimed: false, token: existing?.token ?? token };
   }
 
+  /**
+   * Release a reviewer's claim on a cycle — the counterpart to `claimReviewer`
+   * for when the dispatch it was minted for never actually ran (e.g. the
+   * enqueue itself threw). Without this, a transient dispatch failure leaves
+   * the slot permanently claimed with no thread behind it: `claimReviewer`'s
+   * unique (task, reviewer, cycle) key would refuse every retry for the rest
+   * of that review cycle, so that reviewer would simply never run.
+   */
+  async releaseReviewerClaim(
+    taskBoardItemId: string,
+    reviewer: string,
+    cycleAt: Date,
+  ): Promise<void> {
+    await this.db
+      .deleteFrom("task_board_review_claims")
+      .where("task_board_item_id", "=", taskBoardItemId)
+      .where("reviewer", "=", reviewer)
+      .where("cycle_at", "=", cycleAt)
+      .execute();
+  }
+
   /** Resolve a review token to its claim (which reviewer, which cycle) for a
    *  task. Null when the token doesn't belong to this task — used to verify
    *  that a decision's caller really is the reviewer it claims to be. */

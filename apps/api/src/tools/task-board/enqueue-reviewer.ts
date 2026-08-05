@@ -136,9 +136,21 @@ export async function enqueueEnabledReviewers(
         return;
       }
       if (!claimed) return;
-      await enqueueReviewerForTask(ctx, task, kind, token).catch((err) => {
-        console.error(`[task-board] ${kind} reviewer enqueue failed`, err);
-      });
+      await enqueueReviewerForTask(ctx, task, kind, token).catch(
+        async (err) => {
+          console.error(`[task-board] ${kind} reviewer enqueue failed`, err);
+          // Nothing was dispatched — release the slot so the next poll/trigger
+          // can retry this reviewer instead of finding it permanently claimed.
+          await ctx.storage.taskBoard
+            .releaseReviewerClaim(task.id, kind, cycleAt)
+            .catch((releaseErr) =>
+              console.error(
+                `[task-board] ${kind} reviewer claim release failed`,
+                releaseErr,
+              ),
+            );
+        },
+      );
     }),
   );
 }
