@@ -118,9 +118,7 @@ export function CommentThreadCard({
       )}
       <CommentEntry
         comment={thread}
-        onDelete={
-          thread.author.id === me.id ? () => onDelete(thread.id) : undefined
-        }
+        onDelete={canDelete(thread, me) ? () => onDelete(thread.id) : undefined}
         resolved={thread.resolved}
         onToggleResolved={onToggleResolved}
       />
@@ -132,7 +130,7 @@ export function CommentThreadCard({
           <CommentEntry
             comment={reply}
             onDelete={
-              reply.author.id === me.id ? () => onDelete(reply.id) : undefined
+              canDelete(reply, me) ? () => onDelete(reply.id) : undefined
             }
             isReply
           />
@@ -147,6 +145,12 @@ export function CommentThreadCard({
       />
     </div>
   );
+}
+
+/** You can delete your own comments, and the Super Agent's — it's working
+ *  for you, not another person whose comment you shouldn't be able to erase. */
+function canDelete(comment: TaskComment, me: CommentAuthor): boolean {
+  return comment.author.id === me.id || comment.author.isAgent === true;
 }
 
 /** Authors of a thread, in the order they first spoke. */
