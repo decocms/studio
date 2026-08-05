@@ -542,9 +542,20 @@ async function fetchPrStatusExtras(
 /** Fetch a PR's live state via the GitHub MCP `pull_request_read` tool.
  *  Best-effort: any failure yields nulls so the modal still shows the link. */
 /**
- * Is this task's PR ready for a reviewer? Open, unmerged, and not sitting on a
- * pending or failing check run — a PR with NO CI (`checksStatus === null`)
- * qualifies, or a card without a pipeline would sit In Review forever.
+ * Is this task's PR ready for a reviewer? Only a DEFINITE reason blocks —
+ * a PR we know is closed or merged, or one sitting on a pending/failing check.
+ * Anything unknown does not block.
+ *
+ * That distinction is the whole point, and getting it backwards froze the review
+ * pipeline in prod. `fetchPrLiveState` is best-effort: every field comes back
+ * `null` when the GitHub call fails, so a version of this that asked for
+ * `state === "open"` answered "not ready" for EVERY card the moment GitHub went
+ * quiet. The sweeper then rejected its whole batch through a plain `return
+ * false` that logs nothing, and dispatching stopped dead with no error anywhere.
+ * Unknown means "we could not ask", not "no".
+ *
+ * `mergeLinkedPr` already had this right for checks ("Only a definite
+ * failing/pending blocks; an unknown (null) does not") — this now matches it.
  *
  * Shared with `review-sweeper.ts` on purpose: a reviewer claim is spent once per
  * review cycle, so whichever path dispatches first decides what gets reviewed.
@@ -558,11 +569,12 @@ export const prReadyForReview = (
     checksStatus: unknown;
   }[],
 ): boolean => {
-  const openPr = prs.find((p) => p.state === "open" && !p.merged);
+  // A PR is a candidate unless we positively know it's finished with.
+  const candidate = prs.find((p) => p.state !== "closed" && p.merged !== true);
   return (
-    openPr != null &&
-    openPr.checksStatus !== "pending" &&
-    openPr.checksStatus !== "failing"
+    candidate != null &&
+    candidate.checksStatus !== "pending" &&
+    candidate.checksStatus !== "failing"
   );
 };
 

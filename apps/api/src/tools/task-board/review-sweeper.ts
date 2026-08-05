@@ -172,6 +172,18 @@ export class TaskBoardReviewSweeper {
         ...(await fetchPrLiveState(ctx, organizationId, pr)),
       })),
     );
+    // `fetchPrLiveState` is best-effort and yields ALL-NULL fields when the
+    // GitHub call fails, which is indistinguishable from a PR whose state we
+    // simply haven't got. `prReadyForReview` no longer treats that as "not
+    // ready" (it used to, and a quiet GitHub then froze every card), but a whole
+    // batch of unreadable PRs is still worth one line — otherwise a broken
+    // GitHub connection is invisible from this side.
+    if (live.every((pr) => pr.state === null)) {
+      console.warn(
+        `[task-board-review-sweeper] ${id}: no live PR state from GitHub ` +
+          `(${live.length} PR(s)) — proceeding on unknown`,
+      );
+    }
     if (!prReadyForReview(live)) return false;
 
     await enqueueEnabledReviewers(ctx, item);
