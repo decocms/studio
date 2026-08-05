@@ -15,7 +15,7 @@ do repositório tem scripts prontos, values de exemplo e o mapa completo de depe
 
 | Tier | Como | Dependências |
 |------|------|--------------|
-| **Local — CLI** | `bunx -p decocms deco` | embutido, na sua máquina |
+| **Local — CLI** | `bunx decocms` | embutido, na sua máquina |
 | **Local — Compose** | `docker compose -f deploy/docker-compose/docker-compose.postgres.yml up` | tudo embutido (Postgres + NATS + MinIO) |
 | **Local — Kubernetes** | um `helm install` do umbrella `selfhost/examples/k8s-local` | tudo embutido (Postgres + MinIO de dev + NATS + sandbox) |
 | **Produção — Kubernetes** | `helm install` [o chart](/pt-br/studio/self-hosting/deploy/kubernetes) | Postgres + S3 + NATS + ClickHouse externos/gerenciados |
@@ -33,7 +33,7 @@ curl -fsSL https://raw.githubusercontent.com/decocms/studio/main/selfhost/skills
 ### Opção A: local com um comando (CLI)
 
 ```bash
-bunx -p decocms deco
+bunx decocms
 ```
 
 Instância local com PostgreSQL embutido — totalmente privada. O pacote é
