@@ -29,11 +29,14 @@ export const TASK_BOARD_ITEM_DELETE = defineTool({
     }
 
     // Storage dismisses a reports task instead of dropping the row.
-    await ctx.storage.taskBoard.delete(
+    const deleted = await ctx.storage.taskBoard.delete(
       input.id,
       organizationId,
       getUserId(ctx) ?? "system",
     );
+    if (!deleted) {
+      throw new Error(`Task board item not found: ${input.id}`);
+    }
     // Broadcast the removal so every open board drops the card live.
     emitTaskBoardDeleted(organizationId, input.id);
     return { success: true };

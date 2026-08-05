@@ -186,6 +186,14 @@ describe("reports-task guards", () => {
     );
   });
 
+  it("rejects deleting an id that isn't in this org, instead of a silent no-op", async () => {
+    // Before fix: storage.delete() returned void, so a foreign/nonexistent id
+    // fell through as a false "success" and still broadcast the removal.
+    await expect(
+      TASK_BOARD_ITEM_DELETE.handler({ id: "task_does_not_exist" }, ctx),
+    ).rejects.toThrow("not found");
+  });
+
   it("restores a dismissed finding", async () => {
     const task = await taskBoard.create({
       organizationId: ORG,
