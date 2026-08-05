@@ -1,76 +1,17 @@
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
-import type { TaskBoardStorage } from "@/storage/task-board";
-import type { StudioContextFactory } from "@/automations/fire";
 import {
   isReviewerThreadTitle,
   REVIEWER_FLAG,
   REVIEWER_KINDS,
   REVIEWER_LABEL,
   reviewCycleStart,
-  SUPER_AGENT_ASSIGNEE_ID,
   type ReviewerKind,
 } from "@decocms/shared/task-board";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { enqueueAgentRunForTask } from "./enqueue-task-run";
 import { resolveTaskRepoChoice } from "./claude-code-task-run";
-
-/**
- * A Super Agent run finished — if it left a task In Review with an open PR,
- * enqueue the enabled reviewers. This is the HEADLESS trigger: it fires from the
- * projector's run-terminal hook (server-side), so reviewers start even with no
- * browser open, right when the Super Agent is done (not while it's still
- * pushing). Only a Super Agent thread finishing triggers it — a reviewer's own
- * run, also linked to the task, must not re-trigger. Best-effort; a failure
- * never disturbs the projector. Builds its own context (the hook has only
- * storage) as the task's owner.
- */
-export async function enqueueReviewersOnThreadFinish(args: {
-  contextFactory: StudioContextFactory;
-  taskBoard: TaskBoardStorage;
-  threadId: string;
-  orgId: string;
-}): Promise<void> {
-  const { contextFactory, taskBoard, threadId, orgId } = args;
-  try {
-    for (const taskId of await taskBoard.linkedTaskIds(threadId, orgId)) {
-      const item = await taskBoard.getById(taskId, orgId);
-      if (
-        !item ||
-        item.status !== "in_review" ||
-        item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID
-      ) {
-        continue;
-      }
-      // Only the Super Agent's own run triggers reviewers — its threads are
-      // titled "Super Agent: …"; a reviewer's finishing run (also linked) is not.
-      const finishing = item.threads.find((thr) => thr.threadId === threadId);
-      if (!finishing?.title?.startsWith("Super Agent:")) continue;
-      // Nothing to review without a PR (research/answer tasks reach In Review
-      // too). Logged, not silent: this is a terminal park — no reviewer will
-      // ever claim the card and nothing else moves it, so "why is this task
-      // stuck In Review?" has to be answerable from the logs. The task prompt
-      // steers no-code-change tasks to Done for exactly this reason.
-      const prs = await taskBoard.listPrs(taskId, orgId);
-      if (prs.length === 0) {
-        console.warn(
-          `[task-board] ${taskId} reached In Review with no PR — no reviewer ` +
-            `enqueued; the card stays In Review until a human moves it`,
-        );
-        continue;
-      }
-      const ctx = await contextFactory(
-        orgId,
-        item.assignedBy ?? item.createdBy,
-      );
-      if (!ctx) continue;
-      await enqueueEnabledReviewers(ctx, item);
-    }
-  } catch (err) {
-    console.error("[task-board] reviewer trigger on run finish failed", err);
-  }
-}
 
 /** Thread statuses past which a reviewer run is done — a live run has a
  *  non-terminal status. Mirrors the storage-layer set. */

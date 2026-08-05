@@ -230,11 +230,14 @@ export async function runHostedHarness(
   const parkedStatus = new HeartbeatEmitter({
     emit: () => publishWaitingCapacity(rt, input),
   });
-  const releaseSlot = await acquireHostedRunSlot(() => {
-    parked = true;
-    void publishWaitingCapacity(rt, input);
-    parkedStatus.arm();
-  }).finally(() => parkedStatus.stop());
+  const releaseSlot = await acquireHostedRunSlot(
+    { harnessId: request.harnessId },
+    () => {
+      parked = true;
+      void publishWaitingCapacity(rt, input);
+      parkedStatus.arm();
+    },
+  ).finally(() => parkedStatus.stop());
 
   try {
     // Stop, pressed while this run was still queued, cancels this child

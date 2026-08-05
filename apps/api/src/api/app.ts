@@ -142,9 +142,9 @@ import { SqlThreadStorage } from "../storage/threads";
 import { OrganizationBillingStorage } from "../storage/organization-billing";
 import { TaskBoardStorage } from "../storage/task-board";
 import { advanceTasksToReviewOnThreadFinish } from "../tools/task-board/run-reactions";
-import { enqueueReviewersOnThreadFinish } from "../tools/task-board/enqueue-reviewer";
 import { SqlAsyncResearchJobStorage } from "../storage/async-research-jobs";
 import { AsyncResearchJobSweeper } from "../storage/async-research-jobs-sweeper";
+import { TaskBoardReviewSweeper } from "../tools/task-board/review-sweeper";
 import { registerMonitoringRetentionWorkflow } from "../monitoring/dbos-retention-workflow";
 import "../auth/install-studio-pack-workflow";
 import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
@@ -1500,6 +1500,28 @@ export async function createApp(options: CreateAppOptions = {}) {
   // automations/thread-gate: it only sets a module-level pointer.
   const projectorThreadStorage = new SqlThreadStorage(database.db);
   const projectorTaskBoard = new TaskBoardStorage(database.db);
+  // Reconciles Super Agent tasks parked In Review: links the PR a sandboxed
+  // `claude-code` run opened (nothing else does — see review-sweeper.ts) and
+  // hands off to the enabled reviewers. It has to be a timer rather than part of
+  // the projector hook below, because the dispatch bottoms out in
+  // `DBOS.startWorkflow`, which throws from inside a step.
+  //
+  // It dispatches billable reviewer runs for every org on a timer, so
+  // TASK_BOARD_REVIEW_SWEEPER_ENABLED=false stops it without a code change.
+  const taskBoardReviewSweeper = new TaskBoardReviewSweeper(
+    projectorTaskBoard,
+    automationContextFactory,
+  );
+  if (getSettings().taskBoardReviewSweeperEnabled) {
+    taskBoardReviewSweeper.start();
+    // Chained onto the decopilot cleanup (assigned above) so an HMR reload or
+    // shutdown doesn't leave a second timer sweeping alongside the new one.
+    const previousCleanup = currentDecopilotCleanup;
+    currentDecopilotCleanup = async () => {
+      await previousCleanup?.();
+      taskBoardReviewSweeper.dispose();
+    };
+  }
   // Quota bookkeeping for the projector's thread-finish reaction: a run that
   // ended without a PR releases its held slot (billing/task-quota.ts).
   const projectorBilling = new OrganizationBillingStorage(database.db);
@@ -1551,14 +1573,14 @@ export async function createApp(options: CreateAppOptions = {}) {
           orgId,
           projectorBilling,
         );
-        // Headless reviewer trigger: a Super Agent run just finished — enqueue
-        // the enabled reviewers if it left a PR In Review, no UI required.
-        void enqueueReviewersOnThreadFinish({
-          contextFactory: automationContextFactory,
-          taskBoard: projectorTaskBoard,
-          threadId: runId,
-          orgId,
-        });
+        // The headless reviewer trigger used to be called here and could never
+        // work: this callback runs inside a DBOS step, and the dispatch bottoms
+        // out in `enqueueThreadRun` → `DBOS.startWorkflow`, which DBOS rejects
+        // from a step (`DBOSInvalidWorkflowTransitionError`, code 21). The
+        // per-reviewer catch swallowed it into a log line and released the
+        // claim, so it retried and failed forever. `TaskBoardReviewSweeper`
+        // owns it now — a boot-time timer, outside any workflow, where
+        // `startWorkflow` is legal.
       }
       return flipped;
     },
@@ -1585,14 +1607,8 @@ export async function createApp(options: CreateAppOptions = {}) {
           orgId,
           projectorBilling,
         );
-        // Headless reviewer trigger — see completeRunIfNotCompleted above. A
-        // failed run rarely leaves a task In Review (the guard inside no-ops).
-        void enqueueReviewersOnThreadFinish({
-          contextFactory: automationContextFactory,
-          taskBoard: projectorTaskBoard,
-          threadId: runId,
-          orgId,
-        });
+        // No reviewer trigger here either — see completeRunIfNotCompleted above
+        // for why it cannot live in a step. `TaskBoardReviewSweeper` owns it.
       }
       return flipped;
     },
