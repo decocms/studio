@@ -540,12 +540,14 @@ export const sandbox = {
     "Pré-visualize alterações no seu servidor de preview em vez do sandbox.",
   "sandbox.cmsSettings.fastPreview.needsProductionUrl":
     "Defina um servidor de preview acima para ativar o Preview Rápido.",
+  "sandbox.cmsSettings.editing.title": "Edição",
+  "sandbox.cmsSettings.editing.description":
+    "Personalize a experiência de edição de conteúdo no formulário de blocos.",
   "sandbox.productionUrlField.description":
     "O endereço do seu servidor ativo, usado para pré-visualizar conteúdo. Necessário para o Preview Rápido.",
   "sandbox.productionUrlField.label": "Servidor de preview",
   "sandbox.productionUrlField.placeholder": "https://exemplo.com",
-  "sandbox.fieldDescriptionTooltipsField.label":
-    "Mostrar descrições de campo como tooltip",
+  "sandbox.fieldDescriptionTooltipsField.label": "Descrições compactas",
   "sandbox.fieldDescriptionTooltipsField.description":
     "No formulário de blocos, exibe a descrição do campo como um tooltip ao passar o mouse sobre o título, em vez de texto abaixo do título.",
   "sandbox.repoRow.label": "Repositório",

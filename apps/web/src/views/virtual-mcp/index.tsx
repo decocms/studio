@@ -32,6 +32,8 @@ import {
 } from "@deco/ui/components/dialog.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Card, CardContent } from "@deco/ui/components/card.tsx";
+import { Label } from "@deco/ui/components/label.tsx";
+import { Switch } from "@deco/ui/components/switch.tsx";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
 import {
   Tooltip,
@@ -69,7 +71,10 @@ import { ALL_ITEMS_SELECTED } from "./selection-utils";
 import { VirtualMcpFormSchema, type VirtualMcpFormData } from "./types";
 import { VirtualMCPShareModal } from "./virtual-mcp-share-modal";
 import { getActiveGithubRepo } from "@/lib/github-repo";
-import { agentHasConnectedGithub } from "@/lib/agent-capabilities";
+import {
+  agentHasClonableSource,
+  agentHasConnectedGithub,
+} from "@/lib/agent-capabilities";
 import { DevAgentSetup } from "@/components/dev-agent/dev-agent-setup.tsx";
 import { EnvVarsField } from "@/components/sandbox/runtime-card/env-vars-field";
 import { SubmoduleCredentialsField } from "@/components/sandbox/runtime-card/submodule-credentials-field";
@@ -319,6 +324,15 @@ function VirtualMcpDetailViewWithData({
 
   // GitHub repo connected (real auth) — instructions become read-only
   const hasGithubRepo = agentHasConnectedGithub(virtualMcp);
+
+  // Gates the "Open CMS" toggle — same condition LayoutTabContent uses to
+  // gate Preview/Content as a main-view option (a Start Website template or a
+  // connected GitHub repo).
+  const hasClonableSource = agentHasClonableSource(virtualMcp?.metadata);
+  const layoutMeta = form.watch("metadata.ui.layout") ?? null;
+  // Off by default (absent / null → false): the CMS auto-opens in Preview only
+  // when an agent explicitly opts in via this toggle.
+  const cmsDefaultOpen = layoutMeta?.cmsDefaultOpen ?? false;
 
   // Repo info for the Runtime card (display-only — loose check is intentional)
   const githubRepoForRuntimeCard = getActiveGithubRepo(virtualMcp);
@@ -1060,26 +1074,28 @@ function VirtualMcpDetailViewWithData({
                 </h2>
               </div>
               <Card className="p-6 gap-5">
-                <CardContent className="p-0 space-y-6">
-                  {/* Preview — preview URL + the Fast Preview switch it gates
-                      (a URL is required for Fast Preview to take effect). */}
-                  <div className="space-y-4">
-                    <div className="flex flex-col gap-1">
-                      <h3 className="text-sm font-medium text-foreground">
-                        {t("sandbox.cmsSettings.preview.title")}
-                      </h3>
-                      <p className="text-sm text-muted-foreground">
-                        {t("sandbox.cmsSettings.preview.description")}
-                      </p>
-                    </div>
-                    <ProductionUrlField control={form.control} />
-                    <FastPreviewField
-                      control={form.control}
-                      productionUrl={form.watch("metadata.productionUrl")}
-                    />
+                {/* Preview — preview URL + the Fast Preview switch it gates
+                    (a URL is required for Fast Preview to take effect). */}
+                <CardContent className="p-0 space-y-5">
+                  <div className="flex flex-col gap-1">
+                    <h3 className="text-sm font-medium text-foreground">
+                      {t("sandbox.cmsSettings.preview.title")}
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      {t("sandbox.cmsSettings.preview.description")}
+                    </p>
                   </div>
-                  {hasGithubRepo && (
-                    <div className="space-y-4 border-t border-border pt-6">
+                  <ProductionUrlField control={form.control} />
+                  <FastPreviewField
+                    control={form.control}
+                    productionUrl={form.watch("metadata.productionUrl")}
+                  />
+                </CardContent>
+
+                {hasGithubRepo && (
+                  <>
+                    <div className="border-t border-border -mx-6" />
+                    <CardContent className="p-0 space-y-5">
                       <div className="flex flex-col gap-1">
                         <h3 className="text-sm font-medium text-foreground">
                           {t("virtualMcp.virtualMcp.publishing")}
@@ -1092,8 +1108,47 @@ function VirtualMcpDetailViewWithData({
                         control={form.control}
                         onCommit={flushAndSave}
                       />
+                    </CardContent>
+                  </>
+                )}
+
+                {/* Editing — content-editing preferences (auto-open the CMS,
+                    compact field descriptions). */}
+                <div className="border-t border-border -mx-6" />
+                <CardContent className="p-0 space-y-5">
+                  <div className="flex flex-col gap-1">
+                    <h3 className="text-sm font-medium text-foreground">
+                      {t("sandbox.cmsSettings.editing.title")}
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      {t("sandbox.cmsSettings.editing.description")}
+                    </p>
+                  </div>
+                  {hasClonableSource && (
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="space-y-0.5 min-w-0">
+                        <Label className="font-normal text-foreground">
+                          {t("virtualMcp.layoutTabContent.openCms")}
+                        </Label>
+                        <p className="text-xs text-muted-foreground">
+                          {t("virtualMcp.layoutTabContent.openCmsDescription")}
+                        </p>
+                      </div>
+                      <Switch
+                        className="shrink-0"
+                        checked={cmsDefaultOpen}
+                        onCheckedChange={(checked) => {
+                          form.setValue(
+                            "metadata.ui.layout",
+                            { ...layoutMeta, cmsDefaultOpen: checked },
+                            { shouldDirty: true },
+                          );
+                          flushAndSave();
+                        }}
+                      />
                     </div>
                   )}
+                  <FieldDescriptionTooltipsField control={form.control} />
                 </CardContent>
               </Card>
             </div>
@@ -1108,7 +1163,6 @@ function VirtualMcpDetailViewWithData({
               <Card className="p-6 gap-5">
                 <CardContent className="p-0 space-y-5">
                   <RepoRow repo={runtimeCardRepo} />
-                  <FieldDescriptionTooltipsField control={form.control} />
                   <RuntimeFields control={form.control} />
                   <EnvVarsField
                     control={form.control}

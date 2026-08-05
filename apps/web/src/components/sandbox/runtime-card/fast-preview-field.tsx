@@ -33,9 +33,12 @@ export function FastPreviewField<T extends FieldValues>({
       control={control}
       name={"metadata.fastPreview" as FieldPath<T>}
       render={({ field }) => (
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex flex-col gap-0.5">
-            <Label htmlFor="fast-preview">
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-0.5 min-w-0">
+            <Label
+              htmlFor="fast-preview"
+              className="font-normal text-foreground"
+            >
               {t("sandbox.cmsSettings.fastPreview.label")}
             </Label>
             <p className="text-xs text-muted-foreground">
@@ -46,6 +49,7 @@ export function FastPreviewField<T extends FieldValues>({
           </div>
           <Switch
             id="fast-preview"
+            className="shrink-0"
             // Reflect the stored intent, but never show "on" without a URL to
             // render against — the preview gate requires both anyway.
             checked={!!field.value && hasProductionUrl}
