@@ -155,7 +155,7 @@ function claudeConfigDir(): string {
  * would create a literal `~` directory next to the checkout and the skill would
  * die with the pod.
  */
-export function skillsInstruction(): string {
+function skillsInstruction(): string {
   const dir = `${claudeConfigDir()}/skills`;
   return (
     // READING is deliberately not given a path. Every discovered skill's name and
