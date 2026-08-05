@@ -53,3 +53,17 @@ Cada revisor que roda aparece como sua própria sessão no card da task, e o ver
 Quando todos os revisores habilitados aprovaram o pull request de uma task — ou nenhum revisor está habilitado — o card da task mostra um botão **Ship to production**. Clicar nele mescla o pull request. Se o auto-merge estiver habilitado, isso acontece automaticamente assim que o gate de revisão é satisfeito, em vez de esperar alguém clicar no botão.
 
 O painel de PR de cada card também mostra o estado ao vivo do pull request (draft, open, merged, closed) e o status dos checks (passing, pending ou failing), para você ver de imediato se uma task está pronta para avançar.
+
+## Findings publicados por um report
+
+Alguns cards não são criados por uma pessoa — um report (por exemplo, o **Report Agent**) pode publicar findings de diagnóstico direto no board. Esses cards se comportam como qualquer outro, com uma diferença: excluir um deles **descarta (dismiss) o finding subjacente**, não só o card.
+
+<Callout type="info">
+  Depois que um finding é descartado, a próxima execução do report o ignora
+  em vez de recriar o card. Excluir um card gerado por report é reversível —
+  peça ao agent **Task Manager** para restaurar um finding descartado (ou
+  todos eles) e o card volta com seus comentários, atividade e qualquer PR
+  vinculado intactos.
+</Callout>
+
+O agent Task Manager avisa quando o card que você está excluindo veio de um report, para que você saiba que excluí-lo também suprime esse finding a partir de então.
