@@ -1,9 +1,10 @@
 //! The shared canonical repo store that backs per-sandbox git worktrees.
 //!
 //! Every sandbox used to be its own full `git clone`, so N threads on one
-//! repository paid N copies of the object store. Instead there is now ONE bare
-//! clone per upstream repository under `<app_root>/repos/…`, and each sandbox's
-//! `<app_root>/worktrees/<handle>/repo` is a `git worktree` of it.
+//! repository paid N copies of the object store. Instead there is now ONE
+//! plain (non-bare) clone per upstream repository under
+//! `<app_root>/repos/…`, kept in sync with plain `git pull`, and each
+//! sandbox's `<app_root>/worktrees/<handle>/repo` is a `git worktree` of it.
 //!
 //! ## Why the key is the clone URL, not the Studio org
 //!
@@ -150,7 +151,7 @@ pub async fn prune_all(app_root: &Path) {
             if !entry.file_type().await.is_ok_and(|kind| kind.is_dir()) {
                 continue;
             }
-            if is_bare_repo(&path).await {
+            if is_canonical_repo_root(&path).await {
                 prune_repo(&path).await;
             } else {
                 pending.push(path);
@@ -165,7 +166,7 @@ pub async fn prune_all(app_root: &Path) {
 /// fail the caller's operation — the worst case is a stale entry the next
 /// prune clears.
 async fn prune_repo(canonical: &Path) {
-    if !is_bare_repo(canonical).await {
+    if !is_canonical_repo_root(canonical).await {
         return;
     }
     let canonical_str = canonical.to_string_lossy().into_owned();
@@ -182,15 +183,15 @@ async fn prune_repo(canonical: &Path) {
     }
 }
 
-/// Whether a directory is one of the store's bare clones.
+/// Whether a directory is one of the store's canonical clones (as opposed to
+/// a namespace directory like `repos/acme` that only holds subdirectories).
 ///
-/// A bare repo keeps `HEAD` at its root, where a namespace directory
-/// (`repos/github.com`) has only subdirectories — that is the whole
-/// distinction the walk needs.
-async fn is_bare_repo(dir: &Path) -> bool {
-    tokio::fs::metadata(dir.join("HEAD"))
+/// The canonical clones are plain (non-bare) checkouts, so a `.git`
+/// subdirectory at this path is the whole distinction the walk needs.
+async fn is_canonical_repo_root(dir: &Path) -> bool {
+    tokio::fs::metadata(dir.join(".git"))
         .await
-        .is_ok_and(|meta| meta.is_file())
+        .is_ok_and(|meta| meta.is_dir())
 }
 
 /// A path segment that cannot escape the store or name a parent.
@@ -330,13 +331,7 @@ mod tests {
         let canonical = canonical_repo_dir(app_root, &clone_url).expect("keyable url");
         std::fs::create_dir_all(canonical.parent().unwrap()).unwrap();
         git(
-            &[
-                "clone",
-                "--bare",
-                "-q",
-                &clone_url,
-                canonical.to_str().unwrap(),
-            ],
+            &["clone", "-q", &clone_url, canonical.to_str().unwrap()],
             app_root,
         );
 
@@ -414,7 +409,7 @@ mod tests {
             std::fs::create_dir_all(canonical.parent().unwrap()).unwrap();
             let path = canonical.to_str().unwrap();
             git(
-                vec!["clone", "--bare", "-q", origin.to_str().unwrap(), path],
+                vec!["clone", "-q", origin.to_str().unwrap(), path],
                 app_root,
             );
             let wt = app_root.join(crate::sandbox::WORKTREES_DIR).join(format!(

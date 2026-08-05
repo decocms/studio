@@ -29,9 +29,8 @@
 //! Every other piece of argv/env parity (the `--no-verify` + empty
 //! `core.hooksPath` hook bypass, `--force-with-lease` → `--force` fallback,
 //! `GIT_CEILING_DIRECTORIES`/`GIT_OPTIONAL_LOCKS` pinning, the protected-
-//! branch push guard, `-c safe.directory=*` on every invocation) is ported
-//! faithfully — see the two env profiles ([`route_env`]/[`ceiling_env`])
-//! and the per-function doc comments below.
+//! branch push guard) is ported faithfully — see the two env profiles
+//! ([`route_env`]/[`ceiling_env`]) and the per-function doc comments below.
 //!
 //! ## No publish on shutdown
 //!
@@ -379,9 +378,6 @@ fn ceiling_env(repo_dir: &Path) -> Vec<(String, String)> {
     )]
 }
 
-/// Every invocation gets `-c safe.directory=*` — byte-parity with
-/// `daemon/setup/git.ts`'s `git()` wrapper, which every `routes/git.ts` call
-/// (and `rebase-onto-base.ts`'s own `gitSync` shim) goes through.
 async fn run_git_raw<S: AsRef<str>>(
     repo_dir: &Path,
     args: &[S],
@@ -396,8 +392,7 @@ async fn run_git_raw_with_timeout<S: AsRef<str>>(
     env: &[(String, String)],
     timeout: Duration,
 ) -> Result<String, GitError> {
-    let mut full: Vec<String> = vec!["-c".to_string(), "safe.directory=*".to_string()];
-    full.extend(args.iter().map(|s| s.as_ref().to_string()));
+    let full: Vec<String> = args.iter().map(|s| s.as_ref().to_string()).collect();
     let joined = full.join(" ");
 
     let controller = GIT_PROCESS_CONTROLLER.try_with(Clone::clone).ok();
@@ -654,13 +649,26 @@ pub(crate) async fn upstream_branch(repo_dir: &Path) -> Option<String> {
 }
 
 pub(crate) async fn current_branch(repo_dir: &Path) -> Option<String> {
-    try_git(
+    if let Some(branch) = try_git(
         repo_dir,
         &["rev-parse", "--abbrev-ref", "HEAD"],
         &ceiling_env(repo_dir),
     )
     .await
     .filter(|branch| !branch.is_empty() && branch != "HEAD")
+    {
+        return Some(branch);
+    }
+    // `rev-parse --abbrev-ref HEAD` fails identically for a real detached
+    // HEAD and an UNBORN one (a checkout with no commits yet — e.g. right
+    // after `git worktree add` on a brand-new empty repo). `symbolic-ref`
+    // only succeeds for the latter, so it's what disambiguates them.
+    try_git(
+        repo_dir,
+        &["symbolic-ref", "--short", "HEAD"],
+        &ceiling_env(repo_dir),
+    )
+    .await
 }
 
 /// Strip ANSI SGR sequences (`ESC[...m`) from git's colorized stderr —
@@ -1163,14 +1171,10 @@ async fn compute_diff_against_base(
     assert_valid_remote_branch_name(base)?;
     let env = route_env(repo_dir);
 
-    let branch = try_git(repo_dir, &["rev-parse", "--abbrev-ref", "HEAD"], &env).await;
-    let branch = match branch {
-        Some(b) if b != "HEAD" => b,
-        _ => {
-            return Err(RouteError::Generic(
-                "Cannot compute PR diff from detached HEAD".to_string(),
-            ))
-        }
+    let Some(branch) = current_branch(repo_dir).await else {
+        return Err(RouteError::Generic(
+            "Cannot compute PR diff from detached HEAD".to_string(),
+        ));
     };
     assert_valid_remote_branch_name(&branch)?;
 
@@ -1467,8 +1471,7 @@ async fn is_protected_branch(repo_dir: &Path, branch: &str) -> bool {
 /// it; the desktop has no such token — its clone URLs come straight from the
 /// agent's `metadata.githubRepo.url` — so clearing the helper left the push
 /// with NO credential source at all and every private-repo publish failed,
-/// including the shutdown publish that exists to save unsynced work. Same
-/// reasoning, and same conclusion, as `setup/clone.rs::base_argv`.
+/// including the shutdown publish that exists to save unsynced work.
 ///
 /// `GIT_TERMINAL_PROMPT=0` + `GIT_ASKPASS=true` still stand: the helper is
 /// consulted first, and a repo the user genuinely cannot reach fails fast
@@ -1501,19 +1504,10 @@ async fn publish_internal(repo_dir: &Path, message: &str) -> Result<bool, RouteE
         return Ok(false);
     }
 
-    let branch = try_git(
-        repo_dir,
-        &["rev-parse", "--abbrev-ref", "HEAD"],
-        &ceiling_env(repo_dir),
-    )
-    .await;
-    let branch = match branch {
-        Some(b) if !b.is_empty() && b != "HEAD" => b,
-        _ => {
-            return Err(RouteError::Generic(
-                "Cannot publish from a detached HEAD".to_string(),
-            ))
-        }
+    let Some(branch) = current_branch(repo_dir).await else {
+        return Err(RouteError::Generic(
+            "Cannot publish from a detached HEAD".to_string(),
+        ));
     };
 
     // The pre-push hook the daemon installs also guards this, but publish
@@ -1832,14 +1826,10 @@ async fn rebase_onto_base(repo_dir: &Path, base: &str) -> Result<(), RouteError>
     assert_valid_remote_branch_name(base)?;
     let env = ceiling_env(repo_dir);
 
-    let branch = try_git(repo_dir, &["rev-parse", "--abbrev-ref", "HEAD"], &env).await;
-    let branch = match branch {
-        Some(b) if !b.is_empty() && b != "HEAD" => b,
-        _ => {
-            return Err(RouteError::Generic(
-                "Cannot rebase from a detached HEAD".to_string(),
-            ))
-        }
+    let Some(branch) = current_branch(repo_dir).await else {
+        return Err(RouteError::Generic(
+            "Cannot rebase from a detached HEAD".to_string(),
+        ));
     };
 
     run_git(repo_dir, &["fetch", "-p", "origin", base, &branch], &env)
@@ -2374,6 +2364,21 @@ mod tests {
         let repo_dir = root.path().join("not-a-repo");
         std::fs::create_dir_all(&repo_dir).unwrap();
         assert!(!is_git_repo(&repo_dir).await);
+    }
+
+    /// `rev-parse --abbrev-ref HEAD` fails identically for a real detached
+    /// HEAD and an unborn one (no commits yet — e.g. right after `git
+    /// worktree add` on a brand-new empty repo). `current_branch` must not
+    /// conflate the two: a fresh `git init -b main` with zero commits is on
+    /// branch `main`, not detached.
+    #[tokio::test]
+    async fn current_branch_resolves_an_unborn_head_instead_of_reporting_detached() {
+        let root = TempDir::new().unwrap();
+        let repo_dir = root.path().join("repo");
+        std::fs::create_dir_all(&repo_dir).unwrap();
+        git(&repo_dir, &["init", "-q", "-b", "main"]);
+
+        assert_eq!(current_branch(&repo_dir).await.as_deref(), Some("main"));
     }
 
     #[tokio::test]
