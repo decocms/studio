@@ -84,7 +84,12 @@ function AppRenderer({
     // it into chat; any other message falls through to the normal path.
     const navigateResult = resolveAppNavigateTarget(params.content);
     if (navigateResult.isNavigate) {
-      if (navigateResult.tab) openTab(navigateResult.tab);
+      if (navigateResult.tab) {
+        openTab(
+          navigateResult.tab,
+          navigateResult.field ? { field: navigateResult.field } : undefined,
+        );
+      }
       return;
     }
     const doc = contentBlocksToTiptapDoc(params.content);
