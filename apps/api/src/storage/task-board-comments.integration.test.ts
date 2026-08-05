@@ -91,6 +91,25 @@ describe("TaskBoardStorage comments", () => {
     expect(ownDelete).toBe(true);
   });
 
+  it("lets any org member delete a Super Agent comment", async () => {
+    const comment = await storage.createComment({
+      taskBoardItemId: itemId,
+      organizationId: "org_test",
+      authorId: "super-agent",
+      body: "posted during a run",
+    });
+    expect(comment).not.toBeNull();
+
+    // Before fix: no caller's id ever equals "super-agent", so this comment
+    // could never be deleted by anyone.
+    const deleted = await storage.deleteComment(
+      comment!.id,
+      "org_test",
+      "user_123",
+    );
+    expect(deleted).toBe(true);
+  });
+
   it("rejects resolving a reply — resolved is a thread-root-only property", async () => {
     const root = await storage.createComment({
       taskBoardItemId: itemId,
