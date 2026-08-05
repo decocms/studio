@@ -39,6 +39,10 @@ function makeCtx(opts: {
   connectionUpdate?: (id: string, data: Record<string, unknown>) => void;
   /** Stored flags.reports_only value; undefined = settings row never created. */
   reportsOnly?: boolean | null;
+  /** Stored flags.qa_agent_enabled value; undefined = never set. */
+  qaAgentEnabled?: boolean | null;
+  /** Stored flags.code_reviewer_enabled value; undefined = never set. */
+  codeReviewerEnabled?: boolean | null;
   settingsUpsert?: (orgId: string, data: Record<string, unknown>) => void;
   /** Org row createdAt; defaults to "just now" (fresh onboarding-made org). */
   orgCreatedAt?: Date;
@@ -93,11 +97,17 @@ function makeCtx(opts: {
       },
       organizationSettings: {
         get: async () =>
-          opts.reportsOnly === undefined
+          opts.reportsOnly === undefined &&
+          opts.qaAgentEnabled === undefined &&
+          opts.codeReviewerEnabled === undefined
             ? null
             : {
                 organizationId: ORG_ID,
-                flags: { reports_only: opts.reportsOnly },
+                flags: {
+                  reports_only: opts.reportsOnly,
+                  qa_agent_enabled: opts.qaAgentEnabled,
+                  code_reviewer_enabled: opts.codeReviewerEnabled,
+                },
               },
         upsert: async (orgId: string, data: Record<string, unknown>) => {
           opts.settingsUpsert?.(orgId, data);
@@ -174,7 +184,16 @@ describe("COMMERCE_DISCOVERY_SETUP", () => {
     );
 
     expect(upserts).toEqual([
-      { orgId: ORG_ID, data: { flags: { reports_only: true } } },
+      {
+        orgId: ORG_ID,
+        data: {
+          flags: {
+            reports_only: true,
+            qa_agent_enabled: true,
+            code_reviewer_enabled: true,
+          },
+        },
+      },
     ]);
   });
 
@@ -193,7 +212,40 @@ describe("COMMERCE_DISCOVERY_SETUP", () => {
     );
 
     expect(upserts).toEqual([
-      { orgId: ORG_ID, data: { flags: { reports_only: true } } },
+      {
+        orgId: ORG_ID,
+        data: {
+          flags: {
+            reports_only: true,
+            qa_agent_enabled: true,
+            code_reviewer_enabled: true,
+          },
+        },
+      },
+    ]);
+  });
+
+  test("defaults reports_only on but does not clobber an already-explicit reviewer flag", async () => {
+    const upserts: Array<{ orgId: string; data: Record<string, unknown> }> = [];
+    const ctx = makeCtx({
+      // reports_only was never set, but the org already turned code review off
+      // by hand — the reports_only default must not re-enable it.
+      codeReviewerEnabled: false,
+      settingsUpsert: (orgId, data) => upserts.push({ orgId, data }),
+    });
+
+    await COMMERCE_DISCOVERY_SETUP.handler(
+      { siteUrl: "https://new-site.com" },
+      ctx,
+    );
+
+    expect(upserts).toEqual([
+      {
+        orgId: ORG_ID,
+        data: {
+          flags: { reports_only: true, qa_agent_enabled: true },
+        },
+      },
     ]);
   });
 
