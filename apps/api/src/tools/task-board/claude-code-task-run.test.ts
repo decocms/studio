@@ -48,6 +48,20 @@ describe("buildClaudeCodeTaskPrompt", () => {
     expect(buildClaudeCodeTaskPrompt(task, repo)).toContain("AUTONOMOUSLY");
   });
 
+  // Inverted: this used to say "move it to review anyway so a human can close
+  // it out". In Review is the reviewers' lane and reviewers are only enqueued
+  // for a task that HAS a PR, so a no-PR task parked there had nobody to pick
+  // it up — in prod every single In Review card was one of these, with zero
+  // PRs and zero reviewer claims between them.
+  test("a task needing no code change goes to done, not in_review", () => {
+    const prompt = buildClaudeCodeTaskPrompt(task, repo);
+    expect(prompt).toContain("no code change");
+    expect(prompt).toContain('move it to "done" instead of "in_review"');
+    expect(prompt).not.toContain("move it to review anyway");
+    // And it has to leave the reason where a human will read it.
+    expect(prompt).toContain("mcp__studio__TASK_BOARD_COMMENT_CREATE");
+  });
+
   test("reviewer feedback leads, and updates the existing PR", () => {
     const prompt = buildClaudeCodeTaskPrompt(task, repo, {
       feedback: "Missing a test.",

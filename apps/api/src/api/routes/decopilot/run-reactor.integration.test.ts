@@ -330,15 +330,20 @@ describe("reactAll (real Postgres)", () => {
           .select(["failure_reason", "failure_kind"])
           .where("id", "=", thread.id)
           .executeTakeFirstOrThrow();
-        if (reason === "reaped") {
-          expect(dbRow.failure_reason).toBe(
-            "Run stalled — no progress within the idle timeout window",
-          );
-          expect(dbRow.failure_kind).toBe("stall");
-        } else {
-          expect(dbRow.failure_reason).toBeNull();
-          expect(dbRow.failure_kind).toBeNull();
-        }
+        // Every non-ghost reason records one, through the real SQL path.
+        // Inverted: `error` and `cancelled` used to assert NULL here, which is
+        // what left a failed thread row unreadable — `status: failed` with no
+        // reason and no kind, so nothing could tell a cancel from a crash.
+        expect(dbRow.failure_reason).toBe(
+          {
+            reaped: "Run stalled — no progress within the idle timeout window",
+            cancelled: "Run cancelled before it finished",
+            error: "Run ended with an error — see the run's messages",
+          }[reason],
+        );
+        expect(dbRow.failure_kind).toBe(
+          { reaped: "stall", cancelled: "cancelled", error: "error" }[reason],
+        );
         expect(sseEvents).toHaveLength(2);
       }
     });

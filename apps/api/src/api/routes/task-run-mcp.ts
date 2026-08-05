@@ -17,7 +17,7 @@ import { Hono } from "hono";
 import type { StudioContext } from "../../core/studio-context";
 import { managementContextStore, toolSubsetMCP } from "../../tools";
 import {
-  TASK_RUN_TOOL_NAMES,
+  resolveReviewRunToolNames,
   taskRunContextStore,
 } from "../../tools/task-board/task-run-context";
 import { serveMcpRequest } from "../utils/serve-mcp";
@@ -30,7 +30,17 @@ export const createTaskRunMcpRoutes = () => {
   app.all("/:threadId", async (c) => {
     const ctx = c.get("studioContext");
     const threadId = c.req.param("threadId");
-    const server = toolSubsetMCP("mcp-task-run", TASK_RUN_TOOL_NAMES);
+    // A reviewer's run gets one extra tool (`TASK_BOARD_REVIEW_DECISION`) — the
+    // one it is instructed to finish with. Derived from the run thread itself,
+    // not from a request argument, for the same reason the threadId is in the
+    // path: the per-run key is minted with full access, so anything the caller
+    // could assert it could also forge. The lookup is org-scoped by
+    // `resolveOrgFromPath`, so a foreign thread reads as null → narrow list.
+    const thread = await ctx.storage.threads.get(threadId);
+    const server = toolSubsetMCP(
+      "mcp-task-run",
+      resolveReviewRunToolNames(thread?.title),
+    );
     const transport = new WebStandardStreamableHTTPServerTransport({
       enableJsonResponse:
         c.req.raw.headers.get("Accept")?.includes("application/json") ?? false,

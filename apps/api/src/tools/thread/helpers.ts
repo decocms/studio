@@ -41,33 +41,47 @@ export type ThreadStatusForResponse = ThreadStatus | "expired";
  * (context_start_message_id, run_owner_pod, run_started_at) are stripped so
  * MCP clients validating structuredContent with Ajv don't reject the response.
  */
+/**
+ * True when an `in_progress` thread has shown no sign of life for longer than
+ * `THREAD_EXPIRY_MS` — the single definition of "this run is not coming back".
+ *
+ * Liveness = the most recent of `updated_at` (bumped by terminal writers) and
+ * `last_progress_at` (bumped per streamed chunk, throttled). A still-streaming
+ * run keeps `last_progress_at` fresh even though `updated_at` stays stale for
+ * the whole turn, so keying only off `updated_at` would falsely flip an
+ * actively-streaming thread to "expired" after 30 min. Use the same heartbeat
+ * the reaper trusts.
+ *
+ * Says nothing about `status`: callers check that themselves, because the two
+ * uses differ. The response normalizer renders a virtual "expired" (never
+ * stored, so the thread can resume if the stream reconnects); board stall
+ * recovery persists a failure, and only for a run no pod can still own.
+ */
+export function isThreadRunStale(
+  thread: Pick<Thread, "updated_at" | "last_progress_at">,
+  now: number = Date.now(),
+): boolean {
+  const updatedAtMs = new Date(thread.updated_at).getTime();
+  const progressAtMs = thread.last_progress_at
+    ? new Date(thread.last_progress_at).getTime()
+    : Number.NaN;
+  const lastActiveMs = Math.max(
+    Number.isFinite(updatedAtMs) ? updatedAtMs : Number.NEGATIVE_INFINITY,
+    Number.isFinite(progressAtMs) ? progressAtMs : Number.NEGATIVE_INFINITY,
+  );
+  return (
+    !Number.isFinite(lastActiveMs) || now - lastActiveMs > THREAD_EXPIRY_MS
+  );
+}
+
 export function normalizeThreadForResponse(
   thread: Thread,
   now: number = Date.now(),
 ): ThreadEntity {
   let status: ThreadStatusForResponse = thread.status;
 
-  if (status === "in_progress") {
-    // Liveness = the most recent of `updated_at` (bumped by terminal writers)
-    // and `last_progress_at` (bumped per streamed chunk, throttled). A
-    // still-streaming run keeps `last_progress_at` fresh even though
-    // `updated_at` stays stale for the whole turn, so keying only off
-    // `updated_at` would falsely flip an actively-streaming thread to
-    // "expired" after 30 min. Use the same heartbeat the reaper trusts.
-    const updatedAtMs = new Date(thread.updated_at).getTime();
-    const progressAtMs = thread.last_progress_at
-      ? new Date(thread.last_progress_at).getTime()
-      : Number.NaN;
-    const lastActiveMs = Math.max(
-      Number.isFinite(updatedAtMs) ? updatedAtMs : Number.NEGATIVE_INFINITY,
-      Number.isFinite(progressAtMs) ? progressAtMs : Number.NEGATIVE_INFINITY,
-    );
-    if (
-      !Number.isFinite(lastActiveMs) ||
-      now - lastActiveMs > THREAD_EXPIRY_MS
-    ) {
-      status = "expired";
-    }
+  if (status === "in_progress" && isThreadRunStale(thread, now)) {
+    status = "expired";
   }
 
   return {

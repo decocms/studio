@@ -14,6 +14,7 @@ import {
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { enqueueAgentRunForTask } from "./enqueue-task-run";
+import { resolveTaskRepoChoice } from "./claude-code-task-run";
 
 /**
  * A Super Agent run finished — if it left a task In Review with an open PR,
@@ -46,9 +47,19 @@ export async function enqueueReviewersOnThreadFinish(args: {
       // titled "Super Agent: …"; a reviewer's finishing run (also linked) is not.
       const finishing = item.threads.find((thr) => thr.threadId === threadId);
       if (!finishing?.title?.startsWith("Super Agent:")) continue;
-      // Nothing to review without a PR (research/answer tasks reach In Review too).
+      // Nothing to review without a PR (research/answer tasks reach In Review
+      // too). Logged, not silent: this is a terminal park — no reviewer will
+      // ever claim the card and nothing else moves it, so "why is this task
+      // stuck In Review?" has to be answerable from the logs. The task prompt
+      // steers no-code-change tasks to Done for exactly this reason.
       const prs = await taskBoard.listPrs(taskId, orgId);
-      if (prs.length === 0) continue;
+      if (prs.length === 0) {
+        console.warn(
+          `[task-board] ${taskId} reached In Review with no PR — no reviewer ` +
+            `enqueued; the card stays In Review until a human moves it`,
+        );
+        continue;
+      }
       const ctx = await contextFactory(
         orgId,
         item.assignedBy ?? item.createdBy,
@@ -199,6 +210,27 @@ async function enqueueReviewerForTask(
 ): Promise<void> {
   const organizationId = task.organizationId;
 
+  // Same harness the Super Agent runs on, for the same reason: a review needs
+  // real `git`/`gh` on a checkout, and — the blocking one — only a
+  // sandbox-hosted run is handed the task-run MCP surface that carries
+  // `TASK_BOARD_ITEM_PRS_GET` and `TASK_BOARD_REVIEW_DECISION`. On Decopilot
+  // (the previous default) both came back `not_found` from `enable_tool`, so a
+  // reviewer could reach its verdict and never record it. Falls back to
+  // Decopilot when the org has no importable repo, exactly as the Super Agent
+  // does — with no repo there is no checkout to review anyway.
+  const choice = await resolveTaskRepoChoice(ctx, organizationId);
+  const repo = choice && "repo" in choice ? choice.repo : null;
+  const sandboxed = choice !== null;
+  // Over the sandbox's MCP client the task-run tools are namespaced; hosted
+  // Decopilot calls them bare. Naming them wrong is not cosmetic — it is what
+  // the model retries `enable_tool` against before giving up.
+  const prsGetTool = sandboxed
+    ? "mcp__studio__TASK_BOARD_ITEM_PRS_GET"
+    : "TASK_BOARD_ITEM_PRS_GET";
+  const decisionTool = sandboxed
+    ? "mcp__studio__TASK_BOARD_REVIEW_DECISION"
+    : "TASK_BOARD_REVIEW_DECISION";
+
   const prompt = [
     REVIEWER_FOCUS[kind],
     "",
@@ -214,13 +246,19 @@ async function enqueueReviewerForTask(
     `Task title: ${task.title}`,
     task.description ? `\nTask description:\n${task.description}\n` : "",
     "How to work:",
-    "- Call `TASK_BOARD_ITEM_PRS_GET` with the task id below to find the pull request under review, then load its repository to inspect / exercise the change.",
+    `- Call \`${prsGetTool}\` with the task id below to find the pull request under review.`,
+    repo
+      ? `- The repository ${repo.owner}/${repo.name} is already cloned at your working directory and \`git\` and \`gh\` are authenticated — check the PR's branch out there to inspect / exercise the change.`
+      : sandboxed
+        ? `- Your working directory is EMPTY. Call \`mcp__studio__TASK_ADD_REPO\` with the connectionId of the PR's repository FIRST; it clones the repository and waits for the checkout, and \`git\` and \`gh\` are authenticated once it returns.`
+        : "- Load the PR's repository to inspect / exercise the change.",
     "- Do NOT push commits or change the code yourself. You are reviewing, not implementing.",
-    "- End the run by calling `TASK_BOARD_REVIEW_DECISION` exactly once with the task id, " +
+    `- End the run by calling \`${decisionTool}\` exactly once with the task id, ` +
       `reviewer "${kind}", the reviewToken below, and your decision:`,
     "  - `approve` when it's good to ship. Include a short summary of what you verified.",
     "  - `request_changes` when something is wrong or missing. Include specific, actionable notes — the task goes back to the Super Agent with your notes.",
     "- The reviewToken proves you are this reviewer — pass it through EXACTLY as given. Without it your approval won't count toward an automatic merge.",
+    `- \`${decisionTool}\` is how the verdict is recorded. A review that ends without it is thrown away and the task stays stuck In Review, so call it even when your notes are short.`,
     "",
     `(task id: ${task.id})`,
     `(reviewToken: ${reviewToken})`,
@@ -231,6 +269,8 @@ async function enqueueReviewerForTask(
     title: `${REVIEWER_LABEL[kind]}: ${task.title}`,
     prompt,
     temperature: 0.3,
+    ...(sandboxed ? { harnessId: "claude-code" as const } : {}),
+    ...(repo ? { repo } : {}),
   });
 
   // Timeline: "Super Agent delegated to <reviewer>" (machine actor → null), and
