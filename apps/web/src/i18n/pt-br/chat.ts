@@ -89,6 +89,7 @@ export const chat = {
     "useChatTask deve ser usado dentro de ChatContextProvider",
   "chat.collapsibleHighlight.closeLabel": "Fechar",
   "chat.collapsibleHighlight.closeTitle": "Fechar",
+  "chat.connectionsBanner.description": "Conecte ferramentas e faça mais",
   "chat.connectionList.connectionNoun": "conexões",
   "chat.connectionList.emptySummary":
     "Esta organização não conectou nenhum MCP.",

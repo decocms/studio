@@ -1,5 +1,6 @@
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ChevronRight } from "@untitledui/icons";
+import { useT } from "@/i18n/use-t.ts";
 
 const FEATURED_ICONS = [
   { src: "/connections/github.png", name: "GitHub" },
@@ -30,6 +31,7 @@ interface ConnectionsBannerProps {
 }
 
 export function ConnectionsBanner({ onClick }: ConnectionsBannerProps) {
+  const t = useT();
   return (
     <button
       type="button"
@@ -41,7 +43,7 @@ export function ConnectionsBanner({ onClick }: ConnectionsBannerProps) {
       )}
     >
       <p className="flex-1 text-xs text-muted-foreground truncate text-left">
-        Connect tools and get more done
+        {t("chat.connectionsBanner.description")}
       </p>
 
       <FeaturedIcons />
