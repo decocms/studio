@@ -817,7 +817,7 @@ mod tests {
         }
 
         fn content_security_policy(&self) -> String {
-            "default-src 'self'; connect-src 'self'; frame-src 'none'".into()
+            "default-src 'self'; connect-src 'self'; frame-src *".into()
         }
     }
 
@@ -890,7 +890,7 @@ mod tests {
             .to_str()
             .unwrap();
         assert!(csp.contains("connect-src 'self' http://localhost:61234 ws://localhost:61234"));
-        assert!(csp.contains("frame-src http://localhost:61234"));
+        assert!(csp.contains("frame-src *"));
 
         let asset = app
             .oneshot(request(Method::GET, "/assets/app.abc.js"))

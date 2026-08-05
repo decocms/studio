@@ -100,6 +100,12 @@ fn csp_error_response() -> Response {
         .unwrap_or_else(|_| Response::new(Body::empty()))
 }
 
+/// Adds the sandbox preview origin (and its `ws://` counterpart) to
+/// `connect-src` — that's same-page script talking to the local proxy, so it
+/// still needs a per-session allowlist. `frame-src` does not: it's `*` in the
+/// base policy (framed documents can't run script in or read state from this
+/// page's origin, so opening it to arbitrary org-owned preview domains — e.g.
+/// a published storefront — doesn't need per-session patching).
 fn patch_preview_origin(base: &str, preview_origin: &str) -> String {
     let mut directives = base
         .split(';')
@@ -117,7 +123,6 @@ fn patch_preview_origin(base: &str, preview_origin: &str) -> String {
             .as_deref()
             .map_or_else(|| vec![preview_origin], |ws| vec![preview_origin, ws]),
     );
-    add_csp_sources(&mut directives, "frame-src", vec![preview_origin]);
     format!("{};", directives.join("; "))
 }
 
@@ -160,21 +165,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn csp_adds_preview_to_existing_directives_and_replaces_none() {
+    fn csp_adds_preview_to_existing_connect_src() {
         let patched = patch_preview_origin(
-            "default-src 'self'; connect-src 'self'; frame-src 'none'",
+            "default-src 'self'; connect-src 'self'; frame-src *",
             "http://localhost:61234",
         );
         assert!(patched.contains("connect-src 'self' http://localhost:61234 ws://localhost:61234"));
-        assert!(patched.contains("frame-src http://localhost:61234"));
-        assert!(!patched.contains("frame-src 'none'"));
+        assert!(patched.contains("frame-src *"));
     }
 
     #[test]
-    fn csp_creates_missing_preview_directives() {
+    fn csp_creates_missing_connect_src_directive() {
         let patched = patch_preview_origin("default-src 'self'", "http://localhost:61234");
         assert!(patched.contains("connect-src 'self' http://localhost:61234 ws://localhost:61234"));
-        assert!(patched.contains("frame-src 'self' http://localhost:61234"));
     }
 
     #[test]

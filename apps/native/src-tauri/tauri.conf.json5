@@ -91,11 +91,17 @@
       // same-origin (`/assets/*.woff2`), so the CSP spec's fallback to
       // `default-src 'self'` already covers them.
       //
-      // `frame-src 'self'` is the base for the sandbox preview iframe. The
-      // bundled index response adds its exact dedicated preview origin at
-      // runtime. That proxy forwards the sandbox application's Cookie and
-      // Authorization headers unchanged.
-      csp: "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' https: data: blob: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src 'self'",
+      // `frame-src *` is deliberately wide open: the preview surface embeds
+      // arbitrary org-owned domains (sandbox dev servers AND published
+      // storefronts like a customer's own `*.vtex.app`/custom domain), which
+      // can't be known at build time. Same reasoning as `img-src` above — a
+      // framed document can't execute script in or read state from this
+      // page's origin, so this doesn't widen the app's actual attack surface
+      // the way loosening `connect-src`/`script-src` would. The exact
+      // sandbox preview origin is still added to `connect-src` at runtime
+      // (see `src/csp.rs` / `src/ui_assets.rs`) since that traffic IS
+      // same-page script talking to the proxy.
+      csp: "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' https: data: blob: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src *",
     },
   },
   // Self-update. Safe to commit: the plugin never auto-checks (updates run
