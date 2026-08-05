@@ -55,14 +55,15 @@ export function mergeSandboxMapEntry(
   entry: SandboxRecord,
 ): SandboxMap {
   const currentBranchMap = parseBranchMap(current[targetUserId]?.[branch]);
+  const nextBranchMap = {
+    ...currentBranchMap,
+    [sandboxProviderKind]: entry,
+  };
   return {
     ...current,
     [targetUserId]: {
       ...(current[targetUserId] ?? {}),
-      [branch]: {
-        ...currentBranchMap,
-        [sandboxProviderKind]: entry,
-      } as SandboxMap[string][string],
+      [branch]: nextBranchMap,
     },
   };
 }
@@ -124,7 +125,7 @@ export function deleteSandboxMapEntry(
   if (Object.keys(nextBranchMap).length === 0) {
     delete userMap[branch];
   } else {
-    userMap[branch] = nextBranchMap as SandboxMap[string][string];
+    userMap[branch] = nextBranchMap;
   }
 
   const next: SandboxMap = { ...current };
