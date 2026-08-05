@@ -79,6 +79,10 @@ Defina estas no `.env` ao lado do arquivo de compose:
 
 O container roda como usuário `1001:1001` e persiste dados no volume `studio-data`; o Postgres embutido persiste em `postgres-data`.
 
+<Callout type="tip">
+  `PORT` precisa ser uma porta TCP válida (1–65535). O Studio valida isso na inicialização e falha rapidamente com um erro claro se estiver fora do intervalo, em vez de falhar depois quando o servidor HTTP tenta se vincular a ela.
+</Callout>
+
 ## Usando seu próprio PostgreSQL
 
 Para apontar o Studio para um banco externo, use o `docker-compose.yml` base e defina `DATABASE_URL`:
