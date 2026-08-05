@@ -6,8 +6,7 @@
  * checkout in the app (`deco-credits-hero.tsx`). Everything Stripe hosts
  * (card, invoices, cancellation) stays with Stripe — no custom billing UI.
  */
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
 import { CreditCard01, Loading01 } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -23,26 +22,9 @@ import {
 } from "@/components/settings/settings-section";
 import { useProjectContext } from "@/sdk";
 import { useStudioTools } from "@/lib/studio-tools";
+import { useOpenBillingUrl } from "@/hooks/use-open-billing-url";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
-
-function useOpenBillingUrl(
-  toolName:
-    | "ORGANIZATION_BILLING_CHECKOUT_START"
-    | "ORGANIZATION_BILLING_PORTAL",
-  errorKey: "settings.billing.checkoutError" | "settings.billing.portalError",
-) {
-  const studio = useStudioTools();
-  const t = useT();
-  return useMutation({
-    mutationFn: async () => {
-      const { url } = await studio.call(toolName, {});
-      return url;
-    },
-    onSuccess: (url) => window.open(url, "_blank", "noopener,noreferrer"),
-    onError: (err) => toast.error(t(errorKey, { message: err.message })),
-  });
-}
 
 const PERIOD_END_FMT = new Intl.DateTimeFormat(undefined, {
   month: "short",

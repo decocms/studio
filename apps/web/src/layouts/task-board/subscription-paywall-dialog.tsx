@@ -12,8 +12,6 @@
  * are purely informational (quota renews on its own / make a new task), so
  * they stay a plain title + description.
  */
-import { useMutation } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { CheckCircle, Loading01 } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
@@ -24,7 +22,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@deco/ui/components/dialog.tsx";
-import { useStudioTools } from "@/lib/studio-tools";
+import { useOpenBillingUrl } from "@/hooks/use-open-billing-url";
 import { useT } from "@/i18n/use-t.ts";
 import type { SubscriptionErrorKind } from "@/components/task-board/is-subscription-error";
 import { KANBAN_PREVIEW_SRC } from "./backlog-paywall";
@@ -43,28 +41,11 @@ export function SubscriptionPaywallDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const t = useT();
-  const studio = useStudioTools();
 
-  const { mutate: subscribe, isPending } = useMutation({
-    mutationFn: async () => {
-      const { url } = await studio.call(
-        "ORGANIZATION_BILLING_CHECKOUT_START",
-        {},
-      );
-      return url;
-    },
-    onSuccess: (url) => {
-      window.open(url, "_blank", "noopener,noreferrer");
-      onOpenChange(false);
-    },
-    onError: (err) => {
-      toast.error(
-        t("taskBoard.subscriptionPaywall.checkoutError", {
-          message: err.message,
-        }),
-      );
-    },
-  });
+  const { mutate: subscribe, isPending } = useOpenBillingUrl(
+    "ORGANIZATION_BILLING_CHECKOUT_START",
+    "taskBoard.subscriptionPaywall.checkoutError",
+  );
 
   if (kind === "trial_exhausted") {
     return (
@@ -121,7 +102,11 @@ export function SubscriptionPaywallDialog({
                 </Button>
                 <Button
                   disabled={isPending}
-                  onClick={() => subscribe()}
+                  onClick={() =>
+                    subscribe(undefined, {
+                      onSuccess: () => onOpenChange(false),
+                    })
+                  }
                   className="order-1 w-full gap-2 sm:order-none sm:w-auto"
                 >
                   {isPending && (
