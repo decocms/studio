@@ -10,10 +10,10 @@ describe("resolveAppNavigateTarget", () => {
   test("navigates to an allowlisted tab", () => {
     expect(
       resolveAppNavigateTarget(navigateBlock("studio://navigate?main=board")),
-    ).toEqual({ isNavigate: true, tab: "board" });
+    ).toEqual({ isNavigate: true, tab: "board", field: null });
     expect(
       resolveAppNavigateTarget(navigateBlock("studio://navigate?main=files")),
-    ).toEqual({ isNavigate: true, tab: "files" });
+    ).toEqual({ isNavigate: true, tab: "files", field: null });
   });
 
   test("drops the request instead of navigating when the tab isn't allowlisted", () => {
@@ -22,19 +22,35 @@ describe("resolveAppNavigateTarget", () => {
       resolveAppNavigateTarget(
         navigateBlock("studio://navigate?main=settings"),
       ),
-    ).toEqual({ isNavigate: true, tab: null });
+    ).toEqual({ isNavigate: true, tab: null, field: null });
   });
 
   test("drops the request when the URI is malformed", () => {
     expect(
       resolveAppNavigateTarget(navigateBlock("studio://navigate??main")),
-    ).toEqual({ isNavigate: true, tab: null });
+    ).toEqual({ isNavigate: true, tab: null, field: null });
   });
 
   test("drops the request when main is missing", () => {
     expect(
       resolveAppNavigateTarget(navigateBlock("studio://navigate")),
-    ).toEqual({ isNavigate: true, tab: null });
+    ).toEqual({ isNavigate: true, tab: null, field: null });
+  });
+
+  test("focuses an allowlisted companion field alongside connect-sources", () => {
+    expect(
+      resolveAppNavigateTarget(
+        navigateBlock("studio://navigate?main=connect-sources&field=github"),
+      ),
+    ).toEqual({ isNavigate: true, tab: "connect-sources", field: "github" });
+  });
+
+  test("drops a non-allowlisted field", () => {
+    expect(
+      resolveAppNavigateTarget(
+        navigateBlock("studio://navigate?main=connect-sources&field=hacked"),
+      ),
+    ).toEqual({ isNavigate: true, tab: "connect-sources", field: null });
   });
 
   test("is not a navigate message for a different scheme", () => {

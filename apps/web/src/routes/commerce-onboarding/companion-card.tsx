@@ -18,7 +18,7 @@ import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { useMCPClient } from "@/sdk";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loading01, SlashCircle01 } from "@untitledui/icons";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { CompanionCardModel } from "./companions-core.ts";
 import {
@@ -114,6 +114,7 @@ export function CompanionCard({
   siteUrl,
   autoOpenConfigFieldKey,
   onAutoOpenConfigHandled,
+  autoOpen,
 }: {
   card: CompanionCardModel;
   connecting: boolean;
@@ -126,6 +127,14 @@ export function CompanionCard({
   siteUrl?: string;
   autoOpenConfigFieldKey: string | null;
   onAutoOpenConfigHandled: () => void;
+  /** Skip the click: immediately open this card's connect/config dialog on
+   *  mount. Used by the "no panel in between" deep link from the commerce
+   *  report (see focusFieldKey in companion-mcps-section.tsx) — forces the
+   *  OAuth/config-form `handleConnect` for a not-yet-linked card, the SA
+   *  dialog directly (below), or the config-form for a satisfied-but-
+   *  unconfigured one (needsConfig doesn't auto-open it on its own — only a
+   *  same-session `autoOpenConfigFieldKey` match does). */
+  autoOpen?: boolean;
 }) {
   const linkedConnectionId = card.linkedConnectionId;
   // GA4/GSC use the shared-SA lane by default; only fall back to the OAuth gear
@@ -139,6 +148,24 @@ export function CompanionCard({
   // can hit this; SA bindings are configured the moment they verify.
   const needsConfig = card.satisfied && !card.configured;
 
+  // Not-yet-linked + autoOpen: trigger the OAuth/config-form connect flow
+  // immediately instead of waiting for a click. The SA lane's own dialog
+  // handles its `autoOpen` prop directly (below) since its "connect" click
+  // only opens a local dialog rather than calling this handler.
+  const autoConnectFired = useRef(false);
+  useEffect(() => {
+    if (
+      autoOpen &&
+      !useSaFlow &&
+      !card.satisfied &&
+      !autoConnectFired.current
+    ) {
+      autoConnectFired.current = true;
+      onConnect();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpen, useSaFlow, card.satisfied]);
+
   const action =
     useSaFlow && saProvider ? (
       <SaConnectAction
@@ -151,6 +178,7 @@ export function CompanionCard({
         disabled={disabled}
         connecting={connecting}
         primary={card.required}
+        autoOpen={autoOpen && !card.satisfied}
       />
     ) : card.satisfied && linkedConnectionId ? (
       needsConfig ? (
@@ -164,10 +192,13 @@ export function CompanionCard({
               contextSiteUrl={siteUrl}
               variant="configure"
               disabled={disabled}
-              autoOpen={shouldAutoOpenCompanionConfig({
-                autoOpenFieldKey: autoOpenConfigFieldKey,
-                card,
-              })}
+              autoOpen={
+                autoOpen ||
+                shouldAutoOpenCompanionConfig({
+                  autoOpenFieldKey: autoOpenConfigFieldKey,
+                  card,
+                })
+              }
               onAutoOpenHandled={onAutoOpenConfigHandled}
             />
           </Suspense>
@@ -250,6 +281,7 @@ function SaConnectAction({
   disabled,
   connecting,
   primary,
+  autoOpen,
 }: {
   card: CompanionCardModel;
   provider: BindProvider;
@@ -260,9 +292,12 @@ function SaConnectAction({
   disabled: boolean;
   connecting: boolean;
   primary?: boolean;
+  /** Open the binding dialog immediately instead of waiting for a click — the
+   *  "no panel in between" deep link from the commerce report. */
+  autoOpen?: boolean;
 }) {
   const t = useT();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(autoOpen ?? false);
   const [savePending, setSavePending] = useState(false);
 
   const handleOpenChange = (next: boolean) => {
