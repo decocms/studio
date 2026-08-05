@@ -653,22 +653,18 @@ export const settings = {
   "settings.aiProviders.moreProvidersSingular": "{count} more provider",
   "settings.aiProviders.moreProvidersPlural": "{count} more providers",
   "settings.billing.title": "Billing",
-  "settings.billing.description":
-    "Manage the organization's auto-task subscription.",
   "settings.billing.autoTasksTitle": "Auto tasks",
   "settings.billing.unlimitedDescription":
     "Auto-task runs are unlimited on this deployment. Tasks you create yourself are never limited either.",
   "settings.billing.autoTasksDescriptionTrial":
-    "3 free lifetime runs, then $50/month for 10 runs per billing cycle. Tasks you create yourself are never limited.",
+    "3 free lifetime runs, then $50/month for 10 runs per billing cycle.",
   "settings.billing.autoTasksDescriptionSubscribed":
     "10 auto-task runs per billing cycle. Tasks you create yourself are never limited.",
   "settings.billing.statusTrial": "Free trial",
   "settings.billing.statusActive": "Active",
   "settings.billing.statusPastDue": "Payment issue",
-  "settings.billing.usageLabel": "{used} of {limit} runs used",
+  "settings.billing.runsUsedLabel": "runs used",
   "settings.billing.renewsOn": "Renews {date}",
-  "settings.billing.cancelHint":
-    "Manage billing opens Stripe's portal — update your card, see invoices, or cancel anytime.",
   "settings.billing.subscribeButton": "Subscribe",
   "settings.billing.manageButton": "Manage billing",
   "settings.billing.checkoutError": "Couldn't start checkout: {message}",

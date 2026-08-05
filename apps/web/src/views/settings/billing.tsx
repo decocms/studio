@@ -205,10 +205,6 @@ function AutoTasksCard() {
           </p>
           <Progress value={usedPct} className="h-1.5" />
         </div>
-
-        <p className="text-xs text-muted-foreground/80 pt-4 border-t border-border/60">
-          {t("settings.billing.cancelHint")}
-        </p>
       </div>
     </SettingsCard>
   );
@@ -222,7 +218,7 @@ export function OrgBillingPage() {
         <Page.Body>
           <SettingsPage>
             <Page.Title>{t("settings.billing.title")}</Page.Title>
-            <SettingsSection description={t("settings.billing.description")}>
+            <SettingsSection>
               <AutoTasksCard />
             </SettingsSection>
           </SettingsPage>
