@@ -144,6 +144,46 @@ function SectionRowContent({
   );
 }
 
+// Width/margin snap instantly (no visible slide) while opacity does the
+// actual animating. On reveal the snap has no delay, so the button is
+// already full-size before opacity starts rising. On hide the snap is
+// delayed until the fade-out finishes, so it's invisible when it happens.
+//
+// This button is toggled on (async render / hidden) — always shown, no
+// hover dependency.
+const ACTION_BUTTON_SHOWN =
+  "w-7 ml-0 opacity-100 [transition:opacity_150ms_ease-out,width_0ms,margin-left_0ms]";
+// No button on this row is toggled on — everyone starts fully collapsed
+// (zero width) so the label gets the space, and hover reveals the whole
+// group. group-has-[:focus-visible] (not group-focus-within) so keyboard
+// Tab reveals it too, without a mouse click sticking it open (clicking a
+// <button> focuses it, but doesn't count as :focus-visible).
+const ACTION_BUTTON_HIDDEN =
+  "w-0 -ml-2 opacity-0 [transition:opacity_150ms_ease-out,width_0ms_150ms,margin-left_0ms_150ms] " +
+  "group-hover:ml-0 group-hover:w-7 group-hover:opacity-100 group-hover:[transition:opacity_150ms_ease-out,width_0ms,margin-left_0ms] " +
+  "group-has-[:focus-visible]:ml-0 group-has-[:focus-visible]:w-7 group-has-[:focus-visible]:opacity-100 group-has-[:focus-visible]:[transition:opacity_150ms_ease-out,width_0ms,margin-left_0ms]";
+// A sibling button on this row IS toggled on, so the whole action-button
+// group already reserves its width — this button just isn't the active
+// one. Stay at full width and only fade opacity, so a sibling toggling on
+// or off never shifts this button (or the label) horizontally.
+const ACTION_BUTTON_RESERVED_HIDDEN =
+  "w-7 ml-0 opacity-0 [transition:opacity_150ms_ease-out,width_0ms_150ms,margin-left_0ms_150ms] " +
+  "group-hover:opacity-100 group-has-[:focus-visible]:opacity-100";
+
+// `reserved`: true when ANY button on this row is toggled on, so the whole
+// group keeps its reserved width even for the buttons that aren't
+// themselves active. `active`: this specific button is toggled on.
+function actionButtonVisibilityClass(reserved: boolean, active: boolean) {
+  return cn(
+    "h-7 shrink-0 overflow-hidden",
+    active
+      ? ACTION_BUTTON_SHOWN
+      : reserved
+        ? ACTION_BUTTON_RESERVED_HIDDEN
+        : ACTION_BUTTON_HIDDEN,
+  );
+}
+
 function sectionRowClassName(section: ParsedSection, selected: boolean) {
   const saved = section.isSavedBlock === true;
   const multivariate = section.isMultivariate === true;
@@ -195,6 +235,8 @@ function SortableSectionItem({
   const isAsyncRender = raw
     ? isLazyResolveType(raw.__resolveType ?? "")
     : false;
+  const isHidden = section.isHidden === true;
+  const reserveActionButtonSpace = isAsyncRender || isHidden;
   const enableAddVariant = canAddSectionVariant(section);
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useSortable({
@@ -246,9 +288,9 @@ function SortableSectionItem({
                   ? t("sectionsEditor.sectionList.disableAsyncRender")
                   : t("sectionsEditor.sectionList.enableAsyncRender")
               }
-              className={cn(
-                "h-7 w-7 shrink-0",
-                isAsyncRender ? "" : "opacity-0 group-hover:opacity-100",
+              className={actionButtonVisibilityClass(
+                reserveActionButtonSpace,
+                isAsyncRender,
               )}
               onClick={(e) => {
                 e.stopPropagation();
@@ -280,15 +322,13 @@ function SortableSectionItem({
               variant="ghost"
               size="icon"
               aria-label={
-                section.isHidden
+                isHidden
                   ? t("sectionsEditor.sectionList.showSection")
                   : t("sectionsEditor.sectionList.hideSection")
               }
-              className={cn(
-                "h-7 w-7 shrink-0",
-                section.isHidden
-                  ? "opacity-100"
-                  : "opacity-0 group-hover:opacity-100",
+              className={actionButtonVisibilityClass(
+                reserveActionButtonSpace,
+                isHidden,
               )}
               onClick={(e) => {
                 e.stopPropagation();
@@ -296,7 +336,7 @@ function SortableSectionItem({
               }}
               onPointerDown={(e) => e.stopPropagation()}
             >
-              {section.isHidden ? (
+              {isHidden ? (
                 <EyeOff className="h-3.5 w-3.5" />
               ) : (
                 <Eye className="h-3.5 w-3.5" />
@@ -304,7 +344,7 @@ function SortableSectionItem({
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom">
-            {section.isHidden
+            {isHidden
               ? t("sectionsEditor.sectionList.showSection")
               : t("sectionsEditor.sectionList.hideSection")}
           </TooltipContent>
@@ -318,7 +358,10 @@ function SortableSectionItem({
             variant="ghost"
             size="icon"
             aria-label={t("sectionsEditor.sectionList.sectionActionsMenu")}
-            className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100"
+            className={cn(
+              actionButtonVisibilityClass(reserveActionButtonSpace, false),
+              "data-[state=open]:ml-0 data-[state=open]:w-7 data-[state=open]:opacity-100 data-[state=open]:[transition:opacity_150ms_ease-out,width_0ms,margin-left_0ms]",
+            )}
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
           >
