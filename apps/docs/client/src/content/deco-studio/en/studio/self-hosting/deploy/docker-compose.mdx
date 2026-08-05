@@ -79,6 +79,10 @@ Set these in `.env` alongside the compose file:
 
 The container runs as user `1001:1001` and persists data to the `studio-data` volume; the bundled Postgres persists to `postgres-data`.
 
+<Callout type="tip">
+  `PORT` must be a valid TCP port (1–65535). Studio validates this at boot and fails fast with a clear error if it's out of range, instead of failing later when the HTTP server tries to bind it.
+</Callout>
+
 ## Using your own PostgreSQL
 
 To point Studio at an external database, use the base `docker-compose.yml` and set `DATABASE_URL`:
