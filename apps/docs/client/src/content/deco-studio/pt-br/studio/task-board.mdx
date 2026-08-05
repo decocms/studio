@@ -36,6 +36,7 @@ Quando o pull request de uma task fica **In Review** (seus checks estão passand
 - **QA Agent** — exercita a própria feature, não só o diff, para verificar se a task realmente resolveu o problema.
 - **Code Reviewer** — revisa o código usando skills de revisão apropriadas para o stack do repositório.
 - **Auto-merge** — quando todos os revisores habilitados aprovam, o pull request é mesclado automaticamente em vez de esperar um humano.
+- **Auto-assign report tasks to the Super Agent** — atribui automaticamente ao Super Agent os cards publicados por um report logo quando são criados, em vez de deixá-los sem responsável. Veja [Findings publicados por um report](#findings-publicados-por-um-report).
 
 Cada revisor que roda aparece como sua própria sessão no card da task, e o veredito dele é publicado no feed de atividade do card:
 
@@ -67,3 +68,5 @@ Alguns cards não são criados por uma pessoa — um report (por exemplo, o **Re
 </Callout>
 
 O agent Task Manager avisa quando o card que você está excluindo veio de um report, para que você saiba que excluí-lo também suprime esse finding a partir de então.
+
+Por padrão, um card publicado por um report fica sem responsável. Ative **Auto-assign report tasks to the Super Agent** em **Settings → Organization → Reviewers & merge** para que esses cards sejam atribuídos automaticamente ao Super Agent assim que forem criados, em vez de esperar alguém pegá-los.
