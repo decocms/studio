@@ -283,6 +283,27 @@ async function fetchOrgFsText(
   return res.text();
 }
 
+/**
+ * A file's text by byte URL, for the Library's card/preview surfaces.
+ *
+ * Absent or unreadable resolves to `null` rather than rejecting: an errored
+ * query ignores `staleTime` and refetches on every mount and window focus, so
+ * one missing `SKILL.md` in a folder of skill cards otherwise re-requests
+ * (and re-logs) forever. `null` caches like any other answer.
+ */
+export function useFileText(url: string, opts?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: KEYS.fileText(url),
+    enabled: opts?.enabled !== false && url !== "",
+    staleTime: 60_000,
+    retry: false,
+    queryFn: async (): Promise<string | null> => {
+      const res = await fetch(url, { credentials: "include" });
+      return res.ok ? await res.text() : null;
+    },
+  });
+}
+
 /** A text file inside a skill folder, collected for inlining into chat. */
 export interface OrgFsSkillFile {
   /** Path relative to the skill dir (e.g. "SKILL.md", "references/style.md"). */
