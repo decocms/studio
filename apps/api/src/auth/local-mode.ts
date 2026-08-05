@@ -7,13 +7,82 @@
  * Only runs when DECOCMS_LOCAL_MODE=true (set by CLI).
  */
 
-import { getDb } from "@/database";
+import { getDb, type StudioDatabase } from "@/database";
+import { symmetricDecrypt } from "better-auth/crypto";
+import { sql } from "kysely";
 import { getSettings } from "../settings";
 import { userInfo } from "os";
 import { auth } from "./index";
 
 const LOCAL_EMAIL_DOMAIN = "localhost.studio";
 const LEGACY_LOCAL_EMAIL_DOMAIN = "localhost.mesh";
+
+/**
+ * Self-heal stale JWKS keys left by a pre-fix local install.
+ *
+ * Before local mode persisted a stable secret (see settings/local-secret.ts),
+ * Better Auth minted a fresh random secret every process start and encrypted
+ * the JWKS private key with it. On the next boot the now-different secret could
+ * not decrypt that key — `GET /api/auth/get-session` 500s and the user is
+ * trapped in an unbreakable login loop. Persisting the secret stops NEW installs
+ * from ever reaching that state, but a DB seeded by a pre-fix version still
+ * carries a JWKS row encrypted under a secret that no longer exists, so those
+ * users stay stuck until the row is cleared.
+ *
+ * So on every local-mode boot, probe each JWKS row with the current secret and
+ * drop any that no longer decrypt. Better Auth transparently regenerates a fresh
+ * key (encrypted with the persisted secret) on the next sign, so `bunx decocms`
+ * self-recovers with no manual DB surgery. Local mode is loopback-only, so
+ * discarding a signing key only invalidates local sessions the broken boot had
+ * already invalidated anyway.
+ *
+ * Returns the number of undecryptable keys removed.
+ */
+export async function healLocalJwks(): Promise<number> {
+  const { betterAuthSecret } = getSettings();
+  // No secret resolved => Better Auth is on its random-per-process path; there
+  // is no stable key to probe against, so healing would be meaningless.
+  if (!betterAuthSecret) return 0;
+  return pruneUndecryptableJwks(getDb().db, betterAuthSecret);
+}
+
+/**
+ * Core of {@link healLocalJwks}, decoupled from the Settings/DB singletons so it
+ * can be exercised against a real Postgres in tests. Probes every JWKS row with
+ * `secret` and deletes the ones that no longer decrypt. Returns the count removed.
+ */
+export async function pruneUndecryptableJwks(
+  db: StudioDatabase["db"],
+  secret: string,
+): Promise<number> {
+  let rows: readonly { id: string; privateKey: string }[];
+  try {
+    const result = await sql<{ id: string; privateKey: string }>`
+      select id, "privateKey" from jwks
+    `.execute(db);
+    rows = result.rows;
+  } catch {
+    // jwks table not created yet (fresh DB, before Better Auth mints the first
+    // key) — nothing to heal.
+    return 0;
+  }
+
+  let removed = 0;
+  for (const row of rows) {
+    try {
+      // Mirror Better Auth's own decrypt path (plugins/jwt/sign): the stored
+      // privateKey is a JSON-encoded encrypted payload keyed by the secret.
+      await symmetricDecrypt({
+        key: secret,
+        data: JSON.parse(row.privateKey),
+      });
+    } catch {
+      await sql`delete from jwks where id = ${row.id}`.execute(db);
+      removed++;
+    }
+  }
+  return removed;
+}
 
 /**
  * Get the local admin password.
