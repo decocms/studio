@@ -54,11 +54,17 @@ describe("prReadyForReview", () => {
     ).toBe(true);
   });
 
-  // `state: null` is what a GitHub fetch failure looks like (NO_LIVE_STATE) —
-  // that must read as "don't dispatch", not "no checks, go ahead".
-  it("is not ready when the live state could not be fetched", () => {
+  // INVERTED. This used to assert that an unfetchable live state reads as
+  // "don't dispatch". It shipped, and it froze the review pipeline: every field
+  // of `NO_LIVE_STATE` is null, so the moment GitHub stopped answering, this
+  // returned false for EVERY card and the sweeper rejected its whole batch
+  // through a `return false` that logs nothing — 45 cards parked In Review with
+  // no error anywhere. Unknown means "we could not ask", not "no"; only a
+  // definite closed/merged/pending/failing blocks. See
+  // `pr-ready-for-review.test.ts` for the full truth table.
+  it("is ready when the live state could not be fetched — unknown must not block", () => {
     expect(prReadyForReview([pr({ state: null, checksStatus: null })])).toBe(
-      false,
+      true,
     );
   });
 });

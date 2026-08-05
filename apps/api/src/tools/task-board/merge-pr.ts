@@ -19,7 +19,17 @@ export async function mergeLinkedPr(
 ): Promise<boolean> {
   const prs = await ctx.storage.taskBoard.listPrs(taskBoardItemId, orgId);
   const pr = prs[0];
-  if (!pr) return false;
+  // Every `return false` below is logged. They used to be silent, and that
+  // silence cost hours: a task with a verified approval and a green, mergeable
+  // PR simply stayed In Review, and the only way to tell WHICH guard rejected it
+  // was to reason backwards from an unchanged row. A refused merge is not a
+  // routine outcome — it strands the card — so say why.
+  if (!pr) {
+    console.warn(
+      `[task-board] merge skipped — no linked PR on ${taskBoardItemId}`,
+    );
+    return false;
+  }
   // Never ship on red or in-flight CI — the ship button hides in this case, but
   // guard the server path too (auto-merge, a stale client). Only a definite
   // failing/pending blocks; an unknown (null) does not.
@@ -34,7 +44,13 @@ export async function mergeLinkedPr(
     owner: pr.repoOwner,
     name: pr.repoName,
   });
-  if (!conn) return false;
+  if (!conn) {
+    console.warn(
+      `[task-board] merge blocked — no active GitHub connection for ` +
+        `${pr.repoOwner}/${pr.repoName} (PR #${pr.number})`,
+    );
+    return false;
+  }
   const client = await clientFromConnection(conn, ctx, true);
   try {
     const result = await client.callTool(
@@ -49,7 +65,18 @@ export async function mergeLinkedPr(
       undefined,
       { timeout: MERGE_TIMEOUT_MS },
     );
-    return !(result as { isError?: boolean })?.isError;
+    // GitHub refusing the merge (branch protection, a required review, a lost
+    // race) comes back as `isError` on an otherwise successful tool call — NOT
+    // as a throw, so the catch below never saw it. Surface the payload: this is
+    // the case that looks identical to "nothing happened" from the outside.
+    if ((result as { isError?: boolean })?.isError) {
+      console.error(
+        `[task-board] merge refused by GitHub on PR #${pr.number}:`,
+        JSON.stringify((result as { content?: unknown })?.content),
+      );
+      return false;
+    }
+    return true;
   } catch (err) {
     console.error("[task-board] merge PR failed", err);
     return false;
