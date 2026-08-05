@@ -76,6 +76,18 @@ O repo picker lista forks junto com seus próprios repositórios, marcados com u
 
 Quando o agent está rodando com um runtime local de code-editor, os botões **Open in VSCode** e **Open in Cursor** aparecem diretamente na barra de abas para acesso com um clique ao repositório na sua máquina. Em outros modos de runtime, as mesmas opções ficam disponíveis no menu de três pontos (⋯) da barra de abas.
 
+### Fast Preview
+
+Para agents respaldados pelo Agentic CMS, **Settings → CMS** agrupa as opções de edição de conteúdo em três subseções:
+
+- **Preview** — uma URL de **preview server** (o endereço do seu site em produção) e um switch de **Fast Preview**. Com o Fast Preview ativado, a aba **Preview** renderiza o draft atual diretamente contra o seu preview server em vez de inicializar o dev server do sandbox — útil para um loop de preview muito mais rápido depois que um preview server é configurado. O switch fica desabilitado até que uma URL de preview server seja definida.
+- **Publishing** — o seletor de publish policy já existente (quem pode publicar mudanças).
+- **Editing** — preferências de edição de conteúdo: **Compact descriptions** (mostrar as descrições dos campos como tooltips em vez de texto inline) e **Auto-open editor** (abrir o CMS automaticamente quando a aba Preview do agent carrega).
+
+<Callout type="tip">
+  O Fast Preview nunca renderiza o seu site publicado — ele sempre mostra o draft do sandbox (ou um estado de "inicializando" enquanto o sandbox provisiona), apenas obtido a partir do seu preview server em vez de um dev server rodando localmente.
+</Callout>
+
 ## Onde um agent roda
 
 Acima do input do chat, ao lado do model picker, está o **runtime picker**. Ele controla *qual harness* conduz o agent.
