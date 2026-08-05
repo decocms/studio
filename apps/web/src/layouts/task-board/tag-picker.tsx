@@ -106,7 +106,7 @@ export function TagPickerContent({
                   aria-label={t("taskBoard.taskDialog.deleteTagAriaLabel", {
                     name: tag.name,
                   })}
-                  className="flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground opacity-0 hover:bg-background hover:text-destructive group-hover:opacity-100"
+                  className="flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground opacity-0 hover:bg-background hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
                   onClick={(e) => {
                     e.stopPropagation();
                     onDelete(tag.id);

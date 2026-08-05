@@ -372,7 +372,7 @@ export function TaskBoardItemDialog({
                     aria-label={t(
                       "taskBoard.taskDialog.copyDescriptionAriaLabel",
                     )}
-                    className="absolute right-0 top-0 size-7 rounded-md border border-border bg-card text-muted-foreground opacity-0 shadow-sm transition-opacity hover:text-foreground group-hover:opacity-100"
+                    className="absolute right-0 top-0 size-7 rounded-md border border-border bg-card text-muted-foreground opacity-0 shadow-sm transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
                     onClick={() => handleCopy(description)}
                   >
                     {copied ? <Check size={14} /> : <Copy01 size={14} />}
