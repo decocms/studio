@@ -67,6 +67,18 @@ Cada revisor que roda aparece como sua própria sessão no card da task, e o ver
   que você já tenha definido explicitamente.
 </Callout>
 
+Cada revisor roda com sua própria persona, não a do Super Agent — mesmo usando o modelo e as tools MCP do Super Agent, suas instruções de sistema descrevem o trabalho do revisor, não o org agent que escreveu o PR sob revisão. O conjunto de tools nativas do revisor também é restrito, para que ele só possa revisar, não enviar para produção:
+
+- **QA Agent** não pode editar arquivos existentes, mas mantém `Write` para arquivos descartáveis criados para exercitar a mudança (um script curl, um teste temporário).
+- **Code Reviewer** não pode escrever nem editar nenhum arquivo — ele lê o diff e raciocina sobre ele.
+- Nenhum dos dois revisores pode enviar (push) commits ou fazer merge do pull request; ambos mantêm acesso de leitura via `Bash` e `git`/`gh` para inspecionar e executar a mudança.
+
+<Callout type="info">
+  Essas restrições são aplicadas no nível das tools, não apenas via prompt —
+  um revisor não consegue de fato chamar as tools desabilitadas, mesmo que
+  tente.
+</Callout>
+
 ## Re-executando tasks
 
 Qualquer card que esteja delegado ao Super Agent e ainda não esteja **Done** mostra uma ação **Re-run** — tanto no próprio card quanto em lote, pela barra de seleção quando você seleciona vários cards.
