@@ -7,6 +7,7 @@ import {
   useSuspenseQueries,
   useSuspenseQuery,
 } from "@tanstack/react-query";
+import { useSearch } from "@tanstack/react-router";
 import { PROVIDER_BY_BINDING_TYPE } from "./companion-forms/sa-binding-copy.ts";
 import { COMMERCE_COMPANION_MCPS } from "./companions.ts";
 import {
@@ -84,10 +85,16 @@ export function useCommerceCompanions({
     : null;
   // Live schema wins; fall back to the known companion set while it loads or
   // when it's unreachable, so the section is never empty due to a CD proxy 401.
-  const requirements =
+  // Shopify is gated behind an explicit `?shopify` search param while it's
+  // being rolled out; without it the card never renders.
+  const { shopify: shopifyParam } = useSearch({ strict: false }) as {
+    shopify?: unknown;
+  };
+  const requirements = (
     schemaRequirements && schemaRequirements.length > 0
       ? schemaRequirements
-      : FALLBACK_COMPANION_REQUIREMENTS;
+      : FALLBACK_COMPANION_REQUIREMENTS
+  ).filter((r) => r.bindingType !== "shopify" || shopifyParam != null);
   const bindingTypes = requirements.map((r) => r.bindingType);
   const registryAppIds = requirements
     .map((r) => COMMERCE_COMPANION_MCPS[r.bindingType]?.registryAppId)
