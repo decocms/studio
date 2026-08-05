@@ -1983,6 +1983,7 @@ export interface StudioToolIO {
           resource: string | null;
         }
       >;
+      claimed: boolean;
     };
   };
   COLLECTION_VIRTUAL_MCP_CREATE: {

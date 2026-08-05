@@ -42,6 +42,9 @@ interface ConnectionStatusResult {
       resource?: string | null;
     }
   >;
+  /** False ⇒ the site isn't claimed for this org, so providers is empty
+   *  because the status is unreadable — NOT because nothing is connected. */
+  claimed?: boolean;
 }
 
 export function useCommerceCompanions({
@@ -54,7 +57,7 @@ export function useCommerceCompanions({
   org: CompanionOrg;
   cdConnectionId: string;
   siteUrl?: string;
-}): { cards: CompanionCardModel[] } {
+}): { cards: CompanionCardModel[]; saStatusUnavailable: boolean } {
   // 1) CD's live config schema (on the CD connection's OWN client).
   const cdClient = useMCPClient({
     connectionId: cdConnectionId,
@@ -275,6 +278,11 @@ export function useCommerceCompanions({
       saBindings[bindingType] = { resource: p.resource ?? null };
     }
   }
+  // The status couldn't actually be read (query failed, or the site isn't
+  // claimed for this org): an existing SA binding would render as disconnected.
+  // Callers must surface a warning and not hard-gate on SA cards.
+  const saStatusUnavailable =
+    !!siteUrl && (statusQuery.isError || statusQuery.data?.claimed === false);
 
   const cards = buildCompanionCards({
     requirements,
@@ -287,5 +295,5 @@ export function useCommerceCompanions({
     saBindings,
   });
 
-  return { cards };
+  return { cards, saStatusUnavailable };
 }

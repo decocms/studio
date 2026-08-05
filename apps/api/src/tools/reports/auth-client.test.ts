@@ -492,12 +492,13 @@ describe("fetchCommerceDiscoveryConnectionStatus", () => {
       },
     );
 
-    expect(out.ga4).toEqual({
+    expect(out.claimed).toBe(true);
+    expect(out.providers.ga4).toEqual({
       connected: true,
       via: "sa",
       resource: "123456789",
     });
-    expect(out.gsc?.connected).toBe(false);
+    expect(out.providers.gsc?.connected).toBe(false);
     expect(captured).toEqual([
       {
         method: "GET",
@@ -506,7 +507,7 @@ describe("fetchCommerceDiscoveryConnectionStatus", () => {
     ]);
   });
 
-  test("treats a 409 (never upgraded) as everything disconnected, not a throw", async () => {
+  test("flags a 409 (not claimed for this org) as claimed:false, not a throw", async () => {
     const out = await fetchCommerceDiscoveryConnectionStatus(
       { siteUrl: "https://example.com", orgId: "org_123" },
       {
@@ -516,6 +517,6 @@ describe("fetchCommerceDiscoveryConnectionStatus", () => {
           Response.json({ error: "not_upgraded" }, { status: 409 }),
       },
     );
-    expect(out).toEqual({});
+    expect(out).toEqual({ providers: {}, claimed: false });
   });
 });

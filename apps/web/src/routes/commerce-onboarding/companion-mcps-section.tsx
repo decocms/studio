@@ -132,6 +132,7 @@ function CompanionMcpsSectionContent({
   onReadinessChange?: (hasConnectedSource: boolean) => void;
   focusFieldKey?: string;
 }) {
+  const t = useT();
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id ?? "";
   const normalizedSite = siteUrl ? normalizeReportsSiteUrl(siteUrl) : null;
@@ -149,7 +150,7 @@ function CompanionMcpsSectionContent({
     orgSlug: org.slug,
   });
 
-  const { cards } = useCommerceCompanions({
+  const { cards, saStatusUnavailable } = useCommerceCompanions({
     selfClient,
     org,
     cdConnectionId,
@@ -184,10 +185,14 @@ function CompanionMcpsSectionContent({
   // so a config that never offers Analytics can't trap the user. Derived during
   // render (not an effect) so the parent's button re-enables the same pass a
   // source becomes ready.
+  // When the SA connection status couldn't be read, an existing GA4/GSC binding
+  // renders as disconnected — fail open (with the warning below) instead of
+  // trapping a user who already connected behind a gate they can't satisfy.
   const ready =
-    requiredCards.length > 0
+    saStatusUnavailable ||
+    (requiredCards.length > 0
       ? requiredCards.every(isReady)
-      : cards.length === 0 || cards.some(isReady);
+      : cards.length === 0 || cards.some(isReady));
   onReadinessChange?.(ready);
 
   // Empty: nothing to connect → render nothing (the parent footer still shows
@@ -249,6 +254,14 @@ function CompanionMcpsSectionContent({
         {connectError && (
           <p role="alert" className="mb-3 text-sm text-destructive">
             {connectError}
+          </p>
+        )}
+        {saStatusUnavailable && (
+          <p
+            role="status"
+            className="mb-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-foreground"
+          >
+            {t("routes.commerceOnboarding.companionSection.statusUnavailable")}
           </p>
         )}
         {/* Single list, required source(s) first — the "Obrigatório" pill on the
