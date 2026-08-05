@@ -6,7 +6,10 @@ import { synthesizedErrorMessageId } from "@/api/routes/decopilot/message-ids";
 import type { WithLastAckSeq } from "@/api/routes/decopilot/ingest-run";
 import { buildRunStatusChunk } from "@/api/routes/decopilot/run-status-stage";
 import type { StudioContext } from "@/core/studio-context";
-import { acquireHostedRunSlot, hostedRunStats } from "./hosted-run-concurrency";
+import {
+  acquireHostedRunSlot,
+  HOSTED_RUN_CAPS,
+} from "./hosted-run-concurrency";
 import {
   buildTerminalErrorChunks,
   hostedChildWorkflowId,
@@ -359,10 +362,13 @@ describe("a run queued at the concurrency cap", () => {
   test("publishes waiting-capacity while parked, and starts the loop only once a slot frees", async () => {
     // Saturate the real gate by holding every slot it has, so the run under
     // test genuinely parks (no env/module games — the cap is read once at
-    // import time).
+    // import time). The IN-PROCESS gate specifically: the fixture carries no
+    // `harnessId`, so the run under test is not sandboxed and spends that
+    // budget. `hostedRunStats().max` is the pod total across both gates and
+    // would over-acquire here.
     const held = await Promise.all(
-      Array.from({ length: hostedRunStats().max }, () =>
-        acquireHostedRunSlot(),
+      Array.from({ length: HOSTED_RUN_CAPS.inProcess }, () =>
+        acquireHostedRunSlot({ harnessId: "decopilot" }),
       ),
     );
     try {

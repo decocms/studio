@@ -122,6 +122,10 @@ export interface Settings {
    *  (DECOPILOT_MAX_CONCURRENT_HOSTED_RUNS). Excess runs park and start as
    *  slots free — see `hosted-run-concurrency.ts`. */
   decopilotMaxConcurrentHostedRuns: number;
+  /** Same, for a run whose agent loop executes in its own SANDBOX pod
+   *  (SANDBOX_MAX_CONCURRENT_HOSTED_RUNS). Much higher than the in-process cap
+   *  because this pod only proxies the stream — see `hosted-run-concurrency.ts`. */
+  sandboxMaxConcurrentHostedRuns: number;
   // Object Storage (S3-compatible)
   s3Endpoint: string | undefined;
   s3Bucket: string | undefined;

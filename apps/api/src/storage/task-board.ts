@@ -476,6 +476,31 @@ export class TaskBoardStorage {
    * so a run-metadata-less caller (a PR opened on a re-prompted thread) can
    * resolve its task the same way the thread-finish/reopen hooks do.
    */
+  /**
+   * Super Agent tasks parked In Review, oldest-touched first — the review
+   * sweeper's work list (see `review-sweeper.ts`).
+   *
+   * Cross-org by design: the sweeper is a process-level reconciler with no
+   * request org, and each item carries its own so the caller can build the
+   * right context. Oldest first so a long backlog drains fairly instead of the
+   * newest cards starving the ones that have been stuck longest, and bounded by
+   * `limit` so one tick can't scan an unbounded board.
+   */
+  async listItemsPendingReview(
+    limit: number,
+  ): Promise<{ id: string; organizationId: string }[]> {
+    const rows = await this.db
+      .selectFrom("task_board_items")
+      .select(["id", "organization_id as organizationId"])
+      .where("status", "=", "in_review")
+      .where("assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID)
+      .where("dismissed_at", "is", null)
+      .orderBy("updated_at", "asc")
+      .limit(limit)
+      .execute();
+    return rows;
+  }
+
   async linkedTaskIds(
     threadId: string,
     organizationId: string,
@@ -563,20 +588,37 @@ export class TaskBoardStorage {
     for (const taskId of await this.linkedTaskIds(threadId, organizationId)) {
       const item = await this.getById(taskId, organizationId);
       if (!item || !shouldAdvanceToReview(item)) continue;
-      moved.push(
-        await this.update(
-          taskId,
-          organizationId,
-          { status: "in_review" },
-          item.updatedBy,
-        ),
+      // The status flip is a CONDITIONAL update guarded on the status we just
+      // read, so exactly one concurrent caller can win it.
+      //
+      // It used to be an unconditional `update()`, and the read-then-write above
+      // is not atomic: `recoverStalledTasks` runs fire-and-forget on EVERY
+      // `TASK_BOARD_ITEM_LIST` over the list that read already loaded, so N
+      // overlapping board reads (multiple tabs, a refocus burst, the Super
+      // Agent calling the tool itself) each saw `in_progress` and each wrote.
+      // One prod item collected 42 of these; another took 27 inside 112 ms.
+      //
+      // The duplicate ROW was not the real damage — the duplicate ACTIVITY was.
+      // `reviewCycleStart` reads the newest `status_changed→in_review` as the
+      // start of the current review cycle, so every redundant stamp invalidated
+      // every approval recorded before it: the verified-approval gate stopped
+      // seeing a complete set, auto-merge never fired, and the card sat In
+      // Review forever. In prod all 13 items holding an approval had been
+      // stranded this way, one of them 15 seconds after approving.
+      const advanced = await this.advanceToReviewIfInProgress(
+        taskId,
+        organizationId,
+        item.updatedBy,
       );
+      if (!advanced) continue;
+      moved.push(advanced);
       // Record the transition — the reviewer flow keys its "current review
       // cycle" off the newest `status_changed→in_review` activity, and a
       // re-review (Super Agent pushed a fix to the same PR, no new PR opened)
       // re-enters In Review only through THIS path. Without the activity row
       // the cycle boundary would stay stale and reviewers would never re-run.
-      // Machine-driven, hence a null actor. Best-effort.
+      // Machine-driven, hence a null actor. Best-effort. Reached only by the
+      // caller that won the flip above, so it writes exactly once per cycle.
       await this.recordActivity({
         taskBoardItemId: taskId,
         action: "status_changed",
@@ -587,6 +629,38 @@ export class TaskBoardStorage {
       );
     }
     return moved;
+  }
+
+  /**
+   * Flip a task to In Review only if it is still `in_progress`, returning the
+   * updated item or null when another caller already moved it.
+   *
+   * The `where status = 'in_progress'` predicate is the whole point: it makes
+   * the advance idempotent under concurrency, which the plain `update()` is not.
+   * See the caller above for what the duplicates cost.
+   */
+  async advanceToReviewIfInProgress(
+    id: string,
+    organizationId: string,
+    by: string,
+  ): Promise<TaskBoardItem | null> {
+    const row = await this.db
+      .updateTable("task_board_items")
+      .set({
+        status: "in_review",
+        updated_by: by,
+        updated_at: new Date().toISOString(),
+      })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .where("status", "=", "in_progress")
+      .returningAll()
+      .executeTakeFirst();
+
+    if (!row) return null;
+    const item = this.itemFromDbRow(row);
+    await this.attachRefs([item], organizationId);
+    return item;
   }
 
   /**

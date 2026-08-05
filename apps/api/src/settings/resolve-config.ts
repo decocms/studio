@@ -351,6 +351,11 @@ export function resolveConfig(
       envVars.DECOPILOT_MAX_CONCURRENT_HOSTED_RUNS,
       3,
     ),
+    sandboxMaxConcurrentHostedRuns: toPositiveIntegerOrDefault(
+      "SANDBOX_MAX_CONCURRENT_HOSTED_RUNS",
+      envVars.SANDBOX_MAX_CONCURRENT_HOSTED_RUNS,
+      12,
+    ),
     // Object Storage (S3-compatible)
     s3Endpoint: envVars.S3_ENDPOINT,
     s3Bucket: envVars.S3_BUCKET,
