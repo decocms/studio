@@ -82,6 +82,7 @@ function FlagToggle({
         <Switch
           checked={enabled}
           disabled={setFlag.isPending}
+          aria-label={t(titleKey)}
           onCheckedChange={(next) =>
             setFlag.mutate(flag, next, {
               onError: () => toast.error(t("settings.review.updateError")),
