@@ -69,3 +69,29 @@ Some cards aren't created by a person — a report (for example, the **Report Ag
 The Task Manager agent tells you when a card you're deleting came from a report, so you know deleting it also suppresses that finding going forward.
 
 By default, a card pushed by a report lands unassigned. Turn on **Auto-assign report tasks to the Super Agent** under **Settings → Organization → Reviewers & merge** to have these cards delegated to the Super Agent automatically as soon as they're created, instead of waiting for someone to pick them up.
+
+## Billing and auto-task quota
+
+Delegating a task to the **Super Agent** — from the task dialog, or by assigning a card to it from a lane or the assignee picker — draws from your organization's auto-task quota. Tasks you create and work on yourself are never limited.
+
+- **Free trial**: every organization gets **3 free lifetime auto-task runs** before a subscription is required.
+- **Subscribed**: **$50/month** for **10 auto-task runs per billing cycle**. The quota renews automatically at the start of each cycle.
+- **Per-task cap**: any single task can be re-run up to **5 times**, regardless of subscription status.
+
+When a delegation is blocked by quota, a dialog explains why:
+
+- **Trial used up** — shows the subscription benefits and a **Subscribe** button that opens Stripe-hosted checkout in a new tab.
+- **Monthly quota used up** — informational only; the quota renews on its own at the next billing cycle.
+- **Task re-run limit reached** — informational only; create a new task to keep going.
+
+<Callout type="info">
+  This paywall never blocks you from creating or editing tasks yourself — it only applies to Super Agent delegation.
+</Callout>
+
+### Managing billing
+
+Go to **Settings → Billing** to see your organization's current status (**Free trial**, **Active**, or **Payment issue**), runs used this cycle, and the renewal date. From there you can subscribe or, once subscribed, open the Stripe-hosted billing portal to manage your payment method or cancel.
+
+<Callout type="tip">
+  Self-hosted deployments don't enforce this quota by default — auto-task runs are unlimited unless the deployment operator explicitly enables billing enforcement. See [Docker Compose](/en/studio/self-hosting/deploy/docker-compose) for the relevant environment variables.
+</Callout>

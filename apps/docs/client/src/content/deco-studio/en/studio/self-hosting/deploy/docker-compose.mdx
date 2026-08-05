@@ -68,9 +68,13 @@ Set these in `.env` alongside the compose file:
 | `DATABASE_URL` | see below | PostgreSQL connection string |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `studio_user` / — / `studio_db` | Credentials for the bundled Postgres (postgres compose file only) |
 | `STUDIO_TOPUP_FEE_PERCENT` | `15` | Percentage fee applied to AI Gateway credit top-ups. Accepts `0`–`100`; set to `0` to waive the fee entirely for a self-hosted deployment |
+| `STUDIO_TASK_QUOTA_ENFORCED` | `false` | Gate Super Agent task delegation behind the auto-task subscription (see [Task Board](/en/studio/task-board#billing-and-auto-task-quota)). Unset or `false` means auto-task runs are unlimited — the default for self-hosted deployments |
+| `STUDIO_FREE_TASKS` | `3` | Lifetime free auto-task runs before a subscription is required. Only relevant when `STUDIO_TASK_QUOTA_ENFORCED` is set |
+| `STUDIO_MONTHLY_TASKS` | `10` | Auto-task runs allowed per billing cycle once subscribed. Only relevant when `STUDIO_TASK_QUOTA_ENFORCED` is set |
+| `STUDIO_MAX_RUNS_PER_TASK` | `5` | Maximum re-runs allowed for a single task, regardless of subscription status. Only relevant when `STUDIO_TASK_QUOTA_ENFORCED` is set |
 
 <Callout type="tip">
-  `STUDIO_TOPUP_FEE_PERCENT` only matters if you enable Stripe-backed billing (`STRIPE_SECRET_KEY` / `STRIPE_ORG_PRICE_ID`). Most self-hosted deployments don't set these and can ignore it.
+  `STUDIO_TOPUP_FEE_PERCENT` and the `STUDIO_TASK_QUOTA_ENFORCED` family only matter if you enable Stripe-backed billing (`STRIPE_SECRET_KEY` / `STRIPE_ORG_PRICE_ID`). Most self-hosted deployments don't set these and can ignore them — auto-task runs and credit top-ups stay unmetered.
 </Callout>
 
 The container runs as user `1001:1001` and persists data to the `studio-data` volume; the bundled Postgres persists to `postgres-data`.
