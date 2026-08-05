@@ -118,8 +118,15 @@ function emitSqlForSite(organizationId: string, slug: string): string {
     `VALUES (${s}, ${o}, 'deco-import', ${actor}, ${actor})`,
     `ON CONFLICT (slug) DO NOTHING;`,
     ``,
+    // Repoint storage too: a legacy row points at the OLD assets bucket, and
+    // the STS session policy only ever grants `<tenantBucket>/<slug>/*`.
+    // Flipping credential_type alone would leave a config that looks managed
+    // but whose minted credentials can't reach its own bucket.
     `UPDATE org_file_configs`,
     `   SET credential_type = 'managed', site_slug = ${s}, refresh_url = NULL,`,
+    `       bucket = ${sql(d.bucket)}, region = ${sql(d.region)}, endpoint = ${endpoint},`,
+    `       force_path_style = false, prefix = ${sql(d.prefix)},`,
+    `       public_url_base = ${sql(d.publicUrlBase)},`,
     `       updated_at = now(), updated_by = ${actor}`,
     ` WHERE organization_id = ${o}`,
     `   AND lower(name) = lower(${name})`,
@@ -290,6 +297,7 @@ async function main() {
 
       // 2. Ensure a managed file config for the slug.
       const configName = `${FILE_CONFIG_NAME_PREFIX}${site.name}`;
+      const descriptor = tenantStorageDescriptor(slug);
       const existing = await orgFileConfigs.list(organizationId);
       const match = existing.find(
         (c) => c.name.toLowerCase() === configName.toLowerCase(),
@@ -301,13 +309,22 @@ async function main() {
       }
 
       if (match) {
-        // Convert a legacy sts-session (admin bridge) config to managed.
+        // Convert a legacy sts-session (admin bridge) config to managed —
+        // storage fields included, since the legacy row points at the OLD
+        // assets bucket while the STS session policy only ever grants
+        // `<tenantBucket>/<slug>/*`.
         if (dryRun) {
           console.log(`  would convert config "${configName}" → managed`);
         } else {
           await orgFileConfigs.update({
             id: match.id,
             organizationId,
+            bucket: descriptor.bucket,
+            region: descriptor.region,
+            endpoint: descriptor.endpoint,
+            forcePathStyle: descriptor.forcePathStyle,
+            prefix: descriptor.prefix,
+            publicUrlBase: descriptor.publicUrlBase,
             siteSlug: slug,
             refreshUrl: null,
             credentials: { type: "managed" },
@@ -319,7 +336,6 @@ async function main() {
       }
 
       // No config yet — create one from the managed tenant descriptor.
-      const descriptor = tenantStorageDescriptor(slug);
       if (dryRun) {
         console.log(`  would create managed config "${configName}"`);
       } else {
