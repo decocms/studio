@@ -37,6 +37,19 @@ Any card in **Triage** or **To Do** that isn't already assigned to the Super Age
   changed something — Auto-fix and New chat don't need a dirty form to work.
 </Callout>
 
+## Re-running tasks
+
+Any card that's delegated to the Super Agent and not yet **Done** shows a **Re-run** action — on the card itself, and in bulk from the selection bar when you select multiple cards.
+
+- Selecting one or more cards adds a **Re-run** button to the selection bar, next to **Auto-fix**.
+- It's only enabled when every selected card is delegated to the Super Agent and not Done — if even one selected card doesn't qualify, the action doesn't fire for the rest of the selection either.
+- Confirming starts a fresh run on each selected task and stops any run still in progress on it. This "takeover" warning is shown unconditionally for a selection, since the board can't tell a streaming run from a stuck one across multiple cards at once.
+- Each task in the selection still counts against its own [per-task re-run cap](#billing-and-auto-task-quota) (5 re-runs per task).
+
+<Callout type="info">
+  There's no bulk re-run API call — each selected task fires its own re-run request individually. If one hits the auto-task quota or a paywall, that error surfaces once rather than once per task.
+</Callout>
+
 ## Automated review before shipping
 
 Once a task's pull request is **In Review** (its checks are passing, or it has none), Studio can run automated reviewers on it before a human ships the change. Configure this under **Settings → Organization → Reviewers & merge**:
