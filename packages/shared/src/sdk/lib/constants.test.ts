@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   StudioPackAgentId,
-  getWellKnownCommerceDiscoveryVirtualMCP,
+  getWellKnownReportVirtualMCP,
   isStudioPackAgent,
 } from "./constants";
 
@@ -36,10 +36,10 @@ describe("isStudioPackAgent", () => {
   });
 });
 
-describe("getWellKnownCommerceDiscoveryVirtualMCP", () => {
+describe("getWellKnownReportVirtualMCP", () => {
   test("pins the Commerce Discovery agent to the org sidebar", () => {
-    expect(
-      getWellKnownCommerceDiscoveryVirtualMCP("org_xyz", "conn_xyz").pinned,
-    ).toBe(true);
+    expect(getWellKnownReportVirtualMCP("org_xyz", "conn_xyz").pinned).toBe(
+      true,
+    );
   });
 });
