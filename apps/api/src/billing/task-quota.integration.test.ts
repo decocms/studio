@@ -292,6 +292,73 @@ describe("task quota (integration)", () => {
     );
   });
 
+  // Per-org allowances (migration 164). Proven against real Postgres because
+  // the whole point is a COLUMN the claim path reads — an in-memory fake would
+  // happily accept one the update whitelist silently drops.
+  it("an org's own allowance beats the deployment default, same trial bucket", async () => {
+    const org = "org_own_allowance";
+    await seedOrg(org, true);
+    // CONFIG.freeTaskExecutions is 2; this tenant gets 5.
+    await database.db
+      .updateTable("organization_billing")
+      .set({ free_task_executions: 5 })
+      .where("organization_id", "=", org)
+      .execute();
+    const ctxA = ctxFor(org);
+    const tasks = await Promise.all(
+      Array.from({ length: 5 }, () => makeTask("system", org)),
+    );
+    for (const task of tasks) await claimTaskExecution(ctxA, task, CONFIG);
+
+    // Same bucket as any unsubscribed org — only the ceiling moved.
+    expect(await billing.countTaskClaims(org, "trial")).toBe(5);
+    // A bigger allowance is still an allowance: it runs out.
+    await expect(
+      claimTaskExecution(ctxA, await makeTask("system", org), CONFIG),
+    ).rejects.toThrow(/^\[SUBSCRIPTION_REQUIRED\].*free task executions/);
+  });
+
+  it("the monthly allowance is separate from the free one", async () => {
+    const org = "org_own_monthly";
+    await seedOrg(org, true);
+    const periodEnd = new Date("2026-12-01T00:00:00.000Z");
+    await billing.updateStripeState(org, {
+      status: "active",
+      currentPeriodEnd: periodEnd,
+    });
+    // Only the monthly column is set — CONFIG.monthlyTaskExecutions is 3.
+    await database.db
+      .updateTable("organization_billing")
+      .set({ monthly_task_executions: 4 })
+      .where("organization_id", "=", org)
+      .execute();
+    const ctxM = ctxFor(org);
+    const tasks = await Promise.all(
+      Array.from({ length: 4 }, () => makeTask("system", org)),
+    );
+    for (const task of tasks) await claimTaskExecution(ctxM, task, CONFIG);
+
+    expect(
+      await billing.countTaskClaims(org, `sub:${periodEnd.toISOString()}`),
+    ).toBe(4);
+    await expect(
+      claimTaskExecution(ctxM, await makeTask("system", org), CONFIG),
+    ).rejects.toThrow(/^\[SUBSCRIPTION_REQUIRED\].*monthly task executions/);
+  });
+
+  it("rejects a non-positive allowance at the database", async () => {
+    const org = "org_allowance_zero";
+    await seedOrg(org, true);
+    // 0 would read as "unset" to a careless caller while meaning "block them".
+    await expect(
+      database.db
+        .updateTable("organization_billing")
+        .set({ free_task_executions: 0 })
+        .where("organization_id", "=", org)
+        .execute(),
+    ).rejects.toThrow();
+  });
+
   // The dispatch caller has to know whether the slot it charged is its own to
   // undo: only a FRESH claim is. A "rerun" rides a slot an earlier run paid for
   // (and may have shipped a PR from), so undoing it would refund real work.

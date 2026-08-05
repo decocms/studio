@@ -1264,6 +1264,20 @@ export interface OrganizationBillingTable {
     Date | string | null | undefined,
     Date | string | null
   >;
+  /** Per-org allowances (migration 164) overriding the deployment-wide
+   *  `STUDIO_FREE_TASKS` / `STUDIO_MONTHLY_TASKS`. NULL = use the default.
+   *  Operator-set only — never writable through a tool, or an org admin could
+   *  raise its own limit. */
+  free_task_executions: ColumnType<
+    number | null,
+    number | null | undefined,
+    number | null
+  >;
+  monthly_task_executions: ColumnType<
+    number | null,
+    number | null | undefined,
+    number | null
+  >;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }

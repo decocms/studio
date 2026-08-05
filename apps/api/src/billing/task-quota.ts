@@ -24,6 +24,10 @@
  * is being paid, else the subscription's current period end, which
  * invoice.paid refreshes, minting a fresh bucket each cycle.
  *
+ * Both allowances default from the deployment env and are overridable per org
+ * (`organization_billing.free_task_executions` / `monthly_task_executions`,
+ * migration 164) for a tenant on different terms.
+ *
  * Dormant unless STUDIO_TASK_QUOTA_ENFORCED is set (self-hosted stays free).
  */
 
@@ -90,9 +94,24 @@ export interface TaskQuotaState {
  * period end, and the invoice.paid that carries one can arrive before the
  * bind (acked as "unknown subscription", never redelivered), so the window
  * can last a full cycle. Paywalling a customer who just paid is worse.
+ *
+ * `limits` are the DEPLOYMENT defaults; the org's own columns (migration 164)
+ * win when set, so one tenant can have a different ceiling without changing
+ * anything about which bucket it lands in.
  */
 export function taskQuotaState(
-  billing: Pick<OrganizationBillingRow, "status" | "currentPeriodEnd"> | null,
+  billing:
+    | (Pick<OrganizationBillingRow, "status" | "currentPeriodEnd"> &
+        // Optional so a caller that omits them falls back to the deployment
+        // default — the safe direction. Production passes the whole row, where
+        // both columns are always present.
+        Partial<
+          Pick<
+            OrganizationBillingRow,
+            "freeTaskExecutions" | "monthlyTaskExecutions"
+          >
+        >)
+    | null,
   limits: { freeTaskExecutions: number; monthlyTaskExecutions: number },
 ): TaskQuotaState {
   if (subscriptionInGoodStanding(billing)) {
@@ -100,13 +119,13 @@ export function taskQuotaState(
       periodKey: billing?.currentPeriodEnd
         ? `sub:${billing.currentPeriodEnd.toISOString()}`
         : "sub:pending",
-      limit: limits.monthlyTaskExecutions,
+      limit: billing?.monthlyTaskExecutions ?? limits.monthlyTaskExecutions,
       exhaustedReason: "monthly_exhausted",
     };
   }
   return {
     periodKey: "trial",
-    limit: limits.freeTaskExecutions,
+    limit: billing?.freeTaskExecutions ?? limits.freeTaskExecutions,
     exhaustedReason: "trial_exhausted",
   };
 }

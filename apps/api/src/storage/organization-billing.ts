@@ -16,6 +16,8 @@ function toBillingRow(
     stripeSubscriptionId: row.stripe_subscription_id,
     currentPeriodEnd: row.current_period_end,
     lastStripeEventAt: row.last_stripe_event_at,
+    freeTaskExecutions: row.free_task_executions,
+    monthlyTaskExecutions: row.monthly_task_executions,
   };
 }
 
@@ -28,6 +30,10 @@ export interface OrganizationBillingRow {
   /** Newest applied Stripe event's `created` time — the webhook skips
    *  deliveries older than this so out-of-order events can't regress state. */
   lastStripeEventAt: Date | null;
+  /** Operator-set per-org allowances replacing the deployment defaults
+   *  (migration 164). null = use the default. */
+  freeTaskExecutions: number | null;
+  monthlyTaskExecutions: number | null;
 }
 
 export class OrganizationBillingStorage {
