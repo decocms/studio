@@ -183,6 +183,9 @@ export const taskBoard = {
     "The Super Agent will start a fresh run on this task.",
   "taskBoard.rerun.descriptionTakeover":
     "The Super Agent will start a fresh run on this task. A run is still open on it — that one will be stopped.",
+  "taskBoard.rerun.titleMany": "Re-run {count} tasks?",
+  "taskBoard.rerun.descriptionMany":
+    "The Super Agent will start a fresh run on each of the {count} selected tasks. Any run still open on them will be stopped.",
   "taskBoard.rerun.cancel": "Cancel",
   "taskBoard.rerun.confirm": "Re-run",
   "taskBoard.subscriptionPaywall.trialTitle": "Subscribe to keep auto-fixing",

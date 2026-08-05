@@ -38,28 +38,37 @@ export function hasUnfinishedRun(item: TaskBoardItem): boolean {
 }
 
 export function RerunDialog({
-  item,
+  items,
   pending,
   onOpenChange,
   onConfirm,
 }: {
-  /** The task to re-run, or null when the dialog is closed. */
-  item: TaskBoardItem | null;
+  /** The tasks to re-run; empty when the dialog is closed. One card or a whole
+   *  selection — the only difference is the copy. */
+  items: TaskBoardItem[];
   pending?: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
 }) {
   const t = useT();
+  const count = items.length;
+  const takeover = items.some(hasUnfinishedRun);
 
   return (
-    <Dialog open={item !== null} onOpenChange={onOpenChange}>
+    <Dialog open={count > 0} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{t("taskBoard.rerun.title")}</DialogTitle>
+          <DialogTitle>
+            {count > 1
+              ? t("taskBoard.rerun.titleMany", { count })
+              : t("taskBoard.rerun.title")}
+          </DialogTitle>
           <DialogDescription>
-            {item && hasUnfinishedRun(item)
-              ? t("taskBoard.rerun.descriptionTakeover")
-              : t("taskBoard.rerun.description")}
+            {count > 1
+              ? t("taskBoard.rerun.descriptionMany", { count })
+              : takeover
+                ? t("taskBoard.rerun.descriptionTakeover")
+                : t("taskBoard.rerun.description")}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
