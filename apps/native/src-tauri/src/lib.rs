@@ -59,6 +59,7 @@ pub fn run() {
             commands::auth_logout,
             commands::auth_complete_session,
             commands::selftest_report,
+            commands::register_preview_origin,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

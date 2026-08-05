@@ -6,6 +6,7 @@ fn main() {
         "auth_logout",
         "auth_complete_session",
         "selftest_report",
+        "register_preview_origin",
     ];
 
     tauri_build::try_build(

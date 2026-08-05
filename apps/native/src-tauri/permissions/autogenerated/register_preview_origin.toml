@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-register-preview-origin"
+description = "Enables the register_preview_origin command without any pre-configured scope."
+commands.allow = ["register_preview_origin"]
+
+[[permission]]
+identifier = "deny-register-preview-origin"
+description = "Denies the register_preview_origin command without any pre-configured scope."
+commands.deny = ["register_preview_origin"]
