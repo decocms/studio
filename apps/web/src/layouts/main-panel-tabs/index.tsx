@@ -77,8 +77,8 @@ function TabBody({
   }
   if (activeTab === "board") {
     // Task board opened next to chat via the Tasks toggle (`?main=board`).
-    // The main panel already supplies the card chrome, so render the inner
-    // page inside a full-height flex column (mirrors the standalone route).
+    // The main panel already supplies the card chrome, so the page only needs
+    // a full-height flex column around it.
     return (
       <div className="flex h-full min-h-0 flex-col overflow-hidden">
         <TaskBoardPage />

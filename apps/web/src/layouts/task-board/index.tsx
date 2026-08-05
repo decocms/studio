@@ -135,18 +135,6 @@ void import("../agent-shell-layout/index.tsx").catch(() => {});
 
 type Layout = "board" | "list";
 
-export default function TaskBoard() {
-  return (
-    <div className="min-h-0 flex-1 pt-0 pr-1 pb-1 pl-0">
-      <div className="h-full p-0.5 pt-0.25">
-        <div className="card-shadow flex h-full flex-col overflow-hidden rounded-[0.75rem] bg-background">
-          <TaskBoardPage />
-        </div>
-      </div>
-    </div>
-  );
-}
-
 const DATE_FMT = new Intl.DateTimeFormat(undefined, {
   month: "short",
   day: "numeric",
