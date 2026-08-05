@@ -11,6 +11,7 @@
 
 import type { CliFlags, Settings } from "./types";
 import { describeEncryptionKeyForLog, resolveConfig } from "./resolve-config";
+import { resolveLocalAuthSecret } from "./local-secret";
 import { setGlobalSettings } from "./index";
 
 export interface BuildResult {
@@ -29,6 +30,17 @@ export async function buildSettings(flags: CliFlags): Promise<BuildResult> {
 
   // Log encryption key status on startup (masked — never the raw secret)
   console.log(describeEncryptionKeyForLog(config.settings.encryptionKey));
+
+  // In local mode with no explicit BETTER_AUTH_SECRET, persist a random secret
+  // under the data dir and reuse it across restarts. Otherwise Better Auth would
+  // mint a fresh random secret every boot, invalidating cookies and failing to
+  // decrypt the stored JWKS — an unbreakable login loop for `bunx decocms`.
+  // Server deployments keep the empty value here (they set the env explicitly).
+  const betterAuthSecret =
+    config.settings.betterAuthSecret ||
+    (config.settings.localMode
+      ? resolveLocalAuthSecret(config.settings.dataDir)
+      : "");
 
   // 3. Start services if needed
   const { ensureServices } = await import("../services/ensure-services");
@@ -62,6 +74,7 @@ export async function buildSettings(flags: CliFlags): Promise<BuildResult> {
   // process.env so a spawned `dev:servers` child re-derives the same config.
   const settings: Settings = {
     ...config.settings,
+    betterAuthSecret,
     databaseUrl: serviceOutputs.databaseUrl,
     natsUrls: serviceOutputs.natsUrls,
     ...(serviceOutputs.s3

@@ -18,11 +18,14 @@ const LEGACY_LOCAL_EMAIL_DOMAIN = "localhost.mesh";
 /**
  * Get the local admin password.
  *
- * Uses betterAuthSecret as the local admin password — deterministic,
- * no file I/O, no secrets.json, same value across restarts.
+ * A fixed constant, intentionally NOT derived from betterAuthSecret: local mode
+ * is loopback-only auto-login (never typed by a human), and coupling it to the
+ * secret would break auto-login on any existing local DB whenever the secret
+ * changed — e.g. once local mode began persisting a random secret. Seed and
+ * sign-in both read this same constant, so they always agree.
  */
 export async function getLocalAdminPassword(): Promise<string> {
-  return getSettings().betterAuthSecret || "local-mode-default";
+  return "local-mode-default";
 }
 
 function getLocalUserName(): string {
