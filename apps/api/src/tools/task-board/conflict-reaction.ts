@@ -120,9 +120,26 @@ export async function reactToApprovedPrConflict(
     data: { prNumber: pr.number },
   });
   emitTaskBoardUpdated(orgId, claimed);
-  await enqueueSuperAgentForTask(ctx, claimed, {
-    pr: { number: pr.number, url: pr.url },
-    resolveConflict: true,
-  });
+  try {
+    await enqueueSuperAgentForTask(ctx, claimed, {
+      pr: { number: pr.number, url: pr.url },
+      resolveConflict: true,
+    });
+  } catch (err) {
+    // Nothing was dispatched. Unlike a fresh delegation, this bounced the
+    // task's STATUS to In Progress as the dispatch fence — leaving it there
+    // strands the task forever: the guard above only fires on `in_review`,
+    // so no future poll or approval retries it. Bounce back so it does.
+    await ctx.storage.taskBoard
+      .update(claimed.id, orgId, { status: "in_review" }, "system")
+      .then((reverted) => emitTaskBoardUpdated(orgId, reverted))
+      .catch((revertErr) =>
+        console.error(
+          "[task-board] conflict-resolution status revert failed",
+          revertErr,
+        ),
+      );
+    throw err;
+  }
   return true;
 }
