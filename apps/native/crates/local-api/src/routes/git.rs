@@ -654,13 +654,26 @@ pub(crate) async fn upstream_branch(repo_dir: &Path) -> Option<String> {
 }
 
 pub(crate) async fn current_branch(repo_dir: &Path) -> Option<String> {
-    try_git(
+    if let Some(branch) = try_git(
         repo_dir,
         &["rev-parse", "--abbrev-ref", "HEAD"],
         &ceiling_env(repo_dir),
     )
     .await
     .filter(|branch| !branch.is_empty() && branch != "HEAD")
+    {
+        return Some(branch);
+    }
+    // `rev-parse --abbrev-ref HEAD` fails identically for a real detached
+    // HEAD and an UNBORN one (a checkout with no commits yet — e.g. right
+    // after `git worktree add` on a brand-new empty repo). `symbolic-ref`
+    // only succeeds for the latter, so it's what disambiguates them.
+    try_git(
+        repo_dir,
+        &["symbolic-ref", "--short", "HEAD"],
+        &ceiling_env(repo_dir),
+    )
+    .await
 }
 
 /// Strip ANSI SGR sequences (`ESC[...m`) from git's colorized stderr —
@@ -1163,14 +1176,10 @@ async fn compute_diff_against_base(
     assert_valid_remote_branch_name(base)?;
     let env = route_env(repo_dir);
 
-    let branch = try_git(repo_dir, &["rev-parse", "--abbrev-ref", "HEAD"], &env).await;
-    let branch = match branch {
-        Some(b) if b != "HEAD" => b,
-        _ => {
-            return Err(RouteError::Generic(
-                "Cannot compute PR diff from detached HEAD".to_string(),
-            ))
-        }
+    let Some(branch) = current_branch(repo_dir).await else {
+        return Err(RouteError::Generic(
+            "Cannot compute PR diff from detached HEAD".to_string(),
+        ));
     };
     assert_valid_remote_branch_name(&branch)?;
 
@@ -1501,19 +1510,10 @@ async fn publish_internal(repo_dir: &Path, message: &str) -> Result<bool, RouteE
         return Ok(false);
     }
 
-    let branch = try_git(
-        repo_dir,
-        &["rev-parse", "--abbrev-ref", "HEAD"],
-        &ceiling_env(repo_dir),
-    )
-    .await;
-    let branch = match branch {
-        Some(b) if !b.is_empty() && b != "HEAD" => b,
-        _ => {
-            return Err(RouteError::Generic(
-                "Cannot publish from a detached HEAD".to_string(),
-            ))
-        }
+    let Some(branch) = current_branch(repo_dir).await else {
+        return Err(RouteError::Generic(
+            "Cannot publish from a detached HEAD".to_string(),
+        ));
     };
 
     // The pre-push hook the daemon installs also guards this, but publish
@@ -1832,14 +1832,10 @@ async fn rebase_onto_base(repo_dir: &Path, base: &str) -> Result<(), RouteError>
     assert_valid_remote_branch_name(base)?;
     let env = ceiling_env(repo_dir);
 
-    let branch = try_git(repo_dir, &["rev-parse", "--abbrev-ref", "HEAD"], &env).await;
-    let branch = match branch {
-        Some(b) if !b.is_empty() && b != "HEAD" => b,
-        _ => {
-            return Err(RouteError::Generic(
-                "Cannot rebase from a detached HEAD".to_string(),
-            ))
-        }
+    let Some(branch) = current_branch(repo_dir).await else {
+        return Err(RouteError::Generic(
+            "Cannot rebase from a detached HEAD".to_string(),
+        ));
     };
 
     run_git(repo_dir, &["fetch", "-p", "origin", base, &branch], &env)
@@ -2374,6 +2370,21 @@ mod tests {
         let repo_dir = root.path().join("not-a-repo");
         std::fs::create_dir_all(&repo_dir).unwrap();
         assert!(!is_git_repo(&repo_dir).await);
+    }
+
+    /// `rev-parse --abbrev-ref HEAD` fails identically for a real detached
+    /// HEAD and an unborn one (no commits yet — e.g. right after `git
+    /// worktree add` on a brand-new empty repo). `current_branch` must not
+    /// conflate the two: a fresh `git init -b main` with zero commits is on
+    /// branch `main`, not detached.
+    #[tokio::test]
+    async fn current_branch_resolves_an_unborn_head_instead_of_reporting_detached() {
+        let root = TempDir::new().unwrap();
+        let repo_dir = root.path().join("repo");
+        std::fs::create_dir_all(&repo_dir).unwrap();
+        git(&repo_dir, &["init", "-q", "-b", "main"]);
+
+        assert_eq!(current_branch(&repo_dir).await.as_deref(), Some("main"));
     }
 
     #[tokio::test]

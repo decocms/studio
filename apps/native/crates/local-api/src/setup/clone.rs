@@ -256,10 +256,40 @@ async fn wait_for_signal(
 use crate::config::get_str;
 use crate::sandbox::is_synthetic_branch;
 
-/// `git ls-remote --exit-code --heads` return codes git itself defines: `2`
-/// means "remote reachable, no matching ref" (a real failure is anything
-/// else non-zero) — byte-parity with `clone.ts::LS_REMOTE_NO_MATCH`.
-const LS_REMOTE_NO_MATCH: i32 = 2;
+/// Git error-message substrings meaning "this branch is already checked out
+/// somewhere else" — either a sibling sandbox holds it, or it's the branch
+/// canonical's own primary checkout currently has (e.g. the requested branch
+/// IS the repo's default). Two sandboxes CAN legitimately want the same
+/// branch (different agents, same work), so the caller's fallback is a
+/// detached worktree at the same commit rather than failing outright.
+fn worktree_branch_collision(stderr: &str) -> bool {
+    stderr.contains("already used by worktree")
+        || stderr.contains("already checked out")
+        || stderr.contains("is already used")
+        // `-B` on a branch another worktree holds reports this instead of
+        // any of the above.
+        || stderr.contains("cannot force update the branch")
+}
+
+/// Serializes canonical-repo filesystem surgery (delete-then-reclone) per
+/// mirror. Two sandboxes CAN legitimately provision the same repository at
+/// once (different branches), and their per-handle locks don't compose into
+/// a per-mirror one — a reclone racing another sandbox's `pull`/`worktree
+/// add` would pull the rug out from under it mid-operation. Keyed by the
+/// canonical path; entries are tiny and never removed (one per distinct
+/// repository this process touched).
+fn canonical_sync_lock(canonical_str: &str) -> Arc<tokio::sync::Mutex<()>> {
+    static LOCKS: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    > = std::sync::OnceLock::new();
+    LOCKS
+        .get_or_init(Default::default)
+        .lock()
+        .expect("sync lock map is never poisoned")
+        .entry(canonical_str.to_string())
+        .or_default()
+        .clone()
+}
 
 /// Acquires source (clone if `.git` is absent, otherwise best-effort
 /// checkout onto the configured branch) then runs the idempotent
@@ -406,10 +436,15 @@ async fn clone_fresh(orch: &Arc<SetupOrchestrator>, clone_url: &str, branch: Opt
     }
 }
 
-/// The actual clone/fork sequence, factored out of [`clone_fresh`] so every
-/// failure path funnels through ONE `Result::Err` — the caller finalizes the
-/// task and transitions `lifecycle` exactly once, at the end, instead of
-/// each branch duplicating that bookkeeping.
+/// The actual clone/sync/worktree sequence, factored out of [`clone_fresh`]
+/// so every failure path funnels through ONE `Result::Err` — the caller
+/// finalizes the task and transitions `lifecycle` exactly once, at the end.
+///
+/// Three plain git porcelain commands only — `clone`, `pull`, `worktree
+/// add` — see this module's doc comment. No ref/HEAD inspection anywhere:
+/// an empty remote (zero commits, no branches) needs no special case, since
+/// `git worktree add` itself infers `--orphan` when its source has no
+/// commits yet.
 async fn clone_fresh_body(
     orch: &Arc<SetupOrchestrator>,
     task_id: &str,
@@ -417,115 +452,265 @@ async fn clone_fresh_body(
     branch: Option<&str>,
     controller: &ProcessController,
 ) -> Result<(), String> {
-    // Decide whether the requested branch exists on the remote before
-    // cloning — byte-parity with `spawnClone`'s deterministic
-    // `ls-remote --exit-code` probe (replacing a "try then silently
-    // fall through" approach): 0 -> clone it directly with `--branch`; 2 ->
-    // clone the default branch and fork the requested one locally; anything
-    // else is a real failure (auth/DNS/TLS) surfaced to the caller.
-    let (branch_on_remote, branch_to_fork): (Option<&str>, Option<&str>) = match branch {
-        None => (None, None),
-        Some(b) => {
-            if !is_valid_remote_branch_name(b) {
-                return Err(format!("invalid branch name: {b}"));
-            }
-            let (code, out) = run_git(
-                orch,
-                Some(task_id),
-                &["ls-remote", "--exit-code", "--heads", clone_url, b],
-                None,
-                Some(controller),
-            )
-            .await?;
-            match code {
-                0 => (Some(b), None),
-                LS_REMOTE_NO_MATCH => {
-                    emit_chunk(
-                        orch,
-                        Some(task_id),
-                        OutputStream::Stdout,
-                        &format!(
-                            "[worktree] branch '{b}' not on origin; creating it from origin's default branch in a new worktree\r\n"
-                        ),
-                    )
-                    .await;
-                    (None, Some(b))
-                }
-                other => {
-                    return Err(format!("ls-remote failed (exit {other}): {}", out.trim()));
-                }
-            }
+    if let Some(b) = branch {
+        if !is_valid_remote_branch_name(b) {
+            return Err(format!("invalid branch name: {b}"));
         }
-    };
+    }
 
     clear_clone_destination(&orch.repo_dir).await?;
 
-    // ONE bare clone per upstream repository, shared by every sandbox that
-    // names it; this worktree only adds a working copy on top. Falls back to a
+    // ONE clone per upstream repository, shared by every sandbox that names
+    // it; this worktree only adds a working copy on top. Falls back to a
     // direct clone when the URL isn't one we can key (see `canonical_repo_dir`).
     let canonical = crate::sandbox::repo_store::canonical_repo_dir(&orch.app_root, clone_url);
     let Some(canonical) = canonical else {
-        let repo_dir_str = orch.repo_dir.to_string_lossy().into_owned();
-        let mut clone_args: Vec<&str> = vec!["clone", "--depth", "1"];
-        if let Some(b) = branch_on_remote {
-            clone_args.push("--branch");
-            clone_args.push(b);
+        return direct_clone(orch, task_id, clone_url, branch, controller).await;
+    };
+
+    // Two sandboxes CAN legitimately provision the same repository at once
+    // (different branches) — serialize only the canonical repo's own
+    // delete-then-reclone surgery, not the whole acquisition.
+    let lock = canonical_sync_lock(&canonical.to_string_lossy());
+    {
+        let _sync = lock.lock().await;
+        sync_canonical(orch, task_id, &canonical, clone_url, controller).await?;
+    }
+
+    add_worktree(
+        orch,
+        task_id,
+        &canonical,
+        &orch.repo_dir,
+        branch,
+        controller,
+    )
+    .await
+}
+
+/// Clone straight into `repo_dir` when `clone_url` isn't one the shared store
+/// can key (malformed, or a spelling `canonical_repo_dir` declines) — no
+/// mirror, no worktree, just a normal clone with the requested branch
+/// created locally on top if it isn't already what got checked out.
+async fn direct_clone(
+    orch: &Arc<SetupOrchestrator>,
+    task_id: &str,
+    clone_url: &str,
+    branch: Option<&str>,
+    controller: &ProcessController,
+) -> Result<(), String> {
+    let repo_dir_str = orch.repo_dir.to_string_lossy().into_owned();
+    let (code, out) = run_git(
+        orch,
+        Some(task_id),
+        &["clone", clone_url, &repo_dir_str],
+        None,
+        Some(controller),
+    )
+    .await?;
+    if code != 0 {
+        return Err(format!("git clone exited {code}: {}", out.trim()));
+    }
+    let Some(b) = branch else {
+        return Ok(());
+    };
+    // No commit-ish: defaults to whatever HEAD the clone above landed on,
+    // same auto-orphan inference as `add_worktree` below when that HEAD is
+    // unborn (an empty remote).
+    let (code, out) = run_git(
+        orch,
+        Some(task_id),
+        &["checkout", "-B", b],
+        Some(&orch.repo_dir),
+        Some(controller),
+    )
+    .await?;
+    if code != 0 {
+        return Err(format!("git checkout -B {b} exited {code}: {}", out.trim()));
+    }
+    set_upstream(orch, task_id, &orch.repo_dir, b, controller).await;
+    Ok(())
+}
+
+/// Keeps the shared canonical mirror at `canonical` in sync with `clone_url`:
+/// clones it if missing, else a plain `git fetch --prune origin`.
+///
+/// Canonical's own checkout is kept PERMANENTLY DETACHED (best-effort) —
+/// never on a named branch. Otherwise canonical would permanently occupy
+/// whatever branch it happens to be cloned onto (very often the repo's
+/// actual default, e.g. `main`), and the very FIRST sandbox to request that
+/// same branch would collide with canonical's own checkout and fall back to
+/// a nameless detached worktree instead of a real one. Worktrees are always
+/// cut from an explicit `refs/remotes/origin/*` ref (see [`add_worktree`]),
+/// so canonical's own detached position never needs to be "current" for
+/// anything — only its object database and remote-tracking refs do, and
+/// `fetch` alone keeps those current.
+///
+/// `--prune`: drops remote-tracking refs for branches deleted upstream, so a
+/// stale ref never gets offered as a worktree source.
+///
+/// Best-effort `remote set-head origin -a` after every fetch: keeps
+/// `refs/remotes/origin/HEAD` — the fallback start point [`add_worktree`]
+/// uses for a brand-new branch — pointed at the repo's actual current
+/// default. Its failure (a still-empty remote has nothing to point at) is
+/// expected and harmless: `add_worktree` falls further back to no start
+/// point at all, which git resolves as an orphan branch for exactly that
+/// case.
+async fn sync_canonical(
+    orch: &Arc<SetupOrchestrator>,
+    task_id: &str,
+    canonical: &Path,
+    clone_url: &str,
+    controller: &ProcessController,
+) -> Result<(), String> {
+    let canonical_str = canonical.to_string_lossy().into_owned();
+
+    if !canonical.join(".git").is_dir() {
+        if let Some(parent) = canonical.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|error| format!("failed to create repo store {parent:?}: {error}"))?;
         }
-        clone_args.push(clone_url);
-        clone_args.push(&repo_dir_str);
-        let (code, out) = run_git(orch, Some(task_id), &clone_args, None, Some(controller)).await?;
+        emit_chunk(
+            orch,
+            Some(task_id),
+            OutputStream::Stdout,
+            "[worktree] no local mirror yet; creating the shared clone (once per repository)\r\n",
+        )
+        .await;
+        let (code, out) = run_git(
+            orch,
+            Some(task_id),
+            &["clone", clone_url, &canonical_str],
+            None,
+            Some(controller),
+        )
+        .await?;
         if code != 0 {
             return Err(format!("git clone exited {code}: {}", out.trim()));
         }
-        return finish_fresh_checkout(orch, task_id, branch_to_fork, controller).await;
-    };
+    } else {
+        let (code, out) = run_git(
+            orch,
+            Some(task_id),
+            &["-C", &canonical_str, "fetch", "--prune", "origin"],
+            None,
+            Some(controller),
+        )
+        .await?;
+        if code != 0 {
+            return Err(format!("git fetch exited {code}: {}", out.trim()));
+        }
+    }
 
-    ensure_canonical_repo(
+    let _ = run_git(
         orch,
-        task_id,
-        clone_url,
-        &canonical,
-        branch_on_remote,
-        controller,
+        Some(task_id),
+        &["-C", &canonical_str, "checkout", "--detach"],
+        None,
+        Some(controller),
     )
-    .await?;
+    .await;
+    let _ = run_git(
+        orch,
+        Some(task_id),
+        &["-C", &canonical_str, "remote", "set-head", "origin", "-a"],
+        None,
+        Some(controller),
+    )
+    .await;
+    Ok(())
+}
 
-    // Start point for the new worktree: always a REMOTE-TRACKING ref.
-    //
-    // These bare clones do have remote-tracking refs — the fetch refspec is
-    // `+refs/heads/*:refs/remotes/origin/*`, which by design writes only to
-    // `refs/remotes/origin/*` and never to `refs/heads/*`. So the repo's own
-    // `refs/heads/main` (and therefore `HEAD`) stays frozen at whatever it was
-    // when the repo was first cloned, while `refs/remotes/origin/main` tracks
-    // reality. Branching from `HEAD` cut every new worktree from that frozen
-    // commit — a fetch ran, reported success, and the worktree still landed on
-    // month-old code with nothing in the transcript to say so.
-    //
-    // Fully qualified rather than the `origin/<branch>` shorthand: a stale
-    // `refs/heads/<branch>` of the same name exists in these repos and would
-    // be a candidate for the shorthand to resolve to.
-    let start_point = match branch_on_remote {
-        Some(branch) => format!("refs/remotes/origin/{branch}"),
-        None => "refs/remotes/origin/HEAD".to_string(),
-    };
-    // The worktree's local branch is simply the branch that was asked for.
-    //
-    // Handle and branch are one identity — `compute_handle` builds the handle
-    // as `<repo scope>/<slugified branch>` — so the local name, the upstream
-    // name and the worktree directory all derive from the same value and there
-    // is nothing to reconcile. The per-repo bare mirror is what keeps two
-    // agents from colliding: same repo + same branch IS the same sandbox, and
-    // different repos never share a branch namespace.
-    //
-    // Naming it after the sandbox DIRECTORY instead (an earlier revision, from
-    // when a handle was independent of the branch) also broke daemon mode,
-    // where `repo_dir` is `<app_root>/repo` and the parent is a caller-chosen
-    // temp dir — every clone came out on a branch named after the mkdtemp.
-    let target_branch = branch_on_remote.or(branch_to_fork);
+/// Whether `ref_name` currently resolves inside `canonical` — used only to
+/// pick a worktree start point (see [`add_worktree`]), never to decide
+/// whether to clone/fetch in the first place.
+async fn ref_exists(
+    orch: &Arc<SetupOrchestrator>,
+    task_id: &str,
+    canonical_str: &str,
+    ref_name: &str,
+    controller: &ProcessController,
+) -> bool {
+    matches!(
+        run_git(
+            orch,
+            Some(task_id),
+            &[
+                "-C",
+                canonical_str,
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                ref_name,
+            ],
+            None,
+            Some(controller),
+        )
+        .await,
+        Ok((0, _))
+    )
+}
 
+/// Adds `repo_dir` as a `git worktree` of `canonical`, on `branch` (or
+/// detached when `branch` is `None` — a synthetic/routing-key config value
+/// with no real git ref to check out).
+///
+/// Start point, in order: the requested branch's own content if the remote
+/// has it (kept current by [`sync_canonical`]'s fetch); else the repo's
+/// actual default branch (a brand-new branch forks from there); else no
+/// start point at all — a genuinely empty remote, where git itself infers
+/// `--orphan` from canonical's unborn HEAD.
+async fn add_worktree(
+    orch: &Arc<SetupOrchestrator>,
+    task_id: &str,
+    canonical: &Path,
+    repo_dir: &Path,
+    branch: Option<&str>,
+    controller: &ProcessController,
+) -> Result<(), String> {
     let canonical_str = canonical.to_string_lossy().into_owned();
-    let repo_dir_str = orch.repo_dir.to_string_lossy().into_owned();
-    let add = |branch: Option<&str>| {
+    let repo_dir_str = repo_dir.to_string_lossy().into_owned();
+
+    // Drop registrations whose worktree directory is gone. Without this, a
+    // re-bootstrap onto an emptied workdir finds git still holding the OLD
+    // registration for this exact path ("cannot force update the branch ...
+    // used by worktree at ..."), and falls into the detached-HEAD fallback
+    // below for no real reason — the path is free, git just hasn't noticed
+    // yet. `worktree prune` only removes registrations whose directories no
+    // longer exist; live checkouts are untouched.
+    let _ = run_git(
+        orch,
+        Some(task_id),
+        &["-C", &canonical_str, "worktree", "prune"],
+        None,
+        Some(controller),
+    )
+    .await;
+
+    let start_point = match branch {
+        Some(b) => {
+            let named = format!("refs/remotes/origin/{b}");
+            if ref_exists(orch, task_id, &canonical_str, &named, controller).await {
+                Some(named)
+            } else if ref_exists(
+                orch,
+                task_id,
+                &canonical_str,
+                "refs/remotes/origin/HEAD",
+                controller,
+            )
+            .await
+            {
+                Some("refs/remotes/origin/HEAD".to_string())
+            } else {
+                None
+            }
+        }
+        None => None,
+    };
+
+    let add = |branch: Option<&str>, start_point: Option<&str>| {
         let mut args: Vec<String> = vec![
             "-C".into(),
             canonical_str.clone(),
@@ -543,27 +728,17 @@ async fn clone_fresh_body(
             None => args.push("--detach".into()),
         }
         args.push(repo_dir_str.clone());
-        args.push(start_point.clone());
+        if let Some(sp) = start_point {
+            args.push(sp.to_string());
+        }
         args
     };
 
-    let args = add(target_branch);
+    let args = add(branch, start_point.as_deref());
     let argv: Vec<&str> = args.iter().map(String::as_str).collect();
     let (code, out) = run_git(orch, Some(task_id), &argv, None, Some(controller)).await?;
     if code != 0 {
-        // Git refuses to check a branch out in two worktrees at once. Two
-        // sandboxes CAN legitimately want one repo+branch (different agents on
-        // the same work), so fall back to a detached worktree at the same
-        // commit rather than failing the sandbox outright — it has the right
-        // files; only the branch pointer is missing.
-        let already_checked_out = out.contains("already used by worktree")
-            || out.contains("already checked out")
-            || out.contains("is already used")
-            // `-B` on a branch another worktree holds reports this instead of
-            // any of the above, which is how a same-branch collision slipped
-            // past the fallback and failed the sandbox outright.
-            || out.contains("cannot force update the branch");
-        if !already_checked_out || target_branch.is_none() {
+        if !worktree_branch_collision(&out) || branch.is_none() {
             return Err(format!("git worktree add exited {code}: {}", out.trim()));
         }
         emit_chunk(
@@ -572,491 +747,65 @@ async fn clone_fresh_body(
             OutputStream::Stdout,
             &format!(
                 "[worktree] branch '{}' already checked out elsewhere; detaching HEAD\r\n",
-                target_branch.unwrap_or("")
+                branch.unwrap_or("")
             ),
         )
         .await;
-        let args = add(None);
+        let args = add(None, start_point.as_deref());
         let argv: Vec<&str> = args.iter().map(String::as_str).collect();
         let (code, out) = run_git(orch, Some(task_id), &argv, None, Some(controller)).await?;
         if code != 0 {
             return Err(format!("git worktree add exited {code}: {}", out.trim()));
         }
-    }
-
-    // Name the upstream explicitly, even though local and remote now agree.
-    //
-    // The NEW-branch case is why: `worktree add` cut from `origin/HEAD` leaves
-    // git's own autoSetupMerge tracking `origin/main`, which would make
-    // `checkout_is_current` believe the sandbox is on main. The branch the
-    // user asked for is the one the upstream must name, whether or not it
-    // exists on the remote yet.
-    //
-    // Best effort: a sandbox with no upstream still works for everything
-    // except a bare `git push`, and failing here would strand a worktree that
-    // is otherwise complete.
-    if let Some(branch) = target_branch {
-        // Written as raw config rather than `branch --set-upstream-to`: that
-        // command validates the remote ref EXISTS, so it fails for a branch
-        // this sandbox is about to create and has never pushed. It failed
-        // silently, leaving git's autoSetupMerge default of `origin/main` —
-        // which then made the upstream check believe the sandbox was on main
-        // and fail the whole checkout.
-        for (key, value) in [
-            (format!("branch.{branch}.remote"), "origin".to_string()),
-            (
-                format!("branch.{branch}.merge"),
-                format!("refs/heads/{branch}"),
-            ),
-        ] {
-            let _ = run_git(
-                orch,
-                Some(task_id),
-                &["-C", &repo_dir_str, "config", &key, &value],
-                None,
-                Some(controller),
-            )
-            .await;
-        }
-    }
-
-    finish_fresh_checkout(orch, task_id, None, controller).await
-}
-
-/// The shared bare clone every worktree is cut from: created on first use,
-/// refreshed on later ones so a new sandbox sees current refs.
-///
-/// `--bare` deliberately: nobody edits this directory, and a bare repo cannot
-/// hold a checked-out branch that would then be unavailable to worktrees.
-async fn ensure_canonical_repo(
-    orch: &Arc<SetupOrchestrator>,
-    task_id: &str,
-    clone_url: &str,
-    canonical: &Path,
-    branch_on_remote: Option<&str>,
-    controller: &ProcessController,
-) -> Result<(), String> {
-    let canonical_str = canonical.to_string_lossy().into_owned();
-
-    if canonical.join("HEAD").is_file() {
-        // Already present — refresh refs so a newly requested branch resolves.
-        // A failed fetch is not fatal: the objects already on disk may well
-        // satisfy this checkout, and failing here would strand a sandbox that
-        // could otherwise start offline.
-        let (code, out) = run_git(
-            orch,
-            Some(task_id),
-            &["-C", &canonical_str, "fetch", "--prune", "origin"],
-            None,
-            Some(controller),
-        )
-        .await?;
-        let (code, out) = refetch_after_case_collision(
-            orch,
-            task_id,
-            &canonical_str,
-            controller,
-            branch_on_remote,
-            code,
-            out,
-        )
-        .await?;
-        if code != 0 {
-            emit_chunk(
-                orch,
-                Some(task_id),
-                OutputStream::Stdout,
-                &format!(
-                    "[worktree] fetch failed (exit {code}); reusing cached objects: {}\r\n",
-                    out.trim()
-                ),
-            )
-            .await;
-        }
-        // Repos cloned before the start point moved to remote-tracking refs
-        // still carry their frozen `refs/heads/*`; clean them here so an
-        // existing mirror converges on the same shape as a fresh one.
-        prune_stale_local_heads(orch, task_id, &canonical_str, controller).await;
-        // Drop registrations whose worktree directory is gone. Without this, a
-        // re-bootstrap onto an emptied workdir finds git still holding the OLD
-        // registration's branch ("cannot force update the branch ... used by
-        // worktree at ..."), falls into the detached-HEAD fallback, and the
-        // sandbox silently comes up off-branch. `worktree prune` only removes
-        // registrations whose directories no longer exist — live checkouts are
-        // untouched.
-        let _ = run_git(
-            orch,
-            Some(task_id),
-            &["-C", &canonical_str, "worktree", "prune"],
-            None,
-            Some(controller),
-        )
-        .await;
         return Ok(());
     }
 
-    if let Some(parent) = canonical.parent() {
-        tokio::fs::create_dir_all(parent)
-            .await
-            .map_err(|error| format!("failed to create repo store {parent:?}: {error}"))?;
+    if let Some(b) = branch {
+        set_upstream(orch, task_id, repo_dir, b, controller).await;
     }
-    // Frame git's own `Cloning into bare repository '...'` before it appears.
-    // Without this the once-per-repository mirror reads as a per-sandbox
-    // clone, which is precisely how this transcript has been misread.
-    emit_chunk(
-        orch,
-        Some(task_id),
-        OutputStream::Stdout,
-        "[worktree] no local mirror yet; creating the shared bare clone (once per repository)\r\n",
-    )
-    .await;
-    // `--ref-format=reftable` deliberately: the files backend stores each ref
-    // as a filesystem path, so two remote branches whose names differ only by
-    // case are unstorable on the case-insensitive filesystems macOS ships —
-    // git 2.46+ fails the fetch outright and recommends exactly this backend
-    // (refs live in a table, not paths). Try-with-fallback rather than a
-    // version probe: a git without reftable (< 2.45, or compiled out) rejects
-    // the flag, and `git clone` removes the destination it created on
-    // failure, so the plain retry starts clean.
-    let (code, out) = run_git(
-        orch,
-        Some(task_id),
-        &[
-            "clone",
-            "--bare",
-            "--ref-format=reftable",
-            clone_url,
-            &canonical_str,
-        ],
-        None,
-        Some(controller),
-    )
-    .await?;
-    let (code, out) = if code != 0 && ref_format_unsupported(&out) {
-        emit_chunk(
-            orch,
-            Some(task_id),
-            OutputStream::Stdout,
-            "[worktree] this git predates the reftable ref backend; using the files backend\r\n",
-        )
-        .await;
-        run_git(
-            orch,
-            Some(task_id),
-            &["clone", "--bare", clone_url, &canonical_str],
-            None,
-            Some(controller),
-        )
-        .await?
-    } else {
-        (code, out)
-    };
-    if code != 0 {
-        return Err(format!("git clone --bare exited {code}: {}", out.trim()));
-    }
-    // `git clone --bare` populates `refs/heads/*` and sets NO fetch refspec,
-    // so there are no remote-tracking refs at all — and the worktree start
-    // point is now one. Establish them here so both paths (fresh clone and
-    // existing mirror) present the same shape, and so `refs/heads/*` can be
-    // pruned without losing the ability to resolve a branch.
-    let _ = run_git(
-        orch,
-        Some(task_id),
-        &[
-            "-C",
-            &canonical_str,
-            "config",
-            "remote.origin.fetch",
-            "+refs/heads/*:refs/remotes/origin/*",
-        ],
-        None,
-        Some(controller),
-    )
-    .await?;
-    let (code, out) = run_git(
-        orch,
-        Some(task_id),
-        &["-C", &canonical_str, "fetch", "--prune", "origin"],
-        None,
-        Some(controller),
-    )
-    .await?;
-    let (code, out) = refetch_after_case_collision(
-        orch,
-        task_id,
-        &canonical_str,
-        controller,
-        branch_on_remote,
-        code,
-        out,
-    )
-    .await?;
-    if code != 0 {
-        return Err(format!(
-            "git fetch after bare clone exited {code}: {}",
-            out.trim()
-        ));
-    }
-    // `refs/remotes/origin/HEAD` is the fallback start point for a branch that
-    // does not exist upstream, and a bare clone does not create it.
-    let _ = run_git(
-        orch,
-        Some(task_id),
-        &["-C", &canonical_str, "remote", "set-head", "origin", "-a"],
-        None,
-        Some(controller),
-    )
-    .await;
-    prune_stale_local_heads(orch, task_id, &canonical_str, controller).await;
     Ok(())
 }
 
-/// A git that does not know `--ref-format` (< 2.45) or the reftable value
-/// (compiled out) rejects the clone before touching the network — both
-/// spellings of that rejection, so the fallback never masks a real failure.
-fn ref_format_unsupported(out: &str) -> bool {
-    out.contains("unknown option") || out.contains("unknown ref storage format")
-}
-
-/// Serializes ref-storage surgery per canonical mirror. Two sandboxes CAN
-/// legitimately provision the same repository at once (same repo, different
-/// branches), and their per-handle locks don't compose into a per-mirror
-/// one — a `refs migrate` racing another sandbox's fetch would rewrite ref
-/// storage underneath it. Keyed by the canonical path; entries are tiny and
-/// never removed (one per distinct repository this process touched).
-fn mirror_surgery_lock(canonical_str: &str) -> Arc<tokio::sync::Mutex<()>> {
-    static LOCKS: std::sync::OnceLock<
-        std::sync::Mutex<std::collections::HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
-    > = std::sync::OnceLock::new();
-    LOCKS
-        .get_or_init(Default::default)
-        .lock()
-        .expect("mirror lock map is never poisoned")
-        .entry(canonical_str.to_string())
-        .or_default()
-        .clone()
-}
-
-/// Recovery for a files-backend mirror that just hit git's case-collision
-/// refusal: the remote has branches whose names differ only by case, which
-/// filesystem-path ref storage cannot hold on the case-insensitive volumes
-/// macOS ships. In order of preference:
+/// Declares that `branch` in `repo_dir` tracks `origin/<branch>`.
 ///
-/// 1. `git worktree prune` + `git refs migrate --ref-format=reftable` +
-///    full refetch — the complete fix git's own error text recommends, but
-///    it is only possible while NO worktree is registered: git refuses to
-///    migrate a repository with worktrees on every released version ("not
-///    supported yet", a documented limitation), and every live sandbox IS a
-///    linked worktree of this mirror. The prune first clears STALE
-///    registrations (emptied workdirs), which alone also block it.
-/// 2. Narrow fetch of just the branch this acquisition needs. A single-ref
-///    write cannot collide with itself, so the requested branch lands at its
-///    true commit on ANY git version — even when the sibling's wrong-cased
-///    loose file is what physically absorbs the write. The colliding
-///    sibling's mirror ref may go stale until ITS next acquisition fetches
-///    it back; that harm is bounded (worktrees pin their commit at add time,
-///    and branch-currency checks compare names, not shas). Each ensure
-///    retries the migration first, so once the last worktree of a mirror is
-///    deleted the permanent fix lands by itself.
-/// 3. No branch to narrow to — pass the ORIGINAL failure through unchanged
-///    so each call site's existing handling still owns the outcome.
+/// Written as raw config rather than `branch --set-upstream-to`: that
+/// command validates the remote ref EXISTS, so it fails for a branch this
+/// sandbox just created and has never pushed — the normal case for a
+/// brand-new branch.
 ///
-/// Known residue: a fetch that INTRODUCES one casing while the other already
-/// exists as a loose ref exits 0 (git silently writes through the wrong-
-/// cased file), so this handler fires one acquisition later, when the stale
-/// sibling makes the next fetch fail. The acquisition that triggered the
-/// clobber still checked out its own branch's correct commit.
-async fn refetch_after_case_collision(
+/// Best effort: a sandbox with no upstream still works for everything except
+/// a bare `git push`, and failing here would strand a worktree that is
+/// otherwise complete.
+async fn set_upstream(
     orch: &Arc<SetupOrchestrator>,
     task_id: &str,
-    canonical_str: &str,
-    controller: &ProcessController,
-    branch: Option<&str>,
-    code: i32,
-    out: String,
-) -> Result<(i32, String), String> {
-    if code == 0 || !out.contains("case-insensitive filesystem") {
-        return Ok((code, out));
-    }
-
-    let lock = mirror_surgery_lock(canonical_str);
-    let _surgery = lock.lock().await;
-
-    emit_chunk(
-        orch,
-        Some(task_id),
-        OutputStream::Stdout,
-        "[worktree] remote branches differ only by letter case, which this case-insensitive filesystem cannot store as files; migrating the mirror to the reftable backend\r\n",
-    )
-    .await;
-    // Stale worktree registrations (deleted workdirs) are enough to make the
-    // migration below refuse — clear them first, live ones are untouched.
-    let _ = run_git(
-        orch,
-        Some(task_id),
-        &["-C", canonical_str, "worktree", "prune"],
-        None,
-        Some(controller),
-    )
-    .await;
-    let (migrate_code, _) = run_git(
-        orch,
-        Some(task_id),
-        &[
-            "-C",
-            canonical_str,
-            "refs",
-            "migrate",
-            "--ref-format=reftable",
-        ],
-        None,
-        Some(controller),
-    )
-    .await?;
-    if migrate_code == 0 {
-        return run_git(
-            orch,
-            Some(task_id),
-            &["-C", canonical_str, "fetch", "--prune", "origin"],
-            None,
-            Some(controller),
-        )
-        .await;
-    }
-
-    let Some(branch) = branch else {
-        return Ok((code, out));
-    };
-    emit_chunk(
-        orch,
-        Some(task_id),
-        OutputStream::Stdout,
-        &format!(
-            "[worktree] the mirror cannot migrate while sandboxes hold worktrees; fetching only branch '{branch}'\r\n"
-        ),
-    )
-    .await;
-    let refspec = format!("+refs/heads/{branch}:refs/remotes/origin/{branch}");
-    run_git(
-        orch,
-        Some(task_id),
-        &["-C", canonical_str, "fetch", "origin", &refspec],
-        None,
-        Some(controller),
-    )
-    .await
-}
-
-/// Delete `refs/heads/*` that no worktree is using.
-///
-/// `git clone --bare` copies the remote's heads into `refs/heads/*`, but the
-/// fetch refspec (`+refs/heads/*:refs/remotes/origin/*`) only ever updates
-/// `refs/remotes/origin/*`. So those copies are frozen at clone time and can
-/// never be right again — they are pure misdirection, and branching from one
-/// is exactly the bug this file just fixed.
-///
-/// The only `refs/heads/*` worth keeping are the ones `worktree add -B`
-/// creates for live sandboxes, so anything a worktree holds is skipped. Best
-/// effort: failing to prune costs nothing now that the start point is a
-/// remote-tracking ref, so a failure here must never block provisioning.
-async fn prune_stale_local_heads(
-    orch: &Arc<SetupOrchestrator>,
-    task_id: &str,
-    canonical_str: &str,
+    repo_dir: &Path,
+    branch: &str,
     controller: &ProcessController,
 ) {
-    let Ok((_, held_out)) = run_git(
-        orch,
-        Some(task_id),
-        &["-C", canonical_str, "worktree", "list", "--porcelain"],
-        None,
-        Some(controller),
-    )
-    .await
-    else {
-        return;
-    };
-    let held: std::collections::HashSet<&str> = held_out
-        .lines()
-        .filter_map(|line| line.strip_prefix("branch "))
-        .map(str::trim)
-        .collect();
-
-    let Ok((_, refs_out)) = run_git(
-        orch,
-        Some(task_id),
-        &[
-            "-C",
-            canonical_str,
-            "for-each-ref",
-            "--format=%(refname)",
-            "refs/heads",
-        ],
-        None,
-        Some(controller),
-    )
-    .await
-    else {
-        return;
-    };
-    let stale: Vec<String> = refs_out
-        .lines()
-        .map(str::trim)
-        .filter(|refname| refname.starts_with("refs/heads/") && !held.contains(refname))
-        .map(str::to_string)
-        .collect();
-    if stale.is_empty() {
-        return;
-    }
-
-    // One `git branch -D` with every name rather than N processes: these repos
-    // routinely carry hundreds of stale heads. git additionally refuses to
-    // delete a branch a worktree holds, so that is a second guard under the
-    // filter above.
-    let mut args: Vec<String> = vec![
-        "-C".into(),
-        canonical_str.to_string(),
-        "branch".into(),
-        "-D".into(),
-    ];
-    args.extend(
-        stale
-            .iter()
-            .filter_map(|refname| refname.strip_prefix("refs/heads/"))
-            .map(str::to_string),
-    );
-    let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
-    let _ = run_git(orch, Some(task_id), &borrowed, None, Some(controller)).await;
-}
-
-/// The post-acquisition local fork step, shared by the worktree and
-/// direct-clone paths.
-async fn finish_fresh_checkout(
-    orch: &Arc<SetupOrchestrator>,
-    task_id: &str,
-    branch_to_fork: Option<&str>,
-    controller: &ProcessController,
-) -> Result<(), String> {
-    if let Some(b) = branch_to_fork {
-        let (code, out) = run_git(
+    let repo_dir_str = repo_dir.to_string_lossy().into_owned();
+    for (key, value) in [
+        (format!("branch.{branch}.remote"), "origin".to_string()),
+        (
+            format!("branch.{branch}.merge"),
+            format!("refs/heads/{branch}"),
+        ),
+    ] {
+        let _ = run_git(
             orch,
             Some(task_id),
-            &["checkout", "-B", b],
-            Some(&orch.repo_dir),
+            &["-C", &repo_dir_str, "config", &key, &value],
+            None,
             Some(controller),
         )
-        .await?;
-        if code != 0 {
-            return Err(format!("git checkout -B {b} exited {code}: {}", out.trim()));
-        }
+        .await;
     }
-    Ok(())
 }
 
-/// A cancelled `git clone` may leave an invalid, non-empty `.git` tree. This
-/// function is reached only after `run` has established that `repo_dir` is not
-/// a usable repository and the remote probe above has succeeded, so the
-/// managed destination must be empty before retrying the clone.
+/// A cancelled `git clone`/`worktree add` may leave an invalid, non-empty
+/// `.git` tree. This function is reached only after `run` has established
+/// that `repo_dir` is not a usable repository, so the managed destination
+/// must be empty before the worktree add / direct clone below.
 async fn clear_clone_destination(repo_dir: &Path) -> Result<(), String> {
     let metadata = match tokio::fs::symlink_metadata(repo_dir).await {
         Ok(metadata) => metadata,
@@ -1275,104 +1024,6 @@ mod tests {
         );
     }
 
-    fn git_stdout(dir: &Path, args: &[&str]) -> String {
-        let out = Command::new("git")
-            .args(args)
-            .current_dir(dir)
-            .output()
-            .expect("git failed to spawn");
-        assert!(
-            out.status.success(),
-            "git {args:?} failed in {dir:?}: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-        String::from_utf8_lossy(&out.stdout).trim().to_string()
-    }
-
-    /// `--ref-format` landed in git 2.45; probe by using it rather than
-    /// parsing version strings (Apple git's suffix, reftable compiled out).
-    fn git_supports_reftable() -> bool {
-        let tmp = tempfile::tempdir().unwrap();
-        Command::new("git")
-            .args(["init", "-q", "--ref-format=reftable"])
-            .arg(tmp.path())
-            .output()
-            .is_ok_and(|out| out.status.success())
-    }
-
-    /// `git refs` (and its `migrate` subcommand) landed in 2.46. `LC_ALL=C`
-    /// because the `usage:` line this greps is localized, and a translated
-    /// probe would silently skip the migration tests.
-    fn git_supports_refs_migrate() -> bool {
-        Command::new("git")
-            .args(["refs", "-h"])
-            .env("LC_ALL", "C")
-            .output()
-            .is_ok_and(|out| {
-                let text = format!(
-                    "{}{}",
-                    String::from_utf8_lossy(&out.stdout),
-                    String::from_utf8_lossy(&out.stderr)
-                );
-                text.contains("usage: git refs")
-            })
-    }
-
-    /// A reftable-backend origin hosting two branches whose names differ only
-    /// by letter case — unbuildable on the files backend on the
-    /// case-insensitive filesystems macOS ships, which is precisely the
-    /// scenario the migration exists for. The colliding branches point at
-    /// DIFFERENT commits, deliberately: on an unmigrated files-backend
-    /// mirror the missing spelling resolves case-insensitively to its
-    /// sibling's loose file, so a same-sha fixture would pass its assertions
-    /// with the fix deleted. Returns `(origin, clone_url, main_sha,
-    /// fork_sha)` — `Feature/qa` at `main_sha`, `feature/qa` at `fork_sha` —
-    /// or `None` when this git predates reftable.
-    fn origin_with_case_colliding_branches() -> Option<(tempfile::TempDir, String, String, String)>
-    {
-        if !git_supports_reftable() {
-            return None;
-        }
-        let root = tempfile::tempdir().unwrap();
-        let bare_dir = root.path().join("origin.git");
-        let work_dir = root.path().join("author");
-        std::fs::create_dir_all(&bare_dir).unwrap();
-        std::fs::create_dir_all(&work_dir).unwrap();
-        git(
-            &bare_dir,
-            &["init", "--bare", "-q", "--ref-format=reftable"],
-        );
-        git(&work_dir, &["init", "-q", "-b", "main"]);
-        git(&work_dir, &["config", "user.name", "Test User"]);
-        git(&work_dir, &["config", "user.email", "test@example.com"]);
-        std::fs::write(work_dir.join("f.txt"), "x").unwrap();
-        git(&work_dir, &["add", "."]);
-        git(&work_dir, &["commit", "-q", "-m", "initial"]);
-        let bare_str = bare_dir.to_str().unwrap().to_string();
-        git(&work_dir, &["remote", "add", "origin", &bare_str]);
-        git(&work_dir, &["push", "-q", "-u", "origin", "main"]);
-        git(&bare_dir, &["symbolic-ref", "HEAD", "refs/heads/main"]);
-        let main_sha = git_stdout(&bare_dir, &["rev-parse", "refs/heads/main"]);
-        std::fs::write(work_dir.join("g.txt"), "y").unwrap();
-        git(&work_dir, &["add", "."]);
-        git(&work_dir, &["commit", "-q", "-m", "fork"]);
-        let fork_sha = git_stdout(&work_dir, &["rev-parse", "HEAD"]);
-        git(
-            &work_dir,
-            &["push", "-q", "origin", "HEAD:refs/heads/fork-src"],
-        );
-        git(
-            &bare_dir,
-            &["update-ref", "refs/heads/Feature/qa", &main_sha],
-        );
-        git(
-            &bare_dir,
-            &["update-ref", "refs/heads/feature/qa", &fork_sha],
-        );
-        git(&bare_dir, &["update-ref", "-d", "refs/heads/fork-src"]);
-        Some((root, bare_str, main_sha, fork_sha))
-    }
-
     /// A bare "origin" with a single `main` commit — returns the owning
     /// tempdir (keep it alive for the fixture's lifetime) and the bare
     /// repo's path (used directly as a `file://`-style `cloneUrl`).
@@ -1426,16 +1077,9 @@ mod tests {
     /// Acquiring a branch that EXISTS on the remote, through the shared-store
     /// path — the combination that reached the running app broken.
     ///
-    /// The other tests in this file hand `clone_fresh` a bare filesystem path,
-    /// which `canonical_repo_dir` declines to key, so they all exercise the
-    /// direct-clone fallback and never touch a worktree. A `file://` URL is
-    /// keyable, so this one goes through `ensure_canonical_repo` +
-    /// `git worktree add` for real.
-    ///
-    /// The specific regression: the worktree start point must be a
-    /// remote-tracking ref. `refs/heads/*` in the mirror is frozen at clone
-    /// time — the fetch refspec only writes `refs/remotes/origin/*` — so
-    /// branching from `HEAD` silently produced month-old worktrees.
+    /// A `file://` URL is keyable by `canonical_repo_dir`, so this goes
+    /// through `sync_canonical` + `git worktree add` for real, against a
+    /// plain (non-bare) canonical clone.
     #[tokio::test]
     async fn worktree_path_checks_out_a_branch_that_exists_on_the_remote() {
         let (origin_root, bare_str) = bare_repo_with_one_commit();
@@ -1461,8 +1105,8 @@ mod tests {
         let canonical =
             crate::sandbox::repo_store::canonical_repo_dir(&orch.app_root, &clone_url).unwrap();
         assert!(
-            canonical.join("HEAD").is_file(),
-            "bare canonical repo exists"
+            canonical.join(".git").is_dir(),
+            "canonical repo exists as a plain (non-bare) clone"
         );
 
         // And it is genuinely on the requested branch with the remote's commit.
@@ -1553,8 +1197,11 @@ mod tests {
         assert!(!repo_dir.join(".git").exists());
     }
 
+    /// Any requested branch that isn't already what canonical has checked
+    /// out is always created locally via `-B` — there's no remote-existence
+    /// probe left to distinguish "forked" from "already there".
     #[tokio::test]
-    async fn fresh_clone_of_a_missing_remote_branch_forks_locally_and_logs_it() {
+    async fn fresh_clone_of_a_new_branch_creates_it_locally_from_canonical() {
         let (_origin, clone_url) = bare_repo_with_one_commit();
         let (_workdir, repo_dir) = empty_repo_dir();
         let orch = fresh_orch(repo_dir.clone());
@@ -1564,27 +1211,16 @@ mod tests {
         });
         assert!(
             run(&orch, &config).await,
-            "clone must still succeed (local fork)"
+            "clone must still succeed (local branch)"
         );
 
-        let transcript = orch
-            .tasks
-            .logs()
-            .tail_read(&app_key("setup"), DEFAULT_TAIL_BYTES)
-            .await;
-        assert!(
-            transcript.contains("not on origin; creating it from origin's default branch"),
-            "transcript: {transcript:?}"
-        );
-
-        let out = Command::new("git")
-            .args(["rev-parse", "--abbrev-ref", "HEAD"])
-            .current_dir(&repo_dir)
-            .output()
-            .unwrap();
         assert_eq!(
-            String::from_utf8_lossy(&out.stdout).trim(),
-            "does-not-exist-on-remote"
+            current_branch(&repo_dir).await.as_deref(),
+            Some("does-not-exist-on-remote")
+        );
+        assert!(
+            repo_dir.join("f.txt").is_file(),
+            "new branch must still be cut from canonical's synced content"
         );
     }
 
@@ -1656,179 +1292,129 @@ mod tests {
         );
     }
 
-    /// A fresh shared mirror comes up on the reftable backend (case-collision
-    /// immunity from day one) — and on a git without reftable, the fallback
-    /// clone still succeeds on the files backend, which every other test in
-    /// this module implicitly covers.
+    /// A bare origin with ZERO commits — the case that used to hard-fail
+    /// clone/setup: `worktree add` from an unborn HEAD, and a canonical
+    /// mirror sync that can never resolve a "default branch" because the
+    /// remote has none to advertise. Neither `sync_canonical` nor
+    /// `add_worktree` needs to know any of that; git's own porcelain infers
+    /// `--orphan` when the source has no commits, so this just works.
+    fn empty_bare_repo() -> (tempfile::TempDir, String) {
+        let root = tempfile::tempdir().unwrap();
+        let bare_dir = root.path().join("origin.git");
+        std::fs::create_dir_all(&bare_dir).unwrap();
+        git(&bare_dir, &["init", "--bare", "-q"]);
+        let bare_str = bare_dir.to_str().unwrap().to_string();
+        (root, bare_str)
+    }
+
     #[tokio::test]
-    async fn fresh_mirror_uses_the_reftable_backend_when_git_supports_it() {
-        let (origin_root, bare_str) = bare_repo_with_one_commit();
+    async fn cloning_a_genuinely_empty_remote_creates_an_orphan_worktree() {
+        let (origin_root, bare_str) = empty_bare_repo();
         let (workdir, repo_dir) = empty_repo_dir();
         let orch = fresh_orch(repo_dir.clone());
         let clone_url = format!("file://{bare_str}");
 
         assert!(
-            clone_fresh(&orch, &clone_url, Some("main")).await,
-            "{:?}",
+            clone_fresh(&orch, &clone_url, Some("feature-x")).await,
+            "acquiring an empty remote must still succeed: {:?}",
             orch.tasks
                 .logs()
                 .tail_read(&app_key("setup"), DEFAULT_TAIL_BYTES)
                 .await
         );
 
-        if git_supports_reftable() {
-            let canonical =
-                crate::sandbox::repo_store::canonical_repo_dir(&orch.app_root, &clone_url).unwrap();
-            assert_eq!(
-                git_stdout(&canonical, &["rev-parse", "--show-ref-format"]),
-                "reftable"
-            );
-        }
+        // Unborn HEAD, on the requested branch — not the direct-clone
+        // fallback's `master`/`main` guess, and not `None` (which the old
+        // `rev-parse --abbrev-ref HEAD`-only `current_branch` would have
+        // returned for this exact state).
+        assert_eq!(
+            current_branch(&repo_dir).await.as_deref(),
+            Some("feature-x")
+        );
+        assert!(
+            Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(&repo_dir)
+                .output()
+                .unwrap()
+                .status
+                .success()
+                .then_some(())
+                .is_none(),
+            "worktree must have zero commits"
+        );
+
+        // The worktree is genuinely usable: a first commit succeeds.
+        git(&repo_dir, &["config", "user.name", "Test User"]);
+        git(&repo_dir, &["config", "user.email", "test@example.com"]);
+        std::fs::write(repo_dir.join("f.txt"), "hi").unwrap();
+        git(&repo_dir, &["add", "."]);
+        git(&repo_dir, &["commit", "-q", "-m", "first commit"]);
+        assert_eq!(
+            current_branch(&repo_dir).await.as_deref(),
+            Some("feature-x")
+        );
         drop((origin_root, workdir));
     }
 
-    /// The upgrade path for mirrors that predate the reftable default: a
-    /// files-backend mirror whose remote grows two branches differing only by
-    /// case. On a case-insensitive filesystem the fetch fails with git's
-    /// collision refusal, the mirror is migrated to reftable, and the retried
-    /// fetch lands BOTH refs; on a case-sensitive filesystem the fetch simply
-    /// succeeds. Either way the sandbox acquires the checkout and both remote
-    /// branches resolve.
     #[tokio::test]
-    async fn case_colliding_remote_branches_survive_on_a_files_backend_mirror() {
-        if !git_supports_refs_migrate() {
-            return;
-        }
-        let Some((origin_root, bare_str, main_sha, fork_sha)) =
-            origin_with_case_colliding_branches()
-        else {
-            return;
-        };
+    async fn sync_canonical_picks_up_a_branch_pushed_after_an_empty_first_clone() {
+        let (origin_root, bare_str) = empty_bare_repo();
         let (workdir, repo_dir) = empty_repo_dir();
         let orch = fresh_orch(repo_dir.clone());
         let clone_url = format!("file://{bare_str}");
-
-        // Pre-create the mirror on the FILES backend — the state every
-        // install that predates the reftable default is in. The clone itself
-        // survives colliding refs (they land in packed-refs, one file); the
-        // collision only bites when a FETCH writes them as loose files.
-        let canonical = files_backend_mirror(&orch, &clone_url, &bare_str);
-
-        assert!(
-            clone_fresh(&orch, &clone_url, Some("main")).await,
-            "{:?}",
-            orch.tasks
-                .logs()
-                .tail_read(&app_key("setup"), DEFAULT_TAIL_BYTES)
-                .await
-        );
-
-        // The user-visible guarantee, independent of filesystem case
-        // sensitivity: after acquisition BOTH case-colliding branches exist
-        // in the mirror, EACH at its own commit. Per-spelling shas rather
-        // than mutual equality — on an unmigrated files-backend mirror the
-        // missing spelling resolves case-insensitively to its sibling's
-        // loose file, so an equality assert would pass with the fix deleted.
-        assert_eq!(
-            git_stdout(
-                &canonical,
-                &["rev-parse", "--verify", "refs/remotes/origin/Feature/qa"]
-            ),
-            main_sha
-        );
-        assert_eq!(
-            git_stdout(
-                &canonical,
-                &["rev-parse", "--verify", "refs/remotes/origin/feature/qa"]
-            ),
-            fork_sha
-        );
-        drop((origin_root, workdir));
-    }
-
-    /// Pre-creates the canonical mirror on the files backend with the
-    /// production fetch refspec — the on-disk state of every install that
-    /// predates the reftable default.
-    fn files_backend_mirror(
-        orch: &Arc<SetupOrchestrator>,
-        clone_url: &str,
-        bare_str: &str,
-    ) -> std::path::PathBuf {
         let canonical =
-            crate::sandbox::repo_store::canonical_repo_dir(&orch.app_root, clone_url).unwrap();
-        std::fs::create_dir_all(canonical.parent().unwrap()).unwrap();
-        let out = Command::new("git")
-            .args(["clone", "--bare", "-q", "--ref-format=files", bare_str])
-            .arg(&canonical)
-            .output()
-            .unwrap();
-        assert!(
-            out.status.success(),
-            "{}",
-            String::from_utf8_lossy(&out.stderr)
-        );
+            crate::sandbox::repo_store::canonical_repo_dir(&orch.app_root, &clone_url).unwrap();
+
+        let controller = ProcessController::new();
+        sync_canonical(&orch, "t1", &canonical, &clone_url, &controller)
+            .await
+            .expect("first sync (clone of an empty remote) must succeed");
+        assert!(canonical.join(".git").is_dir());
+
+        // The remote goes from empty to having real content on a branch that
+        // has nothing to do with whatever this machine's `init.defaultBranch`
+        // happened to guess for the canonical's own empty checkout.
+        let work_dir = workdir.path().join("author");
+        std::fs::create_dir_all(&work_dir).unwrap();
+        git(&work_dir, &["init", "-q", "-b", "sandbox/thread-1"]);
+        git(&work_dir, &["config", "user.name", "Test User"]);
+        git(&work_dir, &["config", "user.email", "test@example.com"]);
+        std::fs::write(work_dir.join("f.txt"), "hi").unwrap();
+        git(&work_dir, &["add", "."]);
+        git(&work_dir, &["commit", "-q", "-m", "first"]);
+        git(&work_dir, &["remote", "add", "origin", &bare_str]);
+        git(&work_dir, &["push", "-q", "origin", "sandbox/thread-1"]);
+        // What GitHub does automatically the moment a first branch lands on
+        // an empty repo: point the remote's own HEAD symref at it. A plain
+        // `git init --bare` + `git push` fixture does not do this on its
+        // own, so the test simulates it explicitly.
         git(
-            &canonical,
-            &[
-                "config",
-                "remote.origin.fetch",
-                "+refs/heads/*:refs/remotes/origin/*",
-            ],
-        );
-        canonical
-    }
-
-    /// The path production actually sits on: the files-backend mirror has a
-    /// LIVE worktree (every sandbox is one), which makes `git refs migrate`
-    /// refuse on every released git. Acquisition must still land the
-    /// requested colliding branch at its true commit via the narrow
-    /// single-branch fetch — and on a case-sensitive filesystem the full
-    /// fetch simply succeeds, so the same assertions hold everywhere.
-    #[tokio::test]
-    async fn a_live_worktree_blocks_migration_but_the_requested_branch_still_lands() {
-        let Some((origin_root, bare_str, main_sha, fork_sha)) =
-            origin_with_case_colliding_branches()
-        else {
-            return;
-        };
-        let (workdir, repo_dir) = empty_repo_dir();
-        let orch = fresh_orch(repo_dir.clone());
-        let clone_url = format!("file://{bare_str}");
-        let canonical = files_backend_mirror(&orch, &clone_url, &bare_str);
-
-        // A blocking LIVE worktree, registered the way a sibling sandbox's
-        // acquisition would have.
-        let blocker = workdir.path().join("blocker");
-        git(
-            &canonical,
-            &[
-                "worktree",
-                "add",
-                "--detach",
-                blocker.to_str().unwrap(),
-                &main_sha,
-            ],
+            Path::new(&bare_str),
+            &["symbolic-ref", "HEAD", "refs/heads/sandbox/thread-1"],
         );
 
+        sync_canonical(&orch, "t2", &canonical, &clone_url, &controller)
+            .await
+            .expect("second sync must succeed");
+
+        // Canonical stays permanently detached (see `sync_canonical`'s doc
+        // comment) — its own working tree is never the source of truth. What
+        // matters is that a plain fetch picked up the branch that actually
+        // exists on the remote now, reachable via its own remote-tracking
+        // ref, regardless of whatever this machine's `init.defaultBranch`
+        // guessed for the first, empty clone.
         assert!(
-            clone_fresh(&orch, &clone_url, Some("feature/qa")).await,
-            "{:?}",
-            orch.tasks
-                .logs()
-                .tail_read(&app_key("setup"), DEFAULT_TAIL_BYTES)
-                .await
+            ref_exists(
+                &orch,
+                "t3",
+                &canonical.to_string_lossy(),
+                "refs/remotes/origin/sandbox/thread-1",
+                &controller,
+            )
+            .await,
+            "fetch must have picked up the branch that actually exists on the remote"
         );
-
-        // The requested spelling holds ITS commit — not the wrong-cased
-        // sibling's — and the checkout is cut from it.
-        assert_eq!(
-            git_stdout(
-                &canonical,
-                &["rev-parse", "--verify", "refs/remotes/origin/feature/qa"]
-            ),
-            fork_sha
-        );
-        assert_eq!(git_stdout(&repo_dir, &["rev-parse", "HEAD"]), fork_sha);
         drop((origin_root, workdir));
     }
 }
