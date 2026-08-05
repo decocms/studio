@@ -17,6 +17,27 @@ import { Store } from "./store/store-primitive";
 const stores = new Map<string, Store<QueueItemDTO[]>>();
 
 /**
+ * Cap on distinct threads tracked at once. Nothing ever calls a "thread
+ * closed" cleanup here (there's no such lifecycle event), so a long-lived tab
+ * that visits many threads over a session would otherwise grow `stores`,
+ * `dirtyThreads`, and `pendingBodies` without bound. Evicting the
+ * least-recently-touched thread once the map is over the cap keeps memory
+ * bounded without needing that missing lifecycle hook.
+ */
+const MAX_TRACKED_THREADS = 200;
+
+function touchThread(threadId: string): void {
+  if (stores.size < MAX_TRACKED_THREADS || stores.has(threadId)) return;
+  const oldest = stores.keys().next().value;
+  if (oldest === undefined) return;
+  stores.delete(oldest);
+  dirtyThreads.delete(oldest);
+  for (const key of pendingBodies.keys()) {
+    if (key.startsWith(`${oldest}:`)) pendingBodies.delete(key);
+  }
+}
+
+/**
  * Threads that have queued a message behind a running turn since their live
  * body was last known to be in sync. While a thread is "dirty", each run
  * terminal must reconcile the chat body against the server (`reconcileFrom
@@ -43,6 +64,7 @@ export function clearQueueDirty(threadId: string): void {
 export function messageQueueStore(threadId: string): Store<QueueItemDTO[]> {
   let store = stores.get(threadId);
   if (!store) {
+    touchThread(threadId);
     store = new Store<QueueItemDTO[]>([]);
     stores.set(threadId, store);
   }
