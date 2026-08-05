@@ -105,6 +105,7 @@ type StageState = "done" | "active" | "pending";
 function stagesFor(phase: ScanPhase): StageState[] {
   if (phase === "scanning") return ["done", "active", "pending", "pending"];
   if (phase === "pending") return ["done", "done", "active", "pending"];
+  if (phase === "empty") return ["done", "done", "done", "active"];
   return ["done", "done", "done", "pending"];
 }
 
@@ -120,17 +121,16 @@ function ScanScreen({
   email: string;
 }) {
   const t = useT();
-  const isActive = phase === "scanning" || phase === "pending";
+  const isActive =
+    phase === "scanning" || phase === "pending" || phase === "empty";
   const stages = stagesFor(phase);
 
   const errorMessage =
     phase === "blocked"
       ? t("reports.scanGate.errorBlocked")
-      : phase === "empty"
-        ? t("reports.scanGate.errorEmpty")
-        : phase === "error"
-          ? t("reports.scanGate.errorFailed")
-          : null;
+      : phase === "error"
+        ? t("reports.scanGate.errorFailed")
+        : null;
 
   return (
     <div
@@ -286,7 +286,19 @@ function ScanScreen({
               })}
             </div>
 
-            <ReportSocialProof />
+            {phase === "empty" ? (
+              <p
+                className="mt-5 sm:mt-7 text-[12px] leading-4"
+                style={{ color: DECK.faint }}
+              >
+                {t("reports.scanGate.errorEmpty")}{" "}
+                <a href="https://decocms.com/diagnostico" className="underline">
+                  {t("reports.scanGate.tryAnother")}
+                </a>
+              </p>
+            ) : (
+              <ReportSocialProof />
+            )}
           </div>
         )}
 
