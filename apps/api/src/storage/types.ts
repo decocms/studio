@@ -1587,6 +1587,15 @@ export interface TaskBoardItemTable {
     string | null | undefined,
     string | null
   >;
+  /** Set when a reports-pushed finding's card is dismissed (its "delete") —
+   *  the card leaves the board and the import skips its `external_key`, so the
+   *  finding doesn't return on the next scan. Null for a live card. Cleared by
+   *  `TASK_BOARD_DISMISSED_RESTORE`. */
+  dismissed_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sort_order: ColumnType<number, number | undefined, number>;
   created_by: string;

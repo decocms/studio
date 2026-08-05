@@ -220,4 +220,26 @@ describe("quota refund on thread finish (wiring)", () => {
 
     expect(await billing.taskClaim(task.id)).toBeNull();
   });
+
+  // `task_quota_claims` cascades from `task_board_items`, so a hard delete
+  // would be a backdoor refund: delegate, delete, repeat.
+  it("deleting a charged task does NOT refund its quota slot", async () => {
+    const { task } = await chargedTask("delete-me", "in_progress");
+    // Read the period rather than guess it — it depends on billing status.
+    const { period_key: periodKey } = await database.db
+      .selectFrom("task_quota_claims")
+      .select(["period_key"])
+      .where("task_board_item_id", "=", task.id)
+      .executeTakeFirstOrThrow();
+    const before = await billing.countTaskClaims(ORG, periodKey);
+    expect(before).toBeGreaterThan(0);
+
+    await taskBoard.delete(task.id, ORG, USER);
+
+    // Off the board...
+    expect((await taskBoard.list(ORG)).map((i) => i.id)).not.toContain(task.id);
+    // ...and the charge is intact.
+    expect(await billing.countTaskClaims(ORG, periodKey)).toBe(before);
+    expect(await stateOf(task.id)).toBe("held");
+  });
 });

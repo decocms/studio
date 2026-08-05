@@ -1,12 +1,9 @@
 /**
  * Real-Postgres coverage for the reports-task guards in the board tools:
- * content immutability (UPDATE/DELETE) and the pre-write paywall on the
- * delegation flip — everything that fires BEFORE any thread/dispatch
- * machinery, so the ctx stub stays small.
+ * content immutability (UPDATE), delete-dismisses, and the delegation paywall.
  *
  * The paywall test drives `ensureTaskExecutionAllowed` directly with an
- * explicit config: the tool reads the frozen global settings, which a test
- * can't flip (STUDIO_TASK_QUOTA_ENFORCED is resolved once at first access).
+ * explicit config, since the tool reads frozen global settings.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
@@ -157,23 +154,69 @@ describe("reports-task guards", () => {
     expect((await taskBoard.getById(second.id, ORG))?.assigneeId).toBeNull();
   });
 
-  it("rejects deleting a reports task; user tasks delete fine", async () => {
+  // Inverts the old assertion: delete used to be refused for a reports task.
+  it("deletes a reports task and dismisses its finding", async () => {
     const reportsTask = await taskBoard.create({
       organizationId: ORG,
       title: "finding",
+      externalKey: "diag:example.com:lcp",
       by: "system",
     });
-    await expect(
-      TASK_BOARD_ITEM_DELETE.handler({ id: reportsTask.id }, ctx),
-    ).rejects.toThrow(/can't be deleted/);
-    expect(await taskBoard.getById(reportsTask.id, ORG)).not.toBeNull();
+    await TASK_BOARD_ITEM_DELETE.handler({ id: reportsTask.id }, ctx);
+    expect((await taskBoard.list(ORG)).map((i) => i.id)).not.toContain(
+      reportsTask.id,
+    );
+    expect(await taskBoard.listDismissedFindings(ORG)).toMatchObject([
+      { externalKey: "diag:example.com:lcp", dismissedBy: USER },
+    ]);
+  });
 
+  it("deletes a user task without dismissing anything", async () => {
     const userTask = await taskBoard.create({
       organizationId: ORG,
       title: "mine",
       by: USER,
     });
+    const before = await taskBoard.listDismissedFindings(ORG);
     await TASK_BOARD_ITEM_DELETE.handler({ id: userTask.id }, ctx);
     expect(await taskBoard.getById(userTask.id, ORG)).toBeNull();
+    // No external_key ⇒ nothing to tombstone.
+    expect(await taskBoard.listDismissedFindings(ORG)).toHaveLength(
+      before.length,
+    );
+  });
+
+  it("restores a dismissed finding", async () => {
+    const task = await taskBoard.create({
+      organizationId: ORG,
+      title: "finding-restorable",
+      externalKey: "diag:example.com:ttfb",
+      by: "system",
+    });
+    await TASK_BOARD_ITEM_DELETE.handler({ id: task.id }, ctx);
+    expect(
+      await taskBoard.dismissedFindingKeys(ORG, ["diag:example.com:ttfb"]),
+    ).toEqual(new Set(["diag:example.com:ttfb"]));
+
+    expect(
+      await taskBoard.restoreDismissedFindings(ORG, ["diag:example.com:ttfb"]),
+    ).toBe(1);
+    expect(
+      await taskBoard.dismissedFindingKeys(ORG, ["diag:example.com:ttfb"]),
+    ).toEqual(new Set());
+  });
+
+  it("an empty restore list clears nothing (a filtered-to-zero caller must not wipe the lot)", async () => {
+    const task = await taskBoard.create({
+      organizationId: ORG,
+      title: "finding-kept",
+      externalKey: "diag:example.com:cls",
+      by: "system",
+    });
+    await TASK_BOARD_ITEM_DELETE.handler({ id: task.id }, ctx);
+    expect(await taskBoard.restoreDismissedFindings(ORG, [])).toBe(0);
+    expect(
+      await taskBoard.dismissedFindingKeys(ORG, ["diag:example.com:cls"]),
+    ).toEqual(new Set(["diag:example.com:cls"]));
   });
 });

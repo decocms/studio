@@ -40,6 +40,8 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
  *   matched — a regression creates a fresh card. Refreshes never re-trigger
  *   the Super Agent delegation.
  *
+ * A DISMISSED key (`dismissed_at` set) is skipped and counted in `dismissed`.
+ *
  * An item may carry `assigneeId` — a real org member, or the Super Agent
  * sentinel to queue the task for an agent run (status forced to To Do, same as
  * the create tool). A delegated run must execute as a REAL org member
@@ -156,21 +158,31 @@ export const createTaskBoardImportRoutes = () => {
         if ((claim.numInsertedOrUpdatedRows ?? 0n) === 0n) return null;
       }
 
-      // Open items matching the batch's external keys — these get refreshed
-      // instead of duplicated. Done items don't match: a regression is a new
-      // card.
+      // Open cards get refreshed, done ones don't match, dismissed ones
+      // suppress the finding.
       const keys = items.flatMap((i) => i.externalKey ?? []);
       const openByKey = new Map<string, string>();
+      const dismissed = new Set<string>();
       if (keys.length > 0) {
-        const open = await trx
+        const rows = await trx
           .selectFrom("task_board_items")
-          .select(["id", "external_key"])
+          .select(["id", "external_key", "status", "dismissed_at"])
           .where("organization_id", "=", organizationId)
           .where("external_key", "in", keys)
-          .where("status", "!=", "done")
+          .where((eb) =>
+            eb.or([
+              eb("dismissed_at", "is not", null),
+              eb("status", "!=", "done"),
+            ]),
+          )
           .execute();
-        for (const row of open)
-          if (row.external_key) openByKey.set(row.external_key, row.id);
+        for (const row of rows) {
+          if (!row.external_key) continue;
+          // Dismissal wins over an open card with the same key.
+          if (row.dismissed_at) dismissed.add(row.external_key);
+          else if (row.status !== "done")
+            openByKey.set(row.external_key, row.id);
+        }
       }
 
       const storage = new TaskBoardStorage(trx);
@@ -178,7 +190,12 @@ export const createTaskBoardImportRoutes = () => {
       const delegations: TaskBoardItem[] = [];
       let created = 0;
       let updated = 0;
+      let skipped = 0;
       for (const item of items) {
+        if (item.externalKey && dismissed.has(item.externalKey)) {
+          skipped++;
+          continue;
+        }
         const existingId = item.externalKey
           ? openByKey.get(item.externalKey)
           : undefined;
@@ -226,7 +243,7 @@ export const createTaskBoardImportRoutes = () => {
         created++;
         if (toSuperAgent) delegations.push(row);
       }
-      return { touched, delegations, created, updated };
+      return { touched, delegations, created, updated, skipped };
     });
 
     if (!outcome)
@@ -260,6 +277,8 @@ export const createTaskBoardImportRoutes = () => {
       created: outcome.created,
       updated: outcome.updated,
       delegated,
+      // Report the skips — a silent one reads as "imported everything".
+      ...(outcome.skipped > 0 && { dismissed: outcome.skipped }),
       ...(quotaBlocked > 0 && { quota_blocked: quotaBlocked }),
     });
   });

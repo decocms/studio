@@ -556,6 +556,20 @@ export interface StudioToolIO {
     input: { id: string };
     output: { success: boolean };
   };
+  TASK_BOARD_DISMISSED_LIST: {
+    input: { [x: string]: never };
+    output: {
+      findings: {
+        externalKey: string;
+        dismissedBy: string;
+        dismissedAt: string;
+      }[];
+    };
+  };
+  TASK_BOARD_DISMISSED_RESTORE: {
+    input: { externalKeys?: string[] | undefined };
+    output: { restored: number };
+  };
   TASK_ADD_REPO: {
     input: { connectionId?: string | undefined };
     output: {
