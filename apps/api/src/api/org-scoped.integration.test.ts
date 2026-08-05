@@ -198,6 +198,36 @@ describe("org-scoped API coexistence", () => {
     }
   });
 
+  it("corrects the scheme on protected-resource metadata for virtual MCP connections", async () => {
+    // "test" is a non-local host, so the response must come back https.
+    const now = new Date().toISOString();
+    await database.db
+      .insertInto("connections")
+      .values({
+        id: "conn_virtual",
+        organization_id: "org_1",
+        created_by: "user_1",
+        title: "Test Virtual Connection",
+        connection_type: "VIRTUAL",
+        connection_url: "virtual://vmcp_1",
+        status: "active",
+        pinned: false,
+        created_at: now,
+        updated_at: now,
+      })
+      .execute();
+
+    const res = await app.fetch(
+      new Request(
+        "http://test/api/org_1/mcp/conn_virtual/.well-known/oauth-protected-resource",
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { resource: string };
+    expect(body.resource).toBe("https://test/api/org_1/mcp/conn_virtual");
+  });
+
   it("rejects an API key whose organization differs from the URL org", async () => {
     mockApiKey("user_1", "org_2", "org_2");
 
