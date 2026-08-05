@@ -945,14 +945,23 @@ export class TaskBoardStorage {
   }
 
   /** Delete a comment; a root takes its replies with it (FK cascade). False
-   *  when the comment isn't in this org, or isn't the caller's own. */
+   *  when the comment isn't in this org, or isn't the caller's own — except a
+   *  Super Agent comment, which nobody's `authorId` ever matches, so any org
+   *  member (already access-checked) may remove it; it's working for the org,
+   *  not a person whose comment they shouldn't be able to erase. */
   async deleteComment(
     id: string,
     organizationId: string,
     callerId: string,
   ): Promise<boolean> {
     const existing = await this.commentInOrg(id, organizationId);
-    if (!existing || existing.authorId !== callerId) return false;
+    if (!existing) return false;
+    if (
+      existing.authorId !== callerId &&
+      existing.authorId !== SUPER_AGENT_ASSIGNEE_ID
+    ) {
+      return false;
+    }
     await this.db
       .deleteFrom("task_board_comments")
       .where("id", "=", id)
