@@ -52,3 +52,17 @@ Each reviewer that runs shows up as its own session on the task card, and its ve
 When every enabled reviewer has approved a task's pull request — or no reviewers are enabled — the task card shows a **Ship to production** button. Clicking it merges the pull request. If auto-merge is enabled, this happens automatically once the review gate is satisfied instead of waiting for someone to click the button.
 
 Each card's PR panel also shows the pull request's live state (draft, open, merged, closed) and its check status (passing, pending, or failing), so you can see at a glance whether a task is ready to move forward.
+
+## Findings pushed by a report
+
+Some cards aren't created by a person — a report (for example, the **Report Agent**) can push diagnostic findings straight onto the board. These cards behave like any other, with one difference: deleting one **dismisses the underlying finding**, not just the card.
+
+<Callout type="info">
+  Once a finding is dismissed, the next report run skips it instead of
+  recreating the card. Deleting a report-generated card is reversible — ask
+  the **Task Manager** agent to restore a dismissed finding (or all of them)
+  and its card comes back with its comments, activity, and any linked PR
+  intact.
+</Callout>
+
+The Task Manager agent tells you when a card you're deleting came from a report, so you know deleting it also suppresses that finding going forward.
