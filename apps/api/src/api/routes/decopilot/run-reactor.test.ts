@@ -430,4 +430,69 @@ describe("run reactor", () => {
     expect(statusEvent).toBeDefined();
     expect(statusEvent!.data.message_id).toBe("m1");
   });
+
+  // A force-failed run never reaches the projector, so this reactor is its
+  // only terminal writer. Without the hook the task card stays parked In
+  // Progress and its quota charge is never released — the customer pays for a
+  // run that produced nothing.
+  describe("thread-finish hook on a force-fail", () => {
+    const depsWith = (
+      transitions: boolean,
+      finished: Array<[string, string]>,
+      hook?: () => Promise<void>,
+    ): RunReactorDeps => ({
+      storage: {
+        update: async () => null,
+        get: async () => ({
+          id: "run_1",
+          organization_id: "org_1",
+          created_by: "user_1",
+          status: "failed",
+        }),
+        forceFailIfInProgress: async () => transitions,
+      } as unknown as ThreadStoragePort,
+      sseHub: { emit: () => {} },
+      onThreadFinished: async (threadId, orgId) => {
+        finished.push([threadId, orgId]);
+        if (hook) await hook();
+      },
+    });
+
+    const runFailed = (reason: "error" | "cancelled" | "reaped") => [
+      {
+        event: {
+          type: "RUN_FAILED" as const,
+          taskId: "run_1",
+          orgId: "org_1",
+          reason,
+        },
+        state: undefined,
+      },
+    ];
+
+    for (const reason of ["error", "cancelled", "reaped"] as const) {
+      test(`fires for reason '${reason}'`, async () => {
+        const finished: Array<[string, string]> = [];
+        await reactAll(runFailed(reason), depsWith(true, finished));
+        expect(finished).toEqual([["run_1", "org_1"]]);
+      });
+    }
+
+    test("does NOT fire when the force-fail was a no-op", async () => {
+      // Another writer already settled this run — it owns the board pass, and
+      // firing here could refund a claim its terminal deliberately kept.
+      const finished: Array<[string, string]> = [];
+      await reactAll(runFailed("error"), depsWith(false, finished));
+      expect(finished).toEqual([]);
+    });
+
+    test("a throwing hook never breaks the reactor", async () => {
+      const finished: Array<[string, string]> = [];
+      const deps = depsWith(true, finished, () => {
+        throw new Error("board unavailable");
+      });
+      await expect(reactAll(runFailed("error"), deps)).resolves.toBeUndefined();
+      expect(finished).toEqual([["run_1", "org_1"]]);
+    });
+  });
 });
