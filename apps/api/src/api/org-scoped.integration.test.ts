@@ -199,9 +199,7 @@ describe("org-scoped API coexistence", () => {
   });
 
   it("corrects the scheme on protected-resource metadata for virtual MCP connections", async () => {
-    // "test" isn't a `.localhost`/`127.0.0.1` host, so `fixProtocol` forces
-    // https on the response regardless of what the server's static `baseURL`
-    // config says — see the `virtual://` branch in oauth-proxy.ts.
+    // "test" is a non-local host, so the response must come back https.
     const now = new Date().toISOString();
     await database.db
       .insertInto("connections")

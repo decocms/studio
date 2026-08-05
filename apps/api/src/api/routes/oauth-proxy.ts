@@ -458,10 +458,8 @@ export const protectedResourceMetadataHandler = async (c: {
   // which supports Dynamic Client Registration and therefore accepts an
   // external MCP client's own `redirect_uri` (e.g. Claude Desktop). The
   // connection `oauth-proxy` only accepts Studio's own origin, so it can't
-  // serve external clients. Hand back Better Auth's metadata instead — with
-  // the same request-derived `resource` override as the `self` branch above,
-  // since Better Auth's own value comes from the static `baseURL` config, not
-  // the request.
+  // serve external clients. Hand back Better Auth's metadata instead, with
+  // the same `resource` override as the `self` branch above.
   if (connectionUrl.startsWith("virtual://")) {
     return studioProtectedResourceMetadata(
       c.req.raw,
