@@ -972,7 +972,13 @@ async function prepareRun(
     rootSpan.setAttribute("decopilot.thread.id", mem.thread.id);
 
     if (mem.thread.created_by !== input.userId) {
-      throw new Error(
+      // Ownership never changes for a thread, so this is a permanent
+      // condition, not a transient dispatch failure — a retry (or, for
+      // automations, the next scheduled fire) will hit the exact same
+      // check forever. Marking it permanent lets fireAutomationWorkflow
+      // deactivate the automation instead of retrying it indefinitely.
+      throw new PermanentRunError(
+        "not_thread_owner",
         "You are not allowed to write to this thread because you are not the owner",
       );
     }
