@@ -5,6 +5,7 @@ export const settings = {
   "settings.nav.brandContext": "Brand Context",
   "settings.nav.aiProviders": "AI Providers",
   "settings.nav.secrets": "Secrets",
+  "settings.nav.billing": "Billing",
   "settings.nav.buckets": "Buckets",
   "settings.nav.build": "Build",
   "settings.nav.connections": "Connections",
@@ -655,4 +656,21 @@ export const settings = {
     "Bring your own model server (advanced)",
   "settings.aiProviders.moreProvidersSingular": "{count} more provider",
   "settings.aiProviders.moreProvidersPlural": "{count} more providers",
+  "settings.billing.title": "Billing",
+  "settings.billing.autoTasksTitle": "Auto tasks",
+  "settings.billing.unlimitedDescription":
+    "Auto-task runs are unlimited on this deployment. Tasks you create yourself are never limited either.",
+  "settings.billing.autoTasksDescriptionTrial":
+    "3 free lifetime runs, then $50/month for 10 runs per billing cycle.",
+  "settings.billing.autoTasksDescriptionSubscribed":
+    "10 auto-task runs per billing cycle. Tasks you create yourself are never limited.",
+  "settings.billing.statusTrial": "Free trial",
+  "settings.billing.statusActive": "Active",
+  "settings.billing.statusPastDue": "Payment issue",
+  "settings.billing.runsUsedLabel": "runs used",
+  "settings.billing.renewsOn": "Renews {date}",
+  "settings.billing.subscribeButton": "Subscribe",
+  "settings.billing.manageButton": "Manage billing",
+  "settings.billing.checkoutError": "Couldn't start checkout: {message}",
+  "settings.billing.portalError": "Couldn't open billing portal: {message}",
 } as const;

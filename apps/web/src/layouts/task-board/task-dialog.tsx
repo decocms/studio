@@ -36,6 +36,7 @@ import {
   HelpCircle,
   LinkExternal01,
   Loading02,
+  Lock01,
   Plus,
   Tag01,
   Trash03,
@@ -46,7 +47,10 @@ import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { QaAgentIcon } from "@/components/qa-agent-icon";
 import { CodeReviewerIcon } from "@/components/code-reviewer-icon";
 import { MemoizedMarkdown } from "@/components/chat/markdown";
-import { isReviewerThreadTitle } from "@decocms/shared/task-board";
+import {
+  isReportsTask,
+  isReviewerThreadTitle,
+} from "@decocms/shared/task-board";
 import { MarkdownEditor } from "@/components/markdown-editor";
 import { useMembers } from "@/hooks/use-members";
 import { useCreateTag, useDeleteTag, useTags } from "@/hooks/use-tags";
@@ -233,6 +237,11 @@ export function TaskBoardItemDialog({
     ? members.find((m) => m.userId === item.assignedBy)
     : undefined;
   const StatusIcon = STATUS_CONFIG[status].icon;
+  // Reports-generated tasks: content (title/description/priority) is owned by
+  // the reports sync, which refreshes it on open items — TASK_BOARD_ITEM_UPDATE
+  // rejects a write that touches any of those fields. Board interactions
+  // (status/drag, assignee/delegating, due date, tags) stay free.
+  const contentLocked = !!item && isReportsTask(item);
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && close()}>
@@ -270,6 +279,7 @@ export function TaskBoardItemDialog({
                 }}
                 value={title}
                 onChange={(e) => {
+                  if (contentLocked) return;
                   setTitle(e.target.value);
                   e.target.style.height = "auto";
                   e.target.style.height = `${e.target.scrollHeight}px`;
@@ -280,8 +290,18 @@ export function TaskBoardItemDialog({
                 placeholder={t("taskBoard.taskDialog.taskTitlePlaceholder")}
                 autoFocus
                 rows={1}
-                className="w-full resize-none overflow-hidden border-0 bg-transparent text-xl font-medium leading-snug text-foreground outline-none placeholder:text-foreground/30"
+                readOnly={contentLocked}
+                className={cn(
+                  "w-full resize-none overflow-hidden border-0 bg-transparent text-xl font-medium leading-snug text-foreground outline-none placeholder:text-foreground/30",
+                  contentLocked && "cursor-default",
+                )}
               />
+              {contentLocked && (
+                <p className="mb-3 mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Lock01 size={12} />
+                  {t("taskBoard.taskDialog.reportsContentLocked")}
+                </p>
+              )}
             </div>
 
             <div className="flex flex-col gap-6 p-6 pt-6 sm:p-8 sm:pt-6">
@@ -294,6 +314,7 @@ export function TaskBoardItemDialog({
                   defaultValue={description}
                   onChange={setDescription}
                   placeholder={t("taskBoard.taskDialog.descriptionPlaceholder")}
+                  editable={!contentLocked}
                 />
                 {description && (
                   <Button
@@ -380,9 +401,16 @@ export function TaskBoardItemDialog({
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
+                    disabled={contentLocked}
+                    title={
+                      contentLocked
+                        ? t("taskBoard.taskDialog.reportsContentLocked")
+                        : undefined
+                    }
                     className={cn(
                       PROPERTY_BUTTON,
                       priority === "none" && "text-muted-foreground",
+                      contentLocked && "cursor-default opacity-60",
                     )}
                   >
                     {priority === "none" ? (

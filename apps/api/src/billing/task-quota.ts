@@ -28,11 +28,14 @@
  */
 
 import type { StudioContext } from "@/core/studio-context";
+import { isReportsTask } from "@decocms/shared/task-board";
 import { getSettings } from "../settings";
 import type {
   OrganizationBillingRow,
   OrganizationBillingStorage,
 } from "../storage/organization-billing";
+
+export { isReportsTask };
 
 /**
  * The wire contract for the paywall UI — same convention as `[CREDITS]`
@@ -61,13 +64,6 @@ export class TaskQuotaError extends Error {
     super(`${SUBSCRIPTION_REQUIRED_PREFIX} ${QUOTA_MESSAGES[reason]}`);
     this.name = "TaskQuotaError";
   }
-}
-
-/** Only reports-pushed tasks are gated. The import route is the sole writer
- *  of created_by = "system" (routes/task-board-import.ts); every user- or
- *  agent-created task carries a real principal id. */
-export function isReportsTask(item: { createdBy: string }): boolean {
-  return item.createdBy === "system";
 }
 
 /** `past_due` counts — Stripe dunning grace. */
@@ -124,7 +120,7 @@ export interface TaskQuotaConfig {
   maxRunsPerTask: number;
 }
 
-function taskQuotaConfig(): TaskQuotaConfig {
+export function taskQuotaConfig(): TaskQuotaConfig {
   const settings = getSettings();
   return {
     enforced: settings.taskQuotaEnforced,

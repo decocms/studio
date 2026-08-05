@@ -199,6 +199,9 @@ export const KEYS = {
   organizationSettings: (organizationId: string) =>
     ["organization-settings", organizationId] as const,
 
+  organizationTaskQuota: (organizationId: string) =>
+    ["organization-task-quota", organizationId] as const,
+
   userModelPreferences: (organizationId: string) =>
     ["user-model-preferences", organizationId] as const,
 

@@ -139,6 +139,8 @@ export const taskBoard = {
   "taskBoard.taskDialog.shipSuccess": "Merged and shipped to production",
   "taskBoard.taskDialog.shipError": "Couldn't merge the pull request",
   "taskBoard.taskDialog.propertiesLabel": "Properties",
+  "taskBoard.taskDialog.reportsContentLocked":
+    "Generated from your report — title, description, and priority are managed automatically",
   "taskBoard.taskDialog.saveButton": "Save",
   "taskBoard.taskDialog.setPriorityButton": "Set priority",
   "taskBoard.taskDialog.someoneLabel": "someone",
@@ -175,4 +177,25 @@ export const taskBoard = {
   "taskBoard.taskFilters.filterDrawerTitle": "Filters",
   "taskBoard.taskFilters.priorityAnyPriority": "Any priority",
   "taskBoard.taskFilters.priorityLabel": "Priority",
+  "taskBoard.subscriptionPaywall.trialTitle": "Subscribe to keep auto-fixing",
+  "taskBoard.subscriptionPaywall.trialBenefitMonitoring":
+    "Continuous monitoring of your site, catching new issues automatically",
+  "taskBoard.subscriptionPaywall.trialBenefitAutoFix":
+    "The agent fixes what it finds and opens a pull request for your review",
+  "taskBoard.subscriptionPaywall.trialBenefitRuns":
+    "10 auto-task runs every billing cycle",
+  "taskBoard.subscriptionPaywall.trialPrice": "$50",
+  "taskBoard.subscriptionPaywall.trialPricePeriod": "/month",
+  "taskBoard.subscriptionPaywall.previewAlt": "Preview of your task board",
+  "taskBoard.subscriptionPaywall.monthlyTitle": "Auto-task quota used up",
+  "taskBoard.subscriptionPaywall.monthlyDescription":
+    "This organization used its auto-task runs for this billing cycle. More become available at the start of the next one.",
+  "taskBoard.subscriptionPaywall.runsTitle": "This task reached its limit",
+  "taskBoard.subscriptionPaywall.runsDescription":
+    "This task has been re-run as many times as allowed. Create a new task to keep going.",
+  "taskBoard.subscriptionPaywall.subscribeButton": "Subscribe",
+  "taskBoard.subscriptionPaywall.notNowButton": "Not now",
+  "taskBoard.subscriptionPaywall.dismissButton": "Close",
+  "taskBoard.subscriptionPaywall.checkoutError":
+    "Couldn't start checkout: {message}",
 } as const;

@@ -7,6 +7,19 @@
 export const SUPER_AGENT_ASSIGNEE_ID = "super-agent";
 
 /**
+ * True for a task pushed by the Reports import route (`created_by = "system"`,
+ * the sentinel for non-user principals — see `apps/api/src/api/routes/
+ * task-board-import.ts`). Its CONTENT (title/description/priority) is owned by
+ * the reports sync, which refreshes it on open items, so both the write guard
+ * (`TASK_BOARD_ITEM_UPDATE`) and the board UI (locking those fields) key off
+ * this. Board interactions — status/drag, assignee (delegating IS how a run
+ * starts), due date, tags — stay free.
+ */
+export function isReportsTask(item: { createdBy: string }): boolean {
+  return item.createdBy === "system";
+}
+
+/**
  * The org's automated reviewers. Both are derived identities over the org's
  * agent runtime (never seeded), enabled per-org via `qa_agent_enabled` /
  * `code_reviewer_enabled` flags. When a Super Agent task reaches In Review with

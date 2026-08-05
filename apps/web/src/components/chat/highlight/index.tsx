@@ -20,7 +20,9 @@ import { UserAskQuestionHighlight } from "./user-ask-question";
 import { TodosHighlight } from "./todos";
 import { CollapsibleHighlight } from "./collapsible-highlight";
 import { CreditsExhaustedBanner } from "../credits-exhausted-banner";
+import { SubscriptionLimitHighlight } from "./subscription-limit";
 import { useHighlightFlags } from "./use-highlight-count";
+import { useStudioTools } from "@/lib/studio-tools";
 import { parseErrorMessage } from "./parse-error-message";
 import type { UserAskToolPart } from "../types";
 
@@ -175,6 +177,23 @@ export function ChatHighlight() {
   const [preferences, setPreferences] = usePreferences();
   const { virtualMcpId, createTaskWithMessage } = useChatTask();
   const { chatMode, simpleModeTier } = useChatPrefs();
+  const studio = useStudioTools();
+
+  const handleSubscribe = async () => {
+    try {
+      const { url } = await studio.call(
+        "ORGANIZATION_BILLING_CHECKOUT_START",
+        {},
+      );
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      toast.error(
+        t("taskBoard.subscriptionPaywall.checkoutError", {
+          message: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    }
+  };
 
   // Build a fresh RequestOptions at call time so tier/mode reflect the
   // user's current selection. `toolApprovalLevel` is passed in explicitly:
@@ -308,6 +327,13 @@ export function ChatHighlight() {
   return (
     <div className="absolute bottom-full left-0 right-0">
       <TodosHighlight todos={flags.todos} />
+      {flags.subscriptionErrorKind && (
+        <SubscriptionLimitHighlight
+          kind={flags.subscriptionErrorKind}
+          onDismiss={clearError}
+          onSubscribe={handleSubscribe}
+        />
+      )}
       {showError && (
         <StatusHighlight
           variant="error"
