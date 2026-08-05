@@ -329,11 +329,30 @@ const ADMIN_MCP = "https://sites-admin-mcp.deco.site/api/mcp";
 const FILE_CONFIG_NAME_PREFIX = "deco-assets-";
 
 /**
+ * True when a config already IS the managed config for `slug` — the only case
+ * where re-importing has nothing to do. A same-named config that isn't (the
+ * legacy pre-tenancy import created `deco-assets-<site>` pointing at the old
+ * assets bucket with vended credentials) must be upgraded in place: the
+ * `(organization_id, lower(name))` unique index makes creating a second row
+ * impossible, so skipping would strand the org on the legacy bucket forever.
+ */
+export function isManagedConfigFor(
+  config: { credentialType: string; siteSlug: string | null },
+  slug: string,
+): boolean {
+  return (
+    config.credentialType === "managed" &&
+    config.siteSlug?.toLowerCase() === slug
+  );
+}
+
+/**
  * Claim the site slug for this org in studio's own tenancy table and create a
  * `managed` FILE_CONFIG for it. Studio mints prefix-scoped STS credentials
  * in-process at upload/list time (see file-storage/tenant-credentials.ts) — no
  * service-account key, no live call to admin to vend credentials. Idempotent:
- * re-importing the same site re-claims (same org) and skips an existing config.
+ * re-importing the same site re-claims (same org) and, when the config already
+ * points at the managed tenant bucket, changes nothing.
  * Best-effort: any failure is logged and swallowed by the caller.
  */
 async function provisionManagedAssetsConfig(params: {
@@ -370,25 +389,46 @@ async function provisionManagedAssetsConfig(params: {
   }
 
   const configName = `${FILE_CONFIG_NAME_PREFIX}${siteName}`;
-  const existing = await ctx.storage.orgFileConfigs.list(orgId);
-  if (existing.some((c) => c.name.toLowerCase() === configName.toLowerCase())) {
+  const existing = (await ctx.storage.orgFileConfigs.list(orgId)).find(
+    (c) => c.name.toLowerCase() === configName.toLowerCase(),
+  );
+  if (existing && isManagedConfigFor(existing, slug)) {
     return;
   }
 
   const descriptor = tenantStorageDescriptor(slug);
-  await ctx.storage.orgFileConfigs.create({
-    organizationId: orgId,
-    name: configName,
-    description: `Managed deco-assets storage for site "${siteName}".`,
+  const storage = {
     bucket: descriptor.bucket,
     region: descriptor.region,
     endpoint: descriptor.endpoint,
     forcePathStyle: descriptor.forcePathStyle,
     prefix: descriptor.prefix,
     publicUrlBase: descriptor.publicUrlBase,
+    // The legacy config carried an sts-session refreshUrl; managed mints
+    // in-process, so clear it or the S3 client would still call out to admin.
     refreshUrl: null,
     siteSlug: slug,
-    credentials: { type: "managed" },
+    credentials: { type: "managed" as const },
+  };
+
+  if (existing) {
+    await ctx.storage.orgFileConfigs.update({
+      id: existing.id,
+      organizationId: orgId,
+      ...storage,
+      updatedBy: userId,
+    });
+    console.log(
+      `[deco-sites] legacy file-config "${configName}" upgraded to managed for org=${orgId}`,
+    );
+    return;
+  }
+
+  await ctx.storage.orgFileConfigs.create({
+    organizationId: orgId,
+    name: configName,
+    description: `Managed deco-assets storage for site "${siteName}".`,
+    ...storage,
     createdBy: userId,
   });
   console.log(
