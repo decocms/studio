@@ -189,19 +189,6 @@ describe("org-fs HTTP routes (integration)", () => {
     ).toBe(404);
   });
 
-  // Manifest row present, bytes gone (a volume restored against a different
-  // bucket) — a 404, not the 500 the raw storage error used to produce.
-  it("404s a read whose stored bytes are missing", async () => {
-    await put("orphan.txt", "bytes");
-    rmSync(ASSETS_DIR, { recursive: true, force: true });
-
-    expect(
-      (await app.request(`${BASE}/skills/stat?path=orphan.txt`)).status,
-    ).toBe(200);
-    const read = await app.request(`${BASE}/skills/read?path=orphan.txt`);
-    expect(read.status).toBe(404);
-  });
-
   it("moves a file via POST /move", async () => {
     await put("a.txt", "payload");
     const mv = await app.request(`${BASE}/skills/move`, {

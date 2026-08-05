@@ -32,7 +32,12 @@ import { createBoundObjectStorage } from "../object-storage/bound-object-storage
 import { DevObjectStorage } from "../object-storage/dev-object-storage";
 import { S3Service } from "../object-storage/s3-service";
 import { OrgFsEntryStorage } from "../storage/org-fs";
-import { OrgFs, OrgFsQuotaError, OrgFsValidationError } from "./org-fs";
+import {
+  OrgFs,
+  OrgFsNotFoundError,
+  OrgFsQuotaError,
+  OrgFsValidationError,
+} from "./org-fs";
 import { verifySharePassword } from "./share-password";
 
 const ORG = "org_fs_svc";
@@ -84,6 +89,17 @@ describe("OrgFs service (integration)", () => {
 
     const stat = await fs.stat("skills", "hello.txt");
     expect(stat?.contentHash).toBe(entry.contentHash);
+  });
+
+  it("read() 404s (not 500s) when the manifest row outlives its object", async () => {
+    const storage = new DevObjectStorage(ORG, "http://test");
+    const drifted = new OrgFs(storage, new OrgFsEntryStorage(db.db), ORG);
+    await drifted.write("skills", "gone.txt", "bye", { actor: ACTOR });
+    // Manifest/bucket drift: the row stays, the bytes vanish.
+    await storage.delete("_fs/skills/gone.txt");
+    expect(drifted.read("skills", "gone.txt")).rejects.toBeInstanceOf(
+      OrgFsNotFoundError,
+    );
   });
 
   it("creates ancestor directories on nested write and lists the tree", async () => {

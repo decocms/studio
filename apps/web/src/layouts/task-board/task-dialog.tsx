@@ -35,6 +35,7 @@ import {
   Globe01,
   HelpCircle,
   LinkExternal01,
+  Lightning01,
   Loading02,
   Lock01,
   Plus,
@@ -139,6 +140,7 @@ export function TaskBoardItemDialog({
   onDelete,
   onOpenThread,
   onNewChat,
+  onAutoFix,
   isSaving,
 }: {
   open: boolean;
@@ -161,6 +163,8 @@ export function TaskBoardItemDialog({
   onOpenThread?: (thread: TaskBoardItemThread) => void;
   /** Edit mode only: start a fresh chat seeded with this task as context. */
   onNewChat?: () => void;
+  /** Edit mode only: hand the task to the Super Agent. */
+  onAutoFix?: () => void;
   isSaving?: boolean;
 }) {
   const t = useT();
@@ -232,6 +236,26 @@ export function TaskBoardItemDialog({
   };
 
   const isSuperAgent = assigneeId === SUPER_AGENT_ASSIGNEE_ID;
+  const showAutoFix =
+    item &&
+    onAutoFix &&
+    (status === "triage" || status === "todo") &&
+    !isSuperAgent;
+
+  // Save is create-mode-always, but in edit mode only surfaces once the form
+  // actually diverges from the task as loaded — otherwise it's a no-op button
+  // sitting next to New chat / Auto-fix for no reason.
+  const initialTagIds = item?.tags.map((tag) => tag.id) ?? [];
+  const isDirty =
+    !item ||
+    title.trim() !== item.title ||
+    (description.trim() || null) !== item.description ||
+    status !== item.status ||
+    priority !== item.priority ||
+    assigneeId !== (item.assigneeId ?? null) ||
+    (dueDate ? toEndOfDayIso(dueDate) : null) !== (item.dueDate ?? null) ||
+    tagIds.length !== initialTagIds.length ||
+    !tagIds.every((id) => initialTagIds.includes(id));
   const assignee = members.find((m) => m.userId === assigneeId);
   const assignedBy = item?.assignedBy
     ? members.find((m) => m.userId === item.assignedBy)
@@ -723,18 +747,26 @@ export function TaskBoardItemDialog({
                 {t("taskBoard.taskDialog.newChatButton")}
               </Button>
             )}
-            <Button
-              size="sm"
-              disabled={!title.trim() || isSaving}
-              onClick={submit}
-            >
-              {/* The + belongs to creating a task; saving an existing one
-                  isn't adding anything. */}
-              {item ? null : <Plus size={16} />}
-              {item
-                ? t("taskBoard.taskDialog.saveButton")
-                : t("taskBoard.taskDialog.createTaskButton")}
-            </Button>
+            {showAutoFix && (
+              <Button variant="outline" size="sm" onClick={onAutoFix}>
+                <Lightning01 size={16} />
+                {t("taskBoard.taskBoard.autoFix")}
+              </Button>
+            )}
+            {isDirty && (
+              <Button
+                size="sm"
+                disabled={!title.trim() || isSaving}
+                onClick={submit}
+              >
+                {/* The + belongs to creating a task; saving an existing one
+                    isn't adding anything. */}
+                {item ? null : <Plus size={16} />}
+                {item
+                  ? t("taskBoard.taskDialog.saveButton")
+                  : t("taskBoard.taskDialog.createTaskButton")}
+              </Button>
+            )}
           </div>
         </div>
       </DialogContent>

@@ -68,10 +68,13 @@ export class OrgFsNotFoundError extends Error {
 }
 
 /**
- * Object-storage "the bytes aren't there": S3 `NoSuchKey`/404 and the dev
- * filesystem's `ENOENT`.
+ * True for an object-storage "the key isn't there" error: S3 `NoSuchKey`, a 404
+ * from a non-AWS gateway, or ENOENT from the dev filesystem backend. The
+ * manifest and the bucket can drift — a byte put that failed after the row
+ * landed, a bucket reset under an existing DB — and a missing object is a
+ * not-found, not a server fault.
  */
-export function isMissingObjectError(err: unknown): boolean {
+function isMissingObject(err: unknown): boolean {
   if (typeof err !== "object" || err === null) return false;
   const e = err as {
     name?: string;
@@ -81,7 +84,6 @@ export function isMissingObjectError(err: unknown): boolean {
   };
   return (
     e.name === "NoSuchKey" ||
-    e.name === "NotFound" ||
     e.Code === "NoSuchKey" ||
     e.code === "ENOENT" ||
     e.$metadata?.httpStatusCode === 404
@@ -143,20 +145,16 @@ export class OrgFs {
   }
 
   /**
-   * Raw bytes of a file. Throws `OrgFsNotFoundError` if the path is not a live
-   * file — including when the manifest row exists but the object doesn't
-   * (a diverged volume, e.g. a manifest restored against a different bucket).
-   * That divergence used to escape as a raw storage error, which the routes
-   * 500'd; a 404 is both the truth and something callers already handle.
+   * Raw bytes of a file. Throws OrgFsNotFoundError if the path is not a live
+   * file, or if the manifest row exists but its object is gone (drift).
    */
   async read(volume: string, path: string): Promise<Uint8Array> {
     const entry = await this.requireFile(volume, path);
-    const key = fsObjectKey(volume, entry.path);
     try {
-      return await this.storage.getBytes(key);
+      return await this.storage.getBytes(fsObjectKey(volume, entry.path));
     } catch (err) {
-      if (isMissingObjectError(err)) {
-        throw new OrgFsNotFoundError(`No stored bytes for: ${entry.path}`);
+      if (isMissingObject(err)) {
+        throw new OrgFsNotFoundError(`No such file: ${entry.path}`);
       }
       throw err;
     }
