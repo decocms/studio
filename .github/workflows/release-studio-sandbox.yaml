@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - "packages/sandbox/**"
+      # The harness runner is packed INTO the image (see image/Dockerfile), so a
+      # fix there ships nothing without a rebuild. The version gate below still
+      # applies: bump packages/sandbox/package.json or the tag is reused.
+      - "packages/harness-runner/**"
   workflow_dispatch:
 
 env:
