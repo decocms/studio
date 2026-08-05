@@ -33,6 +33,23 @@ interface DownloadAppDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+// Clipboard write can reject or be entirely absent (denied permission, or a
+// non-HTTPS self-hosted origin — this dialog explicitly supports self-hosting).
+// Resolves to whether the copy actually happened, so callers never see an
+// unhandled rejection or a TypeError from calling into a missing API.
+export async function copyToClipboard(
+  clipboard: Pick<Clipboard, "writeText"> | undefined,
+  text: string,
+): Promise<boolean> {
+  if (!clipboard) return false;
+  try {
+    await clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function DownloadAppDialog({
   open,
   onOpenChange,
@@ -57,7 +74,8 @@ export function DownloadAppDialog({
             type="button"
             className="w-full gap-2"
             onClick={() => {
-              navigator.clipboard.writeText(command).then(() => {
+              copyToClipboard(navigator.clipboard, command).then((ok) => {
+                if (!ok) return;
                 setCopied(true);
                 setTimeout(() => setCopied(false), 2000);
               });
