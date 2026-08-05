@@ -60,6 +60,19 @@ const RUN_FAILURE_RECORD: Record<
 export interface RunReactorDeps {
   storage: ThreadStoragePort;
   sseHub: { emit(orgId: string, event: SSEEvent): void };
+  /**
+   * The thread just reached a terminal status *because this reactor wrote it*.
+   *
+   * Every other terminal writer runs the task-board thread-finish pass
+   * (advance to In Review + release an unproductive task-quota charge) from
+   * its projector wrapper. RUN_FAILED is the one terminal this reactor owns
+   * outright — reaped / cancelled / ghost / error force-fails never reach the
+   * projector — so without this hook those runs leave the card parked In
+   * Progress and the quota charged for a run that produced nothing.
+   *
+   * Optional so a caller with no board (tests, the desktop path) can omit it.
+   */
+  onThreadFinished?: (threadId: string, orgId: string) => Promise<void>;
 }
 
 // ============================================================================
@@ -252,6 +265,15 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
         event.orgId,
         createDecopilotFinishEvent(event.taskId, "failed"),
       );
+      // This reactor just became the terminal writer for the run, so it owes
+      // the board the same thread-finish pass every other terminal writer does
+      // — see `onThreadFinished`. Best-effort: a board/quota failure must not
+      // sink the SSE the UI is waiting on, and the hook logs its own errors.
+      await deps
+        .onThreadFinished?.(event.taskId, event.orgId)
+        .catch((err) =>
+          console.error("[run-reactor] thread-finish hook failed", err),
+        );
       return;
     }
 

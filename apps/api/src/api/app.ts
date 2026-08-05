@@ -1052,6 +1052,17 @@ export async function createApp(options: CreateAppOptions = {}) {
   const cancelReactorDeps: RunReactorDeps = {
     storage: threadStorage,
     sseHub,
+    // A force-failed run (reaped / cancelled / ghost / in-band error) never
+    // reaches the projector, so this reactor is its only terminal writer — and
+    // owes the board the pass the projector's own terminals already run. Same
+    // storages, built here because this wiring precedes theirs.
+    onThreadFinished: (threadId, orgId) =>
+      advanceTasksToReviewOnThreadFinish(
+        new TaskBoardStorage(database.db),
+        threadId,
+        orgId,
+        new OrganizationBillingStorage(database.db),
+      ),
   };
 
   const runRegistry = new RunRegistry(cancelReactorDeps);
