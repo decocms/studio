@@ -11,6 +11,13 @@
  * as the sandbox handle exists — well before the dev server is routable — so we
  * gate the sandbox surface on `progressStatus` (boot no longer in progress),
  * NOT on the mere existence of `previewUrl`.
+ *
+ * Both modes share one shape: the published site holds the canvas until
+ * something better is ready, then that swaps in. Fast Preview does not change
+ * the surface, only *when* it's ready — its draft render needs the daemon alone
+ * (up shortly after the clone), where the normal path waits out install + dev
+ * server. So the blocking overlay is only for projects with no production URL
+ * at all; Fast Preview requires one, so it never reaches that branch.
  */
 
 import type { PreviewState } from "./preview-state";
@@ -41,6 +48,21 @@ export interface PreviewDisplayInput {
   progressStatus: PhaseStatus;
   /** Live production URL to fall back to while waking, or `null` if unknown. */
   productionUrl: string | null;
+  /**
+   * Fast Preview is on (its switch is enabled AND a production URL is set).
+   * Fast Preview does not change the *surface* — it changes when the surface is
+   * ready. Both modes paint the published site while the sandbox boots; Fast
+   * Preview swaps in the daemon's draft render (ready after the clone) where the
+   * normal path waits for the dev server (ready at `running`).
+   */
+  fastPreviewActive?: boolean;
+  /**
+   * The caller could actually build the draft URL — it has the sandbox handle
+   * and a draft version. Only meaningful with `fastPreviewActive`. False means
+   * the draft isn't addressable yet, so the published site keeps the canvas
+   * (with the waking pill) instead.
+   */
+  fastPreviewReady?: boolean;
 }
 
 const NONE: PreviewDisplay = {
@@ -53,7 +75,15 @@ const NONE: PreviewDisplay = {
 export function resolvePreviewDisplay(
   input: PreviewDisplayInput,
 ): PreviewDisplay {
-  const { previewState, progressStatus, productionUrl } = input;
+  const {
+    previewState,
+    progressStatus,
+    productionUrl,
+    // Optional: a caller that knows nothing about Fast Preview gets exactly
+    // the pre-existing behaviour.
+    fastPreviewActive = false,
+    fastPreviewReady = false,
+  } = input;
 
   // Suspended / errored render their own dedicated card — hand the canvas over
   // so we don't paint a toolbar or load the production iframe behind/around it.
@@ -61,11 +91,31 @@ export function resolvePreviewDisplay(
     return NONE;
   }
 
+  // Fast Preview's draft render, the moment it's renderable. It needs only the
+  // daemon (up shortly after the clone), so this deliberately ignores
+  // `progressStatus` — waiting for the dev server is the whole cost it exists to
+  // skip. `iframeBase` stays the PUBLISHED url: the caller layers the draft URL
+  // over it, so every production-mode base is a page we can actually navigate to
+  // (and the URL-bar label doesn't jump between origins mid-boot).
+  if (fastPreviewActive && fastPreviewReady && productionUrl) {
+    return {
+      mode: "production",
+      iframeBase: productionUrl,
+      showBlockingOverlay: false,
+      showWakingPill: false,
+    };
+  }
+
   // The sandbox surface is showable once a previewUrl exists AND boot is no
   // longer in progress: `done` (running) serves the live app, `failed`/`crashed`
   // serves the daemon's auto-reloading status page — both belong in the iframe,
-  // not behind a "waking" pill.
-  if (previewState.kind === "iframe" && progressStatus !== "doing") {
+  // not behind a "waking" pill. Fast Preview skips this branch entirely — its
+  // draft render above owns the canvas instead of the dev server.
+  if (
+    !fastPreviewActive &&
+    previewState.kind === "iframe" &&
+    progressStatus !== "doing"
+  ) {
     return {
       mode: "sandbox",
       iframeBase: previewState.previewUrl,
@@ -74,8 +124,11 @@ export function resolvePreviewDisplay(
     };
   }
 
-  // Still booting (fresh boot with no previewUrl yet, or a warming iframe).
-  // Prefer the live production site so the user sees their site immediately.
+  // Nothing better is ready yet — paint the published site + a "waking" pill.
+  // Shared by both modes: Fast Preview holds here until the daemon can render
+  // the draft, the normal path until the dev server is routable. Fast Preview
+  // guarantees a `productionUrl` (its gate requires one), so it always lands
+  // here rather than on the blocking overlay below.
   if (productionUrl) {
     return {
       mode: "production",

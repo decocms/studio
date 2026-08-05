@@ -74,9 +74,12 @@ export function useDecofile(
     },
     enabled: !!params,
     staleTime: 30_000,
-    // 502 = preview unreachable / nothing available yet. The sandbox lifecycle
-    // re-invalidates this query when the dev server comes up (see
-    // sandbox-events-context), so retrying just hammers a known-down endpoint.
+    // 502 = preview unreachable / nothing available yet. Retrying just hammers
+    // a known-down endpoint; sandbox-events-context re-invalidates this query
+    // on first daemon contact (and again when the dev server reports
+    // `running`), so the recovery is event-driven. The first-contact trigger is
+    // load-bearing for Fast Preview: it renders off the daemon alone, so
+    // waiting for `running` would strand it behind the install it skips.
     retry: (failureCount, error) =>
       (error as { status?: number }).status !== 502 && failureCount < 2,
     retryDelay: (attempt) =>

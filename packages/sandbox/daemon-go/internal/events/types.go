@@ -24,6 +24,25 @@ var AllPhases = []string{
 	PhaseStartFailed, PhaseCrashed,
 }
 
+// IsWorkingTreeReadyPhase reports phases that guarantee the repo is checked
+// out on disk.
+//
+// PhaseInstalling is the first: clone and checkout are done, only dependency
+// installation remains — which is precisely the window draft preview renders
+// in. PhaseCheckingOut is excluded because the tree is mid-write. The failure
+// phases count: a repo that failed to install still has a readable tree.
+//
+// Mirrors the TypeScript daemon-protocol.ts helper of the same name — the
+// daemon uses it to decide when to announce a draft decofile version, Studio
+// to decide when to re-drive the CMS queries. Those answers must agree.
+func IsWorkingTreeReadyPhase(phase string) bool {
+	switch phase {
+	case PhaseInstalling, PhaseInstallFailed, PhaseStarting, PhaseStartFailed, PhaseRunning, PhaseCrashed:
+		return true
+	}
+	return false
+}
+
 type LifecycleState struct {
 	Phase       string
 	To          string

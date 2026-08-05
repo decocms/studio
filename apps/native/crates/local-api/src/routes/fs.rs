@@ -249,9 +249,26 @@ fn base64_encode(data: &[u8]) -> String {
 const DECOFILE_GEN_BASENAME: &str = "blocks.gen.json";
 const DECOFILE_BLOCKS_DIRNAME: &str = "blocks";
 
+/// Repeatedly percent-decodes a filename stem until it stops changing. Real
+/// repos carry both single- and double-encoded stems (`Compre%20Junto.json`,
+/// `Compre%2520Junto.json`); a single decode leaves the double-encoded one
+/// keyed `Compre%20Junto`, a key no `__resolveType` reference resolves.
+/// Mirrors the frontend's documented `decoBlockKeyFromFileStem` fallback: an
+/// invalid-encoding stem keeps its last successfully decoded form.
+fn decode_until_stable(stem: &str) -> String {
+    let mut key = stem.to_string();
+    while let Ok(decoded) = urlencoding::decode(&key) {
+        if decoded.as_ref() == key {
+            break;
+        }
+        key = decoded.into_owned();
+    }
+    key
+}
+
 /// Rebuild `.deco/blocks.gen.json` from the sibling `.deco/blocks/*.json`.
 ///
-/// Each file becomes `{ decodeURIComponent(<stem>): <file contents> }` — the
+/// Each file becomes `{ decode_until_stable(<stem>): <file contents> }` — the
 /// filename stem is the percent-encoded block id, which is what the deco
 /// runtime emits. Contents are spliced in as RAW TEXT rather than parsed and
 /// re-serialized: the payload is routinely multi-megabyte and only the small
@@ -261,7 +278,11 @@ const DECOFILE_BLOCKS_DIRNAME: &str = "blocks";
 /// the caller falls through to its normal not-found path. A malformed block is
 /// not rejected here — the client's own parse fails and it falls back to "no
 /// snapshot", exactly as when the file is genuinely absent.
-async fn generate_decofile_from_blocks(blocks_dir: &std::path::Path) -> Option<String> {
+///
+/// `pub(super)` — also the merge source for `routes::decofile`'s
+/// `GET /_sandbox/decofile`, which serves the same artifact content-addressed
+/// (an ETag over these bytes) rather than as a plain file read.
+pub(super) async fn generate_decofile_from_blocks(blocks_dir: &std::path::Path) -> Option<String> {
     let mut dir = tokio::fs::read_dir(blocks_dir).await.ok()?;
     let mut names: Vec<String> = Vec::new();
     while let Ok(Some(entry)) = dir.next_entry().await {
@@ -287,11 +308,7 @@ async fn generate_decofile_from_blocks(blocks_dir: &std::path::Path) -> Option<S
     let mut parts: Vec<String> = Vec::with_capacity(names.len());
     for name in names {
         let stem = &name[..name.len() - ".json".len()];
-        // A stem that is not valid percent-encoding keeps its literal form,
-        // mirroring the frontend's own fallback.
-        let key = urlencoding::decode(stem)
-            .map(|decoded| decoded.into_owned())
-            .unwrap_or_else(|_| stem.to_string());
+        let key = decode_until_stable(stem);
         let Ok(raw) = tokio::fs::read_to_string(blocks_dir.join(&name)).await else {
             continue;
         };
@@ -327,8 +344,20 @@ pub async fn read(State(state): State<AppState>, body: Bytes) -> Response {
             // Rebuilding it on read is what makes the CMS readable before the
             // dev server has booted — without this the sections editor reports
             // "File not found: .deco/blocks.gen.json" against a repo that
-            // plainly has its blocks. Byte-parity with `daemon/routes/fs.ts`.
-            if file_path.file_name().and_then(|name| name.to_str()) == Some(DECOFILE_GEN_BASENAME) {
+            // plainly has its blocks. Byte-parity with the Go daemon's
+            // `routes/fs.go` (itself byte-parity with the deleted TS daemon).
+            //
+            // Gated on a relative `user_path`: `resolve_read_path` passes an
+            // absolute path straight through unclamped (see its doc comment),
+            // so allowing the fallback there would turn the merge into an
+            // arbitrary sibling-`blocks/` directory glob — this route runs
+            // behind the `/_sandbox` guard, not the daemon's bearer auth, but
+            // the guard is still cheap insurance against a caller pointing an
+            // absolute path at an unrelated `.../blocks.gen.json`.
+            if !Path::new(&user_path).is_absolute()
+                && file_path.file_name().and_then(|name| name.to_str())
+                    == Some(DECOFILE_GEN_BASENAME)
+            {
                 if let Some(dir) = file_path
                     .parent()
                     .map(|dir| dir.join(DECOFILE_BLOCKS_DIRNAME))
@@ -439,6 +468,7 @@ pub async fn write(State(state): State<AppState>, body: Bytes) -> Response {
     state
         .broadcaster
         .emit("file-changed", json!({ "path": user_path }));
+    super::decofile::maybe_announce(&state, &user_path);
     Json(json!({ "ok": true, "bytesWritten": content.len() })).into_response()
 }
 
@@ -536,6 +566,7 @@ pub async fn unlink(State(state): State<AppState>, body: Bytes) -> Response {
         state
             .broadcaster
             .emit("file-changed", json!({ "path": raw_path }));
+        super::decofile::maybe_announce(&state, &raw_path);
     }
     Json(json!({ "ok": true, "existed": existed })).into_response()
 }
@@ -575,6 +606,7 @@ pub async fn mkdir(State(state): State<AppState>, body: Bytes) -> Response {
     state
         .broadcaster
         .emit("file-changed", json!({ "path": raw_path }));
+    super::decofile::maybe_announce(&state, &raw_path);
     Json(json!({ "ok": true })).into_response()
 }
 
@@ -643,6 +675,7 @@ pub async fn rename(State(state): State<AppState>, body: Bytes) -> Response {
     state
         .broadcaster
         .emit("file-changed", json!({ "path": raw_to }));
+    super::decofile::maybe_announce(&state, &raw_to);
     Json(json!({ "ok": true })).into_response()
 }
 
@@ -709,6 +742,7 @@ pub async fn edit(State(state): State<AppState>, body: Bytes) -> Response {
     state
         .broadcaster
         .emit("file-changed", json!({ "path": user_path }));
+    super::decofile::maybe_announce(&state, &user_path);
     Json(json!({
         "ok": true,
         "replacements": if replace_all { count } else { 1 },
@@ -1462,6 +1496,11 @@ pub async fn tools_sync(State(state): State<AppState>, body: Bytes) -> Response 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::ConfigStore;
+    use crate::events::Broadcaster;
+    use crate::setup::SetupOrchestrator;
+    use crate::tasks::TaskRegistry;
+    use std::sync::Arc;
 
     /// A fresh worktree has `.deco/blocks/*.json` but not the merged
     /// `blocks.gen.json` (repos gitignore it), and without this rebuild the
@@ -1486,6 +1525,26 @@ mod tests {
         assert_eq!(merged, r#"{"Alpha":{"b":2},"Card config":{"a":1}}"#);
         // Valid JSON, and the space in the key really was decoded.
         let parsed: serde_json::Value = serde_json::from_str(&merged).expect("valid json");
+        assert!(parsed.get("Card config").is_some(), "{merged}");
+    }
+
+    /// Real repos carry both single- and double-encoded filenames. Both must
+    /// merge under the real key — a single decode would leave the
+    /// double-encoded one keyed `Compre%20Junto`, which no `__resolveType`
+    /// reference resolves.
+    #[tokio::test]
+    async fn decofile_merge_decodes_double_encoded_stems_until_stable() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let blocks = root.path().join("blocks");
+        std::fs::create_dir_all(&blocks).expect("mkdir");
+        std::fs::write(blocks.join("Compre%2520Junto.json"), r#"{"curated":true}"#).unwrap();
+        std::fs::write(blocks.join("Card%20config.json"), r#"{"plain":true}"#).unwrap();
+
+        let merged = generate_decofile_from_blocks(&blocks)
+            .await
+            .expect("blocks dir merges");
+        let parsed: serde_json::Value = serde_json::from_str(&merged).expect("valid json");
+        assert!(parsed.get("Compre Junto").is_some(), "{merged}");
         assert!(parsed.get("Card config").is_some(), "{merged}");
     }
 
@@ -1569,5 +1628,97 @@ mod tests {
             .status()
             .is_ok_and(|status| status.success());
         assert!(!alive, "cancelled grep process survived its owner");
+    }
+
+    /// Byte-parity fixture for `routes/decofile.rs`'s `fresh_state` and the Go
+    /// daemon's `DecofileDeps{RepoDir: dir, Store: config.NewStore()}` — each
+    /// route test module carries its own copy (see `decofile.rs`'s doc
+    /// comment on the convention).
+    fn fresh_state(repo_dir: std::path::PathBuf) -> AppState {
+        let config = Arc::new(ConfigStore::new());
+        let app_root = std::env::temp_dir();
+        let logs = Arc::new(crate::log_store::LogStore::new(app_root.join("logs")));
+        let tasks = Arc::new(TaskRegistry::new(logs));
+        let broadcaster = Arc::new(Broadcaster::new());
+        let setup = SetupOrchestrator::new(
+            repo_dir.clone(),
+            repo_dir.clone(),
+            config.clone(),
+            tasks.clone(),
+            broadcaster.clone(),
+        );
+        AppState {
+            update: None,
+            token: "test-token".into(),
+            boot_id: "test-boot".into(),
+            sandbox_manager: crate::sandbox::SandboxManager::new(app_root.clone()),
+            agent_sessions: crate::terminal::AgentSessionRegistry::new(),
+            app_root,
+            repo_dir,
+            mode: crate::state::ApiMode::Strict,
+            config,
+            tasks,
+            broadcaster,
+            shutdown: Arc::new(crate::shutdown::ShutdownCoordinator::new()),
+            setup,
+        }
+    }
+
+    fn read_body(path: &str) -> Bytes {
+        Bytes::from(serde_json::to_vec(&json!({ "path": path, "full": true })).unwrap())
+    }
+
+    /// A relative request for the absent gen artifact falls back to the
+    /// on-the-fly merge of the sibling blocks sources. Byte-parity with the
+    /// Go daemon's `TestReadDecofileFallbackRelative`.
+    #[tokio::test]
+    async fn read_decofile_fallback_relative_merges() {
+        let root = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(root.path().join(".deco").join("blocks")).unwrap();
+        std::fs::write(
+            root.path().join(".deco").join("blocks").join("a.json"),
+            r#"{"n":1}"#,
+        )
+        .unwrap();
+        let state = fresh_state(root.path().to_path_buf());
+
+        let response = super::read(State(state), read_body(".deco/blocks.gen.json")).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(parsed["kind"], "text");
+        assert_eq!(parsed["content"], r#"{"a":{"n":1}}"#);
+    }
+
+    /// The fallback must refuse an ABSOLUTE path even when it points straight
+    /// at the real repo's gen artifact — `resolve_read_path` passes an
+    /// absolute path through unclamped, so allowing it here would turn the
+    /// merge into an arbitrary sibling-`blocks/` directory glob. Byte-parity
+    /// with the Go daemon's `TestReadDecofileFallbackRefusesAbsolute`: the
+    /// blocks exist and the relative form (above) merges them, yet the
+    /// absolute form to the very same location still 400s.
+    #[tokio::test]
+    async fn read_decofile_fallback_refuses_absolute_path() {
+        let root = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(root.path().join(".deco").join("blocks")).unwrap();
+        std::fs::write(
+            root.path().join(".deco").join("blocks").join("a.json"),
+            r#"{"n":1}"#,
+        )
+        .unwrap();
+        let state = fresh_state(root.path().to_path_buf());
+        let absolute = root
+            .path()
+            .join(".deco")
+            .join("blocks.gen.json")
+            .to_str()
+            .unwrap()
+            .to_string();
+        assert!(Path::new(&absolute).is_absolute());
+
+        let response = super::read(State(state), read_body(&absolute)).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 }

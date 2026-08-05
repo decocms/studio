@@ -106,6 +106,21 @@ async fn initial_frames(target: &crate::sandbox::SandboxTarget) -> Vec<Bytes> {
             &serde_json::json!({ "scripts": scripts }),
         ));
     }
+    // The draft decofile version, recomputed fresh for every connect/switch —
+    // same convention as `branch`/`scripts` above, unlike the daemon's
+    // cached-with-replay approach: this crate has no single process-lifetime
+    // cache to replay from (a per-target one would need a new `AppState`/
+    // `SandboxTarget` field just for this), and a live merge is cheap enough
+    // to redo on each handshake, matching the cost class of the branch-status
+    // and log-tail reads already done here.
+    if let Some((_, version)) =
+        crate::routes::decofile::read_decofile(&target.repo_dir, &target.config).await
+    {
+        initial.push(snapshot::frame(
+            "decofile",
+            &serde_json::json!({ "version": version }),
+        ));
+    }
 
     // Replay each known log SOURCE's combined transcript as ONE `log` frame.
     // The broadcaster is LIVE-only (no per-subscriber backlog), and a

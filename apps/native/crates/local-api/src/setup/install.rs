@@ -89,6 +89,19 @@ fn install_argv(pm: &str) -> Option<&'static [&'static str]> {
 /// itself exits non-zero, after transitioning `lifecycle` to
 /// `install-failed`.
 pub(super) async fn run(orch: &Arc<SetupOrchestrator>, config: &Value) -> bool {
+    // The clone/checkout step (before this one) is what guarantees a
+    // checked-out tree — announce the initial draft decofile version here,
+    // unconditionally, not only from a `.deco/blocks` WRITE: a clone doesn't
+    // write through `routes::fs`, and a decofile-only repo with no package
+    // manager configured returns below before ever reaching an "installing"
+    // transition to hang the announce off of instead. See
+    // `routes::decofile::announce_working_tree_ready`'s doc comment.
+    crate::routes::decofile::announce_working_tree_ready(
+        orch.repo_dir.clone(),
+        orch.config.clone(),
+        orch.broadcaster.clone(),
+    );
+
     // A config that names no package manager may still be a detectable
     // repository — the clone step just put its files on disk. Fill the
     // absence before deciding to skip; see `setup/detect_runtime.rs`.

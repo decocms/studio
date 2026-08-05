@@ -437,7 +437,7 @@ export const sandbox = {
     "Procurar páginas e componentes...",
   "sandbox.preview.startingPreview": "Iniciando seu preview",
   "sandbox.preview.startingPreviewHint":
-    "Você já pode fazer alterações — elas aparecem quando o preview estiver pronto.",
+    "Mostrando seu site publicado. Você já pode fazer alterações — elas aparecem quando o preview estiver pronto.",
   "sandbox.preview.templateNoLongerExists":
     "O modelo selecionado não existe mais.",
   "sandbox.preview.urlCopiedToClipboard":
@@ -531,12 +531,23 @@ export const sandbox = {
   "sandbox.redirectEditor.typePermanent": "Permanente ({status})",
   "sandbox.redirectEditor.typePlaceholder": "Tipo",
   "sandbox.redirectEditor.typeTemporary": "Temporário ({status})",
+  "sandbox.cmsSettings.title": "CMS",
+  "sandbox.cmsSettings.preview.title": "Preview",
+  "sandbox.cmsSettings.preview.description":
+    "Veja suas alterações antes de publicá-las.",
+  "sandbox.cmsSettings.fastPreview.label": "Preview Rápido",
+  "sandbox.cmsSettings.fastPreview.description":
+    "Pré-visualize alterações no seu servidor de preview em vez do sandbox.",
+  "sandbox.cmsSettings.fastPreview.needsProductionUrl":
+    "Defina um servidor de preview acima para ativar o Preview Rápido.",
+  "sandbox.cmsSettings.editing.title": "Edição",
+  "sandbox.cmsSettings.editing.description":
+    "Personalize a experiência de edição de conteúdo no formulário de blocos.",
   "sandbox.productionUrlField.description":
-    "Exibida no preview enquanto o servidor de desenvolvimento inicia, para você já visualizar e editar.",
-  "sandbox.productionUrlField.label": "URL de produção",
+    "O endereço do seu servidor ativo, usado para pré-visualizar conteúdo. Necessário para o Preview Rápido.",
+  "sandbox.productionUrlField.label": "Servidor de preview",
   "sandbox.productionUrlField.placeholder": "https://exemplo.com",
-  "sandbox.fieldDescriptionTooltipsField.label":
-    "Mostrar descrições de campo como tooltip",
+  "sandbox.fieldDescriptionTooltipsField.label": "Descrições compactas",
   "sandbox.fieldDescriptionTooltipsField.description":
     "No formulário de blocos, exibe a descrição do campo como um tooltip ao passar o mouse sobre o título, em vez de texto abaixo do título.",
   "sandbox.repoRow.label": "Repositório",

@@ -22,9 +22,12 @@ export function FieldDescriptionTooltipsField<T extends FieldValues>({
       control={control}
       name={"metadata.fieldDescriptionTooltips" as FieldPath<T>}
       render={({ field }) => (
-        <div className="flex items-center justify-between gap-3">
-          <div className="space-y-0.5">
-            <Label htmlFor="field-description-tooltips">
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-0.5 min-w-0">
+            <Label
+              htmlFor="field-description-tooltips"
+              className="font-normal text-foreground"
+            >
               {t("sandbox.fieldDescriptionTooltipsField.label")}
             </Label>
             <p className="text-xs text-muted-foreground">
@@ -33,6 +36,7 @@ export function FieldDescriptionTooltipsField<T extends FieldValues>({
           </div>
           <Switch
             id="field-description-tooltips"
+            className="shrink-0"
             checked={(field.value as boolean | null | undefined) ?? false}
             onCheckedChange={(next) => field.onChange(next)}
           />

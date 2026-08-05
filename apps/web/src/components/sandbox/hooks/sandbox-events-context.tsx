@@ -30,7 +30,8 @@ import {
   type ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useProjectContext } from "@/sdk";
+import { useProjectContext, useVirtualMCP } from "@/sdk";
+import { sanitizeProductionUrl } from "@decocms/shared/deco-site-production-url";
 import { KEYS, invalidateVirtualMcpQueries } from "@/lib/query-keys";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 
@@ -48,6 +49,10 @@ import type {
   DaemonStatus,
   LifecycleState,
 } from "@decocms/sandbox/shared";
+// One definition, shared with the daemon: it decides when to announce a draft
+// version, Studio decides when to re-drive the CMS queries. They must agree.
+export { isWorkingTreeReadyPhase } from "@decocms/sandbox/shared";
+import { isWorkingTreeReadyPhase } from "@decocms/sandbox/shared";
 
 export type { BranchMeta, DaemonStatus, LifecycleState };
 
@@ -71,6 +76,14 @@ export interface SandboxEventsValue {
   branch: BranchMeta;
   /** True after a `gone` event — handle gone, reprovision via SANDBOX_START. */
   notFound: boolean;
+  /**
+   * Content version of the working-tree draft decofile, or null until the
+   * daemon first announces one. Same value `/_sandbox/decofile` serves as its
+   * ETag, so it can be used verbatim in a draft pointer. Changes on every
+   * `.deco/blocks/*` save, which is what lets the preview refresh without
+   * polling.
+   */
+  decofileVersion: string | null;
   scripts: string[];
   activeProcesses: string[];
   getBuffer: (source: string) => string;
@@ -92,6 +105,7 @@ const DEFAULT_VALUE: SandboxEventsValue = {
   status: { state: "running" },
   branch: { kind: "unknown" },
   notFound: false,
+  decofileVersion: null,
   scripts: [],
   activeProcesses: [],
   getBuffer: () => "",
@@ -134,6 +148,7 @@ const DAEMON_EVENT_TYPES: readonly DaemonEventName[] = [
   "branch",
   "reload",
   "file-changed",
+  "decofile",
 ] as const;
 // `log` is broadcast separately — same SSE stream, different shape.
 const LOG_EVENT = "log" as const;
@@ -205,8 +220,24 @@ export function SandboxEventsProvider({
 }) {
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
+
+  // Fast Preview renders via the daemon with NO dev server, so the
+  // dev-server-gated `.deco/*` reload path below would never fire. Track it (as
+  // a ref, so the SSE closure reads the latest without reconnecting) to still
+  // fire a reload on a Blocks save. We deliberately do NOT invalidate the
+  // decofile query in that mode — the daemon reads `.deco/blocks/*` straight
+  // from disk, and a refetch could revert an optimistic edit against a committed
+  // `blocks.gen.json`.
+  const vmcp = useVirtualMCP(virtualMcpId ?? undefined);
+  const fastPreviewActive =
+    !!sanitizeProductionUrl(vmcp?.metadata?.productionUrl) &&
+    vmcp?.metadata?.fastPreview === true;
+  const fastPreviewActiveRef = useRef(fastPreviewActive);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- keep the SSE closure reading the latest value without reconnecting
+  fastPreviewActiveRef.current = fastPreviewActive;
   const [phase, setPhase] = useState<ClaimPhase | null>(null);
   const [lifecycle, setLifecycle] = useState<LifecycleState>({ phase: "idle" });
+  const [decofileVersion, setDecofileVersion] = useState<string | null>(null);
   const [status, setStatus] = useState<DaemonStatus>({ state: "running" });
   const [branchMeta, setBranchMeta] = useState<BranchMeta>({ kind: "unknown" });
   const [notFound, setNotFound] = useState(false);
@@ -241,6 +272,7 @@ export function SandboxEventsProvider({
     setBranchMeta({ kind: "unknown" });
     prevPortRef.current = null;
     setNotFound(false);
+    setDecofileVersion(null);
     setScripts([]);
     setActiveProcesses([]);
     buffers.current.clear();
@@ -259,7 +291,7 @@ export function SandboxEventsProvider({
     // Tracks the dev-server lifecycle so we can invalidate the CMS queries once
     // it comes up (switching them from the committed `.deco/*.gen.json` snapshot
     // to the live `/.decofile` + `/live/_meta` routes).
-    let prevLifecyclePhase: string | null = null;
+    let prevLifecyclePhase: LifecycleState["phase"] | null = null;
 
     const handleClaimPhase = (e: MessageEvent) => {
       try {
@@ -327,6 +359,30 @@ export function SandboxEventsProvider({
           case "lifecycle": {
             const lp = payload as DaemonEventPayload<"lifecycle">;
             setLifecycle(lp.state);
+            const cacheKeyForBranch = `${org.slug}/${virtualMcpId}/${branch}`;
+            // Working tree just landed (see isWorkingTreeReadyPhase). Re-drive
+            // the two things Fast Preview needs but that nothing else retries:
+            // the decofile — whose cold-start read 502s while the repo is still
+            // cloning and is never retried — and the entity, which carries
+            // `previewUrl` in `sandboxMap` behind a 60s staleTime. Without this
+            // both stay stale until `running` below, stranding Fast Preview
+            // behind the very install it exists to skip.
+            if (
+              isWorkingTreeReadyPhase(lp.state.phase) &&
+              !(
+                prevLifecyclePhase &&
+                isWorkingTreeReadyPhase(prevLifecyclePhase)
+              )
+            ) {
+              invalidateVirtualMcpQueries(queryClient, org.id);
+              // Only when the decofile never loaded (the 502 case) — a
+              // populated cache can hold an optimistic block edit a refetch
+              // would revert, the same hazard the post-write path guards.
+              const decofileKey = KEYS.decofile(cacheKeyForBranch);
+              if (queryClient.getQueryData(decofileKey) === undefined) {
+                void queryClient.invalidateQueries({ queryKey: decofileKey });
+              }
+            }
             // Dev server just came up: swap the CMS queries off the committed
             // `.deco/*.gen.json` snapshot and onto the live routes. This is the
             // trigger they rely on (they're enabled as soon as the daemon is up,
@@ -343,15 +399,14 @@ export function SandboxEventsProvider({
               // panels never mount on a cold-start open — only a hard refresh
               // re-fetches the entity and picks it up.
               invalidateVirtualMcpQueries(queryClient, org.id);
-              const cacheKey = `${org.slug}/${virtualMcpId}/${branch}`;
               void queryClient.invalidateQueries({
-                queryKey: KEYS.decofile(cacheKey),
+                queryKey: KEYS.decofile(cacheKeyForBranch),
               });
               void queryClient.invalidateQueries({
                 predicate: (query) =>
                   query.queryKey[0] === "live-meta" &&
                   typeof query.queryKey[1] === "string" &&
-                  query.queryKey[1].startsWith(`${cacheKey}/`),
+                  query.queryKey[1].startsWith(`${cacheKeyForBranch}/`),
               });
             }
             prevLifecyclePhase = lp.state.phase;
@@ -371,6 +426,11 @@ export function SandboxEventsProvider({
             }
             return;
           }
+          case "decofile":
+            setDecofileVersion(
+              (payload as DaemonEventPayload<"decofile">).version,
+            );
+            return;
           case "status":
             setStatus(payload as DaemonEventPayload<"status">);
             return;
@@ -421,15 +481,16 @@ export function SandboxEventsProvider({
             const isDecoFile =
               filePath.startsWith(".deco/") || filePath.includes("/.deco/");
             if (isDecoFile) {
-              // Only act while the dev server is running. When it's down
-              // (crashed/paused — the state the committed-snapshot fallback
-              // supports editing in), `blocks.gen.json` is a stale build
-              // artifact the dev server can't regenerate, so invalidating +
-              // refetching it would overwrite the optimistic cache update from
-              // useSaveBlock/useDeleteBlock and the edit would visibly revert.
-              // Leave the optimistic cache as the source of truth; the
-              // lifecycle→running transition re-invalidates onto the live routes.
-              if (prevLifecyclePhase !== "running") return;
+              // Act when the dev server is running OR Fast Preview is on (which
+              // renders via the daemon with no dev server). Otherwise
+              // (crashed/paused — committed-snapshot editing) `blocks.gen.json`
+              // is a stale build artifact the dev server can't regenerate, so
+              // invalidating + refetching it would overwrite the optimistic
+              // cache update from useSaveBlock/useDeleteBlock and the edit would
+              // visibly revert; leave the optimistic cache as the source of
+              // truth until the lifecycle→running transition re-invalidates.
+              const devServerRunning = prevLifecyclePhase === "running";
+              if (!devServerRunning && !fastPreviewActiveRef.current) return;
               // Turn on the preview's loading overlay immediately — before the
               // debounce below — so the pending refresh feels instant instead of
               // only appearing once the reload finally fires.
@@ -451,15 +512,20 @@ export function SandboxEventsProvider({
               if (decofileDebounceTimer) clearTimeout(decofileDebounceTimer);
               decofileDebounceTimer = setTimeout(() => {
                 decofileDebounceTimer = null;
-                void queryClient.invalidateQueries({
-                  queryKey: KEYS.decofile(cacheKey),
-                });
-                // Reload the preview iframe once the rebuild has landed — HMR
+                // Only refetch the decofile when the dev server is running (the
+                // live `/.decofile` route reflects the write). In Fast Preview
+                // the daemon serves the render straight from disk, so skip the
+                // refetch (it would revert an optimistic edit) and just reload.
+                if (devServerRunning) {
+                  void queryClient.invalidateQueries({
+                    queryKey: KEYS.decofile(cacheKey),
+                  });
+                }
+                // Reload the preview iframe once the write has landed — HMR
                 // won't reflect a decofile edit, so this is the only thing that
                 // refreshes the rendered page after a Blocks save (or an
-                // external/agent `.deco/` write). Debounced with the
-                // invalidation above so it fires after the dev server rebuilds,
-                // not against the stale pre-rebuild page.
+                // external/agent `.deco/` write). Debounced so it fires after
+                // the write lands ("save → refresh").
                 for (const fn of reloadHandlers.current) {
                   try {
                     fn();
@@ -627,6 +693,7 @@ export function SandboxEventsProvider({
     status,
     branch: branchMeta,
     notFound,
+    decofileVersion,
     scripts,
     activeProcesses,
     getBuffer: (source: string) => buffers.current.get(source)?.get() ?? "",

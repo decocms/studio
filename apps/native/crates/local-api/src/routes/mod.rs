@@ -8,6 +8,7 @@ pub mod agent_capabilities;
 pub mod agent_hooks;
 pub mod bash;
 pub mod config;
+pub mod decofile;
 pub mod events;
 pub mod fs;
 pub mod git;

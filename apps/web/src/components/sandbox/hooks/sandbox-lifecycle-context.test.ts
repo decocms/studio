@@ -13,6 +13,8 @@ import {
   shouldAutoRetryClaim,
   reconcileClaimRetryEpisode,
   MAX_CLAIM_AUTO_RETRIES,
+  resolvePreviewUrl,
+  sandboxPreviewKey,
   type BranchMapEntryLike,
 } from "./sandbox-lifecycle-context";
 
@@ -523,5 +525,107 @@ describe("reconcileClaimRetryEpisode", () => {
       count: 0,
       handled: false,
     });
+  });
+});
+
+describe("sandboxPreviewKey", () => {
+  test("distinguishes branches of the same vmcp", () => {
+    expect(sandboxPreviewKey("vm1", "main")).not.toBe(
+      sandboxPreviewKey("vm1", "feat"),
+    );
+  });
+
+  test("distinguishes the same branch across vmcps", () => {
+    expect(sandboxPreviewKey("vm1", "main")).not.toBe(
+      sandboxPreviewKey("vm2", "main"),
+    );
+  });
+
+  test("a null branch is its own key, not a wildcard", () => {
+    expect(sandboxPreviewKey("vm1", null)).toBe("vm1::");
+    expect(sandboxPreviewKey("vm1", null)).not.toBe(
+      sandboxPreviewKey("vm1", "main"),
+    );
+  });
+});
+
+describe("resolvePreviewUrl", () => {
+  const KEY = sandboxPreviewKey("vm1", "main");
+  const SEED = { key: KEY, url: "https://claimed.example" };
+
+  test("the recorded entry wins over a seed", () => {
+    expect(
+      resolvePreviewUrl({
+        vmEntry: entry("agent-sandbox", "h1", "https://recorded.example"),
+        seeded: SEED,
+        key: KEY,
+      }),
+    ).toBe("https://recorded.example");
+  });
+
+  test("falls back to the claim seed while the entity query is stale", () => {
+    // The window this exists for: the daemon is up and SANDBOX_START already
+    // returned its URL, but sandboxMap hasn't been refetched yet.
+    expect(resolvePreviewUrl({ vmEntry: null, seeded: SEED, key: KEY })).toBe(
+      "https://claimed.example",
+    );
+  });
+
+  test("falls back when an entry exists but carries no previewUrl", () => {
+    expect(
+      resolvePreviewUrl({
+        vmEntry: entry("agent-sandbox", "h1", null),
+        seeded: SEED,
+        key: KEY,
+      }),
+    ).toBe("https://claimed.example");
+  });
+
+  test("ignores a seed claimed for another branch", () => {
+    // Guards the real hazard: painting the previous branch's sandbox after a
+    // switch. Stale seeds are scoped out, never reset.
+    expect(
+      resolvePreviewUrl({
+        vmEntry: null,
+        seeded: SEED,
+        key: sandboxPreviewKey("vm1", "other"),
+      }),
+    ).toBeNull();
+  });
+
+  test("null with neither source", () => {
+    expect(
+      resolvePreviewUrl({ vmEntry: null, seeded: null, key: KEY }),
+    ).toBeNull();
+  });
+});
+
+describe("resolvePreviewUrl + claim failure (integration of the two rules)", () => {
+  const KEY = sandboxPreviewKey("vm1", "main");
+  const SEED = { key: KEY, url: "https://claimed.example" };
+
+  test("a dropped seed leaves nothing to paint, so the errored card wins", () => {
+    // The provider passes `seeded: null` on a terminal claim failure. Encoded
+    // here because computePreviewState reads any previewUrl as "sandbox live"
+    // and would paint a dead iframe over the error.
+    expect(
+      resolvePreviewUrl({ vmEntry: null, seeded: null, key: KEY }),
+    ).toBeNull();
+  });
+
+  test("a recorded entry still wins on failure — a failed restart can't blank a working preview", () => {
+    expect(
+      resolvePreviewUrl({
+        vmEntry: entry("agent-sandbox", "h1", "https://recorded.example"),
+        seeded: null,
+        key: KEY,
+      }),
+    ).toBe("https://recorded.example");
+  });
+
+  test("the seed applies while no failure is present", () => {
+    expect(resolvePreviewUrl({ vmEntry: null, seeded: SEED, key: KEY })).toBe(
+      "https://claimed.example",
+    );
   });
 });
