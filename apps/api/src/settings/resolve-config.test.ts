@@ -185,6 +185,12 @@ describe("resolveConfig port", () => {
       );
     },
   );
+
+  it("throws for a PORT above 65535", () => {
+    expect(() => resolveConfig(flags, { PORT: "70000" })).toThrow(
+      "PORT must be at most 65535",
+    );
+  });
 });
 
 describe("resolveConfig clickhouse max memory usage", () => {

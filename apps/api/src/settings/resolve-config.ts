@@ -229,7 +229,15 @@ export function resolveConfig(
   const settings: Omit<Settings, "databaseUrl" | "natsUrls"> = {
     // Core
     nodeEnv,
-    port: toPositiveIntegerOrDefault("PORT", flags.port || envVars.PORT, 3000),
+    // Capped at 65535: TCP ports don't exist above that, and an out-of-range
+    // value would otherwise pass validation here and only fail confusingly
+    // once the HTTP server tries to bind it.
+    port: toPositiveIntegerOrDefault(
+      "PORT",
+      flags.port || envVars.PORT,
+      3000,
+      65535,
+    ),
     baseUrl: flags.baseUrl || envVars.BASE_URL,
     publicUrl: resolveAliasedEnv(
       envVars.STUDIO_PUBLIC_URL,
