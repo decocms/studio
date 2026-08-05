@@ -17,6 +17,13 @@ import (
 	"github.com/decocms/studio/sandbox-daemon/internal/paths"
 )
 
+// On-disk name of the merged decofile artifact, and the directory it merges —
+// shared with `Read`'s `.deco/blocks.gen.json` fallback in fs.go.
+const (
+	decofileGenBasename   = "blocks.gen.json"
+	decofileBlocksDirname = "blocks"
+)
+
 type DecofileDeps struct {
 	RepoDir string
 	Store   *config.Store
@@ -29,7 +36,7 @@ func (d DecofileDeps) blocksDir() string {
 	if cfg := d.Store.Read(); cfg != nil {
 		pmPath = cfg.PmPath()
 	}
-	return filepath.Join(paths.ResolvePmRoot(d.RepoDir, pmPath), ".deco", "blocks")
+	return filepath.Join(paths.ResolvePmRoot(d.RepoDir, pmPath), ".deco", decofileBlocksDirname)
 }
 
 // decodeUntilStable repeatedly percent-decodes a filename stem until it stops
