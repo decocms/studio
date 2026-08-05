@@ -153,6 +153,11 @@ export const routes = {
   "routes.commerceOnboarding.connectModal.trustRevoke": "Revogue quando quiser",
   "routes.commerceOnboarding.connectModal.trustEncrypted": "Criptografado",
   "routes.commerceOnboarding.connectModal.trustNeverSold": "Nunca vendido",
+  "routes.commerceOnboarding.connectSourcesTab.title":
+    "Conectar fontes de dados",
+  "routes.commerceOnboarding.connectSourcesTab.refresh": "Atualizar relatório",
+  "routes.commerceOnboarding.connectSourcesTab.refreshing":
+    "Atualizando relatório...",
   "routes.commerceOnboarding.companionSection.title":
     "Conecte suas ferramentas para ver o diagnóstico completo",
   "routes.commerceOnboarding.companionSection.loadError":

@@ -27,8 +27,9 @@ import {
   SidebarProvider,
 } from "@deco/ui/components/sidebar.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
-import { Outlet, useSearch } from "@tanstack/react-router";
+import { Outlet, useNavigate, useSearch } from "@tanstack/react-router";
 import { CommerceConnectModal } from "@/routes/commerce-onboarding/commerce-connect-modal";
+import { ConnectGitHubDialog } from "@/components/connect-github-dialog";
 import { SidebarResizeHandle } from "@/components/sidebar/sidebar-resize-handle";
 import { useSidebarResize } from "@/hooks/use-sidebar-resize";
 import { StudioSidebar, StudioSidebarMobile } from "@/components/sidebar";
@@ -70,6 +71,25 @@ export default function OrgShellLayout() {
   // `reports_only`: that flag collapses the org UI, which would leave nothing
   // but a blank surface behind the modal instead of the org home.
   const showConnectModal = connect === "1";
+  // Same idea as `?connect=1`, but for the task board's own "Auto-fix needs a
+  // repo" gate (ConnectGitHubDialog) — the commerce report's autopilot card
+  // sets this via a `studio://navigate?connectGithub=1` resource link (see
+  // project-app-navigate.ts) when no GitHub connection exists yet, so it
+  // reuses the exact same dialog instead of inventing a report-specific one.
+  const navigate = useNavigate();
+  const { connectGithub } = useSearch({ strict: false }) as {
+    connectGithub?: string;
+  };
+  const showConnectGithub = connectGithub === "1";
+  const closeConnectGithub = () =>
+    navigate({
+      to: ".",
+      search: (prev: Record<string, unknown>) => {
+        const { connectGithub: _drop, ...rest } = prev;
+        return rest;
+      },
+      replace: true,
+    });
   const [sidebarOpen, setSidebarOpen] = useLocalStorage<boolean>(
     SIDEBAR_OPEN_STORAGE_KEY,
     false,
@@ -172,6 +192,14 @@ export default function OrgShellLayout() {
               )}
               {showConnectModal && (
                 <CommerceConnectModal siteUrl={connectSiteUrl} />
+              )}
+              {showConnectGithub && (
+                <ConnectGitHubDialog
+                  open
+                  onOpenChange={(open) => {
+                    if (!open) closeConnectGithub();
+                  }}
+                />
               )}
             </div>
           </ChatPrefsProvider>

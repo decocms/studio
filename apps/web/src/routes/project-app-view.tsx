@@ -50,7 +50,7 @@ function AppRenderer({
 }) {
   const { sendMessage } = useChatStream();
   const { setAppContext, clearAppContext } = useChatPrefs();
-  const { openSidePanel, openTab } = usePanelActions();
+  const { openSidePanel, openTab, openConnectGithub } = usePanelActions();
   const sourceId = `${connectionId}:${tool.name}`;
 
   const handleRequestDisplayMode = (
@@ -85,6 +85,7 @@ function AppRenderer({
     const navigateResult = resolveAppNavigateTarget(params.content);
     if (navigateResult.isNavigate) {
       if (navigateResult.tab) openTab(navigateResult.tab);
+      if (navigateResult.connectGithub) openConnectGithub();
       return;
     }
     const doc = contentBlocksToTiptapDoc(params.content);
