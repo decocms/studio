@@ -607,25 +607,27 @@ const publishPolicyMetadataField = PublishPolicySchema.nullable()
 
 /**
  * Reusable `metadata.fastPreview` field. When true — and `productionUrl` is set —
- * the CMS preview renders the current working-tree draft against the production
- * deployment's `/live/previews` route (pushing the draft decofile as a
- * per-request override) instead of waiting for the sandbox dev server to boot.
- * The gate requires BOTH the flag and a production URL, so a bare flag with no
- * URL is inert.
+ * the CMS preview renders the site's own real page on the production
+ * deployment, carrying a `?__draft=<daemon-host>@<version>` pointer that the
+ * site's framework resolves by pulling the merged working-tree decofile from
+ * the sandbox daemon's `GET /_sandbox/decofile`, instead of waiting for the
+ * sandbox dev server to boot. The gate requires BOTH the flag and a
+ * production URL, so a bare flag with no URL is inert.
  *
  * It changes *when* the preview is ready, not which surface is shown: both modes
  * paint the published site while the sandbox provisions, but Fast Preview swaps
  * in the draft render as soon as the daemon can serve it (shortly after the
- * clone) rather than at dev-server `running`. The draft render is static — no
- * hydration or navigation — and it keeps the canvas for as long as Fast Preview
- * is on; the sandbox dev-server surface is not swapped in behind it.
+ * clone) rather than at dev-server `running`. The draft render is the site's
+ * own page — real routing and hydration, not a static single-component
+ * render — and it keeps the canvas for as long as Fast Preview is on; the
+ * sandbox dev-server surface is not swapped in behind it.
  */
 const fastPreviewMetadataField = z
   .boolean()
   .nullable()
   .optional()
   .describe(
-    "Enable Fast Preview: render the draft instantly against productionUrl's /live/previews route while the sandbox boots. Requires productionUrl to be set to take effect.",
+    "Enable Fast Preview: render the draft instantly on productionUrl's own page via a ?__draft pointer while the sandbox boots. Requires productionUrl to be set to take effect.",
   );
 
 /**
