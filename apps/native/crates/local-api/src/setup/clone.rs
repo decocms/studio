@@ -61,30 +61,25 @@ use crate::tasks::{
     now_ms, KillSignal, OutputStream, ProcessController, TaskEntry, TaskStatus, TaskSummary,
 };
 
-/// `-c safe.directory=* -c http.connectTimeout=10 -c http.lowSpeedLimit=1 -c
-/// http.lowSpeedTime=10` — byte-parity with `setup/git-command.ts::gitBaseArgv`
-/// EXCEPT for one deliberate omission: the TS source also sets `-c
-/// credential.helper=` (disables the user's credential helper), because prod
-/// authenticates via a cluster-minted token already embedded in `cloneUrl`
-/// (`x-access-token:TOKEN@github.com/...`) and never wants a stale cached
-/// credential to shadow it. Desktop has no cluster-minted token — per
-/// the native Git-sandbox contract's "Desktop adaptation" section,
-/// the user is on their OWN machine with their OWN git auth, so cloning
-/// should use exactly what `git clone` would do run by hand: the user's
-/// configured credential helper (for example macOS Keychain, or `gh` after
-/// `gh auth setup-git`). An SSH agent only participates when the configured
-/// `cloneUrl` itself uses SSH; Git does not switch an HTTPS URL to SSH based on
-/// the protocol selected in `gh auth login`.
-/// Clearing `credential.helper` here would silently break every private
-/// repo a desktop user can otherwise already clone from a terminal with the
-/// same URL.
-/// `GIT_TERMINAL_PROMPT=0` (below, in [`run_git`]) still applies regardless,
-/// so a repo the user's credentials genuinely can't reach fails fast rather
-/// than hanging on an interactive prompt.
+/// `http.connectTimeout=10 -c http.lowSpeedLimit=1 -c http.lowSpeedTime=10`:
+/// the only hang protection a network clone/fetch in this file has — nothing
+/// here wraps `git` in an outer Rust-level timeout (unlike `routes/git.rs`,
+/// which does), so without these a clone against an unreachable or
+/// half-dead host would sit forever with no way out except the user
+/// noticing and cancelling the task by hand. `connectTimeout` bounds the TCP
+/// handshake; `lowSpeedLimit`/`lowSpeedTime` abort a connection that's open
+/// but stalled (under 1 byte/s for 10s).
+///
+/// Deliberately does NOT set `credential.helper`: the user is on their OWN
+/// machine with their OWN git auth, so cloning uses exactly what `git clone`
+/// would do run by hand — the user's configured credential helper (macOS
+/// Keychain, or `gh` after `gh auth setup-git`). Clearing it would silently
+/// break every private repo a user can otherwise already clone from a
+/// terminal with the same URL. `GIT_TERMINAL_PROMPT=0` (below, in
+/// [`run_git`]) still applies regardless, so a repo the user's credentials
+/// genuinely can't reach fails fast rather than hanging on a prompt.
 fn base_argv() -> Vec<&'static str> {
     vec![
-        "-c",
-        "safe.directory=*",
         "-c",
         "http.connectTimeout=10",
         "-c",
@@ -566,6 +561,20 @@ async fn sync_canonical(
     let canonical_str = canonical.to_string_lossy().into_owned();
 
     if !canonical.join(".git").is_dir() {
+        // A path here that ISN'T our shape is a legacy BARE mirror (this
+        // crate's canonical repos used to be `--bare`, with no `.git`
+        // subdirectory — `HEAD`/`objects`/`refs` sit at the root instead) —
+        // or partial garbage from an interrupted clone. Either way `git
+        // clone` refuses a non-empty destination, so it must be cleared
+        // first; a stale mirror on disk is never worth preserving, since
+        // this whole directory is reconstructible from the remote.
+        match tokio::fs::symlink_metadata(canonical).await {
+            Ok(_) => tokio::fs::remove_dir_all(canonical)
+                .await
+                .map_err(|error| format!("failed to clear stale mirror {canonical:?}: {error}"))?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(format!("failed to inspect mirror {canonical:?}: {error}")),
+        }
         if let Some(parent) = canonical.parent() {
             tokio::fs::create_dir_all(parent)
                 .await
@@ -1072,6 +1081,50 @@ mod tests {
         let repo_dir = workdir.path().join("repo");
         std::fs::create_dir_all(&repo_dir).unwrap();
         (workdir, repo_dir)
+    }
+
+    /// A pre-existing BARE canonical mirror at the exact path a fresh clone
+    /// would use — the on-disk state every install that predates this
+    /// crate's move away from bare mirrors is in. Confirmed against a real
+    /// app data directory: `sync_canonical`'s "does canonical exist" check
+    /// only recognizes the new shape (`.git` subdirectory), so it saw a bare
+    /// mirror as "missing" and tried `git clone` straight into its
+    /// non-empty directory — exit 128, "destination path ... already
+    /// exists and is not an empty directory".
+    #[tokio::test]
+    async fn sync_canonical_replaces_a_legacy_bare_mirror_at_the_same_path() {
+        let (_origin, clone_url) = bare_repo_with_one_commit();
+        let (workdir, repo_dir) = empty_repo_dir();
+        let orch = fresh_orch(repo_dir.clone());
+        let canonical =
+            crate::sandbox::repo_store::canonical_repo_dir(&orch.app_root, &clone_url).unwrap();
+
+        std::fs::create_dir_all(canonical.parent().unwrap()).unwrap();
+        git(
+            canonical.parent().unwrap(),
+            &[
+                "clone",
+                "--bare",
+                "-q",
+                &clone_url,
+                canonical.to_str().unwrap(),
+            ],
+        );
+        assert!(
+            canonical.join("HEAD").is_file() && !canonical.join(".git").exists(),
+            "fixture must be a legacy bare mirror, not the new shape"
+        );
+
+        let controller = ProcessController::new();
+        sync_canonical(&orch, "t1", &canonical, &clone_url, &controller)
+            .await
+            .expect("sync must replace the legacy mirror, not fail on it");
+
+        assert!(
+            canonical.join(".git").is_dir(),
+            "canonical must now be the new (non-bare) shape"
+        );
+        drop(workdir);
     }
 
     /// Acquiring a branch that EXISTS on the remote, through the shared-store

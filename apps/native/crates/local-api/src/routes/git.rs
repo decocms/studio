@@ -29,9 +29,8 @@
 //! Every other piece of argv/env parity (the `--no-verify` + empty
 //! `core.hooksPath` hook bypass, `--force-with-lease` → `--force` fallback,
 //! `GIT_CEILING_DIRECTORIES`/`GIT_OPTIONAL_LOCKS` pinning, the protected-
-//! branch push guard, `-c safe.directory=*` on every invocation) is ported
-//! faithfully — see the two env profiles ([`route_env`]/[`ceiling_env`])
-//! and the per-function doc comments below.
+//! branch push guard) is ported faithfully — see the two env profiles
+//! ([`route_env`]/[`ceiling_env`]) and the per-function doc comments below.
 //!
 //! ## No publish on shutdown
 //!
@@ -379,9 +378,6 @@ fn ceiling_env(repo_dir: &Path) -> Vec<(String, String)> {
     )]
 }
 
-/// Every invocation gets `-c safe.directory=*` — byte-parity with
-/// `daemon/setup/git.ts`'s `git()` wrapper, which every `routes/git.ts` call
-/// (and `rebase-onto-base.ts`'s own `gitSync` shim) goes through.
 async fn run_git_raw<S: AsRef<str>>(
     repo_dir: &Path,
     args: &[S],
@@ -396,8 +392,7 @@ async fn run_git_raw_with_timeout<S: AsRef<str>>(
     env: &[(String, String)],
     timeout: Duration,
 ) -> Result<String, GitError> {
-    let mut full: Vec<String> = vec!["-c".to_string(), "safe.directory=*".to_string()];
-    full.extend(args.iter().map(|s| s.as_ref().to_string()));
+    let full: Vec<String> = args.iter().map(|s| s.as_ref().to_string()).collect();
     let joined = full.join(" ");
 
     let controller = GIT_PROCESS_CONTROLLER.try_with(Clone::clone).ok();
