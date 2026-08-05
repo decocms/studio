@@ -297,15 +297,21 @@ export class TaskBoardStorage {
    *
    * User-created cards are deleted outright.
    */
-  async delete(id: string, organizationId: string, by: string): Promise<void> {
-    await this.inTransaction(async (trx) => {
+  /** Returns false when the id isn't in this org — a no-op, not a delete. */
+  async delete(
+    id: string,
+    organizationId: string,
+    by: string,
+  ): Promise<boolean> {
+    return this.inTransaction(async (trx) => {
       const row = await trx
         .selectFrom("task_board_items")
         .select(["created_by"])
         .where("id", "=", id)
         .where("organization_id", "=", organizationId)
         .executeTakeFirst();
-      if (row && isReportsTask({ createdBy: row.created_by })) {
+      if (!row) return false;
+      if (isReportsTask({ createdBy: row.created_by })) {
         await trx
           .updateTable("task_board_items")
           .set({ dismissed_at: new Date().toISOString(), updated_by: by })
@@ -314,7 +320,7 @@ export class TaskBoardStorage {
           // Already dismissed — keep the first dismissal's who/when.
           .where("dismissed_at", "is", null)
           .execute();
-        return;
+        return true;
       }
       await trx
         .deleteFrom("task_board_item_threads")
@@ -332,6 +338,7 @@ export class TaskBoardStorage {
         .where("id", "=", id)
         .where("organization_id", "=", organizationId)
         .execute();
+      return true;
     });
   }
 
