@@ -489,34 +489,23 @@ async fn direct_clone(
     if code != 0 {
         return Err(format!("git checkout -B {b} exited {code}: {}", out.trim()));
     }
-    set_upstream(orch, task_id, &orch.repo_dir, b, controller).await;
     Ok(())
 }
 
 /// Keeps the shared canonical mirror at `canonical` in sync with `clone_url`:
-/// clones it if missing, else a plain `git fetch --prune origin`.
+/// clones it if missing, else a plain `git fetch --prune origin`. `--prune`
+/// drops remote-tracking refs for branches deleted upstream, so a stale ref
+/// never gets offered as a worktree source.
 ///
-/// Canonical's own checkout is kept PERMANENTLY DETACHED (best-effort) —
-/// never on a named branch. Otherwise canonical would permanently occupy
-/// whatever branch it happens to be cloned onto (very often the repo's
-/// actual default, e.g. `main`), and the very FIRST sandbox to request that
-/// same branch would collide with canonical's own checkout and fall back to
-/// a nameless detached worktree instead of a real one. Worktrees are always
-/// cut from an explicit `refs/remotes/origin/*` ref (see [`add_worktree`]),
-/// so canonical's own detached position never needs to be "current" for
-/// anything — only its object database and remote-tracking refs do, and
-/// `fetch` alone keeps those current.
-///
-/// `--prune`: drops remote-tracking refs for branches deleted upstream, so a
-/// stale ref never gets offered as a worktree source.
-///
-/// Best-effort `remote set-head origin -a` after every fetch: keeps
-/// `refs/remotes/origin/HEAD` — the fallback start point [`add_worktree`]
-/// uses for a brand-new branch — pointed at the repo's actual current
-/// default. Its failure (a still-empty remote has nothing to point at) is
-/// expected and harmless: `add_worktree` falls further back to no start
-/// point at all, which git resolves as an orphan branch for exactly that
-/// case.
+/// Nothing here touches canonical's own checked-out branch or
+/// `refs/remotes/origin/HEAD` — worktrees are always cut from an explicit
+/// `refs/remotes/origin/*` ref chosen at add-time (see [`add_worktree`]),
+/// which also repairs `origin/HEAD` on demand if it's what's missing. A
+/// worktree that collides with whatever canonical itself happens to be
+/// checked out on (rare: it means the request is for the exact branch
+/// canonical's `git clone` landed on) falls back to a detached worktree with
+/// the right content — same as any other same-branch collision between two
+/// worktrees.
 async fn sync_canonical(
     orch: &Arc<SetupOrchestrator>,
     task_id: &str,
@@ -568,8 +557,8 @@ async fn sync_canonical(
         let (code, out) = run_git(
             orch,
             Some(task_id),
-            &["-C", &canonical_str, "fetch", "--prune", "origin"],
-            None,
+            &["fetch", "--prune", "origin"],
+            Some(canonical),
             Some(controller),
         )
         .await?;
@@ -577,65 +566,43 @@ async fn sync_canonical(
             return Err(format!("git fetch exited {code}: {}", out.trim()));
         }
     }
-
-    let _ = run_git(
-        orch,
-        Some(task_id),
-        &["-C", &canonical_str, "checkout", "--detach"],
-        None,
-        Some(controller),
-    )
-    .await;
-    let _ = run_git(
-        orch,
-        Some(task_id),
-        &["-C", &canonical_str, "remote", "set-head", "origin", "-a"],
-        None,
-        Some(controller),
-    )
-    .await;
     Ok(())
 }
 
-/// Whether `ref_name` currently resolves inside `canonical` — used only to
-/// pick a worktree start point (see [`add_worktree`]), never to decide
-/// whether to clone/fetch in the first place.
-async fn ref_exists(
-    orch: &Arc<SetupOrchestrator>,
-    task_id: &str,
-    canonical_str: &str,
-    ref_name: &str,
-    controller: &ProcessController,
-) -> bool {
-    matches!(
-        run_git(
-            orch,
-            Some(task_id),
-            &[
-                "-C",
-                canonical_str,
-                "rev-parse",
-                "--verify",
-                "--quiet",
-                ref_name,
-            ],
-            None,
-            Some(controller),
-        )
-        .await,
-        Ok((0, _))
-    )
+/// `git`'s own wording when a `worktree add` commit-ish doesn't resolve
+/// (confirmed against a real repo: `fatal: invalid reference:
+/// refs/remotes/origin/<name>`) — distinct from [`worktree_branch_collision`]'s
+/// wording, so the two failure kinds never get confused. `add_worktree` uses
+/// this to widen its start point candidate rather than pre-checking each one
+/// with a separate `rev-parse` — one `worktree add` that succeeds directly
+/// (the common case: the branch already exists) costs one command, not three.
+fn start_point_unresolvable(stderr: &str) -> bool {
+    stderr.contains("invalid reference") || stderr.contains("unknown revision")
 }
 
 /// Adds `repo_dir` as a `git worktree` of `canonical`, on `branch` (or
 /// detached when `branch` is `None` — a synthetic/routing-key config value
 /// with no real git ref to check out).
 ///
-/// Start point, in order: the requested branch's own content if the remote
-/// has it (kept current by [`sync_canonical`]'s fetch); else the repo's
-/// actual default branch (a brand-new branch forks from there); else no
-/// start point at all — a genuinely empty remote, where git itself infers
-/// `--orphan` from canonical's unborn HEAD.
+/// Start point, in order — each tried only if the previous one didn't
+/// resolve: the requested branch's own content, if the remote has it (kept
+/// current by [`sync_canonical`]'s fetch); the repo's actual default branch
+/// (a brand-new branch forks from there — and if `origin/HEAD` itself is
+/// stale or was never established, e.g. a repo that started empty and only
+/// later got its first push, repaired here on demand with one `remote
+/// set-head`, not on every sync); no start point at all, for a genuinely
+/// empty remote, where git itself infers `--orphan` from canonical's unborn
+/// HEAD.
+///
+/// Every successful attempt that lands on a NAMED branch explicitly writes
+/// `branch.<name>.{remote,merge}` via [`set_upstream`] afterward — git's own
+/// `autoSetupMerge` already does this when the start point IS
+/// `refs/remotes/origin/<name>` itself (tier one), but for a brand-new
+/// branch forked from a DIFFERENT ref (tiers two/three) autoSetupMerge
+/// points tracking at the FORK SOURCE (e.g. `origin/main`) instead of the
+/// new branch's own future upstream — which then makes
+/// `checkout_is_current`'s tracking comparison see the wrong name and report
+/// "not current" even though the worktree is exactly right.
 async fn add_worktree(
     orch: &Arc<SetupOrchestrator>,
     task_id: &str,
@@ -644,7 +611,6 @@ async fn add_worktree(
     branch: Option<&str>,
     controller: &ProcessController,
 ) -> Result<(), String> {
-    let canonical_str = canonical.to_string_lossy().into_owned();
     let repo_dir_str = repo_dir.to_string_lossy().into_owned();
 
     // Drop registrations whose worktree directory is gone. Without this, a
@@ -657,42 +623,14 @@ async fn add_worktree(
     let _ = run_git(
         orch,
         Some(task_id),
-        &["-C", &canonical_str, "worktree", "prune"],
-        None,
+        &["worktree", "prune"],
+        Some(canonical),
         Some(controller),
     )
     .await;
 
-    let start_point = match branch {
-        Some(b) => {
-            let named = format!("refs/remotes/origin/{b}");
-            if ref_exists(orch, task_id, &canonical_str, &named, controller).await {
-                Some(named)
-            } else if ref_exists(
-                orch,
-                task_id,
-                &canonical_str,
-                "refs/remotes/origin/HEAD",
-                controller,
-            )
-            .await
-            {
-                Some("refs/remotes/origin/HEAD".to_string())
-            } else {
-                None
-            }
-        }
-        None => None,
-    };
-
     let add = |branch: Option<&str>, start_point: Option<&str>| {
-        let mut args: Vec<String> = vec![
-            "-C".into(),
-            canonical_str.clone(),
-            "worktree".into(),
-            "add".into(),
-            "--force".into(),
-        ];
+        let mut args: Vec<String> = vec!["worktree".into(), "add".into(), "--force".into()];
         match branch {
             // `-B` so re-provisioning a handle resets the branch instead of
             // failing on "already exists".
@@ -709,36 +647,133 @@ async fn add_worktree(
         args
     };
 
-    let args = add(branch, start_point.as_deref());
-    let argv: Vec<&str> = args.iter().map(String::as_str).collect();
-    let (code, out) = run_git(orch, Some(task_id), &argv, None, Some(controller)).await?;
-    if code != 0 {
-        if !worktree_branch_collision(&out) || branch.is_none() {
-            return Err(format!("git worktree add exited {code}: {}", out.trim()));
-        }
-        emit_chunk(
-            orch,
-            Some(task_id),
-            OutputStream::Stdout,
-            &format!(
-                "[worktree] branch '{}' already checked out elsewhere; detaching HEAD\r\n",
-                branch.unwrap_or("")
-            ),
-        )
-        .await;
-        let args = add(None, start_point.as_deref());
-        let argv: Vec<&str> = args.iter().map(String::as_str).collect();
-        let (code, out) = run_git(orch, Some(task_id), &argv, None, Some(controller)).await?;
-        if code != 0 {
-            return Err(format!("git worktree add exited {code}: {}", out.trim()));
-        }
-        return Ok(());
-    }
+    let candidates: Vec<Option<String>> = match branch {
+        Some(b) => vec![
+            Some(format!("refs/remotes/origin/{b}")),
+            Some("refs/remotes/origin/HEAD".to_string()),
+            None,
+        ],
+        None => vec![None],
+    };
 
-    if let Some(b) = branch {
-        set_upstream(orch, task_id, repo_dir, b, controller).await;
+    let attempt = |start_point: Option<&str>| {
+        let args = add(branch, start_point);
+        async move {
+            let argv: Vec<&str> = args.iter().map(String::as_str).collect();
+            run_git(
+                orch,
+                Some(task_id),
+                &argv,
+                Some(canonical),
+                Some(controller),
+            )
+            .await
+        }
+    };
+
+    let mut out = String::new();
+    for (i, start_point) in candidates.iter().enumerate() {
+        let is_last = i + 1 == candidates.len();
+        let (code, o) = attempt(start_point.as_deref()).await?;
+        if code == 0 {
+            if let Some(b) = branch {
+                set_upstream(orch, task_id, repo_dir, b, controller).await;
+            }
+            return Ok(());
+        }
+        out = o;
+
+        if worktree_branch_collision(&out) && branch.is_some() {
+            // Most likely culprit: canonical's OWN primary checkout just
+            // happens to be sitting on the requested branch (e.g. the
+            // request is for the repo's actual default — canonical lands
+            // there straight out of `git clone`, and nothing else moves it).
+            // Detaching canonical frees the name up; retry the SAME named
+            // attempt once before giving up on a real branch pointer.
+            let _ = run_git(
+                orch,
+                Some(task_id),
+                &["checkout", "--detach"],
+                Some(canonical),
+                Some(controller),
+            )
+            .await;
+            let (code, retried) = attempt(start_point.as_deref()).await?;
+            if code == 0 {
+                if let Some(b) = branch {
+                    set_upstream(orch, task_id, repo_dir, b, controller).await;
+                }
+                return Ok(());
+            }
+            out = retried;
+            if !worktree_branch_collision(&out) {
+                return Err(format!("git worktree add exited {code}: {}", out.trim()));
+            }
+
+            // Still colliding after detaching canonical — a SIBLING worktree
+            // genuinely holds this branch (two sandboxes on the same work).
+            // It has the right content; only the branch pointer is missing.
+            emit_chunk(
+                orch,
+                Some(task_id),
+                OutputStream::Stdout,
+                &format!(
+                    "[worktree] branch '{}' already checked out elsewhere; detaching HEAD\r\n",
+                    branch.unwrap_or("")
+                ),
+            )
+            .await;
+            // `attempt` closes over `branch`, so the retry (dropping to
+            // detached) is built directly rather than through it.
+            let args = add(None, start_point.as_deref());
+            let argv: Vec<&str> = args.iter().map(String::as_str).collect();
+            let (code, out) = run_git(
+                orch,
+                Some(task_id),
+                &argv,
+                Some(canonical),
+                Some(controller),
+            )
+            .await?;
+            if code != 0 {
+                return Err(format!("git worktree add exited {code}: {}", out.trim()));
+            }
+            return Ok(());
+        }
+
+        if !is_last && start_point_unresolvable(&out) {
+            // This candidate doesn't exist (yet). `refs/remotes/origin/HEAD`
+            // specifically may just be stale/never-established (a repo that
+            // started empty and only later got its first push) rather than
+            // genuinely absent — repair it once and retry this SAME
+            // candidate before widening further.
+            if start_point.as_deref() == Some("refs/remotes/origin/HEAD") {
+                let _ = run_git(
+                    orch,
+                    Some(task_id),
+                    &["remote", "set-head", "origin", "-a"],
+                    Some(canonical),
+                    Some(controller),
+                )
+                .await;
+                let (code, o) = attempt(start_point.as_deref()).await?;
+                if code == 0 {
+                    if let Some(b) = branch {
+                        set_upstream(orch, task_id, repo_dir, b, controller).await;
+                    }
+                    return Ok(());
+                }
+                out = o;
+                if !start_point_unresolvable(&out) {
+                    return Err(format!("git worktree add exited {code}: {}", out.trim()));
+                }
+            }
+            continue;
+        }
+
+        return Err(format!("git worktree add exited {code}: {}", out.trim()));
     }
-    Ok(())
+    Err(format!("git worktree add: {}", out.trim()))
 }
 
 /// Declares that `branch` in `repo_dir` tracks `origin/<branch>`.
@@ -746,7 +781,10 @@ async fn add_worktree(
 /// Written as raw config rather than `branch --set-upstream-to`: that
 /// command validates the remote ref EXISTS, so it fails for a branch this
 /// sandbox just created and has never pushed — the normal case for a
-/// brand-new branch.
+/// brand-new branch. Also overrides whatever git's own `autoSetupMerge` may
+/// have set from a DIFFERENT fork-source ref (see [`add_worktree`]'s doc
+/// comment) — `checkout_is_current` needs `branch.<name>.merge` to name
+/// `<name>` itself, not whatever this branch happened to be forked from.
 ///
 /// Best effort: a sandbox with no upstream still works for everything except
 /// a bare `git push`, and failing here would strand a worktree that is
@@ -758,7 +796,6 @@ async fn set_upstream(
     branch: &str,
     controller: &ProcessController,
 ) {
-    let repo_dir_str = repo_dir.to_string_lossy().into_owned();
     for (key, value) in [
         (format!("branch.{branch}.remote"), "origin".to_string()),
         (
@@ -769,8 +806,8 @@ async fn set_upstream(
         let _ = run_git(
             orch,
             Some(task_id),
-            &["-C", &repo_dir_str, "config", &key, &value],
-            None,
+            &["config", &key, &value],
+            Some(repo_dir),
             Some(controller),
         )
         .await;
@@ -1287,12 +1324,13 @@ mod tests {
             .logs()
             .tail_read(&app_key("setup"), DEFAULT_TAIL_BYTES)
             .await;
-        // A filesystem remote is keyed like any other, so a fresh clone goes
-        // through the shared mirror: exactly one `worktree add` per run.
-        assert_eq!(first.matches("worktree add").count(), 1, "{first:?}");
+        // The canonical mirror gets created fresh here — `$ git clone` is
+        // the marker only a FIRST run against an empty store produces.
+        assert!(first.contains("$ git clone"), "{first:?}");
 
         // A second "fresh" clone run against the SAME orchestrator (mirrors
-        // a real re-bootstrap onto an emptied workdir).
+        // a real re-bootstrap onto an emptied workdir). Canonical already
+        // exists this time, so this run syncs it via `fetch`, not `clone`.
         std::fs::remove_dir_all(&repo_dir).unwrap();
         std::fs::create_dir_all(&repo_dir).unwrap();
         assert!(clone_fresh(&orch, &clone_url, Some("main")).await);
@@ -1302,12 +1340,12 @@ mod tests {
             .tail_read(&app_key("setup"), DEFAULT_TAIL_BYTES)
             .await;
 
-        // Truncated, not appended: the second transcript describes ONLY the
-        // second clone, not both concatenated.
-        assert_eq!(
-            second.matches("worktree add").count(),
-            1,
-            "second transcript should describe exactly one checkout, not two concatenated: {second:?}"
+        // Truncated, not appended: if the two transcripts were concatenated
+        // instead, the first run's `$ git clone` marker would still be
+        // present here.
+        assert!(
+            !second.contains("$ git clone") && second.contains("worktree add"),
+            "second transcript should describe only the second run's sync+add, not the first run's clone concatenated onto it: {second:?}"
         );
     }
 
@@ -1417,21 +1455,24 @@ mod tests {
             .await
             .expect("second sync must succeed");
 
-        // Canonical stays permanently detached (see `sync_canonical`'s doc
-        // comment) — its own working tree is never the source of truth. What
-        // matters is that a plain fetch picked up the branch that actually
-        // exists on the remote now, reachable via its own remote-tracking
-        // ref, regardless of whatever this machine's `init.defaultBranch`
-        // guessed for the first, empty clone.
+        // A plain fetch (no detach, no set-head — `sync_canonical` does
+        // neither now) always pulls every branch per the default refspec,
+        // regardless of whatever this machine's `init.defaultBranch` guessed
+        // for the first, empty clone — so the branch that actually exists on
+        // the remote now must be reachable via its own remote-tracking ref.
         assert!(
-            ref_exists(
-                &orch,
-                "t3",
-                &canonical.to_string_lossy(),
-                "refs/remotes/origin/sandbox/thread-1",
-                &controller,
-            )
-            .await,
+            Command::new("git")
+                .args([
+                    "rev-parse",
+                    "--verify",
+                    "--quiet",
+                    "refs/remotes/origin/sandbox/thread-1",
+                ])
+                .current_dir(&canonical)
+                .output()
+                .unwrap()
+                .status
+                .success(),
             "fetch must have picked up the branch that actually exists on the remote"
         );
         drop((origin_root, workdir));
