@@ -115,18 +115,27 @@ describe("buildOptions", () => {
     const withInstructions = options({
       agent: { id: "a", instructions: "Be terse." },
     });
-    expect(withInstructions.systemPrompt).toEqual({
-      type: "preset",
-      preset: "claude_code",
-      append: "Be terse.",
-    });
+    const prompt = withInstructions.systemPrompt as {
+      type: string;
+      preset: string;
+      append: string;
+    };
+    expect(prompt.type).toBe("preset");
+    expect(prompt.preset).toBe("claude_code");
+    expect(prompt.append).toStartWith("Be terse.");
   });
 
-  test("omits append when the agent has no instructions", () => {
-    expect(options().systemPrompt).toEqual({
-      type: "preset",
-      preset: "claude_code",
-    });
+  test("points skill authoring at the org-fs mount, instructions or not", () => {
+    // Without this the model writes a reusable skill into the checkout, where it
+    // dies with the branch instead of syncing to the org.
+    for (const opts of [options(), options({ agent: { id: "a" } })]) {
+      const { append } = opts.systemPrompt as { append: string };
+      expect(append).toContain("/skills/");
+      // The path is for WRITING only. Handing it out as a place to look sent the
+      // model to Bash for a listing it already had in the prompt.
+      expect(append).toContain("Never search the filesystem for skills");
+    }
+    expect(options().skills).toBe("all");
   });
 
   test("runs in the repo checkout when the workspace has one", () => {

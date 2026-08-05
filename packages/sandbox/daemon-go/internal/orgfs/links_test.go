@@ -3,7 +3,9 @@ package orgfs
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -64,5 +66,254 @@ func TestExpectedRequiresSidecarEnv(t *testing.T) {
 	var nilLinks *Links
 	if nilLinks.Expected() {
 		t.Error("nil Links reported org-fs expected")
+	}
+}
+
+// The skills link is what makes an org skill both readable by Claude Code and
+// durable when the agent writes one. Three invariants no mount-level test sees:
+// an unmounted mount point is never linked (MkdirAll would put the org's skills
+// on ephemeral disk), an EMPTY dir is linked without probing (it is the agent's
+// only durable place to write a skill, and there is no file to hang on), and a
+// POPULATED dir that does not read is not linked (Claude Code reads it during
+// startup, so a hung read there kills the run).
+func TestSkillsLinkNeedsAMountThatWorks(t *testing.T) {
+	appRoot := t.TempDir()
+	configDir := filepath.Join(t.TempDir(), "config")
+	t.Setenv("CLAUDE_CONFIG_DIR", configDir)
+	statusPath := filepath.Join(t.TempDir(), "status.json")
+	link := filepath.Join(configDir, "skills")
+	homeMount := filepath.Join(appRoot, "org", "home")
+	skillsDir := filepath.Join(homeMount, "skills")
+	if err := os.MkdirAll(homeMount, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	setMounts := func(mounts ...Mount) {
+		raw, _ := json.Marshal(sidecarStatus{Mounts: mounts})
+		if err := os.WriteFile(statusPath, raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Mount point present, sidecar reporting nothing mounted there.
+	setMounts(Mount{Volume: "outputs", MountPath: filepath.Join(appRoot, "org", ".outputs")})
+
+	l := &Links{AppRoot: appRoot, StatusPath: statusPath, ConfigPath: "unused"}
+	l.ensureSkillsLinkLocked()
+	if _, err := os.Lstat(link); err == nil {
+		t.Fatal("linked an unmounted mount point — the skills would die with the pod")
+	}
+
+	// Mounted and empty: linked with no probe, so the agent has somewhere durable
+	// to write even while the backend's reads are wedged.
+	setMounts(Mount{Volume: "home", MountPath: homeMount})
+	l.ensureSkillsLinkLocked()
+	target, err := os.Readlink(link)
+	if err != nil {
+		t.Fatalf("empty skills dir not linked — the agent would write to the repo: %v", err)
+	}
+	if target != skillsDir {
+		t.Errorf("skills → %q, want %q", target, skillsDir)
+	}
+
+	// Populated but unreadable: not linked. A SKILL.md that exists (stat, served
+	// from mount metadata) but cannot be read is exactly the wedged-backend shape.
+	// Fresh Links — the first one memoized its success.
+	if err := os.MkdirAll(filepath.Join(skillsDir, "wedged"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	wedgedSkill := filepath.Join(skillsDir, "wedged", "SKILL.md")
+	if err := os.WriteFile(wedgedSkill, []byte("---\nname: w\n---\n"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	unreadable := &Links{AppRoot: appRoot, StatusPath: statusPath, ConfigPath: "unused"}
+	unreadable.ensureSkillsLinkLocked() // no SKILL.md in `wedged` → read fails
+	if _, err := os.Lstat(link); err == nil {
+		t.Fatal("linked a populated dir whose skill does not read — startup would hang")
+	}
+	if unreadable.skillsLinked {
+		t.Fatal("memoized a failed link; a recovered mount would never be picked up")
+	}
+
+	// Populated and readable: linked.
+	if err := os.Chmod(wedgedSkill, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	unreadable.ensureSkillsLinkLocked()
+	if _, err := os.Readlink(link); err != nil {
+		t.Errorf("healthy populated dir not linked: %v", err)
+	}
+}
+
+// A pod that ships its own skills dir keeps it — org skills are additive.
+func TestSkillsLinkNeverShadowsARealDir(t *testing.T) {
+	appRoot := t.TempDir()
+	configDir := filepath.Join(t.TempDir(), "config")
+	t.Setenv("CLAUDE_CONFIG_DIR", configDir)
+	if err := os.MkdirAll(filepath.Join(configDir, "skills", "builtin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(appRoot, "org", "home"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	(&Links{AppRoot: appRoot, ConfigPath: "unused"}).ensureSkillsLinkLocked()
+	if _, err := os.Stat(filepath.Join(configDir, "skills", "builtin")); err != nil {
+		t.Errorf("replaced the pod's own skills dir: %v", err)
+	}
+}
+
+// Public sets are where an org's curated skills actually live, and they mount
+// read-only — so they reach Claude Code as project skills in the checkout. The
+// invariants: the repo's own skills survive, ours are rebuilt (no dangling
+// symlink when a set loses a skill), and they never reach a commit.
+func TestPublicSkillLinks(t *testing.T) {
+	appRoot := t.TempDir()
+	repoDir := filepath.Join(appRoot, "repo")
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(t.TempDir(), "config"))
+	writeSkill := func(set, skill string) {
+		dir := filepath.Join(appRoot, "org", "public", set, skill)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: x\n---\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The repo ships a skill of its own, and a dir that is not a skill at all.
+	ownSkill := filepath.Join(repoDir, ".claude", "skills", "repo-own")
+	if err := os.MkdirAll(ownSkill, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(repoDir, ".git", "info"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeSkill("core", "slides")
+	writeSkill("core", "pdf")
+	if err := os.MkdirAll(filepath.Join(appRoot, "org", "public", "core", "not-a-skill"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	l := &Links{AppRoot: appRoot, RepoDir: repoDir, ConfigPath: "unused"}
+	l.syncPublicSkills()
+
+	skillsDir := filepath.Join(repoDir, ".claude", "skills")
+	target, err := os.Readlink(filepath.Join(skillsDir, "orgfs-core-slides"))
+	if err != nil {
+		t.Fatalf("public skill not linked: %v", err)
+	}
+	if want := filepath.Join(appRoot, "org", "public", "core", "slides"); target != want {
+		t.Errorf("link → %q, want %q", target, want)
+	}
+	if _, err := os.Lstat(filepath.Join(skillsDir, "orgfs-core-not-a-skill")); err == nil {
+		t.Error("linked a directory with no SKILL.md")
+	}
+	if _, err := os.Stat(ownSkill); err != nil {
+		t.Errorf("clobbered the repo's own skill: %v", err)
+	}
+
+	excl, err := os.ReadFile(filepath.Join(repoDir, ".git", "info", "exclude"))
+	if err != nil || !strings.Contains(string(excl), "/.claude/skills/orgfs-*") {
+		t.Errorf("links not git-excluded — a run would commit them: %q %v", excl, err)
+	}
+
+	// A rebuild after `pdf` disappeared must not leave it dangling.
+	if err := os.RemoveAll(filepath.Join(appRoot, "org", "public", "core", "pdf")); err != nil {
+		t.Fatal(err)
+	}
+	l.publicSkillsRun = false
+	l.syncPublicSkills()
+	if _, err := os.Lstat(filepath.Join(skillsDir, "orgfs-core-pdf")); err == nil {
+		t.Error("stale symlink kept for a skill that no longer exists")
+	}
+	if _, err := os.Readlink(filepath.Join(skillsDir, "orgfs-core-slides")); err != nil {
+		t.Errorf("rebuild dropped a live skill: %v", err)
+	}
+}
+
+func TestAdoptStrayRepoSkills(t *testing.T) {
+	appRoot := t.TempDir()
+	repoDir := filepath.Join(appRoot, "repo")
+	statusPath := filepath.Join(t.TempDir(), "status.json")
+	homeMount := filepath.Join(appRoot, "org", "home")
+	if err := os.MkdirAll(filepath.Join(homeMount, "skills"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(sidecarStatus{Mounts: []Mount{
+		{Volume: "home", MountPath: homeMount},
+	}})
+	if err := os.WriteFile(statusPath, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	writeSkill := func(name, body string) string {
+		dir := filepath.Join(repoDir, ".claude", "skills", name)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+	git := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repoDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	// A committed skill (the repo legitimately owns it) and a dir with no
+	// SKILL.md, both of which must survive untouched.
+	tracked := writeSkill("repo-own", "---\nname: repo-own\n---\n")
+	if err := os.MkdirAll(filepath.Join(repoDir, ".claude", "skills", "junk"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	git("init", "-q")
+	git("config", "user.email", "t@t.t")
+	git("config", "user.name", "t")
+	git("add", "-A")
+	git("commit", "-qm", "init")
+
+	// What the model actually did: authored a skill into the checkout, with a
+	// nested file, where it would die with the branch.
+	stray := writeSkill("rubber-duck", "---\nname: rubber-duck\n---\nquack\n")
+	if err := os.WriteFile(filepath.Join(stray, "notes.md"), []byte("more"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	l := &Links{AppRoot: appRoot, RepoDir: repoDir, StatusPath: statusPath, ConfigPath: "unused"}
+	l.AdoptStrayRepoSkills()
+
+	adopted := filepath.Join(homeMount, "skills", "rubber-duck")
+	body, err := os.ReadFile(filepath.Join(adopted, "SKILL.md"))
+	if err != nil {
+		t.Fatalf("stray skill not adopted onto the mount: %v", err)
+	}
+	if !strings.Contains(string(body), "quack") {
+		t.Errorf("adopted the wrong bytes: %q", body)
+	}
+	if _, err := os.Stat(filepath.Join(adopted, "notes.md")); err != nil {
+		t.Errorf("nested file lost in the move: %v", err)
+	}
+	if _, err := os.Stat(stray); err == nil {
+		t.Error("left the skill in the checkout too — the next commit ships it")
+	}
+	if _, err := os.Stat(filepath.Join(tracked, "SKILL.md")); err != nil {
+		t.Errorf("moved a skill the repo owns: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(homeMount, "skills", "junk")); err == nil {
+		t.Error("adopted a directory with no SKILL.md")
+	}
+
+	// A name the org already uses is left alone rather than overwritten.
+	stray2 := writeSkill("rubber-duck", "---\nname: mine\n---\nlocal\n")
+	l.AdoptStrayRepoSkills()
+	if _, err := os.Stat(stray2); err != nil {
+		t.Error("deleted a stray skill without adopting it")
+	}
+	if body, _ := os.ReadFile(filepath.Join(adopted, "SKILL.md")); !strings.Contains(string(body), "quack") {
+		t.Error("clobbered the org's skill with a same-named local one")
 	}
 }

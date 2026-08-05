@@ -1,5 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { parseTar, planVolumeTree, staleDirs } from "./skill-set-sync";
+import {
+  isUpToDate,
+  parseTar,
+  planVolumeTree,
+  staleDirs,
+} from "./skill-set-sync";
 
 /** Build a minimal ustar archive in memory (the GitHub tarball shape). */
 function makeTar(
@@ -127,5 +132,29 @@ describe("staleDirs", () => {
 
   it("collapses nested stale dirs into one recursive root", () => {
     expect(staleDirs([], ["a", "a/b", "a/b/c"])).toEqual(["a"]);
+  });
+});
+
+describe("isUpToDate", () => {
+  const args = {
+    hash: "h",
+    manifestHash: "h",
+    path: "brand/SKILL.md",
+    storedPaths: new Set(["brand/SKILL.md"]),
+  };
+
+  it("skips a file present in both the manifest and object storage", () => {
+    expect(isUpToDate(args)).toBe(true);
+  });
+
+  it("rewrites a manifest row whose object is gone", () => {
+    // The bug this exists to prevent: hash-only comparison marks the file
+    // unchanged forever, so the set never heals and reads keep failing.
+    expect(isUpToDate({ ...args, storedPaths: new Set() })).toBe(false);
+  });
+
+  it("rewrites on a content change", () => {
+    expect(isUpToDate({ ...args, manifestHash: "old" })).toBe(false);
+    expect(isUpToDate({ ...args, manifestHash: null })).toBe(false);
   });
 });

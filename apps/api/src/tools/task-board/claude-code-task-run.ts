@@ -179,7 +179,7 @@ export function buildClaudeCodeTaskPrompt(
   opts?: SuperAgentPromptOpts & { repoChoices?: TaskRepoChoiceOption[] },
 ): string {
   const lines: string[] = [
-    "You've been assigned this task. Complete it and finish with a pull request.",
+    "You've been assigned this task. Complete it and finish with a pull request if it makes sense (like a coding task) or is explicitly requested.",
     "",
     "You are running AUTONOMOUSLY — no human is watching, so drive this to " +
       "completion yourself. Make reasonable decisions and move on; do not stop " +

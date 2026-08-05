@@ -753,6 +753,11 @@ func main() {
 				ExpiresAt: info.McpExpiresAt,
 			})
 		},
+		// A skill the model authored into the checkout would die with the branch;
+		// move it onto the org mount before anyone goes looking for it.
+		AfterRun: func(dispatch.RunInfo) {
+			d.orgFsLinks.AdoptStrayRepoSkills()
+		},
 	}
 
 	fsDeps := routes.FsDeps{
