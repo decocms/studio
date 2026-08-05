@@ -12,10 +12,13 @@ package orgfs
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -29,8 +32,8 @@ const (
 	firstMountPoll = 250 * time.Millisecond
 )
 
-// One path segment, no traversal — threadIds are cluster-issued slugs/UUIDs.
-var safeThreadId = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+// One path segment, no traversal — thread ids, volume set and skill dir names.
+var safeSegment = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 // Mount is one live mount, as reported by the sidecar's status file (mirrors
 // MountManager.list()).
@@ -62,6 +65,8 @@ type Links struct {
 	// design — a stuck FUSE lstat blocks only org-fs callers.
 	mu               sync.Mutex
 	lastOutputThread string
+	skillsLinked     bool
+	publicSkillsRun  bool
 }
 
 // Expected reports whether org-fs volumes should exist on this pod.
@@ -173,8 +178,12 @@ func (l *Links) RepointForRun(threadId string) bool {
 
 // ensureRepoLinkLocked drops `<repoDir>/org → ../org` and excludes it so the
 // shutdown `git add -A` never commits it. At dispatch time, not boot — a link in
-// place first makes `git clone` refuse the non-empty dir.
+// place first makes `git clone` refuse the non-empty dir. Also links the org's
+// skills folder into the pod's Claude config dir (same job: make org content
+// resolve where the harness looks for it).
 func (l *Links) ensureRepoLinkLocked() {
+	l.ensureSkillsLinkLocked()
+	defer l.ensurePublicSkillLinksLocked()
 	if l.RepoDir == "" {
 		return
 	}
@@ -192,11 +201,271 @@ func (l *Links) ensureRepoLinkLocked() {
 	gitx.EnsureExclude(l.RepoDir, "/org")
 }
 
+// ensureSkillsLinkLocked points the pod's USER skill dir (`~/.claude/skills`,
+// or `$CLAUDE_CONFIG_DIR/skills`) at the org's `org/home/skills` on the mount.
+//
+// User scope, not the repo's `.claude/skills`: Claude Code loads both, so the
+// org's skills add to whatever the checkout ships instead of shadowing it. And
+// because the link IS the mount, a skill the agent writes there is an org-fs
+// write — it syncs back with no extra machinery, and the next run in any pod
+// sees it.
+//
+// Absolute target (the config dir is outside `<appRoot>`), and a real directory
+// already sitting there wins — never shadow a pod's own skills.
+func (l *Links) ensureSkillsLinkLocked() {
+	if l.skillsLinked {
+		return
+	}
+	dir := os.Getenv("CLAUDE_CONFIG_DIR")
+	if dir == "" {
+		home := os.Getenv("HOME")
+		if home == "" {
+			return
+		}
+		dir = filepath.Join(home, ".claude")
+	}
+	// Gated on the SIDECAR's report, not on the directory: a mount point exists
+	// even when the mount failed, and MkdirAll into that puts the org's skills on
+	// ephemeral disk, where they die with the pod (this file's whole premise).
+	if !l.volumeMounted("home") {
+		return
+	}
+	target := filepath.Join(l.AppRoot, "org", "home", "skills")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		slog.Warn("org-fs skills dir failed", "err", err)
+		return
+	}
+	// Reads and writes fail independently on this mount, and only reads can kill
+	// a run: rclone's write-back cache absorbs a write and flushes it out of band
+	// (a skill the agent authors syncs even while GETs are wedged), but Claude
+	// Code READS every skill in this dir during startup, on the thread pool that
+	// then never answers.
+	//
+	// So the read gate applies only when there is something to read. An empty
+	// skills dir has no file to hang on, and linking it is what gives the agent
+	// somewhere durable to write — skip the link there and the agent writes its
+	// skill into the checkout, which is the whole bug this exists to fix.
+	if names := skillDirNames(target); len(names) > 0 {
+		if ok, err := readableWithin(
+			filepath.Join(target, names[0], "SKILL.md"), skillReadBudget,
+		); !ok {
+			slog.Warn("org-fs skills link skipped: home mount does not read",
+				"probe", names[0], "budget", skillReadBudget, "err", err)
+			return
+		}
+	}
+	link := filepath.Join(dir, "skills")
+	if st, err := os.Lstat(link); err == nil {
+		if st.Mode()&os.ModeSymlink == 0 {
+			slog.Warn("org-fs skills link skipped: exists and is not a symlink", "link", link)
+			l.skillsLinked = true
+			return
+		}
+		if cur, err := os.Readlink(link); err == nil && cur == target {
+			l.skillsLinked = true
+			return
+		}
+		if err := os.Remove(link); err != nil {
+			slog.Warn("org-fs skills link failed", "err", err)
+			return
+		}
+	} else if err := os.MkdirAll(dir, 0o755); err != nil {
+		slog.Warn("org-fs skills link failed", "err", err)
+		return
+	}
+	if err := os.Symlink(target, link); err != nil {
+		slog.Warn("org-fs skills link failed", "err", err)
+		return
+	}
+	l.skillsLinked = true
+}
+
+// How long a single org-fs read may take before the mount counts as unusable
+// for skills. Generous for a network filesystem, tiny next to a dead run.
+const skillReadBudget = 3 * time.Second
+
+// readableWithin reports whether path's first byte can be read within d, and
+// why not when it fails. The reason matters: "hung mount" and "backend returns
+// EIO because the bytes were never uploaded" both surface here as a skipped
+// set, and only the error tells them apart — without it the warn line sends you
+// exec'ing into a pod to find out.
+//
+// This gate is the whole reason skills are safe to expose: org-fs is a network
+// filesystem, and a wedged backend turns a read into an INDEFINITE block, not an
+// error. Claude Code scans every skill dir during STARTUP, on its I/O thread
+// pool — so one hung read there means the CLI never emits `init`, the run
+// produces nothing at all, and the pod bills a full idle TTL having done zero
+// work. Observed live: both Bun pool threads parked in `request_wait_answer`.
+//
+// A timeout leaks its goroutine until the FUSE request finally answers. That is
+// the point: the blocked read is quarantined in the daemon, where it costs a
+// skill, instead of in the CLI, where it costs the run.
+func readableWithin(path string, d time.Duration) (bool, error) {
+	done := make(chan error, 1)
+	go func() {
+		f, err := os.Open(path)
+		if err != nil {
+			done <- err
+			return
+		}
+		defer f.Close()
+		if _, err := f.Read(make([]byte, 1)); err != nil && err != io.EOF {
+			done <- err
+			return
+		}
+		done <- nil
+	}()
+	select {
+	case err := <-done:
+		return err == nil, err
+	case <-time.After(d):
+		return false, fmt.Errorf("read did not answer within %s", d)
+	}
+}
+
+// skillDirNames lists the subdirectories of dir that hold a SKILL.md. Listing
+// and stat are the org-fs operations that survive a wedged backend (both are
+// served from the mount's metadata), so this is safe to call before any read —
+// and filtering here is what keeps a non-skill directory from being chosen as
+// the read probe and condemning a whole set.
+func skillDirNames(dir string) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() || !safeSegment.MatchString(e.Name()) {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(dir, e.Name(), "SKILL.md")); err != nil {
+			continue
+		}
+		names = append(names, e.Name())
+	}
+	return names
+}
+
+// volumeMounted reports whether the sidecar has `<appRoot>/org/<dir>` mounted.
+func (l *Links) volumeMounted(dir string) bool {
+	want := filepath.Join(l.AppRoot, "org", dir)
+	for _, m := range l.mountsOrWait() {
+		if m.MountPath == want {
+			return true
+		}
+	}
+	return false
+}
+
+// Prefix for the symlinks this daemon plants in the checkout's skills dir. It
+// is what makes them ours: everything matching it is removed and rebuilt on
+// sync, and one git-exclude line covers the whole set.
+const publicSkillPrefix = "orgfs-"
+
+// ensurePublicSkillLinksLocked exposes the read-only public skill sets
+// (`org/public/<set>/<skill>`) to Claude Code as PROJECT skills — one symlink
+// per skill under `<repoDir>/.claude/skills/`.
+//
+// Why not the user dir like home skills: that dir IS the home mount now, so a
+// symlink dropped there would be written into org-fs — pod-local paths synced
+// org-wide. And the public mounts are read-only, so a plugin manifest cannot go
+// next to them either. The checkout's skills dir is the one writable place the
+// SDK already scans.
+//
+// Additive and disposable: the repo's own skills are untouched (only `orgfs-*`
+// entries are ours, and they are cleared before rebuild so a removed set leaves
+// no dangling skill), and one exclude line keeps them out of every commit.
+func (l *Links) ensurePublicSkillLinksLocked() {
+	if l.publicSkillsRun || l.RepoDir == "" {
+		return
+	}
+	// Claimed before the work starts, so concurrent fs calls don't each launch a
+	// sync; released again below if nothing linked, so a mount that recovers gets
+	// another attempt.
+	l.publicSkillsRun = true
+	// OFF the caller's thread: this walks a network filesystem, and it ran under
+	// the lock on the dispatch path — 33 unreadable skills × the read budget put
+	// two minutes of dead air in front of a run that was otherwise ready. The
+	// cost of racing the harness's own startup scan is at worst a skill missing
+	// from THIS run; the cost of blocking was the run.
+	go func() {
+		if l.syncPublicSkills() {
+			return
+		}
+		l.mu.Lock()
+		l.publicSkillsRun = false
+		l.mu.Unlock()
+	}()
+}
+
+// syncPublicSkills does the linking, reporting whether anything was linked. Runs
+// without `mu`: it touches only the checkout's skills dir and the read-only
+// public mounts, which no other link path writes.
+func (l *Links) syncPublicSkills() bool {
+	sets, err := os.ReadDir(filepath.Join(l.AppRoot, "org", "public"))
+	if err != nil {
+		// No public mount on this pod (older sandbox, or none configured).
+		return false
+	}
+	dir := filepath.Join(l.RepoDir, ".claude", "skills")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		slog.Warn("org-fs public skills link failed", "err", err)
+		return false
+	}
+	// Ours are cleared first: a set that lost a skill must not leave a symlink
+	// pointing at nothing, which Claude Code reports as a broken skill.
+	if entries, err := os.ReadDir(dir); err == nil {
+		for _, e := range entries {
+			if strings.HasPrefix(e.Name(), publicSkillPrefix) {
+				os.RemoveAll(filepath.Join(dir, e.Name()))
+			}
+		}
+	}
+	gitx.EnsureExclude(l.RepoDir, "/.claude/skills/"+publicSkillPrefix+"*")
+
+	linked, unreadable := 0, 0
+	for _, set := range sets {
+		if !set.IsDir() || !safeSegment.MatchString(set.Name()) {
+			continue
+		}
+		setDir := filepath.Join(l.AppRoot, "org", "public", set.Name())
+		names := skillDirNames(setDir)
+		if len(names) == 0 {
+			continue
+		}
+		// ONE probe per set, not per skill. `stat` is served from the mount's
+		// metadata and succeeds on a backend whose GETs hang forever, so a read
+		// has to be proven — but a set is one volume with one backend, so the
+		// first skill's answer is the whole set's answer. Per-skill probing cost
+		// 33 × the budget on a wedged mount.
+		if ok, err := readableWithin(
+			filepath.Join(setDir, names[0], "SKILL.md"), skillReadBudget,
+		); !ok {
+			slog.Warn("org-fs public skills skipped: set does not read",
+				"set", set.Name(), "probe", names[0], "skills", len(names), "err", err)
+			unreadable += len(names)
+			continue
+		}
+		for _, name := range names {
+			// `<set>-<skill>`: collision-free across sets. Cosmetic — the name the
+			// model sees comes from SKILL.md's frontmatter, not the directory.
+			link := filepath.Join(dir, publicSkillPrefix+set.Name()+"-"+name)
+			if err := os.Symlink(filepath.Join(setDir, name), link); err != nil {
+				slog.Warn("org-fs public skill link failed", "skill", name, "err", err)
+				continue
+			}
+			linked++
+		}
+	}
+	slog.Info("org-fs public skills linked", "count", linked, "unreadable", unreadable)
+	return linked > 0
+}
+
 // repointThreadLink points `org/<linkName>` at `<mountDir>/<threadId>`, creating
 // the thread's subtree through the mount. Relative target so the tree survives
 // being moved.
 func (l *Links) repointThreadLink(threadId, mountDir, linkName string) bool {
-	if !safeThreadId.MatchString(threadId) {
+	if !safeSegment.MatchString(threadId) {
 		slog.Warn("org-fs link skipped: unsafe threadId", "link", linkName, "threadId", threadId)
 		return false
 	}
@@ -230,4 +499,79 @@ func (l *Links) repointThreadLink(threadId, mountDir, linkName string) bool {
 		return false
 	}
 	return true
+}
+
+// AdoptStrayRepoSkills moves skills written into the checkout's
+// `.claude/skills/` onto the org mount, where they outlive the pod.
+//
+// This exists because prose lost. The harness prompt tells the model to author
+// skills at the user-scope path (the org mount), and it still wrote
+// `<repoDir>/.claude/skills/rubber-duck/` — that dir is where Claude Code's own
+// skill-authoring convention points, and a bundled skill's body beats an
+// appended system-prompt paragraph. So the destination is enforced after the
+// fact instead of asked for: a skill in the checkout dies with the branch, and
+// nobody notices until they look for it next week.
+//
+// Only UNTRACKED dirs move: the repo's own committed skills are the one thing
+// that legitimately lives there, and `--exclude-standard` already drops the
+// `orgfs-*` symlinks this daemon plants (they are in `.git/info/exclude`).
+// Copy-then-remove, not rename — the checkout is local disk and the target is
+// FUSE, so a rename is EXDEV.
+func (l *Links) AdoptStrayRepoSkills() {
+	if l == nil || l.RepoDir == "" || !l.Expected() {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if !l.volumeMounted("home") {
+		return
+	}
+	target := filepath.Join(l.AppRoot, "org", "home", "skills")
+	for _, name := range strayRepoSkillDirs(l.RepoDir) {
+		src := filepath.Join(l.RepoDir, ".claude", "skills", name)
+		dst := filepath.Join(target, name)
+		// A same-named org skill wins: it is shared, this one is one run's guess.
+		if _, err := os.Lstat(dst); err == nil {
+			slog.Warn("stray skill not adopted: name already in the org", "skill", name)
+			continue
+		}
+		if err := os.CopyFS(dst, os.DirFS(src)); err != nil {
+			slog.Warn("stray skill adopt failed", "skill", name, "err", err)
+			// Leave the source in place — a half-copy on the mount is worse than
+			// a skill still sitting in the checkout, and the next run retries.
+			os.RemoveAll(dst)
+			continue
+		}
+		if err := os.RemoveAll(src); err != nil {
+			slog.Warn("stray skill left in checkout", "skill", name, "err", err)
+		}
+		slog.Info("stray skill adopted into the org", "skill", name)
+	}
+}
+
+// strayRepoSkillDirs names the untracked skill directories in the checkout —
+// the ones holding a SKILL.md, deduped from git's per-FILE listing.
+func strayRepoSkillDirs(repoDir string) []string {
+	var names []string
+	seen := map[string]bool{}
+	for _, p := range gitx.UntrackedUnder(repoDir, ".claude/skills") {
+		// `.claude/skills/<name>/...` — anything shallower is not a skill.
+		parts := strings.Split(p, "/")
+		if len(parts) < 4 {
+			continue
+		}
+		name := parts[2]
+		if seen[name] || !safeSegment.MatchString(name) ||
+			strings.HasPrefix(name, publicSkillPrefix) {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(
+			repoDir, ".claude", "skills", name, "SKILL.md",
+		)); err != nil {
+			continue
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	return names
 }

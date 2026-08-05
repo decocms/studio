@@ -18,12 +18,15 @@ import { gunzipSync } from "node:zlib";
 import type { Kysely } from "kysely";
 import type { Database } from "../storage/types";
 import { OrgFsEntryStorage } from "../storage/org-fs";
-import { createBoundObjectStorage } from "../object-storage/bound-object-storage";
+import {
+  type BoundObjectStorage,
+  createBoundObjectStorage,
+} from "../object-storage/bound-object-storage";
 import { DevObjectStorage } from "../object-storage/dev-object-storage";
 import { getObjectStorageS3Service } from "../object-storage/factory";
 import { detectContentType } from "../object-storage/key-utils";
 import { OrgFs } from "./org-fs";
-import { normalizeFsPath } from "./org-fs-path";
+import { fsVolumePrefix, normalizeFsPath } from "./org-fs-path";
 import {
   getPublicSets,
   ORG_FS_PUBLIC_ORG_ID,
@@ -198,6 +201,43 @@ function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
+/**
+ * Whether a desired file can be skipped this cycle.
+ *
+ * The manifest hash alone is NOT enough: manifest rows and object bytes live in
+ * two stores that can diverge (a set synced while the deployment had no S3 wrote
+ * its bytes to dev storage; a wiped bucket keeps its rows). Hash-only "unchanged"
+ * makes that permanent — every later sync skips the file, reads 404 → the mount
+ * answers EIO, and the whole set is dead with a green sync. Observed: 33 public
+ * skills with a complete manifest and zero objects in the bucket.
+ *
+ * So: skip only what is present in BOTH.
+ */
+export function isUpToDate(args: {
+  hash: string;
+  manifestHash: string | null | undefined;
+  storedPaths: ReadonlySet<string>;
+  path: string;
+}): boolean {
+  return args.manifestHash === args.hash && args.storedPaths.has(args.path);
+}
+
+/** Paths (volume-relative) whose bytes actually exist in object storage. */
+async function storedPaths(
+  storage: BoundObjectStorage,
+  volume: string,
+): Promise<Set<string>> {
+  const prefix = fsVolumePrefix(volume);
+  const paths = new Set<string>();
+  let continuationToken: string | undefined;
+  do {
+    const page = await storage.list({ prefix, continuationToken });
+    for (const obj of page.objects) paths.add(obj.key.slice(prefix.length));
+    continuationToken = page.nextContinuationToken;
+  } while (continuationToken);
+  return paths;
+}
+
 export interface SyncResult {
   set: string;
   written: number;
@@ -261,8 +301,16 @@ async function syncPublicSet(
   }
   let written = 0;
   let unchanged = 0;
+  const stored = await storedPaths(storage, volume);
   for (const [path, bytes] of desired) {
-    if (current.get(path) === sha256Hex(bytes)) {
+    if (
+      isUpToDate({
+        hash: sha256Hex(bytes),
+        manifestHash: current.get(path),
+        storedPaths: stored,
+        path,
+      })
+    ) {
       unchanged++;
       continue;
     }

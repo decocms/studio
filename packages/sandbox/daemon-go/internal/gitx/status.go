@@ -250,3 +250,23 @@ var ansiColorRe = regexp.MustCompile("\x1b\\[[0-9;]*m")
 func FormatGitError(err error) string {
 	return ansiColorRe.ReplaceAllString(err.Error(), "")
 }
+
+// UntrackedUnder lists repo-relative paths under `pathspec` that git neither
+// tracks nor ignores — i.e. what something newly wrote into the checkout. The
+// `--exclude-standard` filter is what keeps daemon-planted paths out: they are
+// already registered in `.git/info/exclude`.
+func UntrackedUnder(repoDir, pathspec string) []string {
+	out, ok := tryReadGit(repoDir, []string{
+		"ls-files", "--others", "--exclude-standard", "--", pathspec,
+	})
+	if !ok {
+		return nil
+	}
+	var paths []string
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		if line != "" {
+			paths = append(paths, line)
+		}
+	}
+	return paths
+}

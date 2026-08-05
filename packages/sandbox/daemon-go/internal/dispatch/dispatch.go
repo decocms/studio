@@ -52,6 +52,11 @@ type Deps struct {
 	// repointed at this run's thread, `.deco/tools/` refreshed. Must not block for
 	// long and must not fail the run. Optional.
 	BeforeRun func(RunInfo)
+	// AfterRun settles the workspace once the harness has exited, however it
+	// exited (success, crash, cancel): whatever the model wrote to the wrong
+	// place gets moved to where it survives the pod. Same contract as BeforeRun —
+	// quick, and it must not fail the run. Optional.
+	AfterRun func(RunInfo)
 }
 
 // RunInfo is what the daemon needs from a dispatched run's input to prepare the
@@ -367,6 +372,12 @@ func (reg *Registry) runHarness(
 	// rather than in each caller so the offloaded-messages path gets it too.
 	if deps.BeforeRun != nil {
 		deps.BeforeRun(runInfoOf(input))
+	}
+	// Deferred, not placed after RunHarness: every terminal path below returns
+	// early (crash, cancel, unknown harness), and the run that crashed halfway is
+	// exactly the one whose stray output must still be rescued.
+	if deps.AfterRun != nil {
+		defer deps.AfterRun(runInfoOf(input))
 	}
 
 	if len(deps.HarnessRunnerCmd) == 0 {

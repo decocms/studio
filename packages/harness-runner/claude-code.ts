@@ -136,6 +136,43 @@ function sessionFile(threadId: string): string {
   return `${dir}/deco-sessions/${threadId.replace(/[^A-Za-z0-9_-]/g, "_")}`;
 }
 
+/**
+ * The pod's user-scope Claude config dir — the same one `sessionFile` writes to,
+ * and the one the daemon links `skills` out of onto the org-fs mount.
+ */
+function claudeConfigDir(): string {
+  return process.env.CLAUDE_CONFIG_DIR ?? `${process.env.HOME ?? "."}/.claude`;
+}
+
+/**
+ * Where a skill the agent authors has to land to outlive the pod: the user-scope
+ * skills dir, which the daemon links onto the org's `org/home/skills` (see
+ * `ensureSkillsLinkLocked`). Writing there IS an org-fs write, so the skill is
+ * shared org-wide; a skill written into the checkout only reaches whoever merges
+ * the branch.
+ *
+ * Absolute, not `~/…`: the Write tool takes a path, not a shell word, so a tilde
+ * would create a literal `~` directory next to the checkout and the skill would
+ * die with the pod.
+ */
+function skillsInstruction(): string {
+  const dir = `${claudeConfigDir()}/skills`;
+  return (
+    // READING is deliberately not given a path. Every discovered skill's name and
+    // description is already in this prompt, so a path here only invites the model
+    // to go `ls` for what it was just handed — which is exactly what it did.
+    "Your available skills are already listed for you with their descriptions; " +
+    "invoke one with the Skill tool. Never search the filesystem for skills and " +
+    "never read a SKILL.md yourself.\n\n" +
+    "When you WRITE or edit a reusable skill, put it at " +
+    `\`${dir}/<name>/SKILL.md\` (frontmatter \`name\` + \`description\`), using ` +
+    "that absolute path — never `~`. That folder syncs to the org, so the skill " +
+    "outlives this sandbox and every teammate's run sees it. Do NOT put a skill " +
+    "in the checkout's `.claude/skills/`, and do not commit one to the repo, " +
+    "unless the task explicitly asks for a skill scoped to that repository."
+  );
+}
+
 /** SDK options for one run. Exported for the unit test — it is the whole policy. */
 export function buildOptions(args: {
   input: HarnessStreamInputWire;
@@ -146,6 +183,9 @@ export function buildOptions(args: {
   const cwd = input.workspace.cwd ?? undefined;
   const instructions = input.agent.instructions;
   const model = process.env[ENVS.MODEL_ENV];
+  const instructionsWithSkills = [instructions, skillsInstruction()]
+    .filter(Boolean)
+    .join("\n\n");
   const executable = process.env[ENVS.EXECUTABLE_ENV];
   return {
     ...(cwd ? { cwd } : {}),
@@ -157,8 +197,12 @@ export function buildOptions(args: {
     systemPrompt: {
       type: "preset",
       preset: "claude_code",
-      ...(instructions ? { append: instructions } : {}),
+      append: instructionsWithSkills,
     },
+    // The org's skills reach the pod as `~/.claude/skills` (the daemon links it
+    // onto the org-fs mount), which the SDK discovers from the `user` setting
+    // source — but only once skills are turned on for the session.
+    skills: "all",
     ...(model ? { model } : {}),
     // ponytail: fixed, not configurable — raise it here if runs come back thin.
     effort: "low",
@@ -239,6 +283,14 @@ export async function runClaudeCode(
         const studioToolCount = message.tools.filter((tool) =>
           tool.startsWith("mcp__"),
         ).length;
+        // Skills are a filesystem contract across two processes (the daemon
+        // links the dir, the SDK scans it) and a broken link is silent — the
+        // model just never mentions a skill. Log what it actually found.
+        console.error(
+          `[claude-code] skills (${message.skills.length}): ${
+            message.skills.join(" ") || "none discovered"
+          }`,
+        );
         console.error(
           `[claude-code] mcp: ${
             message.mcp_servers

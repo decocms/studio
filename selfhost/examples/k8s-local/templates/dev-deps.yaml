@@ -1,8 +1,16 @@
 {{- /*
-Throwaway PostgreSQL + MinIO for the local umbrella. DEV ONLY — ephemeral
-(emptyDir), fixed Service names (studio-db, studio-minio) so the Studio subchart
-values can reference them statically. For production, drop these and point the
-chart at managed Postgres/S3.
+Throwaway PostgreSQL + MinIO for the local umbrella. DEV ONLY — fixed Service
+names (studio-db, studio-minio) so the Studio subchart values can reference them
+statically. For production, drop these and point the chart at managed
+Postgres/S3.
+
+Both claim a PVC rather than an emptyDir. Throwaway does not mean per-pod: the
+object store holds the ONLY copy of every org-fs byte while Postgres holds the
+manifest that names them, so losing one and keeping the other leaves org-fs in
+its worst state — `list`/`stat` answer 200 from the manifest and every `read`
+404s on a missing object. That silently breaks anything reading org content (the
+sandbox mounts, skills) with no error that names the cause. Observed exactly
+that after a minio pod recreate wiped the bucket.
 */ -}}
 apiVersion: apps/v1
 kind: Deployment
@@ -30,7 +38,7 @@ spec:
             requests: { cpu: "50m", memory: "128Mi" }
             limits: { memory: "256Mi" }
           volumeMounts: [{ name: data, mountPath: /var/lib/postgresql/data }]
-      volumes: [{ name: data, emptyDir: {} }]
+      volumes: [{ name: data, persistentVolumeClaim: { claimName: studio-db-data } }]
 ---
 apiVersion: v1
 kind: Service
@@ -71,7 +79,7 @@ spec:
             requests: { cpu: "25m", memory: "128Mi" }
             limits: { memory: "256Mi" }
           volumeMounts: [{ name: data, mountPath: /data }]
-      volumes: [{ name: data, emptyDir: {} }]
+      volumes: [{ name: data, persistentVolumeClaim: { claimName: studio-minio-data } }]
 ---
 apiVersion: v1
 kind: Service
@@ -79,3 +87,19 @@ metadata: { name: studio-minio }
 spec:
   selector: { app: studio-minio }
   ports: [{ name: s3, port: 9000, targetPort: s3 }]
+---
+# The bytes org-fs hands out. Paired with studio-db's manifest below — see the
+# header: keeping one and losing the other is the failure mode worth avoiding.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: { name: studio-minio-data }
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 10Gi } }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: { name: studio-db-data }
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 5Gi } }
