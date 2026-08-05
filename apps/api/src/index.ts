@@ -281,8 +281,19 @@ const stopProfiling = startProfiling();
 // from the self MCP endpoint (http://localhost:PORT/mcp/self).
 if (settings.localMode) {
   import("./auth/local-mode")
-    .then(async ({ seedLocalMode, markSeedComplete }) => {
+    .then(async ({ seedLocalMode, markSeedComplete, healLocalJwks }) => {
       try {
+        // Recover pre-fix installs whose JWKS was encrypted under a now-lost
+        // random secret; runs before the seed gate opens so the auto-login
+        // (/local-session) path never races a stale key. A direct get-session
+        // probe can still 500 once in the brief pre-heal window, exactly as it
+        // did before this fix. See healLocalJwks() for the full rationale.
+        const healed = await healLocalJwks();
+        if (healed > 0) {
+          console.log(
+            `[local-mode] cleared ${healed} undecryptable JWKS key(s); Better Auth will generate a fresh one`,
+          );
+        }
         const seeded = await seedLocalMode();
         void seeded;
       } catch (error) {
