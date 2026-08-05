@@ -175,13 +175,18 @@ export async function ensureTaskExecutionAllowed(
  * review/conflict re-runs — funnels through it, for BOTH harnesses. The
  * claim is atomic per org (the storage transaction locks the billing row),
  * so a burst of concurrent dispatches consumes exactly the remaining slots.
+ *
+ * Returns what it did, because only the caller knows whether the dispatch it
+ * charged for actually started: `"claimed"` took a slot and is the ONLY
+ * outcome a failed dispatch may roll back. `"rerun"` rode an earlier run's
+ * slot — rolling that back would refund a run that really happened.
  */
 export async function claimTaskExecution(
   ctx: StudioContext,
   task: GatedTask,
   config: TaskQuotaConfig = taskQuotaConfig(),
-): Promise<void> {
-  if (!config.enforced || !isReportsTask(task)) return;
+): Promise<"claimed" | "rerun" | "skipped"> {
+  if (!config.enforced || !isReportsTask(task)) return "skipped";
   const billing = await ctx.storage.organizationBilling.getBilling(
     task.organizationId,
   );
@@ -195,6 +200,26 @@ export async function claimTaskExecution(
   );
   if (result === "exhausted") throw new TaskQuotaError(quota.exhaustedReason);
   if (result === "runs_exhausted") throw new TaskQuotaError("runs_exhausted");
+  return result;
+}
+
+/**
+ * Undo a charge whose dispatch never started — see `rollbackTaskClaim` for why
+ * this differs from a refund. Only valid for a `"claimed"` outcome.
+ *
+ * Errors are swallowed: the caller is already unwinding a dispatch failure and
+ * must re-throw THAT error, not this one.
+ */
+export async function rollbackTaskExecution(
+  billing: OrganizationBillingStorage,
+  organizationId: string,
+  taskBoardItemId: string,
+): Promise<void> {
+  await billing
+    .rollbackTaskClaim(organizationId, taskBoardItemId)
+    .catch((err) =>
+      console.error("[task-quota] rollback failed (stays charged)", err),
+    );
 }
 
 /** Whether this task holds a CHARGED claim — the server-side fact the

@@ -3,7 +3,7 @@ import type { TaskBoardItem } from "@/storage/types";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import {
   claimTaskExecution,
-  releaseTaskExecution,
+  rollbackTaskExecution,
   TaskQuotaError,
 } from "../../billing/task-quota";
 import { enqueueAgentRunForTask } from "./enqueue-task-run";
@@ -140,7 +140,7 @@ export async function enqueueSuperAgentForTask(
   // throws [SUBSCRIPTION_REQUIRED] and nothing enqueues. The interactive
   // flip pre-checks in TASK_BOARD_ITEM_UPDATE so the user sees the paywall
   // BEFORE the write; here the claim is the enforcement.
-  await claimTaskExecution(ctx, task);
+  const claim = await claimTaskExecution(ctx, task);
 
   try {
     // Sandbox-hosted claude-code takes every task that has a repo it could work
@@ -177,11 +177,21 @@ export async function enqueueSuperAgentForTask(
     // here (e.g. no model configured — the exact case `enqueueAgentRunForTask`
     // can throw for) would leave the claim charged forever with no run to show
     // for it.
-    await releaseTaskExecution(
-      ctx.storage.organizationBilling,
-      task.organizationId,
-      task.id,
-    );
+    //
+    // ROLLBACK, not refund: no run happened, so the per-task tally must not be
+    // spent either — otherwise a task whose dispatch keeps failing dies at the
+    // run cap with a quota error for runs that never existed.
+    //
+    // Only a FRESH claim is ours to undo. A `"rerun"` rides a slot an earlier
+    // run already paid for (and may well have shipped a PR from) — undoing it
+    // here would refund a run that really happened.
+    if (claim === "claimed") {
+      await rollbackTaskExecution(
+        ctx.storage.organizationBilling,
+        task.organizationId,
+        task.id,
+      );
+    }
     throw err;
   }
 }
