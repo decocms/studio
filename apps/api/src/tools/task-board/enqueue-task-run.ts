@@ -34,6 +34,12 @@ export async function enqueueAgentRunForTask(
      * `thread:<id>` key and clones into it with `TASK_ADD_REPO`.
      */
     repo?: TaskRepo;
+    /**
+     * Per-run agent overrides — instructions (the run's persona) and the
+     * built-in tools it must not have. Only the sandbox-hosted harness reads
+     * them; a Decopilot fallback run must carry its persona in the prompt.
+     */
+    agent?: { instructions?: string; disallowedTools?: string[] };
   },
 ): Promise<{ threadId: string }> {
   const organizationId = task.organizationId;
@@ -129,7 +135,7 @@ export async function enqueueAgentRunForTask(
         credentialId: model.credentialId,
         thinking: { id: model.modelId, title: model.modelMeta.title },
       },
-      agent: { id: agentId },
+      agent: { id: agentId, ...(opts.agent ?? {}) },
       temperature: opts.temperature,
       toolApprovalLevel: "auto",
       mode: "default",

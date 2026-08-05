@@ -125,6 +125,14 @@ describe("buildOptions", () => {
     expect(prompt.append).toStartWith("Be terse.");
   });
 
+  test("subtracts the dispatch's disallowed tools — that's what makes a reviewer read-only", () => {
+    expect(options().disallowedTools).toBeUndefined();
+    expect(
+      options({ agent: { id: "a", disallowedTools: ["Write", "Edit"] } })
+        .disallowedTools,
+    ).toEqual(["Write", "Edit"]);
+  });
+
   test("points skill authoring at the org-fs mount, instructions or not", () => {
     // Without this the model writes a reusable skill into the checkout, where it
     // dies with the branch instead of syncing to the org.

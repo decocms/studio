@@ -76,6 +76,25 @@ export async function enqueueReviewersOnThreadFinish(args: {
  *  non-terminal status. Mirrors the storage-layer set. */
 const TERMINAL_THREAD_STATUSES = new Set(["completed", "failed", "expired"]);
 
+/**
+ * Built-in harness tools each reviewer must NOT have. This is the enforcement
+ * behind "you are reviewing, not implementing" — the prompt asks, this makes it
+ * true. Both reviewers keep `Bash` (a review needs `git diff`, and QA has to
+ * actually run the thing) but lose the commands that would ship the change; the
+ * Code Reviewer additionally loses every file mutator, since it never has a
+ * reason to touch the checkout.
+ */
+const REVIEWER_DISALLOWED_TOOLS: Record<ReviewerKind, string[]> = {
+  qa: ["Bash(git push:*)", "Bash(gh pr merge:*)"],
+  code_review: [
+    "Write",
+    "Edit",
+    "NotebookEdit",
+    "Bash(git push:*)",
+    "Bash(gh pr merge:*)",
+  ],
+};
+
 /** The review instructions unique to each reviewer. Shared scaffolding (load
  *  the PR, don't push code, end with a decision) lives in the prompt builder. */
 const REVIEWER_FOCUS: Record<ReviewerKind, string> = {
@@ -231,7 +250,12 @@ async function enqueueReviewerForTask(
     ? "mcp__studio__TASK_BOARD_REVIEW_DECISION"
     : "TASK_BOARD_REVIEW_DECISION";
 
-  const prompt = [
+  // Who this run IS. On the sandboxed path this becomes the harness's system
+  // instructions (`agent.instructions`), replacing the org agent's own — those
+  // describe the Super Agent that wrote the PR, which is the last persona a
+  // reviewer of that PR should inherit. The Decopilot fallback has no such hook,
+  // so there it is prepended to the prompt instead (same text, one home).
+  const instructions = [
     REVIEWER_FOCUS[kind],
     "",
     "You are running AUTONOMOUSLY — no human is watching this run. Making the " +
@@ -243,6 +267,13 @@ async function enqueueReviewerForTask(
       "truly cannot judge the outcome) — that should be rare. When in doubt " +
       "between asking and deciding, DECIDE.",
     "",
+    "Do NOT push commits, merge, or change the code to fix what you find. You " +
+      "are reviewing, not implementing — the tools that would ship a change are " +
+      "removed from this run on purpose. Report it in your decision instead.",
+  ].join("\n");
+
+  const prompt = [
+    ...(sandboxed ? [] : [instructions, ""]),
     `Task title: ${task.title}`,
     task.description ? `\nTask description:\n${task.description}\n` : "",
     "How to work:",
@@ -252,7 +283,6 @@ async function enqueueReviewerForTask(
       : sandboxed
         ? `- Your working directory is EMPTY. Call \`mcp__studio__TASK_ADD_REPO\` with the connectionId of the PR's repository FIRST; it clones the repository and waits for the checkout, and \`git\` and \`gh\` are authenticated once it returns.`
         : "- Load the PR's repository to inspect / exercise the change.",
-    "- Do NOT push commits or change the code yourself. You are reviewing, not implementing.",
     `- End the run by calling \`${decisionTool}\` exactly once with the task id, ` +
       `reviewer "${kind}", the reviewToken below, and your decision:`,
     "  - `approve` when it's good to ship. Include a short summary of what you verified.",
@@ -269,7 +299,15 @@ async function enqueueReviewerForTask(
     title: `${REVIEWER_LABEL[kind]}: ${task.title}`,
     prompt,
     temperature: 0.3,
-    ...(sandboxed ? { harnessId: "claude-code" as const } : {}),
+    ...(sandboxed
+      ? {
+          harnessId: "claude-code" as const,
+          agent: {
+            instructions,
+            disallowedTools: REVIEWER_DISALLOWED_TOOLS[kind],
+          },
+        }
+      : {}),
     ...(repo ? { repo } : {}),
   });
 

@@ -140,7 +140,17 @@ export const harnessStreamInputSchema = z
     organizationId: z.string(),
     organizationSlug: z.string().optional(),
     agent: z
-      .object({ id: z.string(), instructions: z.string().optional() })
+      .object({
+        id: z.string(),
+        instructions: z.string().optional(),
+        /**
+         * Built-in harness tools this run must NOT have (SDK tool names, e.g.
+         * `Write`). Absent = the harness's full built-in set. Set per dispatch,
+         * not per agent: a reviewer run on the same org agent has to be
+         * read-only where the Super Agent's run is not.
+         */
+        disallowedTools: z.array(z.string()).optional(),
+      })
       .strict(),
     triggerId: z.string().optional(),
     currentThreadTitle: z.string().optional(),
