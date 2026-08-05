@@ -4,9 +4,9 @@ import { requireAuth } from "@/core/studio-context";
 
 /**
  * Dismissed diagnostic findings — the undo side of deleting a reports-pushed
- * card. Deleting such a card tombstones the finding's `external_key` so the
- * next import skips it (see storage/task-board.ts `delete`); these two tools
- * make that state visible and reversible.
+ * card. Deleting such a card sets `dismissed_at` on it, taking it off the board
+ * and making the next import skip its `external_key` (see storage/task-board.ts
+ * `delete`); these two tools make that state visible and reversible.
  */
 
 const DismissedFindingSchema = z.object({
@@ -52,8 +52,8 @@ export const TASK_BOARD_DISMISSED_LIST = defineTool({
 export const TASK_BOARD_DISMISSED_RESTORE = defineTool({
   name: "TASK_BOARD_DISMISSED_RESTORE",
   description:
-    "Un-dismiss diagnostic findings so the next report import pushes them to " +
-    "the board again. Omit externalKeys to restore every dismissed finding.",
+    "Un-dismiss diagnostic findings, returning their cards to the board. " +
+    "Omit externalKeys to restore every dismissed finding.",
   annotations: {
     title: "Restore Dismissed Findings",
     readOnlyHint: false,

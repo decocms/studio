@@ -358,6 +358,7 @@ describe("Task Board Import Route", () => {
       .selectFrom("task_board_items")
       .select(["id"])
       .where("organization_id", "=", "org_board")
+      .where("external_key", "=", key)
       .executeTakeFirstOrThrow();
 
     await new TaskBoardStorage(database.db).delete(
@@ -378,15 +379,18 @@ describe("Task Board Import Route", () => {
       delegated: 0,
       dismissed: 1,
     });
+    // The card is dismissed, not dropped — its comments, activity and quota
+    // claim stay with it, so restoring brings back the same card.
     expect(
       await database.db
         .selectFrom("task_board_items")
-        .selectAll()
+        .select(["id", "dismissed_at"])
         .where("organization_id", "=", "org_board")
+        .where("external_key", "=", key)
         .execute(),
-    ).toHaveLength(0);
+    ).toMatchObject([{ id: created.id, dismissed_at: expect.anything() }]);
 
-    // Restored ⇒ the next run pushes the finding again.
+    // Restored ⇒ the next run refreshes the same card again.
     await new TaskBoardStorage(database.db).restoreDismissedFindings(
       "org_board",
       [key],
@@ -398,10 +402,19 @@ describe("Task Board Import Route", () => {
       }),
     );
     await expect(afterRestore.json()).resolves.toEqual({
-      created: 1,
-      updated: 0,
+      created: 0,
+      updated: 1,
       delegated: 0,
     });
+    expect(
+      await database.db
+        .selectFrom("task_board_items")
+        .select(["id"])
+        .where("organization_id", "=", "org_board")
+        .where("external_key", "=", key)
+        .where("dismissed_at", "is", null)
+        .execute(),
+    ).toMatchObject([{ id: created.id }]);
   });
 
   it("a dismissal is scoped to its org", async () => {
@@ -416,6 +429,7 @@ describe("Task Board Import Route", () => {
       .selectFrom("task_board_items")
       .select(["id"])
       .where("organization_id", "=", "org_board")
+      .where("external_key", "=", key)
       .executeTakeFirstOrThrow();
     await new TaskBoardStorage(database.db).delete(
       created.id,

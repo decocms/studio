@@ -28,14 +28,13 @@ export const TASK_BOARD_ITEM_DELETE = defineTool({
       );
     }
 
-    // Reports-pushed tasks are deletable like any other. The finding's
-    // identity outlives the card: storage tombstones the `external_key` in the
-    // same transaction so the next import skips it rather than re-creating the
-    // card. Use TASK_BOARD_DISMISSED_RESTORE to undo that.
+    // Reports-pushed tasks are deletable like any other — storage dismisses
+    // theirs instead of dropping the row, so the next import skips the finding
+    // rather than re-creating the card. TASK_BOARD_DISMISSED_RESTORE undoes it.
     await ctx.storage.taskBoard.delete(
       input.id,
       organizationId,
-      getUserId(ctx)!,
+      getUserId(ctx) ?? "system",
     );
     // Broadcast the removal so every open board drops the card live.
     emitTaskBoardDeleted(organizationId, input.id);

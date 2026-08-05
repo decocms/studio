@@ -6,6 +6,9 @@
  */
 
 import type { Kysely } from "kysely";
+// Pure predicate — the single source of truth for "this card is a report's
+// finding", shared with the quota gate that charges the same class of task.
+import { isReportsTask } from "../billing/task-quota";
 import type {
   Database,
   TaskBoardActivity,
@@ -152,6 +155,9 @@ export class TaskBoardStorage {
       .selectFrom("task_board_items")
       .selectAll()
       .where("organization_id", "=", organizationId)
+      // Dismissed findings are off the board — see `delete`. `getById` still
+      // resolves them, so a run reaction or a restore can reach the row.
+      .where("dismissed_at", "is", null)
       .orderBy("sort_order", "asc")
       .execute();
 
@@ -277,37 +283,40 @@ export class TaskBoardStorage {
   /**
    * Remove a task board item and its join rows.
    *
-   * A reports-pushed card carries the finding's `external_key`; deleting it
-   * tombstones that key in `task_board_dismissed_findings` so the next
-   * diagnostic import skips the finding instead of re-creating the card.
-   * Without the tombstone a delete silently undoes itself on the next scan —
-   * the import matches only OPEN items by key, and a deleted row matches
-   * nothing. Human-created cards have no `external_key` and are unaffected.
+   * A reports-pushed card is DISMISSED rather than deleted: the row stays with
+   * `dismissed_at` set, off the board, and the next diagnostic import skips its
+   * `external_key` instead of re-creating the card. A hard delete would
+   * silently undo itself on the next scan — the import matches only OPEN items
+   * by key, and a deleted row matches nothing. Keeping the row also keeps the
+   * card's comments, activity, threads and quota claim, so a restore brings
+   * back the same card, and deleting one can't refund a charged slot via
+   * `task_quota_claims`' ON DELETE CASCADE.
+   *
+   * The predicate is `isReportsTask`, NOT "has an external_key" — the quota
+   * gate charges on `created_by = "system"`, and an imported item may omit its
+   * key. Keying dismissal on the key would leave keyless system cards
+   * hard-deletable, and therefore refundable.
+   *
+   * User-created cards are deleted outright.
    */
   async delete(id: string, organizationId: string, by: string): Promise<void> {
     await this.inTransaction(async (trx) => {
-      // Read the finding identity before the row goes away, in the same
-      // transaction — a tombstone written outside it could survive a rollback
-      // and suppress a finding whose card still exists.
       const row = await trx
         .selectFrom("task_board_items")
-        .select(["external_key"])
+        .select(["created_by"])
         .where("id", "=", id)
         .where("organization_id", "=", organizationId)
         .executeTakeFirst();
-      if (row?.external_key) {
+      if (row && isReportsTask({ createdBy: row.created_by })) {
         await trx
-          .insertInto("task_board_dismissed_findings")
-          .values({
-            organization_id: organizationId,
-            external_key: row.external_key,
-            dismissed_by: by,
-          })
-          // Already dismissed once — keep who dismissed it first.
-          .onConflict((oc) =>
-            oc.columns(["organization_id", "external_key"]).doNothing(),
-          )
+          .updateTable("task_board_items")
+          .set({ dismissed_at: new Date().toISOString(), updated_by: by })
+          .where("id", "=", id)
+          .where("organization_id", "=", organizationId)
+          // Already dismissed — keep the first dismissal's who/when.
+          .where("dismissed_at", "is", null)
           .execute();
+        return;
       }
       await trx
         .deleteFrom("task_board_item_threads")
@@ -339,37 +348,46 @@ export class TaskBoardStorage {
   ): Promise<Set<string>> {
     if (externalKeys.length === 0) return new Set();
     const rows = await this.db
-      .selectFrom("task_board_dismissed_findings")
+      .selectFrom("task_board_items")
       .select(["external_key"])
       .where("organization_id", "=", organizationId)
       .where("external_key", "in", externalKeys)
+      .where("dismissed_at", "is not", null)
       .execute();
-    return new Set(rows.map((r) => r.external_key));
+    return new Set(rows.flatMap((r) => r.external_key ?? []));
   }
 
   async listDismissedFindings(
     organizationId: string,
   ): Promise<DismissedFinding[]> {
     const rows = await this.db
-      .selectFrom("task_board_dismissed_findings")
-      .select(["external_key", "dismissed_by", "dismissed_at"])
+      .selectFrom("task_board_items")
+      .select(["external_key", "updated_by", "dismissed_at"])
       .where("organization_id", "=", organizationId)
+      .where("dismissed_at", "is not", null)
       .orderBy("dismissed_at", "desc")
       .execute();
-    return rows.map((r) => ({
-      externalKey: r.external_key,
-      dismissedBy: r.dismissed_by,
-      dismissedAt:
-        r.dismissed_at instanceof Date
-          ? r.dismissed_at.toISOString()
-          : r.dismissed_at,
-    }));
+    return rows.flatMap((r) =>
+      r.external_key && r.dismissed_at
+        ? [
+            {
+              externalKey: r.external_key,
+              dismissedBy: r.updated_by,
+              dismissedAt:
+                r.dismissed_at instanceof Date
+                  ? r.dismissed_at.toISOString()
+                  : r.dismissed_at,
+            },
+          ]
+        : [],
+    );
   }
 
   /**
-   * Un-dismiss findings so the next import pushes them again. `externalKeys`
-   * omitted clears every dismissal for the org. Returns how many rows went
-   * away, so a caller can tell "restored 3" from "nothing matched".
+   * Un-dismiss findings so their cards return to the board and the import
+   * refreshes them again. `externalKeys` omitted restores every dismissal for
+   * the org. Returns how many cards came back, so a caller can tell
+   * "restored 3" from "nothing matched".
    */
   async restoreDismissedFindings(
     organizationId: string,
@@ -377,13 +395,15 @@ export class TaskBoardStorage {
   ): Promise<number> {
     if (externalKeys && externalKeys.length === 0) return 0;
     let query = this.db
-      .deleteFrom("task_board_dismissed_findings")
-      .where("organization_id", "=", organizationId);
+      .updateTable("task_board_items")
+      .set({ dismissed_at: null })
+      .where("organization_id", "=", organizationId)
+      .where("dismissed_at", "is not", null);
     if (externalKeys) {
       query = query.where("external_key", "in", externalKeys);
     }
     const result = await query.executeTakeFirst();
-    return Number(result.numDeletedRows ?? 0n);
+    return Number(result.numUpdatedRows ?? 0n);
   }
 
   /**

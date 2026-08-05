@@ -40,11 +40,11 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
  *   matched — a regression creates a fresh card. Refreshes never re-trigger
  *   the Super Agent delegation.
  *
- * A key the org has DISMISSED (deleted its card — see
- * `task_board_dismissed_findings`, migration 163) is skipped entirely and
- * counted in the response's `dismissed`. That's what makes deleting a
- * reports-pushed card stick: without it, the next run re-creates the card,
- * since a deleted row matches no open item.
+ * A key the org has DISMISSED (deleted its card — the row stays with
+ * `dismissed_at` set, migration 163) is skipped entirely and counted in the
+ * response's `dismissed`. That's what makes deleting a reports-pushed card
+ * stick: without it, the next run re-creates the card, since a card that's gone
+ * matches no open item.
  *
  * An item may carry `assigneeId` — a real org member, or the Super Agent
  * sentinel to queue the task for an agent run (status forced to To Do, same as
@@ -162,30 +162,38 @@ export const createTaskBoardImportRoutes = () => {
         if ((claim.numInsertedOrUpdatedRows ?? 0n) === 0n) return null;
       }
 
-      // Open items matching the batch's external keys — these get refreshed
-      // instead of duplicated. Done items don't match: a regression is a new
-      // card.
+      // Existing cards for the batch's external keys. An OPEN one gets
+      // refreshed instead of duplicated; done ones don't match (a regression is
+      // a new card); a DISMISSED one suppresses the finding entirely — that's
+      // what makes deleting a reports card stick, since a delete the next scan
+      // undoes isn't a delete.
       const keys = items.flatMap((i) => i.externalKey ?? []);
       const openByKey = new Map<string, string>();
+      const dismissed = new Set<string>();
       if (keys.length > 0) {
-        const open = await trx
+        const rows = await trx
           .selectFrom("task_board_items")
-          .select(["id", "external_key"])
+          .select(["id", "external_key", "status", "dismissed_at"])
           .where("organization_id", "=", organizationId)
           .where("external_key", "in", keys)
-          .where("status", "!=", "done")
+          .where((eb) =>
+            eb.or([
+              eb("dismissed_at", "is not", null),
+              eb("status", "!=", "done"),
+            ]),
+          )
           .execute();
-        for (const row of open)
-          if (row.external_key) openByKey.set(row.external_key, row.id);
+        for (const row of rows) {
+          if (!row.external_key) continue;
+          // Dismissal wins over an open card with the same key: a finding can
+          // be closed, regress into a fresh card, then be dismissed.
+          if (row.dismissed_at) dismissed.add(row.external_key);
+          else if (row.status !== "done")
+            openByKey.set(row.external_key, row.id);
+        }
       }
 
       const storage = new TaskBoardStorage(trx);
-      // Findings the org deleted from its board. Skipped outright — a delete
-      // that the next scan undoes isn't a delete.
-      const dismissed = await storage.dismissedFindingKeys(
-        organizationId,
-        keys,
-      );
       const touched: TaskBoardItem[] = [];
       const delegations: TaskBoardItem[] = [];
       let created = 0;

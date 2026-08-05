@@ -57,9 +57,9 @@ export const taskBoard = {
   "taskBoard.taskBoard.dueDateButton": "Data de entrega",
   "taskBoard.taskBoard.addTagButton": "Adicionar tag",
   "taskBoard.taskBoard.deleteSelectedButton": "Excluir",
-  "taskBoard.delete.error":
+  "taskBoard.taskBoard.deleteError":
     "Não foi possível excluir a tarefa. Tente novamente.",
-  "taskBoard.delete.bulkError":
+  "taskBoard.taskBoard.deleteBulkError":
     "Não foi possível excluir {failed} de {total} tarefas.",
   "taskBoard.taskDialog.activityLabel": "Atividade",
   "taskBoard.taskDialog.activityCreated": "criou a tarefa",

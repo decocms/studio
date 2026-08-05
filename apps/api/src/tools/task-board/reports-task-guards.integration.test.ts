@@ -170,7 +170,9 @@ describe("reports-task guards", () => {
       by: "system",
     });
     await TASK_BOARD_ITEM_DELETE.handler({ id: reportsTask.id }, ctx);
-    expect(await taskBoard.getById(reportsTask.id, ORG)).toBeNull();
+    expect((await taskBoard.list(ORG)).map((i) => i.id)).not.toContain(
+      reportsTask.id,
+    );
     expect(await taskBoard.listDismissedFindings(ORG)).toMatchObject([
       { externalKey: "diag:example.com:lcp", dismissedBy: USER },
     ]);

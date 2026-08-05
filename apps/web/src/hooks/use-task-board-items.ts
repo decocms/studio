@@ -134,7 +134,7 @@ export function useTaskBoardItemActions() {
       toast.error(
         err instanceof Error && err.message
           ? err.message
-          : t("taskBoard.delete.error"),
+          : t("taskBoard.taskBoard.deleteError"),
       );
       invalidate();
     },
@@ -156,13 +156,13 @@ export function useTaskBoardItemActions() {
     onSuccess: ({ total, failed }) => {
       if (failed === 0) return;
       toast.error(
-        t("taskBoard.delete.bulkError", {
+        t("taskBoard.taskBoard.deleteBulkError", {
           failed: String(failed),
           total: String(total),
         }),
       );
     },
-    onError: () => toast.error(t("taskBoard.delete.error")),
+    onError: () => toast.error(t("taskBoard.taskBoard.deleteError")),
     onSettled: invalidate,
   });
 
