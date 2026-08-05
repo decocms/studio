@@ -77,6 +77,18 @@ Each reviewer that runs shows up as its own session on the task card, and its ve
   already set explicitly.
 </Callout>
 
+Each reviewer runs with its own persona, not the Super Agent's — even though it borrows the Super Agent's model and MCP tools, its system instructions describe the reviewer's job, not the org agent that wrote the PR under review. The reviewer's built-in toolset is also restricted so it can only review, not ship:
+
+- **QA Agent** can't edit existing files, but keeps `Write` for scratch files it creates to exercise the change (a curl script, a throwaway test).
+- **Code Reviewer** can't write or edit any file — it reads the diff and reasons about it.
+- Neither reviewer can push commits or merge the pull request; both keep `Bash` and `git`/`gh` read access to inspect and run the change.
+
+<Callout type="info">
+  These restrictions are enforced at the tool level, not just by prompt — a
+  reviewer physically cannot call the disallowed tools, even if it decides to
+  try.
+</Callout>
+
 ## Shipping to production
 
 When every enabled reviewer has approved a task's pull request — or no reviewers are enabled — the task card shows a **Ship to production** button. Clicking it merges the pull request. If auto-merge is enabled, this happens automatically once the review gate is satisfied instead of waiting for someone to click the button.
