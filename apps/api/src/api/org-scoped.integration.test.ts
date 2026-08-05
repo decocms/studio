@@ -199,16 +199,9 @@ describe("org-scoped API coexistence", () => {
   });
 
   it("corrects the scheme on protected-resource metadata for virtual MCP connections", async () => {
-    // Virtual MCPs (`virtual://<id>`) hand back Better Auth's generic
-    // protected-resource metadata, whose `resource` field is derived from
-    // the server's static `baseURL` config — not the incoming request. Behind
-    // a TLS-terminating proxy (e.g. the native app's local reverse proxy)
-    // that config can be `http` while the client actually connects over
-    // `https`, and an uncorrected `resource` fails the MCP SDK's resource
-    // check (`checkResourceAllowed`). The handler must override `resource`
-    // with the request-derived, `fixProtocol`-corrected URL — same as the
-    // `self` branch above. "test" isn't a `.localhost`/`127.0.0.1` host, so
-    // `fixProtocol` forces https regardless of what `baseURL` says.
+    // "test" isn't a `.localhost`/`127.0.0.1` host, so `fixProtocol` forces
+    // https on the response regardless of what the server's static `baseURL`
+    // config says — see the `virtual://` branch in oauth-proxy.ts.
     const now = new Date().toISOString();
     await database.db
       .insertInto("connections")
