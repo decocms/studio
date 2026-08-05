@@ -28,9 +28,7 @@ export const TASK_BOARD_ITEM_DELETE = defineTool({
       );
     }
 
-    // Reports-pushed tasks are deletable like any other — storage dismisses
-    // theirs instead of dropping the row, so the next import skips the finding
-    // rather than re-creating the card. TASK_BOARD_DISMISSED_RESTORE undoes it.
+    // Storage dismisses a reports task instead of dropping the row.
     await ctx.storage.taskBoard.delete(
       input.id,
       organizationId,

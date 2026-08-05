@@ -1,13 +1,9 @@
 /**
  * Real-Postgres coverage for the reports-task guards in the board tools:
- * content immutability (UPDATE), the delete-and-dismiss path (DELETE writes a
- * dismissal tombstone so the finding doesn't return on the next import), and
- * the pre-write paywall on the delegation flip — everything that fires BEFORE
- * any thread/dispatch machinery, so the ctx stub stays small.
+ * content immutability (UPDATE), delete-dismisses, and the delegation paywall.
  *
  * The paywall test drives `ensureTaskExecutionAllowed` directly with an
- * explicit config: the tool reads the frozen global settings, which a test
- * can't flip (STUDIO_TASK_QUOTA_ENFORCED is resolved once at first access).
+ * explicit config, since the tool reads frozen global settings.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
@@ -158,10 +154,7 @@ describe("reports-task guards", () => {
     expect((await taskBoard.getById(second.id, ORG))?.assigneeId).toBeNull();
   });
 
-  // Deleting a reports task used to be refused outright. It's allowed now —
-  // the board's delete button offered it and silently failed. What replaces the
-  // refusal is the dismissal tombstone: the finding stays off the board instead
-  // of the card coming back on the next import.
+  // Inverts the old assertion: delete used to be refused for a reports task.
   it("deletes a reports task and dismisses its finding", async () => {
     const reportsTask = await taskBoard.create({
       organizationId: ORG,

@@ -40,11 +40,7 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
  *   matched — a regression creates a fresh card. Refreshes never re-trigger
  *   the Super Agent delegation.
  *
- * A key the org has DISMISSED (deleted its card — the row stays with
- * `dismissed_at` set, migration 163) is skipped entirely and counted in the
- * response's `dismissed`. That's what makes deleting a reports-pushed card
- * stick: without it, the next run re-creates the card, since a card that's gone
- * matches no open item.
+ * A DISMISSED key (`dismissed_at` set) is skipped and counted in `dismissed`.
  *
  * An item may carry `assigneeId` — a real org member, or the Super Agent
  * sentinel to queue the task for an agent run (status forced to To Do, same as
@@ -162,11 +158,8 @@ export const createTaskBoardImportRoutes = () => {
         if ((claim.numInsertedOrUpdatedRows ?? 0n) === 0n) return null;
       }
 
-      // Existing cards for the batch's external keys. An OPEN one gets
-      // refreshed instead of duplicated; done ones don't match (a regression is
-      // a new card); a DISMISSED one suppresses the finding entirely — that's
-      // what makes deleting a reports card stick, since a delete the next scan
-      // undoes isn't a delete.
+      // Open cards get refreshed, done ones don't match, dismissed ones
+      // suppress the finding.
       const keys = items.flatMap((i) => i.externalKey ?? []);
       const openByKey = new Map<string, string>();
       const dismissed = new Set<string>();
@@ -185,8 +178,7 @@ export const createTaskBoardImportRoutes = () => {
           .execute();
         for (const row of rows) {
           if (!row.external_key) continue;
-          // Dismissal wins over an open card with the same key: a finding can
-          // be closed, regress into a fresh card, then be dismissed.
+          // Dismissal wins over an open card with the same key.
           if (row.dismissed_at) dismissed.add(row.external_key);
           else if (row.status !== "done")
             openByKey.set(row.external_key, row.id);
@@ -285,8 +277,7 @@ export const createTaskBoardImportRoutes = () => {
       created: outcome.created,
       updated: outcome.updated,
       delegated,
-      // Suppression must be visible: a silent skip reads as "imported
-      // everything" when it didn't.
+      // Report the skips — a silent one reads as "imported everything".
       ...(outcome.skipped > 0 && { dismissed: outcome.skipped }),
       ...(quotaBlocked > 0 && { quota_blocked: quotaBlocked }),
     });

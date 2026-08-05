@@ -127,9 +127,7 @@ export function useTaskBoardItemActions() {
   const remove = useMutation({
     mutationFn: (id: string) => studio.call("TASK_BOARD_ITEM_DELETE", { id }),
     onSuccess: invalidate,
-    // A rejected delete used to land nowhere: the dialog had already closed, so
-    // a refused deletion read as a successful one. Surface it and refetch, so
-    // the card the server kept comes back into the list.
+    // The dialog is already closed, so a rejection needs a toast + refetch.
     onError: (err: unknown) => {
       toast.error(
         err instanceof Error && err.message
@@ -140,9 +138,7 @@ export function useTaskBoardItemActions() {
     },
   });
 
-  // Bulk delete from the selection bar. Calls the tool directly rather than
-  // fanning out through `remove` so a partly-failed batch reports one summary
-  // instead of one toast per card.
+  // Bulk delete: one summary toast instead of one per card.
   const removeMany = useMutation({
     mutationFn: async (ids: string[]) => {
       const results = await Promise.allSettled(

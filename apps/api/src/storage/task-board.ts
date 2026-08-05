@@ -6,8 +6,7 @@
  */
 
 import type { Kysely } from "kysely";
-// Pure predicate — the single source of truth for "this card is a report's
-// finding", shared with the quota gate that charges the same class of task.
+// Shared with the quota gate, which charges the same class of task.
 import { isReportsTask } from "../billing/task-quota";
 import type {
   Database,
@@ -155,8 +154,7 @@ export class TaskBoardStorage {
       .selectFrom("task_board_items")
       .selectAll()
       .where("organization_id", "=", organizationId)
-      // Dismissed findings are off the board — see `delete`. `getById` still
-      // resolves them, so a run reaction or a restore can reach the row.
+      // Dismissed findings are off the board; `getById` still resolves them.
       .where("dismissed_at", "is", null)
       .orderBy("sort_order", "asc")
       .execute();

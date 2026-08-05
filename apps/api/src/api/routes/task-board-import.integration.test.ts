@@ -343,9 +343,7 @@ describe("Task Board Import Route", () => {
     expect(rows.every((r) => r.external_key === key)).toBe(true);
   });
 
-  // Deleting a reports card dismisses its finding. Without this the delete
-  // would silently undo itself: a deleted row matches no open item, so the
-  // next run would create the card again.
+  // Without the dismissal the next run would just re-create the card.
   it("a dismissed finding is skipped, and restoring it lets the card come back", async () => {
     const key = "diag:shop.com:SEO-003";
     await app.fetch(
@@ -379,8 +377,7 @@ describe("Task Board Import Route", () => {
       delegated: 0,
       dismissed: 1,
     });
-    // The card is dismissed, not dropped — its comments, activity and quota
-    // claim stay with it, so restoring brings back the same card.
+    // Dismissed, not dropped — same row, so a restore brings back the card.
     expect(
       await database.db
         .selectFrom("task_board_items")

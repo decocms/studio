@@ -221,15 +221,11 @@ describe("quota refund on thread finish (wiring)", () => {
     expect(await billing.taskClaim(task.id)).toBeNull();
   });
 
-  // Deleting a card must not be a backdoor refund. `task_quota_claims` cascades
-  // from `task_board_items`, so a hard delete would turn "delete the card" into
-  // a refund: delegate, delete, and the period slot frees up — repeat for
-  // unlimited subsidized runs. A reports card is dismissed, not dropped, so the
-  // cascade never fires and the charge outlives the card.
+  // `task_quota_claims` cascades from `task_board_items`, so a hard delete
+  // would be a backdoor refund: delegate, delete, repeat.
   it("deleting a charged task does NOT refund its quota slot", async () => {
     const { task } = await chargedTask("delete-me", "in_progress");
-    // The period the charge landed in, read rather than guessed — it depends on
-    // the org's billing status.
+    // Read the period rather than guess it — it depends on billing status.
     const { period_key: periodKey } = await database.db
       .selectFrom("task_quota_claims")
       .select(["period_key"])
