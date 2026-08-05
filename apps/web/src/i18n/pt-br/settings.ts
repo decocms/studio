@@ -413,6 +413,10 @@ export const settings = {
   "settings.review.autoMergeTitle": "Ativar Auto-merge",
   "settings.review.autoMergeDescription":
     "Quando todos os revisores habilitados aprovam, mescla o pull request automaticamente em vez de esperar por uma pessoa. Se um conflito bloquear o merge, o Super Agent resolve antes.",
+  "settings.review.autoAssignReportTasksTitle":
+    "Atribuir tarefas de relat\u00f3rio ao Super Agent automaticamente",
+  "settings.review.autoAssignReportTasksDescription":
+    "Tarefas criadas a partir de um relat\u00f3rio s\u00e3o delegadas ao Super Agent automaticamente, em vez de ficarem sem respons\u00e1vel.",
   "settings.review.updateError":
     "N\u00e3o foi poss\u00edvel atualizar a configura\u00e7\u00e3o",
   "settings.orgRoleDetail.addMember": "Adicionar Membro",

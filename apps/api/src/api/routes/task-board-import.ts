@@ -101,7 +101,14 @@ export const createTaskBoardImportRoutes = () => {
         400,
       );
     }
-    const items = parsed.data.items;
+    const settings = await ctx.storage.organizationSettings.get(organizationId);
+    const autoAssignToSuperAgent =
+      settings?.flags?.auto_assign_report_tasks_to_super_agent ?? false;
+    const items = parsed.data.items.map((item) =>
+      !item.assigneeId && autoAssignToSuperAgent
+        ? { ...item, assigneeId: SUPER_AGENT_ASSIGNEE_ID }
+        : item,
+    );
 
     // Validate real-member assignees against the member table directly — the
     // create tool's assertValidAssignee goes through boundAuth, which needs a

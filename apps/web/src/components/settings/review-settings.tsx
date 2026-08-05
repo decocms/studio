@@ -1,6 +1,11 @@
 import { toast } from "sonner";
 import { Switch } from "@deco/ui/components/switch.tsx";
-import { FileSearch02, GitMerge, ShieldTick } from "@untitledui/icons";
+import {
+  FileSearch02,
+  GitMerge,
+  ShieldTick,
+  UserSquare,
+} from "@untitledui/icons";
 import {
   SettingsCard,
   SettingsCardItem,
@@ -41,6 +46,12 @@ export function ReviewSettings() {
           icon={<GitMerge size={16} />}
           titleKey="settings.review.autoMergeTitle"
           descriptionKey="settings.review.autoMergeDescription"
+        />
+        <FlagToggle
+          flag="auto_assign_report_tasks_to_super_agent"
+          icon={<UserSquare size={16} />}
+          titleKey="settings.review.autoAssignReportTasksTitle"
+          descriptionKey="settings.review.autoAssignReportTasksDescription"
         />
       </SettingsCard>
     </SettingsSection>

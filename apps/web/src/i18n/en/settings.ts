@@ -397,6 +397,10 @@ export const settings = {
   "settings.review.autoMergeTitle": "Enable Auto-merge",
   "settings.review.autoMergeDescription":
     "When every enabled reviewer approves, merge the pull request automatically instead of waiting for a human. If a conflict blocks the merge, the Super Agent resolves it first.",
+  "settings.review.autoAssignReportTasksTitle":
+    "Auto-assign report tasks to the Super Agent",
+  "settings.review.autoAssignReportTasksDescription":
+    "Tasks created from a report are delegated to the Super Agent automatically instead of landing unassigned.",
   "settings.review.updateError": "Couldn't update the setting",
   "settings.orgRoleDetail.addMember": "Add Member",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
