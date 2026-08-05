@@ -29,6 +29,16 @@ O feed de atividade de todo card de task suporta comentários em thread: publiqu
 
 Quando uma task é atribuída a um **Super Agent**, ele roda dentro de um sandbox que precisa de um repositório já clonado para trabalhar. Se sua organização tiver exatamente um repositório importável, a execução da task já começa com esse repositório clonado. Se houver mais de um, a execução começa com o diretório de trabalho vazio, e o próprio Super Agent escolhe o repositório correto antes de ler arquivos ou executar comandos git — nenhuma seleção manual de repositório é necessária.
 
+## Auto-fix
+
+Qualquer card em **Triage** ou **To Do** que ainda não esteja atribuído ao Super Agent mostra um botão **Auto-fix** (ícone de raio) — tanto no próprio card quanto dentro do diálogo da task. Clicar nele entrega a task diretamente ao Super Agent, do mesmo jeito que atribuí-la manualmente pelo seletor de responsável, e consome a mesma cota de auto-task (veja [Billing and auto-task quota](#billing-and-auto-task-quota)).
+
+<Callout type="tip">
+  Dentro do diálogo da task, o botão **Save** só aparece depois que você
+  realmente muda algo — Auto-fix e New chat não precisam de um formulário
+  alterado para funcionar.
+</Callout>
+
 ## Revisão automatizada antes de ir para produção
 
 Quando o pull request de uma task fica **In Review** (seus checks estão passando, ou não há nenhum), o Studio pode executar revisores automatizados nele antes que um humano coloque a mudança em produção. Configure isso em **Settings → Organization → Reviewers & merge**:
@@ -47,6 +57,14 @@ Cada revisor que roda aparece como sua própria sessão no card da task, e o ver
   QA Agent e Code Reviewer vêm desabilitados por padrão. Habilite os que você
   quiser em **Settings → Organization → Reviewers & merge** — você pode ativar
   um independentemente do outro, ou os dois.
+
+  **Exceção:** na primeira vez que uma organização passa para o modo
+  reports-only, os dois revisores são habilitados automaticamente — orgs
+  reports-only escondem a navegação de agents da qual o fluxo de revisão
+  dependeria, então a revisão de PR do task-board precisa deles ativos para
+  continuar funcionando. Isso só acontece uma vez, quando `reports_only` em
+  si é definido por padrão pela primeira vez, e nunca sobrescreve uma flag
+  que você já tenha definido explicitamente.
 </Callout>
 
 ## Enviando para produção
