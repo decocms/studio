@@ -35,6 +35,7 @@ Once a task's pull request is **In Review** (its checks are passing, or it has n
 - **QA Agent** — exercises the feature itself, not just the diff, to verify the task actually solved the problem.
 - **Code Reviewer** — reviews the code using review skills appropriate to the repository's stack.
 - **Auto-merge** — when every enabled reviewer approves, merge the pull request automatically instead of waiting for a human to click merge.
+- **Auto-assign report tasks to the Super Agent** — assigns cards pushed by a report to the Super Agent as soon as they're created, instead of leaving them unassigned. See [Findings pushed by a report](#findings-pushed-by-a-report).
 
 Each reviewer that runs shows up as its own session on the task card, and its verdict is posted to the card's activity feed:
 
@@ -66,3 +67,5 @@ Some cards aren't created by a person — a report (for example, the **Report Ag
 </Callout>
 
 The Task Manager agent tells you when a card you're deleting came from a report, so you know deleting it also suppresses that finding going forward.
+
+By default, a card pushed by a report lands unassigned. Turn on **Auto-assign report tasks to the Super Agent** under **Settings → Organization → Reviewers & merge** to have these cards delegated to the Super Agent automatically as soon as they're created, instead of waiting for someone to pick them up.
