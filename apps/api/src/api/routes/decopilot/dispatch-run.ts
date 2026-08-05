@@ -868,7 +868,10 @@ async function prepareRun(
         models.thinking.id,
       )
     ) {
-      throw new Error("Model not allowed for your role");
+      throw new PermanentRunError(
+        "model_not_allowed",
+        "Model not allowed for your role",
+      );
     }
     // NOTE: only image/deepResearch are filtered today — fast/smart must be
     // added here when they gain a producer.

@@ -1,4 +1,7 @@
-export type PermanentRunErrorCode = "empty_request" | "agent_not_found";
+export type PermanentRunErrorCode =
+  | "empty_request"
+  | "agent_not_found"
+  | "model_not_allowed";
 
 export class PermanentRunError extends Error {
   /** Own-enumerable so it survives DBOS error (de)serialization. */
