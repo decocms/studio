@@ -284,8 +284,10 @@ if (settings.localMode) {
     .then(async ({ seedLocalMode, markSeedComplete, healLocalJwks }) => {
       try {
         // Recover pre-fix installs whose JWKS was encrypted under a now-lost
-        // random secret; runs before the seed gate opens so the first login
-        // never races a stale key. See healLocalJwks() for the full rationale.
+        // random secret; runs before the seed gate opens so the auto-login
+        // (/local-session) path never races a stale key. A direct get-session
+        // probe can still 500 once in the brief pre-heal window, exactly as it
+        // did before this fix. See healLocalJwks() for the full rationale.
         const healed = await healLocalJwks();
         if (healed > 0) {
           console.log(

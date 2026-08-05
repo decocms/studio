@@ -3,10 +3,14 @@
  * self-heal that recovers pre-fix installs whose JWKS was encrypted under a
  * now-lost random secret (see local-mode.ts / settings/local-secret.ts).
  *
- * These assert the exact wire/storage contract Better Auth uses: privateKey is
- * stored as a JSON-encoded hex ciphertext keyed by the auth secret, so the
- * probe must delete only rows that fail to decrypt under the current secret and
- * leave valid ones untouched.
+ * These assert the load-bearing part of the storage contract Better Auth uses:
+ * privateKey is stored as a JSON-encoded hex ciphertext keyed by the auth
+ * secret, so the probe must delete only rows that fail to decrypt under the
+ * current secret and leave valid ones untouched. (The real better-auth table
+ * carries an extra nullable `expiresAt` the probe never reads; omitted here.)
+ *
+ * NOTE: this suite issues an unconditional `delete from jwks` — point
+ * DATABASE_URL at a throwaway/test DB, never a dev DB with real signing keys.
  */
 import {
   afterAll,
@@ -106,6 +110,27 @@ describe("pruneUndecryptableJwks", () => {
     // Second boot: still clean, still a no-op.
     expect(await pruneUndecryptableJwks(database.db, SECRET)).toBe(0);
     expect(await jwkIds(database.db)).toEqual(["a", "b"]);
+  });
+
+  it("is a no-op on an empty table", async () => {
+    expect(await pruneUndecryptableJwks(database.db, SECRET)).toBe(0);
+  });
+
+  it("returns 0 when the jwks table does not exist yet (fresh DB)", async () => {
+    await sql`drop table jwks`.execute(database.db);
+    try {
+      expect(await pruneUndecryptableJwks(database.db, SECRET)).toBe(0);
+    } finally {
+      // Restore the table so beforeEach/afterAll (and any later test) still work.
+      await sql`
+        create table if not exists jwks (
+          id text primary key,
+          "publicKey" text not null,
+          "privateKey" text not null,
+          "createdAt" timestamptz not null default now()
+        )
+      `.execute(database.db);
+    }
   });
 
   it("removes every key when the secret rotated out from under all of them", async () => {

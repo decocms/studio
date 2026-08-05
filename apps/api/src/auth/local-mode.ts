@@ -39,11 +39,16 @@ const LEGACY_LOCAL_EMAIL_DOMAIN = "localhost.mesh";
  * Returns the number of undecryptable keys removed.
  */
 export async function healLocalJwks(): Promise<number> {
-  const { betterAuthSecret } = getSettings();
+  const settings = getSettings();
+  // Defense in depth: this DELETEs signing keys, so it must never run outside
+  // local mode even if a future caller forgets the gate. `betterAuthSecret` is
+  // truthy in production too, so it alone is not a safe guard — a server
+  // recovers via its explicit shared BETTER_AUTH_SECRET, never by dropping keys.
+  if (!settings.localMode) return 0;
   // No secret resolved => Better Auth is on its random-per-process path; there
   // is no stable key to probe against, so healing would be meaningless.
-  if (!betterAuthSecret) return 0;
-  return pruneUndecryptableJwks(getDb().db, betterAuthSecret);
+  if (!settings.betterAuthSecret) return 0;
+  return pruneUndecryptableJwks(getDb().db, settings.betterAuthSecret);
 }
 
 /**
@@ -61,24 +66,40 @@ export async function pruneUndecryptableJwks(
       select id, "privateKey" from jwks
     `.execute(db);
     rows = result.rows;
-  } catch {
-    // jwks table not created yet (fresh DB, before Better Auth mints the first
-    // key) — nothing to heal.
+  } catch (err) {
+    // Postgres 42P01 = undefined_table: a fresh DB hasn't had Better Auth mint
+    // its first key yet, so there is genuinely nothing to heal.
+    if ((err as { code?: string } | undefined)?.code === "42P01") return 0;
+    // Anything else (DB down, permissions, a column renamed by a Better Auth
+    // upgrade) must be surfaced — silently returning 0 would leave a genuinely
+    // broken install stuck in the login loop with no diagnostic.
+    console.warn("[local-mode] JWKS heal skipped — could not read jwks:", err);
     return 0;
   }
 
   let removed = 0;
   for (const row of rows) {
+    // Mirror Better Auth's own decrypt path (plugins/jwt/sign, verified against
+    // better-auth@1.4.22): the stored privateKey is a JSON-encoded encrypted
+    // payload keyed by the secret. Re-verify this contract on any upgrade.
+    let decryptable = true;
     try {
-      // Mirror Better Auth's own decrypt path (plugins/jwt/sign): the stored
-      // privateKey is a JSON-encoded encrypted payload keyed by the secret.
-      await symmetricDecrypt({
-        key: secret,
-        data: JSON.parse(row.privateKey),
-      });
+      await symmetricDecrypt({ key: secret, data: JSON.parse(row.privateKey) });
     } catch {
+      decryptable = false;
+    }
+    if (decryptable) continue;
+
+    try {
       await sql`delete from jwks where id = ${row.id}`.execute(db);
       removed++;
+    } catch (err) {
+      // A transient delete failure must not abort the rest of boot (seeding
+      // runs after this); the next clean boot will retry the heal.
+      console.warn(
+        `[local-mode] JWKS heal could not delete stale key ${row.id}:`,
+        err,
+      );
     }
   }
   return removed;
