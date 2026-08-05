@@ -248,4 +248,28 @@ export class OrganizationBillingStorage {
       .where("state", "=", "held")
       .execute();
   }
+
+  /**
+   * Undo a claim whose dispatch never started. Frees the slot AND rolls the run
+   * tally back — unlike a refund, where the run DID happen and only produced
+   * nothing, so its tally has to stand. Nothing ran here, so nothing may be
+   * spent: a task whose dispatch keeps failing (no model configured) would
+   * otherwise burn its per-task cap and die with a quota error for runs that
+   * never existed.
+   */
+  async rollbackTaskClaim(
+    organizationId: string,
+    taskBoardItemId: string,
+  ): Promise<void> {
+    await this.db
+      .updateTable("task_quota_claims")
+      .set((eb) => ({
+        state: "released",
+        run_count: eb("run_count", "-", 1),
+      }))
+      .where("organization_id", "=", organizationId)
+      .where("task_board_item_id", "=", taskBoardItemId)
+      .where("state", "=", "held")
+      .execute();
+  }
 }

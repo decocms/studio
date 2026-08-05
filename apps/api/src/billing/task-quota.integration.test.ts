@@ -13,6 +13,7 @@ import {
   ensureTaskExecutionAllowed,
   hasTaskQuotaClaim,
   releaseTaskExecution,
+  rollbackTaskExecution,
   type TaskQuotaConfig,
 } from "./task-quota";
 
@@ -289,6 +290,53 @@ describe("task quota (integration)", () => {
     await expect(claimTaskExecution(ctxRl, task, CONFIG)).rejects.toThrow(
       /execution limit/,
     );
+  });
+
+  // The dispatch caller has to know whether the slot it charged is its own to
+  // undo: only a FRESH claim is. A "rerun" rides a slot an earlier run paid for
+  // (and may have shipped a PR from), so undoing it would refund real work.
+  it("reports whether the claim took a slot or rode an existing one", async () => {
+    const org = "org_claim_outcome";
+    await seedOrg(org, true);
+    const ctxO = ctxFor(org);
+    const task = await makeTask("system", org);
+
+    expect(await claimTaskExecution(ctxO, task, CONFIG)).toBe("claimed");
+    expect(await claimTaskExecution(ctxO, task, CONFIG)).toBe("rerun");
+    expect(
+      await claimTaskExecution(ctxO, await makeTask("user_1", org), CONFIG),
+    ).toBe("skipped");
+  });
+
+  it("rolling back a never-started dispatch frees the slot AND spends no run", async () => {
+    const org = "org_rollback";
+    await seedOrg(org, true);
+    const ctxRb = ctxFor(org);
+    const task = await makeTask("system", org);
+
+    await claimTaskExecution(ctxRb, task, CONFIG);
+    await rollbackTaskExecution(billing, org, task.id);
+    await rollbackTaskExecution(billing, org, task.id); // idempotent
+
+    expect(await billing.countTaskClaims(org, "trial")).toBe(0);
+    // Unlike a refund (the run happened, produced nothing): nothing ran here,
+    // so the per-task cap must be untouched or a task whose dispatch keeps
+    // failing dies at the cap with a quota error for runs that never existed.
+    expect(await runCountOf(task.id)).toBe(0);
+    await claimTaskExecution(ctxRb, task, CONFIG);
+    await claimTaskExecution(ctxRb, task, CONFIG);
+    expect(await runCountOf(task.id)).toBe(CONFIG.maxRunsPerTask);
+  });
+
+  it("a rollback is org-scoped — another org's id can't touch the claim", async () => {
+    const org = "org_rollback_scope";
+    await seedOrg(org, true);
+    const task = await makeTask("system", org);
+    await claimTaskExecution(ctxFor(org), task, CONFIG);
+
+    await rollbackTaskExecution(billing, "org_rollback_other", task.id);
+    expect(await stateOf(task.id)).toBe("held");
+    expect(await runCountOf(task.id)).toBe(1);
   });
 
   it("a refund is org-scoped — another org's id can't touch the claim", async () => {
