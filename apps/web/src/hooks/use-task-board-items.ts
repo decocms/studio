@@ -171,5 +171,20 @@ export function useTaskBoardItemActions() {
     onSuccess: invalidate,
   });
 
-  return { create, update, remove, removeMany, link };
+  // Re-run a task with the Super Agent. NOT an UPDATE with the same assignee:
+  // that is a silent no-op, since the dispatch fires only on the TRANSITION to
+  // super-agent. No optimistic patch — the tool decides the resulting lane and
+  // which runs it superseded, so wait for the real answer rather than guessing.
+  const rerun = useMutation({
+    mutationFn: (input: ToolInput<"TASK_BOARD_ITEM_RERUN">) =>
+      studio.call("TASK_BOARD_ITEM_RERUN", input),
+    onSettled: (_data, _err, input) => {
+      invalidate();
+      queryClient.invalidateQueries({
+        queryKey: KEYS.taskBoardActivity(locator, input.id),
+      });
+    },
+  });
+
+  return { create, update, remove, removeMany, link, rerun };
 }

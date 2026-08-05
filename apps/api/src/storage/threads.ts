@@ -112,6 +112,14 @@ export class OrgScopedThreadStorage {
     return this.inner.markRunFailed(id, this.requireOrg(), reason, kind);
   }
 
+  failIfNotTerminal(
+    id: string,
+    reason: string,
+    kind: string,
+  ): Promise<Thread | null> {
+    return this.inner.failIfNotTerminal(id, this.requireOrg(), reason, kind);
+  }
+
   requiresActionIfInProgress(id: string): Promise<Thread | null> {
     return this.inner.requiresActionIfInProgress(id, this.requireOrg());
   }
@@ -524,6 +532,48 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
       .where("status", "=", "in_progress")
+      .returningAll()
+      .execute();
+
+    const row = rows[0];
+    return row ? this.threadFromDbRow(row) : null;
+  }
+
+  /**
+   * `markRunFailed`, widened to also take a thread parked on `requires_action`.
+   *
+   * That status is a PAUSE, not a terminal state — a run waiting on a
+   * `user_ask`. Every automatic writer must leave it alone (the human owns it),
+   * which is why `markRunFailed` is guarded on `in_progress` only. But a
+   * deliberate user action that abandons the run has to be able to close it out:
+   * `requires_action` counts as non-terminal everywhere it matters
+   * (`TERMINAL_THREAD_STATUSES`, `shouldAdvanceToReview`), so leaving one behind
+   * means the task can never auto-advance again, no matter how many later runs
+   * succeed.
+   *
+   * Still a conditional UPDATE, so it cannot clobber a genuinely terminal row
+   * that settled between the caller's read and this write.
+   */
+  async failIfNotTerminal(
+    id: string,
+    organizationId: string,
+    reason: string,
+    kind: string,
+  ): Promise<Thread | null> {
+    const rows = await this.db
+      .updateTable("threads")
+      .set({
+        status: "failed",
+        failure_reason: reason,
+        failure_kind: kind,
+        run_owner_pod: null,
+        run_config: null,
+        run_started_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .where("status", "in", ["in_progress", "requires_action"])
       .returningAll()
       .execute();
 

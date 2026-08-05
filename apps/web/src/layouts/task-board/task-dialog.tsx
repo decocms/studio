@@ -39,6 +39,7 @@ import {
   Loading02,
   Lock01,
   Plus,
+  RefreshCw01,
   Tag01,
   Trash03,
   UserPlus01,
@@ -141,6 +142,7 @@ export function TaskBoardItemDialog({
   onOpenThread,
   onNewChat,
   onAutoFix,
+  onRerun,
   isSaving,
 }: {
   open: boolean;
@@ -165,6 +167,7 @@ export function TaskBoardItemDialog({
   onNewChat?: () => void;
   /** Edit mode only: hand the task to the Super Agent. */
   onAutoFix?: () => void;
+  onRerun?: () => void;
   isSaving?: boolean;
 }) {
   const t = useT();
@@ -241,6 +244,15 @@ export function TaskBoardItemDialog({
     onAutoFix &&
     (status === "triage" || status === "todo") &&
     !isSuperAgent;
+
+  // Auto-fix's counterpart once the Super Agent owns the task: re-queue a run.
+  // Without this the dialog had no way to start one either — the assignee picker
+  // still opens, but re-picking Super Agent leaves the form clean, so Save never
+  // appears and the pick is discarded. Read against the SAVED assignee, not the
+  // form's: this re-runs the task as it exists, and offering it next to unsaved
+  // edits would imply the edits are part of the run.
+  const showRerun =
+    item && onRerun && item.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
 
   // Save is create-mode-always, but in edit mode only surfaces once the form
   // actually diverges from the task as loaded — otherwise it's a no-op button
@@ -751,6 +763,12 @@ export function TaskBoardItemDialog({
               <Button variant="outline" size="sm" onClick={onAutoFix}>
                 <Lightning01 size={16} />
                 {t("taskBoard.taskBoard.autoFix")}
+              </Button>
+            )}
+            {showRerun && (
+              <Button variant="outline" size="sm" onClick={onRerun}>
+                <RefreshCw01 size={16} />
+                {t("taskBoard.taskBoard.rerun")}
               </Button>
             )}
             {isDirty && (
