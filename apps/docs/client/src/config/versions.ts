@@ -16,14 +16,6 @@ export const versions: VersionConfig[] = [
     isLatest: true,
     root: "studio/quickstart",
   },
-  {
-    id: "deco-chat",
-    label: "deco.chat - legacy admin",
-    shortLabel: "deco.chat - legacy admin",
-    description: "Legacy deco.chat docs",
-    isLatest: false,
-    root: "getting-started/ai-builders",
-  },
 ];
 
 export const LATEST_VERSION = versions.find((v) => v.isLatest)!;
