@@ -67,6 +67,19 @@ Cada revisor que roda aparece como sua própria sessão no card da task, e o ver
   que você já tenha definido explicitamente.
 </Callout>
 
+## Re-executando tasks
+
+Qualquer card que esteja delegado ao Super Agent e ainda não esteja **Done** mostra uma ação **Re-run** — tanto no próprio card quanto em lote, pela barra de seleção quando você seleciona vários cards.
+
+- Selecionar um ou mais cards adiciona um botão **Re-run** à barra de seleção, ao lado do **Auto-fix**.
+- Ele só fica habilitado quando todos os cards selecionados estão delegados ao Super Agent e não estão Done — se mesmo um card da seleção não atender a esse critério, a ação não é disparada para o restante da seleção.
+- Ao confirmar, uma nova execução é iniciada em cada task selecionada, e qualquer execução ainda em andamento nela é interrompida. Esse aviso de "takeover" é exibido incondicionalmente para uma seleção, já que o board não consegue diferenciar uma execução em streaming de uma travada quando são vários cards ao mesmo tempo.
+- Cada task da seleção continua contando para o seu próprio [limite de re-execuções por task](#billing-e-cota-de-auto-tasks) (5 re-execuções por task).
+
+<Callout type="info">
+  Não existe uma chamada de API de re-run em lote — cada task selecionada dispara sua própria requisição de re-run individualmente. Se uma delas atingir a cota de auto-task ou um paywall, esse erro aparece uma vez, não uma vez por task.
+</Callout>
+
 ## Enviando para produção
 
 Quando todos os revisores habilitados aprovaram o pull request de uma task — ou nenhum revisor está habilitado — o card da task mostra um botão **Ship to production**. Clicar nele mescla o pull request. Se o auto-merge estiver habilitado, isso acontece automaticamente assim que o gate de revisão é satisfeito, em vez de esperar alguém clicar no botão.
