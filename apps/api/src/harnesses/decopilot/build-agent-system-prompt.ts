@@ -36,6 +36,7 @@ import { buildAgentsBlock } from "@/harnesses/lib/decopilot/agents-block";
 import { renderUserContextBlock } from "@/harnesses/lib/decopilot/user-context-block";
 import type { ConnectionsBlockTool } from "@/harnesses/lib/decopilot/connections-block";
 import type { HarnessUserContext } from "@/harnesses/lib/types";
+import { OrgFsNotFoundError } from "@/file-storage/org-fs";
 
 const SUBAGENT_IDENTITY_PROMPT = `You are a focused subtask agent delegated a specific task by a parent agent. You are NOT the parent agent.
 
@@ -281,19 +282,16 @@ async function loadMemoryBlock(
   try {
     const bytes = await ctx.orgFs.read("home", path);
     content = new TextDecoder().decode(bytes).trim();
-  } catch {
-    // Read failed. Seed a default template only when the file is genuinely
-    // absent — a `stat` guard so a transient read error never clobbers an
-    // existing file with the blank template. Best-effort; never throws.
-    if (actor) {
+  } catch (err) {
+    // Read failed. Seed a default template only on a definitive not-found —
+    // absent path, or a manifest row whose object is gone — so a transient read
+    // error never clobbers an existing file. Best-effort; never throws.
+    if (actor && err instanceof OrgFsNotFoundError) {
       try {
-        const existing = await ctx.orgFs.stat("home", path);
-        if (!existing) {
-          await ctx.orgFs.write("home", path, memoryTemplate(scope), {
-            actor,
-            contentType: "text/markdown",
-          });
-        }
+        await ctx.orgFs.write("home", path, memoryTemplate(scope), {
+          actor,
+          contentType: "text/markdown",
+        });
       } catch {
         // ignore — seeding is best-effort
       }

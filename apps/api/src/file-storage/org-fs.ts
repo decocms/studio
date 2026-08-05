@@ -67,6 +67,29 @@ export class OrgFsNotFoundError extends Error {
   }
 }
 
+/**
+ * True for an object-storage "the key isn't there" error: S3 `NoSuchKey`, a 404
+ * from a non-AWS gateway, or ENOENT from the dev filesystem backend. The
+ * manifest and the bucket can drift — a byte put that failed after the row
+ * landed, a bucket reset under an existing DB — and a missing object is a
+ * not-found, not a server fault.
+ */
+function isMissingObject(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const e = err as {
+    name?: string;
+    code?: string;
+    Code?: string;
+    $metadata?: { httpStatusCode?: number };
+  };
+  return (
+    e.name === "NoSuchKey" ||
+    e.Code === "NoSuchKey" ||
+    e.code === "ENOENT" ||
+    e.$metadata?.httpStatusCode === 404
+  );
+}
+
 function sha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
@@ -121,10 +144,20 @@ export class OrgFs {
     );
   }
 
-  /** Raw bytes of a file. Throws if the path is not a live file. */
+  /**
+   * Raw bytes of a file. Throws OrgFsNotFoundError if the path is not a live
+   * file, or if the manifest row exists but its object is gone (drift).
+   */
   async read(volume: string, path: string): Promise<Uint8Array> {
     const entry = await this.requireFile(volume, path);
-    return this.storage.getBytes(fsObjectKey(volume, entry.path));
+    try {
+      return await this.storage.getBytes(fsObjectKey(volume, entry.path));
+    } catch (err) {
+      if (isMissingObject(err)) {
+        throw new OrgFsNotFoundError(`No such file: ${entry.path}`);
+      }
+      throw err;
+    }
   }
 
   /**
