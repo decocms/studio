@@ -1,7 +1,6 @@
 package routes
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,64 +17,6 @@ func writeBlock(t *testing.T, dir, name, body string) {
 	}
 	if err := os.WriteFile(filepath.Join(dir, name+".json"), []byte(body), 0o644); err != nil {
 		t.Fatalf("write block %s: %v", name, err)
-	}
-}
-
-func TestGenerateDecofileFromBlocksNoDirReturnsNotOk(t *testing.T) {
-	dir := t.TempDir()
-	_, ok := generateDecofileFromBlocks(filepath.Join(dir, "blocks"))
-	if ok {
-		t.Fatal("expected ok=false when the blocks dir does not exist")
-	}
-}
-
-func TestGenerateDecofileFromBlocksMergesSortsAndSkipsEmpty(t *testing.T) {
-	dir := t.TempDir()
-	writeBlock(t, dir, "pages-home", `{"path":"/","sections":[]}`)
-	writeBlock(t, dir, "Header", `{"__resolveType":"site/sections/Header.tsx"}`)
-	// An empty file must not produce a `"key":` with no value.
-	if err := os.WriteFile(filepath.Join(dir, "empty.json"), []byte("  \n"), 0o644); err != nil {
-		t.Fatalf("write empty block: %v", err)
-	}
-
-	text, ok := generateDecofileFromBlocks(dir)
-	if !ok {
-		t.Fatal("expected ok=true")
-	}
-	var merged map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(text), &merged); err != nil {
-		t.Fatalf("merged text is not valid JSON: %v\n%s", err, text)
-	}
-	if len(merged) != 2 {
-		t.Fatalf("expected 2 keys (empty file skipped), got %d: %v", len(merged), merged)
-	}
-	if _, ok := merged["Header"]; !ok {
-		t.Errorf("missing Header key in %v", merged)
-	}
-	if _, ok := merged["pages-home"]; !ok {
-		t.Errorf("missing pages-home key in %v", merged)
-	}
-}
-
-func TestGenerateDecofileFromBlocksDecodesUntilStable(t *testing.T) {
-	dir := t.TempDir()
-	// Real repos carry both single- and double-encoded filenames. Both must
-	// merge under the real key.
-	writeBlock(t, dir, "Compre%2520Junto", `{"curated":true}`)
-	writeBlock(t, dir, "Card%20config", `{"plain":true}`)
-
-	text, ok := generateDecofileFromBlocks(dir)
-	if !ok {
-		t.Fatal("expected ok=true")
-	}
-	var merged map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(text), &merged); err != nil {
-		t.Fatalf("merged text is not valid JSON: %v\n%s", err, text)
-	}
-	for _, key := range []string{"Compre Junto", "Card config"} {
-		if _, ok := merged[key]; !ok {
-			t.Errorf("expected decoded key %q in %v", key, merged)
-		}
 	}
 }
 

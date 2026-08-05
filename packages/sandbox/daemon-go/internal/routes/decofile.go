@@ -1,27 +1,15 @@
 package routes
 
 import (
-	"encoding/json"
 	"hash/fnv"
 	"net/http"
-	"net/url"
-	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
-	"strings"
-	"sync"
 
 	"github.com/decocms/studio/sandbox-daemon/internal/config"
+	"github.com/decocms/studio/sandbox-daemon/internal/decofile"
 	"github.com/decocms/studio/sandbox-daemon/internal/httpx"
 	"github.com/decocms/studio/sandbox-daemon/internal/paths"
-)
-
-// On-disk name of the merged decofile artifact, and the directory it merges —
-// shared with `Read`'s `.deco/blocks.gen.json` fallback in fs.go.
-const (
-	decofileGenBasename   = "blocks.gen.json"
-	decofileBlocksDirname = "blocks"
 )
 
 type DecofileDeps struct {
@@ -36,122 +24,7 @@ func (d DecofileDeps) blocksDir() string {
 	if cfg := d.Store.Read(); cfg != nil {
 		pmPath = cfg.PmPath()
 	}
-	return filepath.Join(paths.ResolvePmRoot(d.RepoDir, pmPath), ".deco", decofileBlocksDirname)
-}
-
-// decodeUntilStable repeatedly percent-decodes a filename stem until it stops
-// changing. Real repos carry both single- and double-encoded stems
-// (`Compre%20Junto.json`, `Compre%2520Junto.json`); a single decode leaves the
-// double-encoded one keyed `Compre%20Junto`, a key no `__resolveType`
-// reference resolves. Mirrors the frontend's documented
-// decoBlockKeyFromFileStem fallback: an invalid-encoding stem keeps its last
-// successfully decoded form. url.PathUnescape (not QueryUnescape) so a
-// literal `+` in a block name is left alone, matching JS decodeURIComponent.
-func decodeUntilStable(stem string) string {
-	key := stem
-	for {
-		decoded, err := url.PathUnescape(key)
-		if err != nil || decoded == key {
-			return key
-		}
-		key = decoded
-	}
-}
-
-// generateDecofileFromBlocks rebuilds the merged decofile from the sibling
-// `.deco/blocks/*.json` files so the CMS is readable before the dev server is
-// up. Maps each file to `{ [decodeUntilStable(stem)]: <file contents> }`,
-// sorted by filename for a deterministic, byte-for-byte result.
-//
-// The merged text is built by splicing raw file bytes rather than
-// unmarshal/marshal round-tripping through Go values — this payload is
-// routinely multi-MB, and a malformed block isn't caught here; the client's
-// parse fails and falls back to "no snapshot", same as the read/write/edit
-// handlers already gate.
-//
-// Returns ok=false when there's no blocks dir (nothing to merge).
-func generateDecofileFromBlocks(blocksDir string) (string, bool) {
-	entries, err := os.ReadDir(blocksDir)
-	if err != nil {
-		return "", false
-	}
-	var names []string
-	for _, e := range entries {
-		if e.Type().IsRegular() && strings.HasSuffix(strings.ToLower(e.Name()), ".json") {
-			names = append(names, e.Name())
-		}
-	}
-	if len(names) == 0 {
-		return "", false
-	}
-	sort.Strings(names)
-
-	var b strings.Builder
-	b.WriteByte('{')
-	first := true
-	for _, name := range names {
-		stem := name[:len(name)-len(".json")]
-		raw, err := os.ReadFile(filepath.Join(blocksDir, name))
-		if err != nil {
-			continue
-		}
-		content := strings.TrimSpace(string(raw))
-		// Skip empty files — `"key":` with no value would break the merged JSON.
-		if content == "" {
-			continue
-		}
-		key := decodeUntilStable(stem)
-		keyJSON, err := json.Marshal(key)
-		if err != nil {
-			continue
-		}
-		if !first {
-			b.WriteByte(',')
-		}
-		first = false
-		b.Write(keyJSON)
-		b.WriteByte(':')
-		b.WriteString(content)
-	}
-	b.WriteByte('}')
-	return b.String(), true
-}
-
-type decofileBuild struct {
-	done chan struct{}
-	text string
-	ok   bool
-}
-
-var (
-	decofileBuildMu  sync.Mutex
-	decofileInFlight = map[string]*decofileBuild{}
-)
-
-// generateDecofileFromBlocksDeduped coalesces concurrent merges for the same
-// blocksDir onto one build: concurrent cold reads (multiple tabs/users on a
-// shared sandbox during boot) would otherwise each redo the same multi-MB
-// merge. The in-flight entry is removed once the build settles, so this is a
-// coalescer, not a cache — the next read after settle rebuilds.
-func generateDecofileFromBlocksDeduped(blocksDir string) (string, bool) {
-	decofileBuildMu.Lock()
-	if b, inFlight := decofileInFlight[blocksDir]; inFlight {
-		decofileBuildMu.Unlock()
-		<-b.done
-		return b.text, b.ok
-	}
-	b := &decofileBuild{done: make(chan struct{})}
-	decofileInFlight[blocksDir] = b
-	decofileBuildMu.Unlock()
-
-	b.text, b.ok = generateDecofileFromBlocks(blocksDir)
-
-	decofileBuildMu.Lock()
-	delete(decofileInFlight, blocksDir)
-	decofileBuildMu.Unlock()
-	close(b.done)
-
-	return b.text, b.ok
+	return filepath.Join(paths.ResolvePmRoot(d.RepoDir, pmPath), ".deco", decofile.BlocksDirname)
 }
 
 type MergedDecofile struct {
@@ -164,7 +37,7 @@ type MergedDecofile struct {
 // serves it as an ETag and the `decofile` SSE event announces it, so a
 // consumer's cache key and Studio's draft pointer can never disagree.
 func ReadDecofile(deps DecofileDeps) (MergedDecofile, bool) {
-	text, ok := generateDecofileFromBlocksDeduped(deps.blocksDir())
+	text, ok := decofile.GenerateFromBlocksDeduped(deps.blocksDir())
 	if !ok {
 		return MergedDecofile{}, false
 	}
