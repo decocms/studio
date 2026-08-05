@@ -236,10 +236,7 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
         virtualMcp = await ctx.storage.virtualMcps.create(
           organization.id,
           userId,
-          getWellKnownReportVirtualMCP(
-            organization.id,
-            connection.id,
-          ),
+          getWellKnownReportVirtualMCP(organization.id, connection.id),
           { id: virtualMcpId },
         );
         created.virtualMcp = true;
