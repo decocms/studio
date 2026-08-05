@@ -270,7 +270,6 @@ function MemberActionsDropdown({
                   parts.push(
                     t("orgs.members.orgPermsCount", {
                       count: role.staticPermissionCount,
-                      plural: role.staticPermissionCount !== 1 ? "s" : "",
                     }),
                   );
                 }
@@ -282,7 +281,6 @@ function MemberActionsDropdown({
                   parts.push(
                     t("orgs.members.connectionCount", {
                       count: role.connectionCount,
-                      plural: role.connectionCount !== 1 ? "s" : "",
                     }),
                   );
                 }
@@ -295,7 +293,6 @@ function MemberActionsDropdown({
                     parts.push(
                       t("orgs.members.toolCount", {
                         count: role.toolCount,
-                        plural: role.toolCount !== 1 ? "s" : "",
                       }),
                     );
                   }
