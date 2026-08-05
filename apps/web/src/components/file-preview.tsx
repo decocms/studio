@@ -17,11 +17,10 @@
  * fails, the component degrades to the download card rather than erroring.
  */
 
-import { useQuery } from "@tanstack/react-query";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { Download01 } from "@untitledui/icons";
-import { KEYS } from "@/lib/query-keys";
+import { useFileText } from "@/hooks/use-org-fs";
 import { ReadOnlyCodeViewer } from "@/components/read-only-code-viewer";
 import { FileTypeIcon } from "@/components/file-type-icon";
 import { MemoizedMarkdown } from "@/components/chat/markdown.tsx";
@@ -144,19 +143,10 @@ function TextPreview({
   file: PreviewableFile;
   markdown: boolean;
 }) {
-  const { data, isPending, isError } = useQuery({
-    queryKey: KEYS.fileText(file.downloadUrl),
-    queryFn: async () => {
-      const res = await fetch(file.downloadUrl, { credentials: "include" });
-      if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
-      return res.text();
-    },
-    staleTime: 60_000,
-    retry: false,
-  });
+  const { data, isPending, isError } = useFileText(file.downloadUrl);
 
   if (isPending) return <FilePreviewShimmer />;
-  if (isError || data === undefined) {
+  if (isError || !data) {
     return <DownloadCard file={file} note="preview unavailable" />;
   }
 

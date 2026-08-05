@@ -11,7 +11,6 @@
  */
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
   Dialog,
@@ -25,8 +24,7 @@ import { X, Zap } from "@untitledui/icons";
 import { MemoizedMarkdown } from "@/components/chat/markdown.tsx";
 import { FilePreview } from "@/components/file-preview";
 import { FileTypeIcon } from "@/components/file-type-icon";
-import { useOrgFsFileUrl, useOrgFsList } from "@/hooks/use-org-fs";
-import { KEYS } from "@/lib/query-keys";
+import { useFileText, useOrgFsFileUrl, useOrgFsList } from "@/hooks/use-org-fs";
 import { basename, parseLibraryPath } from "./location";
 import { parseSkillMd } from "./skill";
 
@@ -46,16 +44,7 @@ function SkillPreviewContent({
   const fileUrl = useOrgFsFileUrl();
   const skillMdUrl = fileUrl(volume ?? "", `${dirPath}/SKILL.md`);
 
-  const md = useQuery({
-    queryKey: KEYS.fileText(skillMdUrl),
-    queryFn: async () => {
-      const res = await fetch(skillMdUrl, { credentials: "include" });
-      if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
-      return res.text();
-    },
-    staleTime: 60_000,
-    retry: false,
-  });
+  const md = useFileText(skillMdUrl);
   const listing = useOrgFsList(volume ?? "", dirPath);
 
   const dirName = basename(dirPath);

@@ -15,16 +15,9 @@
  * fileText query (e.g. after a brand save) re-renders the deck.
  */
 
-import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
-import { KEYS } from "@/lib/query-keys";
+import { useFileText } from "@/hooks/use-org-fs";
 import { DECK_SAMPLE_SECTIONS, DECK_SAMPLE_TITLE } from "./deck-theme-sample";
-
-async function fetchText(url: string): Promise<string> {
-  const res = await fetch(url, { credentials: "include" });
-  if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
-  return res.text();
-}
 
 function composeThemePreview(
   themeHtml: string,
@@ -53,22 +46,11 @@ export function DeckThemePreview({
   /** Optional sibling tokens.css URL — injected live over the baked copy. */
   tokensUrl?: string;
 }) {
-  const theme = useQuery({
-    queryKey: KEYS.fileText(readUrl),
-    queryFn: () => fetchText(readUrl),
-    staleTime: 60_000,
-    retry: false,
-  });
+  const theme = useFileText(readUrl);
   // Optional and best-effort: a missing tokens.css just falls back to the
   // theme's baked snapshot. Shares the fileText cache/key with the brand
   // editor, so a brand save invalidates and re-renders this preview.
-  const tokens = useQuery({
-    queryKey: KEYS.fileText(tokensUrl ?? ""),
-    enabled: !!tokensUrl,
-    queryFn: () => fetchText(tokensUrl ?? ""),
-    staleTime: 60_000,
-    retry: false,
-  });
+  const tokens = useFileText(tokensUrl ?? "");
 
   if (theme.isPending || (!!tokensUrl && tokens.isPending)) {
     return (

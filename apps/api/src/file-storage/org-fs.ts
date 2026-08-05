@@ -67,6 +67,27 @@ export class OrgFsNotFoundError extends Error {
   }
 }
 
+/**
+ * Object-storage "the bytes aren't there": S3 `NoSuchKey`/404 and the dev
+ * filesystem's `ENOENT`.
+ */
+export function isMissingObjectError(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const e = err as {
+    name?: string;
+    code?: string;
+    Code?: string;
+    $metadata?: { httpStatusCode?: number };
+  };
+  return (
+    e.name === "NoSuchKey" ||
+    e.name === "NotFound" ||
+    e.Code === "NoSuchKey" ||
+    e.code === "ENOENT" ||
+    e.$metadata?.httpStatusCode === 404
+  );
+}
+
 function sha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
@@ -121,10 +142,24 @@ export class OrgFs {
     );
   }
 
-  /** Raw bytes of a file. Throws if the path is not a live file. */
+  /**
+   * Raw bytes of a file. Throws `OrgFsNotFoundError` if the path is not a live
+   * file — including when the manifest row exists but the object doesn't
+   * (a diverged volume, e.g. a manifest restored against a different bucket).
+   * That divergence used to escape as a raw storage error, which the routes
+   * 500'd; a 404 is both the truth and something callers already handle.
+   */
   async read(volume: string, path: string): Promise<Uint8Array> {
     const entry = await this.requireFile(volume, path);
-    return this.storage.getBytes(fsObjectKey(volume, entry.path));
+    const key = fsObjectKey(volume, entry.path);
+    try {
+      return await this.storage.getBytes(key);
+    } catch (err) {
+      if (isMissingObjectError(err)) {
+        throw new OrgFsNotFoundError(`No stored bytes for: ${entry.path}`);
+      }
+      throw err;
+    }
   }
 
   /**

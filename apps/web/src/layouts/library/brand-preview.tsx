@@ -13,7 +13,7 @@
  */
 
 import { useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@/sdk";
 import { toast } from "sonner";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -38,6 +38,7 @@ import {
 import { MemoizedMarkdown } from "@/components/chat/markdown.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import {
+  useFileText,
   useOrgFsFileUrl,
   useOrgFsList,
   useOrgFsMutations,
@@ -55,12 +56,6 @@ import {
 import { BrandComponentsPreview } from "./brand-components-preview";
 import { DeckThemePreview } from "./deck-theme-preview";
 import { basename, parseLibraryPath } from "./location";
-
-async function fetchText(url: string): Promise<string> {
-  const res = await fetch(url, { credentials: "include" });
-  if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
-  return res.text();
-}
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <p className="text-sm font-medium text-foreground">{children}</p>;
@@ -256,20 +251,8 @@ function BrandPreviewContent({
   const mdUrl = fileUrl(volume, `${dirPath}/brand.md`);
   const themeUrl = fileUrl(volume, `${dirPath}/slides-theme.html`);
 
-  const tokensCss = useQuery({
-    queryKey: KEYS.fileText(tokensUrl),
-    enabled: tokensExists,
-    queryFn: () => fetchText(tokensUrl),
-    staleTime: 60_000,
-    retry: false,
-  });
-  const brandMd = useQuery({
-    queryKey: KEYS.fileText(mdUrl),
-    enabled: mdExists,
-    queryFn: () => fetchText(mdUrl),
-    staleTime: 60_000,
-    retry: false,
-  });
+  const tokensCss = useFileText(tokensUrl, { enabled: tokensExists });
+  const brandMd = useFileText(mdUrl, { enabled: mdExists });
 
   const [editing, setEditing] = useState(false);
   // Token name → pending value; the displayed value is the override or original.

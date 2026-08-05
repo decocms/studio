@@ -10,16 +10,9 @@
  * cache, so a brand save re-renders it.
  */
 
-import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
-import { KEYS } from "@/lib/query-keys";
-
-async function fetchText(url: string): Promise<string> {
-  const res = await fetch(url, { credentials: "include" });
-  if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
-  return res.text();
-}
+import { useFileText } from "@/hooks/use-org-fs";
 
 function createComponentBody(t: TFunction): string {
   const brandApplied = t("library.brandComponentsPreview.title");
@@ -104,13 +97,7 @@ function composeComponentsPreview(
 
 export function BrandComponentsPreview({ tokensUrl }: { tokensUrl?: string }) {
   const t = useT();
-  const tokens = useQuery({
-    queryKey: KEYS.fileText(tokensUrl ?? ""),
-    enabled: !!tokensUrl,
-    queryFn: () => fetchText(tokensUrl ?? ""),
-    staleTime: 60_000,
-    retry: false,
-  });
+  const tokens = useFileText(tokensUrl ?? "");
 
   if (tokensUrl && tokens.isPending) {
     return (

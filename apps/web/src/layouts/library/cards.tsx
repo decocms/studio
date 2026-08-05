@@ -11,6 +11,7 @@
 import type { ComponentType, ReactNode, SVGProps } from "react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useFileText } from "@/hooks/use-org-fs";
 import {
   DotsVertical,
   Download01,
@@ -83,7 +84,7 @@ function extOf(filename: string): string {
   return filename.split(".").pop()?.toLowerCase() ?? "";
 }
 
-/** Shared fetch-as-text helper for the card thumbnail/preview queries below. */
+/** Fetch-as-text helper for the CSV thumbnail (needs a Range header). */
 async function fetchText(url: string, init?: RequestInit): Promise<string> {
   const res = await fetch(url, { credentials: "include", ...init });
   if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
@@ -497,12 +498,7 @@ export function SkillCard({
   onContextMenu?: (e: React.MouseEvent) => void;
 }) {
   const t = useT();
-  const { data } = useQuery({
-    queryKey: KEYS.fileText(skillMdUrl),
-    queryFn: () => fetchText(skillMdUrl),
-    staleTime: 60_000,
-    retry: false,
-  });
+  const { data } = useFileText(skillMdUrl);
   const meta = data ? parseSkillMd(data) : null;
 
   return (
@@ -570,12 +566,7 @@ export function BrandCard({
   onContextMenu?: (e: React.MouseEvent) => void;
 }) {
   const t = useT();
-  const { data } = useQuery({
-    queryKey: KEYS.fileText(tokensUrl),
-    queryFn: () => fetchText(tokensUrl),
-    staleTime: 60_000,
-    retry: false,
-  });
+  const { data } = useFileText(tokensUrl);
   const swatches = data
     ? parseBrandTokens(data)
         .filter((token) => token.isColor)
@@ -648,12 +639,7 @@ function LazyThumb({ children }: { children: ReactNode }) {
 }
 
 function TextThumb({ url }: { url: string }) {
-  const { data } = useQuery({
-    queryKey: KEYS.fileText(url),
-    queryFn: () => fetchText(url),
-    staleTime: 60_000,
-    retry: false,
-  });
+  const { data } = useFileText(url);
   if (!data) return null;
   return (
     <pre className="pointer-events-none h-full w-full overflow-hidden bg-background p-3 font-mono text-[9px] leading-[1.5] text-muted-foreground select-none">
