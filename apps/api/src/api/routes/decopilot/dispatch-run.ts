@@ -1347,9 +1347,17 @@ async function prepareRun(
     // The dispatching user's own Claude subscription, when they linked one and
     // it has not expired. It outranks the org's thinking-slot key for a
     // sandbox-hosted run: they asked for their plan to pay. Expired or absent
-    // falls back to the org credential rather than failing the run.
+    // falls back to the org credential rather than failing the run — and so
+    // does a vault decrypt failure (e.g. a rotated encryption key), which
+    // `findLiveToken` would otherwise throw and take the whole dispatch down
+    // with it.
     const claudeSubscriptionToken = sandboxHosted
-      ? await ctx.storage.claudeSubscriptions.findLiveToken(input.userId)
+      ? await ctx.storage.claudeSubscriptions
+          .findLiveToken(input.userId)
+          .catch((err) => {
+            console.warn("[dispatch] claude subscription lookup failed", err);
+            return null;
+          })
       : null;
 
     const dispatchHarnessChunks =
