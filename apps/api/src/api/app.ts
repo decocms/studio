@@ -1505,11 +1505,23 @@ export async function createApp(options: CreateAppOptions = {}) {
   // hands off to the enabled reviewers. It has to be a timer rather than part of
   // the projector hook below, because the dispatch bottoms out in
   // `DBOS.startWorkflow`, which throws from inside a step.
+  //
+  // It dispatches billable reviewer runs for every org on a timer, so
+  // TASK_BOARD_REVIEW_SWEEPER_ENABLED=false stops it without a code change.
   const taskBoardReviewSweeper = new TaskBoardReviewSweeper(
     projectorTaskBoard,
     automationContextFactory,
   );
-  taskBoardReviewSweeper.start();
+  if (getSettings().taskBoardReviewSweeperEnabled) {
+    taskBoardReviewSweeper.start();
+    // Chained onto the decopilot cleanup (assigned above) so an HMR reload or
+    // shutdown doesn't leave a second timer sweeping alongside the new one.
+    const previousCleanup = currentDecopilotCleanup;
+    currentDecopilotCleanup = async () => {
+      await previousCleanup?.();
+      taskBoardReviewSweeper.dispose();
+    };
+  }
   // Quota bookkeeping for the projector's thread-finish reaction: a run that
   // ended without a PR releases its held slot (billing/task-quota.ts).
   const projectorBilling = new OrganizationBillingStorage(database.db);

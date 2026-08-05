@@ -122,6 +122,11 @@ export interface Settings {
    *  (DECOPILOT_MAX_CONCURRENT_HOSTED_RUNS). Excess runs park and start as
    *  slots free — see `hosted-run-concurrency.ts`. */
   decopilotMaxConcurrentHostedRuns: number;
+  /** Kill switch for the boot-time task-board review sweeper
+   *  (TASK_BOARD_REVIEW_SWEEPER_ENABLED, default on). It dispatches billable
+   *  reviewer runs for every org on a timer, so it needs one way to stop it that
+   *  doesn't require a code change — see `tools/task-board/review-sweeper.ts`. */
+  taskBoardReviewSweeperEnabled: boolean;
   /** Same, for a run whose agent loop executes in its own SANDBOX pod
    *  (SANDBOX_MAX_CONCURRENT_HOSTED_RUNS). Much higher than the in-process cap
    *  because this pod only proxies the stream — see `hosted-run-concurrency.ts`. */

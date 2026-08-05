@@ -351,6 +351,10 @@ export function resolveConfig(
       envVars.DECOPILOT_MAX_CONCURRENT_HOSTED_RUNS,
       3,
     ),
+    taskBoardReviewSweeperEnabled: toBoolWithDefault(
+      envVars.TASK_BOARD_REVIEW_SWEEPER_ENABLED,
+      true,
+    ),
     sandboxMaxConcurrentHostedRuns: toPositiveIntegerOrDefault(
       "SANDBOX_MAX_CONCURRENT_HOSTED_RUNS",
       envVars.SANDBOX_MAX_CONCURRENT_HOSTED_RUNS,

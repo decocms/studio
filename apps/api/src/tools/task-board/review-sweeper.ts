@@ -41,13 +41,17 @@ import type { StudioContextFactory } from "@/automations/fire";
 import type { TaskBoardStorage } from "@/storage/task-board";
 import { extractPrFromText } from "./pr-extract";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
+import { fetchPrLiveState, prReadyForReview } from "./prs-get";
 
 /** How often to reconcile. A minute is well under the time a human would take
- *  to notice a stuck card, and the query is one indexed scan when idle. */
+ *  to notice a stuck card, and the work list is one index scan when idle
+ *  (`idx_task_board_items_pending_review`). */
 const DEFAULT_SWEEP_INTERVAL_MS = 60 * 1000;
 
 /** Items per tick. Bounds one tick's work: each item costs a `getById`, up to
- *  one `linkPr` per thread, and an activity read inside the reviewer claim. */
+ *  one `linkPr` per thread, and a GitHub round-trip per linked PR. Not a bound
+ *  on what the sweep can reach — ticks page through the backlog with a keyset
+ *  cursor (see `listItemsPendingReview`). */
 const DEFAULT_BATCH_SIZE = 50;
 
 export interface TaskBoardReviewSweeperOptions {
@@ -60,6 +64,9 @@ export class TaskBoardReviewSweeper {
   /** Guards against a slow tick overlapping the next one — the batch is
    *  bounded but a cold GitHub call inside the reviewer dispatch is not. */
   private running = false;
+  /** Where the last tick stopped, so the next one continues instead of
+   *  re-scanning the same window. Null = start from the oldest card. */
+  private cursor: { updatedAt: string; id: string } | null = null;
 
   constructor(
     private readonly taskBoard: TaskBoardStorage,
@@ -82,9 +89,18 @@ export class TaskBoardReviewSweeper {
     this.running = true;
     let dispatched = 0;
     try {
+      const batchSize = this.options.batchSize ?? DEFAULT_BATCH_SIZE;
       const pending = await this.taskBoard.listItemsPendingReview(
-        this.options.batchSize ?? DEFAULT_BATCH_SIZE,
+        batchSize,
+        this.cursor,
       );
+      // A short page means the backlog is exhausted — wrap around so cards that
+      // moved back into In Review behind the cursor get picked up again.
+      const last = pending.at(-1);
+      this.cursor =
+        pending.length === batchSize && last
+          ? { updatedAt: last.updatedAt, id: last.id }
+          : null;
       for (const { id, organizationId } of pending) {
         // Best-effort per item: one card's failure must not stop the batch, or a
         // single wedged org would starve every other org's cards behind it.
@@ -144,9 +160,20 @@ export class TaskBoardReviewSweeper {
     );
     if (!ctx) return false;
 
-    // Deliberately NOT gated on the PR's live check status, unlike the dialog
-    // poll: that gate costs a GitHub round-trip per PR per tick, and a card
-    // whose checks are still pending simply gets picked up on a later tick.
+    // Same check gate as the dialog poll, and it MUST be the same one: a
+    // reviewer claim is spent once per review cycle, and nothing re-dispatches
+    // within a cycle. Skipping the gate here would not mean "reviewed earlier" —
+    // the 60s tick beats a multi-minute CI run, so the sweeper would win every
+    // race, review a red PR, consume the cycle, and the green review would never
+    // happen. A PR whose checks are still pending is simply swept again later.
+    const live = await Promise.all(
+      prs.map(async (pr) => ({
+        ...pr,
+        ...(await fetchPrLiveState(ctx, organizationId, pr)),
+      })),
+    );
+    if (!prReadyForReview(live)) return false;
+
     await enqueueEnabledReviewers(ctx, item);
     return true;
   }

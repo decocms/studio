@@ -485,20 +485,52 @@ export class TaskBoardStorage {
    * right context. Oldest first so a long backlog drains fairly instead of the
    * newest cards starving the ones that have been stuck longest, and bounded by
    * `limit` so one tick can't scan an unbounded board.
+   *
+   * `after` is a keyset cursor: `limit` alone would be a fixed window, and a
+   * card the sweeper can never rescue (In Review with no PR — a research task)
+   * is never touched, so it keeps its old `updated_at` and permanently occupies
+   * a slot in that window. Once `limit` such cards accumulate, nothing behind
+   * them is ever swept again. Paging across ticks bounds each tick's work
+   * without bounding what the sweep can ever reach.
    */
   async listItemsPendingReview(
     limit: number,
-  ): Promise<{ id: string; organizationId: string }[]> {
-    const rows = await this.db
+    after?: { updatedAt: string; id: string } | null,
+  ): Promise<{ id: string; organizationId: string; updatedAt: string }[]> {
+    let query = this.db
       .selectFrom("task_board_items")
-      .select(["id", "organization_id as organizationId"])
+      .select(["id", "organization_id as organizationId", "updated_at"])
       .where("status", "=", "in_review")
       .where("assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID)
-      .where("dismissed_at", "is", null)
+      .where("dismissed_at", "is", null);
+    if (after) {
+      // `updated_at` is a timestamptz, so the cursor's ISO string has to go back
+      // to a Date — comparing it as text would collate lexically, not
+      // chronologically, and silently skip or repeat rows.
+      const cursorAt = new Date(after.updatedAt);
+      // `(updated_at, id)` is the sort key, so the tie-break on `id` is what
+      // makes the cursor total — cards updated in the same millisecond would
+      // otherwise be skipped or repeated forever.
+      query = query.where((eb) =>
+        eb.or([
+          eb("updated_at", ">", cursorAt),
+          eb.and([eb("updated_at", "=", cursorAt), eb("id", ">", after.id)]),
+        ]),
+      );
+    }
+    const rows = await query
       .orderBy("updated_at", "asc")
+      .orderBy("id", "asc")
       .limit(limit)
       .execute();
-    return rows;
+    return rows.map((row) => ({
+      id: row.id,
+      organizationId: row.organizationId,
+      updatedAt:
+        row.updated_at instanceof Date
+          ? row.updated_at.toISOString()
+          : String(row.updated_at),
+    }));
   }
 
   async linkedTaskIds(

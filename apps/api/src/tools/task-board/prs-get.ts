@@ -541,7 +541,32 @@ async function fetchPrStatusExtras(
 
 /** Fetch a PR's live state via the GitHub MCP `pull_request_read` tool.
  *  Best-effort: any failure yields nulls so the modal still shows the link. */
-async function fetchPrLiveState(
+/**
+ * Is this task's PR ready for a reviewer? Open, unmerged, and not sitting on a
+ * pending or failing check run — a PR with NO CI (`checksStatus === null`)
+ * qualifies, or a card without a pipeline would sit In Review forever.
+ *
+ * Shared with `review-sweeper.ts` on purpose: a reviewer claim is spent once per
+ * review cycle, so whichever path dispatches first decides what gets reviewed.
+ * If the two disagreed, the sweeper's 60s tick would win the race against CI and
+ * burn the cycle on a red PR.
+ */
+export const prReadyForReview = (
+  prs: {
+    state: string | null;
+    merged: boolean | null;
+    checksStatus: unknown;
+  }[],
+): boolean => {
+  const openPr = prs.find((p) => p.state === "open" && !p.merged);
+  return (
+    openPr != null &&
+    openPr.checksStatus !== "pending" &&
+    openPr.checksStatus !== "failing"
+  );
+};
+
+export async function fetchPrLiveState(
   ctx: StudioContext,
   orgId: string,
   pr: TaskBoardItemPrRef,
@@ -689,15 +714,11 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
     // manual review; `enqueueEnabledReviewers` is itself idempotent per reviewer
     // per review cycle, so re-polling won't spawn duplicate reviewer runs.
     const openPr = prs.find((p) => p.state === "open" && !p.merged);
-    const checksReadyForReview =
-      openPr != null &&
-      openPr.checksStatus !== "pending" &&
-      openPr.checksStatus !== "failing";
     if (
       item &&
       item.status === "in_review" &&
       item.assigneeId === SUPER_AGENT_ASSIGNEE_ID &&
-      checksReadyForReview
+      prReadyForReview(prs)
     ) {
       await enqueueEnabledReviewers(ctx, item).catch((err) => {
         console.error("[task-board] reviewer auto-handoff failed", err);

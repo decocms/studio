@@ -162,4 +162,89 @@ describe("listItemsPendingReview (real Postgres)", () => {
   it("honours the batch limit", async () => {
     expect(await taskBoard.listItemsPendingReview(2)).toHaveLength(2);
   });
+
+  // The cursor is what stops a card the sweeper can NEVER rescue (In Review with
+  // no PR — a research task) from permanently occupying a slot in a fixed
+  // window: it is never touched, so it keeps its old `updated_at`, and once
+  // `limit` of them accumulate nothing behind them is ever swept again.
+  describe("keyset cursor", () => {
+    it("pages through the whole backlog without repeating or skipping", async () => {
+      // A fresh org so this test owns the full result set.
+      const org = "org_pending_cursor";
+      await database.db
+        .insertInto("organization")
+        .values({
+          id: org,
+          name: org,
+          slug: "org-pending-cursor",
+          createdAt: new Date().toISOString(),
+        })
+        .execute();
+      const made: string[] = [];
+      for (let i = 0; i < 7; i++) {
+        const item = await card({ org, title: `card ${i}` });
+        await touchedAt(item.id, `2021-01-0${i + 1}T00:00:00.000Z`);
+        made.push(item.id);
+      }
+
+      const seen: string[] = [];
+      let cursor: { updatedAt: string; id: string } | null = null;
+      for (let page = 0; page < 5; page++) {
+        // Annotated because `cursor` is derived from `rows` — without it the
+        // inference is circular.
+        const rows: {
+          id: string;
+          organizationId: string;
+          updatedAt: string;
+        }[] = (await taskBoard.listItemsPendingReview(3, cursor)).filter(
+          (r) => r.organizationId === org,
+        );
+        if (rows.length === 0) break;
+        seen.push(...rows.map((r) => r.id));
+        const last = rows.at(-1)!;
+        cursor = { updatedAt: last.updatedAt, id: last.id };
+      }
+
+      expect(seen).toEqual(made);
+      expect(new Set(seen).size).toBe(made.length);
+    });
+
+    // Same `updated_at` to the millisecond: without the `id` tie-break the
+    // cursor is not total and rows are skipped or repeated forever.
+    it("is total when several cards share an updated_at", async () => {
+      const org = "org_pending_tie";
+      await database.db
+        .insertInto("organization")
+        .values({
+          id: org,
+          name: org,
+          slug: "org-pending-tie",
+          createdAt: new Date().toISOString(),
+        })
+        .execute();
+      // Earlier than every other card this suite made, so the global ordering
+      // puts all four at the front — paging is global (the sweeper has no org),
+      // so filtering by org AFTER a limited page would just return nothing.
+      const sameInstant = "1990-01-01T00:00:00.000Z";
+      const ids: string[] = [];
+      for (let i = 0; i < 4; i++) {
+        const item = await card({ org, title: `tie ${i}` });
+        await touchedAt(item.id, sameInstant);
+        ids.push(item.id);
+      }
+
+      const first = await taskBoard.listItemsPendingReview(2, null);
+      const last = first.at(-1)!;
+      const second = await taskBoard.listItemsPendingReview(2, {
+        updatedAt: last.updatedAt,
+        id: last.id,
+      });
+
+      const seen = [...first, ...second].map((r) => r.id);
+      // All four came back exactly once — no skip, no repeat, despite sharing
+      // `updated_at` to the millisecond.
+      expect(new Set(seen).size).toBe(4);
+      expect(seen.slice().sort()).toEqual(ids.slice().sort());
+    });
+  });
 });
