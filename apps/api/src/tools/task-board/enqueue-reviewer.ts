@@ -77,22 +77,23 @@ export async function enqueueReviewersOnThreadFinish(args: {
 const TERMINAL_THREAD_STATUSES = new Set(["completed", "failed", "expired"]);
 
 /**
- * Built-in harness tools each reviewer must NOT have. This is the enforcement
- * behind "you are reviewing, not implementing" — the prompt asks, this makes it
- * true. Both reviewers keep `Bash` (a review needs `git diff`, and QA has to
- * actually run the thing) but lose the commands that would ship the change; the
- * Code Reviewer additionally loses every file mutator, since it never has a
- * reason to touch the checkout.
+ * Built-in harness tools each reviewer must NOT have — the enforcement behind
+ * "you are reviewing, not implementing", which until now was prompt-only.
+ *
+ * Neither reviewer can rewrite an existing file. QA keeps `Write` because
+ * exercising a change means scratch files (a curl script, a throwaway spec);
+ * the Code Reviewer reads the diff and has no reason to touch the checkout at
+ * all. Both keep `Bash` — a review is `git diff` / `gh pr view`, and QA has to
+ * actually run the thing.
+ *
+ * These are SDK tool NAMES, which is all `disallowedTools` matches. "Don't
+ * push" stays a prompt rule on purpose: a permission pattern like
+ * `Bash(git push:*)` is not a tool name (it would be a silent no-op here), and
+ * any command-level denylist is bypassable from a shell anyway.
  */
-const REVIEWER_DISALLOWED_TOOLS: Record<ReviewerKind, string[]> = {
-  qa: ["Bash(git push:*)", "Bash(gh pr merge:*)"],
-  code_review: [
-    "Write",
-    "Edit",
-    "NotebookEdit",
-    "Bash(git push:*)",
-    "Bash(gh pr merge:*)",
-  ],
+export const REVIEWER_DISALLOWED_TOOLS: Record<ReviewerKind, string[]> = {
+  qa: ["Edit", "NotebookEdit"],
+  code_review: ["Write", "Edit", "NotebookEdit"],
 };
 
 /** The review instructions unique to each reviewer. Shared scaffolding (load
@@ -268,8 +269,9 @@ async function enqueueReviewerForTask(
       "between asking and deciding, DECIDE.",
     "",
     "Do NOT push commits, merge, or change the code to fix what you find. You " +
-      "are reviewing, not implementing — the tools that would ship a change are " +
-      "removed from this run on purpose. Report it in your decision instead.",
+      "are reviewing, not implementing — the tools that would let you rewrite " +
+      "the checkout are removed from this run on purpose. Report what you find " +
+      "in your decision instead.",
   ].join("\n");
 
   const prompt = [
