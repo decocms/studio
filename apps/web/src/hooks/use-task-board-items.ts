@@ -8,6 +8,8 @@ import type {
 } from "@decocms/shared/tools/tool-io";
 import { useTaskBoardEvents } from "@/hooks/use-task-board-events";
 import { useDecopilotEvents } from "@/hooks/use-decopilot-events";
+import { useT } from "@/i18n/use-t";
+import { toast } from "sonner";
 
 type TaskBoardItem = ToolOutput<"TASK_BOARD_ITEM_LIST">["items"][number];
 
@@ -84,6 +86,7 @@ export function useTaskBoardItemActions() {
   const { locator } = useProjectContext();
   const studio = useStudioTools();
   const queryClient = useQueryClient();
+  const t = useT();
   const queryKey = KEYS.taskBoardItems(locator);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey });
@@ -124,6 +127,43 @@ export function useTaskBoardItemActions() {
   const remove = useMutation({
     mutationFn: (id: string) => studio.call("TASK_BOARD_ITEM_DELETE", { id }),
     onSuccess: invalidate,
+    // A rejected delete used to land nowhere: the dialog had already closed, so
+    // a refused deletion read as a successful one. Surface it and refetch, so
+    // the card the server kept comes back into the list.
+    onError: (err: unknown) => {
+      toast.error(
+        err instanceof Error && err.message
+          ? err.message
+          : t("taskBoard.delete.error"),
+      );
+      invalidate();
+    },
+  });
+
+  // Bulk delete from the selection bar. Calls the tool directly rather than
+  // fanning out through `remove` so a partly-failed batch reports one summary
+  // instead of one toast per card.
+  const removeMany = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const results = await Promise.allSettled(
+        ids.map((id) => studio.call("TASK_BOARD_ITEM_DELETE", { id })),
+      );
+      return {
+        total: ids.length,
+        failed: results.filter((r) => r.status === "rejected").length,
+      };
+    },
+    onSuccess: ({ total, failed }) => {
+      if (failed === 0) return;
+      toast.error(
+        t("taskBoard.delete.bulkError", {
+          failed: String(failed),
+          total: String(total),
+        }),
+      );
+    },
+    onError: () => toast.error(t("taskBoard.delete.error")),
+    onSettled: invalidate,
   });
 
   // Link a chat thread to a task (folded into UPDATE via linkThreadId). Kept as
@@ -135,5 +175,5 @@ export function useTaskBoardItemActions() {
     onSuccess: invalidate,
   });
 
-  return { create, update, remove, link };
+  return { create, update, remove, removeMany, link };
 }

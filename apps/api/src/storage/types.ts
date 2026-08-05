@@ -1605,6 +1605,17 @@ export interface TaskBoardImportRunTable {
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
+/** A diagnostic finding the org deleted from its board, keyed by the same
+ *  `external_key` the import dedups on. The import skips these keys, so a
+ *  deleted finding stays deleted instead of returning on the next scan.
+ *  Cleared by `TASK_BOARD_DISMISSED_RESTORE`. */
+export interface TaskBoardDismissedFindingTable {
+  organization_id: string;
+  external_key: string;
+  dismissed_by: string;
+  dismissed_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
 /** Join row: a task board item ↔ an agent thread (many-to-many). */
 export interface TaskBoardItemThreadTable {
   task_board_item_id: string;
@@ -1913,6 +1924,7 @@ export interface Database extends PrivateRegistryDatabase {
   task_board_comments: TaskBoardCommentTable;
   task_board_item_tags: TaskBoardItemTagTable;
   task_board_import_runs: TaskBoardImportRunTable;
+  task_board_dismissed_findings: TaskBoardDismissedFindingTable;
 
   sandbox_runner_state: SandboxProviderStateTable;
 }

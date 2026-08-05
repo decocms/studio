@@ -33,6 +33,14 @@ export interface TaskBoardComment {
   updatedAt: string;
 }
 
+/** A diagnostic finding the org deleted from its board. The import skips these
+ *  keys, so the finding stays gone until it's restored. */
+export interface DismissedFinding {
+  externalKey: string;
+  dismissedBy: string;
+  dismissedAt: string;
+}
+
 function commentFromDbRow(row: {
   id: string;
   task_board_item_id: string;
@@ -266,8 +274,41 @@ export class TaskBoardStorage {
     return item;
   }
 
-  async delete(id: string, organizationId: string): Promise<void> {
+  /**
+   * Remove a task board item and its join rows.
+   *
+   * A reports-pushed card carries the finding's `external_key`; deleting it
+   * tombstones that key in `task_board_dismissed_findings` so the next
+   * diagnostic import skips the finding instead of re-creating the card.
+   * Without the tombstone a delete silently undoes itself on the next scan —
+   * the import matches only OPEN items by key, and a deleted row matches
+   * nothing. Human-created cards have no `external_key` and are unaffected.
+   */
+  async delete(id: string, organizationId: string, by: string): Promise<void> {
     await this.inTransaction(async (trx) => {
+      // Read the finding identity before the row goes away, in the same
+      // transaction — a tombstone written outside it could survive a rollback
+      // and suppress a finding whose card still exists.
+      const row = await trx
+        .selectFrom("task_board_items")
+        .select(["external_key"])
+        .where("id", "=", id)
+        .where("organization_id", "=", organizationId)
+        .executeTakeFirst();
+      if (row?.external_key) {
+        await trx
+          .insertInto("task_board_dismissed_findings")
+          .values({
+            organization_id: organizationId,
+            external_key: row.external_key,
+            dismissed_by: by,
+          })
+          // Already dismissed once — keep who dismissed it first.
+          .onConflict((oc) =>
+            oc.columns(["organization_id", "external_key"]).doNothing(),
+          )
+          .execute();
+      }
       await trx
         .deleteFrom("task_board_item_threads")
         .where("task_board_item_id", "=", id)
@@ -285,6 +326,64 @@ export class TaskBoardStorage {
         .where("organization_id", "=", organizationId)
         .execute();
     });
+  }
+
+  /**
+   * The finding keys the import must skip. Narrowed to the batch's own keys by
+   * the caller — an org that has dismissed thousands of findings shouldn't
+   * ship them all over the wire on every import.
+   */
+  async dismissedFindingKeys(
+    organizationId: string,
+    externalKeys: string[],
+  ): Promise<Set<string>> {
+    if (externalKeys.length === 0) return new Set();
+    const rows = await this.db
+      .selectFrom("task_board_dismissed_findings")
+      .select(["external_key"])
+      .where("organization_id", "=", organizationId)
+      .where("external_key", "in", externalKeys)
+      .execute();
+    return new Set(rows.map((r) => r.external_key));
+  }
+
+  async listDismissedFindings(
+    organizationId: string,
+  ): Promise<DismissedFinding[]> {
+    const rows = await this.db
+      .selectFrom("task_board_dismissed_findings")
+      .select(["external_key", "dismissed_by", "dismissed_at"])
+      .where("organization_id", "=", organizationId)
+      .orderBy("dismissed_at", "desc")
+      .execute();
+    return rows.map((r) => ({
+      externalKey: r.external_key,
+      dismissedBy: r.dismissed_by,
+      dismissedAt:
+        r.dismissed_at instanceof Date
+          ? r.dismissed_at.toISOString()
+          : r.dismissed_at,
+    }));
+  }
+
+  /**
+   * Un-dismiss findings so the next import pushes them again. `externalKeys`
+   * omitted clears every dismissal for the org. Returns how many rows went
+   * away, so a caller can tell "restored 3" from "nothing matched".
+   */
+  async restoreDismissedFindings(
+    organizationId: string,
+    externalKeys?: string[],
+  ): Promise<number> {
+    if (externalKeys && externalKeys.length === 0) return 0;
+    let query = this.db
+      .deleteFrom("task_board_dismissed_findings")
+      .where("organization_id", "=", organizationId);
+    if (externalKeys) {
+      query = query.where("external_key", "in", externalKeys);
+    }
+    const result = await query.executeTakeFirst();
+    return Number(result.numDeletedRows ?? 0n);
   }
 
   /**

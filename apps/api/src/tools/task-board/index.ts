@@ -8,6 +8,10 @@ export { TASK_BOARD_REVIEW_DECISION } from "./review-decision";
 export { TASK_BOARD_PROMOTE_TO_PRODUCTION } from "./promote-to-production";
 export { TASK_BOARD_ACTIVITY_LIST } from "./activity";
 export {
+  TASK_BOARD_DISMISSED_LIST,
+  TASK_BOARD_DISMISSED_RESTORE,
+} from "./dismissed";
+export {
   TASK_BOARD_COMMENT_CREATE,
   TASK_BOARD_COMMENT_DELETE,
   TASK_BOARD_COMMENT_LIST,

@@ -759,7 +759,7 @@ export function TaskBoardPage() {
               : undefined
           }
           onDelete={() => {
-            for (const id of selectedIds) actions.remove.mutate(id);
+            actions.removeMany.mutate(Array.from(selectedIds));
             clearSelection();
           }}
           onClear={clearSelection}

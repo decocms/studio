@@ -62,6 +62,8 @@ export const CORE_TOOLS = [
   TaskBoardTools.TASK_BOARD_COMMENT_CREATE,
   TaskBoardTools.TASK_BOARD_COMMENT_UPDATE,
   TaskBoardTools.TASK_BOARD_COMMENT_DELETE,
+  TaskBoardTools.TASK_BOARD_DISMISSED_LIST,
+  TaskBoardTools.TASK_BOARD_DISMISSED_RESTORE,
   TaskBoardTools.TASK_ADD_REPO,
   OrganizationTools.BRAND_CONTEXT_LIST,
   OrganizationTools.BRAND_CONTEXT_GET,

@@ -40,6 +40,12 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
  *   matched — a regression creates a fresh card. Refreshes never re-trigger
  *   the Super Agent delegation.
  *
+ * A key the org has DISMISSED (deleted its card — see
+ * `task_board_dismissed_findings`, migration 163) is skipped entirely and
+ * counted in the response's `dismissed`. That's what makes deleting a
+ * reports-pushed card stick: without it, the next run re-creates the card,
+ * since a deleted row matches no open item.
+ *
  * An item may carry `assigneeId` — a real org member, or the Super Agent
  * sentinel to queue the task for an agent run (status forced to To Do, same as
  * the create tool). A delegated run must execute as a REAL org member
@@ -174,11 +180,22 @@ export const createTaskBoardImportRoutes = () => {
       }
 
       const storage = new TaskBoardStorage(trx);
+      // Findings the org deleted from its board. Skipped outright — a delete
+      // that the next scan undoes isn't a delete.
+      const dismissed = await storage.dismissedFindingKeys(
+        organizationId,
+        keys,
+      );
       const touched: TaskBoardItem[] = [];
       const delegations: TaskBoardItem[] = [];
       let created = 0;
       let updated = 0;
+      let skipped = 0;
       for (const item of items) {
+        if (item.externalKey && dismissed.has(item.externalKey)) {
+          skipped++;
+          continue;
+        }
         const existingId = item.externalKey
           ? openByKey.get(item.externalKey)
           : undefined;
@@ -226,7 +243,7 @@ export const createTaskBoardImportRoutes = () => {
         created++;
         if (toSuperAgent) delegations.push(row);
       }
-      return { touched, delegations, created, updated };
+      return { touched, delegations, created, updated, skipped };
     });
 
     if (!outcome)
@@ -260,6 +277,9 @@ export const createTaskBoardImportRoutes = () => {
       created: outcome.created,
       updated: outcome.updated,
       delegated,
+      // Suppression must be visible: a silent skip reads as "imported
+      // everything" when it didn't.
+      ...(outcome.skipped > 0 && { dismissed: outcome.skipped }),
       ...(quotaBlocked > 0 && { quota_blocked: quotaBlocked }),
     });
   });

@@ -161,6 +161,8 @@ import * as migration159taskboardcomments from "./159-task-board-comments.ts";
 import * as migration160taskquotabilling from "./160-task-quota-billing.ts";
 import * as migration161taskquotaclaimstate from "./161-task-quota-claim-state.ts";
 import * as migration162claudesubscriptions from "./162-claude-subscriptions.ts";
+import * as migration163taskboarddismissedfindings from "./163-task-board-dismissed-findings.ts";
+import * as migration164taskquotaclaimssurvivedelete from "./164-task-quota-claims-survive-delete.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -349,6 +351,9 @@ const migrations: Record<string, Migration> = {
   "160-task-quota-billing": migration160taskquotabilling,
   "161-task-quota-claim-state": migration161taskquotaclaimstate,
   "162-claude-subscriptions": migration162claudesubscriptions,
+  "163-task-board-dismissed-findings": migration163taskboarddismissedfindings,
+  "164-task-quota-claims-survive-delete":
+    migration164taskquotaclaimssurvivedelete,
 };
 
 export default migrations;

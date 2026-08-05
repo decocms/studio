@@ -232,6 +232,8 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_COMMENT_CREATE",
   "TASK_BOARD_COMMENT_UPDATE",
   "TASK_BOARD_COMMENT_DELETE",
+  "TASK_BOARD_DISMISSED_LIST",
+  "TASK_BOARD_DISMISSED_RESTORE",
   "TASK_ADD_REPO",
 ] as const;
 
@@ -1086,6 +1088,18 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Task Board",
   },
   {
+    name: "TASK_BOARD_DISMISSED_LIST",
+    description:
+      "List diagnostic findings dismissed by deleting their task board cards",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_DISMISSED_RESTORE",
+    description:
+      "Un-dismiss diagnostic findings so the next report import pushes them again",
+    category: "Task Board",
+  },
+  {
     name: "TASK_ADD_REPO",
     description:
       "Clone an organization repository into the sandbox of the task run calling it",
@@ -1191,6 +1205,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_COMMENT_CREATE",
       "TASK_BOARD_COMMENT_UPDATE",
       "TASK_BOARD_COMMENT_DELETE",
+      "TASK_BOARD_DISMISSED_LIST",
+      "TASK_BOARD_DISMISSED_RESTORE",
     ],
   },
   // Organization

@@ -220,4 +220,29 @@ describe("quota refund on thread finish (wiring)", () => {
 
     expect(await billing.taskClaim(task.id)).toBeNull();
   });
+
+  // Deleting a card must not be a backdoor refund. `task_quota_claims` used to
+  // cascade from `task_board_items`, which was unreachable while reports tasks
+  // couldn't be deleted; migration 164 drops that FK so the charge survives.
+  // Without it: delegate, delete, and the period slot frees up — repeat for
+  // unlimited subsidized runs.
+  it("deleting a charged task does NOT refund its quota slot", async () => {
+    const { task } = await chargedTask("delete-me", "in_progress");
+    // The period the charge landed in, read rather than guessed — it depends on
+    // the org's billing status.
+    const { period_key: periodKey } = await database.db
+      .selectFrom("task_quota_claims")
+      .select(["period_key"])
+      .where("task_board_item_id", "=", task.id)
+      .executeTakeFirstOrThrow();
+    const before = await billing.countTaskClaims(ORG, periodKey);
+    expect(before).toBeGreaterThan(0);
+
+    await taskBoard.delete(task.id, ORG, USER);
+
+    expect(await taskBoard.getById(task.id, ORG)).toBeNull();
+    // The card is gone; the charge is not.
+    expect(await billing.countTaskClaims(ORG, periodKey)).toBe(before);
+    expect(await stateOf(task.id)).toBe("held");
+  });
 });

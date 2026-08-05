@@ -52,6 +52,8 @@ export const taskBoard = {
   "taskBoard.taskBoard.dueDateButton": "Due date",
   "taskBoard.taskBoard.addTagButton": "Add tag",
   "taskBoard.taskBoard.deleteSelectedButton": "Delete",
+  "taskBoard.delete.error": "Couldn't delete the task. Please try again.",
+  "taskBoard.delete.bulkError": "Couldn't delete {failed} of {total} tasks.",
   "taskBoard.taskDialog.activityLabel": "Activity",
   "taskBoard.taskDialog.activityCreated": "created the task",
   "taskBoard.taskDialog.activityMovedFromTo": "moved from {from} to {to}",

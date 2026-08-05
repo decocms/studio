@@ -14,6 +14,7 @@ import {
   seedCommonTestPgFixtures,
 } from "../../database/test-db-pg";
 import { getSettings, setGlobalSettings } from "../../settings";
+import { TaskBoardStorage } from "../../storage/task-board";
 import { createApp } from "../app";
 
 if (!getSettings().encryptionKey) {
@@ -340,5 +341,105 @@ describe("Task Board Import Route", () => {
     expect(rows.map((r) => r.status).sort()).toEqual(["done", "triage"]);
     // Both carry the key — identity survives the lifecycle.
     expect(rows.every((r) => r.external_key === key)).toBe(true);
+  });
+
+  // Deleting a reports card dismisses its finding. Without this the delete
+  // would silently undo itself: a deleted row matches no open item, so the
+  // next run would create the card again.
+  it("a dismissed finding is skipped, and restoring it lets the card come back", async () => {
+    const key = "diag:shop.com:SEO-003";
+    await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [{ title: "Adicionar H1 na home", externalKey: key }],
+        source: { url: "shop.com", run_id: "run_x" },
+      }),
+    );
+    const created = await database.db
+      .selectFrom("task_board_items")
+      .select(["id"])
+      .where("organization_id", "=", "org_board")
+      .executeTakeFirstOrThrow();
+
+    await new TaskBoardStorage(database.db).delete(
+      created.id,
+      "org_board",
+      "user_1",
+    );
+
+    const afterDismiss = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [{ title: "Adicionar H1 na home", externalKey: key }],
+        source: { url: "shop.com", run_id: "run_y" },
+      }),
+    );
+    await expect(afterDismiss.json()).resolves.toEqual({
+      created: 0,
+      updated: 0,
+      delegated: 0,
+      dismissed: 1,
+    });
+    expect(
+      await database.db
+        .selectFrom("task_board_items")
+        .selectAll()
+        .where("organization_id", "=", "org_board")
+        .execute(),
+    ).toHaveLength(0);
+
+    // Restored ⇒ the next run pushes the finding again.
+    await new TaskBoardStorage(database.db).restoreDismissedFindings(
+      "org_board",
+      [key],
+    );
+    const afterRestore = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [{ title: "Adicionar H1 na home", externalKey: key }],
+        source: { url: "shop.com", run_id: "run_z" },
+      }),
+    );
+    await expect(afterRestore.json()).resolves.toEqual({
+      created: 1,
+      updated: 0,
+      delegated: 0,
+    });
+  });
+
+  it("a dismissal is scoped to its org", async () => {
+    const key = "diag:shop.com:SEO-004";
+    await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [{ title: "Adicionar H1 na home", externalKey: key }],
+        source: { url: "shop.com", run_id: "run_o1" },
+      }),
+    );
+    const created = await database.db
+      .selectFrom("task_board_items")
+      .select(["id"])
+      .where("organization_id", "=", "org_board")
+      .executeTakeFirstOrThrow();
+    await new TaskBoardStorage(database.db).delete(
+      created.id,
+      "org_board",
+      "user_1",
+    );
+
+    // A second org that dismissed nothing still gets the finding.
+    const now = new Date().toISOString();
+    await sql`
+      INSERT INTO "organization" (id, name, slug, "createdAt")
+      VALUES ('org_other', 'Other Org', 'other-org', ${now})
+      ON CONFLICT (id) DO NOTHING
+    `.execute(database.db);
+    const other = await app.fetch(
+      post("org_other", "svc-secret", {
+        items: [{ title: "Adicionar H1 na home", externalKey: key }],
+        source: { url: "shop.com", run_id: "run_o2" },
+      }),
+    );
+    await expect(other.json()).resolves.toEqual({
+      created: 1,
+      updated: 0,
+      delegated: 0,
+    });
   });
 });
