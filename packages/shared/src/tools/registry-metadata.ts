@@ -18,6 +18,9 @@
 // Types
 // ============================================================================
 
+/**
+ * High-level categories for grouping tools in the UI
+ */
 export type ToolCategory =
   | "Organizations"
   | "Connections"
@@ -240,6 +243,9 @@ const ALL_TOOL_NAMES = [
  */
 export type ToolName = (typeof ALL_TOOL_NAMES)[number];
 
+/**
+ * Metadata for a single MCP management tool — name, description, category, and danger flag.
+ */
 export interface ToolMetadata {
   name: ToolName;
   description: string;
@@ -1097,6 +1103,10 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
 // Permission Capabilities (high-level, user-facing permissions)
 // ============================================================================
 
+/**
+ * A gated permission capability — a user-facing feature grouping that maps to a set of MCP tools.
+ * Used for role editing and OAuth consent screens.
+ */
 export interface PermissionCapability {
   id: string;
   label: string;
@@ -1443,7 +1453,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
 ];
 
 /**
- * Tools every authenticated org member can use by default.
+ * Tools every authenticated org member can use by default, plus non-MCP resource keys.
  *
  * Granted at runtime by AccessControl (`checkResource`) to every member
  * regardless of role — NOT persisted into stored role permissions. To change
@@ -1494,6 +1504,10 @@ export const USER_ROLE_TOOLS: ReadonlySet<string> = new Set(
   ).flatMap((c) => c.tools),
 );
 
+/**
+ * Group gated capabilities by their UI section (e.g., "Organization", "Automations").
+ * Used to render the role editor's capability picker.
+ */
 export function getCapabilitySections(): Array<{
   section: string;
   capabilities: PermissionCapability[];
@@ -1511,6 +1525,9 @@ export function getCapabilitySections(): Array<{
   }));
 }
 
+/**
+ * Check whether all tools in a capability are granted.
+ */
 export function isCapabilityEnabled(
   cap: PermissionCapability,
   enabledTools: string[],
@@ -1520,6 +1537,9 @@ export function isCapabilityEnabled(
   return cap.tools.every((tool) => enabledTools.includes(tool));
 }
 
+/**
+ * Enable or disable all tools in a capability within a tool set.
+ */
 export function toggleCapabilityInTools(
   cap: PermissionCapability,
   currentTools: string[],
