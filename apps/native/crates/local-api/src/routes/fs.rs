@@ -344,8 +344,20 @@ pub async fn read(State(state): State<AppState>, body: Bytes) -> Response {
             // Rebuilding it on read is what makes the CMS readable before the
             // dev server has booted — without this the sections editor reports
             // "File not found: .deco/blocks.gen.json" against a repo that
-            // plainly has its blocks. Byte-parity with `daemon/routes/fs.ts`.
-            if file_path.file_name().and_then(|name| name.to_str()) == Some(DECOFILE_GEN_BASENAME) {
+            // plainly has its blocks. Byte-parity with the Go daemon's
+            // `routes/fs.go` (itself byte-parity with the deleted TS daemon).
+            //
+            // Gated on a relative `user_path`: `resolve_read_path` passes an
+            // absolute path straight through unclamped (see its doc comment),
+            // so allowing the fallback there would turn the merge into an
+            // arbitrary sibling-`blocks/` directory glob — this route runs
+            // behind the `/_sandbox` guard, not the daemon's bearer auth, but
+            // the guard is still cheap insurance against a caller pointing an
+            // absolute path at an unrelated `.../blocks.gen.json`.
+            if !Path::new(&user_path).is_absolute()
+                && file_path.file_name().and_then(|name| name.to_str())
+                    == Some(DECOFILE_GEN_BASENAME)
+            {
                 if let Some(dir) = file_path
                     .parent()
                     .map(|dir| dir.join(DECOFILE_BLOCKS_DIRNAME))
@@ -1484,6 +1496,11 @@ pub async fn tools_sync(State(state): State<AppState>, body: Bytes) -> Response 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::ConfigStore;
+    use crate::events::Broadcaster;
+    use crate::setup::SetupOrchestrator;
+    use crate::tasks::TaskRegistry;
+    use std::sync::Arc;
 
     /// A fresh worktree has `.deco/blocks/*.json` but not the merged
     /// `blocks.gen.json` (repos gitignore it), and without this rebuild the
@@ -1611,5 +1628,97 @@ mod tests {
             .status()
             .is_ok_and(|status| status.success());
         assert!(!alive, "cancelled grep process survived its owner");
+    }
+
+    /// Byte-parity fixture for `routes/decofile.rs`'s `fresh_state` and the Go
+    /// daemon's `DecofileDeps{RepoDir: dir, Store: config.NewStore()}` — each
+    /// route test module carries its own copy (see `decofile.rs`'s doc
+    /// comment on the convention).
+    fn fresh_state(repo_dir: std::path::PathBuf) -> AppState {
+        let config = Arc::new(ConfigStore::new());
+        let app_root = std::env::temp_dir();
+        let logs = Arc::new(crate::log_store::LogStore::new(app_root.join("logs")));
+        let tasks = Arc::new(TaskRegistry::new(logs));
+        let broadcaster = Arc::new(Broadcaster::new());
+        let setup = SetupOrchestrator::new(
+            repo_dir.clone(),
+            repo_dir.clone(),
+            config.clone(),
+            tasks.clone(),
+            broadcaster.clone(),
+        );
+        AppState {
+            update: None,
+            token: "test-token".into(),
+            boot_id: "test-boot".into(),
+            sandbox_manager: crate::sandbox::SandboxManager::new(app_root.clone()),
+            agent_sessions: crate::terminal::AgentSessionRegistry::new(),
+            app_root,
+            repo_dir,
+            mode: crate::state::ApiMode::Strict,
+            config,
+            tasks,
+            broadcaster,
+            shutdown: Arc::new(crate::shutdown::ShutdownCoordinator::new()),
+            setup,
+        }
+    }
+
+    fn read_body(path: &str) -> Bytes {
+        Bytes::from(serde_json::to_vec(&json!({ "path": path, "full": true })).unwrap())
+    }
+
+    /// A relative request for the absent gen artifact falls back to the
+    /// on-the-fly merge of the sibling blocks sources. Byte-parity with the
+    /// Go daemon's `TestReadDecofileFallbackRelative`.
+    #[tokio::test]
+    async fn read_decofile_fallback_relative_merges() {
+        let root = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(root.path().join(".deco").join("blocks")).unwrap();
+        std::fs::write(
+            root.path().join(".deco").join("blocks").join("a.json"),
+            r#"{"n":1}"#,
+        )
+        .unwrap();
+        let state = fresh_state(root.path().to_path_buf());
+
+        let response = super::read(State(state), read_body(".deco/blocks.gen.json")).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(parsed["kind"], "text");
+        assert_eq!(parsed["content"], r#"{"a":{"n":1}}"#);
+    }
+
+    /// The fallback must refuse an ABSOLUTE path even when it points straight
+    /// at the real repo's gen artifact — `resolve_read_path` passes an
+    /// absolute path through unclamped, so allowing it here would turn the
+    /// merge into an arbitrary sibling-`blocks/` directory glob. Byte-parity
+    /// with the Go daemon's `TestReadDecofileFallbackRefusesAbsolute`: the
+    /// blocks exist and the relative form (above) merges them, yet the
+    /// absolute form to the very same location still 400s.
+    #[tokio::test]
+    async fn read_decofile_fallback_refuses_absolute_path() {
+        let root = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(root.path().join(".deco").join("blocks")).unwrap();
+        std::fs::write(
+            root.path().join(".deco").join("blocks").join("a.json"),
+            r#"{"n":1}"#,
+        )
+        .unwrap();
+        let state = fresh_state(root.path().to_path_buf());
+        let absolute = root
+            .path()
+            .join(".deco")
+            .join("blocks.gen.json")
+            .to_str()
+            .unwrap()
+            .to_string();
+        assert!(Path::new(&absolute).is_absolute());
+
+        let response = super::read(State(state), read_body(&absolute)).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 }
