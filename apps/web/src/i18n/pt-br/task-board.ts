@@ -190,6 +190,9 @@ export const taskBoard = {
     "O Super Agent vai iniciar uma nova execução nesta tarefa.",
   "taskBoard.rerun.descriptionTakeover":
     "O Super Agent vai iniciar uma nova execução nesta tarefa. Ainda há uma execução aberta nela — essa será interrompida.",
+  "taskBoard.rerun.titleMany": "Executar {count} tarefas de novo?",
+  "taskBoard.rerun.descriptionMany":
+    "O Super Agent vai iniciar uma nova execução em cada uma das {count} tarefas selecionadas. Qualquer execução ainda aberta nelas será interrompida.",
   "taskBoard.rerun.cancel": "Cancelar",
   "taskBoard.rerun.confirm": "Executar de novo",
   "taskBoard.subscriptionPaywall.trialTitle":

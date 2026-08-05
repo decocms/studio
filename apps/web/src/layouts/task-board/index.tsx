@@ -351,24 +351,24 @@ export function TaskBoardPage() {
   };
   // The task awaiting a re-run confirmation, or null. A re-run supersedes the
   // task's live run, so it is confirmed rather than fired on click.
-  const [rerunTarget, setRerunTarget] = useState<TaskBoardItem | null>(null);
+  // One entry for a card's own Re-run, many for a selection.
+  const [rerunTargets, setRerunTargets] = useState<TaskBoardItem[]>([]);
   const confirmRerun = () => {
-    if (!rerunTarget) return;
+    if (rerunTargets.length === 0) return;
     // Same GitHub precondition as delegating: the run is expected to open a PR.
     if (blockSuperAgentWithoutGithub(SUPER_AGENT_ASSIGNEE_ID)) {
-      setRerunTarget(null);
+      setRerunTargets([]);
       return;
     }
-    actions.rerun.mutate(
-      { id: rerunTarget.id },
-      {
-        onError: (err) => {
-          onDelegateError(err as Error);
-          setRerunTarget(null);
-        },
-        onSuccess: () => setRerunTarget(null),
-      },
-    );
+    // ponytail: fire-and-forget per task, like every other bulk action here —
+    // the board reconciles from the invalidation each one triggers.
+    for (const target of rerunTargets)
+      actions.rerun.mutate(
+        { id: target.id },
+        { onError: (err) => onDelegateError(err as Error) },
+      );
+    setRerunTargets([]);
+    clearSelection();
   };
   const { data: membersData } = useMembers();
   const members = (membersData?.data?.members ?? []) as Member[];
@@ -659,7 +659,7 @@ export function TaskBoardPage() {
               { onError: onDelegateError },
             );
           }}
-          onRerun={setRerunTarget}
+          onRerun={(item) => setRerunTargets([item])}
         />
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-6 pb-16 sm:px-8">
@@ -755,7 +755,7 @@ export function TaskBoardPage() {
                 // the card path does the same, so the takeover warning has one
                 // home. Closing the task dialog first keeps them unstacked.
                 closeDialog();
-                setRerunTarget(activeItem);
+                setRerunTargets([activeItem]);
               }
             : undefined
         }
@@ -785,9 +785,9 @@ export function TaskBoardPage() {
       />
 
       <RerunDialog
-        item={rerunTarget}
+        items={rerunTargets}
         pending={actions.rerun.isPending}
-        onOpenChange={(open) => !open && setRerunTarget(null)}
+        onOpenChange={(open) => !open && setRerunTargets([])}
         onConfirm={confirmRerun}
       />
 
@@ -850,6 +850,25 @@ export function TaskBoardPage() {
                   clearSelection();
                 }
               : undefined
+          }
+          onRerun={
+            // Same eligibility as a card's own Re-run button: delegated to the
+            // Super Agent and not Done. Offered only when every selected card
+            // qualifies, so the action never silently skips part of a selection.
+            (() => {
+              const targets = Array.from(selectedIds).flatMap((id) => {
+                const item = items.find((i) => i.id === id);
+                return item ? [item] : [];
+              });
+              return targets.length === selectedIds.size &&
+                targets.every(
+                  (item) =>
+                    item.assigneeId === SUPER_AGENT_ASSIGNEE_ID &&
+                    item.status !== "done",
+                )
+                ? () => setRerunTargets(targets)
+                : undefined;
+            })()
           }
           onDelete={() => {
             actions.removeMany.mutate(Array.from(selectedIds));
@@ -935,6 +954,7 @@ function SelectionBar({
   onAssign,
   onSetDueDate,
   onAutoFix,
+  onRerun,
   onDelete,
   onClear,
 }: {
@@ -948,6 +968,9 @@ function SelectionBar({
   /** Bulk-assign to the Super Agent — only offered when every selected card
    *  is still in Backlog/To Do (see `TaskBoardPage`). */
   onAutoFix?: () => void;
+  /** Bulk re-run — only offered when every selected card is a Super Agent card
+   *  that isn't Done (see `TaskBoardPage`). */
+  onRerun?: () => void;
   onDelete: () => void;
   onClear: () => void;
 }) {
@@ -1062,6 +1085,17 @@ function SelectionBar({
           >
             <Lightning01 size={14} />
             {t("taskBoard.taskBoard.autoFix")}
+          </button>
+        )}
+
+        {onRerun && (
+          <button
+            type="button"
+            onClick={onRerun}
+            className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+          >
+            <RefreshCw01 size={14} />
+            {t("taskBoard.taskBoard.rerun")}
           </button>
         )}
 
