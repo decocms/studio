@@ -14,6 +14,7 @@ import {
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { enqueueAgentRunForTask } from "./enqueue-task-run";
+import { finalizeAutoMerge } from "./auto-merge";
 
 /**
  * A Super Agent run finished — if it left a task In Review with an open PR,
@@ -102,7 +103,24 @@ export async function enqueueEnabledReviewers(
   const enabled = REVIEWER_KINDS.filter(
     (k) => flags[REVIEWER_FLAG[k]] === true,
   );
-  if (enabled.length === 0) return;
+  if (enabled.length === 0) {
+    // No reviewer enabled — there's nothing to dispatch, but auto-merge still
+    // applies: with QA Agent and Code Reviewer both off, the reviewer gate is
+    // vacuously satisfied (same convention as the manual ship button), so an In
+    // Review Super Agent PR ships as soon as its checks are green (or absent).
+    // `finalizeAutoMerge` refuses to ship on red/pending CI and resolves a
+    // base-branch conflict, so this is safe on either trigger (the poll path
+    // gates on ready checks; the run-finish path relies on that guard). Both
+    // callers reach here idempotently — a merged PR moves the task off In
+    // Review, so the next poll's assignee/status guard skips it. Off without
+    // auto-merge: leave it In Review for a human. Best-effort.
+    if (flags.auto_merge === true) {
+      await finalizeAutoMerge(ctx, task.organizationId, task).catch((err) => {
+        console.error("[task-board] no-reviewer auto-merge failed", err);
+      });
+    }
+    return;
+  }
 
   // A reviewer belongs to the current cycle if its thread is still live, or was
   // created since the task last entered In Review — either way don't re-enqueue.

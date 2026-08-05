@@ -1,7 +1,7 @@
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
 import {
-  allReviewersApproved,
+  readyForAutoMerge,
   REVIEWER_FLAG,
   REVIEWER_KINDS,
   type ReviewCycleActivity,
@@ -45,10 +45,11 @@ export function conflictResolutionCapReached(
  * which pulls a task back to In Progress the moment a run starts on it.
  *
  * Gated on the org's `auto_merge` flag — conflict resolution is an extension of
- * auto-merge (the only thing standing between an approved PR and an automatic
+ * auto-merge (the only thing standing between a mergeable PR and an automatic
  * merge is the conflict), so it rides the same opt-in rather than its own knob.
- * Also gated on the SAME verified all-approved check the auto-merge uses (a
- * self-asserted approval must not trigger it) and a per-task cap so a conflict
+ * Also gated on the SAME `readyForAutoMerge` check the auto-merge uses — every
+ * enabled reviewer token-verified-approved, or no reviewer enabled (a
+ * self-asserted approval must not trigger it) — and a per-task cap so a conflict
  * the agent can't resolve doesn't loop forever.
  *
  * `opts.pr` is the PR the caller detected the conflict on — the reaction acts on
@@ -79,15 +80,15 @@ export async function reactToApprovedPrConflict(
   const flags = settings?.flags ?? {};
   if (flags.auto_merge !== true) return false;
 
-  // Same gate as the auto-merge: EVERY enabled reviewer must have a
-  // token-verified approval in the current cycle. With no reviewer enabled
-  // `allReviewersApproved` is false, so a conflict never auto-resolves without
-  // an approval standing behind it.
+  // Same gate as the auto-merge: the PR must be ready to merge — every enabled
+  // reviewer token-verified-approved in the current cycle, OR no reviewer
+  // enabled (auto-merge with both off, so there's nothing to wait on). Without
+  // this, a conflicting PR under a no-reviewer auto-merge org would sit forever.
   const enabled = REVIEWER_KINDS.filter(
     (k) => flags[REVIEWER_FLAG[k]] === true,
   );
   const activity = await ctx.storage.taskBoard.listActivity(item.id, orgId);
-  if (!allReviewersApproved(activity, enabled, { verifiedOnly: true })) {
+  if (!readyForAutoMerge(activity, enabled, { verifiedOnly: true })) {
     return false;
   }
 

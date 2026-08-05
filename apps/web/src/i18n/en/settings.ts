@@ -382,7 +382,7 @@ export const settings = {
     "Reviews the code using the repository's stack-appropriate review skills.",
   "settings.review.autoMergeTitle": "Enable Auto-merge",
   "settings.review.autoMergeDescription":
-    "When every enabled reviewer approves, merge the pull request automatically instead of waiting for a human. If a conflict blocks the merge, the Super Agent resolves it first.",
+    "When every enabled reviewer approves, merge the pull request automatically instead of waiting for a human — with no reviewers enabled, it merges as soon as checks pass. If a conflict blocks the merge, the Super Agent resolves it first.",
   "settings.review.updateError": "Couldn't update the setting",
   "settings.agentRuntime.title": "Agent runtime",
   "settings.agentRuntime.description":

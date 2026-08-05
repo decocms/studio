@@ -113,6 +113,22 @@ export function allReviewersApproved(
   return enabled.every((k) => verdicts.get(k) === "approved");
 }
 
+/** True when a task's PR may auto-merge: either NO reviewer is enabled (nothing
+ *  to wait on — the org opted into auto-merge with QA Agent and Code Reviewer
+ *  both off, so the reviewer gate is vacuously satisfied) or every enabled
+ *  reviewer approved in the current cycle. This is the same convention the
+ *  manual ship button uses (`isReadyToShip`), so the two ways an approved PR
+ *  reaches production agree on "no reviewers ⇒ ready". `verifiedOnly` requires
+ *  token-verified approvals — the automatic merge/conflict paths pass it so a
+ *  self-asserted approval can't ship; the manual button does not. */
+export function readyForAutoMerge(
+  activity: ReviewCycleActivity[],
+  enabled: ReviewerKind[],
+  opts?: { verifiedOnly?: boolean },
+): boolean {
+  return enabled.length === 0 || allReviewersApproved(activity, enabled, opts);
+}
+
 /**
  * Org-scoped SSE event pushed on `sseHub` whenever a Super Agent run advances a
  * task board item's status (enqueued→todo, executing→in_progress, PR→in_review).

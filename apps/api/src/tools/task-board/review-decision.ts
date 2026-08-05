@@ -12,9 +12,7 @@ import { TaskBoardItemStatusSchema } from "./schema";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
-import { mergeLinkedPr } from "./merge-pr";
-import { fetchPrConflict } from "./prs-get";
-import { reactToApprovedPrConflict } from "./conflict-reaction";
+import { finalizeAutoMerge } from "./auto-merge";
 
 /**
  * True when EVERY enabled reviewer has a token-VERIFIED `approve` as its latest
@@ -207,71 +205,24 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
 
     const settings = await ctx.storage.organizationSettings.get(organizationId);
     const autoMerge = settings?.flags?.auto_merge === true;
-    const merged = autoMerge
-      ? await mergeLinkedPr(ctx, organizationId, taskBoardItemId)
-      : false;
 
-    // A merge ships the task → Done.
-    if (merged) {
-      const done = await ctx.storage.taskBoard.update(
-        taskBoardItemId,
-        organizationId,
-        { status: "done" },
-        item.updatedBy,
-      );
-      await recordTaskActivity(ctx, {
-        taskBoardItemId,
-        action: "status_changed",
-        actorId: null,
-        data: { from: item.status, to: "done" },
-      });
-      emitTaskBoardUpdated(organizationId, done);
-      return { status: done.status, merged: true };
-    }
+    // With auto-merge on, run the shared finalize: merge the PR (→ Done), or, if
+    // a base-branch conflict blocks it, hand the PR back to the Super Agent to
+    // resolve — the same tail the no-reviewer auto-merge path uses. It emits on
+    // the transitions it owns (Done, or the conflict bounce). With auto-merge
+    // off the task stays In Review for a human to ship.
+    const outcome = autoMerge
+      ? await finalizeAutoMerge(ctx, organizationId, item)
+      : { merged: false, resolving: false };
 
-    // No merge — the task is still In Review (we only move it on a merge). When
-    // auto-merge is on and the merge was blocked by a conflict specifically (not
-    // pending CI, not a transient failure), hand the PR back to the Super Agent
-    // to resolve it — the headless counterpart to the poll path in `prs-get`.
-    // The conflict fetch is a GitHub round-trip, so only pay it when auto-merge
-    // is on. Otherwise leave it In Review for a human.
     const current =
       (await ctx.storage.taskBoard.getById(taskBoardItemId, organizationId)) ??
       item;
-    if (autoMerge) {
-      const prs = await ctx.storage.taskBoard.listPrs(
-        taskBoardItemId,
-        organizationId,
-      );
-      // The newest linked PR is the one under review (the same one
-      // `mergeLinkedPr` just tried to merge) — detect and act on it.
-      const pr = prs[0];
-      // Best-effort, like the poll path in `prs-get` — a dispatch failure (no
-      // model configured, queue error) must never fail this decision: the
-      // approval + bounce-to-in_progress + activity write already committed,
-      // so surfacing an error here would report failure on an otherwise-
-      // successful reviewer decision while burning a conflict-resolution
-      // attempt with no run enqueued.
-      const resolving = pr
-        ? await reactToApprovedPrConflict(ctx, organizationId, current, {
-            pr: { number: pr.number, url: pr.url },
-            conflict: await fetchPrConflict(ctx, organizationId, pr),
-          }).catch((err) => {
-            console.error("[task-board] conflict auto-resolve failed", err);
-            return false;
-          })
-        : false;
-      if (resolving) {
-        const bounced =
-          (await ctx.storage.taskBoard.getById(
-            taskBoardItemId,
-            organizationId,
-          )) ?? current;
-        // `reactToApprovedPrConflict` already emitted the update.
-        return { status: bounced.status, merged: false };
-      }
+    // Nothing terminal happened — this handler still recorded the approval, so
+    // emit the refreshed card so clients see the new verdict.
+    if (!outcome.merged && !outcome.resolving) {
+      emitTaskBoardUpdated(organizationId, current);
     }
-    emitTaskBoardUpdated(organizationId, current);
-    return { status: current.status, merged: false };
+    return { status: current.status, merged: outcome.merged };
   },
 });

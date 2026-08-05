@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   allReviewersApproved,
   isReviewerThreadTitle,
+  readyForAutoMerge,
   reviewCycleStart,
   reviewCycleVerdicts,
   type ReviewCycleActivity,
@@ -144,5 +145,43 @@ describe("allReviewersApproved", () => {
     ).toBe(false);
     // The human ship button (no verifiedOnly) still sees both as approved.
     expect(allReviewersApproved(forged, ["qa", "code_review"])).toBe(true);
+  });
+});
+
+describe("readyForAutoMerge", () => {
+  const qaApproved = [
+    IN_REVIEW_1,
+    at(
+      "review_approved",
+      { reviewer: "qa", verified: true },
+      "2026-01-01T10:05:00Z",
+    ),
+  ];
+
+  it("no reviewers enabled → ready (auto-merge with QA + Code Reviewer both off)", () => {
+    // The gap this closes: with an empty enabled set, `allReviewersApproved` is
+    // false, but auto-merge must still ship — nothing is standing in the way.
+    expect(readyForAutoMerge([], [])).toBe(true);
+    expect(readyForAutoMerge(qaApproved, [])).toBe(true);
+  });
+
+  it("with reviewers enabled, gates exactly like allReviewersApproved", () => {
+    expect(readyForAutoMerge(qaApproved, ["qa"])).toBe(true);
+    expect(readyForAutoMerge(qaApproved, ["qa", "code_review"])).toBe(false);
+  });
+
+  it("passes verifiedOnly through — an unverified approval doesn't count", () => {
+    const forged = [
+      IN_REVIEW_1,
+      at(
+        "review_approved",
+        { reviewer: "qa", verified: false },
+        "2026-01-01T10:05:00Z",
+      ),
+    ];
+    expect(readyForAutoMerge(forged, ["qa"], { verifiedOnly: true })).toBe(
+      false,
+    );
+    expect(readyForAutoMerge(forged, ["qa"])).toBe(true);
   });
 });
