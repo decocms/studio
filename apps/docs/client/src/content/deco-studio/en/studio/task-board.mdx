@@ -28,6 +28,15 @@ Every task card's activity feed supports threaded comments: post a comment, and 
 
 When a task is assigned to a **Super Agent**, it runs inside a sandbox that needs a checked-out repository to work in. If your organization has exactly one importable repository, the task run starts already checked out into it. If it has more than one, the run starts with an empty working directory and the Super Agent picks the right repository itself before reading files or running git — no manual repo selection step is required from you.
 
+## Auto-fix
+
+Any card in **Triage** or **To Do** that isn't already assigned to the Super Agent shows an **Auto-fix** button (lightning-bolt icon) — both on the card itself and inside the task dialog. Clicking it hands the task straight to the Super Agent, the same as assigning it manually from the assignee picker, and draws from the same auto-task quota (see [Billing and auto-task quota](#billing-and-auto-task-quota)).
+
+<Callout type="tip">
+  Inside the task dialog, the **Save** button only appears once you've actually
+  changed something — Auto-fix and New chat don't need a dirty form to work.
+</Callout>
+
 ## Automated review before shipping
 
 Once a task's pull request is **In Review** (its checks are passing, or it has none), Studio can run automated reviewers on it before a human ships the change. Configure this under **Settings → Organization → Reviewers & merge**:
@@ -46,6 +55,13 @@ Each reviewer that runs shows up as its own session on the task card, and its ve
   QA Agent and Code Reviewer are both off by default. Enable the ones you want
   under **Settings → Organization → Reviewers & merge** — you can turn on
   either one independently, or both.
+
+  **Exception:** the first time an organization switches to reports-only mode,
+  both reviewers default on automatically — reports-only orgs hide the agent
+  navigation the review flow would otherwise rely on, so the task-board PR
+  review needs them on to keep working. This only fires once, when
+  `reports_only` itself is first defaulted on, and never overrides a flag you
+  already set explicitly.
 </Callout>
 
 ## Shipping to production
