@@ -206,6 +206,12 @@ export function buildOptions(args: {
     ...(model ? { model } : {}),
     // ponytail: fixed, not configurable — raise it here if runs come back thin.
     effort: "low",
+    // Per-dispatch tool subtraction (a reviewer run is read-only; the Super
+    // Agent's is not). `disallowedTools` is enforced by the harness itself, so
+    // it holds under `bypassPermissions`.
+    ...(input.agent.disallowedTools?.length
+      ? { disallowedTools: input.agent.disallowedTools }
+      : {}),
     // Resume keeps the thread's history in the SDK's own transcript instead of
     // replaying it as prompt text. `sessionId` seeds a new one at the same id
     // so the next turn can resume it.

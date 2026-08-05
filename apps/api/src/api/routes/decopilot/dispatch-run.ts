@@ -318,6 +318,16 @@ async function resolveSecretModelSource(
 
 export interface AgentConfig {
   id: string;
+  /**
+   * Per-run override of the agent's own instructions. Only the sandbox-hosted
+   * harnesses read it (it rides the wire as `agent.instructions`); hosted
+   * Decopilot builds its system prompt from the virtual MCP directly. Set when
+   * a run is a different *persona* on the same org agent — a reviewer, not the
+   * Super Agent.
+   */
+  instructions?: string;
+  /** Built-in harness tools this run must not have. See the wire schema. */
+  disallowedTools?: string[];
 }
 
 export interface DispatchRunInput {
@@ -1269,12 +1279,16 @@ async function prepareRun(
     // Hosted runs mount no repo working directory. The harness resolves its
     // own workspace.
     const workspace: HarnessWorkspace = { cwd: null };
+    // The dispatcher's override wins over the agent's own instructions: a
+    // reviewer run borrows the org agent (for its model + MCP surface) but is
+    // not that agent.
     const agentInstructions =
-      typeof (effectiveVirtualMcp.metadata as { instructions?: unknown })
+      input.agent.instructions ??
+      (typeof (effectiveVirtualMcp.metadata as { instructions?: unknown })
         ?.instructions === "string"
         ? (effectiveVirtualMcp.metadata as { instructions: string })
             .instructions
-        : undefined;
+        : undefined);
     const decopilotRunContext = {
       taskId: input.taskId,
       isSubagent: input.isSubagent,
@@ -1305,7 +1319,13 @@ async function prepareRun(
       user: { id: input.userId, email: ctx.auth.user?.email ?? "" },
       organizationId: input.organizationId,
       organizationSlug: organization.slug,
-      agent: { id: input.agent.id, instructions: agentInstructions },
+      agent: {
+        id: input.agent.id,
+        instructions: agentInstructions,
+        ...(input.agent.disallowedTools
+          ? { disallowedTools: input.agent.disallowedTools }
+          : {}),
+      },
       triggerId: input.triggerId,
       currentThreadTitle: mem.thread.title,
       runFenceToken,

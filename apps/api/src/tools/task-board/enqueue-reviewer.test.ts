@@ -4,9 +4,13 @@
  * on a fresh review cycle (a stale prior-cycle thread must not count). Pure over
  * a task snapshot + the cycle-start timestamp.
  */
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, test } from "bun:test";
 import type { TaskBoardItem } from "@/storage/types";
-import { reviewerHandledThisCycle } from "./enqueue-reviewer";
+import {
+  REVIEWER_DISALLOWED_TOOLS,
+  reviewerHandledThisCycle,
+} from "./enqueue-reviewer";
+import { REVIEW_RUN_TOOL_NAMES } from "./task-run-context";
 
 /** Cycle start (the task last entered In Review) at 10:00. */
 const CYCLE_START = new Date("2026-01-01T10:00:00Z").getTime();
@@ -19,6 +23,31 @@ const thread = (o: {
 
 const taskWith = (threads: ReturnType<typeof thread>[]): TaskBoardItem =>
   ({ threads }) as unknown as TaskBoardItem;
+
+describe("REVIEWER_DISALLOWED_TOOLS", () => {
+  // `disallowedTools` matches SDK tool NAMES. A permission-rule pattern
+  // (`Bash(git push:*)`) is not one, so it would be a silent no-op that reads
+  // like a guard — the exact mistake this test exists to catch.
+  test("holds plain built-in tool names, never permission patterns", () => {
+    for (const names of Object.values(REVIEWER_DISALLOWED_TOOLS)) {
+      for (const name of names) {
+        expect(name).toMatch(/^[A-Za-z]+$/);
+      }
+    }
+  });
+
+  // The reviewer's whole job runs through the task-run MCP surface (find the
+  // PR, record the verdict). Removing one of those would strand the review the
+  // same way the missing `TASK_BOARD_REVIEW_DECISION` did.
+  test("never removes a tool the reviewer's MCP surface provides", () => {
+    for (const names of Object.values(REVIEWER_DISALLOWED_TOOLS)) {
+      for (const name of names) {
+        expect(name.startsWith("mcp__")).toBe(false);
+        expect(REVIEW_RUN_TOOL_NAMES).not.toContain(name);
+      }
+    }
+  });
+});
 
 describe("reviewerHandledThisCycle", () => {
   it("is true while a reviewer's own thread is still live", () => {
