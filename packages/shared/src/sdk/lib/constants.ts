@@ -374,7 +374,7 @@ export function getWellKnownCommerceDiscoveryConnection(
   };
 }
 
-export function getWellKnownCommerceDiscoveryVirtualMCP(
+export function getWellKnownReportVirtualMCP(
   orgId: string,
   connectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(orgId),
 ): VirtualMCPCreateData {
@@ -409,7 +409,12 @@ export function getWellKnownCommerceDiscoveryVirtualMCP(
     connections: [
       {
         connection_id: connectionId,
-        selected_tools: [COMMERCE_DISCOVERY_REPORT_TOOL_NAME],
+        // null = every tool the reports MCP exposes. Selecting only the report
+        // tool broke every other call the report widget makes through the
+        // gateway (rerun_my_diagnostic, start_checkout, share_my_diagnostic):
+        // "unknown namespace ... not found by original name in any client".
+        // Migration 164 backfills existing aggregations.
+        selected_tools: null,
         selected_resources: null,
         selected_prompts: null,
       },
