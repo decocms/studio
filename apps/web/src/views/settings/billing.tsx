@@ -123,24 +123,30 @@ function AutoTasksCard() {
 
   return (
     <SettingsCard>
-      <div className="flex flex-col gap-4 px-4 py-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-foreground">
-                {t("settings.billing.autoTasksTitle")}
-              </span>
-              <StatusBadge
-                billingStatus={billingStatus}
-                subscribed={subscribed}
-                t={t}
-              />
+      <div className="flex flex-col gap-5 px-5 py-5">
+        {/* Provider info and actions */}
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="size-9 shrink-0 rounded-lg bg-muted/60 flex items-center justify-center text-muted-foreground">
+              <CreditCard01 size={16} />
             </div>
-            <p className="text-xs text-muted-foreground">
-              {subscribed
-                ? t("settings.billing.autoTasksDescriptionSubscribed")
-                : t("settings.billing.autoTasksDescriptionTrial")}
-            </p>
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-foreground">
+                  {t("settings.billing.autoTasksTitle")}
+                </span>
+                <StatusBadge
+                  billingStatus={billingStatus}
+                  subscribed={subscribed}
+                  t={t}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {subscribed
+                  ? t("settings.billing.autoTasksDescriptionSubscribed")
+                  : t("settings.billing.autoTasksDescriptionTrial")}
+              </p>
+            </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {hasBillingAccount && (
@@ -171,18 +177,20 @@ function AutoTasksCard() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-1.5">
+        {/* Usage */}
+        <div className="flex flex-col gap-2.5 pt-4 border-t border-border/60">
           <div className="flex items-baseline justify-between gap-2">
             <span
               className={cn(
-                "text-sm font-medium",
+                "text-2xl font-semibold tabular-nums tracking-tight",
                 nearLimit ? "text-warning" : "text-foreground",
               )}
             >
-              {t("settings.billing.usageLabel", {
-                used: String(used),
-                limit: String(limit),
-              })}
+              {used}
+              <span className="text-sm font-normal text-muted-foreground">
+                {" "}
+                / {limit}
+              </span>
             </span>
             {subscribed && data.currentPeriodEnd && (
               <span className="text-xs text-muted-foreground">
@@ -192,10 +200,13 @@ function AutoTasksCard() {
               </span>
             )}
           </div>
+          <p className="text-xs text-muted-foreground">
+            {t("settings.billing.runsUsedLabel")}
+          </p>
           <Progress value={usedPct} className="h-1.5" />
         </div>
 
-        <p className="text-xs text-muted-foreground/80">
+        <p className="text-xs text-muted-foreground/80 pt-4 border-t border-border/60">
           {t("settings.billing.cancelHint")}
         </p>
       </div>

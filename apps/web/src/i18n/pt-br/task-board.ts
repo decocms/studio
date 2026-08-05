@@ -182,12 +182,8 @@ export const taskBoard = {
   "taskBoard.taskFilters.priorityLabel": "Prioridade",
   "taskBoard.subscriptionPaywall.trialTitle":
     "Assine para continuar com o auto-fix",
-  "taskBoard.subscriptionPaywall.trialBenefitRuns":
-    "10 execuções de auto tasks por ciclo de cobrança",
-  "taskBoard.subscriptionPaywall.trialBenefitBacklog":
-    "O agente continua limpando seu backlog enquanto você revisa os PRs",
-  "taskBoard.subscriptionPaywall.trialBenefitReruns":
-    "Re-execuções na mesma task continuam grátis, até 5 cada",
+  "taskBoard.subscriptionPaywall.trialBenefitMonitoring":
+    "Monitoramento contínuo do seu site, detectando novos problemas automaticamente",
   "taskBoard.subscriptionPaywall.trialPrice": "R$ 250",
   "taskBoard.subscriptionPaywall.trialPricePeriod": "/mês",
   "taskBoard.subscriptionPaywall.previewAlt": "Prévia do seu quadro de tarefas",

@@ -30,9 +30,7 @@ import type { SubscriptionErrorKind } from "@/components/task-board/is-subscript
 import { KANBAN_PREVIEW_SRC } from "./backlog-paywall";
 
 const BENEFIT_KEYS = [
-  "taskBoard.subscriptionPaywall.trialBenefitRuns",
-  "taskBoard.subscriptionPaywall.trialBenefitBacklog",
-  "taskBoard.subscriptionPaywall.trialBenefitReruns",
+  "taskBoard.subscriptionPaywall.trialBenefitMonitoring",
 ] as const;
 
 export function SubscriptionPaywallDialog({

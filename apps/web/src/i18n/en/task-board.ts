@@ -174,12 +174,8 @@ export const taskBoard = {
   "taskBoard.taskFilters.priorityAnyPriority": "Any priority",
   "taskBoard.taskFilters.priorityLabel": "Priority",
   "taskBoard.subscriptionPaywall.trialTitle": "Subscribe to keep auto-fixing",
-  "taskBoard.subscriptionPaywall.trialBenefitRuns":
-    "10 auto-task runs every billing cycle",
-  "taskBoard.subscriptionPaywall.trialBenefitBacklog":
-    "The agent keeps clearing your backlog while you review the PRs",
-  "taskBoard.subscriptionPaywall.trialBenefitReruns":
-    "Re-runs on the same task stay free, up to 5 each",
+  "taskBoard.subscriptionPaywall.trialBenefitMonitoring":
+    "Continuous monitoring of your site, catching new issues automatically",
   "taskBoard.subscriptionPaywall.trialPrice": "$50",
   "taskBoard.subscriptionPaywall.trialPricePeriod": "/month",
   "taskBoard.subscriptionPaywall.previewAlt": "Preview of your task board",
