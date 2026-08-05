@@ -10,10 +10,10 @@ describe("resolveAppNavigateTarget", () => {
   test("navigates to an allowlisted tab", () => {
     expect(
       resolveAppNavigateTarget(navigateBlock("studio://navigate?main=board")),
-    ).toEqual({ isNavigate: true, tab: "board", connectGithub: false });
+    ).toEqual({ isNavigate: true, tab: "board" });
     expect(
       resolveAppNavigateTarget(navigateBlock("studio://navigate?main=files")),
-    ).toEqual({ isNavigate: true, tab: "files", connectGithub: false });
+    ).toEqual({ isNavigate: true, tab: "files" });
   });
 
   test("drops the request instead of navigating when the tab isn't allowlisted", () => {
@@ -22,35 +22,19 @@ describe("resolveAppNavigateTarget", () => {
       resolveAppNavigateTarget(
         navigateBlock("studio://navigate?main=settings"),
       ),
-    ).toEqual({ isNavigate: true, tab: null, connectGithub: false });
+    ).toEqual({ isNavigate: true, tab: null });
   });
 
   test("drops the request when the URI is malformed", () => {
     expect(
       resolveAppNavigateTarget(navigateBlock("studio://navigate??main")),
-    ).toEqual({ isNavigate: true, tab: null, connectGithub: false });
+    ).toEqual({ isNavigate: true, tab: null });
   });
 
   test("drops the request when main is missing", () => {
     expect(
       resolveAppNavigateTarget(navigateBlock("studio://navigate")),
-    ).toEqual({ isNavigate: true, tab: null, connectGithub: false });
-  });
-
-  test("recognizes an exact connectGithub=1 flag", () => {
-    expect(
-      resolveAppNavigateTarget(
-        navigateBlock("studio://navigate?connectGithub=1"),
-      ),
-    ).toEqual({ isNavigate: true, tab: null, connectGithub: true });
-  });
-
-  test("ignores a non-1 connectGithub value", () => {
-    expect(
-      resolveAppNavigateTarget(
-        navigateBlock("studio://navigate?connectGithub=true"),
-      ),
-    ).toEqual({ isNavigate: true, tab: null, connectGithub: false });
+    ).toEqual({ isNavigate: true, tab: null });
   });
 
   test("is not a navigate message for a different scheme", () => {

@@ -196,20 +196,11 @@ export function usePanelActions() {
       main: tabId,
     }));
 
-  // Mirrors `?connect=1` (commerce onboarding) — read by OrgShellLayout to
-  // mount the task board's own "connect GitHub" dialog outside the board.
-  const openConnectGithub = () =>
-    navWith(currentTaskId || crypto.randomUUID(), (prev) => ({
-      ...prev,
-      connectGithub: "1",
-    }));
-
   return {
     openSidePanel,
     setTaskId,
     createNewTask,
     openTab,
-    openConnectGithub,
   };
 }
 
