@@ -96,6 +96,44 @@ describe("ndjsonLines", () => {
     expect(thrown).toBeInstanceOf(Error);
     expect((thrown as Error).message).toMatch(/non-JSON line/);
   });
+
+  test("a socket closed mid-stream is unreachable, so the run continues", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"chunks":[]}\n'));
+      },
+      pull(controller) {
+        controller.error(
+          new Error("The socket connection was closed unexpectedly."),
+        );
+      },
+    });
+    const seen: unknown[] = [];
+    let thrown: unknown;
+    try {
+      for await (const line of ndjsonLines(body)) seen.push(line);
+    } catch (err) {
+      thrown = err;
+    }
+    expect(seen).toEqual([{ chunks: [] }]);
+    expect(thrown).toBeInstanceOf(SandboxUnreachableError);
+  });
+
+  test("a non-transport read failure stays terminal", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.error(new Error("unauthorized"));
+      },
+    });
+    let thrown: unknown;
+    try {
+      for await (const _ of ndjsonLines(body)) void _;
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(Error);
+    expect(thrown).not.toBeInstanceOf(SandboxUnreachableError);
+  });
 });
 
 describe("isUnreachableStatus", () => {
