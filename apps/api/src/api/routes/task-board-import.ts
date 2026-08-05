@@ -274,6 +274,7 @@ export const createTaskBoardImportRoutes = () => {
         quotaBlocked++;
         await new TaskBoardStorage(ctx.db)
           .update(row.id, organizationId, { assigneeId: null }, "system")
+          .then((updated) => emitTaskBoardUpdated(organizationId, updated))
           .catch((undoErr: unknown) => {
             console.error("[task-board-import] un-delegate failed", undoErr);
           });
