@@ -22,7 +22,7 @@ import { CollapsibleHighlight } from "./collapsible-highlight";
 import { CreditsExhaustedBanner } from "../credits-exhausted-banner";
 import { SubscriptionLimitHighlight } from "./subscription-limit";
 import { useHighlightFlags } from "./use-highlight-count";
-import { useStudioTools } from "@/lib/studio-tools";
+import { useOpenBillingUrl } from "@/hooks/use-open-billing-url";
 import { parseErrorMessage } from "./parse-error-message";
 import type { UserAskToolPart } from "../types";
 
@@ -177,23 +177,11 @@ export function ChatHighlight() {
   const [preferences, setPreferences] = usePreferences();
   const { virtualMcpId, createTaskWithMessage } = useChatTask();
   const { chatMode, simpleModeTier } = useChatPrefs();
-  const studio = useStudioTools();
-
-  const handleSubscribe = async () => {
-    try {
-      const { url } = await studio.call(
-        "ORGANIZATION_BILLING_CHECKOUT_START",
-        {},
-      );
-      window.open(url, "_blank", "noopener,noreferrer");
-    } catch (err) {
-      toast.error(
-        t("taskBoard.subscriptionPaywall.checkoutError", {
-          message: err instanceof Error ? err.message : String(err),
-        }),
-      );
-    }
-  };
+  const { mutate: subscribe } = useOpenBillingUrl(
+    "ORGANIZATION_BILLING_CHECKOUT_START",
+    "taskBoard.subscriptionPaywall.checkoutError",
+  );
+  const handleSubscribe = () => subscribe();
 
   // Build a fresh RequestOptions at call time so tier/mode reflect the
   // user's current selection. `toolApprovalLevel` is passed in explicitly:
