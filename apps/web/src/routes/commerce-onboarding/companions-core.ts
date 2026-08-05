@@ -78,12 +78,11 @@ export interface CompanionCardModel {
  *  (e.g. "google-analytics"), from the commerce-discovery status endpoint. */
 export type SaBindings = Record<string, { resource: string | null }>;
 
-/** Binding types a merchant MUST connect for the report to be worth anything —
- *  analytics is the baseline data source, everything else only enriches it.
- *  Cards for these render under "Required" and gate the continue button. */
-export const REQUIRED_BINDING_TYPES: ReadonlySet<string> = new Set([
-  "google-analytics",
-]);
+/** Binding types a merchant MUST connect before continuing. Currently empty —
+ *  no source is mandatory; the continue gate falls back to "any source ready"
+ *  (see companion-mcps-section). Add a binding type here to make it required
+ *  again. */
+export const REQUIRED_BINDING_TYPES: ReadonlySet<string> = new Set([]);
 
 /**
  * Whether a linked binding actually has what it needs to produce data. A

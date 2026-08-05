@@ -275,9 +275,9 @@ describe("isCompanionConfigured", () => {
 });
 
 describe("REQUIRED_BINDING_TYPES", () => {
-  it("marks analytics as the required source and others as optional", () => {
-    expect(REQUIRED_BINDING_TYPES.has("google-analytics")).toBe(true);
-    expect(REQUIRED_BINDING_TYPES.has("vtex")).toBe(false);
+  it("requires no source — analytics is optional like the rest", () => {
+    expect(REQUIRED_BINDING_TYPES.has("google-analytics")).toBe(false);
+    expect(REQUIRED_BINDING_TYPES.size).toBe(0);
   });
 });
 
