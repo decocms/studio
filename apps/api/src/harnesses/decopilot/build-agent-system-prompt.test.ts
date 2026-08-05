@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { buildAgentSystemPrompt } from "./build-agent-system-prompt";
+import { OrgFsNotFoundError } from "@/file-storage/org-fs";
 
 const baseOpts = {
   ctx: {} as never,
@@ -212,7 +213,7 @@ describe("buildAgentSystemPrompt", () => {
       writes,
       read: async (volume: string, path: string) => {
         if (volume !== "home" || !(path in files)) {
-          throw new Error("not a live file");
+          throw new OrgFsNotFoundError(`No such file: ${path}`);
         }
         return new TextEncoder().encode(files[path]);
       },
@@ -316,8 +317,24 @@ describe("buildAgentSystemPrompt", () => {
       organization: { id: "org_test", slug: "acme" } as never,
       user: { id: "u1" },
     });
-    // stat still reports the org file as present → no clobbering write for it.
+    // Not a definitive not-found → no clobbering write for it.
     expect(fs.writes.map((w) => w.path)).not.toContain("MEMORY.md");
+  });
+
+  test("re-seeds when the manifest row exists but its object is gone", async () => {
+    const fs = fakeOrgFs({ "MEMORY.md": "Real memory." });
+    // Manifest/bucket drift: stat finds the row, read 404s on the bytes.
+    fs.read = async () => {
+      throw new OrgFsNotFoundError("No such file: MEMORY.md");
+    };
+    await buildAgentSystemPrompt({
+      ...baseOpts,
+      kind: "agent",
+      ctx: { orgFs: fs } as never,
+      organization: { id: "org_test", slug: "acme" } as never,
+      user: { id: "u1" },
+    });
+    expect(fs.writes.map((w) => w.path)).toContain("MEMORY.md");
   });
 
   test("kind: 'subagent' omits prompts block when passthroughClient is not provided", async () => {
