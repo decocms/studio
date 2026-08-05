@@ -48,7 +48,7 @@ export const taskBoard = {
   "taskBoard.taskBoard.tasksTitle": "Tarefas",
   "taskBoard.taskBoard.laneMenuAriaLabel": "Mais ações para {lane}",
   "taskBoard.taskBoard.selectAllInLane": "Selecionar todos",
-  "taskBoard.taskBoard.selectedCount": "{count} selecionados",
+  "taskBoard.taskBoard.selectedCount": "{count} selecionado(s)",
   "taskBoard.taskBoard.clearSelectionButton": "Limpar",
   "taskBoard.taskBoard.actionsButton": "Ações",
   "taskBoard.taskBoard.moveToButton": "Mover para",
