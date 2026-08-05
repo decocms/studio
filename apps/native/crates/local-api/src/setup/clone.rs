@@ -61,34 +61,6 @@ use crate::tasks::{
     now_ms, KillSignal, OutputStream, ProcessController, TaskEntry, TaskStatus, TaskSummary,
 };
 
-/// `http.connectTimeout=10 -c http.lowSpeedLimit=1 -c http.lowSpeedTime=10`:
-/// the only hang protection a network clone/fetch in this file has — nothing
-/// here wraps `git` in an outer Rust-level timeout (unlike `routes/git.rs`,
-/// which does), so without these a clone against an unreachable or
-/// half-dead host would sit forever with no way out except the user
-/// noticing and cancelling the task by hand. `connectTimeout` bounds the TCP
-/// handshake; `lowSpeedLimit`/`lowSpeedTime` abort a connection that's open
-/// but stalled (under 1 byte/s for 10s).
-///
-/// Deliberately does NOT set `credential.helper`: the user is on their OWN
-/// machine with their OWN git auth, so cloning uses exactly what `git clone`
-/// would do run by hand — the user's configured credential helper (macOS
-/// Keychain, or `gh` after `gh auth setup-git`). Clearing it would silently
-/// break every private repo a user can otherwise already clone from a
-/// terminal with the same URL. `GIT_TERMINAL_PROMPT=0` (below, in
-/// [`run_git`]) still applies regardless, so a repo the user's credentials
-/// genuinely can't reach fails fast rather than hanging on a prompt.
-fn base_argv() -> Vec<&'static str> {
-    vec![
-        "-c",
-        "http.connectTimeout=10",
-        "-c",
-        "http.lowSpeedLimit=1",
-        "-c",
-        "http.lowSpeedTime=10",
-    ]
-}
-
 /// Appends `text` to the `"setup"` transcript — this task's own per-task
 /// file (`TaskRegistry::append_log`) when `task_id` is `Some` (the git
 /// subcommand belongs to a registered, observable step), OR just the
@@ -139,9 +111,6 @@ async fn run_git(
     cwd: Option<&Path>,
     controller: Option<&ProcessController>,
 ) -> Result<(i32, String), String> {
-    let mut full = base_argv();
-    full.extend_from_slice(args);
-
     if let Some(signal) = controller.and_then(ProcessController::requested) {
         return Ok((signal.exit_code(), "cancelled before spawn".to_string()));
     }
@@ -150,21 +119,18 @@ async fn run_git(
         orch,
         task_id,
         OutputStream::Stdout,
-        &format!("$ git {}\r\n", full.join(" ")),
+        &format!("$ git {}\r\n", args.join(" ")),
     )
     .await;
 
     let mut cmd = tokio::process::Command::new("git");
-    cmd.args(&full)
+    cmd.args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_ASKPASS", "true")
-        // Every matcher in this file — `ref_format_unsupported`,
-        // `refetch_after_case_collision`, clone_fresh_body's
-        // "already used by worktree" family — reads git's ENGLISH message
-        // text, and git localizes all of them. Pin the child's locale so a
-        // translated system can't blind the detectors into skipping a
-        // fallback (fresh clones hard-failing on a pre-reftable localized
-        // git) or a migration.
+        // `worktree_branch_collision`'s "already used by worktree" family
+        // reads git's ENGLISH message text, and git localizes it. Pin the
+        // child's locale so a translated system can't blind the detector
+        // into skipping the fallback.
         .env("LC_ALL", "C")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
@@ -175,7 +141,7 @@ async fn run_git(
     }
     let mut child = ProcessGroupChild::spawn(&mut cmd, orch.tasks.child_lifetime_lock_path())
         .await
-        .map_err(|e| format!("git {}: {e}", full.join(" ")))?;
+        .map_err(|e| format!("git {}: {e}", args.join(" ")))?;
 
     let (Some(mut stdout_pipe), Some(mut stderr_pipe)) = (child.take_stdout(), child.take_stderr())
     else {
@@ -185,7 +151,7 @@ async fn run_git(
         let status = child
             .wait()
             .await
-            .map_err(|e| format!("git {}: {e}", full.join(" ")))?;
+            .map_err(|e| format!("git {}: {e}", args.join(" ")))?;
         return Ok((exit_status_to_code(status), String::new()));
     };
 

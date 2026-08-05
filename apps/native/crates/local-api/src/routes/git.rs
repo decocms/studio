@@ -1471,8 +1471,7 @@ async fn is_protected_branch(repo_dir: &Path, branch: &str) -> bool {
 /// it; the desktop has no such token — its clone URLs come straight from the
 /// agent's `metadata.githubRepo.url` — so clearing the helper left the push
 /// with NO credential source at all and every private-repo publish failed,
-/// including the shutdown publish that exists to save unsynced work. Same
-/// reasoning, and same conclusion, as `setup/clone.rs::base_argv`.
+/// including the shutdown publish that exists to save unsynced work.
 ///
 /// `GIT_TERMINAL_PROMPT=0` + `GIT_ASKPASS=true` still stand: the helper is
 /// consulted first, and a repo the user genuinely cannot reach fails fast
