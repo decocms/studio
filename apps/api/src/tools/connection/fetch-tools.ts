@@ -71,6 +71,27 @@ export async function fetchToolsFromMCP(
  * HTTP and SSE transports. `connection_headers` is typed as a union with
  * STDIO params, so narrow it with `isStdioParameters` instead of casting.
  */
+/**
+ * Races `promise` against a timeout, clearing the timer either way so a
+ * resolved/rejected call doesn't leave a dangling timeout running for the
+ * full duration (these fetches happen per-connection on create/update).
+ */
+async function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  message: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    clearTimeout(timer!);
+  }
+}
+
 export function buildConnectionRequestHeaders(
   connection: ConnectionForToolFetch,
 ): Record<string, string> {
@@ -96,13 +117,11 @@ export function buildConnectionRequestHeaders(
  */
 async function fetchScopesFromMCP(client: Client): Promise<string[] | null> {
   try {
-    const configTimeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("MCP_CONFIGURATION timeout")), 5_000),
-    );
-    const configResult = await Promise.race([
+    const configResult = await withTimeout(
       client.callTool({ name: "MCP_CONFIGURATION", arguments: {} }),
-      configTimeout,
-    ]);
+      5_000,
+      "MCP_CONFIGURATION timeout",
+    );
     if (!configResult.isError && Array.isArray(configResult.content)) {
       const textContent = configResult.content.find(
         (c: { type: string }) => c.type === "text",
@@ -158,13 +177,12 @@ async function fetchToolsFromHttpMCP(
       { jsonSchemaValidator: sharedJsonSchemaValidator },
     );
 
-    // Add timeout to prevent hanging connections
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error("Connection timeout")), 10_000);
-    });
-
-    await Promise.race([client.connect(transport), timeoutPromise]);
-    const result = await Promise.race([client.listTools(), timeoutPromise]);
+    await withTimeout(client.connect(transport), 10_000, "Connection timeout");
+    const result = await withTimeout(
+      client.listTools(),
+      10_000,
+      "Connection timeout",
+    );
 
     const tools =
       result.tools && result.tools.length > 0
@@ -233,12 +251,16 @@ async function fetchToolsFromSSEMCP(
       { jsonSchemaValidator: sharedJsonSchemaValidator },
     );
 
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error("SSE connection timeout")), 15_000);
-    });
-
-    await Promise.race([client.connect(transport), timeoutPromise]);
-    const result = await Promise.race([client.listTools(), timeoutPromise]);
+    await withTimeout(
+      client.connect(transport),
+      15_000,
+      "SSE connection timeout",
+    );
+    const result = await withTimeout(
+      client.listTools(),
+      15_000,
+      "SSE connection timeout",
+    );
 
     const tools =
       result.tools && result.tools.length > 0
@@ -316,13 +338,12 @@ async function fetchToolsFromStdioMCP(
       { jsonSchemaValidator: sharedJsonSchemaValidator },
     );
 
-    // Add timeout to prevent hanging
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error("Tool fetch timeout")), 10_000);
-    });
-
-    await Promise.race([client.connect(transport), timeoutPromise]);
-    const result = await Promise.race([client.listTools(), timeoutPromise]);
+    await withTimeout(client.connect(transport), 10_000, "Tool fetch timeout");
+    const result = await withTimeout(
+      client.listTools(),
+      10_000,
+      "Tool fetch timeout",
+    );
 
     const tools =
       result.tools && result.tools.length > 0
