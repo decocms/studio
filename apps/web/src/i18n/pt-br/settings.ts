@@ -7,6 +7,7 @@ export const settings = {
   "settings.nav.brandContext": "Contexto da marca",
   "settings.nav.aiProviders": "Provedores de IA",
   "settings.nav.secrets": "Segredos",
+  "settings.nav.billing": "Cobrança",
   "settings.nav.buckets": "Buckets",
   "settings.nav.build": "Criação",
   "settings.nav.connections": "Conexões",
@@ -691,4 +692,27 @@ export const settings = {
     "Traga seu pr\u00f3prio servidor de modelos (avan\u00e7ado)",
   "settings.aiProviders.moreProvidersSingular": "{count} provedor adicional",
   "settings.aiProviders.moreProvidersPlural": "{count} provedores adicionais",
+  "settings.billing.title": "Cobrança",
+  "settings.billing.description":
+    "Gerencie a assinatura de auto tasks da organização.",
+  "settings.billing.autoTasksTitle": "Auto tasks",
+  "settings.billing.unlimitedDescription":
+    "As execuções de auto tasks são ilimitadas neste deployment. Tasks criadas por você também nunca têm limite.",
+  "settings.billing.autoTasksDescriptionTrial":
+    "3 execuções grátis vitalícias, depois R$ 250/mês para 10 execuções por ciclo de cobrança. Tasks criadas por você nunca têm limite.",
+  "settings.billing.autoTasksDescriptionSubscribed":
+    "10 execuções de auto tasks por ciclo de cobrança. Tasks criadas por você nunca têm limite.",
+  "settings.billing.statusTrial": "Teste grátis",
+  "settings.billing.statusActive": "Ativa",
+  "settings.billing.statusPastDue": "Problema no pagamento",
+  "settings.billing.usageLabel": "{used} de {limit} execuções usadas",
+  "settings.billing.renewsOn": "Renova em {date}",
+  "settings.billing.cancelHint":
+    "Gerenciar cobrança abre o portal da Stripe — atualize seu cartão, veja faturas ou cancele quando quiser.",
+  "settings.billing.subscribeButton": "Assinar",
+  "settings.billing.manageButton": "Gerenciar cobrança",
+  "settings.billing.checkoutError":
+    "Não foi possível iniciar o checkout: {message}",
+  "settings.billing.portalError":
+    "Não foi possível abrir o portal de cobrança: {message}",
 } satisfies Record<keyof typeof settingsEn, string>;

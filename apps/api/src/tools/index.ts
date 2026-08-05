@@ -85,6 +85,7 @@ export const CORE_TOOLS = [
   OrganizationTools.ORGANIZATION_MEMBER_UPDATE_ROLE,
   OrganizationTools.ORGANIZATION_BILLING_CHECKOUT_START,
   OrganizationTools.ORGANIZATION_BILLING_PORTAL,
+  OrganizationTools.ORGANIZATION_TASK_QUOTA_GET,
 
   // Connection collection tools
   ConnectionTools.COLLECTION_CONNECTIONS_CREATE,

@@ -17,10 +17,17 @@ import { deriveCurrentTodos } from "./derive-current-todos";
 import { extractPendingApprovals } from "./extract-pending-approvals";
 import { extractPendingPlans } from "./extract-pending-plans";
 import { isCreditError } from "../is-credit-error";
+import { subscriptionErrorKind } from "@/components/task-board/is-subscription-error";
 import { useChatStream } from "../context";
 
 export interface HighlightFlags {
   isCreditExhausted: boolean;
+  /** Non-null when the run errored on the org's auto-task quota — e.g. a
+   *  reviewer thread bouncing the task back to the Super Agent hit the
+   *  org/task's execution limit. Renders inline, not as a sales paywall (this
+   *  is an automated review flow, not a user-initiated purchase moment) —
+   *  see `SubscriptionLimitHighlight`. */
+  subscriptionErrorKind: ReturnType<typeof subscriptionErrorKind>;
   hasTodos: boolean;
   showError: boolean;
   showWarning: boolean;
@@ -42,6 +49,7 @@ export interface DeriveHighlightFlagsInput {
 
 const EMPTY_FLAGS: HighlightFlags = {
   isCreditExhausted: false,
+  subscriptionErrorKind: null,
   hasTodos: false,
   showError: false,
   showWarning: false,
@@ -89,7 +97,11 @@ export function deriveHighlightFlags(
 
   const todos = deriveCurrentTodos(messages);
 
-  const showError = !isStreaming && !!error;
+  // A subscription-quota error renders as its own inline card (with tailored
+  // copy, no CTA — see SubscriptionLimitHighlight), not the generic raw-message
+  // error card.
+  const subKind = !isStreaming ? subscriptionErrorKind(error) : null;
+  const showError = !isStreaming && !!error && !subKind;
   const hasApprovals =
     pendingApprovals.length > 0 || (isStreaming && isWaitingForApprovals);
   const hasPlans = pendingPlans.length > 0;
@@ -110,6 +122,7 @@ export function deriveHighlightFlags(
 
   return {
     isCreditExhausted: false,
+    subscriptionErrorKind: subKind,
     hasTodos: todos.length > 0,
     showError,
     showWarning,
@@ -151,6 +164,7 @@ export function useHighlightCount(): number {
   return (
     Number(flags.hasTodos) +
     Number(flags.showError) +
+    Number(!!flags.subscriptionErrorKind) +
     Number(flags.showWarning) +
     Number(flags.hasApprovals) +
     Number(flags.hasPlans) +

@@ -104,6 +104,9 @@ import {
 import { useTags } from "@/hooks/use-tags";
 import { TaskBoardItemDialog, toEndOfDayIso } from "./task-dialog";
 import { AssigneePickerContent } from "./assignee-picker";
+import { SubscriptionPaywallDialog } from "./subscription-paywall-dialog";
+import { subscriptionErrorKind } from "@/components/task-board/is-subscription-error";
+import { isReportsTask } from "@decocms/shared/task-board";
 import { useFlipLanes } from "./use-flip-lanes";
 import { Calendar as DayPickerCalendar } from "@deco/ui/components/calendar.tsx";
 import { buildTaskChatContext } from "./build-task-chat-context";
@@ -333,6 +336,16 @@ export function TaskBoardPage() {
       return true;
     }
     return false;
+  };
+  // Set when delegating to the Super Agent (dialog submit or the lane/card
+  // assignee picker) is rejected with a `[SUBSCRIPTION_REQUIRED]` error — see
+  // `subscriptionErrorKind`'s 3 cases. Both delegation paths funnel through
+  // `actions.update`, so a single per-call `onError` here covers both.
+  const [subscriptionPaywall, setSubscriptionPaywall] =
+    useState<ReturnType<typeof subscriptionErrorKind>>(null);
+  const onDelegateError = (err: Error) => {
+    const kind = subscriptionErrorKind(err);
+    if (kind) setSubscriptionPaywall(kind);
   };
   const { data: membersData } = useMembers();
   const members = (membersData?.data?.members ?? []) as Member[];
@@ -608,17 +621,23 @@ export function TaskBoardPage() {
             // unassign since TASK_BOARD_ITEM_UPDATE treats undefined as
             // unchanged. `assigneeId` is nullable in the update schema, so
             // pass `userId` through as-is.
-            actions.update.mutate({ id, assigneeId: userId });
+            actions.update.mutate(
+              { id, assigneeId: userId },
+              { onError: onDelegateError },
+            );
           }}
           onAutoFix={
             reportsOnly
               ? (item) => {
                   if (blockSuperAgentWithoutGithub(SUPER_AGENT_ASSIGNEE_ID))
                     return;
-                  actions.update.mutate({
-                    id: item.id,
-                    assigneeId: SUPER_AGENT_ASSIGNEE_ID,
-                  });
+                  actions.update.mutate(
+                    {
+                      id: item.id,
+                      assigneeId: SUPER_AGENT_ASSIGNEE_ID,
+                    },
+                    { onError: onDelegateError },
+                  );
                 }
               : undefined
           }
@@ -664,7 +683,20 @@ export function TaskBoardPage() {
             return;
           }
           if (activeItem) {
-            actions.update.mutate({ id: activeItem.id, ...input });
+            // Reports-generated tasks reject a write touching title/
+            // description/priority (their content is owned by the reports
+            // sync) — the dialog locks those fields, but still round-trips
+            // their unchanged values here, so drop them instead of sending a
+            // payload the server would 500 on. Board interactions
+            // (status/assignee/dueDate/tagIds) always go through.
+            const { title, description, priority, ...boardFields } = input;
+            const contentFields = isReportsTask(activeItem)
+              ? {}
+              : { title, description, priority };
+            actions.update.mutate(
+              { id: activeItem.id, ...boardFields, ...contentFields },
+              { onError: onDelegateError },
+            );
           } else {
             actions.create.mutate(input);
           }
@@ -701,6 +733,11 @@ export function TaskBoardPage() {
         onOpenChange={setRepoPickerOpen}
       />
 
+      <SubscriptionPaywallDialog
+        kind={subscriptionPaywall}
+        onOpenChange={(open) => !open && setSubscriptionPaywall(null)}
+      />
+
       {selectedIds.size > 0 && (
         <SelectionBar
           count={selectedIds.size}
@@ -727,7 +764,10 @@ export function TaskBoardPage() {
           onAssign={(userId) => {
             if (blockSuperAgentWithoutGithub(userId)) return;
             for (const id of selectedIds)
-              actions.update.mutate({ id, assigneeId: userId });
+              actions.update.mutate(
+                { id, assigneeId: userId },
+                { onError: onDelegateError },
+              );
             clearSelection();
           }}
           onSetDueDate={(date) => {
@@ -750,10 +790,10 @@ export function TaskBoardPage() {
                   if (blockSuperAgentWithoutGithub(SUPER_AGENT_ASSIGNEE_ID))
                     return;
                   for (const id of selectedIds)
-                    actions.update.mutate({
-                      id,
-                      assigneeId: SUPER_AGENT_ASSIGNEE_ID,
-                    });
+                    actions.update.mutate(
+                      { id, assigneeId: SUPER_AGENT_ASSIGNEE_ID },
+                      { onError: onDelegateError },
+                    );
                   clearSelection();
                 }
               : undefined

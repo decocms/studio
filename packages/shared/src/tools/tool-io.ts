@@ -1030,6 +1030,18 @@ export interface StudioToolIO {
     input: { [x: string]: never };
     output: { url: string };
   };
+  ORGANIZATION_TASK_QUOTA_GET: {
+    input: { [x: string]: never };
+    output: {
+      enforced: boolean;
+      billingStatus: string;
+      subscribed: boolean;
+      hasBillingAccount: boolean;
+      used: number;
+      limit: number;
+      currentPeriodEnd: string | null;
+    };
+  };
   COLLECTION_CONNECTIONS_CREATE: {
     input: {
       data: {

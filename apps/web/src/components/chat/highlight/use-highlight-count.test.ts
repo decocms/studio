@@ -7,6 +7,7 @@ import {
 
 const noFlags: HighlightFlags = {
   isCreditExhausted: false,
+  subscriptionErrorKind: null,
   hasTodos: false,
   showError: false,
   showWarning: false,
@@ -57,6 +58,18 @@ describe("deriveHighlightFlags", () => {
         error: err,
       }),
     ).toEqual({ ...noFlags, isCreditExhausted: true });
+  });
+
+  test("subscription-quota error → subscriptionErrorKind set, showError suppressed", () => {
+    const err = new Error(
+      "[SUBSCRIPTION_REQUIRED] this task reached its execution limit — create a new task to keep going",
+    );
+    expect(
+      deriveHighlightFlags({
+        ...baseInput,
+        error: err,
+      }),
+    ).toEqual({ ...noFlags, subscriptionErrorKind: "runs_exhausted" });
   });
 
   test("finishReason 'length' (not streaming, no error) → showWarning true", () => {

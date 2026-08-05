@@ -80,10 +80,14 @@ export function MarkdownEditor({
   defaultValue,
   onChange,
   placeholder,
+  editable = true,
 }: {
   defaultValue: string;
   onChange: (markdown: string) => void;
   placeholder?: string;
+  /** Read at creation time only — remount (via `key`) to change it, same as
+   *  `defaultValue`. */
+  editable?: boolean;
 }) {
   const t = useT();
   const { uploadFile, pending } = useEditorFileUpload();
@@ -123,6 +127,7 @@ export function MarkdownEditor({
     extensions: markdownEditorExtensions(placeholder),
     content: defaultValue,
     contentType: "markdown",
+    editable,
     editorProps: {
       attributes: {
         class: cn(CONTENT_CLASS, PLACEHOLDER_CLASS),
@@ -160,18 +165,21 @@ export function MarkdownEditor({
       <BubbleToolbar editor={editor} />
       <EditorContent editor={editor} className="text-[15px] text-foreground" />
       {/* Sits clear of the description body so it reads as a control on the
-          editor, not as the last line of the text. */}
+          editor, not as the last line of the text. Hidden when read-only —
+          nothing here would do anything. */}
       <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          // Icon-only, so the label has to live on the control itself.
-          aria-label={t("markdownEditor.attachFile")}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <Attachment01 size={14} />
-        </Button>
+        {editable && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            // Icon-only, so the label has to live on the control itself.
+            aria-label={t("markdownEditor.attachFile")}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Attachment01 size={14} />
+          </Button>
+        )}
         {pending > 0 && (
           <span
             className="inline-flex items-center gap-1.5"

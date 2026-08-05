@@ -37,6 +37,7 @@ import {
   Building02,
   ZapSquare,
   CpuChip01,
+  CreditCard01,
   Loading01,
   Lock01,
   LogOut01,
@@ -122,6 +123,16 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           icon: <CpuChip01 size={14} />,
           to: "/$org/settings/ai-providers",
           requires: "ai-providers:manage",
+        },
+        {
+          key: "billing",
+          label: t("settings.nav.billing"),
+          icon: <CreditCard01 size={14} />,
+          to: "/$org/settings/billing",
+          // Same tools + gate as the members page's seat billing (both are
+          // the one org subscription, see registry-metadata.ts's
+          // `members:manage` group).
+          requires: "members:manage",
         },
         {
           key: "secrets",

@@ -1,0 +1,153 @@
+/**
+ * Shown when delegating a task to the Super Agent (task dialog submit, or the
+ * lane/card assignee picker) is rejected with a `[SUBSCRIPTION_REQUIRED]`
+ * error — see `is-subscription-error.ts` for the 3 cases this distinguishes.
+ * Billing itself is never built here: `ORGANIZATION_BILLING_CHECKOUT_START`
+ * returns Stripe's hosted checkout URL, opened in a new tab like every other
+ * checkout in the app (`deco-credits-hero.tsx`).
+ *
+ * `trial_exhausted` is the only case with something to sell — it gets the
+ * richer benefits/price layout (same shell as `backlog-paywall.tsx`'s modal,
+ * per the "only one visual paywall pattern on the board" rule). The other two
+ * are purely informational (quota renews on its own / make a new task), so
+ * they stay a plain title + description.
+ */
+import { useMutation } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { CheckCircle, Loading01 } from "@untitledui/icons";
+import { Button } from "@deco/ui/components/button.tsx";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@deco/ui/components/dialog.tsx";
+import { useStudioTools } from "@/lib/studio-tools";
+import { useT } from "@/i18n/use-t.ts";
+import type { SubscriptionErrorKind } from "@/components/task-board/is-subscription-error";
+import { KANBAN_PREVIEW_SRC } from "./backlog-paywall";
+
+const BENEFIT_KEYS = [
+  "taskBoard.subscriptionPaywall.trialBenefitRuns",
+  "taskBoard.subscriptionPaywall.trialBenefitBacklog",
+  "taskBoard.subscriptionPaywall.trialBenefitReruns",
+] as const;
+
+export function SubscriptionPaywallDialog({
+  kind,
+  onOpenChange,
+}: {
+  kind: SubscriptionErrorKind | null;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const t = useT();
+  const studio = useStudioTools();
+
+  const { mutate: subscribe, isPending } = useMutation({
+    mutationFn: async () => {
+      const { url } = await studio.call(
+        "ORGANIZATION_BILLING_CHECKOUT_START",
+        {},
+      );
+      return url;
+    },
+    onSuccess: (url) => {
+      window.open(url, "_blank", "noopener,noreferrer");
+      onOpenChange(false);
+    },
+    onError: (err) => {
+      toast.error(
+        t("taskBoard.subscriptionPaywall.checkoutError", {
+          message: err.message,
+        }),
+      );
+    },
+  });
+
+  if (kind === "trial_exhausted") {
+    return (
+      <Dialog open onOpenChange={onOpenChange}>
+        <DialogContent
+          className="gap-0 p-3 sm:max-w-[440px]"
+          closeButtonClassName="z-10 rounded-full bg-background/70 p-1 text-foreground backdrop-blur transition-colors hover:bg-background"
+        >
+          {/* Same hero as backlog-paywall.tsx's modal — one board-preview
+              image, not a second asset. */}
+          <div className="overflow-hidden rounded-xl bg-muted">
+            <img
+              src={KANBAN_PREVIEW_SRC}
+              alt={t("taskBoard.subscriptionPaywall.previewAlt")}
+              className="h-[160px] w-full object-cover object-left-top"
+            />
+          </div>
+
+          <div className="flex flex-col gap-6 px-3 pb-3 pt-7">
+            <DialogTitle className="text-xl font-semibold text-foreground">
+              {t("taskBoard.subscriptionPaywall.trialTitle")}
+            </DialogTitle>
+            <ul className="flex flex-col gap-3">
+              {BENEFIT_KEYS.map((key) => (
+                <li key={key} className="flex items-start gap-3 text-sm">
+                  <CheckCircle
+                    size={18}
+                    className="mt-0.5 shrink-0 text-success"
+                    aria-hidden
+                  />
+                  <span className="leading-snug text-foreground">{t(key)}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-2xl font-semibold text-foreground">
+                {t("taskBoard.subscriptionPaywall.trialPrice")}
+              </span>
+              <span className="text-sm text-muted-foreground">
+                {t("taskBoard.subscriptionPaywall.trialPricePeriod")}
+              </span>
+            </div>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => onOpenChange(false)}>
+                {t("taskBoard.subscriptionPaywall.notNowButton")}
+              </Button>
+              <Button disabled={isPending} onClick={() => subscribe()}>
+                {isPending && <Loading01 size={16} className="animate-spin" />}
+                {t("taskBoard.subscriptionPaywall.subscribeButton")}
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  const copy = kind
+    ? {
+        monthly_exhausted: {
+          title: t("taskBoard.subscriptionPaywall.monthlyTitle"),
+          description: t("taskBoard.subscriptionPaywall.monthlyDescription"),
+        },
+        runs_exhausted: {
+          title: t("taskBoard.subscriptionPaywall.runsTitle"),
+          description: t("taskBoard.subscriptionPaywall.runsDescription"),
+        },
+      }[kind]
+    : null;
+
+  return (
+    <Dialog open={!!kind} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[440px]">
+        <DialogHeader>
+          <DialogTitle>{copy?.title}</DialogTitle>
+          <DialogDescription>{copy?.description}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            {t("taskBoard.subscriptionPaywall.dismissButton")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

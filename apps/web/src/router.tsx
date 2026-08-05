@@ -485,6 +485,14 @@ const settingsAiProvidersRoute = createRoute({
   ),
 });
 
+const settingsBillingRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: "/billing",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/billing.tsx"),
+  ),
+});
+
 const settingsSecretsRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/secrets",
@@ -595,6 +603,7 @@ const settingsWithChildren = settingsLayout.addChildren([
   settingsConnectRoute,
   settingsBrandContextRoute,
   settingsAiProvidersRoute,
+  settingsBillingRoute,
   settingsSecretsRoute,
   settingsBucketsRoute,
   settingsMembersRoute,

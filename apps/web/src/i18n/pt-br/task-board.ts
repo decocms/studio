@@ -142,6 +142,8 @@ export const taskBoard = {
   "taskBoard.taskDialog.shipSuccess": "Mesclado e enviado para produção",
   "taskBoard.taskDialog.shipError": "Não foi possível mesclar o pull request",
   "taskBoard.taskDialog.propertiesLabel": "Propriedades",
+  "taskBoard.taskDialog.reportsContentLocked":
+    "Gerado pelo seu relatório — título, descrição e prioridade são gerenciados automaticamente",
   "taskBoard.taskDialog.saveButton": "Salvar",
   "taskBoard.taskDialog.setPriorityButton": "Definir prioridade",
   "taskBoard.taskDialog.someoneLabel": "alguém",
@@ -178,4 +180,26 @@ export const taskBoard = {
   "taskBoard.taskFilters.filterDrawerTitle": "Filtros",
   "taskBoard.taskFilters.priorityAnyPriority": "Qualquer prioridade",
   "taskBoard.taskFilters.priorityLabel": "Prioridade",
+  "taskBoard.subscriptionPaywall.trialTitle":
+    "Assine para continuar com o auto-fix",
+  "taskBoard.subscriptionPaywall.trialBenefitRuns":
+    "10 execuções de auto tasks por ciclo de cobrança",
+  "taskBoard.subscriptionPaywall.trialBenefitBacklog":
+    "O agente continua limpando seu backlog enquanto você revisa os PRs",
+  "taskBoard.subscriptionPaywall.trialBenefitReruns":
+    "Re-execuções na mesma task continuam grátis, até 5 cada",
+  "taskBoard.subscriptionPaywall.trialPrice": "R$ 250",
+  "taskBoard.subscriptionPaywall.trialPricePeriod": "/mês",
+  "taskBoard.subscriptionPaywall.previewAlt": "Prévia do seu quadro de tarefas",
+  "taskBoard.subscriptionPaywall.monthlyTitle": "Cota de auto tasks esgotada",
+  "taskBoard.subscriptionPaywall.monthlyDescription":
+    "Esta organização usou suas execuções de auto tasks deste ciclo de cobrança. Mais execuções ficam disponíveis no início do próximo ciclo.",
+  "taskBoard.subscriptionPaywall.runsTitle": "Esta task atingiu o limite",
+  "taskBoard.subscriptionPaywall.runsDescription":
+    "Esta task já foi re-executada o máximo de vezes permitido. Crie uma nova task para continuar.",
+  "taskBoard.subscriptionPaywall.subscribeButton": "Assinar",
+  "taskBoard.subscriptionPaywall.notNowButton": "Agora não",
+  "taskBoard.subscriptionPaywall.dismissButton": "Fechar",
+  "taskBoard.subscriptionPaywall.checkoutError":
+    "Não foi possível iniciar o checkout: {message}",
 } satisfies Record<keyof typeof taskBoardEn, string>;

@@ -72,6 +72,7 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_MEMBER_UPDATE_ROLE",
   "ORGANIZATION_BILLING_CHECKOUT_START",
   "ORGANIZATION_BILLING_PORTAL",
+  "ORGANIZATION_TASK_QUOTA_GET",
   // Connection tools
   "COLLECTION_CONNECTIONS_CREATE",
   "COLLECTION_CONNECTIONS_LIST",
@@ -406,6 +407,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "ORGANIZATION_BILLING_PORTAL",
     description: "Open the Stripe billing portal",
+    category: "Organizations",
+  },
+  {
+    name: "ORGANIZATION_TASK_QUOTA_GET",
+    description: "Get the org's auto-task quota usage",
     category: "Organizations",
   },
   // Connection tools
@@ -1236,6 +1242,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       // preview are the money half of the same surface.
       "ORGANIZATION_BILLING_CHECKOUT_START",
       "ORGANIZATION_BILLING_PORTAL",
+      "ORGANIZATION_TASK_QUOTA_GET",
       // Approving/denying join requests adds members, and the UI lives on the
       // members page — keep it under members:manage.
       "ORGANIZATION_JOIN_REQUEST_LIST",

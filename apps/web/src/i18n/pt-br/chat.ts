@@ -520,4 +520,14 @@ export const chat = {
   "chat.todoStatus.completed": "concluído",
   "chat.todoStatus.inProgress": "em progresso",
   "chat.todoStatus.pending": "pendente",
+  "chat.subscriptionLimit.trialLabel": "Assinatura necessária",
+  "chat.subscriptionLimit.trialTitle":
+    "Esta organização usou as 3 execuções grátis de auto tasks. Assine para continuar.",
+  "chat.subscriptionLimit.monthlyLabel": "Cota de auto tasks esgotada",
+  "chat.subscriptionLimit.monthlyTitle":
+    "Esta organização usou suas execuções de auto tasks deste ciclo de cobrança. Mais ficam disponíveis no próximo ciclo.",
+  "chat.subscriptionLimit.runsLabel": "Limite da task atingido",
+  "chat.subscriptionLimit.runsTitle":
+    "Esta task atingiu o limite de re-execuções. Crie uma nova task para continuar.",
+  "chat.subscriptionLimit.subscribeButton": "Assinar",
 } satisfies Record<keyof typeof chatEn, string>;

@@ -36,8 +36,9 @@ import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t.ts";
 
 /** A preview of the unlocked board (carries the brand-lime edge), used as the
- *  modal hero — hosted on the deco CDN. */
-const KANBAN_PREVIEW_SRC =
+ *  modal hero — hosted on the deco CDN. Shared with `subscription-paywall-
+ *  dialog.tsx` so the board has one hero image across its paywalls, not two. */
+export const KANBAN_PREVIEW_SRC =
   "https://decoims.com/image?src=decocms%2F7263a67f-fb83-410b-a5f2-e54e87deaaac%2Freport-kanban.png&quality=original&fit=cover";
 
 /** What the unlock buys — kept true to what the paid product delivers. */
