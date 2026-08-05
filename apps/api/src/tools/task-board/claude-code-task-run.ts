@@ -242,7 +242,13 @@ export function buildClaudeCodeTaskPrompt(
         : "."),
     "- Change only what the task needs. Don't refactor around it.",
     `- Then move this task to review on the board: call \`mcp__studio__TASK_BOARD_ITEM_UPDATE\` with id "${task.id}" and status "in_review". Pass ONLY the fields you are changing.`,
-    "- If the task turns out to need no code change, say why in your final message and move it to review anyway so a human can close it out.",
+    // NOT "move it to review anyway": In Review is the reviewers' lane, and
+    // reviewers are only enqueued for a task that has a PR
+    // (`enqueueReviewersOnThreadFinish`). A no-PR task parked there had no
+    // reviewer to pick it up and no signal that a human should — every such
+    // card sat In Review untouched. Done is the terminal lane, and the comment
+    // is what a human reads to disagree and reopen it.
+    `- If the task turns out to need no code change, do NOT open a PR: explain why in a comment on the task (\`mcp__studio__TASK_BOARD_COMMENT_CREATE\`) and move it to "done" instead of "in_review". There is nothing for a reviewer to review, so In Review would strand it.`,
     // The board is where a human reads this task, so anything a reviewer needs
     // to know belongs there too — a final message they never open is not a
     // report. Optional: a comment per run, not per step.

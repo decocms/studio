@@ -10,6 +10,10 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { ToolName } from "@decocms/shared/tools/registry-metadata";
+import {
+  isReviewerThreadTitle,
+  REVIEWER_KINDS,
+} from "@decocms/shared/task-board";
 
 export interface TaskRunContext {
   /** The run thread this MCP session belongs to. */
@@ -37,7 +41,8 @@ export function requireTaskRunContext(): TaskRunContext {
  *
  * Deliberately absent: creating and deleting tasks, `TASK_BOARD_REVIEW_DECISION`
  * and `TASK_BOARD_PROMOTE_TO_PRODUCTION` — an agent must not approve or merge
- * its own work.
+ * its own work. A REVIEWER's run is a different run on a different thread, and
+ * gets `REVIEW_RUN_TOOL_NAMES` below.
  */
 export const TASK_RUN_TOOL_NAMES: readonly ToolName[] = [
   "TASK_ADD_REPO",
@@ -49,3 +54,40 @@ export const TASK_RUN_TOOL_NAMES: readonly ToolName[] = [
   "TASK_BOARD_COMMENT_CREATE",
   "TASK_BOARD_COMMENT_UPDATE",
 ];
+
+/**
+ * The same surface plus `TASK_BOARD_REVIEW_DECISION`, for a REVIEWER's run.
+ *
+ * A reviewer is told "end the run by calling `TASK_BOARD_REVIEW_DECISION`" — it
+ * has to actually have it. It didn't: reviewer runs went out on Decopilot, which
+ * aggregates no connections, so every review ended with `enable_tool` answering
+ * `not_found` for both this and `TASK_BOARD_ITEM_PRS_GET`. Reviewers did the
+ * whole review, reached a verdict, and had no way to record it — the task then
+ * sat In Review forever.
+ *
+ * Still keyed to the run: `resolveReviewRunToolNames` hands this list out only
+ * for a thread the board created as a reviewer thread, so the invariant above
+ * ("an agent must not approve its own work") holds — a Super Agent run's own
+ * endpoint never serves it.
+ */
+export const REVIEW_RUN_TOOL_NAMES: readonly ToolName[] = [
+  ...TASK_RUN_TOOL_NAMES,
+  "TASK_BOARD_REVIEW_DECISION",
+];
+
+/**
+ * Which tool surface a task-run MCP session gets, from the run thread's title.
+ *
+ * The title is how the rest of the board already tells a reviewer thread from a
+ * Super Agent one (`isReviewerThreadTitle`, `"Super Agent:"` in
+ * `enqueueReviewersOnThreadFinish`) — reusing it keeps one discriminator rather
+ * than adding a column. A missing thread falls back to the narrow list.
+ */
+export function resolveReviewRunToolNames(
+  title: string | null | undefined,
+): readonly ToolName[] {
+  const isReviewer = REVIEWER_KINDS.some((kind) =>
+    isReviewerThreadTitle(title, kind),
+  );
+  return isReviewer ? REVIEW_RUN_TOOL_NAMES : TASK_RUN_TOOL_NAMES;
+}

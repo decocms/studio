@@ -17,11 +17,37 @@ import {
   createDecopilotStepEvent,
   createDecopilotThreadStatusEvent,
 } from "@decocms/shared/sdk";
-import type { RunEvent, RunTransition } from "./run-state";
+import type { RunEvent, RunFailedReason, RunTransition } from "./run-state";
 
 /** Recorded on a run the idle reaper force-fails for lack of progress. */
 const STALL_FAILURE_REASON =
   "Run stalled — no progress within the idle timeout window";
+
+/**
+ * What to persist on `threads` for each way a run can fail.
+ *
+ * Every reason gets one. It used to be `reaped` only, on the theory that the
+ * others "are surfaced elsewhere" — they are surfaced only as an error PART, so
+ * anything reading the thread row (the board card, the task list, a support
+ * query) saw `status: failed` with `failure_reason: ''` and `failure_kind: null`
+ * and could not tell a cancel from a crash. `ghost` keeps its bare write: it
+ * force-fails a row whose run never existed on this pod, and stamping a reason
+ * there would overwrite the real one a concurrent terminal writer just set.
+ */
+const RUN_FAILURE_RECORD: Record<
+  Exclude<RunFailedReason, "ghost">,
+  { failure_reason: string; failure_kind: string }
+> = {
+  reaped: { failure_reason: STALL_FAILURE_REASON, failure_kind: "stall" },
+  cancelled: {
+    failure_reason: "Run cancelled before it finished",
+    failure_kind: "cancelled",
+  },
+  error: {
+    failure_reason: "Run ended with an error — see the run's messages",
+    failure_kind: "error",
+  },
+};
 
 // ============================================================================
 // Errors
@@ -197,12 +223,7 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
         await storage.update(event.taskId, event.orgId, {
           run_config: null,
           run_started_at: null,
-          // A reaped run stalled (no progress within the idle window); record a
-          // legible reason. Other reasons ("error"/"cancelled") keep their bare
-          // terminal write — their reason is surfaced elsewhere.
-          ...(event.reason === "reaped"
-            ? { failure_reason: STALL_FAILURE_REASON, failure_kind: "stall" }
-            : {}),
+          ...RUN_FAILURE_RECORD[event.reason],
         });
       }
       // Deliberately NO JetStream purge here. The consume step projects every

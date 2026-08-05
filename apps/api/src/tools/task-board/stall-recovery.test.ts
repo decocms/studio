@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { shouldAdvanceToReview } from "@/storage/task-board";
-import { decideStallAction } from "./stall-recovery";
+import { decideStallAction, isNeverStartedRun } from "./stall-recovery";
 
 /** A used thread — `shouldAdvanceToReview` filters out message-less ones. */
 const thread = (status: string | null, hasMessages = true) => ({
@@ -128,6 +128,68 @@ describe("shouldAdvanceToReview gates the sweep", () => {
       expect(
         shouldAdvanceToReview({ status, threads: [thread("completed")] }),
       ).toBe(false);
+    }
+  });
+});
+
+describe("isNeverStartedRun", () => {
+  const HOUR = 60 * 60 * 1000;
+  const now = 1_700_000_000_000;
+
+  /** A thread row as the reaper reads it. */
+  const row = (
+    overrides: Partial<{
+      status: string;
+      run_started_at: string | null;
+      last_progress_at: string | null;
+      updated_at: string;
+    }> = {},
+  ) =>
+    ({
+      status: "in_progress",
+      run_started_at: null,
+      last_progress_at: null,
+      updated_at: new Date(now - HOUR).toISOString(),
+      ...overrides,
+    }) as Parameters<typeof isNeverStartedRun>[0];
+
+  // The exact prod shape: threads written `in_progress` whose run never reached
+  // RUN_STARTED, so they are invisible to the in-memory idle reaper on every
+  // pod — and one of them freezes its whole card's advance gate.
+  test("an in_progress thread that never started and is past the window is reaped", () => {
+    expect(isNeverStartedRun(row(), now)).toBe(true);
+  });
+
+  test("a run that DID start is left to the idle reaper / DBOS recovery", () => {
+    expect(
+      isNeverStartedRun(
+        row({ run_started_at: new Date(now - HOUR).toISOString() }),
+        now,
+      ),
+    ).toBe(false);
+  });
+
+  test("a freshly enqueued run is not reaped — it may still be picked up", () => {
+    expect(
+      isNeverStartedRun(
+        row({ updated_at: new Date(now - 60_000).toISOString() }),
+        now,
+      ),
+    ).toBe(false);
+  });
+
+  test("a streaming run keeps itself alive via last_progress_at", () => {
+    expect(
+      isNeverStartedRun(
+        row({ last_progress_at: new Date(now - 60_000).toISOString() }),
+        now,
+      ),
+    ).toBe(false);
+  });
+
+  test("only in_progress threads are reaped", () => {
+    for (const status of ["completed", "failed", "requires_action"]) {
+      expect(isNeverStartedRun(row({ status }), now)).toBe(false);
     }
   });
 });

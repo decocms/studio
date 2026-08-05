@@ -16,6 +16,15 @@
  *     on a `user_ask` (a human owns it), the second is either live or the stall
  *     reaper's to fail — and once it does, the next board open nudges it.
  *
+ * With ONE exception, added because "the stall reaper's to fail" was not true of
+ * every `in_progress` thread: a run that never STARTED (see
+ * `failNeverStartedThreads`) has no entry in any pod's `RunRegistry`, so the
+ * in-memory idle reaper cannot see it and no DB sweep exists. Those threads sat
+ * `in_progress` with zero parts indefinitely, and because
+ * `shouldAdvanceToReview` requires every thread terminal, one of them froze its
+ * whole card — no advance, no nudge, forever. We fail them here first, which
+ * both unblocks the gate below and gives the card a legible reason.
+ *
  * "Used" is `shouldAdvanceToReview`'s filter: threads with no messages don't
  * count, because a never-typed-in chat is born `completed`.
  *
@@ -30,9 +39,14 @@ import type { StudioContext } from "@/core/studio-context";
 import { enqueueThreadRun } from "@/dispatch-queue";
 import { isHostedDecopilotRuntime } from "@/harnesses/decopilot/hosted-runtime";
 import { shouldAdvanceToReview } from "@/storage/task-board";
-import type { TaskBoardItem, TaskBoardItemThreadRef } from "@/storage/types";
+import type {
+  TaskBoardItem,
+  TaskBoardItemThreadRef,
+  Thread,
+} from "@/storage/types";
 import { getDecopilotId } from "@decocms/shared/sdk";
 import { advanceTasksToReviewOnThreadFinish } from "./run-reactions";
+import { isThreadRunStale } from "@/tools/thread/helpers";
 
 export type StallAction = "none" | "advance" | "nudge";
 
@@ -150,6 +164,68 @@ async function resolveStallAction(
   });
 }
 
+/** Recorded on a thread whose run never reported progress and can no longer be
+ *  owned by any pod. Distinct from `"stall"` (a run that started, streamed, then
+ *  went quiet — the in-memory idle reaper's case) so the two are tellable apart
+ *  in the DB. */
+const ABANDONED_FAILURE_REASON =
+  "Run never started — no pod picked it up before the idle window elapsed";
+
+/**
+ * True for a thread whose run NEVER STARTED and is now too old to ever start.
+ *
+ * The in-memory idle reaper only sees runs present in a pod's `RunRegistry`,
+ * i.e. runs that reached `RUN_STARTED`. A thread whose dispatch never got that
+ * far — the enqueue landed, the row was written `in_progress`, and nothing ever
+ * ran — is invisible to it on every pod, and no DB sweep exists.
+ *
+ * `run_started_at` is the discriminator: set means a run really did begin, and
+ * that one belongs to the idle reaper / DBOS recovery, which can still resume
+ * it. Staleness is the shared `isThreadRunStale` test (the same one that renders
+ * "expired" in thread responses), so a live run is never touched.
+ *
+ * Pure — unit-tested.
+ */
+export function isNeverStartedRun(
+  thread: Pick<Thread, "status" | "run_started_at" | "updated_at"> &
+    Pick<Thread, "last_progress_at">,
+  now: number = Date.now(),
+): boolean {
+  if (thread.status !== "in_progress") return false;
+  if (thread.run_started_at) return false;
+  return isThreadRunStale(thread, now);
+}
+
+/**
+ * Fail the card's `in_progress` threads that no run can still be behind.
+ *
+ * Returns the ids it failed, so the caller can skip a card it just changed and
+ * let the next board open act on fresh data rather than a stale in-memory list.
+ */
+async function failNeverStartedThreads(
+  ctx: StudioContext,
+  item: TaskBoardItem,
+): Promise<string[]> {
+  const failed: string[] = [];
+  for (const ref of item.threads) {
+    if (ref.status !== "in_progress") continue;
+    const thread = await ctx.storage.threads.get(ref.threadId);
+    if (!thread || !isNeverStartedRun(thread)) continue;
+    const marked = await ctx.storage.threads.markRunFailed(
+      ref.threadId,
+      ABANDONED_FAILURE_REASON,
+      "abandoned",
+    );
+    if (marked) {
+      failed.push(ref.threadId);
+      console.warn(
+        `[task-board] failed never-started thread ${ref.threadId} on ${item.id}`,
+      );
+    }
+  }
+  return failed;
+}
+
 /**
  * Recover every stalled card in a freshly-read board. Takes the items the read
  * already loaded, so detection costs nothing. Best-effort per task: one card's
@@ -163,6 +239,24 @@ export async function recoverStalledTasks(
   if (!organizationId) return;
 
   for (const item of items) {
+    // First clear any never-started thread blocking this card's gate below.
+    // Skipped for a card that isn't parked In Progress: In Review / Done cards
+    // are not waiting on a run, and a card a human is actively working has no
+    // stuck agent thread to reap.
+    if (item.status === "in_progress") {
+      try {
+        const reaped = await failNeverStartedThreads(ctx, item);
+        // `item.threads` is now stale for this card — the statuses the gate
+        // reads were loaded before the writes above. Let the next board open
+        // (or the finish hook) act on it rather than reasoning off stale rows.
+        if (reaped.length > 0) continue;
+      } catch (err) {
+        console.error(
+          `[task-board] reaping threads for ${item.id} failed`,
+          err,
+        );
+      }
+    }
     // Narrow off the already-loaded list first, so a board with nothing stuck
     // costs zero queries. Threads are newest-first (`attachThreads` orders by
     // `link.created_at desc`), so the newest *used* one is the last run to have

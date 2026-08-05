@@ -102,7 +102,12 @@ describe("run reactor", () => {
     expect(updates[0]!.failure_kind).toBe("stall");
   });
 
-  test("RUN_FAILED reason 'error' does NOT set failure_reason (unchanged)", async () => {
+  // Inverted: this used to assert 'error' left both columns unset, on the
+  // theory that its reason "is surfaced elsewhere". It was surfaced only as an
+  // error PART, so every reader of the thread ROW — the board card, the task
+  // list, a support query — saw `failed` with `failure_reason: ''` and
+  // `failure_kind: null` and could not tell a crash from a cancel.
+  test("RUN_FAILED reason 'error' records a legible reason and kind", async () => {
     const updates: Record<string, unknown>[] = [];
     const deps: RunReactorDeps = {
       storage: {
@@ -132,6 +137,96 @@ describe("run reactor", () => {
             taskId: "run_1",
             orgId: "org_1",
             reason: "error",
+          },
+          state: undefined,
+        },
+      ],
+      deps,
+    );
+
+    expect(updates[0]!.failure_reason).toBe(
+      "Run ended with an error — see the run's messages",
+    );
+    expect(updates[0]!.failure_kind).toBe("error");
+  });
+
+  // The failure this investigation started from: a takeover / client hangup
+  // surfaced as `cancelled: run cancelled` in an error part, while the thread
+  // row carried no reason at all.
+  test("RUN_FAILED reason 'cancelled' records a cancelled kind, not a bare write", async () => {
+    const updates: Record<string, unknown>[] = [];
+    const deps: RunReactorDeps = {
+      storage: {
+        update: async (
+          _id: string,
+          _orgId: string,
+          data: Record<string, unknown>,
+        ) => {
+          updates.push(data);
+          return null;
+        },
+        get: async () => ({
+          id: "run_1",
+          organization_id: "org_1",
+          status: "failed",
+        }),
+        forceFailIfInProgress: async () => true,
+      } as unknown as ThreadStoragePort,
+      sseHub: { emit: () => {} },
+    };
+
+    await reactAll(
+      [
+        {
+          event: {
+            type: "RUN_FAILED",
+            taskId: "run_1",
+            orgId: "org_1",
+            reason: "cancelled",
+          },
+          state: undefined,
+        },
+      ],
+      deps,
+    );
+
+    expect(updates[0]!.failure_kind).toBe("cancelled");
+    expect(updates[0]!.failure_reason).toBe("Run cancelled before it finished");
+  });
+
+  // `ghost` keeps its bare write: it force-fails a row whose run never existed
+  // on this pod, and stamping a reason there would overwrite the real one a
+  // concurrent terminal writer just set.
+  test("RUN_FAILED reason 'ghost' still records no reason", async () => {
+    const updates: Record<string, unknown>[] = [];
+    const deps: RunReactorDeps = {
+      storage: {
+        update: async (
+          _id: string,
+          _orgId: string,
+          data: Record<string, unknown>,
+        ) => {
+          updates.push(data);
+          return null;
+        },
+        get: async () => ({
+          id: "run_1",
+          organization_id: "org_1",
+          status: "failed",
+        }),
+        forceFailIfInProgress: async () => true,
+      } as unknown as ThreadStoragePort,
+      sseHub: { emit: () => {} },
+    };
+
+    await reactAll(
+      [
+        {
+          event: {
+            type: "RUN_FAILED",
+            taskId: "run_1",
+            orgId: "org_1",
+            reason: "ghost",
           },
           state: undefined,
         },
