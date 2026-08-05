@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
-use crate::state::LocalApiState;
+use crate::state::{LocalApiState, PreviewOriginState};
 use crate::{control_origin, selftest};
 
 const AUTH_STATUS_CHANGED_EVENT: &str = "auth-status-changed";
@@ -54,10 +54,12 @@ fn is_allowed_webview_navigation(
     url: &tauri::Url,
     control_origin: &str,
     preview_port: u16,
+    preview_origins: &PreviewOriginState,
 ) -> bool {
     url.as_str() == "about:blank"
         || url.origin().ascii_serialization() == control_origin
         || is_sandbox_preview_url(url, preview_port)
+        || preview_origins.contains(&url.origin().ascii_serialization())
 }
 
 /// Whether `url` is a sandbox preview.
@@ -326,13 +328,32 @@ pub async fn run(app: &tauri::AppHandle) -> Result<(), SetupError> {
             .map_err(|error| SetupError::ControlUrl(error.to_string()))?,
     );
     let navigation_control_origin = browser_origin.clone();
+    // Managed here (not read via `State` inside the closure below): the
+    // closure is built and moved into `WebviewWindowBuilder` before the
+    // window — and therefore command-invocation machinery — exists, so it
+    // captures its own clone directly, the same way `navigation_control_origin`
+    // and `preview_port` already do just above.
+    let preview_origins = PreviewOriginState::default();
+    app.manage(preview_origins.clone());
+    let navigation_preview_origins = preview_origins;
     let mut builder = WebviewWindowBuilder::new(app, "main", webview_url)
         .title("Studio")
         .inner_size(1080.0, 720.0)
         // Wry reports child-frame navigations here too, so rejected URLs must
         // not cause side effects. Only explicit UI actions open the browser.
+        // External preview domains (a customer's live site, embedded as an
+        // iframe by the CMS preview pane) are allowed via
+        // `navigation_preview_origins`, a session-scoped set the frontend
+        // populates through `register_preview_origin` immediately before
+        // setting such an iframe's `src` — see `PreviewOriginState`'s doc
+        // comment for why a static allowlist can't cover this instead.
         .on_navigation(move |url| {
-            is_allowed_webview_navigation(url, &navigation_control_origin, preview_port)
+            is_allowed_webview_navigation(
+                url,
+                &navigation_control_origin,
+                preview_port,
+                &navigation_preview_origins,
+            )
         })
         .on_new_window(move |_url, _features| new_window_policy());
     if selftest_mode {
@@ -421,13 +442,19 @@ mod tests {
     fn webview_navigation_is_limited_to_control_and_preview_origins() {
         let control = "https://local.studio.decocms.com:43120";
         let preview_port = 61_234;
+        let preview_origins = PreviewOriginState::default();
         for allowed in [
             "https://local.studio.decocms.com:43120/fila",
             "https://h1-abc.local.studio.decocms.com:61234/products",
             "about:blank",
         ] {
             assert!(
-                is_allowed_webview_navigation(&allowed.parse().unwrap(), control, preview_port),
+                is_allowed_webview_navigation(
+                    &allowed.parse().unwrap(),
+                    control,
+                    preview_port,
+                    &preview_origins
+                ),
                 "{allowed} should be allowed"
             );
         }
@@ -446,10 +473,49 @@ mod tests {
             "http://evil.localhost:61234/",
         ] {
             assert!(
-                !is_allowed_webview_navigation(&blocked.parse().unwrap(), control, preview_port),
+                !is_allowed_webview_navigation(
+                    &blocked.parse().unwrap(),
+                    control,
+                    preview_port,
+                    &preview_origins
+                ),
                 "{blocked} should be blocked"
             );
         }
+    }
+
+    #[test]
+    fn webview_navigation_allows_a_registered_preview_origin_but_nothing_else_external() {
+        let control = "https://local.studio.decocms.com:43120";
+        let preview_port = 61_234;
+        let preview_origins = PreviewOriginState::default();
+        let registered: tauri::Url = "https://fila.vtex.app/?__draft=abc".parse().unwrap();
+        let unregistered: tauri::Url = "https://evil.example.com/".parse().unwrap();
+
+        assert!(
+            !is_allowed_webview_navigation(&registered, control, preview_port, &preview_origins),
+            "must stay blocked before registration"
+        );
+
+        preview_origins.register(registered.origin().ascii_serialization());
+
+        assert!(
+            is_allowed_webview_navigation(&registered, control, preview_port, &preview_origins),
+            "registered origin must be allowed, including a different path/query on it"
+        );
+        assert!(
+            is_allowed_webview_navigation(
+                &"https://fila.vtex.app/other-page".parse().unwrap(),
+                control,
+                preview_port,
+                &preview_origins
+            ),
+            "same origin, different path, must also be allowed"
+        );
+        assert!(
+            !is_allowed_webview_navigation(&unregistered, control, preview_port, &preview_origins),
+            "an unrelated external origin must still be blocked"
+        );
     }
 
     #[test]

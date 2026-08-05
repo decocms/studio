@@ -33,7 +33,7 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::auth::{AuthResultWire, AuthStatusWire};
-use crate::state::LocalApiState;
+use crate::state::{LocalApiState, PreviewOriginState};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -139,6 +139,46 @@ pub async fn auth_complete_session(
     result.map(AuthResultWire::from).map_err(|e| e.to_string())
 }
 
+/// Registers `origin` as a currently-legitimate preview iframe target — see
+/// `state::PreviewOriginState`'s doc comment for why this exists. Called by
+/// the frontend (`apps/web/src/lib/desktop/tauri-bridge.ts`'s
+/// `registerPreviewOrigin`) immediately before setting a preview iframe's
+/// `src` to an external (non-sandbox-proxy) origin, and MUST be awaited
+/// first: `setup::is_allowed_webview_navigation` denies anything not already
+/// registered, and a denied iframe navigation fires neither `load` nor
+/// `error` (WKWebView cancels it outright), so a caller that raced ahead of
+/// registration would see a permanently blank frame with no recovery signal.
+///
+/// Parses and re-serializes rather than trusting the raw string: normalizes
+/// to exactly what `url.origin().ascii_serialization()` produces at the
+/// `on_navigation` check site, and rejects non-http(s) input.
+#[tauri::command]
+pub fn register_preview_origin(
+    origin: String,
+    state: State<'_, PreviewOriginState>,
+) -> Result<(), String> {
+    state.register(normalize_preview_origin(&origin)?);
+    Ok(())
+}
+
+/// Parses and re-serializes rather than trusting the raw string: normalizes
+/// to exactly what `url.origin().ascii_serialization()` produces at the
+/// `setup::is_allowed_webview_navigation` check site, and rejects non-http(s)
+/// input. Pure logic, split out from the command itself so it's unit-testable
+/// — `tauri::State` has no public constructor for a plain unit test to use.
+fn normalize_preview_origin(origin: &str) -> Result<String, String> {
+    let parsed: tauri::Url = origin
+        .parse()
+        .map_err(|error| format!("invalid origin {origin:?}: {error}"))?;
+    if parsed.scheme() != "https" && parsed.scheme() != "http" {
+        return Err(format!(
+            "only http(s) origins may be registered, got scheme {:?}",
+            parsed.scheme()
+        ));
+    }
+    Ok(parsed.origin().ascii_serialization())
+}
+
 /// Self-test-mode-only (see `selftest.rs`). A real frontend build never
 /// calls this — the self-test JS bundle is the only caller, and it's only
 /// ever `eval()`'d when `DESKTOP_SELFTEST=1`. Harmless if invoked outside
@@ -166,5 +206,24 @@ mod tests {
         assert_eq!(value["previewPort"], 61_234);
         assert_eq!(value["upstreamUrl"], "https://studio.decocms.com");
         assert_eq!(value["token"], "bootstrap");
+    }
+
+    #[test]
+    fn normalize_preview_origin_strips_path_and_query() {
+        assert_eq!(
+            normalize_preview_origin("https://fila.vtex.app/?__draft=abc&deviceHint=desktop")
+                .unwrap(),
+            "https://fila.vtex.app"
+        );
+    }
+
+    #[test]
+    fn normalize_preview_origin_rejects_non_http_schemes() {
+        for bad in ["file:///etc/passwd", "javascript:alert(1)", "not a url"] {
+            assert!(
+                normalize_preview_origin(bad).is_err(),
+                "{bad} must be rejected"
+            );
+        }
     }
 }

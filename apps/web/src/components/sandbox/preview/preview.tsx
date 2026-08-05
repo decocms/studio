@@ -90,7 +90,10 @@ import { useCreatePage } from "@/components/sections-editor/use-create-page";
 import { CreatePageModal } from "@/components/sections-editor/create-page-modal";
 import { toast } from "sonner";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
-import { openExternalUrlInSystemBrowser } from "@/lib/desktop/tauri-bridge";
+import {
+  openExternalUrlInSystemBrowser,
+  registerPreviewOrigin,
+} from "@/lib/desktop/tauri-bridge";
 import {
   VISUAL_EDITOR_SCRIPT,
   VisualEditorPayloadSchema,
@@ -260,6 +263,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   >(null);
   const previewIframeRef = useRef<HTMLIFrameElement>(null);
   const blocksPanelRef = useRef<PanelImperativeHandle>(null);
+  /** Origin most recently confirmed registered with the native shell via
+   *  `registerPreviewOrigin` — see the effect below that sets it. `null`
+   *  until the very first desktop-app production-mode registration lands. */
+  const [registeredPreviewOrigin, setRegisteredPreviewOrigin] = useState<
+    string | null
+  >(null);
 
   // Pages dropdown in URL bar
   const [pagesOpen, setPagesOpen] = useState(false);
@@ -536,6 +545,25 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   });
   const previewSurfaceActive = display.mode !== "none";
 
+  // Origin of the "production" mode's base — an external, org-owned domain
+  // (the published site), unlike "sandbox" mode's `iframeBase`, which is
+  // always this app's own local sandbox-preview-proxy origin (already
+  // allowed natively, no registration needed). `null` outside production
+  // mode, or once no `iframeBase` is available yet.
+  const productionOrigin =
+    display.mode === "production" && display.iframeBase
+      ? new URL(display.iframeBase).origin
+      : null;
+  // In the desktop app, an external production origin must be registered
+  // with the native shell's navigation policy BEFORE the iframe below is
+  // allowed to navigate there — see `registerPreviewOrigin`'s doc comment
+  // for why this can't be fire-and-forget. Plain browser tabs have no such
+  // gate, so this is a no-op there.
+  const productionOriginReady =
+    !isDesktopApp ||
+    !productionOrigin ||
+    registeredPreviewOrigin === productionOrigin;
+
   const iframeSrc =
     display.mode === "sandbox"
       ? withVariantMatcherOverride(
@@ -545,7 +573,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           ),
           workspace.state.variantOverride ?? [],
         )
-      : display.mode === "production"
+      : display.mode === "production" && productionOriginReady
         ? // The published site is the base for both modes while the sandbox
           // provisions; Fast Preview swaps in the same page carrying a
           // `?__draft=` pointer the moment one exists. Same origin either way,
@@ -555,6 +583,29 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             previewDeviceSize,
           )
         : null;
+
+  // Registers `productionOrigin` with the native shell before the iframe
+  // above is allowed to navigate there (see `productionOriginReady`).
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative native-shell IPC gate before cross-origin iframe navigation, mirrors the draft-URL effect just below
+  useEffect(() => {
+    if (!isDesktopApp || !productionOrigin) return;
+    if (registeredPreviewOrigin === productionOrigin) return;
+    let cancelled = false;
+    registerPreviewOrigin(productionOrigin)
+      .then(() => {
+        if (!cancelled) setRegisteredPreviewOrigin(productionOrigin);
+      })
+      .catch((error) => {
+        console.error(
+          "Failed to register preview origin",
+          productionOrigin,
+          error,
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isDesktopApp, productionOrigin, registeredPreviewOrigin]);
 
   // "Open outside the preview pane". In a browser that's a new tab; inside the
   // Tauri webview there is no tab strip to open into, so `window.open` cannot

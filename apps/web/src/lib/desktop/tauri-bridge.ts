@@ -144,6 +144,24 @@ export async function performAuthCompleteSession(): Promise<void> {
 }
 
 /**
+ * `invoke('register_preview_origin')` — tells the native shell's navigation
+ * policy that `origin` (scheme+host+port; path/query are ignored server-side)
+ * is a currently-legitimate preview iframe target, e.g. an org's own live
+ * storefront domain. Required before setting a preview iframe's `src` to
+ * anything outside the app's own control/sandbox-proxy origins: Tauri's
+ * `on_navigation` hook (`apps/native/src-tauri/src/setup.rs`) fires for
+ * iframe navigations exactly like top-level ones and denies anything not on
+ * its allowlist, and WKWebView fires neither `load` nor `error` for a denied
+ * navigation — so this MUST be awaited before the iframe's `src` is set, or
+ * the very first paint races the registration and the frame stays silently
+ * blank with nothing to trigger a retry.
+ */
+export async function registerPreviewOrigin(origin: string): Promise<void> {
+  assertDesktopEnvironment("register_preview_origin");
+  await invoke<void>("register_preview_origin", { origin });
+}
+
+/**
  * Open an external URL in the operating system's default browser.
  *
  * `window.open` cannot serve the desktop app's "open the preview outside the
