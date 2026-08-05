@@ -176,6 +176,10 @@ export const taskBoard = {
   "taskBoard.subscriptionPaywall.trialTitle": "Subscribe to keep auto-fixing",
   "taskBoard.subscriptionPaywall.trialBenefitMonitoring":
     "Continuous monitoring of your site, catching new issues automatically",
+  "taskBoard.subscriptionPaywall.trialBenefitAutoFix":
+    "The agent fixes what it finds and opens a pull request for your review",
+  "taskBoard.subscriptionPaywall.trialBenefitRuns":
+    "10 auto-task runs every billing cycle",
   "taskBoard.subscriptionPaywall.trialPrice": "$50",
   "taskBoard.subscriptionPaywall.trialPricePeriod": "/month",
   "taskBoard.subscriptionPaywall.previewAlt": "Preview of your task board",

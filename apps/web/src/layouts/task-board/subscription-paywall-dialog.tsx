@@ -31,6 +31,8 @@ import { KANBAN_PREVIEW_SRC } from "./backlog-paywall";
 
 const BENEFIT_KEYS = [
   "taskBoard.subscriptionPaywall.trialBenefitMonitoring",
+  "taskBoard.subscriptionPaywall.trialBenefitAutoFix",
+  "taskBoard.subscriptionPaywall.trialBenefitRuns",
 ] as const;
 
 export function SubscriptionPaywallDialog({
