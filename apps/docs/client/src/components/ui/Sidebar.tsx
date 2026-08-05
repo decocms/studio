@@ -1,11 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { navigate } from "astro:transitions/client";
 import { Icon } from "../../components/atoms/Icon";
-import { Select } from "../../components/atoms/Select";
 import { LanguageSelector } from "./LanguageSelector";
 import { ProductSwitcher } from "./ProductSwitcher";
 import { ThemeToggle } from "./ThemeToggle";
-import { versions, VERSION_IDS, LATEST_VERSION } from "../../config/versions";
+import { VERSION_IDS } from "../../config/versions";
 
 // GitHub Stars Component
 function GitHubStars() {
@@ -49,87 +47,6 @@ function GitHubStars() {
     <div className="flex items-center gap-1 text-star">
       <Icon name="Star" size={14} />
       <span className="text-xs">{stars.toLocaleString()}</span>
-    </div>
-  );
-}
-
-// Version Selector Component
-function VersionSelector({
-  currentVersion: initialVersion,
-  onVersionChange,
-  inline = false,
-}: {
-  currentVersion: string;
-  onVersionChange: (version: string) => void;
-  inline?: boolean;
-}) {
-  // Read version from URL dynamically on client side
-  const [currentVersion, setCurrentVersion] = useState(initialVersion);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const handlePopState = () => {
-      const params = new URLSearchParams(window.location.search);
-      const version = params.get("version") || LATEST_VERSION.id;
-      setCurrentVersion(version);
-      onVersionChange(version);
-    };
-
-    // Listen for URL changes (for browser back/forward)
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty deps - only setup listener once
-
-  const versionOptions = versions;
-
-  const handleVersionChange = (newVersion: string) => {
-    if (newVersion === currentVersion) return;
-
-    setCurrentVersion(newVersion);
-    onVersionChange(newVersion);
-  };
-
-  if (inline) {
-    return (
-      <div className="relative flex-1">
-        <select
-          value={currentVersion}
-          onChange={(e) => handleVersionChange(e.target.value)}
-          className="w-full h-8 pl-2 pr-6 text-xs bg-transparent border border-border rounded-md text-muted-foreground appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
-        >
-          {versionOptions.map((v) => (
-            <option key={v.id} value={v.id}>
-              {v.shortLabel}
-            </option>
-          ))}
-        </select>
-        <div className="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none">
-          <Icon
-            name="ChevronDown"
-            size={12}
-            className="text-muted-foreground"
-          />
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="px-4 lg:px-8 py-3">
-      <label className="block text-xs font-medium text-muted mb-1.5">
-        Documentation Version
-      </label>
-      <Select
-        options={versionOptions.map((v) => ({ value: v.id, label: v.label }))}
-        value={currentVersion}
-        icon="BookOpen"
-        onChange={(e) => handleVersionChange(e.target.value)}
-      />
-      <p className="text-xs text-muted mt-1">
-        {versionOptions.find((v) => v.id === currentVersion)?.description}
-      </p>
     </div>
   );
 }
@@ -468,13 +385,6 @@ export default function Sidebar({
     };
   }, []);
 
-  // Handle version change by navigating to the new version's root page
-  const versionRoots = Object.fromEntries(versions.map((v) => [v.id, v.root]));
-  const handleVersionChange = (newVersion: string) => {
-    const root = versionRoots[newVersion] ?? "studio/quickstart";
-    navigate(`/${newVersion}/${locale}/${root}`);
-  };
-
   // Initialize with default state (same on server and client for hydration match)
   const [treeState, setTreeState] = useState<Map<string, boolean>>(() => {
     const initialState = new Map();
@@ -602,16 +512,6 @@ export default function Sidebar({
       {/* Footer */}
       <div className="px-4 lg:px-8 py-4 border-t border-border shrink-0">
         <div className="space-y-2">
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">
-              Version
-            </label>
-            <VersionSelector
-              currentVersion={version}
-              onVersionChange={handleVersionChange}
-              inline
-            />
-          </div>
           <a
             href="https://github.com/decocms/studio"
             target="_blank"
