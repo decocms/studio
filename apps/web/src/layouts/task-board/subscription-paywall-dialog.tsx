@@ -99,23 +99,38 @@ export function SubscriptionPaywallDialog({
                 </li>
               ))}
             </ul>
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-semibold text-foreground">
-                {t("taskBoard.subscriptionPaywall.trialPrice")}
-              </span>
-              <span className="text-sm text-muted-foreground">
-                {t("taskBoard.subscriptionPaywall.trialPricePeriod")}
-              </span>
+            {/* Price + actions — stacked full-width on mobile, price-left /
+                buttons-right on sm+ (matches backlog-paywall.tsx's modal). */}
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-2xl font-semibold text-foreground">
+                  {t("taskBoard.subscriptionPaywall.trialPrice")}
+                </span>
+                <span className="text-sm text-muted-foreground">
+                  {t("taskBoard.subscriptionPaywall.trialPricePeriod")}
+                </span>
+              </div>
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                <Button
+                  variant="ghost"
+                  onClick={() => onOpenChange(false)}
+                  disabled={isPending}
+                  className="order-2 w-full sm:order-none sm:w-auto"
+                >
+                  {t("taskBoard.subscriptionPaywall.notNowButton")}
+                </Button>
+                <Button
+                  disabled={isPending}
+                  onClick={() => subscribe()}
+                  className="order-1 w-full gap-2 sm:order-none sm:w-auto"
+                >
+                  {isPending && (
+                    <Loading01 size={16} className="animate-spin" />
+                  )}
+                  {t("taskBoard.subscriptionPaywall.subscribeButton")}
+                </Button>
+              </div>
             </div>
-            <DialogFooter>
-              <Button variant="ghost" onClick={() => onOpenChange(false)}>
-                {t("taskBoard.subscriptionPaywall.notNowButton")}
-              </Button>
-              <Button disabled={isPending} onClick={() => subscribe()}>
-                {isPending && <Loading01 size={16} className="animate-spin" />}
-                {t("taskBoard.subscriptionPaywall.subscribeButton")}
-              </Button>
-            </DialogFooter>
           </div>
         </DialogContent>
       </Dialog>
