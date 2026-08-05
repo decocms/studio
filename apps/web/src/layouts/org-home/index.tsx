@@ -33,9 +33,12 @@ export default function OrgHome() {
   // Suspense read (cache-warm from the shell); used to validate the main agent
   // still exists so a deleted one falls back to the Super Agent.
   const agents = useVirtualMCPs();
-  const { connect, siteUrl } = useSearch({ strict: false }) as {
+  // `main` carries a deep link into a main-panel overlay (e.g. `board` =
+  // Tasks, `files` = Library) through the redirect to the landing thread.
+  const { connect, siteUrl, main } = useSearch({ strict: false }) as {
     connect?: string;
     siteUrl?: string;
+    main?: string;
   };
   // Stable id for this mount, used only when there's no reusable "New chat".
   const [freshId] = useState(() => crypto.randomUUID());
@@ -66,7 +69,7 @@ export default function OrgHome() {
     <Navigate
       to="/$org/$taskId"
       params={{ org: org.slug, taskId }}
-      search={{ virtualmcpid: landingAgentId, connect, siteUrl }}
+      search={{ virtualmcpid: landingAgentId, connect, siteUrl, main }}
       replace
     />
   );

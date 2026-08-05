@@ -1,5 +1,5 @@
 /**
- * Kanban drag-and-drop on /$org/board.
+ * Kanban drag-and-drop on the Tasks overlay (`/$org?main=board`).
  *
  * These guard two regressions that the pre-dnd-kit implementation shipped:
  * a card dropped into another lane stayed permanently faded (its `dragend`
@@ -57,7 +57,7 @@ async function statusByTitle(request: APIRequestContext, orgSlug: string) {
 
 async function openBoard(page: Page, orgSlug: string) {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto(`/${orgSlug}/board`);
+  await page.goto(`/${orgSlug}?main=board`);
   await expect(page.locator('button:has-text("Card 0")')).toBeVisible();
 }
 

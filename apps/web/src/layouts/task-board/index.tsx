@@ -1,6 +1,7 @@
 /**
- * Task board (/$org/board) — the org's own board of tasks (title,
+ * Task board (`?main=board`) — the org's own board of tasks (title,
  * description, status, priority, assignee), independent of chat threads.
+ * Rendered as a main-panel overlay tab; there is no standalone route.
  */
 
 import { useRef, useState } from "react";
@@ -133,18 +134,6 @@ import { BacklogPaywallBanner } from "./backlog-paywall";
 void import("../agent-shell-layout/index.tsx").catch(() => {});
 
 type Layout = "board" | "list";
-
-export default function TaskBoard() {
-  return (
-    <div className="min-h-0 flex-1 pt-0 pr-1 pb-1 pl-0">
-      <div className="h-full p-0.5 pt-0.25">
-        <div className="card-shadow flex h-full flex-col overflow-hidden rounded-[0.75rem] bg-background">
-          <TaskBoardPage />
-        </div>
-      </div>
-    </div>
-  );
-}
 
 const DATE_FMT = new Intl.DateTimeFormat(undefined, {
   month: "short",
@@ -404,7 +393,7 @@ export function TaskBoardPage() {
   const studio = useStudioTools();
   const { org, locator } = useProjectContext();
   const navigate = useNavigate();
-  // Deep link: `/$org/board?task=<id>` opens that task's modal (from a linked
+  // Deep link: `?main=board&task=<id>` opens that task's modal (from a linked
   // chat's "open in board" button). Derived, so it opens as soon as the item
   // loads without an effect.
   const { task: deepLinkTaskId } = useSearch({ strict: false }) as {
@@ -417,9 +406,8 @@ export function TaskBoardPage() {
   const clearDeepLink = () => {
     if (deepLinkTaskId)
       navigate({
-        to: "/$org/board",
-        params: { org: org.slug },
-        search: {},
+        to: ".",
+        search: ({ task: _task, ...rest }: Record<string, unknown>) => rest,
         replace: true,
       });
   };

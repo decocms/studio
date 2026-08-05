@@ -44,7 +44,7 @@ interface TaskBoardItem {
 }
 
 async function openTask(page: Page, orgSlug: string, title: string) {
-  await page.goto(`/${orgSlug}/board`);
+  await page.goto(`/${orgSlug}?main=board`);
   const card = page.getByText(title, { exact: true });
   await card.waitFor({ state: "visible", timeout: FIRST_PAINT_MS });
   await card.click();
