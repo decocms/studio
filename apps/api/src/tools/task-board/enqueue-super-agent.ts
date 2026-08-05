@@ -1,7 +1,11 @@
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
-import { claimTaskExecution, TaskQuotaError } from "../../billing/task-quota";
+import {
+  claimTaskExecution,
+  releaseTaskExecution,
+  TaskQuotaError,
+} from "../../billing/task-quota";
 import { enqueueAgentRunForTask } from "./enqueue-task-run";
 import {
   buildClaudeCodeTaskPrompt,
@@ -138,32 +142,46 @@ export async function enqueueSuperAgentForTask(
   // BEFORE the write; here the claim is the enforcement.
   await claimTaskExecution(ctx, task);
 
-  // Sandbox-hosted claude-code takes every task that has a repo it could work
-  // in — bound before dispatch when there's exactly one, otherwise chosen
-  // mid-run with `TASK_ADD_REPO` (see `claude-code-task-run.ts`). An org with
-  // no repos imported runs Decopilot exactly as before.
-  const choice = await resolveTaskRepoChoice(ctx, task.organizationId);
+  try {
+    // Sandbox-hosted claude-code takes every task that has a repo it could work
+    // in — bound before dispatch when there's exactly one, otherwise chosen
+    // mid-run with `TASK_ADD_REPO` (see `claude-code-task-run.ts`). An org with
+    // no repos imported runs Decopilot exactly as before.
+    const choice = await resolveTaskRepoChoice(ctx, task.organizationId);
 
-  if (choice) {
-    const repo = "repo" in choice ? choice.repo : null;
+    if (choice) {
+      const repo = "repo" in choice ? choice.repo : null;
+      await enqueueAgentRunForTask(ctx, task, {
+        title: `Super Agent: ${task.title}`,
+        prompt: buildClaudeCodeTaskPrompt(task, repo, {
+          ...opts,
+          // Names the candidates in the prompt so the run doesn't spend its first
+          // step asking what exists.
+          ...("choices" in choice ? { repoChoices: choice.choices } : {}),
+        }),
+        temperature: 0.5,
+        harnessId: "claude-code",
+        ...(repo ? { repo } : {}),
+      });
+      return;
+    }
+
     await enqueueAgentRunForTask(ctx, task, {
       title: `Super Agent: ${task.title}`,
-      prompt: buildClaudeCodeTaskPrompt(task, repo, {
-        ...opts,
-        // Names the candidates in the prompt so the run doesn't spend its first
-        // step asking what exists.
-        ...("choices" in choice ? { repoChoices: choice.choices } : {}),
-      }),
+      prompt: buildSuperAgentTaskPrompt(task, opts),
       temperature: 0.5,
-      harnessId: "claude-code",
-      ...(repo ? { repo } : {}),
     });
-    return;
+  } catch (err) {
+    // Nothing was dispatched — no thread exists to ever trigger the
+    // thread-finish refund pass (run-reactions.ts). Without this, a failure
+    // here (e.g. no model configured — the exact case `enqueueAgentRunForTask`
+    // can throw for) would leave the claim charged forever with no run to show
+    // for it.
+    await releaseTaskExecution(
+      ctx.storage.organizationBilling,
+      task.organizationId,
+      task.id,
+    );
+    throw err;
   }
-
-  await enqueueAgentRunForTask(ctx, task, {
-    title: `Super Agent: ${task.title}`,
-    prompt: buildSuperAgentTaskPrompt(task, opts),
-    temperature: 0.5,
-  });
 }
