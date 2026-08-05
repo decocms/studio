@@ -626,21 +626,16 @@ export function TaskBoardPage() {
               { onError: onDelegateError },
             );
           }}
-          onAutoFix={
-            reportsOnly
-              ? (item) => {
-                  if (blockSuperAgentWithoutGithub(SUPER_AGENT_ASSIGNEE_ID))
-                    return;
-                  actions.update.mutate(
-                    {
-                      id: item.id,
-                      assigneeId: SUPER_AGENT_ASSIGNEE_ID,
-                    },
-                    { onError: onDelegateError },
-                  );
-                }
-              : undefined
-          }
+          onAutoFix={(item) => {
+            if (blockSuperAgentWithoutGithub(SUPER_AGENT_ASSIGNEE_ID)) return;
+            actions.update.mutate(
+              {
+                id: item.id,
+                assigneeId: SUPER_AGENT_ASSIGNEE_ID,
+              },
+              { onError: onDelegateError },
+            );
+          }}
         />
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-6 pb-16 sm:px-8">
@@ -712,6 +707,22 @@ export function TaskBoardPage() {
         }
         onNewChat={
           activeItem ? () => void startChatFromTask(activeItem) : undefined
+        }
+        onAutoFix={
+          activeItem
+            ? () => {
+                if (blockSuperAgentWithoutGithub(SUPER_AGENT_ASSIGNEE_ID))
+                  return;
+                actions.update.mutate(
+                  {
+                    id: activeItem.id,
+                    assigneeId: SUPER_AGENT_ASSIGNEE_ID,
+                  },
+                  { onError: onDelegateError },
+                );
+                closeDialog();
+              }
+            : undefined
         }
         onOpenThread={(thread) => {
           if (!thread.virtualMcpId) return;
