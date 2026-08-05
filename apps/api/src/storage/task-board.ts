@@ -5,7 +5,7 @@
  * many-to-many link between a task and the agent threads run for it.
  */
 
-import type { Kysely } from "kysely";
+import { sql, type Kysely } from "kysely";
 // Shared with the quota gate, which charges the same class of task.
 import { isReportsTask } from "../billing/task-quota";
 import type {
@@ -200,13 +200,11 @@ export class TaskBoardStorage {
 
     // New cards land at the top of their lane — one below the current lowest
     // sort_order (ascending order), matching the prior created_at-desc feel.
-    const { minOrder } = await this.db
-      .selectFrom("task_board_items")
-      .select((eb) => eb.fn.min("sort_order").as("minOrder"))
-      .where("organization_id", "=", params.organizationId)
-      .where("status", "=", status)
-      .executeTakeFirstOrThrow();
-
+    // Computed as a subquery inside the INSERT itself (rather than a separate
+    // SELECT beforehand plus an app-side -1) so two concurrent creates in the
+    // same lane race for, at most, a single round trip instead of two — the
+    // previous SELECT-then-INSERT left a full network round trip open for
+    // another create to land on the same sort_order.
     const row = await this.db
       .insertInto("task_board_items")
       .values({
@@ -220,7 +218,12 @@ export class TaskBoardStorage {
         assigned_by: params.assignedBy ?? null,
         due_date: params.dueDate ?? null,
         external_key: params.externalKey ?? null,
-        sort_order: (minOrder ?? 0) - 1,
+        sort_order: sql<number>`(
+          select coalesce(min(sort_order), 0) - 1
+          from task_board_items
+          where organization_id = ${params.organizationId}
+          and status = ${status}
+        )`,
         created_by: params.by,
         created_at: now,
         updated_by: params.by,
