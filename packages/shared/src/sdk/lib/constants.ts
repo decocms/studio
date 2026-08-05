@@ -413,7 +413,7 @@ export function getWellKnownReportVirtualMCP(
         // tool broke every other call the report widget makes through the
         // gateway (rerun_my_diagnostic, start_checkout, share_my_diagnostic):
         // "unknown namespace ... not found by original name in any client".
-        // Migration 164 backfills existing aggregations.
+        // Existing aggregations were backfilled by hand (see PR #5759).
         selected_tools: null,
         selected_resources: null,
         selected_prompts: null,
