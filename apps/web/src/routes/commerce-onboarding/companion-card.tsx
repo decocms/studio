@@ -18,7 +18,7 @@ import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { useMCPClient } from "@/sdk";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loading01, SlashCircle01 } from "@untitledui/icons";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useState } from "react";
 import { toast } from "sonner";
 import type { CompanionCardModel } from "./companions-core.ts";
 import {
@@ -102,6 +102,24 @@ function UnlinkButton({
   );
 }
 
+/**
+ * Renders nothing; fires `onConnect` exactly once when mounted — the "no
+ * panel in between" deep link's not-yet-linked case (see `autoOpen` on
+ * {@link CompanionCard}). Mirrors `CmsAutoOpen` (sandbox/preview/preview.tsx):
+ * a state-guarded render-time call instead of a mount effect (no useEffect
+ * in this codebase), deferred with `queueMicrotask` to land post-commit.
+ * The caller only renders this while the trigger condition holds, so it
+ * stops appearing — and can't re-fire — the instant that condition flips.
+ */
+function AutoConnectOnce({ onConnect }: { onConnect: () => void }) {
+  const [fired, setFired] = useState(false);
+  if (!fired) {
+    setFired(true);
+    queueMicrotask(onConnect);
+  }
+  return null;
+}
+
 export function CompanionCard({
   card,
   connecting,
@@ -151,20 +169,10 @@ export function CompanionCard({
   // Not-yet-linked + autoOpen: trigger the OAuth/config-form connect flow
   // immediately instead of waiting for a click. The SA lane's own dialog
   // handles its `autoOpen` prop directly (below) since its "connect" click
-  // only opens a local dialog rather than calling this handler.
-  const autoConnectFired = useRef(false);
-  useEffect(() => {
-    if (
-      autoOpen &&
-      !useSaFlow &&
-      !card.satisfied &&
-      !autoConnectFired.current
-    ) {
-      autoConnectFired.current = true;
-      onConnect();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoOpen, useSaFlow, card.satisfied]);
+  // only opens a local dialog rather than calling this handler. Renders only
+  // while the trigger condition holds, so it stops appearing (and can't
+  // re-fire) the instant `card.satisfied` flips true.
+  const triggerAutoConnect = autoOpen && !useSaFlow && !card.satisfied;
 
   const action =
     useSaFlow && saProvider ? (
@@ -255,14 +263,17 @@ export function CompanionCard({
     );
 
   return (
-    <CompanionCardView
-      icon={card.icon}
-      title={card.title}
-      headline={card.headline}
-      required={card.required && !card.satisfied}
-      attention={needsConfig}
-      action={action}
-    />
+    <>
+      {triggerAutoConnect && <AutoConnectOnce onConnect={onConnect} />}
+      <CompanionCardView
+        icon={card.icon}
+        title={card.title}
+        headline={card.headline}
+        required={card.required && !card.satisfied}
+        attention={needsConfig}
+        action={action}
+      />
+    </>
   );
 }
 
