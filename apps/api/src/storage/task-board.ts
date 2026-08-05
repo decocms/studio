@@ -620,28 +620,12 @@ export class TaskBoardStorage {
    * `status`/`assignee_id` against the first's committed row and matches
    * nothing.
    */
-  async claimConflictResolution(
+  claimConflictResolution(
     id: string,
     organizationId: string,
     by: string,
   ): Promise<TaskBoardItem | null> {
-    const row = await this.db
-      .updateTable("task_board_items")
-      .set({
-        status: "in_progress",
-        updated_by: by,
-        updated_at: new Date().toISOString(),
-      })
-      .where("id", "=", id)
-      .where("organization_id", "=", organizationId)
-      .where("status", "=", "in_review")
-      .where("assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID)
-      .returningAll()
-      .executeTakeFirst();
-    if (!row) return null;
-    const item = this.itemFromDbRow(row);
-    await this.attachRefs([item], organizationId);
-    return item;
+    return this.claimInReviewSuperAgentSlot(id, organizationId, by);
   }
 
   /**
@@ -658,7 +642,23 @@ export class TaskBoardStorage {
    * Agent out from under the new owner. Same atomic-conditional-UPDATE pattern
    * as `claimConflictResolution`.
    */
-  async claimReviewChangesBounce(
+  claimReviewChangesBounce(
+    id: string,
+    organizationId: string,
+    by: string,
+  ): Promise<TaskBoardItem | null> {
+    return this.claimInReviewSuperAgentSlot(id, organizationId, by);
+  }
+
+  /**
+   * Shared fence behind both claim methods above: move a task from In Review
+   * to In Progress ONLY if it's still In Review AND still assigned to the
+   * Super Agent, returning the updated item to the single winner and null to
+   * everyone else. A single conditional UPDATE is atomic under READ
+   * COMMITTED — a second, concurrent caller re-checks `status`/`assignee_id`
+   * against the first's committed row and matches nothing.
+   */
+  private async claimInReviewSuperAgentSlot(
     id: string,
     organizationId: string,
     by: string,
