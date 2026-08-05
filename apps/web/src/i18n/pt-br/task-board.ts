@@ -29,6 +29,7 @@ export const taskBoard = {
   "taskBoard.taskBoard.assignedToSuperAgentBy":
     "Atribuído ao Super Agent por {name}",
   "taskBoard.taskBoard.autoFix": "Auto-correção",
+  "taskBoard.taskBoard.rerun": "Executar de novo",
   "taskBoard.taskBoard.blockedBadgeTitle":
     "O agente está aguardando sua entrada",
   "taskBoard.taskBoard.clearFilters": "Limpar filtros",
@@ -184,6 +185,13 @@ export const taskBoard = {
   "taskBoard.taskFilters.filterDrawerTitle": "Filtros",
   "taskBoard.taskFilters.priorityAnyPriority": "Qualquer prioridade",
   "taskBoard.taskFilters.priorityLabel": "Prioridade",
+  "taskBoard.rerun.title": "Executar esta tarefa de novo?",
+  "taskBoard.rerun.description":
+    "O Super Agent vai iniciar uma nova execução nesta tarefa.",
+  "taskBoard.rerun.descriptionTakeover":
+    "O Super Agent vai iniciar uma nova execução nesta tarefa. Ainda há uma execução aberta nela — essa será interrompida.",
+  "taskBoard.rerun.cancel": "Cancelar",
+  "taskBoard.rerun.confirm": "Executar de novo",
   "taskBoard.subscriptionPaywall.trialTitle":
     "Assine para continuar com o auto-fix",
   "taskBoard.subscriptionPaywall.trialBenefitMonitoring":

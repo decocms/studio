@@ -41,6 +41,7 @@ import {
   List,
   Loading01,
   Plus,
+  RefreshCw01,
   UserPlus01,
   X,
 } from "@untitledui/icons";
@@ -105,6 +106,7 @@ import { useTags } from "@/hooks/use-tags";
 import { TaskBoardItemDialog, toEndOfDayIso } from "./task-dialog";
 import { AssigneePickerContent } from "./assignee-picker";
 import { SubscriptionPaywallDialog } from "./subscription-paywall-dialog";
+import { RerunDialog } from "./rerun-dialog";
 import { subscriptionErrorKind } from "@/components/task-board/is-subscription-error";
 import { isReportsTask } from "@decocms/shared/task-board";
 import { useFlipLanes } from "./use-flip-lanes";
@@ -346,6 +348,27 @@ export function TaskBoardPage() {
   const onDelegateError = (err: Error) => {
     const kind = subscriptionErrorKind(err);
     if (kind) setSubscriptionPaywall(kind);
+  };
+  // The task awaiting a re-run confirmation, or null. A re-run supersedes the
+  // task's live run, so it is confirmed rather than fired on click.
+  const [rerunTarget, setRerunTarget] = useState<TaskBoardItem | null>(null);
+  const confirmRerun = () => {
+    if (!rerunTarget) return;
+    // Same GitHub precondition as delegating: the run is expected to open a PR.
+    if (blockSuperAgentWithoutGithub(SUPER_AGENT_ASSIGNEE_ID)) {
+      setRerunTarget(null);
+      return;
+    }
+    actions.rerun.mutate(
+      { id: rerunTarget.id },
+      {
+        onError: (err) => {
+          onDelegateError(err as Error);
+          setRerunTarget(null);
+        },
+        onSuccess: () => setRerunTarget(null),
+      },
+    );
   };
   const { data: membersData } = useMembers();
   const members = (membersData?.data?.members ?? []) as Member[];
@@ -636,6 +659,7 @@ export function TaskBoardPage() {
               { onError: onDelegateError },
             );
           }}
+          onRerun={setRerunTarget}
         />
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-6 pb-16 sm:px-8">
@@ -724,6 +748,17 @@ export function TaskBoardPage() {
               }
             : undefined
         }
+        onRerun={
+          activeItem
+            ? () => {
+                // Confirm in the shared dialog rather than firing from here —
+                // the card path does the same, so the takeover warning has one
+                // home. Closing the task dialog first keeps them unstacked.
+                closeDialog();
+                setRerunTarget(activeItem);
+              }
+            : undefined
+        }
         onOpenThread={(thread) => {
           if (!thread.virtualMcpId) return;
           closeDialog();
@@ -747,6 +782,13 @@ export function TaskBoardPage() {
       <SubscriptionPaywallDialog
         kind={subscriptionPaywall}
         onOpenChange={(open) => !open && setSubscriptionPaywall(null)}
+      />
+
+      <RerunDialog
+        item={rerunTarget}
+        pending={actions.rerun.isPending}
+        onOpenChange={(open) => !open && setRerunTarget(null)}
+        onConfirm={confirmRerun}
       />
 
       {selectedIds.size > 0 && (
@@ -1100,6 +1142,7 @@ function Lanes({
   onCreate,
   onMove,
   onAutoFix,
+  onRerun,
   onAssign,
 }: {
   items: TaskBoardItem[];
@@ -1116,6 +1159,7 @@ function Lanes({
     sortOrder: number,
   ) => void;
   onAutoFix?: (item: TaskBoardItem) => void;
+  onRerun?: (item: TaskBoardItem) => void;
   onAssign?: (id: string, userId: string | null) => void;
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -1334,6 +1378,7 @@ function Lanes({
               onOpen={onOpen}
               onCreate={onCreate}
               onAutoFix={onAutoFix}
+              onRerun={onRerun}
               onAssign={onAssign}
             />
           ))}
@@ -1398,6 +1443,7 @@ function Lane({
   onOpen,
   onCreate,
   onAutoFix,
+  onRerun,
   onAssign,
 }: {
   status: TaskBoardItemStatus;
@@ -1415,6 +1461,7 @@ function Lane({
   onOpen: (item: TaskBoardItem) => void;
   onCreate: (status: TaskBoardItemStatus) => void;
   onAutoFix?: (item: TaskBoardItem) => void;
+  onRerun?: (item: TaskBoardItem) => void;
   onAssign?: (id: string, userId: string | null) => void;
 }) {
   const t = useT();
@@ -1529,6 +1576,7 @@ function Lane({
               onToggleSelect={() => onToggleSelect(item.id)}
               onOpen={() => onOpen(item)}
               onAutoFix={onAutoFix ? () => onAutoFix(item) : undefined}
+              onRerun={onRerun ? () => onRerun(item) : undefined}
               onAssign={
                 onAssign ? (userId) => onAssign(item.id, userId) : undefined
               }
@@ -1558,6 +1606,7 @@ function SortableTaskCard({
   onToggleSelect: () => void;
   onOpen: () => void;
   onAutoFix?: () => void;
+  onRerun?: () => void;
   onAssign?: (userId: string | null) => void;
 }) {
   const {
@@ -1607,6 +1656,7 @@ function TaskCard({
   onToggleSelect,
   onOpen,
   onAutoFix,
+  onRerun,
   onAssign,
 }: {
   item: TaskBoardItem;
@@ -1622,6 +1672,7 @@ function TaskCard({
   onToggleSelect?: () => void;
   onOpen: () => void;
   onAutoFix?: () => void;
+  onRerun?: () => void;
   onAssign?: (userId: string | null) => void;
 }) {
   const t = useT();
@@ -1632,6 +1683,21 @@ function TaskCard({
     onAutoFix &&
     (item.status === "triage" || item.status === "todo") &&
     item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID;
+
+  // The counterpart for a card the Super Agent already owns. Auto-fix hides
+  // itself once assigned (it delegates, and it's already delegated), which left
+  // such a card with NO way to start a run — and re-picking the same assignee
+  // is a no-op, so a stalled card was unrecoverable from the board.
+  //
+  // Deliberately NOT gated on "no run in flight": the cards that need this most
+  // are the ones whose thread reads `in_progress` forever because its run never
+  // started, and hiding the button behind a liveness check is exactly what made
+  // them unrecoverable. The confirm dialog carries the warning instead.
+  const showRerun =
+    onRerun &&
+    !showAutoFix &&
+    item.assigneeId === SUPER_AGENT_ASSIGNEE_ID &&
+    item.status !== "done";
 
   return (
     <button
@@ -1701,6 +1767,22 @@ function TaskCard({
         >
           <Lightning01 size={12} />
           {t("taskBoard.taskBoard.autoFix")}
+        </button>
+      )}
+
+      {showRerun && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRerun();
+          }}
+          // Hover-revealed: every Super-Agent card qualifies, so showing it
+          // always would put a button on nearly the whole board.
+          className="flex items-center gap-1.5 self-end rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground opacity-0 transition-opacity hover:bg-accent focus-visible:opacity-100 group-hover:opacity-100"
+        >
+          <RefreshCw01 size={12} />
+          {t("taskBoard.taskBoard.rerun")}
         </button>
       )}
     </button>
