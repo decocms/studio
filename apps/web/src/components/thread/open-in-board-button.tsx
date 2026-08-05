@@ -1,4 +1,3 @@
-import { useProjectContext } from "@/sdk";
 import { useNavigate } from "@tanstack/react-router";
 import { LayoutAlt01 } from "@untitledui/icons";
 import {
@@ -13,13 +12,13 @@ import { useT } from "@/i18n/use-t.ts";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 
 /**
- * Header action: when the current thread is linked to a task board item, jump
- * to the board with that task's modal open. Renders nothing when the thread has
- * no linked task (or the board is disabled — the lookup returns null then).
+ * Header action: when the current thread is linked to a task board item, open
+ * the Tasks overlay in the main panel with that task's modal open (same
+ * `?main=board` surface as the Tasks toggle). Renders nothing when the thread
+ * has no linked task (or the board is disabled — the lookup returns null then).
  */
 export function OpenInBoardButton() {
   const t = useT();
-  const { org } = useProjectContext();
   const { taskId } = useChatTask();
   const navigate = useNavigate();
   const boardTaskId = useTaskForThread(taskId);
@@ -34,9 +33,12 @@ export function OpenInBoardButton() {
             aria-label={t("thread.openInBoardButton.openTaskAriaLabel")}
             onClick={() =>
               navigate({
-                to: "/$org/board",
-                params: { org: org.slug },
-                search: { task: boardTaskId },
+                to: ".",
+                search: (prev: Record<string, unknown>) => ({
+                  ...prev,
+                  main: "board",
+                  task: boardTaskId,
+                }),
               })
             }
           >

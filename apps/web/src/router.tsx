@@ -302,6 +302,9 @@ const unifiedChatSearchSchema = z.object({
   preview: z.string().optional(),
   id: z.string().optional(),
   toolName: z.string().optional(),
+  /** Deep-links a task board card's modal open inside the `main=board`
+   *  overlay (set by a linked chat's "open in board" button). */
+  task: z.string().optional(),
   tasks: z.number().optional(),
   mainOpen: z.number().optional(),
   autosend: z.string().optional(),
@@ -351,20 +354,6 @@ const orgIndexRoute = createRoute({
   validateSearch: orgIndexSearchSchema,
   pendingComponent: ShellRouteLoading,
   component: lazyRouteComponent(() => import("./layouts/org-home/index.tsx")),
-});
-
-// Task board (/$org/board) — org-owned task board. `task` deep-links a
-// specific card's modal open (used by the "open in board" button from a
-// linked chat).
-const boardSearchSchema = z.object({
-  task: z.string().optional(),
-});
-
-const boardRoute = createRoute({
-  getParentRoute: () => orgShellLayout,
-  path: "/board",
-  validateSearch: boardSearchSchema,
-  component: lazyRouteComponent(() => import("./layouts/task-board/index.tsx")),
 });
 
 // ============================================
@@ -619,7 +608,6 @@ const agentShellWithChildren = agentShellLayout.addChildren([unifiedChatRoute]);
 
 const orgShellWithChildren = orgShellLayout.addChildren([
   orgIndexRoute,
-  boardRoute,
   agentShellWithChildren,
 ]);
 

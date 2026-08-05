@@ -1,6 +1,7 @@
 /**
- * Task board (/$org/board) — the org's own board of tasks (title,
+ * Task board (`?main=board`) — the org's own board of tasks (title,
  * description, status, priority, assignee), independent of chat threads.
+ * Rendered as a main-panel overlay tab; there is no standalone route.
  */
 
 import { useRef, useState } from "react";
@@ -404,7 +405,7 @@ export function TaskBoardPage() {
   const studio = useStudioTools();
   const { org, locator } = useProjectContext();
   const navigate = useNavigate();
-  // Deep link: `/$org/board?task=<id>` opens that task's modal (from a linked
+  // Deep link: `?main=board&task=<id>` opens that task's modal (from a linked
   // chat's "open in board" button). Derived, so it opens as soon as the item
   // loads without an effect.
   const { task: deepLinkTaskId } = useSearch({ strict: false }) as {
@@ -417,9 +418,8 @@ export function TaskBoardPage() {
   const clearDeepLink = () => {
     if (deepLinkTaskId)
       navigate({
-        to: "/$org/board",
-        params: { org: org.slug },
-        search: {},
+        to: ".",
+        search: ({ task: _task, ...rest }: Record<string, unknown>) => rest,
         replace: true,
       });
   };
