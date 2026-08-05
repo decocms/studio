@@ -34,6 +34,7 @@ import { sleep } from "@decocms/shared/std";
 import type { SandboxClient } from "@decocms/sandbox/dispatch/sandbox-client";
 import { harnessRunResultSchema } from "@decocms/sandbox/dispatch/schemas";
 import type { SandboxProvider } from "@decocms/sandbox/provider";
+import { isTransientStreamError } from "@/harnesses/decopilot/built-in-tools/subtask";
 import type { HarnessId, HarnessStreamInput } from "@/harnesses/lib/types";
 import {
   claudeCodeEnvFromCredential,
@@ -574,7 +575,22 @@ export async function* ndjsonLines(
       const timeout = sleep(DAEMON_SILENCE_TIMEOUT_MS, { signal: idle.signal })
         .then(() => "silent" as const)
         .catch(() => "read-won" as const);
-      const step = await Promise.race([next, timeout]);
+      const step = await Promise.race([next, timeout]).catch((err: unknown) => {
+        // The body's socket broke mid-run. This is the port-forward
+        // WebSocket to the pod (`AgentSandboxRunner.openForwarder`), and the
+        // API server hanging it up is not the harness failing — the checkout
+        // is intact and the turn is continuable, exactly like the silence
+        // timeout below. Without this the read rejection travels as a plain
+        // Error, `dispatchWithContinuation` refuses to retry it, and a
+        // transient socket close permanently fails the run (and burns the
+        // org's task quota).
+        if (signal?.aborted) throw err;
+        const message = err instanceof Error ? err.message : String(err);
+        if (!isTransientStreamError(message)) throw err;
+        throw new SandboxUnreachableError(
+          `the sandbox stream broke mid-run: ${message}`,
+        );
+      });
       if (step === "silent") {
         if (signal?.aborted) return;
         throw new SandboxUnreachableError(
