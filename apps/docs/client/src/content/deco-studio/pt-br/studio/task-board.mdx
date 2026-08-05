@@ -70,3 +70,29 @@ Alguns cards não são criados por uma pessoa — um report (por exemplo, o **Re
 O agent Task Manager avisa quando o card que você está excluindo veio de um report, para que você saiba que excluí-lo também suprime esse finding a partir de então.
 
 Por padrão, um card publicado por um report fica sem responsável. Ative **Auto-assign report tasks to the Super Agent** em **Settings → Organization → Reviewers & merge** para que esses cards sejam atribuídos automaticamente ao Super Agent assim que forem criados, em vez de esperar alguém pegá-los.
+
+## Billing e cota de auto-tasks
+
+Delegar uma task ao **Super Agent** — pelo diálogo da task, ou atribuindo um card a ele em uma lane ou no seletor de assignee — consome a cota de auto-task da sua organização. Tasks que você mesmo cria e trabalha nunca são limitadas.
+
+- **Trial gratuito**: toda organização recebe **3 execuções de auto-task gratuitas por toda a vida** antes de precisar de uma subscription.
+- **Assinado (subscribed)**: **$50/mês** para **10 execuções de auto-task por ciclo de billing**. A cota renova automaticamente no início de cada ciclo.
+- **Limite por task**: qualquer task individual pode ser re-executada até **5 vezes**, independente do status da subscription.
+
+Quando uma delegação é bloqueada pela cota, um diálogo explica o motivo:
+
+- **Trial esgotado** — mostra os benefícios da subscription e um botão **Subscribe** que abre o checkout hospedado no Stripe em uma nova aba.
+- **Cota mensal esgotada** — apenas informativo; a cota renova por conta própria no próximo ciclo de billing.
+- **Limite de re-execuções da task atingido** — apenas informativo; crie uma nova task para continuar.
+
+<Callout type="info">
+  Esse paywall nunca bloqueia você de criar ou editar tasks você mesmo — ele se aplica apenas à delegação ao Super Agent.
+</Callout>
+
+### Gerenciando billing
+
+Vá em **Settings → Billing** para ver o status atual da sua organização (**Free trial**, **Active** ou **Payment issue**), as execuções usadas no ciclo atual e a data de renovação. A partir daí você pode assinar ou, uma vez assinante, abrir o portal de billing hospedado no Stripe para gerenciar sua forma de pagamento ou cancelar.
+
+<Callout type="tip">
+  Deployments self-hosted não aplicam essa cota por padrão — as execuções de auto-task são ilimitadas a menos que o operador do deployment habilite explicitamente a aplicação de billing. Veja [Docker Compose](/pt-br/studio/self-hosting/deploy/docker-compose) para as variáveis de ambiente relevantes.
+</Callout>
