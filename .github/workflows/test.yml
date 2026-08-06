@@ -23,6 +23,29 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Runner selection for the four cheap-but-queued jobs below (format, lint,
+# typecheck, test). Resolved from a repository variable so the pilot can be
+# switched on and rolled back WITHOUT a PR:
+#
+#   on:  gh variable set CI_RUNNER_LINUX --body deco-linux-amd64 --repo decocms/studio
+#   off: gh variable delete CI_RUNNER_LINUX --repo decocms/studio
+#
+# Unset resolves to ubuntu-latest, so this file is a no-op until someone sets
+# the variable. That matters because these are required checks: if the
+# self-hosted scale set is unavailable, jobs targeting its label sit queued
+# until GitHub's 24h timeout rather than failing fast, and nothing merges.
+# Deleting the variable restores hosted runners on the next run.
+#
+# Why only these four: they run 0.5-2 min but have waited up to ~90 min at the
+# p99 (hosted concurrency ceiling saturating at ~915 runs/day). They also need
+# nothing beyond checkout + setup-bun, so they run on the stock ARC runner
+# image — no sudo, no docker, no privileged sidecar. `changes`, `build` and
+# `web-component-tests` deliberately stay hosted.
+#
+# Inlined per job rather than hoisted into `env:` because `runs-on` cannot read
+# the `env` context — only `github`, `needs`, `strategy`, `matrix`, `inputs`
+# and `vars`.
+
 jobs:
   # Gate: skip the (required) check jobs when a PR only touches workflow YAML,
   # docs, or markdown. Required checks can't be skipped via workflow-level
@@ -88,7 +111,7 @@ jobs:
   format:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -102,7 +125,7 @@ jobs:
   lint:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -121,7 +144,7 @@ jobs:
   typecheck:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -140,7 +163,7 @@ jobs:
   test:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
     # The suite normally finishes in ~1 min. A single hung file under the
     # parallel runner stalls the whole job silently (per-file output is
     # buffered, so the culprit prints nothing) — without this bound that's
