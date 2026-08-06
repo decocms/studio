@@ -193,7 +193,21 @@ export function resolveSandboxBranch(args: {
   agentRepo?: GithubRepo | null;
   /** Explicit branch for this run, when the caller has one. */
   runBranch?: string | null;
+  /**
+   * A REAL git ref this run must land on, pinned on the thread at dispatch
+   * (`metadata.pinnedRef`). Set when a task re-run has to update an existing
+   * pull request instead of opening another one: the derived `thread:<id>` key
+   * is per-thread, and every re-run is a new thread, so deriving would fork a
+   * new branch and therefore a new PR — which is exactly how one task ended up
+   * with four open PRs for the same change.
+   *
+   * Wins over every derivation below, deliberately. Two re-runs of the same
+   * task then share one sandbox, which is correct: they share a branch, and
+   * sharing beats two pods force-pushing over each other.
+   */
+  pinnedRef?: string | null;
 }): string {
+  if (args.pinnedRef) return args.pinnedRef;
   // A run dispatched on the BARE `thread:<id>` key keeps it, repo or not: that
   // is a sandbox-hosted task run that started with no repo and had one bound
   // mid-run by `TASK_ADD_REPO`. Deriving from the repo instead would move the
@@ -211,7 +225,21 @@ export function resolveSandboxBranch(args: {
   return args.runBranch ?? `thread:${args.threadId}`;
 }
 
-/** `resolveSandboxBranch` with the thread's bound repo read for you. */
+/**
+ * Read the real git ref pinned on the thread (`metadata.pinnedRef`), or null.
+ * See {@link resolveSandboxBranch}'s `pinnedRef`. Never throws.
+ */
+export async function getThreadPinnedRef(
+  ctx: StudioContext,
+  threadId: string | undefined | null,
+): Promise<string | null> {
+  const meta = await getThreadMeta(ctx, threadId);
+  const ref = (meta as { pinnedRef?: unknown } | null)?.pinnedRef;
+  return typeof ref === "string" && ref.length > 0 ? ref : null;
+}
+
+/** `resolveSandboxBranch` with the thread's bound repo and pinned ref read for
+ *  you. */
 export async function resolveSandboxBranchForThread(
   ctx: StudioContext,
   args: {
@@ -220,10 +248,11 @@ export async function resolveSandboxBranchForThread(
     runBranch?: string | null;
   },
 ): Promise<string> {
-  return resolveSandboxBranch({
-    ...args,
-    threadRepo: await getThreadGithubRepo(ctx, args.threadId),
-  });
+  const [threadRepo, pinnedRef] = await Promise.all([
+    getThreadGithubRepo(ctx, args.threadId),
+    getThreadPinnedRef(ctx, args.threadId),
+  ]);
+  return resolveSandboxBranch({ ...args, threadRepo, pinnedRef });
 }
 
 /**

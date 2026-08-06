@@ -6,9 +6,17 @@ import {
   Loading02,
 } from "@untitledui/icons";
 import type { StudioToolOutput as ToolOutput } from "@decocms/shared/tools/tool-io";
+import {
+  isReviewerThreadTitle,
+  REVIEWER_KINDS,
+  type ReviewerKind,
+} from "@decocms/shared/task-board";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 
-export { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+export {
+  SUPER_AGENT_ASSIGNEE_ID,
+  isReviewerThreadTitle,
+} from "@decocms/shared/task-board";
 
 export type TaskBoardItem = ToolOutput<"TASK_BOARD_ITEM_LIST">["items"][number];
 export type TaskBoardItemStatus = TaskBoardItem["status"];
@@ -46,6 +54,19 @@ export function primaryThread(
   item: TaskBoardItem,
 ): TaskBoardItemThread | undefined {
   return item.threads[0];
+}
+
+/** The QA/code-review threads linked to this task, in `REVIEWER_KINDS` order —
+ *  present only once that reviewer has actually run. */
+export function reviewerThreads(
+  item: TaskBoardItem,
+): { kind: ReviewerKind; thread: TaskBoardItemThread }[] {
+  return REVIEWER_KINDS.flatMap((kind) => {
+    const thread = item.threads.find((t) =>
+      isReviewerThreadTitle(t.title, kind),
+    );
+    return thread ? [{ kind, thread }] : [];
+  });
 }
 
 /**

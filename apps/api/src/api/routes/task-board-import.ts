@@ -39,6 +39,14 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
  *   recurring diagnostic runs converge on the same card. A done item is NOT
  *   matched — a regression creates a fresh card. Refreshes never re-trigger
  *   the Super Agent delegation.
+ *   When an item carries NO externalKey, its normalized title stands in as the
+ *   finding identity. `externalKey` is optional and at least one real producer
+ *   never sends it, so the dedup above was simply never reached: one board
+ *   accumulated 8 duplicated findings (19 cards that should have been 8), each
+ *   duplicate spawning its own agent run and its own pull request. Matching is
+ *   EXACT on the normalized title (case, surrounding and repeated whitespace) —
+ *   deliberately not fuzzy, because two findings that differ by a few words are
+ *   usually two findings, and wrongly merging them loses one silently.
  *
  * A DISMISSED key (`dismissed_at` set) is skipped and counted in `dismissed`.
  *
@@ -53,6 +61,15 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
 type Variables = {
   studioContext: StudioContext;
 };
+
+/**
+ * Finding identity for an item that carries no `externalKey`: the title with
+ * case and whitespace differences flattened. Nothing more aggressive — see the
+ * module docstring on why matching stays exact.
+ */
+export function normalizeTitleKey(title: string): string {
+  return title.trim().replace(/\s+/g, " ").toLowerCase();
+}
 
 export const importBodySchema = z.object({
   items: z
@@ -170,6 +187,32 @@ export const createTaskBoardImportRoutes = () => {
       const keys = items.flatMap((i) => i.externalKey ?? []);
       const openByKey = new Map<string, string>();
       const dismissed = new Set<string>();
+
+      // Title-keyed fallback for items with no externalKey. Scoped to the org's
+      // non-done cards and only paid for when some item actually lacks a key.
+      const openByTitle = new Map<string, string>();
+      const dismissedTitles = new Set<string>();
+      if (items.some((i) => !i.externalKey)) {
+        const rows = await trx
+          .selectFrom("task_board_items")
+          .select(["id", "title", "status", "dismissed_at"])
+          .where("organization_id", "=", organizationId)
+          .where((eb) =>
+            eb.or([
+              eb("dismissed_at", "is not", null),
+              eb("status", "!=", "done"),
+            ]),
+          )
+          .execute();
+        for (const row of rows) {
+          const key = normalizeTitleKey(row.title);
+          if (row.dismissed_at) dismissedTitles.add(key);
+          else if (row.status !== "done" && !openByTitle.has(key)) {
+            openByTitle.set(key, row.id);
+          }
+        }
+      }
+
       if (keys.length > 0) {
         const rows = await trx
           .selectFrom("task_board_items")
@@ -199,13 +242,17 @@ export const createTaskBoardImportRoutes = () => {
       let updated = 0;
       let skipped = 0;
       for (const item of items) {
-        if (item.externalKey && dismissed.has(item.externalKey)) {
+        const titleKey = normalizeTitleKey(item.title);
+        const isDismissed = item.externalKey
+          ? dismissed.has(item.externalKey)
+          : dismissedTitles.has(titleKey);
+        if (isDismissed) {
           skipped++;
           continue;
         }
         const existingId = item.externalKey
           ? openByKey.get(item.externalKey)
-          : undefined;
+          : openByTitle.get(titleKey);
         if (existingId) {
           // Refresh the finding's card: new evidence + severity. Title,
           // status and assignee stay — a human may have touched them, and a
@@ -246,6 +293,7 @@ export const createTaskBoardImportRoutes = () => {
         });
         // A within-batch duplicate key folds into the row just created.
         if (item.externalKey) openByKey.set(item.externalKey, row.id);
+        else openByTitle.set(titleKey, row.id);
         touched.push(row);
         created++;
         if (toSuperAgent) delegations.push(row);

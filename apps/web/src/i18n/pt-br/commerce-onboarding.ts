@@ -1,6 +1,11 @@
 import type { commerceOnboarding as commerceOnboardingEn } from "../en/commerce-onboarding.ts";
 
 export const commerceOnboarding = {
+  "commerceOnboarding.companionCard.configField.accountName": "Nome da conta",
+  "commerceOnboarding.companionCard.configField.appKey": "App Key",
+  "commerceOnboarding.companionCard.configField.appToken": "App Token",
+  "commerceOnboarding.companionCard.configField.propertyId": "Propriedade",
+  "commerceOnboarding.companionCard.configField.siteUrl": "Site",
   "commerceOnboarding.companionCard.configure": "Configurar",
   "commerceOnboarding.companionCard.configureAriaLabel": "Configurar {title}",
   "commerceOnboarding.companionCard.configureDescription":

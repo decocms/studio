@@ -216,7 +216,12 @@ export default function ReportPage() {
     // A completed scan exists — render it straight away, even before login
     // has resolved. Unauthenticated visitors only get the cover slide; see
     // `SignalDeck`'s `authenticated` gating for what happens past it.
+    // Keyed on `truncated`: once an in-place login (see `auth-gate.tsx`'s
+    // `onAuthenticated`) refetches this query and gets back the full deck,
+    // the key flips and ScanGate/SignalDeck remount fresh onto it instead of
+    // clinging to the truncated one-slide deck they mounted with.
     <ScanGate
+      key={String(Boolean(initial.data.truncated))}
       domain={domain}
       initial={initial.data}
       sessionEmail={session.data?.user?.email ?? ""}

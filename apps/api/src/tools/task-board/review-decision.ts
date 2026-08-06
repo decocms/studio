@@ -4,9 +4,11 @@ import { requireAuth } from "@/core/studio-context";
 import type { StudioContext } from "@/core/studio-context";
 import {
   allReviewersApproved,
+  MAX_REVIEW_BOUNCES,
   REVIEWER_FLAG,
   REVIEWER_KINDS,
   REVIEWER_LABEL,
+  reviewBounceLimitReached,
 } from "@decocms/shared/task-board";
 import { TaskBoardItemStatusSchema } from "./schema";
 import { recordTaskActivity } from "./activity";
@@ -126,6 +128,53 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
     const verified = claim?.reviewer === reviewer;
 
     if (decision === "request_changes") {
+      // Break a runaway review loop BEFORE bouncing. A reviewer that keeps
+      // finding something keeps finding something, and each round costs a
+      // sandbox run — one board logged 179 change-requests against 68
+      // approvals. Past the cap the verdict is still recorded (it is the
+      // reviewer's most useful output) but the task stops going back to the
+      // Super Agent and is handed to a person instead.
+      //
+      // Checked BEFORE `claimReviewChangesBounce`, not after: that call moves
+      // the card to In Progress, and skipping the dispatch afterwards would
+      // leave it sitting In Progress with nothing running — the
+      // delegated-but-idle state this codebase goes out of its way to avoid.
+      const history = await ctx.storage.taskBoard.listActivity(
+        taskBoardItemId,
+        organizationId,
+      );
+      if (reviewBounceLimitReached(history)) {
+        await recordTaskActivity(ctx, {
+          taskBoardItemId,
+          action: "review_changes_requested",
+          actorId: null,
+          data: { reviewer, notes, verified, bounceLimitReached: true },
+        });
+        console.warn(
+          `[task-board] ${taskBoardItemId}: ${MAX_REVIEW_BOUNCES} review ` +
+            `bounces reached — unassigning the Super Agent, needs a human`,
+        );
+        // Unassign so the card reads as a person's problem rather than an
+        // agent's, and so nothing downstream re-dispatches it. It stays In
+        // Review with the reviewer's notes: that is where a human wants to
+        // pick it up, and the ship button stays hidden because nothing is
+        // approved.
+        const handed = await ctx.storage.taskBoard.update(
+          taskBoardItemId,
+          organizationId,
+          { assigneeId: null },
+          item.updatedBy,
+        );
+        await recordTaskActivity(ctx, {
+          taskBoardItemId,
+          action: "assignee_changed",
+          actorId: null,
+          data: { from: item.assigneeId, to: null },
+        });
+        emitTaskBoardUpdated(organizationId, handed);
+        return { status: handed.status, merged: false };
+      }
+
       // Any reviewer requesting changes bounces the task straight back to the
       // Super Agent with the feedback in its re-run prompt — no need to wait on
       // the other reviewer. Pull it back to In Progress and re-enqueue directly.

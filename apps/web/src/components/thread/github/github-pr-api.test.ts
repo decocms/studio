@@ -5,9 +5,9 @@ import {
   pullRequestFromToolText,
 } from "./extract-tool-json.ts";
 import {
-  findOpenPullRequestForBranch,
   openPullRequestForBranch,
   parseCreatedPullRequestResult,
+  PULL_REQUEST_ALREADY_EXISTS_MESSAGE,
   squashMergePullRequest,
 } from "./github-pr-api.ts";
 
@@ -84,49 +84,6 @@ describe("parseCreatedPullRequestResult", () => {
   });
 });
 
-describe("findOpenPullRequestForBranch", () => {
-  test("uses head filter and does not scan unfiltered PR list", async () => {
-    const calls: Record<string, unknown>[] = [];
-    const client = {
-      callTool: async (req: {
-        name: string;
-        arguments: Record<string, unknown>;
-      }) => {
-        calls.push(req.arguments);
-        if (req.arguments.head === "owner:feat/x") {
-          return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify([
-                  {
-                    number: 5,
-                    html_url: "https://github.com/o/r/pull/5",
-                    head: { ref: "feat/x" },
-                  },
-                ]),
-              },
-            ],
-          };
-        }
-        return { content: [{ type: "text", text: "[]" }] };
-      },
-    };
-
-    const pr = await findOpenPullRequestForBranch(client, {
-      owner: "owner",
-      repo: "repo",
-      branch: "feat/x",
-    });
-
-    expect(pr).toEqual({
-      number: 5,
-      htmlUrl: "https://github.com/o/r/pull/5",
-    });
-    expect(calls.every((c) => c.head != null)).toBe(true);
-  });
-});
-
 describe("squashMergePullRequest", () => {
   test("requires merged === true in response", async () => {
     const client = {
@@ -173,16 +130,15 @@ describe("squashMergePullRequest", () => {
 });
 
 describe("openPullRequestForBranch", () => {
-  test("does not create a co-author-only PR body", async () => {
+  test("creates a PR and never calls list_pull_requests", async () => {
+    const names: string[] = [];
     let args: Record<string, unknown> | undefined;
     const client = {
       callTool: async (req: {
         name: string;
         arguments: Record<string, unknown>;
       }) => {
-        if (req.name === "list_pull_requests") {
-          return { content: [{ type: "text", text: "[]" }] };
-        }
+        names.push(req.name);
         args = req.arguments;
         return {
           content: [
@@ -197,7 +153,7 @@ describe("openPullRequestForBranch", () => {
       },
     };
 
-    await openPullRequestForBranch(client, {
+    const pr = await openPullRequestForBranch(client, {
       owner: "o",
       repo: "r",
       branch: "feat/x",
@@ -206,6 +162,72 @@ describe("openPullRequestForBranch", () => {
       coAuthor: { userName: "Jane Doe", userEmail: "jane@example.com" },
     });
 
+    expect(pr).toEqual({ number: 2, htmlUrl: "https://github.com/o/r/pull/2" });
+    // No co-author-only body should be created.
     expect(args?.body).toBeUndefined();
+    expect(names).toEqual(["create_pull_request"]);
+    expect(names).not.toContain("list_pull_requests");
+  });
+
+  test("reuses an existing PR without listing or creating", async () => {
+    const names: string[] = [];
+    const client = {
+      callTool: async (req: {
+        name: string;
+        arguments: Record<string, unknown>;
+      }) => {
+        names.push(req.name);
+        return { content: [{ type: "text", text: "{}" }] };
+      },
+    };
+
+    const pr = await openPullRequestForBranch(client, {
+      owner: "o",
+      repo: "r",
+      branch: "feat/x",
+      title: "feat: x",
+      body: "already open",
+      base: "main",
+      existing: { number: 9, htmlUrl: "https://github.com/o/r/pull/9" },
+      coAuthor: { userName: "Jane Doe", userEmail: "jane@example.com" },
+    });
+
+    expect(pr).toEqual({ number: 9, htmlUrl: "https://github.com/o/r/pull/9" });
+    // Only a best-effort co-author body update — never list/create.
+    expect(names).not.toContain("list_pull_requests");
+    expect(names).not.toContain("create_pull_request");
+  });
+
+  test("surfaces a retry message when create reports a duplicate PR", async () => {
+    const names: string[] = [];
+    const client = {
+      callTool: async (req: {
+        name: string;
+        arguments: Record<string, unknown>;
+      }) => {
+        names.push(req.name);
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: "A pull request already exists for o:feat/x.",
+            },
+          ],
+        };
+      },
+    };
+
+    await expect(
+      openPullRequestForBranch(client, {
+        owner: "o",
+        repo: "r",
+        branch: "feat/x",
+        title: "feat: x",
+        base: "main",
+      }),
+    ).rejects.toThrow(PULL_REQUEST_ALREADY_EXISTS_MESSAGE);
+    // We must NOT fall back to list_pull_requests to recover the PR.
+    expect(names).not.toContain("list_pull_requests");
   });
 });

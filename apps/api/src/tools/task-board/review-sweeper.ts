@@ -51,6 +51,7 @@
 
 import type { StudioContextFactory } from "@/automations/fire";
 import type { TaskBoardStorage } from "@/storage/task-board";
+import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { extractPrFromText } from "./pr-extract";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
 import { fetchPrLiveState, prReadyForReview } from "./prs-get";
@@ -152,6 +153,18 @@ export class TaskBoardReviewSweeper {
   ): Promise<boolean> {
     const item = await this.taskBoard.getById(id, organizationId);
     if (!item) return false;
+    // Re-check against the fresh row: `listItemsPendingReview` scanned a
+    // possibly-stale snapshot, and a human can bounce/reassign the card between
+    // that scan and this reconcile. Without this the sweeper would still
+    // dispatch reviewers at a task that's no longer awaiting the Super Agent's
+    // review — the same gate `TASK_BOARD_ITEM_PRS_GET` applies before its own
+    // `enqueueEnabledReviewers` call.
+    if (
+      item.status !== "in_review" ||
+      item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID
+    ) {
+      return false;
+    }
 
     // Claim the interval BEFORE the GitHub work, not after: that is what makes a
     // second replica skip this card, and what stops a card that comes back

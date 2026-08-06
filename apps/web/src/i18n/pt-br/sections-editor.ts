@@ -19,6 +19,7 @@ export const sectionsEditor = {
   "sectionsEditor.arrayField.delete": "Excluir",
   "sectionsEditor.arrayField.duplicate": "Duplicar",
   "sectionsEditor.arrayField.hideItem": "Ocultar item",
+  "sectionsEditor.arrayField.openActionsFor": "Abrir ações para {label}",
   "sectionsEditor.arrayField.sectionPickerNotAvailable":
     "O seletor de seção não está disponível neste editor.",
   "sectionsEditor.arrayField.showItem": "Mostrar item",

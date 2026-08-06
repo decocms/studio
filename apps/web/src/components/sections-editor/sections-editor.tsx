@@ -47,6 +47,7 @@ import { extractMatcherGlobals, extractMatchers } from "./matcher-picker";
 import { PageVariantTabs, VariantTabIcon } from "./page-variant-tabs";
 import { MakeReusableModal } from "./make-reusable-modal";
 import { AddSectionModal } from "./add-section-modal";
+import { useSectionPreviewBase } from "./use-section-preview-base";
 import type { SectionCatalogEntry } from "./section-catalog";
 import { SectionVariantList } from "./section-variant-list";
 import { headerBackTargetIndex } from "./schema-form-breadcrumb";
@@ -182,6 +183,12 @@ export function SectionsEditor({
     inset?.entity?.id === virtualMcpId
       ? (inset.entity.metadata?.siteSlug ?? null)
       : null;
+  // Section-gallery previews render against the sandbox dev server, falling
+  // back to the Fast Preview production deployment while the sandbox boots.
+  const sectionPreviewBase = useSectionPreviewBase({
+    virtualMcpId,
+    sandboxUrl: previewUrl,
+  });
 
   const [selectedSectionIndex, setSelectedSectionIndex] = useState<
     number | null
@@ -1397,7 +1404,7 @@ export function SectionsEditor({
   const availableMatcherGlobals =
     meta && decofile ? extractMatcherGlobals(meta, decofile) : [];
   const canAddSection =
-    !isGlobalBlockMode && !!(previewUrl && meta && decofile);
+    !isGlobalBlockMode && !!(sectionPreviewBase && meta && decofile);
 
   const ruleSchema =
     ruleResolveType && meta ? resolveSchema(ruleResolveType, meta) : null;
@@ -2760,7 +2767,7 @@ export function SectionsEditor({
             decofile={decofile}
             onSaveReferencedBlock={saveReferencedBlock}
             sandbox={sandbox}
-            previewBaseUrl={previewUrl}
+            previewBaseUrl={sectionPreviewBase}
             onRequestAddSection={handleRequestAddSection}
           />
         </ScrollArea>
@@ -2783,7 +2790,7 @@ export function SectionsEditor({
             decofile={decofile}
             onSaveReferencedBlock={saveReferencedBlock}
             sandbox={sandbox}
-            previewBaseUrl={previewUrl}
+            previewBaseUrl={sectionPreviewBase}
             onRequestAddSection={handleRequestAddSection}
           />
         </ScrollArea>
@@ -2906,7 +2913,7 @@ export function SectionsEditor({
         onSubmit={handleMakeReusableSubmit}
       />
 
-      {previewUrl && (
+      {sectionPreviewBase && (
         <AddSectionModal
           open={addSectionOpen}
           onOpenChange={(open) => {
@@ -2915,7 +2922,7 @@ export function SectionsEditor({
           }}
           meta={meta}
           decofile={decofile}
-          previewBaseUrl={previewUrl}
+          previewBaseUrl={sectionPreviewBase}
           onSelect={handleSelectSectionFromModal}
         />
       )}
