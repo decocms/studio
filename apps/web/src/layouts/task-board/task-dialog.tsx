@@ -793,7 +793,7 @@ export function TaskBoardItemDialog({
 }
 
 /** Live-status style for a linked thread (agent session). */
-function threadStatusStyle(
+export function threadStatusStyle(
   status: NonNullable<TaskBoardItemThread["status"]>,
   t: ReturnType<typeof useT>,
 ): {
