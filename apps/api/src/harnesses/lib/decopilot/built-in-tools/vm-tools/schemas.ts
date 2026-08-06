@@ -9,9 +9,10 @@ export const ReadInputSchema = z.object({
   path: z
     .string()
     .describe(
-      "File path. Relative paths resolve against the project root (e.g. " +
-        "'src/index.ts'); absolute paths are accepted for files outside the " +
-        "project (e.g. '/home/sandbox/deck.thumbnail.jpg').",
+      "File path. Prefer relative paths — they resolve against the project " +
+        "root (e.g. 'src/index.ts'). Absolute paths are accepted but only " +
+        "for files you already know exist outside the project; do not guess " +
+        "one.",
     ),
   offset: z
     .number()
@@ -140,7 +141,10 @@ export const GLOB_DESCRIPTION =
 
 export const BASH_DESCRIPTION =
   "Execute a shell command in the VM's project directory. " +
-  "Working directory is the project root. Timeout default 30s, max 2min.\n\n" +
+  "Working directory is already the project root — the git checkout, when " +
+  "the agent has a repo. Never `cd` to an absolute path you guessed " +
+  "(there is no `/home/sandbox` project dir); run git and build commands " +
+  "as-is from the default cwd. Timeout default 30s, max 2min.\n\n" +
   "The organization filesystem is mounted at `org/`:\n" +
   "- `org/home/` — the org's shared home folder (editable, " +
   "shared across runs). Organize it " +
