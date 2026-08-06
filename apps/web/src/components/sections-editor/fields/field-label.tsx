@@ -44,7 +44,7 @@ export function FieldDescriptionTooltip({
   const tooltipsEnabled = useFieldDescriptionTooltips(virtualMcpId);
   if (!description || !tooltipsEnabled) return children;
   return (
-    <Tooltip>
+    <Tooltip delayDuration={300}>
       <TooltipTrigger asChild>
         {cloneElement(children, {
           className: cn(children.props.className, DESCRIPTION_AFFORDANCE_CLASS),
