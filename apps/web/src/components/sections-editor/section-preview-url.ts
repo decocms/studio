@@ -86,3 +86,35 @@ export function buildSectionPreviewUrl(
   );
   return url.toString();
 }
+
+/**
+ * Base origin for the section-gallery previews (`/live/previews`).
+ *
+ * Section thumbnails render a single ISOLATED component via deco's runtime
+ * `/live/previews` route, so the base must be a deco-runtime origin. This is a
+ * mode switch, not a boot fallback:
+ *   - Fast Preview ON  → ALWAYS the production deployment, for the whole
+ *     session. It does not depend on the sandbox being up and never swaps back
+ *     to it — like the main canvas, which also paints production whenever Fast
+ *     Preview is on. Renders against DEPLOYED code, which is representative for
+ *     a "pick a section" gallery.
+ *   - Fast Preview OFF → the sandbox dev server (the previous behaviour).
+ *
+ * Unlike `buildDraftPreviewUrl` (framework-agnostic, GET on the site's real
+ * routes), there is no framework-agnostic way to render one isolated component,
+ * so the production path only works when production is itself a deco-runtime
+ * site — the same assumption the sandbox dev server already satisfies.
+ *
+ * Returns `null` when neither base is available (no sandbox URL and Fast
+ * Preview off), so the caller can withhold the gallery entirely.
+ */
+export function resolveSectionPreviewBase(input: {
+  sandboxUrl: string | null | undefined;
+  productionUrl: string | null | undefined;
+  fastPreviewActive: boolean;
+}): string | null {
+  if (input.fastPreviewActive && input.productionUrl) {
+    return input.productionUrl;
+  }
+  return input.sandboxUrl ?? null;
+}

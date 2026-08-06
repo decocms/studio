@@ -31,7 +31,7 @@ import {
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
-import { sanitizeProductionUrl } from "@decocms/shared/deco-site-production-url";
+import { resolveFastPreview } from "@/sdk/fast-preview";
 import { KEYS, invalidateVirtualMcpQueries } from "@/lib/query-keys";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 
@@ -229,9 +229,7 @@ export function SandboxEventsProvider({
   // from disk, and a refetch could revert an optimistic edit against a committed
   // `blocks.gen.json`.
   const vmcp = useVirtualMCP(virtualMcpId ?? undefined);
-  const fastPreviewActive =
-    !!sanitizeProductionUrl(vmcp?.metadata?.productionUrl) &&
-    vmcp?.metadata?.fastPreview === true;
+  const fastPreviewActive = resolveFastPreview(vmcp?.metadata).active;
   const fastPreviewActiveRef = useRef(fastPreviewActive);
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- keep the SSE closure reading the latest value without reconnecting
   fastPreviewActiveRef.current = fastPreviewActive;
