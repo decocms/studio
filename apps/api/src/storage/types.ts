@@ -1612,6 +1612,17 @@ export interface TaskBoardItemTable {
   >;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sort_order: ColumnType<number, number | undefined, number>;
+  /** When the review sweeper last reconciled this card. Null = never, which is
+   *  always due. The sweeper's interval hangs off this column rather than off
+   *  its own timer so that every replica shares one budget and a permanently
+   *  parked card costs one GitHub round-trip per interval, not one per tick —
+   *  see `migrations/166-task-board-last-swept-at.ts`. Not `updated_at`: a
+   *  sweep is not a user-visible edit. */
+  last_swept_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
   created_by: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_by: string;

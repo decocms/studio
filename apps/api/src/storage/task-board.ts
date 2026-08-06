@@ -493,9 +493,19 @@ export class TaskBoardStorage {
    * them is ever swept again. Paging across ticks bounds each tick's work
    * without bounding what the sweep can ever reach.
    */
+  /**
+   * The review sweeper's work list: Super Agent cards parked In Review that are
+   * DUE a sweep, i.e. never swept or last swept before `dueBefore`.
+   *
+   * That predicate is what bounds the sweeper's GitHub cost. Without it the same
+   * cards came back on every tick of every replica — a card whose checks never
+   * go green never leaves this set — so the cost was (cards x replicas x ticks)
+   * rather than (cards x intervals). See migration 166.
+   */
   async listItemsPendingReview(
     limit: number,
     after?: { updatedAt: string; id: string } | null,
+    dueBefore?: Date,
   ): Promise<{ id: string; organizationId: string; updatedAt: string }[]> {
     let query = this.db
       .selectFrom("task_board_items")
@@ -503,6 +513,15 @@ export class TaskBoardStorage {
       .where("status", "=", "in_review")
       .where("assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID)
       .where("dismissed_at", "is", null);
+    if (dueBefore) {
+      // A never-swept card (NULL) is always due — `<` alone would exclude it.
+      query = query.where((eb) =>
+        eb.or([
+          eb("last_swept_at", "is", null),
+          eb("last_swept_at", "<", dueBefore),
+        ]),
+      );
+    }
     if (after) {
       // `updated_at` is a timestamptz, so the cursor's ISO string has to go back
       // to a Date — comparing it as text would collate lexically, not
@@ -531,6 +550,26 @@ export class TaskBoardStorage {
           ? row.updated_at.toISOString()
           : String(row.updated_at),
     }));
+  }
+
+  /**
+   * Stamp a card as swept. Claims the card's next interval for whichever replica
+   * got there first, so the stamp must be written for every card the sweeper
+   * LOOKS at, not only the ones it dispatches a reviewer for — a card that has no
+   * PR, or whose checks are still pending, is exactly the card that otherwise
+   * comes back on every tick forever.
+   *
+   * Writes `last_swept_at` alone, on purpose: it does not go through `update()`
+   * (whose column whitelist is for user edits) and it must not touch
+   * `updated_at`, which is this table's keyset cursor and its UI "edited" signal.
+   */
+  async markSwept(id: string, organizationId: string): Promise<void> {
+    await this.db
+      .updateTable("task_board_items")
+      .set({ last_swept_at: new Date() })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .execute();
   }
 
   async linkedTaskIds(
