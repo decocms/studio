@@ -34,6 +34,20 @@ export interface GitHubCloneInfo {
 }
 
 /**
+ * decobot (github.com/decobot, id 114028756) — deco's shared GitHub identity
+ * for automated commits when the real author can't be resolved. Its noreply
+ * commit-email format is deterministic from its public id+login (no private
+ * email lookup or verification needed) and always resolves to a real,
+ * verified GitHub account, which is required by GitHub App installation
+ * tokens (see below) and by private-repo CI/CD collaboration checks (e.g.
+ * Vercel) that reject commits whose author can't be matched to an account.
+ */
+const DECOBOT_GIT_IDENTITY = {
+  name: "Deco Bot",
+  email: "114028756+decobot@users.noreply.github.com",
+} as const;
+
+/**
  * Public-repo clone (no token, no /user lookup). Anonymous HTTPS clone works
  * for any public GitHub repo; push back will fail (no creds) but that's the
  * documented constraint of public-clone mode.
@@ -44,8 +58,8 @@ export function buildAnonymousCloneInfo(
 ): GitHubCloneInfo {
   return {
     cloneUrl: `https://github.com/${owner}/${name}.git`,
-    gitUserName: "Deco Studio",
-    gitUserEmail: "studio@deco.cx",
+    gitUserName: DECOBOT_GIT_IDENTITY.name,
+    gitUserEmail: DECOBOT_GIT_IDENTITY.email,
   };
 }
 
@@ -110,26 +124,32 @@ export async function buildCloneInfo(
 
   const cloneUrl = `https://x-access-token:${accessToken}@github.com/${owner}/${name}.git`;
 
-  let gitUserName = "Deco Studio";
-  let gitUserEmail = "studio@deco.cx";
-  try {
-    const res = await fetch("https://api.github.com/user", {
-      headers: {
-        Authorization: `token ${accessToken}`,
-        Accept: "application/vnd.github+json",
-      },
-    });
-    if (res.ok) {
-      const user = (await res.json()) as {
-        name?: string | null;
-        login: string;
-        email?: string | null;
-      };
-      gitUserName = user.name || user.login;
-      gitUserEmail = user.email || `${user.login}@users.noreply.github.com`;
+  let gitUserName: string = DECOBOT_GIT_IDENTITY.name;
+  let gitUserEmail: string = DECOBOT_GIT_IDENTITY.email;
+  // GitHub App installation tokens (ghs_...) can never resolve via GET /user —
+  // that endpoint only accepts user-to-server OAuth tokens/PATs and always
+  // 401s for them. Skip the guaranteed-to-fail call and keep the decobot
+  // fallback; only broad user OAuth tokens can look up a real identity here.
+  if (!accessToken.startsWith("ghs_")) {
+    try {
+      const res = await fetch("https://api.github.com/user", {
+        headers: {
+          Authorization: `token ${accessToken}`,
+          Accept: "application/vnd.github+json",
+        },
+      });
+      if (res.ok) {
+        const user = (await res.json()) as {
+          name?: string | null;
+          login: string;
+          email?: string | null;
+        };
+        gitUserName = user.name || user.login;
+        gitUserEmail = user.email || `${user.login}@users.noreply.github.com`;
+      }
+    } catch {
+      // Fallback to decobot identity — don't block the caller.
     }
-  } catch {
-    // Fallback to defaults — don't block the caller.
   }
 
   return { cloneUrl, gitUserName, gitUserEmail };
