@@ -2,7 +2,11 @@ import { expect, test } from "@playwright/experimental-ct-react";
 import type { Locator } from "@playwright/test";
 import { SchemaFormHarness } from "../harness/schema-form-harness";
 import { sectionWithProps, TEST_RESOLVE_TYPE } from "../harness/fixtures";
-import { readBreadcrumb, readFormValue } from "../harness/ct-utils";
+import {
+  openRowActionsMenu,
+  readBreadcrumb,
+  readFormValue,
+} from "../harness/ct-utils";
 
 /**
  * The sortable row wrapper is a role=button whose accessible NAME concatenates
@@ -261,12 +265,7 @@ test("deleting a row removes the right item from the array", async ({
     />,
   );
 
-  // Open the actions menu for the Alpha row (button is in the DOM though
-  // hidden). exact: true — the row wrapper is also a role=button whose
-  // accessible name CONTAINS "Open actions for Alpha".
-  await component
-    .getByRole("button", { name: "Open actions for Alpha", exact: true })
-    .click();
+  await openRowActionsMenu(component, "Alpha");
   // DropdownMenu content is portaled onto document.body -> query via page.
   await page.getByRole("menuitem", { name: "Delete" }).click();
 
