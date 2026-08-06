@@ -64,6 +64,10 @@ Em um release futuro, o Studio permitirá que você construa views simples diret
 
 Um agent pode ser respaldado por código. Vincule-o a um repositório do GitHub em **Settings → Sandbox** e o Studio executará o repo como um ambiente de dev isolado com escopo daquele agent — tipicamente o próprio MCP server do agent, mas pode ser qualquer serviço que o agent precise. O sandbox inicia sob demanda, vive apenas enquanto o agent precisar dele, e nunca vaza entre agents.
 
+<Callout type="tip">
+  Um sandbox na nuvem é compartilhado por branch entre todos na sua org autorizados a trabalhar naquele agent — se um colega abrir o mesmo agent e a mesma branch, vocês dois estarão trabalhando contra o mesmo ambiente e os mesmos arquivos em execução. O runtime local de cada colega (via `deco link`) permanece restrito à própria máquina.
+</Callout>
+
 Quando o agent está rodando com um runtime local de code-editor, os botões **Open in VSCode** e **Open in Cursor** aparecem diretamente na barra de abas para acesso com um clique ao repositório na sua máquina. Em outros modos de runtime, as mesmas opções ficam disponíveis no menu de três pontos (⋯) da barra de abas.
 
 ## Onde um agent roda

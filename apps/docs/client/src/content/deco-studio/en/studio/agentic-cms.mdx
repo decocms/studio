@@ -52,6 +52,28 @@ If you're coming from deco.cx, the Agentic CMS is the same product line — same
 
 Existing deco.cx projects continue to work. Migration adds the agent layer; it doesn't replace your codebase.
 
+## Sections editor
+
+The **Content** tab in the agent workspace is the visual editor for the sections and pages that make up your storefront. It shows two groups — **Saved sections** (reusable global blocks) and **Available sections** (every component in the manifest catalog) — searchable from a single input.
+
+### Variants
+
+Each section or page can have multiple **variants** — alternate configurations with different props or matcher-controlled conditions (A/B tests, audience segments, date windows, geographic location). Variants appear as a list under their parent section in the editor.
+
+You can:
+
+- **Reorder variants** by dragging them up or down in the list. The order controls evaluation priority when multiple matchers could apply.
+- **Preview a specific variant** by clicking it — the preview pane immediately applies that variant so you see exactly what a visitor matching that condition would see.
+- **Save as a global section** to persist a configured variant as a reusable block available across your entire storefront.
+
+<Callout type="tip">
+  Scroll position in the preview is preserved when you switch between variants or save changes, so you can stay focused on the section you're editing without losing your place on the page.
+</Callout>
+
+<Callout type="tip">
+  For **Location matchers**, the target-area field (`includeLocations`/`excludeLocations`) renders as an interactive map — drag to move the center and resize the circle to set the radius, instead of typing coordinates by hand. The map requires a Google Maps API key configured on the server; if it isn't set, the field shows an "unavailable" note and falls back to manual entry.
+</Callout>
+
 ## Getting started
 
 Open Studio, find the **deco Site Editor** agent and point it at your site.

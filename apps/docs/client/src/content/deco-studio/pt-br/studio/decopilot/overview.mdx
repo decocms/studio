@@ -59,6 +59,10 @@ O Decopilot funciona com múltiplos provedores de IA — Anthropic, Google, Open
 
 Quando uma tarefa precisa de um trabalho focado — uma pergunta de atendimento ao cliente, uma pesquisa aprofundada, uma análise de dados — o Decopilot pode delegá-la a um [agent](/pt-br/studio/agents) especialista em uma **subtask**. A subtask roda de forma independente com seu próprio contexto limpo, e então reporta um resumo de volta. Sua conversa principal permanece limpa.
 
+<Callout type="tip">
+  **Self-hosting:** o número de subagents `subtask` que podem rodar simultaneamente por pod é limitado pela variável de ambiente `DECOPILOT_MAX_CONCURRENT_SUBAGENTS` (padrão `4`). Chamadas excedentes entram em fila e começam conforme slots ficam livres. Um valor malformado agora falha a inicialização do Studio, em vez de silenciosamente cair para uma concorrência de 1.
+</Callout>
+
 ## Tools built-in
 
 O Decopilot vem com tools para coordenar trabalho em qualquer escopo:
