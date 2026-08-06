@@ -305,8 +305,10 @@ export function TaskBoardItemDialog({
               gap above the properties; fills the column on desktop. */}
           <div className="flex min-w-0 flex-col sm:flex-1 sm:overflow-y-auto">
             {/* Sticky so a long description never scrolls the title out of
-                view — the title is the one thing that should stay put. */}
-            <div className="sticky top-0 z-10 bg-background p-6 pb-0 sm:p-8 sm:pb-0">
+                view — the title is the one thing that should stay put. z-20
+                keeps it above the activity timeline's avatars (z-10), which
+                would otherwise paint over it once scrolled underneath. */}
+            <div className="sticky top-0 z-20 bg-background p-6 pb-0 sm:p-8 sm:pb-0">
               <textarea
                 ref={(el) => {
                   if (!el) return;
