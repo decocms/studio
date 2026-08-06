@@ -5,9 +5,11 @@ import { useStudioTools } from "@/lib/studio-tools";
 
 /** Poll interval for a task's PRs while the dialog is open. The tool fetches
  *  live GitHub state — PR/checks status and the checks→QA hand-off it drives —
- *  so a short interval keeps the review lane moving without a webhook. The query
- *  is only active while the dialog (and thus this hook) is mounted. */
-const PRS_POLL_INTERVAL_MS = 10_000;
+ *  so a periodic refresh keeps the review lane moving without a webhook. Kept at
+ *  one minute to stay well within GitHub's rate limits, since every poll fans
+ *  out to live GitHub PR + checks calls. The query is only active while the
+ *  dialog (and thus this hook) is mounted. */
+const PRS_POLL_INTERVAL_MS = 60_000;
 
 /**
  * A task's linked PRs, each with live state fetched from GitHub via the
