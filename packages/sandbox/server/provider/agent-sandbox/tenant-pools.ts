@@ -11,7 +11,7 @@
  */
 import { z } from "zod";
 
-export const tenantPoolSchema = z.object({
+const tenantPoolSchema = z.object({
   /**
    * SandboxWarmPool object name. Must match a pool rendered by the sandbox-env
    * chart's `tenantPools` list, and be DNS-label-safe (it names a k8s object).
