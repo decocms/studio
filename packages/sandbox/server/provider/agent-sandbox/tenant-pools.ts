@@ -3,7 +3,7 @@
  * for one org's repo, so a member of that org opens a project and there is no
  * clone, no install, no Vite boot.
  *
- * Config comes from the `SANDBOX_TENANT_POOLS` deploy env (a JSON array).
+ * Config comes from the `STUDIO_SANDBOX_TENANT_POOLS` deploy env (a JSON array).
  * Empty/unset = nothing changes anywhere. `name` is explicit rather than
  * derived from the org because the sandbox-env chart renders the matching
  * `SandboxWarmPool` object from the same string — a derivation on both sides
@@ -56,7 +56,9 @@ export function parseTenantPools(raw: string | undefined): TenantPool[] {
   const names = new Set<string>();
   for (const pool of pools) {
     if (names.has(pool.name)) {
-      throw new Error(`SANDBOX_TENANT_POOLS: duplicate pool name ${pool.name}`);
+      throw new Error(
+        `STUDIO_SANDBOX_TENANT_POOLS: duplicate pool name ${pool.name}`,
+      );
     }
     names.add(pool.name);
   }

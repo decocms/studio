@@ -102,12 +102,17 @@ Phase 3  generalize        config moves from env to a table; second tenant costs
 |---|---|
 | **Pool name is explicit, not derived** | A pool carries `name`; the chart's `tenantPools:` list renders a `SandboxWarmPool` with the same string. Deriving `tenant-<orgSlug>-<repoSlug>` on both sides is a mismatch waiting to happen. |
 | **One template, not two** | The claim swaps `warmpool` only; `sandboxTemplateRef` stays the shared template. The second template exists solely to carry per-pool node placement (`onDemand` / `do-not-disrupt`), which v1 dropped — and rendering a second copy of a 300-line pod spec to carry two fields isn't worth it. Reinstate both together. |
+| **The new RBAC is one verb: `sandboxwarmpools: get`** | No `patch` on anything, because there is no annotation CAS. The reconciler reads the pool's `status.selector` to find its pods (a 403 there is not swallowed — only 404 is — so the whole feature is inert without it), and re-reads a pod's labels under the existing `pods: get` before each destructive step. |
 | **No leader election, no annotation CAS** | Every replica reconciles. Safe because the daemon classifies each config post itself (bootstrap vs credential refresh) and its setup queue collapses concurrent step requests into one: duplicated effort, never duplicated clones. |
 | **One refresh mechanism covers freshness AND credential expiry** | The periodic refresh (default 30 min, under the ~1h token life) re-posts a freshly minted clone URL and re-runs `setup/clone`. That is both the "poll fallback" and the `startCredentialRefresher` extension the failure table asks for — no hourly GitHub API poller, no HEAD comparison. The webhook only makes it immediate. |
 | **A first sight is not a refresh** | A replica that restarts under an already-warm pool posts config (rotating a stale credential) but does NOT re-run setup. Every replica bouncing every pod's dev server on boot is a self-inflicted outage. |
 | **`connectionId` is optional** | Omitted → the pods clone anonymously, which only works for a public repo. It's what makes the local end-to-end test hermetic. |
 | **Env var is `STUDIO_SANDBOX_TENANT_POOLS`** | Matches its neighbors (`STUDIO_SANDBOX_*`), not the `SANDBOX_TENANT_POOLS` named below. |
 | **The webhook is optional everywhere** | 503 without `GITHUB_WEBHOOK_SECRET`; pools still refresh on their own schedule. Nothing about this feature needs a webhook configured. |
+| **Webhook route is `POST /api/_github/webhook`** | Not the `/api/_webhooks/github` named below — matches the `_stripe` namespace shape of its neighbor. |
+| **`size` is chart-side only, and the name must end `-<envName>`** | `size` is a `SandboxWarmPool` replica count, so it has no business in Studio's JSON. The suffix is *validated*, not derived: every other object in the chart is envName-suffixed because releases share `agent-sandbox-system`, and a raw literal would let staging and prod fight over one pool. Validating keeps the string identical on both sides. |
+| **The failure cap backs off, it doesn't give up** | The spec's cap assumed an annotation on the pod. This bookkeeping is per-replica in-memory, so nothing external would un-stick a pod — and the same counter catches transient failures (a port-forward reset, a mint 500). 3 strikes, 30 min quiet, one more try. No `prewarm-failed` label, no pod `patch` RBAC. |
+| **Depth is a gauge, not a pod label** | `studio.sandbox.pool.pods{pool,org,state}` with `state` in ready/bound/pending/failed, recorded per tick. `ready` is what an alert watches. |
 
 ### Pool definition
 
@@ -118,11 +123,11 @@ One entry per pool:
 | `orgId` | **the only org whose members may be given one of these pods** |
 | `repo` + `connectionId` | credential minted fresh per bootstrap, never stored |
 | `branch` | what idle pods sit on. Default `main` |
-| `size` | how many warm pods to keep ready |
+| `size` | how many warm pods to keep ready — **chart-side only**, see "As built" |
 | `workload` | runtime / packageManager / packageManagerPath / devPort |
-| `onDemand` | keep the pods off spot (see Node placement) |
+| `onDemand` | keep the pods off spot (see Node placement) — **not in v1** |
 
-Phase 1 reads this from a Studio deploy-config env var (`SANDBOX_TENANT_POOLS`,
+Phase 1 reads this from a Studio deploy-config env var (`STUDIO_SANDBOX_TENANT_POOLS`,
 JSON array, empty by default). One tenant, one hand-edited value, no migration,
 wrong values are a rollback not a down-migration. Phase 3 promotes it to a
 `sandbox_warm_pools` table with the same shape. It is **not** an org flag —
@@ -310,9 +315,11 @@ Pool pods are long-lived and their eviction is user-visible:
 ## Tests
 
 - **Unit** — pool resolution from `(orgId, repo)`, including "user of another org
-  never resolves this pool" and "no pool → `default`"; that a resolved pool sets
-  **both** `warmpool` and `sandboxTemplateRef` (and neither when unresolved);
-  webhook `ref`/repo matching and HMAC verification; refresh coalescing.
+  never resolves this pool" and "no pool → `default`"; that a resolved pool is what
+  lands in the claim's `warmpool` (`claimWarmPoolName`, since v1 keeps the shared
+  template); webhook `ref`/repo matching and HMAC verification. **Refresh
+  coalescing is not covered**: `dirtyPools` is a `Set` drained once per tick behind
+  a live provider, so a harness for it would assert `Set` semantics, not behavior.
 - **Daemon e2e** (`packages/sandbox/daemon-e2e/`, black-box over HTTP) — a
   bootstrap config with no user identity leaves `claimed:false, prewarmed:true`;
   a later identity-bearing config flips `claimed:true`; a same-repo branch change
@@ -320,6 +327,9 @@ Pool pods are long-lived and their eviction is user-visible:
   dev with the new env; a different-repo config is refused.
 - **Housekeeper** — a bootstrapped, unbound pod (`prewarmed:true, claimed:false`)
   past the idle TTL is skipped, not reaped. Write this one first; without it,
-  warming a pool is what kills it.
+  warming a pool is what kills it. (`housekeeper-sweep.test.ts` sources the script
+  with `HOUSEKEEPER_SOURCE_ONLY=1` and probes a real HTTP daemon. It earned its
+  keep immediately: the `claimed` parse used `\(true\|false\)`, a GNU BRE
+  extension that yields an empty capture elsewhere — read as claimed, pod reaped.)
 - Invert, don't append: whatever asserts "idle past TTL is reaped" gets the
   prewarmed case added next to it.
