@@ -7,14 +7,13 @@ import {
   FormDescription,
   FormField,
   FormItem,
-  FormLabel,
   FormMessage,
 } from "@deco/ui/components/form.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Copy01 } from "@untitledui/icons";
+import { Copy01, LinkExternal01 } from "@untitledui/icons";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -41,16 +40,19 @@ interface SaBindResult {
 }
 
 /**
- * The consent-free "connect a Google source" form: it tells the user exactly
- * what to do (grant the shared SA access + where to find the id), sends the id
- * to COMMERCE_DISCOVERY_BIND (which verifies ownership server-side), and on
- * failure renders a reason-specific checklist — e.g. a GA4 property with no web
- * data stream gets the steps to add one. Optionally offers the old OAuth flow
- * behind a low-key link.
+ * The consent-free "connect a Google source" form. Google OAuth is still in
+ * review (its login screen warns the app is unverified), so the default lane is
+ * a shared service account: the user grants deco-reader@… read access in their
+ * own console and pastes the resource id back. Three short steps, the e-mail to
+ * copy, the id to paste. The id goes to COMMERCE_DISCOVERY_BIND, which verifies
+ * ownership server-side; on failure this renders a reason-specific checklist
+ * (e.g. a GA4 property with no web data stream gets the steps to add one). The
+ * OAuth route stays available at the bottom, with the reason it is second.
  */
 export function SaBindingForm({
   provider,
   siteUrl,
+  siteHost,
   selfClient,
   org,
   initialResourceId,
@@ -60,6 +62,8 @@ export function SaBindingForm({
 }: {
   provider: BindProvider;
   siteUrl?: string;
+  /** The merchant's domain, woven into the example so it reads as their store. */
+  siteHost?: string | null;
   selfClient: Client;
   org: { id: string };
   initialResourceId?: string;
@@ -73,6 +77,7 @@ export function SaBindingForm({
   const [remediation, setRemediation] = useState<
     (RemediationCopy & { detail?: string }) | null
   >(null);
+  const host = siteHost || t("commerceOnboarding.saBinding.sampleDomain");
 
   const schema = z.object({
     resourceId: z
@@ -81,7 +86,7 @@ export function SaBindingForm({
       .min(
         1,
         t("commerceOnboarding.saBindingForm.resourceIdRequired", {
-          resourceLabel: copy.resourceLabel.toLowerCase(),
+          resourceLabel: t(copy.resourceLabelKey).toLowerCase(),
         }),
       ),
   });
@@ -138,55 +143,90 @@ export function SaBindingForm({
     toast.success(t("commerceOnboarding.saBindingForm.emailCopied"));
   };
 
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <ol className="space-y-2 text-sm text-muted-foreground">
-        {copy.connectSteps.map((step, i) => (
-          <li key={step} className="flex gap-2">
-            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-foreground">
-              {i + 1}
-            </span>
-            <span>{step}</span>
-          </li>
-        ))}
-      </ol>
-
-      <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 p-2">
-        <code className="min-w-0 flex-1 truncate text-xs text-foreground">
-          {SA_EMAIL}
-        </code>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          onClick={copyEmail}
-          aria-label={t("commerceOnboarding.saBindingForm.copyEmailLabel")}
+  // Each step owns the control it talks about: step 1 the link out to the
+  // console, step 2 the e-mail to paste there, step 3 the id to bring back. The
+  // instruction and the thing it refers to never end up in different blocks.
+  const controlFor = (index: number) => {
+    if (index === 0) {
+      return (
+        <a
+          href={copy.consoleUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
         >
-          <Copy01 size={16} />
-        </Button>
-      </div>
-
+          <LinkExternal01 size={14} />
+          {t(copy.consoleLinkKey)}
+        </a>
+      );
+    }
+    if (index === 1) {
+      return (
+        <div className="flex w-full items-center gap-2 rounded-lg border border-input bg-muted/40 p-2">
+          <code className="min-w-0 flex-1 truncate text-sm text-foreground">
+            {SA_EMAIL}
+          </code>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={copyEmail}
+            aria-label={t("commerceOnboarding.saBindingForm.copyEmailLabel")}
+          >
+            <Copy01 size={16} />
+          </Button>
+        </div>
+      );
+    }
+    return (
       <Form {...form}>
         <FormField
           control={form.control}
           name="resourceId"
           render={({ field }) => (
-            <FormItem>
-              <FormLabel>{copy.resourceLabel}</FormLabel>
+            <FormItem className="w-full">
               <FormControl>
                 <Input
                   {...field}
-                  placeholder={copy.resourcePlaceholder}
+                  placeholder={t(copy.resourcePlaceholderKey, { host })}
                   disabled={isPending}
                   autoComplete="off"
+                  aria-label={t(copy.resourceLabelKey)}
                 />
               </FormControl>
-              <FormDescription>{copy.resourceHint}</FormDescription>
+              <FormDescription>
+                {t(copy.resourceHintKey, { host })}
+              </FormDescription>
               <FormMessage />
             </FormItem>
           )}
         />
       </Form>
+    );
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-5">
+      {/* One card per step: the three actions happen in someone else's product,
+          so each gets its own bounded block instead of blurring into a list. */}
+      <ol className="space-y-2">
+        {copy.steps.map((step, i) => (
+          <li
+            key={step}
+            className="flex gap-3 rounded-lg border border-border p-4"
+          >
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
+              {i + 1}
+            </span>
+            <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
+              <p className="text-sm leading-5 text-foreground">
+                {t(step, { host })}
+              </p>
+              {controlFor(i)}
+            </div>
+          </li>
+        ))}
+      </ol>
 
       {remediation && (
         <div
@@ -194,13 +234,13 @@ export function SaBindingForm({
           className="space-y-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3"
         >
           <p className="text-sm font-medium text-foreground">
-            {remediation.title}
+            {t(remediation.titleKey, { label: copy.label })}
           </p>
           <ol className="space-y-1 text-sm text-muted-foreground">
-            {remediation.steps.map((step) => (
-              <li key={step} className="flex gap-2">
+            {remediation.stepKeys.map((key) => (
+              <li key={key} className="flex gap-2">
                 <span aria-hidden>•</span>
-                <span>{step}</span>
+                <span>{t(key, { email: SA_EMAIL })}</span>
               </li>
             ))}
           </ol>
@@ -215,34 +255,34 @@ export function SaBindingForm({
         </p>
       )}
 
-      <DialogFooter className="flex-col gap-2 pt-2 sm:flex-row sm:items-center sm:justify-between">
-        {onOAuthInstead ? (
+      {onOAuthInstead && (
+        <p className="text-sm leading-5 text-muted-foreground">
+          {t("commerceOnboarding.saBinding.oauthNote")}{" "}
           <button
             type="button"
             onClick={onOAuthInstead}
             disabled={isPending}
-            className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50"
+            className="underline underline-offset-2 hover:text-foreground disabled:opacity-50"
           >
             {t("commerceOnboarding.saBindingForm.googleLoginAlternative")}
           </button>
-        ) : (
-          <span />
-        )}
-        <div className="flex gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onDone}
-            disabled={isPending}
-          >
-            {t("commerceOnboarding.saBindingForm.cancel")}
-          </Button>
-          <Button type="submit" disabled={isPending}>
-            {isPending
-              ? t("commerceOnboarding.saBindingForm.verifying")
-              : t("commerceOnboarding.saBindingForm.bind")}
-          </Button>
-        </div>
+        </p>
+      )}
+
+      <DialogFooter className="gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onDone}
+          disabled={isPending}
+        >
+          {t("commerceOnboarding.saBindingForm.cancel")}
+        </Button>
+        <Button type="submit" disabled={isPending}>
+          {isPending
+            ? t("commerceOnboarding.saBindingForm.verifying")
+            : t("commerceOnboarding.saBindingForm.bind")}
+        </Button>
       </DialogFooter>
     </form>
   );

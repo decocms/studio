@@ -1,3 +1,4 @@
+import { siteUrlToHost } from "@decocms/shared/reports/site-url";
 import { IntegrationIcon } from "@/components/integration-icon";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
@@ -349,25 +350,27 @@ function SaConnectAction({
       )}
 
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="sm:max-w-lg">
+        {/* No DialogDescription: the numbered steps immediately below the title
+            are the description, so `aria-describedby` is opted out explicitly
+            rather than left dangling. */}
+        <DialogContent
+          aria-describedby={undefined}
+          className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg"
+        >
           <DialogHeader className="flex-row items-center gap-3 space-y-0 text-left">
             <IntegrationIcon
               icon={card.icon}
               name={card.title}
-              size="md"
+              size="sm"
               fit="contain"
-              className="p-1.5"
+              className="p-1"
             />
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <DialogTitle>{card.title}</DialogTitle>
-              <DialogDescription>
-                {t("commerceOnboarding.companionCard.grantAccessDescription")}
-              </DialogDescription>
-            </div>
+            <DialogTitle className="min-w-0 flex-1">{card.title}</DialogTitle>
           </DialogHeader>
           <SaBindingForm
             provider={provider}
             siteUrl={siteUrl}
+            siteHost={siteUrlToHost(siteUrl)}
             selfClient={selfClient}
             org={org}
             initialResourceId={card.boundResource ?? undefined}
@@ -520,9 +523,9 @@ function CompanionConfiguration({
             <IntegrationIcon
               icon={card.icon}
               name={card.title}
-              size="md"
+              size="sm"
               fit="contain"
-              className="p-1.5"
+              className="p-1"
             />
             <div className="flex min-w-0 flex-1 flex-col gap-1">
               <DialogTitle>{card.title}</DialogTitle>
