@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { SANDBOX_START_ERROR_CODES } from "@decocms/shared/sandbox-start-errors";
 import type { SandboxMap, SandboxRecord } from "@decocms/shared/sdk";
 import type { StudioContext } from "../../core/studio-context";
 import type {
@@ -213,6 +214,9 @@ function makeCtx(overrides: {
     findById: ReturnType<typeof mock>;
     list?: ReturnType<typeof mock>;
   };
+  /** Whether the `connections` row backing the linked repo still exists —
+   *  false exercises buildCloneInfo's deleted-connection branch. */
+  connectionRowExists?: boolean;
 }): StudioContext {
   const {
     orgId = ORG_ID,
@@ -221,6 +225,7 @@ function makeCtx(overrides: {
     updateSpy = mock(async () => {}),
     thread = null,
     connections,
+    connectionRowExists = true,
   } = overrides;
 
   const findById = mock(async (_id: string) => virtualMcp ?? null);
@@ -264,7 +269,18 @@ function makeCtx(overrides: {
       measure: async <T>(_name: string, cb: () => Promise<T>) => await cb(),
     },
     vault: null as never,
-    db: null as never,
+    // ponytail: only buildCloneInfo's connection-existence probe reads ctx.db
+    // here; widen this stub if another raw query joins the path.
+    db: {
+      selectFrom: () => ({
+        select: () => ({
+          where: () => ({
+            executeTakeFirst: async () =>
+              connectionRowExists ? { id: "conn_github_1" } : undefined,
+          }),
+        }),
+      }),
+    } as never,
     authInstance: null as never,
     boundAuth: null as never,
     tracer: {
@@ -675,25 +691,32 @@ describe("SANDBOX_START", () => {
   });
 
   it("keeps failing loudly when the dangling repo connection has no live replacement", async () => {
-    (
-      mockTokenGet as unknown as {
-        mockImplementation: (fn: () => Promise<null>) => void;
-      }
-    ).mockImplementation(async () => null);
     const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
     const ctx = makeCtx({
       virtualMcp,
+      connectionRowExists: false,
       connections: {
         findById: mock(async (_id: string) => null),
         list: mock(async () => ({ items: [], totalCount: 0 })),
       },
     });
 
-    // Never a silent anonymous-clone downgrade: no replacement → the existing
-    // loud GITHUB_NOT_AUTHENTICATED failure (client shows the reconnect card).
+    // Never a silent anonymous-clone downgrade: no replacement → a loud
+    // failure. The recorded connection row is gone, so buildCloneInfo reports
+    // GITHUB_CONNECTION_MISSING ("link the repo again") rather than the
+    // reconnect-GitHub advice that never fixes a dangling pointer.
     await expect(
       SANDBOX_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx),
-    ).rejects.toThrow("No GitHub token found");
+    ).rejects.toThrow(SANDBOX_START_ERROR_CODES.githubConnectionMissing);
+  });
+
+  it("reports a deleted GitHub connection as missing, not unauthenticated", async () => {
+    const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
+    const ctx = makeCtx({ virtualMcp, connectionRowExists: false });
+
+    await expect(
+      SANDBOX_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx),
+    ).rejects.toThrow(SANDBOX_START_ERROR_CODES.githubConnectionMissing);
   });
 
   it("refreshes an expired GitHub token before handing it to the runner", async () => {
