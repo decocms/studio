@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { retry } from "@decocms/shared/std";
 import type { BoundObjectStorage } from "../object-storage/bound-object-storage";
 import { detectContentType } from "../object-storage/key-utils";
 import type {
@@ -454,16 +455,34 @@ export class OrgFs {
       contentType: opts.contentType ?? detectContentType(normalized),
     });
 
-    return this.manifest.putFile({
-      organizationId: this.organizationId,
-      volume,
-      path: normalized,
-      parent: parentOf(normalized),
-      contentHash: sha256(bytes),
-      size: bytes.byteLength,
-      actor: opts.actor,
-      threadId: opts.threadId ?? null,
-    });
+    // The bytes are already committed; if the manifest write is lost the entry
+    // keeps the PREVIOUS size, and that stale size is what the mount serves as
+    // WebDAV `getcontentlength` — so every sandbox reads a silently truncated
+    // prefix of a file the browser shows in full. `putFile` is an idempotent
+    // upsert, so retry it rather than let a transient DB blip tear the two.
+    try {
+      return await retry(() =>
+        this.manifest.putFile({
+          organizationId: this.organizationId,
+          volume,
+          path: normalized,
+          parent: parentOf(normalized),
+          contentHash: sha256(bytes),
+          size: bytes.byteLength,
+          actor: opts.actor,
+          threadId: opts.threadId ?? null,
+        }),
+      );
+    } catch (err) {
+      console.error("org-fs manifest write lost after object put", {
+        organizationId: this.organizationId,
+        volume,
+        path: normalized,
+        size: bytes.byteLength,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
   }
 
   /**
