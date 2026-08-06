@@ -75,7 +75,7 @@ function LogoCol({
   return (
     <div
       ref={cycleRef}
-      className="flex flex-1 items-center justify-center overflow-hidden py-3"
+      className="flex min-w-0 flex-1 items-center justify-center overflow-hidden py-3"
       style={{
         borderRight: last ? undefined : `1px solid ${DECK.border}`,
         borderTop: bottomRow ? `1px solid ${DECK.border}` : undefined,
