@@ -12,6 +12,7 @@ import {
   normalizeBreadcrumbLabel,
   resolveActiveFieldKey,
   resolveArrayItemSelection,
+  siblingFieldLabel,
   isBreadcrumbInsideObject,
 } from "./schema-form-breadcrumb";
 import { getArrayItemLabels } from "./array-item-display";
@@ -79,6 +80,125 @@ describe("fieldDisplayLabel", () => {
     expect(fieldDisplayLabel("backgroundColor", {} as SchemaProperty)).toBe(
       "Background Color",
     );
+  });
+});
+
+describe("siblingFieldLabel", () => {
+  test("falls back to humanized key when siblings share a title", () => {
+    // Both props `$ref` the same interface, so both inherit its title.
+    const properties = {
+      shelfProps: { title: "ProductShelfProps" } as SchemaProperty,
+      shelfPropsOffer: { title: "ProductShelfProps" } as SchemaProperty,
+    };
+    const keys = Object.keys(properties);
+    expect(siblingFieldLabel("shelfProps", keys, properties)).toBe(
+      "Shelf Props",
+    );
+    expect(siblingFieldLabel("shelfPropsOffer", keys, properties)).toBe(
+      "Shelf Props Offer",
+    );
+  });
+
+  test("keeps the title when siblings are distinct", () => {
+    const properties = {
+      alpha: { title: "Alpha" } as SchemaProperty,
+      beta: { title: "Beta" } as SchemaProperty,
+    };
+    expect(
+      siblingFieldLabel("alpha", Object.keys(properties), properties),
+    ).toBe("Alpha");
+  });
+
+  test("keeps the title for a lone property", () => {
+    const properties = { cards: { title: "Cards" } as SchemaProperty };
+    expect(siblingFieldLabel("cards", ["cards"], properties)).toBe("Cards");
+  });
+});
+
+describe("resolveActiveFieldKey — sibling props with identical titles", () => {
+  // Mirrors ProductShelfTimedOffers: `shelfProps` and `shelfPropsOffer` both
+  // `$ref` `ProductShelfProps`, so both share the title and an identical nested
+  // `cardLayout.productTags` shape. Item labels come from the `label` field.
+  const shelf = {
+    type: "object",
+    title: "ProductShelfProps",
+    properties: {
+      cardLayout: {
+        type: "object",
+        title: "CardLayout",
+        properties: {
+          productTags: {
+            type: "array",
+            title: "ProductTags",
+            items: {
+              type: "object",
+              properties: { label: { type: "string" } },
+            },
+          },
+        },
+      },
+    },
+  } satisfies SchemaProperty;
+  const properties = { shelfProps: shelf, shelfPropsOffer: shelf };
+  const keys = Object.keys(properties);
+  const objValue = {
+    shelfProps: {
+      cardLayout: {
+        productTags: [
+          { label: "OFERTAS 8.8" },
+          { label: "Frete grátis geral" },
+        ],
+      },
+    },
+    shelfPropsOffer: {
+      cardLayout: {
+        productTags: [
+          { label: "OFERTAS 7.7" },
+          { label: "Frete grátis geral" },
+        ],
+      },
+    },
+  };
+
+  test("a unique item label resolves to its owning sibling", () => {
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, ["OFERTAS 7.7"]),
+    ).toBe("shelfPropsOffer");
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, ["OFERTAS 8.8"]),
+    ).toBe("shelfProps");
+  });
+
+  test("a disambiguated ancestor crumb focuses the right sibling for a shared item", () => {
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, [
+        "Shelf Props Offer",
+        "Frete grátis geral",
+      ]),
+    ).toBe("shelfPropsOffer");
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, [
+        "Shelf Props",
+        "Frete grátis geral",
+      ]),
+    ).toBe("shelfProps");
+  });
+
+  test("an ambiguous shared crumb without an ancestor returns null (shows both)", () => {
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, ["Frete grátis geral"]),
+    ).toBeNull();
+  });
+
+  test("breadcrumbPathForActiveField strips the disambiguated ancestor crumb", () => {
+    expect(
+      breadcrumbPathForActiveField(
+        "shelfPropsOffer",
+        shelf,
+        ["Shelf Props Offer", "Frete grátis geral"],
+        "Shelf Props Offer",
+      ),
+    ).toEqual(["Frete grátis geral"]);
   });
 });
 
