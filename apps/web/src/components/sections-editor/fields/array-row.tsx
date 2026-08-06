@@ -21,6 +21,7 @@ import {
 import { cn } from "@deco/ui/lib/utils.ts";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { useT } from "@/i18n/use-t.ts";
 
 // Width/margin snap instantly (no visible slide) while opacity does the
 // actual animating. On reveal the snap has no delay, so the button is
@@ -105,6 +106,7 @@ export function SortableArrayRow({
   onDuplicate: () => void;
   onRemove: () => void;
 }) {
+  const t = useT();
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useSortable({
       id: sortableId,
@@ -163,7 +165,11 @@ export function SortableArrayRow({
               type="button"
               variant="ghost"
               size="icon"
-              aria-label={hidden ? "Show item" : "Hide item"}
+              aria-label={
+                hidden
+                  ? t("sectionsEditor.arrayField.showItem")
+                  : t("sectionsEditor.arrayField.hideItem")
+              }
               className={cn(
                 actionButtonVisibilityClass(hidden === true, hidden === true),
               )}
@@ -177,7 +183,9 @@ export function SortableArrayRow({
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom">
-            {hidden ? "Show item" : "Hide item"}
+            {hidden
+              ? t("sectionsEditor.arrayField.showItem")
+              : t("sectionsEditor.arrayField.hideItem")}
           </TooltipContent>
         </Tooltip>
       )}
@@ -187,7 +195,9 @@ export function SortableArrayRow({
             type="button"
             variant="ghost"
             size="icon"
-            aria-label={`Open actions for ${labelText}`}
+            aria-label={t("sectionsEditor.arrayField.openActionsFor", {
+              label: labelText,
+            })}
             className={cn(
               actionButtonVisibilityClass(hidden === true, false),
               "data-[state=open]:ml-0 data-[state=open]:w-6 data-[state=open]:opacity-100 data-[state=open]:[transition:opacity_150ms_ease-out,width_0ms,margin-left_0ms]",
@@ -201,14 +211,14 @@ export function SortableArrayRow({
         <DropdownMenuContent align="end">
           <DropdownMenuItem onClick={onDuplicate}>
             <Copy01 size={14} />
-            Duplicate
+            {t("sectionsEditor.arrayField.duplicate")}
           </DropdownMenuItem>
           <DropdownMenuItem
             className="text-destructive focus:text-destructive"
             onClick={onRemove}
           >
             <Trash01 size={14} />
-            Delete
+            {t("sectionsEditor.arrayField.delete")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
