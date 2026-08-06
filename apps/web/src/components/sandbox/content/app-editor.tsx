@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { cn } from "@deco/ui/lib/utils.js";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
 import { AddSectionModal } from "@/components/sections-editor/add-section-modal";
+import { useSectionPreviewBase } from "@/components/sections-editor/use-section-preview-base";
 import { appLabel } from "@/components/sections-editor/page-list";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import type { SectionCatalogEntry } from "@/components/sections-editor/section-catalog";
@@ -46,6 +47,12 @@ export function AppEditor({
   previewBaseUrl?: string | null;
 }) {
   const t = useT();
+  // Section-gallery previews render against the sandbox dev server, falling
+  // back to the Fast Preview production deployment while the sandbox boots.
+  const sectionPreviewBase = useSectionPreviewBase({
+    virtualMcpId,
+    sandboxUrl: previewBaseUrl,
+  });
   const resolveType =
     typeof block?.__resolveType === "string" ? block.__resolveType : "";
   const schema = resolveAppEditorSchema(resolveType, meta, excludeFields);
@@ -209,7 +216,7 @@ export function AppEditor({
                 decofile={decofile}
                 meta={meta}
                 onSaveReferencedBlock={saveReferencedBlock}
-                previewBaseUrl={previewBaseUrl}
+                previewBaseUrl={sectionPreviewBase}
                 onAddSectionItem={handleAddSectionItem}
                 onRequestAddSection={handleRequestAddSection}
                 sandbox={{ orgSlug, virtualMcpId, branch }}
@@ -228,7 +235,7 @@ export function AppEditor({
         </div>
       </ScrollArea>
 
-      {previewBaseUrl && (
+      {sectionPreviewBase && (
         <AddSectionModal
           open={addSectionOpen}
           onOpenChange={(open) => {
@@ -237,7 +244,7 @@ export function AppEditor({
           }}
           meta={meta}
           decofile={decofile}
-          previewBaseUrl={previewBaseUrl}
+          previewBaseUrl={sectionPreviewBase}
           onSelect={(entry) => {
             void handleSelectSection(entry);
           }}
