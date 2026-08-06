@@ -4,15 +4,18 @@
  * It exists because the headless hand-off to the reviewers never worked, for two
  * independent reasons, and both are invisible from inside a DBOS workflow:
  *
- * 1. **The PR is never linked.** `linkPr` has exactly two callers:
- *    `capturePrForRun` and `TASK_BOARD_ITEM_PRS_GET`. The first is only
- *    reachable from the NATIVE Decopilot loop — the `onPrOpened` MCP wrapper and
- *    the `onStepFinish` bash scan. A Super Agent task runs the `claude-code`
- *    harness *inside a sandbox*, so Claude Code opens the PR in the pod and it
- *    passes through neither hook. Nothing links it, so
- *    `enqueueReviewersOnThreadFinish` sees `prs.length === 0` and parks the
- *    card. The web only calls `TASK_BOARD_ITEM_PRS_GET` from the task DIALOG, so
- *    the PR stayed invisible until a human opened that specific card.
+ * 1. **The PR was never linked.** `capturePrForRun` is only reachable from the
+ *    NATIVE Decopilot loop — the `onPrOpened` MCP wrapper and the `onStepFinish`
+ *    bash scan. A Super Agent task runs the `claude-code` harness *inside a
+ *    sandbox*, so Claude Code opens the PR in the pod and it passes through
+ *    neither hook. Nothing linked it, so `enqueueReviewersOnThreadFinish` saw
+ *    `prs.length === 0` and parked the card. Both this sweeper and
+ *    `TASK_BOARD_ITEM_PRS_GET` papered over it by regexing a PR URL out of the
+ *    run's closing message — which silently linked nothing whenever the model
+ *    wrote "PR #269 opened" instead of the URL. `TASK_BOARD_ITEM_PR_LINK` (see
+ *    `pr-link.ts`) replaced that guess: the run states its PR, so by the time a
+ *    card reaches here it is already linked, and an unlinked card means the run
+ *    genuinely opened no PR.
  *
  * 2. **The dispatch itself throws.** The projector's terminal hook runs inside a
  *    DBOS step, and the reviewer dispatch bottoms out in `enqueueThreadRun` →
@@ -27,9 +30,9 @@
  * also makes the pipeline self-healing — every card already stranded is picked
  * up on the next tick, with no backfill.
  *
- * Everything it calls is idempotent: `linkPr` is per (task, url), and
- * `enqueueEnabledReviewers` claims per (task, reviewer, cycle), so re-running
- * every tick cannot spawn duplicate reviewer runs.
+ * Everything it calls is idempotent: `enqueueEnabledReviewers` claims per
+ * (task, reviewer, cycle), so re-running every tick cannot spawn duplicate
+ * reviewer runs.
  *
  * Idempotent is not the same as terminating, though, and conflating the two is
  * what took out the GitHub App's rate limit: a card whose checks never go green
@@ -44,15 +47,14 @@
  * per tick. `DEFAULT_BATCH_SIZE` remains the ceiling on any single tick.
  *
  * Deliberately NOT a replacement for the instant paths. `TASK_BOARD_ITEM_PRS_GET`
- * still does this on the dialog's poll, and the projector hook still fires — the
- * sweeper is the floor that guarantees it happens without a human, not the only
- * route.
+ * dispatches reviewers on the dialog's poll, and the projector hook still fires —
+ * the sweeper is the floor that guarantees it happens without a human, not the
+ * only route.
  */
 
 import type { StudioContextFactory } from "@/automations/fire";
 import type { TaskBoardStorage } from "@/storage/task-board";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
-import { extractPrFromText } from "./pr-extract";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
 import { fetchPrLiveState, prReadyForReview } from "./prs-get";
 
@@ -69,8 +71,8 @@ const DEFAULT_SWEEP_INTERVAL_MS = 60 * 1000;
  *  recovery path is invisible next to the CI run the card waits on anyway. */
 const DEFAULT_ITEM_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
-/** Items per tick. Bounds one tick's work: each item costs a `getById`, up to
- *  one `linkPr` per thread, and a GitHub round-trip per linked PR. Not a bound
+/** Items per tick. Bounds one tick's work: each item costs a `getById` and a
+ *  GitHub round-trip per linked PR. Not a bound
  *  on what the sweep can reach — ticks page through the backlog with a keyset
  *  cursor (see `listItemsPendingReview`). */
 const DEFAULT_BATCH_SIZE = 50;
@@ -144,9 +146,8 @@ export class TaskBoardReviewSweeper {
     return dispatched;
   }
 
-  /** Link any PR the run left in its closing message, then hand off to the
-   *  enabled reviewers. Returns true when reviewers were considered (i.e. the
-   *  card had a PR to review). */
+  /** Hand a card with a linked, ready PR off to the enabled reviewers. Returns
+   *  true when reviewers were considered (i.e. the card had a PR to review). */
   private async reconcileItem(
     id: string,
     organizationId: string,
@@ -171,25 +172,6 @@ export class TaskBoardReviewSweeper {
     // rate-limited from being retried on the very next tick. A pod crashing
     // mid-sweep costs one interval of delay — the right trade for a slow floor.
     await this.taskBoard.markSwept(id, organizationId);
-
-    // Same recovery `TASK_BOARD_ITEM_PRS_GET` does: the agent's closing summary
-    // reliably prints the URL ("Opened PR #309 https://github.com/…/pull/309").
-    // Idempotent per (task, url).
-    for (const thread of item.threads) {
-      const pr = thread.lastMessage
-        ? extractPrFromText(thread.lastMessage)
-        : null;
-      if (!pr) continue;
-      await this.taskBoard.linkPr({
-        taskBoardItemId: id,
-        organizationId,
-        url: pr.url,
-        prNumber: pr.number,
-        repoOwner: pr.owner,
-        repoName: pr.repo,
-        connectionId: null,
-      });
-    }
 
     // Nothing to review without a PR — a research/answer task reaches In Review
     // too, and dispatching a reviewer at it would burn a run on nothing.
