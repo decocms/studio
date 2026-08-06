@@ -103,24 +103,6 @@ function UnlinkButton({
   );
 }
 
-/**
- * Renders nothing; fires `onConnect` exactly once when mounted — the "no
- * panel in between" deep link's not-yet-linked case (see `autoOpen` on
- * {@link CompanionCard}). Mirrors `CmsAutoOpen` (sandbox/preview/preview.tsx):
- * a state-guarded render-time call instead of a mount effect (no useEffect
- * in this codebase), deferred with `queueMicrotask` to land post-commit.
- * The caller only renders this while the trigger condition holds, so it
- * stops appearing — and can't re-fire — the instant that condition flips.
- */
-function AutoConnectOnce({ onConnect }: { onConnect: () => void }) {
-  const [fired, setFired] = useState(false);
-  if (!fired) {
-    setFired(true);
-    queueMicrotask(onConnect);
-  }
-  return null;
-}
-
 export function CompanionCard({
   card,
   connecting,
@@ -133,7 +115,6 @@ export function CompanionCard({
   siteUrl,
   autoOpenConfigFieldKey,
   onAutoOpenConfigHandled,
-  autoOpen,
 }: {
   card: CompanionCardModel;
   connecting: boolean;
@@ -146,14 +127,6 @@ export function CompanionCard({
   siteUrl?: string;
   autoOpenConfigFieldKey: string | null;
   onAutoOpenConfigHandled: () => void;
-  /** Skip the click: immediately open this card's connect/config dialog on
-   *  mount. Used by the "no panel in between" deep link from the commerce
-   *  report (see focusFieldKey in companion-mcps-section.tsx) — forces the
-   *  OAuth/config-form `handleConnect` for a not-yet-linked card, the SA
-   *  dialog directly (below), or the config-form for a satisfied-but-
-   *  unconfigured one (needsConfig doesn't auto-open it on its own — only a
-   *  same-session `autoOpenConfigFieldKey` match does). */
-  autoOpen?: boolean;
 }) {
   const linkedConnectionId = card.linkedConnectionId;
   // GA4/GSC use the shared-SA lane by default; only fall back to the OAuth gear
@@ -167,14 +140,6 @@ export function CompanionCard({
   // can hit this; SA bindings are configured the moment they verify.
   const needsConfig = card.satisfied && !card.configured;
 
-  // Not-yet-linked + autoOpen: trigger the OAuth/config-form connect flow
-  // immediately instead of waiting for a click. The SA lane's own dialog
-  // handles its `autoOpen` prop directly (below) since its "connect" click
-  // only opens a local dialog rather than calling this handler. Renders only
-  // while the trigger condition holds, so it stops appearing (and can't
-  // re-fire) the instant `card.satisfied` flips true.
-  const triggerAutoConnect = autoOpen && !useSaFlow && !card.satisfied;
-
   const action =
     useSaFlow && saProvider ? (
       <SaConnectAction
@@ -187,7 +152,6 @@ export function CompanionCard({
         disabled={disabled}
         connecting={connecting}
         primary={card.required}
-        autoOpen={autoOpen && !card.satisfied}
       />
     ) : card.satisfied && linkedConnectionId ? (
       needsConfig ? (
@@ -201,13 +165,10 @@ export function CompanionCard({
               contextSiteUrl={siteUrl}
               variant="configure"
               disabled={disabled}
-              autoOpen={
-                autoOpen ||
-                shouldAutoOpenCompanionConfig({
-                  autoOpenFieldKey: autoOpenConfigFieldKey,
-                  card,
-                })
-              }
+              autoOpen={shouldAutoOpenCompanionConfig({
+                autoOpenFieldKey: autoOpenConfigFieldKey,
+                card,
+              })}
               onAutoOpenHandled={onAutoOpenConfigHandled}
             />
           </Suspense>
@@ -265,7 +226,6 @@ export function CompanionCard({
 
   return (
     <>
-      {triggerAutoConnect && <AutoConnectOnce onConnect={onConnect} />}
       <CompanionCardView
         icon={card.icon}
         title={card.title}
@@ -293,7 +253,6 @@ function SaConnectAction({
   disabled,
   connecting,
   primary,
-  autoOpen,
 }: {
   card: CompanionCardModel;
   provider: BindProvider;
@@ -304,18 +263,9 @@ function SaConnectAction({
   disabled: boolean;
   connecting: boolean;
   primary?: boolean;
-  /** Open the binding dialog immediately instead of waiting for a click — the
-   *  "no panel in between" deep link from the commerce report. */
-  autoOpen?: boolean;
 }) {
   const t = useT();
-  const [open, setOpen] = useState(autoOpen ?? false);
-  const [savePending, setSavePending] = useState(false);
-
-  const handleOpenChange = (next: boolean) => {
-    if (!next && savePending) return; // don't close mid-verify
-    setOpen(next);
-  };
+  const [open, setOpen] = useState(false);
 
   return (
     <>
@@ -349,45 +299,88 @@ function SaConnectAction({
         />
       )}
 
-      <Dialog open={open} onOpenChange={handleOpenChange}>
-        {/* No DialogDescription: the numbered steps immediately below the title
-            are the description, so `aria-describedby` is opted out explicitly
-            rather than left dangling. */}
-        <DialogContent
-          aria-describedby={undefined}
-          className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg"
-        >
-          <DialogHeader className="flex-row items-center gap-3 space-y-0 text-left">
-            <IntegrationIcon
-              icon={card.icon}
-              name={card.title}
-              size="sm"
-              fit="contain"
-              className="p-1"
-            />
-            <DialogTitle className="min-w-0 flex-1">{card.title}</DialogTitle>
-          </DialogHeader>
-          <SaBindingForm
-            provider={provider}
-            siteUrl={siteUrl}
-            siteHost={siteUrlToHost(siteUrl)}
-            selfClient={selfClient}
-            org={org}
-            initialResourceId={card.boundResource ?? undefined}
-            onDone={() => setOpen(false)}
-            onIsPendingChange={setSavePending}
-            onOAuthInstead={
-              card.satisfied
-                ? undefined
-                : () => {
-                    setOpen(false);
-                    onOAuthInstead();
-                  }
-            }
-          />
-        </DialogContent>
-      </Dialog>
+      <SaBindingDialog
+        card={card}
+        provider={provider}
+        org={org}
+        selfClient={selfClient}
+        siteUrl={siteUrl}
+        open={open}
+        onOpenChange={setOpen}
+        onOAuthInstead={
+          card.satisfied
+            ? undefined
+            : () => {
+                setOpen(false);
+                onOAuthInstead();
+              }
+        }
+      />
     </>
+  );
+}
+
+/** The shared-SA binding dialog (step-by-step grant + resource id form) as a
+ *  controlled component, so both the card's connect action and the report's
+ *  deep-link dialog (connect-source-dialog.tsx) open the exact same thing. */
+export function SaBindingDialog({
+  card,
+  provider,
+  org,
+  selfClient,
+  siteUrl,
+  open,
+  onOpenChange,
+  onOAuthInstead,
+}: {
+  card: CompanionCardModel;
+  provider: BindProvider;
+  org: { id: string; slug: string };
+  selfClient: Client;
+  siteUrl?: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onOAuthInstead?: () => void;
+}) {
+  const [savePending, setSavePending] = useState(false);
+
+  const handleOpenChange = (next: boolean) => {
+    if (!next && savePending) return; // don't close mid-verify
+    onOpenChange(next);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      {/* No DialogDescription: the numbered steps immediately below the title
+          are the description, so `aria-describedby` is opted out explicitly
+          rather than left dangling. */}
+      <DialogContent
+        aria-describedby={undefined}
+        className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg"
+      >
+        <DialogHeader className="flex-row items-center gap-3 space-y-0 text-left">
+          <IntegrationIcon
+            icon={card.icon}
+            name={card.title}
+            size="sm"
+            fit="contain"
+            className="p-1"
+          />
+          <DialogTitle className="min-w-0 flex-1">{card.title}</DialogTitle>
+        </DialogHeader>
+        <SaBindingForm
+          provider={provider}
+          siteUrl={siteUrl}
+          siteHost={siteUrlToHost(siteUrl)}
+          selfClient={selfClient}
+          org={org}
+          initialResourceId={card.boundResource ?? undefined}
+          onDone={() => onOpenChange(false)}
+          onIsPendingChange={setSavePending}
+          onOAuthInstead={onOAuthInstead}
+        />
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -425,16 +418,8 @@ function CompanionConfiguration({
   onAutoOpenHandled,
 }: CompanionConfigurationProps) {
   const t = useT();
-  const companionClient = useMCPClient({
-    connectionId,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
   const [dialogOpen, setDialogOpen] = useState(autoOpen);
-  const [isSavePending, setIsSavePending] = useState(false);
-  const queryClient = useQueryClient();
 
-  const FormComponent = COMPANION_CONFIG_FORMS[card.bindingType];
   const savedConfigEntries = getConfigurationSummaryEntries(
     card.configurationState,
     t,
@@ -447,44 +432,10 @@ function CompanionConfiguration({
     }
   };
 
-  const handleDialogOpenChange = (open: boolean) => {
-    if (!open && isSavePending) {
-      return;
-    }
-    if (!open) {
-      closeDialog();
-      return;
-    }
-    setDialogOpen(true);
-  };
-
-  const disconnectMutation = useMutation({
-    mutationFn: async () => {
-      await selfClient.callTool({
-        name: "COLLECTION_CONNECTIONS_DELETE",
-        arguments: { id: connectionId, force: true },
-      });
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: KEYS.commerceDiscoveryCompanionConnectionsPrefix(org.id),
-      });
-      toast.success(
-        t("commerceOnboarding.companionCard.disconnectedSuccess", {
-          title: card.title,
-        }),
-      );
-      closeDialog();
-    },
-    onError: () => {
-      toast.error(t("commerceOnboarding.companionCard.disconnectError"));
-    },
-  });
-
   // No config form for this binding → nothing to open. A "configure" variant
   // still needs a visible trigger, so it degrades to a quiet gear-less noop
   // only when there's genuinely nothing to configure.
-  if (!FormComponent) {
+  if (!COMPANION_CONFIG_FORMS[card.bindingType]) {
     return null;
   }
 
@@ -518,38 +469,118 @@ function CompanionConfiguration({
     <>
       {trigger}
 
-      <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader className="flex-row items-center gap-3 space-y-0 text-left">
-            <IntegrationIcon
-              icon={card.icon}
-              name={card.title}
-              size="sm"
-              fit="contain"
-              className="p-1"
-            />
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <DialogTitle>{card.title}</DialogTitle>
-              <DialogDescription>
-                {t("commerceOnboarding.companionCard.configureDescription", {
-                  title: card.title,
-                })}
-              </DialogDescription>
-            </div>
-          </DialogHeader>
-          <FormComponent
-            card={card}
-            connectionId={connectionId}
-            companionClient={companionClient}
-            selfClient={selfClient}
-            org={org}
-            contextSiteUrl={contextSiteUrl}
-            onDone={closeDialog}
-            onDisconnect={() => disconnectMutation.mutate()}
-            onIsPendingChange={setIsSavePending}
-          />
-        </DialogContent>
-      </Dialog>
+      <CompanionConfigDialog
+        card={card}
+        org={org}
+        selfClient={selfClient}
+        connectionId={connectionId}
+        contextSiteUrl={contextSiteUrl}
+        open={dialogOpen}
+        onOpenChange={(open) => (open ? setDialogOpen(true) : closeDialog())}
+      />
     </>
+  );
+}
+
+/** The companion's config-form dialog (repo/property/credentials picker) as a
+ *  controlled component, so both the card's gear/finish-setup triggers and the
+ *  report's deep-link dialog (connect-source-dialog.tsx) open the same thing.
+ *  Suspends while the companion MCP client connects — callers own the
+ *  Suspense boundary. */
+export function CompanionConfigDialog({
+  card,
+  org,
+  selfClient,
+  connectionId,
+  contextSiteUrl,
+  open,
+  onOpenChange,
+}: {
+  card: CompanionCardModel;
+  org: { id: string; slug: string };
+  selfClient: Client;
+  connectionId: string;
+  contextSiteUrl?: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const t = useT();
+  const companionClient = useMCPClient({
+    connectionId,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+  const [isSavePending, setIsSavePending] = useState(false);
+  const queryClient = useQueryClient();
+
+  const FormComponent = COMPANION_CONFIG_FORMS[card.bindingType];
+
+  const disconnectMutation = useMutation({
+    mutationFn: async () => {
+      await selfClient.callTool({
+        name: "COLLECTION_CONNECTIONS_DELETE",
+        arguments: { id: connectionId, force: true },
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: KEYS.commerceDiscoveryCompanionConnectionsPrefix(org.id),
+      });
+      toast.success(
+        t("commerceOnboarding.companionCard.disconnectedSuccess", {
+          title: card.title,
+        }),
+      );
+      onOpenChange(false);
+    },
+    onError: () => {
+      toast.error(t("commerceOnboarding.companionCard.disconnectError"));
+    },
+  });
+
+  if (!FormComponent) {
+    return null;
+  }
+
+  const handleDialogOpenChange = (next: boolean) => {
+    if (!next && isSavePending) {
+      return;
+    }
+    onOpenChange(next);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader className="flex-row items-center gap-3 space-y-0 text-left">
+          <IntegrationIcon
+            icon={card.icon}
+            name={card.title}
+            size="sm"
+            fit="contain"
+            className="p-1"
+          />
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <DialogTitle>{card.title}</DialogTitle>
+            <DialogDescription>
+              {t("commerceOnboarding.companionCard.configureDescription", {
+                title: card.title,
+              })}
+            </DialogDescription>
+          </div>
+        </DialogHeader>
+        <FormComponent
+          card={card}
+          connectionId={connectionId}
+          companionClient={companionClient}
+          selfClient={selfClient}
+          org={org}
+          contextSiteUrl={contextSiteUrl}
+          onDone={() => onOpenChange(false)}
+          onDisconnect={() => disconnectMutation.mutate()}
+          onIsPendingChange={setIsSavePending}
+        />
+      </DialogContent>
+    </Dialog>
   );
 }

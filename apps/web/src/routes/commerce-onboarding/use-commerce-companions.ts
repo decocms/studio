@@ -297,3 +297,32 @@ export function useCommerceCompanions({
 
   return { cards, saStatusUnavailable };
 }
+
+/** The commerce-discovery connection's stored site URL (metadata.siteUrl).
+ *  Shared by the connect-sources tab and the report's per-source deep-link
+ *  dialog so both read it through the same query key. Suspends. */
+export function useCommerceDiscoverySiteUrl({
+  selfClient,
+  org,
+  cdConnectionId,
+}: {
+  selfClient: Client;
+  org: CompanionOrg;
+  cdConnectionId: string;
+}): string | undefined {
+  const query = useSuspenseQuery({
+    queryKey: KEYS.commerceDiscoveryConnection(org.id, cdConnectionId),
+    queryFn: async () => {
+      const result = await selfClient.callTool({
+        name: "COLLECTION_CONNECTIONS_GET",
+        arguments: { id: cdConnectionId },
+      });
+      return unwrapToolResult<{
+        item: { metadata?: Record<string, unknown> | null } | null;
+      }>(result);
+    },
+    retry: false,
+  });
+  const siteUrl = query.data.item?.metadata?.siteUrl;
+  return typeof siteUrl === "string" ? siteUrl : undefined;
+}

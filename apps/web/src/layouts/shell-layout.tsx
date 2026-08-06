@@ -190,11 +190,10 @@ export function usePanelActions() {
     setTaskId(newId, targetVmcp);
   };
 
-  const openTab = (tabId: string, extraSearch?: Record<string, string>) =>
+  const openTab = (tabId: string) =>
     navWith(currentTaskId || crypto.randomUUID(), (prev) => ({
       ...prev,
       main: tabId,
-      ...extraSearch,
     }));
 
   return {
