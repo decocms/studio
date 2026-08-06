@@ -10,6 +10,7 @@ import {
   findBreadcrumbLabelIndex,
   isArrayDrillDownField,
   normalizeBreadcrumbLabel,
+  prependCrumbIfAbsent,
   resolveActiveFieldKey,
   resolveArrayItemSelection,
   siblingFieldLabel,
@@ -115,10 +116,31 @@ describe("siblingFieldLabel", () => {
   });
 });
 
+describe("prependCrumbIfAbsent", () => {
+  test("prepends the label when the trail doesn't start with it", () => {
+    expect(
+      prependCrumbIfAbsent("Shelf Props Offer", ["Free shipping"]),
+    ).toEqual(["Shelf Props Offer", "Free shipping"]);
+  });
+
+  test("prepends onto an empty trail", () => {
+    expect(prependCrumbIfAbsent("Shelf Props Offer", [])).toEqual([
+      "Shelf Props Offer",
+    ]);
+  });
+
+  test("is a no-op when the label is already the head (NFC-insensitive)", () => {
+    const trail = ["café", "Free shipping"];
+    // Same crumb in composed form must be recognized as already present.
+    expect(prependCrumbIfAbsent("café", trail)).toBe(trail);
+  });
+});
+
 describe("resolveActiveFieldKey — sibling props with identical titles", () => {
-  // Mirrors ProductShelfTimedOffers: `shelfProps` and `shelfPropsOffer` both
-  // `$ref` `ProductShelfProps`, so both share the title and an identical nested
-  // `cardLayout.productTags` shape. Item labels come from the `label` field.
+  // Mirrors the general shape that triggers the bug: two props that `$ref` the
+  // same interface, so both share the title and an identical nested
+  // `cardLayout.tags` shape. Item labels come from the `label` field. Fixture
+  // labels are neutral placeholders — not tied to any real store's content.
   const shelf = {
     type: "object",
     title: "ProductShelfProps",
@@ -127,9 +149,9 @@ describe("resolveActiveFieldKey — sibling props with identical titles", () => 
         type: "object",
         title: "CardLayout",
         properties: {
-          productTags: {
+          tags: {
             type: "array",
-            title: "ProductTags",
+            title: "Tags",
             items: {
               type: "object",
               properties: { label: { type: "string" } },
@@ -144,28 +166,22 @@ describe("resolveActiveFieldKey — sibling props with identical titles", () => 
   const objValue = {
     shelfProps: {
       cardLayout: {
-        productTags: [
-          { label: "OFERTAS 8.8" },
-          { label: "Frete grátis geral" },
-        ],
+        tags: [{ label: "Summer Sale" }, { label: "Free shipping" }],
       },
     },
     shelfPropsOffer: {
       cardLayout: {
-        productTags: [
-          { label: "OFERTAS 7.7" },
-          { label: "Frete grátis geral" },
-        ],
+        tags: [{ label: "Winter Sale" }, { label: "Free shipping" }],
       },
     },
   };
 
   test("a unique item label resolves to its owning sibling", () => {
     expect(
-      resolveActiveFieldKey(keys, properties, objValue, ["OFERTAS 7.7"]),
+      resolveActiveFieldKey(keys, properties, objValue, ["Winter Sale"]),
     ).toBe("shelfPropsOffer");
     expect(
-      resolveActiveFieldKey(keys, properties, objValue, ["OFERTAS 8.8"]),
+      resolveActiveFieldKey(keys, properties, objValue, ["Summer Sale"]),
     ).toBe("shelfProps");
   });
 
@@ -173,20 +189,27 @@ describe("resolveActiveFieldKey — sibling props with identical titles", () => 
     expect(
       resolveActiveFieldKey(keys, properties, objValue, [
         "Shelf Props Offer",
-        "Frete grátis geral",
+        "Free shipping",
       ]),
     ).toBe("shelfPropsOffer");
     expect(
       resolveActiveFieldKey(keys, properties, objValue, [
         "Shelf Props",
-        "Frete grátis geral",
+        "Free shipping",
       ]),
+    ).toBe("shelfProps");
+  });
+
+  test("a single matching object sibling still resolves (not null)", () => {
+    // Only `shelfProps` has a "Summer Sale" tag → one match, returns it.
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, ["Summer Sale"]),
     ).toBe("shelfProps");
   });
 
   test("an ambiguous shared crumb without an ancestor returns null (shows both)", () => {
     expect(
-      resolveActiveFieldKey(keys, properties, objValue, ["Frete grátis geral"]),
+      resolveActiveFieldKey(keys, properties, objValue, ["Free shipping"]),
     ).toBeNull();
   });
 
@@ -195,10 +218,10 @@ describe("resolveActiveFieldKey — sibling props with identical titles", () => 
       breadcrumbPathForActiveField(
         "shelfPropsOffer",
         shelf,
-        ["Shelf Props Offer", "Frete grátis geral"],
+        ["Shelf Props Offer", "Free shipping"],
         "Shelf Props Offer",
       ),
-    ).toEqual(["Frete grátis geral"]);
+    ).toEqual(["Free shipping"]);
   });
 });
 

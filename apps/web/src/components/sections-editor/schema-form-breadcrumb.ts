@@ -15,6 +15,21 @@ export function normalizeBreadcrumbLabel(label: string): string {
   return label.normalize("NFC").trim();
 }
 
+/**
+ * Prepend `label` to a breadcrumb `trail` unless it's already the head crumb
+ * (NFC-insensitive). Used to stamp the disambiguated ancestor label onto a drill
+ * trail so the resolver can tell same-titled sibling props apart.
+ */
+export function prependCrumbIfAbsent(label: string, trail: string[]): string[] {
+  if (
+    trail.length > 0 &&
+    normalizeBreadcrumbLabel(trail[0]!) === normalizeBreadcrumbLabel(label)
+  ) {
+    return trail;
+  }
+  return [label, ...trail];
+}
+
 function labelsMatch(a: string, b: string): boolean {
   return normalizeBreadcrumbLabel(a) === normalizeBreadcrumbLabel(b);
 }
@@ -341,7 +356,7 @@ function resolveActiveFieldKeyInScope(
   // Collect every object sibling that owns the trail rather than returning the
   // first. Two siblings that `$ref` the same interface (e.g. `shelfProps` /
   // `shelfPropsOffer`, both `ProductShelfProps`) have identical nested shapes,
-  // so a shared crumb ("Frete grátis geral", or a field-level "Card Layout")
+  // so a shared crumb ("Free shipping", or a field-level "Card Layout")
   // matches BOTH. First-match-wins would silently narrow to the first and drill
   // the wrong prop; if the trail can't tell them apart, return null so the panel
   // keeps both visible instead of editing the wrong sibling. A crumb carrying the

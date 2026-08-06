@@ -30,7 +30,7 @@ import {
   consumedBreadcrumbPrefix,
   fieldDisplayLabel,
   isArrayDrillDownField,
-  normalizeBreadcrumbLabel,
+  prependCrumbIfAbsent,
   resolveActiveFieldKey,
   siblingFieldLabel,
 } from "./schema-form-breadcrumb";
@@ -579,8 +579,8 @@ export function SchemaForm({
         // When two siblings share a title (e.g. `shelfProps`/`shelfPropsOffer`,
         // both `ProductShelfProps`), a descendant drill reports a bare
         // `[itemLabel]` trail with no ancestor crumb — the resolver then can't
-        // tell which sibling a shared crumb ("Frete grátis geral") came from. In
-        // the non-focused view (both rendered together, `consumedPrefix` empty)
+        // tell which sibling a shared crumb ("Free shipping") came from. In the
+        // non-focused view (both rendered together, `consumedPrefix` empty)
         // prepend this field's disambiguated label so the trail identifies the
         // sibling. In the focused view `consumedPrefix` already carries it.
         const plainLabel = fieldDisplayLabel(key, propSchema);
@@ -597,13 +597,7 @@ export function SchemaForm({
         const fieldOnBreadcrumbChangeForKey =
           collidesWithSibling && fieldOnBreadcrumbChange
             ? (next: string[]) =>
-                fieldOnBreadcrumbChange(
-                  next.length > 0 &&
-                    normalizeBreadcrumbLabel(next[0]!) ===
-                      normalizeBreadcrumbLabel(label)
-                    ? next
-                    : [label, ...next],
-                )
+                fieldOnBreadcrumbChange(prependCrumbIfAbsent(label, next))
             : fieldOnBreadcrumbChange;
 
         return renderField({
