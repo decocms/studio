@@ -117,7 +117,7 @@ export const thread = {
   "thread.headerActions.runningTests": "Executando testes…",
   "thread.headerActions.squashMergeTooltip":
     "Squash-merge do PR #{prNumber} em {base}",
-  "thread.headerActions.startingSandbox": "Iniciando sandbox…",
+  "thread.headerActions.startingSandbox": "Preparando ambiente…",
   "thread.headerActions.submitForReview": "Enviar para revisão",
   "thread.headerActions.switchingTo": "Mudando para {branch}…",
   "thread.headerActions.syncWith": "Sincronizar com {base}",
@@ -127,11 +127,11 @@ export const thread = {
   "thread.headerActions.waitingForApprovalsTooltip":
     "Aguardando aprovações obrigatórias",
   "thread.headerActions.waitingForBranchTooltip":
-    "Aguardando metadados da branch do daemon da sandbox",
+    "Quase lá — terminando de preparar seu ambiente",
   "thread.headerActions.waitingForDaemonTooltip":
-    "Aguardando o daemon da sandbox ficar online",
+    "Preparando seu ambiente — leva só um instante",
   "thread.headerActions.waitingForSandboxBranchTooltip":
-    "Aguardando branch da sandbox",
+    "Preparando seu ambiente — leva só um instante",
   "thread.headerActions.waitingOnChecksTooltip":
     "Aguardando {count} verificação(ões) terminar",
   "thread.mergeSplitButton.moreActionsAriaLabel": "Mais ações",

@@ -113,7 +113,7 @@ describe("selectHeaderButton", () => {
     expect(r.variant).toBe("outline");
   });
 
-  test("lifecycle.idle → 'Starting sandbox…' (disabled, spinner)", () => {
+  test("lifecycle.idle → 'Preparing environment…' (disabled, spinner)", () => {
     const r = selectHeaderButton(
       happyInput({
         lifecycle: { phase: "idle" },
@@ -121,7 +121,7 @@ describe("selectHeaderButton", () => {
         claimPhase: null,
       }),
     );
-    expect(r.label).toBe("Starting sandbox…");
+    expect(r.label).toBe("Preparing environment…");
     expect(r.disabled).toBe(true);
     expect(r.loading).toBe(true);
     expect(r.variant).toBe("outline");
@@ -171,7 +171,7 @@ describe("selectHeaderButton", () => {
     expect(r.label).toBe("Connecting to sandbox");
   });
 
-  test("idle + claimPhase = ready → 'Starting sandbox…' (generic)", () => {
+  test("idle + claimPhase = ready → 'Preparing environment…' (generic)", () => {
     // ready means the daemon claim handle is up but lifecycle hasn't yet
     // emitted its first event. Generic copy is correct here.
     const r = selectHeaderButton(
@@ -181,10 +181,10 @@ describe("selectHeaderButton", () => {
         claimPhase: { kind: "ready" },
       }),
     );
-    expect(r.label).toBe("Starting sandbox…");
+    expect(r.label).toBe("Preparing environment…");
   });
 
-  test("idle + claimPhase = claiming → 'Starting sandbox…' (generic)", () => {
+  test("idle + claimPhase = claiming → 'Preparing environment…' (generic)", () => {
     // `claiming` is intentionally absent from `idleClaimCopy` — falls through
     // to the generic label.
     const r = selectHeaderButton(
@@ -194,7 +194,7 @@ describe("selectHeaderButton", () => {
         claimPhase: { kind: "claiming", since: 0 },
       }),
     );
-    expect(r.label).toBe("Starting sandbox…");
+    expect(r.label).toBe("Preparing environment…");
   });
 
   test("lifecycle.cloning → 'Cloning repo…' (disabled, spinner)", () => {

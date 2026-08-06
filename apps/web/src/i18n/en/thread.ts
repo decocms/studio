@@ -113,7 +113,7 @@ export const thread = {
   "thread.headerActions.runningTests": "Running tests…",
   "thread.headerActions.squashMergeTooltip":
     "Squash-merge PR #{prNumber} into {base}",
-  "thread.headerActions.startingSandbox": "Starting sandbox…",
+  "thread.headerActions.startingSandbox": "Preparing environment…",
   "thread.headerActions.submitForReview": "Submit for review",
   "thread.headerActions.switchingTo": "Switching to {branch}…",
   "thread.headerActions.syncWith": "Sync with {base}",
@@ -123,11 +123,11 @@ export const thread = {
   "thread.headerActions.waitingForApprovalsTooltip":
     "Waiting for required approvals",
   "thread.headerActions.waitingForBranchTooltip":
-    "Waiting for branch metadata from the sandbox daemon",
+    "Almost ready — finishing setting up your environment",
   "thread.headerActions.waitingForDaemonTooltip":
-    "Waiting for the sandbox daemon to come online",
+    "Getting your environment ready — this only takes a moment",
   "thread.headerActions.waitingForSandboxBranchTooltip":
-    "Waiting for sandbox branch",
+    "Getting your environment ready — this only takes a moment",
   "thread.headerActions.waitingOnChecksTooltip":
     "Waiting on {count} check(s) to finish",
   "thread.mergeSplitButton.moreActionsAriaLabel": "More actions",
