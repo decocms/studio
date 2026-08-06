@@ -260,7 +260,9 @@ describe("failed runs never reach In Review (real Postgres)", () => {
 
     await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(thread.id, ORG2);
 
-    expect((await taskBoard.getById(task.id, ORG2))?.status).toBe("in_progress");
+    expect((await taskBoard.getById(task.id, ORG2))?.status).toBe(
+      "in_progress",
+    );
   });
 
   it("reads the failure kind and the run's error text together", async () => {
@@ -356,7 +358,12 @@ describe("failed runs never reach In Review (real Postgres)", () => {
       .set({ assignee_id: "super-agent" })
       .where("id", "=", task.id)
       .execute();
-    await taskBoard.scheduleRunRetry(task.id, ORG2, 1, new Date(Date.now() + 60_000));
+    await taskBoard.scheduleRunRetry(
+      task.id,
+      ORG2,
+      1,
+      new Date(Date.now() + 60_000),
+    );
 
     const stuck = await taskBoard.listItemsStuckAfterFailure(10, new Date());
 
