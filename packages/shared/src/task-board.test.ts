@@ -2,6 +2,8 @@ import { describe, expect, it } from "bun:test";
 import {
   allReviewersApproved,
   isReviewerThreadTitle,
+  MAX_REVIEW_BOUNCES,
+  reviewBounceLimitReached,
   reviewCycleStart,
   reviewCycleVerdicts,
   type ReviewCycleActivity,
@@ -144,5 +146,77 @@ describe("allReviewersApproved", () => {
     ).toBe(false);
     // The human ship button (no verifiedOnly) still sees both as approved.
     expect(allReviewersApproved(forged, ["qa", "code_review"])).toBe(true);
+  });
+});
+
+// The runaway-loop guard. It counts ACROSS review cycles on purpose — each
+// bounce starts a new cycle, so a per-cycle count is always 1 and would never
+// trip, which is exactly how a board reached 179 change-requests.
+
+function bounce(at: string): ReviewCycleActivity {
+  return {
+    action: "review_changes_requested",
+    data: { reviewer: "code_review" },
+    occurredAt: at,
+  };
+}
+
+describe("reviewBounceLimitReached", () => {
+  it("allows the first bounces through", () => {
+    expect(reviewBounceLimitReached([])).toBe(false);
+    expect(
+      reviewBounceLimitReached([
+        bounce("2026-01-01T00:00:00.000Z"),
+        bounce("2026-01-01T01:00:00.000Z"),
+        bounce("2026-01-01T02:00:00.000Z"),
+      ]),
+    ).toBe(false);
+  });
+
+  it("trips on the bounce that would reach the limit, counting the pending one", () => {
+    const four = Array.from({ length: 4 }, (_, i) =>
+      bounce(`2026-01-01T0${i}:00:00.000Z`),
+    );
+    expect(four).toHaveLength(MAX_REVIEW_BOUNCES - 1);
+    expect(reviewBounceLimitReached(four)).toBe(true);
+  });
+
+  it("counts bounces from earlier review cycles, not just the current one", () => {
+    const acrossCycles: ReviewCycleActivity[] = [
+      bounce("2026-01-01T00:00:00.000Z"),
+      {
+        action: "status_changed",
+        data: { to: "in_review" },
+        occurredAt: "2026-01-01T00:30:00.000Z",
+      },
+      bounce("2026-01-01T01:00:00.000Z"),
+      {
+        action: "status_changed",
+        data: { to: "in_review" },
+        occurredAt: "2026-01-01T01:30:00.000Z",
+      },
+      bounce("2026-01-01T02:00:00.000Z"),
+      {
+        action: "status_changed",
+        data: { to: "in_review" },
+        occurredAt: "2026-01-01T02:30:00.000Z",
+      },
+      bounce("2026-01-01T03:00:00.000Z"),
+    ];
+    expect(reviewBounceLimitReached(acrossCycles)).toBe(true);
+  });
+
+  it("ignores approvals and unrelated activity", () => {
+    expect(
+      reviewBounceLimitReached([
+        {
+          action: "review_approved",
+          data: { reviewer: "qa" },
+          occurredAt: "2026-01-01T00:00:00.000Z",
+        },
+        { action: "created", occurredAt: "2026-01-01T00:00:00.000Z" },
+        bounce("2026-01-01T01:00:00.000Z"),
+      ]),
+    ).toBe(false);
   });
 });
