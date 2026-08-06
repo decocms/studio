@@ -1,4 +1,9 @@
 export const commerceOnboarding = {
+  "commerceOnboarding.companionCard.configField.accountName": "Account name",
+  "commerceOnboarding.companionCard.configField.appKey": "App Key",
+  "commerceOnboarding.companionCard.configField.appToken": "App Token",
+  "commerceOnboarding.companionCard.configField.propertyId": "Property",
+  "commerceOnboarding.companionCard.configField.siteUrl": "Site",
   "commerceOnboarding.companionCard.configure": "Configure",
   "commerceOnboarding.companionCard.configureAriaLabel": "Configure {title}",
   "commerceOnboarding.companionCard.configureDescription":

@@ -437,6 +437,7 @@ function CompanionConfiguration({
   const FormComponent = COMPANION_CONFIG_FORMS[card.bindingType];
   const savedConfigEntries = getConfigurationSummaryEntries(
     card.configurationState,
+    t,
   );
 
   const closeDialog = () => {
