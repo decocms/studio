@@ -327,3 +327,53 @@ Sentinel token. Priority order:
 {{- end -}}
 {{- end -}}
 {{- end }}
+
+{{/*
+Name of the chart-managed L2 golden PV and PVC. envName-suffixed like every
+other resource here: the PV is CLUSTER-scoped, so two releases installing
+without the suffix would collide outright, and the PVC shares
+agent-sandbox-system with every other release.
+*/}}
+{{- define "sandbox-env.goldenRemoteName" -}}
+{{- printf "studio-sandbox-golden-%s" (include "sandbox-env.envName" .) -}}
+{{- end }}
+
+{{/*
+Claim the sandbox pod mounts for the L2 store. An explicit
+`depsCache.remote.pvcName` wins and nothing is rendered by
+sandbox-golden-remote.yaml — that is the escape hatch for a volume this chart
+does not manage (a different backend, or one provisioned by hand). Otherwise
+the claim is the chart's own, created alongside its PV from
+`depsCache.remote.bucketName`.
+*/}}
+{{- define "sandbox-env.goldenRemoteClaimName" -}}
+{{- if .Values.depsCache.remote.pvcName -}}
+{{- .Values.depsCache.remote.pvcName -}}
+{{- else -}}
+{{- include "sandbox-env.goldenRemoteName" . -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Validate the L2 remote block. Fail at template time rather than shipping a pod
+that cannot mount, or one that silently mounts nothing:
+  - remote without the node-local tier is incoherent: an L2 hit seeds L1 via
+    the same pendingGolden path, and the daemon reads DEPS_CACHE_ROOT either
+    way.
+  - exactly one source: a bucket for this chart to provision a PV over, or a
+    pre-existing PVC. Both set is ambiguous (which one is authoritative?),
+    neither set would render a volume with an empty claimName.
+*/}}
+{{- define "sandbox-env.validateGoldenRemote" -}}
+{{- if .Values.depsCache.remote.enabled }}
+{{- if not .Values.depsCache.enabled }}
+{{- fail "sandbox-env: depsCache.remote.enabled=true requires depsCache.enabled=true — the L2 archive restores into the node-local store, so there is nothing for it to seed otherwise." -}}
+{{- end }}
+{{- if and .Values.depsCache.remote.bucketName .Values.depsCache.remote.pvcName }}
+{{- fail "sandbox-env: set exactly one of depsCache.remote.bucketName (this chart provisions the PV/PVC over that S3 bucket) or depsCache.remote.pvcName (mount a claim this chart does not manage) — both are set, so which one is authoritative is ambiguous." -}}
+{{- end }}
+{{- if not (or .Values.depsCache.remote.bucketName .Values.depsCache.remote.pvcName) }}
+{{- fail "sandbox-env: depsCache.remote.enabled=true requires depsCache.remote.bucketName (preferred: this chart provisions the mountpoint-S3 PV/PVC) or depsCache.remote.pvcName (an existing claim). Neither is set, which would mount a volume with an empty claimName." -}}
+{{- end }}
+{{- end }}
+{{- end }}

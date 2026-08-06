@@ -384,7 +384,7 @@ spec:
         {{- if .Values.depsCache.remote.enabled }}
         - name: golden-remote
           persistentVolumeClaim:
-            claimName: {{ required "depsCache.remote.pvcName is required when depsCache.remote.enabled" .Values.depsCache.remote.pvcName }}
+            claimName: {{ include "sandbox-env.goldenRemoteClaimName" . }}
             readOnly: true
         {{- end }}
         {{- end }}

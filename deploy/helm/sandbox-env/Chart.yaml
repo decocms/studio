@@ -9,6 +9,18 @@ description: |
   releases coexist in the shared `agent-sandbox-system` namespace.
   Requires the sandbox-operator chart to already be installed.
 type: application
+# 0.11.0: this chart now OWNS the L2 store's PV/PVC. `depsCache.remote` takes
+# `bucketName` (the terraform-provisioned bucket) and renders a mountpoint-S3 PV
+# + PVC named per release, each mounted under `prefix=<envName>/`. Previously
+# those objects were created by terraform under one namespace-wide name, which
+# made every release share a single bucket root — so stg could publish an archive
+# that prod then restored. `pvcName` survives as an escape hatch for a claim this
+# chart does not manage, and is now mutually exclusive with `bucketName`; setting
+# neither fails the render instead of mounting an empty claimName. Minor bump:
+# `pvcName` stops being the only way in, and a consumer pointing it at the
+# terraform-created `sandbox-golden-ro` must switch to `bucketName` before those
+# objects are removed on the terraform side. Still default off — no change unless
+# enabled.
 # 0.10.7: opt-in node placeholder / "balloon" (nodePlaceholder.*, default off)
 # — low-priority pods that reserve warm NODE capacity on the sandbox NodePool
 # so warm-pool refill / KEDA scale-up / cold claims schedule onto an already-up
@@ -67,7 +79,7 @@ type: application
 # 0.8.0: org-fs sidecar (orgFs.*) — privileged rclone mounter + main-container
 # mounts. NOTE: the publish workflow skips existing versions, so this MUST
 # stay ahead of the latest published chart (0.7.5 at time of writing).
-version: 0.10.19
+version: 0.11.0
 # appVersion tracks the studio-sandbox image version (image.tag default).
 appVersion: "1.42.0"
 kubeVersion: ">=1.30.0-0"
