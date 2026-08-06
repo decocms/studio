@@ -154,6 +154,29 @@ async function configRequest(
 }
 
 /**
+ * POST /_sandbox/setup/{step} — re-run a setup step against the config the
+ * daemon already holds. `clone` chains into install + start, so it is the one
+ * call a warm-pool refresh needs: fetch + reset to origin, reinstall only if
+ * the lockfile moved, restart dev.
+ */
+export async function postSetupStep(
+  daemonUrl: string,
+  token: string,
+  step: "clone" | "install" | "start",
+): Promise<void> {
+  const res = await fetch(`${daemonUrl}/_sandbox/setup/${step}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(CONFIG_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    throw new Error(
+      `sandbox daemon /_sandbox/setup/${step} returned ${res.status}: ${await res.text()}`,
+    );
+  }
+}
+
+/**
  * POST /_sandbox/orgfs-config — relay the org-fs mount config (a JSON
  * `OrgFsMountConfig`) for the pod's privileged sidecar. Separate from
  * `/config` on purpose: an orgFs-only TenantConfig patch classifies as no-op

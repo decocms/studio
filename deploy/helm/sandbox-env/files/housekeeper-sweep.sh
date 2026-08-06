@@ -109,7 +109,10 @@ probe_daemon() {
       # Studio delivers a workload via POST /_sandbox/config. Older daemons
       # omit the field; treat absent as claimed=true to preserve existing
       # behaviour on cold-start deployments.
-      claimed=$(sed -n 's/.*"claimed"[[:space:]]*:[[:space:]]*\(true\|false\).*/\1/p' "$body")
+      # `[a-z][a-z]*` rather than `\(true\|false\)`: alternation is a GNU BRE
+      # extension, and where it isn't supported the capture silently yields
+      # nothing — which reads as "claimed" and reaps a warm pod.
+      claimed=$(sed -n 's/.*"claimed"[[:space:]]*:[[:space:]]*\([a-z][a-z]*\).*/\1/p' "$body")
       if [ "$claimed" = "false" ]; then
         rm -f "$body"
         echo "__unclaimed__"
@@ -164,6 +167,12 @@ force_delete_claim() {
   kubectl delete sandboxclaim "$claim" -n "$NS" \
     --ignore-not-found >/dev/null 2>&1 || true
 }
+
+# Sourced by housekeeper-sweep.test.ts to exercise probe_daemon against a real
+# HTTP server. Everything above is pure shell + curl; everything below needs a
+# cluster. Without this the `claimed=false` branch — the one thing keeping the
+# sweep off tenant warm-pool pods — has no test at all.
+[ "${HOUSEKEEPER_SOURCE_ONLY:-}" = "1" ] && return 0
 
 # === main ===
 log "starting (ttl=${TTL_MS}ms probe_timeout=${PROBE_TIMEOUT_SEC}s)"

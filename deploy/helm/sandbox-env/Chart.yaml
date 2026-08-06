@@ -9,6 +9,11 @@ description: |
   releases coexist in the shared `agent-sandbox-system` namespace.
   Requires the sandbox-operator chart to already be installed.
 type: application
+# 0.12.0: tenantPools — per-tenant warm pools (SandboxWarmPool per entry
+# against the shared SandboxTemplate). Additive and empty by default; each
+# entry needs a matching object in Studio's STUDIO_SANDBOX_TENANT_POOLS.
+# Also grants the runner Role `sandboxwarmpools: get` — the reconciler reads
+# each pool's status.selector to find its pods, and 403s without it.
 # 0.11.0: this chart now asks for the L2 store's volume instead of having it
 # handed over. `depsCache.remote` takes exactly one of three sources:
 # `storageClassName` (dynamic — renders only a PVC, so any RWX CSI driver works
@@ -82,7 +87,7 @@ type: application
 # 0.8.0: org-fs sidecar (orgFs.*) — privileged rclone mounter + main-container
 # mounts. NOTE: the publish workflow skips existing versions, so this MUST
 # stay ahead of the latest published chart (0.7.5 at time of writing).
-version: 0.11.0
+version: 0.12.0
 # appVersion tracks the studio-sandbox image version (image.tag default).
 appVersion: "1.42.0"
 kubeVersion: ">=1.30.0-0"
