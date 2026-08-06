@@ -34,6 +34,7 @@ import {
 } from "@kubernetes/client-node";
 import type {
   Counter,
+  Gauge,
   Histogram,
   Meter,
   UpDownCounter,
@@ -171,6 +172,14 @@ const TENANT_POOL_TICK_MS = 60 * 1000;
 /** Under the ~1h clone-token lifetime — the refresh IS the credential refresh. */
 const TENANT_POOL_REFRESH_MS = 30 * 60 * 1000;
 const TENANT_POOL_MAX_FAILURES = 3;
+/**
+ * How long a pod that hit the failure cap is left alone before one more try.
+ * The cap exists to stop hammering a genuinely broken pod (bad lockfile, no
+ * `dev` script); the cooldown exists because the same counter also catches
+ * transient failures, and this bookkeeping is per-replica in-memory — nothing
+ * else would ever un-stick the pod. The gauge reports these as `state=failed`.
+ */
+const TENANT_POOL_GIVE_UP_COOLDOWN_MS = 30 * 60 * 1000;
 const CREDENTIAL_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 const CREDENTIAL_REFRESH_BUFFER_MS = 30 * 60 * 1000;
 
@@ -480,7 +489,7 @@ export class AgentSandboxProvider implements SandboxProvider {
    */
   private readonly poolPods = new Map<
     string,
-    { lastConfigAt: number; failures: number }
+    { lastConfigAt: number; lastFailureAt: number; failures: number }
   >();
   /** Pool names a GitHub push says are stale; drained by the next tick. */
   private readonly dirtyPools = new Set<string>();
@@ -1631,7 +1640,40 @@ export class AgentSandboxProvider implements SandboxProvider {
         if (this.claimWatchAbort.signal.aborted) return;
         await this.warmPoolPod(pool, pod, dirty);
       }
+      this.recordPoolDepth(pool, pods, unbound);
     }
+  }
+
+  /**
+   * Pool depth by state. `ready` is the number that matters — pods a claim can
+   * bind instantly — and it is the one thing that distinguishes "the pool is
+   * working" from "the pool is N pods of pure cost". Alert on sustained
+   * ready=0; both failure modes that produce it (RBAC and a bootstrap that
+   * never completes) are otherwise silent.
+   */
+  private recordPoolDepth(
+    pool: TenantPool,
+    pods: readonly WarmPoolPod[],
+    unbound: readonly WarmPoolPod[],
+  ): void {
+    const gauge = this.metrics?.poolPods;
+    if (!gauge) return;
+    let ready = 0;
+    let failed = 0;
+    for (const pod of unbound) {
+      const seen = this.poolPods.get(pod.uid);
+      if (!seen) continue;
+      if (seen.failures >= TENANT_POOL_MAX_FAILURES) failed++;
+      else if (seen.lastConfigAt > 0) ready++;
+    }
+    const attrs = { pool: pool.name, org: pool.orgId };
+    gauge.record(ready, { ...attrs, state: "ready" });
+    gauge.record(pods.length - unbound.length, { ...attrs, state: "bound" });
+    gauge.record(unbound.length - ready - failed, {
+      ...attrs,
+      state: "pending",
+    });
+    gauge.record(failed, { ...attrs, state: "failed" });
   }
 
   private async warmPoolPod(
@@ -1642,8 +1684,16 @@ export class AgentSandboxProvider implements SandboxProvider {
     const seen = this.poolPods.get(pod.uid);
     // A pod that fails to warm repeatedly (bad lockfile, private submodule, no
     // `dev` script) would otherwise be retried forever while the pool *looks*
-    // full. Stop touching it and say so once.
-    if (seen && seen.failures >= TENANT_POOL_MAX_FAILURES) return;
+    // full. Stop touching it and say so once — but not forever: the same
+    // counter catches a transient blip (a port-forward reset, a mint 500), and
+    // permanently blackholing a pod over one bad minute costs a whole slot
+    // until this replica restarts. After the cooldown it gets one more chance.
+    if (seen && seen.failures >= TENANT_POOL_MAX_FAILURES) {
+      if (Date.now() - seen.lastFailureAt < TENANT_POOL_GIVE_UP_COOLDOWN_MS) {
+        return;
+      }
+      this.poolPods.set(pod.uid, { ...seen, failures: 0 });
+    }
     // A refresh re-fetches the branch and restarts dev. A first sight doesn't:
     // this replica may simply have restarted under a pool that is already warm,
     // and every replica bouncing every pod's dev server on boot is a
@@ -1721,7 +1771,11 @@ export class AgentSandboxProvider implements SandboxProvider {
       ) {
         await postSetupStep(daemonUrl, sentinel, "clone");
       }
-      this.poolPods.set(pod.uid, { lastConfigAt: Date.now(), failures: 0 });
+      this.poolPods.set(pod.uid, {
+        lastConfigAt: Date.now(),
+        lastFailureAt: 0,
+        failures: 0,
+      });
       console.log(
         `[${LOG_LABEL}] tenant pool ${pool.name}: warmed ${pod.name} (${transition})`,
       );
@@ -1754,9 +1808,13 @@ export class AgentSandboxProvider implements SandboxProvider {
     const failures = (prev?.failures ?? 0) + 1;
     this.poolPods.set(pod.uid, {
       lastConfigAt: prev?.lastConfigAt ?? 0,
+      lastFailureAt: Date.now(),
       failures,
     });
-    const giveUp = failures >= TENANT_POOL_MAX_FAILURES ? " — giving up" : "";
+    const giveUp =
+      failures >= TENANT_POOL_MAX_FAILURES
+        ? ` — backing off ${TENANT_POOL_GIVE_UP_COOLDOWN_MS / 60_000}min`
+        : "";
     console.warn(
       `[${LOG_LABEL}] tenant pool ${pool.name}: warming ${pod.name} failed (${failures}/${TENANT_POOL_MAX_FAILURES})${giveUp}: ${reason}`,
     );
@@ -2508,6 +2566,7 @@ interface RunnerMetrics {
   active: UpDownCounter;
   ensureOutcome: Counter;
   proxyDurationMs: Histogram;
+  poolPods: Gauge;
 }
 
 function buildRunnerMetrics(meter: Meter): RunnerMetrics {
@@ -2526,6 +2585,11 @@ function buildRunnerMetrics(meter: Meter): RunnerMetrics {
       description:
         "Wall-clock latency of studio-mediated requests to the sandbox daemon: tool exec proxies (source=daemon) and preview iframe traffic (source=preview).",
       unit: "ms",
+    }),
+    poolPods: meter.createGauge("studio.sandbox.pool.pods", {
+      description:
+        "Tenant warm pool depth by pool and state: ready (warmed and unbound — what a claim can actually bind instantly), bound (serving a user), pending (unbound, not yet warmed), failed (gave up after repeated bootstrap failures). Alert on sustained ready=0: a pool that is always empty is doing nothing while costing N pods.",
+      unit: "{pod}",
     }),
   };
 }

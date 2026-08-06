@@ -208,6 +208,30 @@ this static value.
 {{- end }}
 {{- end }}
 
+{{/*
+Validate tenantPools. The name is deliberately NOT derived here — Studio's
+STUDIO_SANDBOX_TENANT_POOLS carries the same literal, and deriving it on both
+sides is a mismatch waiting to happen. But this chart shares
+`agent-sandbox-system` across releases (that is why every other object is
+suffixed with envName), so an undecorated literal lets dev/staging/prod fight
+over one SandboxWarmPool. Require the suffix instead of adding it: the string
+stays identical on both sides, and a collision is a template-time failure.
+*/}}
+{{- define "sandbox-env.validateTenantPools" -}}
+{{- $env := include "sandbox-env.envName" . -}}
+{{- range .Values.tenantPools }}
+{{- if not .name }}
+{{- fail "sandbox-env: every tenantPools entry needs a `name` (it names a SandboxWarmPool and must equal the Studio-side entry)." -}}
+{{- end }}
+{{- if not (hasSuffix (printf "-%s" $env) .name) }}
+{{- fail (printf "sandbox-env: tenantPools name %q must end with -%s so releases sharing agent-sandbox-system don't collide (e.g. tenant-acme-site-%s). Use the SAME string in Studio's STUDIO_SANDBOX_TENANT_POOLS." .name $env $env) -}}
+{{- end }}
+{{- if lt (int .size) 1 }}
+{{- fail (printf "sandbox-env: tenantPools[%s].size must be >= 1 (got %v) — a pool with 0 replicas pre-warms nothing." .name .size) -}}
+{{- end }}
+{{- end }}
+{{- end }}
+
 {{- define "sandbox-env.housekeeperName" -}}
 {{- printf "sandbox-housekeeper-%s" (include "sandbox-env.envName" .) -}}
 {{- end }}

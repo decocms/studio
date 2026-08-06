@@ -500,9 +500,13 @@ warmPool:
 # and branch. Empty by default; a tenant pool is per-org opt-in and each slot
 # is a permanently billed pod.
 #
+# The name must end with `-<envName>`: this chart shares agent-sandbox-system
+# across releases, so an undecorated name lets staging and prod fight over one
+# pool. It is validated, not derived — the same literal goes in both places.
+#
 #   tenantPools:
-#     - name: tenant-acme-site   # DNS label; matches the Studio-side entry
-#       size: 2                  # keep this many warm pods ready
+#     - name: tenant-acme-site-prod  # DNS label ending in -<envName>
+#       size: 2                      # keep this many warm pods ready
 tenantPools: []
 
 # ── node placeholder / "balloon" (optional) ────────────────────────────

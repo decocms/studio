@@ -12,6 +12,7 @@ only really matters for Helm's own bookkeeping.
 {{- include "sandbox-env.validatePreviewGateway" . -}}
 {{- include "sandbox-env.validateWarmPoolAutoscaling" . -}}
 {{- include "sandbox-env.validateWarmPoolSize" . -}}
+{{- include "sandbox-env.validateTenantPools" . -}}
 {{- include "sandbox-env.validateNodePlaceholder" . -}}
 {{- include "sandbox-env.validateGoldenRemote" . -}}
 {{- /* Force envName validation to run at template time even when no
