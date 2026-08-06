@@ -45,24 +45,33 @@ export function SandboxStateCard(props: SandboxStateCardProps) {
   if (props.kind === "errored") {
     const needsGithubAuth =
       props.error.code === SANDBOX_START_ERROR_CODES.githubNotAuthenticated;
+    const connectionMissing =
+      props.error.code === SANDBOX_START_ERROR_CODES.githubConnectionMissing;
     return (
       <div className="flex h-full w-full items-center justify-center bg-background p-6">
         <div className="flex w-full max-w-md flex-col items-center gap-4 text-center">
           <AlertTriangle className="size-12 text-destructive" />
           <h3 className="text-lg font-medium">{headlineFor("errored")}</h3>
           <p className="max-w-sm text-sm text-muted-foreground">
-            {needsGithubAuth
-              ? t("sandbox.stateCard.githubNotAuthenticatedMessage")
-              : props.error.message}
+            {connectionMissing
+              ? t("sandbox.stateCard.githubConnectionMissingMessage")
+              : needsGithubAuth
+                ? t("sandbox.stateCard.githubNotAuthenticatedMessage")
+                : props.error.message}
           </p>
           <div className="mt-2 flex items-center gap-2">
-            {needsGithubAuth && props.connectionsHref && (
-              <Button asChild>
-                <a href={props.connectionsHref}>
-                  {t("sandbox.stateCard.reconnectGithub")}
-                </a>
-              </Button>
-            )}
+            {(needsGithubAuth || connectionMissing) &&
+              props.connectionsHref && (
+                <Button asChild>
+                  <a href={props.connectionsHref}>
+                    {t(
+                      connectionMissing
+                        ? "sandbox.stateCard.linkRepoAgain"
+                        : "sandbox.stateCard.reconnectGithub",
+                    )}
+                  </a>
+                </Button>
+              )}
             <Button variant="outline" onClick={props.onRetry}>
               <RefreshCw01 className="size-4" /> {t("sandbox.stateCard.retry")}
             </Button>

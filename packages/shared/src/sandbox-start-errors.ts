@@ -9,6 +9,13 @@
 export const SANDBOX_START_ERROR_CODES = {
   /** No usable GitHub token for the connected repo — needs (re)auth. */
   githubNotAuthenticated: "GITHUB_NOT_AUTHENTICATED",
+  /**
+   * The GitHub connection this thread/agent points at no longer exists (it was
+   * deleted, e.g. with the agent that owned it). Distinct from
+   * `githubNotAuthenticated`: re-authenticating fixes nothing, the repo has to
+   * be linked again — so the UI must say that instead of "not authenticated".
+   */
+  githubConnectionMissing: "GITHUB_CONNECTION_MISSING",
 } as const;
 
 export type SandboxStartErrorCode =
