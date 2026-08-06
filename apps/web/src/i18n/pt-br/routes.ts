@@ -142,10 +142,8 @@ export const routes = {
     "Algo deu errado ao gerar seu relatório. Tente novamente em instantes.",
   "routes.commerceOnboarding.connectModal.openingReport":
     "Abrindo relatório...",
-  "routes.commerceOnboarding.connectModal.connectToolToContinue":
-    "Conecte sua analytics para continuar",
-  "routes.commerceOnboarding.connectModal.viewFullReport":
-    "Ver relatório completo",
+  "routes.commerceOnboarding.connectModal.viewDiagnostic": "Ver diagnóstico",
+  "routes.commerceOnboarding.connectModal.skip": "Pular",
   "routes.commerceOnboarding.connectModal.close": "Fechar",
   "routes.commerceOnboarding.connectModal.quote":
     "Eu tava sorrindo de orelha a orelha, porque tudo aquilo a gente já tinha identificado, mas a gente não sabia o que fazer... vocês trouxeram uma visão bem significativa para os próximos passos.",
