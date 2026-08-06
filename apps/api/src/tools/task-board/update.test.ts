@@ -21,6 +21,7 @@ function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     assignedBy: null,
     dueDate: null,
     sortOrder: 0,
+    retryAttempts: 0,
     threads: [],
     tags: [],
     createdBy: "user_1",

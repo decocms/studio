@@ -107,9 +107,23 @@ export function shouldAdvanceToReview(item: {
   if (item.status !== "in_progress") return false;
   const used = item.threads.filter((t) => t.hasMessages);
   if (used.length === 0) return false;
-  return used.every(
-    (t) => t.status !== null && TERMINAL_THREAD_STATUSES.has(t.status),
-  );
+  if (
+    !used.every(
+      (t) => t.status !== null && TERMINAL_THREAD_STATUSES.has(t.status),
+    )
+  ) {
+    return false;
+  }
+  // Terminal is not the same as done. `failed` and `expired` are terminal too,
+  // and treating them as a finished run is how eight cards whose sandboxes never
+  // came up landed in the reviewers' lane with no PR and no work done — In
+  // Review means "there is something to review". So require at least one run
+  // that actually completed; a card whose runs only failed is handled by the
+  // retry/park path (`reactToFailedTaskRun`), not by this advance.
+  //
+  // Checked across ALL used threads, not just the newest: an earlier failure
+  // followed by a successful re-run must still advance.
+  return used.some((t) => t.status === "completed");
 }
 
 /** True when the thread has a repo bound (`metadata.githubRepo.url`) — mirrors
@@ -567,6 +581,144 @@ export class TaskBoardStorage {
     await this.db
       .updateTable("task_board_items")
       .set({ last_swept_at: new Date() })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .execute();
+  }
+
+  /**
+   * How a linked thread failed: its `failure_kind` plus the text of its error
+   * part, which is where the real message lives (`failure_kind` is `"error"` for
+   * every harness error alike). One query, because the retry decision
+   * (`isTransientRunFailure`) needs both and runs on a terminal hook.
+   */
+  async failedRunInfo(
+    threadId: string,
+    organizationId: string,
+  ): Promise<{ kind: string | null; errorText: string | null } | null> {
+    const row = await this.db
+      .selectFrom("threads as t")
+      .leftJoin(
+        (eb) =>
+          eb
+            .selectFrom("thread_message_parts as p")
+            .select(["p.thread_id", "p.payload"])
+            .where("p.kind", "=", "error")
+            .orderBy("p.created_at", "desc")
+            .limit(1)
+            .as("err"),
+        (join) => join.onRef("err.thread_id", "=", "t.id"),
+      )
+      .select(["t.status", "t.failure_kind as kind", "err.payload as payload"])
+      .where("t.id", "=", threadId)
+      .where("t.organization_id", "=", organizationId)
+      .executeTakeFirst();
+    if (!row || row.status !== "failed") return null;
+    return { kind: row.kind ?? null, errorText: extractPartText(row.payload) };
+  }
+
+  /**
+   * Park a card on a retry: it stays In Progress (the work is still ours) and
+   * becomes due for re-dispatch at `retryAt`. Conditional on the card still
+   * being In Progress so a human who moved it meanwhile keeps their move.
+   */
+  async scheduleRunRetry(
+    id: string,
+    organizationId: string,
+    attempts: number,
+    retryAt: Date,
+  ): Promise<boolean> {
+    const rows = await this.db
+      .updateTable("task_board_items")
+      .set({ retry_at: retryAt, retry_attempts: attempts })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .where("status", "=", "in_progress")
+      .returning("id")
+      .execute();
+    return rows.length > 0;
+  }
+
+  /**
+   * Send a card back to To Do after a run failed for good (not infrastructure,
+   * or out of retries). Clears the retry state so a later re-run starts with a
+   * full budget. Conditional on In Progress for the same reason as above.
+   */
+  async returnToTodoAfterFailure(
+    id: string,
+    organizationId: string,
+    updatedBy: string,
+  ): Promise<TaskBoardItem | null> {
+    const rows = await this.db
+      .updateTable("task_board_items")
+      .set({
+        status: "todo",
+        retry_at: null,
+        retry_attempts: 0,
+        updated_by: updatedBy,
+        updated_at: new Date(),
+      })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .where("status", "=", "in_progress")
+      .returning("id")
+      .execute();
+    if (rows.length === 0) return null;
+    return await this.getById(id, organizationId);
+  }
+
+  /**
+   * Cards whose retry is due, oldest first. Claimed one at a time by the caller
+   * via `claimDueRetry`, so a batch read here is safe across replicas.
+   */
+  async listItemsDueForRetry(
+    limit: number,
+    now: Date,
+  ): Promise<{ id: string; organizationId: string; attempts: number }[]> {
+    const rows = await this.db
+      .selectFrom("task_board_items")
+      .select([
+        "id",
+        "organization_id as organizationId",
+        "retry_attempts as attempts",
+      ])
+      .where("retry_at", "is not", null)
+      .where("retry_at", "<=", now)
+      .where("status", "=", "in_progress")
+      .orderBy("retry_at", "asc")
+      .limit(limit)
+      .execute();
+    return rows;
+  }
+
+  /**
+   * Take ownership of a due retry: clears `retry_at` only if it is still set to
+   * the value the caller read. Exactly one replica wins, so a retry dispatches
+   * once even with every pod sweeping.
+   */
+  async claimDueRetry(
+    id: string,
+    organizationId: string,
+    now: Date,
+  ): Promise<boolean> {
+    const rows = await this.db
+      .updateTable("task_board_items")
+      .set({ retry_at: null })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .where("retry_at", "is not", null)
+      .where("retry_at", "<=", now)
+      .returning("id")
+      .execute();
+    return rows.length > 0;
+  }
+
+  /** Drop a card's retry budget — called when a run finally produces something,
+   *  so the next unrelated failure starts from attempt 0. */
+  async clearRunRetry(id: string, organizationId: string): Promise<void> {
+    await this.db
+      .updateTable("task_board_items")
+      .set({ retry_at: null, retry_attempts: 0 })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
       .execute();
@@ -1303,6 +1455,7 @@ export class TaskBoardStorage {
     assigned_by: string | null;
     due_date: string | Date | null;
     sort_order: number;
+    retry_attempts?: number;
     created_by: string;
     created_at: string | Date;
     updated_by: string;
@@ -1322,6 +1475,7 @@ export class TaskBoardStorage {
           ? row.due_date.toISOString()
           : row.due_date,
       sortOrder: row.sort_order,
+      retryAttempts: row.retry_attempts ?? 0,
       // Populated by attachThreads/attachTags for reads; empty for a fresh create.
       threads: [],
       tags: [],

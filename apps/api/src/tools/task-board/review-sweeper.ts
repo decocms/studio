@@ -56,6 +56,8 @@ import type { StudioContextFactory } from "@/automations/fire";
 import type { TaskBoardStorage } from "@/storage/task-board";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
+import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
+import { MAX_RUN_RETRIES } from "./run-reactions";
 import { fetchPrLiveState, prReadyForReview } from "./prs-get";
 
 /** How often to LOOK for due cards. A minute is well under the time a human
@@ -138,12 +140,70 @@ export class TaskBoardReviewSweeper {
           console.error(`[task-board-review-sweeper] ${id} failed`, err);
         }
       }
+      dispatched += await this.dispatchDueRetries(batchSize);
     } catch (err) {
       console.error("[task-board-review-sweeper] sweep failed", err);
     } finally {
       this.running = false;
     }
     return dispatched;
+  }
+
+  /**
+   * Re-dispatch the cards whose infrastructure retry has come due
+   * (`reactToFailedTaskRun` scheduled them on the row).
+   *
+   * It belongs on this timer for the same reason the reviewer dispatch does: the
+   * failure hook that schedules a retry runs inside the projector's DBOS step,
+   * where `DBOS.startWorkflow` is rejected. Out here it is legal, and
+   * `enqueueSuperAgentForTask` puts the run on the durable thread-gate queue, so
+   * DBOS owns the retry from that point on.
+   *
+   * `claimDueRetry` is a conditional clear of `retry_at`, so exactly one replica
+   * dispatches a given retry however many pods are sweeping. Returns how many
+   * runs it enqueued.
+   */
+  private async dispatchDueRetries(limit: number): Promise<number> {
+    let count = 0;
+    const due = await this.taskBoard.listItemsDueForRetry(limit, new Date());
+    for (const { id, organizationId, attempts } of due) {
+      try {
+        if (
+          !(await this.taskBoard.claimDueRetry(id, organizationId, new Date()))
+        )
+          continue;
+        const item = await this.taskBoard.getById(id, organizationId);
+        // Re-read before spending a run: a human may have moved or reassigned
+        // the card between the scan and here, and their move wins.
+        if (
+          !item ||
+          item.status !== "in_progress" ||
+          item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID
+        ) {
+          continue;
+        }
+        const ctx = await this.contextFactory(
+          organizationId,
+          item.assignedBy ?? item.createdBy,
+        );
+        if (!ctx) continue;
+        await enqueueSuperAgentForTask(ctx, item);
+        count++;
+        console.warn(
+          `[task-board-review-sweeper] re-dispatched ${id} after an ` +
+            `infrastructure failure (attempt ${attempts}/${MAX_RUN_RETRIES})`,
+        );
+      } catch (err) {
+        // The claim already cleared `retry_at`, so a throw here means this
+        // attempt is spent and the card sits In Progress until the next failure
+        // reaction or a human. Loud, because a run was budgeted and not spent.
+        console.error(
+          `[task-board-review-sweeper] retry dispatch for ${id} failed`,
+          err,
+        );
+      }
+    }
+    return count;
   }
 
   /** Hand a card with a linked, ready PR off to the enabled reviewers. Returns

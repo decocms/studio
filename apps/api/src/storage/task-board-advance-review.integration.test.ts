@@ -173,3 +173,167 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
     expect(results.filter((r) => r !== null)).toHaveLength(1);
   });
 });
+
+/**
+ * Real-Postgres coverage for the failed-run path.
+ *
+ * The bug this encodes: a failed run advanced its card to In Review, because the
+ * thread-finish hook treated every terminal status as "done". Eight tasks whose
+ * sandboxes never came up ("Sandbox did not become ready within 180 seconds")
+ * landed in the reviewers' lane with no PR and nothing done. In Review means
+ * there is something to review, so a failed run must never put a card there —
+ * it is retried, or it goes back to To Do.
+ *
+ * Needs a real database: the retry schedule and the return-to-To-Do are both
+ * conditional UPDATEs, and the advance rule is read back through the same
+ * `threads`/`thread_message_parts` join the hook uses.
+ */
+describe("failed runs never reach In Review (real Postgres)", () => {
+  let database: StudioDatabase;
+  let taskBoard: TaskBoardStorage;
+  let threads: SqlThreadStorage;
+
+  const ORG2 = "org_failed_run";
+  const USER2 = "user_failed_run";
+
+  /** A card In Progress with one linked run in `status`, carrying a message. */
+  const cardWithRun = async (title: string, status: string) => {
+    const task = await taskBoard.create({
+      organizationId: ORG2,
+      title,
+      status: "in_progress",
+      by: USER2,
+    });
+    const thread = await threads.create({
+      organization_id: ORG2,
+      title: "Super Agent: run",
+      status: status as "completed" | "failed",
+      message_storage_version: 2,
+      created_by: USER2,
+    });
+    await taskBoard.linkThread(task.id, thread.id, ORG2);
+    await database.db
+      .insertInto("thread_message_parts")
+      .values({
+        id: `${thread.id}:m:0`,
+        seq: 0,
+        org_id: ORG2,
+        thread_id: thread.id,
+        run_id: thread.id,
+        message_id: `${thread.id}:m`,
+        role: "user",
+        kind: "text",
+        payload: JSON.stringify({ type: "text", text: "go" }),
+        created_at: new Date().toISOString(),
+      })
+      .execute();
+    return { task, thread };
+  };
+
+  beforeAll(async () => {
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
+    await database.db
+      .insertInto("organization")
+      .values({
+        id: ORG2,
+        name: ORG2,
+        slug: "org-failed-run",
+        createdAt: new Date().toISOString(),
+      })
+      .execute();
+    const now = new Date().toISOString();
+    await sql`
+      INSERT INTO "user" (id, email, "emailVerified", name, "createdAt", "updatedAt")
+      VALUES (${USER2}, ${"failed@run.test"}, false, ${USER2}, ${now}, ${now})
+    `.execute(database.db);
+    taskBoard = new TaskBoardStorage(database.db);
+    threads = new SqlThreadStorage(database.db);
+  });
+
+  afterAll(async () => {
+    await closeTestPgDatabase(database);
+  });
+
+  it("leaves a card whose only run failed In Progress", async () => {
+    const { task, thread } = await cardWithRun("failed run", "failed");
+
+    await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(thread.id, ORG2);
+
+    expect((await taskBoard.getById(task.id, ORG2))?.status).toBe("in_progress");
+  });
+
+  it("reads the failure kind and the run's error text together", async () => {
+    const { thread } = await cardWithRun("with error part", "failed");
+    await database.db
+      .updateTable("threads")
+      .set({ failure_kind: "error" })
+      .where("id", "=", thread.id)
+      .execute();
+    await database.db
+      .insertInto("thread_message_parts")
+      .values({
+        id: `${thread.id}:m:1`,
+        seq: 1,
+        org_id: ORG2,
+        thread_id: thread.id,
+        run_id: thread.id,
+        message_id: `${thread.id}:m`,
+        role: "assistant",
+        kind: "error",
+        payload: JSON.stringify({
+          type: "text",
+          text: "Error: Sandbox did not become ready within 180 seconds",
+        }),
+        created_at: new Date().toISOString(),
+      })
+      .execute();
+
+    const info = await taskBoard.failedRunInfo(thread.id, ORG2);
+
+    expect(info?.kind).toBe("error");
+    expect(info?.errorText).toContain("did not become ready");
+  });
+
+  it("does not report a failure for a run that completed", async () => {
+    const { thread } = await cardWithRun("completed run", "completed");
+    expect(await taskBoard.failedRunInfo(thread.id, ORG2)).toBeNull();
+  });
+
+  it("schedules a retry that only one sweeper can claim", async () => {
+    const { task } = await cardWithRun("retry me", "failed");
+    const due = new Date(Date.now() - 1000);
+
+    expect(await taskBoard.scheduleRunRetry(task.id, ORG2, 1, due)).toBe(true);
+    expect((await taskBoard.getById(task.id, ORG2))?.retryAttempts).toBe(1);
+    expect(
+      (await taskBoard.listItemsDueForRetry(10, new Date())).map((r) => r.id),
+    ).toContain(task.id);
+
+    const claims = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        taskBoard.claimDueRetry(task.id, ORG2, new Date()),
+      ),
+    );
+
+    expect(claims.filter(Boolean)).toHaveLength(1);
+  });
+
+  it("sends an exhausted card back to To Do and clears its retry state", async () => {
+    const { task } = await cardWithRun("out of retries", "failed");
+    await taskBoard.scheduleRunRetry(task.id, ORG2, 3, new Date());
+
+    const returned = await taskBoard.returnToTodoAfterFailure(
+      task.id,
+      ORG2,
+      USER2,
+    );
+
+    expect(returned?.status).toBe("todo");
+    expect(returned?.retryAttempts).toBe(0);
+    // A card that already left In Progress is not dragged backwards.
+    expect(
+      await taskBoard.returnToTodoAfterFailure(task.id, ORG2, USER2),
+    ).toBeNull();
+  });
+});
