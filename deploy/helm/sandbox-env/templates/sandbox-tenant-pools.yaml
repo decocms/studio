@@ -1,0 +1,30 @@
+{{- range .Values.tenantPools }}
+---
+# Per-tenant warm pool: pods that are already running ONE org's repo + dev
+# server, so a member of that org opens a project with no clone, no install,
+# no dev-server boot. Studio bootstraps each pod (it holds the kube access and
+# the ~1h clone credential — see the provider's tenant-pools.ts) and resolves
+# the pool from the claiming user's org, which is the tenant boundary: the
+# operator has no notion of a tenant and binds whatever pool a claim names.
+#
+# `name` must equal the `name` of the matching entry in Studio's
+# STUDIO_SANDBOX_TENANT_POOLS. Additive to the generic `warmPool` above — a
+# tenant pool does not replace it, and every path still works at size 0.
+#
+# Deliberately reuses the shared SandboxTemplate: a per-pool template exists
+# only to carry per-pool node placement (on-demand / do-not-disrupt), which
+# v1 doesn't do. Adding it means rendering a second full template, so it waits
+# for someone who needs it.
+apiVersion: extensions.agents.x-k8s.io/v1alpha1
+kind: SandboxWarmPool
+metadata:
+  name: {{ .name }}
+  namespace: agent-sandbox-system
+  labels:
+    {{- include "sandbox-env.sandboxLabels" $ | nindent 4 }}
+    studio.decocms.com/tenant-pool: {{ .name }}
+spec:
+  replicas: {{ .size }}
+  sandboxTemplateRef:
+    name: {{ include "sandbox-env.sandboxName" $ }}
+{{- end }}

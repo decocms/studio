@@ -42,6 +42,7 @@ import {
   ConfigRequestError,
   postConfig,
   postOrgFsConfig,
+  postSetupStep,
   probeDaemonHealth,
   proxyDaemonRequest,
   waitForDaemonReady,
@@ -71,6 +72,8 @@ import {
   ensureServicePort,
   getSandboxClaim,
   HTTPROUTE_CONSTANTS,
+  listWarmPoolPods,
+  type WarmPoolPod,
   patchSandboxClaimShutdown,
   waitForClaimAdoptedSandbox,
   waitForSandboxClaimGone,
@@ -85,6 +88,11 @@ import {
   SandboxError,
 } from "./constants";
 import { watchClaimDeletions, watchClaimLifecycle } from "./lifecycle-watcher";
+import {
+  poolCloneUrl,
+  resolveTenantPool,
+  type TenantPool,
+} from "./tenant-pools";
 import { refreshCredentialsByConnection } from "./credential-refresh";
 import type { ClaimPhase } from "../lifecycle-types";
 
@@ -156,6 +164,12 @@ const DEFAULT_IDLE_TTL_MS = 15 * 60 * 1000;
 // the BUFFER window is re-minted within one INTERVAL, so the daemon's origin
 // token always keeps ≥ ~(BUFFER - INTERVAL) of life — never near the ~55min
 // expiry at an unpredictable SIGTERM. Requires BUFFER > INTERVAL.
+/** Tenant-pool reconcile cadence: fast enough that a replaced pod re-warms
+ *  promptly, slow enough that a steady-state pool costs one k8s list. */
+const TENANT_POOL_TICK_MS = 60 * 1000;
+/** Under the ~1h clone-token lifetime — the refresh IS the credential refresh. */
+const TENANT_POOL_REFRESH_MS = 30 * 60 * 1000;
+const TENANT_POOL_MAX_FAILURES = 3;
 const CREDENTIAL_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 const CREDENTIAL_REFRESH_BUFFER_MS = 30 * 60 * 1000;
 
@@ -331,6 +345,23 @@ export interface AgentSandboxProviderOptions {
    */
   sentinelToken?: string;
   /**
+   * Tenant warm pools (see `tenant-pools.ts`). A claim whose org+repo resolves
+   * to one binds a pod that is already running that repo's dev server instead
+   * of a generic (empty) warm pod. Empty = today's behavior everywhere.
+   *
+   * Requires warm-pool mode (`sentinelToken`): the reconciler configures
+   * unbound pool pods with the sentinel, and a pool pod could not accept a
+   * per-claim env token anyway.
+   */
+  tenantPools?: TenantPool[];
+  /**
+   * How often an unbound pool pod re-fetches its branch (and refreshes its
+   * clone credential, which is the same call). Must stay under the ~1h GitHub
+   * App token lifetime or a pod that idles long enough hands the user a dead
+   * `origin`. Default 30 min.
+   */
+  tenantPoolRefreshMs?: number;
+  /**
    * Studio environment name. When set, stamped as
    * `studio.decocms.com/env=<envName>` on claims/pods/HTTPRoutes so the
    * sandbox-env housekeeper can scope per-env. Must be DNS-label-safe;
@@ -438,6 +469,20 @@ export class AgentSandboxProvider implements SandboxProvider {
   private readonly sentinelToken: string | null;
   /** See {@link AgentSandboxProviderOptions.mintCloneUrl}. */
   private readonly mintCloneUrl: AgentSandboxProviderOptions["mintCloneUrl"];
+  /** See {@link AgentSandboxProviderOptions.tenantPools}. */
+  private readonly tenantPools: readonly TenantPool[];
+  private readonly tenantPoolRefreshMs: number;
+  /**
+   * Per-pool-pod bookkeeping, keyed by pod UID. In-memory and per-replica on
+   * purpose: every entry is a "when did I last touch this pod" hint, and
+   * losing it costs one redundant (idempotent) config post per pod.
+   */
+  private readonly poolPods = new Map<
+    string,
+    { lastConfigAt: number; failures: number }
+  >();
+  /** Pool names a GitHub push says are stale; drained by the next tick. */
+  private readonly dirtyPools = new Set<string>();
   private closed = false;
   /** Aborts the background SandboxClaim-deletion watch on `close()`. */
   private readonly claimWatchAbort = new AbortController();
@@ -466,8 +511,18 @@ export class AgentSandboxProvider implements SandboxProvider {
     const trimmedSentinel = opts.sentinelToken?.trim() ?? "";
     this.sentinelToken = trimmedSentinel.length > 0 ? trimmedSentinel : null;
     this.mintCloneUrl = opts.mintCloneUrl;
+    this.tenantPools =
+      this.sentinelToken !== null ? (opts.tenantPools ?? []) : [];
+    if (this.sentinelToken === null && (opts.tenantPools?.length ?? 0) > 0) {
+      console.warn(
+        `[${LOG_LABEL}] tenant pools configured without a sentinel token — ignoring them (warm-pool mode is off)`,
+      );
+    }
+    this.tenantPoolRefreshMs =
+      opts.tenantPoolRefreshMs ?? TENANT_POOL_REFRESH_MS;
     this.startClaimReaper();
     this.startCredentialRefresher();
+    this.startTenantPoolReconciler();
   }
 
   /**
@@ -1147,6 +1202,15 @@ export class AgentSandboxProvider implements SandboxProvider {
     // warmpool != "none". Studio delivers the per-claim secret post-bind via
     // POST /_sandbox/config + auth.rotateToken instead.
     const warmPoolMode = this.sentinelToken !== null;
+    // Tenant isolation lives here: the pool is resolved from the org of the
+    // user being served, never from anything in the request. The operator has
+    // no notion of a tenant — it binds whatever pool a claim names — and
+    // Studio is the only writer of SandboxClaims in this namespace.
+    const tenantPool = resolveTenantPool(
+      this.tenantPools,
+      opts.tenant?.orgId,
+      opts.repo?.cloneUrl,
+    );
     const envEntries = warmPoolMode
       ? []
       : Object.entries(this.buildEnvMap(opts, boot))
@@ -1191,7 +1255,7 @@ export class AgentSandboxProvider implements SandboxProvider {
           ...(hasAnnotations ? { annotations } : {}),
         },
         env: envEntries,
-        warmpool: warmPoolMode ? "default" : "none",
+        warmpool: tenantPool?.name ?? (warmPoolMode ? "default" : "none"),
         lifecycle: {
           shutdownPolicy: "Delete",
           shutdownTime: this.computeShutdownTime(),
@@ -1484,6 +1548,198 @@ export class AgentSandboxProvider implements SandboxProvider {
         }
       }
     })();
+  }
+
+  /**
+   * Keep each tenant pool's unbound pods warm: cloned, installed, running the
+   * dev server, on a live credential. The operator hands us running-but-empty
+   * pods; everything that makes them *warm* happens here.
+   *
+   * Studio pushes rather than letting a pod pull its own config: the clone
+   * credential is a ~1h GitHub App token, so it can't live in the template's
+   * env, and a pod authenticated only by the SHARED sentinel must never be
+   * able to ask for a tenant's repo credential.
+   *
+   * Runs on every replica with no leader election. That is safe because the
+   * work is idempotent from the daemon's side — it classifies each config post
+   * itself (bootstrap vs credential refresh), and its setup queue collapses
+   * concurrent step requests into one. Duplicated effort, never duplicated
+   * clones.
+   */
+  private startTenantPoolReconciler(): void {
+    if (this.tenantPools.length === 0) return;
+    const { signal } = this.claimWatchAbort;
+    void (async () => {
+      while (!signal.aborted) {
+        try {
+          await this.reconcileTenantPools();
+        } catch (err) {
+          console.warn(
+            `[${LOG_LABEL}] tenant pool reconcile failed: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+        await sleep(TENANT_POOL_TICK_MS, { signal }).catch(() => {});
+      }
+    })();
+  }
+
+  /**
+   * A GitHub push landed on a pool's branch — refresh its unbound pods on the
+   * next tick. Set-based, so a burst of pushes collapses into one refresh.
+   * Optional accelerator: without a webhook the periodic refresh below still
+   * picks the commits up within `tenantPoolRefreshMs`.
+   */
+  markTenantPoolsDirty(repoFullName: string, ref: string): string[] {
+    const branch = ref.replace(/^refs\/heads\//, "");
+    const matched = this.tenantPools.filter(
+      (pool) =>
+        pool.repo.toLowerCase() === repoFullName.toLowerCase() &&
+        pool.branch === branch,
+    );
+    for (const pool of matched) this.dirtyPools.add(pool.name);
+    return matched.map((pool) => pool.name);
+  }
+
+  private async reconcileTenantPools(): Promise<void> {
+    for (const pool of this.tenantPools) {
+      const pods = await listWarmPoolPods(
+        this.kubeConfig,
+        this.namespace,
+        pool.name,
+      );
+      if (pods === null) {
+        console.warn(
+          `[${LOG_LABEL}] tenant pool ${pool.name}: no SandboxWarmPool (or no selector yet) in ${this.namespace}`,
+        );
+        continue;
+      }
+      const dirty = this.dirtyPools.delete(pool.name);
+      // A bound pod carries the claim's handle label. Never touch one: the user
+      // has a working tree on it, and a hard reset under them is data loss.
+      const unbound = pods.filter(
+        (pod) => !pod.labels[LABEL_KEYS.sandboxHandle],
+      );
+      for (const [uid] of this.poolPods) {
+        if (!pods.some((pod) => pod.uid === uid)) this.poolPods.delete(uid);
+      }
+      // Sequential: a whole pool reinstalling at once is a thundering herd on
+      // the registry and the node.
+      for (const pod of unbound) {
+        if (this.claimWatchAbort.signal.aborted) return;
+        await this.warmPoolPod(pool, pod, dirty);
+      }
+    }
+  }
+
+  private async warmPoolPod(
+    pool: TenantPool,
+    pod: WarmPoolPod,
+    dirty: boolean,
+  ): Promise<void> {
+    const seen = this.poolPods.get(pod.uid);
+    // A pod that fails to warm repeatedly (bad lockfile, private submodule, no
+    // `dev` script) would otherwise be retried forever while the pool *looks*
+    // full. Stop touching it and say so once.
+    if (seen && seen.failures >= TENANT_POOL_MAX_FAILURES) return;
+    // A refresh re-fetches the branch and restarts dev. A first sight doesn't:
+    // this replica may simply have restarted under a pool that is already warm,
+    // and every replica bouncing every pod's dev server on boot is a
+    // self-inflicted outage. The config post still happens (rotating a stale
+    // credential); new commits wait for the next periodic refresh.
+    const refresh =
+      dirty ||
+      (seen !== undefined &&
+        Date.now() - seen.lastConfigAt >= this.tenantPoolRefreshMs);
+    if (seen && !refresh) return;
+
+    const repo = {
+      cloneUrl: poolCloneUrl(pool),
+      connectionId: pool.connectionId,
+      branch: pool.branch,
+      // No user: the daemon leaves `claimed` false for an identity-less config,
+      // which is what keeps the housekeeper's idle sweep off an unbound pod.
+      userName: "",
+      userEmail: "",
+    };
+    const fresh = await this.withFreshCloneUrl(repo);
+    if (pool.connectionId && fresh.cloneUrl === repo.cloneUrl) {
+      // The pool named a connection but the mint gave nothing back. Posting the
+      // anonymous URL would clone a private repo without credentials — where it
+      // doesn't hang on a password prompt it leaves the pod on a remote the
+      // user can't push to. Skip; the next tick retries.
+      this.recordPoolFailure(pod, pool, "clone credential mint failed");
+      return;
+    }
+    const forward = await this.openForwarder(
+      pod.name,
+      DAEMON_CONTAINER_PORT,
+      pod.name,
+    ).catch(() => null);
+    if (!forward) {
+      this.recordPoolFailure(pod, pool, "port-forward failed");
+      return;
+    }
+    const daemonUrl = `http://127.0.0.1:${forward.localPort}`;
+    try {
+      await waitForDaemonReady(daemonUrl);
+      const sentinel = this.sentinelToken;
+      if (!sentinel) return;
+      // The daemon classifies this itself: bootstrap on a fresh pod (clone →
+      // install → dev), git-credential-refresh on one already warm.
+      const payload =
+        buildConfigPayload({
+          runtime: pool.workload.runtime,
+          // No package manager configured → the daemon autodetects from the
+          // lockfile, same as a claim that names none.
+          packageManager: pool.workload.packageManager
+            ? {
+                name: pool.workload.packageManager,
+                ...(pool.workload.packageManagerPath
+                  ? { path: pool.workload.packageManagerPath }
+                  : {}),
+              }
+            : null,
+          repo: fresh,
+          port: pool.workload.devPort ?? DEFAULT_DEV_PORT,
+        }) ?? {};
+      const { transition } = await postConfig(daemonUrl, sentinel, payload);
+      // A bootstrap already clones. Anything else only updated stored config,
+      // so a refresh has to ask for the fetch + reset + restart itself.
+      if (refresh && transition !== "bootstrap") {
+        await postSetupStep(daemonUrl, sentinel, "clone");
+      }
+      this.poolPods.set(pod.uid, { lastConfigAt: Date.now(), failures: 0 });
+      console.log(
+        `[${LOG_LABEL}] tenant pool ${pool.name}: warmed ${pod.name} (${transition})`,
+      );
+    } catch (err) {
+      this.recordPoolFailure(
+        pod,
+        pool,
+        err instanceof Error ? err.message : String(err),
+      );
+    } finally {
+      this.closeForwarder(forward);
+    }
+  }
+
+  private recordPoolFailure(
+    pod: WarmPoolPod,
+    pool: TenantPool,
+    reason: string,
+  ): void {
+    const prev = this.poolPods.get(pod.uid);
+    const failures = (prev?.failures ?? 0) + 1;
+    this.poolPods.set(pod.uid, {
+      lastConfigAt: prev?.lastConfigAt ?? 0,
+      failures,
+    });
+    const giveUp = failures >= TENANT_POOL_MAX_FAILURES ? " — giving up" : "";
+    console.warn(
+      `[${LOG_LABEL}] tenant pool ${pool.name}: warming ${pod.name} failed (${failures}/${TENANT_POOL_MAX_FAILURES})${giveUp}: ${reason}`,
+    );
   }
 
   /**

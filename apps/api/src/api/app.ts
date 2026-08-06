@@ -90,6 +90,7 @@ import publicConfigRoutes from "./routes/public-config";
 import { createReportPagesRoutes } from "./routes/report-pages";
 import reportsRoutes from "./routes/reports";
 import { stripeWebhookRoutes } from "./routes/stripe-webhook";
+import { githubWebhookRoutes } from "./routes/github-webhook";
 import filesRoutes from "./routes/files";
 import { createThreadOutputsRoutes } from "./routes/thread-outputs";
 import { createSelfRoutes } from "./routes/self";
@@ -1303,6 +1304,11 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Stripe webhook (per-seat billing): signature-authed, no session — the
   // caller is Stripe. Instance-level namespace, before the /api/:org catch-all.
   app.route("/api/_stripe", stripeWebhookRoutes);
+
+  // GitHub push webhook (tenant warm-pool freshness): HMAC-authed, no session.
+  // Optional — 503 without GITHUB_WEBHOOK_SECRET, and pools refresh on their
+  // own schedule regardless.
+  app.route("/api/_github", githubWebhookRoutes);
 
   // Auth-gated report page + domain-derived metadata. API-only/test apps safely
   // return 404 for the HTML shell when no built client directory is supplied.

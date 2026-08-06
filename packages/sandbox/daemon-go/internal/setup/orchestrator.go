@@ -721,7 +721,9 @@ func transitionToStep(t config.Transition) (Step, bool) {
 		return StepClone, true
 	case config.KindRuntimeChange, config.KindPmChange:
 		return StepInstall, true
-	case config.KindPortChange:
+	case config.KindPortChange, config.KindEnvChange:
+		// env-change restarts dev: BuildDevEnv reads the merged store at start,
+		// so without this the new env never reaches the dev server.
 		return StepStart, true
 	}
 	return "", false

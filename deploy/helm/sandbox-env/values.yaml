@@ -490,6 +490,21 @@ warmPool:
     # windows, policies). Left empty = cluster defaults.
     behavior: {}
 
+# ── tenant warm pools ──────────────────────────────────────────────────
+# Warm pods that are already running ONE org's repo + dev server (the generic
+# warmPool above only warms EMPTY pods). Each entry renders a SandboxWarmPool
+# against the shared SandboxTemplate; Studio bootstraps and refreshes the pods.
+#
+# Every entry needs a matching object in Studio's STUDIO_SANDBOX_TENANT_POOLS
+# with the SAME `name` — that JSON is what carries the org, repo, connection
+# and branch. Empty by default; a tenant pool is per-org opt-in and each slot
+# is a permanently billed pod.
+#
+#   tenantPools:
+#     - name: tenant-acme-site   # DNS label; matches the Studio-side entry
+#       size: 2                  # keep this many warm pods ready
+tenantPools: []
+
 # ── node placeholder / "balloon" (optional) ────────────────────────────
 # Warm NODE capacity for the sandbox NodePool. warmPool warms *pods*; this
 # warms the *nodes under them*. Low-priority balloon pods hold ~`replicas`
