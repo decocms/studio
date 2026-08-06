@@ -13,15 +13,17 @@ import { emitTaskBoardUpdated, handTaskToHuman } from "./run-reactions";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
 import { allEnabledReviewersVerifiedApproved, mergeLinkedPr } from "./merge-pr";
 import { fetchPrConflict, pickActivePr } from "./prs-get";
+import { verifyReviewToken } from "./review-token";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
 import { TaskQuotaError } from "@/billing/task-quota";
 
 /**
- * True when a resolved reviewToken claim actually belongs to THIS reviewer's
- * claim on the CURRENT review cycle.
+ * True when a resolved LEGACY reviewToken claim actually belongs to THIS
+ * reviewer's claim on the CURRENT review cycle. (Current tokens are HMACs —
+ * see `review-token.ts`; this only serves runs dispatched before that deploy.)
  *
- * `claimReviewer` mints a fresh row (and token) for every review cycle but
- * never deletes the old one, so comparing only the reviewer field — as this
+ * The claims table held a fresh row (and token) per review cycle but never
+ * deleted the old one, so comparing only the reviewer field — as this
  * used to — let a token minted for an EARLIER cycle still verify: a reviewer
  * that kept its token from a prior bounce (visible in that run's own prompt,
  * see `enqueueReviewerForTask`) could replay it after being bounced back and
@@ -113,14 +115,19 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
       throw new Error(`Task board item not found: ${taskBoardItemId}`);
     }
 
-    // Verify the caller's reviewToken against THIS task's CURRENT cycle.
-    const claim = reviewToken
-      ? await ctx.storage.taskBoard.resolveReviewClaimByToken(
-          taskBoardItemId,
-          reviewToken,
-        )
-      : null;
-    const currentCycleAt = claim
+    // Verify the caller is the reviewer it claims to be, against THIS task's
+    // CURRENT cycle: the reviewToken must be the HMAC over (task, reviewer,
+    // cycle). An unverified decision is still recorded (so a dropped token
+    // never stalls the flow) but won't count toward an automatic merge (see the
+    // verified gate below).
+    //
+    // ROLLOUT: runs dispatched before this deploy carry a random `rtok_<uuid>`
+    // from `task_board_review_claims`, so fall back to the table lookup — also
+    // cycle-scoped, or a token kept across a bounce re-approves with no review.
+    // Delete that branch (and the table, its migration, and
+    // `resolveReviewClaimByToken`) once every in-flight review cycle has
+    // drained — a day is ample.
+    const currentCycleAt = reviewToken
       ? reviewCycleStart(
           await ctx.storage.taskBoard.listActivity(
             taskBoardItemId,
@@ -128,7 +135,22 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
           ),
         )
       : 0;
-    const verified = reviewTokenVerified(claim, reviewer, currentCycleAt);
+    const verified =
+      !!reviewToken &&
+      (verifyReviewToken(
+        reviewToken,
+        taskBoardItemId,
+        reviewer,
+        new Date(currentCycleAt),
+      ) ||
+        reviewTokenVerified(
+          await ctx.storage.taskBoard.resolveReviewClaimByToken(
+            taskBoardItemId,
+            reviewToken,
+          ),
+          reviewer,
+          currentCycleAt,
+        ));
 
     if (decision === "request_changes") {
       // Break a runaway review loop BEFORE bouncing. A reviewer that keeps

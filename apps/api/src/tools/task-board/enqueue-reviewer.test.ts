@@ -7,11 +7,11 @@
 import { describe, expect, it, test } from "bun:test";
 import type { TaskBoardItem } from "@/storage/types";
 import {
-  hasSpentAttemptThisCycle,
   MAX_REVIEWER_ATTEMPTS,
   REVIEWER_DISALLOWED_TOOLS,
   reviewerAttemptsExhausted,
   reviewerHandledThisCycle,
+  spentAttemptsThisCycle,
 } from "./enqueue-reviewer";
 import { REVIEW_RUN_TOOL_NAMES } from "./task-run-context";
 
@@ -101,8 +101,7 @@ describe("reviewerHandledThisCycle", () => {
 
   // The bug: a FAILED reviewer thread satisfied "created this cycle", so when
   // both reviewers died on a database-connection timeout the card sat In Review
-  // with two dead reviewer threads, a claim row nothing released, and no
-  // verdicts. A failure is not a review.
+  // with two dead reviewer threads and no verdicts. A failure is not a review.
   it("is FALSE for a reviewer thread that FAILED this cycle — it gets retried", () => {
     const task = taskWith([
       thread({
@@ -112,15 +111,15 @@ describe("reviewerHandledThisCycle", () => {
       }),
     ]);
     expect(reviewerHandledThisCycle(task, "qa", CYCLE_START, NOW)).toBe(false);
-    expect(hasSpentAttemptThisCycle(task, "qa", CYCLE_START, NOW)).toBe(true);
+    expect(spentAttemptsThisCycle(task, "qa", CYCLE_START, NOW)).toBe(1);
   });
 
   /**
    * The deadlock. A reviewer whose pod dies mid-run keeps `in_progress`
    * forever: the per-pod idle reaper can't see it and `failNeverStartedThreads`
    * only covers runs that never started. Taking the status at face value made
-   * the thread own the cycle permanently — claim spent, nothing re-dispatched,
-   * and a merge gate waiting on a verdict that was never coming. One card sat
+   * the thread own the cycle permanently — nothing re-dispatched, and a merge
+   * gate waiting on a verdict that was never coming. One card sat
    * that way while its co-reviewer had approved in 68 seconds.
    */
   it("is FALSE for a non-terminal thread whose heartbeat went cold", () => {
@@ -133,8 +132,9 @@ describe("reviewerHandledThisCycle", () => {
       }),
     ]);
     expect(reviewerHandledThisCycle(task, "qa", CYCLE_START, NOW)).toBe(false);
-    // …and its claim row is released first, or the retry loses to the corpse.
-    expect(hasSpentAttemptThisCycle(task, "qa", CYCLE_START, NOW)).toBe(true);
+    // …and it counts as an attempt, so the retry fences on a fresh id
+    // instead of colliding with the corpse.
+    expect(spentAttemptsThisCycle(task, "qa", CYCLE_START, NOW)).toBe(1);
   });
 
   it("a warm heartbeat still owns the cycle — a slow reviewer is not a hung one", () => {
@@ -147,7 +147,7 @@ describe("reviewerHandledThisCycle", () => {
       }),
     ]);
     expect(reviewerHandledThisCycle(task, "qa", CYCLE_START, NOW)).toBe(true);
-    expect(hasSpentAttemptThisCycle(task, "qa", CYCLE_START, NOW)).toBe(false);
+    expect(spentAttemptsThisCycle(task, "qa", CYCLE_START, NOW)).toBe(0);
   });
 
   // The opposite mistake to the deadlock: a reviewer whose pod keeps dying must
@@ -223,7 +223,7 @@ describe("reviewerHandledThisCycle", () => {
         createdAt: "2026-01-01T09:30:00Z",
       }),
     ]);
-    expect(hasSpentAttemptThisCycle(task, "qa", CYCLE_START, NOW)).toBe(false);
+    expect(spentAttemptsThisCycle(task, "qa", CYCLE_START, NOW)).toBe(0);
   });
 
   it("scopes to the given reviewer — the other reviewer's thread and the Super Agent's don't count", () => {

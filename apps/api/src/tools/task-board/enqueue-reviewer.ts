@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
 import {
@@ -12,6 +13,7 @@ import { emitTaskBoardUpdated, handTaskToHuman } from "./run-reactions";
 import { enqueueAgentRunForTask } from "./enqueue-task-run";
 import { resolveTaskRepoChoice } from "./claude-code-task-run";
 import { isThreadRunStale } from "@/tools/thread/helpers";
+import { mintReviewToken } from "./review-token";
 
 /** Thread statuses past which a reviewer run is done — a live run has a
  *  non-terminal status. Mirrors the storage-layer set. */
@@ -120,10 +122,10 @@ export async function enqueueEnabledReviewers(
   const lastInReviewAt = await lastInReviewTime(ctx, task);
   const cycleAt = new Date(lastInReviewAt);
 
-  // Each reviewer's claim + enqueue is independent (a separate DB row keyed by
-  // its own kind), so run them CONCURRENTLY — this is on TASK_BOARD_ITEM_PRS_GET's
-  // synchronous poll path, and serial awaits doubled its latency once both QA
-  // and Code Reviewer are enabled.
+  // Each reviewer's enqueue is independent (its own fence id), so run them
+  // CONCURRENTLY — this is on TASK_BOARD_ITEM_PRS_GET's synchronous poll path,
+  // and serial awaits doubled its latency once both QA and Code Reviewer are
+  // enabled.
   await Promise.all(
     enabled.map(async (kind) => {
       // A dead end, not a wait — see `reviewerAttemptsExhausted`.
@@ -138,52 +140,13 @@ export async function enqueueEnabledReviewers(
       }
       if (reviewerHandledThisCycle(task, kind, lastInReviewAt)) return;
       // Getting here with a dead reviewer thread from THIS cycle means the last
-      // attempt failed (see `reviewerHandledThisCycle`). Its claim row is still
-      // there, and the claim key is (task, reviewer, cycle) — so without
-      // releasing it first, `claimReviewer` below would lose to the corpse and
-      // the retry would be a no-op.
-      if (hasSpentAttemptThisCycle(task, kind, lastInReviewAt)) {
-        await ctx.storage.taskBoard
-          .releaseReviewerClaim(task.id, kind, cycleAt)
-          .catch((err) =>
-            console.error(
-              `[task-board] ${kind} stale claim release failed`,
-              err,
-            ),
-          );
-      }
-      // Atomically claim the reviewer's slot for this cycle. The claim dedups
-      // the two triggers (projector run-finish + the modal poll) that can fire
-      // at the same instant — the loser's `claimed` is false, so it skips
-      // instead of spawning a duplicate run. The claim's token binds the
-      // reviewer's later decision back to this dispatch.
-      let claimed: boolean;
-      let token: string;
-      try {
-        ({ claimed, token } = await ctx.storage.taskBoard.claimReviewer(
-          task.id,
-          kind,
-          cycleAt,
-        ));
-      } catch (err) {
-        console.error(`[task-board] ${kind} reviewer claim failed`, err);
-        return;
-      }
-      if (!claimed) return;
-      await enqueueReviewerForTask(ctx, task, kind, token).catch(
-        async (err) => {
-          console.error(`[task-board] ${kind} reviewer enqueue failed`, err);
-          // Nothing was dispatched — release the slot so the next poll/trigger
-          // can retry this reviewer instead of finding it permanently claimed.
-          await ctx.storage.taskBoard
-            .releaseReviewerClaim(task.id, kind, cycleAt)
-            .catch((releaseErr) =>
-              console.error(
-                `[task-board] ${kind} reviewer claim release failed`,
-                releaseErr,
-              ),
-            );
-        },
+      // attempt failed (see `reviewerHandledThisCycle`), so this dispatch is a
+      // RETRY and needs a fence of its own — the previous attempt's thread id
+      // is taken, and reusing it would collapse the retry onto the corpse.
+      const attempt = spentAttemptsThisCycle(task, kind, lastInReviewAt);
+      await enqueueReviewerForTask(ctx, task, kind, cycleAt, attempt).catch(
+        (err) =>
+          console.error(`[task-board] ${kind} reviewer enqueue failed`, err),
       );
     }),
   );
@@ -197,22 +160,23 @@ export async function enqueueEnabledReviewers(
  */
 export const MAX_REVIEWER_ATTEMPTS = 2;
 
-/** Does this cycle already have a SPENT reviewer attempt of `kind` — one that
- *  failed, or one stuck non-terminal with a cold heartbeat? Decides whether the
- *  dispatch below is a retry (and so has a stale claim row to clear first).
+/** How many SPENT reviewer attempts of `kind` this cycle already has — ones
+ *  that failed, or that are stuck non-terminal with a cold heartbeat. It is the
+ *  dispatch's attempt ordinal, and so part of its fence id: a retry must not
+ *  derive the same thread id as the corpse it is replacing.
  *  Pure; exported for the unit test. */
-export function hasSpentAttemptThisCycle(
+export function spentAttemptsThisCycle(
   task: TaskBoardItem,
   kind: ReviewerKind,
   lastInReviewAt: number,
   now: number = Date.now(),
-): boolean {
-  return task.threads.some(
+): number {
+  return task.threads.filter(
     (thr) =>
       isReviewerThreadTitle(thr.title, kind) &&
       isSpentAttempt(thr, now) &&
       new Date(thr.createdAt).getTime() >= lastInReviewAt,
-  );
+  ).length;
 }
 
 /** A reviewer attempt that produced no verdict and never will: it failed, or it
@@ -250,10 +214,10 @@ function reviewerThreadsThisCycle(
 /**
  * True when this reviewer has spent every attempt of the cycle on a FAILED run.
  *
- * This is a dead end, not a wait: the claim key is (task, reviewer, cycle), so
- * `claimReviewer` refuses every further dispatch until the card leaves and
- * re-enters In Review — which only a reviewer verdict or a human can cause. The
- * verdict is therefore never coming and the all-approved gate can never close,
+ * This is a dead end, not a wait: the budget is per (task, reviewer, cycle), so
+ * nothing dispatches this reviewer again until the card leaves and re-enters In
+ * Review — which only a reviewer verdict or a human can cause. The verdict is
+ * therefore never coming and the all-approved gate can never close,
  * so the caller hands the card to a person instead of letting the sweeper visit
  * it forever. Two cards sat In Review for six days on exactly this: one
  * approval each, and a QA Agent that had died twice.
@@ -286,9 +250,8 @@ export function reviewerAttemptsExhausted(
  * created since the cycle started satisfied this, so when both reviewers died on
  * an infrastructure error (a database-connection timeout, in the burst that
  * prompted this) the card sat In Review with two dead reviewer threads and
- * nothing to re-dispatch them — the claim row stayed, `claimReviewer` refused
- * every retry for the rest of the cycle, and the verdicts never came. A failure
- * is not a review.
+ * nothing to re-dispatch them for the rest of the cycle, and the verdicts never
+ * came. A failure is not a review.
  *
  * Bounded by `MAX_REVIEWER_ATTEMPTS` so a reviewer that cannot run doesn't loop:
  * once this cycle has that many failed attempts, the card is left alone for a
@@ -311,9 +274,9 @@ export function reviewerHandledThisCycle(
   // A live run owns the cycle; never dispatch alongside it. "Live" is the
   // heartbeat, not the status: a reviewer whose pod died mid-run keeps
   // `in_progress` forever, and taking that at face value deadlocked the card —
-  // the claim stays spent so nothing re-dispatches, and the merge gate waits on
-  // a verdict that will never come. One sat that way while its co-reviewer had
-  // approved in 68 seconds.
+  // nothing re-dispatches, and the merge gate waits on a verdict that will
+  // never come. One sat that way while its co-reviewer had approved in 68
+  // seconds.
   if (thisCycle.some((thr) => isReviewerThreadLive(thr, now))) return true;
   const spent = thisCycle.filter((thr) => isSpentAttempt(thr, now));
   // Every attempt spent and the budget is gone — stop, a human owns it now.
@@ -338,17 +301,53 @@ async function lastInReviewTime(
 }
 
 /**
+ * The one string that identifies a reviewer dispatch: (task, reviewer, cycle,
+ * attempt). Both fences below are derived from it, so they can only agree.
+ * `toISOString()` must be the ONLY serialization of the cycle — a formatting
+ * difference between the trigger paths silently breaks the fence.
+ */
+function reviewFenceKey(
+  taskId: string,
+  kind: ReviewerKind,
+  cycleAt: Date,
+  attempt: number,
+): string {
+  return `review:${taskId}:${kind}:${cycleAt.toISOString()}:${attempt}`;
+}
+
+/**
+ * The reviewer run's thread id, derived from the fence key so the `threads` PK
+ * IS the dispatch fence: the two triggers (60s sweeper, the task dialog's 10s
+ * poll) can race and the loser's insert conflicts instead of spawning a second
+ * reviewer run.
+ */
+function reviewerThreadId(fenceKey: string): string {
+  const digest = createHash("sha256")
+    .update(fenceKey)
+    .digest("hex")
+    .slice(0, 32);
+  return `thrd_${digest}`;
+}
+
+/**
  * Enqueue a single reviewer run: a fresh thread (titled `<Reviewer>: <task>`),
  * a "delegated to <reviewer>" timeline entry, and the review prompt dispatched
  * on the org's agent. The reviewer ends by calling `TASK_BOARD_REVIEW_DECISION`.
+ *
+ * `attempt` is the cycle's spent-attempt count — it only moves the fence, so a
+ * retry after a dead attempt gets ids of its own instead of colliding with the
+ * corpse.
  */
 async function enqueueReviewerForTask(
   ctx: StudioContext,
   task: TaskBoardItem,
   kind: ReviewerKind,
-  reviewToken: string,
+  cycleAt: Date,
+  attempt: number,
 ): Promise<void> {
   const organizationId = task.organizationId;
+  // Proves to TASK_BOARD_REVIEW_DECISION that the caller is this reviewer.
+  const reviewToken = mintReviewToken(task.id, kind, cycleAt);
 
   // Same harness the Super Agent runs on, for the same reason: a review needs
   // real `git`/`gh` on a checkout, and — the blocking one — only a
@@ -435,7 +434,9 @@ async function enqueueReviewerForTask(
   ].join("\n");
 
   // Create + link the reviewer thread and dispatch its run (shared plumbing).
-  await enqueueAgentRunForTask(ctx, task, {
+  const fenceKey = reviewFenceKey(task.id, kind, cycleAt, attempt);
+  const fenceThreadId = reviewerThreadId(fenceKey);
+  const { isNew } = await enqueueAgentRunForTask(ctx, task, {
     // A verdict is the last thing between this card and Done — it outranks
     // starting a new task for the next slot.
     runClass: "reviewer",
@@ -452,7 +453,23 @@ async function enqueueReviewerForTask(
         }
       : {}),
     ...(repo ? { repo } : {}),
+    fence: { threadId: fenceThreadId, workflowID: fenceKey },
+  }).catch(async (err) => {
+    // Nothing was dispatched, but the fence thread may already exist — and
+    // `reviewerHandledThisCycle` would then read it as this cycle's reviewer
+    // forever. Drop it so the next trigger retries.
+    await ctx.storage.threads
+      .delete(fenceThreadId)
+      .catch((delErr) =>
+        console.error(
+          `[task-board] ${kind} fence thread cleanup failed`,
+          delErr,
+        ),
+      );
+    throw err;
   });
+  // A concurrent trigger got there first — it owns this reviewer's dispatch.
+  if (!isNew) return;
 
   // Timeline: "Super Agent delegated to <reviewer>" (machine actor → null), and
   // broadcast the now-linked thread so the card shows the reviewer session live
