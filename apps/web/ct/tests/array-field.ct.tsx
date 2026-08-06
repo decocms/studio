@@ -120,9 +120,11 @@ test("delete removes the targeted item from the list", async ({
     .poll(() => readFormValue(component))
     .toEqual({ tags: ["a", "b"] });
 
-  // The per-row actions trigger is in the DOM (opacity-0 until hover) and clickable.
-  // `exact` disambiguates the button from the sortable row (whose accessible
-  // name embeds the button label).
+  // The per-row actions trigger collapses to zero width until the row is
+  // hovered, so hover the row first to reveal it before clicking. `exact`
+  // disambiguates the button from the sortable row (whose accessible name
+  // embeds the button label).
+  await component.getByText("a", { exact: true }).hover();
   await component
     .getByRole("button", { name: "Open actions for a", exact: true })
     .click();
@@ -151,6 +153,9 @@ test("duplicate inserts a copy right after the targeted item", async ({
     .poll(() => readFormValue(component))
     .toEqual({ tags: ["a", "b"] });
 
+  // The per-row actions trigger collapses to zero width until the row is
+  // hovered, so hover the row first to reveal it before clicking.
+  await component.getByText("a", { exact: true }).hover();
   await component
     .getByRole("button", { name: "Open actions for a", exact: true })
     .click();

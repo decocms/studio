@@ -261,9 +261,11 @@ test("deleting a row removes the right item from the array", async ({
     />,
   );
 
-  // Open the actions menu for the Alpha row (button is in the DOM though
-  // hidden). exact: true — the row wrapper is also a role=button whose
-  // accessible name CONTAINS "Open actions for Alpha".
+  // The per-row actions trigger collapses to zero width until the row is
+  // hovered, so hover the row first to reveal it before clicking. exact:
+  // true — the row wrapper is also a role=button whose accessible name
+  // CONTAINS "Open actions for Alpha".
+  await itemRow(component, "Alpha").hover();
   await component
     .getByRole("button", { name: "Open actions for Alpha", exact: true })
     .click();
