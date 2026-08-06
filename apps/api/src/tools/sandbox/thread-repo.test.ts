@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import type { GithubRepo } from "@decocms/shared/sdk";
 import {
+  repointedRepoBinding,
   resolveSandboxBranch,
   syntheticBranchToGitRef,
   threadBranch,
@@ -201,4 +202,69 @@ test("an absent pinned ref changes nothing", () => {
       }),
     ).toBe("thread:t1/conn_a");
   }
+});
+
+const DEAD_REPO: GithubRepo = {
+  url: "https://github.com/acme/storefront",
+  owner: "acme",
+  name: "storefront",
+  connectionId: "conn_dead",
+  installationId: 1,
+};
+
+const repoConnection = (
+  id: string,
+  owner: string,
+  repo: string,
+  extra: Record<string, unknown> = {},
+) => ({
+  id,
+  status: "active",
+  metadata: {
+    repoScope: {
+      owner,
+      repo,
+      installationId: 42,
+      permissions: { contents: "write" },
+    },
+    ...extra,
+  },
+});
+
+test("repointedRepoBinding picks a live connection for the same repo", () => {
+  const healed = repointedRepoBinding(DEAD_REPO, [
+    repoConnection("conn_other", "acme", "another-site"),
+    repoConnection("conn_live", "acme", "storefront"),
+  ]);
+  expect(healed).toEqual({
+    ...DEAD_REPO,
+    connectionId: "conn_live",
+    installationId: 42,
+  });
+});
+
+test("repointedRepoBinding prefers the org-shared connection", () => {
+  const healed = repointedRepoBinding(DEAD_REPO, [
+    repoConnection("conn_agent", "acme", "storefront"),
+    repoConnection("conn_shared", "acme", "storefront", {
+      orgShared: true,
+    }),
+  ]);
+  expect(healed?.connectionId).toBe("conn_shared");
+});
+
+test("repointedRepoBinding returns null when nothing matches the repo", () => {
+  expect(
+    repointedRepoBinding(DEAD_REPO, [
+      repoConnection("conn_other", "acme", "another-site"),
+    ]),
+  ).toBeNull();
+});
+
+test("repointedRepoBinding is a no-op when the binding is already live", () => {
+  expect(
+    repointedRepoBinding(DEAD_REPO, [
+      repoConnection("conn_dead", "acme", "storefront"),
+    ]),
+  ).toBeNull();
 });
