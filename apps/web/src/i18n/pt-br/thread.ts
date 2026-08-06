@@ -7,6 +7,7 @@ export const thread = {
     "Não foi possível carregar branches do GitHub. Você ainda pode escolher entre suas branches.",
   "thread.branchPicker.couldntLoadPullRequests":
     "Não foi possível carregar pull requests do GitHub.",
+  "thread.branchPicker.createBranch": 'Criar "{name}"',
   "thread.branchPicker.hiddenForkPrs":
     "{count} PR(s) de forks ocultado(s) — abra em uma branch deste repositório",
   "thread.branchPicker.last7Days": "Últimos 7 dias",

@@ -5,6 +5,7 @@ export const thread = {
     "Couldn't load branches from GitHub. You can still pick from your branches.",
   "thread.branchPicker.couldntLoadPullRequests":
     "Couldn't load pull requests from GitHub.",
+  "thread.branchPicker.createBranch": 'Create "{name}"',
   "thread.branchPicker.hiddenForkPrs":
     "{count} PR(s) from forks hidden — open on a branch in this repo",
   "thread.branchPicker.last7Days": "Last 7 days",
