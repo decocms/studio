@@ -213,6 +213,9 @@ Define step-by-step how the agent should handle requests.
   "virtualMcp.virtualMcp.publishPolicyOpen": "Publish freely",
   "virtualMcp.virtualMcp.publishPolicyOpenDescription":
     "Publish any change directly, without review.",
+  "virtualMcp.virtualMcp.teamSync": "Team sync",
+  "virtualMcp.virtualMcp.teamSyncDescription":
+    "Add a Sync button that saves your changes and catches up with your team's latest work.",
   "virtualMcp.virtualMcp.sandbox": "Sandbox",
   "virtualMcp.virtualMcp.settings": "Settings",
   "virtualMcp.virtualMcp.spaceNotFound": "Space not found",

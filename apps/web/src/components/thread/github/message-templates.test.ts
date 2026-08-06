@@ -73,6 +73,15 @@ describe("message-templates", () => {
     expect(out.toLowerCase()).toContain("re-run");
   });
 
+  test("syncBranch references the branch + base and covers commit, pull --rebase, and rebase onto base", () => {
+    const out = tpl.syncBranch({ branch: "feat/x", base: "main" });
+    expect(out).toContain("feat/x");
+    expect(out).toContain("origin/main");
+    expect(out.toLowerCase()).toContain("commit");
+    expect(out).toContain("git pull --rebase");
+    expect(out).toContain("git rebase origin/main");
+  });
+
   test("all templates include the button-confirmed reinforcement", () => {
     const outputs = [
       tpl.commitAndPush({ branch: "x" }),
@@ -85,6 +94,7 @@ describe("message-templates", () => {
       tpl.reviewPr({ prNumber: 1 }),
       tpl.mergeSquash({ prNumber: 1 }),
       tpl.rerunCheck({ prNumber: 1, checkName: "a" }),
+      tpl.syncBranch({ branch: "x", base: "main" }),
     ];
     for (const out of outputs) {
       expect(out.toLowerCase()).toContain("user clicked this action");
