@@ -402,6 +402,9 @@ export function resolveConfig(
       envVars.STUDIO_SANDBOX_PROVIDER,
     ),
     sandboxStickyHeadRefEnabled: toBool(envVars.SANDBOX_STICKY_HEAD_REF),
+    taskBoardRerunReusesPrBranch: toBool(
+      envVars.TASK_BOARD_RERUN_REUSES_PR_BRANCH,
+    ),
     sandboxReleaseOnRunEndEnabled: toBool(envVars.SANDBOX_RELEASE_ON_RUN_END),
     sandboxReleaseGraceMs: toPositiveIntegerOrDefault(
       "SANDBOX_RELEASE_GRACE_MS",
