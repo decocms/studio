@@ -31,6 +31,14 @@
  * `enqueueEnabledReviewers` claims per (task, reviewer, cycle), so re-running
  * every tick cannot spawn duplicate reviewer runs.
  *
+ * It later grew a third job for the same reason — **retrying a failed merge**.
+ * A card whose reviewers all approved but whose merge was refused (GitHub down,
+ * the repo's connection deleted, a transient 500) is left In Review by
+ * `TASK_BOARD_REVIEW_DECISION`, and the cycle's reviewer claims are already
+ * spent, so nothing re-dispatches and nothing re-merges: the card is stranded
+ * forever on a failure that has usually fixed itself minutes later. The sweeper
+ * is again the only place that can retry, for the same reason as above.
+ *
  * Deliberately NOT a replacement for the instant paths. `TASK_BOARD_ITEM_PRS_GET`
  * still does this on the dialog's poll, and the projector hook still fires — the
  * sweeper is the floor that guarantees it happens without a human, not the only
@@ -42,6 +50,7 @@ import type { TaskBoardStorage } from "@/storage/task-board";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { extractPrFromText } from "./pr-extract";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
+import { retryAutoMergeIfApproved } from "./merge-pr";
 import { fetchPrLiveState, prReadyForReview } from "./prs-get";
 
 /** How often to reconcile. A minute is well under the time a human would take
@@ -172,6 +181,14 @@ export class TaskBoardReviewSweeper {
       item.assignedBy ?? item.createdBy,
     );
     if (!ctx) return false;
+
+    // A card whose review already COMPLETED but whose merge failed is stranded:
+    // the cycle's reviewer claims are spent, so the dispatch below is a no-op
+    // and nothing else ever retries. Retry the merge first — it's the only path
+    // back out of In Review for these, and it's why the sweep must keep visiting
+    // a card that has no reviewer left to enqueue. Gated on verified approval +
+    // auto-merge inside, so it can't ship anything the reviewers didn't.
+    if (await retryAutoMergeIfApproved(ctx, item)) return true;
 
     // Same check gate as the dialog poll, and it MUST be the same one: a
     // reviewer claim is spent once per review cycle, and nothing re-dispatches

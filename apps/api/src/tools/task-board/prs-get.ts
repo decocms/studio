@@ -27,8 +27,18 @@ const PR_FETCH_TIMEOUT_MS = 8000;
  * using it for a different repo's PR fails (empty live state → the card loses
  * its open/checks/preview and the ship button). So prefer, in order: a
  * repo-scoped connection matching THIS PR's repo (guaranteed access), then the
- * broad org-level connection (no `repoScope`, user OAuth over every repo), then
- * any active one.
+ * broad org-level connection (no `repoScope`, user OAuth over every repo).
+ *
+ * There is deliberately NO "any active one" last resort when a repo is named. A
+ * connection scoped to a DIFFERENT repo cannot reach this PR — its installation
+ * token is repo-scoped — so returning it buys nothing and costs everything: the
+ * caller can't tell "GitHub said no" from "we asked the wrong GitHub", the live
+ * state comes back all-null, and the card silently parks In Review forever. This
+ * is not hypothetical — deleting the org's connection for the repo its PRs were
+ * opened against stranded 40+ approved cards, because the resolver kept handing
+ * back a connection for an unrelated repo. Returning null instead makes the
+ * miss loud (`resolveGithubConnection` returning null is logged at each call
+ * site) and points at the real fix: connect the repo.
  */
 export async function resolveGithubConnection(
   ctx: StudioContext,
@@ -46,15 +56,30 @@ export async function resolveGithubConnection(
   const { items } = await ctx.storage.connections.list(orgId, {
     slug: "mcp-github",
   });
-  const active = items.filter((c) => c.status === "active");
-  if (repo) {
-    const matching = active.find((c) => {
-      const scope = getRepoScope(c);
-      return scope?.owner === repo.owner && scope?.repo === repo.name;
-    });
-    if (matching) return matching;
-  }
-  return active.find((c) => getRepoScope(c) === null) ?? active[0] ?? null;
+  return pickGithubConnection(
+    items.filter((c) => c.status === "active"),
+    repo,
+  );
+}
+
+/**
+ * The pick itself, pure so the fallback ladder is unit-testable — the rule that
+ * a repo-scoped connection for a DIFFERENT repo is never a substitute is the
+ * whole point of this function and is invisible from any integration test that
+ * doesn't happen to have two scoped connections lying around.
+ */
+export function pickGithubConnection<
+  T extends { metadata?: Record<string, unknown> | null },
+>(active: T[], repo?: { owner: string; name: string }): T | null {
+  const broad = active.find((c) => getRepoScope(c) === null) ?? null;
+  if (!repo) return broad ?? active[0] ?? null;
+  const matching = active.find((c) => {
+    const scope = getRepoScope(c);
+    return scope?.owner === repo.owner && scope?.repo === repo.name;
+  });
+  // The broad org-level connection (user OAuth, every repo the user can see) is
+  // the only legitimate stand-in for a repo we have no scoped connection to.
+  return matching ?? broad;
 }
 
 /** Normalize a CallToolResult to its JSON object (structuredContent, else the

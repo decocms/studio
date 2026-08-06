@@ -1,46 +1,15 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
-import type { StudioContext } from "@/core/studio-context";
-import {
-  allReviewersApproved,
-  REVIEWER_FLAG,
-  REVIEWER_KINDS,
-  REVIEWER_LABEL,
-} from "@decocms/shared/task-board";
+import { REVIEWER_LABEL } from "@decocms/shared/task-board";
 import { TaskBoardItemStatusSchema } from "./schema";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
-import { mergeLinkedPr } from "./merge-pr";
+import { allEnabledReviewersVerifiedApproved, mergeLinkedPr } from "./merge-pr";
 import { fetchPrConflict } from "./prs-get";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
 import { TaskQuotaError } from "@/billing/task-quota";
-
-/**
- * True when EVERY enabled reviewer has a token-VERIFIED `approve` as its latest
- * decision in the current review cycle. `verifiedOnly` is the point: a
- * self-asserted approval (missing/wrong reviewToken) must never trigger an
- * automatic merge, otherwise one agent could forge the two-reviewer gate. Reads
- * the activity log through the shared cycle reducer (same logic the ship button
- * uses, minus the verification requirement).
- */
-async function allEnabledReviewersVerifiedApproved(
-  ctx: StudioContext,
-  orgId: string,
-  taskBoardItemId: string,
-): Promise<boolean> {
-  const settings = await ctx.storage.organizationSettings.get(orgId);
-  const flags = settings?.flags ?? {};
-  const enabled = REVIEWER_KINDS.filter(
-    (k) => flags[REVIEWER_FLAG[k]] === true,
-  );
-  const activity = await ctx.storage.taskBoard.listActivity(
-    taskBoardItemId,
-    orgId,
-  );
-  return allReviewersApproved(activity, enabled, { verifiedOnly: true });
-}
 
 export const TASK_BOARD_REVIEW_DECISION = defineTool({
   name: "TASK_BOARD_REVIEW_DECISION",
@@ -213,7 +182,7 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
     const settings = await ctx.storage.organizationSettings.get(organizationId);
     const autoMerge = settings?.flags?.auto_merge === true;
     const merged = autoMerge
-      ? await mergeLinkedPr(ctx, organizationId, taskBoardItemId)
+      ? (await mergeLinkedPr(ctx, organizationId, taskBoardItemId)).merged
       : false;
 
     // A merge ships the task → Done.

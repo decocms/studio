@@ -164,6 +164,7 @@ import * as migration162claudesubscriptions from "./162-claude-subscriptions.ts"
 import * as migration163taskboarditemdismissed from "./163-task-board-item-dismissed.ts";
 import * as migration164perorgtaskquota from "./164-per-org-task-quota.ts";
 import * as migration165taskboardpendingreviewindex from "./165-task-board-pending-review-index.ts";
+import * as migration166taskboardmergefailedactivity from "./166-task-board-merge-failed-activity.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -356,6 +357,8 @@ const migrations: Record<string, Migration> = {
   "164-per-org-task-quota": migration164perorgtaskquota,
   "165-task-board-pending-review-index":
     migration165taskboardpendingreviewindex,
+  "166-task-board-merge-failed-activity":
+    migration166taskboardmergefailedactivity,
 };
 
 export default migrations;

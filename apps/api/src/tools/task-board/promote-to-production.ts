@@ -84,8 +84,18 @@ export const TASK_BOARD_PROMOTE_TO_PRODUCTION = defineTool({
       );
     }
 
-    const merged = await mergeLinkedPr(ctx, organizationId, taskBoardItemId);
-    if (!merged) return { status: item.status, merged: false };
+    // A refused merge is already on the card's timeline (`mergeLinkedPr` writes
+    // the reason), so the button no longer looks like it did nothing.
+    const outcome = await mergeLinkedPr(ctx, organizationId, taskBoardItemId);
+    if (!outcome.merged) {
+      const refreshed =
+        (await ctx.storage.taskBoard.getById(
+          taskBoardItemId,
+          organizationId,
+        )) ?? item;
+      emitTaskBoardUpdated(organizationId, refreshed);
+      return { status: item.status, merged: false };
+    }
 
     const updated = await ctx.storage.taskBoard.update(
       taskBoardItemId,
