@@ -1,7 +1,11 @@
 import { expect, test } from "@playwright/experimental-ct-react";
 import { SchemaFormHarness } from "../harness/schema-form-harness";
 import { sectionWithProps, TEST_RESOLVE_TYPE } from "../harness/fixtures";
-import { readBreadcrumb, readFormValue } from "../harness/ct-utils";
+import {
+  openRowActionsMenu,
+  readBreadcrumb,
+  readFormValue,
+} from "../harness/ct-utils";
 
 test("empty array shows an Add item button and no count badge", async ({
   mount,
@@ -120,14 +124,7 @@ test("delete removes the targeted item from the list", async ({
     .poll(() => readFormValue(component))
     .toEqual({ tags: ["a", "b"] });
 
-  // The per-row actions trigger collapses to zero width until the row is
-  // hovered, so hover the row first to reveal it before clicking. `exact`
-  // disambiguates the button from the sortable row (whose accessible name
-  // embeds the button label).
-  await component.getByText("a", { exact: true }).hover();
-  await component
-    .getByRole("button", { name: "Open actions for a", exact: true })
-    .click();
+  await openRowActionsMenu(component, "a");
   // The DropdownMenu content is portaled onto document.body — query via page.
   await page.getByRole("menuitem", { name: "Delete" }).click();
 
@@ -153,12 +150,7 @@ test("duplicate inserts a copy right after the targeted item", async ({
     .poll(() => readFormValue(component))
     .toEqual({ tags: ["a", "b"] });
 
-  // The per-row actions trigger collapses to zero width until the row is
-  // hovered, so hover the row first to reveal it before clicking.
-  await component.getByText("a", { exact: true }).hover();
-  await component
-    .getByRole("button", { name: "Open actions for a", exact: true })
-    .click();
+  await openRowActionsMenu(component, "a");
   // The DropdownMenu content is portaled onto document.body — query via page.
   await page.getByRole("menuitem", { name: "Duplicate" }).click();
 

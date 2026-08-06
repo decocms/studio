@@ -16,6 +16,21 @@ export async function hoverFieldDescription(
   return page.getByText(description);
 }
 
+/**
+ * Open a row's "…" actions menu by its visible label. The trigger collapses
+ * to zero width until the row is hovered, so hover first to give Playwright
+ * a real click target.
+ */
+export async function openRowActionsMenu(
+  component: Locator,
+  label: string,
+): Promise<void> {
+  await component.getByText(label, { exact: true }).hover();
+  await component
+    .getByRole("button", { name: `Open actions for ${label}`, exact: true })
+    .click();
+}
+
 /** Parse the harness's `form-value` <pre> back into a JS value. */
 export async function readFormValue(component: Locator): Promise<unknown> {
   const txt = await component.getByTestId("form-value").textContent();
