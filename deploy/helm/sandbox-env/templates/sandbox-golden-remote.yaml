@@ -1,83 +1,87 @@
-{{- if and .Values.depsCache.enabled .Values.depsCache.remote.enabled .Values.depsCache.remote.bucketName }}
+{{- if and .Values.depsCache.enabled .Values.depsCache.remote.enabled (not .Values.depsCache.remote.pvcName) }}
 {{- /*
-L2 golden archive store, exposed to sandbox pods as a statically-provisioned
-mountpoint-S3 volume.
+Claim (and, for static drivers, the volume) backing the L2 golden archive
+store.
 
-OWNED HERE, not by terraform. The bucket is a cloud resource and stays in
-terraform-eks-cluster (eks-setup/s3-sandbox-golden.tf); the PV/PVC pair is
-workload config and belongs with the pod that mounts it, for three reasons:
+OWNED HERE, not by terraform. Installing the CSI driver is infrastructure and
+stays in terraform; asking for a volume is workload config and belongs with the
+pod that mounts it, for three reasons:
 
   - `agent-sandbox-system` is shared by every release of this chart, so a
-    single namespace-wide PVC name would make prod and stg mount the same
-    bucket root — stg could publish an archive prod then restores. Names are
-    envName-suffixed like every other resource here, and each release gets its
-    own key prefix.
-  - a PVC created elsewhere is an unenforced contract: rename it there and
+    single namespace-wide claim name would make prod and stg mount the same
+    store — stg could publish an archive prod then restores. Names are
+    envName-suffixed like every other resource here, and the static path also
+    keys each release under its own prefix.
+  - a claim created elsewhere is an unenforced contract: rename it there and
     `helm template` still passes while the pod fails at mount time.
   - this chart is delivered by Argo, so a foreign-owned PVC sits outside
     self-heal, prune, and the UI next to the workload it serves.
 
-Set `depsCache.remote.pvcName` instead to point at a PVC this chart does not
-create (another backend, or a hand-provisioned volume); then nothing here
-renders.
+Two shapes, because CSI drivers differ on provisioning:
+
+  - `storageClassName` set — DYNAMIC. Only the PVC is rendered; the
+    provisioner creates the volume. Cloud-agnostic, and the right shape when
+    self-hosting: bring any RWX driver, this template never names it.
+  - otherwise — STATIC, from `volume.*`. Required for drivers with no dynamic
+    provisioner. mountpoint-S3 is one, which is why it's the default here:
+    there is no StorageClass to claim against, so the PV must be declared.
 */ -}}
+{{- $r := .Values.depsCache.remote -}}
+{{- $name := include "sandbox-env.goldenRemoteName" . -}}
+{{- $dynamic := ne (default "" $r.storageClassName) "" -}}
+{{- if not $dynamic }}
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: {{ include "sandbox-env.goldenRemoteName" . }}
+  name: {{ $name }}
   labels:
     {{- include "sandbox-env.labels" . | nindent 4 }}
 spec:
   capacity:
-    # Ignored by mountpoint (S3 is unbounded); required by the PV schema.
-    storage: {{ .Values.depsCache.remote.capacity }}
+    # Ignored by object-store drivers; required by the schema.
+    storage: {{ $r.capacity }}
   accessModes:
     - ReadWriteMany
-  # The bucket outlives any release: reclaiming would only delete the PV
-  # object, but Retain also keeps a released PV from being recycled by an
-  # unrelated claim.
+  # The store outlives any release. Retain also keeps a released PV from
+  # being recycled by an unrelated claim.
   persistentVolumeReclaimPolicy: Retain
   # Empty (not absent) so no default StorageClass is injected and the claim
   # binds statically by volumeName.
   storageClassName: ""
+  {{- with $r.volume.mountOptions }}
+  # Driver-specific syntax — see the annotated defaults in values.yaml. Each
+  # entry goes through `tpl` so it can reference chart helpers (the default
+  # `prefix` uses envName for per-release key isolation).
   mountOptions:
-    # Read-only at the MOUNT, not only at the pod's volumeMount below —
-    # defence in depth if a consumer ever forgets `readOnly: true`.
-    - read-only
-    # Mountpoint synthesises ownership: without these, every object presents
-    # as root-owned and the sandbox uid cannot open it. Publish is best-effort
-    # and swallows the resulting EACCES, so the failure surfaces as "the cache
-    # never hits" rather than as a permission error. Verified the hard way.
-    #
-    # Must track the sandbox pod's securityContext in sandbox-template.yaml,
-    # which pins runAsUser/runAsGroup to 1000.
-    - uid=1000
-    - gid=1000
-    # Required for a non-root process to touch a FUSE mount it did not create.
-    - allow-other
-    # Per-release key prefix, so releases sharing agent-sandbox-system cannot
-    # read or overwrite each other's archives. Trailing slash is significant.
-    - prefix={{ include "sandbox-env.envName" . }}/
+    {{- tpl (toYaml .) $ | nindent 4 }}
+  {{- end }}
   csi:
-    driver: s3.csi.aws.com
+    driver: {{ $r.volume.driver | quote }}
     # An identifier, not a path — must be unique per PV in the cluster.
-    volumeHandle: {{ include "sandbox-env.goldenRemoteName" . }}
+    volumeHandle: {{ $name }}
     volumeAttributes:
-      bucketName: {{ .Values.depsCache.remote.bucketName | quote }}
+      {{- toYaml $r.volume.attributes | nindent 6 }}
 ---
+{{- end }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "sandbox-env.goldenRemoteName" . }}
+  name: {{ $name }}
   namespace: agent-sandbox-system
   labels:
     {{- include "sandbox-env.labels" . | nindent 4 }}
 spec:
   accessModes:
     - ReadWriteMany
+  {{- if $dynamic }}
+  storageClassName: {{ $r.storageClassName | quote }}
+  {{- else }}
+  # Empty + volumeName: bind to this chart's PV above, never to a default
+  # StorageClass.
   storageClassName: ""
-  volumeName: {{ include "sandbox-env.goldenRemoteName" . }}
+  volumeName: {{ $name }}
+  {{- end }}
   resources:
     requests:
-      storage: {{ .Values.depsCache.remote.capacity }}
+      storage: {{ $r.capacity }}
 {{- end }}

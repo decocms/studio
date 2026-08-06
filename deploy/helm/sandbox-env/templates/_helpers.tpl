@@ -360,20 +360,29 @@ that cannot mount, or one that silently mounts nothing:
   - remote without the node-local tier is incoherent: an L2 hit seeds L1 via
     the same pendingGolden path, and the daemon reads DEPS_CACHE_ROOT either
     way.
-  - exactly one source: a bucket for this chart to provision a PV over, or a
-    pre-existing PVC. Both set is ambiguous (which one is authoritative?),
-    neither set would render a volume with an empty claimName.
+  - exactly ONE volume source. The three are mutually exclusive by
+    construction (each implies a different set of objects to render), so two
+    set is ambiguous authority and zero set would render a claim with neither
+    a StorageClass nor a volumeName — Pending forever, silently.
 */}}
 {{- define "sandbox-env.validateGoldenRemote" -}}
 {{- if .Values.depsCache.remote.enabled }}
+{{- $r := .Values.depsCache.remote -}}
 {{- if not .Values.depsCache.enabled }}
 {{- fail "sandbox-env: depsCache.remote.enabled=true requires depsCache.enabled=true — the L2 archive restores into the node-local store, so there is nothing for it to seed otherwise." -}}
 {{- end }}
-{{- if and .Values.depsCache.remote.bucketName .Values.depsCache.remote.pvcName }}
-{{- fail "sandbox-env: set exactly one of depsCache.remote.bucketName (this chart provisions the PV/PVC over that S3 bucket) or depsCache.remote.pvcName (mount a claim this chart does not manage) — both are set, so which one is authoritative is ambiguous." -}}
+{{- $sources := list -}}
+{{- if ne (default "" $r.storageClassName) "" }}{{- $sources = append $sources "storageClassName" -}}{{- end }}
+{{- if $r.volume.attributes }}{{- $sources = append $sources "volume.attributes" -}}{{- end }}
+{{- if ne (default "" $r.pvcName) "" }}{{- $sources = append $sources "pvcName" -}}{{- end }}
+{{- if gt (len $sources) 1 }}
+{{- fail (printf "sandbox-env: depsCache.remote takes exactly ONE volume source, got %d (%s). storageClassName = dynamic (this chart renders only the PVC); volume.attributes = static (renders PV + PVC, for a driver with no provisioner such as mountpoint-S3); pvcName = mount an existing claim this chart does not manage." (len $sources) (join ", " $sources)) -}}
 {{- end }}
-{{- if not (or .Values.depsCache.remote.bucketName .Values.depsCache.remote.pvcName) }}
-{{- fail "sandbox-env: depsCache.remote.enabled=true requires depsCache.remote.bucketName (preferred: this chart provisions the mountpoint-S3 PV/PVC) or depsCache.remote.pvcName (an existing claim). Neither is set, which would mount a volume with an empty claimName." -}}
+{{- if eq (len $sources) 0 }}
+{{- fail "sandbox-env: depsCache.remote.enabled=true requires one volume source — storageClassName (dynamic provisioning: bring your own RWX CSI driver and StorageClass), volume.attributes (static: e.g. bucketName for mountpoint-S3, which has no dynamic provisioner), or pvcName (an existing claim). With none set the PVC would have neither a StorageClass nor a volumeName and stay Pending forever." -}}
+{{- end }}
+{{- if and $r.volume.attributes (eq (default "" $r.volume.driver) "") }}
+{{- fail "sandbox-env: depsCache.remote.volume.attributes is set but volume.driver is empty — the static path renders a PV, whose csi.driver must name the installed CSI driver (e.g. s3.csi.aws.com)." -}}
 {{- end }}
 {{- end }}
 {{- end }}

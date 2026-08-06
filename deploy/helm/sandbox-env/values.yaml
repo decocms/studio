@@ -379,18 +379,67 @@ depsCache:
   # pays one full install and republishes.
   remote:
     enabled: false
-    # S3 bucket holding the archives — the `sandbox_golden_bucket` output of
-    # the terraform above. This chart then provisions the mountpoint-S3 PV
-    # and its PVC (see templates/sandbox-golden-remote.yaml), named per
-    # release so they can coexist in agent-sandbox-system.
+    mountPath: /golden-cache
+    # Ignored by object-store CSI drivers (the store is unbounded) but
+    # required by the PV and PVC schemas, and the claim's request must not
+    # exceed the volume's capacity.
+    capacity: 1200Gi
+
+    # ── where the volume comes from: pick exactly ONE of the three ──────
     #
-    # Mounted read-only and whole-volume: warm-pool pods are bound before
-    # they know their repo, so a per-repo subPath can't be picked at mount
-    # time. The daemon reads only its own <repoHash>/ prefix by convention.
-    bucketName: ""
-    # Escape hatch: mount a claim this chart does NOT manage (another
-    # backend, or one provisioned by hand). Mutually exclusive with
-    # bucketName; when set, no PV/PVC is rendered here.
+    # Mounted read-only and whole-volume in every case: warm-pool pods are
+    # bound before they know their repo, so a per-repo subPath can't be
+    # picked at mount time. The daemon reads only its own <repoHash>/ prefix
+    # by convention, not by enforcement (see CROSS-REPO READS above).
+
+    # (1) DYNAMIC — the chart renders only a PVC and lets your provisioner
+    # create the volume. The idiomatic path when self-hosting: install
+    # whichever RWX CSI driver you run (EFS, gcsfuse, Azure Blob, NFS,
+    # JuiceFS, ...), create a StorageClass, name it here, and this chart
+    # stays cloud-agnostic. Nothing below is used.
+    storageClassName: ""
+
+    # (2) STATIC — the chart renders a PV *and* its PVC. Needed for drivers
+    # with no dynamic provisioner, which is the AWS case: mountpoint-S3 is
+    # static-provisioning only, so there is no StorageClass to claim against
+    # and the PV has to be declared. Active when `attributes` is non-empty.
+    #
+    # Both objects are named per release and, via the default `prefix`
+    # option, keyed per release — so two environments sharing
+    # agent-sandbox-system cannot read or overwrite each other's archives.
+    volume:
+      driver: s3.csi.aws.com
+      # Verbatim into the PV's csi.volumeAttributes. For mountpoint-S3 that
+      # is the bucket from terraform (`sandbox_golden_bucket` output).
+      attributes: {}
+        # bucketName: eks-serverless-sandbox-golden
+      #
+      # These defaults are MOUNTPOINT-S3 SYNTAX. For any other driver,
+      # replace the list wholesale — option names are not portable. Each
+      # entry is passed through `tpl`, so chart helpers are available.
+      #
+      # Why each one is load-bearing:
+      #   read-only     at the mount, not only at the pod's volumeMount, so
+      #                 a consumer that forgets `readOnly: true` still can't
+      #                 write.
+      #   uid/gid 1000  mountpoint synthesises ownership; without these every
+      #                 object reads as root-owned and the sandbox uid cannot
+      #                 open it. Publish is best-effort and swallows the
+      #                 EACCES, so the symptom is "the cache never hits", not
+      #                 a permission error. Must track the pod
+      #                 securityContext in sandbox-template.yaml.
+      #   allow-other   required for a non-root process to touch a FUSE
+      #                 mount it did not create.
+      #   prefix        per-release key isolation (trailing slash matters).
+      mountOptions:
+        - read-only
+        - uid=1000
+        - gid=1000
+        - allow-other
+        - prefix={{ include "sandbox-env.envName" . }}/
+
+    # (3) EXISTING CLAIM — mount a PVC this chart neither creates nor
+    # manages. Nothing above is used.
     #
     # PROVISION THAT VOLUME'S ROOT YOURSELF — this chart cannot. A freshly
     # provisioned volume comes up root-owned, and nothing here can fix it:
@@ -399,12 +448,9 @@ depsCache:
     # trusted writer must be able to create `<mountPath>/golden/`. Verified
     # the hard way — publish fails with `EACCES: mkdir '/golden-cache/golden'`
     # and, publish being best-effort, every restore then misses silently and
-    # forever. (The bucketName path handles this via mountOptions instead.)
+    # forever. Paths (1) and (2) handle ownership for you: (2) via
+    # mountOptions, (1) via your StorageClass / access point.
     pvcName: ""
-    mountPath: /golden-cache
-    # Ignored by mountpoint (S3 is unbounded) but required by the PV and PVC
-    # schemas, and the claim's request must not exceed the volume's capacity.
-    capacity: 1200Gi
 
 # ── sentinel token ─────────────────────────────────────────────────────
 sentinel:
