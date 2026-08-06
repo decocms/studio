@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { AuthEntry } from "@/components/auth-entry";
 import type {
   AuthFlowEvent,
@@ -6,6 +7,7 @@ import type {
 } from "@/components/unified-auth-form";
 import { faviconForDomain } from "@decocms/shared/report-seo";
 import { isPostHogInitialized } from "@/lib/posthog-client";
+import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
 import { ReportSocialProof } from "./report-social-proof";
 import {
@@ -386,6 +388,7 @@ export function ReportBackdrop({ domain }: { domain: string }) {
  *  `ReportAuthOverlay`, which differ only in what sits behind the card. */
 function ReportAuthCard({ domain }: { domain: string }) {
   const t = useT();
+  const queryClient = useQueryClient();
   const handleAuthEvent = (event: AuthFlowEvent) => {
     const provider = "provider" in event ? event.provider : undefined;
     const authMode = "mode" in event ? event.mode : undefined;
@@ -419,8 +422,19 @@ function ReportAuthCard({ domain }: { domain: string }) {
       });
     }
     // `succeeded` updates the durable attempt above. The identified success
-    // event is emitted after the auth redirect, when the report route unlocks.
+    // event is emitted from `reports.tsx`'s `authCompletionRef` once
+    // `authClient.useSession()` picks up the new cookie (no reload needed —
+    // see `onAuthenticated` below).
   };
+
+  // The visitor is already sitting on this exact report page (full-page gate
+  // or in-deck overlay) — no navigation needed to "unlock" the full deck,
+  // just get the un-truncated data. Refetching by queryKey *prefix* (not the
+  // full `KEYS.report(...)` tuple) matches regardless of the `key`/`lang`
+  // suffix, so this works from either surface without threading those
+  // through as props.
+  const onReportAuthenticated = () =>
+    queryClient.invalidateQueries({ queryKey: KEYS.reportAll(domain) });
 
   const trackGateRef = (element: HTMLDivElement | null) => {
     if (!element) return;
@@ -451,6 +465,7 @@ function ReportAuthCard({ domain }: { domain: string }) {
         allowedSocialProviders={["google"]}
         allowPassword={false}
         onAuthEvent={handleAuthEvent}
+        onAuthenticated={onReportAuthenticated}
         brand={
           <div className="flex items-center justify-between gap-4">
             <div

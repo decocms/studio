@@ -75,16 +75,6 @@ export const defaultAuthFormActions: AuthFormActions = {
   ssoSignIn: ({ providerId, callbackURL }) =>
     authClient.signIn.sso({ providerId, callbackURL }),
   onAuthenticated: (redirectTo) => {
-    // Assigning `location.href` to the URL the browser is already on is a
-    // documented no-op (no navigation, no reload) — hits whenever the caller
-    // builds `redirectTo` from the current path+search+hash (e.g. the report
-    // page's in-place auth overlay). Without a real reload the page never
-    // re-fetches with the new session cookie, so a freshly authenticated
-    // visitor keeps seeing pre-auth (e.g. truncated) data.
-    if (redirectTo === window.location.href) {
-      window.location.reload();
-    } else {
-      window.location.href = redirectTo;
-    }
+    window.location.href = redirectTo;
   },
 };

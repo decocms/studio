@@ -63,6 +63,9 @@ export const KEYS = {
   // (the viewer's locale) is part of the key so switching language refetches.
   report: (domain: string, key?: string, lang?: string) =>
     ["report", domain, key ?? "", lang ?? ""] as const,
+  // Prefix of `report` above (no key/lang) — invalidates every variant for a
+  // domain at once, e.g. after an in-place login unlocks the full deck.
+  reportAll: (domain: string) => ["report", domain] as const,
 
   commerceDiscoveryConnection: (orgId: string, connectionId: string) =>
     ["commerce-discovery", "connection", orgId, connectionId] as const,
