@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import type { GithubRepo } from "@decocms/shared/sdk";
 import {
+  repointedRepoBinding,
   resolveSandboxBranch,
   syntheticBranchToGitRef,
   threadBranch,
@@ -154,4 +155,69 @@ test("a repo-less run pinned to its own bare key does not join the ephemeral poo
       runBranch: "thread:t1",
     }),
   ).toBe("thread:t1");
+});
+
+const DEAD_REPO: GithubRepo = {
+  url: "https://github.com/deco-sites/demo-storefront",
+  owner: "deco-sites",
+  name: "demo-storefront",
+  connectionId: "conn_dead",
+  installationId: 1,
+};
+
+const repoConnection = (
+  id: string,
+  owner: string,
+  repo: string,
+  extra: Record<string, unknown> = {},
+) => ({
+  id,
+  status: "active",
+  metadata: {
+    repoScope: {
+      owner,
+      repo,
+      installationId: 42,
+      permissions: { contents: "write" },
+    },
+    ...extra,
+  },
+});
+
+test("repointedRepoBinding picks a live connection for the same repo", () => {
+  const healed = repointedRepoBinding(DEAD_REPO, [
+    repoConnection("conn_other", "deco-sites", "another-site"),
+    repoConnection("conn_live", "deco-sites", "demo-storefront"),
+  ]);
+  expect(healed).toEqual({
+    ...DEAD_REPO,
+    connectionId: "conn_live",
+    installationId: 42,
+  });
+});
+
+test("repointedRepoBinding prefers the org-shared connection", () => {
+  const healed = repointedRepoBinding(DEAD_REPO, [
+    repoConnection("conn_agent", "deco-sites", "demo-storefront"),
+    repoConnection("conn_shared", "deco-sites", "demo-storefront", {
+      orgShared: true,
+    }),
+  ]);
+  expect(healed?.connectionId).toBe("conn_shared");
+});
+
+test("repointedRepoBinding returns null when nothing matches the repo", () => {
+  expect(
+    repointedRepoBinding(DEAD_REPO, [
+      repoConnection("conn_other", "deco-sites", "another-site"),
+    ]),
+  ).toBeNull();
+});
+
+test("repointedRepoBinding is a no-op when the binding is already live", () => {
+  expect(
+    repointedRepoBinding(DEAD_REPO, [
+      repoConnection("conn_dead", "deco-sites", "demo-storefront"),
+    ]),
+  ).toBeNull();
 });
