@@ -1,3 +1,5 @@
+import type { TranslationKey } from "@/i18n/en/index.ts";
+import { useT } from "@/i18n/use-t.ts";
 import SlideHeader from "./slide-header";
 import { DECK } from "./tokens";
 import type { GaugesProps } from "@decocms/shared/reports/deck-types";
@@ -9,31 +11,51 @@ const ZONE = {
   bad: { color: "#ef4444", tint: "rgba(239,68,68,0.14)" },
 } as const;
 
+const BAND_LABEL: Record<
+  GaugesProps["gauges"][number]["status"],
+  TranslationKey
+> = {
+  good: "reports.categoriasVariant.bandGood",
+  warn: "reports.categoriasVariant.bandWeak",
+  bad: "reports.categoriasVariant.bandCritical",
+};
+
 // Ring geometry — one source of truth for the sweep math.
 const R = 33;
 const CIRC = 2 * Math.PI * R;
 
-/** "Bom (26 verificações)" → { band: "Bom", count: "26 verificações" }.
- *  Falls back to the whole caption as the band when the shape surprises. */
-function splitCaption(caption?: string): { band: string; count?: string } {
-  const m = caption?.match(/^(.*?)\s*\((.+)\)$/);
-  if (m) return { band: m[1] ?? "", count: m[2] };
-  return { band: caption ?? "" };
+/** How many checks fed a gauge, pulled out of the engine's caption
+ *  ("Crítico (16 verificações)" → 16). Anchored to the parenthesis so a band
+ *  word containing a digit can't be read as the count. The band word itself is
+ *  ignored — `status` already carries it, typed and translatable. Null when the
+ *  caption carries no number, which just hides the line. */
+export function checkCount(caption?: string): number | null {
+  const digits = caption?.match(/\((\d+)/)?.[1];
+  return digits ? Number(digits) : null;
 }
 
 /**
- * Keyed variant for the engine's deterministic "Notas por área" slide (up to 6
+ * Keyed variant for the engine's deterministic per-area score slide (up to 6
  * category scores). The generic gauges rows read flat at this volume; here each
- * área becomes a report-card cell with an animated score ring — same data,
+ * area becomes a report-card cell with an animated score ring — same data,
  * no contract change (see registry.tsx).
+ *
+ * The slide's chrome (eyebrow / headline / annotation) is written here rather
+ * than taken from the deck: the engine emits one constant string for this slide
+ * for every store, in Portuguese, whatever `lang` the reader asked for. That's
+ * chrome, not a finding — so it belongs with the rest of the deck's chrome, in
+ * the dictionaries. If the engine ever starts writing this per store, take its
+ * copy back and delete the overrides.
  */
 export default function CategoriasVariant({
-  eyebrow,
-  headline,
-  annotation,
   gauges,
   active,
-}: GaugesProps) {
+}: Pick<GaugesProps, "gauges" | "active">) {
+  const t = useT();
+  const eyebrow = t("reports.categoriasVariant.eyebrow");
+  const headline = t("reports.categoriasVariant.headline");
+  const annotation = t("reports.categoriasVariant.annotation");
+
   return (
     <div className="flex h-full flex-col">
       <SlideHeader
@@ -48,7 +70,7 @@ export default function CategoriasVariant({
           {gauges.map((g, i) => {
             const zone = ZONE[g.status];
             const score = Math.min(1, Math.max(0, g.ratio ?? 0));
-            const { band, count } = splitCaption(g.caption);
+            const count = checkCount(g.caption);
             return (
               <div
                 key={i}
@@ -106,15 +128,20 @@ export default function CategoriasVariant({
                   className="mt-1.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-medium leading-[1.4] sm:text-[11px]"
                   style={{ color: zone.color, background: zone.tint }}
                 >
-                  {band}
+                  {t(BAND_LABEL[g.status])}
                 </span>
 
-                {count && (
+                {count !== null && (
                   <span
                     className="mt-1 hidden text-[11px] sm:block"
                     style={{ color: DECK.muted, opacity: 0.8 }}
                   >
-                    {count}
+                    {t(
+                      count === 1
+                        ? "reports.categoriasVariant.checkOne"
+                        : "reports.categoriasVariant.checkMany",
+                      { count },
+                    )}
                   </span>
                 )}
               </div>

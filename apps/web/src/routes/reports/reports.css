@@ -130,125 +130,6 @@
   }
 }
 
-/* ── CTA diagnostic device: scan line + floating finding badges ───────────
-   The closing slide shows a browser-framed store screenshot being scanned —
-   a lime line sweeps top→bottom and three finding badges pop in and float.
-   Ported from the decocms landing's HeroDiagnostic. Gated on [data-play] so it
-   only runs while the CTA slide is on screen. */
-.report-scan-line {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 2px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(208, 236, 26, 0.9) 40%,
-    rgba(208, 236, 26, 1) 50%,
-    rgba(208, 236, 26, 0.9) 60%,
-    transparent
-  );
-  box-shadow: 0 0 10px 5px rgba(208, 236, 26, 0.3);
-  opacity: 0;
-}
-[data-play="true"] .report-scan-line {
-  animation: report-scan 4s ease-in-out 0.6s infinite;
-}
-@keyframes report-scan {
-  0% {
-    top: 0;
-    opacity: 0;
-  }
-  5% {
-    opacity: 1;
-  }
-  62% {
-    top: 100%;
-    opacity: 1;
-  }
-  68%,
-  100% {
-    top: 100%;
-    opacity: 0;
-  }
-}
-
-.report-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  display: inline-block;
-}
-.report-badge {
-  position: absolute;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px 5px 8px;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.94);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow:
-    0 2px 12px rgba(0, 0, 0, 0.1),
-    0 1px 2px rgba(0, 0, 0, 0.06);
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-  color: #1a1a1a;
-  opacity: 0;
-}
-[data-play="true"] .report-badge-1 {
-  animation:
-    report-badge-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) 1s forwards,
-    report-float 3.5s ease-in-out 1.5s infinite;
-}
-[data-play="true"] .report-badge-2 {
-  animation:
-    report-badge-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) 1.5s forwards,
-    report-float 3.5s ease-in-out 2s infinite;
-}
-[data-play="true"] .report-badge-3 {
-  animation:
-    report-badge-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) 2s forwards,
-    report-float 3.5s ease-in-out 2.5s infinite;
-}
-@keyframes report-badge-in {
-  from {
-    opacity: 0;
-    transform: scale(0.82) translateY(5px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-@keyframes report-float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-5px);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  [data-play="true"] .report-scan-line {
-    animation: none;
-    opacity: 0;
-  }
-  [data-play="true"] .report-badge-1,
-  [data-play="true"] .report-badge-2,
-  [data-play="true"] .report-badge-3 {
-    animation: none;
-    opacity: 1;
-  }
-}
-
 /* ── Cover: holographic "Deco Score" card ────────────────────────────────
    The opening slide is a single physical trading card that deals itself in,
    tilts toward the pointer in 3-D, and carries a holographic foil that shifts
@@ -365,41 +246,155 @@
   transition: opacity 320ms ease;
 }
 
-/* The device-preview artwork sits on a large holographic panel whose rainbow
-   fill is bigger than the previews (so the rainbow reads as the card art), plus
-   its own stronger foil so the whole panel reads like real holo card art. */
-.holo-art-base {
-  background: linear-gradient(
-    135deg,
-    #ffd0e2 0%,
-    #e3d4ff 18%,
-    #cfe0ff 36%,
-    #ccf4e7 54%,
-    #fff1cc 72%,
-    #ffd6c9 88%,
-    #ffd0e2 100%
-  );
-  background-size: 200% 200%;
-  background-position: var(--posx) var(--posy);
-  transition: background-position 320ms ease;
+/* ── Cover: the scan chamber ──────────────────────────────────────────────
+   The right half of the cover card is a dark lacquered chamber: the visitor's
+   own homepage sits inside it under a sweeping scan line, with the report's
+   chapter index below. Deep forest with a lime bloom at the top-right (where
+   the "light" of the scanner is) and a faint measurement grid, faded out toward
+   the bottom so the index rows stay legible. */
+.deco-chamber {
+  background:
+    radial-gradient(
+      116% 88% at 82% 4%,
+      rgba(208, 236, 26, 0.18),
+      transparent 56%
+    ),
+    radial-gradient(
+      92% 76% at 4% 100%,
+      rgba(208, 236, 26, 0.07),
+      transparent 62%
+    ), linear-gradient(158deg, #0a5122 0%, #07401a 44%, #052e11 100%);
 }
-@media (hover: none) {
-  .holo-art-base {
-    animation: decoFoilIdle 7s ease-in-out infinite;
+/* The chamber's browser preview earns its place only when the card is both wide
+   and tall enough to show more than the browser chrome; otherwise the chamber is
+   the chapter index alone. */
+.deco-chamber-preview {
+  display: none;
+}
+@media (min-width: 1024px) and (min-height: 800px) {
+  .deco-chamber-preview {
+    display: block;
+    /* The browser window is deliberately taller than the space it gets — it
+       bleeds down behind the index. Dissolve that edge instead of slicing it. */
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      #000 calc(100% - 56px),
+      transparent 100%
+    );
+    mask-image: linear-gradient(
+      to bottom,
+      #000 calc(100% - 56px),
+      transparent 100%
+    );
   }
 }
+/* A short viewport can't hold every layer of evidence at a readable size. The
+   cover keeps what makes someone read on — the verdict, the score and the
+   chapter index — and drops the breathing room around the story block. Everything left keeps its own height (`shrink-0` on the story
+   children), so nothing silently collapses to zero when the column is tight. */
+/* The hero ring and its number are sized here rather than with Tailwind because
+   they depend on viewport WIDTH *and* HEIGHT together. Written as three
+   mutually-exclusive queries so the winner never depends on stylesheet order —
+   a `lg:` utility and a `max-height` rule have the same specificity, and which
+   one lands is otherwise down to which file the bundler emitted last. */
+.deco-cover-ring {
+  width: 100px;
+  height: 100px;
+}
+.deco-cover-number {
+  font-size: 2.1rem;
+}
+@media (min-width: 1024px) and (min-height: 800px) {
+  .deco-cover-ring {
+    width: 124px;
+    height: 124px;
+  }
+  .deco-cover-number {
+    font-size: 2.6rem;
+  }
+}
+@media (min-width: 1024px) and (max-height: 799px) {
+  .deco-cover-ring {
+    width: 82px;
+    height: 82px;
+  }
+  .deco-cover-number {
+    font-size: 1.75rem;
+  }
+}
+
+@media (max-height: 799px) {
+  .deco-cover-score {
+    margin-top: 0.875rem;
+  }
+  .deco-cover-areas {
+    margin-top: 0.875rem;
+  }
+  .deco-cover-areas li {
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+  }
+}
+
+/* Below ~700px the card is genuinely cramped (a 1024x660 window, a laptop with
+   every toolbar open). One more step down rather than letting the foot of the
+   column clip. */
+@media (min-width: 1024px) and (max-height: 699px) {
+  .deco-cover-ring {
+    width: 68px;
+    height: 68px;
+  }
+  .deco-cover-number {
+    font-size: 1.5rem;
+  }
+}
+@media (max-height: 699px) {
+  .deco-cover-areas {
+    margin-top: 0.5rem;
+  }
+  .deco-cover-areas li {
+    padding-top: 0.125rem;
+    padding-bottom: 0.125rem;
+  }
+}
+
+.deco-chamber::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 34px 34px;
+  -webkit-mask-image: radial-gradient(
+    120% 100% at 50% 0%,
+    #000 18%,
+    transparent 74%
+  );
+  mask-image: radial-gradient(120% 100% at 50% 0%, #000 18%, transparent 74%);
+}
+
+/* The chamber's foil, tuned for a DARK surface.
+   `color-dodge` here divides the base by the inverse of the layer, so over
+   #07401a every bright band in the rainbow saturated the whole panel to acid
+   green and took the chapter text's contrast with it — the foil stopped reading
+   as sheen on lacquer and started reading as fog. `soft-light` tints the hue
+   without lifting the base, which is what a dark lacquered surface does under a
+   moving light. */
 .holo-artfoil {
   background-image: var(--holo);
   background-size: 220% 220%;
   background-position: var(--posx) var(--posy);
-  mix-blend-mode: color-dodge;
-  opacity: calc(0.16 + var(--active) * 0.5);
+  mix-blend-mode: soft-light;
+  opacity: calc(0.22 + var(--active) * 0.28);
   border-radius: inherit;
   transition: opacity 320ms ease;
 }
-/* Glitter — two offset dot grids that catch the light as the card tilts, for
-   the cosmos-foil twinkle. color-dodge makes them read as bright glints over
-   the (darker) artwork; position shifts with the pointer so they shimmer. */
+/* Glitter — offset dot grids that catch the light as the card tilts, for the
+   cosmos-foil twinkle. These KEEP color-dodge: sub-pixel dots are exactly what
+   dodge is good for (a hard glint), and they cover too little area to wash the
+   panel the way a full-bleed dodge layer does. */
 .holo-sparkle {
   background-image:
     radial-gradient(
@@ -426,52 +421,61 @@
     calc(100% - var(--posx)) var(--posy),
     var(--posx) calc(100% - var(--posy));
   mix-blend-mode: color-dodge;
-  opacity: calc(var(--active) * 0.85);
+  opacity: calc(var(--active) * 0.5);
   border-radius: inherit;
   transition: opacity 320ms ease;
 }
 @media (hover: none) {
   .holo-sparkle {
-    opacity: 0.3;
+    opacity: 0.22;
     animation: decoFoilIdle 7s ease-in-out infinite;
   }
 }
+/* Specular highlight under the pointer. Tighter and softer than the light
+   page's: `overlay` with a white top screens a dark base straight to white, so
+   this was a second full-panel wash rather than a highlight. */
 .holo-artglare {
   background: radial-gradient(
     circle at var(--mx) var(--my),
-    rgba(255, 255, 255, 0.55),
-    rgba(255, 255, 255, 0) 45%
+    rgba(255, 255, 255, 0.4),
+    rgba(255, 255, 255, 0) 32%
   );
-  mix-blend-mode: overlay;
-  opacity: calc(var(--active) * 0.9);
+  mix-blend-mode: soft-light;
+  opacity: calc(var(--active) * 0.75);
   border-radius: inherit;
   transition: opacity 320ms ease;
 }
 
-/* On short viewports the findings list scrolls inside the card rather than
-   overflowing it; keep the scrollbar unobtrusive. The deck shell already yields
-   nested-scroll gestures to this region before advancing slides. The mask puts
-   a "more below" fade over the last row when the list overflows. */
-.holo-findings {
+/* On short viewports the chapter index scrolls inside the chamber rather than
+   overflowing the card; keep the scrollbar unobtrusive on the dark surface. The
+   deck shell already yields nested-scroll gestures to this region before
+   advancing slides. */
+.deco-index {
   scrollbar-width: thin;
-  scrollbar-color: rgba(13, 9, 6, 0.18) transparent;
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    #000 calc(100% - 20px),
-    transparent 100%
-  );
-  mask-image: linear-gradient(
-    to bottom,
-    #000 calc(100% - 20px),
-    transparent 100%
-  );
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
 }
-.holo-findings::-webkit-scrollbar {
+.deco-index::-webkit-scrollbar {
   width: 6px;
 }
-.holo-findings::-webkit-scrollbar-thumb {
-  background: rgba(13, 9, 6, 0.16);
+.deco-index::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
   border-radius: 6px;
+}
+/* Only the small/short layouts scroll the index; fade its last row there so the
+   overflow is legible as "there's more". Above `lg` the list is never clipped. */
+@media (max-width: 1023px) {
+  .deco-index {
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      #000 calc(100% - 18px),
+      transparent 100%
+    );
+    mask-image: linear-gradient(
+      to bottom,
+      #000 calc(100% - 18px),
+      transparent 100%
+    );
+  }
 }
 
 /* Deal-in entrance — the card flips up around its vertical axis to face you
@@ -547,7 +551,7 @@
     animation: decoFoilIdle 7s ease-in-out infinite;
   }
   .holo-artfoil {
-    opacity: 0.42;
+    opacity: 0.45;
     animation: decoFoilIdle 7s ease-in-out infinite;
   }
   .holo-lines {

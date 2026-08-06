@@ -112,6 +112,9 @@ app.get("/site/:domain", async (c) => {
     // Never cached: the deck carries short-lived signed screenshot URLs.
     c.header("Cache-Control", "private, no-store");
     if (user || !state.deck) return c.json(state);
+    // Only `slides` is cut — `meta.toc` (built in `toDeck` from the full list)
+    // stays, so the cover can still show every chapter title. The titles are the
+    // teaser; the findings behind them are what needs a session.
     return c.json({
       ...state,
       deck: { ...state.deck, slides: state.deck.slides.slice(0, 1) },

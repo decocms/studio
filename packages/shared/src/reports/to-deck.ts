@@ -95,8 +95,24 @@ export function toDeck(resp: PublicReportResponse): {
       return null;
     })
     .filter((s): s is DeckSlide => s !== null);
+  // The chapter index is built here, from the FULL slide list, and stored on
+  // `meta` — the route truncates `slides` for logged-out callers, and the cover
+  // still has to list what's inside.
+  const toc = slides
+    .filter(
+      (s) => s.template.template !== "cover" && s.template.template !== "cta",
+    )
+    .map((s) => ({ key: s.key, title: s.title }));
   return {
-    deck: { meta: { ...resp.meta, scores: resp.summary?.scores }, slides },
+    deck: {
+      meta: {
+        ...resp.meta,
+        scores: resp.summary?.scores,
+        scannedAt: resp.scanned_at,
+        toc,
+      },
+      slides,
+    },
     drops,
   };
 }

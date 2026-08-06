@@ -12,6 +12,7 @@ import { isPostHogInitialized } from "@/lib/posthog-client";
 import { getReport, isReportsUnauthorized } from "./reports/api";
 import { ReportAuthGate, ReportBackdrop } from "./reports/auth-gate";
 import ScanGate from "./reports/scan-gate";
+import { DECK } from "./reports/templates/tokens";
 import {
   captureReport,
   consumeReportAuthAttempt,
@@ -103,25 +104,38 @@ function ReportLoadError({
 }) {
   const t = useT();
   return (
-    <div className="fixed inset-0 overflow-y-auto">
+    <div
+      className="fixed inset-0 overflow-y-auto"
+      style={{
+        fontFamily: "Switzer, 'Inter var', Helvetica, Arial, sans-serif",
+      }}
+    >
       <ReportBackdrop domain={domain} />
       <div className="pointer-events-none absolute inset-0 bg-white/35" />
       <div className="relative z-10 flex min-h-full items-center justify-center px-4 py-10">
+        {/* DECK tokens, not the app's theme variables: the deck is a fixed-light
+            paper surface, but `.dark` lives on <html> above it, so `bg-background`
+            here painted a black card on white paper for anyone in dark mode. The
+            auth card solves the same problem by pinning the variables to their
+            light values; this card has no shadcn children to inherit them, so it
+            just uses the deck palette directly. */}
         <section
           role="alert"
           aria-label={t("routes.reports.failedToLoadReportAriaLabel")}
-          className="w-full max-w-[440px] rounded-3xl bg-background px-7 py-8 text-foreground shadow-2xl"
+          className="w-full max-w-[440px] rounded-3xl px-7 py-8 card-shadow"
+          style={{ background: DECK.surface, color: DECK.ink }}
         >
           <h1 className="text-xl font-medium leading-7">
             {t("routes.reports.failedToLoadReportTitle")}
           </h1>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          <p className="mt-2 text-sm leading-6" style={{ color: DECK.muted }}>
             {t("routes.reports.failedToLoadReportDescription")}
           </p>
           <button
             type="button"
             onClick={retry}
-            className="mt-6 inline-flex h-11 items-center justify-center rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80"
+            className="mt-6 inline-flex h-11 items-center justify-center rounded-full px-6 text-sm font-medium transition-transform duration-300 ease-out hover:scale-[1.03]"
+            style={{ background: DECK.primary, color: DECK.primaryFg }}
           >
             {t("routes.reports.retryButton")}
           </button>

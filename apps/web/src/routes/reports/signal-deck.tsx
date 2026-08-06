@@ -66,6 +66,15 @@ export default function SignalDeck({
 
   const ctaHref = onboardingUrl(`https://${deck.meta.domain}/`);
   const slide = deck.slides[index];
+  // A logged-out visitor is sent the cover slide only, but `meta.toc` still
+  // names every chapter. Count them in the rail and the footer counter so the
+  // deck admits its real length — "01/01" next to a cover promising six
+  // chapters reads as a broken report, not a locked one. `total` stays the
+  // loaded-slide count so analytics keep measuring what was actually shown.
+  const lockedChapters = (deck.meta.toc ?? []).filter(
+    (entry) => !deck.slides.some((s) => s.key === entry.key),
+  );
+  const railTotal = total + lockedChapters.length;
   // Template-based, not `index === total - 1`: a truncated (anonymous) deck
   // has only the cover slide, which then sits at `total - 1` too.
   const isCtaSlide = slide?.template.template === "cta";
@@ -664,9 +673,15 @@ export default function SignalDeck({
                   slide={s}
                   deck={deck}
                   active={i === index}
-                  onNavigate={(key) =>
-                    go(deck.slides.findIndex((sl) => sl.key === key))
-                  }
+                  onNavigate={(key) => {
+                    // The cover's chapter index lists every chapter in the
+                    // report, including ones whose slide wasn't sent to a
+                    // logged-out visitor. An unknown key means "the thing you
+                    // clicked is past the gate" — step forward so `go` shows
+                    // the sign-in prompt instead of silently doing nothing.
+                    const i = deck.slides.findIndex((sl) => sl.key === key);
+                    go(i >= 0 ? i : index + 1);
+                  }}
                 />
               </div>
             </div>
@@ -703,6 +718,32 @@ export default function SignalDeck({
               />
             </button>
           ))}
+          {lockedChapters.map((entry) => (
+            <button
+              key={entry.key}
+              type="button"
+              aria-label={t("reports.signalDeck.goToSlide", {
+                title: entry.title,
+              })}
+              onClick={() => go(index + 1)}
+              className="group relative flex h-5 items-center justify-end"
+            >
+              <span
+                className="pointer-events-none absolute right-9 whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium opacity-0 transition-all duration-200 group-hover:opacity-100"
+                style={{ background: DECK.ink, color: DECK.bg }}
+              >
+                {entry.title}
+              </span>
+              <span
+                className="rounded-full transition-all duration-300"
+                style={{
+                  height: 2,
+                  width: 12,
+                  background: "rgba(40,37,36,0.22)",
+                }}
+              />
+            </button>
+          ))}
         </nav>
       </main>
 
@@ -730,7 +771,7 @@ export default function SignalDeck({
               className="hidden text-sm tabular-nums opacity-50 lg:block"
               style={{ color: DECK.ink }}
             >
-              {pad(index + 1)}/{pad(total)}
+              {pad(index + 1)}/{pad(railTotal)}
             </span>
             {/* mobile: share icon — white-on-dark on the CTA slide */}
             <button
@@ -967,7 +1008,7 @@ export default function SignalDeck({
                 className="ml-1 hidden text-sm tabular-nums opacity-50 sm:inline"
                 style={{ color: DECK.ink }}
               >
-                {pad(index + 1)}/{pad(total)}
+                {pad(index + 1)}/{pad(railTotal)}
               </span>
             </div>
 
