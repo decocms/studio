@@ -247,4 +247,105 @@ describe("listItemsPendingReview (real Postgres)", () => {
       expect(seen.slice().sort()).toEqual(ids.slice().sort());
     });
   });
+
+  // The sweep budget that bounds the sweeper's GitHub cost. Before it, a card
+  // whose checks never go green was re-fetched on every tick of every replica —
+  // 4 `pull_request_read` calls x 32 cards x 3 pods / 60s = ~370 calls/min for 17
+  // hours in prod, 93% of them answered 429 by GitHub. Real Postgres because the
+  // whole mechanism is one NULL-aware SQL predicate plus one narrow UPDATE.
+  describe("due filter (last_swept_at)", () => {
+    const ORG_DUE = "org_pending_due";
+
+    beforeAll(async () => {
+      await database.db
+        .insertInto("organization")
+        .values({
+          id: ORG_DUE,
+          name: ORG_DUE,
+          slug: "org-pending-due",
+          createdAt: new Date().toISOString(),
+        })
+        .execute();
+    });
+
+    const sweptAt = async (id: string, iso: string) => {
+      await database.db
+        .updateTable("task_board_items")
+        .set({ last_swept_at: iso })
+        .where("id", "=", id)
+        .execute();
+    };
+
+    const dueIds = async (dueBefore: Date) =>
+      (await taskBoard.listItemsPendingReview(50, null, dueBefore))
+        .filter((r) => r.organizationId === ORG_DUE)
+        .map((r) => r.id);
+
+    // A never-swept card must be due, or the filter would exclude every card
+    // that existed before the column did and the sweeper would go permanently
+    // idle after deploy.
+    it("treats a never-swept card as due", async () => {
+      const fresh = await card({ org: ORG_DUE, title: "never swept" });
+      expect(await dueIds(new Date())).toContain(fresh.id);
+    });
+
+    it("excludes a card swept inside the interval and returns it once outside", async () => {
+      const item = await card({ org: ORG_DUE, title: "recently swept" });
+      await sweptAt(item.id, "2026-01-01T00:05:00.000Z");
+
+      // Interval boundary just before the sweep — not due yet.
+      expect(await dueIds(new Date("2026-01-01T00:00:00.000Z"))).not.toContain(
+        item.id,
+      );
+      // Boundary past the sweep — due again.
+      expect(await dueIds(new Date("2026-01-01T00:10:00.000Z"))).toContain(
+        item.id,
+      );
+    });
+
+    // This is the fix for the replica amplification: pod A's stamp is what makes
+    // the card disappear from pod B's work list, so three pods cost what one
+    // costs. Also asserts the stamp does NOT move `updated_at` — that column is
+    // the keyset cursor and the UI's "edited" signal, and churning it on every
+    // sweep would reorder the backlog under the cursor.
+    it("markSwept claims the interval without touching updated_at", async () => {
+      const item = await card({ org: ORG_DUE, title: "claimed" });
+      const before = await database.db
+        .selectFrom("task_board_items")
+        .select(["updated_at", "last_swept_at"])
+        .where("id", "=", item.id)
+        .executeTakeFirstOrThrow();
+      expect(before.last_swept_at).toBeNull();
+
+      await taskBoard.markSwept(item.id, ORG_DUE);
+
+      const after = await database.db
+        .selectFrom("task_board_items")
+        .select(["updated_at", "last_swept_at"])
+        .where("id", "=", item.id)
+        .executeTakeFirstOrThrow();
+      expect(after.last_swept_at).not.toBeNull();
+      expect(new Date(after.updated_at).toISOString()).toBe(
+        new Date(before.updated_at).toISOString(),
+      );
+      // And the freshly-stamped card is no longer due this interval.
+      expect(await dueIds(new Date(Date.now() - 60_000))).not.toContain(
+        item.id,
+      );
+    });
+
+    // Org-scoped like every other write here: a task id alone must not let one
+    // org's sweep stamp another org's card.
+    it("markSwept will not stamp a card from another org", async () => {
+      const item = await card({ org: ORG_DUE, title: "other org" });
+      await taskBoard.markSwept(item.id, ORG_A);
+
+      const row = await database.db
+        .selectFrom("task_board_items")
+        .select("last_swept_at")
+        .where("id", "=", item.id)
+        .executeTakeFirstOrThrow();
+      expect(row.last_swept_at).toBeNull();
+    });
+  });
 });

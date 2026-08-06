@@ -31,6 +31,18 @@
  * `enqueueEnabledReviewers` claims per (task, reviewer, cycle), so re-running
  * every tick cannot spawn duplicate reviewer runs.
  *
+ * Idempotent is not the same as terminating, though, and conflating the two is
+ * what took out the GitHub App's rate limit: a card whose checks never go green
+ * never leaves `listItemsPendingReview`, so re-running was free of duplicate
+ * REVIEWS but not free of duplicate GITHUB CALLS. Each card costs four
+ * `pull_request_read` calls per sweep, and the sweep rate was this class's own
+ * `setInterval` — per pod. 32 parked cards x 4 calls x 3 replicas / 60s held a
+ * steady ~370 calls/min for 17 hours, 93% of them answered 429, until the pods
+ * happened to restart. So the sweep budget now lives on the CARD
+ * (`task_board_items.last_swept_at`, migration 166): replicas share it, and a
+ * parked card costs one sweep per `DEFAULT_ITEM_SWEEP_INTERVAL_MS` instead of one
+ * per tick. `DEFAULT_BATCH_SIZE` remains the ceiling on any single tick.
+ *
  * Deliberately NOT a replacement for the instant paths. `TASK_BOARD_ITEM_PRS_GET`
  * still does this on the dialog's poll, and the projector hook still fires — the
  * sweeper is the floor that guarantees it happens without a human, not the only
@@ -44,10 +56,18 @@ import { extractPrFromText } from "./pr-extract";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
 import { fetchPrLiveState, prReadyForReview } from "./prs-get";
 
-/** How often to reconcile. A minute is well under the time a human would take
- *  to notice a stuck card, and the work list is one index scan when idle
- *  (`idx_task_board_items_pending_review`). */
+/** How often to LOOK for due cards. A minute is well under the time a human
+ *  would take to notice a stuck card, and the work list is one index scan when
+ *  idle (`idx_task_board_items_pending_review`). This is not the rate a card is
+ *  swept at — see `DEFAULT_ITEM_SWEEP_INTERVAL_MS`. */
 const DEFAULT_SWEEP_INTERVAL_MS = 60 * 1000;
+
+/** How often a single card may cost a GitHub round-trip (four
+ *  `pull_request_read` calls). Five minutes, not the tick interval, because this
+ *  sweeper is the floor rather than the fast path — the projector hook and the
+ *  dialog poll still react immediately, so five minutes of extra latency on the
+ *  recovery path is invisible next to the CI run the card waits on anyway. */
+const DEFAULT_ITEM_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
 /** Items per tick. Bounds one tick's work: each item costs a `getById`, up to
  *  one `linkPr` per thread, and a GitHub round-trip per linked PR. Not a bound
@@ -58,6 +78,8 @@ const DEFAULT_BATCH_SIZE = 50;
 export interface TaskBoardReviewSweeperOptions {
   intervalMs?: number;
   batchSize?: number;
+  /** Minimum age of a card's last sweep before it is due again. */
+  itemIntervalMs?: number;
 }
 
 export class TaskBoardReviewSweeper {
@@ -91,9 +113,12 @@ export class TaskBoardReviewSweeper {
     let dispatched = 0;
     try {
       const batchSize = this.options.batchSize ?? DEFAULT_BATCH_SIZE;
+      const itemInterval =
+        this.options.itemIntervalMs ?? DEFAULT_ITEM_SWEEP_INTERVAL_MS;
       const pending = await this.taskBoard.listItemsPendingReview(
         batchSize,
         this.cursor,
+        new Date(Date.now() - itemInterval),
       );
       // A short page means the backlog is exhausted — wrap around so cards that
       // moved back into In Review behind the cursor get picked up again.
@@ -140,6 +165,12 @@ export class TaskBoardReviewSweeper {
     ) {
       return false;
     }
+
+    // Claim the interval BEFORE the GitHub work, not after: that is what makes a
+    // second replica skip this card, and what stops a card that comes back
+    // rate-limited from being retried on the very next tick. A pod crashing
+    // mid-sweep costs one interval of delay — the right trade for a slow floor.
+    await this.taskBoard.markSwept(id, organizationId);
 
     // Same recovery `TASK_BOARD_ITEM_PRS_GET` does: the agent's closing summary
     // reliably prints the URL ("Opened PR #309 https://github.com/…/pull/309").
