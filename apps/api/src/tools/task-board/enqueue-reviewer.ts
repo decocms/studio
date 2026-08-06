@@ -312,6 +312,9 @@ async function enqueueReviewerForTask(
 
   // Create + link the reviewer thread and dispatch its run (shared plumbing).
   await enqueueAgentRunForTask(ctx, task, {
+    // A verdict is the last thing between this card and Done — it outranks
+    // starting a new task for the next slot.
+    runClass: "reviewer",
     title: `${REVIEWER_LABEL[kind]}: ${task.title}`,
     prompt,
     temperature: 0.3,

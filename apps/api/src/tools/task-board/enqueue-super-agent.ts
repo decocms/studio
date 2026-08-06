@@ -8,6 +8,7 @@ import {
 } from "../../billing/task-quota";
 import { getSettings } from "@/settings";
 import { enqueueAgentRunForTask } from "./enqueue-task-run";
+import type { RunClass } from "@/dispatch-queue/run-priority";
 import { fetchPrHeadRef } from "./prs-get";
 import {
   buildClaudeCodeTaskPrompt,
@@ -58,6 +59,10 @@ export type SuperAgentPromptOpts = {
    *  `pr` — without it the conflict lead is skipped (a conflict instruction
    *  is meaningless with no PR to check out). */
   resolveConflict?: boolean;
+  /** Admission class for the dispatched run — `"retry"` for a re-dispatch of
+   *  work that already failed, so it outranks a brand-new task for the next
+   *  slot. Defaults to a new task. See `dispatch-queue/run-priority.ts`. */
+  runClass?: RunClass;
 };
 
 /**
@@ -192,6 +197,7 @@ export async function enqueueSuperAgentForTask(
       const repo = "repo" in choice ? choice.repo : null;
       await enqueueAgentRunForTask(ctx, task, {
         title: `Super Agent: ${task.title}`,
+        ...(opts?.runClass ? { runClass: opts.runClass } : {}),
         ...(pinnedRef ? { pinnedRef } : {}),
         prompt: buildClaudeCodeTaskPrompt(task, repo, {
           ...opts,
@@ -208,6 +214,7 @@ export async function enqueueSuperAgentForTask(
 
     await enqueueAgentRunForTask(ctx, task, {
       title: `Super Agent: ${task.title}`,
+      ...(opts?.runClass ? { runClass: opts.runClass } : {}),
       prompt: buildSuperAgentTaskPrompt(task, opts),
       temperature: 0.5,
       ...(pinnedRef ? { pinnedRef } : {}),
