@@ -72,6 +72,7 @@ import {
   ensureServicePort,
   getSandboxClaim,
   HTTPROUTE_CONSTANTS,
+  isPodUnbound,
   listWarmPoolPods,
   type WarmPoolPod,
   patchSandboxClaimShutdown,
@@ -1686,6 +1687,12 @@ export class AgentSandboxProvider implements SandboxProvider {
       await waitForDaemonReady(daemonUrl);
       const sentinel = this.sentinelToken;
       if (!sentinel) return;
+      // Re-check unbound immediately before each step that touches the tree.
+      // The pool listing is a snapshot and warming a pool walks it pod by pod
+      // over minutes; a claim that binds this pod in between would otherwise
+      // get its working tree hard-reset under it. Worst case the user gets one
+      // extra restart, never a reset tree.
+      if (!(await this.isPoolPodUnbound(pod))) return;
       // The daemon classifies this itself: bootstrap on a fresh pod (clone →
       // install → dev), git-credential-refresh on one already warm.
       const payload =
@@ -1707,7 +1714,11 @@ export class AgentSandboxProvider implements SandboxProvider {
       const { transition } = await postConfig(daemonUrl, sentinel, payload);
       // A bootstrap already clones. Anything else only updated stored config,
       // so a refresh has to ask for the fetch + reset + restart itself.
-      if (refresh && transition !== "bootstrap") {
+      if (
+        refresh &&
+        transition !== "bootstrap" &&
+        (await this.isPoolPodUnbound(pod))
+      ) {
         await postSetupStep(daemonUrl, sentinel, "clone");
       }
       this.poolPods.set(pod.uid, { lastConfigAt: Date.now(), failures: 0 });
@@ -1723,6 +1734,15 @@ export class AgentSandboxProvider implements SandboxProvider {
     } finally {
       this.closeForwarder(forward);
     }
+  }
+
+  private isPoolPodUnbound(pod: WarmPoolPod): Promise<boolean> {
+    return isPodUnbound(
+      this.kubeConfig,
+      this.namespace,
+      pod.name,
+      LABEL_KEYS.sandboxHandle,
+    );
   }
 
   private recordPoolFailure(

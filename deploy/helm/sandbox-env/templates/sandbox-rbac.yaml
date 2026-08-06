@@ -3,8 +3,9 @@
 #   - sandboxclaims CRUD/patch (per-tenant claim lifecycle, idle TTL refresh)
 #   - sandboxes get/list/watch (waitForSandboxReady streams `?watch=true`)
 #   - pods/portforward create (kubectl-style tunnel to the daemon container)
-# Pods get is included for portforward error paths; the runner itself doesn't
-# read pod specs directly.
+#   - sandboxwarmpools get (tenant pool reconciler: pool selector → its pods)
+# Pods get covers portforward error paths and the tenant-pool reconciler's
+# re-read of a pod's labels before it touches that pod's working tree.
 #
 # Why pods/portforward is here even with the preview Gateway:
 #   The runner has *two* traffic paths and the Gateway only covers one.
@@ -46,6 +47,14 @@ rules:
   - apiGroups: ["extensions.agents.x-k8s.io"]
     resources: ["sandboxclaims"]
     verbs: ["get", "list", "watch", "create", "delete", "patch"]
+  # Tenant warm pools: the reconciler reads each pool's `status.selector` (the
+  # scale subresource's label selector) to find its pods, rather than guessing
+  # a label the operator hashes from the pool identity. `get` only — the pool
+  # object itself is chart-owned. Without this the reconciler 403s every tick
+  # and the pool sits full of empty pods, which reads as "nothing happened".
+  - apiGroups: ["extensions.agents.x-k8s.io"]
+    resources: ["sandboxwarmpools"]
+    verbs: ["get"]
   - apiGroups: ["agents.x-k8s.io"]
     resources: ["sandboxes"]
     verbs: ["get", "list", "watch"]

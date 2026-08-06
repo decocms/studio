@@ -583,6 +583,34 @@ export async function listWarmPoolPods(
     );
 }
 
+/**
+ * Is this pool pod still unbound? A bound pod carries the claim's handle label
+ * (`additionalPodMetadata`), and warming one would hard-reset a live working
+ * tree. The pool listing is a snapshot, and warming walks it pod by pod over
+ * minutes — so every destructive step re-reads the pod first. Errs on "don't
+ * touch it": a missing pod or a failed read answers false.
+ */
+export async function isPodUnbound(
+  kc: KubeConfig,
+  namespace: string,
+  podName: string,
+  handleLabelKey: string,
+): Promise<boolean> {
+  try {
+    const resp = await kubeFetch(kc, {
+      method: "GET",
+      path: `/api/v1/namespaces/${encodeURIComponent(namespace)}/pods/${encodeURIComponent(podName)}`,
+    });
+    if (!resp.ok) return false;
+    const body = (await resp.json()) as {
+      metadata?: { labels?: Record<string, string> };
+    };
+    return !body.metadata?.labels?.[handleLabelKey];
+  } catch {
+    return false;
+  }
+}
+
 // ---- HTTPRoute (Gateway API) ------------------------------------------------
 
 /**
