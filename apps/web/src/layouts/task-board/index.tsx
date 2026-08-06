@@ -1751,7 +1751,7 @@ function TaskCard({
         else onOpen();
       }}
       className={cn(
-        "group flex shrink-0 cursor-grab flex-col gap-2 rounded-xl bg-card px-3 py-2.5 text-left card-shadow hover:bg-accent/60 active:cursor-grabbing",
+        "group relative flex shrink-0 cursor-grab flex-col gap-2 rounded-xl bg-card px-3 py-2.5 text-left card-shadow hover:bg-accent/60 active:cursor-grabbing",
         selected && "bg-accent",
         className,
       )}
@@ -1811,9 +1811,11 @@ function TaskCard({
             e.stopPropagation();
             onRerun();
           }}
-          // Hover-revealed: every Super-Agent card qualifies, so showing it
-          // always would put a button on nearly the whole board.
-          className="flex items-center gap-1.5 self-end rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground opacity-0 transition-opacity hover:bg-accent focus-visible:opacity-100 group-hover:opacity-100"
+          // Absolutely positioned so it never reserves layout space: every
+          // Super-Agent card qualifies, so a flow-positioned hover button
+          // left a permanent empty gap on every card, and showing it
+          // unconditionally would put a button on nearly the whole board.
+          className="pointer-events-none absolute bottom-2 right-2 z-10 flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground opacity-0 shadow-sm transition-opacity hover:bg-accent focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
         >
           <RefreshCw01 size={12} />
           {t("taskBoard.taskBoard.rerun")}
