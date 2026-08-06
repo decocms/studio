@@ -38,6 +38,12 @@ export interface AuthEntryProps {
   allowPassword?: boolean;
   /** Optional lifecycle sink for embedded surfaces with their own funnel. */
   onAuthEvent?: (event: AuthFlowEvent) => void;
+  /** Override the default post-auth navigation for embedded surfaces that
+   *  want to unlock already-mounted content in place (e.g. refetching a
+   *  query) instead of navigating away. Ignored on desktop, where the
+   *  Keychain-bridge `onAuthenticated` always takes precedence — see
+   *  `resolvedActions` below. */
+  onAuthenticated?: AuthFormActions["onAuthenticated"];
 }
 
 class RetriableAutoLoginResponse {
@@ -223,6 +229,7 @@ export function AuthEntry({
   allowedSocialProviders,
   allowPassword,
   onAuthEvent,
+  onAuthenticated,
 }: AuthEntryProps) {
   const t = useT();
   const {
@@ -240,10 +247,16 @@ export function AuthEntry({
   // web defaults, with the desktop browser-hop/Keychain-bridge overrides
   // layered on top in the desktop build. No call site wires this itself —
   // that's what makes the "forgot the desktop override, social buttons
-  // silently dead-end in Tauri" bug class unrepresentable.
+  // silently dead-end in Tauri" bug class unrepresentable. The one exception
+  // is `onAuthenticated`: an embedded surface may know how to unlock its own
+  // already-mounted content (e.g. refetch a query) instead of navigating —
+  // applied between the web default and the platform override, so desktop's
+  // Keychain bridge still always wins.
+  const callerOverrides = onAuthenticated ? { onAuthenticated } : undefined;
   const platformOverrides = desktopDefaults?.actions;
   const resolvedActions: AuthFormActions = {
     ...defaultAuthFormActions,
+    ...callerOverrides,
     ...platformOverrides,
   };
 
@@ -334,7 +347,7 @@ export function AuthEntry({
         allowedSocialProviders={allowedSocialProviders}
         allowPassword={allowPassword}
         onAuthEvent={onAuthEvent}
-        actions={platformOverrides}
+        actions={{ ...callerOverrides, ...platformOverrides }}
       />
     );
     if (!desktopError) return form;
