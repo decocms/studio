@@ -529,6 +529,7 @@ function HeaderButtonRenderer(props: {
           size="sm"
           variant={button.variant}
           disabled={disabled}
+          aria-label={button.label}
           // Only anchor the tour's "submit for review" step when the button is
           // actually in that state. In neutral states (e.g. "Up to date", which
           // is disabled and has no action) the step would point at an unrelated
@@ -567,6 +568,7 @@ function HeaderButtonRenderer(props: {
             data-tour={TOUR_ANCHORS.publish}
             disabled={props.githubActionPending || !props.publishGate.allowed}
             onClick={props.onPublishSide}
+            aria-label={t("thread.headerActions.publish")}
           >
             {props.publishGate.pending ? (
               <Spinner size="xs" variant="default" />
@@ -599,7 +601,13 @@ function SyncButton({
 }) {
   return (
     <WithTooltip label={t("thread.headerActions.syncTooltip")}>
-      <Button size="sm" variant="default" disabled={busy} onClick={onClick}>
+      <Button
+        size="sm"
+        variant="default"
+        disabled={busy}
+        onClick={onClick}
+        aria-label={t("thread.headerActions.sync")}
+      >
         <RefreshCw01 className="size-4 shrink-0 @3xl/panel-header:hidden" />
         <span className="@max-3xl/panel-header:hidden">
           {t("thread.headerActions.sync")}
