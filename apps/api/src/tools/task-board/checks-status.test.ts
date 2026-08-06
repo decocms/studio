@@ -8,7 +8,7 @@ import {
   conflictFromPrGet,
   extractPreviewUrl,
   extractPreviewUrlFromComments,
-  isDecoPreviewHost,
+  isTrustedPreviewHost,
   mergeChecksStatus,
   parseCheckRuns,
   toCheckRunsStatus,
@@ -226,27 +226,46 @@ describe("mergeChecksStatus", () => {
   });
 });
 
-describe("isDecoPreviewHost", () => {
+describe("isTrustedPreviewHost", () => {
   it("accepts the real deco preview hosts", () => {
     expect(
-      isDecoPreviewHost("https://envs-montecarlo--c8xgrn.decocdn.com/"),
+      isTrustedPreviewHost("https://envs-montecarlo--c8xgrn.decocdn.com/"),
     ).toBe(true);
     expect(
-      isDecoPreviewHost(
+      isTrustedPreviewHost(
         "https://fix-home-247-decocms-tanstack.deco-cx.workers.dev/",
       ),
     ).toBe(true);
-    expect(isDecoPreviewHost("https://acme.deco.site/")).toBe(true);
-    expect(isDecoPreviewHost("https://deco.site")).toBe(true);
+    expect(isTrustedPreviewHost("https://acme.deco.site/")).toBe(true);
+    expect(isTrustedPreviewHost("https://deco.site")).toBe(true);
+  });
+
+  it("accepts Vercel preview subdomains but not the bare apex", () => {
+    expect(
+      isTrustedPreviewHost(
+        "https://electrolux-git-fix-pdp-focus-order-mobile-menu-deco13.vercel.app",
+      ),
+    ).toBe(true);
+    expect(isTrustedPreviewHost("https://vercel.app/")).toBe(false);
+    expect(isTrustedPreviewHost("https://vercel.app.evil.com/")).toBe(false);
+    expect(isTrustedPreviewHost("https://evilvercel.app/")).toBe(false);
+  });
+
+  it("accepts VTEX preview subdomains but not other vtex.app hosts", () => {
+    expect(isTrustedPreviewHost("https://acme.preview.vtex.app/")).toBe(true);
+    expect(isTrustedPreviewHost("https://acme.vtex.app/")).toBe(false);
+    expect(isTrustedPreviewHost("https://preview.vtex.app.evil.com/")).toBe(
+      false,
+    );
   });
 
   it("rejects a decoy where the deco host is only in the path/query (injection)", () => {
     expect(
-      isDecoPreviewHost("https://evil.example.com/login?x=.decocdn.com"),
+      isTrustedPreviewHost("https://evil.example.com/login?x=.decocdn.com"),
     ).toBe(false);
-    expect(isDecoPreviewHost("https://decocdn.com.evil.com/")).toBe(false);
-    expect(isDecoPreviewHost("https://not-deco.site.evil.com/")).toBe(false);
-    expect(isDecoPreviewHost("not a url")).toBe(false);
+    expect(isTrustedPreviewHost("https://decocdn.com.evil.com/")).toBe(false);
+    expect(isTrustedPreviewHost("https://not-deco.site.evil.com/")).toBe(false);
+    expect(isTrustedPreviewHost("not a url")).toBe(false);
   });
 });
 
@@ -261,6 +280,11 @@ describe("extractPreviewUrlFromComments", () => {
   const decobotBody =
     "**deco Deployment** · commit `1059e10`\n\n| Name | Preview |\n| - | - |\n" +
     "| montecarlo | [Visit Preview](https://envs-montecarlo--c8xgrn.decocdn.com) |";
+  // Real Vercel bot comment shape (trimmed, from deco-sites/electrolux#10).
+  const vercelBody =
+    "| Project | Deployment | Actions | Updated (UTC) |\n| :--- | :----- | :------ | :------ |\n" +
+    "| [electrolux](https://vercel.com/deco13/electrolux) | ![Ready](https://vercel.com/static/status/ready.svg) [Ready](https://vercel.com/deco13/electrolux/GoTyhNUVcQSf7yKLG2yFtWjJ4sZA) | " +
+    "[Preview](https://electrolux-git-fix-pdp-focus-order-mobile-menu-deco13.vercel.app) | Aug 6, 2026 10:47pm |";
 
   it("prefers the Cloudflare Branch Preview URL over the commit one", () => {
     expect(extractPreviewUrlFromComments([{ body: cloudflareBody }])).toBe(
@@ -271,6 +295,12 @@ describe("extractPreviewUrlFromComments", () => {
   it("lifts the deco.cx 'Visit Preview' markdown link", () => {
     expect(extractPreviewUrlFromComments([{ body: decobotBody }])).toBe(
       "https://envs-montecarlo--c8xgrn.decocdn.com",
+    );
+  });
+
+  it("lifts the Vercel bot's Preview link", () => {
+    expect(extractPreviewUrlFromComments([{ body: vercelBody }])).toBe(
+      "https://electrolux-git-fix-pdp-focus-order-mobile-menu-deco13.vercel.app",
     );
   });
 
@@ -289,5 +319,26 @@ describe("extractPreviewUrlFromComments", () => {
     expect(
       extractPreviewUrlFromComments([{ body: "LGTM, nice work!" }]),
     ).toBeNull();
+  });
+
+  it("prefers the newest comment by created_at over array order, so a stale re-deploy comment doesn't win", () => {
+    const staleVercelBody =
+      "[Preview](https://electrolux-git-old-stale-deploy-deco13.vercel.app)";
+    const fresh = extractPreviewUrlFromComments([
+      { body: staleVercelBody, created_at: "2026-08-01T00:00:00Z" },
+      { body: vercelBody, created_at: "2026-08-06T22:32:55Z" },
+    ]);
+    expect(fresh).toBe(
+      "https://electrolux-git-fix-pdp-focus-order-mobile-menu-deco13.vercel.app",
+    );
+  });
+
+  it("falls back to array order when created_at is missing", () => {
+    expect(
+      extractPreviewUrlFromComments([
+        { body: decobotBody },
+        { body: vercelBody },
+      ]),
+    ).toBe("https://envs-montecarlo--c8xgrn.decocdn.com");
   });
 });

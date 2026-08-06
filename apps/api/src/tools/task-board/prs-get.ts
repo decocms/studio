@@ -122,13 +122,13 @@ const NO_LIVE_STATE: PrLiveState = {
   previewUrl: null,
 };
 
-/** Whether `url`'s HOST is a deco.cx preview host — a strict hostname check,
- *  NOT a substring match. The preview is lifted from PR comments, which
- *  external contributors can write, and the result is shown as a trusted
- *  "Open preview" button AND handed to the autonomous QA reviewer to navigate.
- *  So a decoy like `https://evil.example.com/x?y=.decocdn.com` must be rejected.
- *  Exported for the unit test. */
-export function isDecoPreviewHost(url: string): boolean {
+/** Whether `url`'s HOST is a known preview-deploy host — a strict hostname
+ *  check, NOT a substring match. The preview is lifted from PR comments,
+ *  which external contributors can write, and the result is shown as a
+ *  trusted "Open preview" button AND handed to the autonomous QA reviewer to
+ *  navigate. So a decoy like `https://evil.example.com/x?y=.decocdn.com` must
+ *  be rejected. Exported for the unit test. */
+export function isTrustedPreviewHost(url: string): boolean {
   let hostname: string;
   try {
     hostname = new URL(url).hostname.toLowerCase();
@@ -139,14 +139,16 @@ export function isDecoPreviewHost(url: string): boolean {
     hostname === "deco.site" ||
     hostname.endsWith(".decocdn.com") ||
     hostname.endsWith(".deco-cx.workers.dev") ||
-    hostname.endsWith(".deco.site")
+    hostname.endsWith(".deco.site") ||
+    hostname.endsWith(".vercel.app") ||
+    hostname.endsWith(".preview.vtex.app")
   );
 }
 
-/** Pull the deco preview URL out of a combined-status response's `statuses[]`
- *  (a status whose `target_url` is a deco preview host). Kept as a cheap
- *  fallback — deco posts the preview in a comment, not a status, so this
- *  usually finds nothing. `null` when none is posted. */
+/** Pull the preview URL out of a combined-status response's `statuses[]` (a
+ *  status whose `target_url` is a trusted preview host). Kept as a cheap
+ *  fallback — most providers post the preview in a comment, not a status, so
+ *  this usually finds nothing. `null` when none is posted. */
 export function extractPreviewUrl(
   obj: Record<string, unknown> | null,
 ): string | null {
@@ -161,7 +163,7 @@ export function extractPreviewUrl(
       (s): s is { target_url: string; state?: unknown } =>
         !!s &&
         typeof s.target_url === "string" &&
-        isDecoPreviewHost(s.target_url),
+        isTrustedPreviewHost(s.target_url),
     );
   if (previews.length === 0) return null;
   return (
@@ -171,13 +173,16 @@ export function extractPreviewUrl(
 }
 
 /**
- * Pull the deco preview URL out of a PR's comments — where the deploy bot
- * actually posts it. Two shapes: Cloudflare Workers'
+ * Pull the preview URL out of a PR's comments — where the deploy bot
+ * actually posts it. Known shapes: Cloudflare Workers'
  * `cloudflare-workers-and-pages[bot]` (a table with a "Commit Preview URL" AND a
  * "Branch Preview URL" — prefer the branch one, stable across the PR's commits),
- * and deco.cx's `decobot` (a single "Visit Preview" markdown link). Accepts the
- * raw `get_comments` result (an array, or `{ comments }`/`{ items }`) and scans
- * each body. `null` when none is found. Exported for the pure-logic unit test.
+ * deco.cx's `decobot` (a single "Visit Preview" markdown link), and Vercel's
+ * `[Preview](url)` markdown link. Accepts the raw `get_comments` result (an
+ * array, or `{ comments }`/`{ items }`), sorts newest-first by `created_at`
+ * (falling back to array order when the field is absent) so a stale early
+ * comment can't win over a later re-deploy, and scans each body. `null` when
+ * none is found. Exported for the pure-logic unit test.
  */
 export function extractPreviewUrlFromComments(raw: unknown): string | null {
   const list = Array.isArray(raw)
@@ -187,7 +192,20 @@ export function extractPreviewUrlFromComments(raw: unknown): string | null {
       : Array.isArray((raw as { items?: unknown })?.items)
         ? (raw as { items: unknown[] }).items
         : [];
-  for (const c of list) {
+  const sorted = list
+    .map((c, index) => ({ c, index }))
+    .sort((a, b) => {
+      const aTime = Date.parse(
+        (a.c as { created_at?: unknown })?.created_at as string,
+      );
+      const bTime = Date.parse(
+        (b.c as { created_at?: unknown })?.created_at as string,
+      );
+      if (Number.isNaN(aTime) || Number.isNaN(bTime)) return a.index - b.index;
+      return bTime - aTime;
+    })
+    .map(({ c }) => c);
+  for (const c of sorted) {
     const body =
       c && typeof (c as { body?: unknown }).body === "string"
         ? (c as { body: string }).body
@@ -196,9 +214,9 @@ export function extractPreviewUrlFromComments(raw: unknown): string | null {
     // Cloudflare's comment carries both a per-commit and a per-branch preview —
     // prefer the branch URL, which stays valid as the PR gets new commits.
     const branch = body.match(/href=['"]([^'"]+)['"][^>]*>\s*Branch Preview/i);
-    if (branch?.[1] && isDecoPreviewHost(branch[1])) return branch[1];
+    if (branch?.[1] && isTrustedPreviewHost(branch[1])) return branch[1];
     const url = (body.match(/https?:\/\/[^\s"'<>)\]]+/g) ?? []).find((u) =>
-      isDecoPreviewHost(u),
+      isTrustedPreviewHost(u),
     );
     if (url) return url;
   }
