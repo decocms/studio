@@ -91,7 +91,9 @@ import {
 } from "./constants";
 import { watchClaimDeletions, watchClaimLifecycle } from "./lifecycle-watcher";
 import {
+  claimWarmPoolName,
   poolCloneUrl,
+  poolsMatchingPush,
   resolveTenantPool,
   type TenantPool,
 } from "./tenant-pools";
@@ -1265,7 +1267,7 @@ export class AgentSandboxProvider implements SandboxProvider {
           ...(hasAnnotations ? { annotations } : {}),
         },
         env: envEntries,
-        warmpool: tenantPool?.name ?? (warmPoolMode ? "default" : "none"),
+        warmpool: claimWarmPoolName(tenantPool, warmPoolMode),
         lifecycle: {
           shutdownPolicy: "Delete",
           shutdownTime: this.computeShutdownTime(),
@@ -1602,12 +1604,7 @@ export class AgentSandboxProvider implements SandboxProvider {
    * picks the commits up within `tenantPoolRefreshMs`.
    */
   markTenantPoolsDirty(repoFullName: string, ref: string): string[] {
-    const branch = ref.replace(/^refs\/heads\//, "");
-    const matched = this.tenantPools.filter(
-      (pool) =>
-        pool.repo.toLowerCase() === repoFullName.toLowerCase() &&
-        pool.branch === branch,
-    );
+    const matched = poolsMatchingPush(this.tenantPools, repoFullName, ref);
     for (const pool of matched) this.dirtyPools.add(pool.name);
     return matched.map((pool) => pool.name);
   }

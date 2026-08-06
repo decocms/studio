@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test";
 
 import {
+  claimWarmPoolName,
   parseTenantPools,
+  poolsMatchingPush,
   repoKeyFromCloneUrl,
   resolveTenantPool,
   type TenantPool,
@@ -99,5 +101,46 @@ describe("resolveTenantPool", () => {
 
   it("no pools configured → no pool", () => {
     expect(resolveTenantPool([] as TenantPool[], "org-acme", url)).toBeNull();
+  });
+});
+
+// The one line that actually binds a tenant pod. Get it wrong and either the
+// claim waits on a cold pod (pool silently useless) or — worse — it names a
+// pool belonging to nobody it should reach.
+describe("claimWarmPoolName", () => {
+  it("a resolved pool binds that pool", () => {
+    expect(claimWarmPoolName(POOLS[0] ?? null, true)).toBe("tenant-acme-site");
+  });
+
+  it("no pool in warm-pool mode falls back to the generic pool", () => {
+    expect(claimWarmPoolName(null, true)).toBe("default");
+  });
+
+  it("no sentinel → `none`, so the operator still accepts per-claim env", () => {
+    expect(claimWarmPoolName(null, false)).toBe("none");
+  });
+});
+
+describe("poolsMatchingPush", () => {
+  it("matches the pool's branch, case-insensitively on the repo", () => {
+    expect(
+      poolsMatchingPush(POOLS, "acme/SITE", "refs/heads/main").map(
+        (p) => p.name,
+      ),
+    ).toEqual(["tenant-acme-site"]);
+  });
+
+  it("ignores a push to another branch", () => {
+    expect(poolsMatchingPush(POOLS, "Acme/Site", "refs/heads/dev")).toEqual([]);
+  });
+
+  it("ignores a tag push (refs/tags is not refs/heads)", () => {
+    expect(poolsMatchingPush(POOLS, "Acme/Site", "refs/tags/main")).toEqual([]);
+  });
+
+  it("ignores another repo", () => {
+    expect(poolsMatchingPush(POOLS, "acme/other", "refs/heads/main")).toEqual(
+      [],
+    );
   });
 });

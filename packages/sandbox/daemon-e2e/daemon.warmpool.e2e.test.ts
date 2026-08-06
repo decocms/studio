@@ -99,4 +99,60 @@ describe("daemon e2e: tenant warm pool", () => {
     },
     SETUP_TIMEOUT_MS,
   );
+
+  it(
+    "a same-repo branch change after bootstrap does not reinstall",
+    async () => {
+      // This is the whole point of a warm pool: the claim that binds a pool pod
+      // switches it to the thread's branch, and the deps the pool paid for must
+      // survive that. If they don't, a warm pod is just a cold pod with extra
+      // steps.
+      const withDeps = setupBareRepo({ withPackageJson: true });
+      try {
+        expect((await bootstrapRepo(d, withDeps.url)).status).toBe(200);
+        await waitForOrchestratorIdle(d);
+        expect(d.stdout.value).toContain("installing dependencies");
+
+        const before = d.stdout.value.length;
+        const res = await postConfig(d, {
+          git: { repository: { cloneUrl: withDeps.url, branch: "thread-x" } },
+        });
+        expect(res.status).toBe(200);
+        expect(((await res.json()) as { transition: string }).transition).toBe(
+          "branch-change",
+        );
+        await waitForOrchestratorIdle(d);
+
+        const since = d.stdout.value.slice(before);
+        expect(since).toContain("running step: clone");
+        expect(since).not.toContain("installing dependencies");
+      } finally {
+        withDeps.cleanup();
+      }
+    },
+    SETUP_TIMEOUT_MS,
+  );
+
+  it(
+    "a different-repo config is refused, so a pod can't be repurposed",
+    async () => {
+      // Why pools are keyed (org, repo): a pod prewarmed on repo A can never
+      // serve a claim for repo B. The claim falls back to a cold pod instead of
+      // silently getting someone else's checkout.
+      expect((await bootstrapRepo(d, repo.url)).status).toBe(200);
+      await waitForOrchestratorIdle(d);
+
+      const other = setupBareRepo();
+      try {
+        const res = await postConfig(d, {
+          git: { repository: { cloneUrl: other.url } },
+        });
+        expect(res.status).toBeGreaterThanOrEqual(400);
+        expect(await res.text()).toContain("cloneUrl");
+      } finally {
+        other.cleanup();
+      }
+    },
+    SETUP_TIMEOUT_MS,
+  );
 });

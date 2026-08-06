@@ -97,6 +97,36 @@ export function resolveTenantPool(
   );
 }
 
+/**
+ * The claim's `spec.warmpool`. A resolved tenant pool binds one of that org's
+ * already-running pods; otherwise this is exactly today's behavior — the
+ * generic (empty) pool in warm-pool mode, `"none"` without a sentinel, because
+ * the operator rejects per-claim env outside `"none"`.
+ */
+export function claimWarmPoolName(
+  pool: TenantPool | null,
+  warmPoolMode: boolean,
+): string {
+  return pool?.name ?? (warmPoolMode ? "default" : "none");
+}
+
+/**
+ * Pools a GitHub push event makes stale. Branch match is case-SENSITIVE (git
+ * refs are); repo match is not (GitHub owners/names aren't).
+ */
+export function poolsMatchingPush(
+  pools: readonly TenantPool[],
+  repoFullName: string,
+  ref: string,
+): TenantPool[] {
+  const branch = ref.replace(/^refs\/heads\//, "");
+  return pools.filter(
+    (pool) =>
+      pool.repo.toLowerCase() === repoFullName.toLowerCase() &&
+      pool.branch === branch,
+  );
+}
+
 /** Anonymous clone URL for a pool's repo; the credential is minted per bootstrap. */
 export function poolCloneUrl(pool: TenantPool): string {
   return `https://github.com/${pool.repo}.git`;
