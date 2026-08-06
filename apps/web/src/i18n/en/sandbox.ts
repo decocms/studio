@@ -614,6 +614,9 @@ export const sandbox = {
   "sandbox.sectionsRightPane.selectSectionDescription":
     "Pick a saved section to edit it, or an available one to customize and save as global.",
   "sandbox.sectionsRightPane.selectSectionTitle": "Select a section to edit",
+  "sandbox.stateCard.githubConnectionMissingMessage":
+    "The GitHub connection this chat used was removed. Link the repository again to start the sandbox.",
+  "sandbox.stateCard.linkRepoAgain": "Link repository",
   "sandbox.stateCard.githubNotAuthenticatedMessage":
     "This agent's GitHub repo isn't authenticated. Reconnect it in Connections, then retry.",
   "sandbox.stateCard.reconnectGithub": "Reconnect GitHub",
