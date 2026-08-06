@@ -45,6 +45,14 @@ const TRANSIENT_ERROR_PATTERNS: RegExp[] = [
   /sandbox did not become ready/i,
   // Provider/daemon unreachable while claiming or dispatching.
   /sandbox (?:provisioning|claim) failed/i,
+  // The pod's preflight found Studio's own MCP unreachable and refused to run
+  // ("studio MCP is unusable (...): studio=failed"). Nothing about the task —
+  // Studio was saturated, restarting, or out of DB connections. Observed on a
+  // second 8-card burst, where it took 4 of the 8.
+  /mcp is unusable/i,
+  // The daemon's stream died mid-run. The work may be half-done, which is why
+  // the re-dispatch reuses the PR branch when there is one.
+  /harness_crashed: unexpected eof/i,
   // Postgres connection exhaustion under a burst ("sorry, too many clients").
   /too many clients already/i,
   // Upstream rate limit / capacity, from the model gateway or GitHub.
