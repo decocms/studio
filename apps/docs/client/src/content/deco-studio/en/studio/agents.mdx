@@ -82,11 +82,17 @@ For agents backed by the Agentic CMS, **Settings → CMS** groups content-editin
 
 - **Preview** — a **preview server** URL (your live site's address) and a **Fast Preview** switch. With Fast Preview on, the **Preview** tab renders the current draft directly against your preview server instead of booting the sandbox's dev server — useful for a much faster preview loop once a preview server is configured. The switch stays disabled until a preview server URL is set.
 - **Publishing** — the existing publish-policy picker (who can publish changes).
-- **Editing** — content-editing preferences: **Compact descriptions** (show field descriptions as tooltips instead of inline text) and **Auto-open editor** (open the CMS automatically when the agent's Preview tab loads).
+- **Editing** — content-editing preferences: **Compact descriptions** (show field descriptions as tooltips instead of inline text), **Auto-open editor** (open the CMS automatically when the agent's Preview tab loads), and **Team sync** (agents linked to a GitHub repo only — see [Sync with your team](#sync-with-your-team) below).
 
 <Callout type="tip">
   Fast Preview never renders your published site — it always shows the sandbox's draft (or a "booting" state while the sandbox provisions), just sourced from your preview server instead of a locally running dev server.
 </Callout>
+
+### Sync with your team
+
+For agents linked to a GitHub repo, turning on **Team sync** (**Settings → CMS → Editing**) adds a **Sync** button next to the review/publish actions in the thread header. It's off by default.
+
+Clicking **Sync** sends one deterministic instruction to the agent: commit any pending local changes, `git pull --rebase` the branch (picking up commits a teammate pushed straight to it), rebase onto the latest base branch, resolve any conflicts, and push. This lets a teammate who doesn't know git catch a branch up with everyone else's work in one click, instead of having to ask what commands to run.
 
 ## Where an agent runs
 
