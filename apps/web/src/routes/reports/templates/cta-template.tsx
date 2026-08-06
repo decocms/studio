@@ -413,7 +413,7 @@ export default function CtaTemplate({
   const hasCoverage =
     typeof checksProbed === "number" && typeof checksTotal === "number";
   return (
-    <div className="h-full w-full sm:px-6 lg:px-10 sm:pb-2">
+    <div className="h-full w-full sm:px-6 lg:px-10">
       <div
         className="relative flex h-full w-full flex-col items-center gap-8 overflow-hidden rounded-none px-6 pb-0 pt-8 sm:rounded-3xl sm:px-8 sm:pt-10 lg:gap-10 lg:pt-14 [@media(max-height:780px)]:lg:gap-6 [@media(max-height:780px)]:lg:pt-10"
         style={{ background: CARD }}
@@ -523,17 +523,47 @@ export default function CtaTemplate({
             <TaskStream />
           </div>
 
-          {/* center: the diagnostic report card */}
+          {/* center: the diagnostic report card, scanned by the lime sweep
+              line with finding badges popping in around it (gated on
+              [data-play] so it only runs while this slide is active) */}
           <div
             className="reveal relative z-20 shrink-0"
             data-show={show}
+            data-play={show}
             style={{ transitionDelay: active ? "380ms" : "0ms" }}
           >
-            <ReportCard
-              domain={domain}
-              faviconUrl={faviconUrl}
-              initial={initial}
-            />
+            <div className="relative overflow-hidden rounded-t-2xl">
+              <ReportCard
+                domain={domain}
+                faviconUrl={faviconUrl}
+                initial={initial}
+              />
+              <div aria-hidden className="report-scan-line" />
+            </div>
+            <div
+              aria-hidden
+              className="report-badge report-badge-1 pointer-events-none"
+              style={{ top: "6%", left: "8%" }}
+            >
+              <span className="report-dot" style={{ background: "#ef4444" }} />
+              {t("reports.ctaTemplate.finding.lcp")}
+            </div>
+            <div
+              aria-hidden
+              className="report-badge report-badge-2 pointer-events-none"
+              style={{ top: "20%", right: "8%" }}
+            >
+              <span className="report-dot" style={{ background: "#f59e0b" }} />
+              {t("reports.ctaTemplate.finding.cls")}
+            </div>
+            <div
+              aria-hidden
+              className="report-badge report-badge-3 pointer-events-none"
+              style={{ top: "34%", left: "14%" }}
+            >
+              <span className="report-dot" style={{ background: "#a855f7" }} />
+              {t("reports.ctaTemplate.finding.ogImage")}
+            </div>
           </div>
 
           {/* right: delivery cadence card (behind, tilted) */}
