@@ -45,12 +45,15 @@ export function CompanionCardView({
         </span>
       )}
       <div className="flex min-w-0 flex-1 items-center gap-3 sm:items-start">
+        {/* Size comes from the `size` prop alone: IntegrationIcon also emits a
+            min-w-* for its size, which a `size-[…]` override doesn't beat, so
+            overriding the box here would render it wider than it is tall. */}
         <IntegrationIcon
           icon={icon}
           name={title}
           size="sm"
           fit="contain"
-          className="size-[30px] shrink-0 p-1"
+          className="shrink-0 p-1"
         />
         {/* Title + description stacked so the benefit line sits under the title. */}
         <div className="flex min-w-0 flex-col gap-1">

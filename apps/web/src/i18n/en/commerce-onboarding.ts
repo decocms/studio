@@ -15,8 +15,6 @@ export const commerceOnboarding = {
   "commerceOnboarding.companionCard.editConfiguration": "Edit configuration",
   "commerceOnboarding.companionCard.finishSetup": "Finish setup",
   "commerceOnboarding.companionCard.required": "Required",
-  "commerceOnboarding.companionCard.grantAccessDescription":
-    "Grant our reader access and provide the identifier",
   "commerceOnboarding.githubConfigForm.cancel": "Cancel",
   "commerceOnboarding.githubConfigForm.failedToSave":
     "Couldn't save the configuration",
@@ -41,20 +39,91 @@ export const commerceOnboarding = {
   "commerceOnboarding.githubConfigForm.searchRepositoryPlaceholder":
     "Search repository",
   "commerceOnboarding.githubConfigForm.selectRepository": "Select a repository",
-  "commerceOnboarding.saBindingForm.bind": "Bind",
-  "commerceOnboarding.saBindingForm.bindError": "Couldn't bind.",
+  "commerceOnboarding.saBindingForm.bind": "Connect",
+  "commerceOnboarding.saBindingForm.bindError": "Couldn't connect.",
   "commerceOnboarding.saBindingForm.cancel": "Cancel",
   "commerceOnboarding.saBindingForm.connectedSuccess": "{label} connected",
   "commerceOnboarding.saBindingForm.copyEmailLabel":
-    "Copy the service account e-mail",
+    "Copy the reader account e-mail",
   "commerceOnboarding.saBindingForm.emailCopied": "E-mail copied",
   "commerceOnboarding.saBindingForm.googleLoginAlternative":
-    "authorize via Google login",
+    "Sign in with Google instead",
   "commerceOnboarding.saBindingForm.resourceIdRequired":
     "Provide the {resourceLabel}",
   "commerceOnboarding.saBindingForm.storeUrlUnavailable":
-    "Store URL unavailable — reload the page.",
+    "Store URL unavailable. Reload the page.",
   "commerceOnboarding.saBindingForm.verifying": "Verifying...",
+  "commerceOnboarding.saBinding.sampleDomain": "yourstore.com",
+  "commerceOnboarding.saBinding.oauthNote":
+    "Google is still reviewing our app, so its login screen warns that the app isn't verified.",
+  "commerceOnboarding.saBinding.ga4.openConsole": "Open Google Analytics",
+  "commerceOnboarding.saBinding.ga4.step1":
+    "In Google Analytics, open Admin › Property access management.",
+  "commerceOnboarding.saBinding.ga4.step2":
+    "Click +, choose Add users, paste this e-mail and pick the Viewer role.",
+  "commerceOnboarding.saBinding.ga4.step3":
+    "Copy the property ID from Admin › Property details and paste it here.",
+  "commerceOnboarding.saBinding.ga4.resourceLabel": "Property ID",
+  "commerceOnboarding.saBinding.ga4.resourcePlaceholder": "123456789",
+  "commerceOnboarding.saBinding.ga4.resourceHint":
+    "Digits only, without the 'properties/' prefix.",
+  "commerceOnboarding.saBinding.gsc.openConsole": "Open Search Console",
+  "commerceOnboarding.saBinding.gsc.step1":
+    "In Search Console, open Settings › Users and permissions.",
+  "commerceOnboarding.saBinding.gsc.step2":
+    "Click Add user, paste this e-mail and choose the Full permission.",
+  "commerceOnboarding.saBinding.gsc.step3":
+    "Copy the property address exactly as the picker shows it and paste it here.",
+  "commerceOnboarding.saBinding.gsc.resourceLabel": "Site or property",
+  "commerceOnboarding.saBinding.gsc.resourcePlaceholder": "sc-domain:{host}",
+  "commerceOnboarding.saBinding.gsc.resourceHint":
+    "Domain property, or the full URL prefix (https://www.{host}/).",
+  "commerceOnboarding.saBinding.remediation.noAccess.title":
+    "We still can't reach this resource in {label}.",
+  "commerceOnboarding.saBinding.remediation.noAccess.ga4.1":
+    "Check that {email} is listed under Admin › Property access management with the Viewer role.",
+  "commerceOnboarding.saBinding.remediation.noAccess.ga4.2":
+    "Check the property ID: digits only, without the 'properties/' prefix.",
+  "commerceOnboarding.saBinding.remediation.noAccess.ga4.3":
+    "Google can take a few seconds to apply the access. Try again.",
+  "commerceOnboarding.saBinding.remediation.noAccess.gsc.1":
+    "Check that {email} is listed under Settings › Users and permissions.",
+  "commerceOnboarding.saBinding.remediation.noAccess.gsc.2":
+    "The permission has to be Full or Restricted. 'Unverified' doesn't work.",
+  "commerceOnboarding.saBinding.remediation.noAccess.gsc.3":
+    "Check that the address matches exactly what Search Console shows.",
+  "commerceOnboarding.saBinding.remediation.noWebStream.title":
+    "This GA4 property has no web data stream (site) configured.",
+  "commerceOnboarding.saBinding.remediation.noWebStream.1":
+    "In GA4, go to Admin › Data streams.",
+  "commerceOnboarding.saBinding.remediation.noWebStream.2":
+    "Click Add stream › Web.",
+  "commerceOnboarding.saBinding.remediation.noWebStream.3":
+    "Enter your store's site URL and save the stream.",
+  "commerceOnboarding.saBinding.remediation.noWebStream.4":
+    "Come back and try again. App-only properties need a manual link, so talk to support.",
+  "commerceOnboarding.saBinding.remediation.noMatch.title":
+    "That resource doesn't match this store's domain.",
+  "commerceOnboarding.saBinding.remediation.noMatch.ga4.1":
+    "Check the property ID. It probably belongs to another site.",
+  "commerceOnboarding.saBinding.remediation.noMatch.ga4.2":
+    "In GA4 the measured site shows under Admin › Data streams › your web stream › stream URL.",
+  "commerceOnboarding.saBinding.remediation.noMatch.gsc.1":
+    "Check that you picked the Search Console property for this store.",
+  "commerceOnboarding.saBinding.remediation.noMatch.gsc.2":
+    "The address has to cover the same domain as the diagnostic.",
+  "commerceOnboarding.saBinding.remediation.alreadyBound.title":
+    "This resource is already linked to another store.",
+  "commerceOnboarding.saBinding.remediation.alreadyBound.1":
+    "If it really belongs to this store, talk to support for a manual review.",
+  "commerceOnboarding.saBinding.remediation.alreadyBound.2":
+    "If you typed the wrong id, check it and try again.",
+  "commerceOnboarding.saBinding.remediation.unknown.title":
+    "We couldn't verify access to this resource.",
+  "commerceOnboarding.saBinding.remediation.unknown.1":
+    "Go back over the steps above and try again.",
+  "commerceOnboarding.saBinding.remediation.unknown.2":
+    "If it keeps failing, talk to support.",
   "commerceOnboarding.vtexConfigForm.accountNameLabel": "Account name",
   "commerceOnboarding.vtexConfigForm.accountNamePlaceholder":
     "Your VTEX account name",
