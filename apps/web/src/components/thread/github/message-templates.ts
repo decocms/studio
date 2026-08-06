@@ -13,6 +13,7 @@
 
 export interface TemplateContext {
   branch?: string;
+  base?: string;
   prNumber?: number;
   failingChecks?: string[];
   checkName?: string;
@@ -40,6 +41,18 @@ export function reopenPr(ctx: Pick<TemplateContext, "prNumber">): string {
 
 export function rebaseOnBase(ctx: Pick<TemplateContext, "branch">): string {
   return `Rebase \`${ctx.branch}\` on the latest base and force-push with --force-with-lease. ${BUTTON_CONFIRMED}`;
+}
+
+/**
+ * Full sync: catches up with work from both directions — a teammate who
+ * pushed straight to this branch, and the base branch moving on. Kept as one
+ * explicit command sequence (not "sync appropriately") so a business user
+ * clicking this gets the same deterministic outcome every time.
+ */
+export function syncBranch(
+  ctx: Pick<TemplateContext, "branch" | "base">,
+): string {
+  return `Sync \`${ctx.branch}\` with everyone else's work: \`git add -A\`, commit any pending local changes with a concise conventional-commit message (skip if the working tree is clean), \`git pull --rebase\` to bring in anything pushed directly to \`origin/${ctx.branch}\`, then \`git rebase origin/${ctx.base}\` to catch up with the base branch. Resolve any conflicts that come up, then push the result (force-with-lease only if the rebase rewrote commits already on the remote). ${BUTTON_CONFIRMED}`;
 }
 
 export function rerunCheck(

@@ -299,6 +299,20 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const baseBranch =
     effectiveBranchMeta.kind === "ready" ? effectiveBranchMeta.base : "main";
 
+  // Org-level opt-in (metadata.syncButtonEnabled) so a business user doesn't
+  // have to know they need to commit before they can rebase. One
+  // deterministic chat prompt: commit local changes, pull --rebase (picks up
+  // anything a teammate pushed straight to this branch), rebase onto the
+  // latest base, push.
+  const showSync =
+    vm?.metadata?.syncButtonEnabled === true &&
+    Boolean(githubRepo) &&
+    Boolean(githubHeadBranch);
+  const handleSync = () => {
+    if (isStreaming || !githubHeadBranch) return;
+    void send(tpl.syncBranch({ branch: githubHeadBranch, base: baseBranch }));
+  };
+
   const refreshPrState = async () => {
     await Promise.all([
       prQuery.refetch(),
@@ -400,6 +414,8 @@ export function HeaderActions({ virtualMcpId }: Props) {
         onActivate={onActivate}
         showPublishSide={showPublishSide}
         onPublishSide={onPublishSide}
+        showSync={showSync}
+        onSync={handleSync}
         publishGate={publishGate}
         prNumber={pr?.number}
         prBase={pr?.base}
@@ -456,6 +472,8 @@ function HeaderButtonRenderer(props: {
   onActivate: (action: HeaderButton["action"]) => void;
   showPublishSide: boolean;
   onPublishSide: () => void;
+  showSync: boolean;
+  onSync: () => void;
   publishGate: PublishGate;
   prNumber?: number;
   prBase?: string;
@@ -484,15 +502,20 @@ function HeaderButtonRenderer(props: {
     props.prBase != null
   ) {
     return (
-      <WithTooltip label={tooltipLabel}>
-        <MergeSplitButton
-          baseBranch={props.prBase}
-          disabled={disabled}
-          loading={loading}
-          onPublish={() => props.onSquashMerge(props.prNumber!)}
-          onReview={props.onReview}
-        />
-      </WithTooltip>
+      <div className="flex items-center gap-2">
+        <WithTooltip label={tooltipLabel}>
+          <MergeSplitButton
+            baseBranch={props.prBase}
+            disabled={disabled}
+            loading={loading}
+            onPublish={() => props.onSquashMerge(props.prNumber!)}
+            onReview={props.onReview}
+          />
+        </WithTooltip>
+        {props.showSync ? (
+          <SyncButton t={t} busy={actionBusy} onClick={props.onSync} />
+        ) : null}
+      </div>
     );
   }
 
@@ -559,7 +582,36 @@ function HeaderButtonRenderer(props: {
           </Button>
         </WithTooltip>
       ) : null}
+      {props.showSync ? (
+        <SyncButton t={t} busy={actionBusy} onClick={props.onSync} />
+      ) : null}
     </div>
+  );
+}
+
+/**
+ * Same visual weight as the primary "Submit for review" button (variant
+ * "default") — this is a peer action, not a secondary one, so a business
+ * user reads it as equally first-class.
+ */
+function SyncButton({
+  t,
+  busy,
+  onClick,
+}: {
+  t: TFunction;
+  busy: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <WithTooltip label={t("thread.headerActions.syncTooltip")}>
+      <Button size="sm" variant="default" disabled={busy} onClick={onClick}>
+        <RefreshCw01 className="size-4 shrink-0 @3xl/panel-header:hidden" />
+        <span className="@max-3xl/panel-header:hidden">
+          {t("thread.headerActions.sync")}
+        </span>
+      </Button>
+    </WithTooltip>
   );
 }
 

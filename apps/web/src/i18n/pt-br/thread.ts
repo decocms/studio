@@ -96,6 +96,9 @@ export const thread = {
   "thread.headerActions.publishDirectlySkipReview":
     "Publicar diretamente, pulando a revisão",
   "thread.headerActions.publishedPr": "PR #{prNumber} publicado",
+  "thread.headerActions.sync": "Sincronizar",
+  "thread.headerActions.syncTooltip":
+    "Salva suas alterações e atualiza com o trabalho de todos",
   "thread.headerActions.published": "Publicado",
   "thread.headerActions.publishNeedsReview":
     "Esta alteração precisa de revisão antes de publicar.",

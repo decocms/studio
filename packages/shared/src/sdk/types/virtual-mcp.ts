@@ -631,6 +631,22 @@ const fastPreviewMetadataField = z
   );
 
 /**
+ * Reusable `metadata.syncButtonEnabled` field. When true, the CMS preview's
+ * overflow (⋯) menu shows a "Sync" action. Clicking it sends a chat prompt
+ * telling the agent to commit any pending local changes, `git pull --rebase`
+ * this branch (picks up commits a teammate pushed directly to the same
+ * branch), rebase onto the latest base branch, and push — so a business user
+ * never has to know the git steps themselves. Off by default.
+ */
+const syncButtonEnabledMetadataField = z
+  .boolean()
+  .nullable()
+  .optional()
+  .describe(
+    "Show a 'Sync' action in the CMS preview's overflow menu that tells the agent to commit pending changes, pull --rebase this branch, and rebase onto the latest base branch. Off by default.",
+  );
+
+/**
  * Virtual MCP entity schema - single source of truth
  * Compliant with collections binding pattern
  */
@@ -715,6 +731,7 @@ export const VirtualMCPEntitySchema = z.object({
           "Blocks form: opt in to showing a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
         ),
       fastPreview: fastPreviewMetadataField,
+      syncButtonEnabled: syncButtonEnabledMetadataField,
     })
     .loose()
     .describe("Metadata"),
@@ -829,6 +846,7 @@ export const VirtualMCPCreateDataSchema = z.object({
           "Blocks form: opt in to showing a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
         ),
       fastPreview: fastPreviewMetadataField,
+      syncButtonEnabled: syncButtonEnabledMetadataField,
     })
     .loose()
     .nullable()
@@ -924,6 +942,7 @@ export const VirtualMCPUpdateDataSchema = z.object({
           "Blocks form: opt in to showing a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
         ),
       fastPreview: fastPreviewMetadataField,
+      syncButtonEnabled: syncButtonEnabledMetadataField,
     })
     .loose()
     .nullable()
