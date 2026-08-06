@@ -5,7 +5,7 @@
  */
 
 import { useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   DndContext,
@@ -62,6 +62,8 @@ import {
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
+import { QaAgentIcon } from "@/components/qa-agent-icon";
+import { CodeReviewerIcon } from "@/components/code-reviewer-icon";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import {
   Dialog,
@@ -87,8 +89,10 @@ import {
 import { formatTimeAgo } from "@/lib/format-time";
 import {
   insertSortOrder,
+  isReviewerThreadTitle,
   isTaskBlocked,
   primaryThread,
+  reviewerThreads,
   PRIORITIES,
   PRIORITY_CONFIG,
   runSortOrders,
@@ -101,10 +105,15 @@ import {
   type TaskBoardItemPriority,
   type TaskBoardItemStatus,
   type TaskBoardItemTag,
+  type TaskBoardItemThread,
   type Member,
 } from "./config";
 import { useTags } from "@/hooks/use-tags";
-import { TaskBoardItemDialog, toEndOfDayIso } from "./task-dialog";
+import {
+  TaskBoardItemDialog,
+  threadStatusStyle,
+  toEndOfDayIso,
+} from "./task-dialog";
 import { AssigneePickerContent } from "./assignee-picker";
 import { SubscriptionPaywallDialog } from "./subscription-paywall-dialog";
 import { RerunDialog } from "./rerun-dialog";
@@ -1699,7 +1708,16 @@ function TaskCard({
 }) {
   const t = useT();
   const StatusIcon = STATUS_CONFIG[item.status].icon;
-  const lastMessage = primaryThread(item)?.lastMessage;
+  // The Super Agent's own thread, not one of its reviewers' — falls back to
+  // the most recent thread overall so a card still shows something before the
+  // reviewer/main distinction exists (e.g. mid-migration data).
+  const mainThread =
+    item.threads.find(
+      (thr) =>
+        !isReviewerThreadTitle(thr.title, "qa") &&
+        !isReviewerThreadTitle(thr.title, "code_review"),
+    ) ?? primaryThread(item);
+  const reviewThreads = reviewerThreads(item);
 
   const showAutoFix =
     onAutoFix &&
@@ -1733,7 +1751,7 @@ function TaskCard({
         else onOpen();
       }}
       className={cn(
-        "group flex shrink-0 cursor-grab flex-col gap-2 rounded-xl bg-card px-3 py-2.5 text-left card-shadow hover:bg-accent/60 active:cursor-grabbing",
+        "group relative flex shrink-0 cursor-grab flex-col gap-2 rounded-xl bg-card px-3 py-2.5 text-left card-shadow hover:bg-accent/60 active:cursor-grabbing",
         selected && "bg-accent",
         className,
       )}
@@ -1755,12 +1773,6 @@ function TaskCard({
           onAssign={onAssign}
         />
       </div>
-
-      {lastMessage && (
-        <p className="line-clamp-2 pl-6 text-xs leading-snug text-muted-foreground">
-          {lastMessage}
-        </p>
-      )}
 
       {(isTaskBlocked(item) ||
         item.priority !== "none" ||
@@ -1799,15 +1811,86 @@ function TaskCard({
             e.stopPropagation();
             onRerun();
           }}
-          // Hover-revealed: every Super-Agent card qualifies, so showing it
-          // always would put a button on nearly the whole board.
-          className="flex items-center gap-1.5 self-end rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground opacity-0 transition-opacity hover:bg-accent focus-visible:opacity-100 group-hover:opacity-100"
+          // Absolutely positioned so it never reserves layout space: every
+          // Super-Agent card qualifies, so a flow-positioned hover button
+          // left a permanent empty gap on every card, and showing it
+          // unconditionally would put a button on nearly the whole board.
+          className="pointer-events-none absolute bottom-2 right-2 z-10 flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground opacity-0 shadow-sm transition-opacity hover:bg-accent focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
         >
           <RefreshCw01 size={12} />
           {t("taskBoard.taskBoard.rerun")}
         </button>
       )}
+
+      {mainThread && (
+        <div className="-mx-3 flex flex-col gap-1.5 border-t border-border px-3 pt-3">
+          <AgentThreadFooterRow
+            icon={<SuperAgentIcon size={14} />}
+            name={t("taskBoard.taskDialog.superAgentDefaultName")}
+            thread={mainThread}
+          />
+          {reviewThreads.map(({ kind, thread }) => (
+            <AgentThreadFooterRow
+              key={thread.threadId}
+              icon={
+                kind === "qa" ? (
+                  <QaAgentIcon size={14} />
+                ) : (
+                  <CodeReviewerIcon size={14} />
+                )
+              }
+              name={t(
+                kind === "qa"
+                  ? "taskBoard.taskDialog.qaAgentLabel"
+                  : "taskBoard.taskDialog.codeReviewerLabel",
+              )}
+              thread={thread}
+            />
+          ))}
+        </div>
+      )}
     </button>
+  );
+}
+
+/**
+ * One agent's row in the card footer, all on a single truncated line: glyph,
+ * name, its live status — e.g. the red "Error" state — then a preview of the
+ * thread's last message. A condensed version of `ThreadActivityItem`'s status
+ * row in the task dialog.
+ */
+function AgentThreadFooterRow({
+  icon,
+  name,
+  thread,
+}: {
+  icon: ReactNode;
+  name: string;
+  thread: TaskBoardItemThread;
+}) {
+  const t = useT();
+  const state = thread.status ? threadStatusStyle(thread.status, t) : null;
+
+  return (
+    <div className="flex items-center gap-1.5">
+      {icon}
+      <span className="shrink-0 text-xs font-medium text-foreground">
+        {name}
+      </span>
+      {state && (
+        <span
+          className={cn("flex shrink-0 items-center gap-1", state.className)}
+        >
+          <state.icon size={12} className={cn(state.spin && "animate-spin")} />
+          <span className="text-xs">{state.label}</span>
+        </span>
+      )}
+      {thread.lastMessage && (
+        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+          {thread.lastMessage}
+        </span>
+      )}
+    </div>
   );
 }
 

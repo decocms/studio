@@ -1,5 +1,20 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+
+// Each test here spawns a real `oxlint` subprocess. Under CI's parallel test
+// load (this file, ban-e2e-app-imports, and ban-web-server-imports all spawn
+// oxlint concurrently), process-spawn scheduling can occasionally exceed
+// bun's 5000ms default test timeout even though the fixture itself lints in
+// well under a second locally — see the timed-out "bans @/ import" /
+// "bans relative apps/api reach-in" failures in CI run 92623000778.
+setDefaultTimeout(20_000);
 
 const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 const TMP = `${ROOT}/.ban-cross-tree.tmp`;

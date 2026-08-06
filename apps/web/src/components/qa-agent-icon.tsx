@@ -2,8 +2,8 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { QA_AGENT_ICON_URL } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 
-/** The QA Agent shield-check glyph, rendered as a round avatar so it sits
- *  alongside the Super Agent and member avatars in the assignee picker. */
+/** The QA Agent glyph, rendered as a round avatar so it sits alongside the
+ *  Super Agent and member avatars in the assignee picker. */
 export function QaAgentIcon({
   size = 16,
   className,
