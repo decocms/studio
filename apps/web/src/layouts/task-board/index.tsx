@@ -1821,7 +1821,7 @@ function TaskCard({
       )}
 
       {mainThread && (
-        <div className="-mx-3 flex flex-col gap-1.5 border-t border-border px-3 pt-2">
+        <div className="-mx-3 flex flex-col gap-1.5 border-t border-border px-3 pt-3">
           <AgentThreadFooterRow
             icon={<SuperAgentIcon size={14} />}
             name={t("taskBoard.taskDialog.superAgentDefaultName")}
