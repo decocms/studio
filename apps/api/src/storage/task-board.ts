@@ -668,6 +668,75 @@ export class TaskBoardStorage {
   }
 
   /**
+   * Fail every task-linked thread that no run can still be behind, in ONE
+   * statement, and say which cards they were on.
+   *
+   * `run_started_at IS NULL` is the discriminator (same as `isNeverStartedRun`):
+   * the run never began, so no pod owns it and DBOS cannot resume it. A run that
+   * DID begin belongs to the idle reaper.
+   *
+   * This exists as SQL on the board storage because the sweeper has to do it
+   * headlessly and for BOTH lanes. `recoverStalledTasks` already reaped these,
+   * but only on `TASK_BOARD_ITEM_LIST` (a human opening the board) and only for
+   * cards parked In Progress — so a REVIEWER thread whose dispatch never landed
+   * sat `in_progress` forever, and `reviewerHandledThisCycle` read it as a live
+   * review and never retried that reviewer. Three of them did exactly that in
+   * one burst.
+   *
+   * Marking them `failed`/`abandoned` is what hands them to the reactions that
+   * already exist: a Super Agent thread to `reactToFailedTaskRun` (retry), a
+   * reviewer thread to the reviewer retry (a failed attempt is not a review).
+   */
+  async failNeverStartedLinkedThreads(
+    limit: number,
+    staleBefore: Date,
+    reason: string,
+  ): Promise<{ threadId: string; itemId: string; organizationId: string }[]> {
+    const candidates = await this.db
+      .selectFrom("threads as t")
+      .innerJoin("task_board_item_threads as l", "l.thread_id", "t.id")
+      .select([
+        "t.id as threadId",
+        "l.task_board_item_id as itemId",
+        "l.organization_id as organizationId",
+      ])
+      .where("t.status", "=", "in_progress")
+      .where("t.run_started_at", "is", null)
+      .where((eb) =>
+        eb.and([
+          eb("t.updated_at", "<", staleBefore),
+          eb.or([
+            eb("t.last_progress_at", "is", null),
+            eb("t.last_progress_at", "<", staleBefore),
+          ]),
+        ]),
+      )
+      .limit(limit)
+      .execute();
+    if (candidates.length === 0) return [];
+    const ids = candidates.map((r) => r.threadId);
+    // Conditional on `in_progress` so a terminal status written between the read
+    // and here is never clobbered.
+    const failed = await this.db
+      .updateTable("threads")
+      .set({
+        status: "failed",
+        failure_reason: reason,
+        failure_kind: "abandoned",
+        run_owner_pod: null,
+        run_config: null,
+        run_started_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .where("id", "in", ids)
+      .where("status", "=", "in_progress")
+      .returning("id")
+      .execute();
+    const won = new Set(failed.map((r) => r.id));
+    return candidates.filter((r) => won.has(r.threadId));
+  }
+
+  /**
    * Super Agent cards stuck In Progress with no live run and no retry armed —
    * the ones whose failure reaction never happened.
    *

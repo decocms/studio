@@ -389,6 +389,82 @@ describe("failed runs never reach In Review (real Postgres)", () => {
     expect(stuck.map((s) => s.id)).not.toContain(task.id);
   });
 
+  // The gap that stranded a card's reviewers: a reviewer thread whose dispatch
+  // never landed stayed `in_progress`, read as a live review, and blocked that
+  // reviewer's retry for the whole cycle. Nothing reaped it — the board-open
+  // recovery only looked at cards parked In Progress.
+  it("fails a never-started thread on ANY lane, and says which card", async () => {
+    const { task, thread } = await cardWithRun("never dispatched", "completed");
+    await database.db
+      .updateTable("threads")
+      .set({
+        status: "in_progress",
+        run_started_at: null,
+        last_progress_at: null,
+        updated_at: new Date(Date.now() - 60 * 60_000).toISOString(),
+      })
+      .where("id", "=", thread.id)
+      .execute();
+    // In Review — the lane the old reaper skipped.
+    await database.db
+      .updateTable("task_board_items")
+      .set({ status: "in_review" })
+      .where("id", "=", task.id)
+      .execute();
+
+    const reaped = await taskBoard.failNeverStartedLinkedThreads(
+      10,
+      new Date(Date.now() - 30 * 60_000),
+      "never started",
+    );
+
+    expect(reaped.map((r) => r.threadId)).toContain(thread.id);
+    expect(reaped.find((r) => r.threadId === thread.id)?.itemId).toBe(task.id);
+  });
+
+  it("leaves a run that actually STARTED to the idle reaper", async () => {
+    const { thread } = await cardWithRun("started then quiet", "completed");
+    await database.db
+      .updateTable("threads")
+      .set({
+        status: "in_progress",
+        run_started_at: new Date(Date.now() - 60 * 60_000).toISOString(),
+        updated_at: new Date(Date.now() - 60 * 60_000).toISOString(),
+      })
+      .where("id", "=", thread.id)
+      .execute();
+
+    const reaped = await taskBoard.failNeverStartedLinkedThreads(
+      10,
+      new Date(Date.now() - 30 * 60_000),
+      "never started",
+    );
+
+    expect(reaped.map((r) => r.threadId)).not.toContain(thread.id);
+  });
+
+  it("leaves a fresh never-started thread alone (it may still be dispatching)", async () => {
+    const { thread } = await cardWithRun("just enqueued", "completed");
+    await database.db
+      .updateTable("threads")
+      .set({
+        status: "in_progress",
+        run_started_at: null,
+        last_progress_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .where("id", "=", thread.id)
+      .execute();
+
+    const reaped = await taskBoard.failNeverStartedLinkedThreads(
+      10,
+      new Date(Date.now() - 30 * 60_000),
+      "never started",
+    );
+
+    expect(reaped.map((r) => r.threadId)).not.toContain(thread.id);
+  });
+
   it("sends an exhausted card back to To Do and clears its retry state", async () => {
     const { task } = await cardWithRun("out of retries", "failed");
     await taskBoard.scheduleRunRetry(task.id, ORG2, 3, new Date());

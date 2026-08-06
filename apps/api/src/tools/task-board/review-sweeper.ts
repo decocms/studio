@@ -58,6 +58,8 @@ import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
 import { reactToFailedTaskRun } from "./run-reactions";
+import { ABANDONED_FAILURE_REASON } from "./stall-recovery";
+import { THREAD_EXPIRY_MS } from "@/tools/thread/helpers";
 import { fetchPrLiveState, prReadyForReview } from "./prs-get";
 
 /** How often to LOOK for due cards. A minute is well under the time a human
@@ -151,6 +153,10 @@ export class TaskBoardReviewSweeper {
           console.error(`[task-board-review-sweeper] ${id} failed`, err);
         }
       }
+      // Reap FIRST: a thread whose dispatch never landed reads as a live run to
+      // every pass below (and to `reviewerHandledThisCycle`), so it has to become
+      // `failed` before anything can react to it.
+      await this.reapNeverStartedThreads(batchSize);
       dispatched += await this.dispatchDueRetries(batchSize);
       await this.reactToUnhandledFailures(batchSize);
     } catch (err) {
@@ -159,6 +165,39 @@ export class TaskBoardReviewSweeper {
       this.running = false;
     }
     return dispatched;
+  }
+
+  /**
+   * Fail task-linked threads whose run never started, headlessly and in BOTH
+   * lanes.
+   *
+   * `recoverStalledTasks` already did this, but only on `TASK_BOARD_ITEM_LIST`
+   * (so never without a human opening the board) and only for cards parked In
+   * Progress — which left a REVIEWER thread whose dispatch never landed sitting
+   * `in_progress` forever, read as a live review, blocking that reviewer's retry
+   * for the rest of the cycle. Three of them did exactly that in one burst, on a
+   * card whose PR was sitting there waiting for a verdict.
+   *
+   * Marking them failed is the whole fix: from there the existing reactions take
+   * over — `reactToFailedTaskRun` retries a Super Agent thread, and a failed
+   * reviewer attempt no longer counts as handled.
+   */
+  private async reapNeverStartedThreads(limit: number): Promise<void> {
+    try {
+      const reaped = await this.taskBoard.failNeverStartedLinkedThreads(
+        limit,
+        new Date(Date.now() - THREAD_EXPIRY_MS),
+        ABANDONED_FAILURE_REASON,
+      );
+      for (const r of reaped) {
+        console.warn(
+          `[task-board-review-sweeper] failed never-started thread ` +
+            `${r.threadId} on ${r.itemId}`,
+        );
+      }
+    } catch (err) {
+      console.error("[task-board-review-sweeper] reaping failed", err);
+    }
   }
 
   /**
