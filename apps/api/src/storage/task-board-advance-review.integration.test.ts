@@ -319,6 +319,76 @@ describe("failed runs never reach In Review (real Postgres)", () => {
     expect(claims.filter(Boolean)).toHaveLength(1);
   });
 
+  // The floor for a failure whose reaction never ran (pod died between
+  // `markRunFailed` and the hook). Without it, such a card is In Progress with a
+  // dead run, no retry armed, and — now that a failed run no longer advances —
+  // nothing at all looking at it.
+  it("finds a card stuck after a failure nobody reacted to", async () => {
+    const { task, thread } = await cardWithRun("nobody reacted", "failed");
+    // Age the failure past the grace window the sweeper waits out.
+    await database.db
+      .updateTable("threads")
+      .set({ updated_at: new Date(Date.now() - 10 * 60_000).toISOString() })
+      .where("id", "=", thread.id)
+      .execute();
+    // Only Super Agent cards are the sweeper's business.
+    await database.db
+      .updateTable("task_board_items")
+      .set({ assignee_id: "super-agent" })
+      .where("id", "=", task.id)
+      .execute();
+
+    const stuck = await taskBoard.listItemsStuckAfterFailure(10, new Date());
+
+    expect(stuck.map((s) => s.id)).toContain(task.id);
+    expect(stuck.find((s) => s.id === task.id)?.threadId).toBe(thread.id);
+  });
+
+  it("ignores a stuck-looking card that already has a retry armed", async () => {
+    const { task, thread } = await cardWithRun("already armed", "failed");
+    await database.db
+      .updateTable("threads")
+      .set({ updated_at: new Date(Date.now() - 10 * 60_000).toISOString() })
+      .where("id", "=", thread.id)
+      .execute();
+    await database.db
+      .updateTable("task_board_items")
+      .set({ assignee_id: "super-agent" })
+      .where("id", "=", task.id)
+      .execute();
+    await taskBoard.scheduleRunRetry(task.id, ORG2, 1, new Date(Date.now() + 60_000));
+
+    const stuck = await taskBoard.listItemsStuckAfterFailure(10, new Date());
+
+    expect(stuck.map((s) => s.id)).not.toContain(task.id);
+  });
+
+  it("ignores a card whose sibling run is still working", async () => {
+    const { task, thread } = await cardWithRun("sibling live", "failed");
+    await database.db
+      .updateTable("threads")
+      .set({ updated_at: new Date(Date.now() - 10 * 60_000).toISOString() })
+      .where("id", "=", thread.id)
+      .execute();
+    await database.db
+      .updateTable("task_board_items")
+      .set({ assignee_id: "super-agent" })
+      .where("id", "=", task.id)
+      .execute();
+    const live = await threads.create({
+      organization_id: ORG2,
+      title: "Super Agent: retry",
+      status: "in_progress",
+      message_storage_version: 2,
+      created_by: USER2,
+    });
+    await taskBoard.linkThread(task.id, live.id, ORG2);
+
+    const stuck = await taskBoard.listItemsStuckAfterFailure(10, new Date());
+
+    expect(stuck.map((s) => s.id)).not.toContain(task.id);
+  });
+
   it("sends an exhausted card back to To Do and clears its retry state", async () => {
     const { task } = await cardWithRun("out of retries", "failed");
     await taskBoard.scheduleRunRetry(task.id, ORG2, 3, new Date());

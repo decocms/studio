@@ -668,6 +668,62 @@ export class TaskBoardStorage {
   }
 
   /**
+   * Super Agent cards stuck In Progress with no live run and no retry armed —
+   * the ones whose failure reaction never happened.
+   *
+   * `reactToFailedTaskRun` runs on a terminal hook, so a pod that dies between
+   * `markRunFailed` and that reaction leaves a card In Progress forever: no live
+   * thread to finish, no `retry_at` to come due, and (by design now) no advance
+   * to In Review. This is the floor that finds those, and it is deliberately
+   * derived from FACTS on the rows rather than from having observed an event.
+   *
+   * "No live run" = every linked thread that was actually used has reached a
+   * terminal status. `retry_at IS NULL` excludes cards already waiting, and the
+   * newest used thread must have FAILED — a card whose run completed is the
+   * advance's business, not this one's.
+   */
+  async listItemsStuckAfterFailure(
+    limit: number,
+    staleBefore: Date,
+  ): Promise<{ id: string; organizationId: string; threadId: string }[]> {
+    const rows = await this.db
+      .selectFrom("task_board_items as i")
+      .innerJoin("task_board_item_threads as l", "l.task_board_item_id", "i.id")
+      .innerJoin("threads as t", "t.id", "l.thread_id")
+      .select([
+        "i.id as id",
+        "i.organization_id as organizationId",
+        "t.id as threadId",
+      ])
+      .where("i.status", "=", "in_progress")
+      .where("i.assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID)
+      .where("i.dismissed_at", "is", null)
+      .where("i.retry_at", "is", null)
+      .where("t.status", "=", "failed")
+      // Give the in-band reaction time to do its job before stepping in.
+      .where("t.updated_at", "<", staleBefore)
+      // No other thread on the card is still working.
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom("task_board_item_threads as l2")
+              .innerJoin("threads as t2", "t2.id", "l2.thread_id")
+              .select("t2.id")
+              .whereRef("l2.task_board_item_id", "=", "i.id")
+              .where("t2.status", "in", ["in_progress", "requires_action"]),
+          ),
+        ),
+      )
+      .orderBy("t.updated_at", "desc")
+      .limit(limit)
+      .execute();
+    // One entry per card: the newest failed thread is the one to react to.
+    const seen = new Set<string>();
+    return rows.filter((r) => !seen.has(r.id) && seen.add(r.id));
+  }
+
+  /**
    * Cards whose retry is due, oldest first. Claimed one at a time by the caller
    * via `claimDueRetry`, so a batch read here is safe across replicas.
    */

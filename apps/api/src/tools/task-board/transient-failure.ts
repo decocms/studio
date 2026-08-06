@@ -62,6 +62,37 @@ const TRANSIENT_ERROR_PATTERNS: RegExp[] = [
   /\b(?:429|503)\b|too many requests|service unavailable/i,
 ];
 
+/**
+ * How many times a card may be re-dispatched after this failure.
+ *
+ * The policy is "always recover from infrastructure, and give everything else
+ * exactly one benefit of the doubt":
+ *
+ * - **Recognized infrastructure** gets the full budget. These reproduce until
+ *   capacity returns, and waiting is the whole fix.
+ * - **Anything unrecognized** gets ONE retry. The generic `"error"` kind covers
+ *   both a real agent error and an infrastructure failure whose message we've
+ *   never seen — and the second kind keeps showing up (three new messages in two
+ *   bursts). Parking those was how a card silently stopped moving, and one extra
+ *   run is cheaper than a human noticing. A genuine agent error simply
+ *   reproduces and lands in To Do one attempt later.
+ * - **Deliberate** acts get none: a human cancelled it.
+ *
+ * Budgets, not booleans, so a broken cluster still terminates.
+ */
+export const TRANSIENT_RETRY_BUDGET = 3;
+export const UNKNOWN_RETRY_BUDGET = 1;
+
+export function retryBudgetFor(failure: {
+  kind: string | null;
+  errorText?: string | null;
+}): number {
+  if (DELIBERATE_KINDS.has(failure.kind ?? "")) return 0;
+  return isTransientRunFailure(failure)
+    ? TRANSIENT_RETRY_BUDGET
+    : UNKNOWN_RETRY_BUDGET;
+}
+
 export function isTransientRunFailure(failure: {
   kind: string | null;
   /** The run's error part text, when it has one. */

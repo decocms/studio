@@ -57,7 +57,7 @@ import type { TaskBoardStorage } from "@/storage/task-board";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
-import { MAX_RUN_RETRIES } from "./run-reactions";
+import { reactToFailedTaskRun } from "./run-reactions";
 import { fetchPrLiveState, prReadyForReview } from "./prs-get";
 
 /** How often to LOOK for due cards. A minute is well under the time a human
@@ -78,6 +78,17 @@ const DEFAULT_ITEM_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
  *  on what the sweep can reach — ticks page through the backlog with a keyset
  *  cursor (see `listItemsPendingReview`). */
 const DEFAULT_BATCH_SIZE = 50;
+
+/** How long to wait before retrying a retry whose DISPATCH threw (not the run —
+ *  the enqueue itself). Short: nothing was spent, and the failure is usually a
+ *  blip in the context factory or the quota read. */
+const REARM_DELAY_MS = 60 * 1000;
+
+/** How long a failed run may sit unreacted-to before the sweeper steps in. Long
+ *  enough that the in-band reaction (which runs within milliseconds of the
+ *  failure) always wins the normal case, short enough that a card whose pod died
+ *  mid-reaction recovers on its own. */
+const UNHANDLED_FAILURE_GRACE_MS = 2 * 60 * 1000;
 
 export interface TaskBoardReviewSweeperOptions {
   intervalMs?: number;
@@ -141,12 +152,44 @@ export class TaskBoardReviewSweeper {
         }
       }
       dispatched += await this.dispatchDueRetries(batchSize);
+      await this.reactToUnhandledFailures(batchSize);
     } catch (err) {
       console.error("[task-board-review-sweeper] sweep failed", err);
     } finally {
       this.running = false;
     }
     return dispatched;
+  }
+
+  /**
+   * Run the failure reaction for cards whose reaction never ran.
+   *
+   * `reactToFailedTaskRun` fires on a terminal hook, so a pod that dies between
+   * `markRunFailed` and that reaction leaves the card In Progress with a dead
+   * run, no retry armed, and nothing else looking at it — now that a failed run
+   * no longer advances to In Review, that would be a permanent strand. This is
+   * the floor: the reaction is idempotent (it re-reads the card and both writes
+   * are conditional on In Progress), so re-running it costs a query and fixes the
+   * gap with no bookkeeping of its own.
+   */
+  private async reactToUnhandledFailures(limit: number): Promise<void> {
+    const stuck = await this.taskBoard.listItemsStuckAfterFailure(
+      limit,
+      new Date(Date.now() - UNHANDLED_FAILURE_GRACE_MS),
+    );
+    for (const { id, organizationId, threadId } of stuck) {
+      try {
+        console.warn(
+          `[task-board-review-sweeper] reacting to an unhandled failure on ${id}`,
+        );
+        await reactToFailedTaskRun(this.taskBoard, threadId, organizationId);
+      } catch (err) {
+        console.error(
+          `[task-board-review-sweeper] unhandled-failure reaction for ${id} failed`,
+          err,
+        );
+      }
+    }
   }
 
   /**
@@ -190,17 +233,33 @@ export class TaskBoardReviewSweeper {
         await enqueueSuperAgentForTask(ctx, item);
         count++;
         console.warn(
-          `[task-board-review-sweeper] re-dispatched ${id} after an ` +
-            `infrastructure failure (attempt ${attempts}/${MAX_RUN_RETRIES})`,
+          `[task-board-review-sweeper] re-dispatched ${id} after a failure ` +
+            `(attempt ${attempts})`,
         );
       } catch (err) {
-        // The claim already cleared `retry_at`, so a throw here means this
-        // attempt is spent and the card sits In Progress until the next failure
-        // reaction or a human. Loud, because a run was budgeted and not spent.
         console.error(
           `[task-board-review-sweeper] retry dispatch for ${id} failed`,
           err,
         );
+        // The claim already cleared `retry_at`, so leaving it here would spend
+        // the attempt on a run that never started — the exact silent strand this
+        // whole path exists to remove. Re-arm it instead: the dispatch itself can
+        // fail on infrastructure (the context factory, the quota read), and that
+        // deserves the same recovery as the run it was going to start. The
+        // attempt counter is untouched, so the budget still terminates.
+        await this.taskBoard
+          .scheduleRunRetry(
+            id,
+            organizationId,
+            attempts,
+            new Date(Date.now() + REARM_DELAY_MS),
+          )
+          .catch((rearmErr) =>
+            console.error(
+              `[task-board-review-sweeper] re-arming ${id} failed`,
+              rearmErr,
+            ),
+          );
       }
     }
     return count;

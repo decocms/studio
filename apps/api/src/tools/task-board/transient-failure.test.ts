@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { isTransientRunFailure } from "./transient-failure";
+import {
+  isTransientRunFailure,
+  retryBudgetFor,
+  TRANSIENT_RETRY_BUDGET,
+  UNKNOWN_RETRY_BUDGET,
+} from "./transient-failure";
 
 describe("isTransientRunFailure", () => {
   // The failure that stranded eight cards In Review at once: the local cluster
@@ -77,5 +82,41 @@ describe("isTransientRunFailure", () => {
       false,
     );
     expect(isTransientRunFailure({ kind: null })).toBe(false);
+  });
+});
+
+describe("retryBudgetFor", () => {
+  test("recognized infrastructure gets the full budget", () => {
+    expect(
+      retryBudgetFor({
+        kind: "error",
+        errorText: "Sandbox did not become ready within 180 seconds",
+      }),
+    ).toBe(TRANSIENT_RETRY_BUDGET);
+  });
+
+  // The policy that matters: three previously-unseen infrastructure messages
+  // showed up across two bursts, and parking those was how a card silently
+  // stopped moving. An unrecognized failure gets one benefit of the doubt; a
+  // genuine agent error reproduces and lands in To Do one attempt later.
+  test("an unrecognized failure gets exactly one attempt, not zero", () => {
+    expect(
+      retryBudgetFor({
+        kind: "error",
+        errorText: "TypeError: cannot read property 'map' of undefined",
+      }),
+    ).toBe(UNKNOWN_RETRY_BUDGET);
+    expect(UNKNOWN_RETRY_BUDGET).toBeGreaterThan(0);
+  });
+
+  test("a deliberate cancel gets none", () => {
+    for (const kind of ["cancelled", "superseded"]) {
+      expect(retryBudgetFor({ kind })).toBe(0);
+    }
+  });
+
+  // A budget, not a boolean — a permanently broken cluster has to terminate.
+  test("every budget is finite", () => {
+    expect(TRANSIENT_RETRY_BUDGET).toBeLessThan(10);
   });
 });

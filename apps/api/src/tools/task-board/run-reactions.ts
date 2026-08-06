@@ -24,7 +24,7 @@ import type { OrganizationBillingStorage } from "@/storage/organization-billing"
 import { TERMINAL_THREAD_STATUSES } from "@/storage/task-board";
 import type { StudioContext } from "@/core/studio-context";
 import { extractPrFromValue } from "./pr-extract";
-import { isTransientRunFailure } from "./transient-failure";
+import { retryBudgetFor } from "./transient-failure";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { sseHub } from "@/event-bus/sse-hub";
 import {
@@ -222,10 +222,10 @@ export async function advanceTasksToReviewOnThreadFinish(
   await refundUnproductiveTaskClaims(taskBoard, billing, threadId, orgId);
 }
 
-/** How many times a card may be re-dispatched after an infrastructure failure.
- *  Three: enough to ride out a warm-pool drought or a node rolling, few enough
- *  that a genuinely broken cluster surfaces on the board instead of looping. */
-export const MAX_RUN_RETRIES = 3;
+/** The per-failure retry budget lives in `transient-failure.ts`
+ *  (`retryBudgetFor`): the full budget for recognized infrastructure, one
+ *  benefit-of-the-doubt attempt for anything unrecognized, none for a
+ *  deliberate cancel. */
 
 /** Backoff between retries. The failure we retry is capacity, so the wait has to
  *  be long enough for capacity to actually return (a sandbox readiness timeout
@@ -263,7 +263,7 @@ export async function reactToFailedTaskRun(
   try {
     const failure = await taskBoard.failedRunInfo(threadId, orgId);
     if (!failure) return;
-    const transient = isTransientRunFailure(failure);
+    const budget = retryBudgetFor(failure);
     for (const itemId of await taskBoard.linkedTaskIds(threadId, orgId)) {
       const item = await taskBoard.getById(itemId, orgId);
       if (!item || item.status !== "in_progress") continue;
@@ -275,7 +275,7 @@ export async function reactToFailedTaskRun(
         continue;
       }
       const attempts = item.retryAttempts;
-      if (transient && attempts < MAX_RUN_RETRIES) {
+      if (attempts < budget) {
         const delay = exponentialBackoffWithJitter(
           RETRY_CAP_MS,
           RETRY_BASE_MS,
@@ -299,7 +299,7 @@ export async function reactToFailedTaskRun(
               from: "in_progress",
               to: "in_progress",
               retry: attempts + 1,
-              of: MAX_RUN_RETRIES,
+              of: budget,
               reason: failure.errorText ?? failure.kind,
             },
           })
