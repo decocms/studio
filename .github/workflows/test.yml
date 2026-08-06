@@ -36,11 +36,17 @@ concurrency:
 # until GitHub's 24h timeout rather than failing fast, and nothing merges.
 # Deleting the variable restores hosted runners on the next run.
 #
-# Why only these four: they run 0.5-2 min but have waited up to ~90 min at the
-# p99 (hosted concurrency ceiling saturating at ~915 runs/day). They also need
-# nothing beyond checkout + setup-bun, so they run on the stock ARC runner
-# image — no sudo, no docker, no privileged sidecar. `changes`, `build` and
-# `web-component-tests` deliberately stay hosted.
+# Why these five: they have waited up to ~90 min at the p99 (hosted
+# concurrency ceiling saturating at ~915 runs/day) for 0.4-2 min of work. They
+# also need nothing beyond checkout + setup-bun, so they run on the stock ARC
+# runner image — no sudo, no docker, no privileged sidecar.
+#
+# Two jobs stay hosted:
+#   changes              1 min, and it gates the rest — keeping it hosted means
+#                        a scale-set outage still produces a run that reports.
+#   web-component-tests  `playwright install --with-deps` / `install-deps`
+#                        shell out to sudo apt-get, which the stock runner
+#                        image has no root for. Needs a custom image first.
 #
 # Inlined per job rather than hoisted into `env:` because `runs-on` cannot read
 # the `env` context — only `github`, `needs`, `strategy`, `matrix`, `inputs`
@@ -185,7 +191,7 @@ jobs:
   build:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER_LINUX || 'ubuntu-latest' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
