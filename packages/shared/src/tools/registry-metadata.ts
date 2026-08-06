@@ -229,6 +229,7 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_ITEM_UPDATE",
   "TASK_BOARD_ITEM_DELETE",
   "TASK_BOARD_ITEM_PRS_GET",
+  "TASK_BOARD_ITEM_PR_LINK",
   "TASK_BOARD_ITEM_RERUN",
   "TASK_BOARD_REVIEW_DECISION",
   "TASK_BOARD_PROMOTE_TO_PRODUCTION",
@@ -1062,6 +1063,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Task Board",
   },
   {
+    name: "TASK_BOARD_ITEM_PR_LINK",
+    description: "Link a pull request a task run opened to its task board item",
+    category: "Task Board",
+  },
+  {
     name: "TASK_BOARD_ITEM_RERUN",
     description:
       "Re-run a task with the Super Agent, failing any run still holding it open",
@@ -1222,6 +1228,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_ITEM_UPDATE",
       "TASK_BOARD_ITEM_DELETE",
       "TASK_BOARD_ITEM_PRS_GET",
+      "TASK_BOARD_ITEM_PR_LINK",
       "TASK_BOARD_ITEM_RERUN",
       "TASK_BOARD_REVIEW_DECISION",
       "TASK_BOARD_PROMOTE_TO_PRODUCTION",

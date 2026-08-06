@@ -87,7 +87,7 @@ export function resolveAdvanceTargets(
  * Shared by the advance-status and PR-capture reactions so both resolve a
  * subtask-opened action the same way.
  */
-async function resolveRunTaskTargets(
+export async function resolveRunTaskTargets(
   ctx: StudioContext,
   orgId: string,
   threadId?: string,
