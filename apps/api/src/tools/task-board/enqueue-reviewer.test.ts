@@ -7,6 +7,8 @@
 import { describe, expect, it, test } from "bun:test";
 import type { TaskBoardItem } from "@/storage/types";
 import {
+  hasFailedAttemptThisCycle,
+  MAX_REVIEWER_ATTEMPTS,
   REVIEWER_DISALLOWED_TOOLS,
   reviewerHandledThisCycle,
 } from "./enqueue-reviewer";
@@ -81,6 +83,79 @@ describe("reviewerHandledThisCycle", () => {
       }),
     ]);
     expect(reviewerHandledThisCycle(task, "qa", CYCLE_START)).toBe(false);
+  });
+
+  // The bug: a FAILED reviewer thread satisfied "created this cycle", so when
+  // both reviewers died on a database-connection timeout the card sat In Review
+  // with two dead reviewer threads, a claim row nothing released, and no
+  // verdicts. A failure is not a review.
+  it("is FALSE for a reviewer thread that FAILED this cycle — it gets retried", () => {
+    const task = taskWith([
+      thread({
+        title: "QA Agent: fix",
+        status: "failed",
+        createdAt: "2026-01-01T10:05:00Z",
+      }),
+    ]);
+    expect(reviewerHandledThisCycle(task, "qa", CYCLE_START)).toBe(false);
+    expect(hasFailedAttemptThisCycle(task, "qa", CYCLE_START)).toBe(true);
+  });
+
+  it("stops retrying once the cycle has spent MAX_REVIEWER_ATTEMPTS", () => {
+    const task = taskWith(
+      Array.from({ length: MAX_REVIEWER_ATTEMPTS }, (_, i) =>
+        thread({
+          title: "QA Agent: fix",
+          status: "failed",
+          createdAt: `2026-01-01T10:0${i + 1}:00Z`,
+        }),
+      ),
+    );
+    expect(reviewerHandledThisCycle(task, "qa", CYCLE_START)).toBe(true);
+  });
+
+  it("a completed review alongside a failed attempt is still handled", () => {
+    const task = taskWith([
+      thread({
+        title: "QA Agent: fix",
+        status: "failed",
+        createdAt: "2026-01-01T10:01:00Z",
+      }),
+      thread({
+        title: "QA Agent: fix",
+        status: "completed",
+        createdAt: "2026-01-01T10:06:00Z",
+      }),
+    ]);
+    expect(reviewerHandledThisCycle(task, "qa", CYCLE_START)).toBe(true);
+  });
+
+  // A retry must never run alongside a live attempt.
+  it("a live attempt wins over a failed one", () => {
+    const task = taskWith([
+      thread({
+        title: "QA Agent: fix",
+        status: "failed",
+        createdAt: "2026-01-01T10:01:00Z",
+      }),
+      thread({
+        title: "QA Agent: fix",
+        status: "in_progress",
+        createdAt: "2026-01-01T10:06:00Z",
+      }),
+    ]);
+    expect(reviewerHandledThisCycle(task, "qa", CYCLE_START)).toBe(true);
+  });
+
+  it("a failure from a PRIOR cycle is not a spent attempt of this one", () => {
+    const task = taskWith([
+      thread({
+        title: "QA Agent: fix",
+        status: "failed",
+        createdAt: "2026-01-01T09:30:00Z",
+      }),
+    ]);
+    expect(hasFailedAttemptThisCycle(task, "qa", CYCLE_START)).toBe(false);
   });
 
   it("scopes to the given reviewer — the other reviewer's thread and the Super Agent's don't count", () => {

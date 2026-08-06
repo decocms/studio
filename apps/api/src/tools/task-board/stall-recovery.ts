@@ -168,7 +168,7 @@ async function resolveStallAction(
  *  owned by any pod. Distinct from `"stall"` (a run that started, streamed, then
  *  went quiet — the in-memory idle reaper's case) so the two are tellable apart
  *  in the DB. */
-const ABANDONED_FAILURE_REASON =
+export const ABANDONED_FAILURE_REASON =
   "Run never started — no pod picked it up before the idle window elapsed";
 
 /**

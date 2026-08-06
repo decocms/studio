@@ -23,11 +23,34 @@ describe("shouldAdvanceToReview", () => {
     ).toBe(true);
   });
 
-  it("treats a failed run as finished (still advances)", () => {
+  // Inverted deliberately: this used to assert that a failed run advances the
+  // card. It is how eight tasks whose sandboxes never came up landed In Review
+  // with no PR and no work done. In Review means there is something to review.
+  it("does NOT advance a task whose only run failed", () => {
     expect(
       shouldAdvanceToReview({
         status: "in_progress",
         threads: [thread("failed")],
+      }),
+    ).toBe(false);
+  });
+
+  it("does NOT advance a task whose only run expired", () => {
+    expect(
+      shouldAdvanceToReview({
+        status: "in_progress",
+        threads: [thread("expired")],
+      }),
+    ).toBe(false);
+  });
+
+  // A retry that worked must still reach the reviewers, so the rule is "some run
+  // completed", never "the newest one did".
+  it("advances when an earlier failure was followed by a completed re-run", () => {
+    expect(
+      shouldAdvanceToReview({
+        status: "in_progress",
+        threads: [thread("failed"), thread("completed")],
       }),
     ).toBe(true);
   });

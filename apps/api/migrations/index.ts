@@ -165,6 +165,7 @@ import * as migration163taskboarditemdismissed from "./163-task-board-item-dismi
 import * as migration164perorgtaskquota from "./164-per-org-task-quota.ts";
 import * as migration165taskboardpendingreviewindex from "./165-task-board-pending-review-index.ts";
 import * as migration166taskboardlastsweptat from "./166-task-board-last-swept-at.ts";
+import * as migration167taskboardrunretry from "./167-task-board-run-retry.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -358,6 +359,7 @@ const migrations: Record<string, Migration> = {
   "165-task-board-pending-review-index":
     migration165taskboardpendingreviewindex,
   "166-task-board-last-swept-at": migration166taskboardlastsweptat,
+  "167-task-board-run-retry": migration167taskboardrunretry,
 };
 
 export default migrations;

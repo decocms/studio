@@ -56,6 +56,10 @@ import type { StudioContextFactory } from "@/automations/fire";
 import type { TaskBoardStorage } from "@/storage/task-board";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
+import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
+import { reactToFailedTaskRun } from "./run-reactions";
+import { ABANDONED_FAILURE_REASON } from "./stall-recovery";
+import { THREAD_EXPIRY_MS } from "@/tools/thread/helpers";
 import { fetchPrLiveState, prReadyForReview } from "./prs-get";
 
 /** How often to LOOK for due cards. A minute is well under the time a human
@@ -76,6 +80,17 @@ const DEFAULT_ITEM_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
  *  on what the sweep can reach — ticks page through the backlog with a keyset
  *  cursor (see `listItemsPendingReview`). */
 const DEFAULT_BATCH_SIZE = 50;
+
+/** How long to wait before retrying a retry whose DISPATCH threw (not the run —
+ *  the enqueue itself). Short: nothing was spent, and the failure is usually a
+ *  blip in the context factory or the quota read. */
+const REARM_DELAY_MS = 60 * 1000;
+
+/** How long a failed run may sit unreacted-to before the sweeper steps in. Long
+ *  enough that the in-band reaction (which runs within milliseconds of the
+ *  failure) always wins the normal case, short enough that a card whose pod died
+ *  mid-reaction recovers on its own. */
+const UNHANDLED_FAILURE_GRACE_MS = 2 * 60 * 1000;
 
 export interface TaskBoardReviewSweeperOptions {
   intervalMs?: number;
@@ -138,12 +153,155 @@ export class TaskBoardReviewSweeper {
           console.error(`[task-board-review-sweeper] ${id} failed`, err);
         }
       }
+      // Reap FIRST: a thread whose dispatch never landed reads as a live run to
+      // every pass below (and to `reviewerHandledThisCycle`), so it has to become
+      // `failed` before anything can react to it.
+      await this.reapNeverStartedThreads(batchSize);
+      dispatched += await this.dispatchDueRetries(batchSize);
+      await this.reactToUnhandledFailures(batchSize);
     } catch (err) {
       console.error("[task-board-review-sweeper] sweep failed", err);
     } finally {
       this.running = false;
     }
     return dispatched;
+  }
+
+  /**
+   * Fail task-linked threads whose run never started, headlessly and in BOTH
+   * lanes.
+   *
+   * `recoverStalledTasks` already did this, but only on `TASK_BOARD_ITEM_LIST`
+   * (so never without a human opening the board) and only for cards parked In
+   * Progress — which left a REVIEWER thread whose dispatch never landed sitting
+   * `in_progress` forever, read as a live review, blocking that reviewer's retry
+   * for the rest of the cycle. Three of them did exactly that in one burst, on a
+   * card whose PR was sitting there waiting for a verdict.
+   *
+   * Marking them failed is the whole fix: from there the existing reactions take
+   * over — `reactToFailedTaskRun` retries a Super Agent thread, and a failed
+   * reviewer attempt no longer counts as handled.
+   */
+  private async reapNeverStartedThreads(limit: number): Promise<void> {
+    try {
+      const reaped = await this.taskBoard.failNeverStartedLinkedThreads(
+        limit,
+        new Date(Date.now() - THREAD_EXPIRY_MS),
+        ABANDONED_FAILURE_REASON,
+      );
+      for (const r of reaped) {
+        console.warn(
+          `[task-board-review-sweeper] failed never-started thread ` +
+            `${r.threadId} on ${r.itemId}`,
+        );
+      }
+    } catch (err) {
+      console.error("[task-board-review-sweeper] reaping failed", err);
+    }
+  }
+
+  /**
+   * Run the failure reaction for cards whose reaction never ran.
+   *
+   * `reactToFailedTaskRun` fires on a terminal hook, so a pod that dies between
+   * `markRunFailed` and that reaction leaves the card In Progress with a dead
+   * run, no retry armed, and nothing else looking at it — now that a failed run
+   * no longer advances to In Review, that would be a permanent strand. This is
+   * the floor: the reaction is idempotent (it re-reads the card and both writes
+   * are conditional on In Progress), so re-running it costs a query and fixes the
+   * gap with no bookkeeping of its own.
+   */
+  private async reactToUnhandledFailures(limit: number): Promise<void> {
+    const stuck = await this.taskBoard.listItemsStuckAfterFailure(
+      limit,
+      new Date(Date.now() - UNHANDLED_FAILURE_GRACE_MS),
+    );
+    for (const { id, organizationId, threadId } of stuck) {
+      try {
+        console.warn(
+          `[task-board-review-sweeper] reacting to an unhandled failure on ${id}`,
+        );
+        await reactToFailedTaskRun(this.taskBoard, threadId, organizationId);
+      } catch (err) {
+        console.error(
+          `[task-board-review-sweeper] unhandled-failure reaction for ${id} failed`,
+          err,
+        );
+      }
+    }
+  }
+
+  /**
+   * Re-dispatch the cards whose infrastructure retry has come due
+   * (`reactToFailedTaskRun` scheduled them on the row).
+   *
+   * It belongs on this timer for the same reason the reviewer dispatch does: the
+   * failure hook that schedules a retry runs inside the projector's DBOS step,
+   * where `DBOS.startWorkflow` is rejected. Out here it is legal, and
+   * `enqueueSuperAgentForTask` puts the run on the durable thread-gate queue, so
+   * DBOS owns the retry from that point on.
+   *
+   * `claimDueRetry` is a conditional clear of `retry_at`, so exactly one replica
+   * dispatches a given retry however many pods are sweeping. Returns how many
+   * runs it enqueued.
+   */
+  private async dispatchDueRetries(limit: number): Promise<number> {
+    let count = 0;
+    const due = await this.taskBoard.listItemsDueForRetry(limit, new Date());
+    for (const { id, organizationId, attempts } of due) {
+      try {
+        if (
+          !(await this.taskBoard.claimDueRetry(id, organizationId, new Date()))
+        )
+          continue;
+        const item = await this.taskBoard.getById(id, organizationId);
+        // Re-read before spending a run: a human may have moved or reassigned
+        // the card between the scan and here, and their move wins.
+        if (
+          !item ||
+          item.status !== "in_progress" ||
+          item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID
+        ) {
+          continue;
+        }
+        const ctx = await this.contextFactory(
+          organizationId,
+          item.assignedBy ?? item.createdBy,
+        );
+        if (!ctx) continue;
+        await enqueueSuperAgentForTask(ctx, item);
+        count++;
+        console.warn(
+          `[task-board-review-sweeper] re-dispatched ${id} after a failure ` +
+            `(attempt ${attempts})`,
+        );
+      } catch (err) {
+        console.error(
+          `[task-board-review-sweeper] retry dispatch for ${id} failed`,
+          err,
+        );
+        // The claim already cleared `retry_at`, so leaving it here would spend
+        // the attempt on a run that never started — the exact silent strand this
+        // whole path exists to remove. Re-arm it instead: the dispatch itself can
+        // fail on infrastructure (the context factory, the quota read), and that
+        // deserves the same recovery as the run it was going to start. The
+        // attempt counter is untouched, so the budget still terminates.
+        await this.taskBoard
+          .scheduleRunRetry(
+            id,
+            organizationId,
+            attempts,
+            new Date(Date.now() + REARM_DELAY_MS),
+          )
+          .catch((rearmErr) =>
+            console.error(
+              `[task-board-review-sweeper] re-arming ${id} failed`,
+              rearmErr,
+            ),
+          );
+      }
+    }
+    return count;
   }
 
   /** Hand a card with a linked, ready PR off to the enabled reviewers. Returns
