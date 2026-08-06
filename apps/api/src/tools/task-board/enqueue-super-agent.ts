@@ -6,7 +6,9 @@ import {
   rollbackTaskExecution,
   TaskQuotaError,
 } from "../../billing/task-quota";
+import { getSettings } from "@/settings";
 import { enqueueAgentRunForTask } from "./enqueue-task-run";
+import { fetchPrHeadRef } from "./prs-get";
 import {
   buildClaudeCodeTaskPrompt,
   resolveTaskRepoChoice,
@@ -125,6 +127,26 @@ export function buildSuperAgentTaskPrompt(
   ].join("\n");
 }
 
+/**
+ * The head branch of the task's linked PR `prNumber`, or null when we can't
+ * confirm one. Null is the safe answer everywhere it appears: the caller then
+ * dispatches exactly as it does today (a fresh derived branch), which is the
+ * behavior this whole path is trying to improve on but is never WRONG — it just
+ * costs another PR.
+ */
+async function resolveRerunBranch(
+  ctx: StudioContext,
+  task: TaskBoardItem,
+  prNumber: number,
+): Promise<string | null> {
+  const prs = await ctx.storage.taskBoard
+    .listPrs(task.id, task.organizationId)
+    .catch(() => []);
+  const pr = prs.find((p) => p.number === prNumber);
+  if (!pr) return null;
+  return fetchPrHeadRef(ctx, task.organizationId, pr).catch(() => null);
+}
+
 export async function enqueueSuperAgentForTask(
   ctx: StudioContext,
   task: TaskBoardItem,
@@ -143,6 +165,23 @@ export async function enqueueSuperAgentForTask(
   const claim = await claimTaskExecution(ctx, task);
 
   try {
+    // A re-run told to update an existing PR must land on that PR's BRANCH.
+    // Asking the model to `gh pr checkout` (which the prompt does, and has
+    // done all along) cannot work on its own: the sandbox key is derived from
+    // the THREAD, every re-run is a new thread, so the pod boots on a fresh
+    // `sandbox/thread-<new-id>` branch and the daemon's HEAD-based shutdown
+    // push publishes THAT — a second pull request for the same task. One task
+    // reached four open PRs this way, all with the same title.
+    //
+    // Pinning the PR's head branch makes the sandbox boot on it, so the same
+    // push updates the same PR. Best-effort: a null head ref (GitHub
+    // unreachable, PR already closed/merged) falls back to today's behavior
+    // rather than pinning a ref we can't confirm exists.
+    const pinnedRef =
+      getSettings().taskBoardRerunReusesPrBranch && opts?.pr
+        ? await resolveRerunBranch(ctx, task, opts.pr.number)
+        : null;
+
     // Sandbox-hosted claude-code takes every task that has a repo it could work
     // in — bound before dispatch when there's exactly one, otherwise chosen
     // mid-run with `TASK_ADD_REPO` (see `claude-code-task-run.ts`). An org with
@@ -153,6 +192,7 @@ export async function enqueueSuperAgentForTask(
       const repo = "repo" in choice ? choice.repo : null;
       await enqueueAgentRunForTask(ctx, task, {
         title: `Super Agent: ${task.title}`,
+        ...(pinnedRef ? { pinnedRef } : {}),
         prompt: buildClaudeCodeTaskPrompt(task, repo, {
           ...opts,
           // Names the candidates in the prompt so the run doesn't spend its first
@@ -170,6 +210,7 @@ export async function enqueueSuperAgentForTask(
       title: `Super Agent: ${task.title}`,
       prompt: buildSuperAgentTaskPrompt(task, opts),
       temperature: 0.5,
+      ...(pinnedRef ? { pinnedRef } : {}),
     });
   } catch (err) {
     // Nothing was dispatched — no thread exists to ever trigger the

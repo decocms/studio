@@ -800,3 +800,53 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
     return { prs };
   },
 });
+
+/**
+ * The PR's head branch name (`head.ref`), or null when GitHub can't be reached.
+ *
+ * Read live rather than stored on the row deliberately: `task_board_item_prs`
+ * is written from three places (the MCP `onPrOpened` hook, a bash-output scan,
+ * and the sweeper's closing-message scan) and only one of them ever knows the
+ * branch. GitHub always does. Null is a first-class answer — the caller falls
+ * back to today's fresh-branch behavior rather than guessing a ref and pushing
+ * work somewhere nobody is looking.
+ */
+export async function fetchPrHeadRef(
+  ctx: StudioContext,
+  orgId: string,
+  pr: TaskBoardItemPrRef,
+): Promise<string | null> {
+  const conn = await resolveGithubConnection(ctx, orgId, pr.connectionId, {
+    owner: pr.repoOwner,
+    name: pr.repoName,
+  });
+  if (!conn) return null;
+  const client = await clientFromConnection(conn, ctx, true);
+  try {
+    const obj = toolResultJson(
+      await client.callTool(
+        {
+          name: "pull_request_read",
+          arguments: {
+            method: "get",
+            owner: pr.repoOwner,
+            repo: pr.repoName,
+            pullNumber: pr.number,
+          },
+        },
+        undefined,
+        { timeout: PR_FETCH_TIMEOUT_MS },
+      ),
+    );
+    // Only an OPEN PR's branch is worth reusing: pushing to a merged or closed
+    // PR's branch updates nothing anyone will look at, and the re-run's work
+    // would be invisible.
+    if (!obj || obj.state !== "open") return null;
+    const ref = (obj.head as { ref?: unknown } | undefined)?.ref;
+    return typeof ref === "string" && ref.length > 0 ? ref : null;
+  } catch {
+    return null;
+  } finally {
+    await client.close().catch(() => {});
+  }
+}

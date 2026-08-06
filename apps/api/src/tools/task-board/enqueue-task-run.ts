@@ -40,6 +40,13 @@ export async function enqueueAgentRunForTask(
      * them; a Decopilot fallback run must carry its persona in the prompt.
      */
     agent?: { instructions?: string; disallowedTools?: string[] };
+    /**
+     * A real git ref this run must land on instead of its own derived branch —
+     * the head branch of the pull request a re-run has to update. Without it
+     * every re-run gets a fresh `thread:<id>` key, forks a new branch off the
+     * default, and opens a SECOND pull request for the same task.
+     */
+    pinnedRef?: string | null;
   },
 ): Promise<{ threadId: string }> {
   const organizationId = task.organizationId;
@@ -73,6 +80,9 @@ export async function enqueueAgentRunForTask(
   const metadata = {
     ...(thread.metadata ?? {}),
     ...(harnessRunsInSandbox(harnessId) ? { read_only: true } : {}),
+    // Read back by `resolveSandboxBranch` at provision time (via the thread, so
+    // a durable re-dispatch resolves the same pod). See `pinnedRef` above.
+    ...(opts.pinnedRef ? { pinnedRef: opts.pinnedRef } : {}),
     ...(opts.repo
       ? {
           githubRepo: {
@@ -91,11 +101,13 @@ export async function enqueueAgentRunForTask(
   // different repos into one pod. The bare `thread:<id>` key is what
   // `resolveSandboxBranch` holds onto for the whole run even once a repo lands,
   // so the claim handle can't move out from under the live pod.
-  const sandboxBranch = opts.repo
-    ? threadBranch(thread.id, opts.repo.connectionId)
-    : harnessRunsInSandbox(harnessId)
-      ? threadBranch(thread.id)
-      : null;
+  const sandboxBranch = opts.pinnedRef
+    ? opts.pinnedRef
+    : opts.repo
+      ? threadBranch(thread.id, opts.repo.connectionId)
+      : harnessRunsInSandbox(harnessId)
+        ? threadBranch(thread.id)
+        : null;
   await ctx.storage.threads.update(thread.id, {
     metadata,
     ...(sandboxBranch ? { branch: sandboxBranch } : {}),
