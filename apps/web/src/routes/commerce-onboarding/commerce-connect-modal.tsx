@@ -40,10 +40,11 @@ import { parseSelfToolResult } from "./self-tool-result.ts";
  * Blocking commerce-onboarding connections step, rendered as a modal OVER the
  * org (the report page behind it stays mounted and blurred) instead of as a
  * standalone `/commerce-onboarding` screen. Non-dismissable: no close button, no
- * escape/overlay close — the only way forward is connecting at least one data
- * source, which enables the "Ver relatório completo" CTA. `onComplete` is called
- * once the run is triggered so the caller can drop the `connect` search param and
- * reveal the report.
+ * escape/overlay close — the way forward is connecting at least one data source
+ * (enabling the "Ver diagnóstico" CTA) or skipping via the secondary "Pular"
+ * button shown while nothing is connected. `onComplete` is called once the run
+ * is triggered so the caller can drop the `connect` search param and reveal the
+ * report.
  */
 export function CommerceConnectModal({ siteUrl }: { siteUrl?: string }) {
   const navigate = useNavigate();
@@ -255,22 +256,36 @@ function CommerceConnectModalContent({
               {runError}
             </p>
           ) : null}
-          <ConnectFooterButton
-            ready={ready}
-            pending={runMutation.isPending}
-            label={
-              runMutation.isPending
-                ? t("routes.commerceOnboarding.connectModal.openingReport")
-                : !ready
-                  ? t(
-                      "routes.commerceOnboarding.connectModal.connectToolToContinue",
-                    )
-                  : t("routes.commerceOnboarding.connectModal.viewFullReport")
-            }
-            onClick={() => void openReport()}
-          >
-            <ArrowRight size={18} />
-          </ConnectFooterButton>
+          <div className="flex gap-3">
+            <div className="min-w-0 flex-1">
+              <ConnectFooterButton
+                ready={ready}
+                pending={runMutation.isPending}
+                label={
+                  runMutation.isPending
+                    ? t("routes.commerceOnboarding.connectModal.openingReport")
+                    : t("routes.commerceOnboarding.connectModal.viewDiagnostic")
+                }
+                onClick={() => void openReport()}
+              >
+                <ArrowRight size={18} />
+              </ConnectFooterButton>
+            </div>
+            {!ready ? (
+              // Escape hatch while nothing is connected: same run-then-reveal
+              // flow as the primary CTA, just without any source connected.
+              <Button
+                type="button"
+                variant="secondary"
+                size="lg"
+                className="h-auto min-h-12 shrink-0 rounded-lg py-3 text-base font-medium leading-tight"
+                disabled={runMutation.isPending}
+                onClick={() => void openReport()}
+              >
+                {t("routes.commerceOnboarding.connectModal.skip")}
+              </Button>
+            ) : null}
+          </div>
         </>
       }
     >
