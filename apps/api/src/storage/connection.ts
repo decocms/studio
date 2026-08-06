@@ -410,6 +410,24 @@ export class ConnectionStorage implements ConnectionStoragePort {
     return connection;
   }
 
+  /**
+   * Is any thread pinned to this connection as its repo?
+   *
+   * `threads.metadata.githubRepo.connectionId` is a pointer with no FK behind
+   * it, so deleting the connection strands every thread that holds it — the
+   * sandbox can never boot again. Callers that tear a repo connection down
+   * must check this first.
+   */
+  async isReferencedByThread(id: string): Promise<boolean> {
+    const row = await this.db
+      .selectFrom("threads")
+      .select("id")
+      .where(sql<boolean>`metadata -> 'githubRepo' ->> 'connectionId' = ${id}`)
+      .limit(1)
+      .executeTakeFirst();
+    return row !== undefined;
+  }
+
   async delete(id: string): Promise<void> {
     await this.db.deleteFrom("connections").where("id", "=", id).execute();
   }
