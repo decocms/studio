@@ -148,4 +148,6 @@ export const reports = {
   "reports.commerceBanner.generatingSubtitle":
     "Analyzing {store}. This takes a few minutes.",
   "reports.commerceBanner.readySubtitle": "See the full analysis of {store}.",
+  "reports.claimBanner.provisional":
+    "Your store isn't verified yet — connect its Google Analytics or Search Console to verify ownership",
 } as const;

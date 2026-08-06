@@ -60,6 +60,9 @@ export interface UseCommerceDiagnosticResult {
   isSuccess: boolean;
   /** The store's hostname from the connection metadata, for copy. */
   host: string | null;
+  /** The store's full siteUrl from the connection metadata — the argument the
+   *  reports tools (e.g. COMMERCE_DISCOVERY_CONNECTION_STATUS) expect. */
+  siteUrl: string | null;
   connectionId: string;
   /** The CD MCP client (once gate 2 opens), for tool calls like start_checkout. */
   cdClient: CommerceDiscoveryClient | null;
@@ -131,6 +134,11 @@ export function useCommerceDiagnostic(): UseCommerceDiagnosticResult {
     diagnostic: diagnosticQuery.data ?? null,
     isSuccess: diagnosticQuery.isSuccess,
     host: hostFromSiteUrl(connectionItem?.metadata?.siteUrl),
+    siteUrl:
+      typeof connectionItem?.metadata?.siteUrl === "string" &&
+      connectionItem.metadata.siteUrl
+        ? connectionItem.metadata.siteUrl
+        : null,
     connectionId,
     cdClient: (cdClient as CommerceDiscoveryClient | undefined) ?? null,
   };
