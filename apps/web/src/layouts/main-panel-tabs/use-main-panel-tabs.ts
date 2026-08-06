@@ -11,7 +11,7 @@
  */
 
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useQueries, useSuspenseQuery } from "@tanstack/react-query";
 import { Globe01, Monitor01 } from "@untitledui/icons";
 import { createElement, useSyncExternalStore } from "react";
 import {
@@ -19,6 +19,7 @@ import {
   COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
   getCommerceDiscoveryAgentId,
   getDevConnectionId,
+  mcpClientQueryOptions,
   useConnections,
   useMCPClientOptional,
   useMCPToolsListQuery,
@@ -55,6 +56,7 @@ import {
   parseDeckTabId,
   parseFileTabId,
   parseLibraryFileTabId,
+  parsePinnedViewTabId,
   resolveActiveTabAndOpen,
   resolveDefaultTabId,
   resolveTabClickTarget,
@@ -68,6 +70,7 @@ import {
 import { useCapability } from "@/hooks/use-capability";
 import { useReportsOnly } from "@/hooks/use-organization-settings";
 import { useT } from "@/i18n/use-t.ts";
+import { getUnavailableProjectAppViewKeys } from "@/routes/project-app-tool";
 
 export type AgentTabDef = {
   id: string;
@@ -194,7 +197,7 @@ export function useMainPanelTabs(ctx: {
     )?.ui ?? null;
 
   const entityLayout = entityUI?.layout ?? null;
-  const layoutTabs = (entityLayout?.tabs ?? []) as AgentTabDef[];
+  const configuredLayoutTabs = (entityLayout?.tabs ?? []) as AgentTabDef[];
 
   // The ephemeral dev connection (`dev_<id>`) the agent's sandbox dev server is
   // served through. Its views are auto-detected from the dev server's own MCP
@@ -259,11 +262,114 @@ export function useMainPanelTabs(ctx: {
           }))
       : [];
   const firstDevView = devViews[0];
-  const pinnedViews = firstDevView ? devViews : (entityUI?.pinnedViews ?? []);
+  const configuredPinnedViews = entityUI?.pinnedViews ?? [];
+  const configuredDefaultMainView = entityLayout?.defaultMainView ?? null;
+
+  // App views are persisted in agent/thread metadata, but the downstream MCP
+  // may remove or rename a tool later. Validate every persisted source against
+  // the connection's current tools/list response before presenting it. Pending
+  // or failed requests keep the view: a transient outage must not erase valid
+  // UI. Successful requests are authoritative and suppress removed/no-UI tools.
+  const requestedPinnedView =
+    typeof search.main === "string" ? parsePinnedViewTabId(search.main) : null;
+  const appViewCandidates = [
+    ...configuredPinnedViews.map((view) => ({
+      connectionId: view.connectionId,
+      toolName: view.toolName,
+    })),
+    ...configuredLayoutTabs.map((tab) => ({
+      connectionId: tab.view.appId,
+      toolName: tab.id,
+    })),
+    ...expandedTools.map((tool) => ({
+      connectionId: tool.appId,
+      toolName: tool.toolName,
+    })),
+    ...(configuredDefaultMainView?.type === "ext-apps" &&
+    configuredDefaultMainView.id &&
+    configuredDefaultMainView.toolName
+      ? [
+          {
+            connectionId: configuredDefaultMainView.id,
+            toolName: configuredDefaultMainView.toolName,
+          },
+        ]
+      : []),
+    ...(reportsOnly
+      ? [
+          {
+            connectionId: WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id),
+            toolName: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
+          },
+        ]
+      : []),
+    ...(requestedPinnedView ? [requestedPinnedView] : []),
+  ];
+  const appViewConnectionIds = [
+    ...new Set(appViewCandidates.map((view) => view.connectionId)),
+  ].sort();
+  const appViewClientQueries = useQueries({
+    queries: appViewConnectionIds.map((connectionId) => ({
+      ...mcpClientQueryOptions({
+        connectionId,
+        orgId: org.id,
+        orgSlug: org.slug,
+      }),
+      enabled: !firstDevView,
+    })),
+  });
+  const appViewToolQueries = useQueries({
+    queries: appViewConnectionIds.map((connectionId, index) => {
+      const client = appViewClientQueries[index]?.data;
+      return {
+        queryKey: KEYS.mcpToolsList(client ?? `pending:${connectionId}`),
+        queryFn: async () => {
+          if (!client) throw new Error("MCP client is not ready");
+          return await client.listTools();
+        },
+        enabled: !firstDevView && !!client,
+        staleTime: 30_000,
+        retry: false,
+      };
+    }),
+  });
+  const unavailableAppViewKeys = getUnavailableProjectAppViewKeys(
+    appViewCandidates,
+    appViewConnectionIds.map((connectionId, index) => ({
+      connectionId,
+      tools: appViewToolQueries[index]?.isSuccess
+        ? appViewToolQueries[index].data.tools
+        : undefined,
+    })),
+  );
+  const isAppViewAvailable = (connectionId: string, toolName: string) =>
+    !unavailableAppViewKeys.has(`${connectionId}:${toolName}`);
+
+  const pinnedViews = firstDevView
+    ? devViews
+    : configuredPinnedViews.filter((view) =>
+        isAppViewAvailable(view.connectionId, view.toolName),
+      );
+  const layoutTabs = configuredLayoutTabs.filter((tab) =>
+    isAppViewAvailable(tab.view.appId, tab.id),
+  );
+  const availableExpandedTools = expandedTools.filter((tool) =>
+    isAppViewAvailable(tool.appId, tool.toolName),
+  );
+  const defaultAppViewUnavailable =
+    configuredDefaultMainView?.type === "ext-apps" &&
+    configuredDefaultMainView.id &&
+    configuredDefaultMainView.toolName &&
+    !isAppViewAvailable(
+      configuredDefaultMainView.id,
+      configuredDefaultMainView.toolName,
+    );
   const effectiveDefaultMainView =
     firstDevView && devConnId
       ? { type: "ext-apps", id: devConnId, toolName: firstDevView.toolName }
-      : (entityLayout?.defaultMainView ?? null);
+      : defaultAppViewUnavailable
+        ? { type: "chat" }
+        : configuredDefaultMainView;
   const decofileFetchParams =
     hasClonableSource && entity?.id && currentBranch
       ? {
@@ -307,12 +413,24 @@ export function useMainPanelTabs(ctx: {
           tabs: layoutTabs.map((t) => ({ id: t.id })),
         }
       : null;
+  const activePinnedView = parsePinnedViewTabId(rawActiveTab);
+  const activeAppViewUnavailable =
+    activePinnedView &&
+    !isAppViewAvailable(
+      activePinnedView.connectionId,
+      activePinnedView.toolName,
+    );
+  const configuredLayoutTabUnavailable =
+    configuredLayoutTabs.some((tab) => tab.id === rawActiveTab) &&
+    !layoutTabs.some((tab) => tab.id === rawActiveTab);
   const activeTab =
-    rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
+    activeAppViewUnavailable || configuredLayoutTabUnavailable
       ? resolveDefaultTabId(layoutForDefault)
-      : rawActiveTab === "content" && !showContentTab
+      : rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
         ? resolveDefaultTabId(layoutForDefault)
-        : rawActiveTab;
+        : rawActiveTab === "content" && !showContentTab
+          ? resolveDefaultTabId(layoutForDefault)
+          : rawActiveTab;
   const mainOpen =
     rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
       ? false
@@ -406,7 +524,7 @@ export function useMainPanelTabs(ctx: {
       iconUrl?: string | null;
     }
   >();
-  for (const t of expandedTools) {
+  for (const t of availableExpandedTools) {
     const id = formatPinnedViewTabId(t.appId, t.toolName);
     pinnedTabMap.set(id, {
       id,
@@ -432,8 +550,11 @@ export function useMainPanelTabs(ctx: {
   // current agent (and no agent switch) is needed. On the Report Agent itself
   // the loop above already added it with its configured label/icon, so this is
   // a no-op there (dedup by tab id).
-  if (reportsOnly) {
-    const reportConnectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id);
+  const reportConnectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id);
+  if (
+    reportsOnly &&
+    isAppViewAvailable(reportConnectionId, COMMERCE_DISCOVERY_REPORT_TOOL_NAME)
+  ) {
     const reportTabId = formatPinnedViewTabId(
       reportConnectionId,
       COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
@@ -620,7 +741,7 @@ export function useMainPanelTabs(ctx: {
     setActiveTab,
     systemTabs: [...leadingSystemTabs, ...systemTabs],
     layoutTabs,
-    expandedTools,
+    expandedTools: availableExpandedTools,
     automationTabParsed,
     tabs,
     leadTabId,

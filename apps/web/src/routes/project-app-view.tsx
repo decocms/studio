@@ -25,6 +25,8 @@ import {
 import { useChatStream, useChatPrefs } from "@/components/chat/context.tsx";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { resolveAppNavigateTarget } from "@/routes/project-app-navigate.ts";
+import { findProjectAppTool } from "@/routes/project-app-tool";
+import { useT } from "@/i18n/use-t.ts";
 
 const EMPTY_TOOL_INPUT: Record<string, unknown> = {};
 
@@ -128,6 +130,7 @@ export function AppViewContent({
   toolName: string;
   args?: Record<string, unknown>;
 }) {
+  const t = useT();
   const { org } = useProjectContext();
   const lifecycle = useSandboxLifecycle();
   // A dev view (`dev_<id>`) against a user-desktop sandbox renders against the
@@ -151,33 +154,21 @@ export function AppViewContent({
 
   const decodedToolName = stripMcpServerPrefix(decodeURIComponent(toolName));
 
-  // Try exact match first. If that fails, the decoded name may be the original
-  // (un-namespaced) tool name while the tools list has gateway-namespaced names
-  // (e.g. "render_html" vs "conn-abc_render_html"), or vice versa. Fall back to
-  // matching by the base name with the gateway namespace stripped from both sides.
-  const tool =
-    toolsResult.tools.find((t) => t.name === decodedToolName) ??
-    toolsResult.tools.find((t) => {
-      const clientId = getGatewayClientId(t._meta);
-      if (!clientId) return false;
-      // Case 1: decoded name is the base name, tool list has namespaced names
-      const baseName = stripToolNamespace(t.name, clientId);
-      if (baseName === decodedToolName) return true;
-      // Case 2: decoded name has namespace prefix, tool list has base names
-      const decodedBase = stripToolNamespace(decodedToolName, clientId);
-      if (decodedBase !== decodedToolName && t.name === decodedBase)
-        return true;
-      return false;
-    });
+  const tool = findProjectAppTool(toolsResult.tools, decodedToolName);
 
   const resourceURI = tool?._meta ? getUIResourceUri(tool._meta) : undefined;
 
   if (!tool || !resourceURI) {
     return (
-      <div className="flex items-center justify-center h-full w-full">
-        <p className="text-sm text-muted-foreground">
-          Tool &quot;{decodedToolName}&quot; not found or has no UI
-        </p>
+      <div className="flex h-full w-full items-center justify-center px-6 text-center">
+        <div className="max-w-sm space-y-1">
+          <p className="text-sm font-medium text-foreground">
+            {t("routes.projectAppView.unavailableTitle")}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            {t("routes.projectAppView.unavailableDescription")}
+          </p>
+        </div>
       </div>
     );
   }
