@@ -155,6 +155,13 @@ function PublishDialogBody({
   const coAuthor = coAuthorFromSessionUser(session?.user);
 
   const commitToOpenPr = openPullRequest?.state === "open";
+  // The branch's already-known open PR (from the header's polled PR state).
+  // Passed to openPullRequestForBranch so it reuses this PR instead of calling
+  // list_pull_requests to rediscover it.
+  const existingOpenPr =
+    openPullRequest?.state === "open"
+      ? { number: openPullRequest.number, htmlUrl: openPullRequest.htmlUrl }
+      : undefined;
   const openPrFromCommits = dialogIntent === "open-pr" && !commitToOpenPr;
   /** Side "Publish" button — direct publish to base, single green button. */
   const isPublishOnly = dialogIntent === "publish-only";
@@ -382,6 +389,7 @@ function PublishDialogBody({
           body: prBody,
           base: baseBranch,
           coAuthor,
+          existing: existingOpenPr,
         });
       } catch (error) {
         throw new PublishFlowError(
@@ -516,6 +524,7 @@ function PublishDialogBody({
         body: prBody,
         base: baseBranch,
         coAuthor,
+        existing: existingOpenPr,
       });
 
       toast.success(

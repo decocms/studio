@@ -449,13 +449,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
               ? effectiveBranchMeta.headSha
               : null
           }
-          openPullRequest={
-            publishDialogIntent === "publish-only"
-              ? null
-              : pr?.state === "open"
-                ? pr
-                : null
-          }
+          openPullRequest={pr?.state === "open" ? pr : null}
           onPullRequestChanged={refreshPrState}
           onPublished={switchToFreshBranch}
         />
