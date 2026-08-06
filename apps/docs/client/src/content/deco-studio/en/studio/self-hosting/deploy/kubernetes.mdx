@@ -242,6 +242,41 @@ If `sentinel.token` is omitted, the chart generates and preserves a Secret for s
 
 The optional warm-pool HPA requires `warmPool.enabled: true`, `warmPool.autoscaling.enabled: true`, and at least one explicit `autoscaling/v2` metric. The chart intentionally provides no default metric.
 
+### Tenant warm pools
+
+The generic warm pool above pre-warms *empty* pods. Tenant warm pools go one step further: each pod is already cloned, installed, and running the dev server for **one org's repo**, so a member of an opted-in org opens a project with no clone, no install, and no boot. This is additive to the generic warm pool — it does not replace it, and every path still works at size 0.
+
+A tenant pool is per-org opt-in and every warm slot is a permanently billed pod, so configure it deliberately. Each pool needs a matching entry on both sides:
+
+1. In `sandbox-env`'s `values.yaml`, add an entry to `tenantPools`. The chart shares the `agent-sandbox-system` namespace across releases, so the name must end with `-<envName>` (validated at template time, not derived, so both sides must use the identical literal):
+
+```yaml
+tenantPools:
+  - name: tenant-acme-site-production # DNS label ending in -<envName>
+    size: 2 # keep this many warm pods ready
+```
+
+2. On Studio's side, set `STUDIO_SANDBOX_TENANT_POOLS` to a JSON array with the matching `name` plus the org, repo, and (for private repos) connection details:
+
+```json
+[
+  {
+    "name": "tenant-acme-site-production",
+    "orgId": "acme",
+    "repo": "acme/site",
+    "connectionId": "github-connection-id",
+    "branch": "main",
+    "workload": { "runtime": "node", "packageManager": "pnpm" }
+  }
+]
+```
+
+`connectionId` is required for private repos and provides the short-lived clone credential; omit it only for a public repo. Studio resolves which pool (if any) to hand a claim from the **authenticated user's org** — never from a request field — so a pool never leaks across orgs.
+
+The reconciler also needs read access to the `SandboxWarmPool` it manages: grant the runner Role `sandboxwarmpools: get` (included by default when you install via the umbrella chart or the `self-host-studio` skill).
+
+An optional GitHub push webhook makes pool refresh immediate instead of waiting for the periodic refresh cycle. Configure `GITHUB_WEBHOOK_SECRET` on Studio and point a push webhook at `POST /api/_github/webhook`; without the secret configured, the route answers `503` and pools simply refresh on their own schedule.
+
 ### Daemon telemetry (OTLP metrics)
 
 The sandbox daemon can export OTLP metrics to an OpenTelemetry collector. This is separate from — and unrelated to — Studio's own monitoring export described in [Monitoring](/en/studio/self-hosting/monitoring): here the metrics come from the sandbox daemon itself (process/runtime health), not from Studio's tool-call logs.
@@ -351,6 +386,7 @@ These defaults come from `deploy/helm/studio/values.yaml`:
 | `telemetry.enabled` | Export sandbox daemon OTLP metrics to a collector | `false` |
 | `telemetry.otlp.ip` / `telemetry.otlp.port` | Collector ClusterIP (required if enabled) / port | `""` / `4318` |
 | `warmPool.enabled` / `warmPool.size` | Pre-warmed sandboxes | `false` / `0` |
+| `tenantPools` | Per-org warm pools already running that org's dev server (needs a matching `STUDIO_SANDBOX_TENANT_POOLS` entry) | `[]` |
 | `previewGateway.enabled` | Wildcard preview Gateway | `false` |
 | `housekeeper.enabled` | Idle-claim cleanup CronJob | `false` |
 
