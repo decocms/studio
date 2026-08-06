@@ -53,8 +53,11 @@ const TRANSIENT_ERROR_PATTERNS: RegExp[] = [
   // The daemon's stream died mid-run. The work may be half-done, which is why
   // the re-dispatch reuses the PR branch when there is one.
   /harness_crashed: unexpected eof/i,
-  // Postgres connection exhaustion under a burst ("sorry, too many clients").
-  /too many clients already/i,
+  // Postgres connection exhaustion under a burst: "sorry, too many clients
+  // already" from the server, or pg-pool giving up waiting for one of its own
+  // (`connectionTimeoutMillis`) — "timeout exceeded when trying to connect".
+  // Both took runs (and reviewer runs) in the same burst.
+  /too many clients already|timeout exceeded when trying to connect/i,
   // Upstream rate limit / capacity, from the model gateway or GitHub.
   /\b(?:429|503)\b|too many requests|service unavailable/i,
 ];

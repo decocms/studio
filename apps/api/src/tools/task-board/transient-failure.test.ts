@@ -37,6 +37,17 @@ describe("isTransientRunFailure", () => {
     ).toBe(true);
   });
 
+  // Same burst again: the DB pool, not the task. Both the server's refusal and
+  // pg-pool timing out waiting for one of its own connections.
+  test("running out of database connections is infrastructure", () => {
+    for (const errorText of [
+      "error: sorry, too many clients already",
+      "Error: timeout exceeded when trying to connect",
+    ]) {
+      expect(isTransientRunFailure({ kind: "error", errorText })).toBe(true);
+    }
+  });
+
   test("kinds that are infrastructure by construction need no message", () => {
     for (const kind of ["stall", "liveness", "projection", "abandoned"]) {
       expect(isTransientRunFailure({ kind })).toBe(true);
