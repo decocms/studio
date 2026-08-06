@@ -49,6 +49,13 @@ describe("resolveReviewRunToolNames", () => {
     }
   });
 
+  // Without this, a claude-code run has NO way to report the PR it opened (it
+  // runs `gh pr create` in the pod, where no Studio hook can see it) and the
+  // card strands In Review with no reviewer — see pr-link.ts.
+  test("a task run can link the PR it opened", () => {
+    expect(TASK_RUN_TOOL_NAMES).toContain("TASK_BOARD_ITEM_PR_LINK");
+  });
+
   test("the review surface only ADDS to the narrow one", () => {
     for (const name of TASK_RUN_TOOL_NAMES) {
       expect(REVIEW_RUN_TOOL_NAMES).toContain(name);

@@ -12,7 +12,6 @@ import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
-import { extractPrFromText } from "./pr-extract";
 
 /** Cap a single live PR fetch — the modal shouldn't hang on a slow GitHub. */
 const PR_FETCH_TIMEOUT_MS = 8000;
@@ -667,35 +666,6 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
       taskBoardItemId,
       organizationId,
     );
-
-    // Recover a PR the create-PR hook missed (shell alias, script wrapper, or a
-    // PR opened by any means the heuristic doesn't match) by scanning each
-    // linked thread's latest assistant message — the agent's closing summary
-    // reliably prints the URL ("Opened PR #309 https://github.com/…/pull/309").
-    // linkPr is idempotent per (task, url), so re-linking an already-tracked PR
-    // is a no-op. Best-effort; a failure must never break the read.
-    // ponytail: scans only the latest assistant message per thread (that's what
-    // getById already loads). Widen to more parts if a PR ever lands in an
-    // earlier message that the closing summary doesn't repeat.
-    for (const thread of item?.threads ?? []) {
-      const pr = thread.lastMessage
-        ? extractPrFromText(thread.lastMessage)
-        : null;
-      if (!pr) continue;
-      try {
-        await ctx.storage.taskBoard.linkPr({
-          taskBoardItemId,
-          organizationId,
-          url: pr.url,
-          prNumber: pr.number,
-          repoOwner: pr.owner,
-          repoName: pr.repo,
-          connectionId: null,
-        });
-      } catch (err) {
-        console.error("[task-board] PR recovery from thread text failed", err);
-      }
-    }
 
     const linked = await ctx.storage.taskBoard.listPrs(
       taskBoardItemId,

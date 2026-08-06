@@ -457,6 +457,10 @@ export interface StudioToolIO {
       }[];
     };
   };
+  TASK_BOARD_ITEM_PR_LINK: {
+    input: { url: string };
+    output: { url: string; prNumber: number; taskBoardItemIds: string[] };
+  };
   TASK_BOARD_ITEM_RERUN: {
     input: { id: string };
     output: { status: string; supersededThreadIds: string[] };
@@ -1945,6 +1949,7 @@ export interface StudioToolIO {
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
+          syncButtonEnabled?: boolean | null | undefined;
         };
         connections: {
           connection_id: string;
@@ -2158,6 +2163,7 @@ export interface StudioToolIO {
               productionUrl?: string | null | undefined;
               fieldDescriptionTooltips?: boolean | null | undefined;
               fastPreview?: boolean | null | undefined;
+              syncButtonEnabled?: boolean | null | undefined;
             }
           | null
           | undefined;
@@ -2330,6 +2336,7 @@ export interface StudioToolIO {
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
+          syncButtonEnabled?: boolean | null | undefined;
         };
         connections: {
           connection_id: string;
@@ -2518,6 +2525,7 @@ export interface StudioToolIO {
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
+          syncButtonEnabled?: boolean | null | undefined;
         };
         connections: {
           connection_id: string;
@@ -2697,6 +2705,7 @@ export interface StudioToolIO {
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
+          syncButtonEnabled?: boolean | null | undefined;
         };
         connections: {
           connection_id: string;
@@ -2875,6 +2884,7 @@ export interface StudioToolIO {
               productionUrl?: string | null | undefined;
               fieldDescriptionTooltips?: boolean | null | undefined;
               fastPreview?: boolean | null | undefined;
+              syncButtonEnabled?: boolean | null | undefined;
             }
           | null
           | undefined;
@@ -3055,6 +3065,7 @@ export interface StudioToolIO {
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
+          syncButtonEnabled?: boolean | null | undefined;
         };
         connections: {
           connection_id: string;
@@ -3232,6 +3243,7 @@ export interface StudioToolIO {
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
+          syncButtonEnabled?: boolean | null | undefined;
         };
         connections: {
           connection_id: string;
@@ -4246,6 +4258,7 @@ export interface StudioToolIO {
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
+          syncButtonEnabled?: boolean | null | undefined;
         };
         connections: {
           connection_id: string;

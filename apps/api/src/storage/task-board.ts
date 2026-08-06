@@ -572,6 +572,22 @@ export class TaskBoardStorage {
       .execute();
   }
 
+  /**
+   * Make a card due for the next sweep tick. The per-card interval exists to
+   * bound GitHub calls on a card that keeps coming back unchanged; a PR landing
+   * on it is new information, so it earns one immediate look instead of waiting
+   * out a budget claimed while there was nothing to see. Same narrow write as
+   * `markSwept` — never `updated_at`.
+   */
+  async clearSweepBudget(id: string, organizationId: string): Promise<void> {
+    await this.db
+      .updateTable("task_board_items")
+      .set({ last_swept_at: null })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .execute();
+  }
+
   async linkedTaskIds(
     threadId: string,
     organizationId: string,
