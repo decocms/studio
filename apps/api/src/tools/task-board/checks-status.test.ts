@@ -321,19 +321,50 @@ describe("extractPreviewUrlFromComments", () => {
     ).toBeNull();
   });
 
-  it("prefers the newest comment by created_at over array order, so a stale re-deploy comment doesn't win", () => {
+  it("prefers the newest comment by updated_at over array order, so a stale re-deploy comment doesn't win", () => {
     const staleVercelBody =
       "[Preview](https://electrolux-git-old-stale-deploy-deco13.vercel.app)";
     const fresh = extractPreviewUrlFromComments([
-      { body: staleVercelBody, created_at: "2026-08-01T00:00:00Z" },
-      { body: vercelBody, created_at: "2026-08-06T22:32:55Z" },
+      {
+        body: staleVercelBody,
+        created_at: "2026-08-01T00:00:00Z",
+        updated_at: "2026-08-01T00:00:00Z",
+      },
+      {
+        body: vercelBody,
+        created_at: "2026-08-06T22:32:55Z",
+        updated_at: "2026-08-06T22:32:55Z",
+      },
     ]);
     expect(fresh).toBe(
       "https://electrolux-git-fix-pdp-focus-order-mobile-menu-deco13.vercel.app",
     );
   });
 
-  it("falls back to array order when created_at is missing", () => {
+  it("prefers a comment's updated_at over its created_at, so a sticky comment edited in place beats an unrelated later comment", () => {
+    // Vercel/Cloudflare edit a single sticky comment on each push — created_at
+    // stays frozen at the FIRST post, only updated_at moves forward. A human
+    // comment posted in between (with a coincidentally-matching host) must
+    // NOT outrank the bot's freshly-edited comment just because its
+    // created_at is later.
+    const stickyBotComment = {
+      body: vercelBody,
+      created_at: "2026-08-01T00:00:00Z", // first posted early in the PR
+      updated_at: "2026-08-06T22:32:55Z", // edited in place on the latest push
+    };
+    const laterUnrelatedComment = {
+      body: "unrelated review note, check https://some-other.vercel.app for reference",
+      created_at: "2026-08-03T00:00:00Z", // posted after the bot's first post...
+      updated_at: "2026-08-03T00:00:00Z", // ...but never edited again
+    };
+    expect(
+      extractPreviewUrlFromComments([stickyBotComment, laterUnrelatedComment]),
+    ).toBe(
+      "https://electrolux-git-fix-pdp-focus-order-mobile-menu-deco13.vercel.app",
+    );
+  });
+
+  it("falls back to created_at, then array order, when updated_at is missing", () => {
     expect(
       extractPreviewUrlFromComments([
         { body: decobotBody },

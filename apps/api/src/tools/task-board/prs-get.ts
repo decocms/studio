@@ -179,10 +179,15 @@ export function extractPreviewUrl(
  * "Branch Preview URL" — prefer the branch one, stable across the PR's commits),
  * deco.cx's `decobot` (a single "Visit Preview" markdown link), and Vercel's
  * `[Preview](url)` markdown link. Accepts the raw `get_comments` result (an
- * array, or `{ comments }`/`{ items }`), sorts newest-first by `created_at`
- * (falling back to array order when the field is absent) so a stale early
- * comment can't win over a later re-deploy, and scans each body. `null` when
- * none is found. Exported for the pure-logic unit test.
+ * array, or `{ comments }`/`{ items }`), sorts newest-first by `updated_at`
+ * (falling back to `created_at`, then array order, when absent) so a stale
+ * early comment can't win over a later re-deploy. Sorting by `updated_at`
+ * rather than `created_at` matters because Vercel/Cloudflare edit a single
+ * sticky comment in place on each push — `created_at` stays frozen at the
+ * comment's first post, so ranking by it could let an unrelated LATER human
+ * comment (that happens to mention a matching host) outrank the bot's
+ * freshly-edited one. Scans each body; `null` when none is found. Exported
+ * for the pure-logic unit test.
  */
 export function extractPreviewUrlFromComments(raw: unknown): string | null {
   const list = Array.isArray(raw)
@@ -192,15 +197,18 @@ export function extractPreviewUrlFromComments(raw: unknown): string | null {
       : Array.isArray((raw as { items?: unknown })?.items)
         ? (raw as { items: unknown[] }).items
         : [];
+  const recency = (c: unknown): number => {
+    const obj = c as { updated_at?: unknown; created_at?: unknown };
+    return (
+      Date.parse(obj?.updated_at as string) ||
+      Date.parse(obj?.created_at as string)
+    );
+  };
   const sorted = list
     .map((c, index) => ({ c, index }))
     .sort((a, b) => {
-      const aTime = Date.parse(
-        (a.c as { created_at?: unknown })?.created_at as string,
-      );
-      const bTime = Date.parse(
-        (b.c as { created_at?: unknown })?.created_at as string,
-      );
+      const aTime = recency(a.c);
+      const bTime = recency(b.c);
       if (Number.isNaN(aTime) || Number.isNaN(bTime)) return a.index - b.index;
       return bTime - aTime;
     })
