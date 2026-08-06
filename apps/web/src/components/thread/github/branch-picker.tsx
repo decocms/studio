@@ -256,9 +256,15 @@ export function BranchPicker({
                 variant="outline"
                 size="sm"
                 className="h-7 shrink-0"
-                onClick={() => pick(generateBranchName(userLabel))}
+                onClick={() =>
+                  pick(search.trim() || generateBranchName(userLabel))
+                }
               >
-                {t("thread.branchPicker.new")}
+                {search.trim()
+                  ? t("thread.branchPicker.createBranch", {
+                      name: search.trim(),
+                    })
+                  : t("thread.branchPicker.new")}
               </Button>
             )}
           </div>
