@@ -552,4 +552,48 @@ describe("ConnectionStorage", () => {
       expect(updated.bindings).toEqual(["CHAT"]);
     });
   });
+
+  describe("isReferencedByThread", () => {
+    it("reports a thread pinned to the connection as its repo", async () => {
+      const connection = await storage.create({
+        organization_id: "org_123",
+        created_by: "user_123",
+        title: "GitHub: acme/site",
+        connection_type: "HTTP",
+        connection_url: "https://github.test/mcp",
+      });
+
+      expect(await storage.isReferencedByThread(connection.id)).toBe(false);
+
+      const now = new Date().toISOString();
+      await database.db
+        .insertInto("threads")
+        .values({
+          id: `thrd_ref_${connection.id}`,
+          organization_id: "org_123",
+          title: "demo",
+          description: null,
+          status: "in_progress",
+          message_storage_version: 2,
+          virtual_mcp_id: "",
+          created_at: now,
+          updated_at: now,
+          created_by: "user_123",
+          metadata: JSON.stringify({
+            githubRepo: {
+              url: "https://github.com/acme/site",
+              owner: "acme",
+              name: "site",
+              connectionId: connection.id,
+            },
+          }),
+        })
+        .execute();
+
+      // The guard that keeps a live thread from being stranded on a deleted
+      // repo connection (see VIRTUAL_MCP_DELETE).
+      expect(await storage.isReferencedByThread(connection.id)).toBe(true);
+      expect(await storage.isReferencedByThread("conn_unrelated")).toBe(false);
+    });
+  });
 });
