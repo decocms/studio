@@ -1108,38 +1108,12 @@ function VirtualMcpDetailViewWithData({
                         control={form.control}
                         onCommit={flushAndSave}
                       />
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="space-y-0.5 min-w-0">
-                          <Label className="font-normal text-foreground">
-                            {t("virtualMcp.virtualMcp.syncButton")}
-                          </Label>
-                          <p className="text-xs text-muted-foreground">
-                            {t("virtualMcp.virtualMcp.syncButtonDescription")}
-                          </p>
-                        </div>
-                        <Switch
-                          className="shrink-0"
-                          checked={
-                            form.watch("metadata.syncButtonEnabled") ?? false
-                          }
-                          onCheckedChange={(checked) => {
-                            form.setValue(
-                              "metadata.syncButtonEnabled",
-                              checked,
-                              {
-                                shouldDirty: true,
-                              },
-                            );
-                            flushAndSave();
-                          }}
-                        />
-                      </div>
                     </CardContent>
                   </>
                 )}
 
                 {/* Editing — content-editing preferences (auto-open the CMS,
-                    compact field descriptions). */}
+                    team sync, compact field descriptions). */}
                 <div className="border-t border-border -mx-6" />
                 <CardContent className="p-0 space-y-5">
                   <div className="flex flex-col gap-1">
@@ -1169,6 +1143,30 @@ function VirtualMcpDetailViewWithData({
                             { ...layoutMeta, cmsDefaultOpen: checked },
                             { shouldDirty: true },
                           );
+                          flushAndSave();
+                        }}
+                      />
+                    </div>
+                  )}
+                  {hasGithubRepo && (
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="space-y-0.5 min-w-0">
+                        <Label className="font-normal text-foreground">
+                          {t("virtualMcp.virtualMcp.teamSync")}
+                        </Label>
+                        <p className="text-xs text-muted-foreground">
+                          {t("virtualMcp.virtualMcp.teamSyncDescription")}
+                        </p>
+                      </div>
+                      <Switch
+                        className="shrink-0"
+                        checked={
+                          form.watch("metadata.syncButtonEnabled") ?? false
+                        }
+                        onCheckedChange={(checked) => {
+                          form.setValue("metadata.syncButtonEnabled", checked, {
+                            shouldDirty: true,
+                          });
                           flushAndSave();
                         }}
                       />

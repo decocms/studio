@@ -503,6 +503,9 @@ function HeaderButtonRenderer(props: {
   ) {
     return (
       <div className="flex items-center gap-2">
+        {props.showSync ? (
+          <SyncButton t={t} busy={actionBusy} onClick={props.onSync} />
+        ) : null}
         <WithTooltip label={tooltipLabel}>
           <MergeSplitButton
             baseBranch={props.prBase}
@@ -512,9 +515,6 @@ function HeaderButtonRenderer(props: {
             onReview={props.onReview}
           />
         </WithTooltip>
-        {props.showSync ? (
-          <SyncButton t={t} busy={actionBusy} onClick={props.onSync} />
-        ) : null}
       </div>
     );
   }
@@ -527,6 +527,9 @@ function HeaderButtonRenderer(props: {
 
   return (
     <div className="flex items-center gap-2">
+      {props.showSync ? (
+        <SyncButton t={t} busy={actionBusy} onClick={props.onSync} />
+      ) : null}
       <WithTooltip label={tooltipLabel}>
         <Button
           size="sm"
@@ -581,9 +584,6 @@ function HeaderButtonRenderer(props: {
             </span>
           </Button>
         </WithTooltip>
-      ) : null}
-      {props.showSync ? (
-        <SyncButton t={t} busy={actionBusy} onClick={props.onSync} />
       ) : null}
     </div>
   );
