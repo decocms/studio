@@ -9,6 +9,11 @@ description: |
   releases coexist in the shared `agent-sandbox-system` namespace.
   Requires the sandbox-operator chart to already be installed.
 type: application
+# 0.12.1: pin `updateStrategy.type: OnReplenish` on every SandboxWarmPool
+# (generic + tenant). It is already the operator's default as of v0.4.5, so
+# this renders no behaviour change today — it exists so an operator upgrade
+# that moves the default to `Recreate` can't turn a routine SandboxTemplate
+# sync (an image bump) into a pool-wide pod restart.
 # 0.12.0: tenantPools — per-tenant warm pools (SandboxWarmPool per entry
 # against the shared SandboxTemplate). Additive and empty by default; each
 # entry needs a matching object in Studio's STUDIO_SANDBOX_TENANT_POOLS.
@@ -87,7 +92,7 @@ type: application
 # 0.8.0: org-fs sidecar (orgFs.*) — privileged rclone mounter + main-container
 # mounts. NOTE: the publish workflow skips existing versions, so this MUST
 # stay ahead of the latest published chart (0.7.5 at time of writing).
-version: 0.12.0
+version: 0.12.1
 # appVersion tracks the studio-sandbox image version (image.tag default).
 appVersion: "1.42.0"
 kubeVersion: ">=1.30.0-0"
