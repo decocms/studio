@@ -51,7 +51,10 @@ import { useStatusSounds } from "../../hooks/use-status-sounds";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@deco/ui/components/button.tsx";
 import { EmptyState } from "@/components/empty-state";
-import { useWorkspaceLayoutState } from "@/hooks/use-layout-state";
+import {
+  resolveMobileSurface,
+  useWorkspaceLayoutState,
+} from "@/hooks/use-layout-state";
 import { useRefreshViewedThreadMetadata } from "@/hooks/use-refresh-viewed-thread-metadata";
 import { getActiveGithubRepo } from "@/lib/github-repo";
 import { useT } from "@/i18n/use-t.ts";
@@ -386,7 +389,10 @@ function MobileTaskWorkspace({
   onNewTaskRef: React.MutableRefObject<(() => void) | null>;
 }) {
   const t = useT();
-  const mobileSurface = layout.mainOpen ? "main" : (layout.sidePanel ?? "chat");
+  const mobileSurface = resolveMobileSurface({
+    visibility: { sidePanel: layout.sidePanel, mainOpen: layout.mainOpen },
+    sidePanelParamPresent: layout.sidePanelParamPresent,
+  });
 
   return (
     <>
