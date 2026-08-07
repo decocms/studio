@@ -59,7 +59,13 @@ describe("buildConfigPayload", () => {
     const payload = buildConfigPayload({
       runtime: "node",
       packageManager: null,
-      repo: { cloneUrl: "https://github.com/acme/site.git" } as never,
+      // A tenant warm pool bootstraps with a repo and no author, which is also
+      // the only way to reach this function with no tenant at all.
+      repo: {
+        cloneUrl: "https://github.com/acme/site.git",
+        userName: "",
+        userEmail: "",
+      },
     });
 
     expect(payload).not.toHaveProperty("orgId");
