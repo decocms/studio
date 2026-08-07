@@ -8,6 +8,7 @@ import type { TaskBoardItemPrRef } from "@/storage/types";
 import { getRepoScope } from "@decocms/shared/github-repo-scope";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { retry, RetryError } from "@decocms/shared/std";
+import { InMemoryMcpReadCache } from "@/mcp-clients/mcp-read-cache";
 import { TaskBoardItemPrSchema } from "./schema";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
@@ -16,6 +17,137 @@ import { reactToApprovedPrConflict } from "./conflict-reaction";
 
 /** Cap a single live PR fetch — the modal shouldn't hang on a slow GitHub. */
 const PR_FETCH_TIMEOUT_MS = 8000;
+
+/**
+ * GitHub answers "too many requests" — the primary or (more often here) the
+ * SECONDARY rate limit, which punishes bursts of concurrent calls rather than a
+ * raw hourly count. Retrying that is not a retry, it's the burst: it triples the
+ * very thing being limited, and the retried calls are what keep the limit shut.
+ * So a rate-limit answer ends the attempt immediately and the cache below serves
+ * the last good value instead.
+ *
+ * Matched on the message because the answer arrives as an MCP tool result
+ * (`isError` + text), not an HTTP status we can read. Exported for the unit test.
+ */
+export function isRateLimitError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /too many requests|rate limit|\b429\b/i.test(message);
+}
+
+/**
+ * Stale-while-revalidate cache for the PR reads on the POLLED paths — the task
+ * dialog's 60s refresh and the review sweeper — which is where the GitHub 429s
+ * came from. Each poll costs four `pull_request_read` calls per PR plus one
+ * `GET_CHECK_RUN` per failing check, uncached: `clientFromConnection` (what this
+ * file uses) bypasses the proxy's read cache entirely, so every viewer, every
+ * poll, every replica hit GitHub live.
+ *
+ * SWR is what keeps the UI alive: past `revalidateAfterMs` a poll is served from
+ * the entry it already has while ONE background call refreshes it (single-flight
+ * — concurrent viewers of the same PR collapse into one), and a failed refresh
+ * keeps serving the previous value until `maxStaleMs`. So a rate-limit window
+ * shows the last known PR state instead of blanking the card to all-nulls.
+ *
+ * `maxStaleMs` is deliberately much longer than the poll: it only matters while
+ * GitHub is refusing us, and half an hour of "the state as of when GitHub last
+ * answered" beats an empty card that loses its checks, preview and ship button.
+ *
+ * Its own instance, not the shared `getMcpReadCache()`: that one is tuned for
+ * proxied tool calls (30s/5min) and is settings-gated off in development, and
+ * this path wants a longer stale window and to work the same everywhere.
+ *
+ * ponytail: per-pod, so N replicas still cost N fetches per window. Move it to
+ * NATS KV if that's still too many.
+ */
+const PR_READ_CACHE_ENTRY = {
+  /** Just under the dialog's 60s poll, so a poll refreshes rather than blocks. */
+  revalidateAfterMs: 55_000,
+  /** How long a rate-limit window may be papered over with the last good read. */
+  maxStaleMs: 30 * 60_000,
+  maxValueBytes: 512 * 1024,
+} as const;
+const prReadCache = new InMemoryMcpReadCache({
+  "tools/call": PR_READ_CACHE_ENTRY,
+  "resources/read": PR_READ_CACHE_ENTRY,
+  "prompts/get": PR_READ_CACHE_ENTRY,
+});
+
+/**
+ * Drop this connection's cached PR reads. Call it after WRITING to GitHub
+ * through the connection (a merge), so the next poll sees the new state instead
+ * of serving the pre-merge one for the rest of the revalidate window — the card
+ * only moves to Done once a poll observes `merged`, and a minute of "did my ship
+ * button work?" is exactly the confusion this cache must not introduce.
+ */
+export function invalidatePrReads(connectionId: string): void {
+  prReadCache.invalidate(connectionId);
+}
+
+/** `owner/repo#number`, for log lines. */
+const prLabel = (pr: TaskBoardItemPrRef) =>
+  `${pr.repoOwner}/${pr.repoName}#${pr.number}`;
+
+/**
+ * One cached, best-effort GitHub read for a PR. Best-effort in the same sense as
+ * the rest of this file: `null` on any failure, so the card still renders.
+ *
+ * `callTool` RESOLVES (doesn't reject) on an upstream MCP error, so an `isError`
+ * result is rethrown here — otherwise the cache would happily store GitHub's
+ * "too many requests" as the PR's state and serve it for half an hour.
+ */
+async function cachedPrRead(
+  client: Awaited<ReturnType<typeof clientFromConnection>>,
+  connectionId: string,
+  name: string,
+  args: Record<string, unknown>,
+  describe: string,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const raw = await prReadCache.fetch({
+      type: "tools/call",
+      connectionId,
+      // The GitHub installation is the connection's, not the caller's, so every
+      // org member reading the same PR shares one entry.
+      scope: { kind: "org" },
+      params: { name, arguments: args },
+      fetchLive: () =>
+        retry(
+          async () => {
+            const result = await client.callTool(
+              { name, arguments: args },
+              undefined,
+              {
+                timeout: PR_FETCH_TIMEOUT_MS,
+              },
+            );
+            if (
+              result &&
+              typeof result === "object" &&
+              (result as { isError?: boolean }).isError
+            ) {
+              throw new Error(
+                (result as { content?: Array<{ text?: string }> }).content?.[0]
+                  ?.text ?? `${name} returned isError`,
+              );
+            }
+            return result;
+          },
+          {
+            maxAttempts: 3,
+            minTimeout: 300,
+            maxTimeout: 3000,
+            jitter: 1,
+            isRetriable: (err) => !isRateLimitError(err),
+          },
+        ),
+    });
+    return toolResultJson(raw);
+  } catch (err) {
+    const cause = err instanceof RetryError ? err.cause : err;
+    console.error(`[task-board] ${name} failed for ${describe}:`, cause);
+    return null;
+  }
+}
 
 /**
  * The GitHub MCP connection to fetch/merge a PR through: the one that opened it
@@ -360,33 +492,23 @@ function isFailingRun(r: RawCheckRun): boolean {
  *  (the list tool omits `output`). Best-effort: null on any failure. */
 async function fetchCheckRunSummary(
   client: Awaited<ReturnType<typeof clientFromConnection>>,
+  connectionId: string,
   pr: TaskBoardItemPrRef,
   checkRunId: number,
 ): Promise<string | null> {
-  try {
-    const obj = toolResultJson(
-      await client.callTool(
-        {
-          name: "GET_CHECK_RUN",
-          arguments: {
-            owner: pr.repoOwner,
-            repo: pr.repoName,
-            checkRunId,
-          },
-        },
-        undefined,
-        { timeout: PR_FETCH_TIMEOUT_MS },
-      ),
-    );
-    const output = obj?.output as
-      | { summary?: unknown; text?: unknown }
-      | undefined;
-    const summary = typeof output?.summary === "string" ? output.summary : null;
-    const text = typeof output?.text === "string" ? output.text : null;
-    return summary ?? text ?? null;
-  } catch {
-    return null;
-  }
+  const obj = await cachedPrRead(
+    client,
+    connectionId,
+    "GET_CHECK_RUN",
+    { owner: pr.repoOwner, repo: pr.repoName, checkRunId },
+    `${prLabel(pr)} check-run ${checkRunId}`,
+  );
+  const output = obj?.output as
+    | { summary?: unknown; text?: unknown }
+    | undefined;
+  const summary = typeof output?.summary === "string" ? output.summary : null;
+  const text = typeof output?.text === "string" ? output.text : null;
+  return summary ?? text ?? null;
 }
 
 /** Just the PR's checks summary (combined status ∪ check-runs) — used to gate
@@ -501,59 +623,26 @@ export async function fetchPrConflict(
  *  deploy preview URL. Best-effort: any failure yields nulls. */
 async function fetchPrStatusExtras(
   client: Awaited<ReturnType<typeof clientFromConnection>>,
+  connectionId: string,
   pr: TaskBoardItemPrRef,
 ): Promise<{
   checksStatus: ChecksStatus;
   checks: PrCheck[];
   previewUrl: string | null;
 }> {
-  const read = async (
-    method: "get_status" | "get_check_runs" | "get_comments",
-  ): Promise<Record<string, unknown> | null> => {
-    try {
-      const result = await retry(
-        async () => {
-          const raw = await client.callTool(
-            {
-              name: "pull_request_read",
-              arguments: {
-                method,
-                owner: pr.repoOwner,
-                repo: pr.repoName,
-                pullNumber: pr.number,
-              },
-            },
-            undefined,
-            { timeout: PR_FETCH_TIMEOUT_MS },
-          );
-          // callTool resolves (doesn't reject) on an upstream MCP error — throw
-          // so retry() can see it and back off (e.g. GitHub's "too many
-          // requests" on a burst of concurrent pull_request_read calls).
-          if (
-            raw &&
-            typeof raw === "object" &&
-            (raw as { isError?: boolean }).isError
-          ) {
-            throw new Error(
-              (raw as { content?: Array<{ text?: string }> }).content?.[0]
-                ?.text ?? "pull_request_read returned isError",
-            );
-          }
-          return raw;
-        },
-        { maxAttempts: 3, minTimeout: 300, maxTimeout: 3000, jitter: 1 },
-      );
-      return toolResultJson(result);
-    } catch (err) {
-      const cause = err instanceof RetryError ? err.cause : err;
-      console.error(
-        `[task-board] pull_request_read(${method}) failed for ` +
-          `${pr.repoOwner}/${pr.repoName}#${pr.number} after retries:`,
-        cause,
-      );
-      return null;
-    }
-  };
+  const read = (method: "get_status" | "get_check_runs" | "get_comments") =>
+    cachedPrRead(
+      client,
+      connectionId,
+      "pull_request_read",
+      {
+        method,
+        owner: pr.repoOwner,
+        repo: pr.repoName,
+        pullNumber: pr.number,
+      },
+      `${prLabel(pr)} (${method})`,
+    );
   // The three reads are independent — run them CONCURRENTLY. Serial was the
   // slowness (each is a remote MCP → GitHub round-trip, ~1.5-2s; the card made
   // 4-5 of them in a row).
@@ -581,7 +670,7 @@ async function fetchPrStatusExtras(
         detailsUrl: r.detailsUrl,
         summary:
           isFailingRun(r) && r.id != null
-            ? await fetchCheckRunSummary(client, pr, r.id)
+            ? await fetchCheckRunSummary(client, connectionId, pr, r.id)
             : null,
       }),
     ),
@@ -644,23 +733,21 @@ export async function fetchPrLiveState(
     // An open PR (the common case in the review dialog) is fully populated in a
     // single round-trip window instead of ~5 serial hops; a merged/closed PR
     // wastes the extras, but that's rare here and best-effort.
-    const [liveResult, extras] = await Promise.all([
-      client.callTool(
+    const [obj, extras] = await Promise.all([
+      cachedPrRead(
+        client,
+        conn.id,
+        "pull_request_read",
         {
-          name: "pull_request_read",
-          arguments: {
-            method: "get",
-            owner: pr.repoOwner,
-            repo: pr.repoName,
-            pullNumber: pr.number,
-          },
+          method: "get",
+          owner: pr.repoOwner,
+          repo: pr.repoName,
+          pullNumber: pr.number,
         },
-        undefined,
-        { timeout: PR_FETCH_TIMEOUT_MS },
+        `${prLabel(pr)} (get)`,
       ),
-      fetchPrStatusExtras(client, pr),
+      fetchPrStatusExtras(client, conn.id, pr),
     ]);
-    const obj = toolResultJson(liveResult);
     if (!obj) return NO_LIVE_STATE;
     const rawState = obj.state;
     const isOpen = rawState === "open";

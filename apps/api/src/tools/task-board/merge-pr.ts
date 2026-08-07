@@ -1,6 +1,10 @@
 import type { StudioContext } from "@/core/studio-context";
 import { clientFromConnection } from "@/mcp-clients";
-import { fetchPrChecksStatus, resolveGithubConnection } from "./prs-get";
+import {
+  fetchPrChecksStatus,
+  invalidatePrReads,
+  resolveGithubConnection,
+} from "./prs-get";
 
 /** Cap the merge round-trip so a slow GitHub can't hang the caller. */
 const MERGE_TIMEOUT_MS = 15000;
@@ -76,6 +80,9 @@ export async function mergeLinkedPr(
       );
       return false;
     }
+    // The PR just changed under the polled read cache — drop it so the next
+    // poll sees `merged` and moves the card to Done immediately.
+    invalidatePrReads(conn.id);
     return true;
   } catch (err) {
     console.error("[task-board] merge PR failed", err);
