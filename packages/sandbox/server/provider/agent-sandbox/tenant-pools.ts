@@ -114,15 +114,26 @@ export function resolveTenantPool(
 
 /**
  * The claim's `spec.warmpool`. A resolved tenant pool binds one of that org's
- * already-running pods; otherwise this is exactly today's behavior — the
- * generic (empty) pool in warm-pool mode, `"none"` without a sentinel, because
- * the operator rejects per-claim env outside `"none"`.
+ * already-running pods; otherwise the generic pool, named explicitly, or
+ * `"none"` without a sentinel because the operator rejects per-claim env
+ * outside `"none"`.
+ *
+ * `genericPoolName` must be the SandboxWarmPool object's real name — the
+ * sandbox-env chart names it after the SandboxTemplate. It used to be the
+ * literal `"default"`, which matches no pool: the operator then falls back to
+ * *any* warm pod rendered from the same template. Harmless while one pool
+ * existed; once tenant pools shipped it handed one org's prewarmed pods (repo
+ * already cloned) to another org's claim, and the daemon rejected the
+ * mismatched workload with `409 immutable: cloneUrl`. Observed in prod
+ * 2026-08-07: claims for montecarlo and `ephemeral-*` dispatches bound
+ * `tenant-electrolux-prod-*` pods.
  */
 export function claimWarmPoolName(
   pool: TenantPool | null,
   warmPoolMode: boolean,
+  genericPoolName: string,
 ): string {
-  return pool?.name ?? (warmPoolMode ? "default" : "none");
+  return pool?.name ?? (warmPoolMode ? genericPoolName : "none");
 }
 
 /**

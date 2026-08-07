@@ -143,15 +143,22 @@ describe("resolveTenantPool", () => {
 // pool belonging to nobody it should reach.
 describe("claimWarmPoolName", () => {
   it("a resolved pool binds that pool", () => {
-    expect(claimWarmPoolName(POOLS[0] ?? null, true)).toBe("tenant-acme-site");
+    expect(claimWarmPoolName(POOLS[0] ?? null, true, "studio-sandbox")).toBe(
+      "tenant-acme-site",
+    );
   });
 
-  it("no pool in warm-pool mode falls back to the generic pool", () => {
-    expect(claimWarmPoolName(null, true)).toBe("default");
+  // Never the literal "default": that matches no SandboxWarmPool, and the
+  // operator's fallback then binds any warm pod of the template — including
+  // another org's tenant pool, whose repo is already cloned (409 cloneUrl).
+  it("no pool in warm-pool mode names the generic pool explicitly", () => {
+    expect(claimWarmPoolName(null, true, "studio-sandbox")).toBe(
+      "studio-sandbox",
+    );
   });
 
   it("no sentinel → `none`, so the operator still accepts per-claim env", () => {
-    expect(claimWarmPoolName(null, false)).toBe("none");
+    expect(claimWarmPoolName(null, false, "studio-sandbox")).toBe("none");
   });
 });
 

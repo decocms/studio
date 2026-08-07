@@ -1282,7 +1282,11 @@ export class AgentSandboxProvider implements SandboxProvider {
           ...(hasAnnotations ? { annotations } : {}),
         },
         env: envEntries,
-        warmpool: claimWarmPoolName(tenantPool, warmPoolMode),
+        warmpool: claimWarmPoolName(
+          tenantPool,
+          warmPoolMode,
+          this.sandboxTemplateName,
+        ),
         lifecycle: {
           shutdownPolicy: "Delete",
           shutdownTime: this.computeShutdownTime(),
