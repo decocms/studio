@@ -1,23 +1,21 @@
 /**
  * ConnectSourcesTab — reopens the commerce-onboarding connect flow for a
  * client who already finished onboarding but skipped one or more data
- * sources (GA4/GSC/VTEX/GitHub). Opened via the report app's
+ * sources (GA4/GSC/VTEX/GitHub). Opened via the report app's generic
  * `studio://navigate?main=connect-sources` resource link (see
  * project-app-navigate.ts) — a dismissable overlay tab, unlike the blocking
  * onboarding step (CommerceConnectModal), sharing the same provider-card UI
  * and chrome (ConnectLayout) so the two don't drift.
  *
- * An optional `&field=<id>` on that same link (see CONNECT_SOURCE_FIELDS in
- * project-app-navigate.ts) narrows this to exactly one companion's card,
- * auto-triggering its connect/config dialog on arrival — the report already
- * knows which source is missing, so it skips the 4-card grid entirely.
+ * A `&field=<id>` on that same link targets one specific source and does NOT
+ * come here — project-app-view.tsx opens that source's connect dialog in
+ * place (ConnectSourceDialog) instead of swapping the panel.
  */
-import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useMutation } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { Suspense, useState } from "react";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useT } from "@/i18n/use-t.ts";
-import { KEYS } from "@/lib/query-keys";
 import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
@@ -28,6 +26,7 @@ import {
   CompanionMcpsSection,
   CompanionMcpsSectionSkeleton,
 } from "@/routes/commerce-onboarding/companion-mcps-section.tsx";
+import { useCommerceDiscoverySiteUrl } from "@/routes/commerce-onboarding/use-commerce-companions.ts";
 import {
   ConnectFooterButton,
   ConnectLayout,
@@ -47,12 +46,6 @@ function ConnectSourcesTabError({ onClose }: { onClose: () => void }) {
 
 export function ConnectSourcesTab() {
   const navigate = useNavigate();
-  // Set only by the report's per-card "Connect" click (studio://navigate?
-  // main=connect-sources&field=<id>) — skips the grid straight to that one
-  // companion's own dialog. Absent for the generic "connect-sources" entry
-  // (e.g. from the autopilot card, which doesn't know which analytics source
-  // the user will pick), which still shows the full 4-card grid.
-  const { field } = useSearch({ strict: false }) as { field?: string };
   const close = () =>
     navigate({
       to: ".",
@@ -75,11 +68,7 @@ export function ConnectSourcesTab() {
             </ConnectLayout>
           }
         >
-          <ConnectSourcesTabContent
-            onDone={close}
-            onClose={close}
-            focusFieldKey={field}
-          />
+          <ConnectSourcesTabContent onDone={close} onClose={close} />
         </Suspense>
       </ErrorBoundary>
     </div>
@@ -89,11 +78,9 @@ export function ConnectSourcesTab() {
 function ConnectSourcesTabContent({
   onDone,
   onClose,
-  focusFieldKey,
 }: {
   onDone: () => void;
   onClose: () => void;
-  focusFieldKey?: string;
 }) {
   const t = useT();
   const { org } = useProjectContext();
@@ -104,24 +91,11 @@ function ConnectSourcesTabContent({
     orgSlug: org.slug,
   });
 
-  const connectionQuery = useSuspenseQuery({
-    queryKey: KEYS.commerceDiscoveryConnection(org.id, connectionId),
-    queryFn: async () => {
-      const result = await selfClient.callTool({
-        name: "COLLECTION_CONNECTIONS_GET",
-        arguments: { id: connectionId },
-      });
-      return parseSelfToolResult<{
-        item: { metadata?: Record<string, unknown> | null } | null;
-      }>(result);
-    },
-    retry: false,
+  const siteUrl = useCommerceDiscoverySiteUrl({
+    selfClient,
+    org,
+    cdConnectionId: connectionId,
   });
-  const item = connectionQuery.data.item;
-  const siteUrl =
-    typeof item?.metadata?.siteUrl === "string"
-      ? (item.metadata.siteUrl as string)
-      : undefined;
 
   // Starts false (unlike the onboarding modal, which fails open): here the
   // client is already past onboarding, so there's no forced-continue path —
@@ -186,7 +160,6 @@ function ConnectSourcesTabContent({
           org={org}
           cdConnectionId={connectionId}
           siteUrl={siteUrl}
-          focusFieldKey={focusFieldKey}
           onReadinessChange={setHasConnectedSource}
         />
       </div>

@@ -92,10 +92,6 @@ export function CompanionMcpsSection(props: {
   /** Called once cards resolve with whether at least one is connected (or
    *  none are required). Lets the report CTA above this section gate on it. */
   onReadinessChange?: (hasConnectedSource: boolean) => void;
-  /** Render (and auto-trigger) only this one companion's card instead of the
-   *  full grid — the "no panel in between" deep link from the commerce
-   *  report, which already knows exactly which source is missing. */
-  focusFieldKey?: string;
 }) {
   return (
     <QueryErrorResetBoundary>
@@ -124,13 +120,11 @@ function CompanionMcpsSectionContent({
   cdConnectionId,
   siteUrl,
   onReadinessChange,
-  focusFieldKey,
 }: {
   org: CompanionOrg;
   cdConnectionId: string;
   siteUrl?: string;
   onReadinessChange?: (hasConnectedSource: boolean) => void;
-  focusFieldKey?: string;
 }) {
   const t = useT();
   const { data: session } = authClient.useSession();
@@ -230,7 +224,6 @@ function CompanionMcpsSectionContent({
             current === card.fieldKey ? null : current,
           )
         }
-        autoOpen={focusFieldKey === card.fieldKey}
         onConnect={() => void handleConnect()}
         onDisconnect={() => void disconnect(card)}
       />
@@ -265,14 +258,9 @@ function CompanionMcpsSectionContent({
           </p>
         )}
         {/* Single list, required source(s) first — the "Obrigatório" pill on the
-            card carries the must-vs-optional distinction (no section headers).
-            focusFieldKey narrows this to exactly one card — the "no panel in
-            between" deep link from the commerce report. */}
+            card carries the must-vs-optional distinction (no section headers). */}
         <div className="flex flex-col gap-4 pt-3">
-          {(focusFieldKey
-            ? cards.filter((c) => c.fieldKey === focusFieldKey)
-            : [...requiredCards, ...enhancedCards]
-          ).map(renderCard)}
+          {[...requiredCards, ...enhancedCards].map(renderCard)}
         </div>
       </ScrollReveal>
     </div>

@@ -7,10 +7,12 @@ import { OVERLAY_TABS } from "@/layouts/main-panel-tabs/tab-id";
 // OVERLAY_TABS so a message can't drive arbitrary navigation.
 const NAVIGATE_SCHEME = "studio://navigate";
 
-// `field=<key>` deep-links `main=connect-sources` straight to one companion's
-// own connect/config dialog (skipping the card grid) — the commerce report
-// already knows exactly which source it's missing. Allowlisted the same way
-// as OVERLAY_TABS; meaningless (and ignored) for any other tab.
+// `field=<key>` on `main=connect-sources` targets one specific source — the
+// commerce report already knows exactly which one it's missing. The caller
+// (project-app-view.tsx) opens that source's connect/config dialog in place
+// over the app view (ConnectSourceDialog) instead of swapping the panel to
+// the connect-sources tab. Allowlisted the same way as OVERLAY_TABS;
+// meaningless (and ignored) for any other tab.
 const CONNECT_SOURCE_FIELDS = new Set(["vtex", "ga4", "gsc", "github"]);
 
 /**

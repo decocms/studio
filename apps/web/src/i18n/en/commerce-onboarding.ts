@@ -20,6 +20,9 @@ export const commerceOnboarding = {
   "commerceOnboarding.companionCard.editConfiguration": "Edit configuration",
   "commerceOnboarding.companionCard.finishSetup": "Finish setup",
   "commerceOnboarding.companionCard.required": "Required",
+  "commerceOnboarding.connectSourceDialog.connecting": "Connecting {title}...",
+  "commerceOnboarding.connectSourceDialog.loading": "Loading...",
+  "commerceOnboarding.connectSourceDialog.title": "Connect data source",
   "commerceOnboarding.githubConfigForm.cancel": "Cancel",
   "commerceOnboarding.githubConfigForm.failedToSave":
     "Couldn't save the configuration",
