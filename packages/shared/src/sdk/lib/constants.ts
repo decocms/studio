@@ -271,16 +271,20 @@ export const parseDevConnectionId = devConnectionPrefix.is;
 export const SUPER_AGENT_ICON_URL =
   "https://assets.decocache.com/decocms/fd07a578-6b1c-40f1-bc05-88a3b981695d/f7fc4ffa81aec04e37ae670c3cd4936643a7b269.png";
 
+/** The QA Agent's brand color — shared by its glyph and its avatar badge tint. */
+export const QA_AGENT_COLOR = "#f59e0b";
+
 /** The QA Agent glyph — a bug/testing magnifier, distinguishing its review
  *  thread from the Super Agent capybara on the task card. Deliberately NOT a
  *  checkmark/shield-check: that glyph read as "already verified" even while
  *  the QA run was still in progress or had failed. */
-export const QA_AGENT_ICON_URL =
-  "https://api.iconify.design/lucide:bug.svg?color=%23f59e0b";
+export const QA_AGENT_ICON_URL = `https://api.iconify.design/lucide:bug.svg?color=${encodeURIComponent(QA_AGENT_COLOR)}`;
+
+/** The Code Reviewer's brand color — shared by its glyph and its avatar badge tint. */
+export const CODE_REVIEWER_COLOR = "#6366f1";
 
 /** The Code Reviewer glyph — a code-inspection magnifier. */
-export const CODE_REVIEWER_ICON_URL =
-  "https://api.iconify.design/lucide:file-search.svg?color=%236366f1";
+export const CODE_REVIEWER_ICON_URL = `https://api.iconify.design/lucide:file-search.svg?color=${encodeURIComponent(CODE_REVIEWER_COLOR)}`;
 
 export function getWellKnownDecopilotVirtualMCP(
   organizationId: string,
