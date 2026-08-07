@@ -57,6 +57,7 @@ import { KEYS } from "@/lib/query-keys";
 import { useDebouncedValue } from "@/hooks/use-debounced-value.ts";
 import { useOrgFsMutations } from "@/hooks/use-org-fs";
 import { basename, parseLibraryPath, segmentLabel } from "./location";
+import { useOrgRepoSyncVolumes } from "./synced-repos";
 import { BrandPreviewDialog } from "./brand-preview";
 import { ShareDialog, type ShareTarget } from "./file-share-button";
 import { LibraryPreviewDialog } from "./preview-dialog";
@@ -95,7 +96,15 @@ export function LibraryPage({
   // The home folder is the top of the tree, so a missing (or emptied) `?path=`
   // lands there rather than on a volumes listing.
   const browsePath = search.path || HOME_MOUNT_PATH;
-  const location = parseLibraryPath(browsePath);
+  const parsedLocation = parseLibraryPath(browsePath);
+  // Synced-repo volumes are mirrors of their GitHub source: local writes would
+  // be deleted on the next sync cycle, so the Library browses them read-only
+  // (same treatment as the public sets).
+  const syncedVolumes = useOrgRepoSyncVolumes();
+  const location =
+    parsedLocation.volume !== null && syncedVolumes.has(parsedLocation.volume)
+      ? { ...parsedLocation, readOnly: true }
+      : parsedLocation;
 
   const setSearchParam = (
     key: "path" | "preview" | "skill" | "brand",

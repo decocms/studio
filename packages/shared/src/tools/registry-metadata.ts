@@ -173,6 +173,13 @@ const ALL_TOOL_NAMES = [
   // Org filesystem (shared public skill sets)
   "ORG_FS_PUBLIC_SETS_SYNC",
 
+  // Per-org GitHub repo → volume syncs
+  "ORG_REPO_SYNC_CREATE",
+  "ORG_REPO_SYNC_LIST",
+  "ORG_REPO_SYNC_UPDATE",
+  "ORG_REPO_SYNC_DELETE",
+  "ORG_REPO_SYNC_RUN",
+
   // Object Storage tools
   "LIST_OBJECTS",
   "GET_OBJECT_METADATA",
@@ -807,6 +814,31 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "ORG_FS_PUBLIC_SETS_SYNC",
     description:
       "Re-sync the shared public skill-set volumes from their GitHub sources",
+    category: "File Configs",
+  },
+  {
+    name: "ORG_REPO_SYNC_CREATE",
+    description: "Keep a GitHub repository mirrored into a new org-fs volume",
+    category: "File Configs",
+  },
+  {
+    name: "ORG_REPO_SYNC_LIST",
+    description: "List the org's synced repositories and their sync status",
+    category: "File Configs",
+  },
+  {
+    name: "ORG_REPO_SYNC_UPDATE",
+    description: "Update a synced repository's ref, paths, or enabled flag",
+    category: "File Configs",
+  },
+  {
+    name: "ORG_REPO_SYNC_DELETE",
+    description: "Stop syncing a repository (already-synced files are kept)",
+    category: "File Configs",
+  },
+  {
+    name: "ORG_REPO_SYNC_RUN",
+    description: "Sync a repository into its volume right now",
     category: "File Configs",
   },
   {

@@ -38,6 +38,7 @@ import {
   segmentLabel,
 } from "./location";
 import type { ShareTarget } from "./file-share-button";
+import { SyncedRepoFolders } from "./synced-repos";
 
 /** Absolute proxy link to copy when sharing a file. */
 function publicFileUrl(path: string): string {
@@ -240,6 +241,7 @@ function SystemFolders({ onOpenDir }: { onOpenDir: (path: string) => void }) {
           onOpen={() => onOpenDir("public")}
         />
       )}
+      <SyncedRepoFolders onOpenDir={onOpenDir} />
     </>
   );
 }

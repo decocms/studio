@@ -16,7 +16,11 @@ import {
   kickPublicSetsBootSync,
   registerPublicSetsSyncWorkflow,
   setPublicSetsSyncRuntime,
-} from "../file-storage/dbos-public-sets-sync";
+} from "@/file-storage/dbos-public-sets-sync";
+import {
+  registerOrgRepoSyncWorkflow,
+  setOrgRepoSyncRuntime,
+} from "@/file-storage/dbos-org-repo-sync";
 import { getPublicUrl } from "@/core/server-constants";
 import { usesLocalObjectStorage } from "../tools/connection/dev-assets";
 import { DECO_STORE_URL, isDecoHostedMcp } from "@/core/deco-constants";
@@ -1456,6 +1460,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   // workflow no-ops when ORGFS_PUBLIC_SETS is unset.
   setPublicSetsSyncRuntime({ db: database.db, baseUrl: getPublicUrl() });
 
+  // Per-org repo syncs: same DBOS-scheduled shape, work list from the DB.
+  setOrgRepoSyncRuntime({ db: database.db });
+
   // ============================================================================
   // Automation Runtime — wire storage + streaming into the DBOS workflow
   // ============================================================================
@@ -1717,6 +1724,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Must run before DBOS.launch() (which fires in index.ts after createApp).
   registerMonitoringRetentionWorkflow();
   registerPublicSetsSyncWorkflow();
+  registerOrgRepoSyncWorkflow();
 
   const automationRunner: StudioContext["automationRunner"] = async (
     automationId,
