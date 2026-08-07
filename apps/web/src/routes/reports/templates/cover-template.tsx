@@ -21,22 +21,37 @@ function scoreTone(n: number) {
       : TONE_COLOR.bad;
 }
 
-// Macro-theme key → our label. Localizing by the STABLE key is what the private
-// report does (`areaLabels[c.key] ?? c.label`): the engine bakes `label` in
-// Portuguese at generation time whatever `lang` asked for. An unknown key falls
-// back to that baked label — which is at least reader-facing prose, never a raw
-// taxonomy code like TSEO/ONPG.
-const AREA_LABEL: Record<string, TranslationKey> = {
+// Macro-theme key → our label. Two generations of keys are mapped on purpose.
+//
+// `commerce-skills` #255 ("reorganize report score areas into 5 business
+// macrotemas") replaced a 9-area grouping (seo / geo / performance / …) with
+// the six business macrotemas below. The deployed engine still serves the OLD
+// keys, and cached reports carry them too, so both are localized — otherwise a
+// reader gets the engine's `label`, which is baked in Portuguese at generation
+// time whatever `lang` asked for. Delete the legacy half once #255 is rolled
+// out everywhere and old reports have aged out.
+//
+// The labels are deliberately short: these sit in a two-column grid beside a
+// ring and a coverage count, so "Conversion funnel & experience" would truncate.
+export const AREA_LABEL: Record<string, TranslationKey> = {
+  // macrotemas (commerce-skills #255 onward)
+  funil: "reports.coverTemplate.area.funil",
+  tecnica: "reports.coverTemplate.area.tecnica",
+  tagging: "reports.coverTemplate.area.tagging",
+  aquisicao: "reports.coverTemplate.area.aquisicao",
+  retencao: "reports.coverTemplate.area.retencao",
+  catalogo: "reports.coverTemplate.area.catalogo",
+  // legacy areas (pre-#255 engines and cached reports)
   seo: "reports.coverTemplate.area.seo",
   geo: "reports.coverTemplate.area.geo",
   performance: "reports.coverTemplate.area.performance",
   accessibility: "reports.coverTemplate.area.accessibility",
   security: "reports.coverTemplate.area.security",
+  ux: "reports.coverTemplate.area.ux",
   tracking: "reports.coverTemplate.area.tracking",
   infra: "reports.coverTemplate.area.infra",
   retention: "reports.coverTemplate.area.retention",
 };
-
 /** Count a number up to `target` once the slide becomes active. Returns a
  *  callback ref to hang on the element that owns the animation — it re-attaches
  *  (and so re-plays) whenever `active`/`target` change. */
@@ -248,7 +263,7 @@ function AreaRows({
 }) {
   const t = useT();
   return (
-    <ul className="grid grid-cols-2 gap-x-6 lg:gap-x-8">
+    <ul className="grid grid-cols-1 gap-x-6 lg:grid-cols-2 lg:gap-x-8">
       {areas.map((area, i) => {
         const labelKey = AREA_LABEL[area.key];
         const decided = area.pass + area.fail;
@@ -256,7 +271,7 @@ function AreaRows({
         return (
           <li
             key={area.key}
-            className="reveal flex items-center gap-3.5 border-t py-2.5 lg:gap-4 lg:py-3"
+            className="reveal flex items-center gap-3 border-t py-1 lg:gap-4 lg:py-3"
             data-show={active ? "true" : "false"}
             style={{
               borderColor: DECK.border,
@@ -268,10 +283,10 @@ function AreaRows({
               size={40}
               stroke={4}
               active={active}
-              className="size-10 [@media(max-height:799px)]:size-8"
+              className="size-10 max-lg:size-7 [@media(max-height:799px)]:size-8"
             >
               <span
-                className="text-[13px] font-medium leading-none tabular-nums"
+                className="text-[11px] font-medium leading-none tabular-nums lg:text-[13px]"
                 style={{ color: DECK.muted }}
               >
                 {area.score}
@@ -304,10 +319,11 @@ function AreaRows({
 }
 
 /**
- * The right half of the card: a dark "scan chamber" holding the visitor's own
- * homepage under a sweeping scan line with the report's first findings pinned to
- * it, and — below — the chapter index. The dark/light split is the cover's one
- * memorable move: an editorial page next to an instrument reading the site.
+ * The right half of the card: the visitor's own homepage, and — below it — the
+ * macro-theme breakdown with a single button to keep reading. It used to close
+ * with a six-row chapter index instead of the breakdown; that put the areas,
+ * the headline and the index all shouting the verdict at once, so the index is
+ * gone and the one thing left to do next is a single button.
  */
 function ScanChamber({
   domain,
@@ -315,10 +331,9 @@ function ScanChamber({
   initial,
   screenshot,
   mobileScreenshot,
-  findings,
+  areas,
   active,
-  onFindingClick,
-  onStart,
+  onSeeReport,
 }: Pick<
   CoverProps,
   | "domain"
@@ -326,38 +341,19 @@ function ScanChamber({
   | "initial"
   | "screenshot"
   | "mobileScreenshot"
-  | "findings"
-  | "onFindingClick"
-  | "onStart"
-> & { active: boolean }) {
+  | "areas"
+> & { active: boolean; onSeeReport?: () => void }) {
   const t = useT();
-  const chapters = findings ?? [];
-  const locked = chapters.some((c) => c.locked);
 
   return (
-    <div className="deco-chamber relative flex min-h-0 flex-1 flex-col justify-end overflow-hidden rounded-2xl">
-      {/* Foil layers, tuned for a dark surface: the rainbow reads as sheen on
-          lacquer and the sparkle as glints, both driven by the pointer vars. */}
-      <div
-        className="holo-artfoil pointer-events-none absolute inset-0 z-20"
-        aria-hidden
-      />
-      <div
-        className="holo-sparkle pointer-events-none absolute inset-0 z-20"
-        aria-hidden
-      />
-      <div
-        className="holo-artglare pointer-events-none absolute inset-0 z-20"
-        aria-hidden
-      />
-
+    <div className="deco-chamber relative flex min-h-0 shrink-0 flex-col justify-end overflow-hidden rounded-2xl lg:flex-1">
       {/* The visitor's homepage, still. It used to carry a sweeping scan line and
           three finding pins that popped in and floated; the motion pulled the eye
-          off the index below it, and the pins restated chapters 01–03 verbatim
-          two inches above the list that already names them. A quiet screenshot
-          of their own site does the same job. Only shown where there's real room
-          for it (see `.deco-chamber-preview`) — on a narrow or short viewport the
-          card's height belongs to the index. */}
+          off the content below it, and the pins restated chapters verbatim two
+          inches above text that already named them. A quiet screenshot of their
+          own site does the same job. Only shown where there's real room for it
+          (see `.deco-chamber-preview`) — on a narrow or short viewport the
+          card's height belongs to the breakdown and the button below. */}
       <div className="deco-chamber-preview relative z-10 min-h-0 flex-1 overflow-hidden">
         <div className="absolute inset-x-7 top-7">
           <DeviceCluster
@@ -369,80 +365,45 @@ function ScanChamber({
             hidePhone
           />
         </div>
+        {/* Progressive blur, stacked under the opacity fade above: the
+            screenshot softens before it dissolves, instead of just fading
+            sharp-to-transparent. Three backdrop-filter layers at increasing
+            blur/mask stops approximate a continuously-increasing blur, which
+            no single CSS filter can express. */}
+        <div
+          className="deco-chamber-blur pointer-events-none absolute inset-x-0 bottom-0 h-32"
+          aria-hidden
+        >
+          <div />
+          <div />
+          <div />
+        </div>
       </div>
 
-      {/* the index. It flexes on small/short viewports (the list scrolls, the
-          header and the CTA never get pushed out of the card) and sits at its
-          natural height once the preview above it has room. */}
-      <div className="relative z-10 flex min-h-0 flex-1 flex-col px-5 pb-5 pt-4 lg:flex-none lg:px-6 lg:pb-6">
-        {chapters.length > 0 && (
-          <div className="flex shrink-0 items-baseline justify-between gap-3">
-            <span
-              className="text-[11px] font-medium lg:text-[12px]"
-              style={{ color: "rgba(255,255,255,0.52)" }}
-            >
-              {t("reports.coverTemplate.inThisReport")}
-            </span>
-            <span
-              className="shrink-0 text-[11px] tabular-nums"
-              style={{ color: "rgba(255,255,255,0.4)" }}
-            >
-              {t("reports.coverTemplate.chapterCount", {
-                count: chapters.length,
-              })}
-            </span>
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col justify-end gap-4 px-5 pb-4 pt-3 lg:flex-none lg:px-6 lg:pb-6 lg:pt-4">
+        {areas && areas.length > 0 && (
+          <div className="deco-cover-areas min-h-0 flex-1 overflow-y-auto lg:flex-none lg:overflow-visible">
+            <AreaRows areas={areas} active={active} />
           </div>
         )}
 
-        <ul className="deco-index mt-1.5 flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-none">
-          {chapters.map((chapter, i) => (
-            <li
-              key={chapter.slideKey}
-              className="reveal"
-              data-show={active ? "true" : "false"}
-              style={{ transitionDelay: active ? `${260 + i * 50}ms` : "0ms" }}
-            >
-              <button
-                type="button"
-                onClick={() => onFindingClick?.(chapter.slideKey)}
-                className="group flex w-full items-center gap-3 border-t py-2 text-left transition-colors hover:bg-white/[0.06] lg:py-2.5"
-                style={{ borderColor: "rgba(255,255,255,0.1)" }}
-              >
-                <span
-                  className="w-4 shrink-0 text-[11px] tabular-nums"
-                  style={{ color: "rgba(208,236,26,0.8)" }}
-                >
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <span
-                  className="min-w-0 flex-1 truncate text-[13px] leading-[1.35] lg:text-[14px]"
-                  style={{ color: "rgba(255,255,255,0.9)" }}
-                >
-                  {chapter.title}
-                </span>
-                <Icon
-                  name={chapter.locked ? "lock" : "arrow_forward"}
-                  size="xs"
-                  class="shrink-0 text-white opacity-30 transition-opacity group-hover:opacity-80"
-                />
-              </button>
-            </li>
-          ))}
-        </ul>
-
-        <button
-          type="button"
-          onClick={onStart}
-          className="mt-4 inline-flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-full text-sm font-medium transition-transform duration-300 ease-out hover:scale-[1.02]"
-          style={{ background: DECK.lime, color: DECK.forest }}
-        >
-          <span>
-            {locked
-              ? t("reports.coverTemplate.unlockReport")
-              : t("reports.coverTemplate.startReading")}
-          </span>
-          <Icon name="arrow_forward" size="medium" />
-        </button>
+        {onSeeReport && (
+          <button
+            type="button"
+            onClick={onSeeReport}
+            className="reveal flex h-11 shrink-0 items-center justify-center gap-2 rounded-full text-[14px] font-medium transition-colors hover:bg-black/[0.03] lg:h-12"
+            data-show={active ? "true" : "false"}
+            style={{
+              border: `1px solid ${DECK.inputBorder}`,
+              color: DECK.ink,
+              background: DECK.surface,
+              transitionDelay: active ? "420ms" : "0ms",
+            }}
+          >
+            {t("reports.coverTemplate.seeFullReport")}
+            <Icon name="arrow_forward" size="small" />
+          </button>
+        )}
       </div>
     </div>
   );
@@ -462,7 +423,6 @@ export default function CoverTemplate({
   areas,
   scannedAt,
   onFindingClick,
-  onStart,
 }: CoverProps) {
   const t = useT();
   const [{ language }] = usePreferences();
@@ -561,6 +521,7 @@ export default function CoverTemplate({
     return () => cancelAnimationFrame(rafRef.current);
   };
 
+  const nextSlideKey = findings?.[0]?.slideKey;
   const tone = score ? scoreTone(score.value) : DECK.ink;
   const scannedLabel = scannedAt
     ? new Date(scannedAt).toLocaleDateString(language, {
@@ -597,8 +558,18 @@ export default function CoverTemplate({
                 "inset 0 1px 0 rgba(255,255,255,0.9), inset 0 0 0 1px rgba(40,37,36,0.05), 0 1px 2px rgba(40,37,36,0.04)",
             }}
           >
-            {/* Entrance sweep — the one light effect that crosses the WHOLE
-                card, because it's a one-shot flourish rather than a surface. */}
+            {/* Card-wide again: with the index panel on paper rather than
+                forest there is one surface, so one foil and one glare serve the
+                whole card. They were scoped to the left page only for as long as
+                the right half was dark. */}
+            <div
+              className="holo-foil pointer-events-none absolute inset-0 z-30"
+              aria-hidden
+            />
+            <div
+              className="holo-glare pointer-events-none absolute inset-0 z-40"
+              aria-hidden
+            />
             <div
               className="deco-sweep pointer-events-none absolute inset-0 z-50 overflow-hidden"
               aria-hidden
@@ -609,26 +580,7 @@ export default function CoverTemplate({
             {/* ── content (8px inset from the frame; the chamber hugs it) ── */}
             <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-2 p-2 lg:flex-row">
               {/* left: the verdict, as an editorial page */}
-              <div className="relative flex min-h-0 shrink-0 flex-col px-4 pb-3 pt-4 lg:w-[55%] lg:shrink lg:px-7 lg:py-7">
-                {/* The holo wash, glare and foil grain belong to the PAPER page,
-                    not the whole card. Full-bleed they also painted the scan
-                    chamber, and a light-coloured blend layer over #07401a can
-                    only lift it — measured, the two of them were washing the
-                    dark panel by ~28 luma on hover and taking the chapter text's
-                    contrast with them. The chamber has its own foil, tuned for a
-                    dark base. */}
-                <div
-                  className="holo-foil pointer-events-none absolute inset-0 z-30"
-                  aria-hidden
-                />
-                <div
-                  className="holo-lines pointer-events-none absolute inset-0 z-30"
-                  aria-hidden
-                />
-                <div
-                  className="holo-glare pointer-events-none absolute inset-0 z-40"
-                  aria-hidden
-                />
+              <div className="flex min-h-0 flex-1 flex-col px-4 pb-3 pt-4 lg:w-[55%] lg:flex-initial lg:px-7 lg:py-7">
                 {/* Identity — sized like the private report's rail header
                     (`RailHeader`), where the brand carries the block and the
                     favicon is a real tile rather than a bullet. */}
@@ -677,55 +629,46 @@ export default function CoverTemplate({
                     floor can only ever give back the slack it has. */}
                 <div className="hidden lg:block lg:min-h-2 lg:flex-1" />
 
-                <div className="mt-4 shrink-0 lg:mt-0">
-                  <h1
-                    className="reveal shrink-0 text-balance font-medium leading-[1.04] tracking-[-0.035em] text-[min(1.5rem,3.6svh)] sm:text-[1.9rem] lg:text-[min(clamp(1.6rem,2.15vw,2.25rem),4.2svh)]"
-                    data-show={active ? "true" : "false"}
-                    style={{
-                      color: DECK.ink,
-                      transitionDelay: active ? "120ms" : "0ms",
-                    }}
-                  >
-                    {headline}
-                  </h1>
-
+                <div className="mt-4 flex min-h-0 flex-1 flex-col lg:mt-0 lg:block lg:flex-none">
                   {score && (
                     <div
-                      className="deco-cover-score reveal mt-6 shrink-0 lg:mt-9"
+                      className="reveal shrink-0"
                       data-show={active ? "true" : "false"}
-                      style={{ transitionDelay: active ? "240ms" : "0ms" }}
+                      style={{ transitionDelay: active ? "120ms" : "0ms" }}
                     >
                       <ScoreGauge score={score} active={active} />
                     </div>
                   )}
 
-                  {/* The macro themes. Inside the story block rather than
-                      pinned to the foot: the score and its breakdown are one
-                      thought, and splitting them left all the column's slack
-                      pooled in a single gap between them. Desktop-only — five
-                      rows of ring + label is the tallest block on the card, and
-                      the phone layout owes its height to the chapter index. */}
-                  {areas && areas.length > 0 && (
-                    <div className="deco-cover-areas mt-7 hidden lg:block">
-                      <AreaRows areas={areas} active={active} />
-                    </div>
-                  )}
+                  <h1
+                    className="deco-cover-verdict reveal mt-5 shrink-0 text-balance font-normal leading-[1.04] tracking-[-0.035em] text-[min(1.5rem,3.6svh)] sm:text-[1.9rem] lg:mt-7 lg:text-[min(clamp(1.6rem,2.15vw,2.25rem),4.2svh)]"
+                    data-show={active ? "true" : "false"}
+                    style={{
+                      color: DECK.ink,
+                      transitionDelay: active ? "200ms" : "0ms",
+                    }}
+                  >
+                    {headline}
+                  </h1>
                 </div>
 
                 <div className="hidden lg:block lg:min-h-2 lg:flex-1" />
               </div>
 
-              {/* right: the scan chamber + chapter index */}
+              {/* right: the scan chamber + macro-theme breakdown */}
               <ScanChamber
                 domain={domain}
                 faviconUrl={faviconUrl}
                 initial={initial}
                 screenshot={screenshot}
                 mobileScreenshot={mobileScreenshot}
-                findings={findings}
+                areas={areas}
                 active={active}
-                onFindingClick={onFindingClick}
-                onStart={onStart}
+                onSeeReport={
+                  nextSlideKey && onFindingClick
+                    ? () => onFindingClick(nextSlideKey)
+                    : undefined
+                }
               />
             </div>
           </div>

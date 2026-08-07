@@ -27,7 +27,8 @@ export interface CoverTemplate {
   screenshot?: string;
   /** Optional mobile homepage screenshot for the overlapping phone. */
   mobileScreenshot?: string;
-  /** Top findings shown as clickable rows on the cover. `slideKey` must match a `DeckSlide.key`. */
+  /** The report's chapters. The cover only uses the first entry, as the target
+   *  for its "see full report" button. `slideKey` must match a `DeckSlide.key`. */
   findings?: { title: string; slideKey: string }[];
 }
 
@@ -276,10 +277,9 @@ export type GaugesProps = Omit<GaugesTemplate, "template"> & CommonSlideProps;
 export type TableProps = Omit<TableTemplate, "template"> & CommonSlideProps;
 export type CoverProps = Omit<CoverTemplate, "template" | "findings"> &
   CommonSlideProps & {
-    /** The report's chapters, as clickable rows. `locked` marks a chapter the
-     *  current visitor can't reach yet (the deck was truncated for logged-out
-     *  callers) — it still shows, it just prompts sign-in. */
-    findings?: { title: string; slideKey: string; locked?: boolean }[];
+    /** The report's first chapter, wrapped in a single-item array (mirrors
+     *  `CoverTemplate.findings`) — the "see full report" button jumps here. */
+    findings?: { title: string; slideKey: string }[];
     faviconUrl: string;
     domain: string;
     brand: string;
@@ -294,8 +294,6 @@ export type CoverProps = Omit<CoverTemplate, "template" | "findings"> &
     active?: boolean;
     /** Jump to the slide with the given key. Wired by the deck shell. */
     onFindingClick?: (slideKey: string) => void;
-    /** Open the report at its first chapter (or prompt sign-in when gated). */
-    onStart?: () => void;
   };
 
 export type ChecklistProps = Omit<ChecklistTemplate, "template"> &

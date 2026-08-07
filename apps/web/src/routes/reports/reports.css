@@ -140,17 +140,19 @@
   perspective: 1050px;
 }
 
-/* Shared holo rainbow used by every foil layer. */
+/* Shared holo rainbow used by every foil layer. Deliberately pale: at 0.6 alpha
+   the six hues read as distinct blotches of pink/peach/lilac on white paper
+   rather than as one iridescent sheen. */
 .holo-tilt {
   --holo: repeating-linear-gradient(
     125deg,
-    rgba(255, 119, 115, 0.6) 0%,
-    rgba(255, 223, 110, 0.6) 8%,
-    rgba(158, 255, 120, 0.6) 16%,
-    rgba(120, 255, 244, 0.6) 24%,
-    rgba(120, 158, 255, 0.6) 32%,
-    rgba(216, 117, 255, 0.6) 40%,
-    rgba(255, 119, 115, 0.6) 48%
+    rgba(255, 119, 115, 0.4) 0%,
+    rgba(255, 223, 110, 0.4) 8%,
+    rgba(158, 255, 120, 0.4) 16%,
+    rgba(120, 255, 244, 0.4) 24%,
+    rgba(120, 158, 255, 0.4) 32%,
+    rgba(216, 117, 255, 0.4) 40%,
+    rgba(255, 119, 115, 0.4) 48%
   );
   --mx: 50%;
   --my: 50%;
@@ -199,38 +201,26 @@
    flat tint. Falls back to a soft central bloom at rest. */
 .holo-foil {
   background-image: var(--holo);
-  background-size: 260% 260%;
+  /* A big background-size is what makes this read as sheen instead of a
+     rainbow: at 260% roughly one full cycle spanned the card, so six hues sat
+     on the page at once in ~180px bands. Stretched, only two or three
+     neighbouring hues are ever visible and they blend into each other. */
+  background-size: 460% 460%;
   background-position: var(--posx) var(--posy);
   mix-blend-mode: overlay;
-  opacity: calc(0.35 + var(--active) * 0.5);
+  opacity: calc(0.16 + var(--active) * 0.4);
   -webkit-mask-image: radial-gradient(
     circle at var(--mx) var(--my),
     #000 0%,
-    rgba(0, 0, 0, 0.35) 30%,
-    transparent 58%
+    rgba(0, 0, 0, 0.3) 24%,
+    transparent 48%
   );
   mask-image: radial-gradient(
     circle at var(--mx) var(--my),
     #000 0%,
-    rgba(0, 0, 0, 0.35) 30%,
-    transparent 58%
+    rgba(0, 0, 0, 0.3) 24%,
+    transparent 48%
   );
-  transition: opacity 320ms ease;
-}
-
-/* Fine foil grain that catches the light on tilt. */
-.holo-lines {
-  background-image: repeating-linear-gradient(
-    100deg,
-    transparent 0px,
-    transparent 3px,
-    rgba(255, 255, 255, 0.5) 3px,
-    rgba(255, 255, 255, 0.5) 4px
-  );
-  background-size: 200% 100%;
-  background-position: var(--posx) 0;
-  mix-blend-mode: overlay;
-  opacity: calc(var(--active) * 0.28);
   transition: opacity 320ms ease;
 }
 
@@ -246,28 +236,21 @@
   transition: opacity 320ms ease;
 }
 
-/* ── Cover: the scan chamber ──────────────────────────────────────────────
-   The right half of the cover card is a dark lacquered chamber: the visitor's
-   own homepage sits inside it under a sweeping scan line, with the report's
-   chapter index below. Deep forest with a lime bloom at the top-right (where
-   the "light" of the scanner is) and a faint measurement grid, faded out toward
-   the bottom so the index rows stay legible. */
+/* ── Cover: the index panel ───────────────────────────────────────────────
+   The right half of the cover card. It used to be a dark lacquered chamber —
+   deep forest, lime bloom, measurement grid — which read as a second surface
+   glued onto the paper one, cast the visitor's own screenshot green, and forced
+   every foil layer to be tuned twice (a light-coloured blend over #07401a can
+   only wash it out). It is now the same paper as the left page, lifted a shade
+   and hairlined, so the card is one sheet with two columns. */
 .deco-chamber {
-  background:
-    radial-gradient(
-      116% 88% at 82% 4%,
-      rgba(208, 236, 26, 0.18),
-      transparent 56%
-    ),
-    radial-gradient(
-      92% 76% at 4% 100%,
-      rgba(208, 236, 26, 0.07),
-      transparent 62%
-    ), linear-gradient(158deg, #0a5122 0%, #07401a 44%, #052e11 100%);
+  background: #ffffff;
+  border: 1px solid rgba(40, 37, 36, 0.06);
+  box-shadow: 0 1px 2px rgba(40, 37, 36, 0.03);
 }
 /* The chamber's browser preview earns its place only when the card is both wide
    and tall enough to show more than the browser chrome; otherwise the chamber is
-   the chapter index alone. */
+   the macro-theme breakdown and the button alone. */
 .deco-chamber-preview {
   display: none;
 }
@@ -275,15 +258,40 @@
   .deco-chamber-preview {
     display: block;
     /* The browser window is deliberately taller than the space it gets — it
-       bleeds down behind the index. Dissolve that edge instead of slicing it. */
+       bleeds down behind the index. Dissolve that edge instead of slicing it.
+       A plain 2-stop linear mask reads as a visible band on photographic
+       content: alpha and perceived opacity aren't the same curve, so a
+       "linear" fade looks like it lingers then snaps. Eased stops (the
+       standard easing-gradient curve, https://larsenwork.com/easing-gradients)
+       approximate an ease-out instead, over a taller 128px zone. */
     -webkit-mask-image: linear-gradient(
       to bottom,
-      #000 calc(100% - 56px),
+      #000 calc(100% - 128px),
+      rgba(0, 0, 0, 0.738) calc(100% - 90px),
+      rgba(0, 0, 0, 0.541) calc(100% - 68px),
+      rgba(0, 0, 0, 0.382) calc(100% - 51px),
+      rgba(0, 0, 0, 0.278) calc(100% - 39px),
+      rgba(0, 0, 0, 0.194) calc(100% - 30px),
+      rgba(0, 0, 0, 0.126) calc(100% - 21px),
+      rgba(0, 0, 0, 0.075) calc(100% - 15px),
+      rgba(0, 0, 0, 0.042) calc(100% - 10px),
+      rgba(0, 0, 0, 0.021) calc(100% - 6px),
+      rgba(0, 0, 0, 0.008) calc(100% - 3px),
       transparent 100%
     );
     mask-image: linear-gradient(
       to bottom,
-      #000 calc(100% - 56px),
+      #000 calc(100% - 128px),
+      rgba(0, 0, 0, 0.738) calc(100% - 90px),
+      rgba(0, 0, 0, 0.541) calc(100% - 68px),
+      rgba(0, 0, 0, 0.382) calc(100% - 51px),
+      rgba(0, 0, 0, 0.278) calc(100% - 39px),
+      rgba(0, 0, 0, 0.194) calc(100% - 30px),
+      rgba(0, 0, 0, 0.126) calc(100% - 21px),
+      rgba(0, 0, 0, 0.075) calc(100% - 15px),
+      rgba(0, 0, 0, 0.042) calc(100% - 10px),
+      rgba(0, 0, 0, 0.021) calc(100% - 6px),
+      rgba(0, 0, 0, 0.008) calc(100% - 3px),
       transparent 100%
     );
   }
@@ -302,32 +310,29 @@
   height: 100px;
 }
 .deco-cover-number {
-  font-size: 2.1rem;
+  font-size: 2.25rem;
 }
 @media (min-width: 1024px) and (min-height: 800px) {
   .deco-cover-ring {
-    width: 124px;
-    height: 124px;
+    width: 190px;
+    height: 190px;
   }
   .deco-cover-number {
-    font-size: 2.6rem;
+    font-size: 4.25rem;
   }
 }
 @media (min-width: 1024px) and (max-height: 799px) {
   .deco-cover-ring {
-    width: 82px;
-    height: 82px;
+    width: 128px;
+    height: 128px;
   }
   .deco-cover-number {
-    font-size: 1.75rem;
+    font-size: 2.75rem;
   }
 }
 
 @media (max-height: 799px) {
-  .deco-cover-score {
-    margin-top: 0.875rem;
-  }
-  .deco-cover-areas {
+  .deco-cover-verdict {
     margin-top: 0.875rem;
   }
   .deco-cover-areas li {
@@ -341,17 +346,14 @@
    column clip. */
 @media (min-width: 1024px) and (max-height: 699px) {
   .deco-cover-ring {
-    width: 68px;
-    height: 68px;
+    width: 104px;
+    height: 104px;
   }
   .deco-cover-number {
-    font-size: 1.5rem;
+    font-size: 2.15rem;
   }
 }
 @media (max-height: 699px) {
-  .deco-cover-areas {
-    margin-top: 0.5rem;
-  }
   .deco-cover-areas li {
     padding-top: 0.125rem;
     padding-bottom: 0.125rem;
@@ -375,96 +377,10 @@
   mask-image: radial-gradient(120% 100% at 50% 0%, #000 18%, transparent 74%);
 }
 
-/* The chamber's foil, tuned for a DARK surface.
-   `color-dodge` here divides the base by the inverse of the layer, so over
-   #07401a every bright band in the rainbow saturated the whole panel to acid
-   green and took the chapter text's contrast with it — the foil stopped reading
-   as sheen on lacquer and started reading as fog. `soft-light` tints the hue
-   without lifting the base, which is what a dark lacquered surface does under a
-   moving light. */
-.holo-artfoil {
-  background-image: var(--holo);
-  background-size: 220% 220%;
-  background-position: var(--posx) var(--posy);
-  mix-blend-mode: soft-light;
-  opacity: calc(0.22 + var(--active) * 0.28);
-  border-radius: inherit;
-  transition: opacity 320ms ease;
-}
-/* Glitter — offset dot grids that catch the light as the card tilts, for the
-   cosmos-foil twinkle. These KEEP color-dodge: sub-pixel dots are exactly what
-   dodge is good for (a hard glint), and they cover too little area to wash the
-   panel the way a full-bleed dodge layer does. */
-.holo-sparkle {
-  background-image:
-    radial-gradient(
-      circle at 20% 35%,
-      rgba(255, 255, 255, 0.95) 0,
-      rgba(255, 255, 255, 0) 0.8px
-    ),
-    radial-gradient(
-      circle at 68% 12%,
-      rgba(190, 230, 255, 0.9) 0,
-      rgba(255, 255, 255, 0) 0.8px
-    ),
-    radial-gradient(
-      circle at 82% 74%,
-      rgba(255, 235, 190, 0.9) 0,
-      rgba(255, 255, 255, 0) 0.8px
-    );
-  background-size:
-    47px 61px,
-    71px 53px,
-    59px 79px;
-  background-position:
-    var(--posx) var(--posy),
-    calc(100% - var(--posx)) var(--posy),
-    var(--posx) calc(100% - var(--posy));
-  mix-blend-mode: color-dodge;
-  opacity: calc(var(--active) * 0.5);
-  border-radius: inherit;
-  transition: opacity 320ms ease;
-}
-@media (hover: none) {
-  .holo-sparkle {
-    opacity: 0.22;
-    animation: decoFoilIdle 7s ease-in-out infinite;
-  }
-}
-/* Specular highlight under the pointer. Tighter and softer than the light
-   page's: `overlay` with a white top screens a dark base straight to white, so
-   this was a second full-panel wash rather than a highlight. */
-.holo-artglare {
-  background: radial-gradient(
-    circle at var(--mx) var(--my),
-    rgba(255, 255, 255, 0.4),
-    rgba(255, 255, 255, 0) 32%
-  );
-  mix-blend-mode: soft-light;
-  opacity: calc(var(--active) * 0.75);
-  border-radius: inherit;
-  transition: opacity 320ms ease;
-}
-
-/* On short viewports the chapter index scrolls inside the chamber rather than
-   overflowing the card; keep the scrollbar unobtrusive on the dark surface. The
-   deck shell already yields nested-scroll gestures to this region before
-   advancing slides. */
-.deco-index {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
-}
-.deco-index::-webkit-scrollbar {
-  width: 6px;
-}
-.deco-index::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 6px;
-}
-/* Only the small/short layouts scroll the index; fade its last row there so the
-   overflow is legible as "there's more". Above `lg` the list is never clipped. */
+/* Only the small/short layouts scroll the breakdown; fade the last row there
+   so the overflow is legible as "there's more". Above `lg` it isn't clipped. */
 @media (max-width: 1023px) {
-  .deco-index {
+  .deco-cover-areas {
     -webkit-mask-image: linear-gradient(
       to bottom,
       #000 calc(100% - 18px),
@@ -476,6 +392,29 @@
       transparent 100%
     );
   }
+}
+
+.deco-chamber-blur > div {
+  position: absolute;
+  inset: 0;
+}
+.deco-chamber-blur > div:nth-child(1) {
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 35%);
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 35%);
+}
+.deco-chamber-blur > div:nth-child(2) {
+  backdrop-filter: blur(9px);
+  -webkit-backdrop-filter: blur(9px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 35%, #000 60%);
+  mask-image: linear-gradient(to bottom, transparent 35%, #000 60%);
+}
+.deco-chamber-blur > div:nth-child(3) {
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 60%, #000 100%);
+  mask-image: linear-gradient(to bottom, transparent 60%, #000 100%);
 }
 
 /* Deal-in entrance — the card flips up around its vertical axis to face you
@@ -550,14 +489,6 @@
     opacity: 0.22;
     animation: decoFoilIdle 7s ease-in-out infinite;
   }
-  .holo-artfoil {
-    opacity: 0.45;
-    animation: decoFoilIdle 7s ease-in-out infinite;
-  }
-  .holo-lines {
-    opacity: 0.12;
-    animation: decoLinesIdle 7s ease-in-out infinite;
-  }
 }
 @keyframes decoFoilIdle {
   0%,
@@ -568,16 +499,6 @@
     background-position: 82% 74%;
   }
 }
-@keyframes decoLinesIdle {
-  0%,
-  100% {
-    background-position: 0 0;
-  }
-  50% {
-    background-position: 100% 0;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .holo-card,
   .holo-card[data-enter="true"] {
@@ -591,9 +512,7 @@
     animation: none;
     opacity: 0;
   }
-  .holo-foil,
-  .holo-artfoil,
-  .holo-lines {
+  .holo-foil {
     animation: none;
   }
 }

@@ -1,5 +1,4 @@
 import BarsTemplate from "./bars-template";
-import CategoriasVariant from "./categorias-variant";
 import ChecklistTemplate from "./checklist-template";
 import CompetitorTemplate from "./competitor-template";
 import CoverTemplate from "./cover-template";
@@ -49,38 +48,26 @@ export default function SlideTemplate({
   // data — resolved BEFORE the generic switch so the shared contract stays
   // untouched. Each guards on its template so a key collision with a different
   // body shape falls through to the generic renderer.
-  // Deliberately not spread with `common`: this slide's chrome is written in
-  // the dictionaries, not by the engine (see `categorias-variant.tsx`).
-  if (slide.key === "categorias" && t.template === "gauges")
-    return <CategoriasVariant gauges={t.gauges} active={active} />;
   if (slide.key === "geo-dimensoes" && t.template === "bars")
     return <GeoDimensoesVariant {...t} {...common} />;
   if (slide.key === "paginas" && t.template === "table")
     return <PaginasVariant {...t} {...common} />;
   switch (t.template) {
     case "cover": {
-      // The cover lists the report's chapters as a clickable table of contents.
+      // The cover's "see full report" button jumps to the first chapter.
       // Source it from `meta.toc` (built server-side from the FULL deck) and
-      // fall back to the loaded slides — a logged-out visitor only receives the
-      // cover slide, and an empty index is exactly the wrong thing to show the
-      // person we're asking to sign in. A chapter whose slide isn't loaded is
-      // marked `locked`: still named, just not reachable yet.
-      const MAX_CHAPTERS = 6;
-      const toc =
-        deck.meta.toc && deck.meta.toc.length > 0
-          ? deck.meta.toc
-          : deck.slides
-              .filter(
-                (s) =>
-                  s.template.template !== "cover" &&
-                  s.template.template !== "cta",
-              )
-              .map((s) => ({ key: s.key, title: s.title }));
-      const findings = toc.slice(0, MAX_CHAPTERS).map((entry) => ({
-        title: entry.title,
-        slideKey: entry.key,
-        locked: !deck.slides.some((s) => s.key === entry.key),
-      }));
+      // fall back to the loaded slides — a logged-out visitor only receives
+      // the cover slide, and `onNavigate` already falls forward to the
+      // sign-in gate when that chapter's slide isn't loaded.
+      const firstChapter =
+        deck.meta.toc?.[0] ??
+        deck.slides.find(
+          (s) =>
+            s.template.template !== "cover" && s.template.template !== "cta",
+        );
+      const findings = firstChapter
+        ? [{ title: firstChapter.title, slideKey: firstChapter.key }]
+        : undefined;
       return (
         <CoverTemplate
           {...t}
@@ -94,9 +81,6 @@ export default function SlideTemplate({
           scannedAt={deck.meta.scannedAt}
           active={active}
           onFindingClick={onNavigate}
-          onStart={() =>
-            onNavigate?.(findings[0]?.slideKey ?? deck.slides[1]?.key ?? "")
-          }
         />
       );
     }
