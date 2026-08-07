@@ -44,9 +44,9 @@ describe("hasUnschedulablePod", () => {
   });
 
   test("false for a running namespace and for an empty list", () => {
-    expect(hasUnschedulablePod({ items: [{ status: { phase: "Running" } }] })).toBe(
-      false,
-    );
+    expect(
+      hasUnschedulablePod({ items: [{ status: { phase: "Running" } }] }),
+    ).toBe(false);
     expect(hasUnschedulablePod({ items: [] })).toBe(false);
     expect(hasUnschedulablePod({})).toBe(false);
   });

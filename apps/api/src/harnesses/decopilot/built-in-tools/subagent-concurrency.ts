@@ -45,7 +45,8 @@ export function createConcurrencyGate(max: number): ConcurrencyGate {
   // the queue is bounded by how many runs one pod can have in flight (tens), so
   // an O(n) insert is free and a heap would be code to maintain for nothing.
   let arrivals = 0;
-  const waiters: Array<{ priority: number; seq: number; wake: () => void }> = [];
+  const waiters: Array<{ priority: number; seq: number; wake: () => void }> =
+    [];
 
   return {
     async acquire(priority = 0) {
