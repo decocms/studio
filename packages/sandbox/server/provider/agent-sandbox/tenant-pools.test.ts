@@ -79,28 +79,62 @@ describe("resolveTenantPool", () => {
   const url = "https://x-access-token:tok@github.com/acme/site.git";
 
   it("matches on org + repo", () => {
-    expect(resolveTenantPool(POOLS, "org-acme", url)?.name).toBe(
-      "tenant-acme-site",
-    );
+    expect(
+      resolveTenantPool(POOLS, { orgId: "org-acme", cloneUrl: url })?.name,
+    ).toBe("tenant-acme-site");
+  });
+
+  it("a checkout-only claim never takes a tenant pod", () => {
+    // The Claude Code dispatch path. It wants no dev server, and binding a warm
+    // pod would stop the one already running on it.
+    expect(
+      resolveTenantPool(POOLS, {
+        orgId: "org-acme",
+        cloneUrl: url,
+        cloneOnly: true,
+      }),
+    ).toBeNull();
+    // ...but an explicit false is a normal claim.
+    expect(
+      resolveTenantPool(POOLS, {
+        orgId: "org-acme",
+        cloneUrl: url,
+        cloneOnly: false,
+      })?.name,
+    ).toBe("tenant-acme-site");
   });
 
   it("a user of another org never resolves this pool", () => {
-    expect(resolveTenantPool(POOLS, "org-other", url)).toBeNull();
+    expect(
+      resolveTenantPool(POOLS, { orgId: "org-other", cloneUrl: url }),
+    ).toBeNull();
   });
 
   it("the same org on another repo does not resolve it", () => {
     expect(
-      resolveTenantPool(POOLS, "org-acme", "https://github.com/acme/other.git"),
+      resolveTenantPool(POOLS, {
+        orgId: "org-acme",
+        cloneUrl: "https://github.com/acme/other.git",
+      }),
     ).toBeNull();
   });
 
   it("no org or no repo → no pool", () => {
-    expect(resolveTenantPool(POOLS, undefined, url)).toBeNull();
-    expect(resolveTenantPool(POOLS, "org-acme", undefined)).toBeNull();
+    expect(
+      resolveTenantPool(POOLS, { orgId: undefined, cloneUrl: url }),
+    ).toBeNull();
+    expect(
+      resolveTenantPool(POOLS, { orgId: "org-acme", cloneUrl: undefined }),
+    ).toBeNull();
   });
 
   it("no pools configured → no pool", () => {
-    expect(resolveTenantPool([] as TenantPool[], "org-acme", url)).toBeNull();
+    expect(
+      resolveTenantPool([] as TenantPool[], {
+        orgId: "org-acme",
+        cloneUrl: url,
+      }),
+    ).toBeNull();
   });
 });
 

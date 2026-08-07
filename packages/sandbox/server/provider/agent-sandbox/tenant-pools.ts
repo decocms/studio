@@ -86,9 +86,22 @@ export function repoKeyFromCloneUrl(cloneUrl: string): string | null {
  */
 export function resolveTenantPool(
   pools: readonly TenantPool[],
-  orgId: string | undefined,
-  cloneUrl: string | undefined,
+  claim: {
+    orgId: string | undefined;
+    cloneUrl: string | undefined;
+    /**
+     * Checkout-only claims (the Claude Code dispatch path) must never take a
+     * tenant pod. They don't want a dev server, and binding one is actively
+     * destructive: Studio posts `cloneOnly` + the thread branch, the daemon
+     * classifies `branch-change`, and its clone step stops the dev task — so a
+     * dispatch would consume a warm slot AND de-warm the pod it took. They get
+     * the generic pool instead, which is exactly what an empty pod is for.
+     */
+    cloneOnly?: boolean;
+  },
 ): TenantPool | null {
+  const { orgId, cloneUrl } = claim;
+  if (claim.cloneOnly === true) return null;
   if (!orgId || !cloneUrl) return null;
   const repoKey = repoKeyFromCloneUrl(cloneUrl);
   if (!repoKey) return null;

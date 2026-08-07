@@ -454,6 +454,22 @@ func (m *TaskManager) fanOut(task *taskInternal, chunk OutputChunk) {
 	}
 }
 
+// RunningByLogName finds a live task by its log name. Used to answer "is the
+// dev server already up?" without guessing from ports.
+func (m *TaskManager) RunningByLogName(logName string) (TaskSummary, bool) {
+	if logName == "" {
+		return TaskSummary{}, false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, t := range m.tasks {
+		if t.status == StatusRunning && t.spec.LogName == logName {
+			return m.summarizeLocked(t), true
+		}
+	}
+	return TaskSummary{}, false
+}
+
 func (m *TaskManager) Get(id string) (TaskSummary, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
