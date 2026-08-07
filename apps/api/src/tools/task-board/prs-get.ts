@@ -101,6 +101,7 @@ async function cachedPrRead(
   name: string,
   args: Record<string, unknown>,
   describe: string,
+  pending: Promise<void>[],
 ): Promise<Record<string, unknown> | null> {
   try {
     const raw = await prReadCache.fetch({
@@ -140,6 +141,9 @@ async function cachedPrRead(
             isRetriable: (err) => !isRateLimitError(err),
           },
         ),
+      // A background revalidation runs on `client` AFTER this call returns the
+      // stale value — so the caller must keep the client open until it settles.
+      onRevalidation: (promise) => pending.push(promise),
     });
     return toolResultJson(raw);
   } catch (err) {
@@ -495,6 +499,7 @@ async function fetchCheckRunSummary(
   connectionId: string,
   pr: TaskBoardItemPrRef,
   checkRunId: number,
+  pending: Promise<void>[],
 ): Promise<string | null> {
   const obj = await cachedPrRead(
     client,
@@ -502,6 +507,7 @@ async function fetchCheckRunSummary(
     "GET_CHECK_RUN",
     { owner: pr.repoOwner, repo: pr.repoName, checkRunId },
     `${prLabel(pr)} check-run ${checkRunId}`,
+    pending,
   );
   const output = obj?.output as
     | { summary?: unknown; text?: unknown }
@@ -625,6 +631,7 @@ async function fetchPrStatusExtras(
   client: Awaited<ReturnType<typeof clientFromConnection>>,
   connectionId: string,
   pr: TaskBoardItemPrRef,
+  pending: Promise<void>[],
 ): Promise<{
   checksStatus: ChecksStatus;
   checks: PrCheck[];
@@ -642,6 +649,7 @@ async function fetchPrStatusExtras(
         pullNumber: pr.number,
       },
       `${prLabel(pr)} (${method})`,
+      pending,
     );
   // The three reads are independent — run them CONCURRENTLY. Serial was the
   // slowness (each is a remote MCP → GitHub round-trip, ~1.5-2s; the card made
@@ -670,7 +678,13 @@ async function fetchPrStatusExtras(
         detailsUrl: r.detailsUrl,
         summary:
           isFailingRun(r) && r.id != null
-            ? await fetchCheckRunSummary(client, connectionId, pr, r.id)
+            ? await fetchCheckRunSummary(
+                client,
+                connectionId,
+                pr,
+                r.id,
+                pending,
+              )
             : null,
       }),
     ),
@@ -728,6 +742,9 @@ export async function fetchPrLiveState(
   });
   if (!conn) return NO_LIVE_STATE;
   const client = await clientFromConnection(conn, ctx, true);
+  // Background revalidations started by the read cache below run on `client`,
+  // so it may not be closed until they settle — see the `finally`.
+  const pending: Promise<void>[] = [];
   try {
     // Fetch the PR's basic state AND its checks/preview extras CONCURRENTLY.
     // An open PR (the common case in the review dialog) is fully populated in a
@@ -745,8 +762,9 @@ export async function fetchPrLiveState(
           pullNumber: pr.number,
         },
         `${prLabel(pr)} (get)`,
+        pending,
       ),
-      fetchPrStatusExtras(client, conn.id, pr),
+      fetchPrStatusExtras(client, conn.id, pr, pending),
     ]);
     if (!obj) return NO_LIVE_STATE;
     const rawState = obj.state;
@@ -769,7 +787,13 @@ export async function fetchPrLiveState(
   } catch {
     return NO_LIVE_STATE;
   } finally {
-    await client.close().catch(() => {});
+    // Close only once the background revalidations are done, and do NOT await
+    // that here — the whole point of serving a stale value is to return without
+    // waiting on GitHub. Closing eagerly (which this did) killed every
+    // revalidation the moment it started, so a cached entry could never
+    // refresh: a PR read before its deploy comment existed showed no preview
+    // and no checks until the entry aged out half an hour later.
+    void Promise.allSettled(pending).then(() => client.close().catch(() => {}));
   }
 }
 

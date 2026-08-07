@@ -506,3 +506,63 @@ describe("InMemoryMcpReadCache", () => {
     expect(afterSecond.bytes).toBe(JSON.stringify({ value: "second" }).length);
   });
 });
+
+/**
+ * A revalidation runs on whatever connection the caller's `fetchLive` closes
+ * over, and it starts AFTER the stale value is returned. So a caller that tears
+ * that connection down as soon as `fetch` resolves kills every refresh it ever
+ * triggers, and the entry then sits unchanged until `maxStaleMs` — which is how
+ * a task-board PR card got stuck showing no deploy preview and no checks for
+ * half an hour. `onRevalidation` is the contract that prevents it: hold the
+ * connection open until the promises it hands out settle.
+ */
+describe("onRevalidation guards the caller's connection lifetime", () => {
+  const staleThenRefresh = async (holdOpen: boolean) => {
+    const { cache, advance } = newCache({
+      revalidateAfterMs: 10_000,
+      maxStaleMs: 60_000,
+    });
+    let closed = false;
+    let version = 1;
+    // A real call is in flight for a while; closing the transport under it is
+    // what fails it, so the check belongs at resolution time, not at entry.
+    const fetchLive = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      if (closed) throw new Error("connection closed");
+      return { version };
+    };
+    const read = async () => {
+      const pending: Promise<void>[] = [];
+      const value = await cache.fetch({
+        type: TOOL,
+        connectionId: CONN,
+        scope: ORG,
+        params: {},
+        fetchLive,
+        onRevalidation: (p) => pending.push(p),
+      });
+      // The eager close is the bug; awaiting `pending` first is the fix.
+      if (holdOpen) await Promise.allSettled(pending);
+      closed = true;
+      return value;
+    };
+
+    expect(await read()).toEqual({ version: 1 });
+    version = 2;
+    closed = false;
+    advance(11_000);
+    // Stale: serves the old value either way, and kicks off the refresh.
+    expect(await read()).toEqual({ version: 1 });
+    closed = false;
+    advance(1_000);
+    return read();
+  };
+
+  test("closing eagerly loses the refresh — the entry stays stale", async () => {
+    expect(await staleThenRefresh(false)).toEqual({ version: 1 });
+  });
+
+  test("holding open until it settles refreshes the entry", async () => {
+    expect(await staleThenRefresh(true)).toEqual({ version: 2 });
+  });
+});
