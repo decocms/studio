@@ -283,7 +283,7 @@ function AreaRows({
               size={40}
               stroke={4}
               active={active}
-              className="size-10 max-lg:size-7 [@media(max-height:799px)]:size-8"
+              className="size-10 max-lg:size-7 [@media(max-height:799px)]:size-8 [@media(max-height:559px)]:size-6"
             >
               <span
                 className="text-[11px] font-medium leading-none tabular-nums lg:text-[13px]"
@@ -380,7 +380,7 @@ function ScanChamber({
         </div>
       </div>
 
-      <div className="relative z-10 flex min-h-0 flex-1 flex-col justify-end gap-4 px-5 pb-4 pt-3 lg:flex-none lg:px-6 lg:pb-6 lg:pt-4">
+      <div className="deco-chamber-content relative z-10 flex min-h-0 flex-1 flex-col justify-end gap-4 px-5 pb-4 pt-3 lg:flex-none lg:px-6 lg:pb-6 lg:pt-4">
         {areas && areas.length > 0 && (
           <div className="deco-cover-areas min-h-0 flex-1 overflow-y-auto lg:flex-none lg:overflow-visible">
             <AreaRows areas={areas} active={active} />
@@ -391,7 +391,7 @@ function ScanChamber({
           <button
             type="button"
             onClick={onSeeReport}
-            className="reveal flex h-11 shrink-0 items-center justify-center gap-2 rounded-full text-[14px] font-medium transition-colors hover:bg-black/[0.03] lg:h-12"
+            className="deco-cover-cta reveal flex h-11 shrink-0 items-center justify-center gap-2 rounded-full text-[14px] font-medium transition-colors hover:bg-black/[0.03] lg:h-12"
             data-show={active ? "true" : "false"}
             style={{
               border: `1px solid ${DECK.inputBorder}`,
@@ -580,7 +580,7 @@ export default function CoverTemplate({
             {/* ── content (8px inset from the frame; the chamber hugs it) ── */}
             <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-2 p-2 lg:flex-row">
               {/* left: the verdict, as an editorial page */}
-              <div className="flex min-h-0 flex-1 flex-col px-4 pb-3 pt-4 lg:w-[55%] lg:flex-initial lg:px-7 lg:py-7">
+              <div className="deco-cover-story flex min-h-0 flex-1 flex-col px-4 pb-3 pt-4 lg:w-[55%] lg:flex-initial lg:px-7">
                 {/* Identity — sized like the private report's rail header
                     (`RailHeader`), where the brand carries the block and the
                     favicon is a real tile rather than a bullet. */}
@@ -641,7 +641,7 @@ export default function CoverTemplate({
                   )}
 
                   <h1
-                    className="deco-cover-verdict reveal mt-5 shrink-0 text-balance font-normal leading-[1.04] tracking-[-0.035em] text-[min(1.5rem,3.6svh)] sm:text-[1.9rem] lg:mt-7 lg:text-[min(clamp(1.6rem,2.15vw,2.25rem),4.2svh)]"
+                    className="deco-cover-verdict reveal mt-5 shrink-0 text-balance font-normal leading-[1.04] tracking-[-0.035em] text-[min(1.5rem,3.6svh)] sm:text-[1.9rem] lg:text-[min(clamp(1.6rem,2.15vw,2.25rem),4.2svh)]"
                     data-show={active ? "true" : "false"}
                     style={{
                       color: DECK.ink,

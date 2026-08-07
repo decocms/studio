@@ -296,15 +296,61 @@
     );
   }
 }
+/* Wide-but-short viewports (a shallow browser window, not a phone) keep the
+   chamber `lg:flex-1` — it still stretches full height — while
+   `.deco-chamber-preview` drops out below `min-height: 800px`. With nothing
+   above the area rows and the bottom-anchored `justify-end`, the panel used
+   to leave a tall empty void above the rows instead of balancing against the
+   left column. Centering the remaining content here — the one breakpoint
+   band where the preview is truly gone but the panel is still full-height —
+   fixes that without touching the (correctly bottom-anchored) case where the
+   preview is showing. */
+@media (min-width: 1024px) and (max-height: 799px) {
+  .deco-chamber {
+    justify-content: center;
+  }
+}
+
+/* Centering alone still sat the rows+button block noticeably higher than the
+   left column's score+headline: the left never centers as a whole, it pins
+   the identity row at the top and only centers the *remainder* below it (see
+   the spacer comment further down — that's deliberate, to keep an overflowing
+   verdict from climbing onto the domain line). So the left's true content
+   band starts ~identity's-height below the card top, while the chamber's
+   started right at the top. A `padding-top` roughly matching identity's
+   height (measured, not guessed — ~52px at this width) before centering the
+   remainder reproduces the same "fixed offset, then centered" rhythm on the
+   right, so the two columns' content bands line up. The tightest band below
+   gets a smaller version of this once the card-shrinks-to-content rule
+   further down frees up enough margin for it. */
+@media (min-width: 1024px) and (min-height: 560px) and (max-height: 799px) {
+  .deco-chamber {
+    padding-top: 48px;
+  }
+}
+
 /* A short viewport can't hold every layer of evidence at a readable size. The
    cover keeps what makes someone read on — the verdict, the score and the
-   chapter index — and drops the breathing room around the story block. Everything left keeps its own height (`shrink-0` on the story
-   children), so nothing silently collapses to zero when the column is tight. */
-/* The hero ring and its number are sized here rather than with Tailwind because
-   they depend on viewport WIDTH *and* HEIGHT together. Written as three
-   mutually-exclusive queries so the winner never depends on stylesheet order —
-   a `lg:` utility and a `max-height` rule have the same specificity, and which
-   one lands is otherwise down to which file the bundler emitted last. */
+   chapter index — and drops the breathing room around the story block.
+   Everything left keeps its own height (`shrink-0` on the story children),
+   so nothing silently collapses to zero when the column is tight.
+
+   The ring/number/margin/padding here are sized in four bands rather than
+   left as fixed Tailwind values, because at heights the original three-band
+   version didn't cover (a laptop with every toolbar open, or a browser
+   zoomed past ~125%) the headline and the chamber's area rows measurably
+   clipped against the card edge — verified with a Playwright box-metrics
+   sweep from 380px to 1000px, not eyeballed. Each band was picked so the
+   verdict block (identity + ring row + margin + headline) still fits inside
+   the card at the SHORTEST height the band covers, the worst case for that
+   band. Below ~420px height there's no band left that both fits and stays
+   legible; that's an accepted floor. Above ~800px the ring holds its full
+   (enlarged) size, since there's always slack there.
+
+   Written as four mutually-exclusive `max-height` bands so the winner never
+   depends on stylesheet order — a `lg:` utility and a `max-height` rule have
+   the same specificity, and which one lands is otherwise down to which file
+   the bundler emitted last. */
 .deco-cover-ring {
   width: 100px;
   height: 100px;
@@ -320,8 +366,15 @@
   .deco-cover-number {
     font-size: 4.25rem;
   }
+  .deco-cover-verdict {
+    margin-top: 1.75rem;
+  }
+  .deco-cover-story {
+    padding-top: 1.75rem;
+    padding-bottom: 1.75rem;
+  }
 }
-@media (min-width: 1024px) and (max-height: 799px) {
+@media (min-width: 1024px) and (min-height: 700px) and (max-height: 799px) {
   .deco-cover-ring {
     width: 128px;
     height: 128px;
@@ -329,34 +382,92 @@
   .deco-cover-number {
     font-size: 2.75rem;
   }
-}
-
-@media (max-height: 799px) {
   .deco-cover-verdict {
-    margin-top: 0.875rem;
+    margin-top: 1.5rem;
   }
-  .deco-cover-areas li {
-    padding-top: 0.25rem;
-    padding-bottom: 0.25rem;
+  .deco-cover-story {
+    padding-top: 1.5rem;
+    padding-bottom: 1.5rem;
   }
 }
 
 /* Below ~700px the card is genuinely cramped (a 1024x660 window, a laptop with
    every toolbar open). One more step down rather than letting the foot of the
    column clip. */
-@media (min-width: 1024px) and (max-height: 699px) {
+@media (min-width: 1024px) and (min-height: 560px) and (max-height: 699px) {
   .deco-cover-ring {
-    width: 104px;
-    height: 104px;
+    width: 92px;
+    height: 92px;
   }
   .deco-cover-number {
-    font-size: 2.15rem;
+    font-size: 2.05rem;
+  }
+  .deco-cover-verdict {
+    margin-top: 0.875rem;
+  }
+  .deco-cover-story {
+    padding-top: 0.875rem;
+    padding-bottom: 0.625rem;
+  }
+}
+/* A browser zoomed past ~125–150% on a normal laptop screen lands here. */
+@media (min-width: 1024px) and (max-height: 559px) {
+  .deco-cover-ring {
+    width: 68px;
+    height: 68px;
+  }
+  .deco-cover-number {
+    font-size: 1.6rem;
+  }
+  .deco-cover-verdict {
+    margin-top: 0.5rem;
+  }
+  .deco-cover-story {
+    padding-top: 0.5rem;
+    padding-bottom: 0.375rem;
+  }
+  .deco-chamber-blur {
+    display: none;
+  }
+  .deco-chamber-content {
+    gap: 0.5rem;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+  .deco-cover-cta {
+    height: 2rem;
+  }
+  /* Same rhythm-matching as the band above, at a smaller offset: the card
+     shrinking to its content (below) freed up enough overflow margin here
+     to afford it, verified with the same measurement rig. */
+  .deco-chamber {
+    padding-top: 16px;
+  }
+}
+
+/* These were tuned tight back when the chamber had to assume it might get no
+   slack at all below `min-height:800px`. It always gets real slack now — the
+   card has a `min-height` floor (below) instead of shrinking arbitrarily
+   small — so rows this cramped were leaving the row block sitting in a
+   card with tens of px of headroom to spare, looking pinched for no reason.
+   Loosened back up, checked against the measured margin at each band's
+   shortest height so this still can't reintroduce clipping. */
+@media (max-height: 799px) {
+  .deco-cover-areas li {
+    padding-top: 0.875rem;
+    padding-bottom: 0.875rem;
   }
 }
 @media (max-height: 699px) {
   .deco-cover-areas li {
-    padding-top: 0.125rem;
-    padding-bottom: 0.125rem;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+}
+@media (max-height: 559px) {
+  .deco-cover-areas li {
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
   }
 }
 
@@ -514,5 +625,37 @@
   }
   .holo-foil {
     animation: none;
+  }
+}
+
+/* Below the preview's threshold, the card was still stretching to the full
+   slide height via this `h-full` chain — the centering/padding bands above
+   only repositioned the leftover space, they never reclaimed it. A card that
+   shrinks to its content here instead lets `.holo-stage`'s own
+   `items-center justify-center` absorb the extra as margin OUTSIDE the card,
+   which reads as "a smaller card, well-proportioned" instead of "a big card
+   with a hole in it". Verified with the same Playwright measurement rig used
+   above: card height at a 1400×590 viewport drops from ~353px (mostly empty)
+   to ~285px (snug to content), with no new overflow down to 420px.
+
+   Unbounded, that shrink went too far the other way: at the card's 1120px
+   max-width, ~200–285px of height is a 4–5.6:1 slab, far flatter than the
+   ~2:1 the card reads as everywhere else. `min-height` puts a floor under
+   the shrink — the card still gives back most of the empty space, just not
+   all of it — without touching the overflow math above, since more height
+   than content needs can't reintroduce clipping.
+
+   The floor is in `svh`, not a flat px, because a flat floor doesn't know
+   about the ~237px of header+footer chrome outside the card: at a fixed
+   420px it would ask for more height than a 420px-tall *viewport* even has
+   left to give, pushing the card into the chrome instead of just being
+   less-thin. Scaling with viewport height keeps the floor a fraction of
+   what's actually available at every height in this band, not just the
+   tallest one. */
+@media (max-height: 799px) {
+  .holo-card,
+  .holo-tilt {
+    height: auto;
+    min-height: min(380px, 58svh);
   }
 }
