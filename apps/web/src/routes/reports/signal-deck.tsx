@@ -21,13 +21,21 @@ import { captureReport } from "./track";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
+/** Backdrop behind the cover slide only — it sits under the whole deck shell,
+ *  header and footer included, so the opening reads as a scene the report card
+ *  is lying on rather than a panel inside a white page. Remote for now; self-host
+ *  it before this ships (an external origin on the critical path of a public
+ *  page is a third-party dependency for the first paint). */
+const COVER_BACKDROP =
+  "https://decoims.com/image?src=decocms%2F9edbcde3-9bcc-4b9e-b67b-9b4f64e68714%2FChatGPT-Image-Jul-13-2026-03_20_24-PM.png&quality=high&fit=cover";
+
 const sharerPersonId = () =>
   isPostHogInitialized() ? posthog.get_distinct_id() : undefined;
 
 // Pure deck renderer — the deck is built server-side (format_for_view) and
 // supplied by the route; see `@decocms/shared/reports/to-deck` + ScanGate for the data flow.
 export default function SignalDeck({
-  deck,
+  deck: rawDeck,
   sessionUser,
   authenticated = true,
 }: {
@@ -37,6 +45,18 @@ export default function SignalDeck({
    *  prompts login instead of navigating (see `go` below). */
   authenticated?: boolean;
 }) {
+  // The "categorias" chapter (a per-area score breakdown) now duplicates the
+  // area breakdown already shown on the cover — drop it here, the one place
+  // the server-built deck enters the shell, rather than teaching every
+  // consumer (nav rail, chapter counts, the cover's CTA target) to skip it.
+  const deck: TemplateDeck = {
+    ...rawDeck,
+    slides: rawDeck.slides.filter((s) => s.key !== "categorias"),
+    meta: {
+      ...rawDeck.meta,
+      toc: rawDeck.meta.toc?.filter((entry) => entry.key !== "categorias"),
+    },
+  };
   const t = useT();
   const [authGateOpen, setAuthGateOpen] = useState(false);
   const [{ language }, setPreferences] = usePreferences();
@@ -66,9 +86,19 @@ export default function SignalDeck({
 
   const ctaHref = onboardingUrl(`https://${deck.meta.domain}/`);
   const slide = deck.slides[index];
+  // A logged-out visitor is sent the cover slide only, but `meta.toc` still
+  // names every chapter. Count them in the rail and the footer counter so the
+  // deck admits its real length — "01/01" next to a cover promising six
+  // chapters reads as a broken report, not a locked one. `total` stays the
+  // loaded-slide count so analytics keep measuring what was actually shown.
+  const lockedChapters = (deck.meta.toc ?? []).filter(
+    (entry) => !deck.slides.some((s) => s.key === entry.key),
+  );
+  const railTotal = total + lockedChapters.length;
   // Template-based, not `index === total - 1`: a truncated (anonymous) deck
   // has only the cover slide, which then sits at `total - 1` too.
   const isCtaSlide = slide?.template.template === "cta";
+  const isCoverSlide = slide?.template.template === "cover";
   const lockRef = useRef(false);
   const sharePopoverRef = useRef<HTMLDivElement>(null);
 
@@ -497,9 +527,25 @@ export default function SignalDeck({
         fontFeatureSettings: "normal",
       }}
     >
+      {/* Cover backdrop. Fixed to the shell rather than the slide so it runs
+          behind the header and footer too, and cross-faded on `opacity` because
+          `background-image` can't transition. */}
+      <div
+        aria-hidden
+        // Overhangs the viewport by 3rem so the blur's soft edge falls outside
+        // it — blurring an `inset-0` layer feathers the photo into white at all
+        // four borders and the backdrop reads as a vignette instead of a scene.
+        className="pointer-events-none fixed -inset-12 bg-cover bg-center transition-opacity duration-700"
+        style={{
+          backgroundImage: `url(${COVER_BACKDROP})`,
+          filter: "blur(16px)",
+          opacity: isCoverSlide ? 1 : 0,
+        }}
+      />
+
       {/* ───────── header — rounded translucent bar, deco logo, and the Share
           pill. Sits in the flow as the deck's top row. ───────── */}
-      <header className="shrink-0 px-3 pt-3 sm:px-6 sm:pt-4">
+      <header className="relative shrink-0 px-3 pt-3 sm:px-6 sm:pt-4">
         <div
           className="mx-auto flex h-14 max-w-[1360px] items-center gap-3 rounded-full border pl-4 pr-3 backdrop-blur-md sm:h-[60px] sm:pl-6 sm:pr-4"
           style={{
@@ -634,7 +680,7 @@ export default function SignalDeck({
       </header>
 
       {/* ───────── stage ───────── */}
-      <main className="relative min-h-0 flex-1 overflow-hidden">
+      <main className="relative z-10 min-h-0 flex-1 overflow-hidden">
         {/* vertical track — slides scroll into place as `index` changes */}
         <div
           className="h-full w-full"
@@ -664,9 +710,15 @@ export default function SignalDeck({
                   slide={s}
                   deck={deck}
                   active={i === index}
-                  onNavigate={(key) =>
-                    go(deck.slides.findIndex((sl) => sl.key === key))
-                  }
+                  onNavigate={(key) => {
+                    // The cover's chapter index lists every chapter in the
+                    // report, including ones whose slide wasn't sent to a
+                    // logged-out visitor. An unknown key means "the thing you
+                    // clicked is past the gate" — step forward so `go` shows
+                    // the sign-in prompt instead of silently doing nothing.
+                    const i = deck.slides.findIndex((sl) => sl.key === key);
+                    go(i >= 0 ? i : index + 1);
+                  }}
                 />
               </div>
             </div>
@@ -676,7 +728,12 @@ export default function SignalDeck({
         {/* side progress rail — always rendered; desktop: always visible; mobile: flashes in on slide change then fades out */}
         <nav
           className="absolute right-3 top-1/2 flex -translate-y-1/2 flex-col gap-1.5 transition-opacity duration-300 md:!opacity-100"
-          style={{ opacity: navVisible ? 1 : 0 }}
+          style={{
+            opacity: navVisible ? 1 : 0,
+            ...(isCoverSlide
+              ? { filter: "drop-shadow(0 0 2px rgba(255,255,255,0.95))" }
+              : {}),
+          }}
           aria-label={t("reports.signalDeck.slidesNav")}
         >
           {deck.slides.map((s, i) => (
@@ -703,6 +760,32 @@ export default function SignalDeck({
               />
             </button>
           ))}
+          {lockedChapters.map((entry) => (
+            <button
+              key={entry.key}
+              type="button"
+              aria-label={t("reports.signalDeck.goToSlide", {
+                title: entry.title,
+              })}
+              onClick={() => go(index + 1)}
+              className="group relative flex h-5 items-center justify-end"
+            >
+              <span
+                className="pointer-events-none absolute right-9 whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium opacity-0 transition-all duration-200 group-hover:opacity-100"
+                style={{ background: DECK.ink, color: DECK.bg }}
+              >
+                {entry.title}
+              </span>
+              <span
+                className="rounded-full transition-all duration-300"
+                style={{
+                  height: 2,
+                  width: 12,
+                  background: "rgba(40,37,36,0.22)",
+                }}
+              />
+            </button>
+          ))}
         </nav>
       </main>
 
@@ -710,14 +793,24 @@ export default function SignalDeck({
       {/* On the CTA slide (last), the footer is dark-green on mobile so it reads
           as a seamless extension of the full-bleed card. Desktop is always light. */}
       <footer
-        className="flex shrink-0 items-center gap-2 px-4 py-4 sm:px-6"
+        className={cn(
+          "relative flex shrink-0 items-center gap-2 px-4 py-4 sm:px-6",
+          isCoverSlide && !isCtaSlide && "backdrop-blur-md",
+        )}
         style={
           isCtaSlide
             ? {
                 borderTop: "1px solid rgba(255,255,255,0.14)",
                 background: DECK.forest,
               }
-            : { borderTop: `1px solid ${DECK.border}` }
+            : {
+                borderTop: `1px solid ${DECK.border}`,
+                // The photo behind the cover would otherwise show straight
+                // through the footer and swallow the muted controls.
+                ...(isCoverSlide
+                  ? { background: "rgba(255,255,255,0.82)" }
+                  : {}),
+              }
         }
       >
         {/* On the last slide (the CTA): MOBILE shows Share + a full-width action
@@ -730,7 +823,7 @@ export default function SignalDeck({
               className="hidden text-sm tabular-nums opacity-50 lg:block"
               style={{ color: DECK.ink }}
             >
-              {pad(index + 1)}/{pad(total)}
+              {pad(index + 1)}/{pad(railTotal)}
             </span>
             {/* mobile: share icon — white-on-dark on the CTA slide */}
             <button
@@ -967,7 +1060,7 @@ export default function SignalDeck({
                 className="ml-1 hidden text-sm tabular-nums opacity-50 sm:inline"
                 style={{ color: DECK.ink }}
               >
-                {pad(index + 1)}/{pad(total)}
+                {pad(index + 1)}/{pad(railTotal)}
               </span>
             </div>
 

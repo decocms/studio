@@ -3,10 +3,10 @@ import { DECK } from "./tokens";
 import { useT } from "@/i18n/use-t.ts";
 import type { BarsProps, Tone } from "@decocms/shared/reports/deck-types";
 
-// Same zone palette as the categorias rings. The generic TONE_COLOR maps
-// `neutral` to near-black ink, which reads as a dead bar between red and green
-// on a 7-row board — here the middle band is amber, like everywhere else the
-// deck grades a score.
+// Same good/warn/bad zone palette used elsewhere for score rings. The generic
+// TONE_COLOR maps `neutral` to near-black ink, which reads as a dead bar
+// between red and green on a 7-row board — here the middle band is amber,
+// like everywhere else the deck grades a score.
 const TONE_ZONE: Record<Tone, { color: string; tint: string }> = {
   good: { color: "#009a41", tint: "rgba(0,154,65,0.14)" },
   neutral: { color: "#d98324", tint: "rgba(217,131,36,0.14)" },

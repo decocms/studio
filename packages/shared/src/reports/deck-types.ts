@@ -27,7 +27,8 @@ export interface CoverTemplate {
   screenshot?: string;
   /** Optional mobile homepage screenshot for the overlapping phone. */
   mobileScreenshot?: string;
-  /** Top findings shown as clickable rows on the cover. `slideKey` must match a `DeckSlide.key`. */
+  /** The report's chapters. The cover only uses the first entry, as the target
+   *  for its "see full report" button. `slideKey` must match a `DeckSlide.key`. */
   findings?: { title: string; slideKey: string }[];
 }
 
@@ -274,15 +275,21 @@ export type StatsProps = Omit<StatsTemplate, "template"> & CommonSlideProps;
 export type BarsProps = Omit<BarsTemplate, "template"> & CommonSlideProps;
 export type GaugesProps = Omit<GaugesTemplate, "template"> & CommonSlideProps;
 export type TableProps = Omit<TableTemplate, "template"> & CommonSlideProps;
-export type CoverProps = Omit<CoverTemplate, "template"> &
+export type CoverProps = Omit<CoverTemplate, "template" | "findings"> &
   CommonSlideProps & {
+    /** The report's first chapter, wrapped in a single-item array (mirrors
+     *  `CoverTemplate.findings`) — the "see full report" button jumps here. */
+    findings?: { title: string; slideKey: string }[];
     faviconUrl: string;
     domain: string;
     brand: string;
     /** Single-char favicon fallback. */
     initial: string;
-    /** Brand palette hexes for the swatch stack (from deck.meta.colors). */
-    colors?: string[];
+    /** The report's macro themes (from deck.meta.scores.categories) — the
+     *  breakdown under the headline score. */
+    areas?: DeckScores["categories"];
+    /** ISO scan timestamp, from deck.meta.scannedAt. */
+    scannedAt?: string | null;
     /** True while on screen — gates the score count-up. */
     active?: boolean;
     /** Jump to the slide with the given key. Wired by the deck shell. */
@@ -363,6 +370,19 @@ export interface DeckSlide {
 export interface DeckScores {
   cover: number;
   by_domain: { domain: string; score: number }[];
+  /** Per-macro-theme health: the engine's aggregate categories. `score` is
+   *  severity-weighted from the verdicts in the theme (NOT an average of
+   *  `by_domain`), and pass/fail/blocked are its coverage. Absent on cached
+   *  reports that predate the field. `key` is stable and localizable; `label`
+   *  is the engine's own reader-facing wording, baked at generation time. */
+  categories?: {
+    key: string;
+    label: string;
+    score: number;
+    pass: number;
+    fail: number;
+    blocked: number;
+  }[];
   coverage: {
     checks_probed: number;
     checks_total: number;
@@ -387,6 +407,14 @@ export interface DeckMeta {
   colors?: string[];
   /** Deterministic scores (cover ring, coverage honesty) for cover chips + footer. */
   scores?: DeckScores;
+  /** When the scan behind this deck ran (ISO). Dated reports read as evidence. */
+  scannedAt?: string | null;
+  /** Every content chapter in the report, in order (cover + closing cta
+   *  excluded). Lives on `meta`, not derived from `slides`, so it survives the
+   *  unauthenticated truncation to a single slide — the cover's table of
+   *  contents is the whole reason a visitor signs in, so it must never vanish
+   *  exactly when they're logged out. */
+  toc?: { key: string; title: string }[];
 }
 
 export interface TemplateDeck {

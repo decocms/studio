@@ -93,16 +93,12 @@ const BACKDROP_SCORE = 72;
 
 /** A blurred, non-interactive stand-in for the real Signal Deck (see
  *  `signal-deck.tsx` + `cover-template.tsx`): the translucent header pill,
- *  the holographic cover card (score ring + headline + findings on the left,
- *  a rainbow art panel with a browser preview on the right), the side progress
- *  rail, and the footer bar. It's a mock, but it reads as the same product —
- *  just wider — so the auth gate sits on the report it unlocks. */
+ *  the cover card (headline + banded score on the light left page, the dark
+ *  scan chamber with a browser preview and the chapter index on the right), the
+ *  side progress rail, and the footer bar. It's a mock, but it reads as the same
+ *  product — just wider — so the auth gate sits on the report it unlocks. */
 export function ReportBackdrop({ domain }: { domain: string }) {
   const t = useT();
-  const ringSize = 104;
-  const ringW = 10;
-  const r = (ringSize - ringW) / 2;
-  const circumference = 2 * Math.PI * r;
 
   return (
     <div
@@ -154,13 +150,10 @@ export function ReportBackdrop({ domain }: { domain: string }) {
               "inset 0 1px 0 rgba(255,255,255,0.9), inset 0 0 0 1px rgba(40,37,36,0.05), 0 1px 2px rgba(40,37,36,0.04)",
           }}
         >
-          <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 p-2 lg:grid-cols-2">
-            {/* left: favicon header + score + headline + findings */}
-            <div className="flex min-h-0 flex-col px-5 py-5">
-              <div
-                className="flex shrink-0 items-center gap-3 pb-4"
-                style={{ borderBottom: `1px solid ${DECK.border}` }}
-              >
+          <div className="flex min-h-0 flex-1 gap-2 p-2">
+            {/* left: the editorial page — identity, verdict, banded score */}
+            <div className="flex min-h-0 flex-col px-7 py-7 lg:w-[55%]">
+              <div className="flex shrink-0 items-center gap-3">
                 <div
                   className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white"
                   style={{ border: `1px solid ${DECK.border}` }}
@@ -171,163 +164,139 @@ export function ReportBackdrop({ domain }: { domain: string }) {
                     className="h-full w-full object-contain p-1.5"
                   />
                 </div>
-                <span className="min-w-0 flex-1 truncate text-base">
-                  <span style={{ color: DECK.faint }}>https://</span>
-                  {domain}
-                </span>
-                <span
-                  className="shrink-0 text-[11px] font-medium uppercase tracking-[0.04em]"
-                  style={{ color: DECK.soft }}
-                >
-                  {t("reports.authGate.report")}
-                </span>
-              </div>
-
-              {/* Deco Score — static ring + number */}
-              <div className="mt-4 flex shrink-0 items-center gap-5">
-                <svg
-                  width={ringSize}
-                  height={ringSize}
-                  className="-rotate-90 shrink-0"
-                >
-                  <circle
-                    cx={ringSize / 2}
-                    cy={ringSize / 2}
-                    r={r}
-                    fill="none"
-                    stroke={DECK.border}
-                    strokeWidth={ringW}
-                  />
-                  <circle
-                    cx={ringSize / 2}
-                    cy={ringSize / 2}
-                    r={r}
-                    fill="none"
-                    stroke={DECK.soft}
-                    strokeWidth={ringW}
-                    strokeLinecap="round"
-                    strokeDasharray={circumference}
-                    strokeDashoffset={
-                      circumference * (1 - BACKDROP_SCORE / 100)
-                    }
-                  />
-                </svg>
-                <div className="flex flex-col gap-0.5">
-                  <div className="flex items-baseline gap-2">
-                    <span
-                      className="text-[4rem] font-light leading-[0.9] tracking-[-0.02em] tabular-nums"
-                      style={{ color: DECK.soft }}
-                    >
-                      {BACKDROP_SCORE}
-                    </span>
-                    <span className="text-xl" style={{ color: DECK.faint }}>
-                      / 100
-                    </span>
-                  </div>
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate text-[15px] font-medium leading-tight">
+                    {domain}
+                  </span>
                   <span
-                    className="text-[12px] font-medium uppercase tracking-[0.04em]"
-                    style={{ color: DECK.soft }}
+                    className="truncate text-[12px] leading-tight"
+                    style={{ color: DECK.faint }}
                   >
-                    {t("reports.authGate.decoScore")}
+                    {t("reports.authGate.report")}
                   </span>
                 </div>
               </div>
 
               <h1
-                className="mt-4 max-w-[24ch] text-[1.7rem] font-normal leading-[1.16] tracking-[-0.02em]"
+                className="mt-7 max-w-[20ch] text-[2.4rem] font-medium leading-[1.05] tracking-[-0.035em]"
                 style={{ color: DECK.ink }}
               >
                 {t("reports.authGate.headline")}
               </h1>
 
-              <ul className="mt-auto flex flex-col pt-4">
-                {getBackdropFindings(t).map((title, i) => (
-                  <li
-                    key={i}
-                    style={
-                      i < getBackdropFindings(t).length - 1
-                        ? { borderBottom: `1px solid ${DECK.border}` }
-                        : undefined
-                    }
+              {/* Deco Score — oversized number over a banded track */}
+              <div className="mt-auto pt-8">
+                <div className="flex items-end gap-3">
+                  <span
+                    className="text-[4.25rem] font-light leading-[0.82] tracking-[-0.045em] tabular-nums"
+                    style={{ color: DECK.soft }}
                   >
-                    <div className="flex w-full items-center gap-3.5 py-2.5">
+                    {BACKDROP_SCORE}
+                  </span>
+                  <div className="flex flex-col gap-1.5 pb-1">
+                    <span className="text-[13px]" style={{ color: DECK.faint }}>
+                      / 100 · {t("reports.authGate.decoScore")}
+                    </span>
+                  </div>
+                </div>
+                <div
+                  className="mt-4 h-1.5 w-full overflow-hidden rounded-full"
+                  style={{ background: "rgba(40,37,36,0.08)" }}
+                >
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${BACKDROP_SCORE}%`,
+                      background: DECK.soft,
+                    }}
+                  />
+                </div>
+                <div
+                  className="mt-6 flex gap-4 border-t pt-4"
+                  style={{ borderColor: DECK.border }}
+                >
+                  {[62, 41, 78, 55, 33].map((value, i) => (
+                    <div key={i} className="flex flex-1 flex-col gap-1.5">
                       <span
-                        className="shrink-0 text-[12px] tabular-nums"
-                        style={{ color: DECK.soft }}
+                        className="h-2 w-4/5 rounded-full"
+                        style={{ background: DECK.border }}
+                      />
+                      <span
+                        className="h-[3px] w-full overflow-hidden rounded-full"
+                        style={{ background: "rgba(40,37,36,0.09)" }}
+                      >
+                        <span
+                          className="block h-full rounded-full"
+                          style={{ width: `${value}%`, background: DECK.soft }}
+                        />
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* right: the dark scan chamber — browser preview + chapter index */}
+            <div
+              className="relative hidden min-h-0 flex-1 flex-col overflow-hidden rounded-2xl lg:flex"
+              style={{
+                background:
+                  "radial-gradient(116% 88% at 82% 4%, rgba(208,236,26,0.18), transparent 56%), linear-gradient(158deg, #0a5122 0%, #07401a 44%, #052e11 100%)",
+              }}
+            >
+              <div className="relative min-h-0 flex-1">
+                <div className="absolute inset-x-7 top-7 overflow-hidden rounded-2xl bg-white">
+                  <div
+                    className="flex h-9 items-center gap-2 px-4"
+                    style={{ background: "#f4f2ec" }}
+                  >
+                    <span className="h-2.5 w-2.5 rounded-full bg-black/15" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-black/15" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-black/15" />
+                    <span className="ml-3 h-5 flex-1 rounded-md bg-white" />
+                  </div>
+                  <div
+                    className="h-[240px]"
+                    style={{ background: "#f4f2ec" }}
+                  />
+                </div>
+              </div>
+
+              <div className="shrink-0 px-6 pb-6 pt-4">
+                <span
+                  className="text-[12px] font-medium"
+                  style={{ color: "rgba(255,255,255,0.52)" }}
+                >
+                  {t("reports.authGate.inThisReport")}
+                </span>
+                <ul className="mt-1.5 flex flex-col">
+                  {getBackdropFindings(t).map((title, i) => (
+                    <li
+                      key={i}
+                      className="flex items-center gap-3 border-t py-2.5"
+                      style={{ borderColor: "rgba(255,255,255,0.1)" }}
+                    >
+                      <span
+                        className="w-4 shrink-0 text-[11px] tabular-nums"
+                        style={{ color: "rgba(208,236,26,0.8)" }}
                       >
                         {String(i + 1).padStart(2, "0")}
                       </span>
                       <span
-                        className="min-w-0 flex-1 truncate text-left text-[15px] opacity-55"
-                        style={{ color: DECK.ink, lineHeight: 1.3 }}
+                        className="min-w-0 flex-1 truncate text-[14px] leading-[1.35]"
+                        style={{ color: "rgba(255,255,255,0.9)" }}
                       >
                         {title}
                       </span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* right: holographic art panel with a browser preview */}
-            <div className="hidden lg:block">
-              <div
-                className="relative h-full w-full overflow-hidden rounded-2xl"
-                style={{
-                  background:
-                    "radial-gradient(circle at 18% 18%, rgba(208,236,26,.45), transparent 35%), radial-gradient(circle at 82% 30%, rgba(152,221,255,.7), transparent 34%), radial-gradient(circle at 60% 86%, rgba(255,183,214,.65), transparent 42%), #f7f5ef",
-                }}
-              >
-                <div
-                  className="absolute inset-x-8 top-8 rounded-2xl border bg-white p-3 shadow-xl"
-                  style={{ borderColor: DECK.border }}
+                    </li>
+                  ))}
+                </ul>
+                <span
+                  className="mt-4 flex h-11 w-full items-center justify-center rounded-full text-sm font-medium"
+                  style={{ background: DECK.lime, color: DECK.forest }}
                 >
-                  <div
-                    className="mb-3 flex items-center gap-2 border-b pb-3"
-                    style={{ borderColor: DECK.border }}
-                  >
-                    <span className="h-2.5 w-2.5 rounded-full bg-[#ff6b67]" />
-                    <span className="h-2.5 w-2.5 rounded-full bg-[#f5c451]" />
-                    <span className="h-2.5 w-2.5 rounded-full bg-[#65c466]" />
-                    <span
-                      className="ml-3 h-6 flex-1 rounded-full"
-                      style={{ background: DECK.bg }}
-                    />
-                  </div>
-                  <div className="grid h-[330px] grid-cols-[0.72fr_1.28fr] gap-3">
-                    <div
-                      className="space-y-3 rounded-xl p-4"
-                      style={{ background: DECK.forest }}
-                    >
-                      <div className="h-3 w-16 rounded-full bg-white/30" />
-                      <div className="h-8 w-full rounded-lg bg-white/80" />
-                      <div className="h-3 w-4/5 rounded-full bg-white/30" />
-                      <div className="mt-8 h-24 rounded-xl bg-white/10" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      {[0, 1, 2, 3].map((item) => (
-                        <div
-                          key={item}
-                          className="rounded-xl border bg-white p-3"
-                          style={{ borderColor: DECK.border }}
-                        >
-                          <div
-                            className="h-24 rounded-lg"
-                            style={{ background: DECK.bg }}
-                          />
-                          <div
-                            className="mt-3 h-3 w-4/5 rounded-full"
-                            style={{ background: DECK.border }}
-                          />
-                          <div
-                            className="mt-2 h-3 w-1/2 rounded-full"
-                            style={{ background: DECK.border }}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+                  {t("reports.authGate.unlockReport")}
+                </span>
               </div>
             </div>
           </div>
