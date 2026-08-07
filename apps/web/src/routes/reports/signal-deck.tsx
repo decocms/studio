@@ -586,7 +586,7 @@ export default function SignalDeck({
                 </button>
                 {userMenuOpen && (
                   <div
-                    className="absolute right-0 top-full z-50 mt-2 min-w-[180px] overflow-hidden rounded-xl border shadow-xl"
+                    className="absolute right-0 top-full z-[60] mt-2 min-w-[180px] overflow-hidden rounded-xl border shadow-xl"
                     style={{
                       background: DECK.surface,
                       borderColor: DECK.border,
