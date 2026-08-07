@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { SchemaProperty } from "./resolve-schema";
 import {
-  arrayItemCrumbIndex,
   breadcrumbPathForActiveField,
   breadcrumbsForHeaderClick,
   buildArrayDrillDownBreadcrumb,
@@ -15,7 +14,7 @@ import {
   resolveArrayItemSelection,
   isBreadcrumbInsideObject,
 } from "./schema-form-breadcrumb";
-import { getArrayItemLabels } from "./array-item-display";
+import { getArrayItemLabel, getArrayItemLabels } from "./array-item-display";
 import { PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE } from "./section-types";
 
 describe("normalizeBreadcrumbLabel", () => {
@@ -747,13 +746,13 @@ describe("resolveArrayItemSelection", () => {
         items,
         itemSchema,
       ),
-    ).toEqual({ index: 0, innerPath: [] });
+    ).toEqual({ index: 0, innerPath: [], crumbIndex: 2 });
   });
 
   test("returns inner path for nested array drill-down", () => {
     expect(
       resolveArrayItemSelection("Cards", ["Men's", "Sale"], items, itemSchema),
-    ).toEqual({ index: 0, innerPath: ["Sale"] });
+    ).toEqual({ index: 0, innerPath: ["Sale"], crumbIndex: 0 });
   });
 
   test("supports breadcrumb without array label", () => {
@@ -764,7 +763,7 @@ describe("resolveArrayItemSelection", () => {
         items,
         itemSchema,
       ),
-    ).toEqual({ index: 0, innerPath: ["Button"] });
+    ).toEqual({ index: 0, innerPath: ["Button"], crumbIndex: 0 });
   });
 
   test("selects item when its label equals the array label (alt-driven label)", () => {
@@ -784,7 +783,7 @@ describe("resolveArrayItemSelection", () => {
         bannerSchema,
         0,
       ),
-    ).toEqual({ index: 0, innerPath: [] });
+    ).toEqual({ index: 0, innerPath: [], crumbIndex: 0 });
   });
 
   describe("duplicate labels", () => {
@@ -798,10 +797,10 @@ describe("resolveArrayItemSelection", () => {
     test("addresses each duplicate by its positional crumb (no preferredIndex)", () => {
       expect(
         resolveArrayItemSelection("Cards", ["Hello 1"], dupItems, itemSchema),
-      ).toEqual({ index: 0, innerPath: [] });
+      ).toEqual({ index: 0, innerPath: [], crumbIndex: 0 });
       expect(
         resolveArrayItemSelection("Cards", ["Hello 2"], dupItems, itemSchema),
-      ).toEqual({ index: 1, innerPath: [] });
+      ).toEqual({ index: 1, innerPath: [], crumbIndex: 0 });
     });
 
     test("a bare (non-disambiguated) crumb no longer matches a duplicate", () => {
@@ -821,7 +820,7 @@ describe("resolveArrayItemSelection", () => {
           itemSchema,
           1,
         ),
-      ).toEqual({ index: 1, innerPath: [] });
+      ).toEqual({ index: 1, innerPath: [], crumbIndex: 0 });
     });
 
     test("ignores a preferredIndex whose label no longer matches the crumb", () => {
@@ -833,7 +832,7 @@ describe("resolveArrayItemSelection", () => {
           itemSchema,
           0, // preferred item 0 is "Men's" — doesn't match, fall back to search
         ),
-      ).toEqual({ index: 1, innerPath: [] });
+      ).toEqual({ index: 1, innerPath: [], crumbIndex: 0 });
     });
 
     test("falls back to crumb search when preferredIndex is out of range", () => {
@@ -845,45 +844,57 @@ describe("resolveArrayItemSelection", () => {
           itemSchema,
           5,
         ),
-      ).toEqual({ index: 1, innerPath: [] });
+      ).toEqual({ index: 1, innerPath: [], crumbIndex: 0 });
     });
   });
 });
 
-describe("arrayItemCrumbIndex", () => {
-  test("points at the item crumb (just before its inner trail)", () => {
-    // Trail [Section, Item, Inner]; resolver returned innerPath [Inner] → the
-    // item crumb is at index 1.
-    expect(arrayItemCrumbIndex(["Section", "Item", "Inner"], ["Inner"])).toBe(
-      1,
-    );
+describe("resolveArrayItemSelection crumbIndex", () => {
+  const schema = {
+    type: "object",
+    properties: { title: { type: "string", title: "Title" } },
+  } as SchemaProperty;
+  const items = [{ title: "Men's" }, { title: "Women's" }];
+
+  test("points at the item crumb, before its inner trail", () => {
+    // Trail [Section, Cards, Men's, Inner]: the item crumb is at index 2.
+    expect(
+      resolveArrayItemSelection(
+        "Cards",
+        ["Section", "Cards", "Men's", "Inner"],
+        items,
+        schema,
+      ),
+    ).toEqual({ index: 0, innerPath: ["Inner"], crumbIndex: 2 });
   });
 
-  test("last crumb is the item when innerPath is empty", () => {
-    expect(arrayItemCrumbIndex(["Banners", "Cozinha 2"], [])).toBe(1);
-    expect(arrayItemCrumbIndex(["Cozinha 2"], [])).toBe(0);
+  test("is the last crumb when innerPath is empty", () => {
+    expect(
+      resolveArrayItemSelection("Cards", ["Women's"], items, schema),
+    ).toEqual({ index: 1, innerPath: [], crumbIndex: 0 });
   });
 });
 
 describe("editing an item's label keeps it selected (crumb re-sync)", () => {
   // Reproduces the reported bug: duplicate a banner (two share a label), open
   // the copy, edit its text. The editor must stay on the copy — not snap back
-  // to the "original" it was duplicated from. This exercises the exact sequence
-  // ArrayField.updateItem runs: resolve selection → rewrite the item crumb by
-  // POSITION (arrayItemCrumbIndex) → re-resolve against the edited items.
+  // to the "original" it was duplicated from. Runs the exact sequence
+  // ArrayField.updateItem runs against the real functions: resolve selection →
+  // rewrite the crumb at `selection.crumbIndex` → re-resolve against the edits.
   const schema = {
     type: "object",
     properties: { title: { type: "string", title: "Title" } },
   } as SchemaProperty;
 
-  const editKeepsSelection = (
+  // Mirror ArrayField.updateItem's crumb re-sync exactly (same label helper it
+  // uses, `getArrayItemLabel` with siblings), so this test tracks the component
+  // rather than re-deriving the label a different way.
+  const rewriteAndReresolve = (
     items: unknown[],
+    trail: string[],
     openIndex: number,
     edited: unknown[],
   ) => {
-    const labels = getArrayItemLabels(items, schema);
-    // The crumb the open row carries, built from the disambiguated label.
-    const trail = [labels[openIndex]!];
     const selection = resolveArrayItemSelection(
       "Banners",
       trail,
@@ -891,31 +902,44 @@ describe("editing an item's label keeps it selected (crumb re-sync)", () => {
       schema,
       openIndex,
     );
-    expect(selection).toEqual({ index: openIndex, innerPath: [] });
-
-    // updateItem: rewrite the item crumb in place to the new label.
-    const newLabel = getArrayItemLabels(edited, schema)[openIndex]!;
-    const crumbIndex = arrayItemCrumbIndex(trail, selection!.innerPath);
-    const updatedTrail = [...trail];
-    updatedTrail[crumbIndex] = newLabel;
-
-    // Re-resolving against the edited array must still land on the same item.
-    return resolveArrayItemSelection(
-      "Banners",
-      updatedTrail,
-      edited,
-      schema,
+    if (!selection) throw new Error("expected a selection");
+    const oldLabel = getArrayItemLabel(
+      items[openIndex],
       openIndex,
+      schema,
+      items,
     );
+    const newLabel = getArrayItemLabel(
+      edited[openIndex],
+      openIndex,
+      schema,
+      edited,
+    );
+    let nextTrail = trail;
+    if (oldLabel !== newLabel) {
+      nextTrail = [...trail];
+      nextTrail[selection.crumbIndex] = newLabel;
+    }
+    return {
+      nextTrail,
+      selection: resolveArrayItemSelection(
+        "Banners",
+        nextTrail,
+        edited,
+        schema,
+        openIndex,
+      ),
+    };
   };
 
   test("editing the duplicate's title stays on the duplicate, not the original", () => {
     const items = [{ title: "Cozinha" }, { title: "Cozinha" }];
-    // Open the copy (index 1), rename it for the new campaign.
+    const trail = [getArrayItemLabels(items, schema)[1]!]; // open the copy
     const edited = [{ title: "Cozinha" }, { title: "Cozinha Nova" }];
-    expect(editKeepsSelection(items, 1, edited)).toEqual({
+    expect(rewriteAndReresolve(items, trail, 1, edited).selection).toEqual({
       index: 1,
       innerPath: [],
+      crumbIndex: 0,
     });
   });
 
@@ -923,38 +947,59 @@ describe("editing an item's label keeps it selected (crumb re-sync)", () => {
     // Emptying the label field makes the row fall back to the schema-title
     // suffix; the crumb still tracks it because it is rewritten by position.
     const items = [{ title: "Cozinha" }, { title: "Cozinha" }];
+    const trail = [getArrayItemLabels(items, schema)[1]!];
     const edited = [{ title: "Cozinha" }, { title: "" }];
-    expect(editKeepsSelection(items, 1, edited)).toEqual({
+    expect(rewriteAndReresolve(items, trail, 1, edited).selection).toEqual({
       index: 1,
       innerPath: [],
+      crumbIndex: 0,
     });
   });
 
-  test("editing an item that is drilled one level deep keeps the inner trail", () => {
-    // Trail [item, Inner]: the item crumb is at position 0, so rewriting it by
-    // position must leave the inner crumb ("Inner") untouched.
-    const items = [{ title: "Cozinha" }, { title: "Cozinha" }];
-    const labels = getArrayItemLabels(items, schema);
-    const trail = [labels[1]!, "Inner"];
+  test("editing a non-label field leaves the crumb untouched (no-op)", () => {
+    // oldLabel === newLabel → updateItem must not rewrite the breadcrumb.
+    const withExtra = {
+      type: "object",
+      properties: {
+        title: { type: "string", title: "Title" },
+        href: { type: "string", title: "Href" },
+      },
+    } as SchemaProperty;
+    const items = [{ title: "Cozinha", href: "/a" }];
+    const trail = ["Cozinha"];
     const selection = resolveArrayItemSelection(
       "Banners",
       trail,
       items,
-      schema,
-      1,
+      withExtra,
+      0,
     );
-    expect(selection).toEqual({ index: 1, innerPath: ["Inner"] });
+    const edited = [{ title: "Cozinha", href: "/b" }]; // label field unchanged
+    const oldLabel = getArrayItemLabel(items[0], 0, withExtra, items);
+    const newLabel = getArrayItemLabel(edited[0], 0, withExtra, edited);
+    expect(oldLabel).toBe(newLabel); // title drives the label; href doesn't
+    // Trail stays as-is; re-resolving still lands on the item.
+    expect(selection).toEqual({ index: 0, innerPath: [], crumbIndex: 0 });
+  });
 
+  test("editing an item drilled one level deep keeps the inner trail", () => {
+    // Trail [item, Inner]: the item crumb is at position 0, so rewriting it
+    // must leave the inner crumb ("Inner") untouched.
+    const items = [{ title: "Cozinha" }, { title: "Cozinha" }];
+    const trail = [getArrayItemLabels(items, schema)[1]!, "Inner"];
     const edited = [{ title: "Cozinha" }, { title: "Cozinha Nova" }];
-    const newLabel = getArrayItemLabels(edited, schema)[1]!;
-    const crumbIndex = arrayItemCrumbIndex(trail, selection!.innerPath);
-    expect(crumbIndex).toBe(0);
-    const updatedTrail = [...trail];
-    updatedTrail[crumbIndex] = newLabel;
-    expect(updatedTrail).toEqual(["Cozinha Nova", "Inner"]);
-    expect(
-      resolveArrayItemSelection("Banners", updatedTrail, edited, schema, 1),
-    ).toEqual({ index: 1, innerPath: ["Inner"] });
+    const { nextTrail, selection } = rewriteAndReresolve(
+      items,
+      trail,
+      1,
+      edited,
+    );
+    expect(nextTrail).toEqual(["Cozinha Nova", "Inner"]);
+    expect(selection).toEqual({
+      index: 1,
+      innerPath: ["Inner"],
+      crumbIndex: 0,
+    });
   });
 });
 
@@ -967,7 +1012,7 @@ describe("array item label build↔resolve round-trip", () => {
     labels.forEach((label, i) => {
       expect(
         resolveArrayItemSelection("Items", [label], items, schema),
-      ).toEqual({ index: i, innerPath: [] });
+      ).toEqual({ index: i, innerPath: [], crumbIndex: 0 });
     });
   };
 
