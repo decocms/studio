@@ -227,6 +227,12 @@ func buildEnv(inherit bool, overrides map[string]string, extra map[string]string
 			}
 		}
 	}
+	// Tasks run on a PTY, so corepack sees a tty and blocks forever on "Do you
+	// want to continue? [Y/n]" the first time it has to fetch a yarn/pnpm shim:
+	// the dev server never starts and nothing times out. SpawnStep and the
+	// install step already pin these — the task path is the third spawner.
+	env["COREPACK_ENABLE_STRICT"] = "0"
+	env["COREPACK_ENABLE_DOWNLOAD_PROMPT"] = "0"
 	for k, v := range extra {
 		env[k] = v
 	}

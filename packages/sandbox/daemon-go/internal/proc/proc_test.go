@@ -134,3 +134,33 @@ func TestPortSnifferPerSourceCarryIsolation(t *testing.T) {
 		t.Fatalf("dev carry corrupted by start chunk, got %d", s.Current())
 	}
 }
+
+// A dev server spawned on a PTY inherits a tty, and corepack blocks on
+// "Do you want to continue? [Y/n]" forever the first time it fetches a
+// yarn/pnpm shim. Nothing times that out — the sandbox just never boots.
+func TestBuildEnvSilencesCorepackPrompt(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		env  []string
+	}{
+		{"pty", buildEnv(true, map[string]string{"PORT": "3000"}, map[string]string{"TERM": "xterm-256color"})},
+		{"pipe", buildEnv(false, map[string]string{"PORT": "3000"}, nil)},
+	} {
+		got := map[string]string{}
+		for _, kv := range tc.env {
+			if i := strings.IndexByte(kv, '='); i >= 0 {
+				got[kv[:i]] = kv[i+1:]
+			}
+		}
+		if got["COREPACK_ENABLE_DOWNLOAD_PROMPT"] != "0" {
+			t.Fatalf("%s: download prompt not disabled: %q", tc.name, got["COREPACK_ENABLE_DOWNLOAD_PROMPT"])
+		}
+		if got["COREPACK_ENABLE_STRICT"] != "0" {
+			t.Fatalf("%s: strict not disabled: %q", tc.name, got["COREPACK_ENABLE_STRICT"])
+		}
+		// Caller-supplied env still wins.
+		if got["PORT"] != "3000" {
+			t.Fatalf("%s: overrides lost: %q", tc.name, got["PORT"])
+		}
+	}
+}
