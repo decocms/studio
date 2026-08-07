@@ -46,7 +46,7 @@ import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
 import { FolderCard, timeAgo } from "./cards";
 
-export function useOrgRepoSyncs() {
+function useOrgRepoSyncs() {
   const { org } = useProjectContext();
   const studio = useStudioTools();
   return useQuery({
