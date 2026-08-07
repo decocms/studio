@@ -192,10 +192,20 @@ func (o *Orchestrator) drain() {
 	}
 }
 
+// A running dev server is stopped by whoever actually invalidates it — the
+// install (which rewrites node_modules under it) and a start whose command
+// differs — never up front, on the assumption that a step implies a restart.
+// The assumption is what breaks a tenant warm pool: a claim onto a pod that is
+// already serving arrives as branch-change, and the thread branch points at the
+// same commit the pool warmed, so the checkout leaves the tree byte-identical.
+// Killing dev there rebuilds a framework that was already answering requests
+// (~2min for a faststore/Next app) — the whole value of the warm pod, spent on
+// a no-op. Same commit + same fingerprint now keeps the process: install
+// short-circuits on the fingerprint, and stepStart sees its own command already
+// running and skips.
 func (o *Orchestrator) runStep(step Step) {
 	switch step {
 	case StepClone:
-		o.stopDevTask()
 		if !o.stepClone() {
 			return
 		}
@@ -204,7 +214,6 @@ func (o *Orchestrator) runStep(step Step) {
 		}
 		o.stepStart()
 	case StepInstall:
-		o.stopDevTask()
 		if !o.stepInstall() {
 			return
 		}
@@ -381,6 +390,10 @@ func (o *Orchestrator) stepInstallInner() bool {
 		return true
 	}
 
+	// An install rewrites node_modules under whatever is reading it, so the dev
+	// server goes down here — after every early return above, so a claim that
+	// installs nothing keeps its warm process (see runStep).
+	o.stopDevTask()
 	o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseInstalling})
 
 	// Timed from here so the reported cost is the whole dependency step: a failed
