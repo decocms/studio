@@ -11,7 +11,7 @@
  * navigation actually resolves.
  */
 
-import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
+import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { createContext, type ReactNode } from "react";
 import { formatLibraryFileTabId } from "@/layouts/main-panel-tabs/tab-id";

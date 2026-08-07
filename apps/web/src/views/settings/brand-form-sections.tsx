@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Controller, type UseFormReturn } from "react-hook-form";
 import { LinkExternal01, Globe02, Zap } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.ts";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
-import { Textarea } from "@deco/ui/components/textarea.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
+import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { useT } from "@/i18n/use-t.ts";
 
 // --- Types ---

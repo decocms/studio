@@ -1,21 +1,21 @@
 import { slugify } from "@decocms/shared/utils/slugify";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
+} from "@decocms/ui/components/dialog.tsx";
 import {
   Drawer,
   DrawerContent,
   DrawerTitle,
-} from "@deco/ui/components/drawer.tsx";
-import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
+} from "@decocms/ui/components/drawer.tsx";
+import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { useProjectContext } from "@/sdk";
 import type { VirtualMCPEntity } from "@/sdk";
 import { Check, Copy01, Key01, Loading01 } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { Suspense, useState } from "react";
 import { toast } from "sonner";
 import { track } from "@/lib/posthog-client";

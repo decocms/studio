@@ -8,13 +8,13 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from "@deco/ui/components/command.tsx";
+} from "@decocms/ui/components/command.tsx";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@deco/ui/components/popover.tsx";
-import { cn } from "@deco/ui/lib/utils.js";
+} from "@decocms/ui/components/popover.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { getIconComponent } from "@/components/agent-icon";
 import { useT } from "@/i18n/use-t.ts";
 import type { BlogBlockSource, BlogBlockType } from "./blog-data";

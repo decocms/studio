@@ -71,7 +71,7 @@ export default defineConfig({
           },
           // General `@/* -> src/*` alias. MUST come after the stub aliases
           // above so Vite (first-match-wins) resolves those first. Matches
-          // only `@/`-prefixed ids, so `@deco/ui`, `@tanstack/*` etc. are
+          // only `@/`-prefixed ids, so `@decocms/ui`, `@tanstack/*` etc. are
           // untouched.
           { find: "@/", replacement: `${path.join(here, "src")}/` },
         ],

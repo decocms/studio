@@ -1,7 +1,7 @@
 import { Copy01, DotsGrid, Trash01 } from "@untitledui/icons";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { cn } from "@deco/ui/lib/utils.js";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import type { RunBlockSandboxRef } from "@/components/sandbox/content/use-run-block";
 import { useT } from "@/i18n/use-t.ts";

@@ -4,7 +4,7 @@ import { ScrollReveal } from "@/components/scroll-reveal";
 import { authClient } from "@/lib/auth-client";
 import { useT } from "@/i18n/use-t.ts";
 import { SELF_MCP_ALIAS_ID, useMCPClient } from "@/sdk";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { QueryErrorResetBoundary } from "@tanstack/react-query";
 import { Suspense, useState } from "react";
 import { CompanionCard, CompanionCardSkeleton } from "./companion-card.tsx";

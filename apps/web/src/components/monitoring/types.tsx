@@ -7,18 +7,18 @@
 import { formatBytes } from "@/lib/format-bytes";
 import { useConnections, useProjectContext } from "@/sdk";
 import { getConnectionSlug } from "@decocms/shared/utils/connection-slug";
-import { Badge } from "@deco/ui/components/badge.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Badge } from "@decocms/ui/components/badge.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@deco/ui/components/popover.tsx";
+} from "@decocms/ui/components/popover.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import {
   Download01,
   Check,

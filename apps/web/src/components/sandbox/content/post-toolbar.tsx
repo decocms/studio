@@ -6,8 +6,8 @@ import {
   Trash01,
   X,
 } from "@untitledui/icons";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Checkbox } from "@deco/ui/components/checkbox.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,13 +15,13 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
-import { cn } from "@deco/ui/lib/utils.js";
+} from "@decocms/ui/components/tooltip.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import type { PostSort } from "./content-browser";

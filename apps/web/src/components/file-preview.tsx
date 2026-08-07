@@ -17,8 +17,8 @@
  * fails, the component degrades to the download card rather than erroring.
  */
 
-import { Button } from "@deco/ui/components/button.tsx";
-import { Skeleton } from "@deco/ui/components/skeleton.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Download01 } from "@untitledui/icons";
 import { useFileText } from "@/hooks/use-org-fs";
 import { ReadOnlyCodeViewer } from "@/components/read-only-code-viewer";

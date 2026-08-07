@@ -23,9 +23,9 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Label } from "@deco/ui/components/label.tsx";
-import { Spinner } from "@deco/ui/components/spinner.tsx";
-import { cn } from "@deco/ui/lib/utils.js";
+import { Label } from "@decocms/ui/components/label.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/en/index.ts";
 import type { RunBlockSandboxRef } from "@/components/sandbox/content/use-run-block";

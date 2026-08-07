@@ -1,4 +1,4 @@
-import { Switch } from "@deco/ui/components/switch.tsx";
+import { Switch } from "@decocms/ui/components/switch.tsx";
 import type { FieldProps } from "./field-props";
 import { FieldLabel } from "./field-label";
 

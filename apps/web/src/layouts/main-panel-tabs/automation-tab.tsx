@@ -3,7 +3,7 @@ import { SettingsTab as AutomationInlineDetail } from "@/views/automations/autom
 import { AutomationRunsView } from "@/views/automations/automation-runs";
 import { useAutomation } from "@/hooks/use-automations";
 import { Page } from "@/components/page";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { CollectionTabs } from "@/components/collections/collection-tabs.tsx";
 import {
   Select,
@@ -11,7 +11,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@deco/ui/components/select.tsx";
+} from "@decocms/ui/components/select.tsx";
 import { ArrowLeft } from "@untitledui/icons";
 import { useNavigate } from "@tanstack/react-router";
 import { Suspense, useState } from "react";

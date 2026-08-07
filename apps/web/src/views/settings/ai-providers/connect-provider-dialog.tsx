@@ -8,9 +8,9 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-} from "@deco/ui/components/dialog.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Spinner } from "@deco/ui/components/spinner.tsx";
+} from "@decocms/ui/components/dialog.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useProjectContext } from "@/sdk";
 import { useStudioTools } from "@/lib/studio-tools";
 import type { StudioToolInput as ToolInput } from "@decocms/shared/tools/tool-io";

@@ -5,15 +5,15 @@
  * or remove the current icon. Stores the selection as an icon:// URL string.
  */
 
-import { Button } from "@deco/ui/components/button.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@deco/ui/components/popover.tsx";
-import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/popover.tsx";
+import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { Edit05, SearchMd, Shuffle01, Upload01 } from "@untitledui/icons";
 import { useRef, useState } from "react";
 import { toast } from "sonner";

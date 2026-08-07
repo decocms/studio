@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useMCPClient, useProjectContext, type VirtualMCPEntity } from "@/sdk";
-import { Skeleton } from "@deco/ui/components/skeleton.tsx";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
 import { useHomeNextActions } from "@/hooks/use-home-next-actions";

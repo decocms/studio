@@ -16,10 +16,10 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@deco/ui/components/alert-dialog.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
+} from "@decocms/ui/components/alert-dialog.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
+import { Label } from "@decocms/ui/components/label.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import {

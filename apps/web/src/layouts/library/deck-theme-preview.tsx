@@ -15,7 +15,7 @@
  * fileText query (e.g. after a brand save) re-renders the deck.
  */
 
-import { Skeleton } from "@deco/ui/components/skeleton.tsx";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { useFileText } from "@/hooks/use-org-fs";
 import { DECK_SAMPLE_SECTIONS, DECK_SAMPLE_TITLE } from "./deck-theme-sample";
 

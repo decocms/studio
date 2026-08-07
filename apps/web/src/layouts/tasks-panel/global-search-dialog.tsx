@@ -6,7 +6,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
+} from "@decocms/ui/components/dialog.tsx";
 import {
   Command,
   CommandEmpty,
@@ -14,7 +14,7 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from "@deco/ui/components/command.tsx";
+} from "@decocms/ui/components/command.tsx";
 import { useProjectContext } from "@/sdk";
 import { useStudioTools } from "@/lib/studio-tools";
 import { KEYS } from "@/lib/query-keys";

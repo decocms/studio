@@ -5,15 +5,15 @@ import {
   type FieldPath,
   type FieldValues,
 } from "react-hook-form";
-import { Input } from "@deco/ui/components/input.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
+import { Label } from "@decocms/ui/components/label.tsx";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@deco/ui/components/select.tsx";
+} from "@decocms/ui/components/select.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { PACKAGE_MANAGER_CONFIG } from "@decocms/shared/runtime-defaults";
 import type { PackageManager } from "@decocms/shared/runtime-defaults";

@@ -3,7 +3,7 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
-} from "@deco/ui/components/tabs.tsx";
+} from "@decocms/ui/components/tabs.tsx";
 import { useConnection } from "@/sdk";
 import { getConnectionSlug } from "@decocms/shared/utils/connection-slug";
 import { BookOpen01, Columns01, ChevronRight, Tool01 } from "@untitledui/icons";

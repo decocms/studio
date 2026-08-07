@@ -8,7 +8,7 @@
  */
 
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
+import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { LibraryPreviewDialog } from "@/layouts/library/preview-dialog";
 
 export function OrgFilePreviewMount() {

@@ -15,7 +15,7 @@
  * use-deck-editor.ts).
  */
 
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { type ReactNode, useState } from "react";
 import { DeckToolbar } from "./deck-toolbar";
 import { useDeckEditor } from "./use-deck-editor";

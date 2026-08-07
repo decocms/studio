@@ -1,5 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { AlertTriangle, RefreshCw01 } from "@untitledui/icons";
 import { captureException } from "@/lib/posthog-client";
 import { ArchivedOrgScreen } from "@/components/archived-org-screen";

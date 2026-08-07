@@ -7,15 +7,15 @@
  * Designed to fit inside the add-tile drawer inline expansion.
  */
 
-import { Input } from "@deco/ui/components/input.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@deco/ui/components/select.tsx";
-import { Textarea } from "@deco/ui/components/textarea.tsx";
+} from "@decocms/ui/components/select.tsx";
+import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { useT } from "@/i18n/use-t.ts";
 
 /** One entry of an MCP tool's `inputSchema.properties`. */

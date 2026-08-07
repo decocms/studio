@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Plus, Zap } from "@untitledui/icons";
-import { SearchInput } from "@deco/ui/components/search-input.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
+import { SearchInput } from "@decocms/ui/components/search-input.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { Page } from "@/components/page";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { useAutomations } from "@/hooks/use-automations";

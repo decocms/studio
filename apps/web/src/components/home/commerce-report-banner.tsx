@@ -17,7 +17,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { ArrowRight } from "@untitledui/icons";
 import { useProjectContext } from "@/sdk";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { track } from "@/lib/posthog-client";
 import {

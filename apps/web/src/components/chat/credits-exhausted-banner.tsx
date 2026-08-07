@@ -9,20 +9,20 @@
 import { useEffect, useState } from "react";
 import { track } from "@/lib/posthog-client";
 import { Check } from "@untitledui/icons";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   ToggleGroup,
   ToggleGroupItem,
-} from "@deco/ui/components/toggle-group.tsx";
+} from "@decocms/ui/components/toggle-group.tsx";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
-} from "@deco/ui/components/dialog.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/dialog.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useProjectContext } from "@/sdk";

@@ -7,23 +7,23 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
-} from "@deco/ui/components/alert.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
+} from "@decocms/ui/components/alert.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@deco/ui/components/select.tsx";
-import { Textarea } from "@deco/ui/components/textarea.tsx";
+} from "@decocms/ui/components/select.tsx";
+import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import { Loading01 } from "@untitledui/icons";
 import { Link, useSearch } from "@tanstack/react-router";
 import {
@@ -33,7 +33,7 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-} from "@deco/ui/components/breadcrumb.tsx";
+} from "@decocms/ui/components/breadcrumb.tsx";
 import {
   AlertCircle,
   Box,

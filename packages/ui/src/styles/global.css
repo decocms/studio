@@ -28,7 +28,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* Explicitly scan @deco/ui components for Tailwind classes */
+/* Explicitly scan @decocms/ui components for Tailwind classes */
 @source "../components/**/*.tsx";
 
 @custom-variant dark (&:is(.dark *));

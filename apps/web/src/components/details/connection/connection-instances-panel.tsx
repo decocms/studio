@@ -1,7 +1,7 @@
 import { useMCPAuthStatus } from "@/hooks/use-mcp-auth-status";
 import { IntegrationIcon } from "@/components/integration-icon.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
-import { Button } from "@deco/ui/components/button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { Button } from "@decocms/ui/components/button.tsx";
 import type { ConnectionEntity } from "@/sdk";
 import {
   Loading01,

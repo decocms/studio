@@ -1,11 +1,11 @@
-import { Label } from "@deco/ui/components/label.tsx";
+import { Label } from "@decocms/ui/components/label.tsx";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@deco/ui/components/select.tsx";
+} from "@decocms/ui/components/select.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import type { SeoTypeOption } from "./seo-schema";
 

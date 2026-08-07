@@ -5,8 +5,8 @@ import {
   getGatewayClientId,
 } from "@decocms/mcp-utils/aggregate";
 import { AgentAvatar } from "@/components/agent-icon";
-import { Spinner } from "@deco/ui/components/spinner.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   autoUpdate,
   flip,

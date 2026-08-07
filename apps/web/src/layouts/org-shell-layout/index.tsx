@@ -25,8 +25,8 @@ import {
   SidebarInset,
   SidebarLayout,
   SidebarProvider,
-} from "@deco/ui/components/sidebar.tsx";
-import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
+} from "@decocms/ui/components/sidebar.tsx";
+import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { Outlet, useSearch } from "@tanstack/react-router";
 import { CommerceConnectModal } from "@/routes/commerce-onboarding/commerce-connect-modal";
 import { SidebarResizeHandle } from "@/components/sidebar/sidebar-resize-handle";

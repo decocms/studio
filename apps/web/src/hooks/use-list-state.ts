@@ -1,7 +1,7 @@
-import type { Filter } from "@deco/ui/components/filter-bar.tsx";
-import { usePersistedFilters } from "@deco/ui/hooks/use-persisted-filters.ts";
-import { useSortable } from "@deco/ui/hooks/use-sortable.ts";
-import { useViewMode } from "@deco/ui/hooks/use-view-mode.ts";
+import type { Filter } from "@decocms/ui/components/filter-bar.tsx";
+import { usePersistedFilters } from "@decocms/ui/hooks/use-persisted-filters.ts";
+import { useSortable } from "@decocms/ui/hooks/use-sortable.ts";
+import { useViewMode } from "@decocms/ui/hooks/use-view-mode.ts";
 import type { BaseCollectionEntity } from "@decocms/bindings/collections";
 import { useDeferredValue, useState } from "react";
 

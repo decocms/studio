@@ -1,4 +1,4 @@
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useProjectContext } from "@/sdk";
 import { Suspense, useState } from "react";
 import { ErrorBoundary } from "../error-boundary";

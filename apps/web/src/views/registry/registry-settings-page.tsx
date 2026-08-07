@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useProjectContext } from "@/sdk";
-import { Badge } from "@deco/ui/components/badge.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Card } from "@deco/ui/components/card.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
+import { Badge } from "@decocms/ui/components/badge.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Card } from "@decocms/ui/components/card.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,10 +13,10 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@deco/ui/components/alert-dialog.tsx";
-import { useCopy } from "@deco/ui/hooks/use-copy.ts";
-import { Label } from "@deco/ui/components/label.tsx";
-import { Switch } from "@deco/ui/components/switch.tsx";
+} from "@decocms/ui/components/alert-dialog.tsx";
+import { useCopy } from "@decocms/ui/hooks/use-copy.ts";
+import { Label } from "@decocms/ui/components/label.tsx";
+import { Switch } from "@decocms/ui/components/switch.tsx";
 import {
   Check,
   Copy01,

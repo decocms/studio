@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useT } from "@/i18n/use-t.ts";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { Globe02, LinkExternal01 } from "@untitledui/icons";
 import type { ToolUIPart } from "ai";
 import { useOrg } from "@/sdk";

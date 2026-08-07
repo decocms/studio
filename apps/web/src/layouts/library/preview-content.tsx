@@ -11,14 +11,14 @@
  * wraps it in a plain column and gets an explicit close button here.
  */
 
-import { Button } from "@deco/ui/components/button.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
-import { DialogTitle } from "@deco/ui/components/dialog.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { DialogTitle } from "@decocms/ui/components/dialog.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import { Download01, LinkExternal01, XClose } from "@untitledui/icons";
 import { SeeInLibraryLink } from "./see-in-library-link";
 import { useT } from "@/i18n/use-t.ts";

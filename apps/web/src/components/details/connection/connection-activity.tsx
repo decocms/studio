@@ -7,12 +7,12 @@ import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-} from "@deco/ui/components/chart.tsx";
+} from "@decocms/ui/components/chart.tsx";
 import { computeTopErrors } from "./connection-health.ts";
 import { KEYS } from "@/lib/query-keys.ts";
 import { useStudioTools } from "@/lib/studio-tools";
 import { useT } from "@/i18n/use-t.ts";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useProjectContext } from "@/sdk";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Suspense, useState } from "react";

@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Badge } from "@deco/ui/components/badge.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Badge } from "@decocms/ui/components/badge.tsx";
 import {
   Loading01,
   RefreshCcw01,
