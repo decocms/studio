@@ -92,6 +92,9 @@ export async function buildClusterSandboxFs(
     /** When true, tools/sync fires after each (re)provisioning — see
      *  `syncToolsCatalog`. */
     syncTools?: boolean;
+    /** Stamped as `x-thread-id` on every daemon call so the daemon repoints
+     *  `org/output`/`org/upload` at this thread's org-fs subtree. */
+    threadId?: string;
   },
 ): Promise<SandboxFsHooks> {
   // `dispatch-run` already populated `ctx.sandboxPreference` from the resolved
@@ -188,6 +191,7 @@ export async function buildClusterSandboxFs(
     ensureHandle,
     invalidateHandle,
     canAutoRestart,
+    threadId: vm.threadId,
   });
 }
 

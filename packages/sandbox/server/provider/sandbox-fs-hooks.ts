@@ -117,6 +117,15 @@ export interface SandboxFsHooksLifecycle {
    * should not need to.
    */
   opTimeoutMs?: number;
+  /**
+   * Thread driving this run. Stamped as `x-thread-id` on every daemon call so
+   * the daemon's `linked()` middleware repoints `org/output` (and `org/upload`)
+   * at this thread's org-fs subtree before the handler runs. Without it the
+   * daemon never repoints for hosted-harness runs, the fs write's MkdirAll
+   * materializes `org/output` as a REAL dir on the pod's ephemeral disk, and
+   * every deliverable written there dies with the pod.
+   */
+  threadId?: string;
 }
 
 /**
@@ -198,7 +207,7 @@ async function daemonRequest(
   path: string,
   body: Record<string, unknown> | null,
   method: "GET" | "POST" | "PUT" = "POST",
-  opts?: { signal?: AbortSignal; timeoutMs?: number },
+  opts?: { signal?: AbortSignal; timeoutMs?: number; threadId?: string },
 ): Promise<unknown> {
   const timeoutMs = opts?.timeoutMs ?? opDeadlineMs(body ?? {});
   const timeout = AbortSignal.timeout(timeoutMs);
@@ -208,6 +217,10 @@ async function daemonRequest(
   let res: Response;
   let rawText: string;
   try {
+    const headers = new Headers({ "content-type": "application/json" });
+    // The daemon's `linked()` middleware keys org-fs link repointing on this
+    // header — see `SandboxFsHooksLifecycle.threadId`.
+    if (opts?.threadId) headers.set("x-thread-id", opts.threadId);
     const init: {
       method: string;
       headers: Headers;
@@ -215,7 +228,7 @@ async function daemonRequest(
       signal: AbortSignal;
     } = {
       method,
-      headers: new Headers({ "content-type": "application/json" }),
+      headers,
       body: null,
       signal: reqSignal,
     };
@@ -343,6 +356,7 @@ export function createSandboxFsHooks(
       daemonRequest(provider, handle, daemonPath, input, method, {
         signal,
         timeoutMs: lifecycle.opTimeoutMs,
+        threadId: lifecycle.threadId,
       });
     const firstHandle = await ensureHandle();
     try {
