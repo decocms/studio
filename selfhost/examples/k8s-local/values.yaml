@@ -105,14 +105,14 @@ sandbox-env:
     podSelectorLabels:
       app.kubernetes.io/name: "chart-deco-studio"
       app.kubernetes.io/instance: "deco-studio"   # = the release name
-  # First multi-arch studio-sandbox tag (arm64 + amd64).
+  # Pin a published multi-arch studio-sandbox-go tag (arm64 + amd64).
   image:
-    tag: "1.17.3"
+    tag: "1.41.0"
   # Local: previews via Studio's in-process proxy (no Gateway API / cert-manager).
   previewGateway:
     enabled: false
   # Pre-warmed sandbox pool ON — one pod, zero cold-start on the first sandbox.
-  # Safe now that studio-sandbox 1.17.3 is multi-arch (runs on arm64). Turn off
+  # Safe now that studio-sandbox-go 1.41.0 is multi-arch (runs on arm64). Turn off
   # with --set sandbox-env.warmPool.enabled=false to save laptop resources.
   warmPool:
     enabled: true
