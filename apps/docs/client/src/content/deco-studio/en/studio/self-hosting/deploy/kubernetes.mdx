@@ -309,7 +309,7 @@ telemetry:
 
 ### Idle housekeeper
 
-Studio refreshes claim activity, while the optional housekeeper CronJob cleans up idle or unrecoverable claims and orphaned routes/pods. Its defaults run every five minutes and reap claims idle for 15 minutes.
+Studio refreshes claim activity from two sources: agent runs, and any open preview stream. As long as a user has a preview open, a heartbeat renews the claim's TTL every five minutes, so a sandbox someone is actively watching is never reaped just because its agent is idle — this renewal only ever pushes the shutdown time later, never earlier. The optional housekeeper CronJob still cleans up claims that are idle or unrecoverable on both fronts, plus orphaned routes/pods. Its defaults run every five minutes and reap claims idle for 15 minutes.
 
 ```yaml
 housekeeper:
