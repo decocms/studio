@@ -99,6 +99,50 @@ export class SandboxUnreachableError extends Error {
 }
 
 /**
+ * A newer dispatch of this run took the sandbox over, so THIS attempt is no
+ * longer the run's writer — the successor is, and it will publish the run's
+ * terminal. Distinct from every other failure because the run has not failed
+ * at all; only this attempt has stopped, and it must stop QUIETLY:
+ *
+ * - not a `SandboxUnreachableError`: continuing would re-dispatch the same
+ *   runId and take the run back off the successor, trading it back and forth;
+ * - not a plain `Error`: that becomes the run's fence-scoped error terminal
+ *   (see `hostedHarnessWorkflowFn`), which is what settled a live thread as
+ *   `Error: cancelled: run cancelled` in prod on 2026-08-07.
+ *
+ * Two attempts exist for one turn whenever the pod running it goes away and DBOS
+ * recovers the workflow elsewhere — a rolling deploy, an eviction, or KEDA
+ * scaling in a worker that was mid-run.
+ */
+export class RunSupersededError extends Error {
+  /**
+   * Own-enumerable marker, NOT an `instanceof` check, because this error is
+   * thrown from inside a DBOS step: DBOS serializes a step's error through
+   * `serialize-error` for its durable journal and reconstructs a plain `Error`
+   * on replay, losing the subclass — but own-enumerable properties survive that
+   * round trip. Same idiom as `WithLastAckSeq` / `PermanentRunError.permanent`.
+   * Read it via `isRunSuperseded`, never with `instanceof`.
+   */
+  readonly superseded = true;
+
+  constructor(reason: string) {
+    super(reason);
+    this.name = "RunSupersededError";
+  }
+}
+
+/** See `RunSupersededError.superseded` for why this is not an `instanceof`. */
+export function isRunSuperseded(err: unknown): boolean {
+  return (
+    err instanceof Error &&
+    (err as Error & { superseded?: boolean }).superseded === true
+  );
+}
+
+/** The daemon's terminal code for an attempt displaced by a takeover. */
+const SUPERSEDED_TERMINAL_CODE = "superseded";
+
+/**
  * Is a non-2xx dispatch response the sandbox being gone, or the daemon rejecting
  * the envelope? 404/410 is the proxy finding no pod (or a reprovisioned one that
  * never adopted the claim) and 5xx is the pod failing to answer at all — both
@@ -520,6 +564,11 @@ async function* dispatchToDaemon(args: {
     throw new SandboxUnreachableError(
       `the sandbox stopped streaming after ${total} chunks without finishing the run`,
     );
+  }
+  if (error?.code === SUPERSEDED_TERMINAL_CODE) {
+    // Another dispatch owns this run now. Whatever this attempt streamed above
+    // is already yielded; the successor publishes the terminal.
+    throw new RunSupersededError(error.message);
   }
   if (error) throw new Error(`${error.code}: ${error.message}`);
 }
