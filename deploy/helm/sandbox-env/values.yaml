@@ -612,6 +612,15 @@ warmPool:
 #   tenantPools:
 #     - name: tenant-acme-site-prod  # DNS label ending in -<envName>
 #       size: 2                      # keep this many warm pods ready
+#       # Optional per-tenant pod resources. Setting it renders a SECOND
+#       # SandboxTemplate named after the pool — resources are pod-spec fields,
+#       # so they can be neither per-claim nor per-pool — and points the pool at
+#       # it. Studio reads the pool's sandboxTemplateRef back off the cluster,
+#       # so nothing extra is configured on that side. Omit to keep sharing the
+#       # chart-wide template and its `resources` above.
+#       resources:
+#         requests: { cpu: "2", memory: "6Gi" }
+#         limits: { memory: "12Gi" }
 tenantPools: []
 
 # ── node placeholder / "balloon" (optional) ────────────────────────────

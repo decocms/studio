@@ -538,8 +538,9 @@ export async function listWarmPoolPods(
   kc: KubeConfig,
   namespace: string,
   poolName: string,
-): Promise<WarmPoolPod[] | null> {
+): Promise<{ templateRef: string | null; pods: WarmPoolPod[] } | null> {
   const pool = await callSwallowing404<{
+    spec?: { sandboxTemplateRef?: { name?: string } };
     status?: { selector?: string };
   }>(
     kc,
@@ -568,7 +569,7 @@ export async function listWarmPoolPods(
       status?: { phase?: string };
     }[];
   };
-  return (body.items ?? [])
+  const pods = (body.items ?? [])
     .filter((pod) => pod.status?.phase === "Running")
     .flatMap((pod) =>
       pod.metadata?.name && pod.metadata.uid
@@ -581,6 +582,10 @@ export async function listWarmPoolPods(
           ]
         : [],
     );
+  // The template the pool's pods were actually built from. A claim naming a
+  // different one never binds, so this is read back from the operator's own
+  // object rather than configured a second time on the Studio side.
+  return { templateRef: pool?.spec?.sandboxTemplateRef?.name ?? null, pods };
 }
 
 /**

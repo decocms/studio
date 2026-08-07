@@ -1,4 +1,26 @@
 {{- range .Values.tenantPools }}
+{{- $pool := . }}
+{{- if .resources }}
+---
+# Per-tenant SandboxTemplate. Rendered ONLY when the pool overrides `resources`
+# — pod-spec fields can't be per-claim or per-pool, so a tenant that needs its
+# own limits needs its own template. Same partial as the shared template, so
+# the two cannot drift; only the overridden fields differ.
+#
+# The pool below points at this template, and Studio reads the pool's
+# `spec.sandboxTemplateRef` back off the cluster to build its claims — a claim
+# naming a different template than the pod was built from simply never binds,
+# so this name is deliberately not a second string anyone has to keep in sync.
+apiVersion: extensions.agents.x-k8s.io/v1alpha1
+kind: SandboxTemplate
+metadata:
+  name: {{ .name }}
+  namespace: agent-sandbox-system
+  labels:
+    {{- include "sandbox-env.sandboxLabels" $ | nindent 4 }}
+    studio.decocms.com/tenant-pool: {{ .name }}
+{{- include "sandbox-env.sandboxTemplateSpec" (dict "root" $ "pool" $pool) | nindent 0 }}
+{{- end }}
 ---
 # Per-tenant warm pool: pods that are already running ONE org's repo + dev
 # server, so a member of that org opens a project with no clone, no install,
@@ -11,10 +33,9 @@
 # STUDIO_SANDBOX_TENANT_POOLS. Additive to the generic `warmPool` above — a
 # tenant pool does not replace it, and every path still works at size 0.
 #
-# Deliberately reuses the shared SandboxTemplate: a per-pool template exists
-# only to carry per-pool node placement (on-demand / do-not-disrupt), which
-# v1 doesn't do. Adding it means rendering a second full template, so it waits
-# for someone who needs it.
+# `sandboxTemplateRef` is the pool's own template when it overrides resources,
+# the shared one otherwise. Studio reads this field back rather than being told
+# twice.
 apiVersion: extensions.agents.x-k8s.io/v1alpha1
 kind: SandboxWarmPool
 metadata:
@@ -29,5 +50,5 @@ spec:
   updateStrategy:
     type: OnReplenish
   sandboxTemplateRef:
-    name: {{ include "sandbox-env.sandboxName" $ }}
+    name: {{ if .resources }}{{ .name }}{{ else }}{{ include "sandbox-env.sandboxName" $ }}{{ end }}
 {{- end }}

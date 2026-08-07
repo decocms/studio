@@ -104,6 +104,33 @@ jobs:
             --set warmPool.size=2 \
             > /dev/null
 
+      # Covers both tenantPools branches: an entry WITH `resources` renders its
+      # own SandboxTemplate from the shared partial and points its pool at it,
+      # while an entry without one keeps referencing the chart-wide template.
+      # That partial is the whole sandbox pod spec, so a typo in it breaks every
+      # template — the default render above only exercises it with `pool` empty.
+      - name: Render (tenant pools, with and without per-pool resources)
+        run: |
+          set -euo pipefail
+          helm template sandbox-env deploy/helm/sandbox-env \
+            --namespace agent-sandbox-system \
+            --set envName=ci \
+            --set 'tenantPools[0].name=tenant-a-ci' \
+            --set 'tenantPools[0].size=1' \
+            --set 'tenantPools[0].resources.limits.memory=8Gi' \
+            --set 'tenantPools[1].name=tenant-b-ci' \
+            --set 'tenantPools[1].size=1' \
+            > /tmp/tenant-pools.yaml
+          # The overriding pool must get its own template and reference it; the
+          # plain one must fall back to the shared template.
+          grep -q 'name: tenant-a-ci' /tmp/tenant-pools.yaml
+          grep -q 'memory: 8Gi' /tmp/tenant-pools.yaml
+          grep -q 'name: studio-sandbox-ci' /tmp/tenant-pools.yaml
+          if [ "$(grep -c 'kind: SandboxTemplate' /tmp/tenant-pools.yaml)" -ne 2 ]; then
+            echo "::error::expected exactly 2 SandboxTemplates (shared + tenant-a-ci)."
+            exit 1
+          fi
+
       - name: Render (envName missing must fail)
         run: |
           set +e

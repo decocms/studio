@@ -481,3 +481,415 @@ that cannot mount, or one that silently mounts nothing:
 {{- end }}
 {{- end }}
 {{- end }}
+
+{{/*
+Sandbox pod spec, shared by the chart-wide SandboxTemplate and by each
+tenantPools entry's own template. Called with a dict: `root` is the chart
+context (every .Values/.Chart/.Release inside reads through it) and `pool` is
+the tenantPools entry, or an empty dict for the shared template.
+
+One partial, not two templates: resources (and later node placement) are pod
+spec fields, so a per-tenant value REQUIRES a per-tenant SandboxTemplate --
+and a hand-copied 400-line duplicate of this would drift the first time
+someone edited one of them.
+*/}}
+{{- define "sandbox-env.sandboxTemplateSpec" -}}
+{{- $root := .root -}}
+{{- $pool := .pool | default dict -}}
+spec:
+  # The operator's controller rejects per-claim env outright when
+  # `claim.spec.warmpool != "none"`, so warm-pool consumption requires
+  # all claim env to come from the template. We bake a *sentinel* bearer
+  # token (rendered into a Secret by sandbox-sentinel-secret.yaml) and
+  # rotate to a per-claim token post-bind via Studio's first
+  # POST /_sandbox/config call. envVarsInjectionPolicy stays Allowed
+  # so single-env deploys that haven't yet adopted the sentinel can still
+  # provision cold (warmpool=none) with claim env.
+  envVarsInjectionPolicy: Allowed
+  # The CRD defaults to Managed, which makes the operator install its own
+  # NetworkPolicy. Egress enforcement is handled by the iptables init
+  # container instead, so the operator's policy is disabled here.
+  networkPolicyManagement: Unmanaged
+  podTemplate:
+    metadata:
+      {{- if or $root.Values.netinit.enabled $root.Values.disruptionProtection.doNotDisrupt }}
+      annotations:
+        {{- if $root.Values.netinit.enabled }}
+        # Best-effort AWS VPC CNI opt-out. The real safety net is that no
+        # NetworkPolicy selects these pods (networkPolicyManagement:
+        # Unmanaged + no chart-rendered NP), so the agent's policy-endpoint
+        # controller never flips them into POLICIES_APPLIED. This key isn't
+        # in aws-network-policy-agent's source — verify it's honored before
+        # relying on it if a future NP starts matching these pods.
+        vpc.amazonaws.com/v1alpha1.network-policy-enforcement: "disabled"
+        {{- end }}
+        {{- if $root.Values.disruptionProtection.doNotDisrupt }}
+        # Blocks Karpenter's voluntary node consolidation/drift from
+        # evicting this pod mid-session. See values.yaml disruptionProtection.
+        karpenter.sh/do-not-disrupt: "true"
+        {{- end }}
+      {{- end }}
+      labels:
+        # Per-env name so each env's NetworkPolicy podSelector matches only
+        # its own pods. The Studio runner stamps the same value via
+        # SandboxClaim.additionalPodMetadata (driven by
+        # STUDIO_SANDBOX_TEMPLATE_NAME pointing at the env-suffixed
+        # template) — keep these in lockstep.
+        app.kubernetes.io/name: {{ include "sandbox-env.sandboxName" $root }}
+        # Do NOT set `studio.decocms.com/role` here. The operator (v0.4.2+)
+        # rejects claims whose additionalPodMetadata defines a label key
+        # already present in the template — even when the values differ —
+        # with "metadata override conflict". The runner sets role=claimed
+        # via additionalPodMetadata, so the template must leave that key
+        # undefined. Warm-pool pods end up without the role label;
+        # dashboards filter by absence-of-handle instead.
+    spec:
+      automountServiceAccountToken: false
+      # Room for the daemon's SIGTERM git-sync (commit + push, push bounded at
+      # 30s) before SIGKILL — the pushed branch is the only durable copy of the
+      # user's work. See values.yaml.
+      terminationGracePeriodSeconds: {{ $root.Values.terminationGracePeriodSeconds }}
+      {{- with $root.Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $root.Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $root.Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $root.Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if $root.Values.dnsPolicy }}
+      dnsPolicy: {{ $root.Values.dnsPolicy }}
+      {{- end }}
+      {{- with $root.Values.dnsConfig }}
+      dnsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      # org-fs's privileged FUSE sidecar + Bidirectional mount propagation
+      # are incompatible with user-namespace remapping, so hostUsers tracks
+      # the sidecar: true (no userns-remap) when org-fs is on (the default),
+      # false (userns-remap restored) when disableFsSidecar opts out. The
+      # untrusted agent container is locked down independently either way
+      # (drop ALL caps, no privilege escalation, runAsNonRoot, seccomp
+      # RuntimeDefault below); only the org-fs sidecar is privileged.
+      hostUsers: {{ not $root.Values.disableFsSidecar }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      {{- if or $root.Values.netinit.enabled $root.Values.depsCache.enabled }}
+      initContainers:
+        {{- if $root.Values.depsCache.enabled }}
+        # hostPath dirs are created root:root and fsGroup does not apply to
+        # hostPath volumes, so hand the cache root to the sandbox uid once
+        # per pod (idempotent). Reuses the sandbox image — already on the
+        # node, no extra pull.
+        - name: deps-cache-init
+          image: "{{ include "sandbox-env.sandboxImage" $root }}"
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          command: ["sh", "-c", "chown 1000:1000 /deps-cache"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 32Mi
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            capabilities:
+              add: ["CHOWN"]
+              drop: ["ALL"]
+          volumeMounts:
+            - name: deps-cache
+              mountPath: /deps-cache
+        {{- end }}
+        {{- if $root.Values.netinit.enabled }}
+        - name: setup-netpol
+          image: "{{ $root.Values.netinit.image }}:{{ $root.Values.netinit.tag }}"
+          imagePullPolicy: {{ $root.Values.netinit.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              # Flush so a same-netns re-run doesn't accumulate dup rules.
+              iptables -F OUTPUT
+              iptables -A OUTPUT -o lo -j ACCEPT
+              # Allow return traffic for connections initiated INTO the pod
+              # (e.g. preview gateway → daemon:9000). Without this rule the
+              # OUTPUT chain REJECTs SYN-ACK responses back to the gateway
+              # pod IP — gateway pod IPs sit in RFC1918, which the blockCIDRs
+              # rules below REJECT. Symptom: Envoy "upstream connect error /
+              # connection timeout" on every preview request.
+              # Try -m conntrack, fall back to legacy -m state. If neither
+              # is available (full-eBPF nodes without nf_conntrack) we
+              # fail-closed: preview ingress is a load-bearing feature,
+              # silently degrading it is not acceptable. Operator must run
+              # this chart on a node that supports stateful filtering.
+              iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null \
+                || iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT 2>/dev/null \
+                || { echo "ERROR: neither -m conntrack nor -m state available; cannot install ESTABLISHED,RELATED rule. Preview ingress would silently break. Failing the init container so the pod does not come up." >&2; exit 1; }
+              {{- if $root.Values.telemetry.enabled }}
+              # The ONE in-cluster destination a sandbox may reach: the OTLP
+              # collector. Must precede the blockCIDR REJECTs below — the
+              # collector's ClusterIP lives inside them (172.20.x is covered by
+              # 172.16.0.0/12), so a rule placed after would never be evaluated.
+              # Scoped to an exact /32 and a single port: this is a hole in the
+              # boundary that keeps user code away from in-cluster services, and
+              # it stays exactly one destination wide.
+              iptables -A OUTPUT -d {{ printf "%s/32" $root.Values.telemetry.otlp.ip | quote }} -p tcp --dport {{ $root.Values.telemetry.otlp.port }} -j ACCEPT
+              {{- end }}
+              {{- range $root.Values.netinit.blockCIDRs }}
+              iptables -A OUTPUT -d {{ . | quote }} -j REJECT
+              {{- end }}
+              {{- range $root.Values.netinit.allowedUDPPorts }}
+              iptables -A OUTPUT -p udp --dport {{ . }} -j ACCEPT
+              {{- end }}
+              {{- range $root.Values.netinit.allowedTCPPorts }}
+              iptables -A OUTPUT -p tcp --dport {{ . }} -j ACCEPT
+              {{- end }}
+              iptables -A OUTPUT -j REJECT
+              # Skip IPv6 cleanly on kernels without ip6_tables.
+              if ip6tables -L > /dev/null 2>&1; then
+                ip6tables -F OUTPUT
+                ip6tables -A OUTPUT -o lo -j ACCEPT
+                # Same ESTABLISHED,RELATED rule for IPv6 — see IPv4 block
+                # above. Fail-closed for the same reason.
+                ip6tables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null \
+                  || ip6tables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT 2>/dev/null \
+                  || { echo "ERROR: neither -m conntrack nor -m state available (ip6tables); cannot install ESTABLISHED,RELATED rule for IPv6. Failing the init container." >&2; exit 1; }
+                {{- range $root.Values.netinit.blockCIDRsIPv6 }}
+                ip6tables -A OUTPUT -d {{ . | quote }} -j REJECT
+                {{- end }}
+                {{- range $root.Values.netinit.allowedUDPPorts }}
+                ip6tables -A OUTPUT -p udp --dport {{ . }} -j ACCEPT
+                {{- end }}
+                {{- range $root.Values.netinit.allowedTCPPorts }}
+                ip6tables -A OUTPUT -p tcp --dport {{ . }} -j ACCEPT
+                {{- end }}
+                ip6tables -A OUTPUT -j REJECT
+              fi
+              # Dump rules so `kubectl logs -c setup-netpol` shows the policy.
+              echo "=== final IPv4 OUTPUT ==="
+              iptables -L OUTPUT -n -v --line-numbers
+              if ip6tables -L > /dev/null 2>&1; then
+                echo "=== final IPv6 OUTPUT ==="
+                ip6tables -L OUTPUT -n -v --line-numbers
+              fi
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN"]
+              drop: ["ALL"]
+            runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: sandbox
+          image: "{{ include "sandbox-env.sandboxImage" $root }}"
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          workingDir: /app
+          env:
+            - name: WORKDIR
+              value: "/app"
+            {{- if $root.Values.depsCache.enabled }}
+            # Root of the node-local dependency cache; the daemon derives a
+            # per-repo BUN_INSTALL_CACHE_DIR under it (see setup/install.ts).
+            - name: DEPS_CACHE_ROOT
+              value: "/deps-cache"
+            {{- if $root.Values.depsCache.golden }}
+            # Golden node_modules reflink cache (opt-in, off by default — it
+            # touches the boot install path). Requires a reflink-capable
+            # filesystem shared between the cache and the workdir; falls back
+            # to a normal install otherwise. See setup/golden-cache.ts.
+            - name: GOLDEN_CACHE_ENABLED
+              value: "1"
+            {{- end }}
+            {{- if $root.Values.depsCache.remote.enabled }}
+            # L2 shared archive store (read-only mount below). Absent →
+            # daemon is L1-only, i.e. today's behavior. Deliberately NOT nested
+            # under `golden`: the volume below is mounted whenever
+            # `remote.enabled` is set, so gating only the env var here would
+            # mount an RWX PVC into every sandbox pod that the daemon then
+            # never reads. L2 restore does not need L1 enabled (it only seeds
+            # L1 opportunistically, which is a no-op when golden is off).
+            - name: GOLDEN_CACHE_REMOTE
+              value: {{ $root.Values.depsCache.remote.mountPath | quote }}
+            # Stamped onto every golden this pod publishes, so the node-level
+            # uploader can tell which environment produced it. Nodes are shared
+            # across environments; the golden path is not environment-scoped.
+            - name: SANDBOX_ENV
+              value: {{ include "sandbox-env.envName" $root | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if $root.Values.telemetry.enabled }}
+            # OTLP metrics endpoint for the daemon. Standard OTel variable, so
+            # it reaches whichever daemon the image runs — a daemon with no
+            # exporter wired simply ignores it. Absent → the daemon must not
+            # start an exporter at all (no endpoint is the off switch).
+            #
+            # An IP, never a DNS name: sandboxes run `dnsPolicy: None` against
+            # public resolvers, so `gateway-otlp.opentelemetry-collector` is
+            # NXDOMAIN in here. Same value drives the netinit ACCEPT above, so
+            # the reachable destination and the configured one cannot drift.
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ include "sandbox-env.otlpEndpoint" $root | quote }}
+            {{- end }}
+            - name: DAEMON_PORT
+              value: "9000"
+            - name: DAEMON_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sandbox-env.sentinelSecretName" $root }}
+                  key: daemonToken
+            {{- if $root.Values.readOnlyRootFilesystem }}
+            # With RO rootfs + emptyDir on /app, the mount root is owned
+            # root:1000 (fsGroup). Git 2.35+'s "dubious ownership" check
+            # would refuse to operate. Disable the check inside the
+            # sandbox — single-tenant pod, no untrusted same-pod user.
+            - name: GIT_CONFIG_COUNT
+              value: "1"
+            - name: GIT_CONFIG_KEY_0
+              value: "safe.directory"
+            - name: GIT_CONFIG_VALUE_0
+              value: "*"
+            {{- end }}
+            {{- if not $root.Values.disableFsSidecar }}
+            # org-fs relay: the daemon writes the mount config here for the
+            # sidecar, and gates the per-run output link on its status file.
+            - name: ORGFS_SIDECAR_CONFIG_PATH
+              value: "/run/orgfs/config.json"
+            - name: ORGFS_SIDECAR_STATUS_PATH
+              value: "/run/orgfs/status.json"
+            {{- end }}
+          ports:
+            - name: daemon
+              containerPort: 9000
+              protocol: TCP
+            - name: dev
+              containerPort: 3000
+              protocol: TCP
+          resources:
+            {{- toYaml (default $root.Values.resources $pool.resources) | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: {{ $root.Values.readOnlyRootFilesystem }}
+          volumeMounts:
+            {{- if $root.Values.readOnlyRootFilesystem }}
+            - name: workdir
+              mountPath: /app
+            - name: tmp
+              mountPath: /tmp
+            {{- end }}
+            {{- if $root.Values.depsCache.enabled }}
+            - name: deps-cache
+              mountPath: /deps-cache
+            {{- if $root.Values.depsCache.remote.enabled }}
+            # readOnly is the load-bearing control, not a hint: this pod runs
+            # untrusted code and bun installs cached content as-is, so write
+            # access here would let one tenant poison another repo's archive
+            # fleet-wide. Publishing belongs to a trusted writer.
+            - name: golden-remote
+              mountPath: {{ $root.Values.depsCache.remote.mountPath }}
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            - name: home
+              mountPath: /home/sandbox
+            {{- if not $root.Values.disableFsSidecar }}
+            # The sidecar's FUSE mounts under /app/org surface here.
+            - name: orgfs-org
+              mountPath: /app/org
+              mountPropagation: HostToContainer
+            - name: orgfs-ctl
+              mountPath: /run/orgfs
+            {{- end }}
+        {{- if not $root.Values.disableFsSidecar }}
+        # Privileged org-fs mounter: waits for the daemon to relay the mount
+        # config onto /run/orgfs (post-bind push), FUSE-mounts the org volumes
+        # under the shared /app/org, and Bidirectional propagation surfaces
+        # them in the (unprivileged) sandbox container. See
+        # packages/sandbox/orgfs/sidecar.ts.
+        - name: orgfs-sidecar
+          image: "{{ $root.Values.orgFs.image.repository }}:{{ $root.Values.orgFs.image.tag }}"
+          imagePullPolicy: {{ $root.Values.orgFs.image.pullPolicy }}
+          env:
+            - name: APP_ROOT
+              value: "/app"
+          securityContext:
+            # FUSE mount + Bidirectional propagation require privileged; root
+            # uid adds nothing on top of that, so keep it simple for fuse.
+            privileged: true
+            runAsUser: 0
+            runAsNonRoot: false
+          resources:
+            {{- toYaml $root.Values.orgFs.resources | nindent 12 }}
+          volumeMounts:
+            - name: orgfs-org
+              mountPath: /app/org
+              mountPropagation: Bidirectional
+            - name: orgfs-ctl
+              mountPath: /run/orgfs
+        {{- end }}
+      volumes:
+        {{- if $root.Values.readOnlyRootFilesystem }}
+        # Sized to match the per-container ephemeral-storage limit shape;
+        # individual mounts get a slice. Adjust if a workload needs more.
+        - name: workdir
+          emptyDir:
+            sizeLimit: 4Gi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi
+        {{- end }}
+        - name: home
+          emptyDir:
+            sizeLimit: 5Gi
+        {{- if $root.Values.depsCache.enabled }}
+        # Node-local package cache shared across sandbox pods (see the
+        # depsCache comment in values.yaml for the hardlink + isolation
+        # rationale).
+        - name: deps-cache
+          hostPath:
+            path: {{ $root.Values.depsCache.hostPath }}
+            type: DirectoryOrCreate
+        {{- if $root.Values.depsCache.remote.enabled }}
+        - name: golden-remote
+          persistentVolumeClaim:
+            claimName: {{ include "sandbox-env.goldenRemoteClaimName" $root }}
+            readOnly: true
+        {{- end }}
+        {{- end }}
+        {{- if not $root.Values.disableFsSidecar }}
+        # Mount surface (volumes attach under it) + relay control files.
+        - name: orgfs-org
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: orgfs-ctl
+          emptyDir:
+            sizeLimit: 1Mi
+        {{- end }}
+{{- end }}

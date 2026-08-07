@@ -500,6 +500,13 @@ export class AgentSandboxProvider implements SandboxProvider {
   >();
   /** Pool names a GitHub push says are stale; drained by the next tick. */
   private readonly dirtyPools = new Set<string>();
+  /**
+   * pool name → the SandboxTemplate its pods were built from, read off the
+   * operator's own SandboxWarmPool each tick. Empty until the first reconcile:
+   * a claim in that window falls back to the shared template, which for a pool
+   * with its own template means one cold start, never a wrong-tenant bind.
+   */
+  private readonly poolTemplateRefs = new Map<string, string>();
   private closed = false;
   /** Aborts the background SandboxClaim-deletion watch on `close()`. */
   private readonly claimWatchAbort = new AbortController();
@@ -1269,7 +1276,13 @@ export class AgentSandboxProvider implements SandboxProvider {
         ...(hasAnnotations ? { annotations } : {}),
       },
       spec: {
-        sandboxTemplateRef: { name: this.sandboxTemplateName },
+        // Must be the template the pool's pods came from, or the operator
+        // binds a pod built from one template to a claim asking for another.
+        sandboxTemplateRef: {
+          name:
+            (tenantPool && this.poolTemplateRefs.get(tenantPool.name)) ||
+            this.sandboxTemplateName,
+        },
         // additionalPodMetadata.labels is the operator's pod-label propagation
         // hook (CRD field, not a generic patch). Tenant labels here flow to
         // the pod and become joinable in cAdvisor/kubelet metrics. `role`
@@ -1632,16 +1645,23 @@ export class AgentSandboxProvider implements SandboxProvider {
 
   private async reconcileTenantPools(): Promise<void> {
     for (const pool of this.tenantPools) {
-      const pods = await listWarmPoolPods(
+      const live = await listWarmPoolPods(
         this.kubeConfig,
         this.namespace,
         pool.name,
       );
-      if (pods === null) {
+      if (live === null) {
         console.warn(
           `[${LOG_LABEL}] tenant pool ${pool.name}: no SandboxWarmPool (or no selector yet) in ${this.namespace}`,
         );
         continue;
+      }
+      const pods = live.pods;
+      // Cache the template the pool's pods were built from, so a claim can name
+      // the same one — a pool with its own resources gets its own
+      // SandboxTemplate, and a claim naming the shared one would never bind.
+      if (live.templateRef) {
+        this.poolTemplateRefs.set(pool.name, live.templateRef);
       }
       const dirty = this.dirtyPools.delete(pool.name);
       // A bound pod carries the claim's handle label. Never touch one: the user
