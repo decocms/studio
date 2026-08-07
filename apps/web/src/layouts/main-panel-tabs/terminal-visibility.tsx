@@ -2,22 +2,25 @@
  * Terminal-visibility state shared between the preview's ⋯ menu (which toggles
  * it) and MainPanelWithDrawer (which gates the bottom terminal drawer on it).
  *
- * The terminal is hidden by default — the user opts in via "Show terminal" in
- * the preview overflow menu. The choice is persisted per virtualMcpId so it
- * survives navigation and sandbox restarts (once enabled it also shows during
- * subsequent boots, so clone/install logs are visible again).
+ * Default visibility comes from the user's `terminalVisibleByDefault`
+ * preference (Settings → Preferences). A per-virtualMcpId Show/Hide choice
+ * overrides that default and is persisted so it survives navigation and
+ * sandbox restarts (once enabled it also shows during subsequent boots, so
+ * clone/install logs are visible again).
  */
 
 import { createContext, use, useRef, useState, type ReactNode } from "react";
+import { usePreferences } from "@/hooks/use-preferences.ts";
+import { parseTerminalOverride } from "./drawer-storage";
 
 const STORAGE_KEY = (id: string) => `preview-terminal-visible:${id}`;
 
-function readPersisted(id: string): boolean {
+/** Per-VM override, or `null` when the user hasn't set one for this VM. */
+function readPersisted(id: string): boolean | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY(id));
-    return raw ? !!JSON.parse(raw).visible : false;
+    return parseTerminalOverride(localStorage.getItem(STORAGE_KEY(id)));
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -46,7 +49,9 @@ export function TerminalVisibilityProvider({
   children: ReactNode;
 }) {
   const storageKey = virtualMcpId ?? "__no-vmcp__";
-  const [visible, setVisibleState] = useState<boolean | null>(null);
+  const [preferences] = usePreferences();
+  // `null` = no per-VM override → fall back to the user's default preference.
+  const [override, setOverrideState] = useState<boolean | null>(null);
 
   // Re-hydrate when the VM changes (render-time setState gated by a ref —
   // idiomatic here; useEffect is banned for derived state).
@@ -55,17 +60,20 @@ export function TerminalVisibilityProvider({
   if (lastKeyRef.current !== storageKey) {
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- hydrate on VM switch
     lastKeyRef.current = storageKey;
-    setVisibleState(readPersisted(storageKey));
+    setOverrideState(readPersisted(storageKey));
   }
 
   const setVisible = (next: boolean) => {
-    setVisibleState(next);
+    setOverrideState(next);
     writePersisted(storageKey, next);
   };
 
   return (
     <TerminalVisibilityContext
-      value={{ visible: visible ?? false, setVisible }}
+      value={{
+        visible: override ?? preferences.terminalVisibleByDefault,
+        setVisible,
+      }}
     >
       {children}
     </TerminalVisibilityContext>
