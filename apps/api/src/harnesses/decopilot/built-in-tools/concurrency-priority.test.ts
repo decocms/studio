@@ -18,7 +18,7 @@ describe("createConcurrencyGate priority", () => {
       order.push("high");
       r();
     });
-    // Let both park before the slot frees.
+    // Let both park before the slot frees
     await Promise.resolve();
     release();
     await Promise.all([low, high]);
