@@ -20,6 +20,7 @@
  */
 
 import { releaseTaskExecution } from "@/billing/task-quota";
+import { captureOrgEvent } from "@/posthog";
 import type { OrganizationBillingStorage } from "@/storage/organization-billing";
 import { TERMINAL_THREAD_STATUSES } from "@/storage/task-board";
 import type { StudioContext } from "@/core/studio-context";
@@ -28,6 +29,7 @@ import { retryBudgetFor } from "./transient-failure";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { sseHub } from "@/event-bus/sse-hub";
 import {
+  isReportsTask,
   TASK_BOARD_ITEM_DELETED_EVENT,
   TASK_BOARD_ITEM_UPDATED_EVENT,
 } from "@decocms/shared/task-board";
@@ -42,6 +44,26 @@ const RANK: Record<TaskBoardItemStatus, number> = {
   in_review: 3,
   done: 4,
 };
+
+/** Run-lifecycle funnel events (auto-fix leg of the PLG funnel). System
+ *  actions with no acting user — org identity, person processing off.
+ *  Fire-and-forget; posthog no-ops without POSTHOG_KEY. */
+function captureTaskRunEvent(
+  event: "task_run_started" | "task_run_completed" | "task_run_failed",
+  orgId: string,
+  item: Pick<TaskBoardItem, "id" | "createdBy">,
+  properties?: Record<string, unknown>,
+): void {
+  captureOrgEvent({
+    event,
+    organizationId: orgId,
+    properties: {
+      task_id: item.id,
+      reports_task: isReportsTask(item),
+      ...properties,
+    },
+  });
+}
 
 /** Push a task board item change to every SSE listener on its org. */
 export function emitTaskBoardUpdated(orgId: string, item: TaskBoardItem): void {
@@ -147,6 +169,15 @@ export async function advanceTaskBoardForRun(
           console.error("[task-board] activity log write failed", err),
         );
       emitTaskBoardUpdated(orgId, item);
+      if (status === "in_progress" || status === "in_review") {
+        captureTaskRunEvent(
+          status === "in_progress" ? "task_run_started" : "task_run_completed",
+          orgId,
+          item,
+          // in_review lands here only from the PR-open hook (see module doc).
+          { from: current.status, via: "pr_open" },
+        );
+      }
     }
   } catch (err) {
     console.error("[task-board] run transition failed", err);
@@ -209,7 +240,13 @@ export async function advanceTasksToReviewOnThreadFinish(
       threadId,
       orgId,
     );
-    for (const item of moved) emitTaskBoardUpdated(orgId, item);
+    for (const item of moved) {
+      emitTaskBoardUpdated(orgId, item);
+      captureTaskRunEvent("task_run_completed", orgId, item, {
+        from: "in_progress",
+        via: "thread_finish",
+      });
+    }
     for (const item of moved) {
       // The card produced something, so the next unrelated failure gets a full
       // retry budget rather than inheriting this card's history.
@@ -326,6 +363,10 @@ export async function reactToFailedTaskRun(
         })
         .catch(() => {});
       emitTaskBoardUpdated(orgId, returned);
+      captureTaskRunEvent("task_run_failed", orgId, item, {
+        reason: failure.kind ?? "error",
+        retries_spent: attempts,
+      });
     }
   } catch (err) {
     console.error("[task-board] failed-run reaction failed", err);
@@ -368,6 +409,8 @@ async function refundUnproductiveTaskClaims(
       );
       if (stillRunning) continue;
       if ((await taskBoard.listPrs(taskId, orgId)).length > 0) continue;
+      // task_quota_refunded is emitted inside releaseTaskExecution, gated on
+      // the release actually transitioning a held claim.
       await releaseTaskExecution(billing, orgId, taskId);
     }
   } catch (err) {
