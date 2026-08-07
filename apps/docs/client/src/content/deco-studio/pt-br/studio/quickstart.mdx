@@ -8,30 +8,26 @@ import Callout from "../../../../components/ui/Callout.astro";
 
 ## Coloque o Studio para rodar
 
-Existem duas formas de começar.
-
-### Opção A — Cloud gerenciada
-
 Cadastre-se em [studio.decocms.com](https://studio.decocms.com) e está tudo pronto.
 
 1. Crie sua conta (email, GitHub ou Google)
 2. Crie uma organização — seu workspace de nível mais alto
 3. Pronto, você está dentro.
 
-### Opção B — Rodar localmente
+### App desktop (recomendado para agents locais)
+
+O app desktop nativo permite que agents rodem **na sua máquina** — com seus arquivos, suas ferramentas e sua assinatura existente do **Claude Code ou Codex** como harness. O Studio continua cuidando do chat, das connections e dos logs.
 
 ```bash
-bunx decocms
+brew tap decocms/studio https://github.com/decocms/studio
+brew install --cask deco-studio
 ```
 
-Isso sobe uma instância local com PostgreSQL embutido. Totalmente privado — tudo fica na sua máquina. Ou clone e rode a partir do código-fonte:
+Por enquanto, macOS (Apple Silicon). Veja [onde um agent roda](./agents#where-an-agent-runs) para entender como runtimes locais funcionam.
 
-```bash
-git clone https://github.com/decocms/studio.git
-cd studio
-bun install
-bun run dev
-```
+<Callout type="info">
+  Quer rodar o servidor do Studio na sua própria infraestrutura? Veja [Self-hosting](./self-hosting/quickstart).
+</Callout>
 
 ---
 
