@@ -124,3 +124,6 @@ deploy/helm/sandbox-env/charts/
 # (nats, opentelemetry-collector) as .tgz under charts/. They stay tracked
 # because the chart pins specific versions and offline installs depend on
 # them being present.
+
+# Storybook static build
+storybook-static

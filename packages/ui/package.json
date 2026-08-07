@@ -16,6 +16,7 @@
     "src",
     "dist",
     "!src/**/*.stories.tsx",
+    "!src/foundations",
     "LICENSE.md"
   ],
   "publishConfig": {
@@ -43,7 +44,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "check": "tsc -p tsconfig.build.json --noEmit",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "bun run build",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
   },
   "peerDependencies": {
     "react": "^19.0.0",
@@ -96,10 +99,17 @@
     "zod": "4.3.6"
   },
   "devDependencies": {
+    "@storybook/addon-a11y": "^10.5.7",
+    "@storybook/addon-docs": "^10.5.7",
+    "@storybook/addon-themes": "^10.5.7",
+    "@storybook/react-vite": "^10.5.7",
+    "@tailwindcss/vite": "^4.3.3",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-hook-form": "^7.55.0",
     "sonner": "^2.0.3",
-    "tailwindcss": "^4.1.1"
+    "storybook": "^10.5.7",
+    "tailwindcss": "^4.1.1",
+    "vite": "^8.2.1"
   }
 }
