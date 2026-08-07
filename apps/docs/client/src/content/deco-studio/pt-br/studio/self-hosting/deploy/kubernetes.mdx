@@ -319,7 +319,7 @@ telemetry:
 
 ### Housekeeper de recursos ociosos
 
-O Studio atualiza a atividade dos claims, enquanto o CronJob housekeeper opcional remove claims ociosos ou irrecuperáveis, além de routes e pods órfãos. Os padrões executam a cada cinco minutos e removem claims ociosos há 15 minutos.
+O Studio atualiza a atividade dos claims a partir de duas fontes: execuções de agentes e qualquer preview stream aberto. Enquanto um usuário mantiver um preview aberto, um heartbeat renova o TTL do claim a cada cinco minutos, então um sandbox que alguém está observando ativamente nunca é removido só porque seu agente está ocioso — essa renovação só empurra o horário de shutdown para mais tarde, nunca para mais cedo. O CronJob housekeeper opcional continua removendo claims ociosos ou irrecuperáveis em ambas as frentes, além de routes e pods órfãos. Os padrões executam a cada cinco minutos e removem claims ociosos há 15 minutos.
 
 ```yaml
 housekeeper:
