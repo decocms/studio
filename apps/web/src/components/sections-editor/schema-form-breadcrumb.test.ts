@@ -10,8 +10,10 @@ import {
   findBreadcrumbLabelIndex,
   isArrayDrillDownField,
   normalizeBreadcrumbLabel,
+  prependCrumbIfAbsent,
   resolveActiveFieldKey,
   resolveArrayItemSelection,
+  siblingFieldLabel,
   isBreadcrumbInsideObject,
 } from "./schema-form-breadcrumb";
 import { getArrayItemLabels } from "./array-item-display";
@@ -79,6 +81,147 @@ describe("fieldDisplayLabel", () => {
     expect(fieldDisplayLabel("backgroundColor", {} as SchemaProperty)).toBe(
       "Background Color",
     );
+  });
+});
+
+describe("siblingFieldLabel", () => {
+  test("falls back to humanized key when siblings share a title", () => {
+    // Both props `$ref` the same interface, so both inherit its title.
+    const properties = {
+      shelfProps: { title: "ProductShelfProps" } as SchemaProperty,
+      shelfPropsOffer: { title: "ProductShelfProps" } as SchemaProperty,
+    };
+    const keys = Object.keys(properties);
+    expect(siblingFieldLabel("shelfProps", keys, properties)).toBe(
+      "Shelf Props",
+    );
+    expect(siblingFieldLabel("shelfPropsOffer", keys, properties)).toBe(
+      "Shelf Props Offer",
+    );
+  });
+
+  test("keeps the title when siblings are distinct", () => {
+    const properties = {
+      alpha: { title: "Alpha" } as SchemaProperty,
+      beta: { title: "Beta" } as SchemaProperty,
+    };
+    expect(
+      siblingFieldLabel("alpha", Object.keys(properties), properties),
+    ).toBe("Alpha");
+  });
+
+  test("keeps the title for a lone property", () => {
+    const properties = { cards: { title: "Cards" } as SchemaProperty };
+    expect(siblingFieldLabel("cards", ["cards"], properties)).toBe("Cards");
+  });
+});
+
+describe("prependCrumbIfAbsent", () => {
+  test("prepends the label when the trail doesn't start with it", () => {
+    expect(
+      prependCrumbIfAbsent("Shelf Props Offer", ["Free shipping"]),
+    ).toEqual(["Shelf Props Offer", "Free shipping"]);
+  });
+
+  test("prepends onto an empty trail", () => {
+    expect(prependCrumbIfAbsent("Shelf Props Offer", [])).toEqual([
+      "Shelf Props Offer",
+    ]);
+  });
+
+  test("is a no-op when the label is already the head (NFC-insensitive)", () => {
+    const trail = ["café", "Free shipping"];
+    // Same crumb in composed form must be recognized as already present.
+    expect(prependCrumbIfAbsent("café", trail)).toBe(trail);
+  });
+});
+
+describe("resolveActiveFieldKey — sibling props with identical titles", () => {
+  // Mirrors the general shape that triggers the bug: two props that `$ref` the
+  // same interface, so both share the title and an identical nested
+  // `cardLayout.tags` shape. Item labels come from the `label` field. Fixture
+  // labels are neutral placeholders — not tied to any real store's content.
+  const shelf = {
+    type: "object",
+    title: "ProductShelfProps",
+    properties: {
+      cardLayout: {
+        type: "object",
+        title: "CardLayout",
+        properties: {
+          tags: {
+            type: "array",
+            title: "Tags",
+            items: {
+              type: "object",
+              properties: { label: { type: "string" } },
+            },
+          },
+        },
+      },
+    },
+  } satisfies SchemaProperty;
+  const properties = { shelfProps: shelf, shelfPropsOffer: shelf };
+  const keys = Object.keys(properties);
+  const objValue = {
+    shelfProps: {
+      cardLayout: {
+        tags: [{ label: "Summer Sale" }, { label: "Free shipping" }],
+      },
+    },
+    shelfPropsOffer: {
+      cardLayout: {
+        tags: [{ label: "Winter Sale" }, { label: "Free shipping" }],
+      },
+    },
+  };
+
+  test("a unique item label resolves to its owning sibling", () => {
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, ["Winter Sale"]),
+    ).toBe("shelfPropsOffer");
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, ["Summer Sale"]),
+    ).toBe("shelfProps");
+  });
+
+  test("a disambiguated ancestor crumb focuses the right sibling for a shared item", () => {
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, [
+        "Shelf Props Offer",
+        "Free shipping",
+      ]),
+    ).toBe("shelfPropsOffer");
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, [
+        "Shelf Props",
+        "Free shipping",
+      ]),
+    ).toBe("shelfProps");
+  });
+
+  test("a single matching object sibling still resolves (not null)", () => {
+    // Only `shelfProps` has a "Summer Sale" tag → one match, returns it.
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, ["Summer Sale"]),
+    ).toBe("shelfProps");
+  });
+
+  test("an ambiguous shared crumb without an ancestor returns null (shows both)", () => {
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, ["Free shipping"]),
+    ).toBeNull();
+  });
+
+  test("breadcrumbPathForActiveField strips the disambiguated ancestor crumb", () => {
+    expect(
+      breadcrumbPathForActiveField(
+        "shelfPropsOffer",
+        shelf,
+        ["Shelf Props Offer", "Free shipping"],
+        "Shelf Props Offer",
+      ),
+    ).toEqual(["Free shipping"]);
   });
 });
 

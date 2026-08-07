@@ -15,6 +15,21 @@ export function normalizeBreadcrumbLabel(label: string): string {
   return label.normalize("NFC").trim();
 }
 
+/**
+ * Prepend `label` to a breadcrumb `trail` unless it's already the head crumb
+ * (NFC-insensitive). Used to stamp the disambiguated ancestor label onto a drill
+ * trail so the resolver can tell same-titled sibling props apart.
+ */
+export function prependCrumbIfAbsent(label: string, trail: string[]): string[] {
+  if (
+    trail.length > 0 &&
+    normalizeBreadcrumbLabel(trail[0]!) === normalizeBreadcrumbLabel(label)
+  ) {
+    return trail;
+  }
+  return [label, ...trail];
+}
+
 function labelsMatch(a: string, b: string): boolean {
   return normalizeBreadcrumbLabel(a) === normalizeBreadcrumbLabel(b);
 }
@@ -131,9 +146,10 @@ export function breadcrumbPathForActiveField(
   activeKey: string,
   schema: SchemaProperty,
   breadcrumbPath: string[],
+  overrideLabel?: string,
 ): string[] {
   if (breadcrumbPath.length === 0) return breadcrumbPath;
-  const label = fieldDisplayLabel(activeKey, schema);
+  const label = overrideLabel ?? fieldDisplayLabel(activeKey, schema);
   const head = breadcrumbPath[0]!;
   if (labelsMatch(head, label) || labelsMatch(head, activeKey)) {
     return breadcrumbPath.slice(1);
@@ -143,6 +159,30 @@ export function breadcrumbPathForActiveField(
 
 export function fieldDisplayLabel(key: string, schema: SchemaProperty): string {
   return schema.title ?? humanize(key);
+}
+
+/**
+ * Display label for a property within its sibling group, disambiguated by key
+ * when two siblings share the same {@link fieldDisplayLabel} (e.g. `shelfProps`
+ * and `shelfPropsOffer` both `$ref` the `ProductShelfProps` interface, so both
+ * inherit its `title`). A collision falls back to `humanize(key)` so the fields
+ * stay distinguishable in the panel AND the breadcrumb resolver can tell which
+ * sibling a crumb belongs to. No-op (returns the plain label) when unique.
+ */
+export function siblingFieldLabel(
+  key: string,
+  keys: string[],
+  properties: Record<string, SchemaProperty>,
+): string {
+  const schema = properties[key];
+  if (!schema) return humanize(key);
+  const base = fieldDisplayLabel(key, schema);
+  const collides = keys.some((k) => {
+    if (k === key) return false;
+    const other = properties[k];
+    return other != null && fieldDisplayLabel(k, other) === base;
+  });
+  return collides ? humanize(key) : base;
 }
 
 /**
@@ -293,7 +333,7 @@ function resolveActiveFieldKeyInScope(
   for (const key of keys) {
     const schema = properties[key];
     if (!schema || !isArrayDrillDownField(schema, objValue[key])) continue;
-    const label = fieldDisplayLabel(key, schema);
+    const label = siblingFieldLabel(key, keys, properties);
     if (labelsMatch(head, label) || labelsMatch(head, key)) return key;
     if (
       breadcrumbPath.some(
@@ -313,33 +353,48 @@ function resolveActiveFieldKeyInScope(
     if (labels.some((label) => labelsMatch(label, head))) return key;
   }
 
+  // Collect every object sibling that owns the trail rather than returning the
+  // first. Two siblings that `$ref` the same interface (e.g. `shelfProps` /
+  // `shelfPropsOffer`, both `ProductShelfProps`) have identical nested shapes,
+  // so a shared crumb ("Free shipping", or a field-level "Card Layout")
+  // matches BOTH. First-match-wins would silently narrow to the first and drill
+  // the wrong prop; if the trail can't tell them apart, return null so the panel
+  // keeps both visible instead of editing the wrong sibling. A crumb carrying the
+  // disambiguated ancestor label (its `siblingFieldLabel`) matches exactly one.
+  let objMatch: string | null = null;
+  let objAmbiguous = false;
   for (const key of keys) {
     const schema = properties[key];
     if (schema?.type !== "object" || !schema.properties) continue;
     const childKeys = Object.keys(schema.properties);
     const childObj = asObjectRecord(objValue[key]);
-    const label = fieldDisplayLabel(key, schema);
+    const label = siblingFieldLabel(key, keys, properties);
 
-    const direct = resolveActiveFieldKeyInScope(
-      childKeys,
-      schema.properties,
-      childObj,
-      breadcrumbPath,
-      decofile,
-    );
-    if (direct) return key;
-
-    if (labelsMatch(head, label) || labelsMatch(head, key)) {
-      const viaLabel = resolveActiveFieldKeyInScope(
+    let matched =
+      resolveActiveFieldKeyInScope(
         childKeys,
         schema.properties,
         childObj,
-        breadcrumbPath.slice(1),
+        breadcrumbPath,
         decofile,
-      );
-      if (viaLabel) return key;
+      ) != null;
+
+    if (!matched && (labelsMatch(head, label) || labelsMatch(head, key))) {
+      matched =
+        resolveActiveFieldKeyInScope(
+          childKeys,
+          schema.properties,
+          childObj,
+          breadcrumbPath.slice(1),
+          decofile,
+        ) != null;
     }
+
+    if (!matched) continue;
+    if (objMatch === null) objMatch = key;
+    else objAmbiguous = true;
   }
+  if (objMatch !== null) return objAmbiguous ? null : objMatch;
 
   // Inline-union fields ("A or B" plain-data unions) store the chosen branch's
   // fields flat on the value, so a nested array inside a branch (e.g.
@@ -401,6 +456,9 @@ function resolveActiveFieldKeyInScope(
   for (const key of keys) {
     const schema = properties[key];
     if (schema?.type !== "block-ref") continue;
+    // NB: keep the plain label here — this branch disambiguates same-titled
+    // block-refs (e.g. two "Section" loaders) by VALUE ownership, so it must
+    // still match the shared title crumb, not a key-disambiguated one.
     const fieldLabel = fieldDisplayLabel(key, schema);
     if (head !== fieldLabel && head !== key) {
       // The crumb isn't the loader's own label, but the drilled item may live
