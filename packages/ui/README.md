@@ -184,6 +184,19 @@ the application to override it. If content must interpolate links or styled
 elements, keep that composition in `apps/web`, where the feature owns both the
 translation key and the rendered structure.
 
+## Claude Code skill
+
+This package ships a Claude Code plugin (`decocms-ui`) with a skill that teaches
+agents how to install and use the design system. In any repo:
+
+```
+/plugin marketplace add decocms/studio
+/plugin install decocms-ui@decocms
+```
+
+The skill lives in `skills/decocms-ui/SKILL.md`; keep it in sync when component
+APIs or tokens change.
+
 ## Related documentation
 
 - [Bundled fonts](./src/assets/fonts/README.md)
