@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { SchemaProperty } from "./resolve-schema";
 import {
+  arrayItemCrumbIndex,
   breadcrumbPathForActiveField,
   breadcrumbsForHeaderClick,
   buildArrayDrillDownBreadcrumb,
@@ -846,6 +847,114 @@ describe("resolveArrayItemSelection", () => {
         ),
       ).toEqual({ index: 1, innerPath: [] });
     });
+  });
+});
+
+describe("arrayItemCrumbIndex", () => {
+  test("points at the item crumb (just before its inner trail)", () => {
+    // Trail [Section, Item, Inner]; resolver returned innerPath [Inner] → the
+    // item crumb is at index 1.
+    expect(arrayItemCrumbIndex(["Section", "Item", "Inner"], ["Inner"])).toBe(
+      1,
+    );
+  });
+
+  test("last crumb is the item when innerPath is empty", () => {
+    expect(arrayItemCrumbIndex(["Banners", "Cozinha 2"], [])).toBe(1);
+    expect(arrayItemCrumbIndex(["Cozinha 2"], [])).toBe(0);
+  });
+});
+
+describe("editing an item's label keeps it selected (crumb re-sync)", () => {
+  // Reproduces the reported bug: duplicate a banner (two share a label), open
+  // the copy, edit its text. The editor must stay on the copy — not snap back
+  // to the "original" it was duplicated from. This exercises the exact sequence
+  // ArrayField.updateItem runs: resolve selection → rewrite the item crumb by
+  // POSITION (arrayItemCrumbIndex) → re-resolve against the edited items.
+  const schema = {
+    type: "object",
+    properties: { title: { type: "string", title: "Title" } },
+  } as SchemaProperty;
+
+  const editKeepsSelection = (
+    items: unknown[],
+    openIndex: number,
+    edited: unknown[],
+  ) => {
+    const labels = getArrayItemLabels(items, schema);
+    // The crumb the open row carries, built from the disambiguated label.
+    const trail = [labels[openIndex]!];
+    const selection = resolveArrayItemSelection(
+      "Banners",
+      trail,
+      items,
+      schema,
+      openIndex,
+    );
+    expect(selection).toEqual({ index: openIndex, innerPath: [] });
+
+    // updateItem: rewrite the item crumb in place to the new label.
+    const newLabel = getArrayItemLabels(edited, schema)[openIndex]!;
+    const crumbIndex = arrayItemCrumbIndex(trail, selection!.innerPath);
+    const updatedTrail = [...trail];
+    updatedTrail[crumbIndex] = newLabel;
+
+    // Re-resolving against the edited array must still land on the same item.
+    return resolveArrayItemSelection(
+      "Banners",
+      updatedTrail,
+      edited,
+      schema,
+      openIndex,
+    );
+  };
+
+  test("editing the duplicate's title stays on the duplicate, not the original", () => {
+    const items = [{ title: "Cozinha" }, { title: "Cozinha" }];
+    // Open the copy (index 1), rename it for the new campaign.
+    const edited = [{ title: "Cozinha" }, { title: "Cozinha Nova" }];
+    expect(editKeepsSelection(items, 1, edited)).toEqual({
+      index: 1,
+      innerPath: [],
+    });
+  });
+
+  test("clearing the title mid-edit (label falls back) keeps the same item", () => {
+    // Emptying the label field makes the row fall back to the schema-title
+    // suffix; the crumb still tracks it because it is rewritten by position.
+    const items = [{ title: "Cozinha" }, { title: "Cozinha" }];
+    const edited = [{ title: "Cozinha" }, { title: "" }];
+    expect(editKeepsSelection(items, 1, edited)).toEqual({
+      index: 1,
+      innerPath: [],
+    });
+  });
+
+  test("editing an item that is drilled one level deep keeps the inner trail", () => {
+    // Trail [item, Inner]: the item crumb is at position 0, so rewriting it by
+    // position must leave the inner crumb ("Inner") untouched.
+    const items = [{ title: "Cozinha" }, { title: "Cozinha" }];
+    const labels = getArrayItemLabels(items, schema);
+    const trail = [labels[1]!, "Inner"];
+    const selection = resolveArrayItemSelection(
+      "Banners",
+      trail,
+      items,
+      schema,
+      1,
+    );
+    expect(selection).toEqual({ index: 1, innerPath: ["Inner"] });
+
+    const edited = [{ title: "Cozinha" }, { title: "Cozinha Nova" }];
+    const newLabel = getArrayItemLabels(edited, schema)[1]!;
+    const crumbIndex = arrayItemCrumbIndex(trail, selection!.innerPath);
+    expect(crumbIndex).toBe(0);
+    const updatedTrail = [...trail];
+    updatedTrail[crumbIndex] = newLabel;
+    expect(updatedTrail).toEqual(["Cozinha Nova", "Inner"]);
+    expect(
+      resolveArrayItemSelection("Banners", updatedTrail, edited, schema, 1),
+    ).toEqual({ index: 1, innerPath: ["Inner"] });
   });
 });
 

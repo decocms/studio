@@ -184,6 +184,27 @@ export function findBreadcrumbLabelIndex(
   );
 }
 
+/**
+ * Position of the open array item's own crumb inside `breadcrumbPath`, derived
+ * from the `innerPath` that {@link resolveArrayItemSelection} returned for it.
+ * The item crumb always sits immediately before its inner trail, so this is
+ * `length - innerPath.length - 1`.
+ *
+ * Use this — not `findBreadcrumbLabelIndex(oldLabel)` — to rewrite the crumb
+ * when the item's label changes while it is open. A label lookup breaks the
+ * moment the label churns: once the old text is gone it finds nothing and the
+ * crumb is left stale (which then re-resolves to a colliding sibling — the
+ * "editing a duplicate's title snaps back to the original" bug); and when the
+ * item's label equals an earlier crumb (array label == item label), it rewrites
+ * the wrong (earlier) crumb. The position is stable regardless of the text.
+ */
+export function arrayItemCrumbIndex(
+  breadcrumbPath: string[],
+  innerPath: string[],
+): number {
+  return breadcrumbPath.length - innerPath.length - 1;
+}
+
 /** Breadcrumb drill-down applies to array fields only (not nested objects). */
 export function isArrayDrillDownField(
   schema: SchemaProperty,

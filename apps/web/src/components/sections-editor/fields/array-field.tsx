@@ -35,6 +35,7 @@ import {
 } from "../array-item-hidden";
 import { isEmbeddedUnionResolveType } from "../block-type-utils";
 import {
+  arrayItemCrumbIndex,
   buildArrayDrillDownBreadcrumb,
   findBreadcrumbLabelIndex,
   resolveArrayItemSelection,
@@ -326,13 +327,21 @@ export function ArrayField({
 
     // When editing the currently selected item, the display label may change
     // (e.g. editing the "alt" or "name" field that drives getArrayItemLabel).
-    // Update the breadcrumb so resolveArrayItemSelection keeps matching.
-    if (index === selectedIndex && selectedIndex !== null) {
+    // Rewrite the item's crumb IN PLACE — by its position in the trail, not by
+    // looking up its old text — so resolveArrayItemSelection keeps pointing at
+    // THIS item. A text lookup strands the crumb once the old label is gone
+    // (the edited item then re-resolves to a colliding sibling, e.g. the
+    // "original" a duplicate was copied from), and it rewrites the wrong crumb
+    // when the item's label equals an earlier one (array label == item label).
+    if (index === selectedIndex && selectedIndex !== null && selection) {
       const oldLabel = itemLabel(items[index], index);
       const newLabel = itemLabel(next[index], index, next);
       if (oldLabel !== newLabel) {
-        const crumbIndex = findBreadcrumbLabelIndex(breadcrumbPath, oldLabel);
-        if (crumbIndex >= 0) {
+        const crumbIndex = arrayItemCrumbIndex(
+          breadcrumbPath,
+          selection.innerPath,
+        );
+        if (crumbIndex >= 0 && crumbIndex < breadcrumbPath.length) {
           const updatedBreadcrumb = [...breadcrumbPath];
           updatedBreadcrumb[crumbIndex] = newLabel;
           onBreadcrumbChange?.(updatedBreadcrumb);
