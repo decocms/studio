@@ -578,13 +578,31 @@ function findItemIndexForCrumb(
   return labels.findIndex((label) => labelsMatch(label, crumb));
 }
 
+/**
+ * Resolve which array item the breadcrumb trail points at.
+ *
+ * Returns `crumbIndex` — the position of the matched item's own crumb in
+ * `breadcrumbPath` — alongside `index` (the item's position in `items`) and
+ * `innerPath` (the trail *inside* the item). `crumbIndex` is the single source
+ * of truth for "where the open item's label lives in the trail": callers that
+ * rewrite that crumb when the label changes (see `ArrayField.updateItem`) MUST
+ * use it rather than re-deriving the position by looking up the old label text
+ * — a text lookup strands the crumb the moment the label churns (the edited
+ * item then re-resolves to a colliding sibling — the "editing a duplicate's
+ * title snaps back to the original" bug). Because it comes straight from the
+ * crumb this function actually matched, it can never point at a non-item crumb.
+ *
+ * `innerPath` is always a trailing suffix of `breadcrumbPath` (both return sites
+ * slice from `crumbIndex + 1`), so `crumbIndex === length - innerPath.length - 1`
+ * — keep it that way if you touch the slicing.
+ */
 export function resolveArrayItemSelection(
   label: string,
   breadcrumbPath: string[],
   items: unknown[],
   itemSchema: SchemaProperty | undefined,
   preferredIndex?: number | null,
-): { index: number; innerPath: string[] } | null {
+): { index: number; innerPath: string[]; crumbIndex: number } | null {
   if (breadcrumbPath.length === 0) return null;
 
   for (let pi = 0; pi < breadcrumbPath.length; pi++) {
@@ -596,7 +614,7 @@ export function resolveArrayItemSelection(
       preferredIndex,
     );
     if (index >= 0) {
-      return { index, innerPath: breadcrumbPath.slice(pi + 1) };
+      return { index, innerPath: breadcrumbPath.slice(pi + 1), crumbIndex: pi };
     }
   }
 
@@ -612,7 +630,11 @@ export function resolveArrayItemSelection(
       preferredIndex,
     );
     if (index >= 0) {
-      return { index, innerPath: breadcrumbPath.slice(labelIndex + 2) };
+      return {
+        index,
+        innerPath: breadcrumbPath.slice(labelIndex + 2),
+        crumbIndex: labelIndex + 1,
+      };
     }
   }
 

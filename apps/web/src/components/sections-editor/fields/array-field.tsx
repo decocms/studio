@@ -326,17 +326,19 @@ export function ArrayField({
 
     // When editing the currently selected item, the display label may change
     // (e.g. editing the "alt" or "name" field that drives getArrayItemLabel).
-    // Update the breadcrumb so resolveArrayItemSelection keeps matching.
-    if (index === selectedIndex && selectedIndex !== null) {
+    // Rewrite the item's crumb IN PLACE — at the position resolution matched it
+    // (`selection.crumbIndex`), not by looking up its old text — so
+    // resolveArrayItemSelection keeps pointing at THIS item. A text lookup
+    // strands the crumb once the old label is gone: the edited item then
+    // re-resolves to a colliding sibling, e.g. the "original" a duplicate was
+    // copied from.
+    if (index === selectedIndex && selection) {
       const oldLabel = itemLabel(items[index], index);
       const newLabel = itemLabel(next[index], index, next);
       if (oldLabel !== newLabel) {
-        const crumbIndex = findBreadcrumbLabelIndex(breadcrumbPath, oldLabel);
-        if (crumbIndex >= 0) {
-          const updatedBreadcrumb = [...breadcrumbPath];
-          updatedBreadcrumb[crumbIndex] = newLabel;
-          onBreadcrumbChange?.(updatedBreadcrumb);
-        }
+        const updatedBreadcrumb = [...breadcrumbPath];
+        updatedBreadcrumb[selection.crumbIndex] = newLabel;
+        onBreadcrumbChange?.(updatedBreadcrumb);
       }
     }
   };
