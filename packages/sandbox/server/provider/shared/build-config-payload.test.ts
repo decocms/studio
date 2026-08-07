@@ -21,7 +21,7 @@ describe("buildConfigPayload", () => {
     });
   });
 
-  it("returns operator-only payload when repo and application are absent", () => {
+  it("returns identity and org only, when repo and application are absent", () => {
     const payload = buildConfigPayload({
       runtime: "node",
       packageManager: null,
@@ -35,7 +35,34 @@ describe("buildConfigPayload", () => {
 
     expect(payload).toEqual({
       operator: { userName: "Jane Doe" },
+      orgId: "org",
     });
+  });
+
+  it("forwards orgId, which the golden cache keys shared archives by", () => {
+    const payload = buildConfigPayload({
+      runtime: "node",
+      packageManager: null,
+      repo: null,
+      tenant: { orgId: "org_abc123", userId: "user" },
+    });
+
+    // Previously this case produced null: with no repo, no application and no
+    // co-author identity there was nothing worth sending. The org alone is now
+    // worth sending, because without it the daemon cannot stamp which org
+    // produced a cached dependency tree and a cross-node cache cannot isolate
+    // two orgs cloning the same public template.
+    expect(payload).toEqual({ orgId: "org_abc123" });
+  });
+
+  it("omits orgId when there is no tenant", () => {
+    const payload = buildConfigPayload({
+      runtime: "node",
+      packageManager: null,
+      repo: { cloneUrl: "https://github.com/acme/site.git" } as never,
+    });
+
+    expect(payload).not.toHaveProperty("orgId");
   });
 
   it("builds git.repository from a repo and derives repoName from the clone URL", () => {
