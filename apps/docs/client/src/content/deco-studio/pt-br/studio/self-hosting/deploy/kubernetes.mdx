@@ -287,6 +287,18 @@ Declare cada pool nos dois lados, com o **mesmo** `name`:
   Conceda ao Role do runner a permissão `sandboxwarmpools: get` (o chart faz isso automaticamente a partir da versão 0.12.0 do `sandbox-env`) — o reconciler lê o `status.selector` de cada pool para encontrar seus pods, e uma permissão faltante bloqueia silenciosamente toda tentativa de aquecimento.
 </Callout>
 
+<Callout type="note">
+  Dispatches que só precisam de um checkout — uma execução do Claude Code ou de outro harness contra um branch específico, sem dev server interativo — nunca se vinculam a um tenant warm pool. Vincular um seria destrutivo sem benefício: o checkout de branch do dispatch é classificado como troca de branch, e uma troca de branch para o dev server em execução no pod. Esses claims `cloneOnly` sempre caem para o pool genérico (ou um claim frio). Separadamente, se uma task pede para um sandbox iniciar um processo que já está em execução (normalmente `dev`), o daemon agora retorna a task existente em vez de iniciar uma segunda — dois dev servers no limite de memória de um único pod era uma forma confiável de matar o pod por OOM.
+</Callout>
+
+### Admissão e capacidade
+
+Antes de fazer um claim, o Studio verifica se o cluster consegue de fato agendar outro pod de sandbox. `SANDBOX_MAX_CONCURRENT_HOSTED_RUNS` continua limitando a concorrência por pod, mas não tem visibilidade sobre se algum node tem espaço — em um node cheio, uma explosão de runs costumava gerar uma pilha de pods parados em `Pending` com `FailedScheduling: Insufficient memory`, cada um falhando somente após o timeout de 180s de readiness.
+
+A verificação de capacidade lê o próprio veredito do scheduler em vez de prever: um pod que o scheduler não conseguiu posicionar fica `Pending` com uma condição `PodScheduled=False`/`Unschedulable`, e o Studio trata isso como "o cluster está cheio". Um run que aumentaria essa pilha é **estacionado** — mantido em espera, sem claim — até que um pod volte a ser agendável, em vez de ser despachado direto para um node sem espaço. Isso é validado no nível do cluster e complementa, sem substituir, o limite de concorrência por pod.
+
+A verificação falha aberta: se a própria sondagem der erro, o Studio trata a capacidade como disponível em vez de transformar uma verificação de saúde quebrada em uma parada global de todos os runs de sandbox.
+
 ### Telemetria do daemon (métricas OTLP)
 
 O daemon do sandbox pode exportar métricas OTLP para um collector OpenTelemetry. Isso é separado — e não relacionado — à exportação de monitoramento do próprio Studio descrita em [Monitoring](/pt-br/studio/self-hosting/monitoring): aqui as métricas vêm do próprio daemon do sandbox (saúde do processo/runtime), não dos logs de chamadas de ferramentas do Studio.

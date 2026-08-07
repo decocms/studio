@@ -277,6 +277,18 @@ The reconciler also needs read access to the `SandboxWarmPool` it manages: grant
 
 An optional GitHub push webhook makes pool refresh immediate instead of waiting for the periodic refresh cycle. Configure `GITHUB_WEBHOOK_SECRET` on Studio and point a push webhook at `POST /api/_github/webhook`; without the secret configured, the route answers `503` and pools simply refresh on their own schedule.
 
+<Callout type="note">
+  Dispatches that only need a checkout — a Claude Code or other harness run against a specific branch, not an interactive dev server — never bind to a tenant warm pool. Binding one would de-warm it for no benefit: the dispatch's branch checkout is classified as a branch change, and a branch change stops the pod's running dev server. These `cloneOnly` claims always fall back to the generic pool (or a cold claim) instead. Separately, if a task asks a sandbox to start a process that's already running (typically `dev`), the daemon now returns the existing task instead of starting a second one — two dev servers on one pod's memory limit was a reliable way to OOM it.
+</Callout>
+
+### Admission and capacity
+
+Before making a claim, Studio checks whether the cluster can actually schedule another sandbox pod. `SANDBOX_MAX_CONCURRENT_HOSTED_RUNS` still caps concurrency per pod, but it has no visibility into whether any node has room — on a full node, a burst of runs used to produce a pile of pods stuck `Pending` with `FailedScheduling: Insufficient memory`, each one failing only after the 180s readiness timeout.
+
+The capacity check reads the scheduler's own verdict instead of forecasting: a pod the scheduler could not place stays `Pending` with a `PodScheduled=False`/`Unschedulable` condition, and Studio treats that as "the cluster is full." A run that would add to that pile is **parked** — held, not claimed — until a pod becomes schedulable again, instead of being dispatched straight into a node with no room. This is cluster-wide and complements, not replaces, the per-pod concurrency limit.
+
+The check fails open: if the probe itself errors, Studio treats capacity as available rather than turning a broken health check into a global stop on all sandbox runs.
+
 ### Daemon telemetry (OTLP metrics)
 
 The sandbox daemon can export OTLP metrics to an OpenTelemetry collector. This is separate from — and unrelated to — Studio's own monitoring export described in [Monitoring](/en/studio/self-hosting/monitoring): here the metrics come from the sandbox daemon itself (process/runtime health), not from Studio's tool-call logs.
