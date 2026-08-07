@@ -17,6 +17,7 @@ import {
   useSandboxEvents,
 } from "@/components/sandbox/hooks/use-sandbox-events";
 import { PreviewDrawer } from "@/components/sandbox/preview/drawer/drawer";
+import { parseDrawerState, type DrawerState } from "./drawer-storage";
 
 const STORAGE_KEY = (id: string) => `preview-drawer:${id}`;
 
@@ -27,21 +28,9 @@ const STORAGE_KEY = (id: string) => `preview-drawer:${id}`;
 const GIT_AUTH_FAILURE_RE =
   /Authentication failed for|Invalid username or token|Password authentication is not supported/i;
 
-interface DrawerState {
-  open: boolean;
-  /** Open-drawer height in px; `null` = default (50% of the pane). */
-  height: number | null;
-}
-
 function readPersisted(virtualMcpId: string): DrawerState {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY(virtualMcpId));
-    if (!raw) return { open: false, height: null };
-    const parsed = JSON.parse(raw);
-    return {
-      open: !!parsed.open,
-      height: typeof parsed.height === "number" ? parsed.height : null,
-    };
+    return parseDrawerState(localStorage.getItem(STORAGE_KEY(virtualMcpId)));
   } catch {
     return { open: false, height: null };
   }

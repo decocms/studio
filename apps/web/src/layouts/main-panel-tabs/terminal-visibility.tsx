@@ -11,16 +11,14 @@
 
 import { createContext, use, useRef, useState, type ReactNode } from "react";
 import { usePreferences } from "@/hooks/use-preferences.ts";
+import { parseTerminalOverride } from "./drawer-storage";
 
 const STORAGE_KEY = (id: string) => `preview-terminal-visible:${id}`;
 
 /** Per-VM override, or `null` when the user hasn't set one for this VM. */
 function readPersisted(id: string): boolean | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY(id));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return typeof parsed.visible === "boolean" ? parsed.visible : null;
+    return parseTerminalOverride(localStorage.getItem(STORAGE_KEY(id)));
   } catch {
     return null;
   }
