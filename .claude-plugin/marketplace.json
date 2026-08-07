@@ -10,7 +10,7 @@
       "source": "./packages/ui",
       "description": "Build UI with the decocms product design system (@decocms/ui): install, tokens, components, and conventions.",
       "author": { "name": "decocms" },
-      "homepage": "https://decocms.github.io/studio/"
+      "homepage": "https://decocms-ui.pages.dev/"
     }
   ]
 }
