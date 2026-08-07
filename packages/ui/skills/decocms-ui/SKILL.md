@@ -7,7 +7,7 @@ description: Build or style React UI with the decocms product design system (@de
 
 React 19 components built on Radix primitives, styled with Tailwind CSS v4
 semantic tokens. Light and dark themes work out of the box. Browse every
-component and token at https://decocms-ui.pages.dev/
+component and token at https://designsystem.decocms.com/
 
 ## Install (new project)
 

@@ -27,6 +27,17 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
 
+      - name: Ensure custom domain (designsystem.decocms.com)
+        # wrangler has no pages-domain command; use the API. Tolerates "already exists".
+        run: |
+          curl -sS -X POST \
+            "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CF_ACCOUNT_ID }}/pages/projects/decocms-ui/domains" \
+            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            --data '{"name":"designsystem.decocms.com"}' | tee /tmp/domain.json
+          # Succeed if added now or already attached; fail on anything else
+          grep -q '"success":true\|already' /tmp/domain.json
+
       - name: Deploy to Cloudflare Pages
         run: bunx wrangler pages deploy storybook-static --project-name=decocms-ui
         working-directory: packages/ui
