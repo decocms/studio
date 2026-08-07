@@ -1,10 +1,42 @@
 import type { admin as adminEn } from "../en/admin.ts";
 
 export const admin = {
+  "admin.billing.allTimeClaims": "Consumido (total)",
+  "admin.billing.blankUsesDefault":
+    "Deixe um campo em branco para usar o padrão da implantação.",
+  "admin.billing.cancel": "Cancelar",
+  "admin.billing.default": "padrão ({value})",
+  "admin.billing.editQuota": "Editar cota",
+  "admin.billing.editQuotaFor": "Editar cota de {org}",
+  "admin.billing.failedLoad": "Falha ao carregar dados de cobrança",
+  "admin.billing.failedLoadDescription":
+    "Algo deu errado. Atualize para tentar novamente.",
+  "admin.billing.failedUpdateQuota": "Falha ao atualizar cota",
+  "admin.billing.freeQuota": "Cota grátis",
+  "admin.billing.freeQuotaLabel": "Execuções de tarefas grátis",
+  "admin.billing.invalidQuota": "Cotas devem ser números inteiros positivos",
+  "admin.billing.monthlyQuota": "Cota mensal",
+  "admin.billing.monthlyQuotaLabel": "Execuções de tarefas mensais",
+  "admin.billing.noOrgsFound": "Nenhuma organização encontrada",
+  "admin.billing.noOrgsMatchSearch":
+    'Nenhuma organização corresponde a "{search}"',
+  "admin.billing.noOrgsYet": "Nenhuma organização existe ainda.",
+  "admin.billing.organization": "Organização",
+  "admin.billing.pendingCycle": "Ciclo pendente",
+  "admin.billing.plan": "Plano",
+  "admin.billing.planFree": "Grátis",
+  "admin.billing.quotaUpdated": "Cota atualizada para {org}",
+  "admin.billing.renews": "Renova em {date}",
+  "admin.billing.save": "Salvar",
+  "admin.billing.saving": "Salvando...",
+  "admin.billing.searchPlaceholder": "Procure organizações por nome ou slug...",
+  "admin.billing.trial": "Trial",
+  "admin.billing.usage": "Uso",
   "admin.layout.adminDashboard": "Painel de Administração",
   "admin.layout.adminDashboardArea": "o painel de administração",
   "admin.layout.emailVerificationRequired":
     "Verifique seu endereço de e-mail para acessar o painel de administração.",
+  "admin.layout.billingTab": "Cobrança",
   "admin.layout.goHome": "Voltar para início",
   "admin.layout.organizationsTab": "Organizações",
   "admin.layout.restrictedToDashboard":

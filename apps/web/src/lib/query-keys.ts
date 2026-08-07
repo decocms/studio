@@ -555,6 +555,10 @@ export const KEYS = {
     ["deployment-admin", "orgs", search] as const,
   // Prefix key: invalidates every orgs query regardless of the search term.
   deploymentAdminOrgsList: () => ["deployment-admin", "orgs"] as const,
+  deploymentAdminBilling: (search: string) =>
+    ["deployment-admin", "billing", search] as const,
+  // Prefix key: invalidates every billing query regardless of the search term.
+  deploymentAdminBillingList: () => ["deployment-admin", "billing"] as const,
 
   // Brand context (scoped by organization)
   brandContext: (organizationId: string) =>

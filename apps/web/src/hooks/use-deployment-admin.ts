@@ -21,25 +21,40 @@ export function useDeploymentAdmin(): {
    *  the operator can fix themselves, so the UI says so instead of the
    *  generic "restricted" message. */
   needsEmailVerification: boolean;
+  /** Whether this deployment enforces the task quota (billing) — gates the
+   *  Billing tab; a self-hosted deployment has nothing to administer there. */
+  billingEnabled: boolean;
 } {
   const { data, isLoading } = useQuery({
     queryKey: KEYS.deploymentAdminMe(),
-    queryFn: async (): Promise<"admin" | "unverified" | "denied"> => {
+    queryFn: async (): Promise<{
+      status: "admin" | "unverified" | "denied";
+      billingEnabled: boolean;
+    }> => {
       const res = await fetch("/api/_admin/me", { credentials: "include" });
       if (res.status >= 500) {
         throw new Error(`admin/me request failed: ${res.status}`);
       }
-      if (res.ok) return "admin";
-      const body = (await res.json().catch(() => ({}))) as { error?: string };
-      return body.error === "email_not_verified" ? "unverified" : "denied";
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        taskQuotaEnforced?: boolean;
+      };
+      if (res.ok) {
+        return { status: "admin", billingEnabled: !!body.taskQuotaEnforced };
+      }
+      return {
+        status: body.error === "email_not_verified" ? "unverified" : "denied",
+        billingEnabled: false,
+      };
     },
     staleTime: Infinity,
     retry: 2,
   });
 
   return {
-    isAdmin: data === "admin",
+    isAdmin: data?.status === "admin",
     loading: isLoading,
-    needsEmailVerification: data === "unverified",
+    needsEmailVerification: data?.status === "unverified",
+    billingEnabled: data?.billingEnabled ?? false,
   };
 }

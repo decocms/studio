@@ -133,10 +133,17 @@ const adminOrgsRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/admin/orgs.tsx")),
 });
 
+const adminBillingRoute = createRoute({
+  getParentRoute: () => adminLayout,
+  path: "/billing",
+  component: lazyRouteComponent(() => import("./routes/admin/billing.tsx")),
+});
+
 const adminLayoutWithChildren = adminLayout.addChildren([
   adminIndexRoute,
   adminUsersRoute,
   adminOrgsRoute,
+  adminBillingRoute,
 ]);
 
 // ============================================

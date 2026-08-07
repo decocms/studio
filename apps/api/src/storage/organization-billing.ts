@@ -1,6 +1,7 @@
 /**
  * Organization Billing Storage — Stripe customer/subscription binding,
- * status, period end. Platform-written only (the webhook is the writer).
+ * status, period end. Platform-written only — the Stripe webhook, plus
+ * `setQuotaOverrides` (deployment-admin) for the per-org override columns.
  */
 
 import type { Kysely, Selectable } from "kysely";
@@ -35,6 +36,15 @@ export interface OrganizationBillingRow {
   freeTaskExecutions: number | null;
   monthlyTaskExecutions: number | null;
 }
+
+/**
+ * The ONE definition of a claim that counts against quota (released ones were
+ * refunded) — spread into every counting site (`liveClaimCount`,
+ * `liveClaimCountsByPeriod`, and the deployment-admin listing's ordering
+ * subquery) so a new claim state can never make the admin view drift from
+ * what enforcement allows.
+ */
+export const LIVE_CLAIM_FILTER = ["state", "<>", "released"] as const;
 
 export class OrganizationBillingStorage {
   constructor(private db: Kysely<Database>) {}
@@ -113,9 +123,9 @@ export class OrganizationBillingStorage {
     return row ? { runCount: row.run_count, state: row.state } : null;
   }
 
-  /** Claims charged against a period — the ONE definition of "counts"
-   *  (released ones were refunded), shared by the read and the claim
-   *  transaction so the two can never drift. */
+  /** Claims charged against a period — `LIVE_CLAIM_FILTER` is the shared
+   *  definition of "counts", used by this read and the claim transaction so
+   *  the two can never drift. */
   private static liveClaimCount(
     db: Kysely<Database>,
     organizationId: string,
@@ -126,9 +136,68 @@ export class OrganizationBillingStorage {
       .select((eb) => eb.fn.countAll().as("count"))
       .where("organization_id", "=", organizationId)
       .where("period_key", "=", periodKey)
-      .where("state", "<>", "released")
+      .where(...LIVE_CLAIM_FILTER)
       .executeTakeFirst()
       .then((row) => Number(row?.count ?? 0));
+  }
+
+  /** Live-claim counts per (org, period) for a page of orgs — the batched
+   *  variant of `liveClaimCount` for the deployment-admin billing listing
+   *  (the current bucket per org is picked by the caller, since it depends
+   *  on each org's subscription state). */
+  async liveClaimCountsByPeriod(
+    organizationIds: string[],
+  ): Promise<
+    Array<{ organizationId: string; periodKey: string; count: number }>
+  > {
+    if (!organizationIds.length) return [];
+    const rows = await this.db
+      .selectFrom("task_quota_claims")
+      .select(["organization_id", "period_key"])
+      .select((eb) => eb.fn.countAll<string>().as("count"))
+      .where("organization_id", "in", organizationIds)
+      .where(...LIVE_CLAIM_FILTER)
+      .groupBy(["organization_id", "period_key"])
+      .execute();
+    return rows.map((row) => ({
+      organizationId: row.organization_id,
+      periodKey: row.period_key,
+      count: Number(row.count),
+    }));
+  }
+
+  /**
+   * Operator-set per-org quota overrides (migration 164) — deliberately not
+   * an MCP tool, so an org admin can never raise their own limit; the only
+   * caller is the deployment-admin surface. `undefined` leaves a knob
+   * untouched, `null` resets it to the deployment default. Upsert because
+   * orgs whose creation-time billing seed failed have no row yet (same
+   * self-heal `claimTaskUnderLimit` does).
+   */
+  async setQuotaOverrides(
+    organizationId: string,
+    overrides: {
+      freeTaskExecutions?: number | null;
+      monthlyTaskExecutions?: number | null;
+    },
+  ): Promise<void> {
+    const patch = {
+      ...(overrides.freeTaskExecutions !== undefined && {
+        free_task_executions: overrides.freeTaskExecutions,
+      }),
+      ...(overrides.monthlyTaskExecutions !== undefined && {
+        monthly_task_executions: overrides.monthlyTaskExecutions,
+      }),
+    };
+    await this.db
+      .insertInto("organization_billing")
+      .values({ organization_id: organizationId, ...patch })
+      .onConflict((oc) =>
+        oc
+          .column("organization_id")
+          .doUpdateSet({ ...patch, updated_at: new Date() }),
+      )
+      .execute();
   }
 
   async countTaskClaims(
