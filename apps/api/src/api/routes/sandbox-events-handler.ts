@@ -50,6 +50,20 @@ const NO_CLAIM_MAX_MS = 90_000;
 const HEARTBEAT_MS = 15_000;
 
 /**
+ * How often an open event stream pushes the claim's shutdown back out.
+ *
+ * An open stream is what "somebody is watching this sandbox" looks like from
+ * Studio: preview traffic goes gateway → pod and never reaches us, so without
+ * this the 15-min claim TTL expires under a user who is actively reading the
+ * preview, and they get a cold reprovision instead of the pod they were on.
+ *
+ * Well inside the TTL so a single failed renewal is harmless, and far coarser
+ * than HEARTBEAT_MS because each one is two API-server calls per watcher —
+ * there is no reason to spend them at keepalive rate.
+ */
+const TTL_RENEW_MS = 5 * 60_000;
+
+/**
  * Budget for the "lifecycle says ready but studio hasn't finished its
  * post-Ready bookkeeping" race.
  */
@@ -105,9 +119,15 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
         clearInterval(heartbeat);
       });
     }, HEARTBEAT_MS);
+    // Renew immediately as well as on the interval: a stream that reconnects
+    // onto a long-lived sandbox is adopting a TTL that is already part-spent.
+    const renew = () => void runner.renewTtl?.(claimName);
+    renew();
+    const ttlRenew = setInterval(renew, TTL_RENEW_MS);
     stream.onAbort(() => {
       abortCtl.abort();
       clearInterval(heartbeat);
+      clearInterval(ttlRenew);
     });
 
     try {
@@ -184,6 +204,7 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
       });
     } finally {
       clearInterval(heartbeat);
+      clearInterval(ttlRenew);
     }
   });
 }
