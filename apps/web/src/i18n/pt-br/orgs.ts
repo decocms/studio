@@ -240,18 +240,23 @@ export const orgs = {
   "orgs.overview.failedToLoadDescription":
     "Não conseguimos buscar suas estatísticas de monitoramento agora. Por favor, tente novamente mais tarde.",
   "orgs.overview.failedToLoadTitle": "Falha ao carregar dados de monitoramento",
+  "orgs.overview.heatmapCellTooltip":
+    "{agent} → {tool}: {calls} chamadas, {errors} erros",
   "orgs.overview.latency": "Latência",
   "orgs.overview.latencyAriaLabel": "Latência de {type} ao longo do tempo",
   "orgs.overview.latencyAvg": "Média",
   "orgs.overview.latencyP95": "P95",
+  "orgs.overview.noAgent": "Sem agente",
   "orgs.overview.noAiErrors": "Nenhum erro de IA neste período",
   "orgs.overview.noCostData": "Sem dados de custo do provedor",
   "orgs.overview.noErrors": "Nenhum erro neste período",
+  "orgs.overview.noHeatmapData": "Nenhuma chamada de ferramenta neste período",
   "orgs.overview.p95Prefix": "p95: ",
   "orgs.overview.tokens": "Tokens",
   "orgs.overview.tokensAriaLabel": "Total de tokens ao longo do tempo",
   "orgs.overview.tokensIn": "entrada",
   "orgs.overview.tokensOut": "saída",
+  "orgs.overview.toolCallHeatmap": "Chamadas de Ferramenta por Agente",
   "orgs.overview.toolCalls": "Chamadas de Ferramenta",
   "orgs.overview.toolCallsAriaLabel":
     "Chamadas de ferramenta ao longo do tempo",

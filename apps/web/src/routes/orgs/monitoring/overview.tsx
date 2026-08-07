@@ -3,8 +3,8 @@
  */
 
 import type { ReactNode } from "react";
-import { useState } from "react";
-import type { useConnections } from "@/sdk";
+import { Fragment, useState } from "react";
+import type { useConnections, useVirtualMCPs } from "@/sdk";
 import { useProjectContext } from "@/sdk";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -20,6 +20,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@deco/ui/components/select.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { AlertTriangle, Container } from "@untitledui/icons";
 import { IntegrationIcon } from "@/components/integration-icon.tsx";
@@ -31,6 +37,7 @@ import {
 import {
   useMonitoringStats,
   useMonitoringLlmStats,
+  useMonitoringHeatmap,
 } from "@/components/monitoring/hooks.ts";
 import { getConnectionSlug } from "@decocms/shared/utils/connection-slug";
 import { useT } from "@/i18n/use-t.ts";
@@ -258,6 +265,136 @@ function ModelLeaderboardTable({
   );
 }
 
+// ── Tool-call heatmap ───────────────────────────────────────────────────────
+
+const HEATMAP_MAX_TOOLS = 12;
+const HEATMAP_MAX_AGENTS = 8;
+
+function heatmapLevelClass(calls: number, maxCalls: number): string {
+  if (calls === 0) return "bg-muted-foreground/10";
+  const ratio = maxCalls > 0 ? calls / maxCalls : 0;
+  if (ratio <= 0.15) return "bg-success/25";
+  if (ratio <= 0.4) return "bg-success/45";
+  if (ratio <= 0.7) return "bg-success/70";
+  return "bg-success";
+}
+
+function ToolAgentHeatmap({
+  cells,
+  virtualMcps,
+}: {
+  cells: Array<{
+    virtualMcpId: string | null;
+    toolName: string;
+    calls: number;
+    errors: number;
+  }>;
+  virtualMcps: ReturnType<typeof useVirtualMCPs>;
+}) {
+  const t = useT();
+
+  if (cells.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">
+        {t("orgs.overview.noHeatmapData")}
+      </div>
+    );
+  }
+
+  const toolTotals = new Map<string, number>();
+  for (const cell of cells) {
+    toolTotals.set(cell.toolName, (toolTotals.get(cell.toolName) ?? 0) + cell.calls);
+  }
+  const topTools = [...toolTotals.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, HEATMAP_MAX_TOOLS)
+    .map(([name]) => name);
+  const toolSet = new Set(topTools);
+
+  const agentTotals = new Map<string, number>();
+  const cellMap = new Map<string, { calls: number; errors: number }>();
+  let maxCalls = 0;
+  for (const cell of cells) {
+    if (!toolSet.has(cell.toolName)) continue;
+    const agentId = cell.virtualMcpId ?? "";
+    agentTotals.set(agentId, (agentTotals.get(agentId) ?? 0) + cell.calls);
+    cellMap.set(`${agentId}::${cell.toolName}`, {
+      calls: cell.calls,
+      errors: cell.errors,
+    });
+    if (cell.calls > maxCalls) maxCalls = cell.calls;
+  }
+  const topAgentIds = [...agentTotals.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, HEATMAP_MAX_AGENTS)
+    .map(([id]) => id);
+
+  const agentNameOf = (id: string) =>
+    id === ""
+      ? t("orgs.overview.noAgent")
+      : (virtualMcps.find((vm) => vm.id === id)?.title ?? id);
+
+  return (
+    <TooltipProvider delayDuration={0}>
+      <div className="overflow-x-auto">
+        <div
+          className="grid gap-1 min-w-max"
+          style={{
+            gridTemplateColumns: `140px repeat(${topTools.length}, 28px)`,
+          }}
+        >
+          <div />
+          {topTools.map((tool) => (
+            <Tooltip key={tool}>
+              <TooltipTrigger asChild>
+                <div className="h-[80px] flex items-end justify-center pb-1 text-[10px] text-muted-foreground overflow-hidden [writing-mode:vertical-rl]">
+                  {tool}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>{tool}</TooltipContent>
+            </Tooltip>
+          ))}
+
+          {topAgentIds.map((agentId) => (
+            <Fragment key={agentId || "none"}>
+              <div
+                className="text-xs text-muted-foreground truncate flex items-center pr-2"
+                title={agentNameOf(agentId)}
+              >
+                {agentNameOf(agentId)}
+              </div>
+              {topTools.map((tool) => {
+                const cell = cellMap.get(`${agentId}::${tool}`);
+                const calls = cell?.calls ?? 0;
+                return (
+                  <Tooltip key={tool}>
+                    <TooltipTrigger asChild>
+                      <div
+                        className={cn(
+                          "aspect-square rounded-[2px]",
+                          heatmapLevelClass(calls, maxCalls),
+                        )}
+                      />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {t("orgs.overview.heatmapCellTooltip", {
+                        agent: agentNameOf(agentId),
+                        tool,
+                        calls,
+                        errors: cell?.errors ?? 0,
+                      })}
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </Fragment>
+          ))}
+        </div>
+      </div>
+    </TooltipProvider>
+  );
+}
+
 // ── Props ───────────────────────────────────────────────────────────────────
 
 interface MonitoringStatsProps {
@@ -274,6 +411,9 @@ export interface OverviewTabProps extends MonitoringStatsProps {
   streamingRefetchInterval: number;
   /** Member (user) IDs to scope AI usage by. Empty = all members. */
   llmUserIds?: string[];
+  /** Agent (Virtual MCP) IDs to scope the tool-call heatmap by. Empty = all agents. */
+  virtualMcpIds?: string[];
+  virtualMcps: ReturnType<typeof useVirtualMCPs>;
 }
 
 // ── Main overview tab ───────────────────────────────────────────────────────
@@ -288,6 +428,8 @@ export function OverviewTabContent({
   isStreaming,
   streamingRefetchInterval,
   llmUserIds,
+  virtualMcpIds,
+  virtualMcps,
 }: OverviewTabProps) {
   const t = useT();
   const interval = getIntervalFromRange(displayDateRange);
@@ -312,6 +454,15 @@ export function OverviewTabContent({
       startDate: displayDateRange.startDate.toISOString(),
       endDate: displayDateRange.endDate.toISOString(),
       userIds: llmUserIds?.length ? llmUserIds : undefined,
+    },
+    { refetchInterval },
+  );
+
+  const { data: heatmapStats } = useMonitoringHeatmap(
+    {
+      startDate: displayDateRange.startDate.toISOString(),
+      endDate: displayDateRange.endDate.toISOString(),
+      virtualMcpIds,
     },
     { refetchInterval },
   );
@@ -399,6 +550,19 @@ export function OverviewTabContent({
           connections={connections}
           mode="requests"
           total={stats.totalCalls}
+        />
+      </MonitoringMetricCard>
+
+      {/* Row 1b: Tool-call heatmap (tool × agent) — full width */}
+      <MonitoringMetricCard
+        title={t("orgs.overview.toolCallHeatmap")}
+        value={(heatmapStats?.cells ?? [])
+          .reduce((sum, cell) => sum + cell.calls, 0)
+          .toLocaleString()}
+      >
+        <ToolAgentHeatmap
+          cells={heatmapStats?.cells ?? []}
+          virtualMcps={virtualMcps}
         />
       </MonitoringMetricCard>
 

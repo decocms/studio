@@ -145,3 +145,46 @@ export function useMonitoringLlmStats(
     ...queryOptions,
   });
 }
+
+interface MonitoringHeatmapParams {
+  startDate: string;
+  endDate: string;
+  virtualMcpIds?: string[];
+}
+
+interface MonitoringHeatmapResult {
+  cells: Array<{
+    virtualMcpId: string | null;
+    toolName: string;
+    calls: number;
+    errors: number;
+  }>;
+}
+
+/** Tool-call volume per (agent, tool) pair, for the Overview heatmap card. */
+export function useMonitoringHeatmap(
+  params: MonitoringHeatmapParams,
+  queryOptions?: MonitoringQueryOptions,
+) {
+  const { org } = useProjectContext();
+  const studio = useStudioTools();
+
+  const toolArguments = {
+    ...params,
+    virtualMcpIds: params.virtualMcpIds?.length
+      ? params.virtualMcpIds
+      : undefined,
+  };
+
+  return useQuery<MonitoringHeatmapResult, Error>({
+    queryKey: KEYS.monitoringHeatmap(org.id, JSON.stringify(toolArguments)),
+    queryFn: async () =>
+      (await studio.call(
+        "MONITORING_HEATMAP",
+        toolArguments,
+      )) as MonitoringHeatmapResult,
+    staleTime: 30_000,
+    retry: false,
+    ...queryOptions,
+  });
+}

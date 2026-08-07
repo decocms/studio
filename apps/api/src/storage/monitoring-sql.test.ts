@@ -12,6 +12,10 @@ import type {
 } from "../monitoring/query-engine";
 import type { MetricRow } from "../monitoring/schema";
 import {
+  MONITORING_LOG_TYPE_VALUE,
+  MONITORING_LOG_TYPE_LLM_CALL,
+} from "../monitoring/schema";
+import {
   makeTestMonitoringRow,
   writeTestNDJSON,
   makeTestOtlpLogRecord,
@@ -1175,6 +1179,129 @@ describe.skipIf(!duckdbAvailable)(
         threadIds: [],
       });
       expect(rows).toEqual([]);
+    });
+  },
+);
+
+// ============================================================================
+// queryToolCallHeatmap — tool-call volume per (agent, tool)
+// ============================================================================
+
+describe.skipIf(!duckdbAvailable)(
+  "SqlMonitoringStorage.queryToolCallHeatmap",
+  () => {
+    let tmpDir: string;
+    let engine: DuckDBEngine;
+    let storage: SqlMonitoringStorage;
+
+    beforeAll(async () => {
+      tmpDir = await mkdtemp(join(tmpdir(), "monitoring-heatmap-test-"));
+      const dataDir = join(tmpDir, "2026", "03", "06", "12");
+      await mkdir(dataDir, { recursive: true });
+      engine = new DuckDBEngine();
+      const sourceFactory = (_orgId: string) =>
+        `read_ndjson('${dataDir}/*.ndjson', auto_detect=true)`;
+      storage = new SqlMonitoringStorage(
+        engine,
+        sourceFactory,
+        engine,
+        sourceFactory,
+        "duckdb",
+      );
+
+      const rows = [
+        makeTestMonitoringRow({
+          id: "hm_1",
+          type: MONITORING_LOG_TYPE_VALUE,
+          organization_id: "org_test",
+          virtual_mcp_id: "vmcp_1",
+          tool_name: "TOOL_A",
+          is_error: 0,
+        }),
+        makeTestMonitoringRow({
+          id: "hm_2",
+          type: MONITORING_LOG_TYPE_VALUE,
+          organization_id: "org_test",
+          virtual_mcp_id: "vmcp_1",
+          tool_name: "TOOL_A",
+          is_error: 1,
+        }),
+        makeTestMonitoringRow({
+          id: "hm_3",
+          type: MONITORING_LOG_TYPE_VALUE,
+          organization_id: "org_test",
+          virtual_mcp_id: null,
+          tool_name: "TOOL_B",
+          is_error: 0,
+        }),
+        // llm_call row reusing a "tool_name" that's actually a model id — must
+        // never leak into the heatmap, which only counts real tool calls.
+        makeTestMonitoringRow({
+          id: "hm_4",
+          type: MONITORING_LOG_TYPE_LLM_CALL,
+          organization_id: "org_test",
+          connection_id: "decopilot",
+          virtual_mcp_id: "vmcp_1",
+          tool_name: "claude-3-7-sonnet",
+          is_error: 0,
+        }),
+        // Different org — must never leak into org_test's heatmap.
+        makeTestMonitoringRow({
+          id: "hm_5",
+          type: MONITORING_LOG_TYPE_VALUE,
+          organization_id: "org_other",
+          virtual_mcp_id: "vmcp_1",
+          tool_name: "TOOL_A",
+          is_error: 0,
+        }),
+      ];
+      await writeTestNDJSON(dataDir, rows);
+    });
+
+    afterAll(async () => {
+      await rm(tmpDir, { recursive: true, force: true });
+    });
+
+    test("groups tool calls by (agent, tool), excluding llm_call rows and other orgs", async () => {
+      const { cells } = await storage.queryToolCallHeatmap({
+        organizationId: "org_test",
+      });
+
+      expect(cells).toHaveLength(2);
+
+      const a = cells.find((c) => c.toolName === "TOOL_A");
+      expect(a).toEqual(
+        expect.objectContaining({
+          virtualMcpId: "vmcp_1",
+          toolName: "TOOL_A",
+          calls: 2,
+          errors: 1,
+        }),
+      );
+
+      const b = cells.find((c) => c.toolName === "TOOL_B");
+      expect(b).toEqual(
+        expect.objectContaining({
+          virtualMcpId: null,
+          toolName: "TOOL_B",
+          calls: 1,
+          errors: 0,
+        }),
+      );
+
+      expect(cells.some((c) => c.toolName === "claude-3-7-sonnet")).toBe(
+        false,
+      );
+    });
+
+    test("filters by virtualMcpIds", async () => {
+      const { cells } = await storage.queryToolCallHeatmap({
+        organizationId: "org_test",
+        filters: { virtualMcpIds: ["vmcp_1"] },
+      });
+
+      expect(cells).toHaveLength(1);
+      expect(cells[0]?.toolName).toBe("TOOL_A");
     });
   },
 );
