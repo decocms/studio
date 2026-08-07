@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { alignSections } from "./section-alignment";
 
 export const CmsEditorPayloadSchema = z.object({
   sectionIndex: z.number(),
@@ -95,44 +96,20 @@ export const CMS_EDITOR_SCRIPT = `(function() {
   // wrapper at top level while TanStack renders the inner section directly.
   var sectionCandidates = [];
 
-  // Best in-order assignment of editable sections to DOM sections, maximizing
-  // key matches (DP / LCS-style). deco injects framework sections (SEO, Theme,
-  // Session, …) that may lead, trail, OR interleave with the editable run; this
-  // skips whichever don't match, on any runtime — no hardcoded list. Hidden
-  // sections (null candidates) have no DOM node: only visible entries are
-  // aligned, then scattered back to their decofile positions (null-filled), so
-  // returned indexes still match the decofile array.
+  // Shared with the editor (and unit-tested there) by stringifying the module's
+  // pure implementation into this script — one source of truth for an algorithm
+  // whose off-by-one failures are invisible until someone edits the wrong
+  // component. See section-alignment.ts for why both sides are skippable.
+  var alignSections = ${alignSections.toString()};
+
+  // Editable sections mapped onto their DOM nodes, positionally matching the
+  // decofile array. Entries with no rendered node (deferred, streaming, hidden)
+  // stay null and simply aren't hoverable or clickable.
   var computeAlignment = function(tops) {
-    var visible = [], k;
-    for (k = 0; k < sectionCandidates.length; k++) {
-      if (sectionCandidates[k] !== null) visible.push(k);
-    }
-    var N = visible.length, M = tops.length;
-    var res = new Array(sectionCandidates.length).fill(null);
-    if (!N) return res;
-    if (M < N) return tops.slice();
     var domKeys = tops.map(function(s) { return s.getAttribute("data-manifest-key"); });
-    var match = function(i, j) {
-      var c = sectionCandidates[visible[i]];
-      if (!c || !c.length) return 1;
-      return c.indexOf(domKeys[j]) >= 0 ? 1 : 0;
-    };
-    var dp = [], bt = [], i, j;
-    for (i = 0; i <= N; i++) { dp.push(new Array(M + 1).fill(0)); bt.push(new Array(M + 1).fill(0)); }
-    for (i = 1; i <= N; i++) {
-      for (j = i; j <= M; j++) {
-        var assign = dp[i - 1][j - 1] + match(i - 1, j - 1);
-        var skip = dp[i][j - 1];
-        if (j - 1 >= i && skip >= assign) { dp[i][j] = skip; bt[i][j] = 0; }
-        else { dp[i][j] = assign; bt[i][j] = 1; }
-      }
-    }
-    i = N; j = M;
-    while (i > 0) {
-      if (bt[i][j] === 1) { res[visible[i - 1]] = tops[j - 1]; i--; j--; }
-      else { j--; }
-    }
-    return res;
+    return alignSections(sectionCandidates, domKeys).map(function(idx) {
+      return idx === null ? null : tops[idx];
+    });
   };
 
   // Editable sections, indexed to match the decofile array the panel uses.
@@ -163,10 +140,18 @@ export const CMS_EDITOR_SCRIPT = `(function() {
   // Lazy sections async-render their real section inside a wrapper, so the
   // wrapper's key is just the loader. Show the inner section's key instead
   // (falling back to the wrapper while the content hasn't loaded yet).
-  var LAZY_KEY = "website/sections/Rendering/Lazy.tsx";
+  // Suffix match, mirroring isLazyResolveType: the key can be namespaced by the
+  // app that re-exports it, and SingleDeferred wraps the same way.
+  var LAZY_KEYS = [
+    "website/sections/Rendering/Lazy.tsx",
+    "website/sections/Rendering/SingleDeferred.tsx"
+  ];
+  var isLazyKey = function(key) {
+    return LAZY_KEYS.some(function(s) { return key.endsWith(s); });
+  };
   var displayKey = function(section) {
     var key = section.getAttribute("data-manifest-key") || "section";
-    if (key === LAZY_KEY) {
+    if (isLazyKey(key)) {
       var inner = section.querySelector("section[data-manifest-key]");
       if (inner) return inner.getAttribute("data-manifest-key") || key;
     }
