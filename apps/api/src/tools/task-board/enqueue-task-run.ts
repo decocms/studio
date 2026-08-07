@@ -1,4 +1,8 @@
 import { taskRunMetadata } from "../../billing/subsidized-runs";
+import {
+  RUN_CLASS_METADATA_KEY,
+  type RunClass,
+} from "@/dispatch-queue/run-priority";
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
 import { resolveTier } from "@/core/resolve-tier";
@@ -47,6 +51,8 @@ export async function enqueueAgentRunForTask(
      * default, and opens a SECOND pull request for the same task.
      */
     pinnedRef?: string | null;
+    /** Admission class for this run. See `dispatch-queue/run-priority.ts`. */
+    runClass?: RunClass;
   },
 ): Promise<{ threadId: string }> {
   const organizationId = task.organizationId;
@@ -163,7 +169,14 @@ export async function enqueueAgentRunForTask(
       taskId: thread.id,
       // Reports tasks carry the subscription-billing stamp: their AI usage
       // is included in the org subscription (billing/subsidized-runs.ts).
-      runMetadata: taskRunMetadata(task),
+      // `runClass` orders admission when the pod is at its cap — a reviewer or
+      // a retry outranks a brand-new task (see dispatch-queue/run-priority.ts).
+      // A free-form metadata string, so it changes no schema and no DBOS step
+      // I/O. Defaults to a new task: the class that nothing is waiting on.
+      runMetadata: {
+        ...taskRunMetadata(task),
+        [RUN_CLASS_METADATA_KEY]: opts.runClass ?? "new_task",
+      },
     },
   });
 

@@ -269,7 +269,9 @@ export class TaskBoardReviewSweeper {
           item.assignedBy ?? item.createdBy,
         );
         if (!ctx) continue;
-        await enqueueSuperAgentForTask(ctx, item);
+        // A retry is work that already failed once and has a budget — it
+        // outranks a brand-new task for the next slot.
+        await enqueueSuperAgentForTask(ctx, item, { runClass: "retry" });
         count++;
         console.warn(
           `[task-board-review-sweeper] re-dispatched ${id} after a failure ` +

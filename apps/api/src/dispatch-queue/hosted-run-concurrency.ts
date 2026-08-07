@@ -121,7 +121,11 @@ export const HOSTED_RUN_CAPS: { inProcess: number; sandboxed: number } = {
  * `hosted-harness-workflow.ts`'s `runHostedHarness`).
  */
 export const acquireHostedRunSlot = (
-  args: { harnessId: string | null | undefined },
+  args: {
+    harnessId: string | null | undefined;
+    /** See `runPriority` — lower goes first. Omit for FIFO. */
+    priority?: number;
+  },
   onPark?: () => void,
 ): Promise<() => void> => {
   // Which budget this run spends: its own sandbox pod's, or this pod's memory.
@@ -136,8 +140,9 @@ export const acquireHostedRunSlot = (
       pending: chosen.pending,
       max,
       sandboxed,
+      priority: args.priority ?? 0,
     });
     onPark?.();
   }
-  return chosen.acquire();
+  return chosen.acquire(args.priority);
 };

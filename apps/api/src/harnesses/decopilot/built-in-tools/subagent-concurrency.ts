@@ -21,8 +21,13 @@ export interface ConcurrencyGate {
   /**
    * Acquire a slot, waiting if at capacity. Returns a release function; call it
    * exactly once (idempotent) when the work is done, including on error/abort.
+   *
+   * `priority` orders the WAITERS only (lower goes first, ties keep arrival
+   * order) — it never preempts a slot already held, so a low-priority run that
+   * started is never killed to make room. Omit for FIFO, which is what every
+   * caller that doesn't care gets.
    */
-  acquire(): Promise<() => void>;
+  acquire(priority?: number): Promise<() => void>;
   /** Slots currently held (testing/observability). */
   readonly active: number;
   /** Callers waiting for a slot (testing/observability). */
@@ -36,16 +41,28 @@ export function createConcurrencyGate(max: number): ConcurrencyGate {
   // of the intended cap.
   const limit = Number.isFinite(max) ? Math.max(1, max) : 1;
   let active = 0;
-  const waiters: Array<() => void> = [];
+  // Sorted by (priority, arrival). A plain array + insertion scan, not a heap:
+  // the queue is bounded by how many runs one pod can have in flight (tens), so
+  // an O(n) insert is free and a heap would be code to maintain for nothing.
+  let arrivals = 0;
+  const waiters: Array<{ priority: number; seq: number; wake: () => void }> =
+    [];
 
   return {
-    async acquire() {
+    async acquire(priority = 0) {
       if (active < limit) {
         active++;
       } else {
         // Parked: the eventual release() hands this slot off directly
         // (active is never decremented for it), so no increment here either.
-        await new Promise<void>((resolve) => waiters.push(resolve));
+        await new Promise<void>((wake) => {
+          const entry = { priority, seq: arrivals++, wake };
+          // Last index whose priority is <= ours — insert after it, so equal
+          // priorities stay FIFO.
+          let i = waiters.length;
+          while (i > 0 && waiters[i - 1]!.priority > priority) i--;
+          waiters.splice(i, 0, entry);
+        });
       }
 
       let released = false;
@@ -54,7 +71,7 @@ export function createConcurrencyGate(max: number): ConcurrencyGate {
         released = true;
         const next = waiters.shift();
         if (next) {
-          next();
+          next.wake();
         } else {
           active--;
         }

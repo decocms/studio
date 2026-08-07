@@ -2207,6 +2207,13 @@ export async function createApp(options: CreateAppOptions = {}) {
     await DBOS.registerQueue(THREAD_GATE_QUEUE, {
       partitionQueue: true,
       concurrency: THREAD_GATE_PARTITION_CONCURRENCY,
+      // Let an enqueue state its class (`enqueueOptions.priority`, lower first
+      // — see dispatch-queue/run-priority.ts). Scoped honestly: partitions are
+      // per-thread with concurrency 1, so this orders MESSAGES QUEUED ON THE
+      // SAME THREAD, not one thread against another. Cross-run ordering is the
+      // pod's admission gate (hosted-run-concurrency.ts), because DBOS has no
+      // global cap on a partitioned queue to order against.
+      priorityEnabled: true,
     });
     // Hosted-harness child workflow queue. Partition key = threadId, concurrency 1
     // (mirrors THREAD_GATE_QUEUE: one active run per thread, different threads
@@ -2214,6 +2221,8 @@ export async function createApp(options: CreateAppOptions = {}) {
     await DBOS.registerQueue(HOSTED_HARNESS_QUEUE, {
       partitionQueue: true,
       concurrency: HOSTED_HARNESS_PARTITION_CONCURRENCY,
+      // Same scope caveat as the gate queue above.
+      priorityEnabled: true,
     });
     // Slow backgroundable built-ins (generate_image) run here, partitioned by
     // orgId for per-org fairness. The reaction turn hops to the thread-gate.

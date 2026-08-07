@@ -22,6 +22,7 @@ import {
   type SandboxProviderKind,
   type Workload,
 } from "@decocms/sandbox/provider";
+import { sleep } from "@decocms/shared/std";
 import { defineTool } from "../../core/define-tool";
 import {
   getUserId,
@@ -577,6 +578,16 @@ async function provisionSandbox(
     }
   }
 
+  // Ask before claiming: a sandbox the cluster cannot place sits `Pending`
+  // (`FailedScheduling: Insufficient memory`) until the 180s readiness timeout
+  // fails the run. On a node with room for 4, an 8-card auto-fix produced 4
+  // failures that way, and each retry re-entered the same full node. Waiting
+  // here turns over-admission into a queue. Bounded well under the readiness
+  // timeout this call already tolerates, so it adds no new liveness risk; past
+  // the bound the error is phrased for the task-board retry to recognize as
+  // infrastructure. No-op for a provider that can't answer.
+  await waitForSchedulableCapacity(runner);
+
   const sandbox = await runner.ensure(
     { userId: sandboxUserId, projectRef },
     {
@@ -699,4 +710,49 @@ async function persistDetectedRuntime(
       runtime: { selected: packageManager, port: devPort },
     } as VirtualMCPUpdateData["metadata"],
   });
+}
+
+/** How long `ensureSandbox` waits for the cluster to have room. Deliberately
+ *  under `waitForSandboxReady`'s own 180s: this call's callers already tolerate
+ *  that much, so staying inside it means the wait can't trip a liveness window
+ *  that the readiness wait wouldn't have tripped anyway. A cluster still full
+ *  after this needs nodes, not patience — the run fails and the task-board
+ *  retry re-dispatches it with backoff. */
+const CAPACITY_WAIT_MS = 150_000;
+/** Re-ask this often. The provider caches its answer (3s), so this is the poll
+ *  rate that matters. */
+const CAPACITY_POLL_MS = 5_000;
+
+/**
+ * Park until the provider says another sandbox can actually be scheduled.
+ *
+ * The signal is the scheduler's own verdict on pods it already refused to place
+ * (see `capacity.ts`), so it is lagging by one admission: the first
+ * over-subscribed claim is still made, and it is what makes this false for
+ * everyone behind it. That is the trade — one run pays the readiness timeout
+ * instead of every run in the burst.
+ */
+async function waitForSchedulableCapacity(
+  runner: SandboxProvider,
+): Promise<void> {
+  if (!runner.hasSchedulableCapacity) return;
+  const deadline = Date.now() + CAPACITY_WAIT_MS;
+  let logged = false;
+  while (!(await runner.hasSchedulableCapacity())) {
+    if (Date.now() >= deadline) {
+      // Phrased so the task-board's `isTransientRunFailure` recognizes it: this
+      // is capacity, not the task's fault, so the card must be retried.
+      throw new Error(
+        "sandbox provisioning failed: the cluster has had no room to schedule " +
+          `another sandbox for ${Math.round(CAPACITY_WAIT_MS / 1000)}s`,
+      );
+    }
+    if (!logged) {
+      logged = true;
+      console.warn(
+        "[ensureSandbox] waiting for cluster capacity — a sandbox pod cannot be scheduled right now",
+      );
+    }
+    await sleep(CAPACITY_POLL_MS);
+  }
 }

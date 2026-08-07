@@ -27,6 +27,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import * as net from "node:net";
 import { PassThrough } from "node:stream";
 import { sleep } from "@decocms/shared/std";
+import { createCapacityProbe } from "./capacity";
 import {
   type KubeConfig,
   KubeConfig as KubeConfigClass,
@@ -451,6 +452,8 @@ export class AgentSandboxProvider implements SandboxProvider {
   private readonly stateStore: RunnerStateStore | null;
   private readonly previewUrlPattern: string | null;
   private readonly kubeConfig: KubeConfig;
+  /** Lazily built so a provider instance that never admits a run pays nothing. */
+  private capacityProbe?: () => Promise<boolean>;
   private readonly portForward: PortForward;
   private readonly namespace: string;
   private readonly sandboxTemplateName: string;
@@ -644,6 +647,18 @@ export class AgentSandboxProvider implements SandboxProvider {
       claimName: handle,
       signal,
     });
+  }
+
+  /**
+   * Can the cluster place another sandbox right now? See `capacity.ts` — the
+   * answer is "nothing is currently unschedulable", read from the scheduler's
+   * own verdict rather than forecast from node capacity. The admission gate
+   * parks on `false` instead of claiming a sandbox that would sit `Pending`
+   * until the 180s readiness timeout fails the run.
+   */
+  hasSchedulableCapacity(): Promise<boolean> {
+    this.capacityProbe ??= createCapacityProbe(this.kubeConfig, this.namespace);
+    return this.capacityProbe();
   }
 
   async getPreviewUrl(handle: string): Promise<string | null> {

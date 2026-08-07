@@ -214,6 +214,26 @@ export interface SandboxProvider {
    */
   forgetHandle?(handle: string): Promise<void>;
 
+  /**
+   * Can the backing infrastructure schedule another sandbox right now?
+   *
+   * `false` means "do not ask for one yet" — the caller parks instead of
+   * claiming a sandbox that cannot be placed. Without it, over-admission is only
+   * discovered by waiting out `waitForSandboxReady` (180s) and failing the run,
+   * which is how one over-subscribed node turned an 8-card auto-fix into 4
+   * failed tasks: their pods sat `Pending` with
+   * `FailedScheduling: Insufficient memory`, and Studio's only limit was a fixed
+   * per-pod number that cannot see a cluster.
+   *
+   * `true` is not a reservation, just "nothing is currently unplaceable". A race
+   * between two admissions is fine: the loser fails and is retried, which is the
+   * pre-existing behavior.
+   *
+   * Optional: a provider that cannot answer omits it and callers admit
+   * immediately, preserving today's behavior exactly.
+   */
+  hasSchedulableCapacity?(): Promise<boolean>;
+
   /** Null when no workload was requested or the sandbox isn't running. */
   getPreviewUrl(handle: string): Promise<string | null>;
 

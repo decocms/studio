@@ -86,6 +86,7 @@ import type { StudioContext } from "@/core/studio-context";
 export { HOSTED_HARNESS_QUEUE } from "./queue-names";
 import { HOSTED_HARNESS_QUEUE } from "./queue-names";
 import { acquireHostedRunSlot } from "./hosted-run-concurrency";
+import { runPriority } from "./run-priority";
 import {
   advanceTaskBoardForRun,
   reopenTasksOnThreadRun,
@@ -231,7 +232,13 @@ export async function runHostedHarness(
     emit: () => publishWaitingCapacity(rt, input),
   });
   const releaseSlot = await acquireHostedRunSlot(
-    { harnessId: request.harnessId },
+    // Finish before you start: a reviewer or a retry outranks a brand-new task
+    // for the next slot (see run-priority.ts). Ordering only — a run already
+    // holding a slot is never preempted.
+    {
+      harnessId: request.harnessId,
+      priority: runPriority(request.runMetadata),
+    },
     () => {
       parked = true;
       void publishWaitingCapacity(rt, input);
