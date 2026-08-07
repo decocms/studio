@@ -257,6 +257,7 @@ export async function createLoadRepoTool(opts: {
         virtualMcpId,
         branch,
         userId,
+        threadId,
       });
       const deadline = Date.now() + CLONE_TIMEOUT_MS;
       let listing = "";

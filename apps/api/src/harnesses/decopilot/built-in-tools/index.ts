@@ -241,6 +241,7 @@ async function buildAllTools(
       branch: vmContext.branch,
       userId: vmContext.userId,
       syncTools: vmContext.syncTools,
+      threadId: vmContext.threadId,
     });
     // The VM tools are built once and close over the fs. `load_repo` switches
     // the thread's repo mid-run onto a new sandbox branch — so the tools call
@@ -279,6 +280,7 @@ async function buildAllTools(
             branch,
             userId: vmContext.userId,
             syncTools: vmContext.syncTools,
+            threadId: vmContext.threadId,
           }),
         );
       },
