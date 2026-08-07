@@ -222,4 +222,48 @@ describe("daemon e2e: a second dev server is never spawned", () => {
     },
     SETUP_TIMEOUT_MS,
   );
+
+  it(
+    "a same-commit branch change keeps the running dev server",
+    async () => {
+      // The claim that binds a warm pool pod arrives as branch-change onto a
+      // thread branch cut from the commit the pool warmed: the checkout leaves
+      // the tree byte-identical. Restarting dev there rebuilds a framework that
+      // was already serving — the pod stops being warm at the exact moment
+      // someone asks for it.
+      expect(
+        (
+          await bootstrapRepo(d, repo.url, {
+            application: { packageManager: { name: "npm" } },
+            env: { npm_config_offline: "true" },
+          })
+        ).status,
+      ).toBe(200);
+      await waitForOrchestratorIdle(d, SETUP_TIMEOUT_MS);
+
+      const dev = async () =>
+        (await (
+          await fetch(url(d, "/_sandbox/exec/dev"), {
+            method: "POST",
+            headers: jsonAuthHeaders(),
+            body: "{}",
+          })
+        ).json()) as { taskId: string; alreadyRunning?: boolean };
+      const warm = await dev();
+      expect(warm.alreadyRunning).toBe(true);
+
+      const res = await postConfig(d, {
+        git: { repository: { cloneUrl: repo.url, branch: "thread-x" } },
+      });
+      expect(((await res.json()) as { transition: string }).transition).toBe(
+        "branch-change",
+      );
+      await waitForOrchestratorIdle(d, SETUP_TIMEOUT_MS);
+
+      const afterClaim = await dev();
+      expect(afterClaim.alreadyRunning).toBe(true);
+      expect(afterClaim.taskId).toBe(warm.taskId);
+    },
+    SETUP_TIMEOUT_MS,
+  );
 });
