@@ -80,6 +80,25 @@ export function domainDisplayName(domain: string): string {
   return name || "Workspace";
 }
 
+/**
+ * Derives a human display name from an email local-part, e.g.
+ * `stephanie.moraes@montecarlo.com.br` -> "Stephanie Moraes".
+ *
+ * Used to backfill `user.name` at signup for flows that never collect one
+ * (email OTP, magic link, email/password), so invited members don't render
+ * as "Unknown". Returns "" when nothing usable can be derived, so callers
+ * can fall back to leaving the name empty.
+ */
+export function displayNameFromEmail(email: string): string {
+  const [localPart = ""] = email.trim().split("@");
+
+  return localPart
+    .split(/[^a-zA-Z0-9]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 export function defaultOrgNameForUser(user: EmailUserLike): string {
   const firstName = user.name?.trim().split(/\s+/)[0];
 

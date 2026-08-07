@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   defaultOrgNameForUser,
+  displayNameFromEmail,
   domainDisplayName,
   domainToOrgSlug,
   emailDomainOf,
@@ -54,6 +55,21 @@ describe("org assurance policy", () => {
         emailVerified: false,
       }),
     ).toBe(false);
+  });
+
+  test("derives display names from email local-parts", () => {
+    expect(displayNameFromEmail("ada.lovelace@example.com")).toBe(
+      "Ada Lovelace",
+    );
+    expect(displayNameFromEmail("grace_hopper+studio@example.com")).toBe(
+      "Grace Hopper Studio",
+    );
+    expect(displayNameFromEmail("ALAN@example.com")).toBe("ALAN");
+    expect(displayNameFromEmail("  katherine.johnson@example.com  ")).toBe(
+      "Katherine Johnson",
+    );
+    expect(displayNameFromEmail("@example.com")).toBe("");
+    expect(displayNameFromEmail("")).toBe("");
   });
 
   test("uses name first for generic default org names", () => {
