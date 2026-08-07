@@ -199,6 +199,35 @@ func TestClaimTakesOverAnInFlightRun(t *testing.T) {
 	}
 }
 
+// Who owns the run decides whose cancel counts. A displaced attempt's
+// cancellation is not the RUN's outcome — the successor's is — so the displaced
+// handler must be able to tell the two apart and stay silent. Writing a
+// "cancelled" terminal from the loser is what settled a live thread as
+// `Error: cancelled: run cancelled` in prod on 2026-08-07.
+func TestDisplacedReportsOnlyTheLoserOfATakeover(t *testing.T) {
+	reg := NewRegistry()
+	first, _ := reg.claim("run-1", func() {})
+	if reg.displaced("run-1", first) {
+		t.Fatal("the only claimant must not report as displaced")
+	}
+
+	second, _ := reg.claim("run-1", func() {})
+	if !reg.displaced("run-1", first) {
+		t.Fatal("the run that lost the claim must report as displaced")
+	}
+	if reg.displaced("run-1", second) {
+		t.Fatal("the run that HOLDS the claim must not report as displaced")
+	}
+
+	// A cancel with nothing replacing the run (client hangup, DELETE) is the
+	// run's real outcome, so it must still write its terminal.
+	reg.release("run-1", second)
+	solo, _ := reg.claim("run-2", func() {})
+	if reg.displaced("run-2", solo) {
+		t.Fatal("an uncontested run must not report as displaced")
+	}
+}
+
 // The takeover wait is bounded: a displaced run whose process refuses to die
 // must not wedge the thread forever.
 func TestClaimTakeoverGivesUpAfterTheTimeout(t *testing.T) {
