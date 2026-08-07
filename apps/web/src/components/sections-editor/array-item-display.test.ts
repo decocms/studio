@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  getArrayItemDisplayLabels,
   getArrayItemImageSrc,
   getArrayItemLabel,
   getArrayItemLabels,
@@ -195,6 +196,30 @@ describe("getArrayItemLabels (batch disambiguation)", () => {
     };
     const items = [{ title: "Alpha" }, { title: "Beta" }];
     expect(getArrayItemLabels(items, schema)).toEqual(["Alpha", "Beta"]);
+  });
+});
+
+describe("getArrayItemDisplayLabels (no positional suffix)", () => {
+  const schema: SchemaProperty = {
+    type: "object",
+    properties: { name: { type: "string" } },
+  };
+
+  test("keeps colliding base labels un-suffixed (display only)", () => {
+    const items = [
+      { name: "Cozinha – Festival da CASA" },
+      { name: "Cozinha – Festival da CASA" },
+    ];
+    // getArrayItemLabels would return "... 1"/"... 2"; the display variant must not.
+    expect(getArrayItemDisplayLabels(items, schema)).toEqual([
+      "Cozinha – Festival da CASA",
+      "Cozinha – Festival da CASA",
+    ]);
+  });
+
+  test("still resolves distinct base labels", () => {
+    const items = [{ name: "Alpha" }, { name: "Beta" }];
+    expect(getArrayItemDisplayLabels(items, schema)).toEqual(["Alpha", "Beta"]);
   });
 });
 
