@@ -25,6 +25,9 @@ metadata:
     studio.decocms.com/tenant-pool: {{ .name }}
 spec:
   replicas: {{ .size }}
+  # Same reasoning as the generic pool — see sandbox-warm-pool.yaml.
+  updateStrategy:
+    type: OnReplenish
   sandboxTemplateRef:
     name: {{ include "sandbox-env.sandboxName" $ }}
 {{- end }}
