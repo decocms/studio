@@ -231,6 +231,41 @@ export function buildOptions(args: {
 }
 
 /**
+ * Studio's MCP servers this session will never get tools from, as
+ * `name=status` — or `null` when the session can act on Studio.
+ *
+ * Keys off the server STATUS, not the tool count: an http MCP server connects
+ * asynchronously, so `pending` with zero `mcp__` tools at init is the normal
+ * case, not a misconfiguration. Exported for the unit test.
+ */
+export function brokenStudioMcp(
+  servers: { name: string; status: string }[],
+  mcpUrl: string,
+): string | null {
+  if (!mcpUrl) return null;
+  const broken = servers.filter((server) =>
+    ["failed", "needs-auth", "disabled"].includes(server.status),
+  );
+  if (broken.length === 0) return null;
+  return broken.map((server) => `${server.name}=${server.status}`).join(" ");
+}
+
+/**
+ * Attempts at reaching Studio's MCP before a run gives up, and the base of the
+ * backoff between them (2s, 4s, 8s, 16s — ~30s in all).
+ *
+ * What this waits out is Studio being momentarily unreachable: a rolling
+ * restart, a saturated pod, a moment with no free DB connection. That is over
+ * in seconds and has nothing to do with the task, so surfacing it as a failed
+ * run — which is what used to happen — put an infrastructure hiccup in front of
+ * the user. A retry costs one SDK session start; the session has produced
+ * nothing at that point (the preflight reads `system/init`, the first message
+ * of all), so restarting it loses nothing.
+ */
+const MCP_ATTEMPTS = 5;
+const MCP_BACKOFF_BASE_MS = 2_000;
+
+/**
  * Run one turn, emitting its chunks as the SDK produces them. An SDK throw
  * becomes a final `error` frame after whatever the turn had already emitted, so
  * a crash mid-turn still shows the work instead of an empty message.
@@ -266,6 +301,34 @@ export async function runClaudeCode(
   };
 
   try {
+    for (let attempt = 1; ; attempt++) {
+      const broken = await attemptTurn();
+      if (!broken) return;
+      if (attempt >= MCP_ATTEMPTS) {
+        fail(
+          `studio MCP is unusable (${input.mcp.url}): ${broken}. The harness ` +
+            `cannot act on Studio; refusing to run rather than return a result ` +
+            `that changed nothing.`,
+        );
+        return;
+      }
+      const waitMs = MCP_BACKOFF_BASE_MS * 2 ** (attempt - 1);
+      console.error(
+        `[claude-code] mcp unusable (${broken}) — retrying in ${waitMs}ms ` +
+          `(attempt ${attempt}/${MCP_ATTEMPTS})`,
+      );
+      await Bun.sleep(waitMs);
+    }
+  } catch (err) {
+    fail(err instanceof Error ? err.message : String(err));
+  }
+
+  /**
+   * One SDK session. Returns the broken-MCP description when the preflight
+   * found Studio unreachable — the one outcome worth starting over for — and
+   * `null` once the turn has been reported, however it ended.
+   */
+  async function attemptTurn(): Promise<string | null> {
     const stream = query({
       prompt: promptForRun(input),
       options: buildOptions({ input, sessionId, resume: stored.length > 0 }),
@@ -306,21 +369,9 @@ export async function runClaudeCode(
         );
         // A run that cannot reach Studio (no board update, no state change)
         // still produces a confident-looking answer — the failure that reads as
-        // success. Fail on it. Key off the server STATUS, not the tool count:
-        // an http MCP server connects asynchronously, so `pending` with zero
-        // mcp__ tools at init is the normal case, not a misconfiguration.
-        const broken = message.mcp_servers.filter((server) =>
-          ["failed", "needs-auth", "disabled"].includes(server.status),
-        );
-        if (input.mcp.url && broken.length > 0) {
-          fail(
-            `studio MCP is unusable (${input.mcp.url}): ${broken
-              .map((server) => `${server.name}=${server.status}`)
-              .join(" ")}. The harness cannot act on Studio; refusing to run ` +
-              `rather than return a result that changed nothing.`,
-          );
-          return;
-        }
+        // success. Never run in that state; the caller retries instead.
+        const broken = brokenStudioMcp(message.mcp_servers, input.mcp.url);
+        if (broken) return broken;
       }
       // First Anthropic message id of the turn becomes Studio's assistant
       // message id: stable if the same turn is delivered twice.
@@ -355,11 +406,10 @@ export async function runClaudeCode(
           ),
         ],
       });
-      return;
+      return null;
     }
     fail("claude-code ended without a result");
-  } catch (err) {
-    fail(err instanceof Error ? err.message : String(err));
+    return null;
   }
 
   /** Close whatever the turn had emitted, then report what ended it. */

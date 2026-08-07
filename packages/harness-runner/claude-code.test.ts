@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { HarnessStreamInputWire } from "@decocms/sandbox/dispatch/schemas";
 import {
+  brokenStudioMcp,
   buildOptions,
   promptForRun,
   promptFromUserMessage,
@@ -103,6 +104,40 @@ describe("promptForRun", () => {
     expect(prompt).toContain("the studio pod restarted");
     expect(prompt).toContain("<branch>");
     expect(prompt).not.toContain("undefined");
+  });
+});
+
+describe("brokenStudioMcp", () => {
+  const url = "https://studio.example/mcp";
+
+  test("a connected server is usable", () => {
+    expect(
+      brokenStudioMcp([{ name: "studio", status: "connected" }], url),
+    ).toBe(null);
+  });
+
+  test("pending is not broken — http servers connect asynchronously", () => {
+    expect(brokenStudioMcp([{ name: "studio", status: "pending" }], url)).toBe(
+      null,
+    );
+  });
+
+  test("reports every unusable server so the retry log says which", () => {
+    expect(
+      brokenStudioMcp(
+        [
+          { name: "studio", status: "failed" },
+          { name: "other", status: "needs-auth" },
+        ],
+        url,
+      ),
+    ).toBe("studio=failed other=needs-auth");
+  });
+
+  test("no MCP configured means nothing to wait for", () => {
+    expect(brokenStudioMcp([{ name: "studio", status: "failed" }], "")).toBe(
+      null,
+    );
   });
 });
 
