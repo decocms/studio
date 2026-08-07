@@ -15,7 +15,9 @@ import {
   bootstrapRepo,
   type Daemon,
   HOOK_TIMEOUT_MS,
+  freePort,
   postConfig,
+  readSseUntil,
   setupBareRepo,
   startDaemon,
   stopDaemon,
@@ -263,6 +265,84 @@ describe("daemon e2e: a second dev server is never spawned", () => {
       const afterClaim = await dev();
       expect(afterClaim.alreadyRunning).toBe(true);
       expect(afterClaim.taskId).toBe(warm.taskId);
+    },
+    SETUP_TIMEOUT_MS,
+  );
+});
+
+describe("daemon e2e: a claim onto a serving pod keeps reporting running", () => {
+  let d: Daemon;
+  let repo: BareRepo;
+  let devPort: number;
+  beforeEach(async () => {
+    devPort = await freePort();
+    // A dev script that actually serves, so the daemon reaches `running` —
+    // that is the state a warm pool pod is in when a claim arrives.
+    repo = setupBareRepo({
+      withPackageJson: true,
+      scripts: {
+        dev: `node -e "require('http').createServer((_q,s)=>{s.setHeader('content-type','text/html');s.end('<html>ok</html>')}).listen(process.env.PORT||3000)"`,
+      },
+    });
+    d = await startDaemon();
+  }, HOOK_TIMEOUT_MS);
+  afterEach(async () => {
+    await stopDaemon(d);
+    repo.cleanup();
+  }, HOOK_TIMEOUT_MS);
+
+  const lifecyclePhase = async (): Promise<string> => {
+    // /_sandbox/events replays the current lifecycle state as its first frame.
+    const { text } = await readSseUntil(url(d, "/_sandbox/events"), {
+      headers: authHeaders(),
+      predicate: (acc) => acc.includes("event: lifecycle"),
+    });
+    return (
+      (
+        JSON.parse(
+          /event: lifecycle\ndata: (.*)\n/.exec(text)?.[1] ?? "{}",
+        ) as { state?: { phase?: string } }
+      ).state?.phase ?? ""
+    );
+  };
+
+  /** Poll until the prober has confirmed the server (bounded). */
+  const waitForRunning = async (): Promise<void> => {
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline) {
+      if ((await lifecyclePhase()) === "running") return;
+    }
+    throw new Error("lifecycle never reached running");
+  };
+
+  it(
+    "reports running immediately, not starting, when the checkout spared the dev server",
+    async () => {
+      // `starting` is a lie when the process behind the port never stopped, and
+      // Studio holds a full-canvas booting overlay over a live preview until the
+      // prober re-confirms the server — 13-26s measured on a warm pool pod.
+      expect(
+        (
+          await bootstrapRepo(d, repo.url, {
+            application: { packageManager: { name: "npm" }, port: devPort },
+            env: { npm_config_offline: "true" },
+          })
+        ).status,
+      ).toBe(200);
+      await waitForOrchestratorIdle(d, SETUP_TIMEOUT_MS);
+      await waitForRunning();
+
+      const res = await postConfig(d, {
+        git: { repository: { cloneUrl: repo.url, branch: "thread-x" } },
+      });
+      expect(((await res.json()) as { transition: string }).transition).toBe(
+        "branch-change",
+      );
+      await waitForOrchestratorIdle(d, SETUP_TIMEOUT_MS);
+
+      // No sleep: the point is that this is true the moment the checkout ends,
+      // without waiting on the prober.
+      expect(await lifecyclePhase()).toBe("running");
     },
     SETUP_TIMEOUT_MS,
   );

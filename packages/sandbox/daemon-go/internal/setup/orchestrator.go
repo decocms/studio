@@ -62,6 +62,9 @@ type Orchestrator struct {
 	// PublishPendingGolden() once the dev server is confirmed healthy. Nil when
 	// the boot restored an existing golden (nothing new to publish).
 	pendingGolden *GoldenParams
+	// The `running` state a checkout interrupted, restored by stepStartInner
+	// when the dev server turns out never to have stopped. Zero otherwise.
+	interruptedRunning events.LifecycleState
 }
 
 func NewOrchestrator(deps OrchestratorDeps) *Orchestrator {
@@ -329,6 +332,7 @@ func (o *Orchestrator) stepCloneInner() bool {
 	} else if cloneUrl != "" {
 		branch := cfg.Branch()
 		if branch != "" && !config.IsSyntheticBranch(branch) {
+			o.noteInterruptedRunning()
 			o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseCheckingOut, To: branch})
 			if err := o.checkoutBranch(branch); err != nil {
 				o.chunk(fmt.Sprintf("\r\n[orchestrator] checkout failed: %s\r\n", err.Error()))
@@ -505,7 +509,7 @@ func (o *Orchestrator) stepStartInner() startOutcome {
 		o.chunk(fmt.Sprintf("[orchestrator] dev already running (%s) — skipping restart\r\n", command.Source))
 		cur := o.deps.Lifecycle.Current().Phase
 		if cur != events.PhaseRunning && cur != events.PhaseStarting {
-			o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseStarting})
+			o.deps.Lifecycle.Transition(o.resumeAfterCheckout(cfg))
 		}
 		return startSkipped
 	}
@@ -589,6 +593,41 @@ func (o *Orchestrator) diagnoseNoStartCommand(cfg *config.Enriched) string {
 		return fmt.Sprintf("\r\n[orchestrator] skipping start: no scripts defined in %s/package.json — update the VM config if a dev server should run\r\n", cwd)
 	}
 	return fmt.Sprintf("\r\n[orchestrator] skipping start: no 'dev' or 'start' script found (available: %s) — update the VM config to set the correct start script\r\n", strings.Join(scripts, ", "))
+}
+
+// noteInterruptedRunning remembers a serving state about to be interrupted by a
+// checkout, so resumeAfterCheckout can put it back.
+func (o *Orchestrator) noteInterruptedRunning() {
+	prev := o.deps.Lifecycle.Current()
+	if prev.Phase != events.PhaseRunning {
+		return
+	}
+	o.mu.Lock()
+	o.interruptedRunning = prev
+	o.mu.Unlock()
+}
+
+// resumeAfterCheckout is the state to report once a checkout finishes without
+// restarting the dev server. `starting` would be a lie: the process behind that
+// port never stopped, and it costs a user the whole probe re-confirmation —
+// 13–26s measured on a warm tenant-pool pod, during which Studio holds the
+// booting overlay over a preview that is already answering requests. Falls back
+// to `starting` when there is nothing to resume or the port moved under it (the
+// saved port would then name something that is no longer there).
+func (o *Orchestrator) resumeAfterCheckout(cfg *config.Enriched) events.LifecycleState {
+	o.mu.Lock()
+	prev := o.interruptedRunning
+	o.interruptedRunning = events.LifecycleState{}
+	o.mu.Unlock()
+
+	starting := events.LifecycleState{Phase: events.PhaseStarting}
+	if prev.Phase != events.PhaseRunning || prev.Port == 0 {
+		return starting
+	}
+	if port, ok := cfg.Port(); ok && port != prev.Port {
+		return starting
+	}
+	return prev
 }
 
 func (o *Orchestrator) stopDevTask() {
