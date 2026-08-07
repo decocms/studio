@@ -229,6 +229,26 @@ export function getArrayItemLabels(
 }
 
 /**
+ * Plain per-item base labels for a whole array, WITHOUT the positional
+ * disambiguation suffix that {@link getArrayItemLabels} adds.
+ *
+ * Use this for pure display surfaces that address the item some other way — the
+ * list rows and the drag overlay open an item by its `entry.index`, never by its
+ * label, so two rows sharing a base label ("Cozinha – Festival da CASA") is
+ * harmless there and the synthetic " N" suffix is just visual noise.
+ *
+ * Do NOT use it anywhere a breadcrumb crumb is built or resolved: the crumb
+ * addresses an item by label, so it MUST stay unique — see
+ * {@link getArrayItemLabels}.
+ */
+export function getArrayItemDisplayLabels(
+  items: unknown[],
+  itemSchema?: SchemaProperty,
+): string[] {
+  return items.map((item, i) => baseArrayItemLabel(item, i, itemSchema));
+}
+
+/**
  * Display label for a single array item. Pass `siblings` (the whole array) to
  * get a label disambiguated against the others — see {@link getArrayItemLabels}.
  * Callers that build or resolve a breadcrumb crumb MUST pass `siblings` so the

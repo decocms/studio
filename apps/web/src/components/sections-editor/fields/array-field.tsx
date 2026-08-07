@@ -23,9 +23,9 @@ import { useT } from "@/i18n/use-t.ts";
 import { SORTABLE_DROP_ANIMATION } from "@/lib/dnd-drop-animation.ts";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
+  getArrayItemDisplayLabels,
   getArrayItemImageSrc,
   getArrayItemLabel,
-  getArrayItemLabels,
 } from "../array-item-display";
 import {
   arrayItemDisplayValue,
@@ -383,9 +383,11 @@ export function ArrayField({
     ? entries.find((entry) => entry.id === activeEntryId)
     : null;
   const activeItem = activeEntry != null ? items[activeEntry.index] : undefined;
+  // Match the list row: the drag overlay is display only, so it shows the
+  // un-disambiguated base label (no positional " N" suffix).
   const activeLabel =
     activeEntry != null && activeItem !== undefined
-      ? itemLabel(activeItem, activeEntry.index)
+      ? getArrayItemDisplayLabels(items, itemSchema)[activeEntry.index]
       : null;
   const activeImage =
     activeEntry != null && activeItem !== undefined
@@ -503,9 +505,16 @@ export function ArrayField({
             >
               <div className="min-w-0 overflow-hidden rounded-xl border border-border/50 p-1.5">
                 {(() => {
-                  // Compute disambiguated labels once for the whole list rather
-                  // than per row (each derivation scans all siblings).
-                  const itemLabels = getArrayItemLabels(items, itemSchema);
+                  // Compute base labels once for the whole list rather than per
+                  // row (each derivation scans all siblings). These are display
+                  // only — the row opens its item by `entry.index`, not by label
+                  // — so they stay un-disambiguated (no positional " N" suffix);
+                  // the breadcrumb still addresses items by the unique label from
+                  // getArrayItemLabels.
+                  const itemLabels = getArrayItemDisplayLabels(
+                    items,
+                    itemSchema,
+                  );
                   return entries.map((entry) => {
                     const item = items[entry.index];
                     if (item === undefined) return null;
