@@ -1218,11 +1218,11 @@ export class AgentSandboxProvider implements SandboxProvider {
     // user being served, never from anything in the request. The operator has
     // no notion of a tenant — it binds whatever pool a claim names — and
     // Studio is the only writer of SandboxClaims in this namespace.
-    const tenantPool = resolveTenantPool(
-      this.tenantPools,
-      opts.tenant?.orgId,
-      opts.repo?.cloneUrl,
-    );
+    const tenantPool = resolveTenantPool(this.tenantPools, {
+      orgId: opts.tenant?.orgId,
+      cloneUrl: opts.repo?.cloneUrl,
+      cloneOnly: opts.cloneOnly,
+    });
     const envEntries = warmPoolMode
       ? []
       : Object.entries(this.buildEnvMap(opts, boot))

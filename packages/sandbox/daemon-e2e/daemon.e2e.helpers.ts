@@ -367,7 +367,7 @@ export interface BareRepo {
  * deps so `npm install --offline` is deterministic.
  */
 export function setupBareRepo(
-  opts: { withPackageJson?: boolean } = {},
+  opts: { withPackageJson?: boolean; scripts?: Record<string, string> } = {},
 ): BareRepo {
   const root = mkdtempSync(join(tmpdir(), "daemon-e2e-repo-"));
   const bare = join(root, "origin.git");
@@ -383,7 +383,10 @@ export function setupBareRepo(
       name: "fixture-app",
       version: "0.0.0",
       private: true,
-      scripts: { echo: "node -e \"console.log('hi-from-echo')\"" },
+      scripts: {
+        echo: "node -e \"console.log('hi-from-echo')\"",
+        ...(opts.scripts ?? {}),
+      },
     };
     writeFileSync(
       join(seed, "package.json"),

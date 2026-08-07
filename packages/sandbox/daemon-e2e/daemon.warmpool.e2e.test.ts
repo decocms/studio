@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 
 import {
   authHeaders,
+  jsonAuthHeaders,
   type BareRepo,
   bootstrapRepo,
   type Daemon,
@@ -152,6 +153,72 @@ describe("daemon e2e: tenant warm pool", () => {
       } finally {
         other.cleanup();
       }
+    },
+    SETUP_TIMEOUT_MS,
+  );
+});
+
+describe("daemon e2e: a second dev server is never spawned", () => {
+  let d: Daemon;
+  let repo: BareRepo;
+  beforeEach(async () => {
+    // A `dev` script that stays up, so the orchestrator's auto-start leaves a
+    // live task behind — the state an agent walks into on a warmed pod.
+    repo = setupBareRepo({
+      withPackageJson: true,
+      scripts: { dev: 'node -e "setInterval(() => {}, 1000)"' },
+    });
+    d = await startDaemon();
+  }, HOOK_TIMEOUT_MS);
+  afterEach(async () => {
+    await stopDaemon(d);
+    repo.cleanup();
+  }, HOOK_TIMEOUT_MS);
+
+  it(
+    "POST /exec/dev returns the running task instead of starting another",
+    async () => {
+      expect(
+        (
+          await bootstrapRepo(d, repo.url, {
+            application: { packageManager: { name: "npm" } },
+            env: {
+              npm_config_audit: "false",
+              npm_config_fund: "false",
+              npm_config_offline: "true",
+              npm_config_update_notifier: "false",
+            },
+          })
+        ).status,
+      ).toBe(200);
+      await waitForOrchestratorIdle(d, SETUP_TIMEOUT_MS);
+
+      const first = await fetch(url(d, "/_sandbox/exec/dev"), {
+        method: "POST",
+        headers: jsonAuthHeaders(),
+        body: "{}",
+      });
+      expect(first.status).toBe(200);
+      const firstBody = (await first.json()) as {
+        taskId: string;
+        alreadyRunning?: boolean;
+      };
+      // Two Vite/Next builds on one pod's memory limit is how a warmed sandbox
+      // OOMs itself, so this must NOT be a fresh spawn.
+      expect(firstBody.alreadyRunning).toBe(true);
+
+      // Idempotent: asking again keeps pointing at the same task.
+      const second = await fetch(url(d, "/_sandbox/exec/dev"), {
+        method: "POST",
+        headers: jsonAuthHeaders(),
+        body: "{}",
+      });
+      const secondBody = (await second.json()) as {
+        taskId: string;
+        alreadyRunning?: boolean;
+      };
+      expect(secondBody.alreadyRunning).toBe(true);
+      expect(secondBody.taskId).toBe(firstBody.taskId);
     },
     SETUP_TIMEOUT_MS,
   );
