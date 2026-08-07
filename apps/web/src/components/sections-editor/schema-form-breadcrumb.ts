@@ -1,7 +1,28 @@
-import { getArrayItemLabels } from "./array-item-display";
+import { getArrayItemDisplayLabels } from "./array-item-display";
 import { isPageMultivariateSectionArrayField } from "./page-variants";
 import type { SchemaProperty } from "./resolve-schema";
 import { unwrapBlockReference } from "./unwrap-section";
+
+/**
+ * A breadcrumb crumb. Field/context crumbs (page name, section label, an
+ * ancestor field's disambiguated label) are plain strings. An array-item crumb
+ * additionally carries the item's exact array index, so it re-resolves to that
+ * item after a form remount without leaking a positional number into the label
+ * the UI renders — the crumb is addressed by `itemIndex`, displayed by `label`.
+ */
+export type Crumb = string | { label: string; itemIndex: number };
+
+/** The human-visible text of a crumb (the label part of an item crumb). */
+export function crumbLabel(crumb: Crumb): string {
+  return typeof crumb === "string" ? crumb : crumb.label;
+}
+
+/** Whether a crumb addresses an array item (carries an `itemIndex`). */
+function isItemCrumb(
+  crumb: Crumb,
+): crumb is { label: string; itemIndex: number } {
+  return typeof crumb === "object";
+}
 
 function humanize(key: string): string {
   return key
@@ -20,10 +41,11 @@ export function normalizeBreadcrumbLabel(label: string): string {
  * (NFC-insensitive). Used to stamp the disambiguated ancestor label onto a drill
  * trail so the resolver can tell same-titled sibling props apart.
  */
-export function prependCrumbIfAbsent(label: string, trail: string[]): string[] {
+export function prependCrumbIfAbsent(label: string, trail: Crumb[]): Crumb[] {
   if (
     trail.length > 0 &&
-    normalizeBreadcrumbLabel(trail[0]!) === normalizeBreadcrumbLabel(label)
+    normalizeBreadcrumbLabel(crumbLabel(trail[0]!)) ===
+      normalizeBreadcrumbLabel(label)
   ) {
     return trail;
   }
@@ -87,16 +109,18 @@ function arrayCrumbNeededForDisambiguation(
  * right array (and item) still resolves.
  */
 export function buildArrayDrillDownBreadcrumb(
-  breadcrumbPath: string[],
+  breadcrumbPath: Crumb[],
   arrayLabel: string,
   itemLabel: string,
+  itemIndex: number,
   opts?: { arrayKey?: string; hasSiblingDrillDownFields?: boolean },
-): string[] {
+): Crumb[] {
   const normalizedItem = normalizeBreadcrumbLabel(itemLabel);
   if (
     breadcrumbPath.some(
       (crumb) =>
-        labelsMatch(crumb, normalizedItem) || labelsMatch(crumb, itemLabel),
+        labelsMatch(crumbLabel(crumb), normalizedItem) ||
+        labelsMatch(crumbLabel(crumb), itemLabel),
     )
   ) {
     return breadcrumbPath;
@@ -104,11 +128,11 @@ export function buildArrayDrillDownBreadcrumb(
   const trail = [...breadcrumbPath];
   if (
     arrayCrumbNeededForDisambiguation(arrayLabel, itemLabel, opts) &&
-    !trail.some((crumb) => labelsMatch(crumb, arrayLabel))
+    !trail.some((crumb) => labelsMatch(crumbLabel(crumb), arrayLabel))
   ) {
     trail.push(arrayLabel);
   }
-  trail.push(itemLabel);
+  trail.push({ label: itemLabel, itemIndex });
   return trail;
 }
 
@@ -124,9 +148,9 @@ export function buildArrayDrillDownBreadcrumb(
  * child's own crumb (array labelled "Banner" + lone item labelled "Banner").
  */
 export function consumedBreadcrumbPrefix(
-  breadcrumbPath: string[],
-  fieldBreadcrumbPath: string[],
-): string[] {
+  breadcrumbPath: Crumb[],
+  fieldBreadcrumbPath: Crumb[],
+): Crumb[] {
   return breadcrumbPath.slice(
     0,
     breadcrumbPath.length - fieldBreadcrumbPath.length,
@@ -145,12 +169,12 @@ export function consumedBreadcrumbPrefix(
 export function breadcrumbPathForActiveField(
   activeKey: string,
   schema: SchemaProperty,
-  breadcrumbPath: string[],
+  breadcrumbPath: Crumb[],
   overrideLabel?: string,
-): string[] {
+): Crumb[] {
   if (breadcrumbPath.length === 0) return breadcrumbPath;
   const label = overrideLabel ?? fieldDisplayLabel(activeKey, schema);
-  const head = breadcrumbPath[0]!;
+  const head = crumbLabel(breadcrumbPath[0]!);
   if (labelsMatch(head, label) || labelsMatch(head, activeKey)) {
     return breadcrumbPath.slice(1);
   }
@@ -207,20 +231,20 @@ export function headerBackTargetIndex(
 
 /** Map a header crumb index to the breadcrumb trail (`headerCrumbs = [title, ...breadcrumbs]`). */
 export function breadcrumbsForHeaderClick(
-  breadcrumbs: string[],
+  breadcrumbs: Crumb[],
   headerIndex: number,
-): string[] {
+): Crumb[] {
   if (headerIndex <= 0) return [];
   return breadcrumbs.slice(0, headerIndex);
 }
 
 export function findBreadcrumbLabelIndex(
-  path: string[],
+  path: Crumb[],
   targetLabel: string,
 ): number {
   const normalized = normalizeBreadcrumbLabel(targetLabel);
   return path.findIndex(
-    (crumb) => normalizeBreadcrumbLabel(crumb) === normalized,
+    (crumb) => normalizeBreadcrumbLabel(crumbLabel(crumb)) === normalized,
   );
 }
 
@@ -291,20 +315,15 @@ function valueOwnsItemCrumb(
   ) {
     return false;
   }
-  // A colliding item's crumb carries a positional suffix ("Dup 1"), but the
-  // ownership labels scanned here are bare (no item schema is available at this
-  // nesting level), so also try the crumb with a trailing " N" stripped. This
-  // only widens matching, and the actual item is still pinned downstream by the
-  // suffix-aware resolveArrayItemSelection.
-  const crumbBase = crumb.replace(/\s+\d+$/, "");
+  // The crumb passed here is already the item's base label (callers unwrap the
+  // crumb via crumbLabel), and the ownership labels scanned here are bare too, so
+  // a direct match suffices. The actual item is still pinned downstream by the
+  // index-carrying resolveArrayItemSelection.
   if (Array.isArray(value)) {
     for (const item of value) {
       if (--budget.n <= 0) return false;
       const label = itemOwnershipLabel(item);
-      if (
-        label &&
-        (labelsMatch(label, crumb) || labelsMatch(label, crumbBase))
-      ) {
+      if (label && labelsMatch(label, crumb)) {
         return true;
       }
       if (valueOwnsItemCrumb(item, crumb, budget, depth + 1)) return true;
@@ -324,11 +343,11 @@ function resolveActiveFieldKeyInScope(
   keys: string[],
   properties: Record<string, SchemaProperty>,
   objValue: Record<string, unknown>,
-  breadcrumbPath: string[],
+  breadcrumbPath: Crumb[],
   decofile?: Record<string, unknown>,
 ): string | null {
   if (breadcrumbPath.length === 0) return null;
-  const head = breadcrumbPath[0]!;
+  const head = crumbLabel(breadcrumbPath[0]!);
 
   for (const key of keys) {
     const schema = properties[key];
@@ -337,7 +356,9 @@ function resolveActiveFieldKeyInScope(
     if (labelsMatch(head, label) || labelsMatch(head, key)) return key;
     if (
       breadcrumbPath.some(
-        (crumb) => labelsMatch(crumb, label) || labelsMatch(crumb, key),
+        (crumb) =>
+          labelsMatch(crumbLabel(crumb), label) ||
+          labelsMatch(crumbLabel(crumb), key),
       )
     ) {
       return key;
@@ -349,7 +370,7 @@ function resolveActiveFieldKeyInScope(
     if (!schema || !isArrayDrillDownField(schema, objValue[key])) continue;
     const val = objValue[key];
     if (!Array.isArray(val)) continue;
-    const labels = getArrayItemLabels(val, schema.items);
+    const labels = getArrayItemDisplayLabels(val, schema.items);
     if (labels.some((label) => labelsMatch(label, head))) return key;
   }
 
@@ -476,7 +497,7 @@ function resolveActiveFieldKeyInScope(
     if (breadcrumbPath.length > 1) {
       const val = objValue[key];
       if (val && typeof val === "object" && !Array.isArray(val)) {
-        const nextCrumb = breadcrumbPath[1]!;
+        const nextCrumb = crumbLabel(breadcrumbPath[1]!);
         const hasInnerMatch = Object.keys(val as Record<string, unknown>).some(
           (k) =>
             !k.startsWith("__") &&
@@ -499,7 +520,7 @@ export function resolveActiveFieldKey(
   keys: string[],
   properties: Record<string, SchemaProperty>,
   objValue: Record<string, unknown>,
-  breadcrumbPath: string[],
+  breadcrumbPath: Crumb[],
   decofile?: Record<string, unknown>,
 ): string | null {
   return resolveActiveFieldKeyInScope(
@@ -517,7 +538,7 @@ export function isBreadcrumbInsideObject(
   label: string,
   schema: SchemaProperty,
   objValue: Record<string, unknown>,
-  breadcrumbPath: string[],
+  breadcrumbPath: Crumb[],
   decofile?: Record<string, unknown>,
 ): boolean {
   if (breadcrumbPath.length === 0 || !schema.properties) return false;
@@ -535,7 +556,7 @@ export function isBreadcrumbInsideObject(
     return true;
   }
 
-  const head = breadcrumbPath[0]!;
+  const head = crumbLabel(breadcrumbPath[0]!);
   if (!labelsMatch(head, label) && !labelsMatch(head, fieldKey)) return false;
 
   return (
@@ -551,31 +572,43 @@ export function isBreadcrumbInsideObject(
 }
 
 /**
- * Find the array item whose label matches `crumb`.
+ * Find the array item a crumb points at.
  *
- * Array items are addressed in the breadcrumb by their (mutable, non-unique)
- * display label, so two items can resolve to the same crumb — e.g. after
- * duplicating an item, or when the label field (name/title/alt/…) is edited to
- * a value another item already uses. A plain `findIndex` always returns the
- * FIRST such item, which yanks the editor away from a later item the moment its
- * label collides with an earlier sibling (dropping focus mid-typing).
+ * An item crumb carries the item's exact `itemIndex`, so it re-resolves to that
+ * item directly — no reliance on a unique display label or on the transient open
+ * index (which is wiped on a form remount). The `label` part still does
+ * *ownership*: a bare index is valid for any array with ≥2 items, so we confirm
+ * this array is the crumb's owner by matching the item's base label before
+ * trusting the index. Plain string crumbs (field/array labels) never identify an
+ * item, so they return -1.
  *
- * `preferredIndex` is the item the caller currently has open. When it still
- * matches the crumb we keep it, so editing a colliding label never snaps
- * selection to a different row.
+ * `preferredIndex` (the item the caller currently has open) is only a churn-window
+ * fallback: while a label edit is mid-flight it keeps selection pinned to the
+ * open row. The exact-index path makes it non-load-bearing.
  */
 function findItemIndexForCrumb(
   items: unknown[],
   itemSchema: SchemaProperty | undefined,
-  crumb: string,
+  crumb: Crumb,
   preferredIndex?: number | null,
 ): number {
-  const labels = getArrayItemLabels(items, itemSchema);
+  if (!isItemCrumb(crumb)) return -1;
+  const labels = getArrayItemDisplayLabels(items, itemSchema);
+  // Exact pin: the index addresses the item; the label confirms this array owns it.
+  if (
+    crumb.itemIndex >= 0 &&
+    crumb.itemIndex < items.length &&
+    labelsMatch(labels[crumb.itemIndex]!, crumb.label)
+  ) {
+    return crumb.itemIndex;
+  }
+  // Churn-window fallback: keep the open row while its label is mid-edit.
   const preferred = preferredIndex != null ? labels[preferredIndex] : undefined;
-  if (preferred !== undefined && labelsMatch(preferred, crumb)) {
+  if (preferred !== undefined && labelsMatch(preferred, crumb.label)) {
     return preferredIndex!;
   }
-  return labels.findIndex((label) => labelsMatch(label, crumb));
+  // Last resort: the item shifted; match by label (−1 if this array isn't the owner).
+  return labels.findIndex((label) => labelsMatch(label, crumb.label));
 }
 
 /**
@@ -598,11 +631,11 @@ function findItemIndexForCrumb(
  */
 export function resolveArrayItemSelection(
   label: string,
-  breadcrumbPath: string[],
+  breadcrumbPath: Crumb[],
   items: unknown[],
   itemSchema: SchemaProperty | undefined,
   preferredIndex?: number | null,
-): { index: number; innerPath: string[]; crumbIndex: number } | null {
+): { index: number; innerPath: Crumb[]; crumbIndex: number } | null {
   if (breadcrumbPath.length === 0) return null;
 
   for (let pi = 0; pi < breadcrumbPath.length; pi++) {
@@ -619,7 +652,7 @@ export function resolveArrayItemSelection(
   }
 
   const labelIndex = breadcrumbPath.findIndex((crumb) =>
-    labelsMatch(crumb, label),
+    labelsMatch(crumbLabel(crumb), label),
   );
   if (labelIndex >= 0 && breadcrumbPath.length > labelIndex + 1) {
     const itemCrumb = breadcrumbPath[labelIndex + 1]!;

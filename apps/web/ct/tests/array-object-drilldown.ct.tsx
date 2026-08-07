@@ -280,10 +280,10 @@ test("colliding fallback-title rows are position-disambiguated and each drills i
   // The osklen bug: object-array items with no name/title field all fall back
   // to the item schema `title` ("Spec"), so every row's label collides and
   // navigation used to collapse every item back to the first ("all items show
-  // the same content"). The list rows now render the clean, identical label
-  // "Spec" (the positional suffix is a display-only implementation detail of the
-  // breadcrumb), and drilling a NON-first row must uniquely address that row —
-  // showing its own value.
+  // the same content"). Rows now render with the clean, identical label "Spec"
+  // (the crumb carries the item's index, not a positional suffix), and drilling
+  // a NON-first row must still uniquely address that row — showing its own
+  // value — with no reliance on a transient open-index.
   const meta = sectionWithProps({
     specs: {
       type: "array",
@@ -306,10 +306,11 @@ test("colliding fallback-title rows are position-disambiguated and each drills i
   // All three rows render the same clean label "Spec" (no positional suffix).
   await expect(itemRow(component, "Spec")).toHaveCount(3);
 
-  // Drill into the THIRD row (index 2). It must uniquely address that row —
-  // the editor shows its own value "c", not the first row's.
+  // Drill into the THIRD row (index 2). Its crumb carries itemIndex 2, so it
+  // addresses that exact row — the editor shows its own value "c".
   await itemRow(component, "Spec").nth(2).click();
 
+  await expect.poll(() => readBreadcrumb(component)).toContain("Spec");
   const body = component.getByLabel("Body");
   await expect(body).toHaveAttribute("id", "specs.2.body");
   await expect(body).toHaveValue("c");
