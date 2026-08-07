@@ -4,6 +4,7 @@ import {
   computeWorkspacePanelSizes,
   mobileSurfaceSearch,
   resolveDefaultPanelState,
+  resolveMobileSurface,
   resolveWorkspacePanelAction,
 } from "./use-layout-state";
 
@@ -233,5 +234,40 @@ describe("mobileSurfaceSearch", () => {
       sidepanel: 0,
       main: "preview",
     });
+  });
+});
+
+describe("resolveMobileSurface", () => {
+  test("an explicit ?sidepanel=chat wins over an open main panel", () => {
+    expect(
+      resolveMobileSurface({
+        visibility: { sidePanel: "chat", mainOpen: true },
+        sidePanelParamPresent: true,
+      }),
+    ).toBe("chat");
+  });
+
+  test("the default main view still wins when ?sidepanel is absent", () => {
+    expect(
+      resolveMobileSurface({
+        visibility: { sidePanel: "chat", mainOpen: true },
+        sidePanelParamPresent: false,
+      }),
+    ).toBe("main");
+  });
+
+  test("falls back to main / chat when only one panel is open", () => {
+    expect(
+      resolveMobileSurface({
+        visibility: { sidePanel: null, mainOpen: true },
+        sidePanelParamPresent: true,
+      }),
+    ).toBe("main");
+    expect(
+      resolveMobileSurface({
+        visibility: { sidePanel: "chat", mainOpen: false },
+        sidePanelParamPresent: false,
+      }),
+    ).toBe("chat");
   });
 });
