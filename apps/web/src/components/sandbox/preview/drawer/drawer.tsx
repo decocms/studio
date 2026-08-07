@@ -6,6 +6,7 @@ import { useT } from "@/i18n/use-t.ts";
 import { useSandboxEvents } from "../../hooks/use-sandbox-events";
 import { DEFAULT_TAB, DrawerToolbar, type DrawerStatus } from "./toolbar";
 import { SandboxTerminal } from "./terminal";
+import { clampDrawerHeight, DRAWER_TOP_RESERVE } from "./resize";
 
 export interface PreviewDrawerProps {
   vmId: string | null;
@@ -16,6 +17,9 @@ export interface PreviewDrawerProps {
   scripts: string[];
   open: boolean;
   onOpenChange: (next: boolean) => void;
+  /** Persisted open-drawer height in px; `null` falls back to 50% of the pane. */
+  height: number | null;
+  onHeightChange: (height: number) => void;
   onStart: () => void;
   onStop: () => void;
   onRestart: () => void;
@@ -165,11 +169,61 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
     isScriptTab && vmEvents.activeProcesses.includes(active);
   const scriptIsKilling = isScriptTab && killingScripts.has(active);
 
+  // Drag-to-resize the open drawer. The height is applied imperatively to the
+  // drawer element during the drag (no per-frame React render, so the xterm
+  // refit stays smooth) and committed to persisted state on pointer-up.
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const handleResizeStart = (e: React.PointerEvent) => {
+    if (!props.open) return;
+    const el = drawerRef.current;
+    const pane = el?.parentElement;
+    if (!el || !pane) return;
+    e.preventDefault();
+    const startY = e.clientY;
+    const startHeight = el.getBoundingClientRect().height;
+    const paneHeight = pane.getBoundingClientRect().height;
+    let nextHeight = startHeight;
+    const onMove = (ev: PointerEvent) => {
+      // Dragging up (smaller clientY) grows the drawer; clamp so it stays
+      // usable and never swallows the tab body above it.
+      nextHeight = clampDrawerHeight(
+        startHeight + (startY - ev.clientY),
+        paneHeight,
+      );
+      el.style.height = `${nextHeight}px`;
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+      props.onHeightChange(nextHeight);
+    };
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "row-resize";
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
   return (
     <div
+      ref={drawerRef}
       className="flex shrink-0 flex-col"
-      style={{ height: props.open ? "50%" : "auto" }}
+      style={{
+        height: props.open ? (props.height ?? "50%") : "auto",
+        // Cap relative to the pane so a persisted px height from a taller
+        // window can never swallow the tab body above when the window shrinks.
+        maxHeight: props.open
+          ? `calc(100% - ${DRAWER_TOP_RESERVE}px)`
+          : undefined,
+      }}
     >
+      {props.open && (
+        <ResizeHandle
+          onPointerDown={handleResizeStart}
+          label={t("sandbox.preview.resizeTerminal")}
+        />
+      )}
       <DrawerToolbar
         status={props.status}
         open={props.open}
@@ -251,6 +305,32 @@ function DrawerBody({
       >
         <Play className="size-3.5" /> {t("sandbox.drawer.run")}
       </button>
+    </div>
+  );
+}
+
+/**
+ * Drag strip along the drawer's top edge. Sits flush over the toolbar's top
+ * border (`-mb-px`) so the divider becomes the resize affordance: at rest it's
+ * the toolbar border; on hover the line highlights and the cursor turns into
+ * `row-resize`. The actual resize math lives in `PreviewDrawer.handleResizeStart`.
+ */
+function ResizeHandle({
+  onPointerDown,
+  label,
+}: {
+  onPointerDown: (e: React.PointerEvent) => void;
+  label: string;
+}) {
+  return (
+    <div
+      role="separator"
+      aria-orientation="horizontal"
+      aria-label={label}
+      onPointerDown={onPointerDown}
+      className="group relative -mb-px h-1.5 shrink-0 cursor-row-resize"
+    >
+      <div className="absolute inset-x-0 bottom-0 h-px bg-transparent transition-colors group-hover:bg-primary" />
     </div>
   );
 }

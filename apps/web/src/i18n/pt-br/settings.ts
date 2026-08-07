@@ -45,6 +45,9 @@ export const settings = {
   "settings.preferences.soundsDescription":
     "Reproduza sons para ações de agentes e notificações.",
   "settings.preferences.soundsPreview": "Ouvir som de notificação",
+  "settings.preferences.terminalVisible": "Mostrar terminal por padrão",
+  "settings.preferences.terminalVisibleDescription":
+    "Abrir o terminal do preview automaticamente em vez de mantê-lo oculto até você exibi-lo.",
   "settings.preferences.toolApproval": "Aprovação de ferramentas",
   "settings.preferences.toolApprovalDescription":
     "Controle como as ferramentas são aprovadas antes da execução.",

@@ -11,6 +11,12 @@ interface Preferences {
   enableSounds: boolean;
   theme: ThemeMode;
   language: Locale;
+  /**
+   * Default visibility of the sandbox preview terminal on surfaces that have
+   * one. `false` keeps the historical opt-in behavior; `true` shows it by
+   * default. A per-VM Show/Hide choice still overrides this default.
+   */
+  terminalVisibleByDefault: boolean;
 }
 
 const DEFAULT_PREFERENCES: Preferences = {
@@ -19,6 +25,7 @@ const DEFAULT_PREFERENCES: Preferences = {
   enableSounds: false,
   theme: "system",
   language: detectLocale(),
+  terminalVisibleByDefault: false,
 };
 
 const VALID_TOOL_APPROVAL_LEVELS: ToolApprovalLevel[] = ["auto", "readonly"];

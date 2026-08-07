@@ -27,19 +27,29 @@ const STORAGE_KEY = (id: string) => `preview-drawer:${id}`;
 const GIT_AUTH_FAILURE_RE =
   /Authentication failed for|Invalid username or token|Password authentication is not supported/i;
 
-function readPersisted(virtualMcpId: string): boolean {
+interface DrawerState {
+  open: boolean;
+  /** Open-drawer height in px; `null` = default (50% of the pane). */
+  height: number | null;
+}
+
+function readPersisted(virtualMcpId: string): DrawerState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY(virtualMcpId));
-    if (!raw) return false;
-    return !!JSON.parse(raw).open;
+    if (!raw) return { open: false, height: null };
+    const parsed = JSON.parse(raw);
+    return {
+      open: !!parsed.open,
+      height: typeof parsed.height === "number" ? parsed.height : null,
+    };
   } catch {
-    return false;
+    return { open: false, height: null };
   }
 }
 
-function writePersisted(virtualMcpId: string, open: boolean): void {
+function writePersisted(virtualMcpId: string, state: DrawerState): void {
   try {
-    localStorage.setItem(STORAGE_KEY(virtualMcpId), JSON.stringify({ open }));
+    localStorage.setItem(STORAGE_KEY(virtualMcpId), JSON.stringify(state));
   } catch {
     /* ignore */
   }
@@ -71,12 +81,15 @@ export function PreviewDrawerHost() {
   // useEffect is banned for derived state).
   const storageKey = virtualMcpId ?? "__no-vmcp__";
   const [drawerOpen, setDrawerOpen] = useState<boolean | null>(null);
+  const [drawerHeight, setDrawerHeight] = useState<number | null>(null);
   const lastHydratedKeyRef = useRef<string | null>(null);
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- hydrate on VM switch
   if (lastHydratedKeyRef.current !== storageKey) {
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- hydrate on VM switch
     lastHydratedKeyRef.current = storageKey;
-    setDrawerOpen(readPersisted(storageKey));
+    const persisted = readPersisted(storageKey);
+    setDrawerOpen(persisted.open);
+    setDrawerHeight(persisted.height);
   }
 
   // The drawer's open state is driven entirely by the user's persisted
@@ -88,7 +101,12 @@ export function PreviewDrawerHost() {
 
   const handleOpenChange = (next: boolean) => {
     setDrawerOpen(next);
-    writePersisted(storageKey, next);
+    writePersisted(storageKey, { open: next, height: drawerHeight });
+  };
+
+  const handleHeightChange = (next: number) => {
+    setDrawerHeight(next);
+    writePersisted(storageKey, { open, height: next });
   };
 
   return (
@@ -102,6 +120,8 @@ export function PreviewDrawerHost() {
       scripts={events.scripts}
       open={open}
       onOpenChange={handleOpenChange}
+      height={drawerHeight}
+      onHeightChange={handleHeightChange}
       onStart={lifecycle.start}
       onStop={lifecycle.stop}
       onRestart={lifecycle.restart}
