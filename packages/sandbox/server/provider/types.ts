@@ -205,6 +205,24 @@ export interface SandboxProvider {
   releaseAfter?(handle: string, graceMs: number): Promise<void>;
 
   /**
+   * Push this sandbox's shutdown back out to a full idle window, because
+   * someone is still watching it.
+   *
+   * The claim TTL is a wall clock that only `ensure()` renews, and nothing on
+   * the preview path calls `ensure()`: preview traffic goes gateway → pod
+   * without passing through Studio, and the housekeeper only ever moves
+   * shutdown earlier. So a sandbox a user was reading — but whose agent was
+   * idle — died mid-session at the TTL and self-healed into a cold reprovision.
+   *
+   * The counterpart to `releaseAfter`, and its mirror image: never brings
+   * shutdown EARLIER than it already is. Truly idle pods are still reaped —
+   * the housekeeper sweeps on daemon idle, which an open tab does not reset.
+   *
+   * Optional: callers must `?.()`.
+   */
+  renewTtl?(handle: string): Promise<void>;
+
+  /**
    * Drop this provider's in-process cache + persistent state for `handle`
    * WITHOUT contacting the daemon. Used by the auto-restart path when the
    * daemon is known-dead — `delete()` would try to reach the link and

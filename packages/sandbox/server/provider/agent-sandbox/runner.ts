@@ -2417,6 +2417,36 @@ export class AgentSandboxProvider implements SandboxProvider {
     );
   }
 
+  /** See `SandboxProvider.renewTtl`. */
+  async renewTtl(handle: string): Promise<void> {
+    const claim = await getSandboxClaim(
+      this.kubeConfig,
+      this.namespace,
+      handle,
+    );
+    // Already gone. Do NOT recreate it — the watcher's own self-heal owns
+    // reprovisioning, and a claim resurrected from here would carry none of
+    // the env a working sandbox needs.
+    if (!claim) return;
+    const next = laterShutdown(
+      claim.spec?.lifecycle?.shutdownTime,
+      new Date(Date.now() + this.idleTtlMs),
+    );
+    if (!next) return;
+    await patchSandboxClaimShutdown(
+      this.kubeConfig,
+      this.namespace,
+      handle,
+      next,
+    ).catch((err) =>
+      // Best-effort: a missed renewal costs one reprovision, and the next
+      // heartbeat retries well inside the TTL. Never fail an SSE stream over it.
+      console.warn(
+        `[${LOG_LABEL}] TTL renew failed for ${handle}: ${err instanceof Error ? err.message : String(err)}`,
+      ),
+    );
+  }
+
   // ---- Port-forwarding ------------------------------------------------------
 
   /**
@@ -2900,6 +2930,24 @@ export function earlierShutdown(
   if (current) {
     const currentMs = new Date(current).getTime();
     if (Number.isFinite(currentMs) && currentMs <= target.getTime())
+      return null;
+  }
+  return target.toISOString();
+}
+
+/**
+ * The shutdownTime to patch so a watched claim survives to `target`, or null to
+ * leave it alone. Only ever moves shutdown LATER — the mirror of
+ * `earlierShutdown`, and monotonic for the same reason: a renewal must never
+ * undercut a longer commitment something else just made.
+ */
+export function laterShutdown(
+  current: string | undefined,
+  target: Date,
+): string | null {
+  if (current) {
+    const currentMs = new Date(current).getTime();
+    if (Number.isFinite(currentMs) && currentMs >= target.getTime())
       return null;
   }
   return target.toISOString();
