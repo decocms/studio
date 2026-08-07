@@ -7,6 +7,7 @@ import { clientFromConnection } from "@/mcp-clients";
 import type { TaskBoardItemPrRef } from "@/storage/types";
 import { getRepoScope } from "@decocms/shared/github-repo-scope";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import { retry, RetryError } from "@decocms/shared/std";
 import { TaskBoardItemPrSchema } from "./schema";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
@@ -510,22 +511,46 @@ async function fetchPrStatusExtras(
     method: "get_status" | "get_check_runs" | "get_comments",
   ): Promise<Record<string, unknown> | null> => {
     try {
-      return toolResultJson(
-        await client.callTool(
-          {
-            name: "pull_request_read",
-            arguments: {
-              method,
-              owner: pr.repoOwner,
-              repo: pr.repoName,
-              pullNumber: pr.number,
+      const result = await retry(
+        async () => {
+          const raw = await client.callTool(
+            {
+              name: "pull_request_read",
+              arguments: {
+                method,
+                owner: pr.repoOwner,
+                repo: pr.repoName,
+                pullNumber: pr.number,
+              },
             },
-          },
-          undefined,
-          { timeout: PR_FETCH_TIMEOUT_MS },
-        ),
+            undefined,
+            { timeout: PR_FETCH_TIMEOUT_MS },
+          );
+          // callTool resolves (doesn't reject) on an upstream MCP error — throw
+          // so retry() can see it and back off (e.g. GitHub's "too many
+          // requests" on a burst of concurrent pull_request_read calls).
+          if (
+            raw &&
+            typeof raw === "object" &&
+            (raw as { isError?: boolean }).isError
+          ) {
+            throw new Error(
+              (raw as { content?: Array<{ text?: string }> }).content?.[0]
+                ?.text ?? "pull_request_read returned isError",
+            );
+          }
+          return raw;
+        },
+        { maxAttempts: 3, minTimeout: 300, maxTimeout: 3000, jitter: 1 },
       );
-    } catch {
+      return toolResultJson(result);
+    } catch (err) {
+      const cause = err instanceof RetryError ? err.cause : err;
+      console.error(
+        `[task-board] pull_request_read(${method}) failed for ` +
+          `${pr.repoOwner}/${pr.repoName}#${pr.number} after retries:`,
+        cause,
+      );
       return null;
     }
   };
