@@ -762,7 +762,7 @@ export function TaskBoardItemDialog({
               </Button>
             )}
             {showAutoFix && (
-              <Button variant="outline" size="sm" onClick={onAutoFix}>
+              <Button size="sm" onClick={onAutoFix}>
                 <Lightning01 size={16} />
                 {t("taskBoard.taskBoard.autoFix")}
               </Button>
