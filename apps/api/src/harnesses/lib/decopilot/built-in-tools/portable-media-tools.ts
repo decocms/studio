@@ -10,8 +10,41 @@ import { BROWSERLESS_BASE_URL } from "./constants";
 
 const FILES_URL_PATTERN = /\/api\/[^/]+\/files\/([^?#]+)/;
 const MAX_REFERENCE_IMAGE_BYTES = 20 * 1024 * 1024;
-const DEFAULT_VIEWPORT = { width: 1280, height: 800 };
 const JPEG_QUALITY = 80;
+
+/**
+ * Emulation presets for `take_screenshot`. `mobile` carries a phone viewport
+ * AND `isMobile`/`hasTouch` — but the load-bearing part for QA is that the tool
+ * also sends `MOBILE_USER_AGENT` for it. Many sites pick their layout from the
+ * request user-agent server-side (not just CSS breakpoints), so a desktop
+ * browser merely narrowed to 390px still gets desktop markup — a plausible but
+ * WRONG "mobile" shot. Emulating the device means the UA too.
+ */
+const DEVICE_VIEWPORTS = {
+  desktop: {
+    width: 1280,
+    height: 800,
+    deviceScaleFactor: 1,
+    isMobile: false,
+    hasTouch: false,
+  },
+  mobile: {
+    width: 390,
+    height: 844,
+    deviceScaleFactor: 3,
+    isMobile: true,
+    hasTouch: true,
+  },
+} as const;
+
+export type ScreenshotDevice = keyof typeof DEVICE_VIEWPORTS;
+
+const DEFAULT_VIEWPORT = DEVICE_VIEWPORTS.desktop;
+
+/** Sent as the request user-agent when `device: "mobile"`, so server-side
+ *  user-agent sniffing returns the real mobile markup. A current iOS Safari. */
+const MOBILE_USER_AGENT =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
 /**
  * Anthropic rejects any image over 8000px on either side, and an oversized
  * screenshot poisons the thread permanently: it is inlined as base64 into the
@@ -20,15 +53,21 @@ const JPEG_QUALITY = 80;
  */
 const MAX_SCREENSHOT_HEIGHT = 7000;
 
-/** Puppeteer rejects `clip` together with `fullPage` — they are exclusive. */
-export function buildScreenshotOptions(fullPage: boolean, clamped = false) {
+/** Puppeteer rejects `clip` together with `fullPage` — they are exclusive.
+ *  `clipWidth` is the emulated device's width, so the clamped mobile retry
+ *  clips to the phone width, not the desktop default. */
+export function buildScreenshotOptions(
+  fullPage: boolean,
+  clamped = false,
+  clipWidth: number = DEFAULT_VIEWPORT.width,
+) {
   return {
     ...(fullPage && clamped
       ? {
           clip: {
             x: 0,
             y: 0,
-            width: DEFAULT_VIEWPORT.width,
+            width: clipWidth,
             height: MAX_SCREENSHOT_HEIGHT,
           },
         }
@@ -129,6 +168,15 @@ const TakeScreenshotInputSchema = z.object({
     .optional()
     .describe(
       "When true, captures the full scrollable page instead of just the viewport. Defaults to false.",
+    ),
+  device: z
+    .enum(["desktop", "mobile"])
+    .optional()
+    .describe(
+      "Device to emulate. `mobile` uses a phone viewport (390×844) AND a mobile " +
+        "user-agent, so sites that switch layout by user-agent — not just CSS " +
+        "breakpoints — return their real mobile markup. To document a responsive " +
+        "change, capture both `desktop` and `mobile`. Defaults to `desktop`.",
     ),
 });
 
@@ -368,6 +416,9 @@ export function createPortableTakeScreenshotTool(
       "Take a screenshot of a web page. " +
       "Use this when you need to visually see a website, check its layout, " +
       "verify a deployment, or inspect a page's appearance. " +
+      'Pass `device: "mobile"` to capture the true mobile layout (phone viewport ' +
+      "+ mobile user-agent), and capture both `desktop` and `mobile` to document " +
+      "a responsive change. " +
       "The screenshot is displayed automatically by the UI — do NOT include image URLs or markdown images in your response.",
     inputSchema: zodSchema(TakeScreenshotInputSchema),
     execute: async (input, options) => {
@@ -381,6 +432,9 @@ export function createPortableTakeScreenshotTool(
           };
         }
         const fullPage = input.fullPage ?? false;
+        const device: ScreenshotDevice = input.device ?? "desktop";
+        const viewport = DEVICE_VIEWPORTS[device];
+        const userAgent = device === "mobile" ? MOBILE_USER_AGENT : undefined;
         const shoot = async (clamped: boolean) =>
           await fetch(
             `${BROWSERLESS_BASE_URL}/screenshot?token=${encodeURIComponent(token)}`,
@@ -389,8 +443,16 @@ export function createPortableTakeScreenshotTool(
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 url: input.url,
-                options: buildScreenshotOptions(fullPage, clamped),
-                viewport: DEFAULT_VIEWPORT,
+                options: buildScreenshotOptions(
+                  fullPage,
+                  clamped,
+                  viewport.width,
+                ),
+                viewport,
+                // Sniffing sites pick their layout from the UA, not the
+                // viewport — send a mobile UA so `device: "mobile"` returns real
+                // mobile markup (omitted for desktop, which uses Chrome's own).
+                ...(userAgent ? { userAgent } : {}),
               }),
             },
           );
@@ -454,13 +516,14 @@ export function createPortableTakeScreenshotTool(
         pendingImages.push({ url: imageUrl, mediaType, pageUrl: input.url });
         toolOutputMap.set(
           options.toolCallId,
-          `Screenshot of ${input.url} stored at ${uri}`,
+          `Screenshot (${device}) of ${input.url} stored at ${uri}`,
         );
 
         return {
           success: true as const,
           image: { uri, mediaType },
           url: input.url,
+          device,
         };
       } finally {
         writer.write({
@@ -479,7 +542,7 @@ export function createPortableTakeScreenshotTool(
       }
       return {
         type: "text",
-        value: `Screenshot of ${output.url} captured successfully. The image is attached below.`,
+        value: `Screenshot of ${output.url} (${output.device ?? "desktop"}) captured successfully. The image is attached below.`,
       };
     },
   });

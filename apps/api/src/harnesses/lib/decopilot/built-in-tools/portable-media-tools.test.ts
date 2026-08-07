@@ -17,6 +17,13 @@ describe("buildScreenshotOptions", () => {
       clip: { x: 0, y: 0, width: 1280, height: 7000 },
     });
   });
+
+  it("clamps to the emulated device width — mobile clips to the phone width", () => {
+    const options = buildScreenshotOptions(true, true, 390);
+    expect(options).toMatchObject({
+      clip: { x: 0, y: 0, width: 390, height: 7000 },
+    });
+  });
 });
 
 /** Minimal JPEG: SOI, an APP0 segment to skip over, then SOF0 with dimensions. */

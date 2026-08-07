@@ -43,9 +43,28 @@ const REVIEWER_FOCUS: Record<ReviewerKind, string> = {
   qa:
     "You are the QA Agent. Your job is to confirm the task ACTUALLY SOLVED THE " +
     "PROBLEM — not to review code style. Exercise the feature/behavior the task " +
-    "describes (use the PR's preview / dev server when available), check the " +
-    "acceptance criteria implied by the title and description, and look for " +
-    "regressions in the affected flow. Judge outcomes, not the diff.",
+    "describes, check the acceptance criteria implied by the title and " +
+    "description, and look for regressions in the affected flow. Judge outcomes, " +
+    "not the diff — and NEVER approve on inspection alone: an approval must be " +
+    "backed by evidence you actually exercised the change.\n" +
+    "`TASK_BOARD_ITEM_PRS_GET` returns the PR's deploy `previewUrl` when the CI " +
+    "posted one. Open it DEEP-LINKED to the specific page/route the task affects " +
+    "(not just its root) and exercise the change there. For any VISUAL change, " +
+    "use `take_screenshot` to capture that exact view BEFORE (the current " +
+    "production / base-branch site) and AFTER (the preview) so the two can be " +
+    "compared; use `inspect_page` to catch console / runtime errors. Screenshots " +
+    "attach to this thread automatically — do not paste image URLs. For a " +
+    'responsive change, capture BOTH `device: "desktop"` and `device: "mobile"` ' +
+    "(mobile uses a phone viewport AND a mobile user-agent, so it reflects the " +
+    "real mobile layout, not a narrowed desktop one).\n" +
+    "If the preview will not render (303s, hangs, blank) or you otherwise cannot " +
+    "exercise the change, do NOT approve: `request_changes` stating what is " +
+    "blocking and what is needed to unblock. An unverified preview is not a pass.\n" +
+    "RECORD your QA pass with `TASK_BOARD_COMMENT_CREATE` BEFORE the decision — a " +
+    "durable record, separate from the short decision summary. Structure it: the " +
+    "acceptance criteria / scenarios you checked with a pass/fail on each, a " +
+    "before→after pointer to the screenshots, the exact URL(s) and viewport you " +
+    "exercised, and anything you could not verify and why.",
   code_review:
     "You are the Code Reviewer. Review the code changes for correctness, " +
     "security, and quality. FIRST look for a review skill/command appropriate " +
@@ -264,6 +283,9 @@ async function enqueueReviewerForTask(
   const decisionTool = sandboxed
     ? "mcp__studio__TASK_BOARD_REVIEW_DECISION"
     : "TASK_BOARD_REVIEW_DECISION";
+  const commentTool = sandboxed
+    ? "mcp__studio__TASK_BOARD_COMMENT_CREATE"
+    : "TASK_BOARD_COMMENT_CREATE";
 
   // Who this run IS. On the sandboxed path this becomes the harness's system
   // instructions (`agent.instructions`), replacing the org agent's own — those
@@ -299,6 +321,12 @@ async function enqueueReviewerForTask(
       : sandboxed
         ? `- Your working directory is EMPTY. Call \`mcp__studio__TASK_ADD_REPO\` with the connectionId of the PR's repository FIRST; it clones the repository and waits for the checkout, and \`git\` and \`gh\` are authenticated once it returns.`
         : "- Load the PR's repository to inspect / exercise the change.",
+    ...(kind === "qa"
+      ? [
+          `- Exercise the change on the PR's deploy \`previewUrl\` (from \`${prsGetTool}\`), deep-linked to the page/route the task affects (not root). For a visual change capture before/after with \`take_screenshot\` when it's available (see your QA instructions above); if you cannot render or exercise it, do NOT approve — \`request_changes\` with what's blocking.`,
+          `- Record what you validated with \`${commentTool}\` (scenarios + pass/fail, a before→after screenshot pointer, the URL + viewport exercised, and anything you couldn't verify) BEFORE your decision.`,
+        ]
+      : []),
     `- End the run by calling \`${decisionTool}\` exactly once with the task id, ` +
       `reviewer "${kind}", the reviewToken below, and your decision:`,
     "  - `approve` when it's good to ship. Include a short summary of what you verified.",
