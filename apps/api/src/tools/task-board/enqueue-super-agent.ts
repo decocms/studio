@@ -6,6 +6,8 @@ import {
   rollbackTaskExecution,
   TaskQuotaError,
 } from "../../billing/task-quota";
+import { isReportsTask } from "@decocms/shared/task-board";
+import { captureOrgEvent } from "@/posthog";
 import { getSettings } from "@/settings";
 import { enqueueAgentRunForTask } from "./enqueue-task-run";
 import type { RunClass } from "@/dispatch-queue/run-priority";
@@ -169,6 +171,7 @@ export async function enqueueSuperAgentForTask(
   // BEFORE the write; here the claim is the enforcement.
   const claim = await claimTaskExecution(ctx, task);
 
+  let harness: "claude-code" | "decopilot" = "decopilot";
   try {
     // A re-run told to update an existing PR must land on that PR's BRANCH.
     // Asking the model to `gh pr checkout` (which the prompt does, and has
@@ -194,6 +197,7 @@ export async function enqueueSuperAgentForTask(
     const choice = await resolveTaskRepoChoice(ctx, task.organizationId);
 
     if (choice) {
+      harness = "claude-code";
       const repo = "repo" in choice ? choice.repo : null;
       await enqueueAgentRunForTask(ctx, task, {
         title: `Super Agent: ${task.title}`,
@@ -209,16 +213,15 @@ export async function enqueueSuperAgentForTask(
         harnessId: "claude-code",
         ...(repo ? { repo } : {}),
       });
-      return;
+    } else {
+      await enqueueAgentRunForTask(ctx, task, {
+        title: `Super Agent: ${task.title}`,
+        ...(opts?.runClass ? { runClass: opts.runClass } : {}),
+        prompt: buildSuperAgentTaskPrompt(task, opts),
+        temperature: 0.5,
+        ...(pinnedRef ? { pinnedRef } : {}),
+      });
     }
-
-    await enqueueAgentRunForTask(ctx, task, {
-      title: `Super Agent: ${task.title}`,
-      ...(opts?.runClass ? { runClass: opts.runClass } : {}),
-      prompt: buildSuperAgentTaskPrompt(task, opts),
-      temperature: 0.5,
-      ...(pinnedRef ? { pinnedRef } : {}),
-    });
   } catch (err) {
     // Nothing was dispatched — no thread exists to ever trigger the
     // thread-finish refund pass (run-reactions.ts). Without this, a failure
@@ -242,4 +245,21 @@ export async function enqueueSuperAgentForTask(
     }
     throw err;
   }
+
+  // The dispatch really happened — the auto-fix leg of the PLG funnel.
+  // OUTSIDE the try/catch above: telemetry must never couple into the
+  // billing rollback (a throw here after a successful dispatch would refund
+  // a run that exists). Whether this dispatch is a re-run is `claim ===
+  // "rerun"` — no separate flag.
+  captureOrgEvent({
+    event: "task_run_enqueued",
+    organizationId: task.organizationId,
+    properties: {
+      task_id: task.id,
+      reports_task: isReportsTask(task),
+      claim,
+      harness,
+      ...(opts?.runClass ? { run_class: opts.runClass } : {}),
+    },
+  });
 }

@@ -33,6 +33,7 @@
 
 import type { StudioContext } from "@/core/studio-context";
 import { isReportsTask } from "@decocms/shared/task-board";
+import { captureOrgEvent } from "@/posthog";
 import { getSettings } from "../settings";
 import type {
   OrganizationBillingRow,
@@ -68,6 +69,29 @@ export class TaskQuotaError extends Error {
     super(`${SUBSCRIPTION_REQUIRED_PREFIX} ${QUOTA_MESSAGES[reason]}`);
     this.name = "TaskQuotaError";
   }
+}
+
+/** "trial" vs "subscription" — the free-or-paid axis of the PLG funnel. */
+function billingMode(periodKey: string): "trial" | "subscription" {
+  return periodKey === "trial" ? "trial" : "subscription";
+}
+
+/** The paywall/consumption funnel events. The acting user (when the gate ran
+ *  under an interactive context, e.g. the TASK_BOARD_ITEM_UPDATE paywall
+ *  pre-check) owns the event; a system dispatch falls back to the org
+ *  identity. Fire-and-forget; no-op without POSTHOG_KEY. */
+function captureQuotaEvent(
+  ctx: StudioContext,
+  event: "task_quota_claimed" | "task_quota_blocked",
+  task: { id: string; organizationId: string },
+  properties: Record<string, unknown> = {},
+): void {
+  captureOrgEvent({
+    event,
+    organizationId: task.organizationId,
+    ...(ctx.auth?.user?.id ? { userId: ctx.auth.user.id } : {}),
+    properties: { task_id: task.id, ...properties },
+  });
 }
 
 /** `past_due` counts — Stripe dunning grace. */
@@ -172,6 +196,10 @@ export async function ensureTaskExecutionAllowed(
   if (!config.enforced || !isReportsTask(task)) return;
   const claim = await ctx.storage.organizationBilling.taskClaim(task.id);
   if (claim && claim.runCount >= config.maxRunsPerTask) {
+    captureQuotaEvent(ctx, "task_quota_blocked", task, {
+      phase: "precheck",
+      reason: "runs_exhausted",
+    });
     throw new TaskQuotaError("runs_exhausted");
   }
   // A live (held or committed) claim already owns its slot — re-runs are free
@@ -185,7 +213,15 @@ export async function ensureTaskExecutionAllowed(
     task.organizationId,
     quota.periodKey,
   );
-  if (used >= quota.limit) throw new TaskQuotaError(quota.exhaustedReason);
+  if (used >= quota.limit) {
+    captureQuotaEvent(ctx, "task_quota_blocked", task, {
+      phase: "precheck",
+      reason: quota.exhaustedReason,
+      billing_mode: billingMode(quota.periodKey),
+      limit: quota.limit,
+    });
+    throw new TaskQuotaError(quota.exhaustedReason);
+  }
 }
 
 /**
@@ -217,8 +253,29 @@ export async function claimTaskExecution(
     quota.limit,
     config.maxRunsPerTask,
   );
-  if (result === "exhausted") throw new TaskQuotaError(quota.exhaustedReason);
-  if (result === "runs_exhausted") throw new TaskQuotaError("runs_exhausted");
+  if (result === "exhausted") {
+    captureQuotaEvent(ctx, "task_quota_blocked", task, {
+      phase: "claim",
+      reason: quota.exhaustedReason,
+      billing_mode: billingMode(quota.periodKey),
+      limit: quota.limit,
+    });
+    throw new TaskQuotaError(quota.exhaustedReason);
+  }
+  if (result === "runs_exhausted") {
+    captureQuotaEvent(ctx, "task_quota_blocked", task, {
+      phase: "claim",
+      reason: "runs_exhausted",
+    });
+    throw new TaskQuotaError("runs_exhausted");
+  }
+  if (result === "claimed") {
+    captureQuotaEvent(ctx, "task_quota_claimed", task, {
+      billing_mode: billingMode(quota.periodKey),
+      period_key: quota.periodKey,
+      limit: quota.limit,
+    });
+  }
   return result;
 }
 
@@ -267,9 +324,20 @@ export async function releaseTaskExecution(
   organizationId: string,
   taskBoardItemId: string,
 ): Promise<void> {
-  await billing
+  const released = await billing
     .releaseTaskClaim(organizationId, taskBoardItemId)
-    .catch((err) =>
-      console.error("[task-quota] refund failed (stays charged)", err),
-    );
+    .catch((err) => {
+      console.error("[task-quota] refund failed (stays charged)", err);
+      return false;
+    });
+  // Only a refund that HAPPENED is an event: a repeat release (second
+  // thread-finish pass), a task with no claim, or a failed write all return
+  // false and emit nothing.
+  if (released) {
+    captureOrgEvent({
+      event: "task_quota_refunded",
+      organizationId,
+      properties: { task_id: taskBoardItemId },
+    });
+  }
 }

@@ -11,9 +11,13 @@
  * /api/config handler and exposed to the browser at runtime.
  */
 
+import { createHash } from "node:crypto";
 import { PostHog } from "posthog-node";
 
-const apiKey = process.env.POSTHOG_KEY;
+// `bun test` sets NODE_ENV=test — a developer machine with POSTHOG_KEY
+// exported must not emit fixture events into the production project.
+const apiKey =
+  process.env.NODE_ENV === "test" ? undefined : process.env.POSTHOG_KEY;
 const host = process.env.POSTHOG_HOST;
 
 type PostHogLike = Pick<
@@ -48,4 +52,48 @@ if (apiKey) {
   };
   process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);
+}
+
+/** Deterministic v4-shaped uuid from a seed — same seed ⇒ same uuid, and
+ *  PostHog collapses rows sharing (event, distinct_id, uuid, timestamp), so
+ *  redundant emissions of one logical event (e.g. a redelivered Stripe
+ *  webhook) dedupe server-side instead of "dedupe in analysis". */
+export function deterministicUuid(seed: string): string {
+  const b = createHash("sha256").update(seed).digest();
+  b[6] = ((b[6] ?? 0) & 0x0f) | 0x40;
+  b[8] = ((b[8] ?? 0) & 0x3f) | 0x80;
+  const hex = b.subarray(0, 16).toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
+/**
+ * Org-scoped funnel event. When no acting user exists (webhooks, system
+ * reactions), identity is `org:<id>` with person processing off — an org must
+ * not become a person in the persons table. Pass `userId` when one is known
+ * (e.g. the interactive paywall); their person then owns the event.
+ * Fire-and-forget; no-op without POSTHOG_KEY.
+ */
+export function captureOrgEvent(input: {
+  event: string;
+  organizationId: string;
+  userId?: string;
+  properties?: Record<string, unknown>;
+  /** deterministicUuid(...) for events that can be emitted more than once
+   *  per logical occurrence. PostHog's dedupe contract needs uuid + event +
+   *  distinct_id + timestamp to ALL match — pass a stable `timestamp` too. */
+  uuid?: string;
+  timestamp?: Date;
+}): void {
+  posthog.capture({
+    distinctId: input.userId ?? `org:${input.organizationId}`,
+    event: input.event,
+    groups: { organization: input.organizationId },
+    ...(input.uuid ? { uuid: input.uuid } : {}),
+    ...(input.timestamp ? { timestamp: input.timestamp } : {}),
+    properties: {
+      organization_id: input.organizationId,
+      ...(input.userId ? {} : { $process_person_profile: false }),
+      ...input.properties,
+    },
+  });
 }
