@@ -209,13 +209,24 @@ export function SortableArrayRow({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={onDuplicate}>
+          <DropdownMenuItem
+            onClick={(e) => {
+              // Stop the click from bubbling up the React tree (portaled
+              // content still propagates to the row's onClick) and drilling
+              // into the item right after this action runs.
+              e.stopPropagation();
+              onDuplicate();
+            }}
+          >
             <Copy01 size={14} />
             {t("sectionsEditor.arrayField.duplicate")}
           </DropdownMenuItem>
           <DropdownMenuItem
             className="text-destructive focus:text-destructive"
-            onClick={onRemove}
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove();
+            }}
           >
             <Trash01 size={14} />
             {t("sectionsEditor.arrayField.delete")}
