@@ -7,6 +7,7 @@ import { describe, expect, it } from "bun:test";
 import {
   conflictFromPrGet,
   extractPreviewUrl,
+  isRateLimitError,
   extractPreviewUrlFromComments,
   isTrustedPreviewHost,
   mergeChecksStatus,
@@ -371,5 +372,28 @@ describe("extractPreviewUrlFromComments", () => {
         { body: vercelBody },
       ]),
     ).toBe("https://envs-montecarlo--c8xgrn.decocdn.com");
+  });
+});
+
+describe("isRateLimitError", () => {
+  // These are the exact strings the GitHub MCP surfaced in prod while the board
+  // hammered it; retrying any of them is what kept the limit shut.
+  it.each([
+    "Streamable HTTP error: Error POSTing to endpoint: too many requests",
+    "API rate limit exceeded for installation",
+    "You have exceeded a secondary rate limit",
+    "request failed with status 429",
+  ])("treats %p as non-retriable", (message) => {
+    expect(isRateLimitError(new Error(message))).toBe(true);
+  });
+
+  it("lets a genuine transient failure through to the retry", () => {
+    expect(isRateLimitError(new Error("socket hang up"))).toBe(false);
+    expect(isRateLimitError(new Error("Not Found"))).toBe(false);
+  });
+
+  it("handles a non-Error rejection", () => {
+    expect(isRateLimitError("too many requests")).toBe(true);
+    expect(isRateLimitError(null)).toBe(false);
   });
 });
