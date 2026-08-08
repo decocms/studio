@@ -57,7 +57,7 @@ import { KEYS } from "@/lib/query-keys";
 import { useDebouncedValue } from "@/hooks/use-debounced-value.ts";
 import { useOrgFsMutations } from "@/hooks/use-org-fs";
 import { basename, parseLibraryPath, segmentLabel } from "./location";
-import { useOrgRepoSyncVolumes } from "./synced-repos";
+import { useOrgRepoSyncVolumes } from "@/hooks/use-org-repo-syncs";
 import { BrandPreviewDialog } from "./brand-preview";
 import { ShareDialog, type ShareTarget } from "./file-share-button";
 import { LibraryPreviewDialog } from "./preview-dialog";

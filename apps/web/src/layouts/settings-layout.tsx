@@ -47,6 +47,7 @@ import {
   Users03,
   Zap,
   Key01,
+  GitBranch01,
   HardDrive,
   LinkExternal01,
 } from "@untitledui/icons";
@@ -148,6 +149,13 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           label: t("settings.nav.buckets"),
           icon: <HardDrive size={14} />,
           to: "/$org/settings/buckets",
+          requires: "file-configs:manage",
+        },
+        {
+          key: "synced-repos",
+          label: t("settings.nav.syncedRepos"),
+          icon: <GitBranch01 size={14} />,
+          to: "/$org/settings/synced-repos",
           requires: "file-configs:manage",
         },
       ],

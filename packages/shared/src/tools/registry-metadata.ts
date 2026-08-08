@@ -1398,7 +1398,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
   {
     id: "file-configs:manage",
     label: "Manage file configs",
-    description: "Create, list, update and delete S3 bucket configurations",
+    description:
+      "Create, list, update and delete S3 bucket configurations and synced GitHub repositories",
     section: "Organization",
     tools: [
       "FILE_CONFIG_CREATE",
@@ -1406,6 +1407,11 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "FILE_CONFIG_UPDATE",
       "FILE_CONFIG_DELETE",
       "FILE_OBJECTS_LIST",
+      "ORG_REPO_SYNC_CREATE",
+      "ORG_REPO_SYNC_LIST",
+      "ORG_REPO_SYNC_UPDATE",
+      "ORG_REPO_SYNC_DELETE",
+      "ORG_REPO_SYNC_RUN",
     ],
   },
   // AI Providers

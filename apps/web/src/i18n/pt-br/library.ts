@@ -151,22 +151,6 @@ export const library = {
     "Saídas de execução de agentes",
   "library.libraryViews.volumeUploadsDescription":
     "Arquivos que seu time envia",
-  "library.syncedRepos.addRepo": "Adicionar repo sincronizado",
-  "library.syncedRepos.cancel": "Cancelar",
-  "library.syncedRepos.create": "Criar",
-  "library.syncedRepos.creating": "Criando…",
-  "library.syncedRepos.created": 'Repo sincronizado em "{volume}"',
-  "library.syncedRepos.failed": "Algo deu errado",
-  "library.syncedRepos.nameDialogDescription":
-    "{repo} será mantido em sincronia nesta pasta somente leitura.",
-  "library.syncedRepos.nameDialogTitle": "Nomeie a pasta sincronizada",
-  "library.syncedRepos.namePlaceholder": "nome-da-pasta",
-  "library.syncedRepos.pickerTitle": "Sincronizar um repo na biblioteca",
-  "library.syncedRepos.remove": "Parar de sincronizar",
-  "library.syncedRepos.removeDescription":
-    "Os arquivos já sincronizados continuam na biblioteca; só a sincronização para. Você pode apagar a pasta depois, se não precisar dela.",
-  "library.syncedRepos.removeTitle": 'Parar de sincronizar "{volume}"?',
-  "library.syncedRepos.removed": "Sincronização removida",
   "library.syncedRepos.syncFailed": "Última sincronização falhou",
   "library.syncedRepos.syncedAgo": "Sincronizado {ago}",
   "library.syncedRepos.waitingFirstSync": "Aguardando primeira sincronização",
