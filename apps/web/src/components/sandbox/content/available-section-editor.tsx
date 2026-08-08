@@ -13,6 +13,10 @@ import { useT } from "@/i18n/use-t.ts";
 import { useInsetContext } from "@/layouts/agent-shell-layout";
 import { SchemaForm } from "@/components/sections-editor/schema-form";
 import {
+  type Crumb,
+  crumbLabel,
+} from "@/components/sections-editor/schema-form-breadcrumb";
+import {
   resolveSchema,
   type LiveMeta,
 } from "@/components/sections-editor/resolve-schema";
@@ -62,7 +66,7 @@ export function AvailableSectionEditor({
       : null;
 
   const [formValue, setFormValue] = useState<Record<string, unknown>>({});
-  const [fieldBreadcrumbs, setFieldBreadcrumbs] = useState<string[]>([]);
+  const [fieldBreadcrumbs, setFieldBreadcrumbs] = useState<Crumb[]>([]);
   const [formResetKey, setFormResetKey] = useState(0);
   const [saveOpen, setSaveOpen] = useState(false);
 
@@ -109,9 +113,10 @@ export function AvailableSectionEditor({
             >
               {headerCrumbs.map((crumb, index) => {
                 const isLast = index === headerCrumbs.length - 1;
+                const crumbText = crumbLabel(crumb);
                 return (
                   <span
-                    key={`${crumb}-${index}`}
+                    key={`${crumbText}-${index}`}
                     className="flex min-w-0 items-center gap-1 overflow-hidden"
                   >
                     {index > 0 && (
@@ -120,7 +125,7 @@ export function AvailableSectionEditor({
                     <button
                       type="button"
                       onClick={() => handleBreadcrumbClick(index)}
-                      title={crumb}
+                      title={crumbText}
                       className={cn(
                         "min-w-0 truncate rounded-md px-1 py-0.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground",
                         isLast
@@ -128,7 +133,7 @@ export function AvailableSectionEditor({
                           : "text-muted-foreground",
                       )}
                     >
-                      {crumb}
+                      {crumbText}
                     </button>
                   </span>
                 );

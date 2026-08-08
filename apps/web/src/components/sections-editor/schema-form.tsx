@@ -28,6 +28,7 @@ import {
 import {
   breadcrumbPathForActiveField,
   consumedBreadcrumbPrefix,
+  type Crumb,
   fieldDisplayLabel,
   isArrayDrillDownField,
   prependCrumbIfAbsent,
@@ -421,8 +422,8 @@ export function SchemaForm({
   value: unknown;
   onChange: (value: unknown) => void;
   basePath: string;
-  breadcrumbPath?: string[];
-  onBreadcrumbChange?: (path: string[]) => void;
+  breadcrumbPath?: Crumb[];
+  onBreadcrumbChange?: (path: Crumb[]) => void;
   meta?: LiveMeta;
   decofile?: Record<string, unknown>;
   onSaveReferencedBlock?: (
@@ -566,7 +567,7 @@ export function SchemaForm({
   );
   const fieldOnBreadcrumbChange =
     consumedPrefix.length > 0 && onBreadcrumbChange
-      ? (next: string[]) => onBreadcrumbChange([...consumedPrefix, ...next])
+      ? (next: Crumb[]) => onBreadcrumbChange([...consumedPrefix, ...next])
       : onBreadcrumbChange;
   return (
     <div className="min-w-0 space-y-6">
@@ -596,7 +597,7 @@ export function SchemaForm({
           });
         const fieldOnBreadcrumbChangeForKey =
           collidesWithSibling && fieldOnBreadcrumbChange
-            ? (next: string[]) =>
+            ? (next: Crumb[]) =>
                 fieldOnBreadcrumbChange(prependCrumbIfAbsent(label, next))
             : fieldOnBreadcrumbChange;
 

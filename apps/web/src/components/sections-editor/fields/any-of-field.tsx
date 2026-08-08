@@ -39,6 +39,7 @@ import {
   isEmbeddedUnionResolveType,
 } from "../block-type-utils";
 import { labelFromResolveType } from "../section-types";
+import { crumbLabel, type Crumb } from "../schema-form-breadcrumb";
 import { suggestBlockId, validateBlockId } from "../page-sections";
 import type { SchemaProperty } from "../resolve-schema";
 import { FieldLabel } from "./field-label";
@@ -241,11 +242,13 @@ export function AnyOfField({
   // the parent's re-prepend would double it (["Página de Listagem", "Página de
   // Listagem", …]) when this loader union is the active narrowed field.
   const strippedOwnCrumb =
-    isModuleLoaderUnion && safeBreadcrumbPath[0] === outerCrumb;
+    isModuleLoaderUnion &&
+    safeBreadcrumbPath.length > 0 &&
+    crumbLabel(safeBreadcrumbPath[0]!) === outerCrumb;
   const nestedBreadcrumbPath = strippedOwnCrumb
     ? safeBreadcrumbPath.slice(1)
     : safeBreadcrumbPath;
-  const nestedOnBreadcrumbChange: ((p: string[]) => void) | undefined =
+  const nestedOnBreadcrumbChange: ((p: Crumb[]) => void) | undefined =
     strippedOwnCrumb
       ? (newPath) => {
           onBreadcrumbChange?.([outerCrumb, ...newPath]);

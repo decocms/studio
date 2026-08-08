@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { renderField } from "@/components/sections-editor/schema-form";
+import type { Crumb } from "@/components/sections-editor/schema-form-breadcrumb";
 import type {
   LiveMeta,
   SchemaProperty,
@@ -28,7 +29,7 @@ export function FieldHarness({
   decofile?: Record<string, unknown>;
 }) {
   const [value, setValue] = useState<unknown>(initialValue);
-  const [breadcrumb, setBreadcrumb] = useState<string[]>([]);
+  const [breadcrumb, setBreadcrumb] = useState<Crumb[]>([]);
 
   return (
     <div data-testid="harness">

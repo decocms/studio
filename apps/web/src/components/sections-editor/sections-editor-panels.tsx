@@ -8,6 +8,7 @@ import {
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
 import { SchemaForm } from "./schema-form";
+import { type Crumb, crumbLabel } from "./schema-form-breadcrumb";
 import { type LiveMeta, type SchemaProperty } from "./resolve-schema";
 import type { FieldProps, SandboxConfig } from "./fields/field-props";
 import { SeoFormFields } from "./seo-form-fields";
@@ -42,7 +43,7 @@ export function VariantRuleForm({
   sandbox?: SandboxConfig | null;
 }) {
   const t = useT();
-  const [breadcrumbPath, setBreadcrumbPath] = useState<string[]>([]);
+  const [breadcrumbPath, setBreadcrumbPath] = useState<Crumb[]>([]);
 
   return (
     <div className="space-y-2">
@@ -63,9 +64,10 @@ export function VariantRuleForm({
           </button>
           {breadcrumbPath.map((crumb, index) => {
             const isLast = index === breadcrumbPath.length - 1;
+            const crumbText = crumbLabel(crumb);
             return (
               <span
-                key={`${crumb}-${index}`}
+                key={`${crumbText}-${index}`}
                 className="flex min-w-0 items-center gap-1 overflow-hidden"
               >
                 {index > 0 && (
@@ -76,7 +78,7 @@ export function VariantRuleForm({
                   onClick={() =>
                     setBreadcrumbPath(breadcrumbPath.slice(0, index + 1))
                   }
-                  title={crumb}
+                  title={crumbText}
                   className={cn(
                     "min-w-0 truncate rounded-md px-1 py-0.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground",
                     isLast
@@ -84,7 +86,7 @@ export function VariantRuleForm({
                       : "text-muted-foreground",
                   )}
                 >
-                  {crumb}
+                  {crumbText}
                 </button>
               </span>
             );
@@ -129,8 +131,8 @@ export function SchemaFormPanel({
   formValue: unknown;
   formResetKey: number;
   onFormChange: (v: unknown) => void;
-  onBreadcrumbChange: (path: string[]) => void;
-  breadcrumbPath?: string[];
+  onBreadcrumbChange: (path: Crumb[]) => void;
+  breadcrumbPath?: Crumb[];
   emptyMessage: string;
   beforeForm?: ReactNode;
   seoResolveType?: string;
