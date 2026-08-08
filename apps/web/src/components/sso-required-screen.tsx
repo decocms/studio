@@ -1,5 +1,5 @@
 import { AccessScreenLayout } from "@/components/access-screen-layout";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { Lock01 } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
 

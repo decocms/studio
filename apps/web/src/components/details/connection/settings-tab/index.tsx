@@ -6,7 +6,7 @@ import {
   useProjectContext,
   type ConnectionEntity,
 } from "@/sdk";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { Key01, File06, Loading01 } from "@untitledui/icons";
 import { Suspense } from "react";
 import { useWatch, type useForm } from "react-hook-form";

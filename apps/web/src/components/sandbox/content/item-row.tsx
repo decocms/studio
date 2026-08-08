@@ -1,11 +1,11 @@
 import { AlertCircle } from "@untitledui/icons";
-import { Checkbox } from "@deco/ui/components/checkbox.tsx";
+import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
-import { cn } from "@deco/ui/lib/utils.js";
+} from "@decocms/ui/components/tooltip.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { GLOBAL_SECTION_ICON_COLOR } from "@/components/sections-editor/section-types";
 
 export function ItemRow({

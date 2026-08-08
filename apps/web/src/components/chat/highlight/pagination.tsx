@@ -5,7 +5,7 @@
  * Visual styling matches the rest of the highlight chrome.
  */
 
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { ArrowLeft, ArrowRight } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
 

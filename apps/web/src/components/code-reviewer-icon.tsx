@@ -1,4 +1,4 @@
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { CODE_REVIEWER_COLOR, CODE_REVIEWER_ICON_URL } from "@/sdk";
 
 /** The Code Reviewer glyph, rendered as a round avatar badge — a light tint

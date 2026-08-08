@@ -1,7 +1,7 @@
 "use client";
 
-import { Label } from "@deco/ui/components/label.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { Label } from "./label.tsx";
+import { cn } from "../lib/utils.ts";
 import type * as LabelPrimitive from "@radix-ui/react-label";
 import { Slot } from "@radix-ui/react-slot";
 import * as React from "react";

@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { Copy01, CheckCircle } from "@untitledui/icons";
 import { toast } from "sonner";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
+} from "@decocms/ui/components/dialog.tsx";
 import { MonacoCodeEditor } from "@/components/monaco-editor";
 import { useT } from "@/i18n/use-t.ts";
 

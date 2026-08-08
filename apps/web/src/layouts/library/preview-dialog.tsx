@@ -5,7 +5,7 @@
  * `stat`, not read off list caches. The desktop surface is preview-panel.tsx.
  */
 
-import { Dialog, DialogContent } from "@deco/ui/components/dialog.tsx";
+import { Dialog, DialogContent } from "@decocms/ui/components/dialog.tsx";
 import {
   LibraryFilePreview,
   type LibraryPreviewProps,

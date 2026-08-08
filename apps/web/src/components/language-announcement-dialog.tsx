@@ -6,8 +6,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
+} from "@decocms/ui/components/dialog.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { authClient } from "@/lib/auth-client";
 import { usePreferences } from "@/hooks/use-preferences.ts";
 import { detectLocale } from "@/i18n/locale.ts";

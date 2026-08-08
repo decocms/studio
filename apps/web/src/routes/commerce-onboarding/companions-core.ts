@@ -1,4 +1,4 @@
-import { getGitHubAvatarUrl } from "@deco/ui/lib/github.ts";
+import { getGitHubAvatarUrl } from "@/utils/github.ts";
 import { getRepoScope } from "@decocms/shared/github-repo-scope";
 import {
   getStudioMcpMetadata,

@@ -1,4 +1,4 @@
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import posthog from "posthog-js";
 import { useEffectEvent, useRef, useState } from "react";
 import type {

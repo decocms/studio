@@ -4,6 +4,7 @@ import {
   type LiveMeta,
 } from "@/components/sections-editor/resolve-schema";
 import { SchemaForm } from "@/components/sections-editor/schema-form";
+import type { Crumb } from "@/components/sections-editor/schema-form-breadcrumb";
 
 /**
  * Canonical CT surface: raw CMS JSON Schema (LiveMeta) in → resolveSchema →
@@ -28,7 +29,7 @@ export function SchemaFormHarness({
 }) {
   const resolved = resolveSchema(resolveType, meta);
   const [value, setValue] = useState<unknown>(initialValue);
-  const [breadcrumb, setBreadcrumb] = useState<string[]>([]);
+  const [breadcrumb, setBreadcrumb] = useState<Crumb[]>([]);
 
   return (
     <div data-testid="harness">

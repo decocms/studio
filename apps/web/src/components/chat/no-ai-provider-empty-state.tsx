@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Monitor01 } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { ConnectProviderDialog } from "@/views/settings/ai-providers/connect-provider-dialog";
 import {
   ProviderGrid,

@@ -1,4 +1,4 @@
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useRef } from "react";
 import type { ChatMessage, ChatStatus } from "../types.ts";
 import { MessageAssistant } from "./assistant.tsx";

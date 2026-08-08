@@ -1,8 +1,8 @@
 import type * as React from "react";
 import { ChevronLeft, ChevronRight, DotsHorizontal } from "@untitledui/icons";
 
-import { cn } from "@deco/ui/lib/utils.ts";
-import { type Button, buttonVariants } from "@deco/ui/components/button.tsx";
+import { cn } from "../lib/utils.ts";
+import { type Button, buttonVariants } from "./button.tsx";
 
 function Pagination({ className, ...props }: React.ComponentProps<"nav">) {
   return (

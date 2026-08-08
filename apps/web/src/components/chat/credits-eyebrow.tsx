@@ -7,7 +7,7 @@
  */
 
 import { Coins04, AlertCircle } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useNavigate } from "@tanstack/react-router";
 import { useProjectContext } from "@/sdk";
 

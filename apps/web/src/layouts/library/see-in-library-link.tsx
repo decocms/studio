@@ -5,7 +5,7 @@
  * conversation).
  */
 
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { Folder } from "@untitledui/icons";
 import { useNavigate } from "@tanstack/react-router";
 import { useT } from "@/i18n/use-t.ts";

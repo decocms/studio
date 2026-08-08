@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { useT } from "@/i18n/use-t.ts";
 import { ScrollFade } from "./scroll-fade";
@@ -16,22 +16,22 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@deco/ui/components/popover.tsx";
+} from "@decocms/ui/components/popover.tsx";
 import {
   ToggleGroup,
   ToggleGroupItem,
-} from "@deco/ui/components/toggle-group.tsx";
+} from "@decocms/ui/components/toggle-group.tsx";
 import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
-} from "@deco/ui/components/sidebar.tsx";
+} from "@decocms/ui/components/sidebar.tsx";
 import { getWellKnownDecopilotVirtualMCP, useProjectContext } from "@/sdk";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { authClient } from "@/lib/auth-client";

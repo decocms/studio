@@ -28,8 +28,8 @@ import {
   Upload01,
   XClose,
 } from "@untitledui/icons";
-import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
-import { Button } from "@deco/ui/components/button.tsx";
+import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,7 +39,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@deco/ui/components/alert-dialog.tsx";
+} from "@decocms/ui/components/alert-dialog.tsx";
 import {
   Dialog,
   DialogContent,
@@ -47,8 +47,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
+} from "@decocms/ui/components/dialog.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
 import {
   HOME_MOUNT_PATH,
   homeDisplayName,

@@ -5,8 +5,12 @@
  */
 
 import type { ReactNode } from "react";
-import { Sheet, SheetContent, SheetTitle } from "@deco/ui/components/sheet.tsx";
-import { useSidebar } from "@deco/ui/components/sidebar.tsx";
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+} from "@decocms/ui/components/sheet.tsx";
+import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
 import { LayoutLeft } from "@untitledui/icons";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { useT } from "@/i18n/use-t.ts";

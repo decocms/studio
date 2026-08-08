@@ -14,7 +14,7 @@
  * the stat polls every 2s.
  */
 
-import { Skeleton } from "@deco/ui/components/skeleton.tsx";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { HtmlPreviewPanel } from "@/components/deck/html-preview-panel";
 import {
   entryMarker,

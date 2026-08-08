@@ -21,8 +21,8 @@ import { Suspense, useId, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { formatTimeAgo } from "@/lib/format-time";
-import { Avatar } from "@deco/ui/components/avatar.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Avatar } from "@decocms/ui/components/avatar.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/en/index.ts";
 import {
@@ -30,13 +30,13 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-} from "@deco/ui/components/chart.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/chart.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   ArrowUpRight,
   BarChart10,

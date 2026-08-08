@@ -4,8 +4,8 @@ import {
   type FieldPath,
   type FieldValues,
 } from "react-hook-form";
-import { Label } from "@deco/ui/components/label.tsx";
-import { Switch } from "@deco/ui/components/switch.tsx";
+import { Label } from "@decocms/ui/components/label.tsx";
+import { Switch } from "@decocms/ui/components/switch.tsx";
 import { sanitizeProductionUrl } from "@decocms/shared/deco-site-production-url";
 import { useT } from "@/i18n/use-t.ts";
 

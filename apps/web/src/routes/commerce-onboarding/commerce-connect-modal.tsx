@@ -7,13 +7,13 @@ import { useT } from "@/i18n/use-t.ts";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { track } from "@/lib/posthog-client";
 import { KEYS } from "@/lib/query-keys";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
   DialogOverlay,
   DialogPortal,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
+} from "@decocms/ui/components/dialog.tsx";
 import { formatPinnedViewTabId } from "@/layouts/main-panel-tabs/tab-id";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import {

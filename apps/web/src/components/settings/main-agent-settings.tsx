@@ -11,8 +11,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@deco/ui/components/select.tsx";
-import { Skeleton } from "@deco/ui/components/skeleton.tsx";
+} from "@decocms/ui/components/select.tsx";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { AgentAvatar } from "@/components/agent-icon";
 import {
   getWellKnownDecopilotVirtualMCP,

@@ -1,23 +1,23 @@
 import { useState } from "react";
 import { File02, Loading01, X } from "@untitledui/icons";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Label } from "@decocms/ui/components/label.tsx";
 import {
   RadioGroup,
   RadioGroupItem,
-} from "@deco/ui/components/radio-group.tsx";
+} from "@decocms/ui/components/radio-group.tsx";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@deco/ui/components/select.tsx";
+} from "@decocms/ui/components/select.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { type CategoryRef, type PostMeta } from "./blog-data";
 

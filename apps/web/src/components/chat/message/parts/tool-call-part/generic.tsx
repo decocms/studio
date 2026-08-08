@@ -13,12 +13,12 @@ import { useTaskExpandedTools } from "@/hooks/use-task-expanded-tools";
 import { formatBytes } from "@/lib/format-bytes";
 import { formatPinnedViewTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { useNavigate } from "@tanstack/react-router";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 
 import type { ToolDefinition } from "@/sdk";
 import { useMCPClient, useProjectContext } from "@/sdk";

@@ -3,7 +3,7 @@
 import type * as React from "react";
 import * as TabsPrimitive from "@radix-ui/react-tabs";
 
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "../lib/utils.ts";
 
 type TabsVariant = "pill" | "underline" | "canvas";
 

@@ -1,13 +1,13 @@
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Form,
   FormControl,
   FormField,
   FormItem,
   FormMessage,
-} from "@deco/ui/components/form.tsx";
-import { Tabs, TabsContent } from "@deco/ui/components/tabs.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/form.tsx";
+import { Tabs, TabsContent } from "@decocms/ui/components/tabs.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { Edit02, MessageQuestionCircle } from "@untitledui/icons";
 import { useEffect, useRef } from "react";
 import { type Control, type FieldValues, useController } from "react-hook-form";

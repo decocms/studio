@@ -1,6 +1,6 @@
 import type { AiProviderInfo } from "@/sdk";
 import { ChevronRight } from "@untitledui/icons";
-import { Avatar } from "@deco/ui/components/avatar.tsx";
+import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import {
   SettingsCard,
   SettingsCardItem,

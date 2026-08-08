@@ -26,8 +26,8 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
+} from "@decocms/ui/components/dialog.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { Loading01 } from "@untitledui/icons";
 import { IntegrationIcon } from "@/components/integration-icon";
 import { CompanionConfigDialog, SaBindingDialog } from "./companion-card.tsx";

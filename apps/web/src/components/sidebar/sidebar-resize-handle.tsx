@@ -1,5 +1,5 @@
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { useSidebar } from "@deco/ui/components/sidebar.tsx";
+import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
 import { useT } from "@/i18n/use-t.ts";
 
 /**

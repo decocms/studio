@@ -2,9 +2,9 @@ import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import { Activity } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   cacheHitRatio,
   type UsageStats as UsageStatsType,

@@ -1,0 +1,47 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Design System/Welcome" />
+
+# decocms design system
+
+`@decocms/ui` is the product design system behind [Studio](https://github.com/decocms/studio)
+and other decocms apps: React 19 components built on Radix primitives, styled with
+Tailwind CSS v4 semantic tokens, themed for light and dark out of the box.
+
+## Install
+
+```bash
+bun add @decocms/ui react react-dom
+```
+
+Make the design-system stylesheet your CSS entry point — it pulls in Tailwind,
+every token, and the bundled fonts:
+
+```css
+@import "@decocms/ui/styles/global.css";
+```
+
+Then import components from their subpaths:
+
+```tsx
+import { Button } from "@decocms/ui/components/button";
+import { Dialog } from "@decocms/ui/components/dialog";
+```
+
+## Principles
+
+- **Own the code.** Components follow the shadcn model — thin, readable wrappers
+  over Radix primitives using `cva` variants and the `cn()` helper.
+- **Semantic tokens, never raw palette.** Colors are expressed as roles
+  (`bg-primary`, `text-muted-foreground`, `bg-success`) so themes stay
+  centralized in `global.css`. See **Design System → Colors**.
+- **Dark mode is free.** Every token has a dark value; toggle the theme with the
+  toolbar button above.
+- **Copy belongs to the app.** Components accept user-facing text through props;
+  the consuming app owns translation.
+
+## Browsing this Storybook
+
+Each component page shows its variants, sizes, and states, with controls to play
+with props and auto-generated docs. Use the toolbar to flip between light and
+dark themes, and the a11y panel to audit accessibility.

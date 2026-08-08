@@ -6,8 +6,8 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
-} from "@deco/ui/components/sidebar.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/sidebar.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { LayoutLeft } from "@untitledui/icons";
 import type { ReactNode } from "react";
 import { useT } from "@/i18n/use-t.ts";

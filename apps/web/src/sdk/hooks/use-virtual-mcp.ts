@@ -27,7 +27,7 @@ export interface VirtualMCPLastUsed {
 }
 
 /**
- * Filter definition for virtual MCPs (matches @deco/ui Filter shape)
+ * Filter definition for virtual MCPs (matches @decocms/ui Filter shape)
  */
 export type VirtualMCPFilter = CollectionFilter;
 

@@ -17,7 +17,7 @@ import {
   useRouterState,
   useParams,
 } from "@tanstack/react-router";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   Sidebar,
   SidebarContent,
@@ -29,7 +29,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
-} from "@deco/ui/components/sidebar.tsx";
+} from "@decocms/ui/components/sidebar.tsx";
 import { PageContentClassNameProvider } from "@/components/page";
 import {
   BarChart10,
@@ -55,7 +55,7 @@ import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 import { useCapabilities, type CapabilityId } from "@/hooks/use-capability";
 import { usePendingJoinRequests } from "@/hooks/use-join-requests";
-import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
+import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { Suspense } from "react";
 import { useStatusSounds } from "../hooks/use-status-sounds";
 import { authClient } from "@/lib/auth-client";

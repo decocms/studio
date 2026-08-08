@@ -12,7 +12,7 @@
  * thread exists, and phrased as a possibility, not a certainty: from the board
  * we cannot tell a genuinely streaming run from a wedged one.
  */
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
   DialogContent,
@@ -20,7 +20,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
+} from "@decocms/ui/components/dialog.tsx";
 import { Loading01 } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
 import type { TaskBoardItem } from "./config";

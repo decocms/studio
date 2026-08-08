@@ -10,22 +10,22 @@
 
 import { IntegrationIcon } from "@/components/integration-icon.tsx";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Checkbox } from "@deco/ui/components/checkbox.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
-import { SearchInput } from "@deco/ui/components/search-input.tsx";
+} from "@decocms/ui/components/dialog.tsx";
+import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@deco/ui/components/select.tsx";
+} from "@decocms/ui/components/select.tsx";
 import { useProjectContext, useVirtualMCPs } from "@/sdk";
 import { Plus, XClose } from "@untitledui/icons";
 import { useState } from "react";

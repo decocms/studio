@@ -7,7 +7,7 @@ import {
   Plus,
   ShoppingCart01,
 } from "@untitledui/icons";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { useHomeEdit } from "./home-edit-context";
 import { NATIVE_TILES, nativeCandidateId } from "./native-tiles";
 import { SectionHeader } from "./section-header";

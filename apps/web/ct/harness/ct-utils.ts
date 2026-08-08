@@ -37,10 +37,18 @@ export async function readFormValue(component: Locator): Promise<unknown> {
   return JSON.parse(txt ?? "null");
 }
 
-/** Parse the harness's `breadcrumb` <pre> back into a string[]. */
+/**
+ * Parse the harness's `breadcrumb` <pre> into the visible crumb labels. Item
+ * crumbs serialize as `{ label, itemIndex }`; this returns the `label` part (the
+ * text the UI renders), so assertions read the trail the way a user sees it.
+ */
 export async function readBreadcrumb(component: Locator): Promise<string[]> {
   const txt = await component.getByTestId("breadcrumb").textContent();
-  return JSON.parse(txt ?? "[]");
+  const crumbs = JSON.parse(txt ?? "[]") as (
+    | string
+    | { label: string; itemIndex: number }
+  )[];
+  return crumbs.map((c) => (typeof c === "string" ? c : c.label));
 }
 
 /**

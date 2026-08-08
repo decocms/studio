@@ -4,18 +4,18 @@ import {
   Pilcrow01,
   Settings01,
 } from "@untitledui/icons";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
-import { MultiSelect } from "@deco/ui/components/multi-select.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
+import { Label } from "@decocms/ui/components/label.tsx";
+import { MultiSelect } from "@decocms/ui/components/multi-select.tsx";
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
-} from "@deco/ui/components/tabs.tsx";
-import { Switch } from "@deco/ui/components/switch.tsx";
-import { Textarea } from "@deco/ui/components/textarea.tsx";
+} from "@decocms/ui/components/tabs.tsx";
+import { Switch } from "@decocms/ui/components/switch.tsx";
+import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { ImageField } from "@/components/sections-editor/fields/image-field";
 import { StringField } from "@/components/sections-editor/fields/string-field";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
@@ -31,7 +31,7 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import { buildBlogPostPreviewUrl } from "./blog-preview-url";
 import { usePackagePath } from "@/components/sections-editor/use-package-path";
 import { useSaveBlogBlock } from "./use-blog-mutations";

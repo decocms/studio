@@ -1,4 +1,4 @@
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useRef, useState } from "react";
 import type { CoverProps } from "@decocms/shared/reports/deck-types";
 import type { TranslationKey } from "@/i18n/en/index.ts";

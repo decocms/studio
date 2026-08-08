@@ -3,8 +3,8 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/tooltip.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { GitBranch01 } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
 import { BranchPicker } from "../../thread/github/branch-picker";

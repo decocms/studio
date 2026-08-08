@@ -8,7 +8,7 @@ export type {
   PanelImperativeHandle,
 } from "react-resizable-panels";
 
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 
 function ResizablePanelGroup({
   className,

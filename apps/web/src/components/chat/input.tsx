@@ -8,8 +8,8 @@ import {
   writeChatDraft,
 } from "@/lib/chat-draft";
 import { useT } from "@/i18n/use-t.ts";
-import { Button } from "@deco/ui/components/button.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { getWellKnownDecopilotVirtualMCP, useProjectContext } from "@/sdk";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -59,7 +59,7 @@ import { SessionStats } from "./usage-stats";
 import { authClient } from "@/lib/auth-client.ts";
 import { track } from "@/lib/posthog-client";
 import { useSound } from "@/hooks/use-sound.ts";
-import { question004Sound } from "@deco/ui/lib/question-004.ts";
+import { question004Sound } from "@/lib/sounds/question-004.ts";
 import { AddConnectionDialog } from "@/views/virtual-mcp/add-connection-dialog";
 import { ConnectionsBanner } from "./connections-banner";
 import { useVoiceInput } from "@/hooks/use-voice-input.ts";

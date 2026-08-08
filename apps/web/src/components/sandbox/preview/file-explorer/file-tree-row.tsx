@@ -4,14 +4,14 @@ import {
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
-} from "@deco/ui/components/context-menu.tsx";
+} from "@decocms/ui/components/context-menu.tsx";
 import {
   ChevronDown,
   ChevronRight,
   Folder,
   Loading01,
 } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.js";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { TreeNode } from "./types";
 import type { FileIcon } from "./utils";

@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Plus, Zap } from "@untitledui/icons";
-import { Button } from "@deco/ui/components/button.tsx";
-import { SearchInput } from "@deco/ui/components/search-input.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import { Page } from "@/components/page";
 import { EmptyState } from "@/components/empty-state.tsx";
 import {
