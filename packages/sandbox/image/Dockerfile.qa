@@ -1,0 +1,39 @@
+# QA-reviewer sandbox image = the base sandbox image + a headless browser.
+#
+# Only the sandboxed QA reviewer needs a browser (to screenshot the PR preview
+# via the `qa-screenshot` helper); the claude-code harness has no Decopilot
+# `take_screenshot` built-in. Chromium + its deps add ~750MB, so instead of
+# baking it into the base image (carried by EVERY sandbox — Super Agent, code
+# review, previews, warm pool), it lives here, in a separate image that only QA
+# reviewer runs are dispatched onto.
+#
+# Build (local): first build the base, then this FROM it —
+#   docker build -t studio-sandbox-go:base -f packages/sandbox/image/Dockerfile packages/sandbox
+#   docker build --build-arg BASE_IMAGE=studio-sandbox-go:base \
+#     -t studio-sandbox-go-qa:local -f packages/sandbox/image/Dockerfile.qa packages/sandbox
+# CI publishes both multi-arch (see .github/workflows/release-studio-sandbox.yaml).
+
+ARG BASE_IMAGE=ghcr.io/decocms/studio/studio-sandbox-go:latest
+FROM ${BASE_IMAGE}
+
+# apt + global npm install need root; the base image ends as USER sandbox.
+USER root
+
+# Debian's own `chromium` package (its apt deps resolve correctly on this trixie
+# base) driven by `playwright-core` — the API only, no browser download.
+# Playwright's `install --with-deps chromium` is avoided on purpose: on Debian
+# it falls back to an Ubuntu dependency list and dies on obsolete font packages
+# (ttf-unifont / ttf-ubuntu-font-family).
+ARG PLAYWRIGHT_VERSION=1.49.1
+ENV QA_CHROMIUM=/usr/bin/chromium
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends chromium \
+  && rm -rf /var/lib/apt/lists/* \
+  && npm install -g "playwright-core@${PLAYWRIGHT_VERSION}" \
+  && chromium --version
+
+COPY --chown=sandbox:sandbox image/bin/qa-screenshot /usr/local/bin/qa-screenshot
+RUN chmod +x /usr/local/bin/qa-screenshot
+
+# Back to the unprivileged user + inherit the base's daemon CMD.
+USER sandbox

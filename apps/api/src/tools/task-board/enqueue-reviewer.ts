@@ -47,24 +47,21 @@ const REVIEWER_FOCUS: Record<ReviewerKind, string> = {
     "description, and look for regressions in the affected flow. Judge outcomes, " +
     "not the diff — and NEVER approve on inspection alone: an approval must be " +
     "backed by evidence you actually exercised the change.\n" +
-    "`TASK_BOARD_ITEM_PRS_GET` returns the PR's deploy `previewUrl` when the CI " +
-    "posted one. Open it DEEP-LINKED to the specific page/route the task affects " +
-    "(not just its root) and exercise the change there. For any VISUAL change, " +
-    "use `take_screenshot` to capture that exact view BEFORE (the current " +
-    "production / base-branch site) and AFTER (the preview) so the two can be " +
-    "compared; use `inspect_page` to catch console / runtime errors. Screenshots " +
-    "attach to this thread automatically — do not paste image URLs. For a " +
-    'responsive change, capture BOTH `device: "desktop"` and `device: "mobile"` ' +
-    "(mobile uses a phone viewport AND a mobile user-agent, so it reflects the " +
-    "real mobile layout, not a narrowed desktop one).\n" +
+    "Exercise the change on the PR's deploy preview, deep-linked to the specific " +
+    "page/route the task affects (not just its root). For any VISUAL change, " +
+    "capture the affected view BEFORE (the current production / base-branch site) " +
+    "and AFTER (the preview) so the two can be compared, and for a responsive " +
+    "change capture BOTH a desktop and a real mobile view (a phone viewport AND a " +
+    "mobile user-agent — not a narrowed desktop). The How-to steps below name the " +
+    "exact screenshot tool for your run.\n" +
     "If the preview will not render (303s, hangs, blank) or you otherwise cannot " +
-    "exercise the change, do NOT approve: `request_changes` stating what is " +
-    "blocking and what is needed to unblock. An unverified preview is not a pass.\n" +
-    "RECORD your QA pass with `TASK_BOARD_COMMENT_CREATE` BEFORE the decision — a " +
-    "durable record, separate from the short decision summary. Structure it: the " +
-    "acceptance criteria / scenarios you checked with a pass/fail on each, a " +
-    "before→after pointer to the screenshots, the exact URL(s) and viewport you " +
-    "exercised, and anything you could not verify and why.",
+    "exercise the change, do NOT approve: request changes stating what is blocking " +
+    "and what is needed to unblock. An unverified preview is not a pass.\n" +
+    "RECORD your QA pass as a task comment BEFORE the decision — a durable record, " +
+    "separate from the short decision summary. Structure it: the acceptance " +
+    "criteria / scenarios you checked with a pass/fail on each, a before→after " +
+    "pointer to the screenshots, the exact URL(s) and viewport you exercised, and " +
+    "anything you could not verify and why.",
   code_review:
     "You are the Code Reviewer. Review the code changes for correctness, " +
     "security, and quality. FIRST look for a review skill/command appropriate " +
@@ -323,7 +320,10 @@ async function enqueueReviewerForTask(
         : "- Load the PR's repository to inspect / exercise the change.",
     ...(kind === "qa"
       ? [
-          `- Exercise the change on the PR's deploy \`previewUrl\` (from \`${prsGetTool}\`), deep-linked to the page/route the task affects (not root). For a visual change capture before/after with \`take_screenshot\` when it's available (see your QA instructions above); if you cannot render or exercise it, do NOT approve — \`request_changes\` with what's blocking.`,
+          `- Exercise the change on the PR's deploy \`previewUrl\` (from \`${prsGetTool}\`), deep-linked to the page/route the task affects (not root). If you cannot render or exercise it, do NOT approve — \`request_changes\` with what's blocking.`,
+          sandboxed
+            ? "- For a VISUAL change, capture before/after with `qa-screenshot <url> <outfile.png> [--mobile] [--full]` (headless Chromium, baked into the sandbox). Write the files under `org/output/` (e.g. `org/output/qa/before-desktop.png`, `after-mobile.png`) so they surface on the task; capture both desktop AND `--mobile` for responsive changes."
+            : '- For a VISUAL change, capture before/after with the `take_screenshot` tool (`device: "desktop"` and `device: "mobile"` for responsive changes) and use `inspect_page` for console/runtime errors; the images attach to the thread automatically.',
           `- Record what you validated with \`${commentTool}\` (scenarios + pass/fail, a before→after screenshot pointer, the URL + viewport exercised, and anything you couldn't verify) BEFORE your decision.`,
         ]
       : []),

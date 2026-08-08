@@ -1,0 +1,80 @@
+#!/usr/bin/env node
+/**
+ * qa-screenshot — capture a page screenshot from inside the sandbox.
+ *
+ * The claude-code QA reviewer runs in the sandbox, where the Decopilot
+ * `take_screenshot` built-in does NOT exist. This is its Bash-driven
+ * equivalent: headless Chromium via Playwright (both baked into the image).
+ *
+ * Usage:
+ *   qa-screenshot <url> <outfile.png> [--mobile] [--full]
+ *
+ * Write the outfile under `org/output/` (e.g. org/output/qa/before-desktop.png)
+ * so the daemon materializes it into the task's org-fs subtree and it shows on
+ * the card. `--mobile` uses a phone viewport AND a mobile user-agent so
+ * UA-sniffing sites return their real mobile markup (not a narrowed desktop).
+ */
+const path = require("node:path");
+
+// playwright-core is installed globally in the image (API only — the browser is
+// Debian's `chromium` package, at QA_CHROMIUM). Resolve it from the global
+// module root rather than relative to this script.
+const GLOBAL_MODULES = process.env.QA_SCREENSHOT_MODULES ||
+  "/usr/local/lib/node_modules";
+const { chromium } = require(path.join(GLOBAL_MODULES, "playwright-core"));
+const CHROMIUM_PATH = process.env.QA_CHROMIUM || "/usr/bin/chromium";
+
+const MOBILE_USER_AGENT =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) " +
+  "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
+
+async function main() {
+  const args = process.argv.slice(2);
+  const flags = new Set(args.filter((a) => a.startsWith("--")));
+  const [url, outfile] = args.filter((a) => !a.startsWith("--"));
+  if (!url || !outfile) {
+    console.error(
+      "usage: qa-screenshot <url> <outfile.png> [--mobile] [--full]",
+    );
+    process.exit(2);
+  }
+  const mobile = flags.has("--mobile");
+  const fullPage = flags.has("--full");
+
+  // --no-sandbox: the container drops all capabilities, so Chromium's own
+  // setuid sandbox can't initialize; the pod is the isolation boundary here.
+  const browser = await chromium.launch({
+    executablePath: CHROMIUM_PATH,
+    args: ["--no-sandbox"],
+  });
+  try {
+    const context = await browser.newContext(
+      mobile
+        ? {
+            viewport: { width: 390, height: 844 },
+            deviceScaleFactor: 3,
+            isMobile: true,
+            hasTouch: true,
+            userAgent: MOBILE_USER_AGENT,
+          }
+        : { viewport: { width: 1280, height: 800 } },
+    );
+    const page = await context.newPage();
+    // `load` (not networkidle): analytics/beacons keep the network busy forever
+    // on many sites, so networkidle hangs the capture.
+    await page.goto(url, { waitUntil: "load", timeout: 45000 });
+    // Let late-mounting content (cookie bars, lazy sections) settle a beat.
+    await page.waitForTimeout(1500);
+    await page.screenshot({ path: outfile, fullPage, type: "png" });
+    console.log(
+      `saved ${outfile} (${mobile ? "mobile 390x844" : "desktop 1280x800"}${fullPage ? ", full page" : ""})`,
+    );
+  } finally {
+    await browser.close();
+  }
+}
+
+main().catch((err) => {
+  console.error(`qa-screenshot failed: ${err?.message ?? err}`);
+  process.exit(1);
+});
