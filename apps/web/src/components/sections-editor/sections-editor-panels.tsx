@@ -1,12 +1,12 @@
 import { useState, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight, Flag01 } from "@untitledui/icons";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
-import { cn } from "@deco/ui/lib/utils.js";
+} from "@decocms/ui/components/tooltip.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { SchemaForm } from "./schema-form";
 import { type Crumb, crumbLabel } from "./schema-form-breadcrumb";
 import { type LiveMeta, type SchemaProperty } from "./resolve-schema";

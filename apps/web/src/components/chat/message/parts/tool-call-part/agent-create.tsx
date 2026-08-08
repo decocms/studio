@@ -7,7 +7,7 @@ import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { AgentAvatar } from "@/components/agent-icon";
 import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
 import { useT } from "@/i18n/use-t.ts";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { ToolCallShell, LatencyLabel } from "./common.tsx";
 import { getEffectiveState, unwrapResult } from "./utils.tsx";
 import { AgentConnectionsPreview } from "./agent-connections-preview.tsx";

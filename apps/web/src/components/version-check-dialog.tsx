@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { Button } from "@deco/ui/components/button.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { RefreshCw01 } from "@untitledui/icons";
 import type { PublicConfig } from "@decocms/shared/config";
 import { AnnouncementCard } from "@/components/announcement-card";

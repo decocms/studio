@@ -1,7 +1,7 @@
 import { Suspense, useState } from "react";
 import { AlertCircle } from "@untitledui/icons";
 import { Page } from "@/components/page";
-import { Skeleton } from "@deco/ui/components/skeleton.tsx";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { SettingsPage } from "@/components/settings/settings-section";
 import { ErrorBoundary } from "@/components/error-boundary";
 import {

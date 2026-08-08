@@ -27,12 +27,12 @@
  * position, so the affordance was removed until an in-place design exists
  * (`editQueuedMessage` in chat-context still implements the composition).
  */
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import { ArrowUp, XClose } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
 import { useChatStream } from "./context";

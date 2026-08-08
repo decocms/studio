@@ -5,7 +5,7 @@ import Editor, {
   type EditorProps,
 } from "@monaco-editor/react";
 import type { Plugin } from "prettier";
-import { Spinner } from "@deco/ui/components/spinner.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { getReturnType } from "./monaco";
 import { MonacoErrorBoundary } from "./monaco-error-boundary";
 

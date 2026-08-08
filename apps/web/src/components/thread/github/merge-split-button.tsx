@@ -1,11 +1,11 @@
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
-import { Spinner } from "@deco/ui/components/spinner.tsx";
+} from "@decocms/ui/components/dropdown-menu.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { ChevronDown } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
 import { publishToBaseLabel } from "./publish-label.ts";

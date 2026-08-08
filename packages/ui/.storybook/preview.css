@@ -1,0 +1,4 @@
+@import "../src/styles/global.css";
+
+/* Storybook-only sources: foundation pages live outside src/components */
+@source "../src/foundations";

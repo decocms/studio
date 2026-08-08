@@ -3,7 +3,7 @@ import { Bold01, Italic01, Underline01 } from "@untitledui/icons";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
-import { cn } from "@deco/ui/lib/utils.js";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   RichTextLinkControl,
   ToolbarButton,

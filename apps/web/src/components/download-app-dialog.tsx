@@ -1,11 +1,11 @@
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
+} from "@decocms/ui/components/dialog.tsx";
 import { Check, Copy01 } from "@untitledui/icons";
 import { useState } from "react";
 import { useT } from "@/i18n/use-t.ts";

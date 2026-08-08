@@ -40,7 +40,7 @@ import {
   AgentSwitcherCrumb,
   NewChatCrumb,
 } from "@/components/header/shell-breadcrumb";
-import { useSidebar } from "@deco/ui/components/sidebar.tsx";
+import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
 import { SidePanel } from "./side-panel";
 import { ChatToggle } from "./toggle-buttons";
 import {

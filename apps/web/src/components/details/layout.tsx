@@ -1,5 +1,5 @@
 import { Page } from "@/components/page";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   createContext,
   type ReactNode,

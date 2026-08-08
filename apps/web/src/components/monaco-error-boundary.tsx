@@ -1,5 +1,5 @@
 import { Component, cloneElement } from "react";
-import { Spinner } from "@deco/ui/components/spinner.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 
 // Error boundary to catch Monaco disposal errors and recover by forcing remount
 export class MonacoErrorBoundary extends Component<

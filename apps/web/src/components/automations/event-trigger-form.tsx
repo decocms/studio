@@ -3,14 +3,14 @@ import {
   useTriggerList,
   type TriggerDefinition,
 } from "@/hooks/use-automations";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@deco/ui/components/select.tsx";
+} from "@decocms/ui/components/select.tsx";
 import { useConnections } from "@/sdk";
 import { Loading01, XClose, Zap } from "@untitledui/icons";
 import { useState } from "react";

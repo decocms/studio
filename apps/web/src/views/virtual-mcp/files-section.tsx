@@ -15,7 +15,7 @@
  */
 
 import type { KnowledgeFile } from "@decocms/shared/sdk/types";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,9 +24,9 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
-import { Spinner } from "@deco/ui/components/spinner.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/dropdown-menu.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   Folder,
   Paperclip,

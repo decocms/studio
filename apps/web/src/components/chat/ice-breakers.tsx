@@ -3,28 +3,28 @@ import {
   getGatewayClientId,
   stripToolNamespace,
 } from "@decocms/mcp-utils/aggregate";
-import { Spinner } from "@deco/ui/components/spinner.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/tooltip.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
+} from "@decocms/ui/components/dialog.tsx";
 import {
   Drawer,
   DrawerContent,
   DrawerHeader,
   DrawerTitle,
-} from "@deco/ui/components/drawer.tsx";
+} from "@decocms/ui/components/drawer.tsx";
 import { CollectionSearch } from "@/components/collections/collection-search.tsx";
-import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
+import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import {
   getPrompt,
   getWellKnownDecopilotVirtualMCP,

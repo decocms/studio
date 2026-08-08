@@ -1,5 +1,5 @@
-import { Button } from "@deco/ui/components/button.tsx";
-import { useCopy } from "@deco/ui/hooks/use-copy.ts";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { useCopy } from "@decocms/ui/hooks/use-copy.ts";
 import { Check, Copy01 } from "@untitledui/icons";
 import { connectServerName } from "@/components/connect/mcp-url";
 

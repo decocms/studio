@@ -1,7 +1,7 @@
 import {
   DropdownMenuContent,
   DropdownMenuItem,
-} from "@deco/ui/components/dropdown-menu.tsx";
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import { Users03 } from "@untitledui/icons";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { useT } from "@/i18n/use-t.ts";

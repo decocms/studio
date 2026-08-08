@@ -8,8 +8,8 @@ import { useT } from "@/i18n/use-t.ts";
 import { KEYS } from "@/lib/query-keys";
 import { track } from "@/lib/posthog-client";
 import { getRoleDotColor } from "@/lib/role-color";
-import { Badge } from "@deco/ui/components/badge.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Badge } from "@decocms/ui/components/badge.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,13 +19,13 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@deco/ui/components/alert-dialog.tsx";
+} from "@decocms/ui/components/alert-dialog.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import {
   Plus,
   Lock01,
@@ -33,7 +33,7 @@ import {
   Trash01,
   Loading01,
 } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Suspense, useState } from "react";
@@ -43,7 +43,7 @@ import type { TableColumn } from "@/components/collections/collection-table.tsx"
 import { Page } from "@/components/page";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { EmptyState } from "@/components/empty-state.tsx";
-import { SearchInput } from "@deco/ui/components/search-input.tsx";
+import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import {
   RoleDetailPage,
   getTargetKey,

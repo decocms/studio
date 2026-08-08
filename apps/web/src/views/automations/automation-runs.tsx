@@ -21,9 +21,9 @@ import {
   SELF_MCP_ALIAS_ID,
 } from "@/sdk";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { Card } from "@deco/ui/components/card.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
-import { Sheet, SheetContent } from "@deco/ui/components/sheet.tsx";
+import { Card } from "@decocms/ui/components/card.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { Sheet, SheetContent } from "@decocms/ui/components/sheet.tsx";
 import {
   Table,
   TableBody,
@@ -31,7 +31,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@deco/ui/components/table.tsx";
+} from "@decocms/ui/components/table.tsx";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll.ts";
 import { useMembers } from "@/hooks/use-members";

@@ -9,15 +9,15 @@
  */
 
 import { useState } from "react";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Card, CardContent } from "@deco/ui/components/card.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Card, CardContent } from "@decocms/ui/components/card.tsx";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@deco/ui/components/select.tsx";
+} from "@decocms/ui/components/select.tsx";
 import { isDecopilot, useVirtualMCPActions, useVirtualMCPs } from "@/sdk";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { useT } from "@/i18n/use-t.ts";

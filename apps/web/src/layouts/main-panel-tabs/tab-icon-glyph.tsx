@@ -1,5 +1,5 @@
 import { Package } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import type { TabIcon } from "./resolve-tab-icon";
 
 export function TabIconGlyph({

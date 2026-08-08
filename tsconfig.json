@@ -43,7 +43,7 @@
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     // Path resolution
     "paths": {
-      "@deco/*": ["./packages/*/src"]
+      "@decocms/ui/*": ["./packages/ui/src/*"]
     },
     // Experimental decorators for compatibility
     "experimentalDecorators": true,

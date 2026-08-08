@@ -9,14 +9,14 @@ import {
   SearchSm,
   XClose,
 } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.js";
-import { Button } from "@deco/ui/components/button.tsx";
-import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import { toast } from "sonner";
 import { useChatStream } from "@/components/chat/context";
 import { usePanelActions } from "@/layouts/shell-layout";

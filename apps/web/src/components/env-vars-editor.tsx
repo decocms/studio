@@ -1,5 +1,5 @@
-import { Button } from "@deco/ui/components/button.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
 import { Plus, Trash01 } from "@untitledui/icons";
 
 /**

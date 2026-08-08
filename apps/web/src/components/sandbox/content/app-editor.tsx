@@ -1,8 +1,8 @@
 import { ChevronRight, Loading01 } from "@untitledui/icons";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { cn } from "@deco/ui/lib/utils.js";
-import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import { AddSectionModal } from "@/components/sections-editor/add-section-modal";
 import { useSectionPreviewBase } from "@/components/sections-editor/use-section-preview-base";
 import { appLabel } from "@/components/sections-editor/page-list";

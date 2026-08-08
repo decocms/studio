@@ -23,14 +23,14 @@ import {
   Trash01,
   Zap,
 } from "@untitledui/icons";
-import { Button } from "@deco/ui/components/button.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { describeFileType, FileTypeIcon } from "@/components/file-type-icon";
 import { FolderIcon, type FolderTone } from "@/components/folder-icon";

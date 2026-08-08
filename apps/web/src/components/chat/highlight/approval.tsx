@@ -1,14 +1,14 @@
 "use client";
 
-import { Button } from "@deco/ui/components/button.tsx";
-import { Form } from "@deco/ui/components/form.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Form } from "@decocms/ui/components/form.tsx";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@deco/ui/components/select.tsx";
+} from "@decocms/ui/components/select.tsx";
 import { ShieldTick } from "@untitledui/icons";
 import { type Control, Controller } from "react-hook-form";
 import { z } from "zod";

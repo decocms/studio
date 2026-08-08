@@ -1,5 +1,5 @@
-import { Card } from "@deco/ui/components/card.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { Card } from "@decocms/ui/components/card.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import type { ReactNode } from "react";
 import { IntegrationIcon } from "../integration-icon.tsx";
 

@@ -1,13 +1,13 @@
 import { EnvVarsEditor } from "@/components/env-vars-editor";
 import { useAuthConfig } from "@/providers/auth-config-provider";
 import { useT } from "@/i18n/use-t.ts";
-import { Badge } from "@deco/ui/components/badge.tsx";
+import { Badge } from "@decocms/ui/components/badge.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import {
   FormControl,
   FormDescription,
@@ -15,15 +15,15 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@deco/ui/components/form.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
+} from "@decocms/ui/components/form.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@deco/ui/components/select.tsx";
+} from "@decocms/ui/components/select.tsx";
 import { type ConnectionEntity, parseVirtualUrl } from "@/sdk";
 import {
   CheckCircle,

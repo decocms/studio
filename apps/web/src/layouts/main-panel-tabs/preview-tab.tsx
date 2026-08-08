@@ -3,7 +3,7 @@ import { useChatTask } from "@/components/chat/chat-context";
 import { PreviewContent } from "@/components/sandbox/preview/preview";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { useVirtualMCP } from "@/sdk";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { EmptyState } from "@/components/empty-state";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { GitHubRepoPicker } from "@/components/github-repo-picker";

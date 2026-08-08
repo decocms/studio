@@ -1,7 +1,7 @@
 import type { ComponentProps, ReactNode } from "react";
 
-import { Button } from "@deco/ui/components/button.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { Button } from "./button.tsx";
+import { cn } from "../lib/utils.ts";
 
 export function EmptyState({
   icon,

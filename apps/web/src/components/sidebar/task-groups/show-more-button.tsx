@@ -1,5 +1,5 @@
 import { Loading01 } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 
 interface ShowMoreButtonProps {

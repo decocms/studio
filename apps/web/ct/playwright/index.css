@@ -2,7 +2,7 @@
 
 /*
  * Tailwind v4 auto-scans the project root but EXCLUDES node_modules — and
- * @deco/ui (where Switch, Button, Select, etc. live) is a workspace package
+ * @decocms/ui (where Switch, Button, Select, etc. live) is a workspace package
  * resolved through node_modules. Without scanning it, sizing utilities like the
  * Switch's `h-[1.15rem] w-8` are never generated, so icon-only buttons collapse
  * to 0x0 and Playwright treats them as hidden. Point @source at the real UI

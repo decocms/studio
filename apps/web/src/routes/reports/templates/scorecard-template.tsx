@@ -1,4 +1,4 @@
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useState } from "react";
 import Icon from "../icon";
 import SlideHeader from "./slide-header";

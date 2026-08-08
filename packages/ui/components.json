@@ -1,7 +1,7 @@
 {
   "$schema": "https://ui.shadcn.com/schema.json",
   "style": "default",
-  "rsc": true,
+  "rsc": false,
   "tsx": true,
   "tailwind": {
     "config": "",
@@ -11,10 +11,10 @@
     "prefix": ""
   },
   "aliases": {
-    "ui": "@deco/ui/components",
-    "components": "@deco/ui/components",
-    "utils": "@deco/ui/lib/utils.ts",
-    "lib": "@deco/ui/lib",
-    "hooks": "@deco/ui/hooks"
+    "ui": "@decocms/ui/components",
+    "components": "@decocms/ui/components",
+    "utils": "@decocms/ui/lib/utils.ts",
+    "lib": "@decocms/ui/lib",
+    "hooks": "@decocms/ui/hooks"
   }
 }

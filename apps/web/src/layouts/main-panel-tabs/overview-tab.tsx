@@ -13,7 +13,7 @@
  */
 import { useState } from "react";
 import { Check, LayoutAlt04, Plus, X } from "@untitledui/icons";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   HomeEditProvider,
   useHomeEdit,

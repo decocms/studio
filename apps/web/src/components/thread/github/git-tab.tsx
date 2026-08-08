@@ -13,7 +13,7 @@
  */
 
 import { useProjectContext, useVirtualMCP } from "@/sdk";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { GitBranch01, LinkExternal01 } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
 import { MemoizedMarkdown } from "../../chat/markdown.tsx";

@@ -6,7 +6,7 @@
 import type { OAuthConfig } from "@decocms/shared/sdk/types";
 import type { RegistryItem, MCPRegistryServer } from "@/components/store/types";
 import { getStudioMcpMetadata } from "@decocms/shared/registry/metadata";
-import { getGitHubAvatarUrl } from "@deco/ui/lib/github.ts";
+import { getGitHubAvatarUrl } from "@/utils/github.ts";
 import { getConnectionTypeLabel } from "@/utils/registry-utils";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 
