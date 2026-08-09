@@ -313,10 +313,24 @@ export function isSsoExemptPath(path: string): boolean {
  * cookie-authenticated cross-site request against this API and read the
  * response — a permissive-CORS-with-credentials hole. Only reflect
  * localhost/127.0.0.1 (the Vite dev server, on a different port than the
- * API) and the deployment's own origin, falling back to the request's own
- * origin when `baseUrl` isn't configured (same fallback already used for
- * redirect_uri validation above).
+ * API), the native desktop app's local control origin (see below), and the
+ * deployment's own origin, falling back to the request's own origin when
+ * `baseUrl` isn't configured (same fallback already used for redirect_uri
+ * validation above).
  */
+/**
+ * The native desktop app terminates local TLS on its own real domain
+ * (`local.studio.decocms.com`, any port — see apps/native's
+ * `control_origin.rs`/`local_tls.rs`) rather than `localhost`, because a
+ * secure context needs a real domain and per-sandbox cookie isolation needs
+ * one the browser groups as a single site. Exact hostname match only — a
+ * subdomain or suffix (`evil.local.studio.decocms.com`,
+ * `local.studio.decocms.com.evil.example`) must NOT pass.
+ */
+function isNativeDesktopControlOrigin(hostname: string): boolean {
+  return hostname === "local.studio.decocms.com";
+}
+
 export function resolveCorsOrigin(
   origin: string,
   {
@@ -333,6 +347,16 @@ export function resolveCorsOrigin(
   if (originHost === "localhost" || originHost === "127.0.0.1") {
     return origin;
   }
+  // A connection's OAuth `authorization_servers` / `token_endpoint` /
+  // `registration_endpoint` legitimately point straight at this deployment
+  // (oauth-proxy.ts deliberately doesn't proxy those — see
+  // `apps/native/crates/local-api/src/routes/upstream.rs`'s
+  // `rewrite_origin_urls`), so the desktop webview calls them cross-origin —
+  // without this, every discovery/register/token fetch in that flow fails
+  // with no ACAO header ("Load failed" client-side).
+  if (isNativeDesktopControlOrigin(originHost)) {
+    return origin;
+  }
 
   const allowedOrigin = baseUrl ?? requestOrigin;
   try {
@@ -343,6 +367,28 @@ export function resolveCorsOrigin(
     // malformed baseUrl config — fall through to reject
   }
   return null;
+}
+
+/**
+ * Decide whether `redirectUrl` may receive the `/authorize` proxy's
+ * redirect — this is the OAuth-hijacking guard: an attacker who could name
+ * an arbitrary `redirect_uri` could have the authorization code delivered to
+ * their own origin instead of ours. Allows this deployment's own origin,
+ * bare `localhost` (any port, for local web dev), and the native desktop
+ * app's local control origin (its `/_auth/mcp-callback` — see
+ * `apps/native/src/lib/desktop/mcp-oauth-adapter.ts` — lives there, not on
+ * this deployment, since consent happens in the user's REAL browser as a top-
+ * level navigation, which no cross-origin fetch or cookie ever touches).
+ */
+export function isAllowedOAuthRedirectUri(
+  redirectUrl: URL,
+  allowedOrigin: string,
+): boolean {
+  return (
+    redirectUrl.origin === new URL(allowedOrigin).origin ||
+    redirectUrl.hostname === "localhost" ||
+    isNativeDesktopControlOrigin(redirectUrl.hostname)
+  );
 }
 
 /**
@@ -464,16 +510,7 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
     if (redirectUri) {
       const allowedOrigin = getSettings().baseUrl ?? reqUrl.origin;
       try {
-        const redirectUrl = new URL(redirectUri);
-        const allowedOriginObj = new URL(allowedOrigin);
-
-        // Check if redirect_uri origin matches the allowed origin
-        const isAllowed =
-          redirectUrl.origin === allowedOriginObj.origin ||
-          // Allow localhost for development
-          redirectUrl.hostname === "localhost";
-
-        if (!isAllowed) {
+        if (!isAllowedOAuthRedirectUri(new URL(redirectUri), allowedOrigin)) {
           return c.json(
             {
               error: "invalid_request",

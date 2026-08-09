@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { isSsoExemptPath, resolveCorsOrigin } from "./app";
+import {
+  isAllowedOAuthRedirectUri,
+  isSsoExemptPath,
+  resolveCorsOrigin,
+} from "./app";
 
 describe("isSsoExemptPath", () => {
   test("exempts the legacy unscoped oauth-proxy mount", () => {
@@ -48,6 +52,24 @@ describe("resolveCorsOrigin", () => {
     expect(resolveCorsOrigin("http://evil-127.0.0.1.com", ctx)).toBeNull();
   });
 
+  test("reflects the native desktop app's local control origin regardless of port", () => {
+    expect(
+      resolveCorsOrigin("https://local.studio.decocms.com:4420", ctx),
+    ).toBe("https://local.studio.decocms.com:4420");
+    expect(
+      resolveCorsOrigin("https://local.studio.decocms.com:43120", ctx),
+    ).toBe("https://local.studio.decocms.com:43120");
+  });
+
+  test("rejects a hostname that merely contains the desktop control origin", () => {
+    expect(
+      resolveCorsOrigin("https://local.studio.decocms.com.evil.example", ctx),
+    ).toBeNull();
+    expect(
+      resolveCorsOrigin("https://evil.local.studio.decocms.com", ctx),
+    ).toBeNull();
+  });
+
   test("reflects the configured baseUrl's origin", () => {
     expect(resolveCorsOrigin("https://studio.example.com", ctx)).toBe(
       "https://studio.example.com",
@@ -70,5 +92,66 @@ describe("resolveCorsOrigin", () => {
 
   test("rejects a malformed origin", () => {
     expect(resolveCorsOrigin("not-a-url", ctx)).toBeNull();
+  });
+});
+
+describe("isAllowedOAuthRedirectUri", () => {
+  const allowedOrigin = "https://studio.example.com";
+
+  test("allows this deployment's own origin", () => {
+    expect(
+      isAllowedOAuthRedirectUri(
+        new URL("https://studio.example.com/oauth/callback"),
+        allowedOrigin,
+      ),
+    ).toBe(true);
+  });
+
+  test("allows bare localhost on any port", () => {
+    expect(
+      isAllowedOAuthRedirectUri(
+        new URL("http://localhost:4000/callback"),
+        allowedOrigin,
+      ),
+    ).toBe(true);
+  });
+
+  test("allows the native desktop app's local control origin regardless of port", () => {
+    expect(
+      isAllowedOAuthRedirectUri(
+        new URL("https://local.studio.decocms.com:4420/_auth/mcp-callback"),
+        allowedOrigin,
+      ),
+    ).toBe(true);
+    expect(
+      isAllowedOAuthRedirectUri(
+        new URL("https://local.studio.decocms.com:43120/_auth/mcp-callback"),
+        allowedOrigin,
+      ),
+    ).toBe(true);
+  });
+
+  test("rejects a hostname that merely contains the desktop control origin", () => {
+    expect(
+      isAllowedOAuthRedirectUri(
+        new URL("https://local.studio.decocms.com.evil.example/callback"),
+        allowedOrigin,
+      ),
+    ).toBe(false);
+    expect(
+      isAllowedOAuthRedirectUri(
+        new URL("https://evil.local.studio.decocms.com/callback"),
+        allowedOrigin,
+      ),
+    ).toBe(false);
+  });
+
+  test("rejects an arbitrary cross-site redirect_uri", () => {
+    expect(
+      isAllowedOAuthRedirectUri(
+        new URL("https://evil.example/steal-code"),
+        allowedOrigin,
+      ),
+    ).toBe(false);
   });
 });
