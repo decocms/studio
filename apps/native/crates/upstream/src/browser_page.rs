@@ -12,7 +12,17 @@
 //! `prefers-color-scheme`, because a static page has no `.dark` class toggle
 //! to hook into. Everything is inlined: these pages are served to a browser
 //! that is NOT the app, frequently while offline, so a stylesheet or font
-//! request that fails would leave the user staring at unstyled text.
+//! request that fails would leave the user staring at unstyled text. Same
+//! reasoning for the visual column's image (`ONBOARDING_VISUAL_JPEG`): the
+//! same split layout React renders — `AuthSplitLayout` in
+//! `apps/web/src/components/auth-split-layout.tsx`, using
+//! `apps/web/public/onboarding-placeholder.png` — but that PNG is 6.6 MB, so
+//! this embeds a recompressed JPEG copy sized for this one purpose, not the
+//! original asset.
+
+use std::sync::OnceLock;
+
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 /// Shared tokens + reset.
 const STYLE_BASE: &str = r#"
@@ -69,8 +79,21 @@ const STYLE_BASE: &str = r#"
   h1 { font-size: 1.875rem; line-height: 2.25rem; font-weight: 600; letter-spacing: -0.025em; }
   p { font-size: 1rem; line-height: 1.5rem; color: var(--muted-foreground); }
   .hint { font-size: 0.875rem; }
-  .visual-col { flex: 1; background: var(--muted); display: none; }
-  @media (min-width: 768px) { .visual-col { display: block; } }
+  .visual-col {
+    position: relative;
+    flex: 1;
+    overflow: hidden;
+    background: var(--muted);
+    display: none;
+  }
+  @media (min-width: 768px) { .visual-col { display: flex; } }
+  .visual-image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
 "#;
 
 /// Applied only when [`Page::destructive`] is set.
@@ -90,6 +113,24 @@ const BRAND_MARK_DARK_SVG: &str = r##"<svg class="brand-mark brand-mark--dark" v
           <path d="M43.381 127.131C27.2525 127.131 14.4445 120.964 6.85463 110.054C-1.20964 98.6687 -2.15838 82.5402 4.00842 65.4629C12.5471 43.1676 32.9449 29.4109 57.6121 29.4109H58.0865C58.0865 28.9365 58.0865 28.4621 58.0865 27.5134C57.6121 19.4491 62.8301 12.3336 70.42 9.96175L92.7154 1.42311C95.0872 0.474369 97.4591 0 99.8309 0C106.946 0 113.588 3.79495 116.908 10.4361L125.921 29.4109C128.767 35.1033 128.767 42.2188 125.447 47.4369C122.126 52.6549 116.908 55.5012 111.216 55.9755C109.793 58.8217 108.844 61.6679 107.421 64.0398C104.575 70.681 101.728 77.3221 98.4078 84.4376C86.0742 110.054 72.3175 127.131 43.381 127.131Z" fill="#D0EC1A"/>
           <path d="M43.3804 110.528C61.4064 110.528 71.3682 102.464 83.2274 77.3223C89.8685 63.5656 95.0866 49.8089 101.253 36.5265L108.843 38.8984C110.741 39.3727 112.164 38.424 111.215 36.5265L101.728 18.0261C101.253 16.603 99.3559 16.603 98.4072 17.0774L75.6375 25.616C73.74 26.0904 73.74 27.9879 75.6375 28.4623L82.2786 30.8341C76.5862 43.1677 69.9451 62.1425 64.2526 74.0017C58.0858 87.284 55.2396 96.297 44.3291 96.297C33.4187 96.297 31.9955 88.2327 36.7392 76.3735C41.9573 62.6168 50.4959 58.8219 59.9833 61.6681C62.8295 57.8731 64.727 52.1807 65.6757 46.9626C62.8295 46.0139 59.5089 46.0139 56.6627 46.0139C41.0086 46.0139 25.3544 54.0782 18.7132 71.1555C11.5977 93.4508 19.1876 110.528 43.3804 110.528Z" fill="#07401A"/>
         </svg>"##;
+
+/// Recompressed copy of `apps/web/public/onboarding-placeholder.png` (the
+/// capybara illustration React's `AuthSplitLayout` shows by default) — see
+/// this module's doc comment for why it's a separate, much smaller file
+/// rather than the original PNG.
+const ONBOARDING_VISUAL_JPEG: &[u8] = include_bytes!("../assets/onboarding-visual.jpg");
+
+/// `data:` URI for [`ONBOARDING_VISUAL_JPEG`], base64-encoded once and
+/// reused for every page render.
+fn onboarding_visual_data_uri() -> &'static str {
+    static DATA_URI: OnceLock<String> = OnceLock::new();
+    DATA_URI.get_or_init(|| {
+        format!(
+            "data:image/jpeg;base64,{}",
+            STANDARD.encode(ONBOARDING_VISUAL_JPEG)
+        )
+    })
+}
 
 /// One dead-end page.
 pub struct Page<'a> {
@@ -137,7 +178,9 @@ pub fn render(page: Page<'_>) -> String {
       </div>
     </div>
   </section>
-  <aside class="visual-col" aria-hidden="true"></aside>
+  <aside class="visual-col" aria-hidden="true">
+    <img class="visual-image" src="{visual}" alt="">
+  </aside>
 </main>
 </body>
 </html>"#,
@@ -153,6 +196,7 @@ pub fn render(page: Page<'_>) -> String {
         heading = html_escape(page.heading),
         body = html_escape(page.body),
         hint = hint,
+        visual = onboarding_visual_data_uri(),
     )
 }
 
@@ -180,15 +224,24 @@ mod tests {
     #[test]
     fn carries_the_shared_chrome() {
         let html = sample(false);
-        // Design tokens, both schemes, and the brand mark travel with the page
-        // — it is served to a browser that may be offline, so nothing is
-        // allowed to be a separate request.
+        // Design tokens, both schemes, the brand mark, and the visual-column
+        // image travel with the page — it is served to a browser that may be
+        // offline, so nothing is allowed to be a separate request.
         assert!(html.contains("--background: oklch(0.99 0.003 73)"));
         assert!(html.contains("prefers-color-scheme: dark"));
         assert!(html.contains("brand-mark--light"));
         assert!(html.contains("brand-mark--dark"));
+        assert!(html.contains("class=\"visual-image\" src=\"data:image/jpeg;base64,"));
         assert!(!html.contains("<link"));
         assert!(!html.contains("<script"));
+    }
+
+    #[test]
+    fn visual_image_data_uri_is_identical_across_calls() {
+        // Exercises the `OnceLock` path more than once in the same process
+        // (tests may run in any order/count) and confirms it never produces
+        // a different encode of the same bytes.
+        assert_eq!(onboarding_visual_data_uri(), onboarding_visual_data_uri());
     }
 
     #[test]
