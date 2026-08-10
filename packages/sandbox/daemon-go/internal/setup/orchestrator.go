@@ -419,6 +419,7 @@ func (o *Orchestrator) stepInstallInner() bool {
 		CloneUrl:    cloneUrl,
 		InstallRoot: paths.ResolvePmRoot(o.deps.RepoDir, cfg.PmPath()),
 		Pm:          pm,
+		OrgId:       cfg.OrgId,
 		Log:         func(m string) { o.chunk(m + "\r\n") },
 	}
 	if TryRestoreGolden(golden) {

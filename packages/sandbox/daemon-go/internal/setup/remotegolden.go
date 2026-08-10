@@ -59,7 +59,13 @@ var zstdPublishArgs = []string{"-3", "-T0"}
 // are keyed identically on purpose (same credential-stripped repo hash, same
 // lockfile hash), so they can never disagree about what a key means.
 type RemoteGoldenParams struct {
-	RemoteRoot  string
+	RemoteRoot string
+	// Owning organization. REQUIRED: a repo hash is derived from the clone URL,
+	// so two organizations cloning the same public template collide on one key.
+	// Node-locally that is a single trust domain; here it would let one org's
+	// tree restore into another's sandbox. Empty disables the tier rather than
+	// falling back to an unscoped key.
+	OrgId       string
 	CloneUrl    string
 	InstallRoot string
 	Pm          string
@@ -76,6 +82,7 @@ func (p RemoteGoldenParams) log(msg string) {
 // accidentally key the two tiers differently.
 func RemoteGoldenFrom(g GoldenParams) RemoteGoldenParams {
 	return RemoteGoldenParams{
+		OrgId:       g.OrgId,
 		CloneUrl:    g.CloneUrl,
 		InstallRoot: g.InstallRoot,
 		Pm:          g.Pm,
@@ -90,13 +97,17 @@ func RemoteEnabled() bool {
 	return os.Getenv(remoteEnabledEnvVar) != ""
 }
 
-// RemoteGoldenArchivePath is the archive path for a (repo, pm, lockfile) triple,
-// or empty when L2 cannot apply.
-func RemoteGoldenArchivePath(remoteRoot, cloneUrl, pm, lockHash string) string {
-	if remoteRoot == "" || cloneUrl == "" || lockHash == "" {
+// RemoteGoldenArchivePath is the archive path for an (org, repo, pm, lockfile)
+// tuple, or empty when L2 cannot apply.
+//
+// The org comes FIRST, so a store can be scoped per organization by prefix
+// alone — an object-store policy, a mountpoint `prefix=` mount or a lifecycle
+// rule can all bound one org without knowing anything about repos.
+func RemoteGoldenArchivePath(remoteRoot, orgId, cloneUrl, pm, lockHash string) string {
+	if remoteRoot == "" || orgId == "" || cloneUrl == "" || lockHash == "" {
 		return ""
 	}
-	return filepath.Join(remoteRoot, "golden", repoCacheKey(cloneUrl),
+	return filepath.Join(remoteRoot, "golden", orgId, repoCacheKey(cloneUrl),
 		pm+"-"+lockHash+remoteArchiveSuffix)
 }
 
@@ -108,7 +119,7 @@ func (p RemoteGoldenParams) resolve() (string, bool) {
 	if root == "" {
 		root = os.Getenv(remoteEnabledEnvVar)
 	}
-	archive := RemoteGoldenArchivePath(root, p.CloneUrl, p.Pm,
+	archive := RemoteGoldenArchivePath(root, p.OrgId, p.CloneUrl, p.Pm,
 		LockfileHash(p.InstallRoot, p.Pm))
 	if archive == "" {
 		return "", false
@@ -357,12 +368,25 @@ func pruneRemoteGoldens(remoteRoot string, ttl time.Duration, maxPerRepo int, no
 		return
 	}
 	root := filepath.Join(remoteRoot, "golden")
-	repos, err := os.ReadDir(root)
+	orgs, err := os.ReadDir(root)
 	if err != nil {
 		return // nothing published yet
 	}
-	for _, repo := range repos {
-		repoDir := filepath.Join(root, repo.Name())
+	// Two levels: golden/<org>/<repo>/. The cap is per repo, not per org — one
+	// org with many repos must not evict another's, and one repo's churn must not
+	// evict its sibling.
+	var repoDirs []string
+	for _, org := range orgs {
+		orgDir := filepath.Join(root, org.Name())
+		repos, err := os.ReadDir(orgDir)
+		if err != nil {
+			continue
+		}
+		for _, repo := range repos {
+			repoDirs = append(repoDirs, filepath.Join(orgDir, repo.Name()))
+		}
+	}
+	for _, repoDir := range repoDirs {
 		names, err := os.ReadDir(repoDir)
 		if err != nil {
 			continue

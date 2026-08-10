@@ -9,9 +9,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
+
+const testOrg = "org_1rT2srZfM75G"
 
 // requireTools skips rather than fails when the host lacks zstd: the sandbox
 // image ships it, a contributor's machine may not, and a red suite there would
@@ -57,6 +60,7 @@ func installRootWithTree(t *testing.T, pkgs int) string {
 func params(remoteRoot, installRoot string) RemoteGoldenParams {
 	return RemoteGoldenParams{
 		RemoteRoot:  remoteRoot,
+		OrgId:       testOrg,
 		CloneUrl:    "https://github.com/acme/site.git",
 		InstallRoot: installRoot,
 		Pm:          "bun",
@@ -64,38 +68,75 @@ func params(remoteRoot, installRoot string) RemoteGoldenParams {
 }
 
 func TestRemoteGoldenArchivePath(t *testing.T) {
-	t.Run("keyed by repo, pm and lockfile", func(t *testing.T) {
-		got := RemoteGoldenArchivePath("/store", "https://github.com/acme/site.git", "bun", "abc")
-		want := filepath.Join("/store", "golden", repoCacheKey("https://github.com/acme/site.git"), "bun-abc.tar.zst")
+	t.Run("keyed by org, repo, pm and lockfile", func(t *testing.T) {
+		got := RemoteGoldenArchivePath("/store", testOrg, "https://github.com/acme/site.git", "bun", "abc")
+		want := filepath.Join("/store", "golden", testOrg,
+			repoCacheKey("https://github.com/acme/site.git"), "bun-abc.tar.zst")
 		if got != want {
 			t.Fatalf("got %q want %q", got, want)
 		}
 	})
+	t.Run("org comes first, so a prefix scopes one org", func(t *testing.T) {
+		got := RemoteGoldenArchivePath("/store", testOrg, "https://github.com/acme/site.git", "bun", "abc")
+		prefix := filepath.Join("/store", "golden", testOrg) + string(filepath.Separator)
+		if !strings.HasPrefix(got, prefix) {
+			t.Fatalf("%q is not under the org prefix %q — a per-org policy or mount could not bound it", got, prefix)
+		}
+	})
 	t.Run("credentials do not change the key", func(t *testing.T) {
-		bare := RemoteGoldenArchivePath("/store", "https://github.com/acme/site.git", "bun", "abc")
-		creds := RemoteGoldenArchivePath("/store", "https://user:tok@github.com/acme/site.git", "bun", "abc")
+		bare := RemoteGoldenArchivePath("/store", testOrg, "https://github.com/acme/site.git", "bun", "abc")
+		creds := RemoteGoldenArchivePath("/store", testOrg, "https://user:tok@github.com/acme/site.git", "bun", "abc")
 		if bare != creds {
 			t.Fatalf("credential-stripping broken:\n bare  %q\n creds %q", bare, creds)
 		}
 	})
 	t.Run("empty when a component is missing", func(t *testing.T) {
-		for _, c := range [][4]string{
-			{"", "url", "bun", "hash"},
-			{"/store", "", "bun", "hash"},
-			{"/store", "url", "bun", ""},
+		for _, c := range [][5]string{
+			{"", testOrg, "url", "bun", "hash"},
+			{"/store", "", "url", "bun", "hash"}, // no org → no shared archive
+			{"/store", testOrg, "", "bun", "hash"},
+			{"/store", testOrg, "url", "bun", ""},
 		} {
-			if got := RemoteGoldenArchivePath(c[0], c[1], c[2], c[3]); got != "" {
+			if got := RemoteGoldenArchivePath(c[0], c[1], c[2], c[3], c[4]); got != "" {
 				t.Fatalf("expected empty for %v, got %q", c, got)
 			}
 		}
 	})
 	t.Run("two repos never share an archive", func(t *testing.T) {
-		a := RemoteGoldenArchivePath("/store", "https://github.com/acme/a.git", "bun", "same")
-		b := RemoteGoldenArchivePath("/store", "https://github.com/acme/b.git", "bun", "same")
+		a := RemoteGoldenArchivePath("/store", testOrg, "https://github.com/acme/a.git", "bun", "same")
+		b := RemoteGoldenArchivePath("/store", testOrg, "https://github.com/acme/b.git", "bun", "same")
 		if a == b {
 			t.Fatal("distinct repos collided on one archive — bun does not re-verify cache content")
 		}
 	})
+	// The reason the org is in the key at all: a repo hash comes from the clone
+	// URL, so two orgs cloning the same public template would otherwise collide
+	// and one could publish an archive the other restores.
+	t.Run("two orgs on the SAME repo never share an archive", func(t *testing.T) {
+		a := RemoteGoldenArchivePath("/store", "org_a", "https://github.com/deco-cx/template.git", "bun", "same")
+		b := RemoteGoldenArchivePath("/store", "org_b", "https://github.com/deco-cx/template.git", "bun", "same")
+		if a == b {
+			t.Fatal("orgs collided on one archive for a shared template — cross-org poisoning path")
+		}
+	})
+}
+
+func TestRemoteGoldenRequiresOrg(t *testing.T) {
+	requireTools(t)
+	store := t.TempDir()
+	t.Setenv(remoteEnabledEnvVar, store)
+
+	root := installRootWithTree(t, 4)
+	p := params(store, root)
+	p.OrgId = "" // Studio did not supply one, or an older daemon wrote the golden
+
+	PublishRemoteGolden(p)
+	if entries, _ := os.ReadDir(store); len(entries) != 0 {
+		t.Fatal("published without an org — an archive with an unknown owner must not exist")
+	}
+	if TryRestoreRemoteGolden(p) {
+		t.Fatal("restored without an org")
+	}
 }
 
 func TestRemoteEnabled(t *testing.T) {
@@ -224,7 +265,7 @@ func TestRemoteGoldenTruncatedArchiveFailsClosed(t *testing.T) {
 	nodeA := installRootWithTree(t, 20)
 	PublishRemoteGolden(params(store, nodeA))
 
-	archive := RemoteGoldenArchivePath(store, "https://github.com/acme/site.git", "bun",
+	archive := RemoteGoldenArchivePath(store, testOrg, "https://github.com/acme/site.git", "bun",
 		LockfileHash(nodeA, "bun"))
 	full, err := os.ReadFile(archive)
 	if err != nil {
@@ -262,7 +303,7 @@ func TestRemoteGoldenPublishIsIdempotent(t *testing.T) {
 
 	nodeA := installRootWithTree(t, 6)
 	PublishRemoteGolden(params(store, nodeA))
-	archive := RemoteGoldenArchivePath(store, "https://github.com/acme/site.git", "bun",
+	archive := RemoteGoldenArchivePath(store, testOrg, "https://github.com/acme/site.git", "bun",
 		LockfileHash(nodeA, "bun"))
 	first, err := os.Stat(archive)
 	if err != nil {
@@ -302,7 +343,7 @@ func TestRemoteGoldenRestoreRejectsCorruptArchive(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(nodeB, "bun.lock"), []byte("lockfile-v1"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	archive := RemoteGoldenArchivePath(store, "https://github.com/acme/site.git", "bun",
+	archive := RemoteGoldenArchivePath(store, testOrg, "https://github.com/acme/site.git", "bun",
 		LockfileHash(nodeB, "bun"))
 	if err := os.MkdirAll(filepath.Dir(archive), 0o755); err != nil {
 		t.Fatal(err)
@@ -344,7 +385,7 @@ func TestPruneRemoteGoldens(t *testing.T) {
 
 	t.Run("drops archives past the TTL", func(t *testing.T) {
 		store := t.TempDir()
-		repo := filepath.Join(store, "golden", "repo-a")
+		repo := filepath.Join(store, "golden", testOrg, "repo-a")
 		fresh := write(t, repo, "bun-fresh.tar.zst", time.Hour)
 		stale := write(t, repo, "bun-stale.tar.zst", 8*24*time.Hour)
 		pruneRemoteGoldens(store, GoldenTTL, GoldenMaxPerRepo, now, nil)
@@ -358,7 +399,7 @@ func TestPruneRemoteGoldens(t *testing.T) {
 
 	t.Run("keeps only the newest per repo", func(t *testing.T) {
 		store := t.TempDir()
-		repo := filepath.Join(store, "golden", "repo-a")
+		repo := filepath.Join(store, "golden", testOrg, "repo-a")
 		var paths []string
 		for i := 0; i < GoldenMaxPerRepo+3; i++ {
 			paths = append(paths, write(t, repo, fmt.Sprintf("bun-%d.tar.zst", i), time.Duration(i)*time.Minute))
@@ -377,7 +418,7 @@ func TestPruneRemoteGoldens(t *testing.T) {
 
 	t.Run("leaves non-archive entries alone", func(t *testing.T) {
 		store := t.TempDir()
-		repo := filepath.Join(store, "golden", "repo-a")
+		repo := filepath.Join(store, "golden", testOrg, "repo-a")
 		other := write(t, repo, "README", 8*24*time.Hour)
 		pruneRemoteGoldens(store, GoldenTTL, GoldenMaxPerRepo, now, nil)
 		if _, err := os.Stat(other); err != nil {
@@ -387,8 +428,8 @@ func TestPruneRemoteGoldens(t *testing.T) {
 
 	t.Run("one repo's cap does not affect another", func(t *testing.T) {
 		store := t.TempDir()
-		a := filepath.Join(store, "golden", "repo-a")
-		b := filepath.Join(store, "golden", "repo-b")
+		a := filepath.Join(store, "golden", testOrg, "repo-a")
+		b := filepath.Join(store, "golden", testOrg, "repo-b")
 		for i := 0; i < GoldenMaxPerRepo+2; i++ {
 			write(t, a, fmt.Sprintf("bun-%d.tar.zst", i), time.Duration(i)*time.Minute)
 		}
@@ -408,7 +449,7 @@ func TestRemoteGoldenPublishPrunes(t *testing.T) {
 	t.Setenv(remoteEnabledEnvVar, store)
 
 	nodeA := installRootWithTree(t, 4)
-	repoDir := filepath.Dir(RemoteGoldenArchivePath(store, "https://github.com/acme/site.git", "bun",
+	repoDir := filepath.Dir(RemoteGoldenArchivePath(store, testOrg, "https://github.com/acme/site.git", "bun",
 		LockfileHash(nodeA, "bun")))
 	if err := os.MkdirAll(repoDir, 0o755); err != nil {
 		t.Fatal(err)
