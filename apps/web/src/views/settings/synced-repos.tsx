@@ -162,13 +162,17 @@ function SyncedReposContent() {
         volume: volumeName.trim(),
       },
       {
-        onSuccess: ({ result }) => {
+        onSuccess: (run) => {
           setPendingImport(null);
-          if ("error" in result) {
-            toast.error(result.error);
+          // run is null when the best-effort first sync call itself failed —
+          // the config exists and the cron will pick it up.
+          if (run && "error" in run.result) {
+            toast.error(run.result.error);
           } else {
             toast.success(
-              t("settings.syncedRepos.created", { volume: result.volume }),
+              t("settings.syncedRepos.created", {
+                volume: run?.result.volume ?? volumeName.trim(),
+              }),
             );
           }
         },

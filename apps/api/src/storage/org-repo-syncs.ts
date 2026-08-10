@@ -129,6 +129,19 @@ export class OrgRepoSyncStorage {
     return rows.map((r) => r.volume);
   }
 
+  /** Whether a volume is owned by any sync config (enabled or paused) —
+   *  the fs write route rejects direct writes into mirror targets. Hits the
+   *  UNIQUE (organization_id, volume) index. */
+  async isSyncVolume(organizationId: string, volume: string): Promise<boolean> {
+    const row = await this.db
+      .selectFrom("org_repo_sync")
+      .select("id")
+      .where("organization_id", "=", organizationId)
+      .where("volume", "=", volume)
+      .executeTakeFirst();
+    return row !== undefined;
+  }
+
   async update(
     id: string,
     organizationId: string,

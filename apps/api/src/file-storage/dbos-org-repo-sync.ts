@@ -71,19 +71,29 @@ async function buildOrgContext(
 async function runOneConfig(
   config: OrgRepoSync,
 ): Promise<{ id: string; volume: string; error?: string }> {
-  const { db } = requireRuntime();
-  const ctx = await buildOrgContext(db, config.organizationId);
-  if (!ctx) {
+  try {
+    const { db } = requireRuntime();
+    const ctx = await buildOrgContext(db, config.organizationId);
+    if (!ctx) {
+      return {
+        id: config.id,
+        volume: config.volume,
+        error: "organization no longer exists",
+      };
+    }
+    const result = await syncOrgRepoSafe(ctx, config);
+    return "error" in result
+      ? { id: result.id, volume: result.volume, error: result.error }
+      : { id: result.id, volume: result.volume };
+  } catch (err) {
+    // Fold context-build failures too — one bad config must not fail the
+    // workflow tick and skip every remaining org's sync.
     return {
       id: config.id,
       volume: config.volume,
-      error: "organization no longer exists",
+      error: err instanceof Error ? err.message : String(err),
     };
   }
-  const result = await syncOrgRepoSafe(ctx, config);
-  return "error" in result
-    ? { id: result.id, volume: result.volume, error: result.error }
-    : { id: result.id, volume: result.volume };
 }
 
 async function orgRepoSyncWorkflowFn(

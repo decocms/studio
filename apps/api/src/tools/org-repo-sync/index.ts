@@ -153,17 +153,26 @@ export const ORG_REPO_SYNC_CREATE = defineTool({
       );
     }
 
-    const config = await ctx.storage.orgRepoSyncs.create({
-      organizationId: organization.id,
-      connectionId: connection.id,
-      repoOwner: scope.owner,
-      repoName: scope.repo,
-      ref: input.ref ?? "main",
-      paths: input.paths ?? [{ from: "" }],
-      volume: input.volume,
-      createdBy: userId,
-    });
-    return { config: toOutput(config) };
+    try {
+      const config = await ctx.storage.orgRepoSyncs.create({
+        organizationId: organization.id,
+        connectionId: connection.id,
+        repoOwner: scope.owner,
+        repoName: scope.repo,
+        ref: input.ref ?? "main",
+        paths: input.paths ?? [{ from: "" }],
+        volume: input.volume,
+        createdBy: userId,
+      });
+      return { config: toOutput(config) };
+    } catch (error) {
+      if ((error as { code?: string }).code === "23505") {
+        throw new Error(
+          `Volume "${input.volume}" is already the target of another synced repository`,
+        );
+      }
+      throw error;
+    }
   },
 });
 
@@ -244,6 +253,11 @@ export const ORG_REPO_SYNC_RUN = defineTool({
       organization.id,
     );
     if (!config) throw new Error(`Sync config not found: ${input.id}`);
+    if (!config.enabled) {
+      throw new Error(
+        "This sync is disabled — enable it with ORG_REPO_SYNC_UPDATE before running",
+      );
+    }
     const result = await syncOrgRepoSafe(ctx, config);
     return { result };
   },

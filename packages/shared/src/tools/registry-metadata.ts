@@ -1229,6 +1229,10 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       // Browse files in a configured bucket (file picker in the sandbox /
       // content editor). Lists object keys only — no credentials returned.
       "FILE_OBJECTS_LIST",
+      // Read-only list of synced repos — every member needs it so the
+      // Library can mark mirror volumes read-only (management stays gated
+      // behind file-configs:manage).
+      "ORG_REPO_SYNC_LIST",
       // Sandbox previews
       "SANDBOX_START",
       "SANDBOX_DELETE",

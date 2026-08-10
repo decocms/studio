@@ -7,10 +7,22 @@ describe("validateSyncVolumeName", () => {
     expect(validateSyncVolumeName("Repo_1.2")).toBeNull();
   });
 
-  it("rejects reserved volumes", () => {
-    for (const name of ["home", "outputs", "uploads", "public"]) {
+  it("rejects reserved volumes (including the daemon's output/upload links)", () => {
+    for (const name of [
+      "home",
+      "outputs",
+      "uploads",
+      "public",
+      "output",
+      "upload",
+    ]) {
       expect(validateSyncVolumeName(name)).toContain("reserved");
     }
+  });
+
+  it("rejects names skill-resolve's SAFE_SEGMENT can't parse", () => {
+    expect(validateSyncVolumeName("_skills")).toContain("start with");
+    expect(validateSyncVolumeName("-skills")).toContain("start with");
   });
 
   it("rejects the public-set namespace", () => {

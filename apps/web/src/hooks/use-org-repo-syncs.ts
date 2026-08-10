@@ -41,7 +41,12 @@ export function useCreateOrgRepoSync() {
   return useMutation({
     mutationFn: async (input: { connectionId: string; volume: string }) => {
       const { config } = await studio.call("ORG_REPO_SYNC_CREATE", input);
-      return studio.call("ORG_REPO_SYNC_RUN", { id: config.id });
+      // First run is best-effort: the config exists, the cron will retry —
+      // a transport blip here must not fail the mutation (retrying CREATE
+      // would hit the unique volume constraint).
+      return studio
+        .call("ORG_REPO_SYNC_RUN", { id: config.id })
+        .catch(() => null);
     },
     onSettled: () =>
       queryClient.invalidateQueries({ queryKey: KEYS.orgRepoSyncs(org.id) }),

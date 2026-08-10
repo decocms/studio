@@ -22,8 +22,17 @@ import { isPublicVolume } from "./public-sets";
 import { syncRepoToVolume } from "./skill-set-sync";
 
 /** Volumes with fixed roles that a repo sync must never overwrite. `public`
- *  is reserved too: it would mount at `org/public`, the public sets' dir. */
-const RESERVED_VOLUMES = new Set(["home", "outputs", "uploads", "public"]);
+ *  is reserved too: it would mount at `org/public`, the public sets' dir.
+ *  `output`/`upload` are the daemon's per-run symlinks (links.go) — a real
+ *  dir at those paths breaks share-files-back for every run in the org. */
+const RESERVED_VOLUMES = new Set([
+  "home",
+  "outputs",
+  "uploads",
+  "public",
+  "output",
+  "upload",
+]);
 
 /** Max sync configs per org — bounds the cron's per-tick tarball downloads. */
 export const MAX_REPO_SYNCS_PER_ORG = 10;
@@ -44,6 +53,11 @@ export function validateSyncVolumeName(volume: string): string | null {
   }
   if (volume.startsWith(".")) {
     return `Volume names starting with "." are reserved`;
+  }
+  // Skill ids (`repo/<volume>/<skill>`) require SAFE_SEGMENT (leading
+  // alphanumeric, see skill-resolve.ts) — reject names it couldn't resolve.
+  if (!/^[A-Za-z0-9]/.test(volume)) {
+    return `Volume names must start with a letter or digit`;
   }
   return null;
 }

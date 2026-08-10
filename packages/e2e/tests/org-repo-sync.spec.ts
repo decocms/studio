@@ -161,13 +161,22 @@ test.describe("org repo sync configs", () => {
       expect(config.enabled).toBe(true);
       expect(config.lastSyncedAt).toBeNull();
 
-      // The volume is now claimed: a second config on it is rejected.
+      // The volume is now claimed: a second config on it is rejected with a
+      // friendly message, not a raw unique-constraint error.
       await expect(
         callSelfMcpTool(ctx, org, "ORG_REPO_SYNC_CREATE", {
           connectionId: repoConn,
           volume,
         }),
-      ).rejects.toThrow();
+      ).rejects.toThrow(/already the target/);
+
+      // Sync-owned volumes are mirrors: direct fs writes are rejected
+      // server-side (the next sync would silently delete them).
+      const intruder = await ctx.put(
+        `/api/${org}/fs/${volume}/file?path=intruder.txt`,
+        { data: "x", headers: { "Content-Type": "text/plain" } },
+      );
+      expect(intruder.status()).toBe(403);
 
       // List surfaces it.
       const listed = await callSelfMcpTool<{ configs: SyncConfig[] }>(
@@ -206,6 +215,12 @@ test.describe("org repo sync configs", () => {
       );
       expect(updated.config.ref).toBe("develop");
       expect(updated.config.enabled).toBe(false);
+
+      // A disabled sync refuses on-demand runs (running would still mirror
+      // and delete files the user assumed safe after pausing).
+      await expect(
+        callSelfMcpTool(ctx, org, "ORG_REPO_SYNC_RUN", { id: config.id }),
+      ).rejects.toThrow(/disabled/);
 
       // Delete removes the config (files, if any, are left alone).
       const del = await callSelfMcpTool<{ deleted: boolean }>(
