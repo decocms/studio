@@ -20,6 +20,100 @@ describe("CMS editor iframe interactions", () => {
     expect(clickHandler).not.toContain("stopPropagation");
     expect(clickHandler).not.toContain("stopImmediatePropagation");
   });
+
+  // Navigation blocking (below) is a SEPARATE listener on purpose. #5567's rule
+  // — section selection must not cancel the page's own clicks — still holds
+  // above; nothing here may start swallowing propagation, or every interactive
+  // control in the preview dies again.
+  test("blocks navigation without swallowing the page's click listeners", () => {
+    const start = CMS_EDITOR_SCRIPT.indexOf("var navBlocker = function(e)");
+    const end = CMS_EDITOR_SCRIPT.indexOf(
+      'document.addEventListener("click", navBlocker, true)',
+      start,
+    );
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+
+    const navBlocker = CMS_EDITOR_SCRIPT.slice(start, end);
+    expect(navBlocker).toContain("preventDefault");
+    expect(navBlocker).not.toContain("stopPropagation");
+    expect(navBlocker).not.toContain("stopImmediatePropagation");
+  });
+
+  // Without the counter, re-clicking a section the editor had navigated away
+  // from sent an identical payload, the panel saw "no change", and the form
+  // never reopened — only clicking a DIFFERENT section worked.
+  test("stamps every click with an incrementing counter", () => {
+    const start = CMS_EDITOR_SCRIPT.indexOf("var clickHandler = function(e)");
+    const end = CMS_EDITOR_SCRIPT.indexOf(
+      'document.addEventListener("click", clickHandler, true)',
+      start,
+    );
+    const clickHandler = CMS_EDITOR_SCRIPT.slice(start, end);
+    expect(clickHandler).toContain("clickSeq++");
+    expect(clickHandler).toContain("clickSeq: clickSeq");
+    // Declared once, outside the handler, or it resets on every click.
+    expect(CMS_EDITOR_SCRIPT).toContain("var clickSeq = 0;");
+    expect(clickHandler).not.toContain("var clickSeq");
+  });
+
+  test("detaches the navigation blockers on deactivate", () => {
+    expect(CMS_EDITOR_SCRIPT).toContain(
+      'document.removeEventListener("click", navBlocker, true)',
+    );
+    expect(CMS_EDITOR_SCRIPT).toContain(
+      'document.removeEventListener("submit", submitBlocker, true)',
+    );
+  });
+});
+
+// Behavioural test of the extracted `isNavigatingAnchor` predicate — string
+// assertions above prove the wiring, this proves the decision. An over-eager
+// predicate re-breaks the preview (#5567); an under-eager one lets the redirect
+// through, which is the bug being fixed.
+describe("isNavigatingAnchor", () => {
+  const buildPredicate = () => {
+    const start = CMS_EDITOR_SCRIPT.indexOf(
+      "var isNavigatingAnchor = function(a)",
+    );
+    const end = CMS_EDITOR_SCRIPT.indexOf("var navBlocker", start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const src = CMS_EDITOR_SCRIPT.slice(start, end);
+    // `location` is the only global the predicate closes over.
+    return new Function("location", `${src}; return isNavigatingAnchor;`)({
+      href: "https://site.test/current",
+    }) as (a: unknown) => boolean;
+  };
+
+  const anchor = (href: string | null, resolved?: string) => ({
+    getAttribute: () => href,
+    href:
+      resolved ?? (href ? `https://site.test/${href.replace(/^\//, "")}` : ""),
+  });
+
+  it("blocks links that leave the page", () => {
+    const isNav = buildPredicate();
+    expect(isNav(anchor("/produtos", "https://site.test/produtos"))).toBe(true);
+    expect(isNav(anchor("https://outro.test/", "https://outro.test/"))).toBe(
+      true,
+    );
+  });
+
+  it("lets in-page and non-navigating anchors through", () => {
+    const isNav = buildPredicate();
+    expect(isNav(null)).toBe(false);
+    expect(isNav(anchor(null))).toBe(false);
+    expect(isNav(anchor(""))).toBe(false);
+    expect(isNav(anchor("#secao"))).toBe(false);
+    expect(isNav(anchor("  #secao"))).toBe(false);
+    expect(isNav(anchor("javascript:void(0)"))).toBe(false);
+    expect(isNav(anchor("JavaScript:doThing()"))).toBe(false);
+    // Same document + fragment → only scrolls.
+    expect(
+      isNav(anchor("/current#bloco", "https://site.test/current#bloco")),
+    ).toBe(false);
+  });
 });
 
 // The script embeds alignSections by stringifying it, so the editor and the

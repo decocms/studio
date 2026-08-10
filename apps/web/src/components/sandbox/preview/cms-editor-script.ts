@@ -4,6 +4,13 @@ import { alignSections } from "./section-alignment";
 export const CmsEditorPayloadSchema = z.object({
   sectionIndex: z.number(),
   manifestKey: z.string(),
+  /**
+   * Monotonic per-click counter. A click is an EVENT, not a state: clicking the
+   * same section twice must reopen its form, and comparing indexes alone can't
+   * see that (same index → looks unchanged → the panel ignores it, which is
+   * exactly what left a section unopenable after navigating back in the editor).
+   */
+  clickSeq: z.number(),
 });
 
 export type CmsEditorPayload = z.infer<typeof CmsEditorPayloadSchema>;
@@ -257,6 +264,9 @@ export const CMS_EDITOR_SCRIPT = `(function() {
   };
   document.addEventListener("mouseout", outHandler, true);
 
+  // Distinguishes two clicks on the SAME section, which are two selections.
+  var clickSeq = 0;
+
   // Blocks observes clicks to select sections in the side panel; it must not
   // cancel the iframe page's own handlers or native control behavior.
   var clickHandler = function(e) {
@@ -276,12 +286,50 @@ export const CMS_EDITOR_SCRIPT = `(function() {
       highlight.style.background = c.bg;
     }, 400);
 
+    clickSeq++;
     window.parent.postMessage({
       type: "cms-editor::section-clicked",
-      payload: { sectionIndex: sectionIndex, manifestKey: manifestKey }
+      payload: { sectionIndex: sectionIndex, manifestKey: manifestKey, clickSeq: clickSeq }
     }, "*");
   };
   document.addEventListener("click", clickHandler, true);
+
+  // Navigation is disabled while editing. Following a link swaps the document
+  // out from under the panel: the sections the editor holds belong to the OLD
+  // page, so the form silently edits the wrong page (and a redirect makes the
+  // URL disagree with the panel too). Blocking it is the root fix.
+  //
+  // Deliberately NARROWER than "cancel every click" — #5567 removed a blanket
+  // preventDefault because it left the preview dead (carousels, accordions,
+  // tabs all need their clicks). Only navigation is cancelled here: anchors
+  // that would actually leave the page, and form submits. A link whose handler
+  // does something in-page (href="#", javascript:, or a JS-driven control)
+  // still reaches the page's own listeners untouched.
+  var isNavigatingAnchor = function(a) {
+    if (!a) return false;
+    var href = a.getAttribute("href");
+    if (!href) return false;
+    var trimmed = href.trim();
+    if (!trimmed || trimmed.charAt(0) === "#") return false;
+    if (/^javascript:/i.test(trimmed)) return false;
+    // A same-page fragment (/current/path#anchor) only scrolls — let it be.
+    try {
+      var url = new URL(a.href, location.href);
+      if (url.href.split("#")[0] === location.href.split("#")[0]) return false;
+    } catch (_) {}
+    return true;
+  };
+  var navBlocker = function(e) {
+    var el = e.target;
+    var a = el && el.closest ? el.closest("a") : null;
+    if (!isNavigatingAnchor(a)) return;
+    // Only the default action dies; the page's own click listeners still run.
+    e.preventDefault();
+  };
+  document.addEventListener("click", navBlocker, true);
+
+  var submitBlocker = function(e) { e.preventDefault(); };
+  document.addEventListener("submit", submitBlocker, true);
 
   window.addEventListener("message", function(e) {
     if (e.data && e.data.type === "cms-editor::set-labels" && Array.isArray(e.data.labels)) {
@@ -302,6 +350,10 @@ export const CMS_EDITOR_SCRIPT = `(function() {
       document.removeEventListener("mousemove", moveHandler, true);
       document.removeEventListener("mouseout", outHandler, true);
       document.removeEventListener("click", clickHandler, true);
+      // Leaving these attached would keep the page unnavigable after the user
+      // switches out of Blocks mode.
+      document.removeEventListener("click", navBlocker, true);
+      document.removeEventListener("submit", submitBlocker, true);
       window.removeEventListener("scroll", reposition, { capture: true });
       window.removeEventListener("resize", reposition);
       window.__cmsEditorActive = false;
