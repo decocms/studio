@@ -9,6 +9,22 @@ description: |
   releases coexist in the shared `agent-sandbox-system` namespace.
   Requires the sandbox-operator chart to already be installed.
 type: application
+# 0.14.0: scope the golden uploader by environment, and give its volume the key
+# prefix it was missing. Two defects, both of which made the tier silently do
+# nothing rather than fail:
+#   - the uploader's writable mount had NO `prefix`, while the tenant mount is
+#     scoped to `prefix=<envName>/`. Writes landed at bucket root and no tenant
+#     mount could ever see them, so every restore missed forever and it read as
+#     "the cache never hits". The org is in the object KEY and isolates tenants;
+#     the environment is the mount PREFIX and is what makes a write readable —
+#     conflating the two is what caused this.
+#   - the hostPath store is per NODE and every environment's sandboxes share one
+#     NodePool, so a node holds a mix. Each uploader now forwards only goldens
+#     its own environment produced (SANDBOX_ENV, stamped into the golden's meta
+#     by the sandbox container). Without it an uploader compressed and shipped a
+#     neighbour's tree into a prefix that neighbour never reads.
+# Needs studio-sandbox-go >= 1.47.0: the env is stamped by the daemon, so an
+# older image leaves it blank and a scoped uploader skips everything.
 # 0.13.2: fix — the uploader DaemonSet crash-looped with
 # `Script not found "golden-uploader"`. The sandbox image's ENTRYPOINT comes from
 # the oven/bun base and its CMD is the daemon binary, so overriding `args` alone
@@ -119,7 +135,7 @@ type: application
 # 0.8.0: org-fs sidecar (orgFs.*) — privileged rclone mounter + main-container
 # mounts. NOTE: the publish workflow skips existing versions, so this MUST
 # stay ahead of the latest published chart (0.7.5 at time of writing).
-version: 0.13.2
+version: 0.14.1
 # appVersion tracks the studio-sandbox image version (image.tag default).
-appVersion: "1.46.0"
+appVersion: "1.47.1"
 kubeVersion: ">=1.30.0-0"

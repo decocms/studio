@@ -420,6 +420,7 @@ func (o *Orchestrator) stepInstallInner() bool {
 		InstallRoot: paths.ResolvePmRoot(o.deps.RepoDir, cfg.PmPath()),
 		Pm:          pm,
 		OrgId:       cfg.OrgId,
+		Env:         os.Getenv("SANDBOX_ENV"),
 		Log:         func(m string) { o.chunk(m + "\r\n") },
 	}
 	if TryRestoreGolden(golden) {

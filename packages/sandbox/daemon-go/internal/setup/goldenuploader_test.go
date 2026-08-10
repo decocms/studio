@@ -16,7 +16,7 @@ import (
 //	                             /.golden-meta.json
 //
 // meta is written only when orgId is non-empty, mirroring WriteGoldenMeta.
-func nodeLocalGolden(t *testing.T, cacheRoot, cloneUrl, pm, lockHash, orgId string) string {
+func nodeLocalGolden(t *testing.T, cacheRoot, cloneUrl, pm, lockHash, orgId string, env ...string) string {
 	t.Helper()
 	dir := filepath.Join(cacheRoot, "golden", repoCacheKey(cloneUrl), pm+"-"+lockHash)
 	nm := filepath.Join(dir, "node_modules", "pkg-a", "dist")
@@ -35,7 +35,11 @@ func nodeLocalGolden(t *testing.T, cacheRoot, cloneUrl, pm, lockHash, orgId stri
 		t.Fatal(err)
 	}
 	goldenNodeModules := filepath.Join(dir, "node_modules")
-	WriteGoldenMeta(goldenNodeModules, GoldenMeta{OrgId: orgId, CloneUrl: cloneUrl, Pm: pm})
+	e := "stg"
+	if len(env) > 0 {
+		e = env[0]
+	}
+	WriteGoldenMeta(goldenNodeModules, GoldenMeta{OrgId: orgId, CloneUrl: cloneUrl, Pm: pm, Env: e})
 	return goldenNodeModules
 }
 
@@ -121,7 +125,7 @@ func TestUploadNodeGoldens(t *testing.T) {
 		cache, remote := t.TempDir(), t.TempDir()
 		nodeLocalGolden(t, cache, "https://github.com/acme/site.git", "bun", "lock1", testOrg)
 
-		s := UploadNodeGoldens(UploaderOpts{CacheRoot: cache, RemoteRoot: remote})
+		s := UploadNodeGoldens(UploaderOpts{CacheRoot: cache, RemoteRoot: remote, Env: "stg"})
 		if s.Uploaded != 1 || s.Scanned != 1 {
 			t.Fatalf("unexpected stats: %+v", s)
 		}
@@ -138,7 +142,7 @@ func TestUploadNodeGoldens(t *testing.T) {
 		cache, remote := t.TempDir(), t.TempDir()
 		nodeLocalGolden(t, cache, "https://github.com/acme/site.git", "bun", "lock1", "")
 
-		s := UploadNodeGoldens(UploaderOpts{CacheRoot: cache, RemoteRoot: remote})
+		s := UploadNodeGoldens(UploaderOpts{CacheRoot: cache, RemoteRoot: remote, Env: "stg"})
 		if s.Uploaded != 0 || s.NoMeta != 1 {
 			t.Fatalf("unexpected stats: %+v", s)
 		}
@@ -151,7 +155,7 @@ func TestUploadNodeGoldens(t *testing.T) {
 		requireTools(t)
 		cache, remote := t.TempDir(), t.TempDir()
 		nodeLocalGolden(t, cache, "https://github.com/acme/site.git", "bun", "lock1", testOrg)
-		opts := UploaderOpts{CacheRoot: cache, RemoteRoot: remote}
+		opts := UploaderOpts{CacheRoot: cache, RemoteRoot: remote, Env: "stg"}
 
 		UploadNodeGoldens(opts)
 		archive := RemoteGoldenArchivePath(remote, testOrg, "https://github.com/acme/site.git", "bun", "lock1")
@@ -177,7 +181,7 @@ func TestUploadNodeGoldens(t *testing.T) {
 		requireTools(t)
 		cache, remote := t.TempDir(), t.TempDir()
 		nodeLocalGolden(t, cache, "https://github.com/acme/site.git", "bun", "lock1", testOrg)
-		UploadNodeGoldens(UploaderOpts{CacheRoot: cache, RemoteRoot: remote})
+		UploadNodeGoldens(UploaderOpts{CacheRoot: cache, RemoteRoot: remote, Env: "stg"})
 
 		// A different node: same lockfile content, nothing installed.
 		cold := t.TempDir()
@@ -221,8 +225,8 @@ func TestUploadNodeGoldens(t *testing.T) {
 		nodeLocalGolden(t, cacheA, "https://github.com/deco-cx/template.git", "bun", "lock1", "org_a")
 		nodeLocalGolden(t, cacheB, "https://github.com/deco-cx/template.git", "bun", "lock1", "org_b")
 
-		UploadNodeGoldens(UploaderOpts{CacheRoot: cacheA, RemoteRoot: remote})
-		UploadNodeGoldens(UploaderOpts{CacheRoot: cacheB, RemoteRoot: remote})
+		UploadNodeGoldens(UploaderOpts{CacheRoot: cacheA, RemoteRoot: remote, Env: "stg"})
+		UploadNodeGoldens(UploaderOpts{CacheRoot: cacheB, RemoteRoot: remote, Env: "stg"})
 
 		a := RemoteGoldenArchivePath(remote, "org_a", "https://github.com/deco-cx/template.git", "bun", "lock1")
 		b := RemoteGoldenArchivePath(remote, "org_b", "https://github.com/deco-cx/template.git", "bun", "lock1")
@@ -248,7 +252,7 @@ func TestUploadNodeGoldens(t *testing.T) {
 
 	t.Run("an empty node-local store is not an error", func(t *testing.T) {
 		cache, remote := t.TempDir(), t.TempDir()
-		if s := UploadNodeGoldens(UploaderOpts{CacheRoot: cache, RemoteRoot: remote}); s.Scanned != 0 {
+		if s := UploadNodeGoldens(UploaderOpts{CacheRoot: cache, RemoteRoot: remote, Env: "stg"}); s.Scanned != 0 {
 			t.Fatalf("unexpected stats on an empty store: %+v", s)
 		}
 	})
@@ -261,7 +265,7 @@ func TestUploadNodeGoldens(t *testing.T) {
 		if err := os.MkdirAll(half, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if s := UploadNodeGoldens(UploaderOpts{CacheRoot: cache, RemoteRoot: remote}); s.Scanned != 0 {
+		if s := UploadNodeGoldens(UploaderOpts{CacheRoot: cache, RemoteRoot: remote, Env: "stg"}); s.Scanned != 0 {
 			t.Fatalf("scanned an in-flight publish: %+v", s)
 		}
 	})
@@ -274,9 +278,60 @@ func TestUploadNodeGoldens(t *testing.T) {
 			nodeLocalGolden(t, cache, url, "bun", "lock1", testOrg)
 			nodeLocalGolden(t, cache, url, "bun", "lock2", testOrg)
 		}
-		s := UploadNodeGoldens(UploaderOpts{CacheRoot: cache, RemoteRoot: remote})
+		s := UploadNodeGoldens(UploaderOpts{CacheRoot: cache, RemoteRoot: remote, Env: "stg"})
 		if s.Scanned != 6 || s.Uploaded != 6 {
 			t.Fatalf("unexpected stats: %+v", s)
 		}
 	})
+}
+
+// Nodes are shared across environments: prod and stg sandboxes run on one
+// NodePool, so a node's hostPath store holds a mix. Each uploader must forward
+// only its own — a neighbour's archive would land under this environment's key
+// prefix, where that environment's sandboxes never look, so compressing and
+// shipping it is pure waste.
+func TestUploadNodeGoldensScopesByEnv(t *testing.T) {
+	requireTools(t)
+	cache, remote := t.TempDir(), t.TempDir()
+	nodeLocalGolden(t, cache, "https://github.com/acme/mine.git", "bun", "l1", testOrg, "stg")
+	nodeLocalGolden(t, cache, "https://github.com/acme/theirs.git", "bun", "l1", testOrg, "prod")
+
+	s := UploadNodeGoldens(UploaderOpts{CacheRoot: cache, RemoteRoot: remote, Env: "stg"})
+	if s.Uploaded != 1 || s.OtherEnv != 1 {
+		t.Fatalf("expected 1 uploaded and 1 skipped as another env, got %+v", s)
+	}
+	if !fileExists(RemoteGoldenArchivePath(remote, testOrg, "https://github.com/acme/mine.git", "bun", "l1")) {
+		t.Fatal("did not upload this environment's own golden")
+	}
+	if fileExists(RemoteGoldenArchivePath(remote, testOrg, "https://github.com/acme/theirs.git", "bun", "l1")) {
+		t.Fatal("uploaded another environment's golden")
+	}
+}
+
+// An uploader with no Env configured forwards everything. Correct only where a
+// single environment owns the nodes, and the documented behaviour of the field.
+func TestUploadNodeGoldensUnscopedForwardsAll(t *testing.T) {
+	requireTools(t)
+	cache, remote := t.TempDir(), t.TempDir()
+	nodeLocalGolden(t, cache, "https://github.com/acme/a.git", "bun", "l1", testOrg, "stg")
+	nodeLocalGolden(t, cache, "https://github.com/acme/b.git", "bun", "l1", testOrg, "prod")
+
+	s := UploadNodeGoldens(UploaderOpts{CacheRoot: cache, RemoteRoot: remote})
+	if s.Uploaded != 2 || s.OtherEnv != 0 {
+		t.Fatalf("expected both uploaded with no env scope, got %+v", s)
+	}
+}
+
+// A golden written before the env was threaded through has no env in its meta.
+// It is skipped by a scoped uploader rather than guessed at: the alternative is
+// shipping a tree that may belong to another environment.
+func TestUploadNodeGoldensSkipsGoldenWithoutEnv(t *testing.T) {
+	requireTools(t)
+	cache, remote := t.TempDir(), t.TempDir()
+	nodeLocalGolden(t, cache, "https://github.com/acme/legacy.git", "bun", "l1", testOrg, "")
+
+	s := UploadNodeGoldens(UploaderOpts{CacheRoot: cache, RemoteRoot: remote, Env: "stg"})
+	if s.Uploaded != 0 || s.OtherEnv != 1 {
+		t.Fatalf("expected the env-less golden skipped, got %+v", s)
+	}
 }
