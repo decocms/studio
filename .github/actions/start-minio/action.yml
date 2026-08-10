@@ -25,6 +25,16 @@ runs:
   steps:
     - shell: bash
       run: |
+        # Pull explicitly with retry/backoff: quay.io intermittently times out
+        # ('Get "https://quay.io/v2/": context deadline exceeded'), and the
+        # implicit pull inside `docker run` has no retry, so one transient
+        # registry failure kills the whole job. Same pattern as the NATS pull
+        # in e2e.yml and the compose retry in resilience.yml.
+        for attempt in 1 2 3 4 5; do
+          docker pull ${{ inputs.image }} && break
+          echo "docker pull ${{ inputs.image }} failed (attempt $attempt); retrying in $((attempt * 5))s"
+          sleep $((attempt * 5))
+        done
         docker run -d --name minio -p ${{ inputs.port }}:9000 \
           -e MINIO_ROOT_USER=${{ inputs.root-user }} \
           -e MINIO_ROOT_PASSWORD=${{ inputs.root-password }} \
