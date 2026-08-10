@@ -16,7 +16,8 @@ export const settings = {
   "settings.syncedRepos.cancel": "Cancelar",
   "settings.syncedRepos.create": "Criar",
   "settings.syncedRepos.creating": "Criando…",
-  "settings.syncedRepos.created": 'Repo sincronizado em "{volume}"',
+  "settings.syncedRepos.created":
+    'Sincronização criada — sincronizando em "{volume}" em segundo plano',
   "settings.syncedRepos.emptyTitle": "Nenhum repo sincronizado ainda",
   "settings.syncedRepos.emptyDescription":
     "Escolha um repositório do GitHub e ele aparecerá na biblioteca como uma pasta somente leitura, sincronizada automaticamente.",
