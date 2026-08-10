@@ -68,7 +68,8 @@ export interface Repo {
 }
 
 export interface GitHubImportPayload {
-  virtualMcpId: string;
+  /** Null in `mode="connection"` — no agent is created there. */
+  virtualMcpId: string | null;
   repo: Repo;
   connectionId: string;
 }
@@ -388,6 +389,12 @@ function PickerContent({
       if (mode === "connection" || !virtualMcpId || !item) {
         invalidateVirtualMcpQueries(queryClient, org.id);
         invalidateConnectionQueries(queryClient, org.id);
+        if (onImportComplete) {
+          // The caller owns the rest of its flow (e.g. the Library's synced-repo
+          // volume dialog) — no generic toast on top of it.
+          onImportComplete({ virtualMcpId: null, repo, connectionId });
+          return;
+        }
         toast.success(
           t("common.githubRepoPicker.addedRepo", { name: repo.name }),
         );

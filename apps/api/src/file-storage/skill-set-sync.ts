@@ -105,15 +105,46 @@ export function parseTar(tar: Uint8Array): Map<string, Uint8Array> {
 
 // --- sync --------------------------------------------------------------------
 
+/**
+ * The tarball request for a repo@ref: anonymous fetches go straight to
+ * codeload; authenticated ones (private repos) go through the API endpoint,
+ * which 302s to a signed codeload URL — the redirect drops the Authorization
+ * header cross-origin, which is correct (the signed URL needs none).
+ */
+export function tarballRequestFor(
+  repo: string,
+  ref: string,
+  authToken?: string,
+): { url: string; headers: Record<string, string> } {
+  const encodedRef = encodeURIComponent(ref);
+  if (!authToken) {
+    return {
+      url: `https://codeload.github.com/${repo}/tar.gz/${encodedRef}`,
+      headers: {},
+    };
+  }
+  return {
+    url: `https://api.github.com/repos/${repo}/tarball/${encodedRef}`,
+    headers: {
+      Authorization: `Bearer ${authToken}`,
+      Accept: "application/vnd.github+json",
+    },
+  };
+}
+
 /** Fetch `owner/repo@ref` and return files keyed by repo-relative path. */
 async function fetchRepoFiles(
   repo: string,
   ref: string,
+  authToken?: string,
 ): Promise<Map<string, Uint8Array>> {
-  const url = `https://codeload.github.com/${repo}/tar.gz/${encodeURIComponent(ref)}`;
+  const { url, headers } = tarballRequestFor(repo, ref, authToken);
   // Bound the whole download — a stalled codeload socket would otherwise hang
   // this sync cycle (and the boot loop's first iteration) indefinitely.
-  const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
+  const res = await fetch(url, {
+    headers,
+    signal: AbortSignal.timeout(60_000),
+  });
   if (!res.ok) {
     throw new Error(
       `tarball fetch failed for ${repo}@${ref}: HTTP ${res.status}`,
@@ -245,36 +276,55 @@ export interface SyncResult {
   unchanged: number;
 }
 
-/** Sync one set into its shared volume. Throws on fetch/storage failure. */
-async function syncPublicSet(
+/** A git source mirrored into a volume (the set-less core of a public set). */
+export interface RepoSyncSource {
+  /** `owner/name` */
+  repo: string;
+  ref: string;
+  paths: PublicSkillSetSource["paths"];
+}
+
+/**
+ * Mirror `source` into `(orgId, volume)`. Generic core shared by the public
+ * skill sets and the per-org repo syncs. Throws on fetch/storage failure.
+ */
+export async function syncRepoToVolume(
   db: Kysely<Database>,
-  source: PublicSkillSetSource,
-  opts: { baseUrl: string },
-): Promise<SyncResult> {
+  opts: {
+    orgId: string;
+    baseUrl: string;
+    volume: string;
+    source: RepoSyncSource;
+    /** Installation token for private repos; omit for anonymous fetch. */
+    authToken?: string;
+    /** Only system-owned shared content may bypass the per-volume quota. */
+    skipVolumeQuota: boolean;
+  },
+): Promise<{ written: number; deleted: number; unchanged: number }> {
+  const { orgId, volume, source } = opts;
   const s3Service = getObjectStorageS3Service();
   const storage = s3Service
-    ? createBoundObjectStorage(s3Service, ORG_FS_PUBLIC_ORG_ID)
-    : new DevObjectStorage(ORG_FS_PUBLIC_ORG_ID, opts.baseUrl);
+    ? createBoundObjectStorage(s3Service, orgId)
+    : new DevObjectStorage(orgId, opts.baseUrl);
   const manifest = new OrgFsEntryStorage(db);
-  const fs = new OrgFs(storage, manifest, ORG_FS_PUBLIC_ORG_ID);
-  const volume = publicVolumeForSet(source.set);
+  const fs = new OrgFs(storage, manifest, orgId);
 
   const desired = planVolumeTree(
-    await fetchRepoFiles(source.repo, source.ref),
+    await fetchRepoFiles(source.repo, source.ref, opts.authToken),
     source.paths,
   );
   const current = new Map(
-    (await manifest.listVolumeFiles(ORG_FS_PUBLIC_ORG_ID, volume)).map((e) => [
+    (await manifest.listVolumeFiles(orgId, volume)).map((e) => [
       e.path,
       e.contentHash,
     ]),
   );
 
   // An upstream dir rename or config typo yields an empty desired tree from a
-  // perfectly successful fetch — refuse to wipe a live set over it.
+  // perfectly successful fetch — refuse to wipe a live volume over it.
   if (desired.size === 0 && current.size > 0) {
     throw new Error(
-      `set "${source.set}" resolved 0 files from ${source.repo}@${source.ref} ` +
+      `volume "${volume}" resolved 0 files from ${source.repo}@${source.ref} ` +
         `(check paths config) — refusing to delete the ${current.size} existing files`,
     );
   }
@@ -292,7 +342,7 @@ async function syncPublicSet(
   }
   // Prune dirs with no desired file beneath them (file tombstones don't touch
   // the parent dir entries; each stale root deletes its whole subtree).
-  const dirs = await manifest.listVolumeDirs(ORG_FS_PUBLIC_ORG_ID, volume);
+  const dirs = await manifest.listVolumeDirs(orgId, volume);
   for (const dir of staleDirs(
     desired.keys(),
     dirs.map((d) => d.path),
@@ -317,12 +367,28 @@ async function syncPublicSet(
     await fs.write(volume, path, bytes, {
       actor: SYNC_ACTOR,
       contentType: detectContentType(path),
-      // System-owned shared content is exempt from per-volume quotas.
-      skipVolumeQuota: true,
+      skipVolumeQuota: opts.skipVolumeQuota,
     });
     written++;
   }
-  return { set: source.set, written, deleted, unchanged };
+  return { written, deleted, unchanged };
+}
+
+/** Sync one set into its shared volume. Throws on fetch/storage failure. */
+async function syncPublicSet(
+  db: Kysely<Database>,
+  source: PublicSkillSetSource,
+  opts: { baseUrl: string },
+): Promise<SyncResult> {
+  const counts = await syncRepoToVolume(db, {
+    orgId: ORG_FS_PUBLIC_ORG_ID,
+    baseUrl: opts.baseUrl,
+    volume: publicVolumeForSet(source.set),
+    source,
+    // System-owned shared content is exempt from per-volume quotas.
+    skipVolumeQuota: true,
+  });
+  return { set: source.set, ...counts };
 }
 
 /** `syncPublicSet` with failure folded into the result (never throws). */

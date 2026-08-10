@@ -481,6 +481,7 @@ import { SubsidizedGatewayKeyStorage } from "@/storage/subsidized-gateway-keys";
 import { SecretStorage } from "@/storage/secrets";
 import { OrgFileConfigStorage } from "@/storage/org-file-configs";
 import { OrgSiteStorage } from "@/storage/org-sites";
+import { OrgRepoSyncStorage } from "@/storage/org-repo-syncs";
 import { TaskBoardStorage } from "@/storage/task-board";
 import { OrgFsEntryStorage } from "@/storage/org-fs";
 import { OrgFs } from "@/file-storage/org-fs";
@@ -1370,6 +1371,7 @@ export async function createStudioContextFactory(
     secrets: new SecretStorage(config.db, vault),
     orgFileConfigs: new OrgFileConfigStorage(config.db, vault),
     orgSites: new OrgSiteStorage(config.db),
+    orgRepoSyncs: new OrgRepoSyncStorage(config.db),
     taskBoard: new TaskBoardStorage(config.db),
     orgFsEntries: new OrgFsEntryStorage(config.db),
     oauthPkceStates: new OAuthPkceStateStorage(config.db),

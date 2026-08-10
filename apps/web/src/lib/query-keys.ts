@@ -488,6 +488,7 @@ export const KEYS = {
   orgFsStat: (orgId: string, volume: string, path: string) =>
     ["org-fs", orgId, volume, "stat", path] as const,
   orgFsPublicSets: (orgId: string) => ["org-fs-public-sets", orgId] as const,
+  orgRepoSyncs: (orgId: string) => ["org-repo-syncs", orgId] as const,
   // Cross-volume recent-files feed (Library home). Separate root key so a
   // volume named like the segment can never collide; mutations invalidate it
   // explicitly alongside the volume prefix.
