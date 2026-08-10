@@ -47,7 +47,10 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { canMakeSectionReusable } from "./page-sections";
-import { VARIANT_MENU_ITEM_CLASS } from "./section-variant-list";
+import {
+  VARIANT_MENU_ITEM_CLASS,
+  VARIANT_ROW_CLASS,
+} from "./section-variant-list";
 import { canAddSectionVariant } from "./section-variants";
 import { isLazyResolveType } from "./section-lazy";
 import { getSectionPreviewImageSrc } from "./section-preview-image";
@@ -195,7 +198,7 @@ function sectionRowClassName(section: ParsedSection, selected: boolean) {
       : saved
         ? GLOBAL_SECTION_ROW_CLASS
         : multivariate
-          ? "text-[oklch(0.45_0.15_160)] hover:bg-[oklch(0.65_0.15_160/0.12)] dark:text-[oklch(0.78_0.15_160)] dark:hover:bg-[oklch(0.65_0.15_160/0.15)]"
+          ? VARIANT_ROW_CLASS
           : "text-foreground/80 hover:bg-accent hover:text-accent-foreground",
   );
 }

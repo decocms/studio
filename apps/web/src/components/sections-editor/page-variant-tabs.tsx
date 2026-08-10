@@ -47,11 +47,10 @@ import { resolveEffectiveMatcherRule } from "./matcher-rules";
 import { resolveMatcherIconName } from "./matcher-icons";
 import type { PageVariant } from "./page-variants";
 import type { LiveMeta } from "./resolve-schema";
-
-const VARIANT_ROW_CLASS =
-  "text-[oklch(0.45_0.15_160)] hover:bg-[oklch(0.65_0.15_160/0.12)] dark:text-[oklch(0.78_0.15_160)] dark:hover:bg-[oklch(0.65_0.15_160/0.15)]";
-const VARIANT_SELECTED_ROW_CLASS =
-  "text-[oklch(0.45_0.15_160)] bg-[oklch(0.65_0.15_160/0.18)] dark:text-[oklch(0.78_0.15_160)] dark:bg-[oklch(0.65_0.15_160/0.2)]";
+import {
+  VARIANT_ROW_CLASS,
+  VARIANT_SELECTED_ROW_CLASS,
+} from "./section-variant-list";
 
 export function VariantTabIcon({
   rule,
