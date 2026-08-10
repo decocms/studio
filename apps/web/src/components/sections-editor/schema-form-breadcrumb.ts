@@ -9,8 +9,17 @@ import { unwrapBlockReference } from "./unwrap-section";
  * additionally carries the item's exact array index, so it re-resolves to that
  * item after a form remount without leaking a positional number into the label
  * the UI renders — the crumb is addressed by `itemIndex`, displayed by `label`.
+ *
+ * When the array needs disambiguating (a sibling drill-down array in the same
+ * scope, or an item label that collides with the array's own label/key), the
+ * array's label rides on the item crumb as `arrayLabel` rather than as a
+ * SEPARATE crumb. That keeps resolution unambiguous WITHOUT creating a standalone
+ * "array list only" navigation stop the user would have to click back through —
+ * the array's list is already shown inline in its parent form.
  */
-export type Crumb = string | { label: string; itemIndex: number };
+export type Crumb =
+  | string
+  | { label: string; itemIndex: number; arrayLabel?: string };
 
 /** The human-visible text of a crumb (the label part of an item crumb). */
 export function crumbLabel(crumb: Crumb): string {
@@ -20,8 +29,13 @@ export function crumbLabel(crumb: Crumb): string {
 /** Whether a crumb addresses an array item (carries an `itemIndex`). */
 function isItemCrumb(
   crumb: Crumb,
-): crumb is { label: string; itemIndex: number } {
+): crumb is { label: string; itemIndex: number; arrayLabel?: string } {
   return typeof crumb === "object";
+}
+
+/** The disambiguating array label riding on an item crumb, if any. */
+function crumbArrayLabel(crumb: Crumb): string | undefined {
+  return isItemCrumb(crumb) ? crumb.arrayLabel : undefined;
 }
 
 function humanize(key: string): string {
@@ -99,14 +113,17 @@ function arrayCrumbNeededForDisambiguation(
  * The array field itself is an implementation detail: its list is already shown
  * inline in the parent form, so drilling into an item jumps straight from the
  * section to the item. We deliberately do NOT add the array's own label as a
- * crumb — it would show a redundant "list only" step the user has to click back
- * through (and, once nested, could even appear twice). Resolution
+ * standalone crumb — it would show a redundant "list only" step the user has to
+ * click back through (and, once nested, could even appear twice). Resolution
  * ({@link resolveActiveFieldKey}, {@link resolveArrayItemSelection}) already
  * matches an item by its label without the array crumb present.
  *
- * The exception is when the crumb would be ambiguous — see
- * {@link arrayCrumbNeededForDisambiguation}: then the array label is kept so the
- * right array (and item) still resolves.
+ * When the crumb would be ambiguous — see
+ * {@link arrayCrumbNeededForDisambiguation} — the array label still has to travel
+ * with the trail so the right array (and item) resolves. It rides on the item
+ * crumb as `arrayLabel` INSTEAD of as a separate crumb, so disambiguation costs
+ * no extra navigation stop: back from the item lands on the array's parent form,
+ * never on a bare array list.
  */
 export function buildArrayDrillDownBreadcrumb(
   breadcrumbPath: Crumb[],
@@ -125,15 +142,14 @@ export function buildArrayDrillDownBreadcrumb(
   ) {
     return breadcrumbPath;
   }
-  const trail = [...breadcrumbPath];
-  if (
-    arrayCrumbNeededForDisambiguation(arrayLabel, itemLabel, opts) &&
-    !trail.some((crumb) => labelsMatch(crumbLabel(crumb), arrayLabel))
-  ) {
-    trail.push(arrayLabel);
-  }
-  trail.push({ label: itemLabel, itemIndex });
-  return trail;
+  const itemCrumb = arrayCrumbNeededForDisambiguation(
+    arrayLabel,
+    itemLabel,
+    opts,
+  )
+    ? { label: itemLabel, itemIndex, arrayLabel }
+    : { label: itemLabel, itemIndex };
+  return [...breadcrumbPath, itemCrumb];
 }
 
 /**
@@ -173,8 +189,17 @@ export function breadcrumbPathForActiveField(
   overrideLabel?: string,
 ): Crumb[] {
   if (breadcrumbPath.length === 0) return breadcrumbPath;
+  const first = breadcrumbPath[0]!;
+  // Only a field/context crumb (a plain string — an object's disambiguated label
+  // or, formerly, a standalone array crumb) can be the active field's OWN crumb
+  // to consume. An item crumb (carries `itemIndex`) is the array's selection and
+  // must pass through untouched — otherwise, now that the array's disambiguator
+  // rides ON the item crumb as `arrayLabel`, an item whose label equals the
+  // array's label/key would be stripped here, leaving ArrayField an empty trail
+  // and making the item impossible to open (it snaps back to the list).
+  if (isItemCrumb(first)) return breadcrumbPath;
   const label = overrideLabel ?? fieldDisplayLabel(activeKey, schema);
-  const head = crumbLabel(breadcrumbPath[0]!);
+  const head = crumbLabel(first);
   if (labelsMatch(head, label) || labelsMatch(head, activeKey)) {
     return breadcrumbPath.slice(1);
   }
@@ -256,6 +281,57 @@ export function isArrayDrillDownField(
   if (schema.type === "array" && schema.items) return true;
   if (isPageMultivariateSectionArrayField(schema)) return true;
   return Array.isArray(value);
+}
+
+/**
+ * Whether an array (drill-down) field exists anywhere inside this object schema.
+ * Depth-bounded so a deeply nested schema can't stall the check. Uses the
+ * canonical {@link isArrayDrillDownField} for the leaf test so "drill-down array"
+ * means the same thing here as in the resolver (which gates on it too).
+ */
+function schemaHasNestedArrayField(schema: SchemaProperty, depth = 0): boolean {
+  if (depth > 6 || !schema.properties) return false;
+  for (const key of Object.keys(schema.properties)) {
+    const child = schema.properties[key];
+    if (!child) continue;
+    if (isArrayDrillDownField(child)) return true;
+    if (
+      child.type === "object" &&
+      schemaHasNestedArrayField(child, depth + 1)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * The object field keys in this scope that need their own label stamped onto the
+ * breadcrumb trail when drilling into a nested array item, to stay unambiguous.
+ *
+ * A key qualifies when it's an object holding a nested drill-down array AND at
+ * least one sibling is also such an object: a bare `[…, itemLabel]` trail then
+ * matches the nested array in BOTH (e.g. `shelfProps` / `shelfPropsOffer`, each
+ * with `cardLayout.productTags`), so {@link resolveActiveFieldKey} can't tell
+ * them apart and the panel falls back to showing every sibling. Stamping the
+ * disambiguated label makes the trail name the right one — the resolver's
+ * strong-match path (the `labelsMatch(head, label)` branch of the object loop)
+ * then pins it.
+ *
+ * Complements the same-display-label collision check in `schema-form.tsx`:
+ * distinct-titled siblings like these don't collide by label, so that check
+ * alone misses them. Computed in a single pass over `keys` (one schema walk per
+ * object sibling) so callers don't re-walk every sibling per rendered field.
+ */
+export function objectSiblingsNeedingAncestorCrumb(
+  keys: string[],
+  properties: Record<string, SchemaProperty>,
+): Set<string> {
+  const withNestedArray = keys.filter((key) => {
+    const schema = properties[key];
+    return schema?.type === "object" && schemaHasNestedArrayField(schema);
+  });
+  return withNestedArray.length > 1 ? new Set(withNestedArray) : new Set();
 }
 
 function asObjectRecord(value: unknown): Record<string, unknown> {
@@ -354,12 +430,24 @@ function resolveActiveFieldKeyInScope(
     if (!schema || !isArrayDrillDownField(schema, objValue[key])) continue;
     const label = siblingFieldLabel(key, keys, properties);
     if (labelsMatch(head, label) || labelsMatch(head, key)) return key;
+    // The array's disambiguating label rides on an item crumb's `arrayLabel`
+    // (see buildArrayDrillDownBreadcrumb), so match against that too — it's what
+    // tells sibling drill-down arrays (e.g. `productTags` vs `productSquareTags`)
+    // apart now that the array label is no longer a standalone crumb.
     if (
-      breadcrumbPath.some(
-        (crumb) =>
+      breadcrumbPath.some((crumb) => {
+        if (
           labelsMatch(crumbLabel(crumb), label) ||
-          labelsMatch(crumbLabel(crumb), key),
-      )
+          labelsMatch(crumbLabel(crumb), key)
+        ) {
+          return true;
+        }
+        const arrayLabel = crumbArrayLabel(crumb);
+        return (
+          arrayLabel != null &&
+          (labelsMatch(arrayLabel, label) || labelsMatch(arrayLabel, key))
+        );
+      })
     ) {
       return key;
     }
@@ -382,8 +470,21 @@ function resolveActiveFieldKeyInScope(
   // the wrong prop; if the trail can't tell them apart, return null so the panel
   // keeps both visible instead of editing the wrong sibling. A crumb carrying the
   // disambiguated ancestor label (its `siblingFieldLabel`) matches exactly one.
-  let objMatch: string | null = null;
-  let objAmbiguous = false;
+  // A "strong" match is one where the head crumb NAMES this object sibling (its
+  // disambiguated label or key), so it's consumed and we recurse into only this
+  // sibling. A "loose" match is against the full trail — the item's own crumb
+  // identifies it, but that crumb (or a nested array-label crumb like
+  // "ProductTags") can match the same-shaped array in MULTIPLE siblings, so it's
+  // inherently ambiguous. Strong matches take precedence: when a disambiguating
+  // ancestor crumb pins one sibling, a loose match on another must not veto it.
+  // Without this, drilling into `shelfProps.cardLayout.productTags[i]` while
+  // `shelfPropsOffer.cardLayout.productTags` holds the same item — even WITH the
+  // "Shelf Props" ancestor crumb present — resolves ambiguously (both own the
+  // "ProductTags" crumb) and the panel shows every sibling mixed together.
+  let strongMatch: string | null = null;
+  let strongAmbiguous = false;
+  let looseMatch: string | null = null;
+  let looseAmbiguous = false;
   for (const key of keys) {
     const schema = properties[key];
     if (schema?.type !== "object" || !schema.properties) continue;
@@ -391,17 +492,8 @@ function resolveActiveFieldKeyInScope(
     const childObj = asObjectRecord(objValue[key]);
     const label = siblingFieldLabel(key, keys, properties);
 
-    let matched =
-      resolveActiveFieldKeyInScope(
-        childKeys,
-        schema.properties,
-        childObj,
-        breadcrumbPath,
-        decofile,
-      ) != null;
-
-    if (!matched && (labelsMatch(head, label) || labelsMatch(head, key))) {
-      matched =
+    if (labelsMatch(head, label) || labelsMatch(head, key)) {
+      const matchedStrong =
         resolveActiveFieldKeyInScope(
           childKeys,
           schema.properties,
@@ -409,13 +501,28 @@ function resolveActiveFieldKeyInScope(
           breadcrumbPath.slice(1),
           decofile,
         ) != null;
+      if (matchedStrong) {
+        if (strongMatch === null) strongMatch = key;
+        else strongAmbiguous = true;
+        continue;
+      }
     }
 
-    if (!matched) continue;
-    if (objMatch === null) objMatch = key;
-    else objAmbiguous = true;
+    const matchedLoose =
+      resolveActiveFieldKeyInScope(
+        childKeys,
+        schema.properties,
+        childObj,
+        breadcrumbPath,
+        decofile,
+      ) != null;
+    if (matchedLoose) {
+      if (looseMatch === null) looseMatch = key;
+      else looseAmbiguous = true;
+    }
   }
-  if (objMatch !== null) return objAmbiguous ? null : objMatch;
+  if (strongMatch !== null) return strongAmbiguous ? null : strongMatch;
+  if (looseMatch !== null) return looseAmbiguous ? null : looseMatch;
 
   // Inline-union fields ("A or B" plain-data unions) store the chosen branch's
   // fields flat on the value, so a nested array inside a branch (e.g.

@@ -26,6 +26,14 @@ export interface FieldProps {
    * siblings exist the array label is kept as a disambiguator.
    */
   hasSiblingDrillDownFields?: boolean;
+  /**
+   * True when this field is the sole field its parent narrowed to for the active
+   * breadcrumb (i.e. the form is drilled into it). Object fields use it to render
+   * their contents flat — no collapsible header, no indentation — since the
+   * breadcrumb already conveys the location, so drilling into a deeply nested
+   * item shows just the item's fields instead of a stack of wrapper headers.
+   */
+  focused?: boolean;
   meta?: LiveMeta;
   decofile?: Record<string, unknown>;
   containerResolveType?: string;

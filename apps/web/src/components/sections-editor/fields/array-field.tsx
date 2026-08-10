@@ -331,10 +331,13 @@ export function ArrayField({
       const newLabel = itemLabel(next[index], index);
       if (oldLabel !== newLabel) {
         const updatedBreadcrumb = [...breadcrumbPath];
-        updatedBreadcrumb[selection.crumbIndex] = {
-          label: newLabel,
-          itemIndex: index,
-        };
+        const existing = breadcrumbPath[selection.crumbIndex];
+        // Preserve the crumb's `arrayLabel` disambiguator (if any) — only the
+        // display label changed, not which array this item belongs to.
+        updatedBreadcrumb[selection.crumbIndex] =
+          existing != null && typeof existing === "object"
+            ? { ...existing, label: newLabel, itemIndex: index }
+            : { label: newLabel, itemIndex: index };
         onBreadcrumbChange?.(updatedBreadcrumb);
       }
     }
