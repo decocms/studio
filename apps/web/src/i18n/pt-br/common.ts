@@ -252,6 +252,7 @@ export const common = {
   "common.signInScreen.configLoadFailed":
     "Não foi possível carregar as opções de login.",
   "common.signInScreen.tryAgain": "Tentar novamente",
+  "common.simpleIconPicker.changeIcon": "Alterar ícone",
   "common.simpleIconPicker.filterPlaceholder": "Filtrar…",
   "common.simpleIconPicker.noIconsFound": "Nenhum ícone encontrado",
   "common.ssoRequiredScreen.goBack": "Voltar",
