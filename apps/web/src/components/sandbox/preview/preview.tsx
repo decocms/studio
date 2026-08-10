@@ -257,10 +257,16 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     useState<PreviewDeviceSize>("desktop");
   const [visualElement, setVisualElement] =
     useState<VisualEditorPayload | null>(null);
-  /** Section index selected via click-through from the preview iframe. */
-  const [cmsSelectedSectionIndex, setCmsSelectedSectionIndex] = useState<
-    number | null
-  >(null);
+  /**
+   * Section selected via click-through from the preview iframe. Carries the
+   * iframe's per-click counter so that re-clicking the SAME section is still a
+   * new selection — without it, reopening a section the editor had navigated
+   * away from looked like "no change" and silently did nothing.
+   */
+  const [cmsSelectedSection, setCmsSelectedSection] = useState<{
+    index: number;
+    seq: number;
+  } | null>(null);
   const previewIframeRef = useRef<HTMLIFrameElement>(null);
   const blocksPanelRef = useRef<PanelImperativeHandle>(null);
   /** Origin most recently confirmed registered with the native shell via
@@ -809,7 +815,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       } else if (e.data?.type === "cms-editor::section-clicked") {
         const result = CmsEditorPayloadSchema.safeParse(e.data.payload);
         if (result.success)
-          setCmsSelectedSectionIndex(result.data.sectionIndex);
+          setCmsSelectedSection({
+            index: result.data.sectionIndex,
+            seq: result.data.clickSeq,
+          });
       }
     };
     window.addEventListener("message", handler);
@@ -887,7 +896,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     }
     setEditingMode(mode);
     setVisualElement(null);
-    setCmsSelectedSectionIndex(null);
+    setCmsSelectedSection(null);
     if (previousMode === "visual") deactivateVisualEditor();
     if (mode === "visual") injectVisualEditor();
     if (previousMode === "blocks" && mode !== "blocks") deactivateCmsEditor();
@@ -1033,7 +1042,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     setDirectPreviewUrl(null);
     // A click-through index from the previous page must not auto-select on the
     // next page's remounted editor.
-    setCmsSelectedSectionIndex(null);
+    setCmsSelectedSection(null);
     setPinnedPageKey(page.key);
     setCurrentPath(page.path);
     persistLastPage({ path: page.path, pageKey: page.key, params });
@@ -1069,7 +1078,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     );
     setActiveGlobalSection(section);
     setDirectPreviewUrl(url);
-    setCmsSelectedSectionIndex(null);
+    setCmsSelectedSection(null);
     workspace.selectTarget({ kind: "section", key: section.key });
   };
 
@@ -1676,7 +1685,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           <div className="relative h-full min-h-0 overflow-hidden">
             <BlocksPanel
               virtualMcpId={virtualMcpId}
-              externalSelectedIndex={cmsSelectedSectionIndex}
+              externalSelection={cmsSelectedSection}
             />
             {floatingPreviewControls}
           </div>
@@ -1697,7 +1706,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               {effectiveEditingMode === "blocks" && (
                 <BlocksPanel
                   virtualMcpId={virtualMcpId}
-                  externalSelectedIndex={cmsSelectedSectionIndex}
+                  externalSelection={cmsSelectedSection}
                 />
               )}
             </ResizablePanel>

@@ -1557,6 +1557,50 @@ export interface OrgSite {
   updatedAt: string;
 }
 
+// ============================================================================
+// Org Repo Sync (per-org GitHub repo → org-fs volume mirror)
+// ============================================================================
+
+export interface OrgRepoSyncTable {
+  id: ColumnType<string, string | undefined, never>;
+  organization_id: string;
+  /** Repo-scoped `mcp-github` connection the sync mints tokens from. */
+  connection_id: string;
+  repo_owner: string;
+  repo_name: string;
+  ref: ColumnType<string, string | undefined, string>;
+  /** Same shape as PublicSkillSetSource.paths: [{from, to?}]. */
+  paths: ColumnType<
+    Array<{ from: string; to?: string }>,
+    string | undefined,
+    string
+  >;
+  volume: string;
+  enabled: ColumnType<boolean, boolean | undefined, boolean>;
+  last_synced_at: ColumnType<Date | null, never, Date | string | null>;
+  last_sync_error: ColumnType<string | null, never, string | null>;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+export interface OrgRepoSync {
+  id: string;
+  organizationId: string;
+  connectionId: string;
+  repoOwner: string;
+  repoName: string;
+  ref: string;
+  paths: Array<{ from: string; to?: string }>;
+  volume: string;
+  enabled: boolean;
+  lastSyncedAt: string | null;
+  lastSyncError: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type TaskBoardItemStatus =
   | "triage"
   | "todo"
@@ -1955,6 +1999,7 @@ export interface Database extends PrivateRegistryDatabase {
 
   // Asset tenancy: org ownership of globally-unique site slugs
   org_sites: OrgSiteTable;
+  org_repo_sync: OrgRepoSyncTable;
   task_board_items: TaskBoardItemTable;
   task_board_item_threads: TaskBoardItemThreadTable;
   task_board_activity: TaskBoardActivityTable;

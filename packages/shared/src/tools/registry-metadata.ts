@@ -173,6 +173,13 @@ const ALL_TOOL_NAMES = [
   // Org filesystem (shared public skill sets)
   "ORG_FS_PUBLIC_SETS_SYNC",
 
+  // Per-org GitHub repo → volume syncs
+  "ORG_REPO_SYNC_CREATE",
+  "ORG_REPO_SYNC_LIST",
+  "ORG_REPO_SYNC_UPDATE",
+  "ORG_REPO_SYNC_DELETE",
+  "ORG_REPO_SYNC_RUN",
+
   // Object Storage tools
   "LIST_OBJECTS",
   "GET_OBJECT_METADATA",
@@ -810,6 +817,31 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "File Configs",
   },
   {
+    name: "ORG_REPO_SYNC_CREATE",
+    description: "Keep a GitHub repository mirrored into a new org-fs volume",
+    category: "File Configs",
+  },
+  {
+    name: "ORG_REPO_SYNC_LIST",
+    description: "List the org's synced repositories and their sync status",
+    category: "File Configs",
+  },
+  {
+    name: "ORG_REPO_SYNC_UPDATE",
+    description: "Update a synced repository's ref, paths, or enabled flag",
+    category: "File Configs",
+  },
+  {
+    name: "ORG_REPO_SYNC_DELETE",
+    description: "Stop syncing a repository (already-synced files are kept)",
+    category: "File Configs",
+  },
+  {
+    name: "ORG_REPO_SYNC_RUN",
+    description: "Sync a repository into its volume right now",
+    category: "File Configs",
+  },
+  {
     name: "FILE_CONFIG_UPDATE",
     description:
       "Update an S3 bucket configuration, optionally rotating credentials",
@@ -1197,6 +1229,10 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       // Browse files in a configured bucket (file picker in the sandbox /
       // content editor). Lists object keys only — no credentials returned.
       "FILE_OBJECTS_LIST",
+      // Read-only list of synced repos — every member needs it so the
+      // Library can mark mirror volumes read-only (management stays gated
+      // behind file-configs:manage).
+      "ORG_REPO_SYNC_LIST",
       // Sandbox previews
       "SANDBOX_START",
       "SANDBOX_DELETE",
@@ -1366,7 +1402,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
   {
     id: "file-configs:manage",
     label: "Manage file configs",
-    description: "Create, list, update and delete S3 bucket configurations",
+    description:
+      "Create, list, update and delete S3 bucket configurations and synced GitHub repositories",
     section: "Organization",
     tools: [
       "FILE_CONFIG_CREATE",
@@ -1374,6 +1411,11 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "FILE_CONFIG_UPDATE",
       "FILE_CONFIG_DELETE",
       "FILE_OBJECTS_LIST",
+      "ORG_REPO_SYNC_CREATE",
+      "ORG_REPO_SYNC_LIST",
+      "ORG_REPO_SYNC_UPDATE",
+      "ORG_REPO_SYNC_DELETE",
+      "ORG_REPO_SYNC_RUN",
     ],
   },
   // AI Providers

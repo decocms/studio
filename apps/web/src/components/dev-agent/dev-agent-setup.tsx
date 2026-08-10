@@ -165,7 +165,7 @@ export function DevAgentSetup({
         title={t("devAgent.devAgentSetup.importDialogTitle")}
         onImportComplete={({ virtualMcpId }) => {
           setGithubOpen(false);
-          linkDevAgent(virtualMcpId);
+          if (virtualMcpId) linkDevAgent(virtualMcpId);
         }}
       />
     </div>

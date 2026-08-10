@@ -25,6 +25,8 @@
  */
 
 import { HOME_MOUNT_PATH } from "@decocms/shared/organization/home-mount";
+import type { OrgRepoSyncStorage } from "../../storage/org-repo-syncs";
+import { validateSyncVolumeName } from "../org-repo-sync";
 import {
   getPublicSets,
   isPublicVolume,
@@ -74,6 +76,8 @@ export function buildOrgFsConfig(opts: {
   token: string;
   /** Public skill sets to mount readonly at `org/public/<set>`. */
   publicSets?: string[];
+  /** Org repo-sync volumes to mount readonly at `org/<volume>`. */
+  syncedVolumes?: string[];
 }): OrgFsProvisionConfig {
   return {
     baseUrl: opts.baseUrl.replace(/\/+$/, ""),
@@ -88,6 +92,11 @@ export function buildOrgFsConfig(opts: {
         path: `public/${set}`,
         readonly: true,
       })),
+      // Repo syncs are validated at create time (validateSyncVolumeName); the
+      // filter is belt-and-suspenders so a bad row can't shadow a fixed mount.
+      ...(opts.syncedVolumes ?? [])
+        .filter((v) => validateSyncVolumeName(v) === null)
+        .map((volume) => ({ volume, path: volume, readonly: true })),
     ],
   };
 }
@@ -115,6 +124,9 @@ export async function mintOrgFsConfigJson(
         }): Promise<{ key: string }>;
       };
     };
+    storage: {
+      orgRepoSyncs: Pick<OrgRepoSyncStorage, "listEnabledVolumes">;
+    };
   },
   opts: { orgSlug: string; orgId: string; baseUrl: string },
 ): Promise<string | undefined> {
@@ -129,12 +141,19 @@ export async function mintOrgFsConfigJson(
       expiresIn: ORG_FS_KEY_TTL_SECONDS,
       metadata: { organization: { id: opts.orgId, slug: opts.orgSlug } },
     });
+    // Config is baked at sandbox boot: a repo sync added mid-session mounts on
+    // the next sandbox start (content of already-mounted volumes stays live
+    // via the change feed).
+    const syncedVolumes = await ctx.storage.orgRepoSyncs
+      .listEnabledVolumes(opts.orgId)
+      .catch(() => [] as string[]);
     return JSON.stringify(
       buildOrgFsConfig({
         baseUrl: opts.baseUrl,
         orgSlug: opts.orgSlug,
         token: apiKey.key,
         publicSets: getPublicSets().map((s) => s.set),
+        syncedVolumes,
       }),
     );
   } catch (err) {

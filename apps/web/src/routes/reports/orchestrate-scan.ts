@@ -92,7 +92,7 @@ export async function orchestrateScan(
       });
       return events.onPhase("blocked");
     }
-    const id = trig.state === "running" ? trig.id : null;
+    let id = trig.state === "running" ? trig.id : null;
     if (trig.state === "running") {
       events.onPhase("pending");
       captureReport("report_pending_screen_shown", {
@@ -115,27 +115,14 @@ export async function orchestrateScan(
         const st = await getScanStatus(id);
         if (signal.aborted) return;
         if (st.done) {
-          await sleep(POLL_MS, { signal });
-          const fin = await getReport(domain, undefined, lang);
-          if (signal.aborted) return;
-          if (fin.status === "ready" && fin.deck) {
-            clearPending(domain);
-            reportDrops(domain, fin.drops);
-            captureReport("report_scan_completed", {
-              domain,
-              surface: "deck_v2",
-            });
-            return events.onDeck(fin.deck);
-          }
-          reportDrops(domain, fin.drops);
-          clearPending(domain);
-          captureReport("report_scan_failed", {
+          // Run finished but deck assembly can lag behind it — show the
+          // "still assembling" note and keep polling instead of giving up.
+          id = null;
+          captureReport("report_run_done_deck_pending", {
             domain,
-            phase: "empty",
-            reason: "run_finished_empty",
             surface: "deck_v2",
           });
-          return events.onPhase("empty");
+          events.onPhase("empty");
         }
       }
       await sleep(POLL_MS, { signal });

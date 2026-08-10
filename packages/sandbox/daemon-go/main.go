@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strconv"
@@ -507,8 +508,57 @@ func (d *daemon) operatorIdentity() *gitx.CoAuthorIdentity {
 	return id
 }
 
+// runGoldenUploader is the node-level bridge from the L1 hostPath store to the
+// shared one. Same binary as the daemon on purpose: the logic and the archive
+// format live in internal/setup, which Go's `internal/` rule keeps unimportable
+// from outside this module — and reusing the sandbox image means there is no
+// second artifact to build, publish or keep in lockstep.
+//
+// It is NOT the daemon: no HTTP server, no lifecycle, no tenant. It runs as node
+// infrastructure precisely because a sandbox pod must never hold write access to
+// a store shared across nodes.
+func runGoldenUploader() {
+	opts := setup.UploaderOpts{
+		CacheRoot:  os.Getenv("DEPS_CACHE_ROOT"),
+		RemoteRoot: os.Getenv("GOLDEN_CACHE_REMOTE"),
+		Log:        func(m string) { slog.Info(m) },
+	}
+	if opts.CacheRoot == "" || opts.RemoteRoot == "" {
+		slog.Error("golden-uploader needs DEPS_CACHE_ROOT (node-local store) and " +
+			"GOLDEN_CACHE_REMOTE (shared store, writable here)")
+		os.Exit(2)
+	}
+	interval := 5 * time.Minute
+	if v := os.Getenv("GOLDEN_UPLOAD_INTERVAL_SECONDS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			interval = time.Duration(n) * time.Second
+		}
+	}
+	slog.Info("golden-uploader start", "cache_root", opts.CacheRoot,
+		"remote_root", opts.RemoteRoot, "interval", interval.String())
+
+	stop := make(chan struct{})
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sig
+		// A sweep in flight keeps running: it writes to a final key and verifies
+		// before reporting, so being cut short leaves no readable half-object.
+		slog.Info("golden-uploader stopping")
+		close(stop)
+	}()
+	setup.RunUploader(opts, interval, stop)
+}
+
 func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, nil)))
+
+	// One binary, two roles. Subcommand rather than a separate image so the
+	// uploader cannot drift from the archive format the daemon reads.
+	if len(os.Args) > 1 && os.Args[1] == "golden-uploader" {
+		runGoldenUploader()
+		return
+	}
 
 	bootId := os.Getenv("DAEMON_BOOT_ID")
 	if bootId == "" {
@@ -698,11 +748,13 @@ func main() {
 		slog.Warn("ORGFS_CONFIG is set but this daemon does not mount org volumes " +
 			"(cluster sidecar path only) — org files will not appear in the workspace")
 	}
-	// Same rule for the golden cache's remote tier: the pod may be configured for
-	// L2, but this daemon implements L1 only. Boots stay correct, just slower.
-	if os.Getenv("GOLDEN_CACHE_REMOTE") != "" {
-		slog.Warn("GOLDEN_CACHE_REMOTE is set but this daemon implements the " +
-			"node-local golden tier only — remote restore/publish is skipped")
+	// The golden cache's remote tier needs `zstd` in the image; without it every
+	// restore and publish fails into a normal install, silently apart from this.
+	if setup.RemoteEnabled() {
+		if _, err := exec.LookPath("zstd"); err != nil {
+			slog.Warn("GOLDEN_CACHE_REMOTE is set but zstd is not on PATH — " +
+				"the shared golden tier will miss on every boot")
+		}
 	}
 
 	catalogSync := toolscatalog.NewCoalescer(

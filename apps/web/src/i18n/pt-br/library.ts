@@ -151,6 +151,9 @@ export const library = {
     "Saídas de execução de agentes",
   "library.libraryViews.volumeUploadsDescription":
     "Arquivos que seu time envia",
+  "library.syncedRepos.syncFailed": "Última sincronização falhou",
+  "library.syncedRepos.syncedAgo": "Sincronizado {ago}",
+  "library.syncedRepos.waitingFirstSync": "Aguardando primeira sincronização",
   "library.previewContent.close": "Fechar",
   "library.seeInLibrary.label": "Ver na biblioteca",
   "library.previewContent.download": "Baixar",

@@ -50,6 +50,14 @@ type TenantConfig struct {
 	CloneOnly   *bool             `json:"cloneOnly,omitempty"`
 	Application *Application      `json:"application,omitempty"`
 	Env         map[string]string `json:"env,omitempty"`
+	// Owning organization, stamped by Studio. Nothing in the boot path reads it;
+	// it exists so artifacts that outlive the pod can record whose they are.
+	//
+	// Concretely: the golden dependency cache. A repo hash does not isolate two
+	// organizations cloning the same URL (a public template), so a store shared
+	// across nodes must key by org — otherwise one org's dependency tree can be
+	// restored into another's sandbox. See setup.WriteGoldenMeta.
+	OrgId string `json:"orgId,omitempty"`
 }
 
 // IsCloneOnly reports whether this sandbox should stop after the checkout.

@@ -4653,6 +4653,85 @@ export interface StudioToolIO {
       )[];
     };
   };
+  ORG_REPO_SYNC_CREATE: {
+    input: {
+      connectionId: string;
+      volume: string;
+      ref?: string | undefined;
+      paths?: { from: string; to?: string | undefined }[] | undefined;
+    };
+    output: {
+      config: {
+        id: string;
+        connectionId: string;
+        repoOwner: string;
+        repoName: string;
+        ref: string;
+        paths: { from: string; to?: string | undefined }[];
+        volume: string;
+        enabled: boolean;
+        lastSyncedAt: string | null;
+        lastSyncError: string | null;
+        createdAt: string;
+      };
+    };
+  };
+  ORG_REPO_SYNC_LIST: {
+    input: { [x: string]: never };
+    output: {
+      configs: {
+        id: string;
+        connectionId: string;
+        repoOwner: string;
+        repoName: string;
+        ref: string;
+        paths: { from: string; to?: string | undefined }[];
+        volume: string;
+        enabled: boolean;
+        lastSyncedAt: string | null;
+        lastSyncError: string | null;
+        createdAt: string;
+      }[];
+    };
+  };
+  ORG_REPO_SYNC_UPDATE: {
+    input: {
+      id: string;
+      enabled?: boolean | undefined;
+      ref?: string | undefined;
+      paths?: { from: string; to?: string | undefined }[] | undefined;
+    };
+    output: {
+      config: {
+        id: string;
+        connectionId: string;
+        repoOwner: string;
+        repoName: string;
+        ref: string;
+        paths: { from: string; to?: string | undefined }[];
+        volume: string;
+        enabled: boolean;
+        lastSyncedAt: string | null;
+        lastSyncError: string | null;
+        createdAt: string;
+      };
+    };
+  };
+  ORG_REPO_SYNC_DELETE: { input: { id: string }; output: { deleted: boolean } };
+  ORG_REPO_SYNC_RUN: {
+    input: { id: string };
+    output: {
+      result:
+        | {
+            id: string;
+            volume: string;
+            written: number;
+            deleted: number;
+            unchanged: number;
+          }
+        | { id: string; volume: string; error: string };
+    };
+  };
   LIST_OBJECTS: {
     input: {
       prefix?: string | undefined;

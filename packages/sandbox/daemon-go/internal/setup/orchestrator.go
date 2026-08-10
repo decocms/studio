@@ -146,6 +146,12 @@ func (o *Orchestrator) PublishPendingGolden() {
 	pending.Log = func(m string) { o.rawChunk(m + "\r\n") }
 	PublishGolden(*pending)
 	PruneGoldens("")
+	// L2 last: it is the slow one (compress + read-back over the network), and a
+	// no-op both when the key already exists — the common case after an L2
+	// restore — and when GOLDEN_CACHE_REMOTE is unset. The store is read-only in
+	// a tenant pod, so today this only ever logs a failure to write; that changes
+	// when a trusted publisher gets the writable mount.
+	PublishRemoteGolden(RemoteGoldenFrom(*pending))
 }
 
 func (o *Orchestrator) enqueue(step Step) {
@@ -413,6 +419,7 @@ func (o *Orchestrator) stepInstallInner() bool {
 		CloneUrl:    cloneUrl,
 		InstallRoot: paths.ResolvePmRoot(o.deps.RepoDir, cfg.PmPath()),
 		Pm:          pm,
+		OrgId:       cfg.OrgId,
 		Log:         func(m string) { o.chunk(m + "\r\n") },
 	}
 	if TryRestoreGolden(golden) {
@@ -420,6 +427,23 @@ func (o *Orchestrator) stepInstallInner() bool {
 		o.pendingGolden = nil // restored an existing golden — nothing to publish
 		o.mu.Unlock()
 		EmitDepsRestore(RestoreL1, cloneUrl, elapsedMs(), bootId)
+		o.markInstallSucceeded(cfg)
+		return true
+	}
+
+	// L2: the same lockfile may already be archived on the shared store even
+	// though this node has never built it. Extracting it beats installing, and it
+	// is the only tier that helps a pod that landed in a cold zone.
+	//
+	// A hit leaves pendingGolden set, so the healthy-boot transition seeds THIS
+	// node's L1 from the extracted tree — the next pod here gets the reflink
+	// instead of another extract. PublishRemoteGolden no-ops on an existing key,
+	// so it is safe that the same transition also runs the L2 publish.
+	if TryRestoreRemoteGolden(RemoteGoldenFrom(golden)) {
+		o.mu.Lock()
+		o.pendingGolden = &golden
+		o.mu.Unlock()
+		EmitDepsRestore(RestoreL2, cloneUrl, elapsedMs(), bootId)
 		o.markInstallSucceeded(cfg)
 		return true
 	}

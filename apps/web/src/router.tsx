@@ -498,6 +498,14 @@ const settingsBucketsRoute = createRoute({
   ),
 });
 
+const settingsSyncedReposRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: "/synced-repos",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/synced-repos.tsx"),
+  ),
+});
+
 const settingsMembersRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/members",
@@ -595,6 +603,7 @@ const settingsWithChildren = settingsLayout.addChildren([
   settingsBillingRoute,
   settingsSecretsRoute,
   settingsBucketsRoute,
+  settingsSyncedReposRoute,
   settingsMembersRoute,
   settingsRolesRoute,
   settingsSsoRoute,
