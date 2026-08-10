@@ -1,9 +1,11 @@
-import { getGitHubAvatarUrl } from "@deco/ui/lib/github.ts";
+import { getGitHubAvatarUrl } from "@/utils/github.ts";
 import { getRepoScope } from "@decocms/shared/github-repo-scope";
 import {
   getStudioMcpMetadata,
   type StudioMcpMetadataContainer,
 } from "@decocms/shared/registry/metadata";
+import type { TFunction } from "@/i18n/use-t.ts";
+import type { TranslationKey } from "@/i18n/en/index.ts";
 import type { CompanionCopy } from "./companions.ts";
 
 export interface BindingRequirement {
@@ -265,15 +267,17 @@ function isMeaningfulConfigValue(value: unknown): boolean {
   return false;
 }
 
-function formatConfigurationKey(key: string): string {
-  const labels: Record<string, string> = {
-    accountName: "Nome da conta",
-    appKey: "App Key",
-    appToken: "App Token",
-    propertyId: "Propriedade",
-    siteUrl: "Site",
-  };
-  if (labels[key]) return labels[key];
+const CONFIG_FIELD_LABEL_KEYS: Record<string, TranslationKey> = {
+  accountName: "commerceOnboarding.companionCard.configField.accountName",
+  appKey: "commerceOnboarding.companionCard.configField.appKey",
+  appToken: "commerceOnboarding.companionCard.configField.appToken",
+  propertyId: "commerceOnboarding.companionCard.configField.propertyId",
+  siteUrl: "commerceOnboarding.companionCard.configField.siteUrl",
+};
+
+function formatConfigurationKey(key: string, t: TFunction): string {
+  const labelKey = CONFIG_FIELD_LABEL_KEYS[key];
+  if (labelKey) return t(labelKey);
 
   return key
     .replace(/[_-]+/g, " ")
@@ -292,13 +296,14 @@ function stringifyConfigurationValue(value: unknown): string | null {
 
 export function getConfigurationSummaryEntries(
   state: Record<string, unknown> | null | undefined,
+  t: TFunction,
 ): Array<{ key: string; label: string; value: string }> {
   if (!state) return [];
   return Object.entries(state).flatMap(([key, value]) => {
     if (key.startsWith("__")) return [];
     const stringValue = stringifyConfigurationValue(value);
     if (!stringValue) return [];
-    return [{ key, label: formatConfigurationKey(key), value: stringValue }];
+    return [{ key, label: formatConfigurationKey(key, t), value: stringValue }];
   });
 }
 

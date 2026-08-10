@@ -1,5 +1,5 @@
 import { useState, type ComponentType } from "react";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   ArrowNarrowLeft,
   CheckCircle,

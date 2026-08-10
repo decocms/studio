@@ -12,14 +12,14 @@
  */
 
 import { Fragment, useRef, useState } from "react";
-import { Avatar } from "@deco/ui/components/avatar.tsx";
+import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import {
   ArrowUp,
   Check,
@@ -29,7 +29,8 @@ import {
   Trash03,
   X,
 } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { MemoizedMarkdown } from "@/components/chat/markdown";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { getInitials } from "@/lib/get-initials";
 import { formatTimeAgo } from "@/lib/format-time";
@@ -245,12 +246,12 @@ function CommentEntry({
         className={cn(
           // Same size as the task's description: a comment is body prose, not
           // metadata like the name and timestamp above it.
-          "whitespace-pre-wrap text-[15px] leading-relaxed text-foreground",
+          "text-[15px] leading-relaxed text-foreground",
           // Avatar (24px) + gap (8px), so a reply's text starts at the name.
           isReply && "pl-8",
         )}
       >
-        {comment.body}
+        <MemoizedMarkdown id={comment.id} text={comment.body} />
       </div>
     </div>
   );

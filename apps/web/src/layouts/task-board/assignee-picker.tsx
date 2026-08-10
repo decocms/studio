@@ -1,4 +1,4 @@
-import { Avatar } from "@deco/ui/components/avatar.tsx";
+import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import {
   Command,
   CommandEmpty,
@@ -6,7 +6,7 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from "@deco/ui/components/command.tsx";
+} from "@decocms/ui/components/command.tsx";
 import { User01 } from "@untitledui/icons";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { getInitials } from "@/lib/get-initials";

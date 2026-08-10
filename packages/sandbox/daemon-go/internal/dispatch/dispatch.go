@@ -155,6 +155,16 @@ func (reg *Registry) CancelAll() {
 	}
 }
 
+// displaced reports whether `entry` has lost the claim on `runId` to a newer
+// dispatch. The same ownership test `release` makes, exposed because a cancelled
+// run has to know WHICH cancel it got: its own client leaving, or a successor
+// taking the run over. Only the former is the run's outcome.
+func (reg *Registry) displaced(runId string, entry *activeRun) bool {
+	reg.mu.Lock()
+	defer reg.mu.Unlock()
+	return reg.activeRuns[runId] != entry
+}
+
 // release retires this run's claim. Only clears the map when the entry is still
 // the current one — a run that was taken over must not delete its successor's
 // claim on the way out.
@@ -420,9 +430,31 @@ func (reg *Registry) runHarness(
 	elapsed := int(time.Since(startedAt).Seconds())
 
 	if ctx.Err() != nil {
-		// Cancelled: either the client hung up (its half of the terminal is
-		// moot) or a DELETE/takeover stopped the run while it was still being
-		// read. Terminal either way, so the reader is never left guessing.
+		// A displaced run reports `superseded`, not `cancelled`: it no longer
+		// owns this runId, so its cancellation is not the RUN's outcome — the
+		// successor's will be. Studio reads `cancelled` as the verdict for the
+		// whole turn, which is how the prod failure of 2026-08-07 happened:
+		// KEDA scaled in the worker holding a run, DBOS recovered the workflow
+		// onto another pod, its re-dispatch took over here, and the displaced
+		// handler's `cancelled` frame settled the thread as
+		// `Error: cancelled: run cancelled` while the new attempt was still
+		// streaming.
+		//
+		// It must still be a TERMINAL (not a truncated body): an unterminated
+		// body is Studio's signal to continue the turn on a replacement, and a
+		// displaced attempt continuing would re-dispatch this same runId and
+		// take over the successor — the two attempts would trade the run back
+		// and forth. `superseded` says "stop, someone else has this."
+		if reg.displaced(runId, entry) {
+			slog.Info("dispatch superseded by takeover",
+				"harness", harnessId, "run_id", runId, "elapsed_s", elapsed)
+			body.write(terminalFrame("superseded",
+				"a newer dispatch took over this run"))
+			return
+		}
+		// Genuinely cancelled: the client hung up, or a DELETE stopped the run
+		// and nothing replaced it. Terminal, so the reader is never left
+		// guessing.
 		slog.Info("dispatch cancelled", "harness", harnessId, "run_id", runId, "elapsed_s", elapsed)
 		body.write(terminalFrame("cancelled", "run cancelled"))
 		return

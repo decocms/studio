@@ -170,6 +170,11 @@ export interface Settings {
    *  Off by default — see `sandbox/head-ref.ts` for the boot-path change this
    *  gates and why it ships behind its own flag. */
   sandboxStickyHeadRefEnabled: boolean;
+  /** A task re-run pushes to the existing pull request's branch instead of
+   *  forking a new one (TASK_BOARD_RERUN_REUSES_PR_BRANCH). Own flag because it
+   *  changes which sandbox a dispatch resolves to; off by default. See
+   *  `enqueue-super-agent.ts`. */
+  taskBoardRerunReusesPrBranch: boolean;
   /** Bring a `cloneOnly` sandbox's shutdown forward when its harness run
    *  finishes, instead of leaving it idle to the 15-min claim TTL
    *  (SANDBOX_RELEASE_ON_RUN_END). Own flag because it changes the dispatch hot

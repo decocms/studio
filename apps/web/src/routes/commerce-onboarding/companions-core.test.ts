@@ -1,4 +1,6 @@
 import { describe, expect, it } from "bun:test";
+import { en } from "@/i18n/en/index.ts";
+import { interpolate, type InterpolationVars } from "@/i18n/interpolate.ts";
 import {
   buildCompanionCards,
   buildRegistryWhere,
@@ -79,27 +81,36 @@ describe("mergeBindingValue", () => {
   });
 });
 
+const t = (key: keyof typeof en, vars?: InterpolationVars) =>
+  interpolate(en[key], vars);
+
 describe("getConfigurationSummaryEntries", () => {
   it("returns displayable non-empty config entries and hides internal fields", () => {
     expect(
-      getConfigurationSummaryEntries({
-        __type: "vtex",
-        accountName: "electrolux",
-        propertyId: null,
-        currency: "",
-      }),
+      getConfigurationSummaryEntries(
+        {
+          __type: "vtex",
+          accountName: "electrolux",
+          propertyId: null,
+          currency: "",
+        },
+        t,
+      ),
     ).toEqual([
-      { key: "accountName", label: "Nome da conta", value: "electrolux" },
+      { key: "accountName", label: "Account name", value: "electrolux" },
     ]);
   });
 
   it("humanizes keys with no curated label (camelCase and snake/kebab-case)", () => {
     expect(
-      getConfigurationSummaryEntries({
-        storeDomain: "electrolux",
-        api_key: "abc",
-        "sales-channel": "1",
-      }),
+      getConfigurationSummaryEntries(
+        {
+          storeDomain: "electrolux",
+          api_key: "abc",
+          "sales-channel": "1",
+        },
+        t,
+      ),
     ).toEqual([
       { key: "storeDomain", label: "Store Domain", value: "electrolux" },
       { key: "api_key", label: "Api Key", value: "abc" },
@@ -109,7 +120,7 @@ describe("getConfigurationSummaryEntries", () => {
 
   it("stringifies non-scalar values as JSON", () => {
     expect(
-      getConfigurationSummaryEntries({ scopes: ["read", "write"] }),
+      getConfigurationSummaryEntries({ scopes: ["read", "write"] }, t),
     ).toEqual([{ key: "scopes", label: "Scopes", value: '["read","write"]' }]);
   });
 });

@@ -386,6 +386,7 @@ export const sandbox = {
   "sandbox.preview.editContent": "Edit content",
   "sandbox.preview.exitEditor": "Exit editor",
   "sandbox.preview.expandTerminal": "Expand terminal",
+  "sandbox.preview.resizeTerminal": "Resize terminal",
   "sandbox.preview.hideTerminal": "Hide terminal",
   "sandbox.preview.showTerminal": "Show terminal",
   "sandbox.preview.copyCurrentUrl": "Copy Current URL",

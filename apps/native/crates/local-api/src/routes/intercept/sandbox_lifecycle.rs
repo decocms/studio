@@ -74,7 +74,7 @@ pub(crate) fn set_preview_scheme(scheme: &'static str) {
     let _ = PREVIEW_SCHEME.set(scheme);
 }
 
-fn preview_scheme() -> &'static str {
+pub(crate) fn preview_scheme() -> &'static str {
     PREVIEW_SCHEME.get().copied().unwrap_or("http")
 }
 

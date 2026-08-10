@@ -90,6 +90,21 @@ export async function enqueueEnabledReviewers(
   await Promise.all(
     enabled.map(async (kind) => {
       if (reviewerHandledThisCycle(task, kind, lastInReviewAt)) return;
+      // Getting here with a dead reviewer thread from THIS cycle means the last
+      // attempt failed (see `reviewerHandledThisCycle`). Its claim row is still
+      // there, and the claim key is (task, reviewer, cycle) — so without
+      // releasing it first, `claimReviewer` below would lose to the corpse and
+      // the retry would be a no-op.
+      if (hasFailedAttemptThisCycle(task, kind, lastInReviewAt)) {
+        await ctx.storage.taskBoard
+          .releaseReviewerClaim(task.id, kind, cycleAt)
+          .catch((err) =>
+            console.error(
+              `[task-board] ${kind} stale claim release failed`,
+              err,
+            ),
+          );
+      }
       // Atomically claim the reviewer's slot for this cycle. The claim dedups
       // the two triggers (projector run-finish + the modal poll) that can fire
       // at the same instant — the loser's `claimed` is false, so it skips
@@ -127,21 +142,79 @@ export async function enqueueEnabledReviewers(
   );
 }
 
-/** True when a reviewer of `kind` already has a live or this-cycle thread — the
- *  guard that stops a duplicate reviewer run on every poll / re-trigger.
- *  Exported for the unit test. */
+/**
+ * How many times a reviewer may be dispatched for one review cycle.
+ *
+ * Two, not more: a reviewer run costs a full agent run, and a reviewer that
+ * fails twice on the same PR is telling us something a third run won't fix.
+ */
+export const MAX_REVIEWER_ATTEMPTS = 2;
+
+/** Does this cycle already have a FAILED reviewer thread of `kind`? Decides
+ *  whether the dispatch below is a retry (and so has a stale claim row to clear
+ *  first). Pure; exported for the unit test. */
+export function hasFailedAttemptThisCycle(
+  task: TaskBoardItem,
+  kind: ReviewerKind,
+  lastInReviewAt: number,
+): boolean {
+  return task.threads.some(
+    (thr) =>
+      isReviewerThreadTitle(thr.title, kind) &&
+      thr.status === "failed" &&
+      new Date(thr.createdAt).getTime() >= lastInReviewAt,
+  );
+}
+
+/**
+ * True when a reviewer of `kind` needs no further dispatch this cycle — the
+ * guard that stops a duplicate reviewer run on every poll / re-trigger.
+ * Exported for the unit test.
+ *
+ * A FAILED reviewer thread does not count as handled. It used to: any thread
+ * created since the cycle started satisfied this, so when both reviewers died on
+ * an infrastructure error (a database-connection timeout, in the burst that
+ * prompted this) the card sat In Review with two dead reviewer threads and
+ * nothing to re-dispatch them — the claim row stayed, `claimReviewer` refused
+ * every retry for the rest of the cycle, and the verdicts never came. A failure
+ * is not a review.
+ *
+ * Bounded by `MAX_REVIEWER_ATTEMPTS` so a reviewer that cannot run doesn't loop:
+ * once this cycle has that many failed attempts, the card is left alone for a
+ * human, exactly as before.
+ *
+ * ponytail: retries ANY failed reviewer rather than only the infrastructure ones
+ * (`isTransientRunFailure`), because this guard sees thread refs, not failure
+ * kinds, and a reviewer that reaches a verdict records it and COMPLETES — a
+ * failed reviewer is almost always infrastructure. Classify here too if a
+ * self-inflicted reviewer failure ever shows up.
+ */
 export function reviewerHandledThisCycle(
   task: TaskBoardItem,
   kind: ReviewerKind,
   lastInReviewAt: number,
 ): boolean {
-  return task.threads.some((thr) => {
+  const thisCycle = task.threads.filter((thr) => {
     if (!isReviewerThreadTitle(thr.title, kind)) return false;
     const live =
       thr.status !== null && !TERMINAL_THREAD_STATUSES.has(thr.status);
-    if (live) return true;
-    return new Date(thr.createdAt).getTime() >= lastInReviewAt;
+    return live || new Date(thr.createdAt).getTime() >= lastInReviewAt;
   });
+  if (thisCycle.length === 0) return false;
+  // A live run owns the cycle; never dispatch alongside it.
+  if (
+    thisCycle.some(
+      (thr) => thr.status !== null && !TERMINAL_THREAD_STATUSES.has(thr.status),
+    )
+  ) {
+    return true;
+  }
+  const failed = thisCycle.filter((thr) => thr.status === "failed");
+  // Every attempt failed and the budget is gone — stop, a human owns it now.
+  if (failed.length >= MAX_REVIEWER_ATTEMPTS) return true;
+  // Anything that finished without failing IS a review (a reviewer records its
+  // decision and completes), so the cycle is handled.
+  return failed.length !== thisCycle.length;
 }
 
 /** When the task most recently entered In Review (ms), else 0. Drawn from the
@@ -239,6 +312,9 @@ async function enqueueReviewerForTask(
 
   // Create + link the reviewer thread and dispatch its run (shared plumbing).
   await enqueueAgentRunForTask(ctx, task, {
+    // A verdict is the last thing between this card and Done — it outranks
+    // starting a new task for the next slot.
+    runClass: "reviewer",
     title: `${REVIEWER_LABEL[kind]}: ${task.title}`,
     prompt,
     temperature: 0.3,

@@ -20,6 +20,7 @@
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getDb } from "@/database";
+import { captureOrgEvent, deterministicUuid } from "@/posthog";
 import {
   OrganizationBillingStorage,
   type OrganizationBillingRow,
@@ -343,12 +344,100 @@ export async function applyStripeEvent(
   }
 }
 
+/** Pure mapping: which subscription-lifecycle funnel event (if any) a webhook
+ *  delivery represents. Null for unhandled results, test-mode traffic
+ *  (livemode:false must not land in the PLG dashboards), and a subscription's
+ *  FIRST invoice — that moment is subscription_started (the checkout event),
+ *  counting it as a renewal would overcount renewals by one per subscriber.
+ *  Exported for unit tests. */
+export function subscriptionFunnelEvent(
+  event: StripeEvent,
+  result: HandledStripeEvent,
+): {
+  name: string;
+  organizationId: string;
+  properties: Record<string, unknown>;
+} | null {
+  if (!result.handled || event.livemode === false) return null;
+  const obj = event.data.object;
+  if (result.topUp) {
+    return {
+      name: "credits_topup_succeeded",
+      organizationId: result.organizationId,
+      properties: { credit_cents: result.topUp.creditCents },
+    };
+  }
+  switch (event.type) {
+    case "checkout.session.completed":
+    case "checkout.session.async_payment_succeeded":
+      return {
+        name: "subscription_started",
+        organizationId: result.organizationId,
+        properties: {},
+      };
+    case "customer.subscription.deleted":
+      return {
+        name: "subscription_canceled",
+        organizationId: result.organizationId,
+        properties: {},
+      };
+    case "customer.subscription.updated":
+      return {
+        name: "subscription_updated",
+        organizationId: result.organizationId,
+        properties: {
+          status: mapSubscriptionStatus(obj.status),
+          // Churn intent: a scheduled cancel keeps status "active" — this is
+          // the only place it's visible.
+          ...(typeof obj.cancel_at_period_end === "boolean"
+            ? { cancel_at_period_end: obj.cancel_at_period_end }
+            : {}),
+        },
+      };
+    case "invoice.paid":
+      if (obj.billing_reason === "subscription_create") return null;
+      return {
+        name: "subscription_renewed",
+        organizationId: result.organizationId,
+        properties: {},
+      };
+    default:
+      return null;
+  }
+}
+
+/** Emit the mapped funnel event. Stripe is at-least-once even on success, so
+ *  the uuid + timestamp pair is deterministic per (event id, event name) —
+ *  PostHog collapses redeliveries server-side. Fire-and-forget. */
+function captureSubscriptionEvent(
+  event: StripeEvent,
+  result: HandledStripeEvent,
+): void {
+  const mapped = subscriptionFunnelEvent(event, result);
+  if (!mapped) return;
+  captureOrgEvent({
+    event: mapped.name,
+    organizationId: mapped.organizationId,
+    ...(event.id
+      ? { uuid: deterministicUuid(`stripe:${event.id}:${mapped.name}`) }
+      : {}),
+    ...(event.created ? { timestamp: new Date(event.created * 1000) } : {}),
+    properties: mapped.properties,
+  });
+}
+
 /** Route-facing wrapper: apply, then clean up refused-but-paid orphans. */
 export async function processStripeEvent(
   event: StripeEvent,
 ): Promise<HandledStripeEvent> {
   const storage = new OrganizationBillingStorage(getDb().db);
   const result = await applyStripeEvent(storage, event);
+  // The top-up's event is emitted only AFTER the gateway credit lands below —
+  // "succeeded" must not fire for money that hasn't been applied (and a
+  // gateway outage means Stripe redelivers this event for days).
+  if (!(result.handled && result.topUp)) {
+    captureSubscriptionEvent(event, result);
+  }
   // Top-up: forward the paid credits to the gateway. NOT fail-soft — a throw
   // 500s the route so Stripe redelivers, and the gateway referenceId dedupe
   // makes every replay a no-op. Stripe is the retry queue here.
@@ -358,6 +447,8 @@ export async function processStripeEvent(
       amountCents: result.topUp.creditCents,
       referenceId: result.topUp.referenceId,
     });
+    // Only now did the top-up actually succeed.
+    captureSubscriptionEvent(event, result);
   }
   // Cancel a refused-but-paid subscription so it stops charging. NOT
   // fail-soft: a transient failure must 500 the route so Stripe redelivers

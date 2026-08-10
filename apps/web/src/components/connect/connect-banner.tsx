@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { Alert, AlertDescription } from "@deco/ui/components/alert.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Alert, AlertDescription } from "@decocms/ui/components/alert.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { useProjectContext } from "@/sdk";
 import { ArrowRight, LinkExternal01, XClose } from "@untitledui/icons";
 

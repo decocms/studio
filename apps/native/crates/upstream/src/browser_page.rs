@@ -10,9 +10,30 @@
 //! The tokens are literal `oklch()` values copied from
 //! `packages/ui/src/styles/global.css`'s `:root`/`.dark` blocks and keyed off
 //! `prefers-color-scheme`, because a static page has no `.dark` class toggle
-//! to hook into. Everything is inlined: these pages are served to a browser
-//! that is NOT the app, frequently while offline, so a stylesheet or font
-//! request that fails would leave the user staring at unstyled text.
+//! to hook into. The CSS is inlined for that reason: these pages are served
+//! to a browser that is NOT the app, so a separate stylesheet request that
+//! fails would leave the user staring at unstyled text, and there is no
+//! scenario where the CSS loads from a DIFFERENT place than the HTML.
+//!
+//! The visual column's image is the one exception, deliberately NOT inlined:
+//! it reuses `onboarding-placeholder.png` — the same capybara illustration
+//! React's `AuthSplitLayout`
+//! (`apps/web/src/components/auth-split-layout.tsx`) shows by default —
+//! rather than embedding a second, separately-maintained copy. Unlike the
+//! CSS, a missing image degrades gracefully (an empty visual panel, not
+//! unreadable text), so [`Page::visual_origin`] lets each caller pick the
+//! cheapest safe source for ITS server:
+//!
+//! - `mcp_callback.rs`'s page is served by local-api's own long-lived
+//!   server, which already bundles and serves this exact PNG (it ships in
+//!   every `apps/web` build via `public/`) — pass `""` for a root-relative
+//!   `<img src>`, no network hop at all.
+//! - `login.rs`'s failure page is served by `LoopbackServer`, a bare,
+//!   single-route listener that exists only for one OAuth round-trip and
+//!   serves nothing else — a relative path would 404 there. It passes the
+//!   real upstream origin (`upstream::global().target()`) instead, which is
+//!   safe to reach at that point: this page only renders after the browser
+//!   already completed (or failed) a round trip to that exact origin.
 
 /// Shared tokens + reset.
 const STYLE_BASE: &str = r#"
@@ -69,8 +90,21 @@ const STYLE_BASE: &str = r#"
   h1 { font-size: 1.875rem; line-height: 2.25rem; font-weight: 600; letter-spacing: -0.025em; }
   p { font-size: 1rem; line-height: 1.5rem; color: var(--muted-foreground); }
   .hint { font-size: 0.875rem; }
-  .visual-col { flex: 1; background: var(--muted); display: none; }
-  @media (min-width: 768px) { .visual-col { display: block; } }
+  .visual-col {
+    position: relative;
+    flex: 1;
+    overflow: hidden;
+    background: var(--muted);
+    display: none;
+  }
+  @media (min-width: 768px) { .visual-col { display: flex; } }
+  .visual-image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
 "#;
 
 /// Applied only when [`Page::destructive`] is set.
@@ -103,6 +137,12 @@ pub struct Page<'a> {
     pub hint: Option<&'a str>,
     /// Colour the headline with `--destructive`.
     pub destructive: bool,
+    /// Origin prefix for the visual column's `<img src>`
+    /// (`{visual_origin}/onboarding-placeholder.png`) — empty string for a
+    /// root-relative reference when THIS server already hosts the asset, or
+    /// an absolute origin when it doesn't. See this module's doc comment for
+    /// which one each caller needs and why.
+    pub visual_origin: &'a str,
 }
 
 /// Render a page.
@@ -115,6 +155,10 @@ pub fn render(page: Page<'_>) -> String {
         Some(hint) => format!("\n        <p class=\"hint\">{}</p>", html_escape(hint)),
         None => String::new(),
     };
+    let visual = html_escape(&format!(
+        "{}/onboarding-placeholder.png",
+        page.visual_origin.trim_end_matches('/')
+    ));
     format!(
         r#"<!doctype html>
 <html lang="en">
@@ -137,7 +181,9 @@ pub fn render(page: Page<'_>) -> String {
       </div>
     </div>
   </section>
-  <aside class="visual-col" aria-hidden="true"></aside>
+  <aside class="visual-col" aria-hidden="true">
+    <img class="visual-image" src="{visual}" alt="">
+  </aside>
 </main>
 </body>
 </html>"#,
@@ -153,6 +199,7 @@ pub fn render(page: Page<'_>) -> String {
         heading = html_escape(page.heading),
         body = html_escape(page.body),
         hint = hint,
+        visual = visual,
     )
 }
 
@@ -174,21 +221,56 @@ mod tests {
             body: "B",
             hint: Some("Hint"),
             destructive,
+            visual_origin: "https://studio.decocms.com",
         })
     }
 
     #[test]
     fn carries_the_shared_chrome() {
         let html = sample(false);
-        // Design tokens, both schemes, and the brand mark travel with the page
-        // — it is served to a browser that may be offline, so nothing is
-        // allowed to be a separate request.
+        // Design tokens, both schemes, and the brand mark are inlined — this
+        // page is served to a browser that may be offline, so nothing here is
+        // allowed to be a separate request. The visual-column image is the
+        // deliberate exception (see the module doc comment): it references
+        // the upstream's own hosted asset rather than embedding a copy.
         assert!(html.contains("--background: oklch(0.99 0.003 73)"));
         assert!(html.contains("prefers-color-scheme: dark"));
         assert!(html.contains("brand-mark--light"));
         assert!(html.contains("brand-mark--dark"));
+        assert!(html.contains(
+            "class=\"visual-image\" src=\"https://studio.decocms.com/onboarding-placeholder.png\""
+        ));
         assert!(!html.contains("<link"));
         assert!(!html.contains("<script"));
+    }
+
+    #[test]
+    fn visual_origin_trailing_slash_does_not_double_up() {
+        let html = render(Page {
+            title: "T",
+            heading: "H",
+            body: "B",
+            hint: None,
+            destructive: false,
+            visual_origin: "https://studio.decocms.com/",
+        });
+        assert!(html.contains("src=\"https://studio.decocms.com/onboarding-placeholder.png\""));
+        assert!(!html.contains("studio.decocms.com//onboarding-placeholder.png"));
+    }
+
+    #[test]
+    fn empty_visual_origin_produces_a_root_relative_src() {
+        // `mcp_callback.rs`'s case: served by a long-lived server that
+        // already bundles the asset itself, so no origin to name.
+        let html = render(Page {
+            title: "T",
+            heading: "H",
+            body: "B",
+            hint: None,
+            destructive: false,
+            visual_origin: "",
+        });
+        assert!(html.contains("class=\"visual-image\" src=\"/onboarding-placeholder.png\""));
     }
 
     #[test]
@@ -207,6 +289,7 @@ mod tests {
             body: "<script>b</script>",
             hint: Some("<script>n</script>"),
             destructive: false,
+            visual_origin: "https://studio.decocms.com",
         });
         for raw in ["<script>t", "<script>h", "<script>b", "<script>n"] {
             assert!(!html.contains(raw), "leaked {raw}");
@@ -222,6 +305,7 @@ mod tests {
             body: "B",
             hint: None,
             destructive: false,
+            visual_origin: "https://studio.decocms.com",
         });
         assert!(!html.contains("class=\"hint\""));
     }

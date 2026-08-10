@@ -6,7 +6,12 @@ import {
   rollbackTaskExecution,
   TaskQuotaError,
 } from "../../billing/task-quota";
+import { isReportsTask } from "@decocms/shared/task-board";
+import { captureOrgEvent } from "@/posthog";
+import { getSettings } from "@/settings";
 import { enqueueAgentRunForTask } from "./enqueue-task-run";
+import type { RunClass } from "@/dispatch-queue/run-priority";
+import { fetchPrHeadRef } from "./prs-get";
 import {
   buildClaudeCodeTaskPrompt,
   resolveTaskRepoChoice,
@@ -56,6 +61,10 @@ export type SuperAgentPromptOpts = {
    *  `pr` — without it the conflict lead is skipped (a conflict instruction
    *  is meaningless with no PR to check out). */
   resolveConflict?: boolean;
+  /** Admission class for the dispatched run — `"retry"` for a re-dispatch of
+   *  work that already failed, so it outranks a brand-new task for the next
+   *  slot. Defaults to a new task. See `dispatch-queue/run-priority.ts`. */
+  runClass?: RunClass;
 };
 
 /**
@@ -125,6 +134,26 @@ export function buildSuperAgentTaskPrompt(
   ].join("\n");
 }
 
+/**
+ * The head branch of the task's linked PR `prNumber`, or null when we can't
+ * confirm one. Null is the safe answer everywhere it appears: the caller then
+ * dispatches exactly as it does today (a fresh derived branch), which is the
+ * behavior this whole path is trying to improve on but is never WRONG — it just
+ * costs another PR.
+ */
+async function resolveRerunBranch(
+  ctx: StudioContext,
+  task: TaskBoardItem,
+  prNumber: number,
+): Promise<string | null> {
+  const prs = await ctx.storage.taskBoard
+    .listPrs(task.id, task.organizationId)
+    .catch(() => []);
+  const pr = prs.find((p) => p.number === prNumber);
+  if (!pr) return null;
+  return fetchPrHeadRef(ctx, task.organizationId, pr).catch(() => null);
+}
+
 export async function enqueueSuperAgentForTask(
   ctx: StudioContext,
   task: TaskBoardItem,
@@ -142,7 +171,25 @@ export async function enqueueSuperAgentForTask(
   // BEFORE the write; here the claim is the enforcement.
   const claim = await claimTaskExecution(ctx, task);
 
+  let harness: "claude-code" | "decopilot" = "decopilot";
   try {
+    // A re-run told to update an existing PR must land on that PR's BRANCH.
+    // Asking the model to `gh pr checkout` (which the prompt does, and has
+    // done all along) cannot work on its own: the sandbox key is derived from
+    // the THREAD, every re-run is a new thread, so the pod boots on a fresh
+    // `sandbox/thread-<new-id>` branch and the daemon's HEAD-based shutdown
+    // push publishes THAT — a second pull request for the same task. One task
+    // reached four open PRs this way, all with the same title.
+    //
+    // Pinning the PR's head branch makes the sandbox boot on it, so the same
+    // push updates the same PR. Best-effort: a null head ref (GitHub
+    // unreachable, PR already closed/merged) falls back to today's behavior
+    // rather than pinning a ref we can't confirm exists.
+    const pinnedRef =
+      getSettings().taskBoardRerunReusesPrBranch && opts?.pr
+        ? await resolveRerunBranch(ctx, task, opts.pr.number)
+        : null;
+
     // Sandbox-hosted claude-code takes every task that has a repo it could work
     // in — bound before dispatch when there's exactly one, otherwise chosen
     // mid-run with `TASK_ADD_REPO` (see `claude-code-task-run.ts`). An org with
@@ -150,9 +197,12 @@ export async function enqueueSuperAgentForTask(
     const choice = await resolveTaskRepoChoice(ctx, task.organizationId);
 
     if (choice) {
+      harness = "claude-code";
       const repo = "repo" in choice ? choice.repo : null;
       await enqueueAgentRunForTask(ctx, task, {
         title: `Super Agent: ${task.title}`,
+        ...(opts?.runClass ? { runClass: opts.runClass } : {}),
+        ...(pinnedRef ? { pinnedRef } : {}),
         prompt: buildClaudeCodeTaskPrompt(task, repo, {
           ...opts,
           // Names the candidates in the prompt so the run doesn't spend its first
@@ -163,14 +213,15 @@ export async function enqueueSuperAgentForTask(
         harnessId: "claude-code",
         ...(repo ? { repo } : {}),
       });
-      return;
+    } else {
+      await enqueueAgentRunForTask(ctx, task, {
+        title: `Super Agent: ${task.title}`,
+        ...(opts?.runClass ? { runClass: opts.runClass } : {}),
+        prompt: buildSuperAgentTaskPrompt(task, opts),
+        temperature: 0.5,
+        ...(pinnedRef ? { pinnedRef } : {}),
+      });
     }
-
-    await enqueueAgentRunForTask(ctx, task, {
-      title: `Super Agent: ${task.title}`,
-      prompt: buildSuperAgentTaskPrompt(task, opts),
-      temperature: 0.5,
-    });
   } catch (err) {
     // Nothing was dispatched — no thread exists to ever trigger the
     // thread-finish refund pass (run-reactions.ts). Without this, a failure
@@ -194,4 +245,21 @@ export async function enqueueSuperAgentForTask(
     }
     throw err;
   }
+
+  // The dispatch really happened — the auto-fix leg of the PLG funnel.
+  // OUTSIDE the try/catch above: telemetry must never couple into the
+  // billing rollback (a throw here after a successful dispatch would refund
+  // a run that exists). Whether this dispatch is a re-run is `claim ===
+  // "rerun"` — no separate flag.
+  captureOrgEvent({
+    event: "task_run_enqueued",
+    organizationId: task.organizationId,
+    properties: {
+      task_id: task.id,
+      reports_task: isReportsTask(task),
+      claim,
+      harness,
+      ...(opts?.runClass ? { run_class: opts.runClass } : {}),
+    },
+  });
 }

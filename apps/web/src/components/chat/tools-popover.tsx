@@ -4,12 +4,12 @@ import {
   stripToolNamespace,
 } from "@decocms/mcp-utils/aggregate";
 import { getPrompt, listPrompts, useMCPClient, useProjectContext } from "@/sdk";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,8 +20,8 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/dropdown-menu.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
 import { useQuery } from "@tanstack/react-query";
 import { useCurrentEditor } from "@tiptap/react";
@@ -47,7 +47,7 @@ import {
 import { insertMention } from "./tiptap/mention";
 import { KEYS } from "@/lib/query-keys";
 import { useSound } from "@/hooks/use-sound.ts";
-import { switch005Sound } from "@deco/ui/lib/switch-005.ts";
+import { switch005Sound } from "@/lib/sounds/switch-005.ts";
 import { useChatPrefs } from "./context";
 import {
   APPROVAL_LEVEL_OPTIONS,

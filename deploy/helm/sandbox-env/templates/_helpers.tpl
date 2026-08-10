@@ -208,6 +208,30 @@ this static value.
 {{- end }}
 {{- end }}
 
+{{/*
+Validate tenantPools. The name is deliberately NOT derived here — Studio's
+STUDIO_SANDBOX_TENANT_POOLS carries the same literal, and deriving it on both
+sides is a mismatch waiting to happen. But this chart shares
+`agent-sandbox-system` across releases (that is why every other object is
+suffixed with envName), so an undecorated literal lets dev/staging/prod fight
+over one SandboxWarmPool. Require the suffix instead of adding it: the string
+stays identical on both sides, and a collision is a template-time failure.
+*/}}
+{{- define "sandbox-env.validateTenantPools" -}}
+{{- $env := include "sandbox-env.envName" . -}}
+{{- range .Values.tenantPools }}
+{{- if not .name }}
+{{- fail "sandbox-env: every tenantPools entry needs a `name` (it names a SandboxWarmPool and must equal the Studio-side entry)." -}}
+{{- end }}
+{{- if not (hasSuffix (printf "-%s" $env) .name) }}
+{{- fail (printf "sandbox-env: tenantPools name %q must end with -%s so releases sharing agent-sandbox-system don't collide (e.g. tenant-acme-site-%s). Use the SAME string in Studio's STUDIO_SANDBOX_TENANT_POOLS." .name $env $env) -}}
+{{- end }}
+{{- if lt (int .size) 1 }}
+{{- fail (printf "sandbox-env: tenantPools[%s].size must be >= 1 (got %v) — a pool with 0 replicas pre-warms nothing." .name .size) -}}
+{{- end }}
+{{- end }}
+{{- end }}
+
 {{- define "sandbox-env.housekeeperName" -}}
 {{- printf "sandbox-housekeeper-%s" (include "sandbox-env.envName" .) -}}
 {{- end }}
@@ -326,4 +350,63 @@ Sentinel token. Priority order:
 {{- randAlphaNum 64 -}}
 {{- end -}}
 {{- end -}}
+{{- end }}
+
+{{/*
+Name of the chart-managed L2 golden PV and PVC. envName-suffixed like every
+other resource here: the PV is CLUSTER-scoped, so two releases installing
+without the suffix would collide outright, and the PVC shares
+agent-sandbox-system with every other release.
+*/}}
+{{- define "sandbox-env.goldenRemoteName" -}}
+{{- printf "studio-sandbox-golden-%s" (include "sandbox-env.envName" .) -}}
+{{- end }}
+
+{{/*
+Claim the sandbox pod mounts for the L2 store. An explicit
+`depsCache.remote.pvcName` wins and nothing is rendered by
+sandbox-golden-remote.yaml — that is the escape hatch for a volume this chart
+does not manage (a different backend, or one provisioned by hand). Otherwise
+the claim is the chart's own, created alongside its PV from
+`depsCache.remote.bucketName`.
+*/}}
+{{- define "sandbox-env.goldenRemoteClaimName" -}}
+{{- if .Values.depsCache.remote.pvcName -}}
+{{- .Values.depsCache.remote.pvcName -}}
+{{- else -}}
+{{- include "sandbox-env.goldenRemoteName" . -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Validate the L2 remote block. Fail at template time rather than shipping a pod
+that cannot mount, or one that silently mounts nothing:
+  - remote without the node-local tier is incoherent: an L2 hit seeds L1 via
+    the same pendingGolden path, and the daemon reads DEPS_CACHE_ROOT either
+    way.
+  - exactly ONE volume source. The three are mutually exclusive by
+    construction (each implies a different set of objects to render), so two
+    set is ambiguous authority and zero set would render a claim with neither
+    a StorageClass nor a volumeName — Pending forever, silently.
+*/}}
+{{- define "sandbox-env.validateGoldenRemote" -}}
+{{- if .Values.depsCache.remote.enabled }}
+{{- $r := .Values.depsCache.remote -}}
+{{- if not .Values.depsCache.enabled }}
+{{- fail "sandbox-env: depsCache.remote.enabled=true requires depsCache.enabled=true — the L2 archive restores into the node-local store, so there is nothing for it to seed otherwise." -}}
+{{- end }}
+{{- $sources := list -}}
+{{- if ne (default "" $r.storageClassName) "" }}{{- $sources = append $sources "storageClassName" -}}{{- end }}
+{{- if $r.volume.attributes }}{{- $sources = append $sources "volume.attributes" -}}{{- end }}
+{{- if ne (default "" $r.pvcName) "" }}{{- $sources = append $sources "pvcName" -}}{{- end }}
+{{- if gt (len $sources) 1 }}
+{{- fail (printf "sandbox-env: depsCache.remote takes exactly ONE volume source, got %d (%s). storageClassName = dynamic (this chart renders only the PVC); volume.attributes = static (renders PV + PVC, for a driver with no provisioner such as mountpoint-S3); pvcName = mount an existing claim this chart does not manage." (len $sources) (join ", " $sources)) -}}
+{{- end }}
+{{- if eq (len $sources) 0 }}
+{{- fail "sandbox-env: depsCache.remote.enabled=true requires one volume source — storageClassName (dynamic provisioning: bring your own RWX CSI driver and StorageClass), volume.attributes (static: e.g. bucketName for mountpoint-S3, which has no dynamic provisioner), or pvcName (an existing claim). With none set the PVC would have neither a StorageClass nor a volumeName and stay Pending forever." -}}
+{{- end }}
+{{- if and $r.volume.attributes (eq (default "" $r.volume.driver) "") }}
+{{- fail "sandbox-env: depsCache.remote.volume.attributes is set but volume.driver is empty — the static path renders a PV, whose csi.driver must name the installed CSI driver (e.g. s3.csi.aws.com)." -}}
+{{- end }}
+{{- end }}
 {{- end }}

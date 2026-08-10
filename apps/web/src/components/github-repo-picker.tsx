@@ -3,9 +3,9 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
+} from "@decocms/ui/components/dialog.tsx";
 import { CollectionSearch } from "@/components/collections/collection-search.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { Suspense, useDeferredValue, useState } from "react";
 import { useDebouncedValue } from "@/hooks/use-debounced-value.ts";
 import { useT } from "@/i18n/use-t.ts";
@@ -26,7 +26,7 @@ import {
   useConnectionActions,
   SELF_MCP_ALIAS_ID,
 } from "@/sdk";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { authenticateAndPersistOAuth } from "@/lib/authenticate-and-persist-oauth";
 import type { ConnectionEntity } from "@/sdk";
 import { KEYS } from "@/lib/query-keys";

@@ -132,6 +132,40 @@ describe("createSandboxFsHooks", () => {
     ]);
   });
 
+  test("stamps x-thread-id on every daemon call when the lifecycle carries a threadId", async () => {
+    // The daemon's `linked()` middleware repoints `org/output` at the thread's
+    // org-fs subtree keyed on this header. Without it, the fs write's MkdirAll
+    // materializes `org/output` as a real dir on ephemeral disk and every
+    // deliverable written there dies with the pod (silently: the write reports
+    // success, the Library shows "no longer available").
+    let sawThreadHeader: string | null = null;
+    const provider = {
+      kind: "agent-sandbox",
+      proxyDaemonRequest: async (
+        _handle: string,
+        _path: string,
+        init: { headers: Headers },
+      ) => {
+        sawThreadHeader = init.headers.get("x-thread-id");
+        return new Response(JSON.stringify({ ok: true, bytesWritten: 2 }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    } as unknown as SandboxProvider;
+    const hooks = createSandboxFsHooks(provider, {
+      ...lifecycle,
+      threadId: "thread-42",
+    });
+    await hooks.onWrite("org/output/plan.md", "hi");
+    expect(sawThreadHeader).toBe("thread-42" as never);
+
+    // Without a threadId (e.g. a threadless probe) the header is absent.
+    const bare = createSandboxFsHooks(provider, lifecycle);
+    await bare.onWrite("org/output/plan.md", "hi");
+    expect(sawThreadHeader).toBe(null);
+  });
+
   test("a daemon op that never responds fails at the op deadline — without reaping the sandbox", async () => {
     // The silent-hang regression: a wedged daemon (stalled org-fs mount) left
     // the harness awaiting forever with no chunks, so the 10-min liveness

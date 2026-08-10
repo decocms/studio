@@ -227,6 +227,12 @@ func buildEnv(inherit bool, overrides map[string]string, extra map[string]string
 			}
 		}
 	}
+	// Tasks run on a PTY, so corepack sees a tty and blocks forever on "Do you
+	// want to continue? [Y/n]" the first time it has to fetch a yarn/pnpm shim:
+	// the dev server never starts and nothing times out. SpawnStep and the
+	// install step already pin these — the task path is the third spawner.
+	env["COREPACK_ENABLE_STRICT"] = "0"
+	env["COREPACK_ENABLE_DOWNLOAD_PROMPT"] = "0"
 	for k, v := range extra {
 		env[k] = v
 	}
@@ -452,6 +458,22 @@ func (m *TaskManager) fanOut(task *taskInternal, chunk OutputChunk) {
 	if task.spec.LogName != "" && m.deps.BroadcastChunk != nil {
 		m.deps.BroadcastChunk(task.spec.LogName, chunk.Data, false)
 	}
+}
+
+// RunningByLogName finds a live task by its log name. Used to answer "is the
+// dev server already up?" without guessing from ports.
+func (m *TaskManager) RunningByLogName(logName string) (TaskSummary, bool) {
+	if logName == "" {
+		return TaskSummary{}, false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, t := range m.tasks {
+		if t.status == StatusRunning && t.spec.LogName == logName {
+			return m.summarizeLocked(t), true
+		}
+	}
+	return TaskSummary{}, false
 }
 
 func (m *TaskManager) Get(id string) (TaskSummary, bool) {

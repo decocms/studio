@@ -147,7 +147,7 @@ async function instantiate(
       // Dynamic import — @kubernetes/client-node is heavy and only needed
       // when STUDIO_SANDBOX_PROVIDER=agent-sandbox. Deploys that never select
       // the hosted provider don't load it.
-      const { AgentSandboxProvider } = await import(
+      const { AgentSandboxProvider, parseTenantPools } = await import(
         "@decocms/sandbox/provider/agent-sandbox"
       );
       // `meter` is reassigned by initObservability() after sdk.start(); read
@@ -164,6 +164,11 @@ async function instantiate(
         envName: readEnvName(),
         previewGateway: readPreviewGateway(),
         sentinelToken: readSandboxSentinelToken(),
+        // JSON array of tenant warm pools (see the provider's
+        // `tenant-pools.ts`). Unset — the default — means no pool is ever
+        // resolved and no reconciler runs. Throws on malformed config: a pool
+        // that silently fails to parse costs N pods and serves nobody.
+        tenantPools: parseTenantPools(process.env.STUDIO_SANDBOX_TENANT_POOLS),
         meter,
         mintCloneUrl: async (repo, mintOpts) => {
           // Only connection-backed clones can be re-minted; buildCloneInfo

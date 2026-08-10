@@ -3,23 +3,23 @@ import {
   Dialog,
   DialogContent,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
+} from "@decocms/ui/components/dialog.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@deco/ui/components/popover.tsx";
-import { Calendar as DayPickerCalendar } from "@deco/ui/components/calendar.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Avatar } from "@deco/ui/components/avatar.tsx";
-import { Skeleton } from "@deco/ui/components/skeleton.tsx";
-import { useCopy } from "@deco/ui/hooks/use-copy.ts";
+} from "@decocms/ui/components/popover.tsx";
+import { Calendar as DayPickerCalendar } from "@decocms/ui/components/calendar.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Avatar } from "@decocms/ui/components/avatar.tsx";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import { useCopy } from "@decocms/ui/hooks/use-copy.ts";
 import {
   AlertCircle,
   AlertSquare,
@@ -58,7 +58,7 @@ import { useMembers } from "@/hooks/use-members";
 import { useCreateTag, useDeleteTag, useTags } from "@/hooks/use-tags";
 import { getInitials } from "@/lib/get-initials";
 import { useT } from "@/i18n/use-t.ts";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   nextTagColor,
   PRIORITIES,
@@ -305,8 +305,10 @@ export function TaskBoardItemDialog({
               gap above the properties; fills the column on desktop. */}
           <div className="flex min-w-0 flex-col sm:flex-1 sm:overflow-y-auto">
             {/* Sticky so a long description never scrolls the title out of
-                view — the title is the one thing that should stay put. */}
-            <div className="sticky top-0 z-10 bg-background p-6 pb-0 sm:p-8 sm:pb-0">
+                view — the title is the one thing that should stay put. z-20
+                keeps it above the activity timeline's avatars (z-10), which
+                would otherwise paint over it once scrolled underneath. */}
+            <div className="sticky top-0 z-20 bg-background p-6 pb-0 sm:p-8 sm:pb-0">
               <textarea
                 ref={(el) => {
                   if (!el) return;
@@ -760,7 +762,7 @@ export function TaskBoardItemDialog({
               </Button>
             )}
             {showAutoFix && (
-              <Button variant="outline" size="sm" onClick={onAutoFix}>
+              <Button size="sm" onClick={onAutoFix}>
                 <Lightning01 size={16} />
                 {t("taskBoard.taskBoard.autoFix")}
               </Button>

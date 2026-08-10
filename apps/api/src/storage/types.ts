@@ -1612,6 +1612,30 @@ export interface TaskBoardItemTable {
   >;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sort_order: ColumnType<number, number | undefined, number>;
+  /** When the review sweeper last reconciled this card. Null = never, which is
+   *  always due. The sweeper's interval hangs off this column rather than off
+   *  its own timer so that every replica shares one budget and a permanently
+   *  parked card costs one GitHub round-trip per interval, not one per tick —
+   *  see `migrations/166-task-board-last-swept-at.ts`. Not `updated_at`: a
+   *  sweep is not a user-visible edit. */
+  last_swept_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
+  /** When this card is next due for an automatic re-dispatch after its run
+   *  failed on infrastructure. Null = not waiting on a retry. Lives on the row
+   *  so the schedule survives a pod restart — see
+   *  `migrations/167-task-board-run-retry.ts`. */
+  retry_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
+  /** How many infrastructure retries this card has already spent. Counted on
+   *  the card, not the thread: each attempt is a NEW thread, so a per-thread
+   *  counter would reset every time and never exhaust. */
+  retry_attempts: ColumnType<number, number | undefined, number>;
   created_by: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_by: string;
@@ -1737,6 +1761,9 @@ export interface TaskBoardItem {
   dueDate: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;
+  /** Infrastructure retries already spent on this card's runs — the budget
+   *  `reactToFailedTaskRun` spends against `MAX_RUN_RETRIES`. */
+  retryAttempts: number;
   /** Agent threads linked to this task (most-recent first). */
   threads: TaskBoardItemThreadRef[];
   /** Org tags attached to this task, name ascending. */

@@ -20,12 +20,16 @@
  */
 
 import { releaseTaskExecution } from "@/billing/task-quota";
+import { captureOrgEvent } from "@/posthog";
 import type { OrganizationBillingStorage } from "@/storage/organization-billing";
 import { TERMINAL_THREAD_STATUSES } from "@/storage/task-board";
 import type { StudioContext } from "@/core/studio-context";
 import { extractPrFromValue } from "./pr-extract";
+import { retryBudgetFor } from "./transient-failure";
+import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { sseHub } from "@/event-bus/sse-hub";
 import {
+  isReportsTask,
   TASK_BOARD_ITEM_DELETED_EVENT,
   TASK_BOARD_ITEM_UPDATED_EVENT,
 } from "@decocms/shared/task-board";
@@ -40,6 +44,26 @@ const RANK: Record<TaskBoardItemStatus, number> = {
   in_review: 3,
   done: 4,
 };
+
+/** Run-lifecycle funnel events (auto-fix leg of the PLG funnel). System
+ *  actions with no acting user — org identity, person processing off.
+ *  Fire-and-forget; posthog no-ops without POSTHOG_KEY. */
+function captureTaskRunEvent(
+  event: "task_run_started" | "task_run_completed" | "task_run_failed",
+  orgId: string,
+  item: Pick<TaskBoardItem, "id" | "createdBy">,
+  properties?: Record<string, unknown>,
+): void {
+  captureOrgEvent({
+    event,
+    organizationId: orgId,
+    properties: {
+      task_id: item.id,
+      reports_task: isReportsTask(item),
+      ...properties,
+    },
+  });
+}
 
 /** Push a task board item change to every SSE listener on its org. */
 export function emitTaskBoardUpdated(orgId: string, item: TaskBoardItem): void {
@@ -87,7 +111,7 @@ export function resolveAdvanceTargets(
  * Shared by the advance-status and PR-capture reactions so both resolve a
  * subtask-opened action the same way.
  */
-async function resolveRunTaskTargets(
+export async function resolveRunTaskTargets(
   ctx: StudioContext,
   orgId: string,
   threadId?: string,
@@ -145,6 +169,15 @@ export async function advanceTaskBoardForRun(
           console.error("[task-board] activity log write failed", err),
         );
       emitTaskBoardUpdated(orgId, item);
+      if (status === "in_progress" || status === "in_review") {
+        captureTaskRunEvent(
+          status === "in_progress" ? "task_run_started" : "task_run_completed",
+          orgId,
+          item,
+          // in_review lands here only from the PR-open hook (see module doc).
+          { from: current.status, via: "pr_open" },
+        );
+      }
     }
   } catch (err) {
     console.error("[task-board] run transition failed", err);
@@ -207,11 +240,137 @@ export async function advanceTasksToReviewOnThreadFinish(
       threadId,
       orgId,
     );
-    for (const item of moved) emitTaskBoardUpdated(orgId, item);
+    for (const item of moved) {
+      emitTaskBoardUpdated(orgId, item);
+      captureTaskRunEvent("task_run_completed", orgId, item, {
+        from: "in_progress",
+        via: "thread_finish",
+      });
+    }
+    for (const item of moved) {
+      // The card produced something, so the next unrelated failure gets a full
+      // retry budget rather than inheriting this card's history.
+      await taskBoard.clearRunRetry(item.id, orgId).catch(() => {});
+    }
   } catch (err) {
     console.error("[task-board] thread-finish transition failed", err);
   }
+  await reactToFailedTaskRun(taskBoard, threadId, orgId);
   await refundUnproductiveTaskClaims(taskBoard, billing, threadId, orgId);
+}
+
+/** The per-failure retry budget lives in `transient-failure.ts`
+ *  (`retryBudgetFor`): the full budget for recognized infrastructure, one
+ *  benefit-of-the-doubt attempt for anything unrecognized, none for a
+ *  deliberate cancel. */
+
+/** Backoff between retries. The failure we retry is capacity, so the wait has to
+ *  be long enough for capacity to actually return (a sandbox readiness timeout
+ *  is itself 180s) — 30s, 60s, 120s, with jitter so eight cards that failed
+ *  together don't re-dispatch in lockstep and recreate the burst that broke
+ *  them. */
+const RETRY_BASE_MS = 30_000;
+const RETRY_CAP_MS = 120_000;
+
+/**
+ * A task's run failed — decide between a retry and the board.
+ *
+ * `In Review` is not an option: it means "there is something to review", and a
+ * failed run left nothing. So an infrastructure failure (see
+ * `isTransientRunFailure`) keeps the card In Progress and schedules a
+ * re-dispatch on the row (`retry_at`), which the review sweeper drains — the
+ * schedule has to survive a pod restart, and it cannot be a `DBOS.startWorkflow`
+ * from here because this runs inside the projector's DBOS step, which rejects
+ * starting a workflow (`DBOSInvalidWorkflowTransitionError`, code 21 — the same
+ * constraint that put the reviewer dispatch in the sweeper). The re-dispatch
+ * itself goes through `enqueueAgentRunForTask` onto the durable thread-gate
+ * queue, so DBOS owns the run from there.
+ *
+ * Anything else — an error the agent produced, or a card out of retries — goes
+ * back to To Do with the reason on its timeline, where a human sees it.
+ *
+ * Best-effort throughout: this is a terminal hook, and a failure to react must
+ * never fail the run that already ended.
+ */
+export async function reactToFailedTaskRun(
+  taskBoard: TaskBoardStorage,
+  threadId: string,
+  orgId: string,
+): Promise<void> {
+  try {
+    const failure = await taskBoard.failedRunInfo(threadId, orgId);
+    if (!failure) return;
+    const budget = retryBudgetFor(failure);
+    for (const itemId of await taskBoard.linkedTaskIds(threadId, orgId)) {
+      const item = await taskBoard.getById(itemId, orgId);
+      if (!item || item.status !== "in_progress") continue;
+      // Another of this card's threads is still working — its outcome decides
+      // the card, not this one's.
+      if (
+        item.threads.some((t) => t.hasMessages && t.status === "in_progress")
+      ) {
+        continue;
+      }
+      const attempts = item.retryAttempts;
+      if (attempts < budget) {
+        const delay = exponentialBackoffWithJitter(
+          RETRY_CAP_MS,
+          RETRY_BASE_MS,
+          attempts,
+          2,
+          0.5,
+        );
+        const scheduled = await taskBoard.scheduleRunRetry(
+          itemId,
+          orgId,
+          attempts + 1,
+          new Date(Date.now() + delay),
+        );
+        if (!scheduled) continue;
+        await taskBoard
+          .recordActivity({
+            taskBoardItemId: itemId,
+            action: "status_changed",
+            actorId: null,
+            data: {
+              from: "in_progress",
+              to: "in_progress",
+              retry: attempts + 1,
+              of: budget,
+              reason: failure.errorText ?? failure.kind,
+            },
+          })
+          .catch(() => {});
+        continue;
+      }
+      const returned = await taskBoard.returnToTodoAfterFailure(
+        itemId,
+        orgId,
+        item.updatedBy,
+      );
+      if (!returned) continue;
+      await taskBoard
+        .recordActivity({
+          taskBoardItemId: itemId,
+          action: "status_changed",
+          actorId: null,
+          data: {
+            from: "in_progress",
+            to: "todo",
+            reason: failure.errorText ?? failure.kind,
+            retriesSpent: attempts,
+          },
+        })
+        .catch(() => {});
+      emitTaskBoardUpdated(orgId, returned);
+      captureTaskRunEvent("task_run_failed", orgId, item, {
+        reason: failure.kind ?? "error",
+        retries_spent: attempts,
+      });
+    }
+  } catch (err) {
+    console.error("[task-board] failed-run reaction failed", err);
+  }
 }
 
 /**
@@ -250,6 +409,8 @@ async function refundUnproductiveTaskClaims(
       );
       if (stillRunning) continue;
       if ((await taskBoard.listPrs(taskId, orgId)).length > 0) continue;
+      // task_quota_refunded is emitted inside releaseTaskExecution, gated on
+      // the release actually transitioning a held claim.
       await releaseTaskExecution(billing, orgId, taskId);
     }
   } catch (err) {

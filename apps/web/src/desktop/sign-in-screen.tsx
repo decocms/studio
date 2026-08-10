@@ -40,7 +40,7 @@ import { AuthEntry } from "@/components/auth-entry";
 import { AuthSplitLayout } from "@/components/auth-split-layout";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { AuthConfigProvider } from "@/providers/auth-config-provider";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { StatusColumn } from "@/desktop/status-column";
 import { useT } from "@/i18n/use-t.ts";
 

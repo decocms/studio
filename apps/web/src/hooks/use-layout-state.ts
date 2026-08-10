@@ -40,6 +40,8 @@ export interface WorkspaceLayoutState {
   mainOpen: boolean;
   /** Current ?main value (undefined when param absent). "0" = closed. */
   mainParam: string | undefined;
+  /** Whether ?sidepanel was in the URL (vs. the agent-configured default). */
+  sidePanelParamPresent: boolean;
 }
 
 export interface WorkspaceLayoutActions {
@@ -157,6 +159,26 @@ export function computeWorkspacePanelSizes(
 }
 
 export type MobileWorkspaceSurface = SidePanelKind | "main";
+
+/**
+ * Mobile shows ONE surface at a time, so `?sidepanel` and `?main` can't both
+ * win. An explicit `?sidepanel=chat` does: it only ever gets written by an
+ * intentional "open the chat" action (openSidePanel, the mobile view select),
+ * and before this it was a silent no-op whenever the main panel happened to be
+ * open — tapping Chat left you on ?main=preview, booting a sandbox.
+ * With no `?sidepanel` in the URL the panel state is the agent-configured
+ * default, and there the main view keeps precedence.
+ */
+export function resolveMobileSurface(ctx: {
+  visibility: WorkspaceVisibility;
+  sidePanelParamPresent: boolean;
+}): MobileWorkspaceSurface {
+  const { sidePanel, mainOpen } = ctx.visibility;
+  if (sidePanel !== null && (ctx.sidePanelParamPresent || !mainOpen)) {
+    return sidePanel;
+  }
+  return mainOpen ? "main" : "chat";
+}
 
 export function mobileSurfaceSearch(
   surface: MobileWorkspaceSurface,
@@ -314,6 +336,7 @@ export function useWorkspaceLayoutState(
     sidePanel,
     mainOpen,
     mainParam,
+    sidePanelParamPresent: search.sidepanel !== undefined,
     setTaskId,
     toggleMain,
     toggleSidePanel,

@@ -127,6 +127,39 @@ export function allReviewersApproved(
 }
 
 /**
+ * How many times a task may be bounced back to the Super Agent by a reviewer
+ * before the loop is broken and a human takes over.
+ *
+ * The reviewer → fix → re-review cycle has no natural fixed point: a reviewer
+ * that keeps finding something will keep finding something, and each round
+ * costs a sandbox run and (before the PR-branch pin) an extra pull request. One
+ * live board logged 179 change-requests against 68 approvals, with a single
+ * task rejected five times in an hour by the same reviewer on the same PR.
+ *
+ * Five is chosen to be clearly past "the reviewer had a point" and clearly
+ * short of "we are burning runs on a disagreement a person should settle".
+ */
+export const MAX_REVIEW_BOUNCES = 5;
+
+/**
+ * True when this task has already been handed back to the Super Agent
+ * `MAX_REVIEW_BOUNCES` times, counting the change-request about to be recorded.
+ *
+ * Deliberately counts across ALL review cycles, not the current one: the
+ * runaway loop IS the cycles: each bounce starts a fresh cycle, so a per-cycle
+ * count is always 1 and would never trip.
+ */
+export function reviewBounceLimitReached(
+  activity: ReviewCycleActivity[],
+  limit: number = MAX_REVIEW_BOUNCES,
+): boolean {
+  const bounces = activity.filter(
+    (a) => a.action === "review_changes_requested",
+  ).length;
+  return bounces + 1 >= limit;
+}
+
+/**
  * Org-scoped SSE event pushed on `sseHub` whenever a Super Agent run advances a
  * task board item's status (enqueued→todo, executing→in_progress, PR→in_review).
  * Its `data` is the full updated `TaskBoardItem`; the web board patches its

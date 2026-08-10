@@ -2,7 +2,7 @@ import { Slot } from "@radix-ui/react-slot";
 import { ChevronRight, DotsHorizontal } from "@untitledui/icons";
 import type * as React from "react";
 
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "../lib/utils.ts";
 
 function Breadcrumb({ className, ...props }: React.ComponentProps<"nav">) {
   return (

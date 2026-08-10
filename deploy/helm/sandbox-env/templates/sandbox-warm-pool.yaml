@@ -14,6 +14,15 @@ metadata:
     {{- include "sandbox-env.sandboxLabels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.warmPool.size }}
+  # Pinned, not defaulted: a SandboxTemplate change (an image bump is the
+  # common one) must NOT delete the warm pods already running the old
+  # template — that turns every routine sync into a pool-wide restart.
+  # Stale pods drain by adoption instead, and since a claim's idle TTL is
+  # 15m the whole pool is on the new template within minutes anyway.
+  # `OnReplenish` is also the operator's own default as of v0.4.5; stating
+  # it here is what stops an operator upgrade from silently flipping it.
+  updateStrategy:
+    type: OnReplenish
   sandboxTemplateRef:
     name: {{ include "sandbox-env.sandboxName" . }}
 {{- end }}

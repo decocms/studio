@@ -112,13 +112,38 @@ func ConfigUpdate(deps ConfigDeps) http.HandlerFunc {
 			httpx.Error(w, status, msg)
 			return
 		}
-		activity.MarkClaimed()
+		if patchHasUserIdentity(patch) {
+			activity.MarkClaimed()
+		} else {
+			activity.MarkPrewarmed()
+		}
 		httpx.JSON(w, 200, map[string]any{
 			"bootId":     deps.DaemonBootId,
 			"transition": result.Transition.Kind,
 			"config":     result.After,
 		})
 	}
+}
+
+// A config belongs to a user when it carries a git author or an operator.
+// Blank strings count as absent: a tenant warm-pool bootstrap goes through the
+// same payload builder as a real claim, which always emits the identity object
+// — with empty fields when there is no user.
+func patchHasUserIdentity(p *config.Patch) bool {
+	if p == nil {
+		return false
+	}
+	if p.Operator != nil && (nonBlank(p.Operator.UserName) || nonBlank(p.Operator.UserEmail)) {
+		return true
+	}
+	if p.Git != nil && p.Git.Identity != nil {
+		return nonBlank(p.Git.Identity.UserName) || nonBlank(p.Git.Identity.UserEmail)
+	}
+	return false
+}
+
+func nonBlank(s *string) bool {
+	return s != nil && strings.TrimSpace(*s) != ""
 }
 
 func handleAuthPatch(w http.ResponseWriter, authRaw json.RawMessage, setter func(string)) bool {

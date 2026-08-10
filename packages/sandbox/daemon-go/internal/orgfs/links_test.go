@@ -56,6 +56,53 @@ func TestRepointDoesNotCacheAFailedLink(t *testing.T) {
 	}
 }
 
+// A write that lands before the first repoint materializes a REAL `org/output`
+// on ephemeral disk (the fs write route MkdirAlls its parent). An empty one
+// must be healed — replaced by the link — or the mount stays shadowed for the
+// pod's whole life. A populated one holds agent bytes and must be left alone.
+func TestRepointHealsAnEmptyRealOutputDir(t *testing.T) {
+	appRoot := t.TempDir()
+	statusPath := filepath.Join(t.TempDir(), "status.json")
+	mountPath := filepath.Join(appRoot, "org", ".outputs")
+	if err := os.MkdirAll(mountPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(sidecarStatus{Mounts: []Mount{{Volume: ".outputs", MountPath: mountPath}}})
+	if err := os.WriteFile(statusPath, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	l := &Links{AppRoot: appRoot, StatusPath: statusPath, ConfigPath: "unused"}
+
+	// Empty real dir in the link's place: healed.
+	link := filepath.Join(appRoot, "org", "output")
+	if err := os.MkdirAll(link, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if !l.RepointForRun("t1") {
+		t.Fatal("did not heal an empty real org/output dir")
+	}
+	if target, err := os.Readlink(link); err != nil || target != filepath.Join(".outputs", "t1") {
+		t.Fatalf("output link = %q (err %v), want .outputs/t1", target, err)
+	}
+
+	// Populated real dir: agent bytes, never discarded.
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(link, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(link, "plan.md"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if l.RepointForRun("t2") {
+		t.Fatal("reported a repoint over a populated real org/output dir")
+	}
+	if _, err := os.Stat(filepath.Join(link, "plan.md")); err != nil {
+		t.Fatalf("populated dir was discarded: %v", err)
+	}
+}
+
 func TestExpectedRequiresSidecarEnv(t *testing.T) {
 	if (&Links{}).Expected() {
 		t.Error("org-fs expected with no sidecar env — every call would pay the mount wait")

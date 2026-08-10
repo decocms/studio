@@ -241,6 +241,10 @@ export function buildClaudeCodeTaskPrompt(
         ? " — or push to the existing one, per the instruction above."
         : "."),
     "- Change only what the task needs. Don't refactor around it.",
+    // The ONLY reliable way the board learns the PR: Claude Code opens it inside
+    // the pod, so no Studio-side hook sees it (see pr-link.ts). Reviewers are
+    // dispatched from the linked PR, so skipping this strands the card.
+    `- As soon as \`gh pr create\` prints the URL, call \`mcp__studio__TASK_BOARD_ITEM_PR_LINK\` with that url. Do this even if you also mention the PR in a comment — the reviewers are dispatched from the linked PR, not from your message.`,
     `- Then move this task to review on the board: call \`mcp__studio__TASK_BOARD_ITEM_UPDATE\` with id "${task.id}" and status "in_review". Pass ONLY the fields you are changing.`,
     // NOT "move it to review anyway": In Review is the reviewers' lane, and
     // reviewers are only enqueued for a task that has a PR

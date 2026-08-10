@@ -25,6 +25,8 @@ import {
 import { useChatStream, useChatPrefs } from "@/components/chat/context.tsx";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { resolveAppNavigateTarget } from "@/routes/project-app-navigate.ts";
+import { ConnectSourceDialog } from "@/routes/commerce-onboarding/connect-source-dialog.tsx";
+import { useState } from "react";
 
 const EMPTY_TOOL_INPUT: Record<string, unknown> = {};
 
@@ -52,6 +54,12 @@ function AppRenderer({
   const { setAppContext, clearAppContext } = useChatPrefs();
   const { openSidePanel, openTab } = usePanelActions();
   const sourceId = `${connectionId}:${tool.name}`;
+  // A `field`-carrying connect-sources navigate opens the source's connect
+  // dialog right here, over the app view — swapping the whole panel to the
+  // onboarding-style tab just to show one dialog reads as broken.
+  const [connectSourceField, setConnectSourceField] = useState<string | null>(
+    null,
+  );
 
   const handleRequestDisplayMode = (
     mode: McpUiDisplayMode,
@@ -84,11 +92,13 @@ function AppRenderer({
     // it into chat; any other message falls through to the normal path.
     const navigateResult = resolveAppNavigateTarget(params.content);
     if (navigateResult.isNavigate) {
-      if (navigateResult.tab) {
-        openTab(
-          navigateResult.tab,
-          navigateResult.field ? { field: navigateResult.field } : undefined,
-        );
+      // A specific source to connect → just open its connect dialog in place;
+      // only the generic (field-less) connect-sources request still opens the
+      // full card-grid tab.
+      if (navigateResult.tab === "connect-sources" && navigateResult.field) {
+        setConnectSourceField(navigateResult.field);
+      } else if (navigateResult.tab) {
+        openTab(navigateResult.tab);
       }
       return;
     }
@@ -100,22 +110,30 @@ function AppRenderer({
   };
 
   return (
-    <MCPAppRenderer
-      resourceURI={resourceURI}
-      orgId={orgId}
-      toolInfo={{ tool: strippedTool }}
-      toolInput={toolInput}
-      toolResult={toolResult}
-      displayMode="fullscreen"
-      minHeight={MCP_APP_DISPLAY_MODES.fullscreen.minHeight}
-      maxHeight={MCP_APP_DISPLAY_MODES.fullscreen.maxHeight}
-      client={client}
-      onMessage={handleAppMessage}
-      onUpdateModelContext={(params) => setAppContext(sourceId, params)}
-      onTeardown={() => clearAppContext(sourceId)}
-      onRequestDisplayMode={handleRequestDisplayMode}
-      className="h-full"
-    />
+    <>
+      <MCPAppRenderer
+        resourceURI={resourceURI}
+        orgId={orgId}
+        toolInfo={{ tool: strippedTool }}
+        toolInput={toolInput}
+        toolResult={toolResult}
+        displayMode="fullscreen"
+        minHeight={MCP_APP_DISPLAY_MODES.fullscreen.minHeight}
+        maxHeight={MCP_APP_DISPLAY_MODES.fullscreen.maxHeight}
+        client={client}
+        onMessage={handleAppMessage}
+        onUpdateModelContext={(params) => setAppContext(sourceId, params)}
+        onTeardown={() => clearAppContext(sourceId)}
+        onRequestDisplayMode={handleRequestDisplayMode}
+        className="h-full"
+      />
+      {connectSourceField && (
+        <ConnectSourceDialog
+          field={connectSourceField}
+          onClose={() => setConnectSourceField(null)}
+        />
+      )}
+    </>
   );
 }
 

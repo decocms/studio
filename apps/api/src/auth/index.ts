@@ -47,7 +47,10 @@ import { identifyAuthenticatedUser } from "./posthog-identify";
 import { ADMIN_ROLES } from "@decocms/shared/auth/roles";
 import { getBuiltinRoleStatements } from "./builtin-role-permission";
 import { createSSOConfig } from "./sso";
-import { GENERIC_EMAIL_DOMAINS } from "./org-assurance-policy";
+import {
+  displayNameFromEmail,
+  GENERIC_EMAIL_DOMAINS,
+} from "./org-assurance-policy";
 import { ensureUserOrganization } from "./ensure-user-organization";
 import { isReservedOrganizationSlug } from "@decocms/shared/organization-slugs";
 import { rejectOrganizationSlugChange } from "./reject-slug-change";
@@ -532,6 +535,24 @@ export const auth = betterAuth({
   databaseHooks: {
     user: {
       create: {
+        // Backfill a display name from the email local-part when none is
+        // provided. Email OTP, magic link, and email/password signups never
+        // collect a name, so without this invited members render as
+        // "Unknown" with a "?" avatar. Social/SSO logins already carry a
+        // provider name and are left untouched.
+        before: async (user) => {
+          const name = (user as { name?: unknown }).name;
+          if (typeof name === "string" && name.trim().length > 0) {
+            return;
+          }
+
+          const derived = displayNameFromEmail(user.email);
+          if (!derived) {
+            return;
+          }
+
+          return { data: { ...user, name: derived } };
+        },
         after: async (user, context) => {
           // Tag the PostHog person record with email/name BEFORE the
           // user_signed_up capture so that event lands on a person record

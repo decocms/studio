@@ -1,6 +1,6 @@
 import { AccessScreenLayout } from "@/components/access-screen-layout";
-import { Avatar } from "@deco/ui/components/avatar.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Avatar } from "@decocms/ui/components/avatar.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { Building02 } from "@untitledui/icons";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";

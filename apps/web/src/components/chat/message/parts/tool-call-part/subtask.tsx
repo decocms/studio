@@ -2,13 +2,13 @@
 
 import { type ReactNode, useState } from "react";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
-} from "@deco/ui/components/sheet.tsx";
+} from "@decocms/ui/components/sheet.tsx";
 import type { ToolSubtaskMetadata } from "../../use-filter-parts.ts";
 import { IntegrationIcon } from "@/components/integration-icon";
 import { useConnection, type ToolDefinition } from "@/sdk";

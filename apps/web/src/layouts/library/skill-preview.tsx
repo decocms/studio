@@ -11,15 +11,15 @@
  */
 
 import { useState } from "react";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
   DialogClose,
   DialogContent,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
-import { Skeleton } from "@deco/ui/components/skeleton.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/dialog.tsx";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { X, Zap } from "@untitledui/icons";
 import { MemoizedMarkdown } from "@/components/chat/markdown.tsx";
 import { FilePreview } from "@/components/file-preview";

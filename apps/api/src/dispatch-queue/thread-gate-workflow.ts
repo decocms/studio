@@ -38,6 +38,7 @@ import { consumeRunProjection } from "@/api/routes/decopilot/consume-run-project
 
 export { THREAD_GATE_QUEUE } from "./queue-names";
 import { THREAD_GATE_QUEUE } from "./queue-names";
+import { runPriority } from "./run-priority";
 import { startHostedHarness } from "./hosted-harness-workflow";
 
 /**
@@ -446,7 +447,12 @@ export async function enqueueThreadRun(
   assertHarnessRunsInCluster(ctx.request.harnessId);
   const handle = await DBOS.startWorkflow(threadGateWorkflow, {
     queueName: THREAD_GATE_QUEUE,
-    enqueueOptions: { queuePartitionKey: ctx.threadId },
+    enqueueOptions: {
+      queuePartitionKey: ctx.threadId,
+      // Orders messages queued on THIS thread (the partition). Cross-run
+      // ordering is the pod's admission gate — see run-priority.ts.
+      priority: runPriority(ctx.request.runMetadata),
+    },
     workflowID: opts?.workflowID,
   })(ctx);
   return { workflowID: handle.workflowID };

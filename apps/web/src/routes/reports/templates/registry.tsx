@@ -1,5 +1,4 @@
 import BarsTemplate from "./bars-template";
-import CategoriasVariant from "./categorias-variant";
 import ChecklistTemplate from "./checklist-template";
 import CompetitorTemplate from "./competitor-template";
 import CoverTemplate from "./cover-template";
@@ -49,36 +48,37 @@ export default function SlideTemplate({
   // data — resolved BEFORE the generic switch so the shared contract stays
   // untouched. Each guards on its template so a key collision with a different
   // body shape falls through to the generic renderer.
-  if (slide.key === "categorias" && t.template === "gauges")
-    return <CategoriasVariant {...t} {...common} />;
   if (slide.key === "geo-dimensoes" && t.template === "bars")
     return <GeoDimensoesVariant {...t} {...common} />;
   if (slide.key === "paginas" && t.template === "table")
     return <PaginasVariant {...t} {...common} />;
   switch (t.template) {
     case "cover": {
-      // The cover lists the deck's content slides as a clickable table of
-      // contents — every slide except the cover itself and the closing cta.
-      // Capped so rows keep a comfortable fixed height instead of shrinking to
-      // fit an unbounded list.
-      const MAX_FINDINGS = 6;
-      const findings = deck.slides
-        .filter(
+      // The cover's "see full report" button jumps to the first chapter.
+      // Source it from `meta.toc` (built server-side from the FULL deck) and
+      // fall back to the loaded slides — a logged-out visitor only receives
+      // the cover slide, and `onNavigate` already falls forward to the
+      // sign-in gate when that chapter's slide isn't loaded.
+      const firstChapter =
+        deck.meta.toc?.[0] ??
+        deck.slides.find(
           (s) =>
             s.template.template !== "cover" && s.template.template !== "cta",
-        )
-        .map((s) => ({ title: s.title, slideKey: s.key }))
-        .slice(0, MAX_FINDINGS);
+        );
+      const findings = firstChapter
+        ? [{ title: firstChapter.title, slideKey: firstChapter.key }]
+        : undefined;
       return (
         <CoverTemplate
           {...t}
           {...common}
           findings={findings}
-          colors={deck.meta.colors}
           faviconUrl={deck.meta.faviconUrl}
           domain={deck.meta.domain}
           brand={deck.meta.brand}
           initial={deck.meta.initial}
+          areas={deck.meta.scores?.categories}
+          scannedAt={deck.meta.scannedAt}
           active={active}
           onFindingClick={onNavigate}
         />

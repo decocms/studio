@@ -517,6 +517,100 @@ export async function waitForClaimAdoptedSandbox(
   );
 }
 
+// ---- Warm pools -------------------------------------------------------------
+
+export interface WarmPoolPod {
+  name: string;
+  uid: string;
+  labels: Record<string, string>;
+}
+
+/**
+ * Running pods of a `SandboxWarmPool`, read through the pool's OWN selector
+ * (`status.selector`, the scale subresource's label selector) rather than a
+ * label we guess. The operator hashes that selector from the pool identity, so
+ * anything we hardcoded here would silently return zero pods on an operator
+ * upgrade — which reads as "the pool is empty", not as "we broke the lookup".
+ *
+ * Returns null when the pool doesn't exist or hasn't published a selector yet.
+ */
+export async function listWarmPoolPods(
+  kc: KubeConfig,
+  namespace: string,
+  poolName: string,
+): Promise<WarmPoolPod[] | null> {
+  const pool = await callSwallowing404<{
+    status?: { selector?: string };
+  }>(
+    kc,
+    {
+      method: "GET",
+      path: `${CLAIM_PATH_PREFIX}/${encodeURIComponent(namespace)}/sandboxwarmpools/${encodeURIComponent(poolName)}`,
+    },
+    "getSandboxWarmPool",
+    `Failed to get SandboxWarmPool: ${poolName}`,
+    "json",
+  );
+  const selector = pool?.status?.selector;
+  if (!selector) return null;
+  const resp = await kubeFetch(kc, {
+    method: "GET",
+    path: `/api/v1/namespaces/${encodeURIComponent(namespace)}/pods?labelSelector=${encodeURIComponent(selector)}`,
+  });
+  await ensureOk(resp, "listWarmPoolPods");
+  const body = (await resp.json()) as {
+    items?: {
+      metadata?: {
+        name?: string;
+        uid?: string;
+        labels?: Record<string, string>;
+      };
+      status?: { phase?: string };
+    }[];
+  };
+  return (body.items ?? [])
+    .filter((pod) => pod.status?.phase === "Running")
+    .flatMap((pod) =>
+      pod.metadata?.name && pod.metadata.uid
+        ? [
+            {
+              name: pod.metadata.name,
+              uid: pod.metadata.uid,
+              labels: pod.metadata.labels ?? {},
+            },
+          ]
+        : [],
+    );
+}
+
+/**
+ * Is this pool pod still unbound? A bound pod carries the claim's handle label
+ * (`additionalPodMetadata`), and warming one would hard-reset a live working
+ * tree. The pool listing is a snapshot, and warming walks it pod by pod over
+ * minutes — so every destructive step re-reads the pod first. Errs on "don't
+ * touch it": a missing pod or a failed read answers false.
+ */
+export async function isPodUnbound(
+  kc: KubeConfig,
+  namespace: string,
+  podName: string,
+  handleLabelKey: string,
+): Promise<boolean> {
+  try {
+    const resp = await kubeFetch(kc, {
+      method: "GET",
+      path: `/api/v1/namespaces/${encodeURIComponent(namespace)}/pods/${encodeURIComponent(podName)}`,
+    });
+    if (!resp.ok) return false;
+    const body = (await resp.json()) as {
+      metadata?: { labels?: Record<string, string> };
+    };
+    return !body.metadata?.labels?.[handleLabelKey];
+  } catch {
+    return false;
+  }
+}
+
 // ---- HTTPRoute (Gateway API) ------------------------------------------------
 
 /**

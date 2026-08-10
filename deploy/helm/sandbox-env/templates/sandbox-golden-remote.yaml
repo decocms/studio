@@ -1,0 +1,87 @@
+{{- if and .Values.depsCache.enabled .Values.depsCache.remote.enabled (not .Values.depsCache.remote.pvcName) }}
+{{- /*
+Claim (and, for static drivers, the volume) backing the L2 golden archive
+store.
+
+OWNED HERE, not by terraform. Installing the CSI driver is infrastructure and
+stays in terraform; asking for a volume is workload config and belongs with the
+pod that mounts it, for three reasons:
+
+  - `agent-sandbox-system` is shared by every release of this chart, so a
+    single namespace-wide claim name would make prod and stg mount the same
+    store — stg could publish an archive prod then restores. Names are
+    envName-suffixed like every other resource here, and the static path also
+    keys each release under its own prefix.
+  - a claim created elsewhere is an unenforced contract: rename it there and
+    `helm template` still passes while the pod fails at mount time.
+  - this chart is delivered by Argo, so a foreign-owned PVC sits outside
+    self-heal, prune, and the UI next to the workload it serves.
+
+Two shapes, because CSI drivers differ on provisioning:
+
+  - `storageClassName` set — DYNAMIC. Only the PVC is rendered; the
+    provisioner creates the volume. Cloud-agnostic, and the right shape when
+    self-hosting: bring any RWX driver, this template never names it.
+  - otherwise — STATIC, from `volume.*`. Required for drivers with no dynamic
+    provisioner. mountpoint-S3 is one, which is why it's the default here:
+    there is no StorageClass to claim against, so the PV must be declared.
+*/ -}}
+{{- $r := .Values.depsCache.remote -}}
+{{- $name := include "sandbox-env.goldenRemoteName" . -}}
+{{- $dynamic := ne (default "" $r.storageClassName) "" -}}
+{{- if not $dynamic }}
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "sandbox-env.labels" . | nindent 4 }}
+spec:
+  capacity:
+    # Ignored by object-store drivers; required by the schema.
+    storage: {{ $r.capacity }}
+  accessModes:
+    - ReadWriteMany
+  # The store outlives any release. Retain also keeps a released PV from
+  # being recycled by an unrelated claim.
+  persistentVolumeReclaimPolicy: Retain
+  # Empty (not absent) so no default StorageClass is injected and the claim
+  # binds statically by volumeName.
+  storageClassName: ""
+  {{- with $r.volume.mountOptions }}
+  # Driver-specific syntax — see the annotated defaults in values.yaml. Each
+  # entry goes through `tpl` so it can reference chart helpers (the default
+  # `prefix` uses envName for per-release key isolation).
+  mountOptions:
+    {{- tpl (toYaml .) $ | nindent 4 }}
+  {{- end }}
+  csi:
+    driver: {{ $r.volume.driver | quote }}
+    # An identifier, not a path — must be unique per PV in the cluster.
+    volumeHandle: {{ $name }}
+    volumeAttributes:
+      {{- toYaml $r.volume.attributes | nindent 6 }}
+---
+{{- end }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $name }}
+  namespace: agent-sandbox-system
+  labels:
+    {{- include "sandbox-env.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteMany
+  {{- if $dynamic }}
+  storageClassName: {{ $r.storageClassName | quote }}
+  {{- else }}
+  # Empty + volumeName: bind to this chart's PV above, never to a default
+  # StorageClass.
+  storageClassName: ""
+  volumeName: {{ $name }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $r.capacity }}
+{{- end }}

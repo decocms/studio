@@ -5,7 +5,7 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
-} from "@deco/ui/components/tabs.tsx";
+} from "@decocms/ui/components/tabs.tsx";
 import { LinkExternal01 } from "@untitledui/icons";
 import { usePrDiff } from "@/components/sandbox/hooks/use-pr-diff.ts";
 import { countGitDiffFiles } from "./github-pr-diff.ts";

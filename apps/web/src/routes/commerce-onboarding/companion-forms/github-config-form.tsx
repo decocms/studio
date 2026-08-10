@@ -16,10 +16,10 @@ import {
   FormField,
   FormItem,
   FormMessage,
-} from "@deco/ui/components/form.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
-import { DialogFooter } from "@deco/ui/components/dialog.tsx";
+} from "@decocms/ui/components/form.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
+import { DialogFooter } from "@decocms/ui/components/dialog.tsx";
 import { SearchSm } from "@untitledui/icons";
 import { KEYS, invalidateVirtualMcpQueries } from "@/lib/query-keys";
 import { useDebouncedValue } from "@/hooks/use-debounced-value.ts";

@@ -4,7 +4,7 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import { Image01 } from "@untitledui/icons";
 import type { ToolUIPart } from "ai";
 import { useOrg } from "@/sdk";

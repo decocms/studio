@@ -1,6 +1,11 @@
 import type { commerceOnboarding as commerceOnboardingEn } from "../en/commerce-onboarding.ts";
 
 export const commerceOnboarding = {
+  "commerceOnboarding.companionCard.configField.accountName": "Nome da conta",
+  "commerceOnboarding.companionCard.configField.appKey": "App Key",
+  "commerceOnboarding.companionCard.configField.appToken": "App Token",
+  "commerceOnboarding.companionCard.configField.propertyId": "Propriedade",
+  "commerceOnboarding.companionCard.configField.siteUrl": "Site",
   "commerceOnboarding.companionCard.configure": "Configurar",
   "commerceOnboarding.companionCard.configureAriaLabel": "Configurar {title}",
   "commerceOnboarding.companionCard.configureDescription":
@@ -17,6 +22,9 @@ export const commerceOnboarding = {
   "commerceOnboarding.companionCard.editConfiguration": "Editar configuração",
   "commerceOnboarding.companionCard.finishSetup": "Concluir configuração",
   "commerceOnboarding.companionCard.required": "Obrigatório",
+  "commerceOnboarding.connectSourceDialog.connecting": "Conectando {title}...",
+  "commerceOnboarding.connectSourceDialog.loading": "Carregando...",
+  "commerceOnboarding.connectSourceDialog.title": "Conectar fonte de dados",
   "commerceOnboarding.githubConfigForm.cancel": "Cancelar",
   "commerceOnboarding.githubConfigForm.failedToSave":
     "Não foi possível salvar a configuração",

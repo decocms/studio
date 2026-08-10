@@ -1,4 +1,4 @@
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import Placeholder from "@tiptap/extension-placeholder";
 import type { EditorView } from "@tiptap/pm/view";
 import {

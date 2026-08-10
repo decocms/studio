@@ -483,10 +483,16 @@ func (l *Links) repointThreadLink(threadId, mountDir, linkName string) bool {
 	target := filepath.Join(mountDir, threadId)
 	if st, err := os.Lstat(link); err == nil {
 		if st.Mode()&os.ModeSymlink == 0 {
-			slog.Warn("org-fs link skipped: exists and is not a symlink", "link", link)
-			return false
-		}
-		if cur, err := os.Readlink(link); err == nil && cur == target {
+			// A write that lands before the first repoint materializes a REAL
+			// `org/output` on ephemeral disk (the fs write route MkdirAlls its
+			// parent), which would shadow the mount for the pod's whole life.
+			// Empty: safe to replace with the link. Populated: those are agent
+			// bytes with nowhere else to live — leave them visible and loud.
+			if entries, err := os.ReadDir(link); err != nil || len(entries) > 0 {
+				slog.Warn("org-fs link skipped: exists and is not a symlink", "link", link)
+				return false
+			}
+		} else if cur, err := os.Readlink(link); err == nil && cur == target {
 			return true
 		}
 		if err := os.Remove(link); err != nil {

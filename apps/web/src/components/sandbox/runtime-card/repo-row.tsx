@@ -1,11 +1,11 @@
 import { GitHubIcon } from "@/components/icons/github-icon";
-import { Label } from "@deco/ui/components/label.tsx";
+import { Label } from "@decocms/ui/components/label.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/tooltip.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 
 export interface RepoRowProps {

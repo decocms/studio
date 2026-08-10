@@ -11,16 +11,16 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
-} from "@deco/ui/components/alert.tsx";
-import { Card } from "@deco/ui/components/card.tsx";
+} from "@decocms/ui/components/alert.tsx";
+import { Card } from "@decocms/ui/components/card.tsx";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@deco/ui/components/select.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/select.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { AlertTriangle, Container } from "@untitledui/icons";
 import { IntegrationIcon } from "@/components/integration-icon.tsx";
 import {

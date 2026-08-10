@@ -6,7 +6,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@deco/ui/components/select.tsx";
+} from "@decocms/ui/components/select.tsx";
 import type { SchemaProperty } from "../resolve-schema";
 import { SchemaForm } from "../schema-form";
 import { FieldLabel } from "./field-label";

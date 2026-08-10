@@ -7,15 +7,151 @@ import { clientFromConnection } from "@/mcp-clients";
 import type { TaskBoardItemPrRef } from "@/storage/types";
 import { getRepoScope } from "@decocms/shared/github-repo-scope";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import { retry, RetryError } from "@decocms/shared/std";
+import { InMemoryMcpReadCache } from "@/mcp-clients/mcp-read-cache";
 import { TaskBoardItemPrSchema } from "./schema";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
-import { extractPrFromText } from "./pr-extract";
 
 /** Cap a single live PR fetch — the modal shouldn't hang on a slow GitHub. */
 const PR_FETCH_TIMEOUT_MS = 8000;
+
+/**
+ * GitHub answers "too many requests" — the primary or (more often here) the
+ * SECONDARY rate limit, which punishes bursts of concurrent calls rather than a
+ * raw hourly count. Retrying that is not a retry, it's the burst: it triples the
+ * very thing being limited, and the retried calls are what keep the limit shut.
+ * So a rate-limit answer ends the attempt immediately and the cache below serves
+ * the last good value instead.
+ *
+ * Matched on the message because the answer arrives as an MCP tool result
+ * (`isError` + text), not an HTTP status we can read. Exported for the unit test.
+ */
+export function isRateLimitError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /too many requests|rate limit|\b429\b/i.test(message);
+}
+
+/**
+ * Stale-while-revalidate cache for the PR reads on the POLLED paths — the task
+ * dialog's 60s refresh and the review sweeper — which is where the GitHub 429s
+ * came from. Each poll costs four `pull_request_read` calls per PR plus one
+ * `GET_CHECK_RUN` per failing check, uncached: `clientFromConnection` (what this
+ * file uses) bypasses the proxy's read cache entirely, so every viewer, every
+ * poll, every replica hit GitHub live.
+ *
+ * SWR is what keeps the UI alive: past `revalidateAfterMs` a poll is served from
+ * the entry it already has while ONE background call refreshes it (single-flight
+ * — concurrent viewers of the same PR collapse into one), and a failed refresh
+ * keeps serving the previous value until `maxStaleMs`. So a rate-limit window
+ * shows the last known PR state instead of blanking the card to all-nulls.
+ *
+ * `maxStaleMs` is deliberately much longer than the poll: it only matters while
+ * GitHub is refusing us, and half an hour of "the state as of when GitHub last
+ * answered" beats an empty card that loses its checks, preview and ship button.
+ *
+ * Its own instance, not the shared `getMcpReadCache()`: that one is tuned for
+ * proxied tool calls (30s/5min) and is settings-gated off in development, and
+ * this path wants a longer stale window and to work the same everywhere.
+ *
+ * ponytail: per-pod, so N replicas still cost N fetches per window. Move it to
+ * NATS KV if that's still too many.
+ */
+const PR_READ_CACHE_ENTRY = {
+  /** Just under the dialog's 60s poll, so a poll refreshes rather than blocks. */
+  revalidateAfterMs: 55_000,
+  /** How long a rate-limit window may be papered over with the last good read. */
+  maxStaleMs: 30 * 60_000,
+  maxValueBytes: 512 * 1024,
+} as const;
+const prReadCache = new InMemoryMcpReadCache({
+  "tools/call": PR_READ_CACHE_ENTRY,
+  "resources/read": PR_READ_CACHE_ENTRY,
+  "prompts/get": PR_READ_CACHE_ENTRY,
+});
+
+/**
+ * Drop this connection's cached PR reads. Call it after WRITING to GitHub
+ * through the connection (a merge), so the next poll sees the new state instead
+ * of serving the pre-merge one for the rest of the revalidate window — the card
+ * only moves to Done once a poll observes `merged`, and a minute of "did my ship
+ * button work?" is exactly the confusion this cache must not introduce.
+ */
+export function invalidatePrReads(connectionId: string): void {
+  prReadCache.invalidate(connectionId);
+}
+
+/** `owner/repo#number`, for log lines. */
+const prLabel = (pr: TaskBoardItemPrRef) =>
+  `${pr.repoOwner}/${pr.repoName}#${pr.number}`;
+
+/**
+ * One cached, best-effort GitHub read for a PR. Best-effort in the same sense as
+ * the rest of this file: `null` on any failure, so the card still renders.
+ *
+ * `callTool` RESOLVES (doesn't reject) on an upstream MCP error, so an `isError`
+ * result is rethrown here — otherwise the cache would happily store GitHub's
+ * "too many requests" as the PR's state and serve it for half an hour.
+ */
+async function cachedPrRead(
+  client: Awaited<ReturnType<typeof clientFromConnection>>,
+  connectionId: string,
+  name: string,
+  args: Record<string, unknown>,
+  describe: string,
+  pending: Promise<void>[],
+): Promise<Record<string, unknown> | null> {
+  try {
+    const raw = await prReadCache.fetch({
+      type: "tools/call",
+      connectionId,
+      // The GitHub installation is the connection's, not the caller's, so every
+      // org member reading the same PR shares one entry.
+      scope: { kind: "org" },
+      params: { name, arguments: args },
+      fetchLive: () =>
+        retry(
+          async () => {
+            const result = await client.callTool(
+              { name, arguments: args },
+              undefined,
+              {
+                timeout: PR_FETCH_TIMEOUT_MS,
+              },
+            );
+            if (
+              result &&
+              typeof result === "object" &&
+              (result as { isError?: boolean }).isError
+            ) {
+              throw new Error(
+                (result as { content?: Array<{ text?: string }> }).content?.[0]
+                  ?.text ?? `${name} returned isError`,
+              );
+            }
+            return result;
+          },
+          {
+            maxAttempts: 3,
+            minTimeout: 300,
+            maxTimeout: 3000,
+            jitter: 1,
+            isRetriable: (err) => !isRateLimitError(err),
+          },
+        ),
+      // A background revalidation runs on `client` AFTER this call returns the
+      // stale value — so the caller must keep the client open until it settles.
+      onRevalidation: (promise) => pending.push(promise),
+    });
+    return toolResultJson(raw);
+  } catch (err) {
+    const cause = err instanceof RetryError ? err.cause : err;
+    console.error(`[task-board] ${name} failed for ${describe}:`, cause);
+    return null;
+  }
+}
 
 /**
  * The GitHub MCP connection to fetch/merge a PR through: the one that opened it
@@ -148,13 +284,13 @@ const NO_LIVE_STATE: PrLiveState = {
   previewUrl: null,
 };
 
-/** Whether `url`'s HOST is a deco.cx preview host — a strict hostname check,
- *  NOT a substring match. The preview is lifted from PR comments, which
- *  external contributors can write, and the result is shown as a trusted
- *  "Open preview" button AND handed to the autonomous QA reviewer to navigate.
- *  So a decoy like `https://evil.example.com/x?y=.decocdn.com` must be rejected.
- *  Exported for the unit test. */
-export function isDecoPreviewHost(url: string): boolean {
+/** Whether `url`'s HOST is a known preview-deploy host — a strict hostname
+ *  check, NOT a substring match. The preview is lifted from PR comments,
+ *  which external contributors can write, and the result is shown as a
+ *  trusted "Open preview" button AND handed to the autonomous QA reviewer to
+ *  navigate. So a decoy like `https://evil.example.com/x?y=.decocdn.com` must
+ *  be rejected. Exported for the unit test. */
+export function isTrustedPreviewHost(url: string): boolean {
   let hostname: string;
   try {
     hostname = new URL(url).hostname.toLowerCase();
@@ -165,14 +301,16 @@ export function isDecoPreviewHost(url: string): boolean {
     hostname === "deco.site" ||
     hostname.endsWith(".decocdn.com") ||
     hostname.endsWith(".deco-cx.workers.dev") ||
-    hostname.endsWith(".deco.site")
+    hostname.endsWith(".deco.site") ||
+    hostname.endsWith(".vercel.app") ||
+    hostname.endsWith(".preview.vtex.app")
   );
 }
 
-/** Pull the deco preview URL out of a combined-status response's `statuses[]`
- *  (a status whose `target_url` is a deco preview host). Kept as a cheap
- *  fallback — deco posts the preview in a comment, not a status, so this
- *  usually finds nothing. `null` when none is posted. */
+/** Pull the preview URL out of a combined-status response's `statuses[]` (a
+ *  status whose `target_url` is a trusted preview host). Kept as a cheap
+ *  fallback — most providers post the preview in a comment, not a status, so
+ *  this usually finds nothing. `null` when none is posted. */
 export function extractPreviewUrl(
   obj: Record<string, unknown> | null,
 ): string | null {
@@ -187,7 +325,7 @@ export function extractPreviewUrl(
       (s): s is { target_url: string; state?: unknown } =>
         !!s &&
         typeof s.target_url === "string" &&
-        isDecoPreviewHost(s.target_url),
+        isTrustedPreviewHost(s.target_url),
     );
   if (previews.length === 0) return null;
   return (
@@ -197,13 +335,21 @@ export function extractPreviewUrl(
 }
 
 /**
- * Pull the deco preview URL out of a PR's comments — where the deploy bot
- * actually posts it. Two shapes: Cloudflare Workers'
+ * Pull the preview URL out of a PR's comments — where the deploy bot
+ * actually posts it. Known shapes: Cloudflare Workers'
  * `cloudflare-workers-and-pages[bot]` (a table with a "Commit Preview URL" AND a
  * "Branch Preview URL" — prefer the branch one, stable across the PR's commits),
- * and deco.cx's `decobot` (a single "Visit Preview" markdown link). Accepts the
- * raw `get_comments` result (an array, or `{ comments }`/`{ items }`) and scans
- * each body. `null` when none is found. Exported for the pure-logic unit test.
+ * deco.cx's `decobot` (a single "Visit Preview" markdown link), and Vercel's
+ * `[Preview](url)` markdown link. Accepts the raw `get_comments` result (an
+ * array, or `{ comments }`/`{ items }`), sorts newest-first by `updated_at`
+ * (falling back to `created_at`, then array order, when absent) so a stale
+ * early comment can't win over a later re-deploy. Sorting by `updated_at`
+ * rather than `created_at` matters because Vercel/Cloudflare edit a single
+ * sticky comment in place on each push — `created_at` stays frozen at the
+ * comment's first post, so ranking by it could let an unrelated LATER human
+ * comment (that happens to mention a matching host) outrank the bot's
+ * freshly-edited one. Scans each body; `null` when none is found. Exported
+ * for the pure-logic unit test.
  */
 export function extractPreviewUrlFromComments(raw: unknown): string | null {
   const list = Array.isArray(raw)
@@ -213,7 +359,23 @@ export function extractPreviewUrlFromComments(raw: unknown): string | null {
       : Array.isArray((raw as { items?: unknown })?.items)
         ? (raw as { items: unknown[] }).items
         : [];
-  for (const c of list) {
+  const recency = (c: unknown): number => {
+    const obj = c as { updated_at?: unknown; created_at?: unknown };
+    return (
+      Date.parse(obj?.updated_at as string) ||
+      Date.parse(obj?.created_at as string)
+    );
+  };
+  const sorted = list
+    .map((c, index) => ({ c, index }))
+    .sort((a, b) => {
+      const aTime = recency(a.c);
+      const bTime = recency(b.c);
+      if (Number.isNaN(aTime) || Number.isNaN(bTime)) return a.index - b.index;
+      return bTime - aTime;
+    })
+    .map(({ c }) => c);
+  for (const c of sorted) {
     const body =
       c && typeof (c as { body?: unknown }).body === "string"
         ? (c as { body: string }).body
@@ -222,9 +384,9 @@ export function extractPreviewUrlFromComments(raw: unknown): string | null {
     // Cloudflare's comment carries both a per-commit and a per-branch preview —
     // prefer the branch URL, which stays valid as the PR gets new commits.
     const branch = body.match(/href=['"]([^'"]+)['"][^>]*>\s*Branch Preview/i);
-    if (branch?.[1] && isDecoPreviewHost(branch[1])) return branch[1];
+    if (branch?.[1] && isTrustedPreviewHost(branch[1])) return branch[1];
     const url = (body.match(/https?:\/\/[^\s"'<>)\]]+/g) ?? []).find((u) =>
-      isDecoPreviewHost(u),
+      isTrustedPreviewHost(u),
     );
     if (url) return url;
   }
@@ -359,33 +521,25 @@ function isFailingRun(r: RawCheckRun): boolean {
  *  (the list tool omits `output`). Best-effort: null on any failure. */
 async function fetchCheckRunSummary(
   client: Awaited<ReturnType<typeof clientFromConnection>>,
+  connectionId: string,
   pr: TaskBoardItemPrRef,
   checkRunId: number,
+  pending: Promise<void>[],
 ): Promise<string | null> {
-  try {
-    const obj = toolResultJson(
-      await client.callTool(
-        {
-          name: "GET_CHECK_RUN",
-          arguments: {
-            owner: pr.repoOwner,
-            repo: pr.repoName,
-            checkRunId,
-          },
-        },
-        undefined,
-        { timeout: PR_FETCH_TIMEOUT_MS },
-      ),
-    );
-    const output = obj?.output as
-      | { summary?: unknown; text?: unknown }
-      | undefined;
-    const summary = typeof output?.summary === "string" ? output.summary : null;
-    const text = typeof output?.text === "string" ? output.text : null;
-    return summary ?? text ?? null;
-  } catch {
-    return null;
-  }
+  const obj = await cachedPrRead(
+    client,
+    connectionId,
+    "GET_CHECK_RUN",
+    { owner: pr.repoOwner, repo: pr.repoName, checkRunId },
+    `${prLabel(pr)} check-run ${checkRunId}`,
+    pending,
+  );
+  const output = obj?.output as
+    | { summary?: unknown; text?: unknown }
+    | undefined;
+  const summary = typeof output?.summary === "string" ? output.summary : null;
+  const text = typeof output?.text === "string" ? output.text : null;
+  return summary ?? text ?? null;
 }
 
 /** Just the PR's checks summary (combined status ∪ check-runs) — used to gate
@@ -500,35 +654,28 @@ export async function fetchPrConflict(
  *  deploy preview URL. Best-effort: any failure yields nulls. */
 async function fetchPrStatusExtras(
   client: Awaited<ReturnType<typeof clientFromConnection>>,
+  connectionId: string,
   pr: TaskBoardItemPrRef,
+  pending: Promise<void>[],
 ): Promise<{
   checksStatus: ChecksStatus;
   checks: PrCheck[];
   previewUrl: string | null;
 }> {
-  const read = async (
-    method: "get_status" | "get_check_runs" | "get_comments",
-  ): Promise<Record<string, unknown> | null> => {
-    try {
-      return toolResultJson(
-        await client.callTool(
-          {
-            name: "pull_request_read",
-            arguments: {
-              method,
-              owner: pr.repoOwner,
-              repo: pr.repoName,
-              pullNumber: pr.number,
-            },
-          },
-          undefined,
-          { timeout: PR_FETCH_TIMEOUT_MS },
-        ),
-      );
-    } catch {
-      return null;
-    }
-  };
+  const read = (method: "get_status" | "get_check_runs" | "get_comments") =>
+    cachedPrRead(
+      client,
+      connectionId,
+      "pull_request_read",
+      {
+        method,
+        owner: pr.repoOwner,
+        repo: pr.repoName,
+        pullNumber: pr.number,
+      },
+      `${prLabel(pr)} (${method})`,
+      pending,
+    );
   // The three reads are independent — run them CONCURRENTLY. Serial was the
   // slowness (each is a remote MCP → GitHub round-trip, ~1.5-2s; the card made
   // 4-5 of them in a row).
@@ -556,7 +703,13 @@ async function fetchPrStatusExtras(
         detailsUrl: r.detailsUrl,
         summary:
           isFailingRun(r) && r.id != null
-            ? await fetchCheckRunSummary(client, pr, r.id)
+            ? await fetchCheckRunSummary(
+                client,
+                connectionId,
+                pr,
+                r.id,
+                pending,
+              )
             : null,
       }),
     ),
@@ -614,28 +767,30 @@ export async function fetchPrLiveState(
   });
   if (!conn) return NO_LIVE_STATE;
   const client = await clientFromConnection(conn, ctx, true);
+  // Background revalidations started by the read cache below run on `client`,
+  // so it may not be closed until they settle — see the `finally`.
+  const pending: Promise<void>[] = [];
   try {
     // Fetch the PR's basic state AND its checks/preview extras CONCURRENTLY.
     // An open PR (the common case in the review dialog) is fully populated in a
     // single round-trip window instead of ~5 serial hops; a merged/closed PR
     // wastes the extras, but that's rare here and best-effort.
-    const [liveResult, extras] = await Promise.all([
-      client.callTool(
+    const [obj, extras] = await Promise.all([
+      cachedPrRead(
+        client,
+        conn.id,
+        "pull_request_read",
         {
-          name: "pull_request_read",
-          arguments: {
-            method: "get",
-            owner: pr.repoOwner,
-            repo: pr.repoName,
-            pullNumber: pr.number,
-          },
+          method: "get",
+          owner: pr.repoOwner,
+          repo: pr.repoName,
+          pullNumber: pr.number,
         },
-        undefined,
-        { timeout: PR_FETCH_TIMEOUT_MS },
+        `${prLabel(pr)} (get)`,
+        pending,
       ),
-      fetchPrStatusExtras(client, pr),
+      fetchPrStatusExtras(client, conn.id, pr, pending),
     ]);
-    const obj = toolResultJson(liveResult);
     if (!obj) return NO_LIVE_STATE;
     const rawState = obj.state;
     const isOpen = rawState === "open";
@@ -657,7 +812,13 @@ export async function fetchPrLiveState(
   } catch {
     return NO_LIVE_STATE;
   } finally {
-    await client.close().catch(() => {});
+    // Close only once the background revalidations are done, and do NOT await
+    // that here — the whole point of serving a stale value is to return without
+    // waiting on GitHub. Closing eagerly (which this did) killed every
+    // revalidation the moment it started, so a cached entry could never
+    // refresh: a PR read before its deploy comment existed showed no preview
+    // and no checks until the entry aged out half an hour later.
+    void Promise.allSettled(pending).then(() => client.close().catch(() => {}));
   }
 }
 
@@ -692,35 +853,6 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
       taskBoardItemId,
       organizationId,
     );
-
-    // Recover a PR the create-PR hook missed (shell alias, script wrapper, or a
-    // PR opened by any means the heuristic doesn't match) by scanning each
-    // linked thread's latest assistant message — the agent's closing summary
-    // reliably prints the URL ("Opened PR #309 https://github.com/…/pull/309").
-    // linkPr is idempotent per (task, url), so re-linking an already-tracked PR
-    // is a no-op. Best-effort; a failure must never break the read.
-    // ponytail: scans only the latest assistant message per thread (that's what
-    // getById already loads). Widen to more parts if a PR ever lands in an
-    // earlier message that the closing summary doesn't repeat.
-    for (const thread of item?.threads ?? []) {
-      const pr = thread.lastMessage
-        ? extractPrFromText(thread.lastMessage)
-        : null;
-      if (!pr) continue;
-      try {
-        await ctx.storage.taskBoard.linkPr({
-          taskBoardItemId,
-          organizationId,
-          url: pr.url,
-          prNumber: pr.number,
-          repoOwner: pr.owner,
-          repoName: pr.repo,
-          connectionId: null,
-        });
-      } catch (err) {
-        console.error("[task-board] PR recovery from thread text failed", err);
-      }
-    }
 
     const linked = await ctx.storage.taskBoard.listPrs(
       taskBoardItemId,
@@ -825,3 +957,53 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
     return { prs };
   },
 });
+
+/**
+ * The PR's head branch name (`head.ref`), or null when GitHub can't be reached.
+ *
+ * Read live rather than stored on the row deliberately: `task_board_item_prs`
+ * is written from three places (the MCP `onPrOpened` hook, a bash-output scan,
+ * and the sweeper's closing-message scan) and only one of them ever knows the
+ * branch. GitHub always does. Null is a first-class answer — the caller falls
+ * back to today's fresh-branch behavior rather than guessing a ref and pushing
+ * work somewhere nobody is looking.
+ */
+export async function fetchPrHeadRef(
+  ctx: StudioContext,
+  orgId: string,
+  pr: TaskBoardItemPrRef,
+): Promise<string | null> {
+  const conn = await resolveGithubConnection(ctx, orgId, pr.connectionId, {
+    owner: pr.repoOwner,
+    name: pr.repoName,
+  });
+  if (!conn) return null;
+  const client = await clientFromConnection(conn, ctx, true);
+  try {
+    const obj = toolResultJson(
+      await client.callTool(
+        {
+          name: "pull_request_read",
+          arguments: {
+            method: "get",
+            owner: pr.repoOwner,
+            repo: pr.repoName,
+            pullNumber: pr.number,
+          },
+        },
+        undefined,
+        { timeout: PR_FETCH_TIMEOUT_MS },
+      ),
+    );
+    // Only an OPEN PR's branch is worth reusing: pushing to a merged or closed
+    // PR's branch updates nothing anyone will look at, and the re-run's work
+    // would be invisible.
+    if (!obj || obj.state !== "open") return null;
+    const ref = (obj.head as { ref?: unknown } | undefined)?.ref;
+    return typeof ref === "string" && ref.length > 0 ? ref : null;
+  } catch {
+    return null;
+  } finally {
+    await client.close().catch(() => {});
+  }
+}

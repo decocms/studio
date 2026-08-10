@@ -2,7 +2,7 @@
  * Pure extraction helper for pending propose_plan parts from assistant messages.
  *
  * Extracted as a pure .ts module so it can be imported by bun:test code
- * without dragging in @deco/ui transitively via propose-plan.tsx.
+ * without dragging in @decocms/ui transitively via propose-plan.tsx.
  */
 
 import type { ChatMessage } from "../types.ts";

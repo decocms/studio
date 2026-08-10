@@ -30,10 +30,17 @@ export function buildConfigPayload(args: {
             ? { submoduleCredentials: repo.submoduleCredentials }
             : {}),
         },
-        identity: {
-          userName: repo.userName,
-          userEmail: repo.userEmail,
-        },
+        // Omitted when there is no user: a tenant warm pool bootstraps its pods
+        // with a repo and no author, and the daemon rejects a blank identity
+        // outright (and treats an absent one as "not claimed by a user yet").
+        ...(repo.userName.trim() || repo.userEmail.trim()
+          ? {
+              identity: {
+                userName: repo.userName,
+                userEmail: repo.userEmail,
+              },
+            }
+          : {}),
       }
     : undefined;
 

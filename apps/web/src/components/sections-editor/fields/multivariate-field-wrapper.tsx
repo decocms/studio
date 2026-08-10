@@ -1,12 +1,12 @@
 import { useState, type ReactNode } from "react";
 import { Flag01 } from "@untitledui/icons";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Label } from "@decocms/ui/components/label.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import { useT } from "@/i18n/use-t";
 import {
   SectionVariantList,

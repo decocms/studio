@@ -1,5 +1,5 @@
 import { Check } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.js";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import {
   AddButton,

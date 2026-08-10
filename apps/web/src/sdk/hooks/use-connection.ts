@@ -18,7 +18,7 @@ import { useMCPClient } from "./use-mcp-client";
 import { SELF_MCP_ALIAS_ID } from "@decocms/shared/sdk/lib/constants";
 
 /**
- * Filter definition for connections (matches @deco/ui Filter shape)
+ * Filter definition for connections (matches @decocms/ui Filter shape)
  */
 export type ConnectionFilter = CollectionFilter;
 

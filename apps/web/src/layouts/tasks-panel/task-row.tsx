@@ -1,10 +1,10 @@
-import { cn } from "@deco/ui/lib/utils.js";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { Archive, Zap } from "@untitledui/icons";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import { useVirtualMCP } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 import { AgentAvatar } from "@/components/agent-icon";

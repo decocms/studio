@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 import { useState } from "react";
-import { cn } from "@deco/ui/lib/utils.ts";
-import { Input } from "@deco/ui/components/input.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { Input } from "@decocms/ui/components/input.tsx";
 import { CheckCircle, SearchSm } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
 

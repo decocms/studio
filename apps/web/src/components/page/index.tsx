@@ -1,5 +1,5 @@
-import { SidebarTrigger } from "@deco/ui/components/sidebar.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { SidebarTrigger } from "@decocms/ui/components/sidebar.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import type { PropsWithChildren, ReactElement, ReactNode } from "react";
 import { Children, createContext, isValidElement, useContext } from "react";
 

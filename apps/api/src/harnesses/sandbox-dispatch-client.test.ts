@@ -4,8 +4,10 @@ import { harnessRunResultSchema } from "@decocms/sandbox/dispatch/schemas";
 import {
   dispatchWithContinuation,
   harnessRunsInSandbox,
+  isRunSuperseded,
   isUnreachableStatus,
   ndjsonLines,
+  RunSupersededError,
   SandboxUnreachableError,
 } from "./sandbox-dispatch-client";
 
@@ -285,5 +287,54 @@ describe("dispatchWithContinuation", () => {
     });
     await expect(collect(run)).rejects.toThrow("pod gone again");
     expect(attempts).toBe(2);
+  });
+
+  // A displaced attempt must NOT continue: continuing re-dispatches the same
+  // runId, which takes the run back off the successor that displaced us — the
+  // two attempts would trade it back and forth until maxAttempts.
+  test("a superseded attempt stops instead of taking the run back", async () => {
+    let attempts = 0;
+    const run = dispatchWithContinuation({
+      runId: "run_1",
+      resume: null,
+      aborted: () => false,
+      dispatchOnce: () => {
+        attempts++;
+        return dispatch(
+          [chunk("start"), chunk("text-delta")],
+          new RunSupersededError("a newer dispatch took over this run"),
+        )();
+      },
+    });
+    await expect(collect(run)).rejects.toThrow("a newer dispatch took over");
+    expect(attempts).toBe(1);
+  });
+});
+
+describe("isRunSuperseded", () => {
+  test("recognizes a superseded attempt", () => {
+    expect(isRunSuperseded(new RunSupersededError("taken over"))).toBe(true);
+  });
+
+  test("does not mistake other failures for a takeover", () => {
+    expect(isRunSuperseded(new SandboxUnreachableError("pod gone"))).toBe(
+      false,
+    );
+    expect(isRunSuperseded(new Error("cancelled: run cancelled"))).toBe(false);
+    expect(isRunSuperseded(undefined)).toBe(false);
+  });
+
+  // The error is thrown from inside a DBOS step, which serializes it into the
+  // durable journal and rebuilds a PLAIN Error on replay — the subclass is gone,
+  // so `instanceof` silently reports false and the run gets failed after all.
+  // Only an own-enumerable property survives that round trip.
+  test("survives the DBOS step boundary, where the subclass does not", () => {
+    const thrown = new RunSupersededError("taken over");
+    const replayed = Object.assign(
+      new Error(thrown.message),
+      JSON.parse(JSON.stringify({ ...thrown })),
+    );
+    expect(replayed instanceof RunSupersededError).toBe(false);
+    expect(isRunSuperseded(replayed)).toBe(true);
   });
 });

@@ -6,7 +6,7 @@
  * agent settings (see DevAgentSetup), not here.
  */
 
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { Code01, Globe01 } from "@untitledui/icons";
 import type { ComponentType } from "react";
 import { useVirtualMCPs } from "@/sdk";

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ChevronRight, CreditCardSearch, Loading01 } from "@untitledui/icons";
-import { Button } from "@deco/ui/components/button.tsx";
-import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { SeoFormFields } from "./seo-form-fields";
 import { resolveSchema } from "./resolve-schema";

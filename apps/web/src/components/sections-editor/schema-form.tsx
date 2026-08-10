@@ -28,9 +28,12 @@ import {
 import {
   breadcrumbPathForActiveField,
   consumedBreadcrumbPrefix,
+  type Crumb,
   fieldDisplayLabel,
   isArrayDrillDownField,
+  prependCrumbIfAbsent,
   resolveActiveFieldKey,
+  siblingFieldLabel,
 } from "./schema-form-breadcrumb";
 import {
   blockRefArrayItemSchemaFromRefs,
@@ -419,8 +422,8 @@ export function SchemaForm({
   value: unknown;
   onChange: (value: unknown) => void;
   basePath: string;
-  breadcrumbPath?: string[];
-  onBreadcrumbChange?: (path: string[]) => void;
+  breadcrumbPath?: Crumb[];
+  onBreadcrumbChange?: (path: Crumb[]) => void;
   meta?: LiveMeta;
   decofile?: Record<string, unknown>;
   onSaveReferencedBlock?: (
@@ -541,7 +544,12 @@ export function SchemaForm({
   const visibleKeys = activeKey && activeSchema ? [activeKey] : keys;
   const fieldBreadcrumbPath =
     activeKey && activeSchema
-      ? breadcrumbPathForActiveField(activeKey, activeSchema, breadcrumbPath)
+      ? breadcrumbPathForActiveField(
+          activeKey,
+          activeSchema,
+          breadcrumbPath,
+          siblingFieldLabel(activeKey, keys, properties),
+        )
       : breadcrumbPath;
   // `breadcrumbPathForActiveField` hands the active field a breadcrumb RELATIVE
   // to itself (the crumbs it consumed are dropped from the front). The child
@@ -559,7 +567,7 @@ export function SchemaForm({
   );
   const fieldOnBreadcrumbChange =
     consumedPrefix.length > 0 && onBreadcrumbChange
-      ? (next: string[]) => onBreadcrumbChange([...consumedPrefix, ...next])
+      ? (next: Crumb[]) => onBreadcrumbChange([...consumedPrefix, ...next])
       : onBreadcrumbChange;
   return (
     <div className="min-w-0 space-y-6">
@@ -567,7 +575,31 @@ export function SchemaForm({
         const propSchema = properties[key];
         if (!propSchema) return null;
         const fieldPath = basePath ? `${basePath}.${key}` : key;
-        const label = fieldDisplayLabel(key, propSchema);
+        const label = siblingFieldLabel(key, keys, properties);
+
+        // When two siblings share a title (e.g. `shelfProps`/`shelfPropsOffer`,
+        // both `ProductShelfProps`), a descendant drill reports a bare
+        // `[itemLabel]` trail with no ancestor crumb — the resolver then can't
+        // tell which sibling a shared crumb ("Free shipping") came from. In the
+        // non-focused view (both rendered together, `consumedPrefix` empty)
+        // prepend this field's disambiguated label so the trail identifies the
+        // sibling. In the focused view `consumedPrefix` already carries it.
+        const plainLabel = fieldDisplayLabel(key, propSchema);
+        const collidesWithSibling =
+          consumedPrefix.length === 0 &&
+          keys.some((k) => {
+            const other = properties[k];
+            return (
+              k !== key &&
+              other != null &&
+              fieldDisplayLabel(k, other) === plainLabel
+            );
+          });
+        const fieldOnBreadcrumbChangeForKey =
+          collidesWithSibling && fieldOnBreadcrumbChange
+            ? (next: Crumb[]) =>
+                fieldOnBreadcrumbChange(prependCrumbIfAbsent(label, next))
+            : fieldOnBreadcrumbChange;
 
         return renderField({
           schema: propSchema,
@@ -576,7 +608,7 @@ export function SchemaForm({
           path: fieldPath,
           label,
           breadcrumbPath: fieldBreadcrumbPath,
-          onBreadcrumbChange: fieldOnBreadcrumbChange,
+          onBreadcrumbChange: fieldOnBreadcrumbChangeForKey,
           hasSiblingDrillDownFields,
           meta,
           decofile,

@@ -13,8 +13,8 @@ import {
   Zap,
 } from "@untitledui/icons";
 import { toast } from "sonner";
-import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
-import { cn } from "@deco/ui/lib/utils.js";
+import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { GLOBAL_SECTION_ICON_COLOR } from "@/components/sections-editor/section-types";

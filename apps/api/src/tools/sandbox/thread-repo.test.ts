@@ -155,3 +155,50 @@ test("a repo-less run pinned to its own bare key does not join the ephemeral poo
     }),
   ).toBe("thread:t1");
 });
+
+// `pinnedRef` is what stops a task re-run from opening a second pull request:
+// it must beat every derivation below it, or the run forks a fresh
+// `sandbox/thread-<new-id>` branch and the daemon's shutdown push publishes a
+// duplicate PR.
+
+test("a pinned ref wins over a thread-bound repo's derived branch", () => {
+  expect(
+    resolveSandboxBranch({
+      threadId: "t1",
+      threadRepo: { connectionId: "conn_a" } as GithubRepo,
+      agentRepo: { connectionId: "conn_b" } as GithubRepo,
+      runBranch: "main",
+      pinnedRef: "sandbox/thread-older-conn_a",
+    }),
+  ).toBe("sandbox/thread-older-conn_a");
+});
+
+test("a pinned ref wins over the bare thread key and the ephemeral fallback", () => {
+  expect(
+    resolveSandboxBranch({
+      threadId: "t1",
+      threadRepo: null,
+      runBranch: threadBranch("t1"),
+      pinnedRef: "fix/some-pr-branch",
+    }),
+  ).toBe("fix/some-pr-branch");
+  expect(
+    resolveSandboxBranch({
+      threadId: "t1",
+      threadRepo: null,
+      pinnedRef: "fix/some-pr-branch",
+    }),
+  ).toBe("fix/some-pr-branch");
+});
+
+test("an absent pinned ref changes nothing", () => {
+  for (const pinnedRef of [null, undefined, ""]) {
+    expect(
+      resolveSandboxBranch({
+        threadId: "t1",
+        threadRepo: { connectionId: "conn_a" } as GithubRepo,
+        pinnedRef,
+      }),
+    ).toBe("thread:t1/conn_a");
+  }
+});

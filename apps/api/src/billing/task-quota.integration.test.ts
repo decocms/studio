@@ -254,8 +254,12 @@ describe("task quota (integration)", () => {
       /^\[SUBSCRIPTION_REQUIRED\]/,
     );
 
-    await releaseTaskExecution(billing, org, a!.id);
-    await releaseTaskExecution(billing, org, a!.id); // idempotent
+    // The storage release reports whether a held claim actually transitioned
+    // — true once, false on the repeat — which is what gates the
+    // task_quota_refunded telemetry to refunds that happened.
+    expect(await billing.releaseTaskClaim(org, a!.id)).toBe(true);
+    expect(await billing.releaseTaskClaim(org, a!.id)).toBe(false); // idempotent
+    await releaseTaskExecution(billing, org, a!.id); // wrapper stays a no-op too
     expect(await stateOf(a!.id)).toBe("released");
     expect(await billing.countTaskClaims(org, "trial")).toBe(1);
     await claimTaskExecution(ctxR, c!, CONFIG);

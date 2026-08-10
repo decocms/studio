@@ -6,6 +6,11 @@ import { useT } from "@/i18n/use-t.ts";
 import { useSandboxEvents } from "../../hooks/use-sandbox-events";
 import { DEFAULT_TAB, DrawerToolbar, type DrawerStatus } from "./toolbar";
 import { SandboxTerminal } from "./terminal";
+import {
+  clampDrawerHeight,
+  DRAWER_MIN_HEIGHT,
+  DRAWER_TOP_RESERVE,
+} from "./resize";
 
 export interface PreviewDrawerProps {
   vmId: string | null;
@@ -16,6 +21,9 @@ export interface PreviewDrawerProps {
   scripts: string[];
   open: boolean;
   onOpenChange: (next: boolean) => void;
+  /** Persisted open-drawer height in px; `null` falls back to 50% of the pane. */
+  height: number | null;
+  onHeightChange: (height: number) => void;
   onStart: () => void;
   onStop: () => void;
   onRestart: () => void;
@@ -165,11 +173,77 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
     isScriptTab && vmEvents.activeProcesses.includes(active);
   const scriptIsKilling = isScriptTab && killingScripts.has(active);
 
+  // Drag-to-resize the open drawer. The height is applied imperatively to the
+  // drawer element during the drag (no per-frame React render, so the xterm
+  // refit stays smooth) and committed to persisted state on pointer-up. We
+  // don't reuse `react-resizable-panels` (ResizablePanelGroup in preview.tsx)
+  // here: that governs a horizontal split *inside* the tab body, whereas this
+  // drawer is a sibling below it whose "closed" state is a fixed-height,
+  // always-interactive toolbar — and the lib's controlled re-render per drag
+  // frame would fight the imperative height write above. Pointer capture binds
+  // the whole gesture to the handle, so pointerup/pointercancel are delivered
+  // even when the cursor leaves the window (no sticky drag / stuck body cursor).
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const handleResizeStart = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!props.open) return;
+    const el = drawerRef.current;
+    const pane = el?.parentElement;
+    if (!el || !pane) return;
+    e.preventDefault();
+    const handle = e.currentTarget;
+    const { pointerId } = e;
+    handle.setPointerCapture(pointerId);
+    const startY = e.clientY;
+    const startHeight = el.getBoundingClientRect().height;
+    const paneHeight = pane.getBoundingClientRect().height;
+    let nextHeight = startHeight;
+    const onMove = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      // Dragging up (smaller clientY) grows the drawer; clamp so it stays
+      // usable and never swallows the tab body above it.
+      nextHeight = clampDrawerHeight(
+        startHeight + (startY - ev.clientY),
+        paneHeight,
+      );
+      el.style.height = `${nextHeight}px`;
+    };
+    const finish = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", finish);
+      handle.removeEventListener("pointercancel", finish);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+      props.onHeightChange(nextHeight);
+    };
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "row-resize";
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", finish);
+    handle.addEventListener("pointercancel", finish);
+  };
+
   return (
     <div
+      ref={drawerRef}
       className="flex shrink-0 flex-col"
-      style={{ height: props.open ? "50%" : "auto" }}
+      style={{
+        height: props.open ? (props.height ?? "50%") : "auto",
+        // Cap relative to the pane so a persisted px height from a taller
+        // window can never swallow the tab body above when the window shrinks.
+        // `max(MIN, …)` keeps the same floor as `clampDrawerHeight` so a pane
+        // shorter than the reserve can't collapse the drawer past the min.
+        maxHeight: props.open
+          ? `max(${DRAWER_MIN_HEIGHT}px, calc(100% - ${DRAWER_TOP_RESERVE}px))`
+          : undefined,
+      }}
     >
+      {props.open && (
+        <ResizeHandle
+          onPointerDown={handleResizeStart}
+          label={t("sandbox.preview.resizeTerminal")}
+        />
+      )}
       <DrawerToolbar
         status={props.status}
         open={props.open}
@@ -251,6 +325,36 @@ function DrawerBody({
       >
         <Play className="size-3.5" /> {t("sandbox.drawer.run")}
       </button>
+    </div>
+  );
+}
+
+/**
+ * Drag strip along the drawer's top edge. Sits flush over the toolbar's top
+ * border (`-mb-px`) so the divider becomes the resize affordance: at rest it's
+ * the toolbar border; on hover the line highlights and the cursor turns into
+ * `row-resize`. The actual resize math lives in `PreviewDrawer.handleResizeStart`.
+ *
+ * Pointer-only by design: keyboard resize (a focusable splitter with
+ * arrow-key + `aria-valuenow`) is intentionally out of scope; the collapse
+ * chevron in the toolbar remains the keyboard path to change the drawer size.
+ */
+function ResizeHandle({
+  onPointerDown,
+  label,
+}: {
+  onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
+  label: string;
+}) {
+  return (
+    <div
+      role="separator"
+      aria-orientation="horizontal"
+      aria-label={label}
+      onPointerDown={onPointerDown}
+      className="group relative -mb-px h-1.5 shrink-0 cursor-row-resize"
+    >
+      <div className="absolute inset-x-0 bottom-0 h-px bg-transparent transition-colors group-hover:bg-primary" />
     </div>
   );
 }

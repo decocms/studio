@@ -7,7 +7,11 @@ import {
   REVIEWER_KINDS,
 } from "@decocms/shared/task-board";
 import { recordTaskActivity } from "./activity";
-import { fetchPrChecksStatus, resolveGithubConnection } from "./prs-get";
+import {
+  fetchPrChecksStatus,
+  invalidatePrReads,
+  resolveGithubConnection,
+} from "./prs-get";
 import { emitTaskBoardUpdated } from "./run-reactions";
 
 /** Cap the merge round-trip so a slow GitHub can't hang the caller. */
@@ -154,6 +158,9 @@ export async function mergeLinkedPr(
       );
       return fail("refused", content?.slice(0, 500));
     }
+    // The PR just changed under the polled read cache — drop it so the next
+    // poll sees `merged` and moves the card to Done immediately.
+    invalidatePrReads(conn.id);
     return { merged: true };
   } catch (err) {
     console.error("[task-board] merge PR failed", err);

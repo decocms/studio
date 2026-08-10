@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Badge } from "@deco/ui/components/badge.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { Badge } from "@decocms/ui/components/badge.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import { BrokenMCPList } from "./broken-mcp-list";
 import { MonitorConfiguration } from "./monitor-configuration";

@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "decocms-ui",
+  "compatibility_date": "2026-08-01",
+  "assets": {
+    "directory": "./storybook-static"
+  },
+  "routes": [
+    {
+      "pattern": "designsystem.decocms.com",
+      "custom_domain": true
+    }
+  ]
+}

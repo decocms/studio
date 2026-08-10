@@ -5,7 +5,7 @@
  */
 
 import { useRef, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import {
   DndContext,
@@ -29,10 +29,10 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { getInitials } from "@/lib/get-initials";
-import { cn } from "@deco/ui/lib/utils.ts";
-import { Button } from "@deco/ui/components/button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { useT } from "@/i18n/use-t.ts";
-import { Avatar } from "@deco/ui/components/avatar.tsx";
+import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import {
   Calendar,
   Columns03,
@@ -50,7 +50,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@deco/ui/components/popover.tsx";
+} from "@decocms/ui/components/popover.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -60,7 +60,7 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { QaAgentIcon } from "@/components/qa-agent-icon";
 import { CodeReviewerIcon } from "@/components/code-reviewer-icon";
@@ -72,7 +72,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
+} from "@decocms/ui/components/dialog.tsx";
 import {
   getWellKnownDecopilotVirtualMCP,
   useConnections,
@@ -118,9 +118,9 @@ import { AssigneePickerContent } from "./assignee-picker";
 import { SubscriptionPaywallDialog } from "./subscription-paywall-dialog";
 import { RerunDialog } from "./rerun-dialog";
 import { subscriptionErrorKind } from "@/components/task-board/is-subscription-error";
-import { isReportsTask } from "@decocms/shared/task-board";
+import { isReportsTask, type ReviewerKind } from "@decocms/shared/task-board";
 import { useFlipLanes } from "./use-flip-lanes";
-import { Calendar as DayPickerCalendar } from "@deco/ui/components/calendar.tsx";
+import { Calendar as DayPickerCalendar } from "@decocms/ui/components/calendar.tsx";
 import { buildTaskChatContext } from "./build-task-chat-context";
 import { useStudioTools } from "@/lib/studio-tools";
 import {
@@ -1823,34 +1823,94 @@ function TaskCard({
       )}
 
       {mainThread && (
-        <div className="-mx-3 flex flex-col gap-1.5 border-t border-border px-3 pt-3">
-          <AgentThreadFooterRow
-            icon={<SuperAgentIcon size={14} />}
-            name={t("taskBoard.taskDialog.superAgentDefaultName")}
-            thread={mainThread}
-          />
-          {reviewThreads.map(({ kind, thread }) => (
-            <AgentThreadFooterRow
-              key={thread.threadId}
-              icon={
-                kind === "qa" ? (
-                  <QaAgentIcon size={14} />
-                ) : (
-                  <CodeReviewerIcon size={14} />
-                )
-              }
-              name={t(
-                kind === "qa"
-                  ? "taskBoard.taskDialog.qaAgentLabel"
-                  : "taskBoard.taskDialog.codeReviewerLabel",
-              )}
-              thread={thread}
-            />
-          ))}
-        </div>
+        <AgentReviewFooter
+          mainThread={mainThread}
+          reviewThreads={reviewThreads}
+        />
       )}
     </button>
   );
+}
+
+/** An agent thread paired with its glyph kind and display name, for the card footer. */
+type FooterAgent = {
+  kind: "main" | ReviewerKind;
+  name: string;
+  thread: TaskBoardItemThread;
+};
+
+/** Rank for picking which agent's row the card footer shows — lower wins. A
+ *  running/awaiting-input agent is always the most important thing on the
+ *  card; once nothing is running, a failure is the most important thing;
+ *  otherwise (everything `completed`) the most recently run agent wins. */
+function statusPriority(status: TaskBoardItemThread["status"]): number {
+  if (status === "in_progress" || status === "requires_action") return 0;
+  if (status === "failed") return 1;
+  return 2;
+}
+
+/**
+ * The card footer shows a single row for whichever agent thread — the Super
+ * Agent's own run, or a QA/code-review thread — matters most right now:
+ * something running or awaiting input beats everything else, an error beats
+ * a clean run, and among equals the most recently run agent wins. Stacking
+ * all three threads (one row each, or a row plus a collapsed icon strip)
+ * cost more space than it was worth for a card whose job is a quick glance —
+ * full activity detail already lives one click away in the task dialog.
+ */
+function AgentReviewFooter({
+  mainThread,
+  reviewThreads,
+}: {
+  mainThread: TaskBoardItemThread;
+  reviewThreads: { kind: ReviewerKind; thread: TaskBoardItemThread }[];
+}) {
+  const t = useT();
+  const agents: FooterAgent[] = [
+    {
+      kind: "main",
+      name: t("taskBoard.taskDialog.superAgentDefaultName"),
+      thread: mainThread,
+    },
+    ...reviewThreads.map(({ kind, thread }) => ({
+      kind,
+      name: t(
+        kind === "qa"
+          ? "taskBoard.taskDialog.qaAgentLabel"
+          : "taskBoard.taskDialog.codeReviewerLabel",
+      ),
+      thread,
+    })),
+  ];
+  const featuredAgent = agents.reduce((best, agent) => {
+    const rank = statusPriority(agent.thread.status);
+    const bestRank = statusPriority(best.thread.status);
+    if (rank !== bestRank) return rank < bestRank ? agent : best;
+    return agent.thread.createdAt > best.thread.createdAt ? agent : best;
+  });
+
+  return (
+    <div className="-mx-3 flex flex-col gap-1.5 border-t border-border px-3 pt-3">
+      <AgentThreadFooterRow {...featuredAgent} />
+    </div>
+  );
+}
+
+/** An agent's glyph — the Super Agent capybara, or the QA/Code Reviewer badge. */
+function AgentGlyph({
+  kind,
+  size,
+  className,
+}: {
+  kind: FooterAgent["kind"];
+  size: number;
+  className?: string;
+}) {
+  if (kind === "qa") return <QaAgentIcon size={size} className={className} />;
+  if (kind === "code_review") {
+    return <CodeReviewerIcon size={size} className={className} />;
+  }
+  return <SuperAgentIcon size={size} className={className} />;
 }
 
 /**
@@ -1859,21 +1919,13 @@ function TaskCard({
  * thread's last message. A condensed version of `ThreadActivityItem`'s status
  * row in the task dialog.
  */
-function AgentThreadFooterRow({
-  icon,
-  name,
-  thread,
-}: {
-  icon: ReactNode;
-  name: string;
-  thread: TaskBoardItemThread;
-}) {
+function AgentThreadFooterRow({ kind, name, thread }: FooterAgent) {
   const t = useT();
   const state = thread.status ? threadStatusStyle(thread.status, t) : null;
 
   return (
     <div className="flex items-center gap-1.5">
-      {icon}
+      <AgentGlyph kind={kind} size={16} />
       <span className="shrink-0 text-xs font-medium text-foreground">
         {name}
       </span>

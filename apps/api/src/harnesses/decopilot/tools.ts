@@ -24,6 +24,7 @@ import type { GithubRepo } from "@decocms/shared/sdk";
 import type { StudioContext } from "@/core/studio-context";
 import {
   getThreadGithubRepo,
+  getThreadPinnedRef,
   resolveSandboxBranch,
 } from "@/tools/sandbox/thread-repo";
 import type { PassthroughClient } from "@/mcp-clients/virtual-mcp/passthrough-client";
@@ -300,6 +301,10 @@ export async function assembleDecopilotTools(
     // real repo-agents never carry one. When present it pins the thread to a
     // dedicated `thread:<id>` sandbox branch (not the shared "ephemeral" one).
     const threadRepo = await getThreadGithubRepo(ctx, extras.threadId);
+    // Must be read here too, not just in `resolveSandboxBranchForThread`: this
+    // derivation and the dispatch path's have to agree exactly, and a pin seen
+    // by only one of them would provision a second pod for the same thread.
+    const pinnedRef = await getThreadPinnedRef(ctx, extras.threadId);
     const vmContext: VmContext | null = input.user.id
       ? {
           virtualMcpId: input.agent.id,
@@ -311,6 +316,7 @@ export async function assembleDecopilotTools(
             threadRepo,
             agentRepo: vmMetadata.githubRepo,
             runBranch: runContext.branch,
+            pinnedRef,
           }),
           userId: input.user.id,
           // Used by share_with_user to scope artifacts under

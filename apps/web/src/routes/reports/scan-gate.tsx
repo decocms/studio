@@ -134,7 +134,7 @@ function ScanScreen({
 
   return (
     <div
-      className="fixed inset-0 overflow-y-auto"
+      className="fixed inset-0 overflow-hidden"
       style={{
         color: DECK.ink,
         fontFamily: "Switzer, 'Inter var', Helvetica, Arial, sans-serif",
@@ -157,10 +157,10 @@ function ScanScreen({
         )}
       </div>
 
-      <div className="relative z-10 flex min-h-full flex-col items-center justify-center px-3 py-4 sm:px-5 sm:py-16">
+      <div className="relative z-10 flex h-full flex-col items-center justify-center px-3 py-4 sm:px-5 sm:py-8">
         {isActive && (
           <div
-            className="w-full max-w-[460px] rounded-2xl sm:rounded-3xl px-5 pt-5 pb-6 sm:px-8 sm:pt-8 sm:pb-9"
+            className="max-h-full w-full max-w-[460px] overflow-y-auto rounded-2xl sm:rounded-3xl px-5 pt-5 pb-6 sm:px-8 sm:pt-8 sm:pb-9"
             style={{
               background: "#fff",
               boxShadow:
@@ -297,7 +297,7 @@ function ScanScreen({
                 </a>
               </p>
             ) : (
-              <ReportSocialProof />
+              <ReportSocialProof compact />
             )}
           </div>
         )}

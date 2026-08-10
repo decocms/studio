@@ -1,5 +1,5 @@
 import type { UIMessage } from "ai";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { toEpochMs } from "../../../lib/format-time.ts";
 
 /**

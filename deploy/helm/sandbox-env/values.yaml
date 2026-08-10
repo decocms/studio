@@ -46,7 +46,7 @@ image:
   # instead of silently moving with `:latest`. Bump in lockstep with
   # packages/sandbox/package.json — release-studio-sandbox.yaml tags
   # images using that version. NEVER set this to "latest" in prod.
-  tag: "1.42.0"
+  tag: "1.44.6"
   # Override to Never on local kind clusters that load via `kind load`.
   pullPolicy: IfNotPresent
 
@@ -327,10 +327,18 @@ depsCache:
   # ── L2: cross-node golden archive (opt-in, off) ──────────────────────
   # The golden above is NODE-LOCAL: it only hits when the pod lands on a
   # node already warm for its repo. This tier removes that dependency by
-  # keeping a per-(repo, lockfile) tar.zst on an RWX volume (EFS), so any
-  # node in any zone can restore it. Requires `zstd` in the sandbox image.
+  # keeping a per-(repo, lockfile) tar.zst on an RWX volume, so any node in
+  # any zone can restore it. Requires `zstd` in the sandbox image.
   #
-  # STORE A TARBALL, NEVER MOUNT node_modules HERE. EFS/NFS charges
+  # Backed by S3 through the mountpoint CSI driver, not EFS: the tier stores
+  # one large blob and adding an EFS addon would have cost a filesystem, a
+  # mount target per AZ, a security group and ~13x the per-GB price, while
+  # `aws-mountpoint-s3-csi-driver` is already installed on the sandbox
+  # cluster. The bucket itself is a cloud resource and lives in terraform
+  # (decocms/terraform-eks-cluster eks-setup/s3-sandbox-golden.tf); pass its
+  # name as `bucketName` below and this chart provisions the PV/PVC over it.
+  #
+  # STORE A TARBALL, NEVER MOUNT node_modules HERE. A blob store charges
   # per-operation metadata latency: fatal across ~100k small files, a
   # non-issue for one large sequential blob. The per-file cost is paid by
   # the local extract.
@@ -353,36 +361,96 @@ depsCache:
   # tenant can tamper with. What flips that: a repo installing from a private
   # registry ships proprietary package source inside node_modules, which this
   # store would then expose fleet-wide. Do not enable remote for such repos
-  # without per-repo enforcement (an EFS access point per repo — which needs
-  # the repo known at mount time, i.e. it costs the warm pool).
+  # without per-repo enforcement (which needs the repo known at mount time,
+  # i.e. it costs the warm pool).
   #
-  # GROWTH: bounded, unlike the two caches above — the daemon prunes each
-  # repo's archives after a successful publish (untouched >7d, then newest 5
-  # kept; a restore touches mtime so a live lockfile never ages out). But
-  # prune runs only where publish does, and the tenant mount is read-only —
-  # so until a trusted writer exists NOTHING prunes, and a filesystem
-  # lifecycle policy is the only reaper.
+  # Cross-RELEASE reads are NOT possible, though: each release mounts the
+  # bucket under its own `prefix=<envName>/`, so stg cannot publish an
+  # archive that prod then restores.
+  #
+  # GROWTH: the daemon prunes each repo's archives after a successful publish
+  # (untouched >7d, then newest 5 kept) — but prune runs only where publish
+  # does, and the tenant mount is read-only, so until a trusted writer exists
+  # NOTHING prunes from here. The bucket's own lifecycle policy is the only
+  # reaper, and on mountpoint it is the only one that CAN be: there is no
+  # utimes, so the mtime-touch that keeps a live lockfile from ageing out
+  # elsewhere does not work. Expiry counts from object creation, so an archive
+  # in active use still expires (14d in terraform today) and the next boot
+  # pays one full install and republishes.
   remote:
     enabled: false
-    # Existing RWX PVC backed by the shared filesystem. Required when
-    # enabled. Mounted read-only; the daemon reads only its own
-    # <repoHash>/ prefix. Whole-volume (not a per-repo subPath) because
-    # warm-pool pods are bound before they know their repo.
-    pvcName: ""
     mountPath: /golden-cache
+    # Ignored by object-store CSI drivers (the store is unbounded) but
+    # required by the PV and PVC schemas, and the claim's request must not
+    # exceed the volume's capacity.
+    capacity: 1200Gi
+
+    # ── where the volume comes from: pick exactly ONE of the three ──────
     #
-    # PROVISION THE VOLUME'S ROOT DIRECTORY YOURSELF — this chart cannot.
-    # A freshly-provisioned volume comes up root-owned, and nothing here can
-    # fix that: the tenant mount is read-only by design, and fsGroup does not
-    # apply to it. So the sandbox uid (1000) must already be able to traverse
-    # and read the root, and the trusted writer must be able to create
-    # `<mountPath>/golden/`. Verified the hard way on a bare RWX volume —
-    # publish fails with `EACCES: mkdir '/golden-cache/golden'` and every
-    # restore then misses, silently, forever.
+    # Mounted read-only and whole-volume in every case: warm-pool pods are
+    # bound before they know their repo, so a per-repo subPath can't be
+    # picked at mount time. The daemon reads only its own <repoHash>/ prefix
+    # by convention, not by enforcement (see CROSS-REPO READS above).
+
+    # (1) DYNAMIC — the chart renders only a PVC and lets your provisioner
+    # create the volume. The idiomatic path when self-hosting: install
+    # whichever RWX CSI driver you run (EFS, gcsfuse, Azure Blob, NFS,
+    # JuiceFS, ...), create a StorageClass, name it here, and this chart
+    # stays cloud-agnostic. Nothing below is used.
+    storageClassName: ""
+
+    # (2) STATIC — the chart renders a PV *and* its PVC. Needed for drivers
+    # with no dynamic provisioner, which is the AWS case: mountpoint-S3 is
+    # static-provisioning only, so there is no StorageClass to claim against
+    # and the PV has to be declared. Active when `attributes` is non-empty.
     #
-    # On EFS that means an access point with a RootDirectory CreationInfo
-    # granting uid/gid 1000 (or 0755 with a readable path), not the
-    # filesystem root.
+    # Both objects are named per release and, via the default `prefix`
+    # option, keyed per release — so two environments sharing
+    # agent-sandbox-system cannot read or overwrite each other's archives.
+    volume:
+      driver: s3.csi.aws.com
+      # Verbatim into the PV's csi.volumeAttributes. For mountpoint-S3 that
+      # is the bucket from terraform (`sandbox_golden_bucket` output).
+      attributes: {}
+        # bucketName: eks-serverless-sandbox-golden
+      #
+      # These defaults are MOUNTPOINT-S3 SYNTAX. For any other driver,
+      # replace the list wholesale — option names are not portable. Each
+      # entry is passed through `tpl`, so chart helpers are available.
+      #
+      # Why each one is load-bearing:
+      #   read-only     at the mount, not only at the pod's volumeMount, so
+      #                 a consumer that forgets `readOnly: true` still can't
+      #                 write.
+      #   uid/gid 1000  mountpoint synthesises ownership; without these every
+      #                 object reads as root-owned and the sandbox uid cannot
+      #                 open it. Publish is best-effort and swallows the
+      #                 EACCES, so the symptom is "the cache never hits", not
+      #                 a permission error. Must track the pod
+      #                 securityContext in sandbox-template.yaml.
+      #   allow-other   required for a non-root process to touch a FUSE
+      #                 mount it did not create.
+      #   prefix        per-release key isolation (trailing slash matters).
+      mountOptions:
+        - read-only
+        - uid=1000
+        - gid=1000
+        - allow-other
+        - prefix={{ include "sandbox-env.envName" . }}/
+
+    # (3) EXISTING CLAIM — mount a PVC this chart neither creates nor
+    # manages. Nothing above is used.
+    #
+    # PROVISION THAT VOLUME'S ROOT YOURSELF — this chart cannot. A freshly
+    # provisioned volume comes up root-owned, and nothing here can fix it:
+    # the tenant mount is read-only by design and fsGroup does not apply. So
+    # uid 1000 must already be able to traverse and read the root, and the
+    # trusted writer must be able to create `<mountPath>/golden/`. Verified
+    # the hard way — publish fails with `EACCES: mkdir '/golden-cache/golden'`
+    # and, publish being best-effort, every restore then misses silently and
+    # forever. Paths (1) and (2) handle ownership for you: (2) via
+    # mountOptions, (1) via your StorageClass / access point.
+    pvcName: ""
 
 # ── sentinel token ─────────────────────────────────────────────────────
 sentinel:
@@ -421,6 +489,25 @@ warmPool:
     # Optional autoscaling/v2 `behavior` block (scale-up/down stabilization
     # windows, policies). Left empty = cluster defaults.
     behavior: {}
+
+# ── tenant warm pools ──────────────────────────────────────────────────
+# Warm pods that are already running ONE org's repo + dev server (the generic
+# warmPool above only warms EMPTY pods). Each entry renders a SandboxWarmPool
+# against the shared SandboxTemplate; Studio bootstraps and refreshes the pods.
+#
+# Every entry needs a matching object in Studio's STUDIO_SANDBOX_TENANT_POOLS
+# with the SAME `name` — that JSON is what carries the org, repo, connection
+# and branch. Empty by default; a tenant pool is per-org opt-in and each slot
+# is a permanently billed pod.
+#
+# The name must end with `-<envName>`: this chart shares agent-sandbox-system
+# across releases, so an undecorated name lets staging and prod fight over one
+# pool. It is validated, not derived — the same literal goes in both places.
+#
+#   tenantPools:
+#     - name: tenant-acme-site-prod  # DNS label ending in -<envName>
+#       size: 2                      # keep this many warm pods ready
+tenantPools: []
 
 # ── node placeholder / "balloon" (optional) ────────────────────────────
 # Warm NODE capacity for the sandbox NodePool. warmPool warms *pods*; this

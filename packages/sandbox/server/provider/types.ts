@@ -205,6 +205,24 @@ export interface SandboxProvider {
   releaseAfter?(handle: string, graceMs: number): Promise<void>;
 
   /**
+   * Push this sandbox's shutdown back out to a full idle window, because
+   * someone is still watching it.
+   *
+   * The claim TTL is a wall clock that only `ensure()` renews, and nothing on
+   * the preview path calls `ensure()`: preview traffic goes gateway → pod
+   * without passing through Studio, and the housekeeper only ever moves
+   * shutdown earlier. So a sandbox a user was reading — but whose agent was
+   * idle — died mid-session at the TTL and self-healed into a cold reprovision.
+   *
+   * The counterpart to `releaseAfter`, and its mirror image: never brings
+   * shutdown EARLIER than it already is. Truly idle pods are still reaped —
+   * the housekeeper sweeps on daemon idle, which an open tab does not reset.
+   *
+   * Optional: callers must `?.()`.
+   */
+  renewTtl?(handle: string): Promise<void>;
+
+  /**
    * Drop this provider's in-process cache + persistent state for `handle`
    * WITHOUT contacting the daemon. Used by the auto-restart path when the
    * daemon is known-dead — `delete()` would try to reach the link and
@@ -213,6 +231,26 @@ export interface SandboxProvider {
    * the sole source of truth) can omit.
    */
   forgetHandle?(handle: string): Promise<void>;
+
+  /**
+   * Can the backing infrastructure schedule another sandbox right now?
+   *
+   * `false` means "do not ask for one yet" — the caller parks instead of
+   * claiming a sandbox that cannot be placed. Without it, over-admission is only
+   * discovered by waiting out `waitForSandboxReady` (180s) and failing the run,
+   * which is how one over-subscribed node turned an 8-card auto-fix into 4
+   * failed tasks: their pods sat `Pending` with
+   * `FailedScheduling: Insufficient memory`, and Studio's only limit was a fixed
+   * per-pod number that cannot see a cluster.
+   *
+   * `true` is not a reservation, just "nothing is currently unplaceable". A race
+   * between two admissions is fine: the loser fails and is retried, which is the
+   * pre-existing behavior.
+   *
+   * Optional: a provider that cannot answer omits it and callers admit
+   * immediately, preserving today's behavior exactly.
+   */
+  hasSchedulableCapacity?(): Promise<boolean>;
 
   /** Null when no workload was requested or the sandbox isn't running. */
   getPreviewUrl(handle: string): Promise<string | null>;

@@ -130,125 +130,6 @@
   }
 }
 
-/* ── CTA diagnostic device: scan line + floating finding badges ───────────
-   The closing slide shows a browser-framed store screenshot being scanned —
-   a lime line sweeps top→bottom and three finding badges pop in and float.
-   Ported from the decocms landing's HeroDiagnostic. Gated on [data-play] so it
-   only runs while the CTA slide is on screen. */
-.report-scan-line {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 2px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(208, 236, 26, 0.9) 40%,
-    rgba(208, 236, 26, 1) 50%,
-    rgba(208, 236, 26, 0.9) 60%,
-    transparent
-  );
-  box-shadow: 0 0 10px 5px rgba(208, 236, 26, 0.3);
-  opacity: 0;
-}
-[data-play="true"] .report-scan-line {
-  animation: report-scan 4s ease-in-out 0.6s infinite;
-}
-@keyframes report-scan {
-  0% {
-    top: 0;
-    opacity: 0;
-  }
-  5% {
-    opacity: 1;
-  }
-  62% {
-    top: 100%;
-    opacity: 1;
-  }
-  68%,
-  100% {
-    top: 100%;
-    opacity: 0;
-  }
-}
-
-.report-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  display: inline-block;
-}
-.report-badge {
-  position: absolute;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px 5px 8px;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.94);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow:
-    0 2px 12px rgba(0, 0, 0, 0.1),
-    0 1px 2px rgba(0, 0, 0, 0.06);
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-  color: #1a1a1a;
-  opacity: 0;
-}
-[data-play="true"] .report-badge-1 {
-  animation:
-    report-badge-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) 1s forwards,
-    report-float 3.5s ease-in-out 1.5s infinite;
-}
-[data-play="true"] .report-badge-2 {
-  animation:
-    report-badge-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) 1.5s forwards,
-    report-float 3.5s ease-in-out 2s infinite;
-}
-[data-play="true"] .report-badge-3 {
-  animation:
-    report-badge-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) 2s forwards,
-    report-float 3.5s ease-in-out 2.5s infinite;
-}
-@keyframes report-badge-in {
-  from {
-    opacity: 0;
-    transform: scale(0.82) translateY(5px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-@keyframes report-float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-5px);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  [data-play="true"] .report-scan-line {
-    animation: none;
-    opacity: 0;
-  }
-  [data-play="true"] .report-badge-1,
-  [data-play="true"] .report-badge-2,
-  [data-play="true"] .report-badge-3 {
-    animation: none;
-    opacity: 1;
-  }
-}
-
 /* ── Cover: holographic "Deco Score" card ────────────────────────────────
    The opening slide is a single physical trading card that deals itself in,
    tilts toward the pointer in 3-D, and carries a holographic foil that shifts
@@ -259,17 +140,19 @@
   perspective: 1050px;
 }
 
-/* Shared holo rainbow used by every foil layer. */
+/* Shared holo rainbow used by every foil layer. Deliberately pale: at 0.6 alpha
+   the six hues read as distinct blotches of pink/peach/lilac on white paper
+   rather than as one iridescent sheen. */
 .holo-tilt {
   --holo: repeating-linear-gradient(
     125deg,
-    rgba(255, 119, 115, 0.6) 0%,
-    rgba(255, 223, 110, 0.6) 8%,
-    rgba(158, 255, 120, 0.6) 16%,
-    rgba(120, 255, 244, 0.6) 24%,
-    rgba(120, 158, 255, 0.6) 32%,
-    rgba(216, 117, 255, 0.6) 40%,
-    rgba(255, 119, 115, 0.6) 48%
+    rgba(255, 119, 115, 0.4) 0%,
+    rgba(255, 223, 110, 0.4) 8%,
+    rgba(158, 255, 120, 0.4) 16%,
+    rgba(120, 255, 244, 0.4) 24%,
+    rgba(120, 158, 255, 0.4) 32%,
+    rgba(216, 117, 255, 0.4) 40%,
+    rgba(255, 119, 115, 0.4) 48%
   );
   --mx: 50%;
   --my: 50%;
@@ -318,38 +201,26 @@
    flat tint. Falls back to a soft central bloom at rest. */
 .holo-foil {
   background-image: var(--holo);
-  background-size: 260% 260%;
+  /* A big background-size is what makes this read as sheen instead of a
+     rainbow: at 260% roughly one full cycle spanned the card, so six hues sat
+     on the page at once in ~180px bands. Stretched, only two or three
+     neighbouring hues are ever visible and they blend into each other. */
+  background-size: 460% 460%;
   background-position: var(--posx) var(--posy);
   mix-blend-mode: overlay;
-  opacity: calc(0.35 + var(--active) * 0.5);
+  opacity: calc(0.16 + var(--active) * 0.4);
   -webkit-mask-image: radial-gradient(
     circle at var(--mx) var(--my),
     #000 0%,
-    rgba(0, 0, 0, 0.35) 30%,
-    transparent 58%
+    rgba(0, 0, 0, 0.3) 24%,
+    transparent 48%
   );
   mask-image: radial-gradient(
     circle at var(--mx) var(--my),
     #000 0%,
-    rgba(0, 0, 0, 0.35) 30%,
-    transparent 58%
+    rgba(0, 0, 0, 0.3) 24%,
+    transparent 48%
   );
-  transition: opacity 320ms ease;
-}
-
-/* Fine foil grain that catches the light on tilt. */
-.holo-lines {
-  background-image: repeating-linear-gradient(
-    100deg,
-    transparent 0px,
-    transparent 3px,
-    rgba(255, 255, 255, 0.5) 3px,
-    rgba(255, 255, 255, 0.5) 4px
-  );
-  background-size: 200% 100%;
-  background-position: var(--posx) 0;
-  mix-blend-mode: overlay;
-  opacity: calc(var(--active) * 0.28);
   transition: opacity 320ms ease;
 }
 
@@ -365,113 +236,296 @@
   transition: opacity 320ms ease;
 }
 
-/* The device-preview artwork sits on a large holographic panel whose rainbow
-   fill is bigger than the previews (so the rainbow reads as the card art), plus
-   its own stronger foil so the whole panel reads like real holo card art. */
-.holo-art-base {
-  background: linear-gradient(
-    135deg,
-    #ffd0e2 0%,
-    #e3d4ff 18%,
-    #cfe0ff 36%,
-    #ccf4e7 54%,
-    #fff1cc 72%,
-    #ffd6c9 88%,
-    #ffd0e2 100%
-  );
-  background-size: 200% 200%;
-  background-position: var(--posx) var(--posy);
-  transition: background-position 320ms ease;
+/* ── Cover: the index panel ───────────────────────────────────────────────
+   The right half of the cover card. It used to be a dark lacquered chamber —
+   deep forest, lime bloom, measurement grid — which read as a second surface
+   glued onto the paper one, cast the visitor's own screenshot green, and forced
+   every foil layer to be tuned twice (a light-coloured blend over #07401a can
+   only wash it out). It is now the same paper as the left page, lifted a shade
+   and hairlined, so the card is one sheet with two columns. */
+.deco-chamber {
+  background: #ffffff;
+  border: 1px solid rgba(40, 37, 36, 0.06);
+  box-shadow: 0 1px 2px rgba(40, 37, 36, 0.03);
 }
-@media (hover: none) {
-  .holo-art-base {
-    animation: decoFoilIdle 7s ease-in-out infinite;
-  }
+/* The chamber's browser preview earns its place only when the card is both wide
+   and tall enough to show more than the browser chrome; otherwise the chamber is
+   the macro-theme breakdown and the button alone. */
+.deco-chamber-preview {
+  display: none;
 }
-.holo-artfoil {
-  background-image: var(--holo);
-  background-size: 220% 220%;
-  background-position: var(--posx) var(--posy);
-  mix-blend-mode: color-dodge;
-  opacity: calc(0.16 + var(--active) * 0.5);
-  border-radius: inherit;
-  transition: opacity 320ms ease;
-}
-/* Glitter — two offset dot grids that catch the light as the card tilts, for
-   the cosmos-foil twinkle. color-dodge makes them read as bright glints over
-   the (darker) artwork; position shifts with the pointer so they shimmer. */
-.holo-sparkle {
-  background-image:
-    radial-gradient(
-      circle at 20% 35%,
-      rgba(255, 255, 255, 0.95) 0,
-      rgba(255, 255, 255, 0) 0.8px
-    ),
-    radial-gradient(
-      circle at 68% 12%,
-      rgba(190, 230, 255, 0.9) 0,
-      rgba(255, 255, 255, 0) 0.8px
-    ),
-    radial-gradient(
-      circle at 82% 74%,
-      rgba(255, 235, 190, 0.9) 0,
-      rgba(255, 255, 255, 0) 0.8px
+@media (min-width: 1024px) and (min-height: 800px) {
+  .deco-chamber-preview {
+    display: block;
+    /* The browser window is deliberately taller than the space it gets — it
+       bleeds down behind the index. Dissolve that edge instead of slicing it.
+       A plain 2-stop linear mask reads as a visible band on photographic
+       content: alpha and perceived opacity aren't the same curve, so a
+       "linear" fade looks like it lingers then snaps. Eased stops (the
+       standard easing-gradient curve, https://larsenwork.com/easing-gradients)
+       approximate an ease-out instead, over a taller 128px zone. */
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      #000 calc(100% - 128px),
+      rgba(0, 0, 0, 0.738) calc(100% - 90px),
+      rgba(0, 0, 0, 0.541) calc(100% - 68px),
+      rgba(0, 0, 0, 0.382) calc(100% - 51px),
+      rgba(0, 0, 0, 0.278) calc(100% - 39px),
+      rgba(0, 0, 0, 0.194) calc(100% - 30px),
+      rgba(0, 0, 0, 0.126) calc(100% - 21px),
+      rgba(0, 0, 0, 0.075) calc(100% - 15px),
+      rgba(0, 0, 0, 0.042) calc(100% - 10px),
+      rgba(0, 0, 0, 0.021) calc(100% - 6px),
+      rgba(0, 0, 0, 0.008) calc(100% - 3px),
+      transparent 100%
     );
-  background-size:
-    47px 61px,
-    71px 53px,
-    59px 79px;
-  background-position:
-    var(--posx) var(--posy),
-    calc(100% - var(--posx)) var(--posy),
-    var(--posx) calc(100% - var(--posy));
-  mix-blend-mode: color-dodge;
-  opacity: calc(var(--active) * 0.85);
-  border-radius: inherit;
-  transition: opacity 320ms ease;
-}
-@media (hover: none) {
-  .holo-sparkle {
-    opacity: 0.3;
-    animation: decoFoilIdle 7s ease-in-out infinite;
+    mask-image: linear-gradient(
+      to bottom,
+      #000 calc(100% - 128px),
+      rgba(0, 0, 0, 0.738) calc(100% - 90px),
+      rgba(0, 0, 0, 0.541) calc(100% - 68px),
+      rgba(0, 0, 0, 0.382) calc(100% - 51px),
+      rgba(0, 0, 0, 0.278) calc(100% - 39px),
+      rgba(0, 0, 0, 0.194) calc(100% - 30px),
+      rgba(0, 0, 0, 0.126) calc(100% - 21px),
+      rgba(0, 0, 0, 0.075) calc(100% - 15px),
+      rgba(0, 0, 0, 0.042) calc(100% - 10px),
+      rgba(0, 0, 0, 0.021) calc(100% - 6px),
+      rgba(0, 0, 0, 0.008) calc(100% - 3px),
+      transparent 100%
+    );
   }
 }
-.holo-artglare {
-  background: radial-gradient(
-    circle at var(--mx) var(--my),
-    rgba(255, 255, 255, 0.55),
-    rgba(255, 255, 255, 0) 45%
-  );
-  mix-blend-mode: overlay;
-  opacity: calc(var(--active) * 0.9);
-  border-radius: inherit;
-  transition: opacity 320ms ease;
+/* Wide-but-short viewports (a shallow browser window, not a phone) keep the
+   chamber `lg:flex-1` — it still stretches full height — while
+   `.deco-chamber-preview` drops out below `min-height: 800px`. With nothing
+   above the area rows and the bottom-anchored `justify-end`, the panel used
+   to leave a tall empty void above the rows instead of balancing against the
+   left column. Centering the remaining content here — the one breakpoint
+   band where the preview is truly gone but the panel is still full-height —
+   fixes that without touching the (correctly bottom-anchored) case where the
+   preview is showing. */
+@media (min-width: 1024px) and (max-height: 799px) {
+  .deco-chamber {
+    justify-content: center;
+  }
 }
 
-/* On short viewports the findings list scrolls inside the card rather than
-   overflowing it; keep the scrollbar unobtrusive. The deck shell already yields
-   nested-scroll gestures to this region before advancing slides. The mask puts
-   a "more below" fade over the last row when the list overflows. */
-.holo-findings {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(13, 9, 6, 0.18) transparent;
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    #000 calc(100% - 20px),
-    transparent 100%
-  );
-  mask-image: linear-gradient(
-    to bottom,
-    #000 calc(100% - 20px),
-    transparent 100%
-  );
+/* Centering alone still sat the rows+button block noticeably higher than the
+   left column's score+headline: the left never centers as a whole, it pins
+   the identity row at the top and only centers the *remainder* below it (see
+   the spacer comment further down — that's deliberate, to keep an overflowing
+   verdict from climbing onto the domain line). So the left's true content
+   band starts ~identity's-height below the card top, while the chamber's
+   started right at the top. A `padding-top` roughly matching identity's
+   height (measured, not guessed — ~52px at this width) before centering the
+   remainder reproduces the same "fixed offset, then centered" rhythm on the
+   right, so the two columns' content bands line up. The tightest band below
+   gets a smaller version of this once the card-shrinks-to-content rule
+   further down frees up enough margin for it. */
+@media (min-width: 1024px) and (min-height: 560px) and (max-height: 799px) {
+  .deco-chamber {
+    padding-top: 48px;
+  }
 }
-.holo-findings::-webkit-scrollbar {
-  width: 6px;
+
+/* A short viewport can't hold every layer of evidence at a readable size. The
+   cover keeps what makes someone read on — the verdict, the score and the
+   chapter index — and drops the breathing room around the story block.
+   Everything left keeps its own height (`shrink-0` on the story children),
+   so nothing silently collapses to zero when the column is tight.
+
+   The ring/number/margin/padding here are sized in four bands rather than
+   left as fixed Tailwind values, because at heights the original three-band
+   version didn't cover (a laptop with every toolbar open, or a browser
+   zoomed past ~125%) the headline and the chamber's area rows measurably
+   clipped against the card edge — verified with a Playwright box-metrics
+   sweep from 380px to 1000px, not eyeballed. Each band was picked so the
+   verdict block (identity + ring row + margin + headline) still fits inside
+   the card at the SHORTEST height the band covers, the worst case for that
+   band. Below ~420px height there's no band left that both fits and stays
+   legible; that's an accepted floor. Above ~800px the ring holds its full
+   (enlarged) size, since there's always slack there.
+
+   Written as four mutually-exclusive `max-height` bands so the winner never
+   depends on stylesheet order — a `lg:` utility and a `max-height` rule have
+   the same specificity, and which one lands is otherwise down to which file
+   the bundler emitted last. */
+.deco-cover-ring {
+  width: 100px;
+  height: 100px;
 }
-.holo-findings::-webkit-scrollbar-thumb {
-  background: rgba(13, 9, 6, 0.16);
-  border-radius: 6px;
+.deco-cover-number {
+  font-size: 2.25rem;
+}
+@media (min-width: 1024px) and (min-height: 800px) {
+  .deco-cover-ring {
+    width: 190px;
+    height: 190px;
+  }
+  .deco-cover-number {
+    font-size: 4.25rem;
+  }
+  .deco-cover-verdict {
+    margin-top: 1.75rem;
+  }
+  .deco-cover-story {
+    padding-top: 1.75rem;
+    padding-bottom: 1.75rem;
+  }
+}
+@media (min-width: 1024px) and (min-height: 700px) and (max-height: 799px) {
+  .deco-cover-ring {
+    width: 128px;
+    height: 128px;
+  }
+  .deco-cover-number {
+    font-size: 2.75rem;
+  }
+  .deco-cover-verdict {
+    margin-top: 1.5rem;
+  }
+  .deco-cover-story {
+    padding-top: 1.5rem;
+    padding-bottom: 1.5rem;
+  }
+}
+
+/* Below ~700px the card is genuinely cramped (a 1024x660 window, a laptop with
+   every toolbar open). One more step down rather than letting the foot of the
+   column clip. */
+@media (min-width: 1024px) and (min-height: 560px) and (max-height: 699px) {
+  .deco-cover-ring {
+    width: 92px;
+    height: 92px;
+  }
+  .deco-cover-number {
+    font-size: 2.05rem;
+  }
+  .deco-cover-verdict {
+    margin-top: 0.875rem;
+  }
+  .deco-cover-story {
+    padding-top: 0.875rem;
+    padding-bottom: 0.625rem;
+  }
+}
+/* A browser zoomed past ~125–150% on a normal laptop screen lands here. */
+@media (min-width: 1024px) and (max-height: 559px) {
+  .deco-cover-ring {
+    width: 68px;
+    height: 68px;
+  }
+  .deco-cover-number {
+    font-size: 1.6rem;
+  }
+  .deco-cover-verdict {
+    margin-top: 0.5rem;
+  }
+  .deco-cover-story {
+    padding-top: 0.5rem;
+    padding-bottom: 0.375rem;
+  }
+  .deco-chamber-blur {
+    display: none;
+  }
+  .deco-chamber-content {
+    gap: 0.5rem;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+  .deco-cover-cta {
+    height: 2rem;
+  }
+  /* Same rhythm-matching as the band above, at a smaller offset: the card
+     shrinking to its content (below) freed up enough overflow margin here
+     to afford it, verified with the same measurement rig. */
+  .deco-chamber {
+    padding-top: 16px;
+  }
+}
+
+/* These were tuned tight back when the chamber had to assume it might get no
+   slack at all below `min-height:800px`. It always gets real slack now — the
+   card has a `min-height` floor (below) instead of shrinking arbitrarily
+   small — so rows this cramped were leaving the row block sitting in a
+   card with tens of px of headroom to spare, looking pinched for no reason.
+   Loosened back up, checked against the measured margin at each band's
+   shortest height so this still can't reintroduce clipping. */
+@media (max-height: 799px) {
+  .deco-cover-areas li {
+    padding-top: 0.875rem;
+    padding-bottom: 0.875rem;
+  }
+}
+@media (max-height: 699px) {
+  .deco-cover-areas li {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+}
+@media (max-height: 559px) {
+  .deco-cover-areas li {
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+  }
+}
+
+.deco-chamber::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 34px 34px;
+  -webkit-mask-image: radial-gradient(
+    120% 100% at 50% 0%,
+    #000 18%,
+    transparent 74%
+  );
+  mask-image: radial-gradient(120% 100% at 50% 0%, #000 18%, transparent 74%);
+}
+
+/* Only the small/short layouts scroll the breakdown; fade the last row there
+   so the overflow is legible as "there's more". Above `lg` it isn't clipped. */
+@media (max-width: 1023px) {
+  .deco-cover-areas {
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      #000 calc(100% - 18px),
+      transparent 100%
+    );
+    mask-image: linear-gradient(
+      to bottom,
+      #000 calc(100% - 18px),
+      transparent 100%
+    );
+  }
+}
+
+.deco-chamber-blur > div {
+  position: absolute;
+  inset: 0;
+}
+.deco-chamber-blur > div:nth-child(1) {
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 35%);
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 35%);
+}
+.deco-chamber-blur > div:nth-child(2) {
+  backdrop-filter: blur(9px);
+  -webkit-backdrop-filter: blur(9px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 35%, #000 60%);
+  mask-image: linear-gradient(to bottom, transparent 35%, #000 60%);
+}
+.deco-chamber-blur > div:nth-child(3) {
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 60%, #000 100%);
+  mask-image: linear-gradient(to bottom, transparent 60%, #000 100%);
 }
 
 /* Deal-in entrance — the card flips up around its vertical axis to face you
@@ -546,14 +600,6 @@
     opacity: 0.22;
     animation: decoFoilIdle 7s ease-in-out infinite;
   }
-  .holo-artfoil {
-    opacity: 0.42;
-    animation: decoFoilIdle 7s ease-in-out infinite;
-  }
-  .holo-lines {
-    opacity: 0.12;
-    animation: decoLinesIdle 7s ease-in-out infinite;
-  }
 }
 @keyframes decoFoilIdle {
   0%,
@@ -564,16 +610,6 @@
     background-position: 82% 74%;
   }
 }
-@keyframes decoLinesIdle {
-  0%,
-  100% {
-    background-position: 0 0;
-  }
-  50% {
-    background-position: 100% 0;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .holo-card,
   .holo-card[data-enter="true"] {
@@ -587,9 +623,39 @@
     animation: none;
     opacity: 0;
   }
-  .holo-foil,
-  .holo-artfoil,
-  .holo-lines {
+  .holo-foil {
     animation: none;
+  }
+}
+
+/* Below the preview's threshold, the card was still stretching to the full
+   slide height via this `h-full` chain — the centering/padding bands above
+   only repositioned the leftover space, they never reclaimed it. A card that
+   shrinks to its content here instead lets `.holo-stage`'s own
+   `items-center justify-center` absorb the extra as margin OUTSIDE the card,
+   which reads as "a smaller card, well-proportioned" instead of "a big card
+   with a hole in it". Verified with the same Playwright measurement rig used
+   above: card height at a 1400×590 viewport drops from ~353px (mostly empty)
+   to ~285px (snug to content), with no new overflow down to 420px.
+
+   Unbounded, that shrink went too far the other way: at the card's 1120px
+   max-width, ~200–285px of height is a 4–5.6:1 slab, far flatter than the
+   ~2:1 the card reads as everywhere else. `min-height` puts a floor under
+   the shrink — the card still gives back most of the empty space, just not
+   all of it — without touching the overflow math above, since more height
+   than content needs can't reintroduce clipping.
+
+   The floor is in `svh`, not a flat px, because a flat floor doesn't know
+   about the ~237px of header+footer chrome outside the card: at a fixed
+   420px it would ask for more height than a 420px-tall *viewport* even has
+   left to give, pushing the card into the chrome instead of just being
+   less-thin. Scaling with viewport height keeps the floor a fraction of
+   what's actually available at every height in this band, not just the
+   tallest one. */
+@media (max-height: 799px) {
+  .holo-card,
+  .holo-tilt {
+    height: auto;
+    min-height: min(380px, 58svh);
   }
 }

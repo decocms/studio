@@ -165,6 +165,20 @@ const previewProxyDeps = {
   getRunner: getOrInitRunnerForPreview,
 };
 
+// Tenant warm pools need the provider BEFORE any request: its reconciler is
+// what bootstraps the pool's pods, and the whole point is that they are warm
+// when the first user arrives. Everything else builds the provider lazily, so
+// without this a configured pool sits empty until someone happens to open a
+// sandbox. Fire-and-forget — a provider that can't be built must not stop boot.
+if (process.env.STUDIO_SANDBOX_TENANT_POOLS?.trim()) {
+  void getOrInitRunnerForPreview().catch((err: unknown) => {
+    console.warn(
+      "[lifecycle] eager sandbox provider init for tenant pools failed:",
+      err instanceof Error ? err.message : String(err),
+    );
+  });
+}
+
 // Create the Hono app (any DBOS.registerWorkflow calls happen during this
 // import chain). Launch DBOS afterwards so the registry is sealed before
 // the executor starts dequeueing workflows.

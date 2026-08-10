@@ -27,6 +27,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import * as net from "node:net";
 import { PassThrough } from "node:stream";
 import { sleep } from "@decocms/shared/std";
+import { createCapacityProbe } from "./capacity";
 import {
   type KubeConfig,
   KubeConfig as KubeConfigClass,
@@ -34,6 +35,7 @@ import {
 } from "@kubernetes/client-node";
 import type {
   Counter,
+  Gauge,
   Histogram,
   Meter,
   UpDownCounter,
@@ -42,6 +44,7 @@ import {
   ConfigRequestError,
   postConfig,
   postOrgFsConfig,
+  postSetupStep,
   probeDaemonHealth,
   proxyDaemonRequest,
   waitForDaemonReady,
@@ -71,6 +74,9 @@ import {
   ensureServicePort,
   getSandboxClaim,
   HTTPROUTE_CONSTANTS,
+  isPodUnbound,
+  listWarmPoolPods,
+  type WarmPoolPod,
   patchSandboxClaimShutdown,
   waitForClaimAdoptedSandbox,
   waitForSandboxClaimGone,
@@ -85,6 +91,13 @@ import {
   SandboxError,
 } from "./constants";
 import { watchClaimDeletions, watchClaimLifecycle } from "./lifecycle-watcher";
+import {
+  claimWarmPoolName,
+  poolCloneUrl,
+  poolsMatchingPush,
+  resolveTenantPool,
+  type TenantPool,
+} from "./tenant-pools";
 import { refreshCredentialsByConnection } from "./credential-refresh";
 import type { ClaimPhase } from "../lifecycle-types";
 
@@ -156,6 +169,20 @@ const DEFAULT_IDLE_TTL_MS = 15 * 60 * 1000;
 // the BUFFER window is re-minted within one INTERVAL, so the daemon's origin
 // token always keeps ≥ ~(BUFFER - INTERVAL) of life — never near the ~55min
 // expiry at an unpredictable SIGTERM. Requires BUFFER > INTERVAL.
+/** Tenant-pool reconcile cadence: fast enough that a replaced pod re-warms
+ *  promptly, slow enough that a steady-state pool costs one k8s list. */
+const TENANT_POOL_TICK_MS = 60 * 1000;
+/** Under the ~1h clone-token lifetime — the refresh IS the credential refresh. */
+const TENANT_POOL_REFRESH_MS = 30 * 60 * 1000;
+const TENANT_POOL_MAX_FAILURES = 3;
+/**
+ * How long a pod that hit the failure cap is left alone before one more try.
+ * The cap exists to stop hammering a genuinely broken pod (bad lockfile, no
+ * `dev` script); the cooldown exists because the same counter also catches
+ * transient failures, and this bookkeeping is per-replica in-memory — nothing
+ * else would ever un-stick the pod. The gauge reports these as `state=failed`.
+ */
+const TENANT_POOL_GIVE_UP_COOLDOWN_MS = 30 * 60 * 1000;
 const CREDENTIAL_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 const CREDENTIAL_REFRESH_BUFFER_MS = 30 * 60 * 1000;
 
@@ -331,6 +358,23 @@ export interface AgentSandboxProviderOptions {
    */
   sentinelToken?: string;
   /**
+   * Tenant warm pools (see `tenant-pools.ts`). A claim whose org+repo resolves
+   * to one binds a pod that is already running that repo's dev server instead
+   * of a generic (empty) warm pod. Empty = today's behavior everywhere.
+   *
+   * Requires warm-pool mode (`sentinelToken`): the reconciler configures
+   * unbound pool pods with the sentinel, and a pool pod could not accept a
+   * per-claim env token anyway.
+   */
+  tenantPools?: TenantPool[];
+  /**
+   * How often an unbound pool pod re-fetches its branch (and refreshes its
+   * clone credential, which is the same call). Must stay under the ~1h GitHub
+   * App token lifetime or a pod that idles long enough hands the user a dead
+   * `origin`. Default 30 min.
+   */
+  tenantPoolRefreshMs?: number;
+  /**
    * Studio environment name. When set, stamped as
    * `studio.decocms.com/env=<envName>` on claims/pods/HTTPRoutes so the
    * sandbox-env housekeeper can scope per-env. Must be DNS-label-safe;
@@ -408,6 +452,8 @@ export class AgentSandboxProvider implements SandboxProvider {
   private readonly stateStore: RunnerStateStore | null;
   private readonly previewUrlPattern: string | null;
   private readonly kubeConfig: KubeConfig;
+  /** Lazily built so a provider instance that never admits a run pays nothing. */
+  private capacityProbe?: () => Promise<boolean>;
   private readonly portForward: PortForward;
   private readonly namespace: string;
   private readonly sandboxTemplateName: string;
@@ -438,6 +484,20 @@ export class AgentSandboxProvider implements SandboxProvider {
   private readonly sentinelToken: string | null;
   /** See {@link AgentSandboxProviderOptions.mintCloneUrl}. */
   private readonly mintCloneUrl: AgentSandboxProviderOptions["mintCloneUrl"];
+  /** See {@link AgentSandboxProviderOptions.tenantPools}. */
+  private readonly tenantPools: readonly TenantPool[];
+  private readonly tenantPoolRefreshMs: number;
+  /**
+   * Per-pool-pod bookkeeping, keyed by pod UID. In-memory and per-replica on
+   * purpose: every entry is a "when did I last touch this pod" hint, and
+   * losing it costs one redundant (idempotent) config post per pod.
+   */
+  private readonly poolPods = new Map<
+    string,
+    { lastConfigAt: number; lastFailureAt: number; failures: number }
+  >();
+  /** Pool names a GitHub push says are stale; drained by the next tick. */
+  private readonly dirtyPools = new Set<string>();
   private closed = false;
   /** Aborts the background SandboxClaim-deletion watch on `close()`. */
   private readonly claimWatchAbort = new AbortController();
@@ -466,8 +526,18 @@ export class AgentSandboxProvider implements SandboxProvider {
     const trimmedSentinel = opts.sentinelToken?.trim() ?? "";
     this.sentinelToken = trimmedSentinel.length > 0 ? trimmedSentinel : null;
     this.mintCloneUrl = opts.mintCloneUrl;
+    this.tenantPools =
+      this.sentinelToken !== null ? (opts.tenantPools ?? []) : [];
+    if (this.sentinelToken === null && (opts.tenantPools?.length ?? 0) > 0) {
+      console.warn(
+        `[${LOG_LABEL}] tenant pools configured without a sentinel token — ignoring them (warm-pool mode is off)`,
+      );
+    }
+    this.tenantPoolRefreshMs =
+      opts.tenantPoolRefreshMs ?? TENANT_POOL_REFRESH_MS;
     this.startClaimReaper();
     this.startCredentialRefresher();
+    this.startTenantPoolReconciler();
   }
 
   /**
@@ -577,6 +647,18 @@ export class AgentSandboxProvider implements SandboxProvider {
       claimName: handle,
       signal,
     });
+  }
+
+  /**
+   * Can the cluster place another sandbox right now? See `capacity.ts` — the
+   * answer is "nothing is currently unschedulable", read from the scheduler's
+   * own verdict rather than forecast from node capacity. The admission gate
+   * parks on `false` instead of claiming a sandbox that would sit `Pending`
+   * until the 180s readiness timeout fails the run.
+   */
+  hasSchedulableCapacity(): Promise<boolean> {
+    this.capacityProbe ??= createCapacityProbe(this.kubeConfig, this.namespace);
+    return this.capacityProbe();
   }
 
   async getPreviewUrl(handle: string): Promise<string | null> {
@@ -1147,6 +1229,15 @@ export class AgentSandboxProvider implements SandboxProvider {
     // warmpool != "none". Studio delivers the per-claim secret post-bind via
     // POST /_sandbox/config + auth.rotateToken instead.
     const warmPoolMode = this.sentinelToken !== null;
+    // Tenant isolation lives here: the pool is resolved from the org of the
+    // user being served, never from anything in the request. The operator has
+    // no notion of a tenant — it binds whatever pool a claim names — and
+    // Studio is the only writer of SandboxClaims in this namespace.
+    const tenantPool = resolveTenantPool(this.tenantPools, {
+      orgId: opts.tenant?.orgId,
+      cloneUrl: opts.repo?.cloneUrl,
+      cloneOnly: opts.cloneOnly,
+    });
     const envEntries = warmPoolMode
       ? []
       : Object.entries(this.buildEnvMap(opts, boot))
@@ -1191,7 +1282,11 @@ export class AgentSandboxProvider implements SandboxProvider {
           ...(hasAnnotations ? { annotations } : {}),
         },
         env: envEntries,
-        warmpool: warmPoolMode ? "default" : "none",
+        warmpool: claimWarmPoolName(
+          tenantPool,
+          warmPoolMode,
+          this.sandboxTemplateName,
+        ),
         lifecycle: {
           shutdownPolicy: "Delete",
           shutdownTime: this.computeShutdownTime(),
@@ -1484,6 +1579,261 @@ export class AgentSandboxProvider implements SandboxProvider {
         }
       }
     })();
+  }
+
+  /**
+   * Keep each tenant pool's unbound pods warm: cloned, installed, running the
+   * dev server, on a live credential. The operator hands us running-but-empty
+   * pods; everything that makes them *warm* happens here.
+   *
+   * Studio pushes rather than letting a pod pull its own config: the clone
+   * credential is a ~1h GitHub App token, so it can't live in the template's
+   * env, and a pod authenticated only by the SHARED sentinel must never be
+   * able to ask for a tenant's repo credential.
+   *
+   * Runs on every replica with no leader election. That is safe because the
+   * work is idempotent from the daemon's side — it classifies each config post
+   * itself (bootstrap vs credential refresh), and its setup queue collapses
+   * concurrent step requests into one. Duplicated effort, never duplicated
+   * clones.
+   */
+  private startTenantPoolReconciler(): void {
+    if (this.tenantPools.length === 0) return;
+    const { signal } = this.claimWatchAbort;
+    void (async () => {
+      while (!signal.aborted) {
+        try {
+          await this.reconcileTenantPools();
+        } catch (err) {
+          console.warn(
+            `[${LOG_LABEL}] tenant pool reconcile failed: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+        await sleep(TENANT_POOL_TICK_MS, { signal }).catch(() => {});
+      }
+    })();
+  }
+
+  /**
+   * A GitHub push landed on a pool's branch — refresh its unbound pods on the
+   * next tick. Set-based, so a burst of pushes collapses into one refresh.
+   * Optional accelerator: without a webhook the periodic refresh below still
+   * picks the commits up within `tenantPoolRefreshMs`.
+   */
+  markTenantPoolsDirty(repoFullName: string, ref: string): string[] {
+    const matched = poolsMatchingPush(this.tenantPools, repoFullName, ref);
+    for (const pool of matched) this.dirtyPools.add(pool.name);
+    return matched.map((pool) => pool.name);
+  }
+
+  private async reconcileTenantPools(): Promise<void> {
+    for (const pool of this.tenantPools) {
+      const pods = await listWarmPoolPods(
+        this.kubeConfig,
+        this.namespace,
+        pool.name,
+      );
+      if (pods === null) {
+        console.warn(
+          `[${LOG_LABEL}] tenant pool ${pool.name}: no SandboxWarmPool (or no selector yet) in ${this.namespace}`,
+        );
+        continue;
+      }
+      const dirty = this.dirtyPools.delete(pool.name);
+      // A bound pod carries the claim's handle label. Never touch one: the user
+      // has a working tree on it, and a hard reset under them is data loss.
+      const unbound = pods.filter(
+        (pod) => !pod.labels[LABEL_KEYS.sandboxHandle],
+      );
+      for (const [uid] of this.poolPods) {
+        if (!pods.some((pod) => pod.uid === uid)) this.poolPods.delete(uid);
+      }
+      // Sequential: a whole pool reinstalling at once is a thundering herd on
+      // the registry and the node.
+      for (const pod of unbound) {
+        if (this.claimWatchAbort.signal.aborted) return;
+        await this.warmPoolPod(pool, pod, dirty);
+      }
+      this.recordPoolDepth(pool, pods, unbound);
+    }
+  }
+
+  /**
+   * Pool depth by state. `ready` is the number that matters — pods a claim can
+   * bind instantly — and it is the one thing that distinguishes "the pool is
+   * working" from "the pool is N pods of pure cost". Alert on sustained
+   * ready=0; both failure modes that produce it (RBAC and a bootstrap that
+   * never completes) are otherwise silent.
+   */
+  private recordPoolDepth(
+    pool: TenantPool,
+    pods: readonly WarmPoolPod[],
+    unbound: readonly WarmPoolPod[],
+  ): void {
+    const gauge = this.metrics?.poolPods;
+    if (!gauge) return;
+    let ready = 0;
+    let failed = 0;
+    for (const pod of unbound) {
+      const seen = this.poolPods.get(pod.uid);
+      if (!seen) continue;
+      if (seen.failures >= TENANT_POOL_MAX_FAILURES) failed++;
+      else if (seen.lastConfigAt > 0) ready++;
+    }
+    const attrs = { pool: pool.name, org: pool.orgId };
+    gauge.record(ready, { ...attrs, state: "ready" });
+    gauge.record(pods.length - unbound.length, { ...attrs, state: "bound" });
+    gauge.record(unbound.length - ready - failed, {
+      ...attrs,
+      state: "pending",
+    });
+    gauge.record(failed, { ...attrs, state: "failed" });
+  }
+
+  private async warmPoolPod(
+    pool: TenantPool,
+    pod: WarmPoolPod,
+    dirty: boolean,
+  ): Promise<void> {
+    const seen = this.poolPods.get(pod.uid);
+    // A pod that fails to warm repeatedly (bad lockfile, private submodule, no
+    // `dev` script) would otherwise be retried forever while the pool *looks*
+    // full. Stop touching it and say so once — but not forever: the same
+    // counter catches a transient blip (a port-forward reset, a mint 500), and
+    // permanently blackholing a pod over one bad minute costs a whole slot
+    // until this replica restarts. After the cooldown it gets one more chance.
+    if (seen && seen.failures >= TENANT_POOL_MAX_FAILURES) {
+      if (Date.now() - seen.lastFailureAt < TENANT_POOL_GIVE_UP_COOLDOWN_MS) {
+        return;
+      }
+      this.poolPods.set(pod.uid, { ...seen, failures: 0 });
+    }
+    // A refresh re-fetches the branch and restarts dev. A first sight doesn't:
+    // this replica may simply have restarted under a pool that is already warm,
+    // and every replica bouncing every pod's dev server on boot is a
+    // self-inflicted outage. The config post still happens (rotating a stale
+    // credential); new commits wait for the next periodic refresh.
+    const refresh =
+      dirty ||
+      (seen !== undefined &&
+        Date.now() - seen.lastConfigAt >= this.tenantPoolRefreshMs);
+    if (seen && !refresh) return;
+
+    const repo = {
+      cloneUrl: poolCloneUrl(pool),
+      connectionId: pool.connectionId,
+      branch: pool.branch,
+      // No user: the daemon leaves `claimed` false for an identity-less config,
+      // which is what keeps the housekeeper's idle sweep off an unbound pod.
+      userName: "",
+      userEmail: "",
+    };
+    const fresh = await this.withFreshCloneUrl(repo);
+    if (pool.connectionId && fresh.cloneUrl === repo.cloneUrl) {
+      // The pool named a connection but the mint gave nothing back. Posting the
+      // anonymous URL would clone a private repo without credentials — where it
+      // doesn't hang on a password prompt it leaves the pod on a remote the
+      // user can't push to. Skip; the next tick retries.
+      this.recordPoolFailure(pod, pool, "clone credential mint failed");
+      return;
+    }
+    const forward = await this.openForwarder(
+      pod.name,
+      DAEMON_CONTAINER_PORT,
+      pod.name,
+    ).catch(() => null);
+    if (!forward) {
+      this.recordPoolFailure(pod, pool, "port-forward failed");
+      return;
+    }
+    const daemonUrl = `http://127.0.0.1:${forward.localPort}`;
+    try {
+      await waitForDaemonReady(daemonUrl);
+      const sentinel = this.sentinelToken;
+      if (!sentinel) return;
+      // Re-check unbound immediately before each step that touches the tree.
+      // The pool listing is a snapshot and warming a pool walks it pod by pod
+      // over minutes; a claim that binds this pod in between would otherwise
+      // get its working tree hard-reset under it. Worst case the user gets one
+      // extra restart, never a reset tree.
+      if (!(await this.isPoolPodUnbound(pod))) return;
+      // The daemon classifies this itself: bootstrap on a fresh pod (clone →
+      // install → dev), git-credential-refresh on one already warm.
+      const payload =
+        buildConfigPayload({
+          runtime: pool.workload.runtime,
+          // No package manager configured → the daemon autodetects from the
+          // lockfile, same as a claim that names none.
+          packageManager: pool.workload.packageManager
+            ? {
+                name: pool.workload.packageManager,
+                ...(pool.workload.packageManagerPath
+                  ? { path: pool.workload.packageManagerPath }
+                  : {}),
+              }
+            : null,
+          repo: fresh,
+          port: pool.workload.devPort ?? DEFAULT_DEV_PORT,
+        }) ?? {};
+      const { transition } = await postConfig(daemonUrl, sentinel, payload);
+      // A bootstrap already clones. Anything else only updated stored config,
+      // so a refresh has to ask for the fetch + reset + restart itself.
+      if (
+        refresh &&
+        transition !== "bootstrap" &&
+        (await this.isPoolPodUnbound(pod))
+      ) {
+        await postSetupStep(daemonUrl, sentinel, "clone");
+      }
+      this.poolPods.set(pod.uid, {
+        lastConfigAt: Date.now(),
+        lastFailureAt: 0,
+        failures: 0,
+      });
+      console.log(
+        `[${LOG_LABEL}] tenant pool ${pool.name}: warmed ${pod.name} (${transition})`,
+      );
+    } catch (err) {
+      this.recordPoolFailure(
+        pod,
+        pool,
+        err instanceof Error ? err.message : String(err),
+      );
+    } finally {
+      this.closeForwarder(forward);
+    }
+  }
+
+  private isPoolPodUnbound(pod: WarmPoolPod): Promise<boolean> {
+    return isPodUnbound(
+      this.kubeConfig,
+      this.namespace,
+      pod.name,
+      LABEL_KEYS.sandboxHandle,
+    );
+  }
+
+  private recordPoolFailure(
+    pod: WarmPoolPod,
+    pool: TenantPool,
+    reason: string,
+  ): void {
+    const prev = this.poolPods.get(pod.uid);
+    const failures = (prev?.failures ?? 0) + 1;
+    this.poolPods.set(pod.uid, {
+      lastConfigAt: prev?.lastConfigAt ?? 0,
+      lastFailureAt: Date.now(),
+      failures,
+    });
+    const giveUp =
+      failures >= TENANT_POOL_MAX_FAILURES
+        ? ` — backing off ${TENANT_POOL_GIVE_UP_COOLDOWN_MS / 60_000}min`
+        : "";
+    console.warn(
+      `[${LOG_LABEL}] tenant pool ${pool.name}: warming ${pod.name} failed (${failures}/${TENANT_POOL_MAX_FAILURES})${giveUp}: ${reason}`,
+    );
   }
 
   /**
@@ -2071,6 +2421,36 @@ export class AgentSandboxProvider implements SandboxProvider {
     );
   }
 
+  /** See `SandboxProvider.renewTtl`. */
+  async renewTtl(handle: string): Promise<void> {
+    const claim = await getSandboxClaim(
+      this.kubeConfig,
+      this.namespace,
+      handle,
+    );
+    // Already gone. Do NOT recreate it — the watcher's own self-heal owns
+    // reprovisioning, and a claim resurrected from here would carry none of
+    // the env a working sandbox needs.
+    if (!claim) return;
+    const next = laterShutdown(
+      claim.spec?.lifecycle?.shutdownTime,
+      new Date(Date.now() + this.idleTtlMs),
+    );
+    if (!next) return;
+    await patchSandboxClaimShutdown(
+      this.kubeConfig,
+      this.namespace,
+      handle,
+      next,
+    ).catch((err) =>
+      // Best-effort: a missed renewal costs one reprovision, and the next
+      // heartbeat retries well inside the TTL. Never fail an SSE stream over it.
+      console.warn(
+        `[${LOG_LABEL}] TTL renew failed for ${handle}: ${err instanceof Error ? err.message : String(err)}`,
+      ),
+    );
+  }
+
   // ---- Port-forwarding ------------------------------------------------------
 
   /**
@@ -2232,6 +2612,7 @@ interface RunnerMetrics {
   active: UpDownCounter;
   ensureOutcome: Counter;
   proxyDurationMs: Histogram;
+  poolPods: Gauge;
 }
 
 function buildRunnerMetrics(meter: Meter): RunnerMetrics {
@@ -2250,6 +2631,11 @@ function buildRunnerMetrics(meter: Meter): RunnerMetrics {
       description:
         "Wall-clock latency of studio-mediated requests to the sandbox daemon: tool exec proxies (source=daemon) and preview iframe traffic (source=preview).",
       unit: "ms",
+    }),
+    poolPods: meter.createGauge("studio.sandbox.pool.pods", {
+      description:
+        "Tenant warm pool depth by pool and state: ready (warmed and unbound — what a claim can actually bind instantly), bound (serving a user), pending (unbound, not yet warmed), failed (gave up after repeated bootstrap failures). Alert on sustained ready=0: a pool that is always empty is doing nothing while costing N pods.",
+      unit: "{pod}",
     }),
   };
 }
@@ -2548,6 +2934,24 @@ export function earlierShutdown(
   if (current) {
     const currentMs = new Date(current).getTime();
     if (Number.isFinite(currentMs) && currentMs <= target.getTime())
+      return null;
+  }
+  return target.toISOString();
+}
+
+/**
+ * The shutdownTime to patch so a watched claim survives to `target`, or null to
+ * leave it alone. Only ever moves shutdown LATER — the mirror of
+ * `earlierShutdown`, and monotonic for the same reason: a renewal must never
+ * undercut a longer commitment something else just made.
+ */
+export function laterShutdown(
+  current: string | undefined,
+  target: Date,
+): string | null {
+  if (current) {
+    const currentMs = new Date(current).getTime();
+    if (Number.isFinite(currentMs) && currentMs >= target.getTime())
       return null;
   }
   return target.toISOString();

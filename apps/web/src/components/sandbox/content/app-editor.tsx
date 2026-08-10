@@ -1,9 +1,10 @@
 import { ChevronRight, Loading01 } from "@untitledui/icons";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { cn } from "@deco/ui/lib/utils.js";
-import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import { AddSectionModal } from "@/components/sections-editor/add-section-modal";
+import { useSectionPreviewBase } from "@/components/sections-editor/use-section-preview-base";
 import { appLabel } from "@/components/sections-editor/page-list";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import type { SectionCatalogEntry } from "@/components/sections-editor/section-catalog";
@@ -15,7 +16,11 @@ import {
 import { resolveAppEditorSchema } from "./app-editor-schema";
 import { buildSectionBlockFromCatalogEntry } from "./section-create";
 import { SchemaForm } from "@/components/sections-editor/schema-form";
-import { breadcrumbsForHeaderClick } from "@/components/sections-editor/schema-form-breadcrumb";
+import {
+  breadcrumbsForHeaderClick,
+  type Crumb,
+  crumbLabel,
+} from "@/components/sections-editor/schema-form-breadcrumb";
 import { SaveStatus } from "./blog/save-status";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -46,6 +51,12 @@ export function AppEditor({
   previewBaseUrl?: string | null;
 }) {
   const t = useT();
+  // Section-gallery previews render against the sandbox dev server, falling
+  // back to the Fast Preview production deployment while the sandbox boots.
+  const sectionPreviewBase = useSectionPreviewBase({
+    virtualMcpId,
+    sandboxUrl: previewBaseUrl,
+  });
   const resolveType =
     typeof block?.__resolveType === "string" ? block.__resolveType : "";
   const schema = resolveAppEditorSchema(resolveType, meta, excludeFields);
@@ -69,7 +80,7 @@ export function AppEditor({
     null,
   );
   const [formResetKey, setFormResetKey] = useState(0);
-  const [breadcrumbs, setBreadcrumbs] = useState<string[]>([]);
+  const [breadcrumbs, setBreadcrumbs] = useState<Crumb[]>([]);
   const [addSectionOpen, setAddSectionOpen] = useState(false);
   const pendingAppendRef = useRef<((item: unknown) => void) | null>(null);
 
@@ -95,7 +106,7 @@ export function AppEditor({
     });
   };
 
-  const handleBreadcrumbChange = (next: string[]) => {
+  const handleBreadcrumbChange = (next: Crumb[]) => {
     setBreadcrumbs(next);
   };
 
@@ -155,9 +166,10 @@ export function AppEditor({
           >
             {headerCrumbs.map((crumb, index) => {
               const isLast = index === headerCrumbs.length - 1;
+              const crumbText = crumbLabel(crumb);
               return (
                 <span
-                  key={`${crumb}-${index}`}
+                  key={`${crumbText}-${index}`}
                   className="flex min-w-0 items-center gap-1 overflow-hidden"
                 >
                   {index > 0 && (
@@ -175,7 +187,7 @@ export function AppEditor({
                       }
                       setFormResetKey((key) => key + 1);
                     }}
-                    title={crumb}
+                    title={crumbText}
                     className={cn(
                       "min-w-0 truncate rounded-md px-1 py-0.5 text-left transition-colors",
                       isLast
@@ -183,7 +195,7 @@ export function AppEditor({
                         : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
                     )}
                   >
-                    {crumb}
+                    {crumbText}
                   </button>
                 </span>
               );
@@ -209,7 +221,7 @@ export function AppEditor({
                 decofile={decofile}
                 meta={meta}
                 onSaveReferencedBlock={saveReferencedBlock}
-                previewBaseUrl={previewBaseUrl}
+                previewBaseUrl={sectionPreviewBase}
                 onAddSectionItem={handleAddSectionItem}
                 onRequestAddSection={handleRequestAddSection}
                 sandbox={{ orgSlug, virtualMcpId, branch }}
@@ -228,7 +240,7 @@ export function AppEditor({
         </div>
       </ScrollArea>
 
-      {previewBaseUrl && (
+      {sectionPreviewBase && (
         <AddSectionModal
           open={addSectionOpen}
           onOpenChange={(open) => {
@@ -237,7 +249,7 @@ export function AppEditor({
           }}
           meta={meta}
           decofile={decofile}
-          previewBaseUrl={previewBaseUrl}
+          previewBaseUrl={sectionPreviewBase}
           onSelect={(entry) => {
             void handleSelectSection(entry);
           }}

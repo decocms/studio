@@ -36,7 +36,23 @@ export interface OpenPullRequestArgs {
   body?: string;
   base: string;
   coAuthor?: CoAuthorIdentity;
+  /**
+   * The branch's already-known open PR, supplied by the caller from its polled
+   * PR state. When present we reuse it directly instead of calling
+   * `list_pull_requests` — keeping that rate-limit-heavy call out of the
+   * publish/submit path.
+   */
+  existing?: CreatedPullRequest;
 }
+
+/**
+ * Thrown when `create_pull_request` reports a PR already exists for the branch
+ * but the caller had no `existing` PR to reuse (its polled state was stale).
+ * Retrying once the PR panel refreshes resolves it — see
+ * {@link openPullRequestForBranch}.
+ */
+export const PULL_REQUEST_ALREADY_EXISTS_MESSAGE =
+  "A pull request already exists for this branch. Refresh and try again.";
 
 function assertGithubToolSuccess(result: unknown): void {
   const message = toolErrorMessage(result);
@@ -71,20 +87,6 @@ function pickNumber(
   return undefined;
 }
 
-function headRefFromListItem(pr: Record<string, unknown>): string | null {
-  const head = pr.head as Record<string, unknown> | undefined;
-  const ref = head?.ref;
-  return typeof ref === "string" && ref.length > 0 ? ref : null;
-}
-
-function pullRequestMatchesBranch(
-  pr: Record<string, unknown>,
-  branch: string,
-): boolean {
-  const headRef = headRefFromListItem(pr);
-  return headRef === branch;
-}
-
 export function extractPullRequestList(
   result: unknown,
 ): Record<string, unknown>[] {
@@ -110,16 +112,6 @@ export function extractPullRequestList(
   return [];
 }
 
-function toCreatedPullRequest(
-  pr: Record<string, unknown>,
-): CreatedPullRequest | null {
-  const htmlUrl = pickString(pr, ["html_url", "htmlUrl", "url", "URL"]);
-  const number =
-    pickNumber(pr, ["number", "pullNumber"]) ?? pullNumberFromUrl(htmlUrl);
-  if (!number || !htmlUrl) return null;
-  return { number, htmlUrl };
-}
-
 /** github-mcp-server create_pull_request returns MinimalResponse `{ id, url }`. */
 export function parseCreatedPullRequestResult(
   result: unknown,
@@ -142,49 +134,6 @@ export function parseCreatedPullRequestResult(
 
 function pullRequestAlreadyExists(message: string): boolean {
   return /already exists|pull request already/i.test(message);
-}
-
-async function listOpenPullRequests(
-  client: GithubMcpClient,
-  args: { owner: string; repo: string; head?: string },
-): Promise<Record<string, unknown>[]> {
-  const result = await client.callTool({
-    name: "list_pull_requests",
-    arguments: {
-      owner: args.owner,
-      repo: args.repo,
-      state: "open",
-      ...(args.head ? { head: args.head } : {}),
-      perPage: 10,
-    },
-  });
-
-  assertGithubToolSuccess(result);
-  return extractPullRequestList(result);
-}
-
-export async function findOpenPullRequestForBranch(
-  client: GithubMcpClient,
-  args: {
-    owner: string;
-    repo: string;
-    branch: string;
-  },
-): Promise<CreatedPullRequest | null> {
-  const headFilters = [`${args.owner}:${args.branch}`, args.branch];
-
-  for (const head of headFilters) {
-    const prs = await listOpenPullRequests(client, {
-      owner: args.owner,
-      repo: args.repo,
-      head,
-    });
-    const match = prs.find((pr) => pullRequestMatchesBranch(pr, args.branch));
-    const created = match ? toCreatedPullRequest(match) : null;
-    if (created) return created;
-  }
-
-  return null;
 }
 
 async function ensureExistingPullRequestCoAuthor(
@@ -249,25 +198,29 @@ async function createPullRequest(
   return parseCreatedPullRequestResult(result);
 }
 
-/** Returns an open PR for the branch, or creates one if none exists. */
+/**
+ * Reuses the branch's open PR when the caller already knows it (`args.existing`,
+ * from its polled PR state), otherwise creates one. This path deliberately does
+ * NOT call `list_pull_requests`: on GitHub's hosted MCP that list is a top
+ * rate-limit contributor, and the publish/submit flows run inside it. If no
+ * `existing` PR is supplied and `create_pull_request` reports a duplicate, we
+ * surface {@link PULL_REQUEST_ALREADY_EXISTS_MESSAGE} rather than listing to
+ * recover it — the PR panel repopulates `existing` on its next poll, so a retry
+ * succeeds without us adding another list call here.
+ */
 export async function openPullRequestForBranch(
   client: GithubMcpClient,
   args: OpenPullRequestArgs,
 ): Promise<CreatedPullRequest> {
-  const existing = await findOpenPullRequestForBranch(client, {
-    owner: args.owner,
-    repo: args.repo,
-    branch: args.branch,
-  });
-  if (existing) {
+  if (args.existing) {
     await ensureExistingPullRequestCoAuthor(client, {
       owner: args.owner,
       repo: args.repo,
-      pullNumber: existing.number,
+      pullNumber: args.existing.number,
       body: args.body,
       coAuthor: args.coAuthor,
     });
-    return existing;
+    return args.existing;
   }
 
   try {
@@ -282,13 +235,9 @@ export async function openPullRequestForBranch(
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    if (!pullRequestAlreadyExists(message)) throw err;
-    const found = await findOpenPullRequestForBranch(client, {
-      owner: args.owner,
-      repo: args.repo,
-      branch: args.branch,
-    });
-    if (found) return found;
+    if (pullRequestAlreadyExists(message)) {
+      throw new Error(PULL_REQUEST_ALREADY_EXISTS_MESSAGE);
+    }
     throw err;
   }
 }

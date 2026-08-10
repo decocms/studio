@@ -84,6 +84,19 @@ func Exec(deps ExecDeps) http.HandlerFunc {
 		rc := setup.PmRunCommand(cfg.RuntimePathPrefix, cwd, pmConf.RunPrefix, name)
 
 		if proc.IsWellKnownStarter(name) {
+			// The dev server is already up — hand back the task that is running
+			// it instead of starting a second one. An agent that runs `dev`
+			// without checking (the common case in a sandbox that was warmed
+			// for it) would otherwise put two Vite/Next builds on one pod's
+			// memory limit and OOM the pod out from under itself.
+			if existing, ok := deps.TaskManager.RunningByLogName(name); ok {
+				httpx.JSON(w, 200, map[string]any{
+					"taskId":         existing.ID,
+					"status":         existing.Status,
+					"alreadyRunning": true,
+				})
+				return
+			}
 			if deps.GetStatus().State == "error" {
 				deps.SetStatus(events.DaemonStatus{State: "running"})
 			}

@@ -1,17 +1,17 @@
 import { Page } from "@/components/page";
-import { Avatar } from "@deco/ui/components/avatar.tsx";
-import { Switch } from "@deco/ui/components/switch.tsx";
+import { Avatar } from "@decocms/ui/components/avatar.tsx";
+import { Switch } from "@decocms/ui/components/switch.tsx";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
-} from "@deco/ui/components/select.tsx";
+} from "@decocms/ui/components/select.tsx";
 import {
   ToggleGroup,
   ToggleGroupItem,
-} from "@deco/ui/components/toggle-group.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
+} from "@decocms/ui/components/toggle-group.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
 import { Moon01, Monitor01, Play, Sun } from "@untitledui/icons";
 import { Controller, useForm } from "react-hook-form";
 import { authClient } from "@/lib/auth-client";
@@ -23,9 +23,9 @@ import {
 import { useDebouncedAutosave } from "@/hooks/use-debounced-autosave.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { Locale } from "@/i18n/locale.ts";
-import { playSound } from "@deco/ui/lib/sound-engine.ts";
-import { question004Sound } from "@deco/ui/lib/question-004.ts";
-import { toast } from "@deco/ui/components/sonner.js";
+import { playSound } from "@/lib/sounds/sound-engine.ts";
+import { question004Sound } from "@/lib/sounds/question-004.ts";
+import { toast } from "@decocms/ui/components/sonner.tsx";
 import { track } from "@/lib/posthog-client";
 import {
   SettingsCard,
@@ -290,6 +290,33 @@ function PreferencesSection() {
                 }}
               />
             </div>
+          }
+        />
+        <SettingsCardItem
+          title={t("settings.preferences.terminalVisible")}
+          description={t("settings.preferences.terminalVisibleDescription")}
+          onClick={() => {
+            track("preferences_terminal_default_toggled", {
+              enabled: !preferences.terminalVisibleByDefault,
+            });
+            setPreferences((prev) => ({
+              ...prev,
+              terminalVisibleByDefault: !prev.terminalVisibleByDefault,
+            }));
+          }}
+          action={
+            <Switch
+              checked={preferences.terminalVisibleByDefault}
+              onCheckedChange={(checked) => {
+                track("preferences_terminal_default_toggled", {
+                  enabled: checked,
+                });
+                setPreferences((prev) => ({
+                  ...prev,
+                  terminalVisibleByDefault: checked,
+                }));
+              }}
+            />
           }
         />
         <SettingsCardItem

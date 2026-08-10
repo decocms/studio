@@ -7,8 +7,9 @@ import { describe, expect, it } from "bun:test";
 import {
   conflictFromPrGet,
   extractPreviewUrl,
+  isRateLimitError,
   extractPreviewUrlFromComments,
-  isDecoPreviewHost,
+  isTrustedPreviewHost,
   mergeChecksStatus,
   parseCheckRuns,
   toCheckRunsStatus,
@@ -226,27 +227,46 @@ describe("mergeChecksStatus", () => {
   });
 });
 
-describe("isDecoPreviewHost", () => {
+describe("isTrustedPreviewHost", () => {
   it("accepts the real deco preview hosts", () => {
     expect(
-      isDecoPreviewHost("https://envs-montecarlo--c8xgrn.decocdn.com/"),
+      isTrustedPreviewHost("https://envs-montecarlo--c8xgrn.decocdn.com/"),
     ).toBe(true);
     expect(
-      isDecoPreviewHost(
+      isTrustedPreviewHost(
         "https://fix-home-247-decocms-tanstack.deco-cx.workers.dev/",
       ),
     ).toBe(true);
-    expect(isDecoPreviewHost("https://acme.deco.site/")).toBe(true);
-    expect(isDecoPreviewHost("https://deco.site")).toBe(true);
+    expect(isTrustedPreviewHost("https://acme.deco.site/")).toBe(true);
+    expect(isTrustedPreviewHost("https://deco.site")).toBe(true);
+  });
+
+  it("accepts Vercel preview subdomains but not the bare apex", () => {
+    expect(
+      isTrustedPreviewHost(
+        "https://electrolux-git-fix-pdp-focus-order-mobile-menu-deco13.vercel.app",
+      ),
+    ).toBe(true);
+    expect(isTrustedPreviewHost("https://vercel.app/")).toBe(false);
+    expect(isTrustedPreviewHost("https://vercel.app.evil.com/")).toBe(false);
+    expect(isTrustedPreviewHost("https://evilvercel.app/")).toBe(false);
+  });
+
+  it("accepts VTEX preview subdomains but not other vtex.app hosts", () => {
+    expect(isTrustedPreviewHost("https://acme.preview.vtex.app/")).toBe(true);
+    expect(isTrustedPreviewHost("https://acme.vtex.app/")).toBe(false);
+    expect(isTrustedPreviewHost("https://preview.vtex.app.evil.com/")).toBe(
+      false,
+    );
   });
 
   it("rejects a decoy where the deco host is only in the path/query (injection)", () => {
     expect(
-      isDecoPreviewHost("https://evil.example.com/login?x=.decocdn.com"),
+      isTrustedPreviewHost("https://evil.example.com/login?x=.decocdn.com"),
     ).toBe(false);
-    expect(isDecoPreviewHost("https://decocdn.com.evil.com/")).toBe(false);
-    expect(isDecoPreviewHost("https://not-deco.site.evil.com/")).toBe(false);
-    expect(isDecoPreviewHost("not a url")).toBe(false);
+    expect(isTrustedPreviewHost("https://decocdn.com.evil.com/")).toBe(false);
+    expect(isTrustedPreviewHost("https://not-deco.site.evil.com/")).toBe(false);
+    expect(isTrustedPreviewHost("not a url")).toBe(false);
   });
 });
 
@@ -261,6 +281,11 @@ describe("extractPreviewUrlFromComments", () => {
   const decobotBody =
     "**deco Deployment** · commit `1059e10`\n\n| Name | Preview |\n| - | - |\n" +
     "| montecarlo | [Visit Preview](https://envs-montecarlo--c8xgrn.decocdn.com) |";
+  // Real Vercel bot comment shape (trimmed, from deco-sites/electrolux#10).
+  const vercelBody =
+    "| Project | Deployment | Actions | Updated (UTC) |\n| :--- | :----- | :------ | :------ |\n" +
+    "| [electrolux](https://vercel.com/deco13/electrolux) | ![Ready](https://vercel.com/static/status/ready.svg) [Ready](https://vercel.com/deco13/electrolux/GoTyhNUVcQSf7yKLG2yFtWjJ4sZA) | " +
+    "[Preview](https://electrolux-git-fix-pdp-focus-order-mobile-menu-deco13.vercel.app) | Aug 6, 2026 10:47pm |";
 
   it("prefers the Cloudflare Branch Preview URL over the commit one", () => {
     expect(extractPreviewUrlFromComments([{ body: cloudflareBody }])).toBe(
@@ -271,6 +296,12 @@ describe("extractPreviewUrlFromComments", () => {
   it("lifts the deco.cx 'Visit Preview' markdown link", () => {
     expect(extractPreviewUrlFromComments([{ body: decobotBody }])).toBe(
       "https://envs-montecarlo--c8xgrn.decocdn.com",
+    );
+  });
+
+  it("lifts the Vercel bot's Preview link", () => {
+    expect(extractPreviewUrlFromComments([{ body: vercelBody }])).toBe(
+      "https://electrolux-git-fix-pdp-focus-order-mobile-menu-deco13.vercel.app",
     );
   });
 
@@ -289,5 +320,80 @@ describe("extractPreviewUrlFromComments", () => {
     expect(
       extractPreviewUrlFromComments([{ body: "LGTM, nice work!" }]),
     ).toBeNull();
+  });
+
+  it("prefers the newest comment by updated_at over array order, so a stale re-deploy comment doesn't win", () => {
+    const staleVercelBody =
+      "[Preview](https://electrolux-git-old-stale-deploy-deco13.vercel.app)";
+    const fresh = extractPreviewUrlFromComments([
+      {
+        body: staleVercelBody,
+        created_at: "2026-08-01T00:00:00Z",
+        updated_at: "2026-08-01T00:00:00Z",
+      },
+      {
+        body: vercelBody,
+        created_at: "2026-08-06T22:32:55Z",
+        updated_at: "2026-08-06T22:32:55Z",
+      },
+    ]);
+    expect(fresh).toBe(
+      "https://electrolux-git-fix-pdp-focus-order-mobile-menu-deco13.vercel.app",
+    );
+  });
+
+  it("prefers a comment's updated_at over its created_at, so a sticky comment edited in place beats an unrelated later comment", () => {
+    // Vercel/Cloudflare edit a single sticky comment on each push — created_at
+    // stays frozen at the FIRST post, only updated_at moves forward. A human
+    // comment posted in between (with a coincidentally-matching host) must
+    // NOT outrank the bot's freshly-edited comment just because its
+    // created_at is later.
+    const stickyBotComment = {
+      body: vercelBody,
+      created_at: "2026-08-01T00:00:00Z", // first posted early in the PR
+      updated_at: "2026-08-06T22:32:55Z", // edited in place on the latest push
+    };
+    const laterUnrelatedComment = {
+      body: "unrelated review note, check https://some-other.vercel.app for reference",
+      created_at: "2026-08-03T00:00:00Z", // posted after the bot's first post...
+      updated_at: "2026-08-03T00:00:00Z", // ...but never edited again
+    };
+    expect(
+      extractPreviewUrlFromComments([stickyBotComment, laterUnrelatedComment]),
+    ).toBe(
+      "https://electrolux-git-fix-pdp-focus-order-mobile-menu-deco13.vercel.app",
+    );
+  });
+
+  it("falls back to created_at, then array order, when updated_at is missing", () => {
+    expect(
+      extractPreviewUrlFromComments([
+        { body: decobotBody },
+        { body: vercelBody },
+      ]),
+    ).toBe("https://envs-montecarlo--c8xgrn.decocdn.com");
+  });
+});
+
+describe("isRateLimitError", () => {
+  // These are the exact strings the GitHub MCP surfaced in prod while the board
+  // hammered it; retrying any of them is what kept the limit shut.
+  it.each([
+    "Streamable HTTP error: Error POSTing to endpoint: too many requests",
+    "API rate limit exceeded for installation",
+    "You have exceeded a secondary rate limit",
+    "request failed with status 429",
+  ])("treats %p as non-retriable", (message) => {
+    expect(isRateLimitError(new Error(message))).toBe(true);
+  });
+
+  it("lets a genuine transient failure through to the retry", () => {
+    expect(isRateLimitError(new Error("socket hang up"))).toBe(false);
+    expect(isRateLimitError(new Error("Not Found"))).toBe(false);
+  });
+
+  it("handles a non-Error rejection", () => {
+    expect(isRateLimitError("too many requests")).toBe(true);
+    expect(isRateLimitError(null)).toBe(false);
   });
 });

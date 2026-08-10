@@ -90,6 +90,7 @@ import publicConfigRoutes from "./routes/public-config";
 import { createReportPagesRoutes } from "./routes/report-pages";
 import reportsRoutes from "./routes/reports";
 import { stripeWebhookRoutes } from "./routes/stripe-webhook";
+import { githubWebhookRoutes } from "./routes/github-webhook";
 import filesRoutes from "./routes/files";
 import { createThreadOutputsRoutes } from "./routes/thread-outputs";
 import { createSelfRoutes } from "./routes/self";
@@ -312,10 +313,24 @@ export function isSsoExemptPath(path: string): boolean {
  * cookie-authenticated cross-site request against this API and read the
  * response — a permissive-CORS-with-credentials hole. Only reflect
  * localhost/127.0.0.1 (the Vite dev server, on a different port than the
- * API) and the deployment's own origin, falling back to the request's own
- * origin when `baseUrl` isn't configured (same fallback already used for
- * redirect_uri validation above).
+ * API), the native desktop app's local control origin (see below), and the
+ * deployment's own origin, falling back to the request's own origin when
+ * `baseUrl` isn't configured (same fallback already used for redirect_uri
+ * validation above).
  */
+/**
+ * The native desktop app terminates local TLS on its own real domain
+ * (`local.studio.decocms.com`, any port — see apps/native's
+ * `control_origin.rs`/`local_tls.rs`) rather than `localhost`, because a
+ * secure context needs a real domain and per-sandbox cookie isolation needs
+ * one the browser groups as a single site. Exact hostname match only — a
+ * subdomain or suffix (`evil.local.studio.decocms.com`,
+ * `local.studio.decocms.com.evil.example`) must NOT pass.
+ */
+function isNativeDesktopControlOrigin(hostname: string): boolean {
+  return hostname === "local.studio.decocms.com";
+}
+
 export function resolveCorsOrigin(
   origin: string,
   {
@@ -332,6 +347,16 @@ export function resolveCorsOrigin(
   if (originHost === "localhost" || originHost === "127.0.0.1") {
     return origin;
   }
+  // A connection's OAuth `authorization_servers` / `token_endpoint` /
+  // `registration_endpoint` legitimately point straight at this deployment
+  // (oauth-proxy.ts deliberately doesn't proxy those — see
+  // `apps/native/crates/local-api/src/routes/upstream.rs`'s
+  // `rewrite_origin_urls`), so the desktop webview calls them cross-origin —
+  // without this, every discovery/register/token fetch in that flow fails
+  // with no ACAO header ("Load failed" client-side).
+  if (isNativeDesktopControlOrigin(originHost)) {
+    return origin;
+  }
 
   const allowedOrigin = baseUrl ?? requestOrigin;
   try {
@@ -342,6 +367,28 @@ export function resolveCorsOrigin(
     // malformed baseUrl config — fall through to reject
   }
   return null;
+}
+
+/**
+ * Decide whether `redirectUrl` may receive the `/authorize` proxy's
+ * redirect — this is the OAuth-hijacking guard: an attacker who could name
+ * an arbitrary `redirect_uri` could have the authorization code delivered to
+ * their own origin instead of ours. Allows this deployment's own origin,
+ * bare `localhost` (any port, for local web dev), and the native desktop
+ * app's local control origin (its `/_auth/mcp-callback` — see
+ * `apps/native/src/lib/desktop/mcp-oauth-adapter.ts` — lives there, not on
+ * this deployment, since consent happens in the user's REAL browser as a top-
+ * level navigation, which no cross-origin fetch or cookie ever touches).
+ */
+export function isAllowedOAuthRedirectUri(
+  redirectUrl: URL,
+  allowedOrigin: string,
+): boolean {
+  return (
+    redirectUrl.origin === new URL(allowedOrigin).origin ||
+    redirectUrl.hostname === "localhost" ||
+    isNativeDesktopControlOrigin(redirectUrl.hostname)
+  );
 }
 
 /**
@@ -463,16 +510,7 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
     if (redirectUri) {
       const allowedOrigin = getSettings().baseUrl ?? reqUrl.origin;
       try {
-        const redirectUrl = new URL(redirectUri);
-        const allowedOriginObj = new URL(allowedOrigin);
-
-        // Check if redirect_uri origin matches the allowed origin
-        const isAllowed =
-          redirectUrl.origin === allowedOriginObj.origin ||
-          // Allow localhost for development
-          redirectUrl.hostname === "localhost";
-
-        if (!isAllowed) {
+        if (!isAllowedOAuthRedirectUri(new URL(redirectUri), allowedOrigin)) {
           return c.json(
             {
               error: "invalid_request",
@@ -1303,6 +1341,11 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Stripe webhook (per-seat billing): signature-authed, no session — the
   // caller is Stripe. Instance-level namespace, before the /api/:org catch-all.
   app.route("/api/_stripe", stripeWebhookRoutes);
+
+  // GitHub push webhook (tenant warm-pool freshness): HMAC-authed, no session.
+  // Optional — 503 without GITHUB_WEBHOOK_SECRET, and pools refresh on their
+  // own schedule regardless.
+  app.route("/api/_github", githubWebhookRoutes);
 
   // Auth-gated report page + domain-derived metadata. API-only/test apps safely
   // return 404 for the HTML shell when no built client directory is supplied.
@@ -2201,6 +2244,13 @@ export async function createApp(options: CreateAppOptions = {}) {
     await DBOS.registerQueue(THREAD_GATE_QUEUE, {
       partitionQueue: true,
       concurrency: THREAD_GATE_PARTITION_CONCURRENCY,
+      // Let an enqueue state its class (`enqueueOptions.priority`, lower first
+      // — see dispatch-queue/run-priority.ts). Scoped honestly: partitions are
+      // per-thread with concurrency 1, so this orders MESSAGES QUEUED ON THE
+      // SAME THREAD, not one thread against another. Cross-run ordering is the
+      // pod's admission gate (hosted-run-concurrency.ts), because DBOS has no
+      // global cap on a partitioned queue to order against.
+      priorityEnabled: true,
     });
     // Hosted-harness child workflow queue. Partition key = threadId, concurrency 1
     // (mirrors THREAD_GATE_QUEUE: one active run per thread, different threads
@@ -2208,6 +2258,8 @@ export async function createApp(options: CreateAppOptions = {}) {
     await DBOS.registerQueue(HOSTED_HARNESS_QUEUE, {
       partitionQueue: true,
       concurrency: HOSTED_HARNESS_PARTITION_CONCURRENCY,
+      // Same scope caveat as the gate queue above.
+      priorityEnabled: true,
     });
     // Slow backgroundable built-ins (generate_image) run here, partitioned by
     // orgId for per-org fairness. The reaction turn hops to the thread-gate.

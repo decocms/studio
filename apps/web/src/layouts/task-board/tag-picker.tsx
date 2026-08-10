@@ -6,7 +6,7 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from "@deco/ui/components/command.tsx";
+} from "@decocms/ui/components/command.tsx";
 import { Check, Plus, Trash03 } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
 import { tagDotColor, type OrgTag } from "./config";

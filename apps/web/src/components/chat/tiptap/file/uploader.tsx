@@ -1,11 +1,11 @@
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
+} from "@decocms/ui/components/dialog.tsx";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/react";
 import { useEffect, useRef, useState } from "react";

@@ -22,6 +22,7 @@ import {
   type SandboxProviderKind,
   type Workload,
 } from "@decocms/sandbox/provider";
+import { sleep } from "@decocms/shared/std";
 import { defineTool } from "../../core/define-tool";
 import {
   getUserId,
@@ -41,6 +42,10 @@ import {
   removeSandboxMapEntry,
   resolveVm,
 } from "./sandbox-map";
+import {
+  findReusableRepoConnection,
+  getRepoScope,
+} from "@decocms/shared/github-repo-scope";
 import {
   buildAnonymousCloneInfo,
   buildCloneInfo,
@@ -360,11 +365,26 @@ async function provisionSandbox(
     virtualMcpId,
     branch,
     metadata,
-    githubRepo,
     existing,
     runner,
     cloneOnly,
   } = params;
+
+  // A recorded connectionId can dangle — deleting a connection (force-delete,
+  // or another agent's delete tearing down its repo-scoped child) removes
+  // aggregation rows but never rewrites `metadata.githubRepo` on other agents
+  // that recorded it — and the clone path below fails loudly on a connectionId
+  // with no connection behind it. Re-point at a live connection covering the
+  // same repo when one exists.
+  const githubRepo = params.githubRepo
+    ? await healDanglingRepoConnection({
+        ctx,
+        orgId,
+        virtualMcpId,
+        userId,
+        githubRepo: params.githubRepo,
+      })
+    : null;
 
   let { runtime, packageManager, port, packageManagerPath } =
     resolveRuntimeConfig(metadata);
@@ -577,6 +597,16 @@ async function provisionSandbox(
     }
   }
 
+  // Ask before claiming: a sandbox the cluster cannot place sits `Pending`
+  // (`FailedScheduling: Insufficient memory`) until the 180s readiness timeout
+  // fails the run. On a node with room for 4, an 8-card auto-fix produced 4
+  // failures that way, and each retry re-entered the same full node. Waiting
+  // here turns over-admission into a queue. Bounded well under the readiness
+  // timeout this call already tolerates, so it adds no new liveness risk; past
+  // the bound the error is phrased for the task-board retry to recognize as
+  // infrastructure. No-op for a provider that can't answer.
+  await waitForSchedulableCapacity(runner);
+
   const sandbox = await runner.ensure(
     { userId: sandboxUserId, projectRef },
     {
@@ -678,6 +708,84 @@ async function provisionSandbox(
 }
 
 /**
+ * Falls back to a live connection covering the same repo when the recorded
+ * `githubRepo.connectionId` no longer resolves (see the call site for how it
+ * dangles). Org-shared connections win — findReusableRepoConnection. The heal
+ * is persisted back onto the agent's metadata (best-effort) so every other
+ * consumer of the recorded id — git publish, credential sync, the companion
+ * repo-reuse plan — reads the live connection too, instead of re-healing here
+ * on every start. With no replacement the repo is returned unchanged and
+ * buildCloneInfo keeps failing loudly (GITHUB_NOT_AUTHENTICATED → the client's
+ * reconnect affordance); stripping the id would silently downgrade a private
+ * repo to an anonymous clone that can't push.
+ */
+async function healDanglingRepoConnection(params: {
+  ctx: StudioContext;
+  orgId: string;
+  virtualMcpId: string;
+  userId: string;
+  githubRepo: GithubRepo;
+}): Promise<GithubRepo> {
+  const { ctx, orgId, virtualMcpId, userId, githubRepo } = params;
+  if (!githubRepo.connectionId) return githubRepo;
+  const recorded = await ctx.storage.connections.findById(
+    githubRepo.connectionId,
+    orgId,
+  );
+  if (recorded) return githubRepo;
+
+  const { items } = await ctx.storage.connections.list(orgId);
+  const replacement = findReusableRepoConnection(
+    items,
+    githubRepo.owner,
+    githubRepo.name,
+  );
+  if (!replacement) {
+    console.warn(
+      "[provisionSandbox] recorded repo connection no longer exists and no live connection covers the repo",
+      { virtualMcpId, connectionId: githubRepo.connectionId },
+    );
+    return githubRepo;
+  }
+  console.warn("[provisionSandbox] healed dangling repo connection", {
+    virtualMcpId,
+    staleConnectionId: githubRepo.connectionId,
+    connectionId: replacement.id,
+  });
+
+  // Persist only while the agent's own metadata still records the stale id —
+  // a thread-scoped repo or a concurrent update must not be overwritten.
+  try {
+    const virtualMcp = await ctx.storage.virtualMcps.findById(virtualMcpId);
+    const meta = (virtualMcp?.metadata ?? {}) as Record<string, unknown>;
+    const current = (meta as GithubRepoMeta).githubRepo;
+    if (current?.connectionId === githubRepo.connectionId) {
+      const scope = getRepoScope(replacement);
+      await ctx.storage.virtualMcps.update(virtualMcpId, userId, {
+        metadata: {
+          ...meta,
+          githubRepo: {
+            ...current,
+            connectionId: replacement.id,
+            ...(scope ? { installationId: scope.installationId } : {}),
+          },
+        } as VirtualMCPUpdateData["metadata"],
+      });
+    }
+  } catch (err) {
+    console.warn(
+      "[provisionSandbox] failed to persist healed repo connection",
+      {
+        virtualMcpId,
+        error: (err as Error).message,
+      },
+    );
+  }
+
+  return { ...githubRepo, connectionId: replacement.id };
+}
+
+/**
  * Writes back the detected runtime so subsequent SANDBOX_STARTs for this virtual
  * MCP skip the GitHub probe and the client surfaces the resolved PM. Shape
  * matches what the picker previously wrote (`{ selected, port }`), so
@@ -699,4 +807,49 @@ async function persistDetectedRuntime(
       runtime: { selected: packageManager, port: devPort },
     } as VirtualMCPUpdateData["metadata"],
   });
+}
+
+/** How long `ensureSandbox` waits for the cluster to have room. Deliberately
+ *  under `waitForSandboxReady`'s own 180s: this call's callers already tolerate
+ *  that much, so staying inside it means the wait can't trip a liveness window
+ *  that the readiness wait wouldn't have tripped anyway. A cluster still full
+ *  after this needs nodes, not patience — the run fails and the task-board
+ *  retry re-dispatches it with backoff. */
+const CAPACITY_WAIT_MS = 150_000;
+/** Re-ask this often. The provider caches its answer (3s), so this is the poll
+ *  rate that matters. */
+const CAPACITY_POLL_MS = 5_000;
+
+/**
+ * Park until the provider says another sandbox can actually be scheduled.
+ *
+ * The signal is the scheduler's own verdict on pods it already refused to place
+ * (see `capacity.ts`), so it is lagging by one admission: the first
+ * over-subscribed claim is still made, and it is what makes this false for
+ * everyone behind it. That is the trade — one run pays the readiness timeout
+ * instead of every run in the burst.
+ */
+async function waitForSchedulableCapacity(
+  runner: SandboxProvider,
+): Promise<void> {
+  if (!runner.hasSchedulableCapacity) return;
+  const deadline = Date.now() + CAPACITY_WAIT_MS;
+  let logged = false;
+  while (!(await runner.hasSchedulableCapacity())) {
+    if (Date.now() >= deadline) {
+      // Phrased so the task-board's `isTransientRunFailure` recognizes it: this
+      // is capacity, not the task's fault, so the card must be retried.
+      throw new Error(
+        "sandbox provisioning failed: the cluster has had no room to schedule " +
+          `another sandbox for ${Math.round(CAPACITY_WAIT_MS / 1000)}s`,
+      );
+    }
+    if (!logged) {
+      logged = true;
+      console.warn(
+        "[ensureSandbox] waiting for cluster capacity — a sandbox pod cannot be scheduled right now",
+      );
+    }
+    await sleep(CAPACITY_POLL_MS);
+  }
 }

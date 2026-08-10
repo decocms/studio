@@ -5,16 +5,22 @@ import {
   breadcrumbsForHeaderClick,
   buildArrayDrillDownBreadcrumb,
   consumedBreadcrumbPrefix,
+  type Crumb,
   headerBackTargetIndex,
   fieldDisplayLabel,
   findBreadcrumbLabelIndex,
   isArrayDrillDownField,
   normalizeBreadcrumbLabel,
+  prependCrumbIfAbsent,
   resolveActiveFieldKey,
   resolveArrayItemSelection,
+  siblingFieldLabel,
   isBreadcrumbInsideObject,
 } from "./schema-form-breadcrumb";
-import { getArrayItemLabels } from "./array-item-display";
+import {
+  getArrayItemDisplayLabels,
+  getArrayItemLabel,
+} from "./array-item-display";
 import { PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE } from "./section-types";
 
 describe("normalizeBreadcrumbLabel", () => {
@@ -79,6 +85,147 @@ describe("fieldDisplayLabel", () => {
     expect(fieldDisplayLabel("backgroundColor", {} as SchemaProperty)).toBe(
       "Background Color",
     );
+  });
+});
+
+describe("siblingFieldLabel", () => {
+  test("falls back to humanized key when siblings share a title", () => {
+    // Both props `$ref` the same interface, so both inherit its title.
+    const properties = {
+      shelfProps: { title: "ProductShelfProps" } as SchemaProperty,
+      shelfPropsOffer: { title: "ProductShelfProps" } as SchemaProperty,
+    };
+    const keys = Object.keys(properties);
+    expect(siblingFieldLabel("shelfProps", keys, properties)).toBe(
+      "Shelf Props",
+    );
+    expect(siblingFieldLabel("shelfPropsOffer", keys, properties)).toBe(
+      "Shelf Props Offer",
+    );
+  });
+
+  test("keeps the title when siblings are distinct", () => {
+    const properties = {
+      alpha: { title: "Alpha" } as SchemaProperty,
+      beta: { title: "Beta" } as SchemaProperty,
+    };
+    expect(
+      siblingFieldLabel("alpha", Object.keys(properties), properties),
+    ).toBe("Alpha");
+  });
+
+  test("keeps the title for a lone property", () => {
+    const properties = { cards: { title: "Cards" } as SchemaProperty };
+    expect(siblingFieldLabel("cards", ["cards"], properties)).toBe("Cards");
+  });
+});
+
+describe("prependCrumbIfAbsent", () => {
+  test("prepends the label when the trail doesn't start with it", () => {
+    expect(
+      prependCrumbIfAbsent("Shelf Props Offer", ["Free shipping"]),
+    ).toEqual(["Shelf Props Offer", "Free shipping"]);
+  });
+
+  test("prepends onto an empty trail", () => {
+    expect(prependCrumbIfAbsent("Shelf Props Offer", [])).toEqual([
+      "Shelf Props Offer",
+    ]);
+  });
+
+  test("is a no-op when the label is already the head (NFC-insensitive)", () => {
+    const trail = ["café", "Free shipping"];
+    // Same crumb in composed form must be recognized as already present.
+    expect(prependCrumbIfAbsent("café", trail)).toBe(trail);
+  });
+});
+
+describe("resolveActiveFieldKey — sibling props with identical titles", () => {
+  // Mirrors the general shape that triggers the bug: two props that `$ref` the
+  // same interface, so both share the title and an identical nested
+  // `cardLayout.tags` shape. Item labels come from the `label` field. Fixture
+  // labels are neutral placeholders — not tied to any real store's content.
+  const shelf = {
+    type: "object",
+    title: "ProductShelfProps",
+    properties: {
+      cardLayout: {
+        type: "object",
+        title: "CardLayout",
+        properties: {
+          tags: {
+            type: "array",
+            title: "Tags",
+            items: {
+              type: "object",
+              properties: { label: { type: "string" } },
+            },
+          },
+        },
+      },
+    },
+  } satisfies SchemaProperty;
+  const properties = { shelfProps: shelf, shelfPropsOffer: shelf };
+  const keys = Object.keys(properties);
+  const objValue = {
+    shelfProps: {
+      cardLayout: {
+        tags: [{ label: "Summer Sale" }, { label: "Free shipping" }],
+      },
+    },
+    shelfPropsOffer: {
+      cardLayout: {
+        tags: [{ label: "Winter Sale" }, { label: "Free shipping" }],
+      },
+    },
+  };
+
+  test("a unique item label resolves to its owning sibling", () => {
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, ["Winter Sale"]),
+    ).toBe("shelfPropsOffer");
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, ["Summer Sale"]),
+    ).toBe("shelfProps");
+  });
+
+  test("a disambiguated ancestor crumb focuses the right sibling for a shared item", () => {
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, [
+        "Shelf Props Offer",
+        "Free shipping",
+      ]),
+    ).toBe("shelfPropsOffer");
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, [
+        "Shelf Props",
+        "Free shipping",
+      ]),
+    ).toBe("shelfProps");
+  });
+
+  test("a single matching object sibling still resolves (not null)", () => {
+    // Only `shelfProps` has a "Summer Sale" tag → one match, returns it.
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, ["Summer Sale"]),
+    ).toBe("shelfProps");
+  });
+
+  test("an ambiguous shared crumb without an ancestor returns null (shows both)", () => {
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, ["Free shipping"]),
+    ).toBeNull();
+  });
+
+  test("breadcrumbPathForActiveField strips the disambiguated ancestor crumb", () => {
+    expect(
+      breadcrumbPathForActiveField(
+        "shelfPropsOffer",
+        shelf,
+        ["Shelf Props Offer", "Free shipping"],
+        "Shelf Props Offer",
+      ),
+    ).toEqual(["Free shipping"]);
   });
 });
 
@@ -561,16 +708,16 @@ describe("buildArrayDrillDownBreadcrumb", () => {
     // parent); the breadcrumb jumps straight to the item so there's no
     // redundant "list only" crumb to click back through.
     expect(
-      buildArrayDrillDownBreadcrumb([], "Flag Desconto", "Partiu ferias"),
-    ).toEqual(["Partiu ferias"]);
+      buildArrayDrillDownBreadcrumb([], "Flag Desconto", "Partiu ferias", 0),
+    ).toEqual([{ label: "Partiu ferias", itemIndex: 0 }]);
   });
 
   test("keeps the array label to disambiguate an item labelled like the array", () => {
     // Item label == array label (e.g. label driven by `alt`): keep the array
     // crumb so breadcrumbPathForActiveField can tell the two levels apart.
-    expect(buildArrayDrillDownBreadcrumb([], "Banner", "Banner")).toEqual([
+    expect(buildArrayDrillDownBreadcrumb([], "Banner", "Banner", 0)).toEqual([
       "Banner",
-      "Banner",
+      { label: "Banner", itemIndex: 0 },
     ]);
   });
 
@@ -578,10 +725,10 @@ describe("buildArrayDrillDownBreadcrumb", () => {
     // Item label == array's property key: breadcrumbPathForActiveField strips a
     // head crumb matching the key too, so the array crumb must be kept.
     expect(
-      buildArrayDrillDownBreadcrumb([], "Products", "items", {
+      buildArrayDrillDownBreadcrumb([], "Products", "items", 0, {
         arrayKey: "items",
       }),
-    ).toEqual(["Products", "items"]);
+    ).toEqual(["Products", { label: "items", itemIndex: 0 }]);
   });
 
   test("keeps the array label when a sibling array/drill-down field exists", () => {
@@ -589,37 +736,46 @@ describe("buildArrayDrillDownBreadcrumb", () => {
     // (two label-less arrays both fall back to "Item N"), so keep the array
     // label as a disambiguator when siblings are present.
     expect(
-      buildArrayDrillDownBreadcrumb([], "Logos", "Item 1", {
+      buildArrayDrillDownBreadcrumb([], "Logos", "Item 1", 0, {
         hasSiblingDrillDownFields: true,
       }),
-    ).toEqual(["Logos", "Item 1"]);
+    ).toEqual(["Logos", { label: "Item 1", itemIndex: 0 }]);
   });
 
   test("omits the array label when it is the sole drill-down field in scope", () => {
     expect(
-      buildArrayDrillDownBreadcrumb([], "Images", "Item 1", {
+      buildArrayDrillDownBreadcrumb([], "Images", "Item 1", 0, {
         arrayKey: "images",
         hasSiblingDrillDownFields: false,
       }),
-    ).toEqual(["Item 1"]);
+    ).toEqual([{ label: "Item 1", itemIndex: 0 }]);
   });
 
   test("does not duplicate crumbs already in trail", () => {
     expect(
       buildArrayDrillDownBreadcrumb(
-        ["Flag Desconto", "Partiu ferias"],
+        ["Flag Desconto", { label: "Partiu ferias", itemIndex: 0 }],
         "Flag Desconto",
         "Partiu ferias",
+        0,
       ),
-    ).toEqual(["Flag Desconto", "Partiu ferias"]);
+    ).toEqual(["Flag Desconto", { label: "Partiu ferias", itemIndex: 0 }]);
   });
 
   test("nested drill-down stays free of array labels (no doubled crumb)", () => {
     // Opening an item inside an already-open item appends only the new item
     // label — the intermediate array levels never enter the trail.
     expect(
-      buildArrayDrillDownBreadcrumb(["Leve 3 pague 2"], "Images", "Detroit"),
-    ).toEqual(["Leve 3 pague 2", "Detroit"]);
+      buildArrayDrillDownBreadcrumb(
+        [{ label: "Leve 3 pague 2", itemIndex: 0 }],
+        "Images",
+        "Detroit",
+        0,
+      ),
+    ).toEqual([
+      { label: "Leve 3 pague 2", itemIndex: 0 },
+      { label: "Detroit", itemIndex: 0 },
+    ]);
   });
 });
 
@@ -639,11 +795,11 @@ describe("sibling array disambiguation (regression)", () => {
   const objValue = { images: [{ src: "a" }], logos: [{ src: "b" }] };
 
   test("keeps array label and resolves to the clicked array, not the first sibling", () => {
-    const trail = buildArrayDrillDownBreadcrumb([], "Logos", "Item 1", {
+    const trail = buildArrayDrillDownBreadcrumb([], "Logos", "Item 1", 0, {
       arrayKey: "logos",
       hasSiblingDrillDownFields: true,
     });
-    expect(trail).toEqual(["Logos", "Item 1"]);
+    expect(trail).toEqual(["Logos", { label: "Item 1", itemIndex: 0 }]);
     expect(
       resolveActiveFieldKey(
         Object.keys(properties),
@@ -658,11 +814,11 @@ describe("sibling array disambiguation (regression)", () => {
     const soleProps = {
       cards: { title: "Cards", type: "array", items: { type: "object" } },
     } as Record<string, SchemaProperty>;
-    const trail = buildArrayDrillDownBreadcrumb([], "Cards", "Men's", {
+    const trail = buildArrayDrillDownBreadcrumb([], "Cards", "Men's", 0, {
       arrayKey: "cards",
       hasSiblingDrillDownFields: false,
     });
-    expect(trail).toEqual(["Men's"]);
+    expect(trail).toEqual([{ label: "Men's", itemIndex: 0 }]);
     expect(
       resolveActiveFieldKey(
         ["cards"],
@@ -742,28 +898,33 @@ describe("resolveArrayItemSelection", () => {
     expect(
       resolveArrayItemSelection(
         "Cards",
-        ["Options", "Cards", "Men's"],
+        ["Options", "Cards", { label: "Men's", itemIndex: 0 }],
         items,
         itemSchema,
       ),
-    ).toEqual({ index: 0, innerPath: [] });
+    ).toEqual({ index: 0, innerPath: [], crumbIndex: 2 });
   });
 
   test("returns inner path for nested array drill-down", () => {
     expect(
-      resolveArrayItemSelection("Cards", ["Men's", "Sale"], items, itemSchema),
-    ).toEqual({ index: 0, innerPath: ["Sale"] });
+      resolveArrayItemSelection(
+        "Cards",
+        [{ label: "Men's", itemIndex: 0 }, "Sale"],
+        items,
+        itemSchema,
+      ),
+    ).toEqual({ index: 0, innerPath: ["Sale"], crumbIndex: 0 });
   });
 
   test("supports breadcrumb without array label", () => {
     expect(
       resolveArrayItemSelection(
         "Cards",
-        ["Men's", "Button"],
+        [{ label: "Men's", itemIndex: 0 }, "Button"],
         items,
         itemSchema,
       ),
-    ).toEqual({ index: 0, innerPath: ["Button"] });
+    ).toEqual({ index: 0, innerPath: ["Button"], crumbIndex: 0 });
   });
 
   test("selects item when its label equals the array label (alt-driven label)", () => {
@@ -778,87 +939,262 @@ describe("resolveArrayItemSelection", () => {
     expect(
       resolveArrayItemSelection(
         "Banner",
-        ["Banner Sale"],
+        [{ label: "Banner Sale", itemIndex: 0 }],
         bannerItems,
         bannerSchema,
         0,
       ),
-    ).toEqual({ index: 0, innerPath: [] });
+    ).toEqual({ index: 0, innerPath: [], crumbIndex: 0 });
   });
 
   describe("duplicate labels", () => {
     // Two items share a base label ("Hello") — e.g. after Duplicate, or when an
     // object array has no distinguishing field so every row falls back to the
-    // item schema title. getArrayItemLabel disambiguates them positionally
-    // ("Hello 1" / "Hello 2"), so each item stays uniquely addressable by its
-    // crumb even after a form remount clears the transiently-opened index.
+    // item schema title. The crumb carries the exact `itemIndex`, so each item
+    // stays uniquely addressable even after a form remount clears the transient
+    // open index — while the displayed label stays clean ("Hello", no number).
     const dupItems = [{ title: "Hello" }, { title: "Hello" }];
 
-    test("addresses each duplicate by its positional crumb (no preferredIndex)", () => {
+    test("addresses each duplicate by its item index (no preferredIndex)", () => {
       expect(
-        resolveArrayItemSelection("Cards", ["Hello 1"], dupItems, itemSchema),
-      ).toEqual({ index: 0, innerPath: [] });
+        resolveArrayItemSelection(
+          "Cards",
+          [{ label: "Hello", itemIndex: 0 }],
+          dupItems,
+          itemSchema,
+        ),
+      ).toEqual({ index: 0, innerPath: [], crumbIndex: 0 });
       expect(
-        resolveArrayItemSelection("Cards", ["Hello 2"], dupItems, itemSchema),
-      ).toEqual({ index: 1, innerPath: [] });
+        resolveArrayItemSelection(
+          "Cards",
+          [{ label: "Hello", itemIndex: 1 }],
+          dupItems,
+          itemSchema,
+        ),
+      ).toEqual({ index: 1, innerPath: [], crumbIndex: 0 });
     });
 
-    test("a bare (non-disambiguated) crumb no longer matches a duplicate", () => {
-      // The old behaviour silently resolved a shared label to the first item;
-      // now the crumb must carry the position, so a bare label finds nothing.
+    test("a plain string crumb never resolves to an item", () => {
+      // Item crumbs are objects carrying an index; a bare string is a
+      // field/array label, so it must not silently resolve to the first item.
       expect(
         resolveArrayItemSelection("Cards", ["Hello"], dupItems, itemSchema),
       ).toBeNull();
     });
 
-    test("keeps the opened item when a preferredIndex is supplied", () => {
+    test("the index pins the item even without a preferredIndex", () => {
       expect(
         resolveArrayItemSelection(
           "Cards",
-          ["Hello 2"],
+          [{ label: "Hello", itemIndex: 1 }],
           dupItems,
           itemSchema,
-          1,
         ),
-      ).toEqual({ index: 1, innerPath: [] });
+      ).toEqual({ index: 1, innerPath: [], crumbIndex: 0 });
     });
 
-    test("ignores a preferredIndex whose label no longer matches the crumb", () => {
+    test("the index wins over a stale preferredIndex", () => {
       expect(
         resolveArrayItemSelection(
           "Cards",
-          ["Women's"],
+          [{ label: "Women's", itemIndex: 1 }],
           items,
           itemSchema,
-          0, // preferred item 0 is "Men's" — doesn't match, fall back to search
+          0, // preferred item 0 is "Men's" — the crumb's index pins item 1
         ),
-      ).toEqual({ index: 1, innerPath: [] });
+      ).toEqual({ index: 1, innerPath: [], crumbIndex: 0 });
     });
 
-    test("falls back to crumb search when preferredIndex is out of range", () => {
+    test("resolves by index even when preferredIndex is out of range", () => {
       expect(
         resolveArrayItemSelection(
           "Cards",
-          ["Hello 2"],
+          [{ label: "Hello", itemIndex: 1 }],
           dupItems,
           itemSchema,
           5,
         ),
-      ).toEqual({ index: 1, innerPath: [] });
+      ).toEqual({ index: 1, innerPath: [], crumbIndex: 0 });
+    });
+  });
+});
+
+describe("resolveArrayItemSelection crumbIndex", () => {
+  const schema = {
+    type: "object",
+    properties: { title: { type: "string", title: "Title" } },
+  } as SchemaProperty;
+  const items = [{ title: "Men's" }, { title: "Women's" }];
+
+  test("points at the item crumb, before its inner trail", () => {
+    // Trail [Section, Cards, Men's, Inner]: the item crumb is at index 2.
+    expect(
+      resolveArrayItemSelection(
+        "Cards",
+        ["Section", "Cards", { label: "Men's", itemIndex: 0 }, "Inner"],
+        items,
+        schema,
+      ),
+    ).toEqual({ index: 0, innerPath: ["Inner"], crumbIndex: 2 });
+  });
+
+  test("is the last crumb when innerPath is empty", () => {
+    expect(
+      resolveArrayItemSelection(
+        "Cards",
+        [{ label: "Women's", itemIndex: 1 }],
+        items,
+        schema,
+      ),
+    ).toEqual({ index: 1, innerPath: [], crumbIndex: 0 });
+  });
+});
+
+describe("editing an item's label keeps it selected (crumb re-sync)", () => {
+  // Reproduces the reported bug: duplicate a banner (two share a label), open
+  // the copy, edit its text. The editor must stay on the copy — not snap back
+  // to the "original" it was duplicated from. Runs the exact sequence
+  // ArrayField.updateItem runs against the real functions: resolve selection →
+  // rewrite the crumb at `selection.crumbIndex` → re-resolve against the edits.
+  const schema = {
+    type: "object",
+    properties: { title: { type: "string", title: "Title" } },
+  } as SchemaProperty;
+
+  // Mirror ArrayField.updateItem's crumb re-sync exactly: the item's base label
+  // (no siblings → no positional suffix) plus the stable `itemIndex`, rewritten
+  // in place at `selection.crumbIndex`.
+  const rewriteAndReresolve = (
+    items: unknown[],
+    trail: Crumb[],
+    openIndex: number,
+    edited: unknown[],
+  ) => {
+    const selection = resolveArrayItemSelection(
+      "Banners",
+      trail,
+      items,
+      schema,
+      openIndex,
+    );
+    if (!selection) throw new Error("expected a selection");
+    const oldLabel = getArrayItemLabel(items[openIndex], openIndex, schema);
+    const newLabel = getArrayItemLabel(edited[openIndex], openIndex, schema);
+    let nextTrail = trail;
+    if (oldLabel !== newLabel) {
+      nextTrail = [...trail];
+      nextTrail[selection.crumbIndex] = {
+        label: newLabel,
+        itemIndex: openIndex,
+      };
+    }
+    return {
+      nextTrail,
+      selection: resolveArrayItemSelection(
+        "Banners",
+        nextTrail,
+        edited,
+        schema,
+        openIndex,
+      ),
+    };
+  };
+
+  // Open the copy (index 1) by its crumb — carries the exact index.
+  const openCrumb = (items: unknown[], index: number): Crumb => ({
+    label: getArrayItemDisplayLabels(items, schema)[index]!,
+    itemIndex: index,
+  });
+
+  test("editing the duplicate's title stays on the duplicate, not the original", () => {
+    const items = [{ title: "Cozinha" }, { title: "Cozinha" }];
+    const trail = [openCrumb(items, 1)];
+    const edited = [{ title: "Cozinha" }, { title: "Cozinha Nova" }];
+    expect(rewriteAndReresolve(items, trail, 1, edited).selection).toEqual({
+      index: 1,
+      innerPath: [],
+      crumbIndex: 0,
+    });
+  });
+
+  test("clearing the title mid-edit (label falls back) keeps the same item", () => {
+    // Emptying the label field makes the row fall back to the "Item N" label;
+    // the crumb still tracks it because the rewritten crumb keeps the index.
+    const items = [{ title: "Cozinha" }, { title: "Cozinha" }];
+    const trail = [openCrumb(items, 1)];
+    const edited = [{ title: "Cozinha" }, { title: "" }];
+    expect(rewriteAndReresolve(items, trail, 1, edited).selection).toEqual({
+      index: 1,
+      innerPath: [],
+      crumbIndex: 0,
+    });
+  });
+
+  test("editing a non-label field leaves the crumb untouched (no-op)", () => {
+    // oldLabel === newLabel → updateItem must not rewrite the breadcrumb.
+    const withExtra = {
+      type: "object",
+      properties: {
+        title: { type: "string", title: "Title" },
+        href: { type: "string", title: "Href" },
+      },
+    } as SchemaProperty;
+    const items = [{ title: "Cozinha", href: "/a" }];
+    const trail: Crumb[] = [{ label: "Cozinha", itemIndex: 0 }];
+    const selection = resolveArrayItemSelection(
+      "Banners",
+      trail,
+      items,
+      withExtra,
+      0,
+    );
+    const edited = [{ title: "Cozinha", href: "/b" }]; // label field unchanged
+    const oldLabel = getArrayItemLabel(items[0], 0, withExtra);
+    const newLabel = getArrayItemLabel(edited[0], 0, withExtra);
+    expect(oldLabel).toBe(newLabel); // title drives the label; href doesn't
+    // Trail stays as-is; re-resolving still lands on the item.
+    expect(selection).toEqual({ index: 0, innerPath: [], crumbIndex: 0 });
+  });
+
+  test("editing an item drilled one level deep keeps the inner trail", () => {
+    // Trail [item, Inner]: the item crumb is at position 0, so rewriting it
+    // must leave the inner crumb ("Inner") untouched.
+    const items = [{ title: "Cozinha" }, { title: "Cozinha" }];
+    const trail: Crumb[] = [openCrumb(items, 1), "Inner"];
+    const edited = [{ title: "Cozinha" }, { title: "Cozinha Nova" }];
+    const { nextTrail, selection } = rewriteAndReresolve(
+      items,
+      trail,
+      1,
+      edited,
+    );
+    expect(nextTrail).toEqual([
+      { label: "Cozinha Nova", itemIndex: 1 },
+      "Inner",
+    ]);
+    expect(selection).toEqual({
+      index: 1,
+      innerPath: ["Inner"],
+      crumbIndex: 0,
     });
   });
 });
 
 describe("array item label build↔resolve round-trip", () => {
-  // The fix's core promise: a crumb built from getArrayItemLabels must resolve
-  // back to the same item with no transient state — this is what survives a
-  // form remount. Exercises both seams together, not hand-copied literals.
+  // The fix's core promise: an item crumb (clean base label + itemIndex) must
+  // resolve back to the same item with no transient state — this is what
+  // survives a form remount. Exercises both seams together.
   const roundTrips = (items: unknown[], schema: SchemaProperty) => {
-    const labels = getArrayItemLabels(items, schema);
+    const labels = getArrayItemDisplayLabels(items, schema);
     labels.forEach((label, i) => {
       expect(
-        resolveArrayItemSelection("Items", [label], items, schema),
-      ).toEqual({ index: i, innerPath: [] });
+        resolveArrayItemSelection(
+          "Items",
+          [{ label, itemIndex: i }],
+          items,
+          schema,
+        ),
+      ).toEqual({ index: i, innerPath: [], crumbIndex: 0 });
     });
   };
 

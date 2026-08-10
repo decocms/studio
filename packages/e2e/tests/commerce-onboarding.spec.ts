@@ -255,12 +255,12 @@ test.describe("Commerce onboarding route isolation", () => {
 
     // After site setup the flow hands off to the org: it redirects off
     // /commerce-onboarding to the report route, where the blocking connections
-    // modal (with the "View full report" CTA) opens over the report.
+    // modal (with the "View diagnostic" CTA) opens over the report.
     await page.waitForURL((url) => url.pathname !== "/commerce-onboarding", {
       timeout: 20_000,
     });
     await expect(
-      page.getByRole("button", { name: "View full report" }),
+      page.getByRole("button", { name: "View diagnostic" }),
     ).toBeVisible({
       timeout: 20_000,
     });
@@ -283,7 +283,7 @@ test.describe("Commerce onboarding route isolation", () => {
     await page.goto("/commerce-onboarding?siteUrl=https://example.com/path");
 
     await expect(
-      page.getByRole("button", { name: "View full report" }),
+      page.getByRole("button", { name: "View diagnostic" }),
     ).toBeVisible({
       timeout: 20_000,
     });
@@ -344,7 +344,7 @@ test.describe("Commerce onboarding route isolation", () => {
 
     await page.goto("/commerce-onboarding?siteUrl=example.com");
     await expect(
-      page.getByRole("button", { name: "View full report" }),
+      page.getByRole("button", { name: "View diagnostic" }),
     ).toBeVisible({
       timeout: 20_000,
     });
@@ -353,14 +353,14 @@ test.describe("Commerce onboarding route isolation", () => {
 
     await expect(page.getByLabel("Site URL")).toHaveCount(0);
     await expect(
-      page.getByRole("button", { name: "View full report" }),
+      page.getByRole("button", { name: "View diagnostic" }),
     ).toBeVisible({
       timeout: 20_000,
     });
     // The old "Companion MCPs" placeholder was replaced by the companion
     // section, whose header is hidden when no companion requirements resolve
     // (the case in this e2e env). The ready view is already asserted via the
-    // "Ver relatório completo" CTA above; here we only guard against leaking raw
+    // "View diagnostic" CTA above; here we only guard against leaking raw
     // connection titles into the onboarding view.
     await expect(page.getByText("Commerce Discovery MCP")).toHaveCount(0);
     await expect(page.getByText("Commerce Discovery agent")).toHaveCount(0);
@@ -400,7 +400,7 @@ test.describe("Commerce onboarding route isolation", () => {
       timeout: 1_000,
     });
     await expect(
-      page.getByRole("button", { name: "View full report" }),
+      page.getByRole("button", { name: "View diagnostic" }),
     ).toBeVisible({ timeout: 20_000 });
   });
 
@@ -425,7 +425,7 @@ test.describe("Commerce onboarding route isolation", () => {
     await page.getByLabel("Site URL").fill("example.com");
     await page.getByRole("button", { name: "Continue" }).click();
     await expect(
-      page.getByRole("button", { name: "View full report" }),
+      page.getByRole("button", { name: "View diagnostic" }),
     ).toBeVisible({
       timeout: 20_000,
     });
@@ -446,9 +446,9 @@ test.describe("Commerce onboarding route isolation", () => {
 
     // The connect step is a blocking modal over the org: it must NOT be
     // dismissable. Pressing Escape leaves it open; the only way forward is the
-    // "View full report" CTA.
+    // "View diagnostic" CTA.
     const reportCta = page.getByRole("button", {
-      name: "View full report",
+      name: "View diagnostic",
     });
     await expect(reportCta).toBeVisible({ timeout: 20_000 });
     await page.keyboard.press("Escape");

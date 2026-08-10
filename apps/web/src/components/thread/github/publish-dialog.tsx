@@ -1,20 +1,20 @@
 import { SELF_MCP_ALIAS_ID, useMCPClient } from "@/sdk";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Dialog, DialogContent } from "@deco/ui/components/dialog.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Dialog, DialogContent } from "@decocms/ui/components/dialog.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
-} from "@deco/ui/components/tabs.tsx";
-import { Textarea } from "@deco/ui/components/textarea.tsx";
+} from "@decocms/ui/components/tabs.tsx";
+import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import {
   ArrowRight,
   Eye,
@@ -155,6 +155,13 @@ function PublishDialogBody({
   const coAuthor = coAuthorFromSessionUser(session?.user);
 
   const commitToOpenPr = openPullRequest?.state === "open";
+  // The branch's already-known open PR (from the header's polled PR state).
+  // Passed to openPullRequestForBranch so it reuses this PR instead of calling
+  // list_pull_requests to rediscover it.
+  const existingOpenPr =
+    openPullRequest?.state === "open"
+      ? { number: openPullRequest.number, htmlUrl: openPullRequest.htmlUrl }
+      : undefined;
   const openPrFromCommits = dialogIntent === "open-pr" && !commitToOpenPr;
   /** Side "Publish" button — direct publish to base, single green button. */
   const isPublishOnly = dialogIntent === "publish-only";
@@ -382,6 +389,7 @@ function PublishDialogBody({
           body: prBody,
           base: baseBranch,
           coAuthor,
+          existing: existingOpenPr,
         });
       } catch (error) {
         throw new PublishFlowError(
@@ -516,6 +524,7 @@ function PublishDialogBody({
         body: prBody,
         base: baseBranch,
         coAuthor,
+        existing: existingOpenPr,
       });
 
       toast.success(

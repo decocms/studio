@@ -1,7 +1,7 @@
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
-import { Button } from "@deco/ui/components/button.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { ArrowUpRight } from "@untitledui/icons";
 
 type MeetingCtaPlacement = "visual_card";
