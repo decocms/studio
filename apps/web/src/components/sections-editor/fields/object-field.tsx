@@ -34,29 +34,31 @@ export function ObjectField({
 
   if (!schema.properties) return null;
 
+  // Single source for the nested form so the focused (flat) and collapsible
+  // branches can't drift apart when a prop is added.
+  const form = (
+    <SchemaForm
+      schema={schema}
+      value={objValue}
+      onChange={onChange}
+      basePath={path}
+      breadcrumbPath={breadcrumbPath}
+      onBreadcrumbChange={onBreadcrumbChange}
+      meta={meta}
+      decofile={decofile}
+      onSaveReferencedBlock={onSaveReferencedBlock}
+      previewBaseUrl={previewBaseUrl}
+      onAddSectionItem={onAddSectionItem}
+      onRequestAddSection={onRequestAddSection}
+      sandbox={sandbox}
+    />
+  );
+
   // Drilled into via the breadcrumb: render the fields flat, without this
   // object's collapsible header or indentation. The breadcrumb already shows
   // where we are, so stacking wrapper headers (e.g. Props > ShelfProps >
   // CardLayout) just buries the item's own fields.
-  if (focused) {
-    return (
-      <SchemaForm
-        schema={schema}
-        value={objValue}
-        onChange={onChange}
-        basePath={path}
-        breadcrumbPath={breadcrumbPath}
-        onBreadcrumbChange={onBreadcrumbChange}
-        meta={meta}
-        decofile={decofile}
-        onSaveReferencedBlock={onSaveReferencedBlock}
-        previewBaseUrl={previewBaseUrl}
-        onAddSectionItem={onAddSectionItem}
-        onRequestAddSection={onRequestAddSection}
-        sandbox={sandbox}
-      />
-    );
-  }
+  if (focused) return form;
 
   const fieldKey = path.split(".").pop() ?? path;
   const breadcrumbInside = isBreadcrumbInsideObject(
@@ -101,21 +103,7 @@ export function ObjectField({
           id={contentId}
           className="ml-3 min-w-0 max-w-full overflow-hidden border-l border-border/80 pl-5"
         >
-          <SchemaForm
-            schema={schema}
-            value={objValue}
-            onChange={onChange}
-            basePath={path}
-            breadcrumbPath={breadcrumbPath}
-            onBreadcrumbChange={onBreadcrumbChange}
-            meta={meta}
-            decofile={decofile}
-            onSaveReferencedBlock={onSaveReferencedBlock}
-            previewBaseUrl={previewBaseUrl}
-            onAddSectionItem={onAddSectionItem}
-            onRequestAddSection={onRequestAddSection}
-            sandbox={sandbox}
-          />
+          {form}
         </div>
       )}
     </div>

@@ -31,7 +31,7 @@ import {
   type Crumb,
   fieldDisplayLabel,
   isArrayDrillDownField,
-  objectSiblingNeedsAncestorCrumb,
+  objectSiblingsNeedingAncestorCrumb,
   prependCrumbIfAbsent,
   resolveActiveFieldKey,
   siblingFieldLabel,
@@ -531,6 +531,14 @@ export function SchemaForm({
       return s != null && isArrayDrillDownField(s, objValue[key]);
     }).length > 1;
 
+  // Object siblings whose drill trails would collide (each holds a nested
+  // drill-down array). Computed once per scope, not per rendered field, so the
+  // schema walk doesn't run O(keys) times on every keystroke.
+  const siblingsNeedingAncestorCrumb = objectSiblingsNeedingAncestorCrumb(
+    keys,
+    properties,
+  );
+
   const activeKey =
     breadcrumbPath.length > 0
       ? resolveActiveFieldKey(
@@ -600,11 +608,11 @@ export function SchemaForm({
         // array (e.g. `shelfProps` / `shelfPropsOffer`, both with
         // `cardLayout.productTags`) don't collide by label, but a bare item trail
         // still resolves ambiguously across them. Stamp this field's label so the
-        // trail names the right sibling. See `objectSiblingNeedsAncestorCrumb`.
+        // trail names the right sibling. See `objectSiblingsNeedingAncestorCrumb`.
         const needsAncestorCrumb =
           collidesWithSibling ||
           (consumedPrefix.length === 0 &&
-            objectSiblingNeedsAncestorCrumb(key, keys, properties));
+            siblingsNeedingAncestorCrumb.has(key));
         const fieldOnBreadcrumbChangeForKey =
           needsAncestorCrumb && fieldOnBreadcrumbChange
             ? (next: Crumb[]) =>

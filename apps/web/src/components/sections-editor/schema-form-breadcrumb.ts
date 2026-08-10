@@ -189,8 +189,17 @@ export function breadcrumbPathForActiveField(
   overrideLabel?: string,
 ): Crumb[] {
   if (breadcrumbPath.length === 0) return breadcrumbPath;
+  const first = breadcrumbPath[0]!;
+  // Only a field/context crumb (a plain string — an object's disambiguated label
+  // or, formerly, a standalone array crumb) can be the active field's OWN crumb
+  // to consume. An item crumb (carries `itemIndex`) is the array's selection and
+  // must pass through untouched — otherwise, now that the array's disambiguator
+  // rides ON the item crumb as `arrayLabel`, an item whose label equals the
+  // array's label/key would be stripped here, leaving ArrayField an empty trail
+  // and making the item impossible to open (it snaps back to the list).
+  if (isItemCrumb(first)) return breadcrumbPath;
   const label = overrideLabel ?? fieldDisplayLabel(activeKey, schema);
-  const head = crumbLabel(breadcrumbPath[0]!);
+  const head = crumbLabel(first);
   if (labelsMatch(head, label) || labelsMatch(head, activeKey)) {
     return breadcrumbPath.slice(1);
   }
@@ -276,14 +285,16 @@ export function isArrayDrillDownField(
 
 /**
  * Whether an array (drill-down) field exists anywhere inside this object schema.
- * Depth-bounded so a deeply nested schema can't stall the check.
+ * Depth-bounded so a deeply nested schema can't stall the check. Uses the
+ * canonical {@link isArrayDrillDownField} for the leaf test so "drill-down array"
+ * means the same thing here as in the resolver (which gates on it too).
  */
 function schemaHasNestedArrayField(schema: SchemaProperty, depth = 0): boolean {
   if (depth > 6 || !schema.properties) return false;
   for (const key of Object.keys(schema.properties)) {
     const child = schema.properties[key];
     if (!child) continue;
-    if (child.type === "array" && child.items) return true;
+    if (isArrayDrillDownField(child)) return true;
     if (
       child.type === "object" &&
       schemaHasNestedArrayField(child, depth + 1)
@@ -295,35 +306,32 @@ function schemaHasNestedArrayField(schema: SchemaProperty, depth = 0): boolean {
 }
 
 /**
- * Whether drilling into an array item inside object field `key` needs `key`'s
- * own label stamped onto the breadcrumb trail to stay unambiguous.
+ * The object field keys in this scope that need their own label stamped onto the
+ * breadcrumb trail when drilling into a nested array item, to stay unambiguous.
  *
- * True when `key` is an object holding a nested drill-down array AND a sibling is
- * also such an object: a bare `[arrayLabel, itemLabel]` trail then matches the
- * nested array in BOTH siblings (e.g. `shelfProps` / `shelfPropsOffer`, each with
- * `cardLayout.productTags`), so {@link resolveActiveFieldKey} can't tell them
- * apart and the panel falls back to showing every sibling. Stamping `key`'s
+ * A key qualifies when it's an object holding a nested drill-down array AND at
+ * least one sibling is also such an object: a bare `[…, itemLabel]` trail then
+ * matches the nested array in BOTH (e.g. `shelfProps` / `shelfPropsOffer`, each
+ * with `cardLayout.productTags`), so {@link resolveActiveFieldKey} can't tell
+ * them apart and the panel falls back to showing every sibling. Stamping the
  * disambiguated label makes the trail name the right one — the resolver's
- * strong-match path then pins it.
+ * strong-match path (the `labelsMatch(head, label)` branch of the object loop)
+ * then pins it.
  *
  * Complements the same-display-label collision check in `schema-form.tsx`:
  * distinct-titled siblings like these don't collide by label, so that check
- * alone misses them.
+ * alone misses them. Computed in a single pass over `keys` (one schema walk per
+ * object sibling) so callers don't re-walk every sibling per rendered field.
  */
-export function objectSiblingNeedsAncestorCrumb(
-  key: string,
+export function objectSiblingsNeedingAncestorCrumb(
   keys: string[],
   properties: Record<string, SchemaProperty>,
-): boolean {
-  const schema = properties[key];
-  if (schema?.type !== "object" || !schemaHasNestedArrayField(schema)) {
-    return false;
-  }
-  return keys.some((k) => {
-    if (k === key) return false;
-    const other = properties[k];
-    return other?.type === "object" && schemaHasNestedArrayField(other);
+): Set<string> {
+  const withNestedArray = keys.filter((key) => {
+    const schema = properties[key];
+    return schema?.type === "object" && schemaHasNestedArrayField(schema);
   });
+  return withNestedArray.length > 1 ? new Set(withNestedArray) : new Set();
 }
 
 function asObjectRecord(value: unknown): Record<string, unknown> {
