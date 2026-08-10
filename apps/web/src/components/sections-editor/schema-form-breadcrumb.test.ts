@@ -6,11 +6,13 @@ import {
   buildArrayDrillDownBreadcrumb,
   consumedBreadcrumbPrefix,
   type Crumb,
+  crumbLabel,
   headerBackTargetIndex,
   fieldDisplayLabel,
   findBreadcrumbLabelIndex,
   isArrayDrillDownField,
   normalizeBreadcrumbLabel,
+  objectSiblingNeedsAncestorCrumb,
   prependCrumbIfAbsent,
   resolveActiveFieldKey,
   resolveArrayItemSelection,
@@ -226,6 +228,108 @@ describe("resolveActiveFieldKey — sibling props with identical titles", () => 
         "Shelf Props Offer",
       ),
     ).toEqual(["Free shipping"]);
+  });
+});
+
+describe("resolveActiveFieldKey — distinct-titled siblings with an array crumb", () => {
+  // The real-world ProductShelfGroup shape: `shelfProps` and `shelfPropsOffer`
+  // have DIFFERENT titles (so they don't collide by display label), yet each
+  // holds an identical `cardLayout.productTags` whose items share labels. Because
+  // `cardLayout` has TWO arrays (`productTags` + `productSquareTags`), drilling
+  // keeps the array-label crumb "ProductTags" in the trail — which matches the
+  // array in BOTH siblings. Only the ancestor crumb tells them apart.
+  const cardLayout = {
+    type: "object",
+    title: "CardLayout",
+    properties: {
+      productTags: {
+        type: "array",
+        title: "ProductTags",
+        items: { type: "object", properties: { label: { type: "string" } } },
+      },
+      productSquareTags: {
+        type: "array",
+        title: "ProductSquareTags",
+        items: { type: "object", properties: { label: { type: "string" } } },
+      },
+    },
+  } satisfies SchemaProperty;
+  const properties = {
+    shelfPropsOffer: {
+      type: "object",
+      title: "ShelfPropsOffer",
+      properties: { cardLayout },
+    },
+    shelfProps: {
+      type: "object",
+      title: "ShelfProps",
+      properties: { cardLayout },
+    },
+  } satisfies Record<string, SchemaProperty>;
+  const keys = Object.keys(properties);
+  const tags = [
+    { label: "frete grátis geral" },
+    { label: "frete grátis smt" },
+    { label: "OFERTAS 8.8" },
+  ];
+  const objValue = {
+    shelfPropsOffer: {
+      cardLayout: { productTags: tags, productSquareTags: [] },
+    },
+    shelfProps: { cardLayout: { productTags: tags, productSquareTags: [] } },
+  };
+
+  // The array label rides on the item crumb as `arrayLabel` (folded), which is
+  // what `buildArrayDrillDownBreadcrumb` now produces — no standalone
+  // "ProductTags" crumb.
+  const item = {
+    label: "frete grátis smt",
+    itemIndex: 1,
+    arrayLabel: "ProductTags",
+  };
+
+  test("without an ancestor crumb the shared item stays ambiguous (shows both)", () => {
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, [item]),
+    ).toBeNull();
+  });
+
+  test("the ancestor crumb pins the sibling even with the folded array label present", () => {
+    // This is the regression: pre-fix the array label matched the nested array in
+    // BOTH siblings via the loose path, so it returned null (mixed panel) despite
+    // the "ShelfProps" ancestor crumb naming exactly one.
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, ["ShelfProps", item]),
+    ).toBe("shelfProps");
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, [
+        "ShelfPropsOffer",
+        item,
+      ]),
+    ).toBe("shelfPropsOffer");
+  });
+
+  test("objectSiblingNeedsAncestorCrumb flags both confusable containers", () => {
+    expect(
+      objectSiblingNeedsAncestorCrumb("shelfProps", keys, properties),
+    ).toBe(true);
+    expect(
+      objectSiblingNeedsAncestorCrumb("shelfPropsOffer", keys, properties),
+    ).toBe(true);
+  });
+
+  test("objectSiblingNeedsAncestorCrumb is false without a confusable sibling", () => {
+    const lone = {
+      shelfProps: {
+        type: "object",
+        title: "ShelfProps",
+        properties: { cardLayout },
+      },
+      title: { type: "string", title: "Title" },
+    } satisfies Record<string, SchemaProperty>;
+    expect(
+      objectSiblingNeedsAncestorCrumb("shelfProps", Object.keys(lone), lone),
+    ).toBe(false);
   });
 });
 
@@ -712,34 +816,35 @@ describe("buildArrayDrillDownBreadcrumb", () => {
     ).toEqual([{ label: "Partiu ferias", itemIndex: 0 }]);
   });
 
-  test("keeps the array label to disambiguate an item labelled like the array", () => {
-    // Item label == array label (e.g. label driven by `alt`): keep the array
-    // crumb so breadcrumbPathForActiveField can tell the two levels apart.
+  test("carries the array label on the item crumb when the item is labelled like the array", () => {
+    // Item label == array label (e.g. label driven by `alt`): the array label
+    // rides on the item crumb so breadcrumbPathForActiveField can still tell the
+    // levels apart — without a separate, navigable "array list" crumb.
     expect(buildArrayDrillDownBreadcrumb([], "Banner", "Banner", 0)).toEqual([
-      "Banner",
-      { label: "Banner", itemIndex: 0 },
+      { label: "Banner", itemIndex: 0, arrayLabel: "Banner" },
     ]);
   });
 
-  test("keeps the array label to disambiguate an item labelled like the array KEY", () => {
+  test("carries the array label on the item crumb when the item is labelled like the array KEY", () => {
     // Item label == array's property key: breadcrumbPathForActiveField strips a
-    // head crumb matching the key too, so the array crumb must be kept.
+    // head crumb matching the key too, so the array label must travel — as crumb
+    // metadata, not a standalone stop.
     expect(
       buildArrayDrillDownBreadcrumb([], "Products", "items", 0, {
         arrayKey: "items",
       }),
-    ).toEqual(["Products", { label: "items", itemIndex: 0 }]);
+    ).toEqual([{ label: "items", itemIndex: 0, arrayLabel: "Products" }]);
   });
 
-  test("keeps the array label when a sibling array/drill-down field exists", () => {
+  test("carries the array label on the item crumb when a sibling drill-down field exists", () => {
     // A bare [itemLabel] trail can't say WHICH sibling array the item belongs to
-    // (two label-less arrays both fall back to "Item N"), so keep the array
-    // label as a disambiguator when siblings are present.
+    // (two label-less arrays both fall back to "Item N"), so the array label
+    // rides on the item crumb as a disambiguator when siblings are present.
     expect(
       buildArrayDrillDownBreadcrumb([], "Logos", "Item 1", 0, {
         hasSiblingDrillDownFields: true,
       }),
-    ).toEqual(["Logos", { label: "Item 1", itemIndex: 0 }]);
+    ).toEqual([{ label: "Item 1", itemIndex: 0, arrayLabel: "Logos" }]);
   });
 
   test("omits the array label when it is the sole drill-down field in scope", () => {
@@ -749,6 +854,18 @@ describe("buildArrayDrillDownBreadcrumb", () => {
         hasSiblingDrillDownFields: false,
       }),
     ).toEqual([{ label: "Item 1", itemIndex: 0 }]);
+  });
+
+  test("never yields a standalone array-list navigation stop", () => {
+    // The array label rides on the item crumb, never as its own crumb, so no
+    // crumb renders as the bare array label — back from the item lands on the
+    // array's parent form, not on a redundant "array list only" view.
+    const trail = buildArrayDrillDownBreadcrumb([], "ProductTags", "Tag A", 2, {
+      arrayKey: "productTags",
+      hasSiblingDrillDownFields: true,
+    });
+    expect(trail).toHaveLength(1);
+    expect(trail.map(crumbLabel)).not.toContain("ProductTags");
   });
 
   test("does not duplicate crumbs already in trail", () => {
@@ -782,8 +899,8 @@ describe("buildArrayDrillDownBreadcrumb", () => {
 describe("sibling array disambiguation (regression)", () => {
   // Two sibling arrays of label-less objects: getArrayItemLabel falls back to
   // "Item N" for both, so a bare ["Item 1"] trail is ambiguous. The array label
-  // must be kept, and the correct array must resolve — otherwise clicking one
-  // array's item opens the other (the wrong-array bug).
+  // must travel on the item crumb, and the correct array must resolve —
+  // otherwise clicking one array's item opens the other (the wrong-array bug).
   const itemSchema = {
     type: "object",
     properties: { src: { type: "string", title: "Src" } },
@@ -794,12 +911,14 @@ describe("sibling array disambiguation (regression)", () => {
   } as Record<string, SchemaProperty>;
   const objValue = { images: [{ src: "a" }], logos: [{ src: "b" }] };
 
-  test("keeps array label and resolves to the clicked array, not the first sibling", () => {
+  test("carries array label on the crumb and resolves to the clicked array, not the first sibling", () => {
     const trail = buildArrayDrillDownBreadcrumb([], "Logos", "Item 1", 0, {
       arrayKey: "logos",
       hasSiblingDrillDownFields: true,
     });
-    expect(trail).toEqual(["Logos", { label: "Item 1", itemIndex: 0 }]);
+    expect(trail).toEqual([
+      { label: "Item 1", itemIndex: 0, arrayLabel: "Logos" },
+    ]);
     expect(
       resolveActiveFieldKey(
         Object.keys(properties),

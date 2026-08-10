@@ -16,6 +16,7 @@ export function ObjectField({
   label,
   breadcrumbPath = [],
   onBreadcrumbChange,
+  focused,
   meta,
   decofile,
   onSaveReferencedBlock,
@@ -32,6 +33,30 @@ export function ObjectField({
       : {};
 
   if (!schema.properties) return null;
+
+  // Drilled into via the breadcrumb: render the fields flat, without this
+  // object's collapsible header or indentation. The breadcrumb already shows
+  // where we are, so stacking wrapper headers (e.g. Props > ShelfProps >
+  // CardLayout) just buries the item's own fields.
+  if (focused) {
+    return (
+      <SchemaForm
+        schema={schema}
+        value={objValue}
+        onChange={onChange}
+        basePath={path}
+        breadcrumbPath={breadcrumbPath}
+        onBreadcrumbChange={onBreadcrumbChange}
+        meta={meta}
+        decofile={decofile}
+        onSaveReferencedBlock={onSaveReferencedBlock}
+        previewBaseUrl={previewBaseUrl}
+        onAddSectionItem={onAddSectionItem}
+        onRequestAddSection={onRequestAddSection}
+        sandbox={sandbox}
+      />
+    );
+  }
 
   const fieldKey = path.split(".").pop() ?? path;
   const breadcrumbInside = isBreadcrumbInsideObject(
