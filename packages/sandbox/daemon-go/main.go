@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strconv"
@@ -698,11 +699,13 @@ func main() {
 		slog.Warn("ORGFS_CONFIG is set but this daemon does not mount org volumes " +
 			"(cluster sidecar path only) — org files will not appear in the workspace")
 	}
-	// Same rule for the golden cache's remote tier: the pod may be configured for
-	// L2, but this daemon implements L1 only. Boots stay correct, just slower.
-	if os.Getenv("GOLDEN_CACHE_REMOTE") != "" {
-		slog.Warn("GOLDEN_CACHE_REMOTE is set but this daemon implements the " +
-			"node-local golden tier only — remote restore/publish is skipped")
+	// The golden cache's remote tier needs `zstd` in the image; without it every
+	// restore and publish fails into a normal install, silently apart from this.
+	if setup.RemoteEnabled() {
+		if _, err := exec.LookPath("zstd"); err != nil {
+			slog.Warn("GOLDEN_CACHE_REMOTE is set but zstd is not on PATH — " +
+				"the shared golden tier will miss on every boot")
+		}
 	}
 
 	catalogSync := toolscatalog.NewCoalescer(
