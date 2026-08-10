@@ -503,7 +503,8 @@ export interface StudioToolIO {
           | "review_requested"
           | "review_approved"
           | "review_changes_requested"
-          | "merge_conflict_resolution";
+          | "merge_conflict_resolution"
+          | "merge_failed";
         actorId: string | null;
         data: Record<string, unknown>;
         occurredAt: string;

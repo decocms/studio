@@ -86,6 +86,17 @@ export const taskBoard = {
     "{reviewer} requested changes: {notes}",
   "taskBoard.taskDialog.activityMergeConflictResolution":
     "couldn't merge the pull request — resolving a merge conflict",
+  "taskBoard.taskDialog.activityMergeFailed": "couldn't merge the pull request",
+  "taskBoard.taskDialog.activityMergeFailedNoPr":
+    "couldn't merge — no pull request is linked to this task",
+  "taskBoard.taskDialog.activityMergeFailedChecksFailing":
+    "couldn't merge — the pull request's checks are failing",
+  "taskBoard.taskDialog.activityMergeFailedNoConnection":
+    "couldn't merge — this organization has no GitHub connection for {detail}. Connect that repository to ship this task.",
+  "taskBoard.taskDialog.activityMergeFailedRefused":
+    "GitHub refused the merge: {detail}",
+  "taskBoard.taskDialog.activityMergeFailedError":
+    "couldn't merge the pull request: {detail}",
   "taskBoard.taskDialog.tagsButton": "Tags",
   "taskBoard.taskDialog.removeTagAriaLabel": "Remove tag {name}",
   "taskBoard.taskDialog.addTagButton": "Add tag",
