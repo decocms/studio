@@ -10,19 +10,22 @@
 //! The tokens are literal `oklch()` values copied from
 //! `packages/ui/src/styles/global.css`'s `:root`/`.dark` blocks and keyed off
 //! `prefers-color-scheme`, because a static page has no `.dark` class toggle
-//! to hook into. Everything is inlined: these pages are served to a browser
-//! that is NOT the app, frequently while offline, so a stylesheet or font
-//! request that fails would leave the user staring at unstyled text. Same
-//! reasoning for the visual column's image (`ONBOARDING_VISUAL_JPEG`): the
-//! same split layout React renders — `AuthSplitLayout` in
-//! `apps/web/src/components/auth-split-layout.tsx`, using
-//! `apps/web/public/onboarding-placeholder.png` — but that PNG is 6.6 MB, so
-//! this embeds a recompressed JPEG copy sized for this one purpose, not the
-//! original asset.
-
-use std::sync::OnceLock;
-
-use base64::{engine::general_purpose::STANDARD, Engine as _};
+//! to hook into. The CSS is inlined for that reason: these pages are served
+//! to a browser that is NOT the app, so a separate stylesheet request that
+//! fails would leave the user staring at unstyled text, and there is no
+//! scenario where the CSS loads from a DIFFERENT place than the HTML.
+//!
+//! The visual column's image is the one exception, deliberately NOT inlined:
+//! it reuses `onboarding-placeholder.png` — the same capybara illustration
+//! React's `AuthSplitLayout`
+//! (`apps/web/src/components/auth-split-layout.tsx`) shows by default — by
+//! `<img src>` from `{target}/onboarding-placeholder.png` rather than
+//! embedding a second, separately-maintained copy. Unlike the CSS, this is
+//! safe: every caller here only ever reaches this page by already completing
+//! a round trip to that exact origin (an OAuth callback, or a failed sign-in
+//! attempt against it), so its reachability is already proven by the time
+//! this page renders. A missing image also degrades gracefully — an empty
+//! visual panel — where missing CSS would not.
 
 /// Shared tokens + reset.
 const STYLE_BASE: &str = r#"
@@ -114,24 +117,6 @@ const BRAND_MARK_DARK_SVG: &str = r##"<svg class="brand-mark brand-mark--dark" v
           <path d="M43.3804 110.528C61.4064 110.528 71.3682 102.464 83.2274 77.3223C89.8685 63.5656 95.0866 49.8089 101.253 36.5265L108.843 38.8984C110.741 39.3727 112.164 38.424 111.215 36.5265L101.728 18.0261C101.253 16.603 99.3559 16.603 98.4072 17.0774L75.6375 25.616C73.74 26.0904 73.74 27.9879 75.6375 28.4623L82.2786 30.8341C76.5862 43.1677 69.9451 62.1425 64.2526 74.0017C58.0858 87.284 55.2396 96.297 44.3291 96.297C33.4187 96.297 31.9955 88.2327 36.7392 76.3735C41.9573 62.6168 50.4959 58.8219 59.9833 61.6681C62.8295 57.8731 64.727 52.1807 65.6757 46.9626C62.8295 46.0139 59.5089 46.0139 56.6627 46.0139C41.0086 46.0139 25.3544 54.0782 18.7132 71.1555C11.5977 93.4508 19.1876 110.528 43.3804 110.528Z" fill="#07401A"/>
         </svg>"##;
 
-/// Recompressed copy of `apps/web/public/onboarding-placeholder.png` (the
-/// capybara illustration React's `AuthSplitLayout` shows by default) — see
-/// this module's doc comment for why it's a separate, much smaller file
-/// rather than the original PNG.
-const ONBOARDING_VISUAL_JPEG: &[u8] = include_bytes!("../assets/onboarding-visual.jpg");
-
-/// `data:` URI for [`ONBOARDING_VISUAL_JPEG`], base64-encoded once and
-/// reused for every page render.
-fn onboarding_visual_data_uri() -> &'static str {
-    static DATA_URI: OnceLock<String> = OnceLock::new();
-    DATA_URI.get_or_init(|| {
-        format!(
-            "data:image/jpeg;base64,{}",
-            STANDARD.encode(ONBOARDING_VISUAL_JPEG)
-        )
-    })
-}
-
 /// One dead-end page.
 pub struct Page<'a> {
     /// Browser tab title.
@@ -144,6 +129,11 @@ pub struct Page<'a> {
     pub hint: Option<&'a str>,
     /// Colour the headline with `--destructive`.
     pub destructive: bool,
+    /// The upstream origin serving `onboarding-placeholder.png` — pass
+    /// `upstream::global().target()`. The visual column loads
+    /// `{visual_origin}/onboarding-placeholder.png`; see this module's doc
+    /// comment for why that's a live reference rather than an inlined copy.
+    pub visual_origin: &'a str,
 }
 
 /// Render a page.
@@ -156,6 +146,10 @@ pub fn render(page: Page<'_>) -> String {
         Some(hint) => format!("\n        <p class=\"hint\">{}</p>", html_escape(hint)),
         None => String::new(),
     };
+    let visual = html_escape(&format!(
+        "{}/onboarding-placeholder.png",
+        page.visual_origin.trim_end_matches('/')
+    ));
     format!(
         r#"<!doctype html>
 <html lang="en">
@@ -196,7 +190,7 @@ pub fn render(page: Page<'_>) -> String {
         heading = html_escape(page.heading),
         body = html_escape(page.body),
         hint = hint,
-        visual = onboarding_visual_data_uri(),
+        visual = visual,
     )
 }
 
@@ -218,30 +212,41 @@ mod tests {
             body: "B",
             hint: Some("Hint"),
             destructive,
+            visual_origin: "https://studio.decocms.com",
         })
     }
 
     #[test]
     fn carries_the_shared_chrome() {
         let html = sample(false);
-        // Design tokens, both schemes, the brand mark, and the visual-column
-        // image travel with the page — it is served to a browser that may be
-        // offline, so nothing is allowed to be a separate request.
+        // Design tokens, both schemes, and the brand mark are inlined — this
+        // page is served to a browser that may be offline, so nothing here is
+        // allowed to be a separate request. The visual-column image is the
+        // deliberate exception (see the module doc comment): it references
+        // the upstream's own hosted asset rather than embedding a copy.
         assert!(html.contains("--background: oklch(0.99 0.003 73)"));
         assert!(html.contains("prefers-color-scheme: dark"));
         assert!(html.contains("brand-mark--light"));
         assert!(html.contains("brand-mark--dark"));
-        assert!(html.contains("class=\"visual-image\" src=\"data:image/jpeg;base64,"));
+        assert!(html.contains(
+            "class=\"visual-image\" src=\"https://studio.decocms.com/onboarding-placeholder.png\""
+        ));
         assert!(!html.contains("<link"));
         assert!(!html.contains("<script"));
     }
 
     #[test]
-    fn visual_image_data_uri_is_identical_across_calls() {
-        // Exercises the `OnceLock` path more than once in the same process
-        // (tests may run in any order/count) and confirms it never produces
-        // a different encode of the same bytes.
-        assert_eq!(onboarding_visual_data_uri(), onboarding_visual_data_uri());
+    fn visual_origin_trailing_slash_does_not_double_up() {
+        let html = render(Page {
+            title: "T",
+            heading: "H",
+            body: "B",
+            hint: None,
+            destructive: false,
+            visual_origin: "https://studio.decocms.com/",
+        });
+        assert!(html.contains("src=\"https://studio.decocms.com/onboarding-placeholder.png\""));
+        assert!(!html.contains("studio.decocms.com//onboarding-placeholder.png"));
     }
 
     #[test]
@@ -260,6 +265,7 @@ mod tests {
             body: "<script>b</script>",
             hint: Some("<script>n</script>"),
             destructive: false,
+            visual_origin: "https://studio.decocms.com",
         });
         for raw in ["<script>t", "<script>h", "<script>b", "<script>n"] {
             assert!(!html.contains(raw), "leaked {raw}");
@@ -275,6 +281,7 @@ mod tests {
             body: "B",
             hint: None,
             destructive: false,
+            visual_origin: "https://studio.decocms.com",
         });
         assert!(!html.contains("class=\"hint\""));
     }

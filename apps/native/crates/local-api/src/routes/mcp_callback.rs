@@ -185,12 +185,14 @@ fn page(ok: bool) -> String {
             "Studio could not complete this connection.",
         )
     };
+    let session = upstream::global();
     upstream::browser_page::render(upstream::browser_page::Page {
         title: &format!("{heading} — deco Studio"),
         heading,
         body,
         hint: Some("Close this tab and try again from Studio."),
         destructive: !ok,
+        visual_origin: session.target(),
     })
 }
 
