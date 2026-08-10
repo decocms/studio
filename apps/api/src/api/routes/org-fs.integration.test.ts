@@ -33,7 +33,6 @@ import {
 } from "../../database/test-db-pg";
 import { ForbiddenError } from "../../core/access-control";
 import { OrgFsEntryStorage } from "../../storage/org-fs";
-import { OrgRepoSyncStorage } from "../../storage/org-repo-syncs";
 import { resolveOrgFromPath } from "../middleware/resolve-org-from-path";
 import { createOrgFsRoutes } from "./org-fs";
 
@@ -77,10 +76,6 @@ function buildApp(
         threads: { setOrganizationId: () => {} },
         asyncResearchJobs: { setOrganizationId: () => {} },
         orgFsEntries: new OrgFsEntryStorage(db.db),
-        // Real, not a stub: the write guard asks it whether the target volume
-        // is a repo-sync mirror. No sync is configured here, so every volume
-        // under test answers false — which is the behaviour these cases assert.
-        orgRepoSyncs: new OrgRepoSyncStorage(db.db),
       },
       objectStorage: null,
       orgFs: null,
