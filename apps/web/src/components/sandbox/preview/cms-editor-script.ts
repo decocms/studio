@@ -1,8 +1,11 @@
 import { z } from "zod";
+import { alignSections } from "./section-alignment";
 
 export const CmsEditorPayloadSchema = z.object({
   sectionIndex: z.number(),
   manifestKey: z.string(),
+  /** Monotonic per-click counter: two clicks on one section are two selections. */
+  clickSeq: z.number(),
 });
 
 export type CmsEditorPayload = z.infer<typeof CmsEditorPayloadSchema>;
@@ -86,53 +89,18 @@ export const CMS_EDITOR_SCRIPT = `(function() {
       .filter(isTopLevelSection);
   };
 
-  // Candidate manifest keys per editable section, sent by the editor. Each
-  // entry is an array of acceptable DOM keys: [] = wildcard (e.g. multivariate,
-  // whose rendered key we can't predict); null = renders NOTHING (hidden
-  // section — multivariate whose variants are all gated by never), so the
-  // alignment must not consume a DOM node for it; a Lazy lists both its loader
-  // key and the inner section's key, since the classic runtime keeps the Lazy
-  // wrapper at top level while TanStack renders the inner section directly.
+  // Acceptable DOM keys per section; [] = wildcard, null = renders nothing.
   var sectionCandidates = [];
 
-  // Best in-order assignment of editable sections to DOM sections, maximizing
-  // key matches (DP / LCS-style). deco injects framework sections (SEO, Theme,
-  // Session, …) that may lead, trail, OR interleave with the editable run; this
-  // skips whichever don't match, on any runtime — no hardcoded list. Hidden
-  // sections (null candidates) have no DOM node: only visible entries are
-  // aligned, then scattered back to their decofile positions (null-filled), so
-  // returned indexes still match the decofile array.
+  // Stringified from section-alignment.ts so both sides share one copy.
+  var alignSections = ${alignSections.toString()};
+
+  // Indexed like the decofile array; unmapped entries stay null (not clickable).
   var computeAlignment = function(tops) {
-    var visible = [], k;
-    for (k = 0; k < sectionCandidates.length; k++) {
-      if (sectionCandidates[k] !== null) visible.push(k);
-    }
-    var N = visible.length, M = tops.length;
-    var res = new Array(sectionCandidates.length).fill(null);
-    if (!N) return res;
-    if (M < N) return tops.slice();
     var domKeys = tops.map(function(s) { return s.getAttribute("data-manifest-key"); });
-    var match = function(i, j) {
-      var c = sectionCandidates[visible[i]];
-      if (!c || !c.length) return 1;
-      return c.indexOf(domKeys[j]) >= 0 ? 1 : 0;
-    };
-    var dp = [], bt = [], i, j;
-    for (i = 0; i <= N; i++) { dp.push(new Array(M + 1).fill(0)); bt.push(new Array(M + 1).fill(0)); }
-    for (i = 1; i <= N; i++) {
-      for (j = i; j <= M; j++) {
-        var assign = dp[i - 1][j - 1] + match(i - 1, j - 1);
-        var skip = dp[i][j - 1];
-        if (j - 1 >= i && skip >= assign) { dp[i][j] = skip; bt[i][j] = 0; }
-        else { dp[i][j] = assign; bt[i][j] = 1; }
-      }
-    }
-    i = N; j = M;
-    while (i > 0) {
-      if (bt[i][j] === 1) { res[visible[i - 1]] = tops[j - 1]; i--; j--; }
-      else { j--; }
-    }
-    return res;
+    return alignSections(sectionCandidates, domKeys).map(function(idx) {
+      return idx === null ? null : tops[idx];
+    });
   };
 
   // Editable sections, indexed to match the decofile array the panel uses.
@@ -160,13 +128,17 @@ export const CMS_EDITOR_SCRIPT = `(function() {
     return getAllSections().indexOf(found) >= 0 ? found : null;
   };
 
-  // Lazy sections async-render their real section inside a wrapper, so the
-  // wrapper's key is just the loader. Show the inner section's key instead
-  // (falling back to the wrapper while the content hasn't loaded yet).
-  var LAZY_KEY = "website/sections/Rendering/Lazy.tsx";
+  // A Lazy wrapper's key is just the loader — show the inner section's instead.
+  var LAZY_KEYS = [
+    "website/sections/Rendering/Lazy.tsx",
+    "website/sections/Rendering/SingleDeferred.tsx"
+  ];
+  var isLazyKey = function(key) {
+    return LAZY_KEYS.some(function(s) { return key.endsWith(s); });
+  };
   var displayKey = function(section) {
     var key = section.getAttribute("data-manifest-key") || "section";
-    if (key === LAZY_KEY) {
+    if (isLazyKey(key)) {
       var inner = section.querySelector("section[data-manifest-key]");
       if (inner) return inner.getAttribute("data-manifest-key") || key;
     }
@@ -272,6 +244,8 @@ export const CMS_EDITOR_SCRIPT = `(function() {
   };
   document.addEventListener("mouseout", outHandler, true);
 
+  var clickSeq = 0;
+
   // Blocks observes clicks to select sections in the side panel; it must not
   // cancel the iframe page's own handlers or native control behavior.
   var clickHandler = function(e) {
@@ -291,12 +265,44 @@ export const CMS_EDITOR_SCRIPT = `(function() {
       highlight.style.background = c.bg;
     }, 400);
 
+    clickSeq++;
     window.parent.postMessage({
       type: "cms-editor::section-clicked",
-      payload: { sectionIndex: sectionIndex, manifestKey: manifestKey }
+      payload: { sectionIndex: sectionIndex, manifestKey: manifestKey, clickSeq: clickSeq }
     }, "*");
   };
   document.addEventListener("click", clickHandler, true);
+
+  /**
+   * Navigation is disabled while editing: leaving the page would leave the
+   * panel editing the previous page's sections. Only the default action of a
+   * real navigation is cancelled, never propagation — in-page controls must
+   * keep working (#5567).
+   */
+  var isNavigatingAnchor = function(a) {
+    if (!a) return false;
+    var href = a.getAttribute("href");
+    if (!href) return false;
+    var trimmed = href.trim();
+    if (!trimmed || trimmed.charAt(0) === "#") return false;
+    if (/^javascript:/i.test(trimmed)) return false;
+    // Same document + fragment only scrolls.
+    try {
+      var url = new URL(a.href, location.href);
+      if (url.href.split("#")[0] === location.href.split("#")[0]) return false;
+    } catch (_) {}
+    return true;
+  };
+  var navBlocker = function(e) {
+    var el = e.target;
+    var a = el && el.closest ? el.closest("a") : null;
+    if (!isNavigatingAnchor(a)) return;
+    e.preventDefault();
+  };
+  document.addEventListener("click", navBlocker, true);
+
+  var submitBlocker = function(e) { e.preventDefault(); };
+  document.addEventListener("submit", submitBlocker, true);
 
   window.addEventListener("message", function(e) {
     if (e.data && e.data.type === "cms-editor::set-labels" && Array.isArray(e.data.labels)) {
@@ -317,6 +323,9 @@ export const CMS_EDITOR_SCRIPT = `(function() {
       document.removeEventListener("mousemove", moveHandler, true);
       document.removeEventListener("mouseout", outHandler, true);
       document.removeEventListener("click", clickHandler, true);
+      // Or the page stays unnavigable after leaving Blocks mode.
+      document.removeEventListener("click", navBlocker, true);
+      document.removeEventListener("submit", submitBlocker, true);
       window.removeEventListener("scroll", reposition, { capture: true });
       window.removeEventListener("resize", reposition);
       window.__cmsEditorActive = false;
