@@ -18,14 +18,22 @@
 //! The visual column's image is the one exception, deliberately NOT inlined:
 //! it reuses `onboarding-placeholder.png` — the same capybara illustration
 //! React's `AuthSplitLayout`
-//! (`apps/web/src/components/auth-split-layout.tsx`) shows by default — by
-//! `<img src>` from `{target}/onboarding-placeholder.png` rather than
-//! embedding a second, separately-maintained copy. Unlike the CSS, this is
-//! safe: every caller here only ever reaches this page by already completing
-//! a round trip to that exact origin (an OAuth callback, or a failed sign-in
-//! attempt against it), so its reachability is already proven by the time
-//! this page renders. A missing image also degrades gracefully — an empty
-//! visual panel — where missing CSS would not.
+//! (`apps/web/src/components/auth-split-layout.tsx`) shows by default —
+//! rather than embedding a second, separately-maintained copy. Unlike the
+//! CSS, a missing image degrades gracefully (an empty visual panel, not
+//! unreadable text), so [`Page::visual_origin`] lets each caller pick the
+//! cheapest safe source for ITS server:
+//!
+//! - `mcp_callback.rs`'s page is served by local-api's own long-lived
+//!   server, which already bundles and serves this exact PNG (it ships in
+//!   every `apps/web` build via `public/`) — pass `""` for a root-relative
+//!   `<img src>`, no network hop at all.
+//! - `login.rs`'s failure page is served by `LoopbackServer`, a bare,
+//!   single-route listener that exists only for one OAuth round-trip and
+//!   serves nothing else — a relative path would 404 there. It passes the
+//!   real upstream origin (`upstream::global().target()`) instead, which is
+//!   safe to reach at that point: this page only renders after the browser
+//!   already completed (or failed) a round trip to that exact origin.
 
 /// Shared tokens + reset.
 const STYLE_BASE: &str = r#"
@@ -129,10 +137,11 @@ pub struct Page<'a> {
     pub hint: Option<&'a str>,
     /// Colour the headline with `--destructive`.
     pub destructive: bool,
-    /// The upstream origin serving `onboarding-placeholder.png` — pass
-    /// `upstream::global().target()`. The visual column loads
-    /// `{visual_origin}/onboarding-placeholder.png`; see this module's doc
-    /// comment for why that's a live reference rather than an inlined copy.
+    /// Origin prefix for the visual column's `<img src>`
+    /// (`{visual_origin}/onboarding-placeholder.png`) — empty string for a
+    /// root-relative reference when THIS server already hosts the asset, or
+    /// an absolute origin when it doesn't. See this module's doc comment for
+    /// which one each caller needs and why.
     pub visual_origin: &'a str,
 }
 
@@ -247,6 +256,21 @@ mod tests {
         });
         assert!(html.contains("src=\"https://studio.decocms.com/onboarding-placeholder.png\""));
         assert!(!html.contains("studio.decocms.com//onboarding-placeholder.png"));
+    }
+
+    #[test]
+    fn empty_visual_origin_produces_a_root_relative_src() {
+        // `mcp_callback.rs`'s case: served by a long-lived server that
+        // already bundles the asset itself, so no origin to name.
+        let html = render(Page {
+            title: "T",
+            heading: "H",
+            body: "B",
+            hint: None,
+            destructive: false,
+            visual_origin: "",
+        });
+        assert!(html.contains("class=\"visual-image\" src=\"/onboarding-placeholder.png\""));
     }
 
     #[test]

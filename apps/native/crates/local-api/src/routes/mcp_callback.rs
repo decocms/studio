@@ -185,14 +185,16 @@ fn page(ok: bool) -> String {
             "Studio could not complete this connection.",
         )
     };
-    let session = upstream::global();
     upstream::browser_page::render(upstream::browser_page::Page {
         title: &format!("{heading} — deco Studio"),
         heading,
         body,
         hint: Some("Close this tab and try again from Studio."),
         destructive: !ok,
-        visual_origin: session.target(),
+        // Root-relative: this route is served by local-api's own long-lived
+        // server, which already bundles `onboarding-placeholder.png` (see
+        // `browser_page`'s doc comment) — no origin to name.
+        visual_origin: "",
     })
 }
 
@@ -306,6 +308,19 @@ mod tests {
             assert!(html.contains("--background: oklch(0.99 0.003 73)"));
             assert!(html.contains("brand-mark"));
             assert!(html.contains("prefers-color-scheme: dark"));
+        }
+    }
+
+    /// This route is served by local-api's own long-lived server, which
+    /// already bundles `onboarding-placeholder.png` — the image reference
+    /// must stay root-relative, never naming an origin, or it would 404 in
+    /// dev pointed at a different upstream than the one that served the
+    /// asset. See `upstream::browser_page`'s doc comment for the full
+    /// per-caller reasoning.
+    #[test]
+    fn visual_image_is_root_relative_not_upstream_absolute() {
+        for html in [page(true), page(false)] {
+            assert!(html.contains("class=\"visual-image\" src=\"/onboarding-placeholder.png\""));
         }
     }
 }
