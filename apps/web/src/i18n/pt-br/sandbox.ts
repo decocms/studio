@@ -327,6 +327,9 @@ export const sandbox = {
   "sandbox.postEditor.authorsLabel": "Autores",
   "sandbox.postEditor.categoriesLabel": "Categorias",
   "sandbox.postEditor.contentTab": "Conteúdo",
+  "sandbox.postEditor.coverAltDescription":
+    "Descreve a imagem para leitores de tela e para quando ela não carrega. Vazio: o título do post é usado.",
+  "sandbox.postEditor.coverAltLabel": "Texto alternativo da capa",
   "sandbox.postEditor.coverImageLabel": "Imagem de capa",
   "sandbox.postEditor.dateLabel": "Data",
   "sandbox.postEditor.excerptLabel": "Resumo",

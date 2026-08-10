@@ -317,6 +317,9 @@ export const sandbox = {
   "sandbox.postEditor.authorsLabel": "Authors",
   "sandbox.postEditor.categoriesLabel": "Categories",
   "sandbox.postEditor.contentTab": "Content",
+  "sandbox.postEditor.coverAltDescription":
+    "Describes the image for screen readers and when it fails to load. Empty: the post title is used.",
+  "sandbox.postEditor.coverAltLabel": "Cover image alt text",
   "sandbox.postEditor.coverImageLabel": "Cover image",
   "sandbox.postEditor.dateLabel": "Date",
   "sandbox.postEditor.excerptLabel": "Excerpt",
