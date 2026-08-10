@@ -502,9 +502,15 @@ goldenUploader:
   # split lives in the MOUNT rather than in convention, so a consumer that
   # forgets `readOnly: true` on the tenant volume still cannot write.
   #
-  # No `prefix` here: the uploader writes keys for many orgs, so it needs the
-  # whole store. Isolation comes from the key, which the daemon's meta scopes
-  # per org.
+  # MUST carry the same `prefix` as the tenant volume above. Two different
+  # boundaries are at play and conflating them breaks the tier silently:
+  #   - the ORG is in the object key, and isolates tenants from each other.
+  #   - the ENVIRONMENT is the mount prefix, and is what makes a write
+  #     readable. A tenant mount scoped to `stg/` reads
+  #     s3://bucket/stg/golden/<org>/...; an uploader writing without the
+  #     prefix puts it at s3://bucket/golden/<org>/..., which that mount can
+  #     never see. Every restore then misses forever, and it reads as "the
+  #     cache just never hits" rather than as a misconfiguration.
   volume:
     mountOptions:
       - allow-delete
@@ -512,6 +518,7 @@ goldenUploader:
       - uid=1000
       - gid=1000
       - allow-other
+      - prefix={{ include "sandbox-env.envName" . }}/
   # Existing writable claim, when this chart should not render the PV/PVC.
   # Required with depsCache.remote.storageClassName, since a StorageClass
   # cannot express the read-only/read-write split this relies on.

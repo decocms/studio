@@ -34,7 +34,14 @@ type UploaderOpts struct {
 	CacheRoot string
 	// RemoteRoot is the shared store's mount point, writable here.
 	RemoteRoot string
-	Log        func(msg string)
+	// Env is this uploader's environment (sandbox-env's envName). The node-local
+	// store is per NODE and prod and stg sandboxes share one NodePool, so a
+	// node's goldens are a mix — forwarding a neighbour's would compress and ship
+	// a tree that environment will never read, because its own mount is scoped to
+	// a different key prefix. Empty forwards everything, which is only correct
+	// where a single environment owns the nodes.
+	Env string
+	Log func(msg string)
 }
 
 // UploaderStats is what one sweep did, for a log line and for tests.
@@ -48,7 +55,11 @@ type UploaderStats struct {
 	// org for, simply stays node-local. Counted because a permanently non-zero
 	// value means the org is not arriving and the tier is quietly doing nothing.
 	NoMeta int
-	Failed int
+	// OtherEnv is goldens another environment produced on this shared node.
+	// Counted apart from NoMeta because it is the steady state, not a problem:
+	// prod and stg both run here.
+	OtherEnv int
+	Failed   int
 }
 
 func (o UploaderOpts) log(msg string) {
@@ -97,6 +108,13 @@ func UploadNodeGoldens(opts UploaderOpts) UploaderStats {
 			meta, ok := ReadGoldenMeta(goldenNodeModules)
 			if !ok {
 				stats.NoMeta++
+				continue
+			}
+			// Another environment's tree on a shared node. Skipped before the
+			// expensive part: its archive would land under this environment's key
+			// prefix, where its own sandboxes never look.
+			if opts.Env != "" && meta.Env != opts.Env {
+				stats.OtherEnv++
 				continue
 			}
 			pm, lockHash, ok := splitGoldenLockDir(lockDir.Name())
@@ -190,8 +208,10 @@ func RunUploader(opts UploaderOpts, interval time.Duration, stop <-chan struct{}
 		// that matter.
 		if s.Uploaded > 0 || s.Failed > 0 || s.NoMeta > 0 {
 			opts.log(fmt.Sprintf(
-				"[golden-uploader] swept %d golden(s) in %s: %d uploaded, %d already present, %d without provenance, %d failed",
-				s.Scanned, time.Since(started).Truncate(time.Millisecond), s.Uploaded, s.Skipped, s.NoMeta, s.Failed))
+				"[golden-uploader] swept %d golden(s) in %s: %d uploaded, %d already present, "+
+					"%d without provenance, %d from another env, %d failed",
+				s.Scanned, time.Since(started).Truncate(time.Millisecond),
+				s.Uploaded, s.Skipped, s.NoMeta, s.OtherEnv, s.Failed))
 		}
 	}
 	sweep()

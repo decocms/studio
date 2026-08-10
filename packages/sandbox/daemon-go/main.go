@@ -521,6 +521,7 @@ func runGoldenUploader() {
 	opts := setup.UploaderOpts{
 		CacheRoot:  os.Getenv("DEPS_CACHE_ROOT"),
 		RemoteRoot: os.Getenv("GOLDEN_CACHE_REMOTE"),
+		Env:        os.Getenv("SANDBOX_ENV"),
 		Log:        func(m string) { slog.Info(m) },
 	}
 	if opts.CacheRoot == "" || opts.RemoteRoot == "" {

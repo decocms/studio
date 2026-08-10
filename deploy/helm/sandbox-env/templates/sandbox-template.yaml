@@ -246,6 +246,11 @@ spec:
             # L1 opportunistically, which is a no-op when golden is off).
             - name: GOLDEN_CACHE_REMOTE
               value: {{ .Values.depsCache.remote.mountPath | quote }}
+            # Stamped onto every golden this pod publishes, so the node-level
+            # uploader can tell which environment produced it. Nodes are shared
+            # across environments; the golden path is not environment-scoped.
+            - name: SANDBOX_ENV
+              value: {{ include "sandbox-env.envName" . | quote }}
             {{- end }}
             {{- end }}
             {{- if .Values.telemetry.enabled }}

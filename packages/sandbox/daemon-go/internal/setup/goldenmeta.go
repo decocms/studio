@@ -43,6 +43,12 @@ type GoldenMeta struct {
 	// Package manager the tree was installed with, mirroring the directory name.
 	// Redundant on purpose: it makes a meta file self-describing when read alone.
 	Pm string `json:"pm,omitempty"`
+	// Environment (sandbox-env's envName) that produced this tree. The node-local
+	// store is per NODE, not per environment, and prod and stg sandboxes share
+	// one NodePool — so a node's goldens are a mix. Recording it lets each
+	// environment's uploader forward only what its own boots produced, instead of
+	// compressing and shipping a neighbour's tree that nothing will ever read.
+	Env string `json:"env,omitempty"`
 }
 
 // goldenMetaPath is the meta path for a golden's node_modules path.
