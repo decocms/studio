@@ -132,21 +132,29 @@ export function MarkdownEditor({
       attributes: {
         class: cn(CONTENT_CLASS, PLACEHOLDER_CLASS),
       },
-      handlePaste: (view, event) =>
-        uploadInto(
-          view,
-          Array.from(event.clipboardData?.files ?? []),
-          view.state.selection.to,
-        ),
+      handlePaste: (view, event) => {
+        const files = Array.from(event.clipboardData?.files ?? []);
+        if (files.length === 0) return false;
+        // We own this file. Stop it bubbling to the chat composer's
+        // window-level drop/paste listener (input.tsx `useWindowFileDrop`),
+        // which would otherwise upload the same file into the chat input.
+        event.stopPropagation();
+        return uploadInto(view, files, view.state.selection.to);
+      },
       handleDrop: (view, event, _slice, moved) => {
         // A drag within the editor is a move, not an upload.
         if (moved) return false;
         const files = Array.from(event.dataTransfer?.files ?? []);
+        if (files.length === 0) return false;
         const at = view.posAtCoords({
           left: event.clientX,
           top: event.clientY,
         })?.pos;
         if (at === undefined) return false;
+        // We own this file. Stop it bubbling to the chat composer's
+        // window-level drop listener (input.tsx `useWindowFileDrop`), which
+        // would otherwise upload the same file into the chat input too.
+        event.stopPropagation();
         return uploadInto(view, files, at);
       },
     },
