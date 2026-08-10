@@ -73,6 +73,10 @@ type Patch struct {
 	Application *Application
 	Env         map[string]*string
 	HasEnv      bool
+	// Pointer, not string: DeepMerge rebuilds TenantConfig field by field, so a
+	// field absent from BOTH the patch and the merge is silently dropped on every
+	// apply. Nil here means "not in this patch, keep current".
+	OrgId *string
 }
 
 func ParsePatch(raw map[string]json.RawMessage) (*Patch, error) {
@@ -84,6 +88,11 @@ func ParsePatch(raw map[string]json.RawMessage) (*Patch, error) {
 	}
 	if v, ok := raw["operator"]; ok && !isNull(v) {
 		if err := json.Unmarshal(v, &p.Operator); err != nil {
+			return nil, err
+		}
+	}
+	if v, ok := raw["orgId"]; ok && !isNull(v) {
+		if err := json.Unmarshal(v, &p.OrgId); err != nil {
 			return nil, err
 		}
 	}
