@@ -84,6 +84,12 @@ spec:
               value: {{ .Values.depsCache.remote.mountPath | quote }}
             - name: GOLDEN_UPLOAD_INTERVAL_SECONDS
               value: {{ .Values.goldenUploader.intervalSeconds | quote }}
+            # Which environment's goldens to forward. The hostPath store is per
+            # NODE and every environment's sandboxes share one NodePool, so a
+            # node holds a mix; without this each uploader would compress and
+            # ship its neighbours' trees into a key prefix they never read.
+            - name: SANDBOX_ENV
+              value: {{ include "sandbox-env.envName" . | quote }}
           resources:
             {{- toYaml .Values.goldenUploader.resources | nindent 12 }}
           securityContext:
