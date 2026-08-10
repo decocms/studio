@@ -16,12 +16,25 @@ import { useStudioTools } from "@/lib/studio-tools";
 export type OrgRepoSyncConfig =
   StudioToolIO["ORG_REPO_SYNC_LIST"]["output"]["configs"][number];
 
+/** Poll interval while a config is still waiting on its first sync (kicked
+ *  in the background — see useCreateOrgRepoSync) — otherwise the row's
+ *  "waiting for first sync" status only updates on the next manual visit. */
+const PENDING_FIRST_SYNC_POLL_MS = 5_000;
+
+function hasPendingFirstSync(configs: OrgRepoSyncConfig[] | undefined) {
+  return (configs ?? []).some((c) => !c.lastSyncedAt && !c.lastSyncError);
+}
+
 export function useOrgRepoSyncs() {
   const { org } = useProjectContext();
   const studio = useStudioTools();
   return useQuery({
     queryKey: KEYS.orgRepoSyncs(org.id),
     staleTime: 60_000,
+    refetchInterval: (query) =>
+      hasPendingFirstSync(query.state.data)
+        ? PENDING_FIRST_SYNC_POLL_MS
+        : false,
     queryFn: async () => (await studio.call("ORG_REPO_SYNC_LIST", {})).configs,
   });
 }
