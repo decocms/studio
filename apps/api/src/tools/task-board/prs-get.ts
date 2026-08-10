@@ -190,7 +190,10 @@ export async function resolveGithubConnection(
     });
     if (matching) return matching;
   }
-  return active.find((c) => getRepoScope(c) === null) ?? active[0] ?? null;
+  // Only return org-level (unscoped) connections; never fall back to a
+  // repo-scoped connection that doesn't match the target repo. If a specific
+  // repo was requested and no matching connection exists, return null.
+  return active.find((c) => getRepoScope(c) === null) ?? null;
 }
 
 /** Normalize a CallToolResult to its JSON object (structuredContent, else the
