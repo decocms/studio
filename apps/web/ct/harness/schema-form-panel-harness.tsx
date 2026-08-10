@@ -4,6 +4,7 @@ import {
   type LiveMeta,
 } from "@/components/sections-editor/resolve-schema";
 import { SchemaFormPanel } from "@/components/sections-editor/sections-editor-panels";
+import type { Crumb } from "@/components/sections-editor/schema-form-breadcrumb";
 
 /**
  * CT surface for the `SchemaFormPanel` boundary specifically — the panel the
@@ -30,7 +31,7 @@ export function SchemaFormPanelHarness({
 }) {
   const resolved = resolveSchema(resolveType, meta);
   const [value, setValue] = useState<unknown>(initialValue);
-  const [breadcrumb, setBreadcrumb] = useState<string[]>([]);
+  const [breadcrumb, setBreadcrumb] = useState<Crumb[]>([]);
   const [events, setEvents] = useState<string[]>([]);
 
   return (

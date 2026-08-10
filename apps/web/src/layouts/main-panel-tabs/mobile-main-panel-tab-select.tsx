@@ -5,7 +5,7 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-} from "@deco/ui/components/select.tsx";
+} from "@decocms/ui/components/select.tsx";
 import { getCommerceDiscoveryAgentId, useProjectContext } from "@/sdk";
 import { useReportsOnly } from "@/hooks/use-organization-settings";
 import { useMainPanelTabs } from "./use-main-panel-tabs";

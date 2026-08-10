@@ -9,7 +9,7 @@
  * task).
  */
 import { Lightning01 } from "@untitledui/icons";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import type { SubscriptionErrorKind } from "@/components/task-board/is-subscription-error";
 import { CollapsibleHighlight } from "./collapsible-highlight";

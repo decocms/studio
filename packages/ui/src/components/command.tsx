@@ -3,14 +3,14 @@
 import type * as React from "react";
 import { Command as CommandPrimitive } from "cmdk";
 
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "../lib/utils.ts";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
+} from "./dialog.tsx";
 import { SearchMd } from "@untitledui/icons";
 
 function Command({

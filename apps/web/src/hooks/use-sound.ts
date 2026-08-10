@@ -1,5 +1,5 @@
-import type { SoundAsset } from "@deco/ui/lib/sound-types.ts";
-import { playSound } from "@deco/ui/lib/sound-engine.ts";
+import type { SoundAsset } from "@/lib/sounds/sound-types.ts";
+import { playSound } from "@/lib/sounds/sound-engine.ts";
 import { usePreferences } from "./use-preferences";
 
 /**

@@ -5,8 +5,8 @@
  * Used by both the Monitoring page and the Home page.
  */
 
-import { ChartContainer, ChartTooltip } from "@deco/ui/components/chart.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { ChartContainer, ChartTooltip } from "@decocms/ui/components/chart.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   Area,
   AreaChart,

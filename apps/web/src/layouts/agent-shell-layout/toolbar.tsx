@@ -24,7 +24,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { Link, useParams } from "@tanstack/react-router";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import { DEFAULT_LOGO, usePublicConfig } from "@/hooks/use-public-config";
 

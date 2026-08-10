@@ -8,30 +8,26 @@ import Callout from "../../../../components/ui/Callout.astro";
 
 ## Get Studio running
 
-There are two ways to start.
-
-### Option A — Managed cloud
-
 Sign up at [studio.decocms.com](https://studio.decocms.com) and you're ready to go.
 
 1. Create your account (email, GitHub, or Google)
 2. Create an organization — your top-level workspace
 3. You're in.
 
-### Option B — Run locally
+### Desktop app (recommended for local agents)
+
+The native desktop app lets agents run **on your machine** — with your files, your tooling, and your existing **Claude Code or Codex subscription** as the harness. Studio still handles chat, connections, and logging.
 
 ```bash
-bunx decocms
+brew tap decocms/studio https://github.com/decocms/studio
+brew install --cask deco-studio
 ```
 
-This spins up a local instance with embedded PostgreSQL. Fully private — everything stays on your machine. Or clone and run from source:
+macOS (Apple Silicon) for now. See [where an agent runs](./agents#where-an-agent-runs) for how local runtimes work.
 
-```bash
-git clone https://github.com/decocms/studio.git
-cd studio
-bun install
-bun run dev
-```
+<Callout type="info">
+  Want to run the Studio server itself on your own infrastructure? See [Self-hosting](./self-hosting/quickstart).
+</Callout>
 
 ---
 

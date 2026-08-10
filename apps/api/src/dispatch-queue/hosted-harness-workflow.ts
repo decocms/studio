@@ -80,6 +80,7 @@ import type {
   DurableDispatchRunInput,
 } from "@/api/routes/decopilot/dispatch-run";
 import { synthesizedErrorMessageId } from "@/api/routes/decopilot/message-ids";
+import { isRunSuperseded } from "@/harnesses/sandbox-dispatch-client";
 import type { WithLastAckSeq } from "@/api/routes/decopilot/ingest-run";
 import type { StudioContext } from "@/core/studio-context";
 
@@ -465,6 +466,26 @@ async function hostedHarnessWorkflowFn(
       retriesAllowed: false,
     });
   } catch (err) {
+    // A takeover is not a failure. `RunSupersededError` means a newer dispatch
+    // of this same run displaced our attempt — the successor is the run's writer
+    // and publishes its terminal under the same fence, so publishing one here
+    // would race it and settle a live run as failed (the prod failure of
+    // 2026-08-07). Return normally: the outcome lives on the stream, and the
+    // successor owns it. Deliberately narrow — every other error still
+    // publishes the terminal below, per this workflow's guarantee.
+    //
+    // Recovery-compatible, so no DBOS_WORKFLOW_VERSION bump (snapshot
+    // re-baseline only): this branch SKIPS a step the old code recorded, which
+    // would normally be a replay divergence — but it is only reachable for a
+    // `superseded` terminal, a code the daemon did not emit before this change.
+    // No pre-existing journal can carry it, so every in-flight workflow replays
+    // down the publish path exactly as it recorded.
+    if (isRunSuperseded(err)) {
+      console.log(
+        `[hostedHarness] attempt superseded by a newer dispatch; leaving the terminal to it run=${input.runId} fence=${input.fenceToken}`,
+      );
+      return;
+    }
     // Second step, only reached on failure: publish the fence-scoped error +
     // {done} terminal, then RETURN NORMALLY — do not rethrow. The child's
     // DBOS status becoming SUCCESS here is intentional: run OUTCOME lives on

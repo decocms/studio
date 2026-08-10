@@ -5,7 +5,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import { useChatTask } from "@/components/chat/chat-context";
 import { useTaskForThread } from "@/hooks/use-task-for-thread";
 import { useT } from "@/i18n/use-t.ts";

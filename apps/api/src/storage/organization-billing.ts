@@ -241,18 +241,21 @@ export class OrganizationBillingStorage {
    *  decision site in tools/task-board/run-reactions.ts). Org-scoped so the
    *  invariant doesn't rest on every future caller passing a scoped id.
    *  Idempotent; `run_count` is left intact on purpose, so a refund can't be
-   *  looped into free dispatches. */
+   *  looped into free dispatches. Returns whether a held claim actually
+   *  transitioned — false for a repeat release or a claim that never existed,
+   *  so telemetry can report only refunds that happened. */
   async releaseTaskClaim(
     organizationId: string,
     taskBoardItemId: string,
-  ): Promise<void> {
-    await this.db
+  ): Promise<boolean> {
+    const result = await this.db
       .updateTable("task_quota_claims")
       .set({ state: "released" })
       .where("organization_id", "=", organizationId)
       .where("task_board_item_id", "=", taskBoardItemId)
       .where("state", "=", "held")
-      .execute();
+      .executeTakeFirst();
+    return (result.numUpdatedRows ?? 0n) > 0n;
   }
 
   /**

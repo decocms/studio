@@ -3,8 +3,8 @@ import { useDebouncedAutosave } from "@/hooks/use-debounced-autosave.ts";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
 import { useProjectContext } from "@/sdk";
-import { Avatar } from "@deco/ui/components/avatar.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
+import { Avatar } from "@decocms/ui/components/avatar.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {

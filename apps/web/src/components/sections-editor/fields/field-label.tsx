@@ -1,11 +1,11 @@
 import { cloneElement, type ReactElement } from "react";
-import { Label } from "@deco/ui/components/label.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { Label } from "@decocms/ui/components/label.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import { useVirtualMCP } from "@/sdk/hooks/use-virtual-mcp";
 
 const DESCRIPTION_AFFORDANCE_CLASS =

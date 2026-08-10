@@ -11,14 +11,14 @@ import {
   useQuery,
   useSuspenseInfiniteQuery,
 } from "@tanstack/react-query";
-import { Button } from "@deco/ui/components/button.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
-} from "@deco/ui/components/sheet.tsx";
+} from "@decocms/ui/components/sheet.tsx";
 import {
   Table,
   TableBody,
@@ -26,8 +26,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@deco/ui/components/table.tsx";
-import { Avatar } from "@deco/ui/components/avatar.tsx";
+} from "@decocms/ui/components/table.tsx";
+import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { ChevronUp, ChevronDown, Container } from "@untitledui/icons";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { ErrorBoundary } from "@/components/error-boundary";

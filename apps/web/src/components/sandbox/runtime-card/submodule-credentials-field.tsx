@@ -7,7 +7,7 @@ import type {
 } from "react-hook-form";
 import { Controller, useFieldArray } from "react-hook-form";
 import { toast } from "sonner";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
   DialogContent,
@@ -15,24 +15,24 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
+} from "@decocms/ui/components/dialog.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
+import { Label } from "@decocms/ui/components/label.tsx";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@deco/ui/components/select.tsx";
-import { Skeleton } from "@deco/ui/components/skeleton.tsx";
-import { Textarea } from "@deco/ui/components/textarea.tsx";
+} from "@decocms/ui/components/select.tsx";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/tooltip.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { Plus, Trash01 } from "@untitledui/icons";
 import { SUBMODULE_HOST_RE } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";

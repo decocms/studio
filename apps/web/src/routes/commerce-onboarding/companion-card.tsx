@@ -2,19 +2,19 @@ import { siteUrlToHost } from "@decocms/shared/reports/site-url";
 import { IntegrationIcon } from "@/components/integration-icon";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
+} from "@decocms/ui/components/dialog.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { useMCPClient } from "@/sdk";
 import { useMutation, useQueryClient } from "@tanstack/react-query";

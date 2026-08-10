@@ -1,10 +1,10 @@
 import { IntegrationIcon } from "@/components/integration-icon.tsx";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
 import { KEYS } from "@/lib/query-keys";
-import { Checkbox } from "@deco/ui/components/checkbox.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { ArrowLeft, Loading01 } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import type { CollectionListOutput } from "@decocms/bindings/collections";
 import {
   type ConnectionEntity,

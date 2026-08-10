@@ -1,4 +1,4 @@
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { QA_AGENT_COLOR, QA_AGENT_ICON_URL } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 

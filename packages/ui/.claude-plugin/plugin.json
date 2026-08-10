@@ -1,0 +1,7 @@
+{
+  "name": "decocms-ui",
+  "description": "Build UI with the decocms product design system (@decocms/ui)",
+  "version": "1.0.0",
+  "author": { "name": "decocms" },
+  "homepage": "https://design.decocms.com/"
+}

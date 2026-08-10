@@ -1,7 +1,7 @@
 import { useProjectContext } from "@/sdk";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Markdown } from "@deco/ui/components/markdown.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Markdown } from "@decocms/ui/components/markdown.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { ChevronRight, LinkExternal01 } from "@untitledui/icons";
 import { useState } from "react";
 import { useT } from "@/i18n/use-t.ts";

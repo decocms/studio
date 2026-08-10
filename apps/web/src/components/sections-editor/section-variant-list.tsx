@@ -1,12 +1,12 @@
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { SORTABLE_DROP_ANIMATION } from "@/lib/dnd-drop-animation.ts";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import {
   Copy01,
   DotsGrid,
@@ -21,8 +21,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
-import { cn } from "@deco/ui/lib/utils.js";
+} from "@decocms/ui/components/dropdown-menu.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   DndContext,
   DragOverlay,

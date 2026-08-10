@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Container, Loading01 } from "@untitledui/icons";
-import { getGitHubAvatarUrl } from "@deco/ui/lib/github.ts";
+import { getGitHubAvatarUrl } from "@/utils/github.ts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -10,8 +10,8 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@deco/ui/components/alert-dialog.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
+} from "@decocms/ui/components/alert-dialog.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { ConnectionCard } from "@/components/connections/connection-card.tsx";
 import type { ConnectionEntity } from "@/sdk";
 import { track } from "@/lib/posthog-client";

@@ -10,7 +10,7 @@
  *   - null → deterministic fallback
  */
 
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import * as AllIcons from "@untitledui/icons";
 import { useState, type ComponentType, type SVGProps } from "react";
 

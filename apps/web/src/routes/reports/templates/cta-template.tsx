@@ -66,8 +66,8 @@ const PILLS: Pill[] = [
 ];
 
 // The scored areas shown inside the report card — the report's 5 business
-// macrotemas (see .claude/DECISION-TREE.md in commerce-skills; the real
-// `categorias` slide renders these from live data). Colors + order mirror the
+// macrotemas (see .claude/DECISION-TREE.md in commerce-skills; the cover's
+// area breakdown renders these from live data). Colors + order mirror the
 // MCP-app area palette so the illustrative card matches the real report.
 type ReportArea = { labelKey: TranslationKey; score: number; color: string };
 const REPORT_AREAS: ReportArea[] = [

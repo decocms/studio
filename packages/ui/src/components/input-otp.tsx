@@ -4,7 +4,7 @@ import * as React from "react";
 import { OTPInput, OTPInputContext } from "input-otp";
 import { Minus } from "@untitledui/icons";
 
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "../lib/utils.ts";
 
 function InputOTP({
   className,

@@ -1,11 +1,11 @@
 import { useT } from "@/i18n/use-t.ts";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import {
   Sliders01,
   List,
@@ -19,10 +19,10 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
-import { ViewModeToggle } from "@deco/ui/components/view-mode-toggle.tsx";
-import { Badge } from "@deco/ui/components/badge.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/tooltip.tsx";
+import { ViewModeToggle } from "@decocms/ui/components/view-mode-toggle.tsx";
+import { Badge } from "@decocms/ui/components/badge.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 
 export interface FilterGroup {
   label: string;

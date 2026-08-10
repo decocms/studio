@@ -1,5 +1,5 @@
-import { cn } from "@deco/ui/lib/utils.ts";
-import { Badge } from "@deco/ui/components/badge.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { Badge } from "@decocms/ui/components/badge.tsx";
 
 export interface CollectionTab {
   id: string;

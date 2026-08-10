@@ -83,6 +83,18 @@ export interface TenantConfig {
   readonly cloneOnly?: boolean;
   readonly application?: Application;
   readonly env?: Readonly<Record<string, string>>;
+  /**
+   * Owning organization. Informational to the boot itself — the daemon uses it
+   * only to stamp provenance on artifacts that outlive the pod, so a consumer
+   * outside it can tell whose they are.
+   *
+   * Concretely: the shared golden cache keys archives by org, because the repo
+   * hash alone does not isolate two organizations that clone the same URL (a
+   * public template). Without this the daemon cannot record which org produced
+   * a cached dependency tree, and a shared cache would let one org's tree be
+   * restored into another's sandbox.
+   */
+  readonly orgId?: string;
 }
 
 /** A `/config` PATCH body. `null` env values delete the variable. */

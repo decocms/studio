@@ -6,19 +6,19 @@ import {
   EyeOff,
   Trash01,
 } from "@untitledui/icons";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/tooltip.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useT } from "@/i18n/use-t.ts";
@@ -209,13 +209,24 @@ export function SortableArrayRow({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={onDuplicate}>
+          <DropdownMenuItem
+            onClick={(e) => {
+              // Stop the click from bubbling up the React tree (portaled
+              // content still propagates to the row's onClick) and drilling
+              // into the item right after this action runs.
+              e.stopPropagation();
+              onDuplicate();
+            }}
+          >
             <Copy01 size={14} />
             {t("sectionsEditor.arrayField.duplicate")}
           </DropdownMenuItem>
           <DropdownMenuItem
             className="text-destructive focus:text-destructive"
-            onClick={onRemove}
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove();
+            }}
           >
             <Trash01 size={14} />
             {t("sectionsEditor.arrayField.delete")}

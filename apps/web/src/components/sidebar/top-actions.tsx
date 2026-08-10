@@ -5,12 +5,12 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@deco/ui/components/sidebar.tsx";
+} from "@decocms/ui/components/sidebar.tsx";
 import { Coins04 } from "@untitledui/icons";
 import { useNavigate } from "@tanstack/react-router";
 import { useProjectContext } from "@/sdk";
 import { useDecoCredits } from "@/hooks/use-deco-credits";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 
 class SilentErrorBoundary extends Component<
   { children: ReactNode },

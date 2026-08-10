@@ -1,6 +1,6 @@
 import { beforeMount } from "@playwright/experimental-ct-react/hooks";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { TooltipProvider } from "@deco/ui/components/tooltip.tsx";
+import { TooltipProvider } from "@decocms/ui/components/tooltip.tsx";
 import "./index.css";
 
 // One client per page load; retries off so failed (stubbed) queries settle fast.

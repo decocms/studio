@@ -3,7 +3,10 @@ import { createHmac } from "node:crypto";
 import {
   mapSubscriptionStatus,
   parseStripeEvent,
+  subscriptionFunnelEvent,
   verifyStripeSignature,
+  type HandledStripeEvent,
+  type StripeEvent,
 } from "./stripe-webhook";
 
 const SECRET = "whsec_test_secret";
@@ -113,5 +116,95 @@ describe("mapSubscriptionStatus", () => {
     expect(mapSubscriptionStatus("canceled")).toBe("canceled");
     expect(mapSubscriptionStatus("unpaid")).toBe("canceled");
     expect(mapSubscriptionStatus(undefined)).toBe("canceled");
+  });
+});
+
+describe("subscriptionFunnelEvent", () => {
+  const ORG = "org_1";
+  const handled: HandledStripeEvent = { handled: true, organizationId: ORG };
+  const evt = (
+    type: string,
+    object: Record<string, unknown> = {},
+    livemode?: boolean,
+  ): StripeEvent => ({ type, livemode, data: { object } });
+
+  test("unhandled results and test-mode traffic map to nothing", () => {
+    expect(
+      subscriptionFunnelEvent(evt("invoice.paid"), {
+        handled: false,
+        reason: "unknown org",
+      }),
+    ).toBeNull();
+    expect(
+      subscriptionFunnelEvent(evt("invoice.paid", {}, false), handled),
+    ).toBeNull();
+  });
+
+  test("topUp wins over the type mapping and carries the amount", () => {
+    const r = subscriptionFunnelEvent(evt("checkout.session.completed"), {
+      ...handled,
+      topUp: { creditCents: 5000, referenceId: "stripe-topup:cs_1" },
+    });
+    expect(r).toEqual({
+      name: "credits_topup_succeeded",
+      organizationId: ORG,
+      properties: { credit_cents: 5000 },
+    });
+  });
+
+  test("checkout (both delivery types) → subscription_started", () => {
+    expect(
+      subscriptionFunnelEvent(evt("checkout.session.completed"), handled)?.name,
+    ).toBe("subscription_started");
+    expect(
+      subscriptionFunnelEvent(
+        evt("checkout.session.async_payment_succeeded"),
+        handled,
+      )?.name,
+    ).toBe("subscription_started");
+  });
+
+  test("subscription.updated carries mapped status and churn intent", () => {
+    const r = subscriptionFunnelEvent(
+      evt("customer.subscription.updated", {
+        status: "active",
+        cancel_at_period_end: true,
+      }),
+      handled,
+    );
+    expect(r?.name).toBe("subscription_updated");
+    expect(r?.properties).toEqual({
+      status: "active",
+      cancel_at_period_end: true,
+    });
+  });
+
+  test("subscription.deleted → subscription_canceled", () => {
+    expect(
+      subscriptionFunnelEvent(evt("customer.subscription.deleted"), handled)
+        ?.name,
+    ).toBe("subscription_canceled");
+  });
+
+  test("invoice.paid → subscription_renewed, EXCEPT the first invoice", () => {
+    expect(
+      subscriptionFunnelEvent(
+        evt("invoice.paid", { billing_reason: "subscription_cycle" }),
+        handled,
+      )?.name,
+    ).toBe("subscription_renewed");
+    // The creation invoice is the subscription_started moment, not a renewal.
+    expect(
+      subscriptionFunnelEvent(
+        evt("invoice.paid", { billing_reason: "subscription_create" }),
+        handled,
+      ),
+    ).toBeNull();
+  });
+
+  test("unmapped event types map to nothing", () => {
+    expect(
+      subscriptionFunnelEvent(evt("customer.created"), handled),
+    ).toBeNull();
   });
 });

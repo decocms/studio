@@ -7,7 +7,7 @@ import {
 import {
   RadioGroup,
   RadioGroupItem,
-} from "@deco/ui/components/radio-group.tsx";
+} from "@decocms/ui/components/radio-group.tsx";
 import { useT } from "@/i18n/use-t.ts";
 
 // The publish-policy radio group (`metadata.publishPolicy`): how a code agent's

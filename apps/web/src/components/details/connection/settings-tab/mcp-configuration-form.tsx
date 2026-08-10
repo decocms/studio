@@ -2,15 +2,15 @@ import { useConnection, useConnections, useProjectContext } from "@/sdk";
 import { resolveBindingType } from "@/hooks/use-binding";
 import { useInstallFromRegistry } from "@/hooks/use-install-from-registry";
 import { Loading01, Plus } from "@untitledui/icons";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@deco/ui/components/select.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/select.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import RjsfForm from "@rjsf/shadcn";
 import type { FieldTemplateProps, ObjectFieldTemplateProps } from "@rjsf/utils";
 import validator from "@rjsf/validator-ajv8";

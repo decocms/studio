@@ -3,15 +3,15 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { useT } from "@/i18n/use-t.ts";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { ArrowRight, ChevronRight, Check, Copy01 } from "@untitledui/icons";
 import { formatDuration } from "@/lib/format-time.ts";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@deco/ui/components/collapsible.tsx";
-import { useCopy } from "@deco/ui/hooks/use-copy.ts";
+} from "@decocms/ui/components/collapsible.tsx";
+import { useCopy } from "@decocms/ui/hooks/use-copy.ts";
 import { useStickToBottom } from "use-stick-to-bottom";
 import { MessageUsageStats } from "../../../usage-stats.tsx";
 import type { UsageStats as UsageStatsType } from "@/lib/usage-utils.ts";

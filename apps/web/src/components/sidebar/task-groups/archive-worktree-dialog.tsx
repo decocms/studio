@@ -17,9 +17,9 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@deco/ui/components/alert-dialog.tsx";
-import { buttonVariants } from "@deco/ui/components/button.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/alert-dialog.tsx";
+import { buttonVariants } from "@decocms/ui/components/button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 
 export function ArchiveWorktreeDialog({

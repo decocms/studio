@@ -1,4 +1,4 @@
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { FlipBackward, Loading01, Save01 } from "@untitledui/icons";
 
 interface SaveActionsProps {

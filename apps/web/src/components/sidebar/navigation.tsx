@@ -9,9 +9,9 @@ import {
   SidebarMenuItem,
   SidebarSeparator,
   useSidebar,
-} from "@deco/ui/components/sidebar.tsx";
-import { Skeleton } from "@deco/ui/components/skeleton.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/sidebar.tsx";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import type { ReactNode } from "react";
 import type { NavigationSidebarItem, SidebarSection } from "./types";
 import { SidebarCollapsibleGroup } from "./sidebar-group";

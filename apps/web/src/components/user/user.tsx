@@ -5,8 +5,8 @@
  * Handles loading and error states gracefully.
  */
 
-import { Avatar, type AvatarProps } from "@deco/ui/components/avatar.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { Avatar, type AvatarProps } from "@decocms/ui/components/avatar.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useUserById } from "../../hooks/use-user-by-id";
 import { useT } from "@/i18n/use-t.ts";
 

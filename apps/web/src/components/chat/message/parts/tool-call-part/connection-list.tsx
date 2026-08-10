@@ -6,7 +6,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useProjectContext } from "@/sdk";
 import type { ConnectionEntity } from "@decocms/shared/sdk/types";
 import { IntegrationIcon } from "@/components/integration-icon";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   ToolCallShell,
   LatencyLabel,

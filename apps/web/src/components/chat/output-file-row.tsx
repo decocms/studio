@@ -7,7 +7,7 @@
 
 import { useT } from "@/i18n/use-t.ts";
 import { useNavigate } from "@tanstack/react-router";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { Download01 } from "@untitledui/icons";
 import { FileTypeIcon } from "@/components/file-type-icon";
 import { formatFileTabId } from "@/layouts/main-panel-tabs/tab-id";

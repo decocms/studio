@@ -7,16 +7,16 @@ import {
   SettingsCardItem,
   SettingsSection,
 } from "@/components/settings/settings-section";
-import { Badge } from "@deco/ui/components/badge.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
+import { Badge } from "@decocms/ui/components/badge.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@deco/ui/components/select.tsx";
+} from "@decocms/ui/components/select.tsx";
 import { useProjectContext } from "@/sdk";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";

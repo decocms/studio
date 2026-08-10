@@ -9,6 +9,20 @@ description: |
   releases coexist in the shared `agent-sandbox-system` namespace.
   Requires the sandbox-operator chart to already be installed.
 type: application
+# 0.13.0: opt-in `goldenUploader` (default off) — a DaemonSet that carries L1
+# goldens from a node's hostPath into the shared L2 store, plus its own WRITABLE
+# PV/PVC over that store. Without it the shared store stays empty: a sandbox
+# pod's mount is read-only by design, so nothing a tenant boots can publish
+# there. A DaemonSet rather than a sidecar so the sandbox PodSpec is untouched —
+# no per-pod request, no effect on packing density, nothing new that can degrade
+# the health probe — and so the writable mount lives once per node in
+# infrastructure instead of inside every tenant's pod. Archives are keyed by org,
+# which is what makes fleet-wide publishing acceptable: a repo hash comes from
+# the clone URL, so two orgs cloning one public template would otherwise share a
+# key. Requires depsCache.enabled + depsCache.remote.enabled and a writable
+# volume source (the new PV, or goldenUploader.pvcName — mandatory on the dynamic
+# storageClassName path, which cannot express the read-only/read-write split).
+# Additive; no change unless enabled.
 # 0.12.1: pin `updateStrategy.type: OnReplenish` on every SandboxWarmPool
 # (generic + tenant). It is already the operator's default as of v0.4.5, so
 # this renders no behaviour change today — it exists so an operator upgrade
@@ -92,7 +106,7 @@ type: application
 # 0.8.0: org-fs sidecar (orgFs.*) — privileged rclone mounter + main-container
 # mounts. NOTE: the publish workflow skips existing versions, so this MUST
 # stay ahead of the latest published chart (0.7.5 at time of writing).
-version: 0.12.9
+version: 0.13.1
 # appVersion tracks the studio-sandbox image version (image.tag default).
-appVersion: "1.44.5"
+appVersion: "1.46.0"
 kubeVersion: ">=1.30.0-0"

@@ -66,10 +66,20 @@ export function buildConfigPayload(args: {
       }
     : undefined;
 
-  if (!git && !application && !operator && !args.cloneOnly) return null;
+  const orgId = tenant?.orgId;
+
+  if (!git && !application && !operator && !args.cloneOnly && !orgId) {
+    return null;
+  }
   return {
     ...(git ? { git } : {}),
     ...(operator ? { operator } : {}),
+    // Provenance for artifacts that outlive the pod. The daemon does not use it
+    // to boot; it stamps it on the golden dependency cache so the shared tier
+    // can key by org. Repo hash alone does not isolate two orgs cloning the
+    // same public template, and a shared cache without this would let one org's
+    // tree restore into another's sandbox.
+    ...(orgId ? { orgId } : {}),
     // Always sent when true, never as an absent-means-false: a sandbox reused
     // from a warm pool carries the previous claim's config, so the flag has to
     // be able to turn itself back off on a normal (dev-server) provision.

@@ -1,6 +1,6 @@
-import { Skeleton } from "@deco/ui/components/skeleton.tsx";
-import { useSidebar } from "@deco/ui/components/sidebar.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 
 const COLLAPSED_ITEMS = 5;
 const EXPANDED_GROUPS = [

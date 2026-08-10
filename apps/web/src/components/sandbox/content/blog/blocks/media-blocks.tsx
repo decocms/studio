@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ImageField } from "@/components/sections-editor/fields/image-field";
-import { cn } from "@deco/ui/lib/utils.js";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { FloatingToolbar, InlineText, ToolbarButton, str } from "./primitives";
 import { useT } from "@/i18n/use-t";
 

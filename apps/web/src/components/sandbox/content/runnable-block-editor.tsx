@@ -12,18 +12,22 @@ import {
   X,
 } from "@untitledui/icons";
 import { toast } from "sonner";
-import { Button } from "@deco/ui/components/button.tsx";
-import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
-import { cn } from "@deco/ui/lib/utils.js";
+} from "@decocms/ui/components/tooltip.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import { useInsetContext } from "@/layouts/agent-shell-layout";
 import { MonacoCodeEditor } from "@/components/monaco-editor";
 import { SchemaForm } from "@/components/sections-editor/schema-form";
+import {
+  type Crumb,
+  crumbLabel,
+} from "@/components/sections-editor/schema-form-breadcrumb";
 import {
   inferSchemaFromValue,
   isFreeformPropsSchema,
@@ -107,7 +111,7 @@ export function RunnableBlockEditor({
 
   const [formValue, setFormValue] =
     useState<Record<string, unknown>>(initialValue);
-  const [fieldBreadcrumbs, setFieldBreadcrumbs] = useState<string[]>([]);
+  const [fieldBreadcrumbs, setFieldBreadcrumbs] = useState<Crumb[]>([]);
   const [formResetKey, setFormResetKey] = useState(0);
   const [jsonError, setJsonError] = useState(false);
   const [jsonCode, setJsonCode] = useState<string | null>(null);
@@ -248,9 +252,10 @@ export function RunnableBlockEditor({
           >
             {headerCrumbs.map((crumb, index) => {
               const isLast = index === headerCrumbs.length - 1;
+              const crumbText = crumbLabel(crumb);
               return (
                 <span
-                  key={`${crumb}-${index}`}
+                  key={`${crumbText}-${index}`}
                   className="flex min-w-0 items-center gap-1 overflow-hidden"
                 >
                   {index > 0 && (
@@ -259,7 +264,7 @@ export function RunnableBlockEditor({
                   <button
                     type="button"
                     onClick={() => handleBreadcrumbClick(index)}
-                    title={crumb}
+                    title={crumbText}
                     className={cn(
                       "min-w-0 truncate rounded-md px-1 py-0.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground",
                       isLast
@@ -267,7 +272,7 @@ export function RunnableBlockEditor({
                         : "text-muted-foreground",
                     )}
                   >
-                    {crumb}
+                    {crumbText}
                   </button>
                 </span>
               );

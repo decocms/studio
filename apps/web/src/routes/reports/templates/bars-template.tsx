@@ -1,4 +1,4 @@
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import SlideHeader from "./slide-header";
 import { DECK, TONE_COLOR } from "./tokens";
 import type { BarsProps } from "@decocms/shared/reports/deck-types";

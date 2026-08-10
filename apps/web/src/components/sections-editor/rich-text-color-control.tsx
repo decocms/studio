@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Palette } from "@untitledui/icons";
 import type { Editor } from "@tiptap/core";
-import { cn } from "@deco/ui/lib/utils.js";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import { ToolbarButton } from "./rich-text-link-control";
 

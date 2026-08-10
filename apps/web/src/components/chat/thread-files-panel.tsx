@@ -16,7 +16,7 @@
  */
 
 import { useState } from "react";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { ChevronDown } from "@untitledui/icons";
 import { useOptionalChatTask } from "./context.tsx";
 import { OutputFileRow } from "./output-file-row.tsx";

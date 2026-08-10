@@ -46,7 +46,7 @@ image:
   # instead of silently moving with `:latest`. Bump in lockstep with
   # packages/sandbox/package.json — release-studio-sandbox.yaml tags
   # images using that version. NEVER set this to "latest" in prod.
-  tag: "1.44.5"
+  tag: "1.46.0"
   # Override to Never on local kind clusters that load via `kind load`.
   pullPolicy: IfNotPresent
 
@@ -439,7 +439,8 @@ depsCache:
         - prefix={{ include "sandbox-env.envName" . }}/
 
     # (3) EXISTING CLAIM — mount a PVC this chart neither creates nor
-    # manages. Nothing above is used.
+    # manages. Nothing above is used, including goldenUploader's PV — supply
+    # goldenUploader.pvcName too if you enable the uploader.
     #
     # PROVISION THAT VOLUME'S ROOT YOURSELF — this chart cannot. A freshly
     # provisioned volume comes up root-owned, and nothing here can fix it:
@@ -451,6 +452,74 @@ depsCache:
     # forever. Paths (1) and (2) handle ownership for you: (2) via
     # mountOptions, (1) via your StorageClass / access point.
     pvcName: ""
+
+# ── golden uploader (opt-in, off) ──────────────────────────────────────
+# Node-level bridge from the L1 hostPath store to the shared L2 one. Without
+# it the shared store stays EMPTY: a sandbox pod's mount is read-only, by
+# design, so nothing a tenant boots can publish there.
+#
+# WHY A DaemonSet AND NOT A SIDECAR. Writing a store shared across nodes needs
+# write access, and a sandbox runs untrusted code — a package manager installs
+# cached content as-is, so a tenant able to write it could poison another
+# node's boot. The tenant's write path stops at its own node's hostPath, which
+# is already the accepted trust domain there, and this carries goldens the rest
+# of the way. Consequences that a sidecar in the sandbox pod would not have:
+# the sandbox PodSpec is untouched (no per-pod request, no effect on packing
+# density, nothing new that can degrade the health probe Studio kills the pod
+# on), the writable mount exists once per node in infrastructure rather than
+# inside every tenant's pod, and CPU can be capped without competing with a
+# user's dev server.
+#
+# WHAT IT UPLOADS is not configurable, and cannot be. Sandboxes are
+# multi-tenant and run third-party code, so the set of (repo, lockfile) pairs
+# is not knowable ahead of time — there is no list to curate and no image to
+# pre-bake. It forwards what a real boot already produced and the daemon
+# already judged healthy enough to publish node-locally, and nothing else.
+#
+# KEYED BY ORG. The daemon stamps the owning organization beside each golden
+# (see the orgId note in the daemon protocol); a golden without one is skipped
+# rather than uploaded under an unscoped key. That is what stops two orgs
+# cloning the same public template from sharing an archive — the repo hash
+# comes from the clone URL, so on its own it does not isolate them.
+goldenUploader:
+  enabled: false
+  # How often to sweep. Cheap when there is nothing new: a golden already in
+  # the shared store costs one HEAD and a skip. Compression happens at most
+  # once per (org, repo, lockfile) across the whole fleet.
+  intervalSeconds: 300
+  # Deliberately small. Compression is CPU-bound and shares a node with tenant
+  # sandboxes, whose NodePool has a CPU ceiling — a sweep that takes 60s
+  # instead of 26s costs nobody anything, because no boot waits on it.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  # Mount options for the writable view. Same store as the tenants read, minus
+  # `read-only` and plus the two that let a publisher replace an object. The
+  # split lives in the MOUNT rather than in convention, so a consumer that
+  # forgets `readOnly: true` on the tenant volume still cannot write.
+  #
+  # No `prefix` here: the uploader writes keys for many orgs, so it needs the
+  # whole store. Isolation comes from the key, which the daemon's meta scopes
+  # per org.
+  volume:
+    mountOptions:
+      - allow-delete
+      - allow-overwrite
+      - uid=1000
+      - gid=1000
+      - allow-other
+  # Existing writable claim, when this chart should not render the PV/PVC.
+  # Required with depsCache.remote.storageClassName, since a StorageClass
+  # cannot express the read-only/read-write split this relies on.
+  pvcName: ""
+  # Defaults to the sandbox pods' placement: the hostPath it reads only exists
+  # on nodes that ran one.
+  nodeSelector: {}
+  tolerations: []
 
 # ── sentinel token ─────────────────────────────────────────────────────
 sentinel:

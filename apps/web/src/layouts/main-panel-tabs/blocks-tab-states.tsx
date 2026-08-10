@@ -1,4 +1,4 @@
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { AlertCircle, Box, LinkExternal01 } from "@untitledui/icons";
 import { EmptyState } from "@/components/empty-state";
 import { useT } from "@/i18n/use-t.ts";

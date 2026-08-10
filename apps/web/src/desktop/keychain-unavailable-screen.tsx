@@ -1,4 +1,4 @@
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { AuthSplitLayout } from "@/components/auth-split-layout";
 import type { DesktopAuth } from "@/desktop/use-desktop-auth";
 import { useT } from "@/i18n/use-t";

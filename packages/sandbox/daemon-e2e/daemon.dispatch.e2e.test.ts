@@ -378,9 +378,16 @@ describe("daemon e2e: dispatch runs a harness", () => {
 
       const { frames, endedAt } = await displaced;
       // The displaced run ended, and said why — it did not outlive the takeover.
+      // `superseded`, NOT `cancelled`: this attempt no longer owns the run, so
+      // its ending is not the run's verdict. Asserting `cancelled` here is what
+      // let the prod regression of 2026-08-07 through — a scaled-in worker's
+      // displaced attempt settled a live thread as
+      // `Error: cancelled: run cancelled`. It is still a terminal, because an
+      // unterminated body would make the loser continue the turn and take the
+      // run back off its successor.
       const terminal = frames.at(-1);
       expect(terminal?.done).toBe(true);
-      expect(terminal?.error?.code).toBe("cancelled");
+      expect(terminal?.error?.code).toBe("superseded");
       // And it ended BEFORE the replacement produced anything: the daemon waits
       // for the old process group to die before exec'ing the new harness.
       expect(secondFirstFrameAt).toBeGreaterThanOrEqual(endedAt);

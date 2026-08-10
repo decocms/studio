@@ -9,8 +9,8 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
 import { useProjectContext } from "@/sdk";
 import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";

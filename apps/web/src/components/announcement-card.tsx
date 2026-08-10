@@ -1,5 +1,5 @@
-import { Button } from "@deco/ui/components/button.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { XClose } from "@untitledui/icons";
 import type { ReactNode } from "react";
 

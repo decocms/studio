@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronDown } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   CommandDialog,
   CommandInput,
@@ -8,7 +8,7 @@ import {
   CommandGroup,
   CommandItem,
   CommandEmpty,
-} from "@deco/ui/components/command.tsx";
+} from "@decocms/ui/components/command.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { resolveBlockSchemaMetadata, type LiveMeta } from "./resolve-schema";
 import { MatcherIcon, resolveMatcherIconName } from "./matcher-icons";

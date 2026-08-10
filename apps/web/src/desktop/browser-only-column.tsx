@@ -8,7 +8,7 @@
  * by `AuthEntry`'s desktop branch. Column content only — the caller's
  * layout (`AuthSplitLayout`) provides the frame.
  */
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { useT } from "@/i18n/use-t.ts";
 
 export function BrowserOnlyColumn({

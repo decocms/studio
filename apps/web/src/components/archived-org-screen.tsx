@@ -1,4 +1,4 @@
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { Archive } from "@untitledui/icons";
 import { AccessScreenLayout } from "@/components/access-screen-layout";
 import { useT } from "@/i18n/use-t.ts";

@@ -11,19 +11,19 @@
  * produces the export with zero server work.
  */
 
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/tooltip.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   Download01,
   Edit03,

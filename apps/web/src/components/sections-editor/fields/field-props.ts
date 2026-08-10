@@ -1,4 +1,5 @@
 import type { LiveMeta, SchemaProperty } from "../resolve-schema";
+import type { Crumb } from "../schema-form-breadcrumb";
 import type { SectionCatalogEntry } from "../section-catalog";
 
 export interface SandboxConfig {
@@ -15,8 +16,8 @@ export interface FieldProps {
   onChange: (value: unknown) => void;
   path: string;
   label: string;
-  breadcrumbPath?: string[];
-  onBreadcrumbChange?: (path: string[]) => void;
+  breadcrumbPath?: Crumb[];
+  onBreadcrumbChange?: (path: Crumb[]) => void;
   /**
    * True when this field shares its object scope with another array/drill-down
    * field. Array fields use it to decide whether their own label must stay in

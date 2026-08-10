@@ -22,8 +22,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@deco/ui/components/select.tsx";
-import { cn } from "@deco/ui/lib/utils.js";
+} from "@decocms/ui/components/select.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { FieldProps } from "./field-props";
 import { FieldLabel } from "./field-label";

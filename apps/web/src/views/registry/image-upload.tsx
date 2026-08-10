@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
+import { Label } from "@decocms/ui/components/label.tsx";
 import {
   ImagePlus,
   RefreshCcw01,
@@ -9,7 +9,7 @@ import {
   Link01,
   Loading01,
 } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 
 interface ImageUploadProps {

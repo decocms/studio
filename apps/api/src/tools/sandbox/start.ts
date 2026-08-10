@@ -43,6 +43,10 @@ import {
   resolveVm,
 } from "./sandbox-map";
 import {
+  findReusableRepoConnection,
+  getRepoScope,
+} from "@decocms/shared/github-repo-scope";
+import {
   buildAnonymousCloneInfo,
   buildCloneInfo,
   ensureGithubCloneToken,
@@ -361,11 +365,26 @@ async function provisionSandbox(
     virtualMcpId,
     branch,
     metadata,
-    githubRepo,
     existing,
     runner,
     cloneOnly,
   } = params;
+
+  // A recorded connectionId can dangle — deleting a connection (force-delete,
+  // or another agent's delete tearing down its repo-scoped child) removes
+  // aggregation rows but never rewrites `metadata.githubRepo` on other agents
+  // that recorded it — and the clone path below fails loudly on a connectionId
+  // with no connection behind it. Re-point at a live connection covering the
+  // same repo when one exists.
+  const githubRepo = params.githubRepo
+    ? await healDanglingRepoConnection({
+        ctx,
+        orgId,
+        virtualMcpId,
+        userId,
+        githubRepo: params.githubRepo,
+      })
+    : null;
 
   let { runtime, packageManager, port, packageManagerPath } =
     resolveRuntimeConfig(metadata);
@@ -686,6 +705,84 @@ async function provisionSandbox(
   // Different handle = new sandbox (stale entry / orphan recovery / state miss).
   const isNewVm = !existing || existing.sandboxHandle !== sandbox.handle;
   return { entry, isNewVm };
+}
+
+/**
+ * Falls back to a live connection covering the same repo when the recorded
+ * `githubRepo.connectionId` no longer resolves (see the call site for how it
+ * dangles). Org-shared connections win — findReusableRepoConnection. The heal
+ * is persisted back onto the agent's metadata (best-effort) so every other
+ * consumer of the recorded id — git publish, credential sync, the companion
+ * repo-reuse plan — reads the live connection too, instead of re-healing here
+ * on every start. With no replacement the repo is returned unchanged and
+ * buildCloneInfo keeps failing loudly (GITHUB_NOT_AUTHENTICATED → the client's
+ * reconnect affordance); stripping the id would silently downgrade a private
+ * repo to an anonymous clone that can't push.
+ */
+async function healDanglingRepoConnection(params: {
+  ctx: StudioContext;
+  orgId: string;
+  virtualMcpId: string;
+  userId: string;
+  githubRepo: GithubRepo;
+}): Promise<GithubRepo> {
+  const { ctx, orgId, virtualMcpId, userId, githubRepo } = params;
+  if (!githubRepo.connectionId) return githubRepo;
+  const recorded = await ctx.storage.connections.findById(
+    githubRepo.connectionId,
+    orgId,
+  );
+  if (recorded) return githubRepo;
+
+  const { items } = await ctx.storage.connections.list(orgId);
+  const replacement = findReusableRepoConnection(
+    items,
+    githubRepo.owner,
+    githubRepo.name,
+  );
+  if (!replacement) {
+    console.warn(
+      "[provisionSandbox] recorded repo connection no longer exists and no live connection covers the repo",
+      { virtualMcpId, connectionId: githubRepo.connectionId },
+    );
+    return githubRepo;
+  }
+  console.warn("[provisionSandbox] healed dangling repo connection", {
+    virtualMcpId,
+    staleConnectionId: githubRepo.connectionId,
+    connectionId: replacement.id,
+  });
+
+  // Persist only while the agent's own metadata still records the stale id —
+  // a thread-scoped repo or a concurrent update must not be overwritten.
+  try {
+    const virtualMcp = await ctx.storage.virtualMcps.findById(virtualMcpId);
+    const meta = (virtualMcp?.metadata ?? {}) as Record<string, unknown>;
+    const current = (meta as GithubRepoMeta).githubRepo;
+    if (current?.connectionId === githubRepo.connectionId) {
+      const scope = getRepoScope(replacement);
+      await ctx.storage.virtualMcps.update(virtualMcpId, userId, {
+        metadata: {
+          ...meta,
+          githubRepo: {
+            ...current,
+            connectionId: replacement.id,
+            ...(scope ? { installationId: scope.installationId } : {}),
+          },
+        } as VirtualMCPUpdateData["metadata"],
+      });
+    }
+  } catch (err) {
+    console.warn(
+      "[provisionSandbox] failed to persist healed repo connection",
+      {
+        virtualMcpId,
+        error: (err as Error).message,
+      },
+    );
+  }
+
+  return { ...githubRepo, connectionId: replacement.id };
 }
 
 /**

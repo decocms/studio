@@ -1,5 +1,5 @@
 import { Edit02, Plus, Trash01 } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.js";
+import { cn } from "@decocms/ui/lib/utils.ts";
 
 /**
  * Borderless auto-growing text input shared by the block editors. Grows

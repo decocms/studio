@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Label } from "@deco/ui/components/label.tsx";
-import { Switch } from "@deco/ui/components/switch.tsx";
-import { cn } from "@deco/ui/lib/utils.js";
+import { Label } from "@decocms/ui/components/label.tsx";
+import { Switch } from "@decocms/ui/components/switch.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { SchemaProperty } from "./resolve-schema";
 import { renderField } from "./schema-form";

@@ -1,13 +1,13 @@
-import { Checkbox } from "@deco/ui/components/checkbox.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
+import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
+import { Label } from "@decocms/ui/components/label.tsx";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@deco/ui/components/select.tsx";
+} from "@decocms/ui/components/select.tsx";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { useAutosave } from "./blog/use-autosave";
 import { SaveStatus } from "./blog/save-status";

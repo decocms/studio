@@ -17,14 +17,14 @@ import { isPostHogInitialized, track } from "@/lib/posthog-client";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
 import { usePreferences } from "@/hooks/use-preferences.ts";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import {
   getCommerceDiscoveryAgentId,
   getWellKnownDecopilotVirtualMCP,
@@ -49,7 +49,7 @@ import {
 import { SiteBadge } from "./commerce-onboarding/site-badge.tsx";
 import { CommerceOnboardingLoadingIndicator } from "./commerce-onboarding/loading-state.tsx";
 import { parseSelfToolResult } from "./commerce-onboarding/self-tool-result.ts";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 
 interface CommerceOrganization {
   id: string;

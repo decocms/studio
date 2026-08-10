@@ -7,6 +7,10 @@ import type { WithLastAckSeq } from "@/api/routes/decopilot/ingest-run";
 import { buildRunStatusChunk } from "@/api/routes/decopilot/run-status-stage";
 import type { StudioContext } from "@/core/studio-context";
 import {
+  isRunSuperseded,
+  RunSupersededError,
+} from "@/harnesses/sandbox-dispatch-client";
+import {
   acquireHostedRunSlot,
   HOSTED_RUN_CAPS,
 } from "./hosted-run-concurrency";
@@ -208,6 +212,44 @@ describe("hostedHarnessWorkflowFn's try/catch contract (Finding 1)", () => {
     expect(dispatchRunFn).toHaveBeenCalledTimes(1);
     expect(streamBuffer.publishRawChunk).toHaveBeenCalledTimes(1);
     expect(streamBuffer.publishDone).toHaveBeenCalledTimes(1);
+  });
+
+  // The prod failure of 2026-08-07: KEDA scaled in the worker holding a run,
+  // DBOS recovered the workflow onto another pod, and its re-dispatch took the
+  // sandbox over. The displaced attempt then published a fenced error terminal
+  // under the SAME fence the live successor was streaming on, settling the
+  // thread as `Error: cancelled: run cancelled` mid-run.
+  test("a superseded attempt publishes NO terminal — the successor owns it", async () => {
+    const takeover = new RunSupersededError("a newer dispatch took over");
+    const dispatchRunFn = mock(() => Promise.reject(takeover));
+    const { streamBuffer } = runtimeWithDispatchFn(dispatchRunFn);
+
+    // Mirrors hostedHarnessWorkflowFn's catch: the superseded branch returns
+    // before the publish step.
+    try {
+      await runHostedHarness(input, {} as StudioContext);
+    } catch (err) {
+      if (!isRunSuperseded(err)) await publishHostedHarnessFailure(input, err);
+    }
+
+    expect(dispatchRunFn).toHaveBeenCalledTimes(1);
+    expect(streamBuffer.publishRawChunk).not.toHaveBeenCalled();
+    expect(streamBuffer.publishDone).not.toHaveBeenCalled();
+  });
+
+  test("the workflow's catch checks for a takeover before publishing", () => {
+    // Source-text assertion, same technique as the retriesAllowed check below:
+    // the real catch can't run without a launched DBOS instance, so this proves
+    // the guard sits BEFORE the publish step rather than after it (where it
+    // would be useless).
+    const src = readFileSync(
+      join(import.meta.dir, "hosted-harness-workflow.ts"),
+      "utf8",
+    );
+    const guard = src.indexOf("isRunSuperseded(err)");
+    const publish = src.indexOf('name: "publishHostedHarnessFailure"');
+    expect(guard).toBeGreaterThan(-1);
+    expect(publish).toBeGreaterThan(guard);
   });
 
   test("registers the runHostedHarness step with retriesAllowed: false", () => {

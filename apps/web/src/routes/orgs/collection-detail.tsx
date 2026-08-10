@@ -8,7 +8,7 @@ import {
   useProjectContext,
 } from "@/sdk";
 
-import { EmptyState } from "@deco/ui/components/empty-state.tsx";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -16,7 +16,7 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-} from "@deco/ui/components/breadcrumb.tsx";
+} from "@decocms/ui/components/breadcrumb.tsx";
 import { Loading01, Container } from "@untitledui/icons";
 import { Link, useParams, useRouter } from "@tanstack/react-router";
 import { Suspense, type ComponentType } from "react";

@@ -29,10 +29,10 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { getInitials } from "@/lib/get-initials";
-import { cn } from "@deco/ui/lib/utils.ts";
-import { Button } from "@deco/ui/components/button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { useT } from "@/i18n/use-t.ts";
-import { Avatar } from "@deco/ui/components/avatar.tsx";
+import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import {
   Calendar,
   Columns03,
@@ -50,7 +50,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@deco/ui/components/popover.tsx";
+} from "@decocms/ui/components/popover.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -60,7 +60,7 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { QaAgentIcon } from "@/components/qa-agent-icon";
 import { CodeReviewerIcon } from "@/components/code-reviewer-icon";
@@ -72,7 +72,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
+} from "@decocms/ui/components/dialog.tsx";
 import {
   getWellKnownDecopilotVirtualMCP,
   useConnections,
@@ -120,7 +120,7 @@ import { RerunDialog } from "./rerun-dialog";
 import { subscriptionErrorKind } from "@/components/task-board/is-subscription-error";
 import { isReportsTask, type ReviewerKind } from "@decocms/shared/task-board";
 import { useFlipLanes } from "./use-flip-lanes";
-import { Calendar as DayPickerCalendar } from "@deco/ui/components/calendar.tsx";
+import { Calendar as DayPickerCalendar } from "@decocms/ui/components/calendar.tsx";
 import { buildTaskChatContext } from "./build-task-chat-context";
 import { useStudioTools } from "@/lib/studio-tools";
 import {

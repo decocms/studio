@@ -1,5 +1,5 @@
 import { SearchMd, Loading01 } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "../lib/utils.ts";
 
 interface CollectionSearchProps {
   value: string;

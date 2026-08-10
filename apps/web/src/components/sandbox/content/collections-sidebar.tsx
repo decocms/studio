@@ -13,7 +13,7 @@ import {
   Users01,
   Zap,
 } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.js";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { CollectionCounts, CollectionId } from "./content-browser";
 
