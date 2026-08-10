@@ -10,7 +10,10 @@ import {
   MAX_RESULT_TOKENS,
 } from "./read-tool-output";
 import { type VirtualClient } from "./sandbox";
-import { BROWSERLESS_BASE_URL } from "./constants";
+import {
+  BROWSERLESS_BASE_URL,
+  BROWSERLESS_FETCH_TIMEOUT_MS,
+} from "./constants";
 import type { ToolApprovalLevel } from "../mcp-tools";
 import { toStudioStorageUri } from "../studio-storage-uri";
 import {
@@ -92,14 +95,28 @@ function createPortableBrowserlessTool(
         }
 
         if (kind === "scrape") {
-          const response = await fetch(
-            `${BROWSERLESS_BASE_URL}/content?token=${encodeURIComponent(token)}`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ url: input.url }),
-            },
-          );
+          let response: Response;
+          try {
+            response = await fetch(
+              `${BROWSERLESS_BASE_URL}/content?token=${encodeURIComponent(token)}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ url: input.url }),
+                signal: AbortSignal.timeout(BROWSERLESS_FETCH_TIMEOUT_MS),
+              },
+            );
+          } catch (err) {
+            const isTimeout =
+              err instanceof Error && err.name === "TimeoutError";
+            return {
+              success: false,
+              error: isTimeout
+                ? `Browserless content fetch timed out after ${BROWSERLESS_FETCH_TIMEOUT_MS}ms`
+                : `Browserless content fetch failed: ${err instanceof Error ? err.message : String(err)}`,
+              url: input.url,
+            };
+          }
           if (!response.ok) {
             const errorText = await response
               .text()
@@ -159,14 +176,27 @@ function createPortableBrowserlessTool(
             return { consoleLogs, errors, evaluateResult };
           }
         `;
-        const response = await fetch(
-          `${BROWSERLESS_BASE_URL}/function?token=${encodeURIComponent(token)}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/javascript" },
-            body: code,
-          },
-        );
+        let response: Response;
+        try {
+          response = await fetch(
+            `${BROWSERLESS_BASE_URL}/function?token=${encodeURIComponent(token)}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/javascript" },
+              body: code,
+              signal: AbortSignal.timeout(BROWSERLESS_FETCH_TIMEOUT_MS),
+            },
+          );
+        } catch (err) {
+          const isTimeout = err instanceof Error && err.name === "TimeoutError";
+          return {
+            success: false,
+            error: isTimeout
+              ? `Browserless function call timed out after ${BROWSERLESS_FETCH_TIMEOUT_MS}ms`
+              : `Browserless function call failed: ${err instanceof Error ? err.message : String(err)}`,
+            url: inspectInput.url,
+          };
+        }
         if (!response.ok) {
           const errorText = await response.text().catch(() => "Unknown error");
           return {

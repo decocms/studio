@@ -18,12 +18,10 @@ import { z } from "zod";
 import type { ObjectStorageHooks } from "../../harness-deps";
 import { createOutputPreview, estimateJsonTokens } from "./read-tool-output";
 import { toStudioStorageUri } from "../studio-storage-uri";
-import { LARGE_RESULT_TOKEN_THRESHOLD } from "./constants";
-
-// Browserless call itself has no bound beyond the inner page.goto timeout (30s) —
-// if Browserless is unresponsive the outer fetch can hang the harness run forever.
-// Give it headroom over the inner timeout instead of leaving it unbounded.
-const BROWSERLESS_FETCH_TIMEOUT_MS = 45_000;
+import {
+  BROWSERLESS_FETCH_TIMEOUT_MS,
+  LARGE_RESULT_TOKEN_THRESHOLD,
+} from "./constants";
 
 // Upstream error bodies are unbounded — cap what lands in the tool error.
 const ERROR_BODY_MAX_CHARS = 500;
