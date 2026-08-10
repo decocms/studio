@@ -89,15 +89,13 @@ export const CMS_EDITOR_SCRIPT = `(function() {
       .filter(isTopLevelSection);
   };
 
-  // Acceptable DOM keys per editable section, sent by the editor.
-  // [] = wildcard, null = renders nothing. See section-candidates.ts.
+  // Acceptable DOM keys per section; [] = wildcard, null = renders nothing.
   var sectionCandidates = [];
 
   // Stringified from section-alignment.ts so both sides share one copy.
   var alignSections = ${alignSections.toString()};
 
-  // Sections mapped onto their DOM nodes, indexed like the decofile array.
-  // Unmapped entries stay null and aren't hoverable or clickable.
+  // Indexed like the decofile array; unmapped entries stay null (not clickable).
   var computeAlignment = function(tops) {
     var domKeys = tops.map(function(s) { return s.getAttribute("data-manifest-key"); });
     return alignSections(sectionCandidates, domKeys).map(function(idx) {
@@ -131,7 +129,6 @@ export const CMS_EDITOR_SCRIPT = `(function() {
   };
 
   // A Lazy wrapper's key is just the loader — show the inner section's instead.
-  // Suffix match mirrors isLazyResolveType (keys can be namespaced).
   var LAZY_KEYS = [
     "website/sections/Rendering/Lazy.tsx",
     "website/sections/Rendering/SingleDeferred.tsx"
@@ -276,10 +273,12 @@ export const CMS_EDITOR_SCRIPT = `(function() {
   };
   document.addEventListener("click", clickHandler, true);
 
-  // Navigation is disabled while editing: leaving the page would leave the panel
-  // editing the previous page's sections. Cancels only the default action of
-  // real navigations, never propagation — in-page controls must keep working
-  // (#5567).
+  /**
+   * Navigation is disabled while editing: leaving the page would leave the
+   * panel editing the previous page's sections. Only the default action of a
+   * real navigation is cancelled, never propagation — in-page controls must
+   * keep working (#5567).
+   */
   var isNavigatingAnchor = function(a) {
     if (!a) return false;
     var href = a.getAttribute("href");

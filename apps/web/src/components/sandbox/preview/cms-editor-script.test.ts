@@ -21,8 +21,7 @@ describe("CMS editor iframe interactions", () => {
     expect(clickHandler).not.toContain("stopImmediatePropagation");
   });
 
-  // Separate listener on purpose: #5567's rule still holds above, and nothing
-  // here may swallow propagation or the preview's controls die again.
+  // Separate listener on purpose: #5567's no-swallow rule still holds above.
   test("blocks navigation without swallowing the page's click listeners", () => {
     const start = CMS_EDITOR_SCRIPT.indexOf("var navBlocker = function(e)");
     const end = CMS_EDITOR_SCRIPT.indexOf(
@@ -38,8 +37,7 @@ describe("CMS editor iframe interactions", () => {
     expect(navBlocker).not.toContain("stopImmediatePropagation");
   });
 
-  // Without it, re-clicking a section sent an identical payload and the panel
-  // read "no change", so the form never reopened.
+  // Without it a repeat click was an identical payload, so the form never reopened.
   test("stamps every click with an incrementing counter", () => {
     const start = CMS_EDITOR_SCRIPT.indexOf("var clickHandler = function(e)");
     const end = CMS_EDITOR_SCRIPT.indexOf(
@@ -64,8 +62,7 @@ describe("CMS editor iframe interactions", () => {
   });
 });
 
-// The predicate's decision, not just its wiring: over-eager re-breaks the
-// preview (#5567), under-eager lets the redirect through.
+// Over-eager re-breaks the preview (#5567); under-eager lets the redirect through.
 describe("isNavigatingAnchor", () => {
   const buildPredicate = () => {
     const start = CMS_EDITOR_SCRIPT.indexOf(
@@ -111,9 +108,7 @@ describe("isNavigatingAnchor", () => {
   });
 });
 
-// alignSections is stringified into the script, which only works if it stays
-// self-contained: a bundler rewriting it to a module reference would throw in
-// the iframe. Assert it parses and the body came along whole.
+// Stringifying alignSections only works while it stays self-contained.
 describe("CMS_EDITOR_SCRIPT", () => {
   it("is syntactically valid standalone JavaScript", () => {
     expect(() => new Function(CMS_EDITOR_SCRIPT)).not.toThrow();
@@ -127,8 +122,7 @@ describe("CMS_EDITOR_SCRIPT", () => {
   });
 
   it("runs the embedded alignment against a stubbed DOM", () => {
-    // Exercise the embedded copy end-to-end: build the script's alignSections
-    // and feed it the regression case (a section that rendered no node).
+    // The embedded copy, on the regression case (a section that rendered no node).
     const start = CMS_EDITOR_SCRIPT.indexOf("var alignSections = ");
     const end = CMS_EDITOR_SCRIPT.indexOf("var computeAlignment");
     expect(start).toBeGreaterThan(-1);

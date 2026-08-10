@@ -37,9 +37,11 @@ export function alignSections(
     return keys.indexOf(domKeys[nodeIdx] ?? "") >= 0 ? 2 : 0;
   };
 
-  // dp[i][j]: best score aligning the first i sections with the first j nodes.
-  // move: 1 = section i-1 takes node j-1, 0 = node j-1 is a framework node,
-  // 2 = section i-1 rendered nothing.
+  /**
+   * dp[i][j]: best score aligning the first i sections with the first j nodes.
+   * move: 1 = section i-1 takes node j-1, 0 = node j-1 is a framework node,
+   * 2 = section i-1 rendered nothing.
+   */
   const dp: number[][] = [];
   const move: number[][] = [];
   for (let r = 0; r <= n; r++) {
@@ -86,8 +88,7 @@ export function alignSections(
     }
   }
 
-  // No key matched: unknown naming convention. Fall back to position only when
-  // the counts make it unambiguous; otherwise leave unmapped rather than guess.
+  // No key matched: fall back to position only when the counts are unambiguous.
   if (assigned === 0 && m === n) {
     for (let p = 0; p < n; p++) result[visible[p] ?? 0] = p;
   }

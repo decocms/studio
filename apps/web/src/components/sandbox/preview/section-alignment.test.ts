@@ -26,8 +26,7 @@ describe("alignSections", () => {
     ).toEqual([2, 4, 5]);
   });
 
-  // The regression this module exists for: on TanStack an unwrapped Lazy that
-  // hasn't streamed contributes no node, which used to shift everything below.
+  // The regression this module exists for: a section with no node shifted the rest.
   it("leaves a section that rendered no node unmapped without shifting the rest", () => {
     expect(alignSections([[HERO], [SHELF], [FOOTER]], [HERO, FOOTER])).toEqual([
       0,
@@ -36,8 +35,7 @@ describe("alignSections", () => {
     ]);
   });
 
-  // Reported shape: a leading framework node makes the counts match, so the old
-  // alignment mapped every section one slot early.
+  // Reported shape: matching counts made the old alignment map one slot early.
   it("does not mistake a leading framework node for the first section", () => {
     expect(
       alignSections([[HERO], [SHELF], [FOOTER]], [SEO, HERO, FOOTER]),

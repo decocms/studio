@@ -61,9 +61,7 @@ export function resolveSectionCandidates(
     }
     return keys;
   }
-  // A Lazy whose inner section can never render effectively renders nothing.
-  // Suffix-tolerant like every other lazy check: strict equality dropped the
-  // inner key, so TanStack's wrapper-less render matched nothing.
+  // Suffix-tolerant like every other lazy check; a never-rendering inner = null.
   if (isLazyResolveType(rt)) {
     const inner =
       obj.section && typeof obj.section === "object"

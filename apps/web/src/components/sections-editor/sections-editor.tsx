@@ -616,9 +616,7 @@ export function SectionsEditor({
       syncVariantPreviewOverride(mvObj, sectionIndex, variantIndex);
   };
 
-  // Auto-select section when parent signals a click-through from the preview.
-  // Keyed on `seq`, not index: two clicks on one section are two selections,
-  // and comparing indexes made the second a no-op.
+  // Auto-select on preview click-through, keyed on `seq` so repeat clicks count.
   const externalSelectedIndex = externalSelection?.index;
   if (
     externalSelection !== undefined &&
