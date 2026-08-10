@@ -1209,6 +1209,54 @@ function Lanes({
   const [overrides, setOverrides] = useState<Map<string, Placement>>(new Map());
   const boardRef = useRef<HTMLDivElement>(null);
 
+  // A plain mouse wheel only emits vertical deltas, so on a board that overflows
+  // sideways the columns off-screen to the right are unreachable without a
+  // trackpad (two-finger swipe) or Shift+wheel — neither of which a mouse user
+  // has. Translate a vertical wheel into horizontal board scroll, but only when
+  // the pointer isn't over a lane that can still absorb that scroll itself, so
+  // scrolling a column's cards keeps working. Registered natively (not via
+  // React's passive onWheel) so preventDefault can suppress the browser's own
+  // vertical scroll/overscroll; React 19 ref cleanup unregisters it.
+  const attachBoard = (node: HTMLDivElement | null) => {
+    boardRef.current = node;
+    if (!node) return;
+    const onWheel = (event: WheelEvent) => {
+      // Trackpad / Shift+wheel already produce a horizontal delta — let the
+      // browser handle those natively.
+      if (event.deltaX !== 0 || event.deltaY === 0) return;
+      if (node.scrollWidth <= node.clientWidth) return;
+      // Walk up from the pointer target: if a lane under it can still scroll
+      // vertically in this direction, that's what the wheel is for.
+      for (
+        let el = event.target as HTMLElement | null;
+        el && el !== node;
+        el = el.parentElement
+      ) {
+        if (el.hasAttribute("data-lane-scroll")) {
+          const hasRoom =
+            event.deltaY < 0
+              ? el.scrollTop > 0
+              : el.scrollTop + el.clientHeight < el.scrollHeight - 1;
+          if (hasRoom) return;
+          break;
+        }
+      }
+      event.preventDefault();
+      const factor =
+        event.deltaMode === 1
+          ? 16
+          : event.deltaMode === 2
+            ? node.clientWidth
+            : 1;
+      node.scrollLeft += event.deltaY * factor;
+    };
+    node.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      boardRef.current = null;
+      node.removeEventListener("wheel", onWheel);
+    };
+  };
+
   const placed =
     overrides.size > 0
       ? items.map((item) => {
@@ -1382,7 +1430,7 @@ function Lanes({
     >
       {/* Scroll container spans the full panel width so the wheel works even
           when the pointer is in the empty margins on wide monitors. */}
-      <div ref={boardRef} className="min-h-0 flex-1 overflow-x-auto">
+      <div ref={attachBoard} className="min-h-0 flex-1 overflow-x-auto">
         {/* Padding lives on the capped row (not the scroll container) so its
             left edge matches the header's max-w + px exactly. Bottom breathing
             room is handled per-lane by each column's own scrollable div — a pb
