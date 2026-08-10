@@ -90,6 +90,19 @@ function readSandboxTemplateName(): string | undefined {
   return raw && raw.trim() !== "" ? raw : undefined;
 }
 
+/**
+ * SandboxTemplate name for runs that need the browser-bearing QA image (the QA
+ * reviewer). Deployed as a second template + warm pool by the sandbox-env chart
+ * (studio-sandbox-<env>-qa). Unset → the QA reviewer falls back to the default
+ * template (no browser; it degrades to "couldn't screenshot"), so the feature
+ * is off until the QA image + template are provisioned. Exported because the
+ * reviewer dispatcher (not the sandbox layer) stamps it onto the run's thread.
+ */
+export function readSandboxQaTemplateName(): string | undefined {
+  const raw = process.env.STUDIO_SANDBOX_QA_TEMPLATE_NAME;
+  return raw && raw.trim() !== "" ? raw : undefined;
+}
+
 function readEnvName(): string | undefined {
   const raw = process.env.STUDIO_ENV;
   return raw && raw.trim() !== "" ? raw : undefined;

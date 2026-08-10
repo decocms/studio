@@ -588,6 +588,20 @@ async function provisionSandbox(
   // infrastructure. No-op for a provider that can't answer.
   await waitForSchedulableCapacity(runner);
 
+  // Per-run SandboxTemplate override (e.g. the QA reviewer's browser image),
+  // stamped on the thread's metadata by the dispatcher. Read here so every
+  // provisioning path (SANDBOX_START, the lazy provisioner, TASK_ADD_REPO)
+  // honors it. Best-effort: any miss leaves it undefined → default template.
+  const overrideThreadId = threadIdFromBranch(branch) ?? ctx.metadata?.threadId;
+  let sandboxTemplateName: string | undefined;
+  if (overrideThreadId) {
+    const thr = await ctx.storage.threads
+      .get(overrideThreadId)
+      .catch(() => null);
+    const t = thr?.metadata?.sandboxTemplateName;
+    if (typeof t === "string" && t.length > 0) sandboxTemplateName = t;
+  }
+
   const sandbox = await runner.ensure(
     { userId: sandboxUserId, projectRef },
     {
@@ -618,6 +632,7 @@ async function provisionSandbox(
           }
         : {}),
       ...(orgFsConfigJson ? { orgFsConfigJson } : {}),
+      ...(sandboxTemplateName ? { sandboxTemplateName } : {}),
     },
   );
 

@@ -11,6 +11,7 @@ import {
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { enqueueAgentRunForTask } from "./enqueue-task-run";
+import { readSandboxQaTemplateName } from "@/sandbox/lifecycle";
 import { resolveTaskRepoChoice } from "./claude-code-task-run";
 
 /** Thread statuses past which a reviewer run is done — a live run has a
@@ -353,6 +354,13 @@ async function enqueueReviewerForTask(
             instructions,
             disallowedTools: REVIEWER_DISALLOWED_TOOLS[kind],
           },
+          // QA runs need the browser-bearing QA sandbox image to screenshot the
+          // preview. Only when a QA template is configured — else undefined, so
+          // QA falls back to the default template (no browser) and just reports
+          // it couldn't screenshot. Never applied to the Code Reviewer.
+          ...(kind === "qa" && readSandboxQaTemplateName()
+            ? { sandboxTemplateName: readSandboxQaTemplateName() }
+            : {}),
         }
       : {}),
     ...(repo ? { repo } : {}),

@@ -39,6 +39,13 @@ export async function enqueueAgentRunForTask(
      */
     repo?: TaskRepo;
     /**
+     * Per-run SandboxTemplate override, stamped on the thread metadata and read
+     * by `provisionSandbox` → `runner.ensure`. Gives this run a non-default
+     * sandbox image (e.g. the QA reviewer's browser image) without changing the
+     * template every other sandbox uses. Unset → the env-default template.
+     */
+    sandboxTemplateName?: string;
+    /**
      * Per-run agent overrides — instructions (the run's persona) and the
      * built-in tools it must not have. Only the sandbox-hosted harness reads
      * them; a Decopilot fallback run must carry its persona in the prompt.
@@ -89,6 +96,9 @@ export async function enqueueAgentRunForTask(
     // Read back by `resolveSandboxBranch` at provision time (via the thread, so
     // a durable re-dispatch resolves the same pod). See `pinnedRef` above.
     ...(opts.pinnedRef ? { pinnedRef: opts.pinnedRef } : {}),
+    ...(opts.sandboxTemplateName
+      ? { sandboxTemplateName: opts.sandboxTemplateName }
+      : {}),
     ...(opts.repo
       ? {
           githubRepo: {

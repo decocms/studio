@@ -25,6 +25,14 @@ export interface ThreadMetadata {
    * nothing will ever deliver it to.
    */
   read_only?: boolean;
+  /**
+   * Per-run SandboxTemplate override for this thread's sandbox. Set by the
+   * dispatcher when a run needs a non-default image — e.g. the QA reviewer,
+   * which needs the browser-bearing QA sandbox image to screenshot the PR
+   * preview. `provisionSandbox` reads it and passes it to `runner.ensure`.
+   * Unset → the run uses the env-configured default template.
+   */
+  sandboxTemplateName?: string;
   [key: string]: unknown;
 }
 

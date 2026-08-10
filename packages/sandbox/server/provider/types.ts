@@ -95,6 +95,17 @@ export interface EnsureOptions {
   };
   /** Image override. Non-image runners MUST ignore. */
   image?: string;
+  /**
+   * Per-run SandboxTemplate override. When set, this claim references THIS
+   * template instead of the runner's configured default — used to give a
+   * specific run (e.g. the QA reviewer) a different image without changing the
+   * template every other sandbox uses. The `agent-sandbox` runner derives the
+   * claim's warm-pool name from the template, so the override must name a
+   * template that has a matching warm pool (or none). Non-template runners MUST
+   * ignore. Persisted in `ensureOpts` so a resurrected claim re-provisions onto
+   * the same template.
+   */
+  sandboxTemplateName?: string;
   workload?: Workload;
   /**
    * Prepare the checkout only — no dependency install, no dev server. Must be
