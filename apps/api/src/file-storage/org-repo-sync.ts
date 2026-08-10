@@ -14,7 +14,9 @@
 
 import type { StudioContext } from "@/core/studio-context";
 import type { OrgRepoSync } from "@/storage/types";
-import { ensureRepoScopedToken } from "@/oauth/github-mint";
+import { ensureGithubCloneToken } from "@/shared/github-clone-info";
+import { getValidDownstreamAccessToken } from "@/oauth/token-refresh";
+import { DownstreamTokenStorage } from "@/storage/downstream-token";
 import { isValidVolume } from "./org-fs-path";
 import { isPublicVolume } from "./public-sets";
 import { syncRepoToVolume } from "./skill-set-sync";
@@ -73,7 +75,30 @@ export async function syncOrgRepoSafe(
     if (!connection) {
       throw new Error("sync connection not found in this organization");
     }
-    const authToken = await ensureRepoScopedToken(ctx, connection);
+    // Same recipe as TASK_ADD_REPO: re-mint when the connection carries a
+    // mint recipe (no-op for source-less refreshable children), then read
+    // the cached/refreshable downstream token. Using ensureRepoScopedToken
+    // alone would reject source-less children before even checking the cache.
+    await ensureGithubCloneToken({
+      ctx,
+      connectionId: connection.id,
+      organizationId: config.organizationId,
+      onLegacyMintError: (error) =>
+        console.warn("[org-repo-sync] repo-scoped mint failed", {
+          configId: config.id,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+    });
+    const tokenResult = await getValidDownstreamAccessToken({
+      connectionId: connection.id,
+      tokenStorage: new DownstreamTokenStorage(ctx.db, ctx.vault),
+    });
+    if (!tokenResult.accessToken) {
+      throw new Error(
+        "No GitHub token for the sync connection — reconnect the mcp-github integration.",
+      );
+    }
+    const authToken = tokenResult.accessToken;
     const counts = await syncRepoToVolume(ctx.db, {
       orgId: config.organizationId,
       baseUrl: ctx.baseUrl,
