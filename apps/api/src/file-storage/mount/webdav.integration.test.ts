@@ -31,6 +31,7 @@ import {
   resetTestPgDatabase,
 } from "../../database/test-db-pg";
 import { OrgFsEntryStorage } from "../../storage/org-fs";
+import { OrgRepoSyncStorage } from "../../storage/org-repo-syncs";
 import { OrgFsClient, createWebdavHandler } from "@decocms/sandbox/org-fs";
 
 const ORG = "org_wd";
@@ -58,6 +59,10 @@ function buildStudioApp(db: StudioDatabase) {
         threads: { setOrganizationId: () => {} },
         asyncResearchJobs: { setOrganizationId: () => {} },
         orgFsEntries: new OrgFsEntryStorage(db.db),
+        // Same reason as the org-fs route suite: the write guard queries this,
+        // and the `as unknown as StudioContext` cast below means a missing field
+        // is a runtime TypeError the compiler cannot see.
+        orgRepoSyncs: new OrgRepoSyncStorage(db.db),
       },
       objectStorage: null,
       orgFs: null,
