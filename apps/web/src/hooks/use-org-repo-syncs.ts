@@ -32,24 +32,29 @@ export function useOrgRepoSyncVolumes(): ReadonlySet<string> {
   return new Set((syncs.data ?? []).map((c) => c.volume));
 }
 
-/** Create a sync config and run its first sync inline, so the volume isn't
- *  empty until the next cron tick. */
+/**
+ * Create a sync config. Resolves as soon as the config exists — the first
+ * sync is kicked in the background (a large repo takes minutes; awaiting it
+ * held the create dialog open until the gateway timed the request out) and
+ * best-effort either way: the 10-minute cron is the reliable path, so a
+ * failed or interrupted first run only delays the content, never loses it.
+ */
 export function useCreateOrgRepoSync() {
   const { org } = useProjectContext();
   const studio = useStudioTools();
   const queryClient = useQueryClient();
+  const invalidate = () =>
+    queryClient.invalidateQueries({ queryKey: KEYS.orgRepoSyncs(org.id) });
   return useMutation({
-    mutationFn: async (input: { connectionId: string; volume: string }) => {
-      const { config } = await studio.call("ORG_REPO_SYNC_CREATE", input);
-      // First run is best-effort: the config exists, the cron will retry —
-      // a transport blip here must not fail the mutation (retrying CREATE
-      // would hit the unique volume constraint).
-      return studio
+    mutationFn: async (input: { connectionId: string; volume: string }) =>
+      (await studio.call("ORG_REPO_SYNC_CREATE", input)).config,
+    onSuccess: (config) => {
+      void studio
         .call("ORG_REPO_SYNC_RUN", { id: config.id })
-        .catch(() => null);
+        .catch(() => null)
+        .then(invalidate);
     },
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: KEYS.orgRepoSyncs(org.id) }),
+    onSettled: invalidate,
   });
 }
 

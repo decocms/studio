@@ -15,7 +15,8 @@ export const settings = {
   "settings.syncedRepos.cancel": "Cancel",
   "settings.syncedRepos.create": "Create",
   "settings.syncedRepos.creating": "Creating…",
-  "settings.syncedRepos.created": 'Repo synced into "{volume}"',
+  "settings.syncedRepos.created":
+    'Sync created — syncing into "{volume}" in the background',
   "settings.syncedRepos.emptyTitle": "No synced repos yet",
   "settings.syncedRepos.emptyDescription":
     "Pick a GitHub repository and it will appear in the library as a read-only folder, kept in sync automatically.",

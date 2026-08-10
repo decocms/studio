@@ -162,19 +162,14 @@ function SyncedReposContent() {
         volume: volumeName.trim(),
       },
       {
-        onSuccess: (run) => {
+        onSuccess: (config) => {
+          // The first sync runs in the background (see useCreateOrgRepoSync);
+          // the row's status flips from "waiting" once it lands or the cron
+          // covers it. A sync failure shows up as the row's error state.
           setPendingImport(null);
-          // run is null when the best-effort first sync call itself failed —
-          // the config exists and the cron will pick it up.
-          if (run && "error" in run.result) {
-            toast.error(run.result.error);
-          } else {
-            toast.success(
-              t("settings.syncedRepos.created", {
-                volume: run?.result.volume ?? volumeName.trim(),
-              }),
-            );
-          }
+          toast.success(
+            t("settings.syncedRepos.created", { volume: config.volume }),
+          );
         },
         onError: (err) => {
           toast.error(
