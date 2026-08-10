@@ -42,11 +42,14 @@ spec:
       automountServiceAccountToken: false
       # Placement follows the sandbox pods by default: the hostPath it reads only
       # exists on nodes that ran one.
-      {{- with (include "sandbox-env.goldenUploaderNodeSelector" . | fromYaml) }}
+      {{- with (fromYaml (include "sandbox-env.goldenUploaderNodeSelector" .)) }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with (include "sandbox-env.goldenUploaderTolerations" . | fromYaml) }}
+      {{- /* fromYamlArray, not fromYaml: tolerations are a LIST, and fromYaml on
+             a list yields an empty map — `with` then drops the block and this
+             cannot schedule on the tainted sandbox NodePool at all. */ -}}
+      {{- with (fromYamlArray (include "sandbox-env.goldenUploaderTolerations" .)) }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}

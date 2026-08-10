@@ -9,6 +9,13 @@ description: |
   releases coexist in the shared `agent-sandbox-system` namespace.
   Requires the sandbox-operator chart to already be installed.
 type: application
+# 0.13.1: fix — the goldenUploader DaemonSet rendered with NO tolerations, so it
+# could not schedule on the `decocms.com/sandbox=true:NoSchedule` NodePool where
+# the hostPath it reads exists. `fromYaml` on a LIST yields an empty map, so the
+# `with` dropped the block; `fromYamlArray` is correct, as the neighbouring
+# nodePlaceholder template already had it. nodeSelector was unaffected (a map),
+# which is why it hid. 0.13.0 shipped the DaemonSet unschedulable — it is
+# default-off, so nothing deployed it.
 # 0.13.0: opt-in `goldenUploader` (default off) — a DaemonSet that carries L1
 # goldens from a node's hostPath into the shared L2 store, plus its own WRITABLE
 # PV/PVC over that store. Without it the shared store stays empty: a sandbox
