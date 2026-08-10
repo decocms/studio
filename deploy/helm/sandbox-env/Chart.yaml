@@ -9,6 +9,12 @@ description: |
   releases coexist in the shared `agent-sandbox-system` namespace.
   Requires the sandbox-operator chart to already be installed.
 type: application
+# 0.13.2: fix — the uploader DaemonSet crash-looped with
+# `Script not found "golden-uploader"`. The sandbox image's ENTRYPOINT comes from
+# the oven/bun base and its CMD is the daemon binary, so overriding `args` alone
+# handed the subcommand to bun. Now overrides `command` with the binary's full
+# path. 0.13.0 and 0.13.1 both ship an uploader that cannot start; it is
+# default-off, so only a consumer that enabled it saw this.
 # 0.13.1: fix — the goldenUploader DaemonSet rendered with NO tolerations, so it
 # could not schedule on the `decocms.com/sandbox=true:NoSchedule` NodePool where
 # the hostPath it reads exists. `fromYaml` on a LIST yields an empty map, so the
@@ -113,7 +119,7 @@ type: application
 # 0.8.0: org-fs sidecar (orgFs.*) — privileged rclone mounter + main-container
 # mounts. NOTE: the publish workflow skips existing versions, so this MUST
 # stay ahead of the latest published chart (0.7.5 at time of writing).
-version: 0.13.1
+version: 0.13.2
 # appVersion tracks the studio-sandbox image version (image.tag default).
 appVersion: "1.46.0"
 kubeVersion: ">=1.30.0-0"

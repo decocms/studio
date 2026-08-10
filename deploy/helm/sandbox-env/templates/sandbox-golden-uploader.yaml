@@ -70,7 +70,13 @@ spec:
           # Same binary as the daemon, different role. Keeps the archive format
           # impossible to drift between writer and reader, and adds no second
           # image to build or keep in lockstep.
-          args: ["golden-uploader"]
+          #
+          # `command`, not `args`: the image's ENTRYPOINT comes from the oven/bun
+          # base and its CMD is the daemon binary. Overriding only `args` hands
+          # the subcommand to bun, which looks for a SCRIPT by that name and
+          # exits 1 with `Script not found "golden-uploader"`. Overriding
+          # `command` replaces the entrypoint, so the binary is exec'd directly.
+          command: ["/opt/sandbox-daemon/daemon-go", "golden-uploader"]
           env:
             - name: DEPS_CACHE_ROOT
               value: {{ .Values.depsCache.hostPath | quote }}
