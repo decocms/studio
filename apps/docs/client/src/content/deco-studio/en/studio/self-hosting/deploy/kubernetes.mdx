@@ -242,6 +242,26 @@ If `sentinel.token` is omitted, the chart generates and preserves a Secret for s
 
 The optional warm-pool HPA requires `warmPool.enabled: true`, `warmPool.autoscaling.enabled: true`, and at least one explicit `autoscaling/v2` metric. The chart intentionally provides no default metric.
 
+### Shared dependency cache (golden uploader)
+
+`depsCache.golden` caches installed dependencies node-locally: the first sandbox on a node to install a given (repo, lockfile) pair pays the cost, and later sandboxes on that same node reflink from it. That cache is per-node and starts empty on every new node.
+
+`goldenUploader` (disabled by default) closes the gap by running a DaemonSet that carries each node's local goldens into a shared, cross-node store, so a sandbox landing on a fresh node can extract a golden another node already produced instead of installing from scratch. A sandbox pod's mount into that shared store is read-only by design, so the uploader — not tenant code — is the only writer.
+
+```yaml
+depsCache:
+  enabled: true
+  golden: true
+  remote:
+    enabled: true
+
+goldenUploader:
+  enabled: true
+  intervalSeconds: 300
+```
+
+Enabling `goldenUploader` requires `depsCache.enabled` and `depsCache.remote.enabled`, plus a writable volume: either the chart's own PV/PVC, or an existing claim supplied via `goldenUploader.pvcName` (mandatory when `depsCache.remote.storageClassName` is set, since a dynamic StorageClass cannot express the read-only/read-write split this relies on). Goldens are stamped and keyed per organization, so two orgs cloning the same public template never share a cached archive. This feature is additive — clusters that leave it disabled see no behavior change.
+
 ### Idle housekeeper
 
 Studio refreshes claim activity, while the optional housekeeper CronJob cleans up idle or unrecoverable claims and orphaned routes/pods. Its defaults run every five minutes and reap claims idle for 15 minutes.
@@ -323,6 +343,7 @@ These defaults come from `deploy/helm/studio/values.yaml`:
 | `netinit.enabled` | Install default iptables egress policy | `true` |
 | `readOnlyRootFilesystem` | Read-only sandbox root filesystem | `true` |
 | `depsCache.enabled` / `depsCache.golden` | Node-local dependency caches | `false` / `false` |
+| `goldenUploader.enabled` | DaemonSet publishing node-local goldens to the shared cross-node store | `false` |
 | `warmPool.enabled` / `warmPool.size` | Pre-warmed sandboxes | `false` / `0` |
 | `previewGateway.enabled` | Wildcard preview Gateway | `false` |
 | `housekeeper.enabled` | Idle-claim cleanup CronJob | `false` |
