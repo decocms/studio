@@ -1,37 +1,21 @@
 /**
- * Best in-order mapping of a page's editable sections onto the top-level
- * `<section data-manifest-key>` nodes the site runtime actually rendered.
+ * Maps a page's editable sections onto the top-level `<section
+ * data-manifest-key>` nodes the runtime rendered, in order.
  *
- * Both sides can hold entries the other lacks, so BOTH are skippable:
- *  - the runtime injects framework sections (SEO, Theme, Analytics, Session)
- *    that may lead, trail, OR interleave with the editable run;
- *  - an editable section can render NO top-level node at all — a Lazy /
- *    SingleDeferred that TanStack unwraps (the classic runtime keeps the
- *    wrapper `<section>`, TanStack renders the inner section directly, so
- *    before it resolves there is nothing in the DOM), a section still behind a
- *    streaming boundary, or a matcher that didn't hit.
+ * Both sides skip: the runtime injects framework sections (SEO, Theme,
+ * Analytics) around and between the editable ones, and an editable section can
+ * render no node at all (an unwrapped Lazy, a streaming boundary, a matcher
+ * that missed). A section only takes a node whose key it could have rendered;
+ * otherwise it stays unmapped, because a mismapped section edits the wrong
+ * component. Exact matches outscore wildcards.
  *
- * A node is only ever handed to a section whose candidate keys actually match
- * it. Requiring every section to claim some node — the previous behaviour —
- * meant one section rendering nothing shifted every section below it by one, so
- * clicking a component opened its neighbour's props, silently, and worst on
- * TanStack, the runtime that drops the wrapper node. An unmapped section costs
- * a click that does nothing; a mismapped one edits the wrong component.
+ * `candidates[i] === null` = renders nothing by construction; stays null so
+ * positions still index the decofile array.
  *
- * Exact key matches outscore wildcards so a multivariate — whose rendered key
- * we can't predict — doesn't steal a node an exact match wants.
+ * Must stay self-contained: its source is stringified into CMS_EDITOR_SCRIPT
+ * and evaluated in the iframe, where no module scope exists.
  *
- * `candidates[i] === null` means the section renders nothing by construction
- * (every variant gated by a `never` matcher); it is dropped from the alignment
- * and stays null, so returned positions still index the decofile array.
- *
- * SELF-CONTAINED BY CONSTRUCTION: this function's source is stringified into
- * `CMS_EDITOR_SCRIPT` and evaluated inside the preview iframe, so its body must
- * never reference an import, a module-level constant, or anything else outside
- * itself. Keep it pure — that is also what makes it unit-testable.
- *
- * @returns one entry per `candidates` entry: the index into `domKeys`, or null
- *   when that section has no node in the DOM.
+ * @returns per candidate: the index into `domKeys`, or null.
  */
 export function alignSections(
   candidates: (string[] | null)[],
@@ -102,11 +86,8 @@ export function alignSections(
     }
   }
 
-  // Nothing matched at all: the runtime evidently names its nodes on a
-  // convention the decofile doesn't share, so key matching carries no signal.
-  // Fall back to a positional mapping ONLY when the counts line up exactly,
-  // which makes position unambiguous; otherwise leave every section unmapped
-  // rather than guess and open the wrong props.
+  // No key matched: unknown naming convention. Fall back to position only when
+  // the counts make it unambiguous; otherwise leave unmapped rather than guess.
   if (assigned === 0 && m === n) {
     for (let p = 0; p < n; p++) result[visible[p] ?? 0] = p;
   }

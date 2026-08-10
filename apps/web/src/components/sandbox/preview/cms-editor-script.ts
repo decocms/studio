@@ -4,12 +4,7 @@ import { alignSections } from "./section-alignment";
 export const CmsEditorPayloadSchema = z.object({
   sectionIndex: z.number(),
   manifestKey: z.string(),
-  /**
-   * Monotonic per-click counter. A click is an EVENT, not a state: clicking the
-   * same section twice must reopen its form, and comparing indexes alone can't
-   * see that (same index → looks unchanged → the panel ignores it, which is
-   * exactly what left a section unopenable after navigating back in the editor).
-   */
+  /** Monotonic per-click counter: two clicks on one section are two selections. */
   clickSeq: z.number(),
 });
 
@@ -94,24 +89,15 @@ export const CMS_EDITOR_SCRIPT = `(function() {
       .filter(isTopLevelSection);
   };
 
-  // Candidate manifest keys per editable section, sent by the editor. Each
-  // entry is an array of acceptable DOM keys: [] = wildcard (e.g. multivariate,
-  // whose rendered key we can't predict); null = renders NOTHING (hidden
-  // section — multivariate whose variants are all gated by never), so the
-  // alignment must not consume a DOM node for it; a Lazy lists both its loader
-  // key and the inner section's key, since the classic runtime keeps the Lazy
-  // wrapper at top level while TanStack renders the inner section directly.
+  // Acceptable DOM keys per editable section, sent by the editor.
+  // [] = wildcard, null = renders nothing. See section-candidates.ts.
   var sectionCandidates = [];
 
-  // Shared with the editor (and unit-tested there) by stringifying the module's
-  // pure implementation into this script — one source of truth for an algorithm
-  // whose off-by-one failures are invisible until someone edits the wrong
-  // component. See section-alignment.ts for why both sides are skippable.
+  // Stringified from section-alignment.ts so both sides share one copy.
   var alignSections = ${alignSections.toString()};
 
-  // Editable sections mapped onto their DOM nodes, positionally matching the
-  // decofile array. Entries with no rendered node (deferred, streaming, hidden)
-  // stay null and simply aren't hoverable or clickable.
+  // Sections mapped onto their DOM nodes, indexed like the decofile array.
+  // Unmapped entries stay null and aren't hoverable or clickable.
   var computeAlignment = function(tops) {
     var domKeys = tops.map(function(s) { return s.getAttribute("data-manifest-key"); });
     return alignSections(sectionCandidates, domKeys).map(function(idx) {
@@ -144,11 +130,8 @@ export const CMS_EDITOR_SCRIPT = `(function() {
     return getAllSections().indexOf(found) >= 0 ? found : null;
   };
 
-  // Lazy sections async-render their real section inside a wrapper, so the
-  // wrapper's key is just the loader. Show the inner section's key instead
-  // (falling back to the wrapper while the content hasn't loaded yet).
-  // Suffix match, mirroring isLazyResolveType: the key can be namespaced by the
-  // app that re-exports it, and SingleDeferred wraps the same way.
+  // A Lazy wrapper's key is just the loader — show the inner section's instead.
+  // Suffix match mirrors isLazyResolveType (keys can be namespaced).
   var LAZY_KEYS = [
     "website/sections/Rendering/Lazy.tsx",
     "website/sections/Rendering/SingleDeferred.tsx"
@@ -264,7 +247,6 @@ export const CMS_EDITOR_SCRIPT = `(function() {
   };
   document.addEventListener("mouseout", outHandler, true);
 
-  // Distinguishes two clicks on the SAME section, which are two selections.
   var clickSeq = 0;
 
   // Blocks observes clicks to select sections in the side panel; it must not
@@ -294,17 +276,10 @@ export const CMS_EDITOR_SCRIPT = `(function() {
   };
   document.addEventListener("click", clickHandler, true);
 
-  // Navigation is disabled while editing. Following a link swaps the document
-  // out from under the panel: the sections the editor holds belong to the OLD
-  // page, so the form silently edits the wrong page (and a redirect makes the
-  // URL disagree with the panel too). Blocking it is the root fix.
-  //
-  // Deliberately NARROWER than "cancel every click" — #5567 removed a blanket
-  // preventDefault because it left the preview dead (carousels, accordions,
-  // tabs all need their clicks). Only navigation is cancelled here: anchors
-  // that would actually leave the page, and form submits. A link whose handler
-  // does something in-page (href="#", javascript:, or a JS-driven control)
-  // still reaches the page's own listeners untouched.
+  // Navigation is disabled while editing: leaving the page would leave the panel
+  // editing the previous page's sections. Cancels only the default action of
+  // real navigations, never propagation — in-page controls must keep working
+  // (#5567).
   var isNavigatingAnchor = function(a) {
     if (!a) return false;
     var href = a.getAttribute("href");
@@ -312,7 +287,7 @@ export const CMS_EDITOR_SCRIPT = `(function() {
     var trimmed = href.trim();
     if (!trimmed || trimmed.charAt(0) === "#") return false;
     if (/^javascript:/i.test(trimmed)) return false;
-    // A same-page fragment (/current/path#anchor) only scrolls — let it be.
+    // Same document + fragment only scrolls.
     try {
       var url = new URL(a.href, location.href);
       if (url.href.split("#")[0] === location.href.split("#")[0]) return false;
@@ -323,7 +298,6 @@ export const CMS_EDITOR_SCRIPT = `(function() {
     var el = e.target;
     var a = el && el.closest ? el.closest("a") : null;
     if (!isNavigatingAnchor(a)) return;
-    // Only the default action dies; the page's own click listeners still run.
     e.preventDefault();
   };
   document.addEventListener("click", navBlocker, true);
@@ -350,8 +324,7 @@ export const CMS_EDITOR_SCRIPT = `(function() {
       document.removeEventListener("mousemove", moveHandler, true);
       document.removeEventListener("mouseout", outHandler, true);
       document.removeEventListener("click", clickHandler, true);
-      // Leaving these attached would keep the page unnavigable after the user
-      // switches out of Blocks mode.
+      // Or the page stays unnavigable after leaving Blocks mode.
       document.removeEventListener("click", navBlocker, true);
       document.removeEventListener("submit", submitBlocker, true);
       window.removeEventListener("scroll", reposition, { capture: true });

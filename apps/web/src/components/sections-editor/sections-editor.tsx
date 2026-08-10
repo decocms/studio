@@ -617,9 +617,8 @@ export function SectionsEditor({
   };
 
   // Auto-select section when parent signals a click-through from the preview.
-  // Keyed on the click's `seq`, NOT its index: clicking the same section twice
-  // is two selections, and the second must reopen the form the user navigated
-  // away from. Comparing indexes made that second click a no-op.
+  // Keyed on `seq`, not index: two clicks on one section are two selections,
+  // and comparing indexes made the second a no-op.
   const externalSelectedIndex = externalSelection?.index;
   if (
     externalSelection !== undefined &&

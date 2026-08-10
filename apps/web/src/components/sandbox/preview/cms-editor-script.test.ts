@@ -21,10 +21,8 @@ describe("CMS editor iframe interactions", () => {
     expect(clickHandler).not.toContain("stopImmediatePropagation");
   });
 
-  // Navigation blocking (below) is a SEPARATE listener on purpose. #5567's rule
-  // — section selection must not cancel the page's own clicks — still holds
-  // above; nothing here may start swallowing propagation, or every interactive
-  // control in the preview dies again.
+  // Separate listener on purpose: #5567's rule still holds above, and nothing
+  // here may swallow propagation or the preview's controls die again.
   test("blocks navigation without swallowing the page's click listeners", () => {
     const start = CMS_EDITOR_SCRIPT.indexOf("var navBlocker = function(e)");
     const end = CMS_EDITOR_SCRIPT.indexOf(
@@ -40,9 +38,8 @@ describe("CMS editor iframe interactions", () => {
     expect(navBlocker).not.toContain("stopImmediatePropagation");
   });
 
-  // Without the counter, re-clicking a section the editor had navigated away
-  // from sent an identical payload, the panel saw "no change", and the form
-  // never reopened — only clicking a DIFFERENT section worked.
+  // Without it, re-clicking a section sent an identical payload and the panel
+  // read "no change", so the form never reopened.
   test("stamps every click with an incrementing counter", () => {
     const start = CMS_EDITOR_SCRIPT.indexOf("var clickHandler = function(e)");
     const end = CMS_EDITOR_SCRIPT.indexOf(
@@ -67,10 +64,8 @@ describe("CMS editor iframe interactions", () => {
   });
 });
 
-// Behavioural test of the extracted `isNavigatingAnchor` predicate — string
-// assertions above prove the wiring, this proves the decision. An over-eager
-// predicate re-breaks the preview (#5567); an under-eager one lets the redirect
-// through, which is the bug being fixed.
+// The predicate's decision, not just its wiring: over-eager re-breaks the
+// preview (#5567), under-eager lets the redirect through.
 describe("isNavigatingAnchor", () => {
   const buildPredicate = () => {
     const start = CMS_EDITOR_SCRIPT.indexOf(
@@ -116,13 +111,9 @@ describe("isNavigatingAnchor", () => {
   });
 });
 
-// The script embeds alignSections by stringifying it, so the editor and the
-// iframe share one implementation of an algorithm whose off-by-one failures are
-// invisible until someone edits the wrong component. That trick only holds if
-// the function is self-contained: a bundler that rewrites a captured import
-// into a module reference (`(0, _mod.helper)(…)`) would produce a script that
-// throws inside the iframe, where no module scope exists. Assert it parses and
-// that the body came along whole.
+// alignSections is stringified into the script, which only works if it stays
+// self-contained: a bundler rewriting it to a module reference would throw in
+// the iframe. Assert it parses and the body came along whole.
 describe("CMS_EDITOR_SCRIPT", () => {
   it("is syntactically valid standalone JavaScript", () => {
     expect(() => new Function(CMS_EDITOR_SCRIPT)).not.toThrow();
