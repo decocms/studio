@@ -33,6 +33,7 @@ import {
 } from "../../database/test-db-pg";
 import { ForbiddenError } from "../../core/access-control";
 import { OrgFsEntryStorage } from "../../storage/org-fs";
+import { OrgRepoSyncStorage } from "../../storage/org-repo-syncs";
 import { resolveOrgFromPath } from "../middleware/resolve-org-from-path";
 import { createOrgFsRoutes } from "./org-fs";
 
@@ -76,6 +77,12 @@ function buildApp(
         threads: { setOrganizationId: () => {} },
         asyncResearchJobs: { setOrganizationId: () => {} },
         orgFsEntries: new OrgFsEntryStorage(db.db),
+        // Real storage, not a stub: the write guard queries it, and a `as
+        // unknown as StudioContext` cast means a missing field is a runtime
+        // TypeError rather than a compile error. That is how #5866 turned every
+        // write route's 400/403/404 into a 500 here without CI noticing until
+        // it hit main.
+        orgRepoSyncs: new OrgRepoSyncStorage(db.db),
       },
       objectStorage: null,
       orgFs: null,
