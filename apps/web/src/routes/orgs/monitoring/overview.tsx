@@ -270,9 +270,11 @@ function ModelLeaderboardTable({
 const HEATMAP_MAX_TOOLS = 12;
 const HEATMAP_MAX_AGENTS = 8;
 
-function heatmapLevelClass(calls: number, maxCalls: number): string {
-  if (calls === 0) return "bg-muted-foreground/10";
-  const ratio = maxCalls > 0 ? calls / maxCalls : 0;
+type HeatmapMetric = "calls" | "outputSize";
+
+function heatmapLevelClass(value: number, maxValue: number): string {
+  if (value === 0) return "bg-muted-foreground/10";
+  const ratio = maxValue > 0 ? value / maxValue : 0;
   if (ratio <= 0.15) return "bg-success/25";
   if (ratio <= 0.4) return "bg-success/45";
   if (ratio <= 0.7) return "bg-success/70";
@@ -282,14 +284,17 @@ function heatmapLevelClass(calls: number, maxCalls: number): string {
 function ToolAgentHeatmap({
   cells,
   virtualMcps,
+  metric,
 }: {
   cells: Array<{
     virtualMcpId: string | null;
     toolName: string;
     calls: number;
     errors: number;
+    outputSize: number;
   }>;
   virtualMcps: ReturnType<typeof useVirtualMCPs>;
+  metric: HeatmapMetric;
 }) {
   const t = useT();
 
@@ -303,7 +308,10 @@ function ToolAgentHeatmap({
 
   const toolTotals = new Map<string, number>();
   for (const cell of cells) {
-    toolTotals.set(cell.toolName, (toolTotals.get(cell.toolName) ?? 0) + cell.calls);
+    toolTotals.set(
+      cell.toolName,
+      (toolTotals.get(cell.toolName) ?? 0) + cell[metric],
+    );
   }
   const topTools = [...toolTotals.entries()]
     .sort((a, b) => b[1] - a[1])
@@ -312,17 +320,21 @@ function ToolAgentHeatmap({
   const toolSet = new Set(topTools);
 
   const agentTotals = new Map<string, number>();
-  const cellMap = new Map<string, { calls: number; errors: number }>();
-  let maxCalls = 0;
+  const cellMap = new Map<
+    string,
+    { calls: number; errors: number; outputSize: number }
+  >();
+  let maxValue = 0;
   for (const cell of cells) {
     if (!toolSet.has(cell.toolName)) continue;
     const agentId = cell.virtualMcpId ?? "";
-    agentTotals.set(agentId, (agentTotals.get(agentId) ?? 0) + cell.calls);
+    agentTotals.set(agentId, (agentTotals.get(agentId) ?? 0) + cell[metric]);
     cellMap.set(`${agentId}::${cell.toolName}`, {
       calls: cell.calls,
       errors: cell.errors,
+      outputSize: cell.outputSize,
     });
-    if (cell.calls > maxCalls) maxCalls = cell.calls;
+    if (cell[metric] > maxValue) maxValue = cell[metric];
   }
   const topAgentIds = [...agentTotals.entries()]
     .sort((a, b) => b[1] - a[1])
@@ -365,14 +377,14 @@ function ToolAgentHeatmap({
               </div>
               {topTools.map((tool) => {
                 const cell = cellMap.get(`${agentId}::${tool}`);
-                const calls = cell?.calls ?? 0;
+                const value = cell?.[metric] ?? 0;
                 return (
                   <Tooltip key={tool}>
                     <TooltipTrigger asChild>
                       <div
                         className={cn(
                           "aspect-square rounded-[2px]",
-                          heatmapLevelClass(calls, maxCalls),
+                          heatmapLevelClass(value, maxValue),
                         )}
                       />
                     </TooltipTrigger>
@@ -380,8 +392,11 @@ function ToolAgentHeatmap({
                       {t("orgs.overview.heatmapCellTooltip", {
                         agent: agentNameOf(agentId),
                         tool,
-                        calls,
+                        calls: cell?.calls ?? 0,
                         errors: cell?.errors ?? 0,
+                        outputSize: formatCompactNumber(
+                          cell?.outputSize ?? 0,
+                        ),
                       })}
                     </TooltipContent>
                   </Tooltip>
@@ -517,6 +532,7 @@ export function OverviewTabContent({
   const connectionBreakdown = serverStats?.connectionBreakdown ?? [];
 
   const [latencyMetric, setLatencyMetric] = useState<"avg" | "p95">("avg");
+  const [heatmapMetric, setHeatmapMetric] = useState<HeatmapMetric>("calls");
 
   return (
     <div className="flex flex-col gap-4 px-4 md:px-10 pt-2 pb-6 max-w-[1200px] mx-auto w-full overflow-auto">
@@ -556,13 +572,41 @@ export function OverviewTabContent({
       {/* Row 1b: Tool-call heatmap (tool × agent) — full width */}
       <MonitoringMetricCard
         title={t("orgs.overview.toolCallHeatmap")}
-        value={(heatmapStats?.cells ?? [])
-          .reduce((sum, cell) => sum + cell.calls, 0)
-          .toLocaleString()}
+        value={
+          heatmapMetric === "calls"
+            ? (heatmapStats?.cells ?? [])
+                .reduce((sum, cell) => sum + cell.calls, 0)
+                .toLocaleString()
+            : formatCompactNumber(
+                (heatmapStats?.cells ?? []).reduce(
+                  (sum, cell) => sum + cell.outputSize,
+                  0,
+                ),
+              )
+        }
+        action={
+          <Select
+            value={heatmapMetric}
+            onValueChange={(v) => setHeatmapMetric(v as HeatmapMetric)}
+          >
+            <SelectTrigger className="w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="calls">
+                {t("orgs.overview.heatmapMetricCalls")}
+              </SelectItem>
+              <SelectItem value="outputSize">
+                {t("orgs.overview.heatmapMetricOutputSize")}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        }
       >
         <ToolAgentHeatmap
           cells={heatmapStats?.cells ?? []}
           virtualMcps={virtualMcps}
+          metric={heatmapMetric}
         />
       </MonitoringMetricCard>
 

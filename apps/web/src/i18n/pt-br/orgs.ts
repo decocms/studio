@@ -241,7 +241,9 @@ export const orgs = {
     "Não conseguimos buscar suas estatísticas de monitoramento agora. Por favor, tente novamente mais tarde.",
   "orgs.overview.failedToLoadTitle": "Falha ao carregar dados de monitoramento",
   "orgs.overview.heatmapCellTooltip":
-    "{agent} → {tool}: {calls} chamadas, {errors} erros",
+    "{agent} → {tool}: {calls} chamadas, {errors} erros, {outputSize} de saída",
+  "orgs.overview.heatmapMetricCalls": "Chamadas",
+  "orgs.overview.heatmapMetricOutputSize": "Tamanho da saída",
   "orgs.overview.latency": "Latência",
   "orgs.overview.latencyAriaLabel": "Latência de {type} ao longo do tempo",
   "orgs.overview.latencyAvg": "Média",

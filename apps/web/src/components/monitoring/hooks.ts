@@ -158,6 +158,8 @@ interface MonitoringHeatmapResult {
     toolName: string;
     calls: number;
     errors: number;
+    /** Sum of tool-output byte length — a proxy for context weight, not LLM token count. */
+    outputSize: number;
   }>;
 }
 

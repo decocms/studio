@@ -51,6 +51,11 @@ export const MONITORING_HEATMAP = defineTool({
         toolName: z.string(),
         calls: z.number(),
         errors: z.number(),
+        outputSize: z
+          .number()
+          .describe(
+            "Sum of tool-output byte length — a proxy for context weight, not LLM token count",
+          ),
       }),
     ),
   }),

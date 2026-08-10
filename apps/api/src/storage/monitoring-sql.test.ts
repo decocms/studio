@@ -1194,6 +1194,10 @@ describe.skipIf(!duckdbAvailable)(
     let engine: DuckDBEngine;
     let storage: SqlMonitoringStorage;
 
+    const TOOL_A_OUTPUT_1 = '{"result":"ok"}';
+    const TOOL_A_OUTPUT_2 = '{"result":"error: something went wrong here"}';
+    const TOOL_B_OUTPUT = '{"result":[1,2,3,4,5,6,7,8,9,10]}';
+
     beforeAll(async () => {
       tmpDir = await mkdtemp(join(tmpdir(), "monitoring-heatmap-test-"));
       const dataDir = join(tmpDir, "2026", "03", "06", "12");
@@ -1217,6 +1221,7 @@ describe.skipIf(!duckdbAvailable)(
           virtual_mcp_id: "vmcp_1",
           tool_name: "TOOL_A",
           is_error: 0,
+          output: TOOL_A_OUTPUT_1,
         }),
         makeTestMonitoringRow({
           id: "hm_2",
@@ -1225,6 +1230,7 @@ describe.skipIf(!duckdbAvailable)(
           virtual_mcp_id: "vmcp_1",
           tool_name: "TOOL_A",
           is_error: 1,
+          output: TOOL_A_OUTPUT_2,
         }),
         makeTestMonitoringRow({
           id: "hm_3",
@@ -1233,6 +1239,7 @@ describe.skipIf(!duckdbAvailable)(
           virtual_mcp_id: null,
           tool_name: "TOOL_B",
           is_error: 0,
+          output: TOOL_B_OUTPUT,
         }),
         // llm_call row reusing a "tool_name" that's actually a model id — must
         // never leak into the heatmap, which only counts real tool calls.
@@ -1276,6 +1283,7 @@ describe.skipIf(!duckdbAvailable)(
           toolName: "TOOL_A",
           calls: 2,
           errors: 1,
+          outputSize: TOOL_A_OUTPUT_1.length + TOOL_A_OUTPUT_2.length,
         }),
       );
 
@@ -1286,6 +1294,7 @@ describe.skipIf(!duckdbAvailable)(
           toolName: "TOOL_B",
           calls: 1,
           errors: 0,
+          outputSize: TOOL_B_OUTPUT.length,
         }),
       );
 

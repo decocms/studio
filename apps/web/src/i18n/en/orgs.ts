@@ -235,7 +235,10 @@ export const orgs = {
   "orgs.overview.failedToLoadDescription":
     "We couldn't fetch your monitoring stats right now. Please try again later.",
   "orgs.overview.failedToLoadTitle": "Failed to load monitoring data",
-  "orgs.overview.heatmapCellTooltip": "{agent} → {tool}: {calls} calls, {errors} errors",
+  "orgs.overview.heatmapCellTooltip":
+    "{agent} → {tool}: {calls} calls, {errors} errors, {outputSize} output",
+  "orgs.overview.heatmapMetricCalls": "Calls",
+  "orgs.overview.heatmapMetricOutputSize": "Output size",
   "orgs.overview.latency": "Latency",
   "orgs.overview.latencyAriaLabel": "{type} latency over time",
   "orgs.overview.latencyAvg": "Avg",

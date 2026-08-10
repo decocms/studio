@@ -532,6 +532,12 @@ export interface MonitoringStorage {
       toolName: string;
       calls: number;
       errors: number;
+      /**
+       * Sum of tool-output byte length — a proxy for context weight (how much
+       * text this tool feeds back into the LLM's context), not LLM token
+       * count. tool_call rows carry no token data of their own.
+       */
+      outputSize: number;
     }>;
   }>;
 
