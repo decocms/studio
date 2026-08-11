@@ -103,9 +103,7 @@ const offenders = [];
     const text = await Bun.file(`${cwd}/${file}`)
       .text()
       .catch(() => "");
-    const entries = text
-      .split("\n")
-      .map((t, i) => ({ line: i + 1, text: t }));
+    const entries = text.split("\n").map((t, i) => ({ line: i + 1, text: t }));
     for (const g of groupAdded(entries)) offenders.push({ file, group: g });
   }
 }
@@ -119,8 +117,7 @@ const shown = offenders
       `${o.file}:${o.group[0].line}-${o.group[o.group.length - 1].line}\n${o.group.map((e) => e.text).join("\n")}`,
   )
   .join("\n\n");
-const more =
-  offenders.length > 3 ? `\n\n(+${offenders.length - 3} more)` : "";
+const more = offenders.length > 3 ? `\n\n(+${offenders.length - 3} more)` : "";
 
 console.log(
   JSON.stringify({
