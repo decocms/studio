@@ -572,8 +572,21 @@ export function TaskBoardItemDialog({
                     <AssigneePickerContent
                       members={members}
                       onSelect={(userId) => {
-                        setAssigneeId(userId);
                         setAssigneeOpen(false);
+                        // Re-picking the Super Agent on a card it already owns
+                        // leaves the form clean, so Save never appears and the
+                        // pick is silently discarded — which is what "I
+                        // assigned it to Auto fix and it stayed in To Do"
+                        // actually was. That intent is a re-run; hand it to the
+                        // same confirm the Rerun button uses.
+                        if (
+                          userId === SUPER_AGENT_ASSIGNEE_ID &&
+                          item?.assigneeId === SUPER_AGENT_ASSIGNEE_ID
+                        ) {
+                          onRerun?.();
+                          return;
+                        }
+                        setAssigneeId(userId);
                       }}
                     />
                   </PopoverContent>
