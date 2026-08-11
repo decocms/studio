@@ -9,6 +9,14 @@ description: |
   releases coexist in the shared `agent-sandbox-system` namespace.
   Requires the sandbox-operator chart to already be installed.
 type: application
+# 0.14.6: opt-in `disruptionProtection.doNotDisrupt` (default off) — annotates
+# sandbox pods with Karpenter's `do-not-disrupt` so voluntary node
+# consolidation/drift never evicts a claimed sandbox mid-session (#5815). A
+# PodDisruptionBudget doesn't fit here (a claimed sandbox is a singleton, no
+# replicas to shift load to — its minAvailable/maxUnavailable math can
+# deadlock Karpenter drift instead), so this is the narrower, safe mitigation.
+# Does not cover involuntary disruption (spot reclaim, node failure) — that's
+# terminationGracePeriodSeconds' job. Additive; no change unless enabled.
 # 0.14.0: scope the golden uploader by environment, and give its volume the key
 # prefix it was missing. Two defects, both of which made the tier silently do
 # nothing rather than fail:
@@ -135,7 +143,7 @@ type: application
 # 0.8.0: org-fs sidecar (orgFs.*) — privileged rclone mounter + main-container
 # mounts. NOTE: the publish workflow skips existing versions, so this MUST
 # stay ahead of the latest published chart (0.7.5 at time of writing).
-version: 0.14.5
+version: 0.14.6
 # appVersion tracks the studio-sandbox image version (image.tag default).
 appVersion: "1.52.0"
 kubeVersion: ">=1.30.0-0"
