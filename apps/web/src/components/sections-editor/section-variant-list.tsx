@@ -279,11 +279,16 @@ export function SectionVariantList({
     setPrevVariantCount(variants.length);
     setPrevDisplayKey(displayKey);
     setEntries(createEntries(variants));
-  } else if (prevVariantCount !== variants.length) {
+  } else if (
+    prevVariantCount !== variants.length ||
+    prevDisplayKey !== displayKey
+  ) {
+    // Duplicate/delete/reorder all land here (a count change always also
+    // changes the display key). Reuse each position's existing id rather than
+    // minting fresh ones for every row — otherwise duplicating or deleting one
+    // variant remounts every OTHER row's DnD-sortable identity too, dropping
+    // e.g. an open row menu on an unrelated row.
     setPrevVariantCount(variants.length);
-    setPrevDisplayKey(displayKey);
-    setEntries(createEntries(variants));
-  } else if (prevDisplayKey !== displayKey) {
     setPrevDisplayKey(displayKey);
     setEntries((current) =>
       variants.map((variant, index) => {
