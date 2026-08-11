@@ -29,6 +29,7 @@ import { useStudioTools } from "@/lib/studio-tools";
 import { KEYS } from "@/lib/query-keys";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { usePreferences } from "@/hooks/use-preferences.ts";
 
 // ── Quick Top-Up presets ──────────────────────────────────────────────
 
@@ -40,6 +41,7 @@ const TOP_UP_PRESETS = {
 function QuickTopUp() {
   const t = useT();
   const studio = useStudioTools();
+  const [preferences] = usePreferences();
   const [customOpen, setCustomOpen] = useState(false);
 
   const { mutate: topUp, isPending } = useMutation({
@@ -62,7 +64,9 @@ function QuickTopUp() {
   });
 
   const [customAmount, setCustomAmount] = useState("");
-  const [currency, setCurrency] = useState<"usd" | "brl">("usd");
+  const [currency, setCurrency] = useState<"usd" | "brl">(
+    preferences.language === "pt-BR" ? "brl" : "usd",
+  );
   const customNum = parseFloat(customAmount);
   const isCustomValid = !isNaN(customNum) && customNum >= 1;
   const currencySymbol = currency === "brl" ? "R$" : "$";
