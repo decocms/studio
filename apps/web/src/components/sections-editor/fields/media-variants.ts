@@ -83,6 +83,16 @@ export function duplicateVariant(
   return { ...wrapper, variants };
 }
 
+/** Selected index to keep pointing at the same variant after a deletion. */
+export function selectedIndexAfterDelete(
+  selectedIndex: number,
+  deletedIndex: number,
+  remainingCount: number,
+): number {
+  if (deletedIndex < selectedIndex) return selectedIndex - 1;
+  return Math.min(selectedIndex, remainingCount - 1);
+}
+
 /** Reorder variants by moving from one index to another. */
 export function reorderVariant(
   wrapper: MultivariateWrapper,
