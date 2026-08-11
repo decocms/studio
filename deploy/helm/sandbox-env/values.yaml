@@ -78,6 +78,22 @@ resources:
 # reclaim notice.
 terminationGracePeriodSeconds: 90
 
+# ── disruption protection ───────────────────────────────────────────────
+# Opt-in, off by default. A claimed sandbox pod is a singleton (no replicas
+# to shift load to), so a PodDisruptionBudget's minAvailable/maxUnavailable
+# math doesn't help it and can deadlock Karpenter drift instead — see #5815.
+# `doNotDisrupt` takes the narrower, safe mitigation: annotate the pod with
+# Karpenter's `do-not-disrupt`, which blocks only VOLUNTARY node disruption
+# (consolidation, drift, manual `kubectl delete node`) for as long as the pod
+# lives. It does nothing for involuntary disruption (spot reclaim, node
+# failure) — terminationGracePeriodSeconds above already covers that via the
+# daemon's SIGTERM git-sync.
+# Default off because it trades cluster cost/upgrade cadence for session
+# safety: a long-lived claimed sandbox can hold its node back from
+# consolidation or an AMI/drift rollout indefinitely.
+disruptionProtection:
+  doNotDisrupt: false
+
 # ── daemon telemetry (OTLP metrics) ───────────────────────────────────
 # Opens exactly ONE in-cluster destination in the sandbox egress boundary —
 # the OTel collector — and hands the daemon the matching

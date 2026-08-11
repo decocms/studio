@@ -29,8 +29,9 @@ spec:
   networkPolicyManagement: Unmanaged
   podTemplate:
     metadata:
-      {{- if .Values.netinit.enabled }}
+      {{- if or .Values.netinit.enabled .Values.disruptionProtection.doNotDisrupt }}
       annotations:
+        {{- if .Values.netinit.enabled }}
         # Best-effort AWS VPC CNI opt-out. The real safety net is that no
         # NetworkPolicy selects these pods (networkPolicyManagement:
         # Unmanaged + no chart-rendered NP), so the agent's policy-endpoint
@@ -38,6 +39,12 @@ spec:
         # in aws-network-policy-agent's source — verify it's honored before
         # relying on it if a future NP starts matching these pods.
         vpc.amazonaws.com/v1alpha1.network-policy-enforcement: "disabled"
+        {{- end }}
+        {{- if .Values.disruptionProtection.doNotDisrupt }}
+        # Blocks Karpenter's voluntary node consolidation/drift from
+        # evicting this pod mid-session. See values.yaml disruptionProtection.
+        karpenter.sh/do-not-disrupt: "true"
+        {{- end }}
       {{- end }}
       labels:
         # Per-env name so each env's NetworkPolicy podSelector matches only
