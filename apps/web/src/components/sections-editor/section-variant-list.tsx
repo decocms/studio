@@ -90,10 +90,15 @@ export function reuseVariantEntryIds(
   current: SortableVariantEntry[],
   variants: SectionVariantEntry[],
 ): SortableVariantEntry[] {
-  const byLabel = new Map(current.map((entry) => [entry.label, entry]));
+  // Duplicate rows clone the label as-is, so match same-label entries FIFO.
+  const byLabel = new Map<string, SortableVariantEntry[]>();
+  for (const entry of current) {
+    const queue = byLabel.get(entry.label);
+    if (queue) queue.push(entry);
+    else byLabel.set(entry.label, [entry]);
+  }
   return variants.map((variant) => {
-    const prior = byLabel.get(variant.label);
-    if (prior) byLabel.delete(variant.label);
+    const prior = byLabel.get(variant.label)?.shift();
     return {
       id: prior?.id ?? crypto.randomUUID(),
       index: variant.index,

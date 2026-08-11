@@ -45,4 +45,20 @@ describe("reuseVariantEntryIds", () => {
     expect(copy?.id).not.toBe("e0");
     expect(copy?.id).not.toBe("e1");
   });
+
+  it("keeps two same-label rows' ids stable in order across an unrelated rebuild", () => {
+    // Un-renamed duplicates share a label — matching must not collapse them.
+    const current = [
+      { id: "e0", index: 0, label: "A" },
+      { id: "e1", index: 1, label: "A" },
+    ];
+    const variants = [
+      { index: 0, label: "A" },
+      { index: 1, label: "A" },
+    ];
+
+    const next = reuseVariantEntryIds(current, variants);
+
+    expect(next.map((entry) => entry.id)).toEqual(["e0", "e1"]);
+  });
 });
