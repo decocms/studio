@@ -50,6 +50,7 @@ import { HeaderTabButton } from "@/layouts/main-panel-tabs/header-tab-button";
 import {
   MainPanelHeaderEndPortal,
   MainPanelHeaderPortal,
+  MainPanelHeaderStartPortal,
   useMainPanelHeaderSlot,
 } from "@/layouts/agent-shell-layout/panel-header";
 import { useTerminalVisibility } from "@/layouts/main-panel-tabs/terminal-visibility";
@@ -1473,10 +1474,18 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   // Desktop composition (portaled into the panel header's centre slot): the
   // Edit action leads, set off by a divider, then the view controls.
+  // Fast Preview: the CMS toggle is promoted OUT of this group into the
+  // header's leading slot (the chat's old position — see the
+  // MainPanelHeaderStartPortal below), so the centre group is just the URL
+  // controls.
   const urlControls = showPreviewToolbar ? (
     <div className="flex min-w-0 items-center gap-0.5">
-      {cmsToggle}
-      <div className="mx-0.5 h-5 w-px shrink-0 bg-border" />
+      {!fastPreviewEnabled && (
+        <>
+          {cmsToggle}
+          <div className="mx-0.5 h-5 w-px shrink-0 bg-border" />
+        </>
+      )}
       {urlGroup}
     </div>
   ) : null;
@@ -1671,6 +1680,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         )}
       {headerSlot ? (
         <>
+          {fastPreviewEnabled && showPreviewToolbar && (
+            <MainPanelHeaderStartPortal>{cmsToggle}</MainPanelHeaderStartPortal>
+          )}
           {showPreviewToolbar && (
             <MainPanelHeaderPortal>{urlControls}</MainPanelHeaderPortal>
           )}

@@ -48,6 +48,7 @@ import {
   MainPanelHeaderEndSlot,
   MainPanelHeaderProvider,
   MainPanelHeaderSlot,
+  MainPanelHeaderStartSlot,
   PanelHeader,
 } from "./panel-header";
 
@@ -220,6 +221,9 @@ export function WorkspacePanelGroup({
         {!chatOpen && !fastPreviewActive && (
           <ChatToggle sidePanel={sidePanel} toggleSidePanel={toggleSidePanel} />
         )}
+        {/* Fast Preview: the CMS toggle takes the chat's leading slot —
+            Preview portals it here (see MainPanelHeaderStartPortal). */}
+        {fastPreviewActive && <MainPanelHeaderStartSlot />}
         <MainControls
           virtualMcpId={virtualMcpId}
           taskId={taskId}
