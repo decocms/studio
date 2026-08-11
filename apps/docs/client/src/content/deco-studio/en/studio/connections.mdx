@@ -47,6 +47,10 @@ Connections solve this by being the single source of truth:
 
 All connection types work the same way: configure once at the org level, attach to whichever agents need them.
 
+<Callout type="warning">
+  A connection's URL must resolve to a public address. Studio blocks URLs that point at private or internal-network addresses (including ones reached via a redirect) — this applies when you create or update a **Custom Connection**, and on every health check Studio runs against it afterward. A connection pointing at a private address is reported as unhealthy rather than probed.
+</Callout>
+
 ### Transports
 
 Under the hood, every connection uses one of these transports. You don't usually need to think about it — Studio picks the right form based on the catalog entry or what you paste into **Custom Connection** — but it matters when you're wiring up an MCP server yourself:
