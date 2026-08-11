@@ -64,29 +64,33 @@ Em um release futuro, o Studio permitirá que você construa views simples diret
 
 Um agent pode ser respaldado por código. Vincule-o a um repositório do GitHub em **Settings → Sandbox** e o Studio executará o repo como um ambiente de dev isolado com escopo daquele agent — tipicamente o próprio MCP server do agent, mas pode ser qualquer serviço que o agent precise. O sandbox inicia sob demanda, vive apenas enquanto o agent precisar dele, e nunca vaza entre agents.
 
+O repo picker lista forks junto com seus próprios repositórios, marcados com um badge **Fork**. Um fork só é importado com sucesso se a instalação do GitHub App também tiver acesso concedido a ele — caso contrário, a importação falha com uma indicação para adicionar o fork em **GitHub → Settings → Installations**.
+
 Quando o agent está rodando com um runtime local de code-editor, os botões **Open in VSCode** e **Open in Cursor** aparecem diretamente na barra de abas para acesso com um clique ao repositório na sua máquina. Em outros modos de runtime, as mesmas opções ficam disponíveis no menu de três pontos (⋯) da barra de abas.
 
 ## Onde um agent roda
 
-Acima do input do chat, ao lado do model picker, está o **runtime picker**. Ele controla *onde* o agent executa e *qual harness* o conduz. Há dois grupos:
-
-**Cloud**
+Acima do input do chat, ao lado do model picker, está o **runtime picker**. Ele controla *qual harness* conduz o agent.
 
 - **Decopilot** — _"Roda em um agent sandbox."_ O agent executa em um sandbox gerenciado pelo Studio. Este é o padrão, sempre disponível, sem nada para instalar.
 
-**Local** — rode o agent na sua própria máquina. Até que um runtime local seja conectado, essas opções exibem **"Desktop not detected"** e ficam desabilitadas.
-
-- **Decopilot** — o harness do Decopilot, rodando no seu desktop
-- **Claude Code** — conduz o agent com o CLI do [Claude Code](https://claude.com/claude-code)
-- **Codex** — conduz o agent com o CLI do Codex
-
-Rodar localmente significa que o sandbox do agent vive na sua máquina: ele pode ler e escrever seus arquivos locais, usar suas ferramentas instaladas e rodar com suas próprias credenciais — enquanto o Studio continua tratando o chat, as connections e o logging. O cloud sandbox, por outro lado, é totalmente gerenciado e isolado por agent.
-
-Para habilitar as opções locais, conecte um runtime de desktop com `deco link`. O Studio detecta a connection e acende quaisquer harnesses que ela expõe — **Claude Code** e **Codex** aparecem assim que seu CLI estiver disponível na máquina vinculada.
+O sandbox do agent é totalmente gerenciado e isolado por agent — o Studio trata o chat, as connections, o logging e o próprio runtime, então não há nada para instalar ou conectar na sua máquina.
 
 <Callout type="tip">
-  Cloud é o padrão certo para execuções sem supervisão e para colegas de time que não deveriam precisar de uma configuração local. Recorra a um runtime local quando o agent precisar da sua máquina — seus arquivos, suas credenciais ou um coding harness como Claude Code ou Codex.
+  O sandbox gerenciado é o padrão certo para toda execução, supervisionada ou não — colegas de time nunca precisam de uma configuração local para usar um agent.
 </Callout>
+
+### Studio Native: terminais de coding agent
+
+O app de desktop Studio Native adiciona uma segunda forma, separada, de trabalhar com código. Ao iniciar uma thread nova no Studio Native, aparece um seletor **"Choose a coding agent"** no lugar do composer de chat normal — escolha **Claude Code**, **Codex** ou **OpenCode** e o Studio inicia essa CLI como um terminal interativo ao vivo (uma sessão `xterm.js` embutida) dentro da thread, usando a instalação que ele detectar na sua máquina. Se uma CLI não for detectada, uma opção **"try anyway"** a inicia mesmo assim.
+
+A escolha é permanente para aquela thread: reabri-la reconecta à sessão em execução (ou retoma a conversa salva pela própria CLI) em vez de mostrar o seletor de novo. O Studio continua rastreando a thread na sua sidebar e injeta na CLI uma connection MCP com escopo limitado (`cms`) de volta para as tools da sua org, mas tudo que você digita vai direto para a interface da própria CLI — o Studio não interpreta nem reproduz essa saída como mensagens de chat.
+
+<Callout type="info">
+  Esse seletor só aparece no app de desktop Studio Native, e apenas para uma thread nova — ele não tem relação com o runtime gerenciado do **Decopilot** descrito acima, que está disponível tanto no app de desktop quanto no app web.
+</Callout>
+
+No Studio Native, abrir uma branch clona uma working tree local para ela no disco, que permanece enquanto pelo menos uma thread daquela branch estiver aberta. Arquivar a **última** thread aberta de uma branch agora oferece a opção de reclamá-la — parando tudo que estiver rodando naquela branch e apagando seus arquivos do seu computador. Isso é opt-in a cada arquivamento, afeta apenas o clone local, e não altera a branch em si nem nada que já tenha sido enviado ao remoto.
 
 ## Um agent é um MCP virtual
 
