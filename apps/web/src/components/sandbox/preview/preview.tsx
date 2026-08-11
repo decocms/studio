@@ -1485,8 +1485,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // whenever there's at least one available action: the Terminal toggle is
   // always available (so it stays reachable during boot, before the iframe is
   // up), while copy / SEO items are gated on the preview being live.
+  // Fast Preview is sandbox-less — there is no terminal to show, so the
+  // toggle is withheld entirely rather than opening an empty drawer.
+  const terminalToggle = fastPreviewEnabled ? null : terminal;
   const moreMenu =
-    showPreviewToolbar || terminal ? (
+    showPreviewToolbar || terminalToggle ? (
       <div className="flex shrink-0 items-center">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -1499,19 +1502,21 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44">
-            {terminal && (
+            {terminalToggle && (
               <DropdownMenuItem
-                onClick={() => terminal.setVisible(!terminal.visible)}
+                onClick={() =>
+                  terminalToggle.setVisible(!terminalToggle.visible)
+                }
               >
                 <Terminal size={14} />
-                {terminal.visible
+                {terminalToggle.visible
                   ? t("sandbox.preview.hideTerminal")
                   : t("sandbox.preview.showTerminal")}
               </DropdownMenuItem>
             )}
             {showPreviewToolbar && (
               <>
-                {terminal && <DropdownMenuSeparator />}
+                {terminalToggle && <DropdownMenuSeparator />}
                 <DropdownMenuItem onClick={handleCopyUrl}>
                   <Copy01 size={14} />
                   {t("sandbox.preview.copyCurrentUrl")}

@@ -16,6 +16,7 @@ import {
   type ReactNode,
 } from "react";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
+import { resolveFastPreview } from "@/sdk/fast-preview";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -114,11 +115,21 @@ export function WorkspacePanelGroup({
   virtualMcpId,
   taskId,
   entity,
-  sidePanel,
-  mainOpen,
+  sidePanel: sidePanelProp,
+  mainOpen: mainOpenProp,
   toggleSidePanel,
   chatContent,
 }: WorkspacePanelGroupProps) {
+  // Fast Preview projects have no chat surface at all: a thread run would
+  // dispatch to a sandbox runner that never exists in this mode, so the chat
+  // panel (the agent terminal in the native app) is removed rather than
+  // rendered broken — the CMS is the editing surface. Forcing the pair here
+  // (chat closed, main open) also covers stale URL/layout state that would
+  // otherwise open a chat with no toggle to close it, or leave both panels
+  // hidden.
+  const fastPreviewActive = resolveFastPreview(entity.metadata).active;
+  const sidePanel = fastPreviewActive ? null : sidePanelProp;
+  const mainOpen = fastPreviewActive ? true : mainOpenProp;
   const [sidePanelWidth, setSidePanelWidth] = useSidePanelWidth();
   const panelGroupRef = useRef<GroupImperativeHandle>(null);
   const visibility = { sidePanel, mainOpen };
@@ -206,7 +217,7 @@ export function WorkspacePanelGroup({
           right actions on the far side are never pushed off-screen. */}
       <div className="flex min-w-0 shrink items-center gap-0.5 overflow-hidden">
         {!chatOpen && agentCrumb}
-        {!chatOpen && (
+        {!chatOpen && !fastPreviewActive && (
           <ChatToggle sidePanel={sidePanel} toggleSidePanel={toggleSidePanel} />
         )}
         <MainControls
