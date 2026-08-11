@@ -242,6 +242,24 @@ If `sentinel.token` is omitted, the chart generates and preserves a Secret for s
 
 The optional warm-pool HPA requires `warmPool.enabled: true`, `warmPool.autoscaling.enabled: true`, and at least one explicit `autoscaling/v2` metric. The chart intentionally provides no default metric.
 
+### Daemon telemetry (OTLP metrics)
+
+The sandbox daemon can export OTLP metrics to an OpenTelemetry collector. This is separate from — and unrelated to — Studio's own monitoring export described in [Monitoring](/en/studio/self-hosting/monitoring): here the metrics come from the sandbox daemon itself (process/runtime health), not from Studio's tool-call logs.
+
+It's off by default. Enabling it opens exactly one additional in-cluster egress destination in the sandbox's iptables policy — the collector — since sandbox pods otherwise cannot reach in-cluster services.
+
+```yaml
+telemetry:
+  enabled: true
+  otlp:
+    ip: "10.0.12.34" # the collector Service's ClusterIP — see below
+    port: 4318 # 4318 = OTLP/HTTP, 4317 = OTLP/gRPC
+```
+
+<Callout type="warning">
+  `telemetry.otlp.ip` must be a bare IPv4 address, not a DNS name. Sandbox pods run with `dnsPolicy: None` against public resolvers, so in-cluster service names (like `gateway-otlp.opentelemetry-collector`) do not resolve inside them. Get the collector's ClusterIP with `kubectl -n opentelemetry-collector get svc gateway-otlp -o jsonpath='{.spec.clusterIP}'`. If the collector Service is later recreated, its ClusterIP can change — the daemon logs export failures and keeps serving, but re-read the IP and upgrade the release to restore metrics.
+</Callout>
+
 ### Idle housekeeper
 
 Studio refreshes claim activity, while the optional housekeeper CronJob cleans up idle or unrecoverable claims and orphaned routes/pods. Its defaults run every five minutes and reap claims idle for 15 minutes.
@@ -313,16 +331,25 @@ These defaults come from `deploy/helm/studio/values.yaml`:
 
 ## Main sandbox values
 
+<Callout type="tip">
+  The Go daemon is the only sandbox implementation — the image itself
+  determines the daemon, so there is no runtime switch or org-level flag to
+  choose between a TypeScript and a Go daemon. `image.repository` points
+  directly at the `studio-sandbox-go` image.
+</Callout>
+
 | Parameter | Description | Default |
 | --- | --- | --- |
 | `envName` | DNS-label suffix for environment resources | Required |
-| `image.repository` / `image.tag` | Sandbox daemon image | `ghcr.io/decocms/studio/studio-sandbox` / `1.17.8` |
+| `image.repository` / `image.tag` | Sandbox daemon image | `ghcr.io/decocms/studio/studio-sandbox-go` / `1.17.8` |
 | `resources.requests` | Per-sandbox request | `500m` CPU / `1Gi` memory |
 | `resources.limits` | Per-sandbox limit | `2` CPU / `4Gi` memory / `10Gi` ephemeral storage |
 | `terminationGracePeriodSeconds` | Time for final git sync and unmount | `90` |
 | `netinit.enabled` | Install default iptables egress policy | `true` |
 | `readOnlyRootFilesystem` | Read-only sandbox root filesystem | `true` |
 | `depsCache.enabled` / `depsCache.golden` | Node-local dependency caches | `false` / `false` |
+| `telemetry.enabled` | Export sandbox daemon OTLP metrics to a collector | `false` |
+| `telemetry.otlp.ip` / `telemetry.otlp.port` | Collector ClusterIP (required if enabled) / port | `""` / `4318` |
 | `warmPool.enabled` / `warmPool.size` | Pre-warmed sandboxes | `false` / `0` |
 | `previewGateway.enabled` | Wildcard preview Gateway | `false` |
 | `housekeeper.enabled` | Idle-claim cleanup CronJob | `false` |

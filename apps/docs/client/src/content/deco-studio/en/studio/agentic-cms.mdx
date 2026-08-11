@@ -52,6 +52,16 @@ If you're coming from deco.cx, the Agentic CMS is the same product line — same
 
 Existing deco.cx projects continue to work. Migration adds the agent layer; it doesn't replace your codebase.
 
+## Blocks form: field descriptions
+
+When you edit a section or block's props, each field's description (from its schema's `.describe()`) shows as text underneath the field's title by default — the same layout deco.cx has always used.
+
+You can switch a site to show descriptions as a tooltip instead: hover the field's title to reveal it, which keeps forms shorter and easier to scan, especially on dense blocks. This is opt-in and set **per site**, from the site's **Settings**, next to the **Production URL** field. Turning it on doesn't change anything for other sites in your org.
+
+<Callout type="tip">
+  Prefer the tooltip on content-heavy blocks with many fields — it keeps the form compact without losing the schema's guidance text.
+</Callout>
+
 ## Getting started
 
 Open Studio, find the **deco Site Editor** agent and point it at your site.
