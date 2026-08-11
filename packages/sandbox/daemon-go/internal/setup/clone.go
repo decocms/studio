@@ -2,6 +2,7 @@ package setup
 
 import (
 	"fmt"
+	"log/slog"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -73,7 +74,11 @@ type CloneDeps struct {
 	// empty means submodules are left alone. ⚠️ SECURITY: credentials — see
 	// runSubmoduleUpdate for the channel they travel on.
 	SubmoduleCredentials []config.SubmoduleCredential
-	OnChunk              func(data string)
+	// TmpDir is the daemon's own scratch dir, where the submodule fetch parks its
+	// credentials file. Empty disables the submodule fetch rather than falling
+	// back to the shared /tmp.
+	TmpDir  string
+	OnChunk func(data string)
 }
 
 // crNormalizeRe: bare \r (git progress) → \r\n so log lines stay readable.
@@ -183,6 +188,28 @@ func isNonEmptyWithoutGit(dir string) bool {
 	return true
 }
 
+// SubmoduleCredentialsPath is where the submodule fetch parks its short-lived
+// git-credentials file: the daemon's own tmp dir, outside the repo (so it can
+// never be committed or served) and outside the shared /tmp. Deterministic on
+// purpose — see SweepSubmoduleCredentials.
+func SubmoduleCredentialsPath(tmpDir string) string {
+	return filepath.Join(tmpDir, "submodule-git-credentials")
+}
+
+// SweepSubmoduleCredentials unlinks a credentials file a previous boot left
+// behind. runSubmoduleUpdate removes its own file on every return path, but a
+// SIGKILL, an OOM-kill, or a node eviction mid-fetch skips the defer and strands
+// a live PAT on disk for the container's remaining life. Called once at startup,
+// before the orchestrator can run.
+func SweepSubmoduleCredentials(tmpDir string) {
+	if tmpDir == "" {
+		return
+	}
+	if err := os.Remove(SubmoduleCredentialsPath(tmpDir)); err != nil && !os.IsNotExist(err) {
+		slog.Warn("could not remove leftover submodule credentials file", "error", err.Error())
+	}
+}
+
 // submoduleHostRe mirrors SUBMODULE_HOST_RE in
 // packages/shared/src/sdk/types/virtual-mcp.ts (the source of truth, also
 // enforced by the tool schema). A submodule host flows into a
@@ -254,18 +281,26 @@ func submoduleUpdateArgs(hosts []string, credFile string) []string {
 // rather than failing the whole clone, mirroring fetchBaseBranch.
 //
 // Credentials are delivered on a git-only channel — never the env bag the dev
-// server sees. The token lives only in a short-lived credentials file (mode 0600,
-// outside the repo) read by `git-credential-store` for the submodule fetch, then
-// deleted. `insteadOf` rewrites (which carry NO token) turn `git@<host>:` /
-// `ssh://git@<host>/` submodule URLs into HTTPS so the store credential applies;
-// the token is never placed in argv and never persisted into the repo's
-// `.git/config`.
+// server sees. The token lives only in a credentials file read by
+// `git-credential-store` for this one fetch, then deleted. `insteadOf` rewrites
+// (which carry NO token) turn `git@<host>:` / `ssh://git@<host>/` submodule URLs
+// into HTTPS so the store credential applies; the token is never placed in argv
+// and never persisted into the repo's `.git/config`.
+//
+// ⚠️ What 0600 does and does not buy: every process in a sandbox pod runs as the
+// same uid (the daemon, /exec, the harness, the dev server, and git itself — see
+// gitx.Run's DecoUID), so the mode does not hide the file from tenant code. The
+// real control is LIFETIME: the file exists only for the duration of this fetch,
+// which precedes the dev server's start, and SweepSubmoduleCredentials clears a
+// leftover on the next boot if the daemon is killed mid-fetch. Redaction on
+// /_sandbox/config is defense in depth against a remote reader, not a boundary
+// against in-pod code.
 //
 // No-op when no credentials are configured (the feature is opt-in) or the repo
 // declares no submodules.
 //
 // `run` is injected so the argv/best-effort contract is testable without git.
-func runSubmoduleUpdate(dir string, credentials []config.SubmoduleCredential, onChunk func(string), run func(argv []string) int) {
+func runSubmoduleUpdate(dir, tmpDir string, credentials []config.SubmoduleCredential, onChunk func(string), run func(argv []string) int) {
 	if len(credentials) == 0 {
 		return
 	}
@@ -286,22 +321,18 @@ func runSubmoduleUpdate(dir string, credentials []config.SubmoduleCredential, on
 	// would fail the whole clone for an opt-in, non-essential step. Degrade to a
 	// warning; the working tree (sans submodules) stays intact. The remove always
 	// runs so the token file never lingers, even if the write half-completed.
-	f, err := os.CreateTemp("", "submodule-git-credentials")
-	if err != nil {
-		onChunk(fmt.Sprintf("\r\n[clone] warning: submodule credentials file errored (%s); continuing without submodules\r\n", err.Error()))
-		return
-	}
-	credFile := f.Name()
+	//
+	// Deterministic path, not a random temp name: a SIGKILL/OOM between the write
+	// and the remove leaves a live PAT on disk, and only a name the next boot can
+	// predict is sweepable (see SweepSubmoduleCredentials). It lives in the
+	// daemon's own tmp dir rather than the shared /tmp, and outside the repo so
+	// it can never be committed or served.
+	credFile := SubmoduleCredentialsPath(tmpDir)
 	defer os.Remove(credFile)
-	// CreateTemp already opens 0600; Chmod defends against a umask surprise on a
-	// co-tenant node — the file holds a long-lived PAT.
-	writeErr := f.Chmod(0o600)
-	if writeErr == nil {
-		_, writeErr = f.WriteString(strings.Join(lines, "\n") + "\n")
-	}
-	if closeErr := f.Close(); writeErr == nil {
-		writeErr = closeErr
-	}
+	// Remove first: WriteFile's mode applies only when it CREATES the file, so
+	// writing over a leftover would inherit that file's permissions.
+	os.Remove(credFile)
+	writeErr := os.WriteFile(credFile, []byte(strings.Join(lines, "\n")+"\n"), 0o600)
 	if writeErr != nil {
 		onChunk(fmt.Sprintf("\r\n[clone] warning: submodule credentials file errored (%s); continuing without submodules\r\n", writeErr.Error()))
 		return
@@ -363,8 +394,13 @@ func SpawnClone(deps CloneDeps) CloneResult {
 	// fetch so both acquisition paths and both branch cases get submodules.
 	finalize := func(res CloneResult) CloneResult {
 		if res.Code == 0 {
-			runSubmoduleUpdate(dir, deps.SubmoduleCredentials, deps.OnChunk, func(argv []string) int {
-				return runNetworkStep(argv, deps)
+			// runStep, NOT runNetworkStep: `--recursive` emits aggregate output, so
+			// one permanently dead submodule host matches `isTransient` ("Could not
+			// resolve host") and buys 4 full recursive passes plus 9s of sleeps —
+			// synchronously ahead of install and the dev server, for a step whose
+			// failure is already tolerated. One attempt, then the warning.
+			runSubmoduleUpdate(dir, deps.TmpDir, deps.SubmoduleCredentials, deps.OnChunk, func(argv []string) int {
+				return runStep(argv, deps)
 			})
 		}
 		return res

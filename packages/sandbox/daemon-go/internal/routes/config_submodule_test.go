@@ -40,7 +40,15 @@ func TestConfigResponsesRedactSubmoduleTokens(t *testing.T) {
 			GetReady: func() bool { return true },
 		})(rec, httptest.NewRequest("GET", "/_sandbox/config", nil))
 
+		if rec.Code != 200 {
+			t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+		}
 		body := rec.Body.String()
+		// Redaction must be surgical: a handler that 500s or returns an empty
+		// config would satisfy every `not.Contains` below for the wrong reason.
+		if !strings.Contains(body, "https://github.com/acme/site.git") {
+			t.Fatalf("GET dropped the cloneUrl, so the redaction assertions prove nothing: %s", body)
+		}
 		if strings.Contains(body, "ghp_supersecret") {
 			t.Fatalf("GET leaked the submodule token: %s", body)
 		}
@@ -62,7 +70,11 @@ func TestConfigResponsesRedactSubmoduleTokens(t *testing.T) {
 		if rec.Code != 200 {
 			t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 		}
-		if body := rec.Body.String(); strings.Contains(body, "ghp_supersecret") {
+		body := rec.Body.String()
+		if !strings.Contains(body, "https://github.com/acme/site.git") {
+			t.Fatalf("PUT echo dropped the cloneUrl, so the redaction assertions prove nothing: %s", body)
+		}
+		if strings.Contains(body, "ghp_supersecret") {
 			t.Fatalf("PUT echo leaked the submodule token: %s", body)
 		}
 		// …but the daemon kept it, or the clone step has nothing to authenticate with.

@@ -63,11 +63,47 @@ func TestMergeSubmoduleCredentials(t *testing.T) {
 		}
 	})
 
-	t.Run("a credentials-only change is not an identity conflict", func(t *testing.T) {
+	// A credentials-only change has no side effect to run — no re-clone, no
+	// restart — so Classify calls it a no-op. That must not be read as "don't
+	// write it down": the store has to end up holding the new value, or a PAT
+	// rotation is accepted with a 200 and silently discarded.
+	t.Run("a credentials-only change is a no-op transition", func(t *testing.T) {
 		before := repoWithCreds()
 		after := repoWithCreds(github)
 		if kind := Classify(before, after).Kind; kind != KindNoOp {
 			t.Fatalf("transition = %q, want %q", kind, KindNoOp)
+		}
+	})
+
+	t.Run("...but the store still persists it", func(t *testing.T) {
+		store := NewStore()
+		if res := store.Apply(&Patch{Git: &GitConfig{Repository: &GitRepository{
+			CloneUrl: Str("https://github.com/acme/site.git"),
+		}}}); !res.Applied {
+			t.Fatalf("bootstrap rejected: %s", res.Reason)
+		}
+		res := store.Apply(&Patch{Git: &GitConfig{Repository: &GitRepository{
+			SubmoduleCredentials: []SubmoduleCredential{github},
+		}}})
+		if !res.Applied || res.Transition.Kind != KindNoOp {
+			t.Fatalf("applied=%v transition=%q", res.Applied, res.Transition.Kind)
+		}
+		// The receipt and the store must agree — this is what regressed.
+		if got := res.After.SubmoduleCredentials(); len(got) != 1 {
+			t.Fatalf("receipt lost the credentials: %v", got)
+		}
+		if got := store.Read().SubmoduleCredentials(); len(got) != 1 || got[0] != github {
+			t.Fatalf("store = %v, want %v", got, []SubmoduleCredential{github})
+		}
+	})
+
+	t.Run("an inert patch does not claim an unconfigured daemon", func(t *testing.T) {
+		store := NewStore()
+		store.Apply(&Patch{Git: &GitConfig{Repository: &GitRepository{
+			SubmoduleCredentials: []SubmoduleCredential{github},
+		}}})
+		if store.Read() != nil {
+			t.Fatalf("store bootstrapped from a credentials-only patch: %+v", store.Read())
 		}
 	})
 }

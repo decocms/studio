@@ -35,15 +35,28 @@ import {
 
 const SETUP_TIMEOUT_MS = 60_000;
 const TOKEN = "ghp_e2e_synthetic_never_real";
-// RFC 2606 reserved TLD: guaranteed NXDOMAIN, so a fetch attempt against it
-// fails fast without leaving the machine.
+// RFC 2606 reserved TLD: resolution fails by spec, so the fetch never leaves the
+// machine. It is not instant — a hijacking resolver turns NXDOMAIN into a
+// connect attempt — which is why the submodule step runs on a single try rather
+// than through the clone's transient-error retry loop.
 const HOST = "bff.invalid";
 const SUBMODULE_URL = `git@${HOST}:acme/bff.git`;
 
-/** The clone step's log artifact, written under APP_ROOT by the clone step. */
+/**
+ * The clone step's log artifact under APP_ROOT. Throws rather than returning ""
+ * for a missing file: every assertion below is `not.toContain`, and an empty
+ * string satisfies all of them for the wrong reason.
+ */
 function cloneLog(d: Daemon): string {
   const path = join(d.appDir, "tmp", "app", "clone");
-  return existsSync(path) ? readFileSync(path, "utf8") : "";
+  if (!existsSync(path)) {
+    throw new Error(`no clone log at ${path} — the clone step did not run`);
+  }
+  const body = readFileSync(path, "utf8");
+  if (!body.includes("$ git")) {
+    throw new Error(`clone log has no git steps in it:\n${body}`);
+  }
+  return body;
 }
 
 /**
@@ -106,11 +119,14 @@ describe("daemon e2e: git submodules", () => {
       // …with the SSH→HTTPS rewrite, so a store credential can apply to a
       // `git@host:` submodule URL…
       expect(log).toContain(`url.https://${HOST}/.insteadOf=git@${HOST}:`);
-      // …and it took effect: git resolved the remote over HTTPS, not ssh.
-      expect(log).not.toContain("ssh: Could not resolve hostname");
+      // …and it reached git: the remote it actually dialed is the rewritten
+      // HTTPS one, not the `git@` form in .gitmodules. Positive evidence — the
+      // absence of an ssh error would also hold if git had produced no output.
+      // (git still echoes the configured `git@…` URL in its own "clone of …
+      // failed" line, so only the access attempt discriminates.)
+      expect(log).toContain(`unable to access 'https://${HOST}/acme/bff.git`);
       // The token rides the credentials file, never argv or the log.
       expect(log).not.toContain(TOKEN);
-      expect(log).not.toContain("x-access-token");
 
       // Best-effort: the unreachable submodule warned, the checkout survived.
       expect(log).toContain("continuing without submodules");
@@ -127,7 +143,39 @@ describe("daemon e2e: git submodules", () => {
       await waitForOrchestratorIdle(d, SETUP_TIMEOUT_MS);
 
       expect(existsSync(join(d.appDir, "repo", "README.md"))).toBe(true);
+      // cloneLog throws on an empty/absent log, so this can't pass vacuously.
       expect(cloneLog(d)).not.toContain("submodule");
+    },
+    SETUP_TIMEOUT_MS,
+  );
+
+  it(
+    "stops using a credential the next config revokes",
+    async () => {
+      addGitmodules(repo);
+      expect(
+        (
+          await bootstrapRepo(
+            d,
+            repo.url,
+            withCreds(repo.url, [{ host: HOST, token: TOKEN }]),
+          )
+        ).status,
+      ).toBe(200);
+      await waitForOrchestratorIdle(d, SETUP_TIMEOUT_MS);
+      expect(cloneLog(d)).toContain("submodule update --init");
+
+      // The payload Studio sends when the user deletes their last credential
+      // row: the key is present and empty, never absent — absent means "keep
+      // current" to the daemon, which would leave the revoked PAT live.
+      expect((await postConfig(d, withCreds(repo.url, []))).status).toBe(200);
+
+      const read = await fetch(url(d, "/_sandbox/config"), {
+        headers: authHeaders(),
+      });
+      const body = await read.text();
+      expect(body).not.toContain(TOKEN);
+      expect(body).not.toContain("submoduleCredentials");
     },
     SETUP_TIMEOUT_MS,
   );

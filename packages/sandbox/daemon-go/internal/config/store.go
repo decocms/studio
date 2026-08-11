@@ -115,6 +115,15 @@ func (s *Store) apply(compute func(current *TenantConfig) *Patch, silent bool) A
 	}
 
 	if transition.Kind == KindNoOp {
+		// Still persist. "No-op" classifies the SIDE EFFECT (no re-clone, no
+		// restart, no subscriber wake-up), not the write: a patch can carry a
+		// field Classify has no arm for — submodule credentials are the live
+		// case — and returning `merged` to the caller while dropping it from the
+		// store answers 200 with a receipt for a write that never happened.
+		// Guarded on non-nil so an inert patch can't claim an unclaimed daemon.
+		if s.current != nil {
+			s.current = enrich(merged)
+		}
 		s.mu.Unlock()
 		return ApplyResult{Applied: true, Before: before, After: merged, Transition: transition}
 	}

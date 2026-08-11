@@ -513,7 +513,10 @@ async function provisionSandbox(
       userEmail: gitUserEmail,
       branch: gitBranch,
       displayName: `${githubRepo.owner}/${githubRepo.name}`,
-      ...(submoduleCredentials.length > 0 ? { submoduleCredentials } : {}),
+      // Always set, empty included — see buildConfigPayload: an absent field
+      // means "keep current" to the daemon, which would make a revoked PAT
+      // outlive its deletion.
+      submoduleCredentials,
     };
   }
 

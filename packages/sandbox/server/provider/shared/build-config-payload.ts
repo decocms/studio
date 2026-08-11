@@ -26,9 +26,13 @@ export function buildConfigPayload(args: {
           cloneUrl: repo.cloneUrl,
           repoName: repo.displayName ?? deriveRepoLabel(repo.cloneUrl),
           ...(repo.branch ? { branch: repo.branch } : {}),
-          ...(repo.submoduleCredentials && repo.submoduleCredentials.length > 0
-            ? { submoduleCredentials: repo.submoduleCredentials }
-            : {}),
+          // Always sent, empty array included — never as an absent-means-none.
+          // The daemon's merge reads an absent field as "keep current", so
+          // omitting it when the user deletes their last credential row leaves
+          // the revoked PAT live in the pod's store for its whole lifetime, and
+          // leaves a re-bootstrapped pod holding the previous config's tokens.
+          // Same reasoning as `cloneOnly` below.
+          submoduleCredentials: repo.submoduleCredentials ?? [],
         },
         // Omitted when there is no user: a tenant warm pool bootstraps its pods
         // with a repo and no author, and the daemon rejects a blank identity

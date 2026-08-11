@@ -317,6 +317,9 @@ func (o *Orchestrator) stepCloneInner() bool {
 			CloneUrl:             cloneUrl,
 			Branch:               cfg.Branch(),
 			SubmoduleCredentials: cfg.SubmoduleCredentials(),
+			// LogsDir IS the daemon's tmp dir (appRoot/tmp); the submodule fetch
+			// parks its credentials file there rather than in the shared /tmp.
+			TmpDir: o.deps.LogsDir,
 			OnChunk: func(data string) {
 				o.rawChunk(data)
 				cloneTee.Write(data)

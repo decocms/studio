@@ -131,7 +131,7 @@ func TestRunSubmoduleUpdate(t *testing.T) {
 	t.Run("no-ops when no credentials are configured", func(t *testing.T) {
 		ran := false
 		var out strings.Builder
-		runSubmoduleUpdate(repoWithGitmodules(t), nil, sink(&out),
+		runSubmoduleUpdate(repoWithGitmodules(t), t.TempDir(), nil, sink(&out),
 			func([]string) int { ran = true; return 0 })
 		if ran {
 			t.Fatal("ran the submodule fetch without credentials")
@@ -144,7 +144,7 @@ func TestRunSubmoduleUpdate(t *testing.T) {
 	t.Run("no-ops when the repo declares no submodules", func(t *testing.T) {
 		ran := false
 		var out strings.Builder
-		runSubmoduleUpdate(t.TempDir(), creds("github.com", "ghp_x"), sink(&out),
+		runSubmoduleUpdate(t.TempDir(), t.TempDir(), creds("github.com", "ghp_x"), sink(&out),
 			func([]string) int { ran = true; return 0 })
 		if ran {
 			t.Fatal("ran the submodule fetch without a .gitmodules")
@@ -157,7 +157,7 @@ func TestRunSubmoduleUpdate(t *testing.T) {
 	t.Run("warns and skips an invalid host without running the fetch", func(t *testing.T) {
 		ran := false
 		var out strings.Builder
-		runSubmoduleUpdate(repoWithGitmodules(t), creds("https://evil.com", "ghp_x"),
+		runSubmoduleUpdate(repoWithGitmodules(t), t.TempDir(), creds("https://evil.com", "ghp_x"),
 			sink(&out), func([]string) int { ran = true; return 0 })
 		if ran {
 			t.Fatal("ran the submodule fetch with no valid host")
@@ -171,7 +171,7 @@ func TestRunSubmoduleUpdate(t *testing.T) {
 		dir := repoWithGitmodules(t)
 		credFile := ""
 		var out strings.Builder
-		runSubmoduleUpdate(dir, creds("github.com", "ghp_secret"), sink(&out),
+		runSubmoduleUpdate(dir, t.TempDir(), creds("github.com", "ghp_secret"), sink(&out),
 			func(argv []string) int {
 				for _, a := range argv {
 					if strings.HasPrefix(a, "credential.helper=store --file=") {
@@ -211,7 +211,7 @@ func TestRunSubmoduleUpdate(t *testing.T) {
 	t.Run("runs against the repo dir and never puts the token in argv", func(t *testing.T) {
 		dir := repoWithGitmodules(t)
 		var got []string
-		runSubmoduleUpdate(dir, creds("github.com", "ghp_secret"), func(string) {},
+		runSubmoduleUpdate(dir, t.TempDir(), creds("github.com", "ghp_secret"), func(string) {},
 			func(argv []string) int { got = argv; return 0 })
 		joined := strings.Join(got, " ")
 		if strings.Contains(joined, "ghp_secret") {
@@ -232,7 +232,7 @@ func TestRunSubmoduleUpdate(t *testing.T) {
 
 	t.Run("is best-effort: a failing fetch warns instead of propagating", func(t *testing.T) {
 		var out strings.Builder
-		runSubmoduleUpdate(repoWithGitmodules(t), creds("github.com", "ghp_x"),
+		runSubmoduleUpdate(repoWithGitmodules(t), t.TempDir(), creds("github.com", "ghp_x"),
 			sink(&out), func([]string) int { return 128 })
 		if !strings.Contains(out.String(), "submodule update failed (exit 128)") {
 			t.Fatalf("missing warning, got %q", out.String())
@@ -240,5 +240,64 @@ func TestRunSubmoduleUpdate(t *testing.T) {
 		if !strings.Contains(out.String(), "continuing without submodules") {
 			t.Fatalf("missing best-effort note, got %q", out.String())
 		}
+	})
+
+	// The failure path is the one that matters for the token: a fetch that dies
+	// must not leave the PAT behind.
+	t.Run("deletes the credentials file even when the fetch fails", func(t *testing.T) {
+		tmp := t.TempDir()
+		runSubmoduleUpdate(repoWithGitmodules(t), tmp, creds("github.com", "ghp_x"),
+			func(string) {}, func([]string) int { return 128 })
+		if _, err := os.Stat(SubmoduleCredentialsPath(tmp)); !os.IsNotExist(err) {
+			t.Fatalf("credentials file survived a failed fetch: %v", err)
+		}
+	})
+
+	t.Run("degrades to a warning when the credentials file can't be written", func(t *testing.T) {
+		ran := false
+		var out strings.Builder
+		// A tmp dir that doesn't exist — the write fails with ENOENT on a path
+		// that runs before any network work, on the clone's critical path.
+		runSubmoduleUpdate(repoWithGitmodules(t), filepath.Join(t.TempDir(), "gone"),
+			creds("github.com", "ghp_x"), sink(&out), func([]string) int { ran = true; return 0 })
+		if ran {
+			t.Fatal("ran the fetch without a credentials file")
+		}
+		if !strings.Contains(out.String(), "credentials file errored") {
+			t.Fatalf("missing warning, got %q", out.String())
+		}
+		if !strings.Contains(out.String(), "continuing without submodules") {
+			t.Fatalf("missing best-effort note, got %q", out.String())
+		}
+	})
+
+	t.Run("pairs each host with its own token", func(t *testing.T) {
+		tmp := t.TempDir()
+		var body []byte
+		runSubmoduleUpdate(repoWithGitmodules(t), tmp,
+			creds("github.com", "tok_gh", "gitlab.example.com", "tok_gl"),
+			func(string) {}, func([]string) int {
+				body, _ = os.ReadFile(SubmoduleCredentialsPath(tmp))
+				return 0
+			})
+		want := "https://x-access-token:tok_gh@github.com\n" +
+			"https://x-access-token:tok_gl@gitlab.example.com\n"
+		if string(body) != want {
+			t.Fatalf("credentials file = %q, want %q", body, want)
+		}
+	})
+
+	t.Run("SweepSubmoduleCredentials clears what a killed boot left behind", func(t *testing.T) {
+		tmp := t.TempDir()
+		leftover := SubmoduleCredentialsPath(tmp)
+		if err := os.WriteFile(leftover, []byte("https://x-access-token:stale@github.com\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		SweepSubmoduleCredentials(tmp)
+		if _, err := os.Stat(leftover); !os.IsNotExist(err) {
+			t.Fatalf("leftover credentials file survived the sweep: %v", err)
+		}
+		// Idempotent: the common case is nothing to remove.
+		SweepSubmoduleCredentials(tmp)
 	})
 }
