@@ -24,7 +24,7 @@ function run(overrides: Partial<PreviewDisplayInput>) {
   return resolvePreviewDisplay({
     previewState: STARTING,
     progressStatus: "doing",
-    productionUrl: PROD,
+    previewServerUrl: PROD,
     fastPreviewActive: false,
     fastPreviewReady: false,
     ...overrides,
@@ -71,7 +71,7 @@ describe("resolvePreviewDisplay", () => {
       run({
         previewState: STARTING,
         progressStatus: "doing",
-        productionUrl: null,
+        previewServerUrl: null,
       }),
     ).toEqual({
       mode: "none",
@@ -85,7 +85,7 @@ describe("resolvePreviewDisplay", () => {
     const result = run({
       previewState: IFRAME,
       progressStatus: "doing",
-      productionUrl: null,
+      previewServerUrl: null,
     });
     expect(result.mode).toBe("none");
     expect(result.showBlockingOverlay).toBe(true);

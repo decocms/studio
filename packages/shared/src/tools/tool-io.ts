@@ -1952,6 +1952,7 @@ export interface StudioToolIO {
             | undefined;
           siteSlug?: string | null | undefined;
           publishPolicy?: "smart" | "open" | "code-review" | null | undefined;
+          previewServerUrl?: string | null | undefined;
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
@@ -2166,6 +2167,7 @@ export interface StudioToolIO {
                 | "code-review"
                 | null
                 | undefined;
+              previewServerUrl?: string | null | undefined;
               productionUrl?: string | null | undefined;
               fieldDescriptionTooltips?: boolean | null | undefined;
               fastPreview?: boolean | null | undefined;
@@ -2339,6 +2341,7 @@ export interface StudioToolIO {
             | undefined;
           siteSlug?: string | null | undefined;
           publishPolicy?: "smart" | "open" | "code-review" | null | undefined;
+          previewServerUrl?: string | null | undefined;
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
@@ -2528,6 +2531,7 @@ export interface StudioToolIO {
             | undefined;
           siteSlug?: string | null | undefined;
           publishPolicy?: "smart" | "open" | "code-review" | null | undefined;
+          previewServerUrl?: string | null | undefined;
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
@@ -2708,6 +2712,7 @@ export interface StudioToolIO {
             | undefined;
           siteSlug?: string | null | undefined;
           publishPolicy?: "smart" | "open" | "code-review" | null | undefined;
+          previewServerUrl?: string | null | undefined;
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
@@ -2887,6 +2892,7 @@ export interface StudioToolIO {
                 | "code-review"
                 | null
                 | undefined;
+              previewServerUrl?: string | null | undefined;
               productionUrl?: string | null | undefined;
               fieldDescriptionTooltips?: boolean | null | undefined;
               fastPreview?: boolean | null | undefined;
@@ -3068,6 +3074,7 @@ export interface StudioToolIO {
             | undefined;
           siteSlug?: string | null | undefined;
           publishPolicy?: "smart" | "open" | "code-review" | null | undefined;
+          previewServerUrl?: string | null | undefined;
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
@@ -3246,6 +3253,7 @@ export interface StudioToolIO {
             | undefined;
           siteSlug?: string | null | undefined;
           publishPolicy?: "smart" | "open" | "code-review" | null | undefined;
+          previewServerUrl?: string | null | undefined;
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
@@ -4279,6 +4287,7 @@ export interface StudioToolIO {
             | undefined;
           siteSlug?: string | null | undefined;
           publishPolicy?: "smart" | "open" | "code-review" | null | undefined;
+          previewServerUrl?: string | null | undefined;
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;

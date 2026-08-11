@@ -11,7 +11,7 @@ import { useInsetContext } from "@/layouts/agent-shell-layout";
 import { resolvePreviewDisplay } from "./preview-display";
 import { useIframeLoadRecovery } from "./preview-iframe-recovery";
 import { buildPreviewLabel } from "./preview-label";
-import { sanitizeProductionUrl } from "@decocms/shared/deco-site-production-url";
+import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
@@ -343,24 +343,24 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const repoDir = isDesktopSandbox ? rawRepoDir : null;
 
   // Live production URL of the linked site, persisted on the agent's
-  // `metadata.productionUrl` at import time (deco.cx reports the real domain,
+  // `metadata.previewServerUrl` at import time (deco.cx reports the real domain,
   // which can be a custom one — so we store it rather than guess it). Used as a
   // published-site fallback while the sandbox provisions (non-blocking) instead
   // of a blank overlay. `null` (no field, or a site imported before this was
   // persisted) → the original blocking overlay is kept.
   const inset = useInsetContext();
-  const productionUrl =
+  const previewServerUrl =
     inset?.entity?.id === virtualMcpId
-      ? sanitizeProductionUrl(inset.entity.metadata?.productionUrl)
+      ? resolvePreviewServerUrl(inset.entity.metadata)
       : null;
   // Fast Preview (opt-in switch in CMS settings): sandbox-less mode — the
   // draft is the branch head served by the decofile API, rendered against
-  // `productionUrl`. Requires BOTH the switch and a production URL — a bare
-  // flag is inert (nothing to render against), and `productionUrl` is non-null
+  // `previewServerUrl`. Requires BOTH the switch and a production URL — a bare
+  // flag is inert (nothing to render against), and `previewServerUrl` is non-null
   // only for this agent's entity, so reading `metadata.fastPreview` off the
   // same object is safe.
   const fastPreviewEnabled =
-    !!productionUrl && inset?.entity?.metadata?.fastPreview === true;
+    !!previewServerUrl && inset?.entity?.metadata?.fastPreview === true;
 
   // Decofile pages/global sections for the URL bar dropdown. Not gated on the
   // dev server: when it's down we read the committed `.deco/*.gen.json` snapshot
@@ -501,7 +501,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const userStopped = lifecycle.userStopped;
 
   // Per-agent "Open CMS" Layout setting, read off the entity already in
-  // context (same source as productionUrl above). Off by default (absent /
+  // context (same source as previewServerUrl above). Off by default (absent /
   // null → false): Preview stays on the site until the user opens the CMS
   // manually, unless an agent opts in to auto-open.
   const cmsDefaultOpen =
@@ -510,7 +510,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       : null) ?? false;
 
   // Fast Preview (gated by the CMS switch): render the site's REAL page on
-  // `productionUrl`, carrying a `?__draft=` pointer the site's framework
+  // `previewServerUrl`, carrying a `?__draft=` pointer the site's framework
   // resolves by pulling the merged decofile. Replaces POSTing the decofile at
   // `/live/previews`, which only deco's own runtime honoured and could only
   // render one component statically.
@@ -530,12 +530,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   );
   const draftPreviewUrl =
     fastPreviewEnabled &&
-    productionUrl &&
+    previewServerUrl &&
     decofileDraft &&
     virtualMcpId &&
     branch
       ? buildFastPreviewDraftUrl({
-          productionUrl,
+          previewServerUrl,
           apiHost: window.location.host,
           orgSlug: org.slug,
           virtualMcpId,
@@ -555,7 +555,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const display = resolvePreviewDisplay({
     previewState,
     progressStatus: progress.status,
-    productionUrl,
+    previewServerUrl,
     fastPreviewActive: fastPreviewEnabled,
     fastPreviewReady: !!draftPreviewUrl,
   });

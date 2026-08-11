@@ -8,7 +8,7 @@ const PROD = "https://www.acme.com";
 const SANDBOX = "https://h.preview-studio.decocms.com";
 
 const SCOPE = {
-  productionUrl: PROD,
+  previewServerUrl: PROD,
   apiHost: "studio.decocms.com",
   orgSlug: "fila",
   virtualMcpId: "vm-1",
@@ -74,7 +74,7 @@ describe("buildFastPreviewDraftUrl", () => {
     const url = new URL(
       buildFastPreviewDraftUrl({
         ...SCOPE,
-        productionUrl: "https://fila.vtex.app/",
+        previewServerUrl: "https://fila.vtex.app/",
         path: "/institucional/historia",
       }),
     );
@@ -95,7 +95,7 @@ describe("resolveSectionPreviewBase", () => {
     expect(
       resolveSectionPreviewBase({
         sandboxUrl: SANDBOX,
-        productionUrl: PROD,
+        previewServerUrl: PROD,
         fastPreviewActive: false,
       }),
     ).toBe(SANDBOX);
@@ -107,7 +107,7 @@ describe("resolveSectionPreviewBase", () => {
     expect(
       resolveSectionPreviewBase({
         sandboxUrl: SANDBOX,
-        productionUrl: PROD,
+        previewServerUrl: PROD,
         fastPreviewActive: true,
       }),
     ).toBe(PROD);
@@ -117,7 +117,7 @@ describe("resolveSectionPreviewBase", () => {
     expect(
       resolveSectionPreviewBase({
         sandboxUrl: null,
-        productionUrl: PROD,
+        previewServerUrl: PROD,
         fastPreviewActive: true,
       }),
     ).toBe(PROD);
@@ -129,7 +129,7 @@ describe("resolveSectionPreviewBase", () => {
     expect(
       resolveSectionPreviewBase({
         sandboxUrl: SANDBOX,
-        productionUrl: null,
+        previewServerUrl: null,
         fastPreviewActive: true,
       }),
     ).toBe(SANDBOX);
@@ -139,19 +139,19 @@ describe("resolveSectionPreviewBase", () => {
     expect(
       resolveSectionPreviewBase({
         sandboxUrl: null,
-        productionUrl: null,
+        previewServerUrl: null,
         fastPreviewActive: false,
       }),
     ).toBeNull();
   });
 
   it("never leaks production into the gallery when Fast Preview is off", () => {
-    // The negative gate: a set productionUrl must be ignored unless the flag
+    // The negative gate: a set previewServerUrl must be ignored unless the flag
     // is on, so the gallery is withheld rather than pointing at production.
     expect(
       resolveSectionPreviewBase({
         sandboxUrl: null,
-        productionUrl: PROD,
+        previewServerUrl: PROD,
         fastPreviewActive: false,
       }),
     ).toBeNull();
@@ -161,7 +161,7 @@ describe("resolveSectionPreviewBase", () => {
     expect(
       resolveSectionPreviewBase({
         sandboxUrl: undefined,
-        productionUrl: undefined,
+        previewServerUrl: undefined,
         fastPreviewActive: false,
       }),
     ).toBeNull();

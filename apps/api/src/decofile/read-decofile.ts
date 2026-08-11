@@ -1,6 +1,35 @@
 import { mergeBlocks, decodeUntilStable } from "@decocms/shared/decofile";
 import type { GitDataClient, TreeEntry } from "./github-git-data";
+import { GitHubApiError } from "./github-git-data";
 import { extractTarGz } from "./tar";
+
+/**
+ * Branch head sha, creating the branch from the default branch's head when it
+ * doesn't exist yet. Thread-scoped branches are minted client-side and only
+ * materialize on GitHub at first CMS touch — the sandbox flow forks locally at
+ * clone time, and this is the sandbox-less equivalent. A 422 on create means a
+ * concurrent first-touch won the race; re-read the ref it created.
+ */
+export async function resolveOrCreateHead(
+  client: GitDataClient,
+  branch: string,
+): Promise<string> {
+  try {
+    return await client.getHeadSha(branch);
+  } catch (err) {
+    if (!(err instanceof GitHubApiError) || err.status !== 404) throw err;
+  }
+  const baseSha = await client.getHeadSha(await client.getDefaultBranch());
+  try {
+    await client.createRef(branch, baseSha);
+    return baseSha;
+  } catch (err) {
+    if (err instanceof GitHubApiError && err.status === 422) {
+      return client.getHeadSha(branch);
+    }
+    throw err;
+  }
+}
 
 /**
  * Read model for the sandbox-less decofile: the branch head IS the draft, so
@@ -144,8 +173,16 @@ export async function readDecofileSnapshot(
   client: GitDataClient,
   branch: string,
   packagePath: string | null,
+  options?: {
+    /** Create the branch from the default head when it doesn't exist —
+     *  session-authenticated (editor) reads only; an anonymous draft pull of
+     *  a missing branch must keep 404ing to the published fallback. */
+    createBranchIfMissing?: boolean;
+  },
 ): Promise<DecofileSnapshot> {
-  const sha = await client.getHeadSha(branch);
+  const sha = options?.createBranchIfMissing
+    ? await resolveOrCreateHead(client, branch)
+    : await client.getHeadSha(branch);
   const repoKey = `${client.owner}/${client.repo}`;
   const cacheKey = `${repoKey}@${sha}:${packagePath ?? ""}`;
   const cached = lruGet(mergedCache, cacheKey);

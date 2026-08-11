@@ -2,7 +2,8 @@ import { describe, expect, it } from "bun:test";
 import {
   pickProductionDomain,
   productionUrlFromDomain,
-  sanitizeProductionUrl,
+  resolvePreviewServerUrl,
+  sanitizeSiteUrl,
 } from "./deco-site-production-url";
 
 describe("pickProductionDomain", () => {
@@ -31,31 +32,29 @@ describe("pickProductionDomain", () => {
   });
 });
 
-describe("sanitizeProductionUrl", () => {
+describe("sanitizeSiteUrl", () => {
   it("returns the canonical href for a valid http(s) URL", () => {
-    expect(sanitizeProductionUrl("https://acme.com")).toBe("https://acme.com/");
-    expect(sanitizeProductionUrl("http://acme.com/path")).toBe(
+    expect(sanitizeSiteUrl("https://acme.com")).toBe("https://acme.com/");
+    expect(sanitizeSiteUrl("http://acme.com/path")).toBe(
       "http://acme.com/path",
     );
   });
 
   it("trims whitespace", () => {
-    expect(sanitizeProductionUrl("  https://acme.com  ")).toBe(
-      "https://acme.com/",
-    );
+    expect(sanitizeSiteUrl("  https://acme.com  ")).toBe("https://acme.com/");
   });
 
   it("rejects non-http(s) schemes", () => {
-    expect(sanitizeProductionUrl("javascript:alert(1)")).toBeNull();
-    expect(sanitizeProductionUrl("ftp://acme.com")).toBeNull();
+    expect(sanitizeSiteUrl("javascript:alert(1)")).toBeNull();
+    expect(sanitizeSiteUrl("ftp://acme.com")).toBeNull();
   });
 
   it("rejects garbage / empty / nullish", () => {
-    expect(sanitizeProductionUrl("not a url")).toBeNull();
-    expect(sanitizeProductionUrl("")).toBeNull();
-    expect(sanitizeProductionUrl("   ")).toBeNull();
-    expect(sanitizeProductionUrl(null)).toBeNull();
-    expect(sanitizeProductionUrl(undefined)).toBeNull();
+    expect(sanitizeSiteUrl("not a url")).toBeNull();
+    expect(sanitizeSiteUrl("")).toBeNull();
+    expect(sanitizeSiteUrl("   ")).toBeNull();
+    expect(sanitizeSiteUrl(null)).toBeNull();
+    expect(sanitizeSiteUrl(undefined)).toBeNull();
   });
 });
 
@@ -80,5 +79,34 @@ describe("productionUrlFromDomain", () => {
     expect(productionUrlFromDomain("   ")).toBeNull();
     expect(productionUrlFromDomain(null)).toBeNull();
     expect(productionUrlFromDomain(undefined)).toBeNull();
+  });
+});
+
+describe("resolvePreviewServerUrl", () => {
+  it("prefers previewServerUrl over the legacy productionUrl key", () => {
+    expect(
+      resolvePreviewServerUrl({
+        previewServerUrl: "https://localhost:3100",
+        productionUrl: "https://acme.com",
+      }),
+    ).toBe("https://localhost:3100/");
+  });
+
+  it("falls back to the legacy key when the new one is absent or invalid", () => {
+    expect(resolvePreviewServerUrl({ productionUrl: "https://acme.com" })).toBe(
+      "https://acme.com/",
+    );
+    expect(
+      resolvePreviewServerUrl({
+        previewServerUrl: "not a url",
+        productionUrl: "https://acme.com",
+      }),
+    ).toBe("https://acme.com/");
+  });
+
+  it("returns null with neither key or nullish metadata", () => {
+    expect(resolvePreviewServerUrl({})).toBeNull();
+    expect(resolvePreviewServerUrl(null)).toBeNull();
+    expect(resolvePreviewServerUrl(undefined)).toBeNull();
   });
 });

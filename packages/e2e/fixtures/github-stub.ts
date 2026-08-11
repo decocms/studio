@@ -541,6 +541,34 @@ async function handleRepos(
     return;
   }
 
+  // POST /repos/{o}/{r}/git/refs — create a branch (422 if it exists)
+  if (
+    req.method === "POST" &&
+    rest[0] === "git" &&
+    rest[1] === "refs" &&
+    rest.length === 2
+  ) {
+    const body = JSON.parse((await readBody(req)) || "{}") as {
+      ref?: string;
+      sha?: string;
+    };
+    const branch = body.ref?.replace(/^refs\/heads\//, "");
+    if (!branch || !body.sha || !repo.commits.has(body.sha)) {
+      json(res, 422, { message: "Reference update failed" });
+      return;
+    }
+    if (repo.refs.has(branch)) {
+      json(res, 422, { message: "Reference already exists" });
+      return;
+    }
+    repo.refs.set(branch, body.sha);
+    json(res, 201, {
+      ref: `refs/heads/${branch}`,
+      object: { type: "commit", sha: body.sha },
+    });
+    return;
+  }
+
   // PATCH /repos/{o}/{r}/git/refs/heads/{branch...}
   if (
     req.method === "PATCH" &&

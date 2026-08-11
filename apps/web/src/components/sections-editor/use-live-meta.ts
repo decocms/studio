@@ -4,7 +4,7 @@ import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { KEYS } from "@/lib/query-keys";
 import { decoRepoPath } from "./deco-repo-path";
 import { readCommittedJson } from "./read-committed-file";
-import { sanitizeProductionUrl } from "@decocms/shared/deco-site-production-url";
+import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import type { LiveMeta } from "./resolve-schema";
 
 interface UseLiveMetaParams {
@@ -66,9 +66,7 @@ export function useLiveMeta(
   // `/live/_meta` route already resolves relative to the dev-server cwd.
   const virtualMcp = useVirtualMCP(params?.virtualMcpId);
   const packagePath = virtualMcp?.metadata?.runtime?.path ?? null;
-  const productionUrl = sanitizeProductionUrl(
-    virtualMcp?.metadata?.productionUrl,
-  );
+  const productionUrl = resolvePreviewServerUrl(virtualMcp?.metadata);
   return useQuery({
     // productionUrl is appended so a settings edit re-fetches; invalidators key
     // on the (org, vm, branch) prefix, which still matches (variadic key).

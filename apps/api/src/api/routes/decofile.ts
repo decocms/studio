@@ -10,14 +10,15 @@
  *   GET    /api/:org/decofile/:virtualMcpId/:branch/status    drift vs default (session)
  *
  * The surface is inert unless the virtual MCP has Fast Preview active
- * (metadata.fastPreview + valid productionUrl) — see resolveFastPreview.
+ * (metadata.fastPreview + valid previewServerUrl, legacy key productionUrl) —
+ * see resolveFastPreview / resolvePreviewServerUrl.
  *
  * Anonymous access: `resolveOrgFromPath` lets unauthenticated requests through
  * (membership is only enforced for signed-in principals), so the GET handler
  * self-enforces the signed draft token, mirroring automation-webhooks.ts.
  */
 
-import { sanitizeProductionUrl } from "@decocms/shared/deco-site-production-url";
+import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { assertSafeDecoBlockKey } from "@decocms/shared/decofile";
 import { Hono, type Context } from "hono";
 import { createMiddleware } from "hono/factory";
@@ -122,10 +123,8 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
 
   // Fast Preview gate — same two-part condition the web derives via
   // resolveFastPreview: the flag alone is inert without a valid production URL.
-  const productionUrl = sanitizeProductionUrl(
-    metadata?.productionUrl as string | null | undefined,
-  );
-  if (!productionUrl || metadata?.fastPreview !== true) {
+  const previewServerUrl = resolvePreviewServerUrl(metadata);
+  if (!previewServerUrl || metadata?.fastPreview !== true) {
     return c.json(
       { error: "Fast Preview is not enabled for this project" },
       404,
@@ -217,6 +216,11 @@ export function createDecofileRoutes() {
         client,
         scope.branch,
         scope.packagePath,
+        // Thread-scoped branches are minted client-side and only materialize
+        // on GitHub at first CMS touch (the sandbox flow forks locally at
+        // clone time; this is the sandbox-less equivalent). Editor sessions
+        // only — an anonymous draft pull of a missing branch keeps 404ing.
+        { createBranchIfMissing: !!scope.userId },
       );
 
       const headers: Record<string, string> = {
@@ -366,11 +370,20 @@ export function createDecofileRoutes() {
       if (baseBranch === scope.branch) {
         return c.json({ baseBranch, aheadBy: 0, behindBy: 0 });
       }
-      const { aheadBy, behindBy } = await client.compare(
-        baseBranch,
-        scope.branch,
-      );
-      return c.json({ baseBranch, aheadBy, behindBy });
+      try {
+        const { aheadBy, behindBy } = await client.compare(
+          baseBranch,
+          scope.branch,
+        );
+        return c.json({ baseBranch, aheadBy, behindBy });
+      } catch (err) {
+        // A thread-minted branch that hasn't been materialized yet (first
+        // read/write creates it) trivially has no drift.
+        if (err instanceof GitHubApiError && err.status === 404) {
+          return c.json({ baseBranch, aheadBy: 0, behindBy: 0 });
+        }
+        throw err;
+      }
     } catch (err) {
       return errorResponse(c, err);
     }

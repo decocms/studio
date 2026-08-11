@@ -149,7 +149,7 @@ async function createFastPreviewProject(
         title: `${repo} ${Date.now()}`,
         metadata: {
           fastPreview: true,
-          productionUrl: `https://${repo}.example.com`,
+          previewServerUrl: `https://${repo}.example.com`,
           githubRepo: {
             owner,
             name: repo,
@@ -175,6 +175,58 @@ const decofileUrl = (p: FastPreviewProject, branch: string): string =>
   `/api/${p.org}/decofile/${p.vmcpId}/${branch}`;
 
 test.describe("decofile API", () => {
+  test("session GET on a nonexistent branch creates it from the default head; anonymous stays 404", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const user = await signUpViaApi(ctx);
+      const owner = uniqueOwner();
+      const project = await createFastPreviewProject(ctx, user.orgSlug, {
+        owner,
+        repo: "site",
+      });
+      await seedStubRepo(ctx, {
+        owner,
+        repo: "site",
+        defaultBranch: "main",
+        branches: {
+          main: { files: { ".deco/blocks/Hero.json": '{"n":1}\n' } },
+        },
+      });
+
+      // Thread-scoped branches are minted client-side; the first editor read
+      // materializes them on GitHub from the default head.
+      const url = decofileUrl(project, "thread-minted-branch");
+      const first = await ctx.get(url);
+      expect(first.status()).toBe(200);
+      const body = (await first.json()) as DecofileGetBody;
+      expect(body.decofile["Hero"]).toEqual({ n: 1 });
+
+      const admin = await inspectStubRepo(ctx, owner, "site");
+      expect(admin.refs["thread-minted-branch"]).toBe(admin.refs["main"]);
+
+      // Anonymous (token) reads never create branches: a draft pull of a
+      // missing branch must 404 to the published fallback. The token is
+      // branch-scoped, so mint one for the missing branch via a session GET
+      // of ANOTHER branch and expect the scope mismatch to 401 instead —
+      // and a well-scoped token for a still-missing branch cannot exist
+      // through the public surface at all.
+      const anon = await newApiContext(playwright);
+      try {
+        const foreign = await anon.get(
+          `${decofileUrl(project, "never-touched")}?token=${encodeURIComponent(body.token as string)}`,
+        );
+        // Token was scoped to "thread-minted-branch", not "never-touched".
+        expect(foreign.status()).toBe(401);
+      } finally {
+        await anon.dispose();
+      }
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
   test("404 for unknown virtual MCP and for projects without the Fast Preview gate", async ({
     playwright,
   }) => {
@@ -216,6 +268,32 @@ test.describe("decofile API", () => {
           },
         },
       );
+      // Legacy `productionUrl` key still satisfies the gate (dual-read): this
+      // project has no githubRepo, so passing the gate surfaces the NEXT
+      // failure ("no GitHub repository") instead of the gate-off 404.
+      const legacyKey = await callSelfMcpTool<{ item: { id: string } }>(
+        ctx,
+        org,
+        "COLLECTION_VIRTUAL_MCP_CREATE",
+        {
+          data: {
+            title: `legacy-key ${Date.now()}`,
+            metadata: {
+              fastPreview: true,
+              productionUrl: "https://legacy.example.com",
+            },
+            connections: [],
+          },
+        },
+      );
+      const legacyRes = await ctx.get(
+        `/api/${org}/decofile/${legacyKey.item.id}/main`,
+      );
+      expect(legacyRes.status()).toBe(404);
+      expect(await legacyRes.json()).toEqual({
+        error: "Project has no GitHub repository",
+      });
+
       const flagOnlyRes = await ctx.get(
         `/api/${org}/decofile/${flagOnly.item.id}/main`,
       );

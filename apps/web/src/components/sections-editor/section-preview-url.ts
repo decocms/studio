@@ -32,7 +32,7 @@ export function buildGlobalSectionPreviewUrl(
 /**
  * Fast Preview URL — the site's own page, rendered against the draft.
  *
- * Points at the REAL page on `productionUrl` and carries a `?__draft=` pointer
+ * Points at the REAL page on `previewServerUrl` and carries a `?__draft=` pointer
  * the site's framework resolves by fetching the merged decofile from Studio's
  * decofile API (`/api/:org/decofile/:virtualMcpId/:branch?token=…`) and
  * rendering its own routes against it. Rendering the site's normal route means
@@ -47,8 +47,8 @@ export function buildGlobalSectionPreviewUrl(
  * no cache-busting nonce needed.
  */
 export function buildFastPreviewDraftUrl(input: {
-  /** Published site origin — the draft renders against this deployment. */
-  productionUrl: string;
+  /** Preview server origin — the deployment the draft renders against. */
+  previewServerUrl: string;
   /** Studio API authority (host[:port]) serving /api — window.location.host. */
   apiHost: string;
   orgSlug: string;
@@ -61,7 +61,7 @@ export function buildFastPreviewDraftUrl(input: {
   /** Path to render, with any `:param` values already filled in. */
   path: string;
 }): string {
-  const url = new URL(input.path, input.productionUrl);
+  const url = new URL(input.path, input.previewServerUrl);
   const pointer = `${input.apiHost}/api/${input.orgSlug}/decofile/${encodeURIComponent(input.virtualMcpId)}/${encodeURIComponent(input.branch)}?token=${input.token}`;
   url.searchParams.set("__draft", `${pointer}@${input.version}`);
   return url.toString();
@@ -111,11 +111,11 @@ export function buildSectionPreviewUrl(
  */
 export function resolveSectionPreviewBase(input: {
   sandboxUrl: string | null | undefined;
-  productionUrl: string | null | undefined;
+  previewServerUrl: string | null | undefined;
   fastPreviewActive: boolean;
 }): string | null {
-  if (input.fastPreviewActive && input.productionUrl) {
-    return input.productionUrl;
+  if (input.fastPreviewActive && input.previewServerUrl) {
+    return input.previewServerUrl;
   }
   return input.sandboxUrl ?? null;
 }

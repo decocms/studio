@@ -11,6 +11,7 @@ import {
   blockEntriesInTree,
   blocksDirPath,
   primeBlobCache,
+  resolveOrCreateHead,
 } from "./read-decofile";
 
 /**
@@ -119,7 +120,9 @@ async function runQueue(queueKey: string, state: QueueState): Promise<void> {
 async function commitBatch(batch: Batch): Promise<string> {
   const { client, branch, packagePath } = batch.deps;
   for (let attempt = 0; ; attempt++) {
-    const headSha = await client.getHeadSha(branch);
+    // Writes are session-only, so first-touch of a thread-minted branch may
+    // materialize it here (a save can race ahead of the editor's first read).
+    const headSha = await resolveOrCreateHead(client, branch);
     const baseTreeSha = await client.getCommitTreeSha(headSha);
     const tree = await client.getTreeRecursive(baseTreeSha);
     const entries = blockEntriesInTree(tree, packagePath);

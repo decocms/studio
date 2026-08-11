@@ -9,39 +9,41 @@ import { Label } from "@decocms/ui/components/label.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { productionUrlFromDomain } from "@decocms/shared/deco-site-production-url";
 
-// NOTE: manual entry is a stopgap. Ideally `metadata.productionUrl` is not set
-// by hand — it's auto-populated at deco.cx import from the site's production
-// domain, and once we ship the domain-setup capability it should be sourced
-// from the site's `domains` array (the domain flagged `production`) instead of
-// this free-text field.
+// NOTE: manual entry is a stopgap. Ideally `metadata.previewServerUrl` is not
+// set by hand — it's auto-populated at deco.cx import from the site's
+// production domain, and once we ship the domain-setup capability it should be
+// sourced from the site's `domains` array (the domain flagged `production`)
+// instead of this free-text field.
 //
 // Generic over the parent form schema so callers pass `form.control` without
-// casting — mirrors RuntimeFields. Bound to `metadata.productionUrl`; the field
+// casting — mirrors RuntimeFields. Bound to `metadata.previewServerUrl` (the
+// parent seeds it from the legacy `productionUrl` key via
+// resolvePreviewServerUrl, so saving migrates the value forward); the field
 // path is a literal contract asserted via `FieldPath<T>`, kept to this leaf.
-export interface ProductionUrlFieldProps<T extends FieldValues> {
+export interface PreviewServerUrlFieldProps<T extends FieldValues> {
   control: Control<T>;
 }
 
-export function ProductionUrlField<T extends FieldValues>({
+export function PreviewServerUrlField<T extends FieldValues>({
   control,
-}: ProductionUrlFieldProps<T>) {
+}: PreviewServerUrlFieldProps<T>) {
   const t = useT();
   return (
     <div className="space-y-2">
-      <Label htmlFor="production-url">
-        {t("sandbox.productionUrlField.label")}
+      <Label htmlFor="preview-server-url">
+        {t("sandbox.previewServerUrlField.label")}
       </Label>
       <Controller
         control={control}
-        name={"metadata.productionUrl" as FieldPath<T>}
+        name={"metadata.previewServerUrl" as FieldPath<T>}
         render={({ field }) => {
           const value = (field.value as string | null | undefined) ?? "";
           return (
             <Input
-              id="production-url"
+              id="preview-server-url"
               type="url"
               inputMode="url"
-              placeholder={t("sandbox.productionUrlField.placeholder")}
+              placeholder={t("sandbox.previewServerUrlField.placeholder")}
               value={value}
               // Keep raw while typing (empty → null); the preview sanitizes on
               // read, so an in-progress value can't break anything.
@@ -58,7 +60,7 @@ export function ProductionUrlField<T extends FieldValues>({
         }}
       />
       <p className="text-xs text-muted-foreground">
-        {t("sandbox.productionUrlField.description")}
+        {t("sandbox.previewServerUrlField.description")}
       </p>
     </div>
   );

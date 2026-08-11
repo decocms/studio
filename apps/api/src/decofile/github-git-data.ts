@@ -71,6 +71,8 @@ export interface GitDataClient {
   }): Promise<string>;
   /** Non-forced ref update; throws GitHubApiError(422) on non-fast-forward. */
   updateRef(branch: string, sha: string): Promise<void>;
+  /** Create `refs/heads/<branch>` at `sha`; GitHubApiError(422) if it exists. */
+  createRef(branch: string, sha: string): Promise<void>;
   /** Returns the merge commit sha, or null when base already contains head. */
   mergeBranch(
     base: string,
@@ -248,6 +250,13 @@ export function createGitDataClient(params: {
           force: false,
         },
       );
+    },
+
+    async createRef(branch, sha) {
+      await call("POST", `${repoBase}/git/refs`, {
+        ref: `refs/heads/${branch}`,
+        sha,
+      });
     },
 
     async mergeBranch(base, head, message) {
