@@ -52,6 +52,16 @@ Se você está vindo do deco.cx, o Agentic CMS é a mesma linha de produto — o
 
 Projetos deco.cx existentes continuam funcionando. A migração adiciona a camada de agents; ela não substitui sua base de código.
 
+## Formulário de blocks: descrições de campo
+
+Ao editar as props de uma section ou block, a descrição de cada campo (vinda do `.describe()` do schema) aparece por padrão como texto abaixo do título do campo — o mesmo layout que o deco.cx sempre usou.
+
+Você pode alternar um site para exibir as descrições como tooltip: passe o mouse sobre o título do campo para revelá-la, o que mantém os formulários mais curtos e fáceis de escanear, especialmente em blocks densos. Isso é opcional e configurado **por site**, nas **Settings** do site, ao lado do campo **Production URL**. Ativar essa opção não muda nada para os outros sites da sua org.
+
+<Callout type="tip">
+  Prefira o tooltip em blocks com muitos campos e bastante conteúdo — ele mantém o formulário compacto sem perder o texto de orientação do schema.
+</Callout>
+
 ## Primeiros passos
 
 Abra o Studio, encontre o agent **deco Site Editor** e aponte-o para o seu site.
