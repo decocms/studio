@@ -47,6 +47,8 @@ export function ConnectionCard({
       onKeyDown={
         onClick
           ? (e) => {
+              // Skip keydowns bubbled from a nested control (header actions).
+              if (e.target !== e.currentTarget) return;
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
                 onClick();
