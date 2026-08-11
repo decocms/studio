@@ -90,6 +90,29 @@ function createEntries(variants: PageVariant[]): VariantTabEntry[] {
   }));
 }
 
+/**
+ * Re-derive entries for a changed variant list, reusing each tab's existing
+ * id by matching on label rather than array position. A delete/duplicate
+ * before a tab shifts every later tab's position, so matching by position
+ * hands it a stale id — remounting its DnD-sortable identity and dropping
+ * e.g. an open row menu on an unrelated tab.
+ */
+export function reuseVariantEntryIds(
+  current: VariantTabEntry[],
+  variants: PageVariant[],
+): VariantTabEntry[] {
+  const byLabel = new Map(current.map((entry) => [entry.variant.label, entry]));
+  return variants.map((variant, index) => {
+    const prior = byLabel.get(variant.label);
+    if (prior) byLabel.delete(variant.label);
+    return {
+      id: prior?.id ?? crypto.randomUUID(),
+      index,
+      variant,
+    };
+  });
+}
+
 function remapEntryIndices(entries: VariantTabEntry[]): VariantTabEntry[] {
   return entries.map((entry, index) => ({
     ...entry,
@@ -344,22 +367,10 @@ export function PageVariantTabs({
     prevDisplayKey !== displayKey
   ) {
     // Duplicate/delete/reorder all land here (a count change always also
-    // changes the display key). Reuse each position's existing id rather than
-    // minting fresh ones for every row — otherwise duplicating or deleting one
-    // variant remounts every OTHER tab's DnD-sortable identity too, dropping
-    // e.g. an open row menu on an unrelated tab.
+    // changes the display key).
     setPrevVariantCount(variants.length);
     setPrevDisplayKey(displayKey);
-    setEntries((current) =>
-      variants.map((variant, index) => {
-        const prior = current[index];
-        return {
-          id: prior?.id ?? crypto.randomUUID(),
-          index,
-          variant,
-        };
-      }),
-    );
+    setEntries((current) => reuseVariantEntryIds(current, variants));
   }
 
   const sensors = useSensors(
