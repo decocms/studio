@@ -96,6 +96,7 @@ const ALL_TOOL_NAMES = [
   // Database tools
   "DATABASES_RUN_SQL",
   // Monitoring tools
+  "MONITORING_HEATMAP",
   "MONITORING_LOG_GET",
   "MONITORING_LOGS_LIST",
   "MONITORING_STATS",
@@ -517,6 +518,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     dangerous: true,
   },
   // Monitoring tools
+  {
+    name: "MONITORING_HEATMAP",
+    description: "View tool-call volume by agent and tool",
+    category: "Monitoring",
+  },
   {
     name: "MONITORING_LOG_GET",
     description: "View monitoring log details",
@@ -1384,6 +1390,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
     description: "Access logs and usage statistics",
     section: "Monitoring",
     tools: [
+      "MONITORING_HEATMAP",
       "MONITORING_LOG_GET",
       "MONITORING_LOGS_LIST",
       "MONITORING_STATS",

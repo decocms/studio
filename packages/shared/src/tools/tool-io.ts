@@ -3265,6 +3265,24 @@ export interface StudioToolIO {
       }[];
     };
   };
+  MONITORING_HEATMAP: {
+    input: {
+      startDate?: string | undefined;
+      endDate?: string | undefined;
+      virtualMcpIds?: string[] | undefined;
+      excludeConnectionIds?: string[] | undefined;
+      limit?: number | undefined;
+    };
+    output: {
+      cells: {
+        virtualMcpId: string | null;
+        toolName: string;
+        calls: number;
+        errors: number;
+        outputSize: number;
+      }[];
+    };
+  };
   MONITORING_LOG_GET: {
     input: { id: string };
     output: {
