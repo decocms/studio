@@ -79,6 +79,29 @@ function createEntries(
   }));
 }
 
+/**
+ * Re-derive entries for a changed variant list, reusing each row's existing
+ * id by matching on label rather than array position. A delete/duplicate
+ * before a row shifts every later row's position, so matching by position
+ * hands it a stale id — remounting its DnD-sortable identity and dropping
+ * e.g. an open row menu on an unrelated row.
+ */
+export function reuseVariantEntryIds(
+  current: SortableVariantEntry[],
+  variants: SectionVariantEntry[],
+): SortableVariantEntry[] {
+  const byLabel = new Map(current.map((entry) => [entry.label, entry]));
+  return variants.map((variant) => {
+    const prior = byLabel.get(variant.label);
+    if (prior) byLabel.delete(variant.label);
+    return {
+      id: prior?.id ?? crypto.randomUUID(),
+      index: variant.index,
+      label: variant.label,
+    };
+  });
+}
+
 function remapEntryIndices(
   entries: SortableVariantEntry[],
 ): SortableVariantEntry[] {
@@ -284,22 +307,10 @@ export function SectionVariantList({
     prevDisplayKey !== displayKey
   ) {
     // Duplicate/delete/reorder all land here (a count change always also
-    // changes the display key). Reuse each position's existing id rather than
-    // minting fresh ones for every row — otherwise duplicating or deleting one
-    // variant remounts every OTHER row's DnD-sortable identity too, dropping
-    // e.g. an open row menu on an unrelated row.
+    // changes the display key).
     setPrevVariantCount(variants.length);
     setPrevDisplayKey(displayKey);
-    setEntries((current) =>
-      variants.map((variant, index) => {
-        const prior = current[index];
-        return {
-          id: prior?.id ?? crypto.randomUUID(),
-          index: variant.index,
-          label: variant.label,
-        };
-      }),
-    );
+    setEntries((current) => reuseVariantEntryIds(current, variants));
   }
 
   const sensors = useSensors(
