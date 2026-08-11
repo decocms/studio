@@ -536,7 +536,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     branch
       ? buildFastPreviewDraftUrl({
           previewServerUrl,
-          apiHost: window.location.host,
+          apiHost: decofileDraft.apiHost,
           orgSlug: org.slug,
           virtualMcpId,
           branch,

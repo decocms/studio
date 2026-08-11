@@ -49,7 +49,12 @@ export function buildGlobalSectionPreviewUrl(
 export function buildFastPreviewDraftUrl(input: {
   /** Preview server origin — the deployment the draft renders against. */
   previewServerUrl: string;
-  /** Studio API authority (host[:port]) serving /api — window.location.host. */
+  /**
+   * Studio API authority (host[:port]) serving /api — reported by the
+   * decofile API itself (DecofileDraft.apiHost). Not window.location.host:
+   * in the native app that is the session-gated tauri-local server, which
+   * the preview server cannot pull the draft from.
+   */
   apiHost: string;
   orgSlug: string;
   virtualMcpId: string;

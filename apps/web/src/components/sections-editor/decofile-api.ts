@@ -26,6 +26,13 @@ export interface DecofileDraft {
   version: string;
   /** Signed draft grant for the unauthenticated production-site pull. */
   token: string;
+  /**
+   * Authority (host[:port]) the preview server should pull the draft from —
+   * the API tells us where IT is reachable, because `window.location.host` is
+   * the tauri-local server in the native app (session-gated, unreachable from
+   * a deployed site).
+   */
+  apiHost: string;
 }
 
 export interface DecofilePatchBody {
@@ -91,12 +98,14 @@ export async function fetchDecofile(
   const body = (await res.json()) as {
     version: string;
     token?: string;
+    apiHost?: string;
     decofile: Record<string, unknown>;
   };
   if (body.token) {
     setDecofileDraft(queryClient, params, {
       version: body.version,
       token: body.token,
+      apiHost: body.apiHost ?? window.location.host,
     });
   }
   return body.decofile;
@@ -113,5 +122,7 @@ export async function patchDecofile(
     body: JSON.stringify(patch),
   });
   if (!res.ok) return throwResponseError(res, "Save");
-  return (await res.json()) as DecofileDraft;
+  const body = (await res.json()) as Partial<DecofileDraft> &
+    Pick<DecofileDraft, "version" | "token">;
+  return { ...body, apiHost: body.apiHost ?? window.location.host };
 }

@@ -13,7 +13,8 @@
  * recipe github-import-repo-scope.spec.ts uses).
  *
  * Contract shapes are INLINED here (black-box suite — no app imports):
- *   - GET body: { version: <head sha>, token?: <draft token>, decofile: {...} }
+ *   - GET body (session): { version: <head sha>, token: <draft token>,
+ *     apiHost: <authority serving this API>, decofile: {...} }
  *     where decofile keys are the percent-DECODED (until stable) stems of
  *     `.deco/blocks/*.json` files at the branch head.
  *   - ETag = `"<head sha>"`; If-None-Match on it -> 304.
@@ -37,6 +38,7 @@ const blockFileContent = (value: unknown): string =>
 interface DecofileGetBody {
   version: string;
   token?: string;
+  apiHost?: string;
   decofile: Record<string, unknown>;
 }
 
@@ -352,6 +354,9 @@ test.describe("decofile API", () => {
       const body = (await res.json()) as DecofileGetBody;
       expect(body.version).toMatch(/^[0-9a-f]{40}$/);
       expect(typeof body.token).toBe("string");
+      // The API reports the authority it is reachable on, so the editor can
+      // build a draft pointer that works from the native app too.
+      expect(body.apiHost).toMatch(/^[\w.-]+(:\d+)?$/);
       expect(body.decofile["Hero"]).toEqual(heroBlock);
       expect(body.decofile["Compre Junto"]).toEqual(compreBlock);
       expect(Object.keys(body.decofile).sort()).toEqual([

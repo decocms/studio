@@ -147,6 +147,18 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
   return next();
 });
 
+/**
+ * The authority (host[:port]) the editor should bake into the `?__draft=`
+ * pointer. `window.location.host` is wrong in the native app — the webview's
+ * origin is the tauri-local server, which requires the app session and is
+ * unreachable from a deployed preview server. This request reached the API
+ * itself, so its Host (or the proxy's X-Forwarded-Host) is an authority the
+ * preview server can pull the draft from anonymously.
+ */
+function requestApiHost(c: Context<DecofileEnv>): string {
+  return c.req.header("x-forwarded-host") ?? new URL(c.req.url).host;
+}
+
 async function gitDataClientForScope(
   c: Context<DecofileEnv>,
 ): Promise<GitDataClient> {
@@ -225,7 +237,7 @@ export function createDecofileRoutes() {
         branch: scope.branch,
       });
       return c.body(
-        `{"version":${JSON.stringify(snapshot.sha)},"token":${JSON.stringify(token)},"decofile":${snapshot.decofile}}`,
+        `{"version":${JSON.stringify(snapshot.sha)},"token":${JSON.stringify(token)},"apiHost":${JSON.stringify(requestApiHost(c))},"decofile":${snapshot.decofile}}`,
         200,
         { ...headers, "content-type": "application/json" },
       );
@@ -283,7 +295,7 @@ export function createDecofileRoutes() {
         virtualMcpId: scope.virtualMcpId,
         branch: scope.branch,
       });
-      return c.json({ version: sha, token });
+      return c.json({ version: sha, token, apiHost: requestApiHost(c) });
     } catch (err) {
       return errorResponse(c, err);
     }
