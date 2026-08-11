@@ -1,0 +1,45 @@
+---
+title: Task Board
+description: Acompanhe o trabalho atribuído aos agents em um kanban, com revisão automatizada antes de ir para produção
+icon: LayoutBoard
+---
+
+import Callout from "../../../../components/ui/Callout.astro";
+
+## O que é o Task Board?
+
+O **Task Board** é um workspace no estilo kanban para acompanhar itens de trabalho — os cards se movem por colunas como Backlog, To Do, In Progress, In Review e Done enquanto um agent (geralmente um **Super Agent**) trabalha neles. Cada card pode ter um pull request vinculado, comentários, tags, prioridade e um feed de atividade com tudo o que aconteceu nele.
+
+<Callout type="tip">
+  O agent **Task Manager** pode criar, priorizar, atribuir e acompanhar cards
+  no board para você — basta descrever o trabalho no chat.
+</Callout>
+
+## Comentários
+
+O feed de atividade de todo card de task suporta comentários em thread: publique um comentário, e qualquer pessoa pode responder a ele — até um nível de respostas. Uma thread de comentários pode ser marcada como **resolvida** quando estiver encerrada, e reaberta depois se necessário. Os comentários são persistidos por task e escopados à sua organização.
+
+## Revisão automatizada antes de ir para produção
+
+Quando o pull request de uma task fica **In Review** (seus checks estão passando, ou não há nenhum), o Studio pode executar revisores automatizados nele antes que um humano coloque a mudança em produção. Configure isso em **Settings → Organization → Reviewers & merge**:
+
+- **QA Agent** — exercita a própria feature, não só o diff, para verificar se a task realmente resolveu o problema.
+- **Code Reviewer** — revisa o código usando skills de revisão apropriadas para o stack do repositório.
+- **Auto-merge** — quando todos os revisores habilitados aprovam, o pull request é mesclado automaticamente em vez de esperar um humano.
+
+Cada revisor que roda aparece como sua própria sessão no card da task, e o veredito dele é publicado no feed de atividade do card:
+
+- Uma **aprovação** (com notas opcionais) aproxima a task de ir para produção.
+- **Solicitação de mudanças** devolve a task para o Super Agent resolver o feedback, junto com as notas do revisor.
+
+<Callout type="info">
+  QA Agent e Code Reviewer vêm desabilitados por padrão. Habilite os que você
+  quiser em **Settings → Organization → Reviewers & merge** — você pode ativar
+  um independentemente do outro, ou os dois.
+</Callout>
+
+## Enviando para produção
+
+Quando todos os revisores habilitados aprovaram o pull request de uma task — ou nenhum revisor está habilitado — o card da task mostra um botão **Ship to production**. Clicar nele mescla o pull request. Se o auto-merge estiver habilitado, isso acontece automaticamente assim que o gate de revisão é satisfeito, em vez de esperar alguém clicar no botão.
+
+O painel de PR de cada card também mostra o estado ao vivo do pull request (draft, open, merged, closed) e o status dos checks (passing, pending ou failing), para você ver de imediato se uma task está pronta para avançar.

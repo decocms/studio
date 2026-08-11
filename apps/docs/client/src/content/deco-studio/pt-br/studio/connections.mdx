@@ -47,6 +47,10 @@ As connections resolvem isso sendo a fonte única da verdade:
 
 Todos os tipos de connection funcionam da mesma forma: configure uma vez no nível da org, anexe a quaisquer agents que precisem delas.
 
+<Callout type="warning">
+  A URL de uma connection precisa resolver para um endereço público. O Studio bloqueia URLs que apontem para endereços privados ou de rede interna (inclusive quando alcançados via redirecionamento) — isso vale ao criar ou atualizar uma **Custom Connection**, e em cada health check que o Studio executa nela depois disso. Uma connection apontando para um endereço privado é reportada como unhealthy em vez de ser sondada.
+</Callout>
+
 ### Transports
 
 Por baixo dos panos, toda connection usa um destes transports. Você normalmente não precisa pensar nisso — o Studio escolhe o formato certo com base na entrada do catálogo ou no que você cola em **Custom Connection** — mas isso importa quando você está conectando um MCP server por conta própria:
