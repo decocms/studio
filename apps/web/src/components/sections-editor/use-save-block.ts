@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { decoBlockFilePath } from "./deco-block-key";
 import { decoRepoPath } from "./deco-repo-path";
 import { patchDecofile, setDecofileDraft } from "./decofile-api";
+import { sandboxGitStatusQueryKey } from "../thread/github/sandbox-git-api";
 import { KEYS } from "@/lib/query-keys";
 
 /** Debounce window for form-driven block autosaves (ms). */
@@ -48,6 +49,12 @@ export function useSaveBlock({
           { set: { [blockKey]: data } },
         );
         setDecofileDraft(queryClient, { orgSlug, virtualMcpId, branch }, draft);
+        // The landed commit moved the branch head — refresh the header's
+        // branch meta now. This write is the ONLY in-app head mutation, which
+        // is what lets the status query drop interval polling entirely.
+        void queryClient.invalidateQueries({
+          queryKey: sandboxGitStatusQueryKey(orgSlug, virtualMcpId, branch),
+        });
         return draft;
       }
       const path = decoRepoPath(packagePath, decoBlockFilePath(blockKey));

@@ -5,6 +5,7 @@ import { KEYS } from "@/lib/query-keys";
 import { decoBlockFilePath } from "./deco-block-key";
 import { decoRepoPath } from "./deco-repo-path";
 import { patchDecofile, setDecofileDraft } from "./decofile-api";
+import { sandboxGitStatusQueryKey } from "../thread/github/sandbox-git-api";
 
 interface UseDeleteBlockParams {
   orgSlug: string;
@@ -40,6 +41,11 @@ export function useDeleteBlock({
           { delete: [blockKey] },
         );
         setDecofileDraft(queryClient, { orgSlug, virtualMcpId, branch }, draft);
+        // Same as use-save-block: the commit moved the head, refresh the
+        // header's branch meta in place of any interval polling.
+        void queryClient.invalidateQueries({
+          queryKey: sandboxGitStatusQueryKey(orgSlug, virtualMcpId, branch),
+        });
         return { ok: true as const, existed: true };
       }
       const path = decoRepoPath(packagePath, decoBlockFilePath(blockKey));

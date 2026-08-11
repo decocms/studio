@@ -156,16 +156,17 @@ export function HeaderActions({ virtualMcpId }: Props) {
     phase: claimPhase,
   } = useSandboxEvents();
 
-  // Sandbox-less: no daemon → no `branch` SSE event. Poll the (GitHub-backed)
-  // status route into the same BranchMeta shape; every save is already a
-  // commit, so the working tree is clean by construction and a modest poll
-  // interval is enough — saves also don't change what the header shows until
-  // drift vs base changes.
+  // Sandbox-less: no daemon → no `branch` SSE event. Fetch the (GitHub-backed)
+  // status route into the same BranchMeta shape — but never on an interval:
+  // every route below forwards to the GitHub API, and a timer here burns rate
+  // limit for data that only changes when WE commit. The only in-app mutation
+  // is the decofile PATCH, whose save hooks invalidate this key; external
+  // pushes are picked up on window focus. (In sandbox mode the equivalent
+  // traffic hits the local daemon, where polling is free.)
   const fpStatusQuery = useQuery({
     queryKey: sandboxGitStatusQueryKey(org.slug, virtualMcpId, branch ?? ""),
     queryFn: () => fetchGitStatus(org.slug, virtualMcpId, branch ?? ""),
     enabled: fastPreviewActive && !!branch,
-    refetchInterval: 30_000,
     staleTime: 15_000,
   });
   const fpStatus = fpStatusQuery.data ?? null;
@@ -244,7 +245,13 @@ export function HeaderActions({ virtualMcpId }: Props) {
   // there's local work not yet merged (i.e. a side Publish button could show).
   const publishGateBase =
     effectiveBranchMeta.kind === "ready" ? effectiveBranchMeta.base : "main";
+  // Fast Preview: never pre-fetch the gate. Its queryFn re-polls status and
+  // assembles the full-content base…head diff every 10s, which in sandbox-less
+  // mode is all GitHub API traffic (the 429 path). Disabled, the gate resolves
+  // `{allowed: true, ready: false}`, so the side Publish click falls through to
+  // the dialog — which loads the diff once, on open, and gates there.
   const publishGateEnabled =
+    !fastPreviewActive &&
     effectiveBranchMeta.kind === "ready" &&
     Boolean(sandboxRouteBranch) &&
     (effectiveBranchMeta.workingTreeDirty ||

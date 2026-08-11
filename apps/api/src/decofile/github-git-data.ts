@@ -16,6 +16,42 @@ function githubApiBaseUrl(): string {
   return process.env.GITHUB_API_BASE_URL ?? "https://api.github.com";
 }
 
+/**
+ * Conditional-request cache: url -> { etag, body }. GitHub serves 304s for
+ * matching `If-None-Match` and those do NOT count against the primary rate
+ * limit, so re-reads of hot mutable endpoints (ref resolves, compares, repo
+ * meta) become rate-limit-free when nothing changed. Module-level because a
+ * client instance lives for one HTTP request.
+ *
+ * Content-addressed payloads (blobs, trees, tarballs) are excluded: they are
+ * immutable per sha and already cached at the read layer, so an ETag entry
+ * would never be re-requested — it would only duplicate large bodies here.
+ *
+ * Keyed by URL alone, NOT by token: a 304 is only ever served after GitHub
+ * authorized THIS request's token, so a cached body is never revealed to a
+ * caller GitHub itself would refuse.
+ */
+const ETAG_CACHE_MAX = 512;
+const etagCache = new Map<string, { etag: string; body: unknown }>();
+
+function etagCacheable(method: string, path: string): boolean {
+  return (
+    method === "GET" &&
+    !path.includes("/git/blobs/") &&
+    !path.includes("/git/trees/") &&
+    !path.includes("/tarball/")
+  );
+}
+
+function etagCachePut(url: string, etag: string, body: unknown): void {
+  etagCache.delete(url);
+  etagCache.set(url, { etag, body });
+  if (etagCache.size > ETAG_CACHE_MAX) {
+    const oldest = etagCache.keys().next().value;
+    if (oldest !== undefined) etagCache.delete(oldest);
+  }
+}
+
 export class GitHubApiError extends Error {
   constructor(
     readonly status: number,
@@ -124,17 +160,25 @@ export function createGitDataClient(params: {
     body?: unknown,
     opts?: { allow?: number[] },
   ): Promise<{ status: number; json: T }> {
-    const res = await fetch(`${githubApiBaseUrl()}${path}`, {
+    const url = `${githubApiBaseUrl()}${path}`;
+    const conditional = etagCacheable(method, path)
+      ? etagCache.get(url)
+      : undefined;
+    const res = await fetch(url, {
       method,
       headers: {
         Accept: "application/vnd.github+json",
         "User-Agent": "studio-decofile",
         Authorization: `token ${accessToken}`,
+        ...(conditional ? { "If-None-Match": conditional.etag } : {}),
         ...(body !== undefined ? { "content-type": "application/json" } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
     });
+    if (conditional && res.status === 304) {
+      return { status: 200, json: conditional.body as T };
+    }
     if (!res.ok && !opts?.allow?.includes(res.status)) {
       const text = await res.text().catch(() => "");
       let message = text;
@@ -147,6 +191,10 @@ export function createGitDataClient(params: {
     }
     const json =
       res.status === 204 ? (undefined as T) : ((await res.json()) as T);
+    if (res.status === 200 && etagCacheable(method, path)) {
+      const etag = res.headers.get("etag");
+      if (etag) etagCachePut(url, etag, json);
+    }
     return { status: res.status, json };
   }
 
