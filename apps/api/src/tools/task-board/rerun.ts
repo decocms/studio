@@ -1,16 +1,21 @@
 /**
  * Re-run a task with the Super Agent.
  *
- * There was no way to do this. Every Super Agent dispatch hangs off a
- * TRANSITION — `TASK_BOARD_ITEM_UPDATE` fires a run only when `assigneeId`
- * *changes* to `super-agent` (`update.ts`, `becameSuperAgent`) — so a task
- * already assigned to the Super Agent has nothing left to transition. Sending
- * `assigneeId: "super-agent"` again is a silent no-op: the write happens, the
- * activity diff is empty, the board re-renders, and no run is queued. Observed
- * in prod as an entire board of 63 items, all `assignee_id = 'super-agent'`,
- * none of them re-runnable by any means the product exposed — not the card's
- * Auto-fix button (hidden once assigned), not the assignee picker (no diff, so
- * no Save), not a lane drag (status changes dispatch nothing).
+ * There was no way to do this. Every Super Agent dispatch hung off a
+ * TRANSITION — `TASK_BOARD_ITEM_UPDATE` fired a run only when `assigneeId`
+ * *changed* to `super-agent` — so a task already assigned to the Super Agent
+ * had nothing left to transition. Re-sending `assigneeId: "super-agent"` was a
+ * silent no-op: the write happened, the activity diff was empty, the board
+ * re-rendered, and no run was queued. Observed in prod as an entire board of 63
+ * items, all `assignee_id = 'super-agent'`, none of them re-runnable by any
+ * means the product exposed — not the card's Auto-fix button (hidden once
+ * assigned), not the assignee picker (no diff, so no Save), not a lane drag
+ * (status changes dispatch nothing).
+ *
+ * `delegatesToSuperAgent` (`update.ts`) now re-dispatches an explicit
+ * delegation of a card sitting in To Do, so that one lane recovers itself. This
+ * tool stays the answer for every other lane, and is the only path that TAKES
+ * OVER a card wedged behind a thread that will never finish.
  *
  * The other three ways a run gets re-queued are all reactions the user cannot
  * invoke: a reviewer's `request_changes`, an approved-PR merge conflict, and the

@@ -73,6 +73,33 @@ export function diffTaskActivityEntries(
   return entries;
 }
 
+/**
+ * Does this update delegate the task to the Super Agent, i.e. queue a run?
+ *
+ * Not "did the assignee change": a run that fails out of its retry budget puts
+ * the card back in To Do with the Super Agent still assigned
+ * (`returnToTodoAfterFailure`), so the obvious recovery — clicking Auto fix
+ * again — was a silent no-op and the card sat in To Do forever. An explicit
+ * delegation to the Super Agent on a card sitting in To Do re-dispatches it.
+ *
+ * Any other lane keeps the old assignee-changed gate: In Progress already has
+ * a run in flight, and In Review / Done have their own Rerun path — none of
+ * them should be yanked back to To Do by a stray Auto fix click.
+ *
+ * Pure so the gate is unit-tested; `previous` is null only when nothing else
+ * changed either, which can't be a delegation.
+ */
+export function delegatesToSuperAgent(
+  inputAssigneeId: string | null | undefined,
+  previous: Pick<TaskBoardItem, "assigneeId" | "status"> | null,
+): boolean {
+  if (inputAssigneeId !== SUPER_AGENT_ASSIGNEE_ID) return false;
+  if (!previous) return false;
+  return previous.assigneeId !== SUPER_AGENT_ASSIGNEE_ID
+    ? true
+    : previous.status === "todo";
+}
+
 export const TASK_BOARD_ITEM_UPDATE = defineTool({
   name: "TASK_BOARD_ITEM_UPDATE",
   description:
@@ -165,8 +192,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       input.assigneeId !== (previous?.assigneeId ?? null);
     // Delegating a task to the Super Agent queues it to run — force To Do,
     // overriding any status the caller passed alongside the reassignment.
-    const becameSuperAgent =
-      assigneeChanged && input.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
+    const becameSuperAgent = delegatesToSuperAgent(input.assigneeId, previous);
 
     if (previous && isReportsTask(previous)) {
       // Reports-pushed tasks are the report's findings — their CONTENT is
