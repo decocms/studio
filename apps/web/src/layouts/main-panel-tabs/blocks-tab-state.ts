@@ -38,6 +38,10 @@ export interface BlocksTabStateInput {
   decofile: BlocksQueryState;
   meta: BlocksQueryState;
   hasEditableContent: boolean;
+  /** Sandbox-less Fast Preview: content comes from the decofile API (GitHub),
+   *  not a sandbox — the lifecycle phase stays "idle" forever and must not
+   *  gate the panel. Data readiness alone decides. */
+  fastPreviewActive?: boolean;
 }
 
 export type BlocksTabState =
@@ -85,6 +89,19 @@ function classifyPhase(phase: LifecycleState["phase"]): PhaseClass {
 export function resolveBlocksTabState(
   input: BlocksTabStateInput,
 ): BlocksTabState {
+  if (input.fastPreviewActive) {
+    // No sandbox: a failed decofile/meta read is immediately real (there is
+    // no lifecycle transition coming to re-invalidate it).
+    const failed =
+      (input.decofile.status === "error" && !input.decofile.hasData) ||
+      (input.meta.status === "error" && !input.meta.hasData);
+    if (failed) return { kind: "error", source: "data" };
+    if (!input.decofile.hasData || !input.meta.hasData) {
+      return { kind: "loading" };
+    }
+    return input.hasEditableContent ? { kind: "content" } : { kind: "empty" };
+  }
+
   const phaseClass = classifyPhase(input.lifecyclePhase);
   if (phaseClass === "terminal-error")
     return { kind: "error", source: "sandbox" };

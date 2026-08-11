@@ -104,6 +104,8 @@ export const thread = {
   "thread.headerActions.publishNeedsReview":
     "Esta alteração precisa de revisão antes de publicar.",
   "thread.headerActions.publishToProduction": "Publicar em produção",
+  "thread.headerActions.unpublishedChanges":
+    "{count} alterações não publicadas",
   "thread.headerActions.pushAndOpenPrTooltip":
     "Enviar e abrir um PR para {branch} → {base}",
   "thread.headerActions.pushLocalCommitsTooltip":

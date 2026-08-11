@@ -30,39 +30,40 @@ export function buildGlobalSectionPreviewUrl(
 }
 
 /**
- * Fast Preview URL — the site's own page, rendered against the working-tree
- * draft.
+ * Fast Preview URL — the site's own page, rendered against the draft.
  *
- * Points at the REAL page on `productionUrl` and carries a `?__draft=` pointer.
- * The site's framework resolves that pointer by fetching the merged decofile
- * from the sandbox daemon (`<handle>.<suffix>/_sandbox/decofile`) and rendering
- * its own routes against it.
+ * Points at the REAL page on `productionUrl` and carries a `?__draft=` pointer
+ * the site's framework resolves by fetching the merged decofile from Studio's
+ * decofile API (`/api/:org/decofile/:virtualMcpId/:branch?token=…`) and
+ * rendering its own routes against it. Rendering the site's normal route means
+ * hydration and in-preview navigation work, instead of a single
+ * statically-rendered component.
  *
- * This replaces pushing the decofile into a POST body: only deco's own runtime
- * honours a POST render, while Next.js and most frameworks render on GET. Going
- * through the site's normal route also means hydration and in-preview
- * navigation work, instead of a single statically-rendered component.
- *
- * The token is `<host[:port]>@<version>` — the AUTHORITY of the daemon origin,
- * never a full URL. The site validates it against its configured preview-API
- * domains and derives the scheme itself, so there is no SSRF surface, and the
- * authority carries the desktop link's per-run port for free. `version` is the
- * daemon's content ETag: the site caches per version, and a new version after
- * a save is what refreshes the frame — no cache-busting nonce needed.
+ * The pointer is `<authority><path>?token=…@<version>` — never a full URL. The
+ * runtime splits on the LAST `@`, validates only the authority against its
+ * configured preview-API domains, and derives the scheme itself, so there is
+ * no SSRF surface. `version` is the branch head commit sha: the site caches
+ * per version, and a new version after a save is what refreshes the frame —
+ * no cache-busting nonce needed.
  */
-export function buildDraftPreviewUrl(input: {
+export function buildFastPreviewDraftUrl(input: {
   /** Published site origin — the draft renders against this deployment. */
   productionUrl: string;
-  /** Daemon origin (`previewUrl`); its authority becomes the token's host. */
-  previewUrl: string;
-  /** Draft content version (the daemon's ETag), from the `decofile` event. */
+  /** Studio API authority (host[:port]) serving /api — window.location.host. */
+  apiHost: string;
+  orgSlug: string;
+  virtualMcpId: string;
+  branch: string;
+  /** Signed draft grant from the decofile API. */
+  token: string;
+  /** Branch head commit sha. */
   version: string;
   /** Path to render, with any `:param` values already filled in. */
   path: string;
 }): string {
   const url = new URL(input.path, input.productionUrl);
-  const host = new URL(input.previewUrl).host;
-  url.searchParams.set("__draft", `${host}@${input.version}`);
+  const pointer = `${input.apiHost}/api/${input.orgSlug}/decofile/${encodeURIComponent(input.virtualMcpId)}/${encodeURIComponent(input.branch)}?token=${input.token}`;
+  url.searchParams.set("__draft", `${pointer}@${input.version}`);
   return url.toString();
 }
 

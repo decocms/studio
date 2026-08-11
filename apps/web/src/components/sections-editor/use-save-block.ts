@@ -1,9 +1,11 @@
 import { useEffect, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useVirtualMCP } from "@/sdk";
+import { resolveFastPreview } from "@/sdk/fast-preview";
 import { toast } from "sonner";
 import { decoBlockFilePath } from "./deco-block-key";
 import { decoRepoPath } from "./deco-repo-path";
+import { patchDecofile, setDecofileDraft } from "./decofile-api";
 import { KEYS } from "@/lib/query-keys";
 
 /** Debounce window for form-driven block autosaves (ms). */
@@ -21,12 +23,16 @@ export function useSaveBlock({
   branch,
 }: UseSaveBlockParams) {
   const queryClient = useQueryClient();
+  const vmcp = useVirtualMCP(virtualMcpId);
   // Block writes target `.deco/blocks/<key>.json` under the project's package
   // path (`metadata.runtime.path`) — the daemon resolves against the repo root,
   // so a subdir project needs the prefix or the dev server (watching its own
   // `.deco/`) never regenerates and the committed read won't see the write.
-  const packagePath =
-    useVirtualMCP(virtualMcpId)?.metadata?.runtime?.path ?? null;
+  const packagePath = vmcp?.metadata?.runtime?.path ?? null;
+  // Sandbox-less mode: writes go through the decofile API (a coalesced commit
+  // on the branch) instead of the sandbox working tree. The server owns the
+  // key -> file mapping, so no path construction here.
+  const fastPreviewActive = resolveFastPreview(vmcp?.metadata).active;
 
   return useMutation({
     mutationFn: async ({
@@ -36,6 +42,14 @@ export function useSaveBlock({
       blockKey: string;
       data: unknown;
     }) => {
+      if (fastPreviewActive) {
+        const draft = await patchDecofile(
+          { orgSlug, virtualMcpId, branch },
+          { set: { [blockKey]: data } },
+        );
+        setDecofileDraft(queryClient, { orgSlug, virtualMcpId, branch }, draft);
+        return draft;
+      }
       const path = decoRepoPath(packagePath, decoBlockFilePath(blockKey));
       const content = JSON.stringify(data, null, 2);
       const res = await fetch(

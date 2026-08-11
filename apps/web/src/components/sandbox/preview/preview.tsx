@@ -83,9 +83,10 @@ import {
 import { decoBlockFileViewPath } from "@/components/sections-editor/deco-block-key";
 import { findLivePageResolveType } from "@/components/sections-editor/section-catalog";
 import {
-  buildDraftPreviewUrl,
+  buildFastPreviewDraftUrl,
   buildGlobalSectionPreviewUrl,
 } from "@/components/sections-editor/section-preview-url";
+import { useDecofileDraft } from "@/components/sections-editor/decofile-api";
 import { useCreatePage } from "@/components/sections-editor/use-create-page";
 import { CreatePageModal } from "@/components/sections-editor/create-page-modal";
 import { toast } from "sonner";
@@ -327,7 +328,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const vmEntry = lifecycle.vmEntry;
   const previewUrl = lifecycle.previewUrl;
   const lifecyclePhase = vmEvents.lifecycle.phase;
-  const decofileVersion = vmEvents.decofileVersion;
   const devServerReady = lifecyclePhase === "running";
 
   const isDesktopSandbox = vmEntry?.sandboxProviderKind === "user-desktop";
@@ -341,6 +341,26 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // can retain a stale repoDir after the provider kind changes from desktop to
   // agent-sandbox, whose daemon reports a container-internal path ("/app/repo").
   const repoDir = isDesktopSandbox ? rawRepoDir : null;
+
+  // Live production URL of the linked site, persisted on the agent's
+  // `metadata.productionUrl` at import time (deco.cx reports the real domain,
+  // which can be a custom one — so we store it rather than guess it). Used as a
+  // published-site fallback while the sandbox provisions (non-blocking) instead
+  // of a blank overlay. `null` (no field, or a site imported before this was
+  // persisted) → the original blocking overlay is kept.
+  const inset = useInsetContext();
+  const productionUrl =
+    inset?.entity?.id === virtualMcpId
+      ? sanitizeProductionUrl(inset.entity.metadata?.productionUrl)
+      : null;
+  // Fast Preview (opt-in switch in CMS settings): sandbox-less mode — the
+  // draft is the branch head served by the decofile API, rendered against
+  // `productionUrl`. Requires BOTH the switch and a production URL — a bare
+  // flag is inert (nothing to render against), and `productionUrl` is non-null
+  // only for this agent's entity, so reading `metadata.fastPreview` off the
+  // same object is safe.
+  const fastPreviewEnabled =
+    !!productionUrl && inset?.entity?.metadata?.fastPreview === true;
 
   // Decofile pages/global sections for the URL bar dropdown. Not gated on the
   // dev server: when it's down we read the committed `.deco/*.gen.json` snapshot
@@ -368,6 +388,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       decofile: toBlocksQueryState(decofileQuery),
       meta: toBlocksQueryState(metaQuery),
       hasEditableContent: hasEditableDecoContent(decofile, meta),
+      fastPreviewActive: fastPreviewEnabled,
     }).kind === "content";
   const createPageParams =
     virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
@@ -479,18 +500,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const previewState = lifecycle.previewState;
   const userStopped = lifecycle.userStopped;
 
-  // Live production URL of the linked site, persisted on the agent's
-  // `metadata.productionUrl` at import time (deco.cx reports the real domain,
-  // which can be a custom one — so we store it rather than guess it). Used as a
-  // published-site fallback while the sandbox provisions (non-blocking) instead
-  // of a blank overlay; once the daemon is up, Fast Preview swaps to the daemon
-  // render (`draftPreviewUrl` below). `null` (no field, or a site imported
-  // before this was persisted) → the original blocking overlay is kept.
-  const inset = useInsetContext();
-  const productionUrl =
-    inset?.entity?.id === virtualMcpId
-      ? sanitizeProductionUrl(inset.entity.metadata?.productionUrl)
-      : null;
   // Per-agent "Open CMS" Layout setting, read off the entity already in
   // context (same source as productionUrl above). Off by default (absent /
   // null → false): Preview stays on the site until the user opens the CMS
@@ -500,38 +509,39 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       ? inset.entity.metadata?.ui?.layout?.cmsDefaultOpen
       : null) ?? false;
 
-  // Fast Preview (opt-in switch in CMS settings): render the draft against
-  // `productionUrl` instead of the published site while the sandbox boots.
-  // Requires BOTH the switch and a production URL — a bare flag is inert
-  // (nothing to render against), and `productionUrl` is non-null only for this
-  // agent's entity, so reading `metadata.fastPreview` off the same object is
-  // safe.
-  const fastPreviewEnabled =
-    !!productionUrl && inset?.entity?.metadata?.fastPreview === true;
-
   // Fast Preview (gated by the CMS switch): render the site's REAL page on
-  // `productionUrl`, carrying a `?__draft=<handle>@<version>` pointer that the
-  // site's framework resolves by pulling the merged working-tree decofile from
-  // the sandbox daemon. Replaces POSTing the decofile at `/live/previews`,
-  // which only deco's own runtime honoured and could only render one component
-  // statically.
+  // `productionUrl`, carrying a `?__draft=` pointer the site's framework
+  // resolves by pulling the merged decofile. Replaces POSTing the decofile at
+  // `/live/previews`, which only deco's own runtime honoured and could only
+  // render one component statically.
   //
-  // Needs the daemon origin and a draft version — NOT the dev server, and
-  // notably not `currentPageKey` any more: the site does its own routing, so
-  // the preview no longer waits on the decofile query that used to stall the
-  // whole surface behind a cold-start 502.
-  //
-  // `version` changes on every `.deco/blocks/*` save (the daemon's `decofile`
-  // event), which re-navigates the frame — no cache-busting nonce needed.
+  // Sandbox-less: the draft is served by Studio's decofile API — the pointer
+  // carries the API authority + a signed token, and `version` is the branch
+  // head commit sha from KEYS.decofileDraft (seeded by the decofile read,
+  // bumped by every save). No sandbox, no SSE — a new version after a save is
+  // still what re-navigates the frame.
   //
   // Computed BEFORE `display`: it is an input to that decision, so it must not
   // depend on `display.mode` in turn.
+  const decofileDraft = useDecofileDraft(
+    fastPreviewEnabled && virtualMcpId && branch
+      ? { orgSlug: org.slug, virtualMcpId, branch }
+      : null,
+  );
   const draftPreviewUrl =
-    fastPreviewEnabled && productionUrl && previewUrl && decofileVersion
-      ? buildDraftPreviewUrl({
+    fastPreviewEnabled &&
+    productionUrl &&
+    decofileDraft &&
+    virtualMcpId &&
+    branch
+      ? buildFastPreviewDraftUrl({
           productionUrl,
-          previewUrl,
-          version: decofileVersion,
+          apiHost: window.location.host,
+          orgSlug: org.slug,
+          virtualMcpId,
+          branch,
+          token: decofileDraft.token,
+          version: decofileDraft.version,
           path: resolvedPath,
         })
       : null;

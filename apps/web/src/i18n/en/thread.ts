@@ -100,6 +100,7 @@ export const thread = {
   "thread.headerActions.publishNeedsReview":
     "This change needs review before publishing.",
   "thread.headerActions.publishToProduction": "Publish to production",
+  "thread.headerActions.unpublishedChanges": "{count} unpublished changes",
   "thread.headerActions.pushAndOpenPrTooltip":
     "Push and open a PR for {branch} → {base}",
   "thread.headerActions.pushLocalCommitsTooltip":

@@ -16,6 +16,7 @@
     "./sdk/types": "./src/sdk/types/index.ts",
     "./sdk/types/*": "./src/sdk/types/*.ts",
     "./sdk/lib/*": "./src/sdk/lib/*.ts",
+    "./decofile": "./src/decofile/index.ts",
     "./*": "./src/*.ts"
   },
   "dependencies": {

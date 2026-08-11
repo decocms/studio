@@ -1,4 +1,9 @@
 import { useMCPClient, useProjectContext, useVirtualMCP } from "@/sdk";
+import { resolveFastPreview } from "@/sdk/fast-preview";
+import {
+  useDecofileStatus,
+  usePublishDecofile,
+} from "@/components/sections-editor/decofile-api";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -102,8 +107,20 @@ function makeBranchLoadingButton(t: TFunction): HeaderButton {
  * When attached the button always renders — disabled status pills (Loading…,
  * Up to date, Published, …) cover cases with no actionable next step. When
  * detached it renders a reconnect pill rather than nothing.
+ *
+ * Sandbox-less Fast Preview projects render {@link FastPreviewHeaderActions}
+ * instead: there is no sandbox SSE branch meta to drive the button state, and
+ * every save is already a commit — publish is the only remaining action.
  */
 export function HeaderActions({ virtualMcpId }: Props) {
+  const vm = useVirtualMCP(virtualMcpId);
+  if (resolveFastPreview(vm?.metadata).active) {
+    return <FastPreviewHeaderActions virtualMcpId={virtualMcpId} />;
+  }
+  return <SandboxHeaderActions virtualMcpId={virtualMcpId} />;
+}
+
+function SandboxHeaderActions({ virtualMcpId }: Props) {
   const t = useT();
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
@@ -634,5 +651,78 @@ function WithTooltip({
         <TooltipContent>{label}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  );
+}
+
+/**
+ * Header actions for sandbox-less Fast Preview projects: every save is
+ * already a commit on the branch, so the only remaining action is publishing —
+ * merging the branch into the default branch via the decofile API (with a PR
+ * fallback for protected bases). Drift comes from `GET …/status`, not SSE.
+ */
+function FastPreviewHeaderActions({ virtualMcpId }: Props) {
+  const t = useT();
+  const { org } = useProjectContext();
+  const { currentBranch: branch } = useChatTask();
+  const params = branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
+  const status = useDecofileStatus(params);
+  const publish = usePublishDecofile(params);
+
+  if (!params || status.isPending) {
+    return (
+      <Button size="sm" variant="outline" disabled>
+        <Spinner size="xs" />
+        {t("thread.headerActions.loading")}
+      </Button>
+    );
+  }
+  if (status.isError) return null;
+
+  const aheadBy = status.data?.aheadBy ?? 0;
+  if (aheadBy === 0) {
+    return (
+      <WithTooltip
+        label={t("thread.headerActions.branchInSyncTooltip", {
+          base: status.data?.baseBranch ?? "main",
+        })}
+      >
+        <Button size="sm" variant="outline" disabled>
+          {t("thread.headerActions.published")}
+        </Button>
+      </WithTooltip>
+    );
+  }
+
+  const handlePublish = () => {
+    publish.mutate(undefined, {
+      onSuccess: (result) => {
+        if (result.result === "pull-request") {
+          toast.success(
+            t("thread.headerActions.publishedPr", {
+              prNumber: String(result.number),
+            }),
+          );
+          globalThis.open(result.url, "_blank", "noopener");
+          return;
+        }
+        toast.success(t("thread.headerActions.published"));
+      },
+      onError: (err) => {
+        toast.error(err.message);
+      },
+    });
+  };
+
+  return (
+    <WithTooltip
+      label={t("thread.headerActions.unpublishedChanges", {
+        count: String(aheadBy),
+      })}
+    >
+      <Button size="sm" onClick={handlePublish} disabled={publish.isPending}>
+        {publish.isPending && <Spinner size="xs" />}
+        {t("thread.headerActions.publish")}
+      </Button>
+    </WithTooltip>
   );
 }

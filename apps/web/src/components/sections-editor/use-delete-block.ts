@@ -1,8 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useVirtualMCP } from "@/sdk";
+import { resolveFastPreview } from "@/sdk/fast-preview";
 import { KEYS } from "@/lib/query-keys";
 import { decoBlockFilePath } from "./deco-block-key";
 import { decoRepoPath } from "./deco-repo-path";
+import { patchDecofile, setDecofileDraft } from "./decofile-api";
 
 interface UseDeleteBlockParams {
   orgSlug: string;
@@ -22,13 +24,24 @@ export function useDeleteBlock({
   branch,
 }: UseDeleteBlockParams) {
   const queryClient = useQueryClient();
+  const vmcp = useVirtualMCP(virtualMcpId);
   // Under the project's package path (`metadata.runtime.path`) when the project
   // isn't at the repo root — the daemon resolves against the repo root.
-  const packagePath =
-    useVirtualMCP(virtualMcpId)?.metadata?.runtime?.path ?? null;
+  const packagePath = vmcp?.metadata?.runtime?.path ?? null;
+  // Sandbox-less mode: deletes commit through the decofile API and remove every
+  // encoding alias of the key server-side.
+  const fastPreviewActive = resolveFastPreview(vmcp?.metadata).active;
 
   return useMutation({
     mutationFn: async ({ blockKey }: { blockKey: string }) => {
+      if (fastPreviewActive) {
+        const draft = await patchDecofile(
+          { orgSlug, virtualMcpId, branch },
+          { delete: [blockKey] },
+        );
+        setDecofileDraft(queryClient, { orgSlug, virtualMcpId, branch }, draft);
+        return { ok: true as const, existed: true };
+      }
       const path = decoRepoPath(packagePath, decoBlockFilePath(blockKey));
       const res = await fetch(
         `/api/${orgSlug}/sandbox/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/unlink`,

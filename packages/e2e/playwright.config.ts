@@ -13,6 +13,13 @@ const commerceMockPort = process.env.COMMERCE_MOCK_PORT || "4100";
 const commerceMockOrigin = `http://localhost:${commerceMockPort}`;
 const commerceMockKey = "e2e-commerce-key";
 
+// The sandbox-less decofile API talks to GitHub's Git Data API. We point the
+// studio server at a local in-memory stub (github-stub-server.ts, started as a
+// webServer below) via GITHUB_API_BASE_URL so decofile specs exercise the real
+// read/patch/publish path without reaching api.github.com.
+const githubStubPort = process.env.GITHUB_STUB_PORT || "4102";
+const githubStubOrigin = `http://localhost:${githubStubPort}`;
+
 // e2e exercises production-like behavior; the MCP read/list cache is on in prod
 // but defaults off under NODE_ENV=development (which the API `dev` script sets),
 // so opt it back in here. Without this, cache-dependent specs (e.g. proxy
@@ -42,7 +49,7 @@ const commerceMockKey = "e2e-commerce-key";
 // the config isn't a spec module).
 const vaultServiceToken = "e2e-vault-service-token";
 
-const apiServerCommand = `MCP_CACHE_ENABLED=true VAULT_SERVICE_TOKEN=${vaultServiceToken} REPORTS_INTERNAL_API_URL=${commerceMockOrigin} REPORTS_INTERNAL_API_KEY=${commerceMockKey} BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} RUN_IDLE_TIMEOUT_MS=120000 DEPLOYMENT_ADMIN_EMAILS=deployment-admin@e2e.local,deployment-admin-2@e2e.local bun run dev`;
+const apiServerCommand = `MCP_CACHE_ENABLED=true VAULT_SERVICE_TOKEN=${vaultServiceToken} REPORTS_INTERNAL_API_URL=${commerceMockOrigin} REPORTS_INTERNAL_API_KEY=${commerceMockKey} GITHUB_API_BASE_URL=${githubStubOrigin} BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} RUN_IDLE_TIMEOUT_MS=120000 DEPLOYMENT_ADMIN_EMAILS=deployment-admin@e2e.local,deployment-admin-2@e2e.local bun run dev`;
 // CI serves the PRODUCTION build via `vite preview` (same Node proxy as dev —
 // see apps/web/vite.config.ts): the suite's charter is production-like
 // behavior, and the dev server's on-demand transform inflated browser-heavy
@@ -98,6 +105,18 @@ export default defineConfig({
       // the production worker. Standalone process (no app imports).
       command: `COMMERCE_MOCK_PORT=${commerceMockPort} bun run fixtures/commerce-upgrade-mock.ts`,
       url: `${commerceMockOrigin}/health`,
+      reuseExistingServer: true,
+      timeout: 30_000,
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+    {
+      // In-memory GitHub Git Data stub for the decofile API. Started before
+      // the studio server so decofile reads/writes/publishes resolve over
+      // HTTP without reaching api.github.com. Standalone process (no app
+      // imports).
+      command: `GITHUB_STUB_PORT=${githubStubPort} bun run fixtures/github-stub-server.ts`,
+      url: `${githubStubOrigin}/health`,
       reuseExistingServer: true,
       timeout: 30_000,
       stdout: "pipe",
