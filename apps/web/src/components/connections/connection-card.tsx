@@ -1,6 +1,7 @@
 import { Card } from "@decocms/ui/components/card.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import type { ReactNode } from "react";
+import { useT } from "@/i18n/use-t.ts";
 import { IntegrationIcon } from "../integration-icon.tsx";
 
 export interface ConnectionCardData {
@@ -32,6 +33,7 @@ export function ConnectionCard({
   className,
   fallbackIcon,
 }: ConnectionCardProps) {
+  const t = useT();
   return (
     <Card
       className={cn(
@@ -76,7 +78,8 @@ export function ConnectionCard({
               {connection.title}
             </h3>
             <p className="text-sm text-muted-foreground line-clamp-2">
-              {connection.description || "No description"}
+              {connection.description ||
+                t("connections.connectionCard.noDescription")}
             </p>
           </div>
 
