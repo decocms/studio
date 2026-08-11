@@ -77,7 +77,7 @@ Fires when an external system sends an HTTP request to a dedicated URL. When you
 - Each run times out after 5 minutes
 - Event payloads are capped at 1 MB
 
-If the person who created an automation leaves the organization, it's automatically deactivated.
+If the person who created an automation leaves the organization, it's automatically deactivated. The same happens if a run hits an unrecoverable error — for example, the automation's configured model is no longer allowed for its role after a permission change — so it stops retrying and failing silently and shows a clear deactivation reason in [Monitoring](/en/studio/monitoring) instead.
 
 ---
 

@@ -1,0 +1,72 @@
+---
+title: Task Board
+description: Acompanhe o trabalho atribuído aos agents em um kanban, com revisão automatizada antes de ir para produção
+icon: LayoutBoard
+---
+
+import Callout from "../../../../components/ui/Callout.astro";
+
+## O que é o Task Board?
+
+O **Task Board** é um workspace no estilo kanban para acompanhar itens de trabalho — os cards se movem por colunas como Backlog, To Do, In Progress, In Review e Done enquanto um agent (geralmente um **Super Agent**) trabalha neles. Cada card pode ter um pull request vinculado, comentários, tags, prioridade e um feed de atividade com tudo o que aconteceu nele.
+
+<Callout type="tip">
+  O agent **Task Manager** pode criar, priorizar, atribuir e acompanhar cards
+  no board para você — basta descrever o trabalho no chat.
+</Callout>
+
+## Comentários
+
+O feed de atividade de todo card de task suporta comentários em thread: publique um comentário, e qualquer pessoa pode responder a ele — até um nível de respostas. Uma thread de comentários pode ser marcada como **resolvida** quando estiver encerrada, e reaberta depois se necessário. Os comentários são persistidos por task e escopados à sua organização.
+
+<Callout type="info">
+  Qualquer pessoa da organização pode resolver ou reabrir uma thread de
+  comentários, mas apenas o autor do comentário pode editar o corpo dele ou
+  excluí-lo.
+</Callout>
+
+## Trabalhando com múltiplos repositórios
+
+Quando uma task é atribuída a um **Super Agent**, ele roda dentro de um sandbox que precisa de um repositório já clonado para trabalhar. Se sua organização tiver exatamente um repositório importável, a execução da task já começa com esse repositório clonado. Se houver mais de um, a execução começa com o diretório de trabalho vazio, e o próprio Super Agent escolhe o repositório correto antes de ler arquivos ou executar comandos git — nenhuma seleção manual de repositório é necessária.
+
+## Revisão automatizada antes de ir para produção
+
+Quando o pull request de uma task fica **In Review** (seus checks estão passando, ou não há nenhum), o Studio pode executar revisores automatizados nele antes que um humano coloque a mudança em produção. Configure isso em **Settings → Organization → Reviewers & merge**:
+
+- **QA Agent** — exercita a própria feature, não só o diff, para verificar se a task realmente resolveu o problema.
+- **Code Reviewer** — revisa o código usando skills de revisão apropriadas para o stack do repositório.
+- **Auto-merge** — quando todos os revisores habilitados aprovam, o pull request é mesclado automaticamente em vez de esperar um humano.
+- **Auto-assign report tasks to the Super Agent** — atribui automaticamente ao Super Agent os cards publicados por um report logo quando são criados, em vez de deixá-los sem responsável. Veja [Findings publicados por um report](#findings-publicados-por-um-report).
+
+Cada revisor que roda aparece como sua própria sessão no card da task, e o veredito dele é publicado no feed de atividade do card:
+
+- Uma **aprovação** (com notas opcionais) aproxima a task de ir para produção.
+- **Solicitação de mudanças** devolve a task para o Super Agent resolver o feedback, junto com as notas do revisor.
+
+<Callout type="info">
+  QA Agent e Code Reviewer vêm desabilitados por padrão. Habilite os que você
+  quiser em **Settings → Organization → Reviewers & merge** — você pode ativar
+  um independentemente do outro, ou os dois.
+</Callout>
+
+## Enviando para produção
+
+Quando todos os revisores habilitados aprovaram o pull request de uma task — ou nenhum revisor está habilitado — o card da task mostra um botão **Ship to production**. Clicar nele mescla o pull request. Se o auto-merge estiver habilitado, isso acontece automaticamente assim que o gate de revisão é satisfeito, em vez de esperar alguém clicar no botão.
+
+O painel de PR de cada card também mostra o estado ao vivo do pull request (draft, open, merged, closed) e o status dos checks (passing, pending ou failing), para você ver de imediato se uma task está pronta para avançar.
+
+## Findings publicados por um report
+
+Alguns cards não são criados por uma pessoa — um report (por exemplo, o **Report Agent**) pode publicar findings de diagnóstico direto no board. Esses cards se comportam como qualquer outro, com uma diferença: excluir um deles **descarta (dismiss) o finding subjacente**, não só o card.
+
+<Callout type="info">
+  Depois que um finding é descartado, a próxima execução do report o ignora
+  em vez de recriar o card. Excluir um card gerado por report é reversível —
+  peça ao agent **Task Manager** para restaurar um finding descartado (ou
+  todos eles) e o card volta com seus comentários, atividade e qualquer PR
+  vinculado intactos.
+</Callout>
+
+O agent Task Manager avisa quando o card que você está excluindo veio de um report, para que você saiba que excluí-lo também suprime esse finding a partir de então.
+
+Por padrão, um card publicado por um report fica sem responsável. Ative **Auto-assign report tasks to the Super Agent** em **Settings → Organization → Reviewers & merge** para que esses cards sejam atribuídos automaticamente ao Super Agent assim que forem criados, em vez de esperar alguém pegá-los.

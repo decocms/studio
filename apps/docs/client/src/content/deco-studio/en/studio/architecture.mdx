@@ -1,6 +1,6 @@
 ---
 title: "Architecture"
-description: How Studio is wired end to end — edge, cloud cluster, and desktop — and how requests, runs, and sandboxes flow between the tiers.
+description: How Studio is wired end to end — edge and cloud cluster — and how requests, runs, and sandboxes flow between the tiers.
 icon: Network
 ---
 
@@ -9,31 +9,29 @@ import ArchitectureDiagram from "../../../../components/ArchitectureDiagram.astr
 
 This page describes how a running Studio deployment is wired together: the tiers, what each one does, and how a request becomes an agent run, a tool call, or a sandbox preview. It's useful background whether you self-host or use the cloud, and it's the conceptual companion to the [Kubernetes](/en/studio/self-hosting/deploy/kubernetes) and [Docker Compose](/en/studio/self-hosting/deploy/docker-compose) deploy guides.
 
-## The three tiers
+## The two tiers
 
-Studio spans three trust/locality boundaries:
+Studio spans two trust/locality boundaries:
 
 - **Edge** — the public internet path: a CDN and an L4 load balancer.
 - **Cloud cluster** — the Kubernetes deployment: web, API, workers, Postgres, NATS, and cloud sandboxes.
-- **Desktop** — the user's laptop, connected by `deco link`, where the desktop loop and desktop sandbox can run.
 
 <ArchitectureDiagram />
 
 The same flow as text:
 
 ```
-EDGE                CLOUD CLUSTER                                     DESKTOP
-────                ─────────────                                     ───────
+EDGE                CLOUD CLUSTER
+────                ─────────────
 
 Client ─▶ CF ─┬─▶ NLB ─▶ Web(nginx) ─▶ API ──┬─▶ MCP Proxy ─▶ Downstream MCP (ext)
               │                               ├─▶ Files/Storage ─▶ Object Store (ext)
               │                               ├─▶ DB (Postgres)
-              │                               ├─▶ NATS ───────────────▶ Link Daemon
-              │                               └─▶ Worker                    │
-              │                                     │  model                ▼
-              │                                     ├──────────▶ LLM   Desktop Loop ─▶ Desktop Sandbox
-              │                                     ├─▶ DB                   │              └─ Org FS (mount)
-              │                                     ├─▶ Files/Storage        └─(MCP presigned)─▶ API
+              │                               └─▶ Worker
+              │                                     │  model
+              │                                     ├──────────▶ LLM
+              │                                     ├─▶ DB
+              │                                     ├─▶ Files/Storage
               │                                     ├─▶ Downstream MCP (in-process bridge)
               │                                     └─▶ Cloud Sandbox ─┬─ Daemon API (/_sandbox/*)
               │                                                        └─ Org FS (sidecar) ─▶ /api/:org/fs ─▶ S3
@@ -70,7 +68,7 @@ The set of queues a worker pod listens on is configured by env (`listenQueues`).
 | Component | Role |
 | --- | --- |
 | **DB** (PostgreSQL, via Kysely) | System of record: orgs, connections, credential vault, audit, threads + messages, and `sandbox_runner_state`. It also holds the **DBOS queues and `workflow_status` journal** that make runs durable and recoverable. |
-| **NATS** | Live messaging infrastructure with three jobs: (1) JetStream `/stream` fan-out (`decopilot.stream.<thread>`) → UI live tail; (2) the pull work-queue (`link.work.<user>`) → desktop; (3) the link-claim KV (`studio_links`) tracking which pod owns each user's link. |
+| **NATS** | Live messaging infrastructure: JetStream `/stream` fan-out (`decopilot.stream.<thread>`) → UI live tail. |
 
 <Callout type="warning">
   **The event bus is dormant.** The CloudEvents pub/sub *feature* (`EVENT_PUBLISH`/`EVENT_SUBSCRIBE`, the durable event queue, `ON_EVENTS` subscribers) is only consumed by the workflow plugin, which is not in use. NATS itself is **not** dormant — it serves the live jobs listed above. Don't conflate the two.
@@ -86,10 +84,18 @@ The set of queues a worker pod listens on is configured by env (`listenQueues`).
 4. Output chunks are published to NATS and tailed back to the UI over `/stream`.
 5. If the pod crashes, **DBOS journal replay** resumes retriable steps on another pod — recovery is the framework's job, not hand-rolled.
 
-There are two transports for step 3:
+The run executes in-process on the worker and uses a **cloud sandbox**.
 
-- **Hosted** (default) — the run executes in-process on the worker and uses a **cloud sandbox**.
-- **Pull** — the run is published to NATS `link.work.<user>`; the user's **desktop** picks it up and runs the loop locally against a **desktop sandbox**.
+### Harnesses: where the agent loop actually runs
+
+The step above is the default path — it doesn't cover every hosted run. Two harnesses can back a hosted run:
+
+- **Decopilot** (default) — runs in-process on the worker, as described above.
+- **claude-code** — runs *inside the sandbox pod* instead, next to the checkout the daemon already cloned, driven by the Claude Agent SDK. The daemon execs `packages/harness-runner` per run over the `/_sandbox/dispatch` control surface (one process per run over stdin/stdout, not a long-lived server) and streams frames back over NDJSON. The runner translates the SDK's message stream into the same `UIMessageChunk`s Decopilot produces, so the run projector, `thread_message_parts`, and the chat UI need no new part types.
+
+claude-code is opt-in per org (`claude_code_sandbox_enabled`, default off). Task Board's Super Agent tasks use it only when the org has opted in **and** has at least one importable repo. With exactly one repo, dispatch resolves and checks it out up front; with several, the run dispatches into an empty working directory and the `TASK_ADD_REPO` tool lets the agent clone the right repo into the already-running pod once it decides which one to use. Otherwise those tasks run Decopilot exactly as before.
+
+Credential resolution for a sandbox-hosted claude-code run checks the dispatching user's own linked Claude subscription first (see [AI Providers](/en/studio/ai-providers)) — a live, unexpired token there outranks the org's Thinking-tier provider, since the user asked for their own plan to pay. It falls back to the org's credential when no personal subscription is linked or the token has expired, rather than failing the run.
 
 ## MCP: in-process vs. the proxy routes
 
@@ -110,36 +116,18 @@ File and object-storage routes are the genuine "called by both" surface, and the
 
 ## Sandboxes
 
-A sandbox clones the repo, runs the dev server, and exposes an in-pod **daemon**. Its HTTP surface splits in two:
+A sandbox clones the repo, runs the dev server, and exposes an in-pod **daemon**, provisioned by the agent-sandbox operator as a `SandboxClaim` pod per (user, projectRef). Its HTTP surface splits in two:
 
 | Surface | Auth | Purpose | Caller |
 | --- | --- | --- | --- |
 | **Preview** (catch-all `*`) | None — the handle (subdomain) is the secret | Reverse-proxies the running dev server (the live app preview); injects HMR. `/_sandbox/*` is actively rejected here. | The end user's browser at `<handle>.preview.<domain>`, through **Cloudflare** (LB) → a **Kubernetes Gateway** (Istio Gateway API / HTTPRoute) → the daemon |
 | **Daemon API** (`/_sandbox/*`) | Bearer `DAEMON_TOKEN` | Control surface: fs ops (read/write/edit/bash/grep), git (status/diff/publish), exec scripts, setup (clone → install → start), tasks, SSE events, harness dispatch. | The cluster (worker for agent fs/git/bash tools; API for UI setup + events) |
 
-### Cloud vs. desktop sandboxes
-
-| | Cloud sandbox | Desktop sandbox |
-| --- | --- | --- |
-| Where | agent-sandbox operator + a `SandboxClaim` pod per (user, projectRef) | Same daemon, spawned locally on the laptop |
-| Reached over | k8s port-forward / in-cluster Service (control); ingress or port-forward (preview) | loopback (control); `<handle>.localhost:<port>` (preview) |
-| Selected when | the default for hosted runs | a `deco link` is live — `user-desktop` is the default provider then |
-
 ### Org filesystem (org-fs)
 
 Each sandbox can mount the **org filesystem** at `<appRoot>/org/<volume>`, so the agent and dev server read and write org files as ordinary paths. The mount stack is `rclone (NFS/FUSE) → the daemon's loopback WebDAV → /api/:org/fs/* → S3` — the same object store as the file routes, surfaced as a mounted volume. This is the same filesystem you browse in the [Library](/en/studio/library).
 
-It is wired on **both** providers, with different mount mechanics:
-
-| | Cloud sandbox | Desktop sandbox |
-| --- | --- | --- |
-| Who mounts | a **privileged sidecar** container (the unprivileged daemon can't mount) | the **daemon directly** (it has full permissions) |
-| Config delivery | post-bind: Studio `POST /_sandbox/orgfs-config`; the daemon relays it to a shared control volume the sidecar watches (warm-pool claims reject `spec.env`) | boot env: `ORGFS_CONFIG`, mounted at daemon startup |
-| Propagation | `rclone` with `allowOther` so the mount propagates to the main container | single client — no propagation needed |
-
-## Desktop
-
-When a user runs `deco link`, a **Link Daemon** on their laptop long-polls the cluster (`/api/links/work` for chat, `/api/links/proxy` for sandbox control) and heartbeats presence into the NATS link-claim KV. Pulled runs execute in the **Desktop Loop** (`runNativeAgentLoopCore`) — a portable copy of the agent loop. The thinking model is injected by the cluster, and MCP is reached over HTTP via a presigned URL back to the cluster.
+The mount is wired via a **privileged sidecar** container (the unprivileged daemon can't mount itself): Studio delivers config post-bind via `POST /_sandbox/orgfs-config`, the daemon relays it to a shared control volume the sidecar watches (warm-pool claims reject `spec.env`), and `rclone` mounts with `allowOther` so the mount propagates to the main container.
 
 ## At a glance
 
@@ -148,4 +136,5 @@ When a user runs `deco link`, a **Link Daemon** on their laptop long-polls the c
 - **MCP tool calls are in-process** on the worker; the `/mcp/*` proxy routes are for external clients only.
 - **File/object-storage routes** are the shared API+worker surface.
 - **NATS is live**; the CloudEvents event-bus feature is dormant.
-- **Sandboxes** expose a public preview and a token-protected control API, in the cloud (k8s) or on the desktop (`deco link`).
+- **Sandboxes** expose a public preview and a token-protected control API in the cloud (k8s).
+- **Hosted runs** default to the Decopilot harness (in-process on the worker); the opt-in claude-code harness runs inside the sandbox pod instead, one `harness-runner` process per run.
