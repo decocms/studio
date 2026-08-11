@@ -91,6 +91,8 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     status: TaskBoardItemStatusSchema.optional(),
     priority: TaskBoardItemPrioritySchema.optional(),
     assigneeId: z.string().nullable().optional(),
+    repoOwner: z.string().nullable().optional(),
+    repoName: z.string().nullable().optional(),
     dueDate: z.string().datetime().nullable().optional(),
     /** New drag-to-reorder position within its lane (ascending). */
     sortOrder: z.number().optional(),
@@ -98,6 +100,18 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     tagIds: z.array(z.string()).optional(),
     /** Link an existing chat thread to this task (many-to-many, idempotent). */
     linkThreadId: z.string().optional(),
+    /** Associate an opened pull request with this task (idempotent). Used by the
+     *  CMS submit-for-review flow, which opens the PR via a direct API call
+     *  outside any agent run — so the run-based PR hooks never see it. */
+    linkPr: z
+      .object({
+        url: z.string(),
+        prNumber: z.number(),
+        repoOwner: z.string(),
+        repoName: z.string(),
+        connectionId: z.string().nullable().optional(),
+      })
+      .optional(),
   }),
   outputSchema: z.object({ item: TaskBoardItemSchema }),
   handler: async (input, ctx) => {
@@ -136,6 +150,25 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
         input.linkThreadId,
         organizationId,
       );
+    }
+
+    // Associate a PR opened outside a run (the CMS submit-for-review flow). Verify
+    // the task belongs to this org before the (idempotent) insert.
+    if (input.linkPr) {
+      const target = await ctx.storage.taskBoard.getById(
+        input.id,
+        organizationId,
+      );
+      if (!target) throw new Error(`Task board item not found: ${input.id}`);
+      await ctx.storage.taskBoard.linkPr({
+        taskBoardItemId: input.id,
+        organizationId,
+        url: input.linkPr.url,
+        prNumber: input.linkPr.prNumber,
+        repoOwner: input.linkPr.repoOwner,
+        repoName: input.linkPr.repoName,
+        connectionId: input.linkPr.connectionId ?? null,
+      });
     }
 
     const hasFieldUpdate =
@@ -228,6 +261,8 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
               ? getUserId(ctx)!
               : null
             : undefined,
+          repoOwner: input.repoOwner,
+          repoName: input.repoName,
           dueDate: input.dueDate,
           sortOrder: input.sortOrder,
         },

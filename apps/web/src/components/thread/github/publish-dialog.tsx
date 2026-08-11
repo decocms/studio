@@ -95,6 +95,10 @@ export interface PublishDialogProps {
   openPullRequest?: PrSummary | null;
   /** Called after commit/push or PR open/merge so the header can refresh. */
   onPullRequestChanged?: () => void | Promise<void>;
+  /** Called with the freshly opened PR (submit-for-review) so the caller can
+   *  associate it with a task board item — this dialog opens PRs via a direct
+   *  API call, so the run-based PR hooks never see them. */
+  onPrOpened?: (pr: { number: number; url: string }) => void | Promise<void>;
   /** Called after a successful publish (squash-merge to base). */
   onPublished?: () => void | Promise<void>;
 }
@@ -136,6 +140,7 @@ function PublishDialogBody({
   headSha = null,
   openPullRequest = null,
   onPullRequestChanged,
+  onPrOpened,
   onPublished,
 }: PublishDialogProps) {
   const t = useT();
@@ -538,6 +543,7 @@ function PublishDialogBody({
         },
       );
       handleOpenChange(false);
+      await onPrOpened?.({ number: pr.number, url: pr.htmlUrl });
       await onPullRequestChanged?.();
     } catch (error) {
       setSubmitForReviewError(

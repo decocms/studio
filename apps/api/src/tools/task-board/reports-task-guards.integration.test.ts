@@ -125,6 +125,67 @@ describe("reports-task guards", () => {
     expect(renamed.item.title).toBe("renamed");
   });
 
+  it("persists a task's repo through create and update", async () => {
+    const task = await taskBoard.create({
+      organizationId: ORG,
+      title: "scoped",
+      repoOwner: "acme",
+      repoName: "site",
+      by: USER,
+    });
+    expect(task.repoOwner).toBe("acme");
+    expect(task.repoName).toBe("site");
+
+    // Re-point to a different repo — proves the UPDATE whitelist actually
+    // carries repo_owner/repo_name (an in-memory fake would accept the column
+    // but silently drop it), and that it round-trips on re-read.
+    const moved = await TASK_BOARD_ITEM_UPDATE.handler(
+      { id: task.id, repoOwner: "acme", repoName: "store" },
+      ctx,
+    );
+    expect(moved.item.repoName).toBe("store");
+    const reread = await taskBoard.getById(task.id, ORG);
+    expect(reread?.repoName).toBe("store");
+
+    // Clearing round-trips too — explicit null, not "unchanged".
+    const cleared = await TASK_BOARD_ITEM_UPDATE.handler(
+      { id: task.id, repoOwner: null, repoName: null },
+      ctx,
+    );
+    expect(cleared.item.repoOwner).toBeNull();
+    expect(cleared.item.repoName).toBeNull();
+  });
+
+  // The CMS submit-for-review path: the browser opens the PR directly (no run),
+  // so it links the PR + advances via UPDATE. A run-based flow never reaches
+  // here, so this is the only place these two effects can happen together.
+  it("links a PR and advances to In Review via UPDATE (CMS submit-for-review)", async () => {
+    const task = await taskBoard.create({
+      organizationId: ORG,
+      title: "cms review",
+      status: "in_progress",
+      by: USER,
+    });
+    const pr = {
+      url: "https://github.com/deco-sites/casaevideo/pull/7",
+      prNumber: 7,
+      repoOwner: "deco-sites",
+      repoName: "casaevideo",
+    };
+    const res = await TASK_BOARD_ITEM_UPDATE.handler(
+      { id: task.id, status: "in_review", linkPr: pr },
+      ctx,
+    );
+    expect(res.item.status).toBe("in_review");
+    expect(
+      (await taskBoard.listPrs(task.id, ORG)).map((p) => p.number),
+    ).toEqual([7]);
+
+    // Idempotent — re-linking the same PR (a retry) does not duplicate.
+    await TASK_BOARD_ITEM_UPDATE.handler({ id: task.id, linkPr: pr }, ctx);
+    expect(await taskBoard.listPrs(task.id, ORG)).toHaveLength(1);
+  });
+
   it("the paywall fires BEFORE the delegation write (no delegated-but-idle task)", async () => {
     const config = {
       enforced: true,

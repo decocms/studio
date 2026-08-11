@@ -2,10 +2,16 @@ import { describe, expect, test } from "bun:test";
 import { shouldAdvanceToReview } from "@/storage/task-board";
 import { decideStallAction, isNeverStartedRun } from "./stall-recovery";
 
-/** A used thread — `shouldAdvanceToReview` filters out message-less ones. */
-const thread = (status: string | null, hasMessages = true) => ({
+/** A used thread — `shouldAdvanceToReview` filters out message-less ones.
+ *  `hasPreview` = repo-backed; defaults to repo-less (advances on finish). */
+const thread = (
+  status: string | null,
+  hasMessages = true,
+  hasPreview = false,
+) => ({
   status,
   hasMessages,
+  hasPreview,
 });
 
 /** A thread on the current storage format. */

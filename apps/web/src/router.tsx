@@ -297,6 +297,9 @@ const unifiedChatSearchSchema = z.object({
   tab: z.string().optional(),
   sidepanel: z.union([z.literal("chat"), z.literal(0)]).optional(),
   main: z.union([z.string(), z.literal(0)]).optional(),
+  /** Force the CMS editor open on landing — the task-based flow's "edit
+   *  manually" opens a new site environment straight in the CMS. */
+  cms: z.literal(1).optional(),
   /** Open the Library file-preview overlay over the chat (browse-grammar path
    *  "<volume>/<path…>"). Set by clickable org-file refs in agent messages. */
   preview: z.string().optional(),

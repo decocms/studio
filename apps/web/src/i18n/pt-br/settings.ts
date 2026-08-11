@@ -743,4 +743,10 @@ export const settings = {
     "Não foi possível iniciar o checkout: {message}",
   "settings.billing.portalError":
     "Não foi possível abrir o portal de cobrança: {message}",
+  "settings.experimental.title": "Experimental",
+  "settings.experimental.description":
+    "Prévias opcionais ainda em construção. Ligue por organização para experimentar.",
+  "settings.experimental.taskBasedFlowTitle": "Fluxo por tasks",
+  "settings.experimental.taskBasedFlowDescription":
+    "Opere inteiramente em termos de Tasks e esconda os detalhes de Git (branches, PRs, sync). Cada mudança começa uma nova Task.",
 } satisfies Record<keyof typeof settingsEn, string>;

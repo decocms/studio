@@ -102,11 +102,27 @@ export const TERMINAL_THREAD_STATUSES = new Set([
  */
 export function shouldAdvanceToReview(item: {
   status: TaskBoardItemStatus;
-  threads: { status: string | null; hasMessages: boolean }[];
+  repoOwner?: string | null;
+  threads: {
+    status: string | null;
+    hasMessages: boolean;
+    hasPreview: boolean;
+  }[];
 }): boolean {
   if (item.status !== "in_progress") return false;
   const used = item.threads.filter((t) => t.hasMessages);
   if (used.length === 0) return false;
+  // Repo-backed work advances to review ONLY when a PR opens (the PR-open hook),
+  // never on thread-finish: a finished run that opened no PR has nothing to
+  // review yet — the user still submits/publishes, which is what opens the PR.
+  // (In Review with no PR is exactly the wrong state.)
+  //
+  // A task is repo-backed if it NAMES a repo (`repoOwner`, set by the CMS/site
+  // flow — the repo lives on the agent, so the thread's own metadata is empty
+  // and `hasPreview` is false) OR a linked thread carries a clonable repo
+  // (`hasPreview` — e.g. the Super Agent's `load_repo`). Only genuinely
+  // repo-less work — no PR ever possible — advances on finish.
+  if (item.repoOwner != null || used.some((t) => t.hasPreview)) return false;
   if (
     !used.every(
       (t) => t.status !== null && TERMINAL_THREAD_STATUSES.has(t.status),
@@ -203,6 +219,8 @@ export class TaskBoardStorage {
     priority?: TaskBoardItemPriority;
     assigneeId?: string | null;
     assignedBy?: string | null;
+    repoOwner?: string | null;
+    repoName?: string | null;
     dueDate?: string | null;
     /** Sender-minted finding identity — see task-board-import. */
     externalKey?: string | null;
@@ -230,6 +248,8 @@ export class TaskBoardStorage {
         priority: params.priority ?? "medium",
         assignee_id: params.assigneeId ?? null,
         assigned_by: params.assignedBy ?? null,
+        repo_owner: params.repoOwner ?? null,
+        repo_name: params.repoName ?? null,
         due_date: params.dueDate ?? null,
         external_key: params.externalKey ?? null,
         sort_order: sql<number>`(
@@ -260,6 +280,8 @@ export class TaskBoardStorage {
       priority?: TaskBoardItemPriority;
       assigneeId?: string | null;
       assignedBy?: string | null;
+      repoOwner?: string | null;
+      repoName?: string | null;
       dueDate?: string | null;
       sortOrder?: number;
     },
@@ -280,6 +302,8 @@ export class TaskBoardStorage {
         ...(data.assignedBy !== undefined
           ? { assigned_by: data.assignedBy }
           : {}),
+        ...(data.repoOwner !== undefined ? { repo_owner: data.repoOwner } : {}),
+        ...(data.repoName !== undefined ? { repo_name: data.repoName } : {}),
         ...(data.dueDate !== undefined ? { due_date: data.dueDate } : {}),
         ...(data.sortOrder !== undefined ? { sort_order: data.sortOrder } : {}),
         updated_by: by,
@@ -1578,6 +1602,8 @@ export class TaskBoardStorage {
     priority: string;
     assignee_id: string | null;
     assigned_by: string | null;
+    repo_owner: string | null;
+    repo_name: string | null;
     due_date: string | Date | null;
     sort_order: number;
     retry_attempts?: number;
@@ -1595,6 +1621,8 @@ export class TaskBoardStorage {
       priority: row.priority as TaskBoardItemPriority,
       assigneeId: row.assignee_id,
       assignedBy: row.assigned_by,
+      repoOwner: row.repo_owner,
+      repoName: row.repo_name,
       dueDate:
         row.due_date instanceof Date
           ? row.due_date.toISOString()

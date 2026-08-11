@@ -12,6 +12,8 @@ function item(id: string, sortOrder: number): TaskBoardItem {
     priority: "none",
     assigneeId: null,
     assignedBy: null,
+    repoOwner: null,
+    repoName: null,
     dueDate: null,
     sortOrder,
     threads: [],

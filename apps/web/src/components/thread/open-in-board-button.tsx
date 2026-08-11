@@ -8,6 +8,7 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { useChatTask } from "@/components/chat/chat-context";
 import { useTaskForThread } from "@/hooks/use-task-for-thread";
+import { useTaskBasedFlow } from "@/hooks/use-organization-settings";
 import { useT } from "@/i18n/use-t.ts";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 
@@ -22,8 +23,10 @@ export function OpenInBoardButton() {
   const { taskId } = useChatTask();
   const navigate = useNavigate();
   const boardTaskId = useTaskForThread(taskId);
+  // Task-based flow hides the board surface — the task pill is the entry point.
+  const taskBasedFlow = useTaskBasedFlow();
 
-  if (!boardTaskId) return null;
+  if (taskBasedFlow || !boardTaskId) return null;
 
   return (
     <TooltipProvider>

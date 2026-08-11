@@ -1,6 +1,6 @@
 import { sleep } from "@decocms/shared/std";
 import { useState, useRef, useEffect } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { formatCodeTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { useChatTask } from "@/components/chat/context";
 import { useProjectContext } from "@/sdk";
@@ -495,10 +495,16 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // context (same source as productionUrl above). Off by default (absent /
   // null → false): Preview stays on the site until the user opens the CMS
   // manually, unless an agent opts in to auto-open.
+  // `?cms=1` forces the auto-open too (task-based flow "edit manually" lands
+  // straight in the CMS), OR'd with the per-agent Layout setting.
+  const forceCmsParam =
+    (useSearch({ strict: false }) as { cms?: number }).cms === 1;
   const cmsDefaultOpen =
-    (inset?.entity?.id === virtualMcpId
+    ((inset?.entity?.id === virtualMcpId
       ? inset.entity.metadata?.ui?.layout?.cmsDefaultOpen
-      : null) ?? false;
+      : null) ??
+      false) ||
+    forceCmsParam;
 
   // Fast Preview (opt-in switch in CMS settings): render the draft against
   // `productionUrl` instead of the published site while the sandbox boots.
