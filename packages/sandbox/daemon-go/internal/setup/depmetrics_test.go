@@ -7,7 +7,7 @@ import (
 )
 
 func TestBuildDepsRestoreLineShape(t *testing.T) {
-	line := BuildDepsRestoreLine(RestoreMiss, "https://u:p@github.com/o/r.git", 1234, "boot-1")
+	line := BuildDepsRestoreLine(RestoreMiss, "https://u:p@github.com/o/r.git", 1234, "boot-1", "")
 	// Field order must match the TS emitter so the stored lines look identical.
 	if !strings.HasPrefix(line, `{"msg":"sandbox.deps.restore","source":"miss","repo_hash":"`) {
 		t.Fatalf("unexpected prefix: %s", line)
@@ -28,7 +28,7 @@ func TestBuildDepsRestoreLineShape(t *testing.T) {
 		t.Fatalf("repo_hash = %q, want 16 hex chars", hash)
 	}
 	// The same repo with and without credentials must hash identically.
-	bare := BuildDepsRestoreLine(RestoreMiss, "https://github.com/o/r.git", 1, "b")
+	bare := BuildDepsRestoreLine(RestoreMiss, "https://github.com/o/r.git", 1, "b", "")
 	var bareGot map[string]any
 	json.Unmarshal([]byte(bare), &bareGot)
 	if bareGot["repo_hash"] != hash {
@@ -37,7 +37,7 @@ func TestBuildDepsRestoreLineShape(t *testing.T) {
 }
 
 func TestBuildDepsRestoreLineUnknownRepo(t *testing.T) {
-	line := BuildDepsRestoreLine(RestoreNoInstall, "", 0, "b")
+	line := BuildDepsRestoreLine(RestoreNoInstall, "", 0, "b", "")
 	if !strings.Contains(line, `"repo_hash":"unknown"`) {
 		t.Fatalf("got %s", line)
 	}

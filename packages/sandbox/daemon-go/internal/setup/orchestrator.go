@@ -411,6 +411,9 @@ func (o *Orchestrator) stepInstallInner() bool {
 	depsStartedAt := time.Now()
 	cloneUrl := resolveCloneUrl(cfg, o.deps.RepoDir)
 	bootId := os.Getenv("DAEMON_BOOT_ID")
+	// Sampled BEFORE any restore or install touches the cache — afterwards every
+	// cache reads as warm and the attribute would be useless.
+	pkgCache := PkgCacheWarmth(cfg, o.deps.RepoDir)
 	elapsedMs := func() int64 { return time.Since(depsStartedAt).Milliseconds() }
 
 	// Golden fast path: reflink a cached node_modules for this exact lockfile and
@@ -427,7 +430,7 @@ func (o *Orchestrator) stepInstallInner() bool {
 		o.mu.Lock()
 		o.pendingGolden = nil // restored an existing golden — nothing to publish
 		o.mu.Unlock()
-		EmitDepsRestore(RestoreL1, cloneUrl, elapsedMs(), bootId)
+		EmitDepsRestore(RestoreL1, cloneUrl, elapsedMs(), bootId, pkgCache)
 		o.markInstallSucceeded(cfg)
 		return true
 	}
@@ -444,7 +447,7 @@ func (o *Orchestrator) stepInstallInner() bool {
 		o.mu.Lock()
 		o.pendingGolden = &golden
 		o.mu.Unlock()
-		EmitDepsRestore(RestoreL2, cloneUrl, elapsedMs(), bootId)
+		EmitDepsRestore(RestoreL2, cloneUrl, elapsedMs(), bootId, pkgCache)
 		o.markInstallSucceeded(cfg)
 		return true
 	}
@@ -464,7 +467,7 @@ func (o *Orchestrator) stepInstallInner() bool {
 		// Reported, not silent: this is the path every Deno project takes, and
 		// without a line here "no data" and "the cache is irrelevant for this
 		// runtime" look identical in the log store.
-		EmitDepsRestore(RestoreNoInstall, cloneUrl, elapsedMs(), bootId)
+		EmitDepsRestore(RestoreNoInstall, cloneUrl, elapsedMs(), bootId, pkgCache)
 		o.markInstallSucceeded(cfg)
 		return true
 	}
@@ -475,7 +478,7 @@ func (o *Orchestrator) stepInstallInner() bool {
 		o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseInstallFailed, Error: errMsg})
 		return false
 	}
-	EmitDepsRestore(RestoreMiss, cloneUrl, elapsedMs(), bootId)
+	EmitDepsRestore(RestoreMiss, cloneUrl, elapsedMs(), bootId, pkgCache)
 	o.markInstallSucceeded(cfg)
 
 	// Not published yet: PublishPendingGolden runs off the probe's `running`

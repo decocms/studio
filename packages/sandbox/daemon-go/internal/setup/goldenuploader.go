@@ -21,11 +21,14 @@ package setup
 // (org, repo, lockfile) across the whole fleet.
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
+
+	"github.com/decocms/studio/sandbox-daemon/internal/telemetry"
 )
 
 // UploaderOpts configures one sweep of the node-local store.
@@ -203,6 +206,18 @@ func RunUploader(opts UploaderOpts, interval time.Duration, stop <-chan struct{}
 	sweep := func() {
 		started := time.Now()
 		s := UploadNodeGoldens(opts)
+		elapsed := time.Since(started)
+		// Unconditional, unlike the log line below: the log is for a human reading
+		// one node, the metric is for asking whether the tier is alive across the
+		// fleet, and "every node reported zero uploads" is exactly the answer that
+		// question needs. Cheap because it is one datapoint per node per interval.
+		telemetry.RecordGoldenSweep(context.Background(), elapsed.Milliseconds(), map[string]int{
+			"uploaded":      s.Uploaded,
+			"present":       s.Skipped,
+			"no-provenance": s.NoMeta,
+			"other-env":     s.OtherEnv,
+			"failed":        s.Failed,
+		})
 		// Silent when there was nothing to do: this runs on every node, forever,
 		// and a heartbeat per node per interval is noise that buries the lines
 		// that matter.
@@ -210,7 +225,7 @@ func RunUploader(opts UploaderOpts, interval time.Duration, stop <-chan struct{}
 			opts.log(fmt.Sprintf(
 				"[golden-uploader] swept %d golden(s) in %s: %d uploaded, %d already present, "+
 					"%d without provenance, %d from another env, %d failed",
-				s.Scanned, time.Since(started).Truncate(time.Millisecond),
+				s.Scanned, elapsed.Truncate(time.Millisecond),
 				s.Uploaded, s.Skipped, s.NoMeta, s.OtherEnv, s.Failed))
 		}
 	}

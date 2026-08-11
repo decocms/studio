@@ -23,40 +23,6 @@ function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
   } as TaskBoardItem;
 }
 
-describe("taskMatchesFilters — tag", () => {
-  const tag = (id: string, name: string) => ({
-    id,
-    name,
-    color: null,
-    createdBy: "user-1",
-    createdAt: new Date().toISOString(),
-  });
-
-  test("keeps a task carrying the filtered tag among others", () => {
-    expect(
-      taskMatchesFilters(
-        item({ tags: [tag("tag_report", "Report"), tag("tag_seo", "SEO")] }),
-        { ...EMPTY_FILTERS, tagId: "tag_seo" },
-      ),
-    ).toBe(true);
-  });
-
-  test("drops a task with other tags, or none at all", () => {
-    expect(
-      taskMatchesFilters(item({ tags: [tag("tag_report", "Report")] }), {
-        ...EMPTY_FILTERS,
-        tagId: "tag_seo",
-      }),
-    ).toBe(false);
-    expect(
-      taskMatchesFilters(item({ tags: [] }), {
-        ...EMPTY_FILTERS,
-        tagId: "tag_seo",
-      }),
-    ).toBe(false);
-  });
-});
-
 describe("taskMatchesFilters — due date", () => {
   test("'week' excludes a task that is already overdue", () => {
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -88,6 +54,43 @@ describe("taskMatchesFilters — due date", () => {
       taskMatchesFilters(item({ dueDate: in10Days }), {
         ...EMPTY_FILTERS,
         due: "week",
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("taskMatchesFilters — tags", () => {
+  const tag = (id: string) => ({
+    id,
+    name: id,
+    color: null,
+    createdBy: "user-1",
+    createdAt: new Date().toISOString(),
+  });
+
+  test("includes a task that has one of the selected tags", () => {
+    expect(
+      taskMatchesFilters(item({ tags: [tag("a"), tag("b")] }), {
+        ...EMPTY_FILTERS,
+        tags: ["b"],
+      }),
+    ).toBe(true);
+  });
+
+  test("excludes a task that has none of the selected tags", () => {
+    expect(
+      taskMatchesFilters(item({ tags: [tag("a")] }), {
+        ...EMPTY_FILTERS,
+        tags: ["b"],
+      }),
+    ).toBe(false);
+  });
+
+  test("excludes a task with no tags when a tag filter is active", () => {
+    expect(
+      taskMatchesFilters(item({ tags: [] }), {
+        ...EMPTY_FILTERS,
+        tags: ["b"],
       }),
     ).toBe(false);
   });

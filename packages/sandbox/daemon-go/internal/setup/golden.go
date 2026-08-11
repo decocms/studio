@@ -275,11 +275,16 @@ func pruneGoldens(cacheRoot string, ttl time.Duration, maxPerRepo int, now time.
 			if strings.HasPrefix(name.Name(), goldenTmpPrefix) {
 				continue // in-flight publish
 			}
-			info, err := name.Info()
+			lockDir := filepath.Join(repoDir, name.Name())
+			// TryRestoreGolden touches the mtime of <lockDir>/node_modules, not the
+			// lockDir itself — a rename never touches it again after publish, so
+			// reading the lockDir's own mtime here would make the TTL reap an
+			// actively-restored golden right out from under a running fleet.
+			info, err := os.Stat(filepath.Join(lockDir, "node_modules"))
 			if err != nil {
 				continue
 			}
-			entries = append(entries, entry{filepath.Join(repoDir, name.Name()), info.ModTime()})
+			entries = append(entries, entry{lockDir, info.ModTime()})
 		}
 		// Newest first; anything past the cap or older than the TTL is pruned.
 		sort.Slice(entries, func(i, j int) bool { return entries[i].mtime.After(entries[j].mtime) })

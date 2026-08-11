@@ -39,6 +39,7 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   Calendar,
+  Check,
   ChevronDown,
   Flag01,
   FilterLines,
@@ -46,7 +47,6 @@ import {
   User01,
 } from "@untitledui/icons";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
-import { useTags } from "@/hooks/use-tags";
 import { getInitials } from "@/lib/get-initials";
 import {
   PRIORITIES,
@@ -54,6 +54,7 @@ import {
   SUPER_AGENT_ASSIGNEE_ID,
   tagDotColor,
   type Member,
+  type OrgTag,
   type TaskBoardItem,
   type TaskBoardItemPriority,
 } from "./config";
@@ -68,15 +69,15 @@ export type TaskFilters = {
   assignee: string | null;
   priority: TaskBoardItemPriority | null;
   due: DueFilter | null;
-  /** An org tag id, or null for any tag. */
-  tagId: string | null;
+  /** Org tag ids — a task matches if it has at least one of these. */
+  tags: string[];
 };
 
 export const EMPTY_FILTERS: TaskFilters = {
   assignee: null,
   priority: null,
   due: null,
-  tagId: null,
+  tags: [],
 };
 
 function hasActiveFilters(f: TaskFilters): boolean {
@@ -84,7 +85,7 @@ function hasActiveFilters(f: TaskFilters): boolean {
     f.assignee !== null ||
     f.priority !== null ||
     f.due !== null ||
-    f.tagId !== null
+    f.tags.length > 0
   );
 }
 
@@ -93,7 +94,7 @@ function activeFilterCount(f: TaskFilters): number {
     (f.assignee !== null ? 1 : 0) +
     (f.priority !== null ? 1 : 0) +
     (f.due !== null ? 1 : 0) +
-    (f.tagId !== null ? 1 : 0)
+    (f.tags.length > 0 ? 1 : 0)
   );
 }
 
@@ -121,8 +122,6 @@ export function taskMatchesFilters(
     }
   }
   if (f.priority !== null && item.priority !== f.priority) return false;
-  if (f.tagId !== null && !item.tags.some((tag) => tag.id === f.tagId))
-    return false;
   if (f.due !== null) {
     if (f.due === "none") {
       if (item.dueDate) return false;
@@ -134,6 +133,10 @@ export function taskMatchesFilters(
       if (f.due === "today" && !isSameDay(t, now)) return false;
       if (f.due === "week" && (t < now || t > now + 7 * DAY_MS)) return false;
     }
+  }
+  if (f.tags.length > 0) {
+    const itemTagIds = item.tags.map((tag) => tag.id);
+    if (!f.tags.some((id) => itemTagIds.includes(id))) return false;
   }
   return true;
 }
@@ -379,80 +382,80 @@ function DueDateFilter({
   );
 }
 
-/**
- * Tag filter — the one control that renders nothing when the org has no tags
- * yet, so an empty board doesn't show a chip that can only say "Any tag". With
- * the reports import labelling every card it pushes (`Report` + the finding's
- * area: SEO, GEO, Performance …), this is how a board narrows to one area.
- */
 function TagFilter({
   value,
+  tags,
   onChange,
   block,
 }: {
-  value: string | null;
-  onChange: (next: string | null) => void;
+  value: string[];
+  tags: OrgTag[];
+  onChange: (next: string[]) => void;
   block?: boolean;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
-  const { data: orgTags = [] } = useTags();
-  if (orgTags.length === 0) return null;
-
-  const selected = orgTags.find((tag) => tag.id === value);
-  const triggerClass = chipClass(value !== null, block);
-  const select = (next: string | null) => {
-    onChange(next);
-    setOpen(false);
-  };
-
+  const toggle = (id: string) =>
+    onChange(
+      value.includes(id) ? value.filter((v) => v !== id) : [...value, id],
+    );
+  const label =
+    value.length === 0
+      ? t("taskBoard.taskFilters.tagsLabel")
+      : value.length === 1
+        ? (tags.find((tag) => tag.id === value[0])?.name ??
+          t("taskBoard.taskFilters.tagsLabel"))
+        : t("taskBoard.taskFilters.tagsSelectedCount", {
+            count: value.length,
+          });
+  const triggerClass = chipClass(value.length > 0, block);
+  const chevronClass = cn("shrink-0 opacity-60", block && "ml-auto");
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button type="button" className={triggerClass}>
-          {selected ? (
+          {value.length === 1 ? (
             <span
               className="size-2 shrink-0 rounded-full"
-              style={{ backgroundColor: tagDotColor(selected.color) }}
+              style={{
+                backgroundColor: tagDotColor(
+                  tags.find((tag) => tag.id === value[0])?.color,
+                ),
+              }}
             />
           ) : (
             <Tag01 size={14} className="shrink-0" />
           )}
-          <span className="max-w-[10rem] truncate">
-            {selected?.name ?? t("taskBoard.taskFilters.tagLabel")}
-          </span>
-          <ChevronDown
-            size={12}
-            className={cn("shrink-0 opacity-60", block && "ml-auto")}
-          />
+          <span className="max-w-[10rem] truncate">{label}</span>
+          <ChevronDown size={12} className={chevronClass} />
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-56 p-0">
         <Command>
           <CommandInput
-            placeholder={t("taskBoard.taskFilters.tagFilterPlaceholder")}
+            placeholder={t("taskBoard.taskFilters.tagsFilterPlaceholder")}
             className="h-9"
           />
           <CommandList>
             <CommandEmpty>
-              {t("taskBoard.taskFilters.tagNoTagsFound")}
+              {t("taskBoard.taskFilters.tagsNoTagsFound")}
             </CommandEmpty>
             <CommandGroup>
-              <CommandItem value="Any tag" onSelect={() => select(null)}>
-                {t("taskBoard.taskFilters.tagAnyTag")}
-              </CommandItem>
-              {orgTags.map((tag) => (
+              {tags.map((tag) => (
                 <CommandItem
                   key={tag.id}
                   value={tag.name}
-                  onSelect={() => select(tag.id)}
+                  onSelect={() => toggle(tag.id)}
                   className="gap-2"
                 >
                   <span
                     className="size-2 shrink-0 rounded-full"
                     style={{ backgroundColor: tagDotColor(tag.color) }}
                   />
-                  <span className="truncate">{tag.name}</span>
+                  <span className="flex-1 truncate">{tag.name}</span>
+                  {value.includes(tag.id) && (
+                    <Check size={14} className="shrink-0 text-foreground" />
+                  )}
                 </CommandItem>
               ))}
             </CommandGroup>
@@ -463,15 +466,17 @@ function TagFilter({
   );
 }
 
-/** The filter controls, shared by the inline bar and the mobile drawer. */
+/** The four filter controls, shared by the inline bar and the mobile drawer. */
 function FilterControls({
   filters,
   members,
+  tags,
   onChange,
   block,
 }: {
   filters: TaskFilters;
   members: Member[];
+  tags: OrgTag[];
   onChange: (next: TaskFilters) => void;
   block?: boolean;
 }) {
@@ -495,8 +500,9 @@ function FilterControls({
       />
       <TagFilter
         block={block}
-        value={filters.tagId}
-        onChange={(tagId) => onChange({ ...filters, tagId })}
+        value={filters.tags}
+        tags={tags}
+        onChange={(tags) => onChange({ ...filters, tags })}
       />
     </>
   );
@@ -506,10 +512,12 @@ function FilterControls({
 export function TaskFiltersBar({
   filters,
   members,
+  tags,
   onChange,
 }: {
   filters: TaskFilters;
   members: Member[];
+  tags: OrgTag[];
   onChange: (next: TaskFilters) => void;
 }) {
   const t = useT();
@@ -519,7 +527,12 @@ export function TaskFiltersBar({
         size={16}
         className="mr-0.5 shrink-0 text-muted-foreground"
       />
-      <FilterControls filters={filters} members={members} onChange={onChange} />
+      <FilterControls
+        filters={filters}
+        members={members}
+        tags={tags}
+        onChange={onChange}
+      />
       {hasActiveFilters(filters) && (
         <button
           type="button"
@@ -541,10 +554,12 @@ export function TaskFiltersBar({
 export function TaskFiltersDrawer({
   filters,
   members,
+  tags,
   onChange,
 }: {
   filters: TaskFilters;
   members: Member[];
+  tags: OrgTag[];
   onChange: (next: TaskFilters) => void;
 }) {
   const t = useT();
@@ -573,6 +588,7 @@ export function TaskFiltersDrawer({
             block
             filters={filters}
             members={members}
+            tags={tags}
             onChange={onChange}
           />
         </div>
