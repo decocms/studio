@@ -306,6 +306,7 @@ function AssigneeDisplay({
 export function TaskBoardPage() {
   const t = useT();
   const { items, isLoading } = useTaskBoardItems();
+  const { data: orgTags = [] } = useTags();
   const actions = useTaskBoardItemActions();
   const reportsOnly = useReportsOnly();
   // Handing a task to the Super Agent makes it open a PR — so it needs at
@@ -549,6 +550,7 @@ export function TaskBoardPage() {
                 <TaskFiltersDrawer
                   filters={filters}
                   members={members}
+                  tags={orgTags}
                   onChange={setFilters}
                 />
               </div>
@@ -556,6 +558,7 @@ export function TaskBoardPage() {
                 <TaskFiltersBar
                   filters={filters}
                   members={members}
+                  tags={orgTags}
                   onChange={setFilters}
                 />
               </div>

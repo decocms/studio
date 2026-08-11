@@ -14,6 +14,7 @@ function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     assignedBy: null,
     dueDate: null,
     threads: [],
+    tags: [],
     createdBy: "user-1",
     createdAt: new Date().toISOString(),
     updatedBy: "user-1",
@@ -53,6 +54,43 @@ describe("taskMatchesFilters — due date", () => {
       taskMatchesFilters(item({ dueDate: in10Days }), {
         ...EMPTY_FILTERS,
         due: "week",
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("taskMatchesFilters — tags", () => {
+  const tag = (id: string) => ({
+    id,
+    name: id,
+    color: null,
+    createdBy: "user-1",
+    createdAt: new Date().toISOString(),
+  });
+
+  test("includes a task that has one of the selected tags", () => {
+    expect(
+      taskMatchesFilters(item({ tags: [tag("a"), tag("b")] }), {
+        ...EMPTY_FILTERS,
+        tags: ["b"],
+      }),
+    ).toBe(true);
+  });
+
+  test("excludes a task that has none of the selected tags", () => {
+    expect(
+      taskMatchesFilters(item({ tags: [tag("a")] }), {
+        ...EMPTY_FILTERS,
+        tags: ["b"],
+      }),
+    ).toBe(false);
+  });
+
+  test("excludes a task with no tags when a tag filter is active", () => {
+    expect(
+      taskMatchesFilters(item({ tags: [] }), {
+        ...EMPTY_FILTERS,
+        tags: ["b"],
       }),
     ).toBe(false);
   });

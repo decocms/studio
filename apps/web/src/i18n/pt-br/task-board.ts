@@ -197,6 +197,10 @@ export const taskBoard = {
   "taskBoard.taskFilters.filterDrawerTitle": "Filtros",
   "taskBoard.taskFilters.priorityAnyPriority": "Qualquer prioridade",
   "taskBoard.taskFilters.priorityLabel": "Prioridade",
+  "taskBoard.taskFilters.tagsLabel": "Tags",
+  "taskBoard.taskFilters.tagsSelectedCount": "{count} tags",
+  "taskBoard.taskFilters.tagsFilterPlaceholder": "Filtrar por tag…",
+  "taskBoard.taskFilters.tagsNoTagsFound": "Nenhuma tag encontrada.",
   "taskBoard.rerun.title": "Executar esta tarefa de novo?",
   "taskBoard.rerun.description":
     "O Super Agent vai iniciar uma nova execução nesta tarefa.",
