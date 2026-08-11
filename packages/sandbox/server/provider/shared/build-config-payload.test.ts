@@ -87,6 +87,8 @@ describe("buildConfigPayload", () => {
       cloneUrl: "https://github.com/acme/widgets.git",
       repoName: "acme/widgets",
       branch: "main",
+      // Always present, even with nothing configured — see the revocation tests.
+      submoduleCredentials: [],
     });
   });
 
@@ -107,7 +109,10 @@ describe("buildConfigPayload", () => {
     ]);
   });
 
-  it("omits submoduleCredentials when the array is empty", () => {
+  // Inverted deliberately: this used to omit the key, which the daemon reads as
+  // "keep current" — so deleting your last credential row never revoked the PAT
+  // on a live pod, and a re-bootstrapped pod kept the previous config's tokens.
+  it("sends an empty submoduleCredentials array so a deletion revokes", () => {
     const payload = buildConfigPayload({
       runtime: "node",
       packageManager: null,
@@ -119,6 +124,20 @@ describe("buildConfigPayload", () => {
       },
     });
 
-    expect(payload?.git?.repository).not.toHaveProperty("submoduleCredentials");
+    expect(payload?.git?.repository.submoduleCredentials).toEqual([]);
+  });
+
+  it("sends an empty array when the caller omits the field entirely", () => {
+    const payload = buildConfigPayload({
+      runtime: "node",
+      packageManager: null,
+      repo: {
+        cloneUrl: "https://github.com/acme/widgets.git",
+        userName: "Jane",
+        userEmail: "jane@example.com",
+      },
+    });
+
+    expect(payload?.git?.repository.submoduleCredentials).toEqual([]);
   });
 });

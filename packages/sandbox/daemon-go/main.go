@@ -760,6 +760,12 @@ func main() {
 	repoDir := filepath.Join(appRoot, "repo")
 	tmpDir := filepath.Join(appRoot, "tmp")
 	os.MkdirAll(repoDir, 0o755)
+	// 0o700 and created up front: the submodule fetch parks a git-credentials
+	// file here, and it must not land in a dir the daemon merely hoped existed.
+	os.MkdirAll(tmpDir, 0o700)
+	// Before the orchestrator can run: clears a credentials file a previous boot
+	// was SIGKILLed before deleting.
+	setup.SweepSubmoduleCredentials(tmpDir)
 
 	var offloadHosts []string
 	for _, h := range strings.Split(os.Getenv("OFFLOAD_ALLOWED_HOSTS"), ",") {

@@ -136,11 +136,22 @@ describe("readValidatedSubmoduleCredentials", () => {
     ]);
   });
 
-  it("returns null when every entry is invalid", () => {
+  // Inverted deliberately: "the user emptied the list" must not collapse into
+  // the same value as "never configured". The daemon reads an absent field as
+  // "keep current", so returning null here left a revoked PAT live in the pod.
+  it("returns an empty array when the list is present but empty", () => {
+    expect(
+      readValidatedSubmoduleCredentials({
+        runtime: { submoduleCredentials: [] },
+      }),
+    ).toEqual([]);
+  });
+
+  it("returns an empty array when every entry is invalid", () => {
     expect(
       readValidatedSubmoduleCredentials({
         runtime: { submoduleCredentials: [{ host: "", secretId: "" }] },
       }),
-    ).toBeNull();
+    ).toEqual([]);
   });
 });
