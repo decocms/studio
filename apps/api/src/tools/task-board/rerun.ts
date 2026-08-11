@@ -45,6 +45,10 @@ import { cancelThreadGateHead } from "@/dispatch-queue/thread-gate-queue";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
+import {
+  ensureTaskExecutionAllowed,
+  userInitiatedTaskQuotaConfig,
+} from "@/billing/task-quota";
 
 /** Recorded on a thread this re-run took over. */
 const SUPERSEDED_FAILURE_REASON = "Superseded by a manual re-run of this task";
@@ -183,6 +187,9 @@ export const TASK_BOARD_ITEM_RERUN = defineTool({
       );
     }
 
+    // Paywall before any write: a refused re-run must leave the card untouched.
+    await ensureTaskExecutionAllowed(ctx, item, userInitiatedTaskQuotaConfig());
+
     // Take over: fail every thread still holding the task open. `failIfNotTerminal`
     // rather than `markRunFailed` because a `requires_action` thread has to be
     // closed out too — it is non-terminal to `shouldAdvanceToReview`, so leaving
@@ -208,8 +215,8 @@ export const TASK_BOARD_ITEM_RERUN = defineTool({
     // In Progress before dispatch, so the card reads as running the moment the
     // board refreshes rather than sitting in its old lane until the run's first
     // chunk lands. `enqueueSuperAgentForTask` claims quota itself (idempotent
-    // per task, capped per task by `maxRunsPerTask`) and throws
-    // `TaskQuotaError` when the cap is hit — which must surface, so this is NOT
+    // per task, and exempt from `maxRunsPerTask`) and throws
+    // `TaskQuotaError` on an empty period bucket — which must surface, so NOT
     // best-effort: a swallowed failure here is exactly the silent no-op this
     // tool exists to remove.
     const updated = await ctx.storage.taskBoard.update(
@@ -227,7 +234,7 @@ export const TASK_BOARD_ITEM_RERUN = defineTool({
     });
     emitTaskBoardUpdated(organizationId, updated);
 
-    await enqueueSuperAgentForTask(ctx, updated);
+    await enqueueSuperAgentForTask(ctx, updated, { userInitiated: true });
 
     return { status: updated.status, supersededThreadIds };
   },

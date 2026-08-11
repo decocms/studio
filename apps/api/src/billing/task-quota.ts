@@ -173,6 +173,23 @@ export function taskQuotaConfig(): TaskQuotaConfig {
   };
 }
 
+/**
+ * The config for a re-run a HUMAN asked for (`TASK_BOARD_ITEM_RERUN`).
+ *
+ * `maxRunsPerTask` bounds AUTOMATIC re-dispatch — a re-delegation loop, a review
+ * bounce, the sweeper's infrastructure retries — and those spend the same tally.
+ * A prod card burned all 5 on transport failures and the machine's own retry, so
+ * Re-run answered "This task reached its limit" and the human had no way to run
+ * the task at all. Being unable to retry is worse than an extra subsidized run:
+ * the period bucket still gates a released claim, and nothing here is automatic.
+ *
+ * ponytail: known ceiling — a still-`held` claim now funds unlimited MANUAL
+ * re-runs. Add a per-task manual cap if anyone ever sits on the button.
+ */
+export function userInitiatedTaskQuotaConfig(): TaskQuotaConfig {
+  return { ...taskQuotaConfig(), maxRunsPerTask: Number.POSITIVE_INFINITY };
+}
+
 /** The org a task's quota belongs to is the TASK's org, never the ambient
  *  context's — a ctx/task mismatch must not claim under the wrong org. */
 interface GatedTask {
