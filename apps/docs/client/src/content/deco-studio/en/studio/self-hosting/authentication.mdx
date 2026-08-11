@@ -17,16 +17,53 @@ deco Studio uses Better Auth and supports:
 
 ## Configure auth (self-hosting)
 
-Self-hosted deployments load an `auth-config.json` file at startup (see your deployment guides for mounting details).
+Self-hosted deployments are configured entirely through `AUTH_*` environment variables (schema: `apps/api/src/auth/auth-env.ts`). There is no config file to mount — set the variables below on the `studio` service/container.
 
 <Callout type="warning">
-  Keep provider secrets out of Git. In production, use Secrets management (Kubernetes Secrets, External Secrets Operator, etc.).
+  Keep provider secrets out of Git. In production, use Secrets management (Kubernetes Secrets, External Secrets Operator, etc.), not plain `.env` files.
 </Callout>
 
 ## Key environment variables
 
 - `BETTER_AUTH_SECRET` (required)
 - `BETTER_AUTH_URL` / `BASE_URL` (recommended to set explicitly in production)
+
+### Email/password
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `AUTH_EMAIL_PASSWORD_ENABLED` | `true` | Set to `false` to disable email/password sign-in. |
+
+### Social login
+
+| Variable | Description |
+| --- | --- |
+| `AUTH_GOOGLE_CLIENT_ID` / `AUTH_GOOGLE_CLIENT_SECRET` | Google OAuth app credentials. |
+| `AUTH_GITHUB_CLIENT_ID` / `AUTH_GITHUB_CLIENT_SECRET` | GitHub OAuth app credentials. |
+
+### Email providers (invites, reset password, magic link, OTP)
+
+| Variable | Description |
+| --- | --- |
+| `AUTH_RESEND_API_KEY` / `AUTH_RESEND_FROM_EMAIL` | Resend provider credentials. |
+| `AUTH_SENDGRID_API_KEY` / `AUTH_SENDGRID_FROM_EMAIL` | SendGrid provider credentials. |
+| `AUTH_INVITE_EMAIL_PROVIDER` | `resend` or `sendgrid` — which provider sends org invite emails. |
+| `AUTH_RESET_PASSWORD_EMAIL_PROVIDER` | `resend` or `sendgrid` — which provider sends password reset emails. |
+
+### Magic link and email OTP
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `AUTH_MAGIC_LINK_ENABLED` | `false` | Enable passwordless sign-in via emailed link. |
+| `AUTH_MAGIC_LINK_EMAIL_PROVIDER` | — | `resend` or `sendgrid`. Required if magic link is enabled. |
+| `AUTH_EMAIL_OTP_ENABLED` | `false` | Enable passwordless sign-in via emailed one-time code. |
+| `AUTH_EMAIL_OTP_EMAIL_PROVIDER` | — | `resend` or `sendgrid`. Required if email OTP is enabled. |
+| `AUTH_EMAIL_OTP_LENGTH` | provider default | Code length. |
+| `AUTH_EMAIL_OTP_EXPIRES_IN` | provider default | Code expiry, in seconds. |
+
+<Callout type="info">
+  Any `*_EMAIL_PROVIDER` variable must reference a provider that has its API key set (`AUTH_RESEND_API_KEY` or `AUTH_SENDGRID_API_KEY`) — the app fails validation at startup otherwise.
+</Callout>
 
 ## Deployment-wide SSO (OIDC)
 
@@ -89,9 +126,9 @@ so only users from your domain can sign in.
 ### Social login vs. SSO
 
 These env vars wire up **OIDC SSO** (the `@better-auth/sso` plugin). They are
-separate from the **social login** buttons configured via `auth-config.json`
-(`socialProviders.google`, `socialProviders.github`) or via
-`AUTH_GOOGLE_CLIENT_ID` / `AUTH_GITHUB_CLIENT_ID`. Social login lets users
-authenticate with their personal account; deployment-wide SSO routes everyone
-matching `AUTH_SSO_DOMAIN` through the corporate IdP.
+separate from the **social login** buttons configured via
+`AUTH_GOOGLE_CLIENT_ID` / `AUTH_GITHUB_CLIENT_ID` (see [Social
+login](#social-login) above). Social login lets users authenticate with
+their personal account; deployment-wide SSO routes everyone matching
+`AUTH_SSO_DOMAIN` through the corporate IdP.
 
