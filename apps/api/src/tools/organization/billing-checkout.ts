@@ -9,6 +9,7 @@ import { createOrgCheckoutSession } from "../../billing/stripe-api";
 import { getPublicUrl } from "../../core/server-constants";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
+import { captureOrgEvent } from "@/posthog";
 
 export const ORGANIZATION_BILLING_CHECKOUT_START = defineTool({
   name: "ORGANIZATION_BILLING_CHECKOUT_START",
@@ -57,6 +58,12 @@ export const ORGANIZATION_BILLING_CHECKOUT_START = defineTool({
       organizationId,
       successUrl: `${membersUrl}?checkout=success`,
       cancelUrl: `${membersUrl}?checkout=canceled`,
+    });
+    // Intent half of the funnel — completion (subscription_started) arrives via webhook.
+    captureOrgEvent({
+      event: "subscription_checkout_started",
+      organizationId,
+      ...(ctx.auth?.user?.id ? { userId: ctx.auth.user.id } : {}),
     });
     return { url };
   },
