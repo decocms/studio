@@ -625,16 +625,18 @@ export class TaskBoardStorage {
   ): Promise<{ kind: string | null; errorText: string | null } | null> {
     const row = await this.db
       .selectFrom("threads as t")
-      .leftJoin(
+      // LATERAL: uncorrelated, `LIMIT 1` took the newest error part in the TABLE.
+      .leftJoinLateral(
         (eb) =>
           eb
             .selectFrom("thread_message_parts as p")
-            .select(["p.thread_id", "p.payload"])
+            .select("p.payload")
+            .whereRef("p.thread_id", "=", "t.id")
             .where("p.kind", "=", "error")
             .orderBy("p.created_at", "desc")
             .limit(1)
             .as("err"),
-        (join) => join.onRef("err.thread_id", "=", "t.id"),
+        (join) => join.onTrue(),
       )
       .select(["t.status", "t.failure_kind as kind", "err.payload as payload"])
       .where("t.id", "=", threadId)
