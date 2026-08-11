@@ -209,8 +209,10 @@ export const settings = {
   "settings.buckets.temporarySessionOption":
     "Sess\u00e3o tempor\u00e1ria (STS, auto-atualizada)",
   "settings.connectForms.apiKeyField": "Chave API",
+  "settings.connectForms.apiKeyRequired": "A chave API é obrigatória",
   "settings.connectForms.baseUrlField": "URL Base",
   "settings.connectForms.baseUrlPlaceholder": "http://localhost:4000/v1",
+  "settings.connectForms.baseUrlRequired": "A URL base é obrigatória",
   "settings.connectForms.cancel": "Cancelar",
   "settings.connectForms.connectionSavedSuccess":
     "Conex\u00e3o salva com sucesso",

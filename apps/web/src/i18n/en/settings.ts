@@ -198,8 +198,10 @@ export const settings = {
   "settings.buckets.temporarySessionOption":
     "Temporary session (STS, auto-refreshed)",
   "settings.connectForms.apiKeyField": "API Key",
+  "settings.connectForms.apiKeyRequired": "API key is required",
   "settings.connectForms.baseUrlField": "Base URL",
   "settings.connectForms.baseUrlPlaceholder": "http://localhost:4000/v1",
+  "settings.connectForms.baseUrlRequired": "Base URL is required",
   "settings.connectForms.cancel": "Cancel",
   "settings.connectForms.connectionSavedSuccess":
     "Connection saved successfully",
