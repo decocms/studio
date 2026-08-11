@@ -37,13 +37,9 @@ import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
 import { resolveTier } from "@/core/resolve-tier";
 import type { StudioContext } from "@/core/studio-context";
 import { enqueueThreadRun } from "@/dispatch-queue";
-import { isHostedDecopilotRuntime } from "@/harnesses/decopilot/hosted-runtime";
+import { isNudgeableRuntime } from "@/harnesses/decopilot/hosted-runtime";
 import { shouldAdvanceToReview } from "@/storage/task-board";
-import type {
-  TaskBoardItem,
-  TaskBoardItemThreadRef,
-  Thread,
-} from "@/storage/types";
+import type { TaskBoardItem, Thread } from "@/storage/types";
 import { getDecopilotId } from "@decocms/shared/sdk";
 import { advanceTasksToReviewOnThreadFinish } from "./run-reactions";
 import { isThreadRunStale } from "@/tools/thread/helpers";
@@ -69,23 +65,33 @@ export function decideStallAction(thread: {
   if (
     thread.status === "failed" &&
     thread.messageStorageVersion === 2 &&
-    isHostedDecopilotRuntime(thread)
+    isNudgeableRuntime(thread)
   ) {
     return "nudge";
   }
   return "none";
 }
 
-const NUDGE_PROMPT = [
-  "This task is still In Progress on the board and your last run ended without finishing it.",
-  "",
-  "Look at what you already did, then either:",
-  "- finish the remaining work (and open the PR, if it needed code changes),",
-  "- or, if it's actually done, say so in one line — the board moves the card for you,",
-  "- or, if you're blocked on something only a human knows, call the `user_ask` tool.",
-  "",
-  "Don't start over and don't redo work you already committed or pushed.",
-].join("\n");
+/**
+ * The nudge turn. Harness-aware in one line only: `user_ask` is a Decopilot
+ * built-in, so naming it at a sandbox-hosted run would send it hunting for a
+ * tool it doesn't have. Everything else holds for both — a re-prompted thread
+ * keeps its branch, so its previous run's commits are already in the checkout.
+ */
+export function nudgePrompt(harnessId: string | null): string {
+  return [
+    "This task is still In Progress on the board and your last run ended without finishing it.",
+    "",
+    "Look at what you already did (`git log`, `git status`, and the messages above), then either:",
+    "- finish the remaining work (and open the PR, if it needed code changes),",
+    "- or, if it's actually done, say so in one line — the board moves the card for you,",
+    harnessId === "decopilot"
+      ? "- or, if you're blocked on something only a human knows, call the `user_ask` tool."
+      : "- or, if you're blocked on something only a human knows, say what you need and stop.",
+    "",
+    "Don't start over and don't redo work you already committed or pushed. You are on the same branch as before — push to it and update your existing pull request rather than opening a second one.",
+  ].join("\n");
+}
 
 /**
  * Send one user turn onto a failed run's thread. Everything here is keyed off
@@ -97,16 +103,16 @@ const NUDGE_PROMPT = [
 async function nudgeThread(
   ctx: StudioContext,
   item: TaskBoardItem,
-  thread: TaskBoardItemThreadRef,
+  thread: Thread,
 ): Promise<void> {
   const organizationId = item.organizationId;
   const model = await resolveTier(ctx, "smart");
-  const agentId = thread.virtualMcpId ?? getDecopilotId(organizationId);
+  const agentId = thread.virtual_mcp_id ?? getDecopilotId(organizationId);
 
   const requestMessage = {
-    id: `stall-nudge-${item.id}-${thread.threadId}`,
+    id: `stall-nudge-${item.id}-${thread.id}`,
     role: "user" as const,
-    parts: [{ type: "text" as const, text: NUDGE_PROMPT }],
+    parts: [{ type: "text" as const, text: nudgePrompt(thread.harness_id) }],
   };
 
   // Persist the user turn before dispatch, for the same ordering reason as
@@ -115,13 +121,13 @@ async function nudgeThread(
   await new PartEmitter({
     storage: ctx.storage.threads.messageParts(),
     orgId: organizationId,
-    threadId: thread.threadId,
-    runId: thread.threadId,
+    threadId: thread.id,
+    runId: thread.id,
   }).emitRequestMessage(requestMessage);
 
   await enqueueThreadRun(
     {
-      threadId: thread.threadId,
+      threadId: thread.id,
       source: "background-tool",
       request: {
         messages: [requestMessage],
@@ -135,13 +141,24 @@ async function nudgeThread(
         mode: "default",
         organizationId,
         userId: item.assignedBy ?? item.createdBy,
-        harnessId: "decopilot",
+        // The thread's OWN runtime, not a hardcoded Decopilot: a Super Agent
+        // task on an org with a repo runs `claude-code`, and dispatching it as
+        // Decopilot would answer the nudge with a different agent than the one
+        // that did the work.
+        harnessId:
+          thread.harness_id === "claude-code" ? "claude-code" : "decopilot",
         sandboxProviderKind: "agent-sandbox",
-        taskId: thread.threadId,
+        // The branch the failed run was dispatched on, so the re-prompt lands
+        // in a sandbox on the SAME checkout (`resolveSandboxBranch` needs the
+        // explicit bare `thread:<id>` key for a run that started repo-less and
+        // bound one mid-run with `TASK_ADD_REPO`; every other case re-derives
+        // to the same value).
+        ...(thread.branch ? { branch: thread.branch } : {}),
+        taskId: thread.id,
         runMetadata: taskRunMetadata(item),
       },
     },
-    { workflowID: `stall-nudge:${item.id}:${thread.threadId}` },
+    { workflowID: `stall-nudge:${item.id}:${thread.id}` },
   );
 }
 
@@ -153,15 +170,18 @@ async function nudgeThread(
 async function resolveStallAction(
   ctx: StudioContext,
   threadId: string,
-): Promise<StallAction> {
+): Promise<{ action: StallAction; thread: Thread | null }> {
   const thread = await ctx.storage.threads.get(threadId);
-  if (!thread) return "none";
-  return decideStallAction({
-    status: thread.status,
-    messageStorageVersion: thread.message_storage_version,
-    harnessId: thread.harness_id,
-    sandboxProviderKind: thread.sandbox_provider_kind,
-  });
+  if (!thread) return { action: "none", thread: null };
+  return {
+    action: decideStallAction({
+      status: thread.status,
+      messageStorageVersion: thread.message_storage_version,
+      harnessId: thread.harness_id,
+      sandboxProviderKind: thread.sandbox_provider_kind,
+    }),
+    thread,
+  };
 }
 
 /** Recorded on a thread whose run never reported progress and can no longer be
@@ -265,8 +285,11 @@ export async function recoverStalledTasks(
     const thread = item.threads.find((t) => t.hasMessages);
     if (!thread) continue;
     try {
-      const action = await resolveStallAction(ctx, thread.threadId);
-      if (action === "none") continue;
+      const { action, thread: row } = await resolveStallAction(
+        ctx,
+        thread.threadId,
+      );
+      if (action === "none" || !row) continue;
       if (action === "advance") {
         await advanceTasksToReviewOnThreadFinish(
           ctx.storage.taskBoard,
@@ -275,7 +298,7 @@ export async function recoverStalledTasks(
           ctx.storage.organizationBilling,
         );
       } else {
-        await nudgeThread(ctx, item, thread);
+        await nudgeThread(ctx, item, row);
       }
     } catch (err) {
       console.error(`[task-board] stall recovery failed for ${item.id}`, err);
