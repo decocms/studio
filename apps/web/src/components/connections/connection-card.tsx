@@ -42,6 +42,18 @@ export function ConnectionCard({
         className,
       )}
       onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
     >
       <div className="flex flex-col flex-1">
         {/* Top Section: Icon, Title, Description, Header Actions */}
