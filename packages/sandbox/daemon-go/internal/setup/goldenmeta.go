@@ -36,9 +36,14 @@ type GoldenMeta struct {
 	// Owning organization. Empty means unknown, which makes the golden
 	// ineligible for a shared store.
 	OrgId string `json:"orgId"`
-	// Credential-stripped clone URL. Not used for keying — the repo hash in the
+	// Clone URL WITHOUT credentials. Not used for keying — the repo hash in the
 	// path is — but a hash is unreadable in an incident, and this is the only
 	// place the mapping exists outside the pod that wrote it.
+	//
+	// WriteGoldenMeta strips it, and that is load-bearing rather than tidy: a
+	// clone URL carries a GitHub App token, this file lives on a hostPath shared
+	// by every sandbox on the node, and it is chowned to the same uid the tenant
+	// runs as. Persisting the raw URL hands one tenant another tenant's token.
 	CloneUrl string `json:"cloneUrl,omitempty"`
 	// Package manager the tree was installed with, mirroring the directory name.
 	// Redundant on purpose: it makes a meta file self-describing when read alone.
@@ -64,6 +69,9 @@ func WriteGoldenMeta(goldenNodeModules string, meta GoldenMeta) {
 	if meta.OrgId == "" {
 		return // nothing worth recording; absence is the signal
 	}
+	// Strip here, not at every call site: this is the only place the URL is
+	// persisted, so one guard covers every caller present and future.
+	meta.CloneUrl = stripCredentials(meta.CloneUrl)
 	buf, err := json.Marshal(meta)
 	if err != nil {
 		return
