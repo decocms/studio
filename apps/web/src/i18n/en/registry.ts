@@ -53,7 +53,7 @@ export const registry = {
   "registry.imageUpload.orPasteImageUrl": "Or paste an image URL",
   "registry.imageUpload.previewAlt": "Preview",
   "registry.imageUpload.remove": "Remove",
-  "registry.imageUpload.supportedFormats": "PNG, JPG, SVG up to 2MB",
+  "registry.imageUpload.supportedFormats": "PNG, JPG, SVG up to 5MB",
   "registry.imageUpload.uploadingImage": "Uploading image...",
   "registry.imageUpload.urlPlaceholder": "https://example.com/logo.png",
   "registry.monitorConfiguration.aboutLabel": "About {label}",
