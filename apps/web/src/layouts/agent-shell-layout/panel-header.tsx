@@ -64,8 +64,6 @@ type MainPanelHeaderCtx = {
   setSlotEl: (el: HTMLDivElement | null) => void;
   endActionsEl: HTMLDivElement | null;
   setEndActionsEl: (el: HTMLDivElement | null) => void;
-  startActionsEl: HTMLDivElement | null;
-  setStartActionsEl: (el: HTMLDivElement | null) => void;
 };
 
 const MainPanelHeaderContext = createContext<MainPanelHeaderCtx | null>(null);
@@ -73,9 +71,6 @@ const MainPanelHeaderContext = createContext<MainPanelHeaderCtx | null>(null);
 export function MainPanelHeaderProvider({ children }: { children: ReactNode }) {
   const [slotEl, setSlotEl] = useState<HTMLDivElement | null>(null);
   const [endActionsEl, setEndActionsEl] = useState<HTMLDivElement | null>(null);
-  const [startActionsEl, setStartActionsEl] = useState<HTMLDivElement | null>(
-    null,
-  );
   return (
     <MainPanelHeaderContext
       value={{
@@ -83,8 +78,6 @@ export function MainPanelHeaderProvider({ children }: { children: ReactNode }) {
         setSlotEl,
         endActionsEl,
         setEndActionsEl,
-        startActionsEl,
-        setStartActionsEl,
       }}
     >
       {children}
@@ -113,17 +106,6 @@ export function MainPanelHeaderEndSlot() {
 }
 
 /**
- * Leading portal target — the header's first slot, where the Chat toggle
- * lives on sandbox projects. Fast Preview removes the chat, and Preview
- * portals its CMS toggle here instead so the primary editing action takes
- * the primary position.
- */
-export function MainPanelHeaderStartSlot() {
-  const ctx = use(MainPanelHeaderContext);
-  return <div ref={ctx?.setStartActionsEl} className="contents" />;
-}
-
-/**
  * Portal `children` into the main panel header slot. Returns `null` when the
  * slot node isn't mounted yet; consumers that need an inline fallback should
  * read `useMainPanelHeaderSlot()` directly.
@@ -143,17 +125,6 @@ export function MainPanelHeaderEndPortal({
   const ctx = use(MainPanelHeaderContext);
   if (!ctx?.endActionsEl) return null;
   return createPortal(children, ctx.endActionsEl);
-}
-
-/** Portal `children` into the leading slot (Fast Preview's CMS toggle). */
-export function MainPanelHeaderStartPortal({
-  children,
-}: {
-  children: ReactNode;
-}) {
-  const ctx = use(MainPanelHeaderContext);
-  if (!ctx?.startActionsEl) return null;
-  return createPortal(children, ctx.startActionsEl);
 }
 
 /**
