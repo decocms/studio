@@ -17,16 +17,53 @@ O deco Studio usa Better Auth e suporta:
 
 ## Configurar autenticação (self-hosting)
 
-Implantações self-hosted carregam um arquivo `auth-config.json` na inicialização (consulte seus guias de deploy para detalhes de montagem).
+Implantações self-hosted são configuradas inteiramente por variáveis de ambiente `AUTH_*` (schema: `apps/api/src/auth/auth-env.ts`). Não há arquivo de configuração para montar — defina as variáveis abaixo no serviço/container `studio`.
 
 <Callout type="warning">
-  Mantenha os secrets dos provedores fora do Git. Em produção, use gerenciamento de Secrets (Kubernetes Secrets, External Secrets Operator, etc.).
+  Mantenha os secrets dos provedores fora do Git. Em produção, use gerenciamento de Secrets (Kubernetes Secrets, External Secrets Operator, etc.), não arquivos `.env` simples.
 </Callout>
 
 ## Variáveis de ambiente principais
 
 - `BETTER_AUTH_SECRET` (obrigatório)
 - `BETTER_AUTH_URL` / `BASE_URL` (recomendado definir explicitamente em produção)
+
+### Email/senha
+
+| Variável | Padrão | Descrição |
+| --- | --- | --- |
+| `AUTH_EMAIL_PASSWORD_ENABLED` | `true` | Defina como `false` para desabilitar o login por email/senha. |
+
+### Login social
+
+| Variável | Descrição |
+| --- | --- |
+| `AUTH_GOOGLE_CLIENT_ID` / `AUTH_GOOGLE_CLIENT_SECRET` | Credenciais do app OAuth do Google. |
+| `AUTH_GITHUB_CLIENT_ID` / `AUTH_GITHUB_CLIENT_SECRET` | Credenciais do app OAuth do GitHub. |
+
+### Provedores de email (convites, reset de senha, magic link, OTP)
+
+| Variável | Descrição |
+| --- | --- |
+| `AUTH_RESEND_API_KEY` / `AUTH_RESEND_FROM_EMAIL` | Credenciais do provedor Resend. |
+| `AUTH_SENDGRID_API_KEY` / `AUTH_SENDGRID_FROM_EMAIL` | Credenciais do provedor SendGrid. |
+| `AUTH_INVITE_EMAIL_PROVIDER` | `resend` ou `sendgrid` — qual provedor envia os emails de convite para a organização. |
+| `AUTH_RESET_PASSWORD_EMAIL_PROVIDER` | `resend` ou `sendgrid` — qual provedor envia os emails de reset de senha. |
+
+### Magic link e email OTP
+
+| Variável | Padrão | Descrição |
+| --- | --- | --- |
+| `AUTH_MAGIC_LINK_ENABLED` | `false` | Habilita login sem senha via link enviado por email. |
+| `AUTH_MAGIC_LINK_EMAIL_PROVIDER` | — | `resend` ou `sendgrid`. Obrigatório se o magic link estiver habilitado. |
+| `AUTH_EMAIL_OTP_ENABLED` | `false` | Habilita login sem senha via código único enviado por email. |
+| `AUTH_EMAIL_OTP_EMAIL_PROVIDER` | — | `resend` ou `sendgrid`. Obrigatório se o email OTP estiver habilitado. |
+| `AUTH_EMAIL_OTP_LENGTH` | padrão do provedor | Tamanho do código. |
+| `AUTH_EMAIL_OTP_EXPIRES_IN` | padrão do provedor | Expiração do código, em segundos. |
+
+<Callout type="info">
+  Qualquer variável `*_EMAIL_PROVIDER` deve referenciar um provedor com a API key definida (`AUTH_RESEND_API_KEY` ou `AUTH_SENDGRID_API_KEY`) — caso contrário o app falha na validação na inicialização.
+</Callout>
 
 ## SSO no deployment inteiro (OIDC)
 
@@ -91,8 +128,8 @@ organização para que apenas usuários do seu domínio consigam logar.
 ### Login social vs. SSO
 
 Essas envs configuram **SSO via OIDC** (plugin `@better-auth/sso`). São
-diferentes dos botões de **login social** configurados via `auth-config.json`
-(`socialProviders.google`, `socialProviders.github`) ou via
-`AUTH_GOOGLE_CLIENT_ID` / `AUTH_GITHUB_CLIENT_ID`. Login social deixa os
-usuários autenticarem com suas contas pessoais; o SSO de deployment inteiro
-roteia todo mundo que casar com `AUTH_SSO_DOMAIN` para o IdP corporativo.
+diferentes dos botões de **login social** configurados via
+`AUTH_GOOGLE_CLIENT_ID` / `AUTH_GITHUB_CLIENT_ID` (veja [Login
+social](#login-social) acima). Login social deixa os usuários autenticarem
+com suas contas pessoais; o SSO de deployment inteiro roteia todo mundo que
+casar com `AUTH_SSO_DOMAIN` para o IdP corporativo.
