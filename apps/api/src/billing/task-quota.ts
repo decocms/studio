@@ -249,9 +249,11 @@ export async function ensureTaskExecutionAllowed(
  * so a burst of concurrent dispatches consumes exactly the remaining slots.
  *
  * Returns what it did, because only the caller knows whether the dispatch it
- * charged for actually started: `"claimed"` took a slot and is the ONLY
- * outcome a failed dispatch may roll back. `"rerun"` rode an earlier run's
- * slot — rolling that back would refund a run that really happened.
+ * charged for actually started, and the two charged outcomes unwind
+ * differently: `"claimed"` took a period slot AND a run, `"rerun"` only a run
+ * (it rode an earlier run's slot, so releasing that would refund a run that
+ * really happened). Both spend the per-task tally, so both must roll it back
+ * when nothing dispatched — see `rollbackTaskExecution`.
  */
 export async function claimTaskExecution(
   ctx: StudioContext,
@@ -298,7 +300,10 @@ export async function claimTaskExecution(
 
 /**
  * Undo a charge whose dispatch never started — see `rollbackTaskClaim` for why
- * this differs from a refund. Only valid for a `"claimed"` outcome.
+ * this differs from a refund. Takes the claim outcome it is undoing: a
+ * `"claimed"` gives its period slot back, a `"rerun"` only its run tally (the
+ * slot belongs to an earlier run that really happened). A `"skipped"` claimed
+ * nothing and is a no-op.
  *
  * Errors are swallowed: the caller is already unwinding a dispatch failure and
  * must re-throw THAT error, not this one.
@@ -307,9 +312,13 @@ export async function rollbackTaskExecution(
   billing: OrganizationBillingStorage,
   organizationId: string,
   taskBoardItemId: string,
+  claim: "claimed" | "rerun" | "skipped",
 ): Promise<void> {
+  if (claim === "skipped") return;
   await billing
-    .rollbackTaskClaim(organizationId, taskBoardItemId)
+    .rollbackTaskClaim(organizationId, taskBoardItemId, {
+      releaseSlot: claim === "claimed",
+    })
     .catch((err) =>
       console.error("[task-quota] rollback failed (stays charged)", err),
     );
