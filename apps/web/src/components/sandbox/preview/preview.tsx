@@ -959,6 +959,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   const handleRefresh = () => {
     if (!previewIframeRef.current || !iframeSrc) return;
+    // Same progress bar as page navigation; the iframe's onLoad clears it.
+    beginNavigation();
     const iframe = previewIframeRef.current;
     // biome-ignore lint/correctness/noSelfAssign: reloads the iframe
     // oxlint-disable-next-line no-self-assign
@@ -1755,12 +1757,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     "flex justify-center bg-muted/30",
                 )}
               >
-                {/* The bar sits on arbitrary site content, so the track is a
-                    translucent app-background strip — guaranteed contrast for
-                    the primary slider no matter what the site paints there. */}
+                {/* Brand "commit ramp": lime fill on a translucent forest
+                    track (lime-tinted in dark theme). The bar sits on
+                    arbitrary site content, so both layers are brand-colored —
+                    contrast never depends on what the site paints there. */}
                 {(navigating || decofileWriting) && previewSurfaceActive && (
-                  <div className="absolute inset-x-0 top-0 z-40 h-1 overflow-hidden bg-background/80">
-                    <div className="absolute inset-y-0 w-2/5 rounded-full bg-primary animate-preview-nav" />
+                  <div className="absolute inset-x-0 top-0 z-40 h-1 overflow-hidden bg-brand-foreground/55 dark:bg-brand/20">
+                    <div className="absolute inset-y-0 left-0 rounded-r-full bg-brand shadow-[0_0_6px] shadow-brand/60 animate-preview-ramp" />
                   </div>
                 )}
 
