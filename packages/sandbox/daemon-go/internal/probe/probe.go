@@ -33,6 +33,11 @@ type Deps struct {
 	GetPort  func() int
 	OnChange func(s State)
 	OnLog    func(msg string)
+	// Fast/Slow override the poll cadence; zero uses FastInterval/SlowInterval.
+	// Exposed so a healthy server's dead-detection latency is tunable (and so
+	// tests don't wait the 30s slow interval).
+	Fast time.Duration
+	Slow time.Duration
 }
 
 type Prober struct {
@@ -40,13 +45,25 @@ type Prober struct {
 	state               State
 	consecutiveFailures int
 	deps                Deps
+	fast                time.Duration
+	slow                time.Duration
 	stop                chan struct{}
 }
 
 func Start(deps Deps) *Prober {
+	fast := deps.Fast
+	if fast <= 0 {
+		fast = FastInterval
+	}
+	slow := deps.Slow
+	if slow <= 0 {
+		slow = SlowInterval
+	}
 	p := &Prober{
 		state: State{Status: StatusBooting},
 		deps:  deps,
+		fast:  fast,
+		slow:  slow,
 		stop:  make(chan struct{}),
 	}
 	go p.loop()
@@ -67,9 +84,9 @@ func (p *Prober) Stop() {
 func (p *Prober) loop() {
 	for {
 		p.mu.Lock()
-		delay := SlowInterval
+		delay := p.slow
 		if p.state.Status != StatusOnline || p.consecutiveFailures > 0 {
-			delay = FastInterval
+			delay = p.fast
 		}
 		p.mu.Unlock()
 		select {

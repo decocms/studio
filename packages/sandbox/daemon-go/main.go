@@ -21,6 +21,7 @@ import (
 	"github.com/decocms/studio/sandbox-daemon/internal/auth"
 	"github.com/decocms/studio/sandbox-daemon/internal/config"
 	"github.com/decocms/studio/sandbox-daemon/internal/decofile"
+	"github.com/decocms/studio/sandbox-daemon/internal/devwatch"
 	"github.com/decocms/studio/sandbox-daemon/internal/dispatch"
 	"github.com/decocms/studio/sandbox-daemon/internal/events"
 	"github.com/decocms/studio/sandbox-daemon/internal/gitx"
@@ -78,6 +79,16 @@ type daemon struct {
 	lastRunningPort int
 	baselineTimer   *time.Timer
 	firstWorkLogged bool
+
+	// Dev-server liveness watchdog state (see internal/devwatch). Guarded by its
+	// own mutex so a probe callback never contends with the hot d.mu.
+	devWatchMu         sync.Mutex
+	probeOnline        bool
+	notServingSince    time.Time // zero while serving
+	devRestartCount    int       // restarts fired this dead episode
+	devRestartInFlight bool
+	devGaveUp          bool
+	devWatchGrace      time.Duration // effective unreachable window (env-tunable)
 
 	broadcaster  *events.Broadcaster
 	sniffer      *proc.PortSniffer
@@ -228,6 +239,8 @@ func (d *daemon) getDecofileVersion() (string, bool) {
 }
 
 func (d *daemon) onProbeChange(s probe.State) {
+	// Feed the liveness watchdog every probe change (online/offline/booting).
+	d.setProbeOnline(s.Status == probe.StatusOnline && s.Port != 0)
 	phase := d.lifecycle.Current().Phase
 	if s.Status == probe.StatusOnline && s.Port != 0 {
 		d.mu.Lock()
@@ -270,6 +283,138 @@ func (d *daemon) onProbeChange(s probe.State) {
 		}
 		d.mu.Unlock()
 		d.branchStatus.ClearBaseline()
+	}
+}
+
+func (d *daemon) setProbeOnline(online bool) {
+	d.devWatchMu.Lock()
+	d.probeOnline = online
+	d.devWatchMu.Unlock()
+}
+
+// restartablePhase reports the phases where a dev server is meant to be up, so
+// the watchdog respawns a dead one there but never interrupts a legitimate
+// build (installing/cloning/checking-out) or loops on a terminal *-failed.
+func restartablePhase(phase string) bool {
+	switch phase {
+	case events.PhaseRunning, events.PhaseStarting, events.PhaseCrashed:
+		return true
+	default:
+		return false
+	}
+}
+
+// devWatchLoop respawns the dev server when it dies out from under a live daemon
+// (idle-freeze, crash, or a stale port after a reclaim) — the case the proxy
+// otherwise papers over with an endless "Server is starting…". Bounded by
+// devwatch.MaxRestarts; on exhaustion it surfaces a real start-failed.
+func (d *daemon) devWatchLoop() {
+	tick := envDuration("SANDBOX_DEV_WATCH_TICK_MS", 3*time.Second)
+	d.devWatchMu.Lock()
+	d.devWatchGrace = envDuration("SANDBOX_DEV_WATCH_GRACE_MS", devwatch.DefaultGracePeriod)
+	d.devWatchMu.Unlock()
+	for {
+		time.Sleep(tick)
+		d.mu.Lock()
+		down := d.shuttingDown
+		d.mu.Unlock()
+		if down {
+			return
+		}
+		d.devWatchTick()
+	}
+}
+
+// envDuration reads a millisecond count from env, falling back to def when unset
+// or unparseable. Used to shrink the watchdog's grace/tick in tests.
+func envDuration(name string, def time.Duration) time.Duration {
+	if v := os.Getenv(name); v != "" {
+		if ms, err := strconv.Atoi(v); err == nil && ms > 0 {
+			return time.Duration(ms) * time.Millisecond
+		}
+	}
+	return def
+}
+
+func (d *daemon) devWatchTick() {
+	phase := d.lifecycle.Current().Phase
+	sniffed := d.sniffer.Current()
+	d.mu.Lock()
+	lastRunning := d.lastRunningPort
+	d.mu.Unlock()
+	// A port is "known" only once the dev server has actually announced one — it
+	// was sniffed from the dev output, or the probe confirmed it serving earlier
+	// this session. A merely *configured* application.port does NOT count: it is
+	// set before the server binds, so treating it as known would let the
+	// watchdog restart a dev server that is simply still starting up.
+	portKnown := sniffed != 0 || lastRunning != 0
+
+	d.devWatchMu.Lock()
+	serving := d.probeOnline
+	if serving {
+		d.notServingSince = time.Time{}
+		d.devRestartCount = 0
+		d.devGaveUp = false
+	} else if d.notServingSince.IsZero() {
+		d.notServingSince = time.Now()
+	}
+	var unreachableFor time.Duration
+	if !d.notServingSince.IsZero() {
+		unreachableFor = time.Since(d.notServingSince)
+	}
+	in := devwatch.Input{
+		Serving:         serving,
+		Restartable:     restartablePhase(phase),
+		PortKnown:       portKnown,
+		UnreachableFor:  unreachableFor,
+		Attempts:        d.devRestartCount,
+		RestartInFlight: d.devRestartInFlight,
+	}
+	grace := d.devWatchGrace
+	gaveUp := d.devGaveUp
+	d.devWatchMu.Unlock()
+
+	if gaveUp {
+		return
+	}
+
+	switch devwatch.Decide(in, grace) {
+	case devwatch.ActionRestart:
+		d.devWatchMu.Lock()
+		d.devRestartInFlight = true
+		d.devRestartCount++
+		attempt := d.devRestartCount
+		// Reset the grace window so the next restart is measured from now.
+		d.notServingSince = time.Now()
+		d.devWatchMu.Unlock()
+
+		d.broadcaster.BroadcastChunk("setup", fmt.Sprintf(
+			"[orchestrator] dev server unreachable for %s — restarting (attempt %d/%d)\r\n",
+			grace, attempt, devwatch.MaxRestarts))
+		// Drop the stale sniffed port and probe state so the respawned dev
+		// server's port is relearned from its fresh output.
+		d.sniffer.Reset()
+		d.prober.Reset()
+		go func() {
+			d.orchestrator.RestartDev()
+			d.devWatchMu.Lock()
+			d.devRestartInFlight = false
+			d.devWatchMu.Unlock()
+		}()
+	case devwatch.ActionGiveUp:
+		d.devWatchMu.Lock()
+		d.devGaveUp = true
+		d.devWatchMu.Unlock()
+		d.broadcaster.BroadcastChunk("setup", fmt.Sprintf(
+			"[orchestrator] dev server did not stay up after %d restarts — giving up\r\n",
+			devwatch.MaxRestarts))
+		d.lifecycle.Transition(events.LifecycleState{
+			Phase: events.PhaseStartFailed,
+			Error: fmt.Sprintf(
+				"dev server did not stay up after %d automatic restarts",
+				devwatch.MaxRestarts),
+		})
+	case devwatch.ActionNone:
 	}
 }
 
@@ -725,7 +870,12 @@ func main() {
 		GetPort:  d.getDevPort,
 		OnChange: d.onProbeChange,
 		OnLog:    func(msg string) { d.broadcaster.BroadcastChunk("setup", msg) },
+		Fast:     envDuration("SANDBOX_PROBE_FAST_MS", 0),
+		Slow:     envDuration("SANDBOX_PROBE_SLOW_MS", 0),
 	})
+	// Respawn the dev server if it dies out from under the live daemon (idle
+	// freeze, crash, stale port after a reclaim). Dies with the process.
+	go d.devWatchLoop()
 
 	d.proxyHandler = proxy.New(proxy.Deps{
 		GetDevPort: d.getDevPort,
