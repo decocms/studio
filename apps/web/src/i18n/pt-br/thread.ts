@@ -110,6 +110,7 @@ export const thread = {
     "Enviar commits locais para o PR #{prNumber}",
   "thread.headerActions.reconnectGithub": "Reconectar GitHub",
   "thread.headerActions.reviewingChanges": "Revisando alterações…",
+  "thread.headerActions.saving": "Salvando…",
   "thread.headerActions.reopen": "Reabrir",
   "thread.headerActions.reopenPrTooltip": "Reabrir PR #{prNumber}",
   "thread.headerActions.resolveConflictsTooltip":

@@ -106,6 +106,7 @@ export const thread = {
     "Push local commits to PR #{prNumber}",
   "thread.headerActions.reconnectGithub": "Reconnect GitHub",
   "thread.headerActions.reviewingChanges": "Reviewing changes…",
+  "thread.headerActions.saving": "Saving…",
   "thread.headerActions.reopen": "Reopen",
   "thread.headerActions.reopenPrTooltip": "Reopen PR #{prNumber}",
   "thread.headerActions.resolveConflictsTooltip":

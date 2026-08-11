@@ -1,6 +1,7 @@
 import { useMCPClient, useProjectContext, useVirtualMCP } from "@/sdk";
 import { resolveFastPreview } from "@/sdk/fast-preview";
-import { useQuery } from "@tanstack/react-query";
+import { useIsMutating, useQuery } from "@tanstack/react-query";
+import { decofileWriteMutationKey } from "@/components/sections-editor/decofile-api";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -274,6 +275,19 @@ export function HeaderActions({ virtualMcpId }: Props) {
     enabled: publishGateEnabled,
   });
 
+  // An in-flight block autosave (decofile PATCH, or the sandbox file write)
+  // means the branch state the publish surfaces would act on is mid-change:
+  // disable them and render the same animated bar the preview shows, so
+  // "wait for the save" is legible right where the user is about to click.
+  const decofileSaving =
+    useIsMutating({
+      mutationKey: decofileWriteMutationKey(
+        org.slug,
+        virtualMcpId,
+        branch ?? sandboxRouteBranch ?? "",
+      ),
+    }) > 0;
+
   // Detached: repo linked via a GitHub connection that's no longer aggregated.
   // Render a reconnect pill instead of nothing so the user has a recovery path
   // (a stale/mid-mutation aggregation must never leave the header blank).
@@ -477,6 +491,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
         showSync={showSync}
         onSync={handleSync}
         publishGate={publishGate}
+        savePending={decofileSaving}
         prNumber={pr?.number}
         prBase={pr?.base}
         onSquashMerge={handleSquashMerge}
@@ -518,6 +533,18 @@ export function HeaderActions({ virtualMcpId }: Props) {
   );
 }
 
+/**
+ * The preview's save/navigation strip, sized for a button edge — rendered
+ * inside the publish surfaces while a block autosave is in flight.
+ */
+function ButtonSaveBar() {
+  return (
+    <span className="absolute inset-x-0 bottom-0 h-0.5 overflow-hidden">
+      <span className="absolute inset-y-0 w-2/5 rounded-full bg-primary-foreground/70 animate-preview-nav" />
+    </span>
+  );
+}
+
 function HeaderButtonRenderer(props: {
   t: TFunction;
   button: HeaderButton;
@@ -529,6 +556,7 @@ function HeaderButtonRenderer(props: {
   showSync: boolean;
   onSync: () => void;
   publishGate: PublishGate;
+  savePending: boolean;
   prNumber?: number;
   prBase?: string;
   onSquashMerge: (pullNumber: number) => void | Promise<void>;
@@ -578,17 +606,25 @@ function HeaderButtonRenderer(props: {
   // of panel header; the label stays reachable via the tooltip. Plain status
   // pills (no action, not loading) keep their text at every size.
   const collapseLabel = Boolean(ActionIcon) || loading;
+  // "Submit for review" acts on the branch head, which an in-flight autosave
+  // is about to move — hold it (and show the save bar) until the write lands.
+  const savingBlocksSubmit = props.savePending && button.action === "create-pr";
 
   return (
     <div className="flex items-center gap-2">
       {props.showSync ? (
         <SyncButton t={t} busy={actionBusy} onClick={props.onSync} />
       ) : null}
-      <WithTooltip label={tooltipLabel}>
+      <WithTooltip
+        label={
+          savingBlocksSubmit ? t("thread.headerActions.saving") : tooltipLabel
+        }
+      >
         <Button
           size="sm"
           variant={button.variant}
-          disabled={disabled}
+          disabled={disabled || savingBlocksSubmit}
+          className="relative overflow-hidden"
           aria-label={button.label}
           // Only anchor the tour's "submit for review" step when the button is
           // actually in that state. In neutral states (e.g. "Up to date", which
@@ -609,24 +645,32 @@ function HeaderButtonRenderer(props: {
           <span className={cn(collapseLabel && "@max-3xl/panel-header:hidden")}>
             {button.label}
           </span>
+          {savingBlocksSubmit && <ButtonSaveBar />}
         </Button>
       </WithTooltip>
       {props.showPublishSide ? (
         <WithTooltip
           label={
-            props.publishGate.pending
-              ? t("thread.headerActions.reviewingChanges")
-              : props.publishGate.allowed
-                ? t("thread.headerActions.publishDirectlySkipReview")
-                : (props.publishGate.reason ??
-                  t("thread.headerActions.publishNeedsReview"))
+            props.savePending
+              ? t("thread.headerActions.saving")
+              : props.publishGate.pending
+                ? t("thread.headerActions.reviewingChanges")
+                : props.publishGate.allowed
+                  ? t("thread.headerActions.publishDirectlySkipReview")
+                  : (props.publishGate.reason ??
+                    t("thread.headerActions.publishNeedsReview"))
           }
         >
           <Button
             size="sm"
             variant="success"
             data-tour={TOUR_ANCHORS.publish}
-            disabled={props.githubActionPending || !props.publishGate.allowed}
+            disabled={
+              props.githubActionPending ||
+              !props.publishGate.allowed ||
+              props.savePending
+            }
+            className="relative overflow-hidden"
             onClick={props.onPublishSide}
             aria-label={t("thread.headerActions.publish")}
           >
@@ -638,6 +682,7 @@ function HeaderButtonRenderer(props: {
             <span className="@max-3xl/panel-header:hidden">
               {t("thread.headerActions.publish")}
             </span>
+            {props.savePending && <ButtonSaveBar />}
           </Button>
         </WithTooltip>
       ) : null}

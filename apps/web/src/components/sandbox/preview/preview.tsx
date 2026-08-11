@@ -1755,8 +1755,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     "flex justify-center bg-muted/30",
                 )}
               >
+                {/* The bar sits on arbitrary site content, so the track is a
+                    translucent app-background strip — guaranteed contrast for
+                    the primary slider no matter what the site paints there. */}
                 {(navigating || decofileWriting) && previewSurfaceActive && (
-                  <div className="absolute inset-x-0 top-0 z-40 h-0.5 overflow-hidden bg-primary/15">
+                  <div className="absolute inset-x-0 top-0 z-40 h-1 overflow-hidden bg-background/80">
                     <div className="absolute inset-y-0 w-2/5 rounded-full bg-primary animate-preview-nav" />
                   </div>
                 )}
