@@ -189,6 +189,10 @@ export const taskBoard = {
   "taskBoard.taskFilters.filterDrawerTitle": "Filters",
   "taskBoard.taskFilters.priorityAnyPriority": "Any priority",
   "taskBoard.taskFilters.priorityLabel": "Priority",
+  "taskBoard.taskFilters.tagAnyTag": "Any tag",
+  "taskBoard.taskFilters.tagLabel": "Tag",
+  "taskBoard.taskFilters.tagFilterPlaceholder": "Search tags...",
+  "taskBoard.taskFilters.tagNoTagsFound": "No tags found",
   "taskBoard.rerun.title": "Re-run this task?",
   "taskBoard.rerun.description":
     "The Super Agent will start a fresh run on this task.",

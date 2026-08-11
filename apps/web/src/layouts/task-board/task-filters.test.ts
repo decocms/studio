@@ -14,6 +14,7 @@ function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     assignedBy: null,
     dueDate: null,
     threads: [],
+    tags: [],
     createdBy: "user-1",
     createdAt: new Date().toISOString(),
     updatedBy: "user-1",
@@ -21,6 +22,40 @@ function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     ...overrides,
   } as TaskBoardItem;
 }
+
+describe("taskMatchesFilters — tag", () => {
+  const tag = (id: string, name: string) => ({
+    id,
+    name,
+    color: null,
+    createdBy: "user-1",
+    createdAt: new Date().toISOString(),
+  });
+
+  test("keeps a task carrying the filtered tag among others", () => {
+    expect(
+      taskMatchesFilters(
+        item({ tags: [tag("tag_report", "Report"), tag("tag_seo", "SEO")] }),
+        { ...EMPTY_FILTERS, tagId: "tag_seo" },
+      ),
+    ).toBe(true);
+  });
+
+  test("drops a task with other tags, or none at all", () => {
+    expect(
+      taskMatchesFilters(item({ tags: [tag("tag_report", "Report")] }), {
+        ...EMPTY_FILTERS,
+        tagId: "tag_seo",
+      }),
+    ).toBe(false);
+    expect(
+      taskMatchesFilters(item({ tags: [] }), {
+        ...EMPTY_FILTERS,
+        tagId: "tag_seo",
+      }),
+    ).toBe(false);
+  });
+});
 
 describe("taskMatchesFilters — due date", () => {
   test("'week' excludes a task that is already overdue", () => {

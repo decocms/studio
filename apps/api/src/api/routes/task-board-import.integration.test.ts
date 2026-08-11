@@ -305,6 +305,85 @@ describe("Task Board Import Route", () => {
     expect(rows[0]?.external_key).toBe(key);
   });
 
+  it("attaches the sender's tags, reusing an existing name case-insensitively", async () => {
+    // The org already labels things "report" — the import must reuse that tag
+    // rather than fork a second one that only differs in case.
+    await sql`
+      INSERT INTO "organization_tags" (id, organization_id, name, color, created_at)
+      VALUES ('tag_report', 'org_board', 'report', '#111111', ${new Date().toISOString()})
+    `.execute(database.db);
+
+    const res = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          {
+            title: "Adicionar H1 na home",
+            externalKey: "diag:shop.com:TSEO-001",
+            tags: ["Report", "SEO"],
+          },
+        ],
+        source: { url: "shop.com", run_id: "run_tags_1" },
+      }),
+    );
+    await expect(res.json()).resolves.toEqual({
+      created: 1,
+      updated: 0,
+      delegated: 0,
+    });
+
+    const storage = new TaskBoardStorage(database.db);
+    const [item] = await storage.list("org_board");
+    expect(item?.tags.map((t) => t.name).sort()).toEqual(["SEO", "report"]);
+    // The missing one was created with a palette color, not left blank.
+    const seo = item?.tags.find((t) => t.name === "SEO");
+    expect(seo?.color).toMatch(/^#[0-9a-f]{6}$/i);
+    const orgTags = await database.db
+      .selectFrom("organization_tags")
+      .select(["name"])
+      .where("organization_id", "=", "org_board")
+      .execute();
+    expect(orgTags.map((t) => t.name).sort()).toEqual(["SEO", "report"]);
+  });
+
+  it("a refresh re-asserts its own tags without removing a human's", async () => {
+    const key = "diag:shop.com:PERF-002";
+    await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [{ title: "Reduzir o LCP da home", externalKey: key }],
+        source: { url: "shop.com", run_id: "run_tags_2" },
+      }),
+    );
+    const storage = new TaskBoardStorage(database.db);
+    const [created] = await storage.list("org_board");
+    // A human triages the card with a tag of their own.
+    await sql`
+      INSERT INTO "organization_tags" (id, organization_id, name, color, created_at)
+      VALUES ('tag_sprint', 'org_board', 'Sprint 12', '#222222', ${new Date().toISOString()})
+    `.execute(database.db);
+    await storage.setItemTags(created!.id, ["tag_sprint"], "user_1");
+
+    await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          {
+            title: "Reduzir o LCP da home",
+            description: "LCP 4.2s no p75.",
+            externalKey: key,
+            tags: ["Report", "Performance"],
+          },
+        ],
+        source: { url: "shop.com", run_id: "run_tags_3" },
+      }),
+    );
+
+    const [refreshed] = await storage.list("org_board");
+    expect(refreshed?.tags.map((t) => t.name).sort()).toEqual([
+      "Performance",
+      "Report",
+      "Sprint 12",
+    ]);
+  });
+
   it("a done item does not match — a regression creates a fresh card", async () => {
     const key = "diag:shop.com:SEO-002";
     await app.fetch(

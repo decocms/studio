@@ -6,6 +6,28 @@
  */
 export const SUPER_AGENT_ASSIGNEE_ID = "super-agent";
 
+/** Suggested colors a new tag cycles through, so consecutive tags are visually
+ *  distinct without anyone having to choose. Any hex is valid — the picker's
+ *  `<input type="color">` isn't limited to these, and neither is the reports
+ *  import (which needs the palette server-side, hence its home here). */
+const TAG_COLORS = [
+  "#9ca3af",
+  "#ef4444",
+  "#f97316",
+  "#f59e0b",
+  "#22c55e",
+  "#3b82f6",
+  "#a855f7",
+  "#ec4899",
+];
+
+export const DEFAULT_TAG_COLOR = TAG_COLORS[0]!;
+
+/** Suggested color for the `existingCount`-th tag created in an org. */
+export function nextTagColor(existingCount: number): string {
+  return TAG_COLORS[existingCount % TAG_COLORS.length] ?? DEFAULT_TAG_COLOR;
+}
+
 /**
  * True for a task pushed by the Reports import route (`created_by = "system"`,
  * the sentinel for non-user principals — see `apps/api/src/api/routes/

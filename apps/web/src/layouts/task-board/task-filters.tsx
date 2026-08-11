@@ -42,14 +42,17 @@ import {
   ChevronDown,
   Flag01,
   FilterLines,
+  Tag01,
   User01,
 } from "@untitledui/icons";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
+import { useTags } from "@/hooks/use-tags";
 import { getInitials } from "@/lib/get-initials";
 import {
   PRIORITIES,
   PRIORITY_CONFIG,
   SUPER_AGENT_ASSIGNEE_ID,
+  tagDotColor,
   type Member,
   type TaskBoardItem,
   type TaskBoardItemPriority,
@@ -65,23 +68,32 @@ export type TaskFilters = {
   assignee: string | null;
   priority: TaskBoardItemPriority | null;
   due: DueFilter | null;
+  /** An org tag id, or null for any tag. */
+  tagId: string | null;
 };
 
 export const EMPTY_FILTERS: TaskFilters = {
   assignee: null,
   priority: null,
   due: null,
+  tagId: null,
 };
 
 function hasActiveFilters(f: TaskFilters): boolean {
-  return f.assignee !== null || f.priority !== null || f.due !== null;
+  return (
+    f.assignee !== null ||
+    f.priority !== null ||
+    f.due !== null ||
+    f.tagId !== null
+  );
 }
 
 function activeFilterCount(f: TaskFilters): number {
   return (
     (f.assignee !== null ? 1 : 0) +
     (f.priority !== null ? 1 : 0) +
-    (f.due !== null ? 1 : 0)
+    (f.due !== null ? 1 : 0) +
+    (f.tagId !== null ? 1 : 0)
   );
 }
 
@@ -109,6 +121,8 @@ export function taskMatchesFilters(
     }
   }
   if (f.priority !== null && item.priority !== f.priority) return false;
+  if (f.tagId !== null && !item.tags.some((tag) => tag.id === f.tagId))
+    return false;
   if (f.due !== null) {
     if (f.due === "none") {
       if (item.dueDate) return false;
@@ -365,7 +379,91 @@ function DueDateFilter({
   );
 }
 
-/** The three filter controls, shared by the inline bar and the mobile drawer. */
+/**
+ * Tag filter — the one control that renders nothing when the org has no tags
+ * yet, so an empty board doesn't show a chip that can only say "Any tag". With
+ * the reports import labelling every card it pushes (`Report` + the finding's
+ * area: SEO, GEO, Performance …), this is how a board narrows to one area.
+ */
+function TagFilter({
+  value,
+  onChange,
+  block,
+}: {
+  value: string | null;
+  onChange: (next: string | null) => void;
+  block?: boolean;
+}) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const { data: orgTags = [] } = useTags();
+  if (orgTags.length === 0) return null;
+
+  const selected = orgTags.find((tag) => tag.id === value);
+  const triggerClass = chipClass(value !== null, block);
+  const select = (next: string | null) => {
+    onChange(next);
+    setOpen(false);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button type="button" className={triggerClass}>
+          {selected ? (
+            <span
+              className="size-2 shrink-0 rounded-full"
+              style={{ backgroundColor: tagDotColor(selected.color) }}
+            />
+          ) : (
+            <Tag01 size={14} className="shrink-0" />
+          )}
+          <span className="max-w-[10rem] truncate">
+            {selected?.name ?? t("taskBoard.taskFilters.tagLabel")}
+          </span>
+          <ChevronDown
+            size={12}
+            className={cn("shrink-0 opacity-60", block && "ml-auto")}
+          />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-56 p-0">
+        <Command>
+          <CommandInput
+            placeholder={t("taskBoard.taskFilters.tagFilterPlaceholder")}
+            className="h-9"
+          />
+          <CommandList>
+            <CommandEmpty>
+              {t("taskBoard.taskFilters.tagNoTagsFound")}
+            </CommandEmpty>
+            <CommandGroup>
+              <CommandItem value="Any tag" onSelect={() => select(null)}>
+                {t("taskBoard.taskFilters.tagAnyTag")}
+              </CommandItem>
+              {orgTags.map((tag) => (
+                <CommandItem
+                  key={tag.id}
+                  value={tag.name}
+                  onSelect={() => select(tag.id)}
+                  className="gap-2"
+                >
+                  <span
+                    className="size-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: tagDotColor(tag.color) }}
+                  />
+                  <span className="truncate">{tag.name}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** The filter controls, shared by the inline bar and the mobile drawer. */
 function FilterControls({
   filters,
   members,
@@ -394,6 +492,11 @@ function FilterControls({
         block={block}
         value={filters.due}
         onChange={(due) => onChange({ ...filters, due })}
+      />
+      <TagFilter
+        block={block}
+        value={filters.tagId}
+        onChange={(tagId) => onChange({ ...filters, tagId })}
       />
     </>
   );
