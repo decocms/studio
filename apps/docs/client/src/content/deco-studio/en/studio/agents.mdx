@@ -60,37 +60,45 @@ Authoring an MCP app uses the `@decocms/runtime` framework (React 19 + Tailwind 
 
 In a future release, Studio will let you build simple views directly inside the agent UI, without scaffolding a repo. For anything custom or production-grade today, start from the template repo above.
 
+### Files and skills
+
+In an agent's **Settings** tab, **Files and skills** lets you attach files (reference docs, data) and skills the agent can always read, alongside its tools and instructions.
+
+<Callout type="tip">
+  Each attached file is capped at 25MB. Selecting a larger file skips the upload and shows a warning naming the rejected file — split large files or trim them before attaching.
+</Callout>
+
 ### Sandbox
 
 An agent can be backed by code. Link it to a GitHub repository in **Settings → Sandbox** and Studio will run the repo as an isolated dev environment scoped to that agent — typically the agent's own MCP server, but it can be any service the agent needs. The sandbox starts on demand, lives only as long as the agent needs it, and never leaks across agents.
+
+The repo picker lists forks alongside your own repositories, marked with a **Fork** badge. A fork only imports successfully if the GitHub App installation was also granted access to it — if not, importing fails with a prompt to add the fork under **GitHub → Settings → Installations**.
 
 When the agent is running with a local code-editor runtime, **Open in VSCode** and **Open in Cursor** buttons appear directly in the tab bar for one-click access to the repo on your machine. In other runtime modes the same options are available in the tab bar's three-dot (⋯) menu.
 
 ## Where an agent runs
 
-Above the chat input, next to the model picker, is the **runtime picker**. It controls *where* the agent executes and *which harness* drives it. There are two groups:
-
-**Cloud**
+Above the chat input, next to the model picker, is the **runtime picker**. It controls *which harness* drives the agent.
 
 - **Decopilot** — _"Runs in an agent sandbox."_ The agent executes in a sandbox managed by Studio. This is the default, always available, with nothing to install.
 
-**Local** — run the agent on your own machine. Until a local runtime is connected, these options read **"Desktop not detected"** and stay disabled.
-
-- **Decopilot** — the Decopilot harness, running on your desktop
-- **Claude Code** — drives the agent with the [Claude Code](https://claude.com/claude-code) CLI
-- **Codex** — drives the agent with the Codex CLI
-
-Running locally means the agent's sandbox lives on your machine: it can read and write your local files, use your installed tooling, and run with your own credentials — while Studio still handles the chat, connections, and logging. The cloud sandbox, by contrast, is fully managed and isolated per agent.
-
-To enable the local options, connect a desktop runtime with `deco link`. Studio detects the connection and lights up whichever harnesses it exposes — **Claude Code** and **Codex** appear once their CLI is available on the linked machine.
+The agent's sandbox is fully managed and isolated per agent — Studio handles the chat, connections, logging, and the runtime itself, so there is nothing to install or connect on your own machine.
 
 <Callout type="tip">
-  Cloud is the right default for unattended runs and teammates who shouldn't need a local setup. Reach for a local runtime when the agent needs your machine — your files, your credentials, or a coding harness like Claude Code or Codex.
+  The managed sandbox is the right default for every run, attended or unattended — teammates never need a local setup to use an agent.
 </Callout>
 
-## Windows
+### Studio Native: coding-agent terminals
 
-The daemon runs natively on Windows with one prerequisite: **[Git for Windows](https://gitforwindows.org)** — it provides both `git` and the bash shell used to run your project's dev scripts. If the daemon reports "POSIX shell (sh) not found", install Git for Windows or set the `DECO_SHELL` environment variable to a bash-compatible shell. WSL2 remains a fully supported alternative. Org file mounts are not yet available on Windows.
+The Studio Native desktop app adds a second, separate way to work with code. Starting a brand-new thread in Studio Native shows a **"Choose a coding agent"** picker instead of the usual chat composer — pick **Claude Code**, **Codex**, or **OpenCode** and Studio launches that CLI as a live, interactive terminal (an embedded `xterm.js` session) inside the thread, using whichever installation it detects on your machine. If a CLI isn't detected, a **"try anyway"** option launches it regardless.
+
+The choice is permanent for that thread: reopening it reattaches to the running session (or resumes the CLI's own saved conversation) instead of showing the picker again. Studio still tracks the thread in your sidebar and gives the CLI a scoped MCP connection (`cms`) back into your org's tools, but everything you type goes straight to the CLI's own interface — Studio does not parse or replay its output as chat messages.
+
+<Callout type="info">
+  This picker only appears in the Studio Native desktop app, and only for a brand-new thread — it is unrelated to the managed **Decopilot** runtime described above, which is available in both the desktop app and the web app.
+</Callout>
+
+In Studio Native, opening a branch clones a local working tree for it on disk, which stays there as long as at least one thread on that branch is open. Archiving the **last** open thread on a branch now offers to reclaim it — stopping everything running on that branch and deleting its files from your computer. This is opt-in per archive, only affects the local clone, and does not touch the branch itself or anything already pushed to the remote.
 
 ## An agent is a virtual MCP
 
