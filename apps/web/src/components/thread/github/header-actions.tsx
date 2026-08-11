@@ -649,7 +649,7 @@ function HeaderButtonRenderer(props: {
         >
           <Button
             size="sm"
-            variant="success"
+            variant="brand"
             data-tour={TOUR_ANCHORS.publish}
             disabled={
               props.githubActionPending ||
