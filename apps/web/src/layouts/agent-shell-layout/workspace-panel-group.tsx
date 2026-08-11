@@ -44,12 +44,31 @@ import {
 import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
 import { SidePanel } from "./side-panel";
 import { ChatToggle } from "./toggle-buttons";
+import { MessageCircle01 } from "@untitledui/icons";
+import { useT } from "@/i18n/use-t";
 import {
   MainPanelHeaderEndSlot,
   MainPanelHeaderProvider,
   MainPanelHeaderSlot,
   PanelHeader,
 } from "./panel-header";
+
+/**
+ * Chat panel body for Fast Preview projects: the surface exists (toggle,
+ * panel, layout all behave normally) but sending is not possible yet — a
+ * run would dispatch to a sandbox runner this mode never provisions.
+ */
+function FastPreviewChatNotice() {
+  const t = useT();
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+      <MessageCircle01 size={28} className="text-muted-foreground" />
+      <p className="max-w-sm text-sm text-muted-foreground">
+        {t("chat.input.fastPreviewComingSoon")}
+      </p>
+    </div>
+  );
+}
 
 const SIDE_PANEL_ID = "workspace-side-panel";
 const MAIN_PANEL_ID = "workspace-main-panel";
@@ -115,21 +134,17 @@ export function WorkspacePanelGroup({
   virtualMcpId,
   taskId,
   entity,
-  sidePanel: sidePanelProp,
-  mainOpen: mainOpenProp,
+  sidePanel,
+  mainOpen,
   toggleSidePanel,
   chatContent,
 }: WorkspacePanelGroupProps) {
-  // Fast Preview projects have no chat surface at all: a thread run would
-  // dispatch to a sandbox runner that never exists in this mode, so the chat
-  // panel (the agent terminal in the native app) is removed rather than
-  // rendered broken — the CMS is the editing surface. Forcing the pair here
-  // (chat closed, main open) also covers stale URL/layout state that would
-  // otherwise open a chat with no toggle to close it, or leave both panels
-  // hidden.
+  // Fast Preview projects are sandbox-less: the chat toggle and panel behave
+  // normally, but the panel's CONTENT is held behind a notice — a thread run
+  // would dispatch to a sandbox runner that never exists in this mode (in the
+  // native app the panel would greet the user with a broken coding-agent
+  // picker).
   const fastPreviewActive = resolveFastPreview(entity.metadata).active;
-  const sidePanel = fastPreviewActive ? null : sidePanelProp;
-  const mainOpen = fastPreviewActive ? true : mainOpenProp;
   const [sidePanelWidth, setSidePanelWidth] = useSidePanelWidth();
   const panelGroupRef = useRef<GroupImperativeHandle>(null);
   const visibility = { sidePanel, mainOpen };
@@ -217,7 +232,7 @@ export function WorkspacePanelGroup({
           right actions on the far side are never pushed off-screen. */}
       <div className="flex min-w-0 shrink items-center gap-0.5 overflow-hidden">
         {!chatOpen && agentCrumb}
-        {!chatOpen && !fastPreviewActive && (
+        {!chatOpen && (
           <ChatToggle sidePanel={sidePanel} toggleSidePanel={toggleSidePanel} />
         )}
         <MainControls
@@ -305,7 +320,12 @@ export function WorkspacePanelGroup({
           className="min-w-0 overflow-hidden bg-sidebar"
         >
           <PanelCard testId="side-panel" header={chatOpen ? chatHeader : null}>
-            {chatOpen && <SidePanel chatContent={chatContent} />}
+            {chatOpen &&
+              (fastPreviewActive ? (
+                <FastPreviewChatNotice />
+              ) : (
+                <SidePanel chatContent={chatContent} />
+              ))}
           </PanelCard>
         </ResizablePanel>
 
