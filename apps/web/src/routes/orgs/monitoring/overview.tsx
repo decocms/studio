@@ -324,7 +324,6 @@ function ToolAgentHeatmap({
     string,
     { calls: number; errors: number; outputSize: number }
   >();
-  let maxValue = 0;
   for (const cell of cells) {
     if (!toolSet.has(cell.toolName)) continue;
     const agentId = cell.virtualMcpId ?? "";
@@ -334,12 +333,22 @@ function ToolAgentHeatmap({
       errors: cell.errors,
       outputSize: cell.outputSize,
     });
-    if (cell[metric] > maxValue) maxValue = cell[metric];
   }
   const topAgentIds = [...agentTotals.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, HEATMAP_MAX_AGENTS)
     .map(([id]) => id);
+  const topAgentSet = new Set(topAgentIds);
+
+  // Normalize the color scale against only the cells actually rendered
+  // (top agents × top tools) — an outlier from an agent that didn't make
+  // the top-8 must not dilute the colors of the cells shown.
+  let maxValue = 0;
+  for (const cell of cells) {
+    if (!toolSet.has(cell.toolName)) continue;
+    if (!topAgentSet.has(cell.virtualMcpId ?? "")) continue;
+    if (cell[metric] > maxValue) maxValue = cell[metric];
+  }
 
   const agentNameOf = (id: string) =>
     id === ""
