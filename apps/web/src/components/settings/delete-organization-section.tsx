@@ -1,4 +1,5 @@
 import { invalidateOrganizationListCache } from "@/lib/auth-client";
+import { clearLastLocation, readLastLocation } from "@/lib/last-location";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { track } from "@/lib/posthog-client";
 import { useStudioTools } from "@/lib/studio-tools";
@@ -43,6 +44,12 @@ export function DeleteOrganizationSection() {
       // Drop the cached slug so homeRoute doesn't try to redirect us back here
       if (localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug()) === org.slug) {
         localStorage.removeItem(LOCALSTORAGE_KEYS.lastOrgSlug());
+      }
+
+      // homeRoute reads lastLocation *before* lastOrgSlug, so drop it too or the
+      // loader redirects straight back to the just-deleted org's slug.
+      if (readLastLocation()?.org === org.slug) {
+        clearLastLocation();
       }
 
       // Drop the TTL-cached org list so the homeRoute loader doesn't redirect
