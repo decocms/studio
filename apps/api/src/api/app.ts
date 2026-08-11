@@ -105,6 +105,7 @@ import {
 } from "./utils/paths";
 import { CredentialVault } from "../encryption/credential-vault";
 import type { CancelBroadcast } from "./routes/decopilot/cancel-broadcast";
+import { setCancelBroadcast } from "./routes/decopilot/cancel-registry";
 import {
   createNatsConnectionProvider,
   type NatsConnectionProvider,
@@ -1122,6 +1123,11 @@ export async function createApp(options: CreateAppOptions = {}) {
     asyncResearchJobStorage,
   );
   asyncResearchJobSweeper.start();
+
+  // Publish the broadcaster so callers outside the HTTP layer can stop a run
+  // (see cancel-registry.ts). After both assignment branches, so it holds the
+  // NATS broadcaster or the local stub, whichever this process built.
+  setCancelBroadcast(cancelBroadcast);
 
   cancelBroadcast
     .start((taskId) => {
