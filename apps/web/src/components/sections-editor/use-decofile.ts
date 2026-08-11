@@ -91,8 +91,15 @@ export function useDecofile(
     // `running`), so the recovery is event-driven. The first-contact trigger is
     // load-bearing for Fast Preview: it renders off the daemon alone, so
     // waiting for `running` would strand it behind the install it skips.
+    //
+    // Sandbox-less Fast Preview inverts the rule: there is no lifecycle event
+    // coming, and the API maps transient GitHub failures (rate limits,
+    // upstream 5xx) to 502 — so a single hiccup would otherwise stick as a
+    // terminal error card. Bounded retries with backoff ARE the recovery.
     retry: (failureCount, error) =>
-      (error as { status?: number }).status !== 502 && failureCount < 2,
+      fastPreviewActive
+        ? failureCount < 3
+        : (error as { status?: number }).status !== 502 && failureCount < 2,
     retryDelay: (attempt) =>
       exponentialBackoffWithJitter(5000, 1000, attempt, 2, 0),
   });

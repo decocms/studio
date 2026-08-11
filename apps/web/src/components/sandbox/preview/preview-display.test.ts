@@ -129,10 +129,12 @@ describe("resolvePreviewDisplay", () => {
       });
     });
 
-    it("shows the published site + pill while the sandbox provisions", () => {
-      // Inverted from the original rule (blocking overlay, never the published
-      // site). Boot should be invisible: the published site holds the canvas
-      // until the draft render is renderable.
+    it("shows the published site with NO pill while the draft isn't ready", () => {
+      // Sandbox-less: nothing is "starting" — the published site is the right
+      // surface while the first draft version/token fetch is in flight, and
+      // the draft URL swaps in silently the moment it's addressable. A
+      // "Starting your preview" pill here would announce a boot that doesn't
+      // exist.
       expect(
         run({
           previewState: STARTING,
@@ -144,13 +146,13 @@ describe("resolvePreviewDisplay", () => {
         mode: "production",
         iframeBase: PROD,
         showBlockingOverlay: false,
-        showWakingPill: true,
+        showWakingPill: false,
       });
     });
 
-    it("holds the published site when the daemon is up but no page matched yet", () => {
+    it("holds the published site when the draft URL isn't buildable yet", () => {
       // previewUrl exists, but the decofile hasn't yielded a page key, so the
-      // draft URL isn't buildable. Keep the pill rather than blanking.
+      // draft URL isn't buildable. Hold the published site silently.
       const result = run({
         previewState: IFRAME,
         progressStatus: "doing",
@@ -159,7 +161,7 @@ describe("resolvePreviewDisplay", () => {
       });
       expect(result.mode).toBe("production");
       expect(result.iframeBase).toBe(PROD);
-      expect(result.showWakingPill).toBe(true);
+      expect(result.showWakingPill).toBe(false);
     });
 
     it("never swaps to the sandbox — the draft render owns the canvas regardless of dev-server state", () => {
@@ -185,7 +187,7 @@ describe("resolvePreviewDisplay", () => {
         fastPreviewReady: false,
       });
       expect(result.mode).toBe("production");
-      expect(result.showWakingPill).toBe(true);
+      expect(result.showWakingPill).toBe(false);
     });
   });
 });
