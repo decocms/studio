@@ -94,16 +94,43 @@ func NewOrchestrator(deps OrchestratorDeps) *Orchestrator {
 }
 
 func (o *Orchestrator) ResumeFrom(step Step) {
+	o.clearCrashError()
+	o.enqueue(step)
+}
+
+// RestartDev force-respawns the dev server. It clears a latched crash error
+// (so the start step below isn't skipped) and unconditionally stops the current
+// dev task before restarting, so it recovers a process that is alive-but-wedged
+// (bound the wrong port, hung after a reclaim) as well as one that has already
+// died. Used by the liveness watchdog (see internal/devwatch); a plain
+// ResumeFrom(StepStart) would short-circuit on "dev already running".
+func (o *Orchestrator) RestartDev() {
+	o.clearCrashError()
+	o.stopDevTask()
+	o.enqueue(StepStart)
+}
+
+// clearCrashError un-latches the `error` status a non-zero dev-script exit sets
+// (see OnTaskExit). Without this, stepStartInner's `status != running` guard
+// silently skips every subsequent start — so a reclaim or watchdog restart onto
+// a VM whose dev server had crashed would never bring it back.
+func (o *Orchestrator) clearCrashError() {
 	if o.deps.GetStatus().State == "error" {
 		o.deps.SetStatus(events.DaemonStatus{State: "running"})
 	}
-	o.enqueue(step)
 }
 
 func (o *Orchestrator) Handle(t config.Transition) {
 	if t.Kind == config.KindGitCredentialRefresh {
 		o.syncGitRemoteCredentials(t.CloneUrl)
 		return
+	}
+	// A fresh claim/reclaim or branch switch is an explicit "start over" — clear
+	// a latched dev-crash error so the pipeline's start step isn't skipped. This
+	// is what makes a SANDBOX_START reclaim onto a VM whose dev server had
+	// crashed actually restart it, instead of reusing the wedged process.
+	if t.Kind == config.KindBootstrap || t.Kind == config.KindBranchChange {
+		o.clearCrashError()
 	}
 	step, ok := transitionToStep(t)
 	if !ok {
