@@ -242,6 +242,69 @@ Se `sentinel.token` for omitido, o chart gera e preserva um Secret para os pods,
 
 O HPA opcional do warm pool exige `warmPool.enabled: true`, `warmPool.autoscaling.enabled: true` e pelo menos uma métrica explícita no formato `autoscaling/v2`. O chart intencionalmente não fornece uma métrica padrão.
 
+### Tenant warm pools
+
+O warm pool genérico acima pré-aquece pods *vazios*. Um tenant warm pool vai além: cada pod já está executando o repositório e o dev server de uma org, então um membro dessa org abre um projeto sem clone, sem instalação e sem boot do dev server. Isso é opt-in por org, aditivo ao warm pool genérico e cada slot é um pod permanentemente cobrado — está desabilitado por padrão (`tenantPools: []`).
+
+Um pool é identificado por `(org, repo)`. O Studio inicializa e atualiza cada pod não vinculado do pool; um claim vindo da org do pool vincula um desses pods em vez de começar do zero.
+
+Declare cada pool nos dois lados, com o **mesmo** `name`:
+
+1. Nos values do chart `sandbox-env` — renderiza um `SandboxWarmPool` contra o `SandboxTemplate` compartilhado:
+
+   ```yaml
+   tenantPools:
+     - name: tenant-acme-site-production # DNS label, precisa terminar em -<envName>
+       size: 2 # quantidade de pods aquecidos a manter prontos
+   ```
+
+   O sufixo `-<envName>` é obrigatório e validado (não derivado): o `sandbox-env` compartilha o namespace `agent-sandbox-system` entre releases, então um nome sem o sufixo deixaria staging e produção disputarem o mesmo pool.
+
+2. Na variável de ambiente `STUDIO_SANDBOX_TENANT_POOLS` do Studio — um array JSON que carrega os detalhes do tenant que a entrada do chart não expressa:
+
+   ```json
+   [
+     {
+       "name": "tenant-acme-site-production",
+       "orgId": "org_acme",
+       "repo": "acme/site",
+       "connectionId": "github-connection-id",
+       "branch": "main",
+       "workload": { "runtime": "node" }
+     }
+   ]
+   ```
+
+   - `orgId` é a única org cujos membros podem ser vinculados aos pods desse pool.
+   - `connectionId` gera uma credencial de clone de curta duração a cada bootstrap e nunca é armazenada; omita apenas para um repositório público, já que sem ela os pods clonam anonimamente.
+   - `branch` é o branch em que os pods ociosos ficam — um claim pode trocar de branch após o vínculo sem perder as dependências instaladas.
+
+<Callout type="tip">
+  Defina um `GITHUB_WEBHOOK_SECRET` opcional no Studio e registre um webhook de push do GitHub em `https://<studio-host>/api/_github/webhook` para atualizar um pool imediatamente após um push. Sem ele, os pools continuam recebendo novos commits no próprio ciclo periódico — o webhook apenas torna essa atualização imediata.
+</Callout>
+
+<Callout type="warning">
+  Conceda ao Role do runner a permissão `sandboxwarmpools: get` (o chart faz isso automaticamente a partir da versão 0.12.0 do `sandbox-env`) — o reconciler lê o `status.selector` de cada pool para encontrar seus pods, e uma permissão faltante bloqueia silenciosamente toda tentativa de aquecimento.
+</Callout>
+
+### Telemetria do daemon (métricas OTLP)
+
+O daemon do sandbox pode exportar métricas OTLP para um collector OpenTelemetry. Isso é separado — e não relacionado — à exportação de monitoramento do próprio Studio descrita em [Monitoring](/pt-br/studio/self-hosting/monitoring): aqui as métricas vêm do próprio daemon do sandbox (saúde do processo/runtime), não dos logs de chamadas de ferramentas do Studio.
+
+Por padrão está desabilitado. Habilitar essa opção abre exatamente um destino de egress adicional dentro do cluster na política de iptables do sandbox — o collector — já que os pods de sandbox não conseguem alcançar serviços internos do cluster de outra forma.
+
+```yaml
+telemetry:
+  enabled: true
+  otlp:
+    ip: "10.0.12.34" # o ClusterIP do Service do collector — veja abaixo
+    port: 4318 # 4318 = OTLP/HTTP, 4317 = OTLP/gRPC
+```
+
+<Callout type="warning">
+  `telemetry.otlp.ip` precisa ser um endereço IPv4 puro, não um nome DNS. Os pods de sandbox rodam com `dnsPolicy: None` contra resolvers públicos, então nomes de serviço internos ao cluster (como `gateway-otlp.opentelemetry-collector`) não são resolvidos dentro deles. Obtenha o ClusterIP do collector com `kubectl -n opentelemetry-collector get svc gateway-otlp -o jsonpath='{.spec.clusterIP}'`. Se o Service do collector for recriado depois, o ClusterIP pode mudar — o daemon registra falhas de exportação nos logs e continua funcionando, mas releia o IP e atualize o release para restaurar as métricas.
+</Callout>
+
 ### Housekeeper de recursos ociosos
 
 O Studio atualiza a atividade dos claims, enquanto o CronJob housekeeper opcional remove claims ociosos ou irrecuperáveis, além de routes e pods órfãos. Os padrões executam a cada cinco minutos e removem claims ociosos há 15 minutos.
@@ -313,17 +376,27 @@ Estes padrões vêm de `deploy/helm/studio/values.yaml`:
 
 ## Valores principais do sandbox
 
+<Callout type="tip">
+  O daemon Go é a única implementação de sandbox — a própria imagem
+  determina o daemon, então não há mais um switch de runtime ou uma flag no
+  nível da organização para escolher entre um daemon TypeScript e um Go.
+  `image.repository` aponta diretamente para a imagem `studio-sandbox-go`.
+</Callout>
+
 | Parâmetro | Descrição | Padrão |
 | --- | --- | --- |
 | `envName` | Sufixo DNS-label dos recursos do ambiente | Obrigatório |
-| `image.repository` / `image.tag` | Imagem do daemon do sandbox | `ghcr.io/decocms/studio/studio-sandbox` / `1.17.8` |
+| `image.repository` / `image.tag` | Imagem do daemon do sandbox | `ghcr.io/decocms/studio/studio-sandbox-go` / `1.17.8` |
 | `resources.requests` | Request por sandbox | `500m` CPU / `1Gi` memória |
 | `resources.limits` | Limite por sandbox | `2` CPU / `4Gi` memória / `10Gi` armazenamento efêmero |
 | `terminationGracePeriodSeconds` | Tempo para sync final do git e unmount | `90` |
 | `netinit.enabled` | Instalar política padrão de egress no iptables | `true` |
 | `readOnlyRootFilesystem` | Root filesystem do sandbox somente leitura | `true` |
 | `depsCache.enabled` / `depsCache.golden` | Caches de dependências locais ao node | `false` / `false` |
+| `telemetry.enabled` | Exportar métricas OTLP do daemon do sandbox para um collector | `false` |
+| `telemetry.otlp.ip` / `telemetry.otlp.port` | ClusterIP do collector (obrigatório se habilitado) / porta | `""` / `4318` |
 | `warmPool.enabled` / `warmPool.size` | Sandboxes pré-aquecidos | `false` / `0` |
+| `tenantPools` | Warm pools por org, já executando o repositório e o dev server dessa org | `[]` |
 | `previewGateway.enabled` | Gateway wildcard de preview | `false` |
 | `housekeeper.enabled` | CronJob de limpeza de claims ociosos | `false` |
 

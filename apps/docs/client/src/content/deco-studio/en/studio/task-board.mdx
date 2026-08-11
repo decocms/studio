@@ -1,0 +1,138 @@
+---
+title: Task Board
+description: Track work assigned to agents on a kanban board, with automated review before it ships
+icon: LayoutBoard
+---
+
+import Callout from "../../../../components/ui/Callout.astro";
+
+## What is the Task Board?
+
+The **Task Board** is a kanban-style workspace for tracking work items — cards move through columns such as Backlog, To Do, In Progress, In Review, and Done as an agent (usually a **Super Agent**) works on them. Each card can carry a linked pull request, comments, tags, priority, and an activity feed of everything that happened on it.
+
+<Callout type="tip">
+  The **Task Manager** agent can create, prioritize, assign, and track cards on
+  the board for you — just describe the work in chat.
+</Callout>
+
+## Comments
+
+Every task card's activity feed supports threaded comments: post a comment, and anyone can reply to it — one level of replies deep. A comment thread can be marked **resolved** once it's settled, and reopened later if needed. Comments are persisted per task and scoped to your organization.
+
+<Callout type="info">
+  Anyone in the organization can resolve or reopen a comment thread, but only
+  the comment's author can edit its body or delete it.
+</Callout>
+
+## Working across multiple repositories
+
+When a task is assigned to a **Super Agent**, it runs inside a sandbox that needs a checked-out repository to work in. If your organization has exactly one importable repository, the task run starts already checked out into it. If it has more than one, the run starts with an empty working directory and the Super Agent picks the right repository itself before reading files or running git — no manual repo selection step is required from you.
+
+## Auto-fix
+
+Any card in **Triage** or **To Do** that isn't already assigned to the Super Agent shows an **Auto-fix** button (lightning-bolt icon) — both on the card itself and inside the task dialog. Clicking it hands the task straight to the Super Agent, the same as assigning it manually from the assignee picker, and draws from the same auto-task quota (see [Billing and auto-task quota](#billing-and-auto-task-quota)).
+
+<Callout type="tip">
+  Inside the task dialog, the **Save** button only appears once you've actually
+  changed something — Auto-fix and New chat don't need a dirty form to work.
+</Callout>
+
+## Re-running tasks
+
+Any card that's delegated to the Super Agent and not yet **Done** shows a **Re-run** action — on the card itself, and in bulk from the selection bar when you select multiple cards.
+
+- Selecting one or more cards adds a **Re-run** button to the selection bar, next to **Auto-fix**.
+- It's only enabled when every selected card is delegated to the Super Agent and not Done — if even one selected card doesn't qualify, the action doesn't fire for the rest of the selection either.
+- Confirming starts a fresh run on each selected task and stops any run still in progress on it. This "takeover" warning is shown unconditionally for a selection, since the board can't tell a streaming run from a stuck one across multiple cards at once.
+- Each task in the selection still counts against its own [per-task re-run cap](#billing-and-auto-task-quota) (5 re-runs per task).
+
+<Callout type="info">
+  There's no bulk re-run API call — each selected task fires its own re-run request individually. If one hits the auto-task quota or a paywall, that error surfaces once rather than once per task.
+</Callout>
+
+## Automated review before shipping
+
+Once a task's pull request is **In Review** (its checks are passing, or it has none), Studio can run automated reviewers on it before a human ships the change. Configure this under **Settings → Organization → Reviewers & merge**:
+
+- **QA Agent** — exercises the feature itself, not just the diff, to verify the task actually solved the problem.
+- **Code Reviewer** — reviews the code using review skills appropriate to the repository's stack.
+- **Auto-merge** — when every enabled reviewer approves, merge the pull request automatically instead of waiting for a human to click merge.
+- **Auto-assign report tasks to the Super Agent** — assigns cards pushed by a report to the Super Agent as soon as they're created, instead of leaving them unassigned. See [Findings pushed by a report](#findings-pushed-by-a-report).
+
+Each reviewer that runs shows up as its own session on the task card, and its verdict is posted to the card's activity feed:
+
+- An **approval** (with optional notes) moves the task closer to shipping.
+- **Requested changes** hands the task back to the Super Agent to address the feedback, along with any notes from the reviewer.
+
+<Callout type="info">
+  QA Agent and Code Reviewer are both off by default. Enable the ones you want
+  under **Settings → Organization → Reviewers & merge** — you can turn on
+  either one independently, or both.
+
+  **Exception:** the first time an organization switches to reports-only mode,
+  both reviewers default on automatically — reports-only orgs hide the agent
+  navigation the review flow would otherwise rely on, so the task-board PR
+  review needs them on to keep working. This only fires once, when
+  `reports_only` itself is first defaulted on, and never overrides a flag you
+  already set explicitly.
+</Callout>
+
+Each reviewer runs with its own persona, not the Super Agent's — even though it borrows the Super Agent's model and MCP tools, its system instructions describe the reviewer's job, not the org agent that wrote the PR under review. The reviewer's built-in toolset is also restricted so it can only review, not ship:
+
+- **QA Agent** can't edit existing files, but keeps `Write` for scratch files it creates to exercise the change (a curl script, a throwaway test).
+- **Code Reviewer** can't write or edit any file — it reads the diff and reasons about it.
+- Neither reviewer can push commits or merge the pull request; both keep `Bash` and `git`/`gh` read access to inspect and run the change.
+
+<Callout type="info">
+  These restrictions are enforced at the tool level, not just by prompt — a
+  reviewer physically cannot call the disallowed tools, even if it decides to
+  try.
+</Callout>
+
+## Shipping to production
+
+When every enabled reviewer has approved a task's pull request — or no reviewers are enabled — the task card shows a **Ship to production** button. Clicking it merges the pull request. If auto-merge is enabled, this happens automatically once the review gate is satisfied instead of waiting for someone to click the button.
+
+Each card's PR panel also shows the pull request's live state (draft, open, merged, closed) and its check status (passing, pending, or failing), so you can see at a glance whether a task is ready to move forward.
+
+## Findings pushed by a report
+
+Some cards aren't created by a person — a report (for example, the **Report Agent**) can push diagnostic findings straight onto the board. These cards behave like any other, with one difference: deleting one **dismisses the underlying finding**, not just the card.
+
+<Callout type="info">
+  Once a finding is dismissed, the next report run skips it instead of
+  recreating the card. Deleting a report-generated card is reversible — ask
+  the **Task Manager** agent to restore a dismissed finding (or all of them)
+  and its card comes back with its comments, activity, and any linked PR
+  intact.
+</Callout>
+
+The Task Manager agent tells you when a card you're deleting came from a report, so you know deleting it also suppresses that finding going forward.
+
+By default, a card pushed by a report lands unassigned. Turn on **Auto-assign report tasks to the Super Agent** under **Settings → Organization → Reviewers & merge** to have these cards delegated to the Super Agent automatically as soon as they're created, instead of waiting for someone to pick them up.
+
+## Billing and auto-task quota
+
+Delegating a task to the **Super Agent** — from the task dialog, or by assigning a card to it from a lane or the assignee picker — draws from your organization's auto-task quota. Tasks you create and work on yourself are never limited.
+
+- **Free trial**: every organization gets **3 free lifetime auto-task runs** before a subscription is required.
+- **Subscribed**: **$50/month** for **10 auto-task runs per billing cycle**. The quota renews automatically at the start of each cycle.
+- **Per-task cap**: any single task can be re-run up to **5 times**, regardless of subscription status.
+
+When a delegation is blocked by quota, a dialog explains why:
+
+- **Trial used up** — shows the subscription benefits and a **Subscribe** button that opens Stripe-hosted checkout in a new tab.
+- **Monthly quota used up** — informational only; the quota renews on its own at the next billing cycle.
+- **Task re-run limit reached** — informational only; create a new task to keep going.
+
+<Callout type="info">
+  This paywall never blocks you from creating or editing tasks yourself — it only applies to Super Agent delegation.
+</Callout>
+
+### Managing billing
+
+Go to **Settings → Billing** to see your organization's current status (**Free trial**, **Active**, or **Payment issue**), runs used this cycle, and the renewal date. From there you can subscribe or, once subscribed, open the Stripe-hosted billing portal to manage your payment method or cancel.
+
+<Callout type="tip">
+  Self-hosted deployments don't enforce this quota by default — auto-task runs are unlimited unless the deployment operator explicitly enables billing enforcement. See [Docker Compose](/en/studio/self-hosting/deploy/docker-compose) for the relevant environment variables.
+</Callout>
