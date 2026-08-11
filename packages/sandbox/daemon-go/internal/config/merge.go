@@ -85,6 +85,12 @@ func mergeRepository(current, patch *GitRepository) *GitRepository {
 	if patch.RepoName != nil {
 		out.RepoName = patch.RepoName
 	}
+	// Absent (nil) keeps current, so a patch that only refreshes the clone URL
+	// doesn't drop the credentials the clone step needs. An explicit empty array
+	// clears them — that's how a user removes the last credential row.
+	if patch.SubmoduleCredentials != nil {
+		out.SubmoduleCredentials = patch.SubmoduleCredentials
+	}
 	return &out
 }
 

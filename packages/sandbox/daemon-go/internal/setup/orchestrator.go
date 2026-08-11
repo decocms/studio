@@ -313,9 +313,10 @@ func (o *Orchestrator) stepCloneInner() bool {
 		os.Remove(cloneLogPath)
 		cloneTee := proc.NewLogTee(cloneLogPath, installLogMaxBytes)
 		result := SpawnClone(CloneDeps{
-			RepoDir:  o.deps.RepoDir,
-			CloneUrl: cloneUrl,
-			Branch:   cfg.Branch(),
+			RepoDir:              o.deps.RepoDir,
+			CloneUrl:             cloneUrl,
+			Branch:               cfg.Branch(),
+			SubmoduleCredentials: cfg.SubmoduleCredentials(),
 			OnChunk: func(data string) {
 				o.rawChunk(data)
 				cloneTee.Write(data)

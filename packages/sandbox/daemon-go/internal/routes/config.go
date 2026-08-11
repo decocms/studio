@@ -37,12 +37,37 @@ func stripDerived(c *config.Enriched) *config.TenantConfig {
 	if c == nil {
 		return nil
 	}
-	return &config.TenantConfig{
+	// Redact resolved submodule PATs — see stripSubmoduleTokens. `env` is
+	// likewise never returned here (only `envKeys`, in the read handler).
+	return stripSubmoduleTokens(&config.TenantConfig{
 		Git:         c.Git,
 		Operator:    c.Operator,
 		CloneOnly:   c.CloneOnly,
 		Application: c.Application,
+	})
+}
+
+// stripSubmoduleTokens returns a copy of the config without the resolved
+// submodule PATs, for use before it crosses an HTTP boundary. The daemon keeps
+// them in its in-memory store (the clone step reads them there); they must never
+// appear in a `/config` response, which is browser-reachable — otherwise any
+// referenceable org secret becomes readable. Mirrors how `env` values never leave
+// the daemon (only `envKeys` do).
+//
+// Copies rather than mutates: the input aliases the live store's config, so
+// clearing the field in place would disarm the clone step itself.
+func stripSubmoduleTokens(c *config.TenantConfig) *config.TenantConfig {
+	if c == nil || c.Git == nil || c.Git.Repository == nil ||
+		c.Git.Repository.SubmoduleCredentials == nil {
+		return c
 	}
+	repo := *c.Git.Repository
+	repo.SubmoduleCredentials = nil
+	git := *c.Git
+	git.Repository = &repo
+	out := *c
+	out.Git = &git
+	return &out
 }
 
 func ConfigRead(deps ConfigDeps) http.HandlerFunc {
@@ -120,7 +145,10 @@ func ConfigUpdate(deps ConfigDeps) http.HandlerFunc {
 		httpx.JSON(w, 200, map[string]any{
 			"bootId":     deps.DaemonBootId,
 			"transition": result.Transition.Kind,
-			"config":     result.After,
+			// Both GET /config and this echo are proxied to the browser. Never let
+			// the resolved submodule PATs back out — they're needed only in the
+			// in-memory store for the clone step.
+			"config": stripSubmoduleTokens(result.After),
 		})
 	}
 }

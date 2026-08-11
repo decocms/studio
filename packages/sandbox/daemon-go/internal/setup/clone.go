@@ -2,6 +2,7 @@ package setup
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -68,7 +69,11 @@ type CloneDeps struct {
 	RepoDir  string
 	CloneUrl string
 	Branch   string
-	OnChunk  func(data string)
+	// SubmoduleCredentials are per-host PATs for private submodules. Opt-in:
+	// empty means submodules are left alone. ⚠️ SECURITY: credentials — see
+	// runSubmoduleUpdate for the channel they travel on.
+	SubmoduleCredentials []config.SubmoduleCredential
+	OnChunk              func(data string)
 }
 
 // crNormalizeRe: bare \r (git progress) → \r\n so log lines stay readable.
@@ -178,6 +183,136 @@ func isNonEmptyWithoutGit(dir string) bool {
 	return true
 }
 
+// submoduleHostRe mirrors SUBMODULE_HOST_RE in
+// packages/shared/src/sdk/types/virtual-mcp.ts (the source of truth, also
+// enforced by the tool schema). A submodule host flows into a
+// `git -c url.<…>.insteadOf` argv and into a git-credentials file line
+// (`https://x-access-token:<token>@<host>`). Argv/file form makes shell
+// injection impossible, but a host with a slash, `@`, whitespace, or control
+// chars would corrupt the insteadOf prefix or the credential URL — so allow only
+// a bare hostname with an optional port.
+var submoduleHostRe = regexp.MustCompile(`^[a-zA-Z0-9.-]+(?::[0-9]+)?$`)
+
+// prepareSubmoduleCredentials validates and dedupes credentials by host (last
+// write wins), returning the git-credential-store file lines for the valid hosts
+// plus the rejected hosts. Deterministic: no fs/network.
+//
+// ⚠️ SECURITY: `lines` contain tokens. Never log them.
+func prepareSubmoduleCredentials(credentials []config.SubmoduleCredential) (lines, hosts, invalidHosts []string) {
+	tokenByHost := map[string]string{}
+	for _, c := range credentials {
+		if !submoduleHostRe.MatchString(c.Host) {
+			invalidHosts = append(invalidHosts, c.Host)
+			continue
+		}
+		// First sighting fixes the order; a repeat overwrites the token in place,
+		// so "last token wins" without disturbing host ordering.
+		if _, seen := tokenByHost[c.Host]; !seen {
+			hosts = append(hosts, c.Host)
+		}
+		tokenByHost[c.Host] = c.Token
+	}
+	for _, host := range hosts {
+		// Built through url.URL so the token is percent-encoded as userinfo:
+		// git-credential-store parses each line as a URL, and a PAT containing
+		// `@`, `:`, or `/` would otherwise split the line at the wrong byte.
+		// (Not QueryEscape — that renders a space as `+`, which git would read
+		// literally.)
+		u := url.URL{
+			Scheme: "https",
+			User:   url.UserPassword("x-access-token", tokenByHost[host]),
+			Host:   host,
+		}
+		lines = append(lines, u.String())
+	}
+	return lines, hosts, invalidHosts
+}
+
+// submoduleUpdateArgs is the exact `git` extra-args for a submodule update:
+// per-host SSH→HTTPS `insteadOf` rewrites (no token) followed by the store-helper
+// pointer and the shallow recursive `submodule update`. Combined with
+// gitBaseArgv()'s leading `-c credential.helper=` (which resets the helper list),
+// the store helper is the only one in effect for this command and its submodule
+// subprocesses (they inherit `-c` via GIT_CONFIG_PARAMETERS).
+func submoduleUpdateArgs(hosts []string, credFile string) []string {
+	args := []string{}
+	for _, host := range hosts {
+		args = append(args,
+			"-c", "url.https://"+host+"/.insteadOf=git@"+host+":",
+			"-c", "url.https://"+host+"/.insteadOf=ssh://git@"+host+"/",
+		)
+	}
+	return append(args,
+		"-c", "credential.helper=store --file="+credFile,
+		"submodule", "update", "--init", "--recursive", "--depth", "1",
+	)
+}
+
+// runSubmoduleUpdate fetches git submodules after the working tree is
+// materialized, authenticating private submodules with user-supplied per-host
+// PATs. Best-effort: a failure warns and leaves the (bare) working tree intact
+// rather than failing the whole clone, mirroring fetchBaseBranch.
+//
+// Credentials are delivered on a git-only channel — never the env bag the dev
+// server sees. The token lives only in a short-lived credentials file (mode 0600,
+// outside the repo) read by `git-credential-store` for the submodule fetch, then
+// deleted. `insteadOf` rewrites (which carry NO token) turn `git@<host>:` /
+// `ssh://git@<host>/` submodule URLs into HTTPS so the store credential applies;
+// the token is never placed in argv and never persisted into the repo's
+// `.git/config`.
+//
+// No-op when no credentials are configured (the feature is opt-in) or the repo
+// declares no submodules.
+//
+// `run` is injected so the argv/best-effort contract is testable without git.
+func runSubmoduleUpdate(dir string, credentials []config.SubmoduleCredential, onChunk func(string), run func(argv []string) int) {
+	if len(credentials) == 0 {
+		return
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".gitmodules")); err != nil {
+		return
+	}
+
+	lines, hosts, invalidHosts := prepareSubmoduleCredentials(credentials)
+	for _, host := range invalidHosts {
+		onChunk(fmt.Sprintf("\r\n[clone] warning: skipping submodule credential with invalid host %q\r\n", host))
+	}
+	if len(hosts) == 0 {
+		return
+	}
+
+	// Best-effort, end to end: the credentials-file write (EACCES/ENOSPC) can
+	// fail, and this runs on the clone's critical path — a hard failure here
+	// would fail the whole clone for an opt-in, non-essential step. Degrade to a
+	// warning; the working tree (sans submodules) stays intact. The remove always
+	// runs so the token file never lingers, even if the write half-completed.
+	f, err := os.CreateTemp("", "submodule-git-credentials")
+	if err != nil {
+		onChunk(fmt.Sprintf("\r\n[clone] warning: submodule credentials file errored (%s); continuing without submodules\r\n", err.Error()))
+		return
+	}
+	credFile := f.Name()
+	defer os.Remove(credFile)
+	// CreateTemp already opens 0600; Chmod defends against a umask surprise on a
+	// co-tenant node — the file holds a long-lived PAT.
+	writeErr := f.Chmod(0o600)
+	if writeErr == nil {
+		_, writeErr = f.WriteString(strings.Join(lines, "\n") + "\n")
+	}
+	if closeErr := f.Close(); writeErr == nil {
+		writeErr = closeErr
+	}
+	if writeErr != nil {
+		onChunk(fmt.Sprintf("\r\n[clone] warning: submodule credentials file errored (%s); continuing without submodules\r\n", writeErr.Error()))
+		return
+	}
+
+	argv := append(gitArgv("-C", dir), submoduleUpdateArgs(hosts, credFile)...)
+	if code := run(argv); code != 0 {
+		onChunk(fmt.Sprintf("\r\n[clone] warning: submodule update failed (exit %d); continuing without submodules\r\n", code))
+	}
+}
+
 func SpawnClone(deps CloneDeps) CloneResult {
 	cloneUrl := deps.CloneUrl
 	if cloneUrl == "" {
@@ -224,6 +359,17 @@ func SpawnClone(deps CloneDeps) CloneResult {
 		}
 	}
 
+	// Funnels every success return through the (best-effort, opt-in) submodule
+	// fetch so both acquisition paths and both branch cases get submodules.
+	finalize := func(res CloneResult) CloneResult {
+		if res.Code == 0 {
+			runSubmoduleUpdate(dir, deps.SubmoduleCredentials, deps.OnChunk, func(argv []string) int {
+				return runNetworkStep(argv, deps)
+			})
+		}
+		return res
+	}
+
 	if isNonEmptyWithoutGit(dir) {
 		for _, step := range [][]string{
 			gitArgv("-C", dir, "init"),
@@ -248,13 +394,13 @@ func SpawnClone(deps CloneDeps) CloneResult {
 			return CloneResult{Code: code}
 		}
 		if branchToForkLocally != "" {
-			return CloneResult{Code: runStep(gitArgv("-C", dir, "checkout", "-B", branchToForkLocally), deps)}
+			return finalize(CloneResult{Code: runStep(gitArgv("-C", dir, "checkout", "-B", branchToForkLocally), deps)})
 		}
 		res := CloneResult{Code: 0}
 		if branchOnRemote != "" {
 			res.FetchBase = deferBaseFetch(branchOnRemote)
 		}
-		return res
+		return finalize(res)
 	}
 
 	cloneCmd := gitArgv("clone", "--depth", "1", cloneUrl, dir)
@@ -265,11 +411,11 @@ func SpawnClone(deps CloneDeps) CloneResult {
 		return CloneResult{Code: code}
 	}
 	if branchToForkLocally != "" {
-		return CloneResult{Code: runStep(gitArgv("-C", dir, "checkout", "-B", branchToForkLocally), deps)}
+		return finalize(CloneResult{Code: runStep(gitArgv("-C", dir, "checkout", "-B", branchToForkLocally), deps)})
 	}
 	res := CloneResult{Code: 0}
 	if branchOnRemote != "" {
 		res.FetchBase = deferBaseFetch(branchOnRemote)
 	}
-	return res
+	return finalize(res)
 }
