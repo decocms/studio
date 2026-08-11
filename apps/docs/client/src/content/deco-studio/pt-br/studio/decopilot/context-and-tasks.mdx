@@ -15,7 +15,7 @@ Uma **task** é sua conversa com o Decopilot — onde você conversa, o Decopilo
 Toda task tem um destes quatro estados:
 
 - **In progress** — o agent está trabalhando ou aguardando sua próxima mensagem
-- **Requires action** — pausada, aguardando seu input (uma tool precisa de aprovação ou ele fez uma pergunta)
+- **Requires action** — pausada, aguardando seu input. Esse estado só é definido quando há uma tool call pendente que precisa de você — um pedido de aprovação ou um `user_ask` — nunca apenas porque o texto da resposta contém um ponto de interrogação (por exemplo, uma pergunta retórica, ou uma URL com uma query string `?`)
 - **Completed** — o trabalho terminou com sucesso
 - **Failed** — algo deu errado ou a task expirou
 
