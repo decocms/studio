@@ -51,8 +51,16 @@ const (
 // 168k-file tree it produced 450 MB in 26s, where -19 spent 85s to reach
 // 332 MB. Publish is off the critical path but not free, and restore-side
 // decompression is ~1.6s either way, so the extra 59s buys nothing that
-// matters. -T0 uses all available cores.
-var zstdPublishArgs = []string{"-3", "-T0"}
+// matters.
+//
+// Single-threaded on purpose. -T0 sizes the worker pool to the machine's core
+// count, which does not know about the cgroup: the sandbox NodePool runs
+// 2-vCPU nodes and the uploader is capped at 500m, so -T0 spawned two workers
+// to share half a core. Under a fixed CPU quota extra threads buy no
+// throughput — the quota is the throughput — while each one adds its own
+// window and job buffers, and the switching competes with the tenant dev
+// server on the same 2-core box. Raise this only together with the CPU limit.
+var zstdPublishArgs = []string{"-3", "-T1"}
 
 // RemoteGoldenParams identifies the shared archive for one install step. Mirrors
 // GoldenParams so the orchestrator can derive one from the other — the two tiers

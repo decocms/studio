@@ -90,6 +90,19 @@ spec:
             # ship its neighbours' trees into a key prefix they never read.
             - name: SANDBOX_ENV
               value: {{ include "sandbox-env.envName" . | quote }}
+            {{- if .Values.telemetry.enabled }}
+            # Turns the sweep counters on. Without it the daemon's Init is a
+            # no-op and `sandbox.daemon.golden.upload` never reaches the
+            # collector, which leaves the shared tier observable only by reading
+            # this pod's log on every node.
+            #
+            # Unlike a sandbox this pod runs dnsPolicy: ClusterFirst with no
+            # netinit, so the collector is reachable by name too — but the same
+            # helper is used so the endpoint cannot drift between the two
+            # workloads that report to it.
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ include "sandbox-env.otlpEndpoint" . | quote }}
+            {{- end }}
           resources:
             {{- toYaml .Values.goldenUploader.resources | nindent 12 }}
           securityContext:
