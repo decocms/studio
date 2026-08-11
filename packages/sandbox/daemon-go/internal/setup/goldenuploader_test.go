@@ -257,6 +257,29 @@ func TestUploadNodeGoldens(t *testing.T) {
 		}
 	})
 
+	// A node that has never run a sandbox: the cache root does not exist at all,
+	// not merely empty. This is the state of every node Karpenter has just created,
+	// and the uploader lands there first because a DaemonSet does not wait for a
+	// tenant. The case above uses t.TempDir(), which exists — so it never covered
+	// this, and the chart relied on the mount to guarantee the directory instead.
+	// It cannot: see the deps-cache volume comment in sandbox-golden-uploader.yaml.
+	t.Run("a cache root that does not exist yet is not an error", func(t *testing.T) {
+		remote := t.TempDir()
+		absent := filepath.Join(t.TempDir(), "never-ran-a-sandbox")
+
+		s := UploadNodeGoldens(UploaderOpts{CacheRoot: absent, RemoteRoot: remote, Env: "prod"})
+
+		if s != (UploaderStats{}) {
+			t.Fatalf("a fresh node must sweep to nothing, got %+v", s)
+		}
+		if entries, _ := os.ReadDir(remote); len(entries) != 0 {
+			t.Fatal("wrote to the shared store from a node with no cache")
+		}
+		if _, err := os.Stat(absent); !os.IsNotExist(err) {
+			t.Fatal("the sweep created the cache root; the sandbox owns creating it, with the right uid")
+		}
+	})
+
 	// A golden directory mid-publish has no node_modules yet. Uploading one would
 	// mean shipping a partial tree fleet-wide.
 	t.Run("skips a directory with no node_modules", func(t *testing.T) {
