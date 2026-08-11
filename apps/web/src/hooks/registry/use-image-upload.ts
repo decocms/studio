@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMCPClient, useProjectContext } from "@/sdk";
 import { toast } from "sonner";
+import { useT } from "@/i18n/use-t.ts";
 
 interface UseImageUploadResult {
   uploadImage: (file: File, path: string) => Promise<string | null>;
@@ -18,6 +19,7 @@ interface UseImageUploadResult {
  * @returns Upload function and loading state
  */
 export function useImageUpload(connectionId?: string): UseImageUploadResult {
+  const t = useT();
   const { org } = useProjectContext();
   const [isUploading, setIsUploading] = useState(false);
 
@@ -39,19 +41,17 @@ export function useImageUpload(connectionId?: string): UseImageUploadResult {
     path: string,
   ): Promise<string | null> => {
     if (!storageConnectionId) {
-      toast.error(
-        "Image upload requires an object-storage connection. Configure one in plugin settings.",
-      );
+      toast.error(t("registry.imageUpload.needsObjectStorageConnection"));
       return null;
     }
 
     if (!file.type.startsWith("image/")) {
-      toast.error("Only image files are supported");
+      toast.error(t("registry.imageUpload.onlyImageFiles"));
       return null;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      toast.error("Image size must be less than 5MB");
+      toast.error(t("registry.imageUpload.sizeTooLarge"));
       return null;
     }
 
@@ -71,7 +71,7 @@ export function useImageUpload(connectionId?: string): UseImageUploadResult {
         presignedResult.structuredContent?.url || presignedResult.url;
 
       if (!presignedUrl) {
-        throw new Error("Failed to get presigned URL");
+        throw new Error(t("registry.imageUpload.failedToGetPresignedUrl"));
       }
 
       // Step 2: Upload file to presigned URL
@@ -84,7 +84,11 @@ export function useImageUpload(connectionId?: string): UseImageUploadResult {
       });
 
       if (!uploadResponse.ok) {
-        throw new Error(`Upload failed: ${uploadResponse.statusText}`);
+        throw new Error(
+          t("registry.imageUpload.uploadFailed", {
+            statusText: uploadResponse.statusText,
+          }),
+        );
       }
 
       // Step 3: Get the public URL for the uploaded file
@@ -100,7 +104,7 @@ export function useImageUpload(connectionId?: string): UseImageUploadResult {
         downloadResult.structuredContent?.url || downloadResult.url;
 
       if (!publicUrl) {
-        throw new Error("Failed to get public URL");
+        throw new Error(t("registry.imageUpload.failedToGetPublicUrl"));
       }
 
       return publicUrl;
@@ -109,7 +113,7 @@ export function useImageUpload(connectionId?: string): UseImageUploadResult {
       toast.error(
         error instanceof Error
           ? error.message
-          : "Failed to upload image. Please try again.",
+          : t("registry.imageUpload.failedToUpload"),
       );
       return null;
     } finally {

@@ -51,11 +51,23 @@ export const registry = {
   "registry.imageUpload.change": "Alterar",
   "registry.imageUpload.clickOrDragToUpload": "Clique ou arraste para enviar",
   "registry.imageUpload.dropImageHere": "Solte a imagem aqui",
+  "registry.imageUpload.failedToGetPresignedUrl":
+    "Falha ao obter a URL pré-assinada",
+  "registry.imageUpload.failedToGetPublicUrl": "Falha ao obter a URL pública",
+  "registry.imageUpload.failedToUpload":
+    "Falha ao enviar a imagem. Tente novamente.",
   "registry.imageUpload.image": "Imagem",
+  "registry.imageUpload.needsObjectStorageConnection":
+    "O envio de imagem requer uma conexão de armazenamento de objetos. Configure uma nas configurações do plugin.",
+  "registry.imageUpload.onlyImageFiles":
+    "Apenas arquivos de imagem são aceitos",
   "registry.imageUpload.orPasteImageUrl": "Ou cole um URL de imagem",
   "registry.imageUpload.previewAlt": "Visualização",
   "registry.imageUpload.remove": "Remover",
+  "registry.imageUpload.sizeTooLarge":
+    "O tamanho da imagem deve ser menor que 5MB",
   "registry.imageUpload.supportedFormats": "PNG, JPG, SVG até 5MB",
+  "registry.imageUpload.uploadFailed": "Falha no envio: {statusText}",
   "registry.imageUpload.uploadingImage": "Enviando imagem...",
   "registry.imageUpload.urlPlaceholder": "https://example.com/logo.png",
   "registry.monitorConfiguration.aboutLabel": "Sobre {label}",
