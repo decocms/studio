@@ -43,6 +43,7 @@ import { getConnectionSlug } from "@decocms/shared/utils/connection-slug";
 import { useT } from "@/i18n/use-t.ts";
 import {
   buildFilledStatsData,
+  computeHeatmapView,
   formatCompactNumber,
   formatDuration,
   formatMetricValue,
@@ -306,49 +307,12 @@ function ToolAgentHeatmap({
     );
   }
 
-  const toolTotals = new Map<string, number>();
-  for (const cell of cells) {
-    toolTotals.set(
-      cell.toolName,
-      (toolTotals.get(cell.toolName) ?? 0) + cell[metric],
-    );
-  }
-  const topTools = [...toolTotals.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, HEATMAP_MAX_TOOLS)
-    .map(([name]) => name);
-  const toolSet = new Set(topTools);
-
-  const agentTotals = new Map<string, number>();
-  const cellMap = new Map<
-    string,
-    { calls: number; errors: number; outputSize: number }
-  >();
-  for (const cell of cells) {
-    if (!toolSet.has(cell.toolName)) continue;
-    const agentId = cell.virtualMcpId ?? "";
-    agentTotals.set(agentId, (agentTotals.get(agentId) ?? 0) + cell[metric]);
-    cellMap.set(`${agentId}::${cell.toolName}`, {
-      calls: cell.calls,
-      errors: cell.errors,
-      outputSize: cell.outputSize,
-    });
-  }
-  const topAgentIds = [...agentTotals.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, HEATMAP_MAX_AGENTS)
-    .map(([id]) => id);
-  const topAgentSet = new Set(topAgentIds);
-
-  // Normalize the color scale against only the cells actually rendered
-  // (top agents × top tools) — an outlier from an agent that didn't make
-  // the top-8 must not dilute the colors of the cells shown.
-  let maxValue = 0;
-  for (const cell of cells) {
-    if (!toolSet.has(cell.toolName)) continue;
-    if (!topAgentSet.has(cell.virtualMcpId ?? "")) continue;
-    if (cell[metric] > maxValue) maxValue = cell[metric];
-  }
+  const { topTools, topAgentIds, cellMap, maxValue } = computeHeatmapView(
+    cells,
+    metric,
+    HEATMAP_MAX_TOOLS,
+    HEATMAP_MAX_AGENTS,
+  );
 
   const agentNameOf = (id: string) =>
     id === ""
