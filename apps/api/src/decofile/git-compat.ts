@@ -12,7 +12,11 @@
  *   without calling here.
  */
 
-import { GitHubApiError, type GitDataClient } from "./github-git-data";
+import {
+  GitHubApiError,
+  type GitDataClient,
+  type TreeWriteEntry,
+} from "./github-git-data";
 import { mapBounded, resolveOrCreateHead } from "./read-decofile";
 
 const DIFF_MAX_FILES = 200;
@@ -116,16 +120,29 @@ export async function githubGitDiff(
   };
 }
 
+/** What to do when merging base into the branch hits a git-level conflict. */
+export type RebaseConflictStrategy = "fail" | "branch-wins";
+
 /**
  * "Rebase" equivalent: bring the branch up to date with `base` by merging
  * base INTO the branch server-side (GitHub /merges). A true rebase needs a
  * working tree; a merge commit achieves the same "branch contains latest
  * base" postcondition the dialog's flow wants before publishing.
+ *
+ * `onConflict: "branch-wins"` is the non-technical-user path: on a git-level
+ * conflict, build the merge commit ourselves — base's tree with every path
+ * the branch touched since the merge base replayed on top, so the branch's
+ * content wins for its own edits while everything else catches up to base.
+ * Deliberately branch-favoured: the person syncing is the person editing,
+ * and silently losing THEIR block edit is the one outcome a CMS must never
+ * pick. Both parents are recorded, so nothing from base is lost from
+ * history.
  */
 export async function githubGitRebase(
   client: GitDataClient,
   branch: string,
   base: string,
+  onConflict: RebaseConflictStrategy = "fail",
 ): Promise<void> {
   try {
     await client.mergeBranch(
@@ -133,8 +150,10 @@ export async function githubGitRebase(
       base,
       `chore(decofile): merge ${base} into ${branch}`,
     );
+    return;
   } catch (err) {
-    if (err instanceof GitHubApiError && err.status === 409) {
+    if (!(err instanceof GitHubApiError && err.status === 409)) throw err;
+    if (onConflict !== "branch-wins") {
       throw new GitHubApiError(
         409,
         "POST",
@@ -142,6 +161,100 @@ export async function githubGitRebase(
         `Merge conflict updating ${branch} from ${base} — resolve on GitHub`,
       );
     }
-    throw err;
+  }
+  await mergeBranchWins(client, branch, base);
+}
+
+/**
+ * GitHub's compare endpoint returns at most 300 files; beyond that the
+ * change-set is silently truncated, and replaying a truncated set would
+ * DROP the branch's remaining edits from the merge. Fail loudly instead.
+ */
+const MERGE_REPLAY_FILE_CAP = 300;
+
+const MERGE_CAS_ATTEMPTS = 3;
+
+async function mergeBranchWins(
+  client: GitDataClient,
+  branch: string,
+  base: string,
+): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    const branchHead = await client.getHeadSha(branch);
+    const baseHead = await client.getHeadSha(base);
+    // Three-dot compare: every path the branch changed since the merge base —
+    // exactly the set where the branch's version must win.
+    const { files } = await client.compareDetailed(base, branch);
+    if (files.length >= MERGE_REPLAY_FILE_CAP) {
+      throw new GitHubApiError(
+        409,
+        "POST",
+        "merges",
+        `Too many changed files on ${branch} to auto-merge (${files.length}); resolve on GitHub`,
+      );
+    }
+
+    // Real blob shas + modes come from the branch tree, not the compare
+    // entries — compare doesn't carry file modes.
+    const branchTree = await client.getTreeRecursive(
+      await client.getCommitTreeSha(branchHead),
+    );
+    const branchBlobByPath = new Map(
+      branchTree.filter((e) => e.type === "blob").map((e) => [e.path, e]),
+    );
+
+    const entries: TreeWriteEntry[] = [];
+    for (const f of files) {
+      const blob = branchBlobByPath.get(f.filename);
+      if (f.status === "removed" || !blob) {
+        entries.push({
+          path: f.filename,
+          mode: "100644",
+          type: "blob",
+          sha: null,
+        });
+      } else {
+        entries.push({
+          path: f.filename,
+          mode: "100644",
+          type: "blob",
+          sha: blob.sha,
+        });
+      }
+      // A rename on the branch must also delete the old path from base's tree.
+      if (f.previousFilename && f.previousFilename !== f.filename) {
+        entries.push({
+          path: f.previousFilename,
+          mode: "100644",
+          type: "blob",
+          sha: null,
+        });
+      }
+    }
+
+    const treeSha = await client.createTree(
+      await client.getCommitTreeSha(baseHead),
+      entries,
+    );
+    const commitSha = await client.createCommit({
+      message: `chore(decofile): merge ${base} into ${branch} (branch content wins)`,
+      treeSha,
+      parentShas: [branchHead, baseHead],
+    });
+    try {
+      await client.updateRef(branch, commitSha);
+      return;
+    } catch (err) {
+      // Non-fast-forward: an autosave landed mid-merge. Rebuild from the new
+      // head so the fresh edit is part of the replay instead of clobbered.
+      if (
+        err instanceof GitHubApiError &&
+        err.status === 422 &&
+        attempt < MERGE_CAS_ATTEMPTS
+      ) {
+        continue;
+      }
+      throw err;
+    }
   }
 }

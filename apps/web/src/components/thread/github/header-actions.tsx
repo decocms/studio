@@ -1,6 +1,6 @@
 import { useMCPClient, useProjectContext, useVirtualMCP } from "@/sdk";
 import { resolveFastPreview } from "@/sdk/fast-preview";
-import { useIsMutating, useQuery } from "@tanstack/react-query";
+import { useIsMutating, useQuery, useQueryClient } from "@tanstack/react-query";
 import { decofileWriteMutationKey } from "@/components/sections-editor/decofile-api";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
@@ -14,6 +14,7 @@ import {
 import { useState, useRef, type ComponentType } from "react";
 import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client.ts";
+import { KEYS } from "@/lib/query-keys";
 import { coAuthorFromSessionUser } from "@/lib/co-author-identity.ts";
 import { resolveGithubAttachment } from "@/lib/github-repo.ts";
 import {
@@ -43,6 +44,7 @@ import {
   fetchGitStatus,
   normalizePublishPolicy,
   readGitHeadBranch,
+  rebaseGitBranch,
   sandboxGitStatusQueryKey,
   type PublishGate,
 } from "./sandbox-git-api.ts";
@@ -125,6 +127,7 @@ function makeBranchLoadingButton(t: TFunction): HeaderButton {
 export function HeaderActions({ virtualMcpId }: Props) {
   const t = useT();
   const { org } = useProjectContext();
+  const queryClient = useQueryClient();
   const { data: session } = authClient.useSession();
   const vm = useVirtualMCP(virtualMcpId);
   const fastPreviewActive = resolveFastPreview(vm?.metadata).active;
@@ -136,6 +139,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
     "open-pr" | "publish-only"
   >("open-pr");
   const [githubActionPending, setGithubActionPending] = useState(false);
+  const [syncPending, setSyncPending] = useState(false);
   const debugKeyRef = useRef("");
 
   const attachment = resolveGithubAttachment(vm);
@@ -373,18 +377,57 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const baseBranch =
     effectiveBranchMeta.kind === "ready" ? effectiveBranchMeta.base : "main";
 
-  // Org-level opt-in (metadata.syncButtonEnabled) so a business user doesn't
-  // have to know they need to commit before they can rebase. One
-  // deterministic chat prompt: commit local changes, pull --rebase (picks up
-  // anything a teammate pushed straight to this branch), rebase onto the
-  // latest base, push.
+  // Sandbox mode: org-level opt-in (metadata.syncButtonEnabled) so a business
+  // user doesn't have to know they need to commit before they can rebase —
+  // one deterministic chat prompt does the git work in the sandbox.
+  // Fast Preview: no sandbox and no chat to delegate to, so Sync shows
+  // whenever the branch is behind base and calls the GitHub-backed rebase
+  // route directly, auto-resolving conflicts in the branch's favour (the
+  // person syncing is the person editing; a conflict dialog is worse for a
+  // non-technical user than a branch-favoured merge).
   const showSync =
-    vm?.metadata?.syncButtonEnabled === true &&
+    (vm?.metadata?.syncButtonEnabled === true ||
+      (fastPreviewActive &&
+        effectiveBranchMeta.kind === "ready" &&
+        effectiveBranchMeta.behindBase > 0)) &&
     Boolean(githubRepo) &&
     Boolean(githubHeadBranch);
   const handleSync = () => {
     if (isStreaming || !githubHeadBranch) return;
-    void send(tpl.syncBranch({ branch: githubHeadBranch, base: baseBranch }));
+    if (!fastPreviewActive) {
+      void send(tpl.syncBranch({ branch: githubHeadBranch, base: baseBranch }));
+      return;
+    }
+    if (syncPending) return;
+    setSyncPending(true);
+    rebaseGitBranch(org.slug, virtualMcpId, githubHeadBranch, baseBranch, {
+      onConflict: "branch-wins",
+    })
+      .then(() => {
+        toast.success(
+          t("thread.headerActions.syncedWithBase", { base: baseBranch }),
+        );
+        // The merge moved the head: refresh drift AND the editor's content
+        // (the refetch re-stashes the draft version, which reloads the frame).
+        return Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: sandboxGitStatusQueryKey(
+              org.slug,
+              virtualMcpId,
+              branch ?? githubHeadBranch,
+            ),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: KEYS.decofile(
+              `${org.slug}/${virtualMcpId}/${githubHeadBranch}`,
+            ),
+          }),
+        ]);
+      })
+      .catch((err: unknown) => {
+        toast.error(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => setSyncPending(false));
   };
 
   const refreshPrState = async () => {
@@ -476,7 +519,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   // yet merged, and never on merge-split (where the primary button IS publish).
   const showPublishSide = button.showPublishSide ?? false;
 
-  const actionBusy = githubActionPending || isStreaming;
+  const actionBusy = githubActionPending || isStreaming || syncPending;
 
   return (
     <>

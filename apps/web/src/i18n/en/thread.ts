@@ -107,6 +107,7 @@ export const thread = {
   "thread.headerActions.reconnectGithub": "Reconnect GitHub",
   "thread.headerActions.reviewingChanges": "Reviewing changes…",
   "thread.headerActions.saving": "Saving…",
+  "thread.headerActions.syncedWithBase": "Synced with {base}",
   "thread.headerActions.reopen": "Reopen",
   "thread.headerActions.reopenPrTooltip": "Reopen PR #{prNumber}",
   "thread.headerActions.resolveConflictsTooltip":

@@ -189,7 +189,7 @@ async function commitBatch(batch: Batch): Promise<string> {
     const commitSha = await client.createCommit({
       message: commitMessage(batch),
       treeSha: newTreeSha,
-      parentSha: headSha,
+      parentShas: [headSha],
     });
     try {
       await client.updateRef(branch, commitSha);

@@ -103,7 +103,8 @@ export interface GitDataClient {
   createCommit(params: {
     message: string;
     treeSha: string;
-    parentSha: string;
+    /** One parent for a plain commit; two (ours, theirs) for a merge commit. */
+    parentShas: string[];
   }): Promise<string>;
   /** Non-forced ref update; throws GitHubApiError(422) on non-fast-forward. */
   updateRef(branch: string, sha: string): Promise<void>;
@@ -295,11 +296,11 @@ export function createGitDataClient(params: {
       return json.sha;
     },
 
-    async createCommit({ message, treeSha, parentSha }) {
+    async createCommit({ message, treeSha, parentShas }) {
       const { json } = await call<{ sha: string }>(
         "POST",
         `${repoBase}/git/commits`,
-        { message, tree: treeSha, parents: [parentSha] },
+        { message, tree: treeSha, parents: parentShas },
       );
       return json.sha;
     },

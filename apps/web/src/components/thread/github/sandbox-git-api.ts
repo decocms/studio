@@ -192,13 +192,22 @@ export async function rebaseGitBranch(
   virtualMcpId: string,
   branch: string,
   base: string,
+  opts?: {
+    /**
+     * "branch-wins": on a git-level conflict the server auto-merges with the
+     * branch's content winning for every path it touched — the sandbox-less
+     * Sync path for non-technical users, where a conflict dialog is worse
+     * than a branch-favoured merge.
+     */
+    onConflict?: "branch-wins";
+  },
 ): Promise<void> {
   const res = await sandboxFetch(
     buildSandboxGitUrl(orgSlug, virtualMcpId, branch, "rebase"),
     {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ base }),
+      body: JSON.stringify({ base, ...opts }),
     },
   );
   await parseJson(res);
