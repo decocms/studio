@@ -538,6 +538,30 @@ func runGoldenUploader() {
 	slog.Info("golden-uploader start", "cache_root", opts.CacheRoot,
 		"remote_root", opts.RemoteRoot, "interval", interval.String())
 
+	// Metrics on the same terms as the daemon: opt-in via
+	// OTEL_EXPORTER_OTLP_ENDPOINT, best-effort, no-op when unset.
+	//
+	// NOT optional in practice, and the reason this call exists at all: main()
+	// dispatches this subcommand and returns before reaching the daemon's own
+	// Init, so without this line the sweep counters are recorded into the global
+	// no-op provider and emit nothing. The uploader runs on every sandbox node,
+	// so the alternative to a metric is grepping a log line across the fleet —
+	// which is how this tier already sat inert for months unnoticed.
+	otelShutdown, err := telemetry.Init(context.Background(), randomUUID(), "go")
+	if err != nil {
+		slog.Warn("otlp metrics disabled: exporter init failed", "err", err)
+	}
+	// Runs after RunUploader returns, i.e. after SIGTERM closed `stop`. Flushes
+	// the sweep that just finished; nothing here is on a boot's critical path,
+	// so it can have the full grace period rather than the daemon's clipped one.
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := otelShutdown(ctx); err != nil {
+			slog.Warn("otlp shutdown", "err", err)
+		}
+	}()
+
 	stop := make(chan struct{})
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)

@@ -506,10 +506,23 @@ goldenUploader:
   # Deliberately small. Compression is CPU-bound and shares a node with tenant
   # sandboxes, whose NodePool has a CPU ceiling — a sweep that takes 60s
   # instead of 26s costs nobody anything, because no boot waits on it.
+  #
+  # Sized against measurement, not a guess: idle the container sits at 2.6 MiB
+  # average / 6.0 MiB peak RSS across the fleet. The request covers the
+  # compressing case instead — `zstd -3` holds a 1 MiB window per worker plus
+  # job buffers, so a sweep peaks in the low tens of MiB. 32Mi keeps roughly 2x
+  # headroom over that; the old 64Mi was ~10x idle with no measurement behind
+  # it. The limit stays generous because being OOM-killed mid-sweep is worse
+  # than being slow: the archive is written straight to its final key, so a
+  # killed publish leaves nothing readable and the next sweep redoes the work.
+  #
+  # This request is per NODE and, until the uploader becomes a cluster
+  # singleton, per ENVIRONMENT — prod and stg share one NodePool, so every node
+  # reserves this twice for work that is done once.
   resources:
     requests:
       cpu: 50m
-      memory: 64Mi
+      memory: 32Mi
     limits:
       cpu: 500m
       memory: 256Mi
