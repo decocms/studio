@@ -1,9 +1,6 @@
 import { useMCPClient, useProjectContext, useVirtualMCP } from "@/sdk";
 import { resolveFastPreview } from "@/sdk/fast-preview";
-import {
-  useDecofileStatus,
-  usePublishDecofile,
-} from "@/components/sections-editor/decofile-api";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -41,7 +38,17 @@ import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycl
 import { usePublishGate } from "@/components/sandbox/hooks/use-publish-gate.ts";
 import { useChecks, usePrByBranch } from "./use-pr-data.ts";
 import { usePrReviews } from "./use-pr-reviews.ts";
-import { normalizePublishPolicy, type PublishGate } from "./sandbox-git-api.ts";
+import {
+  fetchGitStatus,
+  normalizePublishPolicy,
+  readGitHeadBranch,
+  sandboxGitStatusQueryKey,
+  type PublishGate,
+} from "./sandbox-git-api.ts";
+import type {
+  BranchMeta,
+  LifecycleState,
+} from "@/components/sandbox/hooks/sandbox-events-context";
 import { useT, type TFunction } from "@/i18n/use-t";
 import { TOUR_ANCHORS } from "@/components/cms-tour/anchors";
 import {
@@ -108,23 +115,18 @@ function makeBranchLoadingButton(t: TFunction): HeaderButton {
  * Up to date, Published, …) cover cases with no actionable next step. When
  * detached it renders a reconnect pill rather than nothing.
  *
- * Sandbox-less Fast Preview projects render {@link FastPreviewHeaderActions}
- * instead: there is no sandbox SSE branch meta to drive the button state, and
- * every save is already a commit — publish is the only remaining action.
+ * Sandbox-less Fast Preview projects use the SAME component and dialogs: the
+ * `/git/*` routes answer from the GitHub API server-side, and the only client
+ * difference is where branch metadata comes from — the daemon's `branch` SSE
+ * event has no daemon to emit it, so it's polled from `/git/status` instead
+ * (see `effectiveBranchMeta` below).
  */
 export function HeaderActions({ virtualMcpId }: Props) {
-  const vm = useVirtualMCP(virtualMcpId);
-  if (resolveFastPreview(vm?.metadata).active) {
-    return <FastPreviewHeaderActions virtualMcpId={virtualMcpId} />;
-  }
-  return <SandboxHeaderActions virtualMcpId={virtualMcpId} />;
-}
-
-function SandboxHeaderActions({ virtualMcpId }: Props) {
   const t = useT();
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
   const vm = useVirtualMCP(virtualMcpId);
+  const fastPreviewActive = resolveFastPreview(vm?.metadata).active;
   const { currentBranch: branch, setCurrentTaskBranch } = useChatTask();
   const chat = useChatStream();
   const { openSidePanel } = usePanelActions();
@@ -149,10 +151,44 @@ function SandboxHeaderActions({ virtualMcpId }: Props) {
   });
 
   const {
-    lifecycle,
-    branch: branchMeta,
+    lifecycle: sseLifecycle,
+    branch: sseBranchMeta,
     phase: claimPhase,
   } = useSandboxEvents();
+
+  // Sandbox-less: no daemon → no `branch` SSE event. Poll the (GitHub-backed)
+  // status route into the same BranchMeta shape; every save is already a
+  // commit, so the working tree is clean by construction and a modest poll
+  // interval is enough — saves also don't change what the header shows until
+  // drift vs base changes.
+  const fpStatusQuery = useQuery({
+    queryKey: sandboxGitStatusQueryKey(org.slug, virtualMcpId, branch ?? ""),
+    queryFn: () => fetchGitStatus(org.slug, virtualMcpId, branch ?? ""),
+    enabled: fastPreviewActive && !!branch,
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+  const fpStatus = fpStatusQuery.data ?? null;
+  const branchMeta: BranchMeta = fastPreviewActive
+    ? fpStatus
+      ? {
+          kind: "ready",
+          branch: readGitHeadBranch(fpStatus) ?? branch ?? "",
+          base: fpStatus.base ?? "main",
+          workingTreeDirty: false,
+          unpushed: 0,
+          aheadOfBase: fpStatus.aheadOfBase ?? 0,
+          behindBase: fpStatus.behindBase ?? 0,
+          headSha: fpStatus.headSha ?? "",
+        }
+      : { kind: "unknown" }
+    : sseBranchMeta;
+  // The lifecycle gates the header copy through clone/checkout; sandbox-less
+  // has no boot pipeline, so it reads as permanently running (the port /
+  // htmlSupport fields are dev-server facts nothing on this surface reads).
+  const lifecycle: LifecycleState = fastPreviewActive
+    ? { phase: "running", port: 0, htmlSupport: true }
+    : sseLifecycle;
 
   const sandboxBranch = branchMeta.kind === "ready" ? branchMeta.branch : null;
   const sandboxMapBranch = resolveSandboxBranchFromMap(
@@ -651,78 +687,5 @@ function WithTooltip({
         <TooltipContent>{label}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
-  );
-}
-
-/**
- * Header actions for sandbox-less Fast Preview projects: every save is
- * already a commit on the branch, so the only remaining action is publishing —
- * merging the branch into the default branch via the decofile API (with a PR
- * fallback for protected bases). Drift comes from `GET …/status`, not SSE.
- */
-function FastPreviewHeaderActions({ virtualMcpId }: Props) {
-  const t = useT();
-  const { org } = useProjectContext();
-  const { currentBranch: branch } = useChatTask();
-  const params = branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
-  const status = useDecofileStatus(params);
-  const publish = usePublishDecofile(params);
-
-  if (!params || status.isPending) {
-    return (
-      <Button size="sm" variant="outline" disabled>
-        <Spinner size="xs" />
-        {t("thread.headerActions.loading")}
-      </Button>
-    );
-  }
-  if (status.isError) return null;
-
-  const aheadBy = status.data?.aheadBy ?? 0;
-  if (aheadBy === 0) {
-    return (
-      <WithTooltip
-        label={t("thread.headerActions.branchInSyncTooltip", {
-          base: status.data?.baseBranch ?? "main",
-        })}
-      >
-        <Button size="sm" variant="outline" disabled>
-          {t("thread.headerActions.published")}
-        </Button>
-      </WithTooltip>
-    );
-  }
-
-  const handlePublish = () => {
-    publish.mutate(undefined, {
-      onSuccess: (result) => {
-        if (result.result === "pull-request") {
-          toast.success(
-            t("thread.headerActions.publishedPr", {
-              prNumber: String(result.number),
-            }),
-          );
-          globalThis.open(result.url, "_blank", "noopener");
-          return;
-        }
-        toast.success(t("thread.headerActions.published"));
-      },
-      onError: (err) => {
-        toast.error(err.message);
-      },
-    });
-  };
-
-  return (
-    <WithTooltip
-      label={t("thread.headerActions.unpublishedChanges", {
-        count: String(aheadBy),
-      })}
-    >
-      <Button size="sm" onClick={handlePublish} disabled={publish.isPending}>
-        {publish.isPending && <Spinner size="xs" />}
-        {t("thread.headerActions.publish")}
-      </Button>
-    </WithTooltip>
   );
 }

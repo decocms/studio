@@ -19,23 +19,20 @@
  */
 
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
+import type { GithubRepo } from "@decocms/shared/sdk/types";
 import { assertSafeDecoBlockKey } from "@decocms/shared/decofile";
 import { Hono, type Context } from "hono";
 import { createMiddleware } from "hono/factory";
 import { z } from "zod";
 import { coAuthorFromStudioContext } from "@/lib/co-author-identity";
-import { ensureRepoScopedToken } from "@/oauth/github-mint";
 import { parseGithubRepoFromMetadata } from "@/tools/sandbox/sync-git-credentials";
+import { gitDataClientForRepo } from "@/decofile/client-for-repo";
 import {
   enqueueDecofilePatch,
   type DecofilePatch,
 } from "@/decofile/commit-coalescer";
 import { signDraftToken, verifyDraftToken } from "@/decofile/draft-token";
-import {
-  createGitDataClient,
-  GitHubApiError,
-  type GitDataClient,
-} from "@/decofile/github-git-data";
+import { GitHubApiError, type GitDataClient } from "@/decofile/github-git-data";
 import { readDecofileSnapshot } from "@/decofile/read-decofile";
 import type { Env } from "../hono-env";
 
@@ -44,7 +41,7 @@ interface DecofileScope {
   virtualMcpId: string;
   branch: string;
   packagePath: string | null;
-  githubRepo: { owner: string; name: string; connectionId?: string };
+  githubRepo: GithubRepo;
   /** Present only for session-authenticated (member) requests. */
   userId: string | null;
 }
@@ -153,35 +150,12 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
 async function gitDataClientForScope(
   c: Context<DecofileEnv>,
 ): Promise<GitDataClient> {
-  const ctx = c.var.studioContext;
   const scope = c.get("decofileScope");
-  const { githubRepo } = scope;
-  if (!githubRepo.connectionId) {
-    throw new GitHubApiError(
-      401,
-      "AUTH",
-      "connection",
-      "Project's GitHub connection is missing — reconnect GitHub",
-    );
-  }
-  const connection = await ctx.storage.connections.findById(
-    githubRepo.connectionId,
+  return gitDataClientForRepo(
+    c.var.studioContext,
     scope.organizationId,
+    scope.githubRepo,
   );
-  if (!connection) {
-    throw new GitHubApiError(
-      401,
-      "AUTH",
-      "connection",
-      "Project's GitHub connection is missing — reconnect GitHub",
-    );
-  }
-  const accessToken = await ensureRepoScopedToken(ctx, connection);
-  return createGitDataClient({
-    owner: githubRepo.owner,
-    repo: githubRepo.name,
-    accessToken,
-  });
 }
 
 function errorResponse(c: Context<DecofileEnv>, err: unknown) {

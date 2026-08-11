@@ -92,6 +92,21 @@ export interface GitDataClient {
     base: string,
     head: string,
   ): Promise<{ aheadBy: number; behindBy: number }>;
+  /** Compare with per-file detail — feeds the sandbox-less `/git/*` compat. */
+  compareDetailed(
+    base: string,
+    head: string,
+  ): Promise<{
+    aheadBy: number;
+    behindBy: number;
+    mergeBaseSha: string;
+    files: Array<{
+      filename: string;
+      status: string;
+      sha: string;
+      previousFilename?: string;
+    }>;
+  }>;
 }
 
 export function createGitDataClient(params: {
@@ -294,6 +309,36 @@ export function createGitDataClient(params: {
         `${repoBase}/compare/${encodeRefPath(base)}...${encodeRefPath(head)}`,
       );
       return { aheadBy: json.ahead_by, behindBy: json.behind_by };
+    },
+
+    async compareDetailed(base, head) {
+      const { json } = await call<{
+        ahead_by: number;
+        behind_by: number;
+        merge_base_commit: { sha: string };
+        files?: Array<{
+          filename: string;
+          status: string;
+          sha: string;
+          previous_filename?: string;
+        }>;
+      }>(
+        "GET",
+        `${repoBase}/compare/${encodeRefPath(base)}...${encodeRefPath(head)}`,
+      );
+      return {
+        aheadBy: json.ahead_by,
+        behindBy: json.behind_by,
+        mergeBaseSha: json.merge_base_commit.sha,
+        files: (json.files ?? []).map((f) => ({
+          filename: f.filename,
+          status: f.status,
+          sha: f.sha,
+          ...(f.previous_filename
+            ? { previousFilename: f.previous_filename }
+            : {}),
+        })),
+      };
     },
   };
 }

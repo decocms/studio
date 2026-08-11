@@ -38,6 +38,14 @@ import {
   suggestCommitMessageWithLlm,
 } from "../../lib/suggest-commit-message";
 import { judgeRequiresReviewWithLlm } from "../../lib/judge-requires-review";
+import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
+import { gitDataClientForRepo } from "../../decofile/client-for-repo";
+import { GitHubApiError } from "../../decofile/github-git-data";
+import {
+  githubGitDiff,
+  githubGitRebase,
+  githubGitStatus,
+} from "../../decofile/git-compat";
 import {
   buildLoaderInvokeUrl,
   parseLoaderInvokeRequest,
@@ -57,7 +65,8 @@ interface VmClaim {
    *  identity is `userId` below, which may be someone else (see
    *  `resolveSandboxUserId`). */
   callerUserId: string;
-  /** Null when no sandbox runner is configured on this studio instance. */
+  /** Null when no sandbox runner is configured on this studio instance — or
+   *  when the project is sandbox-less (`fastPreview` below). */
   runner: SandboxProvider | null;
   virtualMcpId: string;
   branch: string;
@@ -65,6 +74,13 @@ interface VmClaim {
   projectRef: string;
   virtualMcpMetadata: Record<string, unknown> | null;
   connectionIds: string[];
+  /**
+   * Sandbox-less Fast Preview project: no runner exists by design. The
+   * `/git/*` routes answer from the GitHub API (see decofile/git-compat.ts)
+   * so the publish dialog and header work with no working tree behind them;
+   * every other daemon-backed route stays unavailable.
+   */
+  fastPreview?: boolean;
 }
 
 type VmEnv = Env & { Variables: Env["Variables"] & { vmClaim: VmClaim } };
@@ -190,6 +206,29 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
   // a different provider kind (say `agent-sandbox`) would forward traffic
   // to a sandbox that doesn't host this VM. The events handler streams a
   // `failed` phase from null; other handlers 503 via `requireRunner`.
+  // Sandbox-less Fast Preview: there is no runner by design. Claim the route
+  // with runner:null + the flag so the `/git/*` handlers serve their
+  // GitHub-backed equivalents; daemon-backed routes 503 via requireRunner.
+  if (
+    virtualMcpMetadata?.fastPreview === true &&
+    resolvePreviewServerUrl(virtualMcpMetadata)
+  ) {
+    c.set("vmClaim", {
+      claimName,
+      callerUserId: userId,
+      runner: null,
+      virtualMcpId,
+      branch,
+      userId: sandboxUserId,
+      projectRef,
+      virtualMcpMetadata,
+      connectionIds:
+        virtualMcp.connections?.map((conn) => conn.connection_id) ?? [],
+      fastPreview: true,
+    });
+    return next();
+  }
+
   let runner: SandboxProvider | null;
   try {
     const resolved = await resolveSandboxProvider(ctx, {
@@ -228,6 +267,54 @@ function requireRunner(c: Context<VmEnv>): SandboxProvider | Response {
     return c.json({ error: "No sandbox runner configured" }, 503);
   }
   return runner;
+}
+
+// ---- Sandbox-less Fast Preview `/git/*` compat ------------------------------
+// The publish dialog and header speak the daemon's git JSON shapes; for
+// fastPreview claims these routes answer from the GitHub API instead (see
+// decofile/git-compat.ts), so the SAME components work with no working tree.
+
+async function fastPreviewGitClient(c: Context<VmEnv>) {
+  const { virtualMcpMetadata, connectionIds } = c.get("vmClaim");
+  const ctx = c.var.studioContext;
+  const githubRepo = parseGithubRepoFromMetadata(
+    virtualMcpMetadata,
+    connectionIds,
+  );
+  if (!githubRepo) {
+    throw new GitHubApiError(
+      404,
+      "AUTH",
+      "repo",
+      "Project has no GitHub repository",
+    );
+  }
+  const organization = requireOrganization(ctx);
+  return gitDataClientForRepo(ctx, organization.id, githubRepo);
+}
+
+function fastPreviewGitError(c: Context<VmEnv>, err: unknown): Response {
+  if (err instanceof GitHubApiError) {
+    const status =
+      err.status === 404
+        ? 404
+        : err.status === 409 || err.status === 422
+          ? 409
+          : 502;
+    return c.json({ error: err.message }, status, SANDBOX_PROXY_CACHE_HEADERS);
+  }
+  const message = err instanceof Error ? err.message : String(err);
+  return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
+}
+
+async function fastPreviewGitStatus(c: Context<VmEnv>): Promise<Response> {
+  try {
+    const client = await fastPreviewGitClient(c);
+    const status = await githubGitStatus(client, c.get("vmClaim").branch);
+    return c.json(status, 200, SANDBOX_PROXY_CACHE_HEADERS);
+  } catch (err) {
+    return fastPreviewGitError(c, err);
+  }
 }
 
 /**
@@ -291,6 +378,19 @@ async function proxyDaemon(
     redactRepoDirUnlessDesktop?: boolean;
   },
 ) {
+  // Sandbox-less Fast Preview: daemon-backed routes have no daemon, ever.
+  // Answer 404 — the exact shape clients already treat as "sandbox absent"
+  // (readCommittedJson → null → next source; isSandboxUnreachable → backoff).
+  // A 503 here reads as a REAL error and, e.g., fails the meta fallback chain
+  // instead of letting it proceed to the preview server's /live/_meta.
+  if (c.get("vmClaim").fastPreview) {
+    return c.json(
+      { error: "sandbox not found: Fast Preview projects are sandbox-less" },
+      404,
+      SANDBOX_PROXY_CACHE_HEADERS,
+    );
+  }
+
   const runner = requireRunner(c);
   if (runner instanceof Response) return runner;
 
@@ -660,7 +760,11 @@ export const createSandboxRoutes = () => {
   });
 
   // -- Git (status, diff, publish, discard) ---------------------------------
-  app.get("/:virtualMcpId/:branch/git/status", (c) =>
+  app.get("/:virtualMcpId/:branch/git/status", (c) => {
+    if (c.get("vmClaim").fastPreview) return fastPreviewGitStatus(c);
+    return proxyDaemonGitStatus(c);
+  });
+  const proxyDaemonGitStatus = (c: Context<VmEnv>) =>
     proxyDaemon(c, "/_sandbox/git/status", {
       method: "GET",
       map404to410: true,
@@ -668,24 +772,44 @@ export const createSandboxRoutes = () => {
         c.req.raw.signal,
         AbortSignal.timeout(GIT_STATUS_TIMEOUT_MS),
       ]),
-    }),
-  );
-  app.post("/:virtualMcpId/:branch/git/status", (c) =>
-    proxyDaemon(c, "/_sandbox/git/status", {
+    });
+  app.post("/:virtualMcpId/:branch/git/status", (c) => {
+    if (c.get("vmClaim").fastPreview) return fastPreviewGitStatus(c);
+    return proxyDaemon(c, "/_sandbox/git/status", {
       map404to410: true,
       signal: AbortSignal.any([
         c.req.raw.signal,
         AbortSignal.timeout(GIT_STATUS_TIMEOUT_MS),
       ]),
-    }),
-  );
-  app.post("/:virtualMcpId/:branch/git/diff", (c) =>
-    proxyDaemon(c, "/_sandbox/git/diff", {
+    });
+  });
+  app.post("/:virtualMcpId/:branch/git/diff", async (c) => {
+    const claim = c.get("vmClaim");
+    if (claim.fastPreview) {
+      try {
+        const body = (await c.req.json().catch(() => ({}))) as {
+          base?: string;
+        };
+        const client = await fastPreviewGitClient(c);
+        const diff = await githubGitDiff(client, claim.branch, body.base);
+        return c.json(diff, 200, SANDBOX_PROXY_CACHE_HEADERS);
+      } catch (err) {
+        return fastPreviewGitError(c, err);
+      }
+    }
+    return proxyDaemon(c, "/_sandbox/git/diff", {
       forwardJsonBody: true,
       map404to410: true,
-    }),
-  );
+    });
+  });
   app.post("/:virtualMcpId/:branch/git/publish", async (c) => {
+    // Sandbox-less: every save is already a commit on the remote branch, so
+    // "sync local work" has nothing to do. Answering OK keeps the publish
+    // dialog's flow (push → rebase → PR/merge via the GitHub connection)
+    // working with no working tree behind it.
+    if (c.get("vmClaim").fastPreview) {
+      return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
+    }
     const runner = requireRunner(c);
     if (runner instanceof Response) return runner;
 
@@ -725,8 +849,21 @@ export const createSandboxRoutes = () => {
       });
     });
   });
-  app.post("/:virtualMcpId/:branch/git/discard", (c) => {
-    const { claimName } = c.get("vmClaim");
+  app.post("/:virtualMcpId/:branch/git/discard", async (c) => {
+    const { claimName, fastPreview } = c.get("vmClaim");
+    if (fastPreview) {
+      // No working tree — there is never local work to discard. Unreachable
+      // through the UI (status reports a clean tree), so a hit is a bug or a
+      // stale client; refuse loudly rather than pretending.
+      return c.json(
+        {
+          error:
+            "Nothing to discard: Fast Preview projects have no working tree",
+        },
+        400,
+        SANDBOX_PROXY_CACHE_HEADERS,
+      );
+    }
     return withClaimGitLock(claimName, () =>
       proxyDaemon(c, "/_sandbox/git/discard", {
         forwardJsonBody: true,
@@ -735,6 +872,22 @@ export const createSandboxRoutes = () => {
     );
   });
   app.post("/:virtualMcpId/:branch/git/rebase", async (c) => {
+    const claim = c.get("vmClaim");
+    if (claim.fastPreview) {
+      return withClaimGitLock(claim.claimName, async () => {
+        try {
+          const body = (await c.req.json().catch(() => ({}))) as {
+            base?: string;
+          };
+          const client = await fastPreviewGitClient(c);
+          const base = body.base ?? (await client.getDefaultBranch());
+          await githubGitRebase(client, claim.branch, base);
+          return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
+        } catch (err) {
+          return fastPreviewGitError(c, err);
+        }
+      });
+    }
     const runner = requireRunner(c);
     if (runner instanceof Response) return runner;
 
@@ -767,10 +920,17 @@ export const createSandboxRoutes = () => {
         ),
     }),
     async (c) => {
-      const runner = requireRunner(c);
-      if (runner instanceof Response) return runner;
+      const claim = c.get("vmClaim");
+      // runner === null ⇔ sandbox-less Fast Preview (the claim middleware
+      // only admits a null runner for that mode).
+      let runner: SandboxProvider | null = null;
+      if (!claim.fastPreview) {
+        const required = requireRunner(c);
+        if (required instanceof Response) return required;
+        runner = required;
+      }
 
-      const { claimName, userId, projectRef } = c.get("vmClaim");
+      const { claimName, userId, projectRef } = claim;
       const ctx = c.var.studioContext;
 
       try {
@@ -789,22 +949,32 @@ export const createSandboxRoutes = () => {
         const [status, diff] =
           isGitStatusLike(clientStatus) && hasClientDiff
             ? [clientStatus, clientDiff]
-            : await Promise.all([
-                fetchDaemonJson<GitStatusLike>(
-                  runner,
-                  claimName,
-                  "/_sandbox/git/status",
-                  "GET",
-                  { userId, projectRef },
-                ),
-                fetchDaemonJson<GitDiffLike>(
-                  runner,
-                  claimName,
-                  "/_sandbox/git/diff",
-                  "GET",
-                  { userId, projectRef },
-                ),
-              ]);
+            : runner
+              ? await Promise.all([
+                  fetchDaemonJson<GitStatusLike>(
+                    runner,
+                    claimName,
+                    "/_sandbox/git/status",
+                    "GET",
+                    { userId, projectRef },
+                  ),
+                  fetchDaemonJson<GitDiffLike>(
+                    runner,
+                    claimName,
+                    "/_sandbox/git/diff",
+                    "GET",
+                    { userId, projectRef },
+                  ),
+                ])
+              : // Sandbox-less backfill: same GitHub-backed shapes the /git
+                // routes serve (no daemon exists to ask).
+                await (async () => {
+                  const client = await fastPreviewGitClient(c);
+                  return Promise.all([
+                    githubGitStatus(client, claim.branch),
+                    githubGitDiff(client, claim.branch),
+                  ]);
+                })();
         const suggestion = await suggestCommitMessageWithLlm(ctx, status, diff);
         return c.json(suggestion, 200, SANDBOX_PROXY_CACHE_HEADERS);
       } catch (err) {
@@ -841,10 +1011,16 @@ export const createSandboxRoutes = () => {
         ),
     }),
     async (c) => {
-      const runner = requireRunner(c);
-      if (runner instanceof Response) return runner;
+      const claim = c.get("vmClaim");
+      // runner === null ⇔ sandbox-less Fast Preview (see suggest-commit).
+      let runner: SandboxProvider | null = null;
+      if (!claim.fastPreview) {
+        const required = requireRunner(c);
+        if (required instanceof Response) return required;
+        runner = required;
+      }
 
-      const { claimName, userId, projectRef } = c.get("vmClaim");
+      const { claimName, userId, projectRef } = claim;
       const ctx = c.var.studioContext;
 
       try {
@@ -864,22 +1040,30 @@ export const createSandboxRoutes = () => {
         const [status, diff] =
           isGitStatusLike(clientStatus) && hasClientDiff
             ? [clientStatus, clientDiff]
-            : await Promise.all([
-                fetchDaemonJson<GitStatusLike>(
-                  runner,
-                  claimName,
-                  "/_sandbox/git/status",
-                  "GET",
-                  { userId, projectRef },
-                ),
-                fetchDaemonJson<GitDiffLike>(
-                  runner,
-                  claimName,
-                  "/_sandbox/git/diff",
-                  "GET",
-                  { userId, projectRef },
-                ),
-              ]);
+            : runner
+              ? await Promise.all([
+                  fetchDaemonJson<GitStatusLike>(
+                    runner,
+                    claimName,
+                    "/_sandbox/git/status",
+                    "GET",
+                    { userId, projectRef },
+                  ),
+                  fetchDaemonJson<GitDiffLike>(
+                    runner,
+                    claimName,
+                    "/_sandbox/git/diff",
+                    "GET",
+                    { userId, projectRef },
+                  ),
+                ])
+              : await (async () => {
+                  const client = await fastPreviewGitClient(c);
+                  return Promise.all([
+                    githubGitStatus(client, claim.branch),
+                    githubGitDiff(client, claim.branch),
+                  ]);
+                })();
         const verdict = await judgeRequiresReviewWithLlm(
           ctx,
           status,

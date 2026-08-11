@@ -11,7 +11,7 @@
  * sandbox SSE `decofile` event.
  */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/lib/query-keys";
 
@@ -32,11 +32,6 @@ export interface DecofilePatchBody {
   set?: Record<string, unknown>;
   delete?: string[];
 }
-
-export type PublishResult =
-  | { result: "merged"; sha: string }
-  | { result: "up-to-date" }
-  | { result: "pull-request"; number: number; url: string };
 
 function decofileCacheKey(params: DecofileScopeParams): string {
   return `${params.orgSlug}/${params.virtualMcpId}/${params.branch}`;
@@ -119,50 +114,4 @@ export async function patchDecofile(
   });
   if (!res.ok) return throwResponseError(res, "Save");
   return (await res.json()) as DecofileDraft;
-}
-
-/** Publish = merge the branch into the default branch (PR fallback). */
-export function usePublishDecofile(params: DecofileScopeParams | null) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (): Promise<PublishResult> => {
-      if (!params) throw new Error("Missing decofile scope");
-      const res = await fetch(`${decofileApiUrl(params)}/publish`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: "{}",
-      });
-      if (!res.ok) return throwResponseError(res, "Publish");
-      return (await res.json()) as PublishResult;
-    },
-    onSuccess: () => {
-      if (!params) return;
-      void queryClient.invalidateQueries({
-        queryKey: KEYS.decofileStatus(decofileCacheKey(params)),
-      });
-    },
-  });
-}
-
-export interface DecofileStatus {
-  baseBranch: string;
-  aheadBy: number;
-  behindBy: number;
-}
-
-/** Drift vs the default branch — powers the "unpublished changes" pill. */
-export function useDecofileStatus(
-  params: DecofileScopeParams | null,
-  options?: { enabled?: boolean },
-) {
-  return useQuery<DecofileStatus>({
-    queryKey: KEYS.decofileStatus(params ? decofileCacheKey(params) : ""),
-    enabled: !!params && (options?.enabled ?? true),
-    queryFn: async () => {
-      const res = await fetch(`${decofileApiUrl(params!)}/status`);
-      if (!res.ok) return throwResponseError(res, "Status");
-      return (await res.json()) as DecofileStatus;
-    },
-    staleTime: 15_000,
-  });
 }
