@@ -236,6 +236,10 @@ export function LibraryPage({
   function handleDrop(e: React.DragEvent) {
     if (!canDrop) return;
     e.preventDefault();
+    // We own this file. Stop it bubbling to the chat composer's
+    // window-level drop listener (input.tsx `useWindowFileDrop`), which
+    // would otherwise upload the same file into the chat input too.
+    e.stopPropagation();
     dragDepth.current = 0;
     setIsDragging(false);
     if (e.dataTransfer.files.length > 0) {

@@ -646,8 +646,21 @@ export function TaskBoardItemDialog({
                     <AssigneePickerContent
                       members={members}
                       onSelect={(userId) => {
-                        setAssigneeId(userId);
                         setAssigneeOpen(false);
+                        // Re-picking the Super Agent on a card it already owns
+                        // leaves the form clean, so Save never appears and the
+                        // pick is silently discarded — which is what "I
+                        // assigned it to Auto fix and it stayed in To Do"
+                        // actually was. That intent is a re-run; hand it to the
+                        // same confirm the Rerun button uses.
+                        if (
+                          userId === SUPER_AGENT_ASSIGNEE_ID &&
+                          item?.assigneeId === SUPER_AGENT_ASSIGNEE_ID
+                        ) {
+                          onRerun?.();
+                          return;
+                        }
+                        setAssigneeId(userId);
                       }}
                     />
                   </PopoverContent>
@@ -1810,6 +1823,31 @@ function describeActivity(
           });
     case "merge_conflict_resolution":
       return t("taskBoard.taskDialog.activityMergeConflictResolution");
+    case "merge_failed": {
+      // `detail` names the repo (no_connection) or carries GitHub's refusal
+      // text — the difference between "it's broken" and "connect this repo".
+      const detail = typeof d.detail === "string" ? d.detail : "";
+      switch (d.reason) {
+        case "no_pr":
+          return t("taskBoard.taskDialog.activityMergeFailedNoPr");
+        case "checks_failing":
+          return t("taskBoard.taskDialog.activityMergeFailedChecksFailing");
+        case "no_connection":
+          return detail
+            ? t("taskBoard.taskDialog.activityMergeFailedNoConnection", {
+                detail,
+              })
+            : t("taskBoard.taskDialog.activityMergeFailed");
+        case "refused":
+          return detail
+            ? t("taskBoard.taskDialog.activityMergeFailedRefused", { detail })
+            : t("taskBoard.taskDialog.activityMergeFailed");
+        default:
+          return detail
+            ? t("taskBoard.taskDialog.activityMergeFailedError", { detail })
+            : t("taskBoard.taskDialog.activityMergeFailed");
+      }
+    }
     default: {
       const _exhaustive: never = a.action;
       return String(_exhaustive);

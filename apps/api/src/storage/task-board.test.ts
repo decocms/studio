@@ -1,16 +1,13 @@
 import { describe, expect, it } from "bun:test";
 import { shouldAdvanceToReview } from "./task-board";
 
-/** A thread that was actually used — the default for these cases.
- *  `hasPreview` = repo-backed (a clonable repo bound); defaults to repo-less. */
+/** A thread that was actually used — the default for these cases. */
 const thread = (
   status: string | null,
   hasMessages = true,
-  hasPreview = false,
-): { status: string | null; hasMessages: boolean; hasPreview: boolean } => ({
+): { status: string | null; hasMessages: boolean } => ({
   status,
   hasMessages,
-  hasPreview,
 });
 
 /** Created and never typed in: born `completed`, must not count. */
@@ -76,25 +73,8 @@ describe("shouldAdvanceToReview", () => {
     ).toBe(false);
   });
 
-  // Inverted deliberately: this used to advance a repo-backed task on
-  // thread-finish as a backstop for missed PR detection. But In Review means
-  // "there is a PR to review" — a finished run that opened no PR has nothing to
-  // review yet. Repo-backed work now advances ONLY via the PR-open hook; on
-  // finish it stays In Progress until the user submits (which opens the PR).
-  it("does NOT advance a repo-backed task on thread-finish (waits for PR-open)", () => {
-    expect(
-      shouldAdvanceToReview({
-        status: "in_progress",
-        threads: [thread("completed", true, true)],
-      }),
-    ).toBe(false);
-  });
-
-  // The CMS/site flow: the repo lives on the AGENT, so the thread's own metadata
-  // is empty (hasPreview false) — but the TASK names a repo (`repoOwner`). Still
-  // repo-backed work: wait for the PR, never advance on finish. This is the case
-  // the hasPreview-only check missed.
-  it("does NOT advance a repo-NAMED task on finish, even with empty thread metadata", () => {
+  // A repoOwner-named (CMS) task waits for its PR — that flow opens the PR and advances the card itself, so a finished edit with no PR must NOT jump to review. Agent-run tasks (no repoOwner) keep the thread-finish backstop above.
+  it("does NOT advance a repo-named (CMS) task on finish", () => {
     expect(
       shouldAdvanceToReview({
         status: "in_progress",

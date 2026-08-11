@@ -92,6 +92,18 @@ export const taskBoard = {
     "{reviewer} pediu alterações: {notes}",
   "taskBoard.taskDialog.activityMergeConflictResolution":
     "não conseguiu mesclar o pull request — resolvendo um conflito de merge",
+  "taskBoard.taskDialog.activityMergeFailed":
+    "não conseguiu mesclar o pull request",
+  "taskBoard.taskDialog.activityMergeFailedNoPr":
+    "não conseguiu mesclar — nenhum pull request está vinculado a esta tarefa",
+  "taskBoard.taskDialog.activityMergeFailedChecksFailing":
+    "não conseguiu mesclar — as verificações do pull request estão falhando",
+  "taskBoard.taskDialog.activityMergeFailedNoConnection":
+    "não conseguiu mesclar — esta organização não tem conexão do GitHub para {detail}. Conecte esse repositório para publicar esta tarefa.",
+  "taskBoard.taskDialog.activityMergeFailedRefused":
+    "o GitHub recusou o merge: {detail}",
+  "taskBoard.taskDialog.activityMergeFailedError":
+    "não conseguiu mesclar o pull request: {detail}",
   "taskBoard.taskDialog.tagsButton": "Tags",
   "taskBoard.taskDialog.removeTagAriaLabel": "Remover tag {name}",
   "taskBoard.taskDialog.addTagButton": "Adicionar tag",
@@ -187,6 +199,10 @@ export const taskBoard = {
   "taskBoard.taskFilters.filterDrawerTitle": "Filtros",
   "taskBoard.taskFilters.priorityAnyPriority": "Qualquer prioridade",
   "taskBoard.taskFilters.priorityLabel": "Prioridade",
+  "taskBoard.taskFilters.tagsLabel": "Tags",
+  "taskBoard.taskFilters.tagsSelectedCount": "{count} tags",
+  "taskBoard.taskFilters.tagsFilterPlaceholder": "Filtrar por tag…",
+  "taskBoard.taskFilters.tagsNoTagsFound": "Nenhuma tag encontrada.",
   "taskBoard.rerun.title": "Executar esta tarefa de novo?",
   "taskBoard.rerun.description":
     "O Super Agent vai iniciar uma nova execução nesta tarefa.",

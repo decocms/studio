@@ -22,13 +22,43 @@ const BIOME_EXTENSIONS = [
   ".jsonc",
   ".css",
 ];
+// Fail-open, but never silently: spawnSync returns ENOENT in `result.error`
+// rather than throwing, so a missing node_modules used to no-op every edit.
+// Surface it instead of falling back to `bunx biome` — that resolves a
+// different version than the repo pins, and CI would disagree with it.
+function warn(message) {
+  console.log(
+    JSON.stringify({ systemMessage: `post-edit-format: ${message}` }),
+  );
+  process.exit(0);
+}
+
 if (BIOME_EXTENSIONS.includes(extname(filePath))) {
-  try {
-    spawnSync("./node_modules/.bin/biome", ["format", "--write", filePath], {
+  const result = spawnSync(
+    "./node_modules/.bin/biome",
+    ["format", "--write", filePath],
+    {
       cwd: process.env.CLAUDE_PROJECT_DIR || process.cwd(),
       encoding: "utf-8",
-    });
-  } catch {}
+    },
+  );
+  if (result.error?.code === "ENOENT") {
+    warn(
+      "biome is not installed — run `bun install`. Files are NOT formatted.",
+    );
+  }
+  if (result.error) {
+    warn(`biome failed to run (${result.error.message}).`);
+  }
+  // A path ignored by biome.json (gitignored, dist/) also prints "provided but
+  // ignored", so key off the diagnostic count instead — it only appears on a
+  // real failure, such as the parse errors that abort formatting.
+  const output = `${result.stdout || ""}${result.stderr || ""}`;
+  if (/Found \d+ error/.test(output)) {
+    warn(
+      `biome could not format ${filePath} — ${output.match(/Found \d+ error\w*/)[0]}, likely a syntax error. The file is NOT formatted.`,
+    );
+  }
 }
 
 process.exit(0);

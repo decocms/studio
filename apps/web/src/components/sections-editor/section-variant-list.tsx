@@ -79,6 +79,34 @@ function createEntries(
   }));
 }
 
+/**
+ * Re-derive entries for a changed variant list, reusing each row's existing
+ * id by matching on label rather than array position. A delete/duplicate
+ * before a row shifts every later row's position, so matching by position
+ * hands it a stale id — remounting its DnD-sortable identity and dropping
+ * e.g. an open row menu on an unrelated row.
+ */
+export function reuseVariantEntryIds(
+  current: SortableVariantEntry[],
+  variants: SectionVariantEntry[],
+): SortableVariantEntry[] {
+  // Duplicate rows clone the label as-is, so match same-label entries FIFO.
+  const byLabel = new Map<string, SortableVariantEntry[]>();
+  for (const entry of current) {
+    const queue = byLabel.get(entry.label);
+    if (queue) queue.push(entry);
+    else byLabel.set(entry.label, [entry]);
+  }
+  return variants.map((variant) => {
+    const prior = byLabel.get(variant.label)?.shift();
+    return {
+      id: prior?.id ?? crypto.randomUUID(),
+      index: variant.index,
+      label: variant.label,
+    };
+  });
+}
+
 function remapEntryIndices(
   entries: SortableVariantEntry[],
 ): SortableVariantEntry[] {
@@ -279,22 +307,15 @@ export function SectionVariantList({
     setPrevVariantCount(variants.length);
     setPrevDisplayKey(displayKey);
     setEntries(createEntries(variants));
-  } else if (prevVariantCount !== variants.length) {
+  } else if (
+    prevVariantCount !== variants.length ||
+    prevDisplayKey !== displayKey
+  ) {
+    // Duplicate/delete/reorder all land here (a count change always also
+    // changes the display key).
     setPrevVariantCount(variants.length);
     setPrevDisplayKey(displayKey);
-    setEntries(createEntries(variants));
-  } else if (prevDisplayKey !== displayKey) {
-    setPrevDisplayKey(displayKey);
-    setEntries((current) =>
-      variants.map((variant, index) => {
-        const prior = current[index];
-        return {
-          id: prior?.id ?? crypto.randomUUID(),
-          index: variant.index,
-          label: variant.label,
-        };
-      }),
-    );
+    setEntries((current) => reuseVariantEntryIds(current, variants));
   }
 
   const sensors = useSensors(

@@ -410,6 +410,10 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     // Repo-sync mirror volumes: the sync deletes anything not in the repo,
     // so direct writes are silent data loss. Server-side guard — the Library
     // read-only marking is UI-only. Delete the sync config to reclaim.
+    //
+    // Last of the guards on purpose: it is the only one that touches the
+    // database, so every cheap rejection above (unknown volume, public volume,
+    // denied permission) answers without a query.
     if (
       permission === "ORG_FS_WRITE" &&
       (await ctx.storage.orgRepoSyncs.isSyncVolume(ctx.organization.id, volume))

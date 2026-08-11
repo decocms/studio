@@ -48,6 +48,10 @@ export function ImageUpload({
 
   const handleDrop = async (event: React.DragEvent) => {
     event.preventDefault();
+    // Stop the drop from bubbling to the chat composer's window-level
+    // drop listener (input.tsx `useWindowFileDrop`), which would otherwise
+    // upload the same file into the chat input too.
+    event.stopPropagation();
     setIsDragging(false);
     if (isUploading) return;
     const file = event.dataTransfer.files[0];

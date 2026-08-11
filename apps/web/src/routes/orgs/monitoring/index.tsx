@@ -958,6 +958,8 @@ function MonitoringDashboardContent({
             isStreaming={isStreaming}
             streamingRefetchInterval={streamingRefetchInterval}
             llmUserIds={llmUserIds}
+            virtualMcpIds={virtualMcpIds}
+            virtualMcps={allVirtualMcps}
           />
         </div>
       )}

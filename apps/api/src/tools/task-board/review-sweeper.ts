@@ -46,6 +46,14 @@
  * parked card costs one sweep per `DEFAULT_ITEM_SWEEP_INTERVAL_MS` instead of one
  * per tick. `DEFAULT_BATCH_SIZE` remains the ceiling on any single tick.
  *
+ * It later grew a third job for the same reason — **retrying a failed merge**.
+ * A card whose reviewers all approved but whose merge was refused (GitHub down,
+ * the repo's connection deleted, a transient 500) is left In Review by
+ * `TASK_BOARD_REVIEW_DECISION`, and the cycle's reviewer claims are already
+ * spent, so nothing re-dispatches and nothing re-merges: the card is stranded
+ * forever on a failure that has usually fixed itself minutes later. The sweeper
+ * is again the only place that can retry, for the same reason as above.
+ *
  * Deliberately NOT a replacement for the instant paths. `TASK_BOARD_ITEM_PRS_GET`
  * dispatches reviewers on the dialog's poll, and the projector hook still fires —
  * the sweeper is the floor that guarantees it happens without a human, not the
@@ -57,7 +65,9 @@ import type { TaskBoardStorage } from "@/storage/task-board";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
-import { reactToFailedTaskRun } from "./run-reactions";
+import { retryAutoMergeIfApproved } from "./merge-pr";
+import { emitTaskBoardUpdated, reactToFailedTaskRun } from "./run-reactions";
+import { TaskQuotaError } from "@/billing/task-quota";
 import { ABANDONED_FAILURE_REASON } from "./stall-recovery";
 import { THREAD_EXPIRY_MS } from "@/tools/thread/helpers";
 import { fetchPrLiveState, prReadyForReview } from "./prs-get";
@@ -91,6 +101,20 @@ const REARM_DELAY_MS = 60 * 1000;
  *  failure) always wins the normal case, short enough that a card whose pod died
  *  mid-reaction recovers on its own. */
 const UNHANDLED_FAILURE_GRACE_MS = 2 * 60 * 1000;
+
+/**
+ * True for a retry dispatch failure that a later tick cannot fix.
+ *
+ * Everything else the dispatch can throw (the context factory, a quota READ, a
+ * DB blip) is a blip worth re-arming for. A quota REJECTION is not: the
+ * per-task cap and an exhausted period bucket both stay exhausted, and the
+ * re-arm deliberately leaves `attempts` untouched — so that one failure mode
+ * would re-throw every minute forever with a budget that never terminates.
+ * Pure — unit-tested.
+ */
+export function isPermanentDispatchFailure(err: unknown): boolean {
+  return err instanceof TaskQuotaError;
+}
 
 export interface TaskBoardReviewSweeperOptions {
   intervalMs?: number;
@@ -282,6 +306,19 @@ export class TaskBoardReviewSweeper {
           `[task-board-review-sweeper] retry dispatch for ${id} failed`,
           err,
         );
+        // A failure no later tick can fix must not be re-armed (see
+        // `isPermanentDispatchFailure`) — the card would sit In Progress with
+        // no run behind it and the same rejection every minute. Send it back
+        // to To Do with the reason, the same terminal the retry budget itself
+        // has when it runs out.
+        if (isPermanentDispatchFailure(err)) {
+          await this.returnToTodo(
+            id,
+            organizationId,
+            err instanceof Error ? err.message : String(err),
+          );
+          continue;
+        }
         // The claim already cleared `retry_at`, so leaving it here would spend
         // the attempt on a run that never started — the exact silent strand this
         // whole path exists to remove. Re-arm it instead: the dispatch itself can
@@ -304,6 +341,43 @@ export class TaskBoardReviewSweeper {
       }
     }
     return count;
+  }
+
+  /**
+   * Park a card a retry can no longer help back on To Do, with the reason on
+   * its timeline — the same landing `reactToFailedTaskRun` gives a card that
+   * runs out of retry budget, so a human sees one shape for "the agent stopped
+   * and it needs you" rather than a card frozen In Progress.
+   */
+  private async returnToTodo(
+    id: string,
+    organizationId: string,
+    reason: string,
+  ): Promise<void> {
+    try {
+      const item = await this.taskBoard.getById(id, organizationId);
+      if (!item || item.status !== "in_progress") return;
+      const returned = await this.taskBoard.returnToTodoAfterFailure(
+        id,
+        organizationId,
+        item.updatedBy,
+      );
+      if (!returned) return;
+      await this.taskBoard
+        .recordActivity({
+          taskBoardItemId: id,
+          action: "status_changed",
+          actorId: null,
+          data: { from: "in_progress", to: "todo", reason },
+        })
+        .catch(() => {});
+      emitTaskBoardUpdated(organizationId, returned);
+    } catch (err) {
+      console.error(
+        `[task-board-review-sweeper] returning ${id} to todo failed`,
+        err,
+      );
+    }
   }
 
   /** Hand a card with a linked, ready PR off to the enabled reviewers. Returns
@@ -345,6 +419,14 @@ export class TaskBoardReviewSweeper {
       item.assignedBy ?? item.createdBy,
     );
     if (!ctx) return false;
+
+    // A card whose review already COMPLETED but whose merge failed is stranded:
+    // the cycle's reviewer claims are spent, so the dispatch below is a no-op
+    // and nothing else ever retries. Retry the merge first — it's the only path
+    // back out of In Review for these, and it's why the sweep must keep visiting
+    // a card that has no reviewer left to enqueue. Gated on verified approval +
+    // auto-merge inside, so it can't ship anything the reviewers didn't.
+    if (await retryAutoMergeIfApproved(ctx, item)) return true;
 
     // Same check gate as the dialog poll, and it MUST be the same one: a
     // reviewer claim is spent once per review cycle, and nothing re-dispatches

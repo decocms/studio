@@ -129,6 +129,7 @@ export const TASK_BOARD_ACTIVITY_ACTIONS = [
   "review_approved",
   "review_changes_requested",
   "merge_conflict_resolution",
+  "merge_failed",
 ] as const;
 
 export type TaskBoardActivityAction =

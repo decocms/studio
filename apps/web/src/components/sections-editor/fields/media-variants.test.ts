@@ -6,6 +6,7 @@ import {
   flattenMultivariate,
   isMultivariateWrapper,
   reorderVariant,
+  selectedIndexAfterDelete,
   updateVariantRule,
   updateVariantValue,
   wrapAsMultivariate,
@@ -146,6 +147,20 @@ describe("deleteVariant", () => {
   test("returns null when only 1 variant", () => {
     const wrapper = makeWrapper(["a.png"]);
     expect(deleteVariant(wrapper, 0)).toBeNull();
+  });
+});
+
+describe("selectedIndexAfterDelete", () => {
+  test("shifts the selection down when a variant before it is deleted", () => {
+    expect(selectedIndexAfterDelete(2, 0, 3)).toBe(1);
+  });
+
+  test("keeps the selection when a variant after it is deleted", () => {
+    expect(selectedIndexAfterDelete(0, 2, 2)).toBe(0);
+  });
+
+  test("clamps to the last remaining variant when the selected one is deleted", () => {
+    expect(selectedIndexAfterDelete(2, 2, 2)).toBe(1);
   });
 });
 

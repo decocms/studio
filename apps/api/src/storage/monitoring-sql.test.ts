@@ -12,6 +12,10 @@ import type {
 } from "../monitoring/query-engine";
 import type { MetricRow } from "../monitoring/schema";
 import {
+  MONITORING_LOG_TYPE_VALUE,
+  MONITORING_LOG_TYPE_LLM_CALL,
+} from "../monitoring/schema";
+import {
   makeTestMonitoringRow,
   writeTestNDJSON,
   makeTestOtlpLogRecord,
@@ -1175,6 +1179,133 @@ describe.skipIf(!duckdbAvailable)(
         threadIds: [],
       });
       expect(rows).toEqual([]);
+    });
+  },
+);
+
+// queryToolCallHeatmap — tool-call volume per (agent, tool)
+
+describe.skipIf(!duckdbAvailable)(
+  "SqlMonitoringStorage.queryToolCallHeatmap",
+  () => {
+    let tmpDir: string;
+    let engine: DuckDBEngine;
+    let storage: SqlMonitoringStorage;
+
+    const TOOL_A_OUTPUT_1 = '{"result":"ok"}';
+    const TOOL_A_OUTPUT_2 = '{"result":"error: something went wrong here"}';
+    const TOOL_B_OUTPUT = '{"result":[1,2,3,4,5,6,7,8,9,10]}';
+
+    beforeAll(async () => {
+      tmpDir = await mkdtemp(join(tmpdir(), "monitoring-heatmap-test-"));
+      const dataDir = join(tmpDir, "2026", "03", "06", "12");
+      await mkdir(dataDir, { recursive: true });
+      engine = new DuckDBEngine();
+      const sourceFactory = (_orgId: string) =>
+        `read_ndjson('${dataDir}/*.ndjson', auto_detect=true)`;
+      storage = new SqlMonitoringStorage(
+        engine,
+        sourceFactory,
+        engine,
+        sourceFactory,
+        "duckdb",
+      );
+
+      const rows = [
+        makeTestMonitoringRow({
+          id: "hm_1",
+          type: MONITORING_LOG_TYPE_VALUE,
+          organization_id: "org_test",
+          virtual_mcp_id: "vmcp_1",
+          tool_name: "TOOL_A",
+          is_error: 0,
+          output: TOOL_A_OUTPUT_1,
+        }),
+        makeTestMonitoringRow({
+          id: "hm_2",
+          type: MONITORING_LOG_TYPE_VALUE,
+          organization_id: "org_test",
+          virtual_mcp_id: "vmcp_1",
+          tool_name: "TOOL_A",
+          is_error: 1,
+          output: TOOL_A_OUTPUT_2,
+        }),
+        makeTestMonitoringRow({
+          id: "hm_3",
+          type: MONITORING_LOG_TYPE_VALUE,
+          organization_id: "org_test",
+          virtual_mcp_id: null,
+          tool_name: "TOOL_B",
+          is_error: 0,
+          output: TOOL_B_OUTPUT,
+        }),
+        // llm_call rows reuse tool_name for the model id — must not leak in.
+        makeTestMonitoringRow({
+          id: "hm_4",
+          type: MONITORING_LOG_TYPE_LLM_CALL,
+          organization_id: "org_test",
+          connection_id: "decopilot",
+          virtual_mcp_id: "vmcp_1",
+          tool_name: "claude-3-7-sonnet",
+          is_error: 0,
+        }),
+        // Different org — must never leak into org_test's heatmap.
+        makeTestMonitoringRow({
+          id: "hm_5",
+          type: MONITORING_LOG_TYPE_VALUE,
+          organization_id: "org_other",
+          virtual_mcp_id: "vmcp_1",
+          tool_name: "TOOL_A",
+          is_error: 0,
+        }),
+      ];
+      await writeTestNDJSON(dataDir, rows);
+    });
+
+    afterAll(async () => {
+      await rm(tmpDir, { recursive: true, force: true });
+    });
+
+    test("groups tool calls by (agent, tool), excluding llm_call rows and other orgs", async () => {
+      const { cells } = await storage.queryToolCallHeatmap({
+        organizationId: "org_test",
+      });
+
+      expect(cells).toHaveLength(2);
+
+      const a = cells.find((c) => c.toolName === "TOOL_A");
+      expect(a).toEqual(
+        expect.objectContaining({
+          virtualMcpId: "vmcp_1",
+          toolName: "TOOL_A",
+          calls: 2,
+          errors: 1,
+          outputSize: TOOL_A_OUTPUT_1.length + TOOL_A_OUTPUT_2.length,
+        }),
+      );
+
+      const b = cells.find((c) => c.toolName === "TOOL_B");
+      expect(b).toEqual(
+        expect.objectContaining({
+          virtualMcpId: null,
+          toolName: "TOOL_B",
+          calls: 1,
+          errors: 0,
+          outputSize: TOOL_B_OUTPUT.length,
+        }),
+      );
+
+      expect(cells.some((c) => c.toolName === "claude-3-7-sonnet")).toBe(false);
+    });
+
+    test("filters by virtualMcpIds", async () => {
+      const { cells } = await storage.queryToolCallHeatmap({
+        organizationId: "org_test",
+        filters: { virtualMcpIds: ["vmcp_1"] },
+      });
+
+      expect(cells).toHaveLength(1);
+      expect(cells[0]?.toolName).toBe("TOOL_A");
     });
   },
 );

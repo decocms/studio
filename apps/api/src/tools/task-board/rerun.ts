@@ -1,16 +1,21 @@
 /**
  * Re-run a task with the Super Agent.
  *
- * There was no way to do this. Every Super Agent dispatch hangs off a
- * TRANSITION — `TASK_BOARD_ITEM_UPDATE` fires a run only when `assigneeId`
- * *changes* to `super-agent` (`update.ts`, `becameSuperAgent`) — so a task
- * already assigned to the Super Agent has nothing left to transition. Sending
- * `assigneeId: "super-agent"` again is a silent no-op: the write happens, the
- * activity diff is empty, the board re-renders, and no run is queued. Observed
- * in prod as an entire board of 63 items, all `assignee_id = 'super-agent'`,
- * none of them re-runnable by any means the product exposed — not the card's
- * Auto-fix button (hidden once assigned), not the assignee picker (no diff, so
- * no Save), not a lane drag (status changes dispatch nothing).
+ * There was no way to do this. Every Super Agent dispatch hung off a
+ * TRANSITION — `TASK_BOARD_ITEM_UPDATE` fired a run only when `assigneeId`
+ * *changed* to `super-agent` — so a task already assigned to the Super Agent
+ * had nothing left to transition. Re-sending `assigneeId: "super-agent"` was a
+ * silent no-op: the write happened, the activity diff was empty, the board
+ * re-rendered, and no run was queued. Observed in prod as an entire board of 63
+ * items, all `assignee_id = 'super-agent'`, none of them re-runnable by any
+ * means the product exposed — not the card's Auto-fix button (hidden once
+ * assigned), not the assignee picker (no diff, so no Save), not a lane drag
+ * (status changes dispatch nothing).
+ *
+ * `delegatesToSuperAgent` (`update.ts`) now re-dispatches an explicit
+ * delegation of a card sitting in To Do, so that one lane recovers itself. This
+ * tool stays the answer for every other lane, and is the only path that TAKES
+ * OVER a card wedged behind a thread that will never finish.
  *
  * The other three ways a run gets re-queued are all reactions the user cannot
  * invoke: a reviewer's `request_changes`, an approved-PR merge conflict, and the
@@ -18,20 +23,32 @@
  * collapses by a fixed workflow id so it can never fire twice).
  *
  * So this is a deliberate, explicit user action, and it TAKES OVER: any linked
- * thread still holding the task open is failed first. That is the whole point —
- * the cards that need this are the ones wedged behind a thread that will never
- * finish. The confirmation belongs in the UI, where the human is; by the time
- * the tool is called the decision is made.
+ * thread still holding the task open is failed AND its run stopped (see
+ * `stopSupersededRun` — failing the row alone left the old agent running). That
+ * is the whole point — the cards that need this are the ones wedged behind a
+ * thread that will never finish. The confirmation belongs in the UI, where the
+ * human is; by the time the tool is called the decision is made.
  */
 
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
-import { getUserId, requireAuth } from "@/core/studio-context";
+import {
+  getUserId,
+  requireAuth,
+  type StudioContext,
+} from "@/core/studio-context";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { TERMINAL_THREAD_STATUSES } from "@/storage/task-board";
+import { broadcastRunCancel } from "@/api/routes/decopilot/cancel-registry";
+import { cancelHostedHarness } from "@/dispatch-queue";
+import { cancelThreadGateHead } from "@/dispatch-queue/thread-gate-queue";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
+import {
+  ensureTaskExecutionAllowed,
+  userInitiatedTaskQuotaConfig,
+} from "@/billing/task-quota";
 
 /** Recorded on a thread this re-run took over. */
 const SUPERSEDED_FAILURE_REASON = "Superseded by a manual re-run of this task";
@@ -58,6 +75,62 @@ export function threadsToSupersede(item: {
         thread.status !== null && !TERMINAL_THREAD_STATUSES.has(thread.status),
     )
     .map((thread) => thread.threadId);
+}
+
+/**
+ * Stop the run behind a superseded thread — not just its row.
+ *
+ * The takeover used to be the DB write alone: `failIfNotTerminal` flipped the
+ * thread to `failed` and the agent kept running, because its `AbortController`
+ * lives in a pod's `RunRegistry` and nothing here reached it.
+ *
+ * Observed in prod (`board_EnT6dU9ltgxS4fxAZxVXC`): a card whose live stream
+ * had gone quiet looked frozen, so the user pressed Re-run at 16:23. The run
+ * was alive. Seven minutes later it pushed a branch, opened PR #306, commented
+ * on the card and moved it to In Review — while the re-run's own agent did the
+ * same work and opened PR #307 on the same files. Two Super Agent runs, one
+ * task, two conflicting PRs, and a "failed" thread that shipped one of them.
+ *
+ * Mirrors `cancelActiveThreadRun` (routes.ts) minus the ghost force-fail, which
+ * the caller's `failIfNotTerminal` has already done. Every step is best-effort
+ * and ordered after that write, so the superseded reason wins the race against
+ * the registry's own `cancelled` terminal (both are guarded on `in_progress`),
+ * and an unreachable old run never blocks queueing the new one.
+ */
+async function stopSupersededRun(
+  ctx: StudioContext,
+  threadId: string,
+  organizationId: string,
+): Promise<void> {
+  const onError = (step: string) => (err: unknown) =>
+    console.error("[task-board] rerun takeover step failed", {
+      threadId,
+      step,
+      err,
+    });
+
+  // Durable intent, so the ingest backstop rejects the old run's appends even
+  // if no pod is holding it in memory to abort.
+  await ctx.storage.threads
+    .setCancelRequested(threadId, organizationId)
+    .catch(onError("cancel-flag"));
+
+  // A run still parked as the PENDING gate head has no in-memory registry entry
+  // to abort; cancelling the workflow is what frees its partition slot.
+  await cancelThreadGateHead(threadId).catch(onError("gate-head"));
+
+  // The hosted child can't be interrupted mid-step, but cancelling it stops a
+  // still-queued attempt outright and bars DBOS from resurrecting this one.
+  const fence = await ctx.storage.threads
+    .getRunFence(threadId)
+    .catch(() => null);
+  if (fence) {
+    await cancelHostedHarness(threadId, fence).catch(onError("hosted-harness"));
+  }
+
+  // The one call that actually interrupts a running agent loop: local abort
+  // plus cross-pod fan-out to whichever pod owns the run.
+  broadcastRunCancel(threadId);
 }
 
 export const TASK_BOARD_ITEM_RERUN = defineTool({
@@ -114,6 +187,9 @@ export const TASK_BOARD_ITEM_RERUN = defineTool({
       );
     }
 
+    // Paywall before any write: a refused re-run must leave the card untouched.
+    await ensureTaskExecutionAllowed(ctx, item, userInitiatedTaskQuotaConfig());
+
     // Take over: fail every thread still holding the task open. `failIfNotTerminal`
     // rather than `markRunFailed` because a `requires_action` thread has to be
     // closed out too — it is non-terminal to `shouldAdvanceToReview`, so leaving
@@ -128,14 +204,19 @@ export const TASK_BOARD_ITEM_RERUN = defineTool({
         SUPERSEDED_FAILURE_REASON,
         "superseded",
       );
-      if (marked) supersededThreadIds.push(threadId);
+      if (!marked) continue;
+      supersededThreadIds.push(threadId);
+      // Only for a thread this call really took over: a run that settled on its
+      // own in the gap above is already finished, and cancelling it would stamp
+      // a cancel over a real terminal.
+      await stopSupersededRun(ctx, threadId, organizationId);
     }
 
     // In Progress before dispatch, so the card reads as running the moment the
     // board refreshes rather than sitting in its old lane until the run's first
     // chunk lands. `enqueueSuperAgentForTask` claims quota itself (idempotent
-    // per task, capped per task by `maxRunsPerTask`) and throws
-    // `TaskQuotaError` when the cap is hit — which must surface, so this is NOT
+    // per task, and exempt from `maxRunsPerTask`) and throws
+    // `TaskQuotaError` on an empty period bucket — which must surface, so NOT
     // best-effort: a swallowed failure here is exactly the silent no-op this
     // tool exists to remove.
     const updated = await ctx.storage.taskBoard.update(
@@ -153,7 +234,7 @@ export const TASK_BOARD_ITEM_RERUN = defineTool({
     });
     emitTaskBoardUpdated(organizationId, updated);
 
-    await enqueueSuperAgentForTask(ctx, updated);
+    await enqueueSuperAgentForTask(ctx, updated, { userInitiated: true });
 
     return { status: updated.status, supersededThreadIds };
   },

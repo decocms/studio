@@ -90,6 +90,34 @@ function createEntries(variants: PageVariant[]): VariantTabEntry[] {
   }));
 }
 
+/**
+ * Re-derive entries for a changed variant list, reusing each tab's existing
+ * id by matching on label rather than array position. A delete/duplicate
+ * before a tab shifts every later tab's position, so matching by position
+ * hands it a stale id — remounting its DnD-sortable identity and dropping
+ * e.g. an open row menu on an unrelated tab.
+ */
+export function reuseVariantEntryIds(
+  current: VariantTabEntry[],
+  variants: PageVariant[],
+): VariantTabEntry[] {
+  // Duplicate tabs clone the label as-is, so match same-label entries FIFO.
+  const byLabel = new Map<string, VariantTabEntry[]>();
+  for (const entry of current) {
+    const queue = byLabel.get(entry.variant.label);
+    if (queue) queue.push(entry);
+    else byLabel.set(entry.variant.label, [entry]);
+  }
+  return variants.map((variant, index) => {
+    const prior = byLabel.get(variant.label)?.shift();
+    return {
+      id: prior?.id ?? crypto.randomUUID(),
+      index,
+      variant,
+    };
+  });
+}
+
 function remapEntryIndices(entries: VariantTabEntry[]): VariantTabEntry[] {
   return entries.map((entry, index) => ({
     ...entry,
@@ -339,22 +367,15 @@ export function PageVariantTabs({
     setPrevVariantCount(variants.length);
     setPrevDisplayKey(displayKey);
     setEntries(createEntries(variants));
-  } else if (prevVariantCount !== variants.length) {
+  } else if (
+    prevVariantCount !== variants.length ||
+    prevDisplayKey !== displayKey
+  ) {
+    // Duplicate/delete/reorder all land here (a count change always also
+    // changes the display key).
     setPrevVariantCount(variants.length);
     setPrevDisplayKey(displayKey);
-    setEntries(createEntries(variants));
-  } else if (prevDisplayKey !== displayKey) {
-    setPrevDisplayKey(displayKey);
-    setEntries((current) =>
-      variants.map((variant, index) => {
-        const prior = current[index];
-        return {
-          id: prior?.id ?? crypto.randomUUID(),
-          index,
-          variant,
-        };
-      }),
-    );
+    setEntries((current) => reuseVariantEntryIds(current, variants));
   }
 
   const sensors = useSensors(

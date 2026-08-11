@@ -124,7 +124,11 @@ type GoldenParams struct {
 	// recorded beside the golden so a shared store can key by org. Empty makes
 	// the golden ineligible for that store. See goldenmeta.go.
 	OrgId string
-	Log   func(msg string)
+	// Environment that produced this golden, from SANDBOX_ENV. Recorded in the
+	// meta so a per-node uploader can tell whose tree it is; prod and stg share
+	// the NodePool, so the hostPath store is a mix of both.
+	Env string
+	Log func(msg string)
 }
 
 type goldenPaths struct {
@@ -233,7 +237,7 @@ func PublishGolden(p GoldenParams) {
 	// Provenance, after the golden is in place so a meta never describes a tree
 	// that does not exist. Best-effort: without it this golden simply stays
 	// node-local, which is what every golden was before the shared tier.
-	WriteGoldenMeta(paths.golden, GoldenMeta{OrgId: p.OrgId, CloneUrl: p.CloneUrl, Pm: p.Pm})
+	WriteGoldenMeta(paths.golden, GoldenMeta{OrgId: p.OrgId, CloneUrl: p.CloneUrl, Pm: p.Pm, Env: p.Env})
 	p.log("[golden] published node_modules to cache")
 }
 
@@ -271,11 +275,16 @@ func pruneGoldens(cacheRoot string, ttl time.Duration, maxPerRepo int, now time.
 			if strings.HasPrefix(name.Name(), goldenTmpPrefix) {
 				continue // in-flight publish
 			}
-			info, err := name.Info()
+			lockDir := filepath.Join(repoDir, name.Name())
+			// TryRestoreGolden touches the mtime of <lockDir>/node_modules, not the
+			// lockDir itself — a rename never touches it again after publish, so
+			// reading the lockDir's own mtime here would make the TTL reap an
+			// actively-restored golden right out from under a running fleet.
+			info, err := os.Stat(filepath.Join(lockDir, "node_modules"))
 			if err != nil {
 				continue
 			}
-			entries = append(entries, entry{filepath.Join(repoDir, name.Name()), info.ModTime()})
+			entries = append(entries, entry{lockDir, info.ModTime()})
 		}
 		// Newest first; anything past the cap or older than the TTL is pruned.
 		sort.Slice(entries, func(i, j int) bool { return entries[i].mtime.After(entries[j].mtime) })

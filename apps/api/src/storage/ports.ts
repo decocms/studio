@@ -514,6 +514,34 @@ export interface MonitoringStorage {
   }>;
 
   /**
+   * Tool-call volume per (agent, tool) pair — powers the Monitoring heatmap.
+   * Excludes llm_call rows (only counts type = 'tool_call').
+   */
+  queryToolCallHeatmap(params: {
+    organizationId: string;
+    startDate?: Date;
+    endDate?: Date;
+    filters?: {
+      virtualMcpIds?: string[];
+      excludeConnectionIds?: string[];
+    };
+    limit?: number;
+  }): Promise<{
+    cells: Array<{
+      virtualMcpId: string | null;
+      toolName: string;
+      calls: number;
+      errors: number;
+      /**
+       * Sum of tool-output character length — a proxy for context weight (how
+       * much text this tool feeds back into the LLM's context), not LLM token
+       * count. tool_call rows carry no token data of their own.
+       */
+      outputSize: number;
+    }>;
+  }>;
+
+  /**
    * Aggregate LLM-call usage (tokens + USD cost) for the AI Usage dashboard.
    *
    * Unlike queryMetricTimeseries (which reads pre-aggregated metric histograms),

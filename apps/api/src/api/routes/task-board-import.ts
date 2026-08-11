@@ -2,7 +2,11 @@ import { TaskQuotaError } from "@/billing/task-quota";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { StudioContext } from "@/core/studio-context";
-import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import {
+  nextTagColor,
+  SUPER_AGENT_ASSIGNEE_ID,
+} from "@decocms/shared/task-board";
+import { TagStorage } from "@/storage/tags";
 import { TaskBoardStorage } from "@/storage/task-board";
 import type { TaskBoardItem } from "@/storage/types";
 import { reactToSuperAgentDelegation } from "@/tools/task-board/enqueue-super-agent";
@@ -50,6 +54,14 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
  *
  * A DISMISSED key (`dismissed_at` set) is skipped and counted in `dismissed`.
  *
+ * An item may carry `tags` — org tag NAMES the sender owns (the reports sync
+ * labels every card `Report` plus the finding's domain, e.g. `SEO`, `GEO`,
+ * `Performance`), so the board can filter a report's backlog by area. Names
+ * resolve case-insensitively against `organization_tags`, missing ones are
+ * created with the next palette color, and attachment is ADDITIVE (see
+ * `addItemTags`): a refresh re-asserts the sender's labels without removing the
+ * ones a human put on the card.
+ *
  * An item may carry `assigneeId` — a real org member, or the Super Agent
  * sentinel to queue the task for an agent run (status forced to To Do, same as
  * the create tool). A delegated run must execute as a REAL org member
@@ -82,6 +94,10 @@ export const importBodySchema = z.object({
         /** Sender-minted finding identity (e.g. `diag:{domain}:{check_id}`) —
          *  dedups against open items on re-import. */
         externalKey: z.string().min(1).max(200).optional(),
+        /** Org tag NAMES to attach (the sender owns the taxonomy: "Report"
+         *  plus the finding's domain). Resolved case-insensitively against the
+         *  org's tags, created when missing, attached additively. */
+        tags: z.array(z.string().min(1).max(50)).max(8).optional(),
       }),
     )
     .min(1)
@@ -235,7 +251,51 @@ export const createTaskBoardImportRoutes = () => {
         }
       }
 
+      // Resolve every tag name in the batch once — existing org tags matched
+      // case-insensitively so a re-import can't fork "Report"/"report", missing
+      // ones created with the next palette color.
+      const tagIdByName = new Map<string, string>();
+      const wanted = [
+        ...new Set(items.flatMap((i) => i.tags ?? []).map((n) => n.trim())),
+      ].filter(Boolean);
+      if (wanted.length > 0) {
+        const tagStorage = new TagStorage(trx);
+        const existing = await tagStorage.listOrgTags(organizationId);
+        for (const tag of existing)
+          tagIdByName.set(tag.name.toLowerCase(), tag.id);
+        let colorIndex = existing.length;
+        for (const name of wanted) {
+          if (tagIdByName.has(name.toLowerCase())) continue;
+          const tag = await tagStorage.createTag(
+            organizationId,
+            name,
+            nextTagColor(colorIndex++),
+          );
+          tagIdByName.set(tag.name.toLowerCase(), tag.id);
+        }
+      }
+      /** The item's tag ids, deduped; empty when it carries no tags. */
+      const tagIdsFor = (names: string[] | undefined): string[] => [
+        ...new Set(
+          (names ?? []).flatMap(
+            (n) => tagIdByName.get(n.trim().toLowerCase()) ?? [],
+          ),
+        ),
+      ];
+
       const storage = new TaskBoardStorage(trx);
+      /** Attach the sender's tags and return the row with its tags populated:
+       *  the broadcast below patches open boards with this row, so one missing
+       *  its tags would read as "tags removed" until the next refetch. */
+      const withTags = async (
+        row: TaskBoardItem,
+        names: string[] | undefined,
+      ): Promise<TaskBoardItem> => {
+        const tagIds = tagIdsFor(names);
+        if (tagIds.length === 0) return row;
+        await storage.addItemTags(row.id, tagIds, "system");
+        return (await storage.getById(row.id, organizationId)) ?? row;
+      };
       const touched: TaskBoardItem[] = [];
       const delegations: TaskBoardItem[] = [];
       let created = 0;
@@ -257,17 +317,16 @@ export const createTaskBoardImportRoutes = () => {
           // Refresh the finding's card: new evidence + severity. Title,
           // status and assignee stay — a human may have touched them, and a
           // refresh must never re-queue a delegation.
-          touched.push(
-            await storage.update(
-              existingId,
-              organizationId,
-              {
-                description: item.description ?? null,
-                priority: item.priority,
-              },
-              "system",
-            ),
+          const row = await storage.update(
+            existingId,
+            organizationId,
+            {
+              description: item.description ?? null,
+              priority: item.priority,
+            },
+            "system",
           );
+          touched.push(await withTags(row, item.tags));
           updated++;
           continue;
         }
@@ -294,7 +353,7 @@ export const createTaskBoardImportRoutes = () => {
         // A within-batch duplicate key folds into the row just created.
         if (item.externalKey) openByKey.set(item.externalKey, row.id);
         else openByTitle.set(titleKey, row.id);
-        touched.push(row);
+        touched.push(await withTags(row, item.tags));
         created++;
         if (toSuperAgent) delegations.push(row);
       }

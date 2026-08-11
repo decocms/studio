@@ -271,6 +271,7 @@ See `values.yaml` for the full set. The most-tuned ones:
 | `resources.*` | 0.5/2 CPU, 1/4Gi RAM | per sandbox pod |
 | `nodeSelector` / `tolerations` / `affinity` | `{}` | for sandbox isolation NodePool |
 | `topologySpreadConstraints` | `[]` | spread sandbox pods across AZs; see `values.yaml` for the recommended config |
+| `disruptionProtection.doNotDisrupt` | `false` | annotate pods with Karpenter's `do-not-disrupt` to block voluntary node consolidation/drift while a sandbox is claimed; trades cluster cost/upgrade cadence for session safety |
 | `readOnlyRootFilesystem` | `true` | RO rootfs + emptyDirs on /app, /tmp, /home |
 | `netinit.enabled` | `true` | installs the iptables egress policy before user code starts |
 | `telemetry.enabled` | `false` | let the daemon export OTLP metrics: opens ONE extra egress destination (the collector) and sets `OTEL_EXPORTER_OTLP_ENDPOINT` |

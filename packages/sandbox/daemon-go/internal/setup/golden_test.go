@@ -152,13 +152,15 @@ func TestSameFilesystem(t *testing.T) {
 }
 
 func TestPruneGoldens(t *testing.T) {
-	// A golden dir <root>/golden/<repo>/<name> with a given mtime.
+	// A golden dir <root>/golden/<repo>/<name>/node_modules with a given mtime —
+	// the mtime TryRestoreGolden actually touches, not the lockDir's own.
 	mkGolden := func(t *testing.T, root, repo, name string, mtime time.Time) string {
 		dir := filepath.Join(root, "golden", repo, name)
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		nodeModules := filepath.Join(dir, "node_modules")
+		if err := os.MkdirAll(nodeModules, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.Chtimes(dir, mtime, mtime); err != nil {
+		if err := os.Chtimes(nodeModules, mtime, mtime); err != nil {
 			t.Fatal(err)
 		}
 		return dir
@@ -207,6 +209,30 @@ func TestPruneGoldens(t *testing.T) {
 		pruneGoldens(root, time.Nanosecond, 0, now)
 		if !exists(inflight) {
 			t.Error("reaped an in-flight publish — that publish now renames onto nothing")
+		}
+	})
+
+	t.Run("a restore touching only node_modules' mtime still protects the golden", func(t *testing.T) {
+		// Mirrors TryRestoreGolden: the lockDir is created (and its own mtime set)
+		// long ago at publish time, then only node_modules is bumped by a later
+		// restore — exactly what os.Chtimes(paths.golden, ...) does in production.
+		root := t.TempDir()
+		lockDir := filepath.Join(root, "golden", "repoD", "bun-1")
+		nodeModules := filepath.Join(lockDir, "node_modules")
+		old := now.Add(-999 * day)
+		if err := os.MkdirAll(nodeModules, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(lockDir, old, old); err != nil {
+			t.Fatal(err)
+		}
+		recent := now.Add(-time.Second)
+		if err := os.Chtimes(nodeModules, recent, recent); err != nil {
+			t.Fatal(err)
+		}
+		pruneGoldens(root, 7*day, 99, now)
+		if !exists(lockDir) {
+			t.Error("reaped a golden a restore just marked as in-use")
 		}
 	})
 

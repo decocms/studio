@@ -261,17 +261,32 @@ function PostSettings({
           label={t("sandbox.postEditor.dateLabel")}
         />
       </div>
-      <ImageField
-        schema={{
-          type: "string",
-          format: "image-uri",
-          title: t("sandbox.postEditor.coverImageLabel"),
-        }}
-        value={post.image}
-        onChange={(v) => onChange("image", v)}
-        path="post-image"
-        label={t("sandbox.postEditor.coverImageLabel")}
-      />
+      {/* Cover image + its alt text: `alt` is the blog app's alt for `image`,
+          and the front falls back to the title when it is empty. */}
+      <div className="space-y-2">
+        <ImageField
+          schema={{
+            type: "string",
+            format: "image-uri",
+            title: t("sandbox.postEditor.coverImageLabel"),
+          }}
+          value={post.image}
+          onChange={(v) => onChange("image", v)}
+          path="post-image"
+          label={t("sandbox.postEditor.coverImageLabel")}
+        />
+        <StringField
+          schema={{
+            type: "string",
+            title: t("sandbox.postEditor.coverAltLabel"),
+            description: t("sandbox.postEditor.coverAltDescription"),
+          }}
+          value={str(post.alt)}
+          onChange={(v) => onChange("alt", v)}
+          path="post-alt"
+          label={t("sandbox.postEditor.coverAltLabel")}
+        />
+      </div>
       {/* Authors denormalize their FULL record onto the post — the blog app
           renders the author box (type, job title, company, avatar) from it. */}
       <RelationSelect

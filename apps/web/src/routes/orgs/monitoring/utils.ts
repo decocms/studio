@@ -145,6 +145,81 @@ export function buildFilledStatsData(
   return data;
 }
 
+// ── Tool-call heatmap ────────────────────────────────────────────────────────
+
+export interface HeatmapCell {
+  virtualMcpId: string | null;
+  toolName: string;
+  calls: number;
+  errors: number;
+  outputSize: number;
+}
+
+export interface HeatmapView {
+  topTools: string[];
+  topAgentIds: string[];
+  cellMap: Map<string, { calls: number; errors: number; outputSize: number }>;
+  /** Max cell value among the cells actually rendered (topAgentIds × topTools), for color scaling. */
+  maxValue: number;
+}
+
+/**
+ * Reduce raw heatmap cells to the top tools/agents to render, plus the max
+ * value among the rendered cells (used to scale cell color intensity).
+ * The max is computed only over cells that end up on screen — an agent with
+ * a high single-tool spike but a low overall total gets excluded from
+ * topAgentIds, and must not skew the color scale for the agents shown.
+ */
+export function computeHeatmapView(
+  cells: HeatmapCell[],
+  metric: "calls" | "outputSize",
+  maxTools: number,
+  maxAgents: number,
+): HeatmapView {
+  const toolTotals = new Map<string, number>();
+  for (const cell of cells) {
+    toolTotals.set(
+      cell.toolName,
+      (toolTotals.get(cell.toolName) ?? 0) + cell[metric],
+    );
+  }
+  const topTools = [...toolTotals.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, maxTools)
+    .map(([name]) => name);
+  const toolSet = new Set(topTools);
+
+  const agentTotals = new Map<string, number>();
+  const cellMap = new Map<
+    string,
+    { calls: number; errors: number; outputSize: number }
+  >();
+  for (const cell of cells) {
+    if (!toolSet.has(cell.toolName)) continue;
+    const agentId = cell.virtualMcpId ?? "";
+    agentTotals.set(agentId, (agentTotals.get(agentId) ?? 0) + cell[metric]);
+    cellMap.set(`${agentId}::${cell.toolName}`, {
+      calls: cell.calls,
+      errors: cell.errors,
+      outputSize: cell.outputSize,
+    });
+  }
+  const topAgentIds = [...agentTotals.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, maxAgents)
+    .map(([id]) => id);
+
+  let maxValue = 0;
+  for (const agentId of topAgentIds) {
+    for (const tool of topTools) {
+      const cell = cellMap.get(`${agentId}::${tool}`);
+      if (cell && cell[metric] > maxValue) maxValue = cell[metric];
+    }
+  }
+
+  return { topTools, topAgentIds, cellMap, maxValue };
+}
+
 // ── Connection metrics ──────────────────────────────────────────────────────
 
 export type ConnectionMetric = {

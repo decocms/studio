@@ -525,7 +525,8 @@ export interface StudioToolIO {
           | "review_requested"
           | "review_approved"
           | "review_changes_requested"
-          | "merge_conflict_resolution";
+          | "merge_conflict_resolution"
+          | "merge_failed";
         actorId: string | null;
         data: Record<string, unknown>;
         occurredAt: string;
@@ -3283,6 +3284,24 @@ export interface StudioToolIO {
       result: {
         results?: unknown[] | undefined;
         success?: boolean | undefined;
+      }[];
+    };
+  };
+  MONITORING_HEATMAP: {
+    input: {
+      startDate?: string | undefined;
+      endDate?: string | undefined;
+      virtualMcpIds?: string[] | undefined;
+      excludeConnectionIds?: string[] | undefined;
+      limit?: number | undefined;
+    };
+    output: {
+      cells: {
+        virtualMcpId: string | null;
+        toolName: string;
+        calls: number;
+        errors: number;
+        outputSize: number;
       }[];
     };
   };

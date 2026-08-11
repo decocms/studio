@@ -110,7 +110,7 @@ Resolves DATABASE_URL honoring database engine configuration.
 */}}
 {{- define "chart-deco-studio.databaseUrl" -}}
 {{- if eq (lower (default "sqlite" .Values.database.engine)) "postgresql" -}}
-{{- required "database.url deve ser definido quando database.engine=postgresql" .Values.database.url | trim -}}
+{{- required "database.url must be set when database.engine=postgresql" .Values.database.url | trim -}}
 {{- else -}}
 {{/* Historical filename retained so existing PVCs keep their database. */}}
 /app/data/mesh.db
@@ -127,13 +127,13 @@ Global validations to ensure scaling requirements are met.
 {{- $usesPostgres := eq $usesPostgresStr "true" -}}
 {{- $replicas := int (default 1 .Values.replicaCount) -}}
 {{- if and (not .Values.autoscaling.enabled) (not $distributed) (not $usesPostgres) (gt $replicas 1) }}
-{{- fail "chart-deco-studio: replicaCount > 1 exige storage distribuído (persistence.distributed=true ou accessMode=ReadWriteMany) ou database.engine=postgresql" -}}
+{{- fail "chart-deco-studio: replicaCount > 1 requires distributed storage (persistence.distributed=true or accessMode=ReadWriteMany) or database.engine=postgresql" -}}
 {{- end }}
 {{- if and .Values.autoscaling.enabled (not (or $distributed $usesPostgres)) }}
-{{- fail "chart-deco-studio: autoscaling.enabled=true exige storage distribuído (persistence.distributed=true ou accessMode=ReadWriteMany) ou database.engine=postgresql" -}}
+{{- fail "chart-deco-studio: autoscaling.enabled=true requires distributed storage (persistence.distributed=true or accessMode=ReadWriteMany) or database.engine=postgresql" -}}
 {{- end }}
 {{- if and $usesPostgres (not .Values.database.url) (not .Values.secret.secretName) (not .Values.externalSecret.enabled) }}
-{{- fail "chart-deco-studio: defina database.url quando database.engine=postgresql ou use secret.secretName para fornecer DATABASE_URL via Secret" -}}
+{{- fail "chart-deco-studio: set database.url when database.engine=postgresql, or use secret.secretName to provide DATABASE_URL via Secret" -}}
 {{- end }}
 {{- end }}
 

@@ -133,6 +133,38 @@ describe("task quota (integration)", () => {
     expect(await runCountOf(task.id)).toBe(2);
   });
 
+  /**
+   * The per-task cap bounds automatic re-dispatch (re-delegation loops, review
+   * bounces, the sweeper's infrastructure retries) — and those spend the same
+   * tally. A prod card burned all 5 on transport failures plus the machine's own
+   * retry, so the human's Re-run answered "This task reached its limit" with no
+   * way left to run the task at all.
+   */
+  it("a HUMAN re-run is not blocked by the per-task cap", async () => {
+    const [claimed] = await database.db
+      .selectFrom("task_quota_claims")
+      .select(["task_board_item_id", "run_count"])
+      .where("organization_id", "=", ORG)
+      .where("run_count", ">=", CONFIG.maxRunsPerTask)
+      .limit(1)
+      .execute();
+    const task = {
+      id: claimed!.task_board_item_id,
+      createdBy: "system",
+      organizationId: ORG,
+    };
+    const manual = { ...CONFIG, maxRunsPerTask: Number.POSITIVE_INFINITY };
+
+    expect(await claimTaskExecution(ctx, task, manual)).toBe("rerun");
+    expect(await runCountOf(task.id)).toBe(CONFIG.maxRunsPerTask + 1);
+    await ensureTaskExecutionAllowed(ctx, task, manual);
+
+    // Automatic dispatch is still capped.
+    await expect(claimTaskExecution(ctx, task, CONFIG)).rejects.toThrow(
+      /execution limit/,
+    );
+  });
+
   it("user-created tasks are never gated or counted", async () => {
     const userTask = await makeTask("user_1");
     await claimTaskExecution(ctx, userTask, CONFIG); // no throw, no claim
@@ -386,8 +418,8 @@ describe("task quota (integration)", () => {
     const task = await makeTask("system", org);
 
     await claimTaskExecution(ctxRb, task, CONFIG);
-    await rollbackTaskExecution(billing, org, task.id);
-    await rollbackTaskExecution(billing, org, task.id); // idempotent
+    await rollbackTaskExecution(billing, org, task.id, "claimed");
+    await rollbackTaskExecution(billing, org, task.id, "claimed"); // idempotent
 
     expect(await billing.countTaskClaims(org, "trial")).toBe(0);
     // Unlike a refund (the run happened, produced nothing): nothing ran here,
@@ -405,9 +437,53 @@ describe("task quota (integration)", () => {
     const task = await makeTask("system", org);
     await claimTaskExecution(ctxFor(org), task, CONFIG);
 
-    await rollbackTaskExecution(billing, "org_rollback_other", task.id);
+    await rollbackTaskExecution(
+      billing,
+      "org_rollback_other",
+      task.id,
+      "claimed",
+    );
     expect(await stateOf(task.id)).toBe("held");
     expect(await runCountOf(task.id)).toBe(1);
+  });
+
+  // The re-dispatch paths (review bounce, conflict re-run, the sweeper's own
+  // retry) all claim "rerun", which increments the SAME per-task tally the cap
+  // reads. A dispatch that then throws must give that tally back, or a card
+  // whose re-dispatch keeps failing walks itself to `runs_exhausted` without
+  // ever starting a run — and the human's Re-run button answers "this task
+  // reached its limit". The period slot is NOT given back: an earlier run
+  // really did ride it.
+  it("rolling back a rerun spends no run but keeps the slot charged", async () => {
+    const org = "org_rollback_rerun";
+    await seedOrg(org, true);
+    const ctxRr = ctxFor(org);
+    const task = await makeTask("system", org);
+
+    expect(await claimTaskExecution(ctxRr, task, CONFIG)).toBe("claimed");
+    expect(await claimTaskExecution(ctxRr, task, CONFIG)).toBe("rerun");
+    expect(await runCountOf(task.id)).toBe(2);
+
+    await rollbackTaskExecution(billing, org, task.id, "rerun");
+
+    expect(await runCountOf(task.id)).toBe(1);
+    expect(await stateOf(task.id)).toBe("held");
+    expect(await billing.countTaskClaims(org, "trial")).toBe(1);
+    // The freed run is really usable again — the cap is not walked down by
+    // dispatches that never happened.
+    expect(await claimTaskExecution(ctxRr, task, CONFIG)).toBe("rerun");
+  });
+
+  it("a rollback never drives the run tally below zero", async () => {
+    const org = "org_rollback_floor";
+    await seedOrg(org, true);
+    const task = await makeTask("system", org);
+
+    await claimTaskExecution(ctxFor(org), task, CONFIG);
+    await rollbackTaskExecution(billing, org, task.id, "rerun");
+    await rollbackTaskExecution(billing, org, task.id, "rerun");
+
+    expect(await runCountOf(task.id)).toBe(0);
   });
 
   it("a refund is org-scoped — another org's id can't touch the claim", async () => {

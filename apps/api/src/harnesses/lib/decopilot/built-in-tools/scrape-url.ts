@@ -17,6 +17,15 @@ import { createOutputPreview, estimateJsonTokens } from "./read-tool-output";
 import { toStudioStorageUri } from "../studio-storage-uri";
 import { LARGE_RESULT_TOKEN_THRESHOLD } from "./constants";
 
+// Browserless call itself has no bound beyond the inner page render timeout —
+// if Browserless is unresponsive the outer fetch can hang the harness run
+// forever. Give it headroom instead of leaving it unbounded (mirrors
+// inspect-page.ts's BROWSERLESS_FETCH_TIMEOUT_MS).
+const BROWSERLESS_FETCH_TIMEOUT_MS = 45_000;
+
+// Upstream error bodies are unbounded — cap what lands in the tool error.
+const ERROR_BODY_MAX_CHARS = 500;
+
 const ScrapeUrlInputSchema = z.object({
   url: z.string().url().describe("The URL of the web page to scrape."),
 });
@@ -46,24 +55,37 @@ export function createScrapeUrlTool(
     execute: async (input, options) => {
       const startTime = performance.now();
       try {
-        const response = await fetch(
-          `${browserless.baseUrl}/content?token=${encodeURIComponent(
-            browserless.token,
-          )}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              url: input.url,
-            }),
-          },
-        );
+        let response: Response;
+        try {
+          response = await fetch(
+            `${browserless.baseUrl}/content?token=${encodeURIComponent(
+              browserless.token,
+            )}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                url: input.url,
+              }),
+              signal: AbortSignal.timeout(BROWSERLESS_FETCH_TIMEOUT_MS),
+            },
+          );
+        } catch (err) {
+          const isTimeout = err instanceof Error && err.name === "TimeoutError";
+          return {
+            success: false,
+            error: isTimeout
+              ? `Browserless content fetch timed out after ${BROWSERLESS_FETCH_TIMEOUT_MS}ms`
+              : `Browserless content fetch failed: ${err instanceof Error ? err.message : String(err)}`,
+            url: input.url,
+          };
+        }
 
         if (!response.ok) {
           const errorText = await response.text().catch(() => "Unknown error");
           return {
             success: false,
-            error: `Browserless content fetch failed (${response.status}): ${errorText}`,
+            error: `Browserless content fetch failed (${response.status}): ${errorText.slice(0, ERROR_BODY_MAX_CHARS)}`,
             url: input.url,
           };
         }

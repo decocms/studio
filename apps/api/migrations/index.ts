@@ -167,7 +167,8 @@ import * as migration165taskboardpendingreviewindex from "./165-task-board-pendi
 import * as migration166taskboardlastsweptat from "./166-task-board-last-swept-at.ts";
 import * as migration167taskboardrunretry from "./167-task-board-run-retry.ts";
 import * as migration168orgreposync from "./168-org-repo-sync.ts";
-import * as migration169taskboarditemrepo from "./169-task-board-item-repo.ts";
+import * as migration169taskboardmergefailedactivity from "./169-task-board-merge-failed-activity.ts";
+import * as migration170taskboarditemrepo from "./170-task-board-item-repo.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -363,7 +364,9 @@ const migrations: Record<string, Migration> = {
   "166-task-board-last-swept-at": migration166taskboardlastsweptat,
   "167-task-board-run-retry": migration167taskboardrunretry,
   "168-org-repo-sync": migration168orgreposync,
-  "169-task-board-item-repo": migration169taskboarditemrepo,
+  "169-task-board-merge-failed-activity":
+    migration169taskboardmergefailedactivity,
+  "170-task-board-item-repo": migration170taskboarditemrepo,
 };
 
 export default migrations;

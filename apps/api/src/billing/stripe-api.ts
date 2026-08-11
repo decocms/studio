@@ -83,6 +83,26 @@ async function stripeRequest<T>(
   return parsed as T;
 }
 
+/**
+ * Collect the buyer's billing address + tax ID (CPF/CNPJ, VAT, …) on every
+ * Checkout — both are API-only params with no Dashboard fallback, so omitting
+ * them means we never see either.
+ *
+ * `customer_update` is mandatory, not cosmetic: with a saved `customer` and
+ * address collection on, Stripe 400s the session unless we explicitly allow
+ * Checkout to write back to the customer — and a customer whose address is
+ * still blank would otherwise render read-only prefill the buyer can't fill.
+ */
+export function taxAndAddressParams(
+  customerId: string | null,
+): Record<string, unknown> {
+  return {
+    billing_address_collection: "required",
+    tax_id_collection: { enabled: true },
+    ...(customerId && { customer_update: { address: "auto", name: "auto" } }),
+  };
+}
+
 /** First subscribe: Checkout collects + saves the card for the org's flat
  *  monthly subscription (quantity 1). */
 export async function createOrgCheckoutSession(input: {
@@ -97,6 +117,8 @@ export async function createOrgCheckoutSession(input: {
   const session = await stripeRequest<{ url?: string }>("/checkout/sessions", {
     params: {
       mode: "subscription",
+      // No `customer` is passed here — Checkout creates one, so no write-back.
+      ...taxAndAddressParams(null),
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: input.successUrl,
       cancel_url: input.cancelUrl,
@@ -153,6 +175,7 @@ export async function createTopUpCheckoutSession(input: {
       // Reuse the org's saved customer when it exists (same card as the
       // subscription); otherwise Checkout creates a guest payment.
       ...(input.customerId && { customer: input.customerId }),
+      ...taxAndAddressParams(input.customerId),
       line_items: [
         {
           quantity: 1,

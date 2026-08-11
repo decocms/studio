@@ -21,6 +21,7 @@ import (
 	"github.com/decocms/studio/sandbox-daemon/internal/auth"
 	"github.com/decocms/studio/sandbox-daemon/internal/config"
 	"github.com/decocms/studio/sandbox-daemon/internal/decofile"
+	"github.com/decocms/studio/sandbox-daemon/internal/devwatch"
 	"github.com/decocms/studio/sandbox-daemon/internal/dispatch"
 	"github.com/decocms/studio/sandbox-daemon/internal/events"
 	"github.com/decocms/studio/sandbox-daemon/internal/gitx"
@@ -78,6 +79,11 @@ type daemon struct {
 	lastRunningPort int
 	baselineTimer   *time.Timer
 	firstWorkLogged bool
+
+	// Dev-server liveness watchdog (see internal/devwatch). devTracker owns the
+	// grace/budget bookkeeping; devWatchMu guards it (kept off the hot d.mu).
+	devWatchMu sync.Mutex
+	devTracker *devwatch.Tracker
 
 	broadcaster  *events.Broadcaster
 	sniffer      *proc.PortSniffer
@@ -270,6 +276,122 @@ func (d *daemon) onProbeChange(s probe.State) {
 		}
 		d.mu.Unlock()
 		d.branchStatus.ClearBaseline()
+	}
+}
+
+// restartablePhase reports the phases where a dev server is meant to be up, so
+// the watchdog respawns a dead one there but never interrupts a legitimate
+// build (installing/cloning/checking-out) or loops on a terminal *-failed.
+func restartablePhase(phase string) bool {
+	switch phase {
+	case events.PhaseRunning, events.PhaseStarting, events.PhaseCrashed:
+		return true
+	default:
+		return false
+	}
+}
+
+// devWatchLoop respawns the dev server when it dies out from under a live daemon
+// (idle-freeze, crash, or a stale port after a reclaim) — the case the proxy
+// otherwise papers over with an endless "Server is starting…". Bounded by the
+// tracker's MaxRestarts; on exhaustion it surfaces a real start-failed.
+func (d *daemon) devWatchLoop() {
+	tick := envDuration("SANDBOX_DEV_WATCH_TICK_MS", 3*time.Second, 100*time.Millisecond)
+	d.devWatchMu.Lock()
+	d.devTracker = devwatch.NewTracker(devwatch.Config{
+		Grace:        envDuration("SANDBOX_DEV_WATCH_GRACE_MS", devwatch.DefaultGracePeriod, time.Second),
+		StableWindow: envDuration("SANDBOX_DEV_WATCH_STABLE_MS", devwatch.DefaultStableWindow, time.Second),
+		MaxRestarts:  envInt("SANDBOX_DEV_WATCH_MAX_RESTARTS", devwatch.DefaultMaxRestarts, 1),
+	})
+	d.devWatchMu.Unlock()
+	for {
+		time.Sleep(tick)
+		d.mu.Lock()
+		down := d.shuttingDown
+		d.mu.Unlock()
+		if down {
+			return
+		}
+		d.devWatchTick()
+	}
+}
+
+// envDuration reads a millisecond count from env, clamped to at least min, and
+// falls back to def when unset or unparseable. The floor stops a fat-fingered
+// value (ms entered as if seconds) from turning a poll loop into a hot spin.
+func envDuration(name string, def, min time.Duration) time.Duration {
+	if v := os.Getenv(name); v != "" {
+		if ms, err := strconv.Atoi(v); err == nil && ms > 0 {
+			d := time.Duration(ms) * time.Millisecond
+			if d < min {
+				return min
+			}
+			return d
+		}
+	}
+	return def
+}
+
+// envInt reads an int from env, clamped to at least min, def when unset/bad.
+func envInt(name string, def, min int) int {
+	if v := os.Getenv(name); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			if n < min {
+				return min
+			}
+			return n
+		}
+	}
+	return def
+}
+
+func (d *daemon) devWatchTick() {
+	phase := d.lifecycle.Current().Phase
+	sniffed := d.sniffer.Current()
+	d.mu.Lock()
+	lastRunning := d.lastRunningPort
+	d.mu.Unlock()
+	// A port is "known" only once the dev server has actually announced one — it
+	// was sniffed from the dev output, or the probe confirmed it serving earlier
+	// this session. A merely *configured* application.port does NOT count: it is
+	// set before the server binds, so treating it as known would let the
+	// watchdog restart a dev server that is simply still starting up.
+	portKnown := sniffed != 0 || lastRunning != 0
+	// Read synchronously, not via a mirror an out-of-order callback could
+	// leave stale (see probe.Prober.Current).
+	serving := d.prober.Current().Status == probe.StatusOnline
+
+	d.devWatchMu.Lock()
+	action := d.devTracker.Observe(devwatch.Snapshot{
+		Now:         time.Now(),
+		Serving:     serving,
+		Restartable: restartablePhase(phase),
+		PortKnown:   portKnown,
+	})
+	attempt, maxRestarts := d.devTracker.Attempts(), d.devTracker.MaxRestarts()
+	d.devWatchMu.Unlock()
+
+	switch action {
+	case devwatch.ActionRestart:
+		d.broadcaster.BroadcastChunk("setup", fmt.Sprintf(
+			"[orchestrator] dev server unreachable — restarting (attempt %d/%d)\r\n",
+			attempt, maxRestarts))
+		// Drop the stale sniffed port and probe state so the respawned dev
+		// server's port is relearned from its fresh output.
+		d.sniffer.Reset()
+		d.prober.Reset()
+		go d.orchestrator.RestartDev()
+	case devwatch.ActionGiveUp:
+		d.broadcaster.BroadcastChunk("setup", fmt.Sprintf(
+			"[orchestrator] dev server did not stay up after %d restarts — giving up\r\n",
+			maxRestarts))
+		d.lifecycle.Transition(events.LifecycleState{
+			Phase: events.PhaseStartFailed,
+			Error: fmt.Sprintf(
+				"dev server did not stay up after %d automatic restarts",
+				maxRestarts),
+		})
+	case devwatch.ActionNone:
 	}
 }
 
@@ -521,6 +643,7 @@ func runGoldenUploader() {
 	opts := setup.UploaderOpts{
 		CacheRoot:  os.Getenv("DEPS_CACHE_ROOT"),
 		RemoteRoot: os.Getenv("GOLDEN_CACHE_REMOTE"),
+		Env:        os.Getenv("SANDBOX_ENV"),
 		Log:        func(m string) { slog.Info(m) },
 	}
 	if opts.CacheRoot == "" || opts.RemoteRoot == "" {
@@ -536,6 +659,30 @@ func runGoldenUploader() {
 	}
 	slog.Info("golden-uploader start", "cache_root", opts.CacheRoot,
 		"remote_root", opts.RemoteRoot, "interval", interval.String())
+
+	// Metrics on the same terms as the daemon: opt-in via
+	// OTEL_EXPORTER_OTLP_ENDPOINT, best-effort, no-op when unset.
+	//
+	// NOT optional in practice, and the reason this call exists at all: main()
+	// dispatches this subcommand and returns before reaching the daemon's own
+	// Init, so without this line the sweep counters are recorded into the global
+	// no-op provider and emit nothing. The uploader runs on every sandbox node,
+	// so the alternative to a metric is grepping a log line across the fleet —
+	// which is how this tier already sat inert for months unnoticed.
+	otelShutdown, err := telemetry.Init(context.Background(), randomUUID(), "go")
+	if err != nil {
+		slog.Warn("otlp metrics disabled: exporter init failed", "err", err)
+	}
+	// Runs after RunUploader returns, i.e. after SIGTERM closed `stop`. Flushes
+	// the sweep that just finished; nothing here is on a boot's critical path,
+	// so it can have the full grace period rather than the daemon's clipped one.
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := otelShutdown(ctx); err != nil {
+			slog.Warn("otlp shutdown", "err", err)
+		}
+	}()
 
 	stop := make(chan struct{})
 	sig := make(chan os.Signal, 1)
@@ -613,6 +760,12 @@ func main() {
 	repoDir := filepath.Join(appRoot, "repo")
 	tmpDir := filepath.Join(appRoot, "tmp")
 	os.MkdirAll(repoDir, 0o755)
+	// 0o700 and created up front: the submodule fetch parks a git-credentials
+	// file here, and it must not land in a dir the daemon merely hoped existed.
+	os.MkdirAll(tmpDir, 0o700)
+	// Before the orchestrator can run: clears a credentials file a previous boot
+	// was SIGKILLed before deleting.
+	setup.SweepSubmoduleCredentials(tmpDir)
 
 	var offloadHosts []string
 	for _, h := range strings.Split(os.Getenv("OFFLOAD_ALLOWED_HOSTS"), ",") {
@@ -724,7 +877,12 @@ func main() {
 		GetPort:  d.getDevPort,
 		OnChange: d.onProbeChange,
 		OnLog:    func(msg string) { d.broadcaster.BroadcastChunk("setup", msg) },
+		Fast:     envDuration("SANDBOX_PROBE_FAST_MS", 0, 100*time.Millisecond),
+		Slow:     envDuration("SANDBOX_PROBE_SLOW_MS", 0, 100*time.Millisecond),
 	})
+	// Respawn the dev server if it dies out from under the live daemon (idle
+	// freeze, crash, stale port after a reclaim). Dies with the process.
+	go d.devWatchLoop()
 
 	d.proxyHandler = proxy.New(proxy.Deps{
 		GetDevPort: d.getDevPort,

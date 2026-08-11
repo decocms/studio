@@ -44,6 +44,7 @@ import {
   flattenMultivariate,
   isMultivariateWrapper,
   reorderVariant,
+  selectedIndexAfterDelete,
   updateVariantRule,
   updateVariantValue,
   wrapAsMultivariate,
@@ -135,9 +136,9 @@ export function MultivariateFieldWrapper({
     const next = deleteVariant(wrapper, index);
     if (!next) return;
     onChange(next);
-    if (safeIndex >= next.variants.length) {
-      setSelectedIndex(next.variants.length - 1);
-    }
+    setSelectedIndex(
+      selectedIndexAfterDelete(safeIndex, index, next.variants.length),
+    );
   };
 
   const handleDuplicate = (index: number) => {

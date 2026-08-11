@@ -86,7 +86,7 @@ export const TERMINAL_THREAD_STATUSES = new Set([
 /**
  * Should a task advance to In Review now that a thread finished? True iff it's
  * In Progress, has at least one thread that was actually used, and every such
- * thread's run has reached a terminal status. Repo-backed tasks advance here
+ * thread's run has reached a terminal status. Agent-run tasks advance here
  * too: the PR-open hook moves them earlier (mid-run, real-time) when it fires,
  * but thread-finish is the backstop so a task doesn't sit in In Progress forever
  * when PR detection misses (shell alias, script wrapper, or a PR opened by any
@@ -103,26 +103,13 @@ export const TERMINAL_THREAD_STATUSES = new Set([
 export function shouldAdvanceToReview(item: {
   status: TaskBoardItemStatus;
   repoOwner?: string | null;
-  threads: {
-    status: string | null;
-    hasMessages: boolean;
-    hasPreview: boolean;
-  }[];
+  threads: { status: string | null; hasMessages: boolean }[];
 }): boolean {
   if (item.status !== "in_progress") return false;
   const used = item.threads.filter((t) => t.hasMessages);
   if (used.length === 0) return false;
-  // Repo-backed work advances to review ONLY when a PR opens (the PR-open hook),
-  // never on thread-finish: a finished run that opened no PR has nothing to
-  // review yet — the user still submits/publishes, which is what opens the PR.
-  // (In Review with no PR is exactly the wrong state.)
-  //
-  // A task is repo-backed if it NAMES a repo (`repoOwner`, set by the CMS/site
-  // flow — the repo lives on the agent, so the thread's own metadata is empty
-  // and `hasPreview` is false) OR a linked thread carries a clonable repo
-  // (`hasPreview` — e.g. the Super Agent's `load_repo`). Only genuinely
-  // repo-less work — no PR ever possible — advances on finish.
-  if (item.repoOwner != null || used.some((t) => t.hasPreview)) return false;
+  // repoOwner-named (CMS) tasks wait for their PR: the CMS flow opens the PR and advances the card itself, so a finished edit with no PR must NOT jump to review.
+  if (item.repoOwner != null) return false;
   if (
     !used.every(
       (t) => t.status !== null && TERMINAL_THREAD_STATUSES.has(t.status),
@@ -488,6 +475,33 @@ export class TaskBoardStorage {
   }
 
   /**
+   * Attach tags to a task WITHOUT detaching anything — the additive half of
+   * `setItemTags`, for a machine writer (the reports import) that owns its own
+   * labels but must not touch the ones a human put on the card. Idempotent: an
+   * already-attached tag keeps its original `created_by`/`created_at`. The task
+   * and all `tagIds` must already be verified as belonging to the caller's org.
+   */
+  async addItemTags(
+    taskBoardItemId: string,
+    tagIds: string[],
+    by: string,
+  ): Promise<void> {
+    if (tagIds.length === 0) return;
+    await this.db
+      .insertInto("task_board_item_tags")
+      .values(
+        tagIds.map((id) => ({
+          task_board_item_id: taskBoardItemId,
+          id,
+          created_by: by,
+          created_at: new Date().toISOString(),
+        })),
+      )
+      .onConflict((oc) => oc.doNothing())
+      .execute();
+  }
+
+  /**
    * Link an agent thread to a task (many-to-many). Idempotent — re-linking the
    * same pair is a no-op, so a run replay can't duplicate the row.
    */
@@ -622,16 +636,18 @@ export class TaskBoardStorage {
   ): Promise<{ kind: string | null; errorText: string | null } | null> {
     const row = await this.db
       .selectFrom("threads as t")
-      .leftJoin(
+      // LATERAL: uncorrelated, `LIMIT 1` took the newest error part in the TABLE.
+      .leftJoinLateral(
         (eb) =>
           eb
             .selectFrom("thread_message_parts as p")
-            .select(["p.thread_id", "p.payload"])
+            .select("p.payload")
+            .whereRef("p.thread_id", "=", "t.id")
             .where("p.kind", "=", "error")
             .orderBy("p.created_at", "desc")
             .limit(1)
             .as("err"),
-        (join) => join.onRef("err.thread_id", "=", "t.id"),
+        (join) => join.onTrue(),
       )
       .select(["t.status", "t.failure_kind as kind", "err.payload as payload"])
       .where("t.id", "=", threadId)

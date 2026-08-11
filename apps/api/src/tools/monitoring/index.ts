@@ -4,6 +4,7 @@
  * MCP tools for querying monitoring logs and statistics.
  */
 
+export { MONITORING_HEATMAP } from "./heatmap";
 export { MONITORING_LOG_GET } from "./get";
 export { MONITORING_LOGS_LIST } from "./list";
 export { MONITORING_STATS } from "./stats";

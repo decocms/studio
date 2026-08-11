@@ -42,19 +42,23 @@ type depsRestoreLine struct {
 	RepoHash   string        `json:"repo_hash"`
 	DurationMs int64         `json:"duration_ms"`
 	BootId     string        `json:"bootId"`
+	// Whether the package-manager download cache was populated before this
+	// install. Omitted when unset so the line stays byte-compatible with what
+	// existing dashboard panels parse.
+	PkgCache string `json:"pkg_cache,omitempty"`
 }
 
 // BuildDepsRestoreLine renders one line per completed dependency step. The
 // golden cache cannot report its own hit rate — a hit needs the pod to land on
 // a node already warm for its repo, which is a property of fleet churn.
-func BuildDepsRestoreLine(source RestoreSource, cloneUrl string, durationMs int64, bootId string) string {
+func BuildDepsRestoreLine(source RestoreSource, cloneUrl string, durationMs int64, bootId, pkgCache string) string {
 	hash := "unknown"
 	if cloneUrl != "" {
 		hash = repoCacheKey(cloneUrl)
 	}
 	b, err := json.Marshal(depsRestoreLine{
 		Msg: depsRestoreMsg, Source: source, RepoHash: hash,
-		DurationMs: durationMs, BootId: bootId,
+		DurationMs: durationMs, BootId: bootId, PkgCache: pkgCache,
 	})
 	if err != nil {
 		return ""
@@ -62,15 +66,15 @@ func BuildDepsRestoreLine(source RestoreSource, cloneUrl string, durationMs int6
 	return string(b)
 }
 
-func EmitDepsRestore(source RestoreSource, cloneUrl string, durationMs int64, bootId string) {
-	if line := BuildDepsRestoreLine(source, cloneUrl, durationMs, bootId); line != "" {
+func EmitDepsRestore(source RestoreSource, cloneUrl string, durationMs int64, bootId, pkgCache string) {
+	if line := BuildDepsRestoreLine(source, cloneUrl, durationMs, bootId, pkgCache); line != "" {
 		os.Stdout.WriteString(line + "\n")
 	}
 	// Same event, second channel. The stdout line stays byte-compatible with
 	// the TS daemon and is what existing panels read; the metric is what
 	// survives the log pipeline, which samples info-level lines at 1% and so
 	// cannot be counted on at canary volume. No-op unless OTLP is configured.
-	telemetry.RecordDepsRestore(context.Background(), string(source), durationMs)
+	telemetry.RecordDepsRestore(context.Background(), string(source), durationMs, pkgCache)
 }
 
 // IsPackageManifest reports whether rel (relative to node_modules) is a real

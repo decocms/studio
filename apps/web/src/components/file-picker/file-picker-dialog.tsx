@@ -262,6 +262,10 @@ function BucketPanel({
   }
   function onDrop(e: React.DragEvent) {
     e.preventDefault();
+    // Stop the drop from bubbling to the chat composer's window-level
+    // drop listener (input.tsx `useWindowFileDrop`), which would otherwise
+    // upload the same file into the chat input too.
+    e.stopPropagation();
     setIsDragging(false);
     handleFiles(e.dataTransfer.files);
   }

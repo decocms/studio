@@ -313,7 +313,7 @@ spec:
       topologySpreadConstraints:
         {{- range .Values.topologySpreadConstraints }}
         - {{- if not .labelSelector }}
-          {{- fail "labelSelector é obrigatório em topologySpreadConstraints. Especifique explicitamente os labels." }}
+          {{- fail "labelSelector is required in topologySpreadConstraints. Specify the labels explicitly." }}
           {{- else }}
           labelSelector:
             {{- toYaml .labelSelector | nindent 12 }}

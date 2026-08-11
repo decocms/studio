@@ -2,10 +2,27 @@ package config
 
 import "encoding/json"
 
+// SubmoduleCredential is a PAT for fetching git submodules whose remotes the
+// main clone token can't reach (a different repo/org). The daemon writes the
+// token to a git-only credentials file and rewrites `git@<host>:` SSH submodule
+// URLs to HTTPS so it authenticates.
+//
+// ⚠️ SECURITY: Token is a credential. It never enters the process env bag the
+// dev server sees, never appears in argv, and is redacted from every
+// `/_sandbox/config` response (see routes.stripSubmoduleTokens).
+type SubmoduleCredential struct {
+	Host  string `json:"host"`
+	Token string `json:"token"`
+}
+
 type GitRepository struct {
 	CloneUrl *string `json:"cloneUrl,omitempty"`
 	Branch   *string `json:"branch,omitempty"`
 	RepoName *string `json:"repoName,omitempty"`
+	// Credentials for private submodules, keyed by host. Absent/empty means
+	// submodules are fetched with only the ambient (no-credential) git config —
+	// public submodules work, private ones on other hosts fail auth.
+	SubmoduleCredentials []SubmoduleCredential `json:"submoduleCredentials,omitempty"`
 }
 
 type GitIdentity struct {
@@ -73,6 +90,10 @@ type Patch struct {
 	Application *Application
 	Env         map[string]*string
 	HasEnv      bool
+	// Pointer, not string: DeepMerge rebuilds TenantConfig field by field, so a
+	// field absent from BOTH the patch and the merge is silently dropped on every
+	// apply. Nil here means "not in this patch, keep current".
+	OrgId *string
 }
 
 func ParsePatch(raw map[string]json.RawMessage) (*Patch, error) {
@@ -84,6 +105,11 @@ func ParsePatch(raw map[string]json.RawMessage) (*Patch, error) {
 	}
 	if v, ok := raw["operator"]; ok && !isNull(v) {
 		if err := json.Unmarshal(v, &p.Operator); err != nil {
+			return nil, err
+		}
+	}
+	if v, ok := raw["orgId"]; ok && !isNull(v) {
+		if err := json.Unmarshal(v, &p.OrgId); err != nil {
 			return nil, err
 		}
 	}
@@ -133,6 +159,15 @@ func (c *TenantConfig) RepoName() string {
 		return ""
 	}
 	return *c.Git.Repository.RepoName
+}
+
+// SubmoduleCredentials returns the configured per-host submodule PATs, nil when
+// none. ⚠️ SECURITY: the tokens in the result are credentials. Never log them.
+func (c *TenantConfig) SubmoduleCredentials() []SubmoduleCredential {
+	if c == nil || c.Git == nil || c.Git.Repository == nil {
+		return nil
+	}
+	return c.Git.Repository.SubmoduleCredentials
 }
 
 func (c *TenantConfig) HasBranch() bool {

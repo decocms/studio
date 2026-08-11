@@ -5,6 +5,7 @@ import {
   claimTaskExecution,
   rollbackTaskExecution,
   TaskQuotaError,
+  userInitiatedTaskQuotaConfig,
 } from "../../billing/task-quota";
 import { isReportsTask } from "@decocms/shared/task-board";
 import { captureOrgEvent } from "@/posthog";
@@ -65,6 +66,9 @@ export type SuperAgentPromptOpts = {
    *  work that already failed, so it outranks a brand-new task for the next
    *  slot. Defaults to a new task. See `dispatch-queue/run-priority.ts`. */
   runClass?: RunClass;
+  /** A human asked for this run (`TASK_BOARD_ITEM_RERUN`), so the per-task run
+   *  cap — which bounds automatic re-dispatch — does not apply to it. */
+  userInitiated?: boolean;
 };
 
 /**
@@ -169,7 +173,11 @@ export async function enqueueSuperAgentForTask(
   // throws [SUBSCRIPTION_REQUIRED] and nothing enqueues. The interactive
   // flip pre-checks in TASK_BOARD_ITEM_UPDATE so the user sees the paywall
   // BEFORE the write; here the claim is the enforcement.
-  const claim = await claimTaskExecution(ctx, task);
+  const claim = await claimTaskExecution(
+    ctx,
+    task,
+    opts?.userInitiated ? userInitiatedTaskQuotaConfig() : undefined,
+  );
 
   let harness: "claude-code" | "decopilot" = "decopilot";
   try {
@@ -231,18 +239,18 @@ export async function enqueueSuperAgentForTask(
     //
     // ROLLBACK, not refund: no run happened, so the per-task tally must not be
     // spent either — otherwise a task whose dispatch keeps failing dies at the
-    // run cap with a quota error for runs that never existed.
-    //
-    // Only a FRESH claim is ours to undo. A `"rerun"` rides a slot an earlier
-    // run already paid for (and may well have shipped a PR from) — undoing it
-    // here would refund a run that really happened.
-    if (claim === "claimed") {
-      await rollbackTaskExecution(
-        ctx.storage.organizationBilling,
-        task.organizationId,
-        task.id,
-      );
-    }
+    // run cap with a quota error for runs that never existed. That holds for a
+    // `"rerun"` too: it incremented the same tally, and the sweeper's automatic
+    // retries spend it, so a card whose re-dispatch keeps throwing used to walk
+    // itself to the cap without ever starting a run. Its period SLOT is not
+    // ours to give back (an earlier run really did ride it) — that distinction
+    // lives in `rollbackTaskExecution`.
+    await rollbackTaskExecution(
+      ctx.storage.organizationBilling,
+      task.organizationId,
+      task.id,
+      claim,
+    );
     throw err;
   }
 

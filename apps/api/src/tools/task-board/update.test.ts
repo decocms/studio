@@ -7,7 +7,8 @@
  */
 import { describe, expect, it } from "bun:test";
 import type { TaskBoardItem } from "@/storage/types";
-import { diffTaskActivityEntries } from "./update";
+import { SUPER_AGENT_ASSIGNEE_ID } from "./schema";
+import { delegatesToSuperAgent, diffTaskActivityEntries } from "./update";
 
 function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
   return {
@@ -90,5 +91,50 @@ describe("diffTaskActivityEntries", () => {
     const previous = item({ sortOrder: 0 });
     const next = item({ sortOrder: 5 });
     expect(diffTaskActivityEntries(previous, next)).toEqual([]);
+  });
+});
+
+describe("delegatesToSuperAgent", () => {
+  it("delegates when the assignee changes to the Super Agent", () => {
+    expect(
+      delegatesToSuperAgent(
+        SUPER_AGENT_ASSIGNEE_ID,
+        item({ assigneeId: null, status: "todo" }),
+      ),
+    ).toBe(true);
+  });
+
+  it("re-delegates a card parked in To Do already assigned to the Super Agent", () => {
+    // A run that failed out of its retry budget returns the card to To Do
+    // WITHOUT clearing the assignee. Gating on "the assignee changed" made the
+    // Auto fix click a silent no-op and stranded the card in To Do.
+    expect(
+      delegatesToSuperAgent(
+        SUPER_AGENT_ASSIGNEE_ID,
+        item({ assigneeId: SUPER_AGENT_ASSIGNEE_ID, status: "todo" }),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not re-delegate a Super Agent card outside To Do", () => {
+    for (const status of ["in_progress", "in_review", "done"] as const) {
+      expect(
+        delegatesToSuperAgent(
+          SUPER_AGENT_ASSIGNEE_ID,
+          item({ assigneeId: SUPER_AGENT_ASSIGNEE_ID, status }),
+        ),
+      ).toBe(false);
+    }
+  });
+
+  it("does not delegate for any other assignee, or when none was passed", () => {
+    const previous = item({ assigneeId: null, status: "todo" });
+    expect(delegatesToSuperAgent("user_2", previous)).toBe(false);
+    expect(delegatesToSuperAgent(null, previous)).toBe(false);
+    expect(delegatesToSuperAgent(undefined, previous)).toBe(false);
+  });
+
+  it("does not delegate without a pre-update item", () => {
+    expect(delegatesToSuperAgent(SUPER_AGENT_ASSIGNEE_ID, null)).toBe(false);
   });
 });

@@ -7,7 +7,9 @@
  */
 
 import { describe, expect, it } from "bun:test";
+import { TaskQuotaError } from "@/billing/task-quota";
 import { prReadyForReview } from "./prs-get";
+import { isPermanentDispatchFailure } from "./review-sweeper";
 
 const pr = (over: Partial<Parameters<typeof prReadyForReview>[0][number]>) => ({
   state: "open",
@@ -66,5 +68,27 @@ describe("prReadyForReview", () => {
     expect(prReadyForReview([pr({ state: null, checksStatus: null })])).toBe(
       true,
     );
+  });
+});
+
+/**
+ * The retry re-arm keeps `attempts` untouched, on purpose: a dispatch that
+ * failed on infrastructure deserves the same recovery as the run it was going
+ * to start. That makes the classification load-bearing — a failure that can
+ * never clear would be re-armed forever, which is what a quota rejection did.
+ */
+describe("isPermanentDispatchFailure", () => {
+  it("a quota rejection can never clear on a later tick", () => {
+    for (const reason of ["runs_exhausted", "trial_exhausted"] as const) {
+      expect(isPermanentDispatchFailure(new TaskQuotaError(reason))).toBe(true);
+    }
+  });
+
+  it("anything else is a blip worth re-arming for", () => {
+    expect(isPermanentDispatchFailure(new Error("connection reset"))).toBe(
+      false,
+    );
+    expect(isPermanentDispatchFailure("no model configured")).toBe(false);
+    expect(isPermanentDispatchFailure(undefined)).toBe(false);
   });
 });
