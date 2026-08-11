@@ -5,7 +5,11 @@ import { resolveFastPreview } from "@/sdk/fast-preview";
 import { toast } from "sonner";
 import { decoBlockFilePath } from "./deco-block-key";
 import { decoRepoPath } from "./deco-repo-path";
-import { patchDecofile, setDecofileDraft } from "./decofile-api";
+import {
+  decofileWriteMutationKey,
+  patchDecofile,
+  setDecofileDraft,
+} from "./decofile-api";
 import { sandboxGitStatusQueryKey } from "../thread/github/sandbox-git-api";
 import { KEYS } from "@/lib/query-keys";
 
@@ -36,6 +40,7 @@ export function useSaveBlock({
   const fastPreviewActive = resolveFastPreview(vmcp?.metadata).active;
 
   return useMutation({
+    mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
     mutationFn: async ({
       blockKey,
       data,

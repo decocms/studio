@@ -4,7 +4,11 @@ import { resolveFastPreview } from "@/sdk/fast-preview";
 import { KEYS } from "@/lib/query-keys";
 import { decoBlockFilePath } from "./deco-block-key";
 import { decoRepoPath } from "./deco-repo-path";
-import { patchDecofile, setDecofileDraft } from "./decofile-api";
+import {
+  decofileWriteMutationKey,
+  patchDecofile,
+  setDecofileDraft,
+} from "./decofile-api";
 import { sandboxGitStatusQueryKey } from "../thread/github/sandbox-git-api";
 
 interface UseDeleteBlockParams {
@@ -34,6 +38,7 @@ export function useDeleteBlock({
   const fastPreviewActive = resolveFastPreview(vmcp?.metadata).active;
 
   return useMutation({
+    mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
     mutationFn: async ({ blockKey }: { blockKey: string }) => {
       if (fastPreviewActive) {
         const draft = await patchDecofile(

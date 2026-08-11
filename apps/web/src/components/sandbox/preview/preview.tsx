@@ -1,5 +1,6 @@
 import { sleep } from "@decocms/shared/std";
 import { useState, useRef, useEffect } from "react";
+import { useIsMutating } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { formatCodeTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { useChatTask } from "@/components/chat/context";
@@ -86,7 +87,10 @@ import {
   buildFastPreviewDraftUrl,
   buildGlobalSectionPreviewUrl,
 } from "@/components/sections-editor/section-preview-url";
-import { useDecofileDraft } from "@/components/sections-editor/decofile-api";
+import {
+  decofileWriteMutationKey,
+  useDecofileDraft,
+} from "@/components/sections-editor/decofile-api";
 import { useCreatePage } from "@/components/sections-editor/use-create-page";
 import { CreatePageModal } from "@/components/sections-editor/create-page-modal";
 import { toast } from "sonner";
@@ -528,6 +532,20 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       ? { orgSlug: org.slug, virtualMcpId, branch }
       : null,
   );
+  // Autosave indicator: an in-flight block write shows the same thin top bar
+  // as navigation. In sandbox mode the daemon's `.deco/` change SSE drives the
+  // bar; sandbox-less has no daemon, so the mutation itself is the signal. The
+  // handoff is seamless — when the write lands, the new draft version changes
+  // `draftPreviewUrl`, and the re-navigation effect keeps the bar up (via
+  // `beginNavigation`) until the reloaded iframe fires onLoad.
+  const decofileWriting =
+    useIsMutating({
+      mutationKey: decofileWriteMutationKey(
+        org.slug,
+        virtualMcpId ?? "",
+        branch ?? "",
+      ),
+    }) > 0;
   const draftPreviewUrl =
     fastPreviewEnabled &&
     previewServerUrl &&
@@ -1737,7 +1755,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     "flex justify-center bg-muted/30",
                 )}
               >
-                {navigating && previewSurfaceActive && (
+                {(navigating || decofileWriting) && previewSurfaceActive && (
                   <div className="absolute inset-x-0 top-0 z-40 h-0.5 overflow-hidden bg-primary/15">
                     <div className="absolute inset-y-0 w-2/5 rounded-full bg-primary animate-preview-nav" />
                   </div>

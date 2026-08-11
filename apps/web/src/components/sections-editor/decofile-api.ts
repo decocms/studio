@@ -44,6 +44,19 @@ function decofileCacheKey(params: DecofileScopeParams): string {
   return `${params.orgSlug}/${params.virtualMcpId}/${params.branch}`;
 }
 
+/**
+ * Mutation key for block save/delete writes. Lets observers (the preview's
+ * autosave indicator via useIsMutating) see an in-flight write without any
+ * bespoke wiring — same pattern as SANDBOX_START_MUTATION_KEY.
+ */
+export function decofileWriteMutationKey(
+  orgSlug: string,
+  virtualMcpId: string,
+  branch: string,
+) {
+  return ["decofile-write", orgSlug, virtualMcpId, branch] as const;
+}
+
 function decofileApiUrl(params: DecofileScopeParams): string {
   return `/api/${params.orgSlug}/decofile/${encodeURIComponent(params.virtualMcpId)}/${encodeURIComponent(params.branch)}`;
 }
