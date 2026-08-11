@@ -129,12 +129,10 @@ describe("resolvePreviewDisplay", () => {
       });
     });
 
-    it("shows the published site with NO pill while the draft isn't ready", () => {
-      // Sandbox-less: nothing is "starting" — the published site is the right
-      // surface while the first draft version/token fetch is in flight, and
-      // the draft URL swaps in silently the moment it's addressable. A
-      // "Starting your preview" pill here would announce a boot that doesn't
-      // exist.
+    it("shows the published site + pill while the draft round-trip is in flight", () => {
+      // The published site holds the canvas and the pill says a fresher
+      // render is on its way — the draft URL needs one server round-trip
+      // (version + signed token) before it is addressable.
       expect(
         run({
           previewState: STARTING,
@@ -146,13 +144,13 @@ describe("resolvePreviewDisplay", () => {
         mode: "production",
         iframeBase: PROD,
         showBlockingOverlay: false,
-        showWakingPill: false,
+        showWakingPill: true,
       });
     });
 
     it("holds the published site when the draft URL isn't buildable yet", () => {
       // previewUrl exists, but the decofile hasn't yielded a page key, so the
-      // draft URL isn't buildable. Hold the published site silently.
+      // draft URL isn't buildable. Keep the pill rather than blanking.
       const result = run({
         previewState: IFRAME,
         progressStatus: "doing",
@@ -161,7 +159,7 @@ describe("resolvePreviewDisplay", () => {
       });
       expect(result.mode).toBe("production");
       expect(result.iframeBase).toBe(PROD);
-      expect(result.showWakingPill).toBe(false);
+      expect(result.showWakingPill).toBe(true);
     });
 
     it("never swaps to the sandbox — the draft render owns the canvas regardless of dev-server state", () => {
@@ -187,7 +185,7 @@ describe("resolvePreviewDisplay", () => {
         fastPreviewReady: false,
       });
       expect(result.mode).toBe("production");
-      expect(result.showWakingPill).toBe(false);
+      expect(result.showWakingPill).toBe(true);
     });
   });
 });

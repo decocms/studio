@@ -124,18 +124,18 @@ export function resolvePreviewDisplay(
     };
   }
 
-  // Nothing better is ready yet — paint the published site. The "waking" pill
-  // belongs to the sandbox path only: there a server genuinely is starting.
-  // Sandbox-less Fast Preview lands here merely while the first draft
-  // version/token fetch is in flight (seconds) — nothing is "starting", the
-  // published site is the right surface, and the draft URL swaps in silently
-  // the moment it's addressable.
+  // Nothing better is ready yet — paint the published site + a "waking" pill.
+  // Shared by both modes: Fast Preview holds here while the first draft
+  // version/token round-trip is in flight, the normal path until the dev
+  // server is routable. Fast Preview guarantees a `previewServerUrl` (its gate
+  // requires one), so it always lands here rather than on the blocking
+  // overlay below.
   if (previewServerUrl) {
     return {
       mode: "production",
       iframeBase: previewServerUrl,
       showBlockingOverlay: false,
-      showWakingPill: !fastPreviewActive,
+      showWakingPill: true,
     };
   }
 
