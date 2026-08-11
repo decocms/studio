@@ -297,6 +297,47 @@ describe("failed runs never reach In Review (real Postgres)", () => {
     expect(info?.errorText).toContain("did not become ready");
   });
 
+  /**
+   * The bug: the error-part subquery was uncorrelated, so its `LIMIT 1` took the
+   * newest error part in the whole TABLE. One failing thread hides it (that
+   * thread owns the newest one); a NEWER error part on another thread exposes it,
+   * which in prod is just another org failing in between.
+   */
+  it("reads its OWN error text, not the newest one in the table", async () => {
+    const { thread } = await cardWithRun("mine", "failed");
+    const { thread: other } = await cardWithRun("newer failure", "failed");
+    const errorPart = (id: string, text: string, at: Date) => ({
+      id: `${id}:m:1`,
+      seq: 1,
+      org_id: ORG2,
+      thread_id: id,
+      run_id: id,
+      message_id: `${id}:m`,
+      role: "assistant" as const,
+      kind: "error" as const,
+      payload: JSON.stringify({ type: "text", text }),
+      created_at: at.toISOString(),
+    });
+    await database.db
+      .insertInto("thread_message_parts")
+      .values([
+        errorPart(
+          thread.id,
+          "Error: Sandbox did not become ready within 180 seconds",
+          new Date(Date.now() - 60_000),
+        ),
+        errorPart(other.id, "Error: something else entirely", new Date()),
+      ])
+      .execute();
+
+    expect(
+      (await taskBoard.failedRunInfo(thread.id, ORG2))?.errorText,
+    ).toContain("did not become ready");
+    expect(
+      (await taskBoard.failedRunInfo(other.id, ORG2))?.errorText,
+    ).toContain("something else entirely");
+  });
+
   it("does not report a failure for a run that completed", async () => {
     const { thread } = await cardWithRun("completed run", "completed");
     expect(await taskBoard.failedRunInfo(thread.id, ORG2)).toBeNull();
