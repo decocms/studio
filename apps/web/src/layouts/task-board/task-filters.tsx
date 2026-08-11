@@ -7,8 +7,8 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { useT, type TranslationKey } from "@/i18n/use-t.ts";
-import { Avatar } from "@deco/ui/components/avatar.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Avatar } from "@decocms/ui/components/avatar.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Drawer,
   DrawerClose,
@@ -16,18 +16,18 @@ import {
   DrawerFooter,
   DrawerTitle,
   DrawerTrigger,
-} from "@deco/ui/components/drawer.tsx";
+} from "@decocms/ui/components/drawer.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@deco/ui/components/popover.tsx";
+} from "@decocms/ui/components/popover.tsx";
 import {
   Command,
   CommandEmpty,
@@ -35,8 +35,8 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from "@deco/ui/components/command.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/command.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   Calendar,
   ChevronDown,

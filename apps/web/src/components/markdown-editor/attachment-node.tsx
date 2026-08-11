@@ -5,7 +5,7 @@ import {
   type NodeViewProps,
 } from "@tiptap/react";
 import { Download01, File02, X } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 
 /**

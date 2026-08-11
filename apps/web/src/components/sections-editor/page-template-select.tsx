@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { Check, ChevronSelectorVertical } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.ts";
-import { Button } from "@deco/ui/components/button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Command,
   CommandEmpty,
@@ -11,12 +11,12 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from "@deco/ui/components/command.tsx";
+} from "@decocms/ui/components/command.tsx";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@deco/ui/components/popover.tsx";
+} from "@decocms/ui/components/popover.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import type { PageEntry } from "./page-list";
 

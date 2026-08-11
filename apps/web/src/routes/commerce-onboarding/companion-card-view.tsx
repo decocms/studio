@@ -1,7 +1,7 @@
 import { IntegrationIcon } from "@/components/integration-icon";
 import { useT } from "@/i18n/use-t.ts";
-import { Button } from "@deco/ui/components/button.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { CheckCircle, Loading01, Settings01 } from "@untitledui/icons";
 import type { ReactNode } from "react";
 

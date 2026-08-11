@@ -6,11 +6,11 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Spinner } from "@deco/ui/components/spinner.tsx";
-import { cn } from "@deco/ui/lib/utils.js";
+} from "@decocms/ui/components/dialog.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { KEYS } from "@/lib/query-keys";
 import { type RunBlockSandboxRef } from "@/components/sandbox/content/use-run-block";
 import {

@@ -7,8 +7,8 @@
  * dialog warns the user to copy it now.
  */
 
-import { Button } from "@deco/ui/components/button.tsx";
-import { Checkbox } from "@deco/ui/components/checkbox.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
 import {
   Dialog,
   DialogContent,
@@ -16,8 +16,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
-import { Tabs, TabsList, TabsTrigger } from "@deco/ui/components/tabs.tsx";
+} from "@decocms/ui/components/dialog.tsx";
+import { Tabs, TabsList, TabsTrigger } from "@decocms/ui/components/tabs.tsx";
 import { Copy01 } from "@untitledui/icons";
 import { useId, useState } from "react";
 import { toast } from "sonner";

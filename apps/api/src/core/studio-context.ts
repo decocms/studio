@@ -306,6 +306,7 @@ import type { SubsidizedGatewayKeyStorage } from "@/storage/subsidized-gateway-k
 import { SecretStorage } from "@/storage/secrets";
 import { OrgFileConfigStorage } from "@/storage/org-file-configs";
 import { OrgSiteStorage } from "@/storage/org-sites";
+import { OrgRepoSyncStorage } from "@/storage/org-repo-syncs";
 import type { TaskBoardStorage } from "@/storage/task-board";
 import type { OrgFsEntryStorage } from "@/storage/org-fs";
 import type { OrgFs } from "@/file-storage/org-fs";
@@ -347,6 +348,7 @@ export interface StudioStorage {
   secrets: SecretStorage;
   orgFileConfigs: OrgFileConfigStorage;
   orgSites: OrgSiteStorage;
+  orgRepoSyncs: OrgRepoSyncStorage;
   taskBoard: TaskBoardStorage;
   orgFsEntries: OrgFsEntryStorage;
   oauthPkceStates: OAuthPkceStateStorage;

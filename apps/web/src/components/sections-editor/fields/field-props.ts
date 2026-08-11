@@ -1,4 +1,5 @@
 import type { LiveMeta, SchemaProperty } from "../resolve-schema";
+import type { Crumb } from "../schema-form-breadcrumb";
 import type { SectionCatalogEntry } from "../section-catalog";
 
 export interface SandboxConfig {
@@ -15,8 +16,8 @@ export interface FieldProps {
   onChange: (value: unknown) => void;
   path: string;
   label: string;
-  breadcrumbPath?: string[];
-  onBreadcrumbChange?: (path: string[]) => void;
+  breadcrumbPath?: Crumb[];
+  onBreadcrumbChange?: (path: Crumb[]) => void;
   /**
    * True when this field shares its object scope with another array/drill-down
    * field. Array fields use it to decide whether their own label must stay in
@@ -25,6 +26,14 @@ export interface FieldProps {
    * siblings exist the array label is kept as a disambiguator.
    */
   hasSiblingDrillDownFields?: boolean;
+  /**
+   * True when this field is the sole field its parent narrowed to for the active
+   * breadcrumb (i.e. the form is drilled into it). Object fields use it to render
+   * their contents flat — no collapsible header, no indentation — since the
+   * breadcrumb already conveys the location, so drilling into a deeply nested
+   * item shows just the item's fields instead of a stack of wrapper headers.
+   */
+  focused?: boolean;
   meta?: LiveMeta;
   decofile?: Record<string, unknown>;
   containerResolveType?: string;

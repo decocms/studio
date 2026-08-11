@@ -7,20 +7,20 @@ import type { useConnections, useVirtualMCPs } from "@/sdk";
 import { useMCPClient } from "@/sdk";
 import type { useProjectContext } from "@/sdk";
 import { useQuery, useSuspenseInfiniteQuery } from "@tanstack/react-query";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
-} from "@deco/ui/components/sheet.tsx";
+} from "@decocms/ui/components/sheet.tsx";
 import {
   Table,
   TableBody,
   TableHead,
   TableHeader,
   TableRow,
-} from "@deco/ui/components/table.tsx";
+} from "@decocms/ui/components/table.tsx";
 import { ChevronUp, ChevronDown } from "@untitledui/icons";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { LogRow } from "@/components/monitoring/log-row.tsx";

@@ -3,6 +3,7 @@ import { SeoFormChrome } from "./seo-form-chrome";
 import { SeoFormFields } from "./seo-form-fields";
 import { SeoTypeSelect } from "./seo-type-select";
 import type { SchemaProperty } from "./resolve-schema";
+import type { Crumb } from "./schema-form-breadcrumb";
 import type { SeoTypeOption } from "./seo-schema";
 import {
   defaultEnabledSeo,
@@ -19,7 +20,7 @@ interface PageSeoFormProps {
   seoTypeOptions?: SeoTypeOption[];
   formResetKey: number;
   siteDefaultSeo?: Record<string, unknown>;
-  onBreadcrumbChange?: (path: string[]) => void;
+  onBreadcrumbChange?: (path: Crumb[]) => void;
   onPersistRaw: (raw: Record<string, unknown> | null) => void;
   onInnerChange: (inner: Record<string, unknown>) => void;
   /** Clears inner form state (enable/disable). */

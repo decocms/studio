@@ -1,5 +1,5 @@
-import { Card } from "@deco/ui/components/card.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { Card } from "@decocms/ui/components/card.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { ArrowUpRight } from "@untitledui/icons";
 import { Children, isValidElement, type ReactNode } from "react";
 

@@ -12,7 +12,7 @@ import { resolvePreviewDisplay } from "./preview-display";
 import { useIframeLoadRecovery } from "./preview-iframe-recovery";
 import { buildPreviewLabel } from "./preview-label";
 import { sanitizeProductionUrl } from "@decocms/shared/deco-site-production-url";
-import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
+import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 
@@ -37,13 +37,13 @@ import {
   Tablet01,
   Terminal,
 } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.js";
-import { Button } from "@deco/ui/components/button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { HeaderTabButton } from "@/layouts/main-panel-tabs/header-tab-button";
 import {
@@ -58,7 +58,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import { useDecofile } from "@/components/sections-editor/use-decofile";
 import { withVariantMatcherOverride } from "@/components/sections-editor/variant-matcher-override";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
@@ -257,10 +257,16 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     useState<PreviewDeviceSize>("desktop");
   const [visualElement, setVisualElement] =
     useState<VisualEditorPayload | null>(null);
-  /** Section index selected via click-through from the preview iframe. */
-  const [cmsSelectedSectionIndex, setCmsSelectedSectionIndex] = useState<
-    number | null
-  >(null);
+  /**
+   * Section selected via click-through from the preview iframe. Carries the
+   * iframe's per-click counter so that re-clicking the SAME section is still a
+   * new selection — without it, reopening a section the editor had navigated
+   * away from looked like "no change" and silently did nothing.
+   */
+  const [cmsSelectedSection, setCmsSelectedSection] = useState<{
+    index: number;
+    seq: number;
+  } | null>(null);
   const previewIframeRef = useRef<HTMLIFrameElement>(null);
   const blocksPanelRef = useRef<PanelImperativeHandle>(null);
   /** Origin most recently confirmed registered with the native shell via
@@ -809,7 +815,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       } else if (e.data?.type === "cms-editor::section-clicked") {
         const result = CmsEditorPayloadSchema.safeParse(e.data.payload);
         if (result.success)
-          setCmsSelectedSectionIndex(result.data.sectionIndex);
+          setCmsSelectedSection({
+            index: result.data.sectionIndex,
+            seq: result.data.clickSeq,
+          });
       }
     };
     window.addEventListener("message", handler);
@@ -887,7 +896,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     }
     setEditingMode(mode);
     setVisualElement(null);
-    setCmsSelectedSectionIndex(null);
+    setCmsSelectedSection(null);
     if (previousMode === "visual") deactivateVisualEditor();
     if (mode === "visual") injectVisualEditor();
     if (previousMode === "blocks" && mode !== "blocks") deactivateCmsEditor();
@@ -1033,7 +1042,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     setDirectPreviewUrl(null);
     // A click-through index from the previous page must not auto-select on the
     // next page's remounted editor.
-    setCmsSelectedSectionIndex(null);
+    setCmsSelectedSection(null);
     setPinnedPageKey(page.key);
     setCurrentPath(page.path);
     persistLastPage({ path: page.path, pageKey: page.key, params });
@@ -1069,7 +1078,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     );
     setActiveGlobalSection(section);
     setDirectPreviewUrl(url);
-    setCmsSelectedSectionIndex(null);
+    setCmsSelectedSection(null);
     workspace.selectTarget({ kind: "section", key: section.key });
   };
 
@@ -1676,7 +1685,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           <div className="relative h-full min-h-0 overflow-hidden">
             <BlocksPanel
               virtualMcpId={virtualMcpId}
-              externalSelectedIndex={cmsSelectedSectionIndex}
+              externalSelection={cmsSelectedSection}
             />
             {floatingPreviewControls}
           </div>
@@ -1697,7 +1706,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               {effectiveEditingMode === "blocks" && (
                 <BlocksPanel
                   virtualMcpId={virtualMcpId}
-                  externalSelectedIndex={cmsSelectedSectionIndex}
+                  externalSelection={cmsSelectedSection}
                 />
               )}
             </ResizablePanel>

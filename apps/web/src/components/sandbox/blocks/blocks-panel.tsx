@@ -30,11 +30,15 @@ const SectionsEditor = lazy(() =>
 
 export function BlocksPanel({
   virtualMcpId,
-  externalSelectedIndex = null,
+  externalSelection = null,
 }: {
   virtualMcpId: string;
-  /** Section index selected via click-through from the preview iframe. */
-  externalSelectedIndex?: number | null;
+  /**
+   * Section selected via click-through from the preview iframe. `seq` is the
+   * iframe's per-click counter — it makes two clicks on the same section two
+   * distinct selections, so re-clicking one reopens its form.
+   */
+  externalSelection?: { index: number; seq: number } | null;
 }) {
   const { org } = useProjectContext();
   const { currentBranch } = useChatTask();
@@ -128,9 +132,7 @@ export function BlocksPanel({
           currentPath={currentPath}
           activePageBlockKey={activePageBlockKey}
           activeGlobalBlockKey={activeGlobalBlockKey}
-          externalSelectedIndex={
-            activeGlobalBlockKey ? null : externalSelectedIndex
-          }
+          externalSelection={activeGlobalBlockKey ? null : externalSelection}
           initialEditSeo={
             !!activePageBlockKey &&
             workspace.state.editSeoPageKey === activePageBlockKey

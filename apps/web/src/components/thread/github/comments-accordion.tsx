@@ -3,7 +3,7 @@ import {
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
-} from "@deco/ui/components/accordion.tsx";
+} from "@decocms/ui/components/accordion.tsx";
 import { MemoizedMarkdown } from "../../chat/markdown.tsx";
 import { decodeHtmlEntities } from "./decode-html-entities.ts";
 import type { PrComment } from "./use-pr-data.ts";

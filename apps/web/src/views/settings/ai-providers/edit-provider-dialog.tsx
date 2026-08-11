@@ -11,10 +11,10 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from "@deco/ui/components/dialog.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
-import { Spinner } from "@deco/ui/components/spinner.tsx";
+} from "@decocms/ui/components/dialog.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
   useProjectContext,
   type AiProviderInfo,

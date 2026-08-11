@@ -1,6 +1,6 @@
 import { toTitleCase } from "@/components/chat/message/parts/tool-call-part/utils.tsx";
 import { useT } from "@/i18n/use-t.ts";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { JSONContent, mergeAttributes, Node } from "@tiptap/core";
 import {
   NodeViewWrapper,

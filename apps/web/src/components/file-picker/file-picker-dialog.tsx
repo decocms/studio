@@ -11,29 +11,29 @@ import {
   Upload01,
 } from "@untitledui/icons";
 import { toast } from "sonner";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
+} from "@decocms/ui/components/dialog.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
-import { SearchInput } from "@deco/ui/components/search-input.tsx";
-import { Skeleton } from "@deco/ui/components/skeleton.tsx";
+} from "@decocms/ui/components/dropdown-menu.tsx";
+import { SearchInput } from "@decocms/ui/components/search-input.tsx";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
-} from "@deco/ui/components/tabs.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/tabs.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useT } from "@/i18n/use-t.ts";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
@@ -262,6 +262,10 @@ function BucketPanel({
   }
   function onDrop(e: React.DragEvent) {
     e.preventDefault();
+    // Stop the drop from bubbling to the chat composer's window-level
+    // drop listener (input.tsx `useWindowFileDrop`), which would otherwise
+    // upload the same file into the chat input too.
+    e.stopPropagation();
     setIsDragging(false);
     handleFiles(e.dataTransfer.files);
   }

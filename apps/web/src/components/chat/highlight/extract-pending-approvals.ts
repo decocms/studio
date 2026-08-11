@@ -2,7 +2,7 @@
  * Pure extraction helper for pending approvals from assistant message parts.
  *
  * Extracted as a pure .ts module so it can be imported by bun:test code
- * without dragging in @deco/ui transitively via approval.tsx.
+ * without dragging in @decocms/ui transitively via approval.tsx.
  */
 
 import { stripMcpServerPrefix } from "@/lib/tool-namespace";

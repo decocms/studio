@@ -11,12 +11,12 @@
  */
 
 import { useNavigate } from "@tanstack/react-router";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import { Download01, LinkExternal01, XClose } from "@untitledui/icons";
 import { FileTypeIcon } from "@/components/file-type-icon";
 import {

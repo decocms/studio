@@ -2,7 +2,7 @@
 
 import { IntegrationIcon } from "@/components/integration-icon.tsx";
 import { useConnection } from "@/sdk";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { Suspense } from "react";
 
 interface AgentConnectionsPreviewProps {

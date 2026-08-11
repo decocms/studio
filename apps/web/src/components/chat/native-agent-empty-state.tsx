@@ -1,5 +1,5 @@
 import { useState, type KeyboardEvent, type ReactNode } from "react";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useAgentCapabilities } from "@/desktop/agent-terminal/use-agent-capabilities";
 import { useT } from "@/i18n/use-t.ts";
 import { ClaudeCodeIcon, CodexIcon, OpenCodeIcon } from "./agent-icons";

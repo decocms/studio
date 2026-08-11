@@ -5,11 +5,11 @@
  */
 
 import { IntegrationIcon } from "@/components/integration-icon.tsx";
-import { Badge } from "@deco/ui/components/badge.tsx";
-import { Avatar } from "@deco/ui/components/avatar.tsx";
+import { Badge } from "@decocms/ui/components/badge.tsx";
+import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { Container } from "@untitledui/icons";
 import type { EnrichedMonitoringLog } from "./types.tsx";
-import { TableCell, TableRow } from "@deco/ui/components/table.tsx";
+import { TableCell, TableRow } from "@decocms/ui/components/table.tsx";
 import { useT } from "@/i18n/use-t";
 
 // ============================================================================

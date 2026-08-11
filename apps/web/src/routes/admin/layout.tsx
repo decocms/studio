@@ -1,7 +1,7 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { Loading01 } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.ts";
-import { Button } from "@deco/ui/components/button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { Button } from "@decocms/ui/components/button.tsx";
 import RequiredAuthLayout from "@/layouts/required-auth-layout";
 import { NoPermissionState } from "@/components/no-permission-state";
 import { useDeploymentAdmin } from "@/hooks/use-deployment-admin";

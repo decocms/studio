@@ -503,7 +503,8 @@ export interface StudioToolIO {
           | "review_requested"
           | "review_approved"
           | "review_changes_requested"
-          | "merge_conflict_resolution";
+          | "merge_conflict_resolution"
+          | "merge_failed";
         actorId: string | null;
         data: Record<string, unknown>;
         occurredAt: string;
@@ -3264,6 +3265,24 @@ export interface StudioToolIO {
       }[];
     };
   };
+  MONITORING_HEATMAP: {
+    input: {
+      startDate?: string | undefined;
+      endDate?: string | undefined;
+      virtualMcpIds?: string[] | undefined;
+      excludeConnectionIds?: string[] | undefined;
+      limit?: number | undefined;
+    };
+    output: {
+      cells: {
+        virtualMcpId: string | null;
+        toolName: string;
+        calls: number;
+        errors: number;
+        outputSize: number;
+      }[];
+    };
+  };
   MONITORING_LOG_GET: {
     input: { id: string };
     output: {
@@ -4650,6 +4669,85 @@ export interface StudioToolIO {
         | { set: string; written: number; deleted: number; unchanged: number }
         | { set: string; error: string }
       )[];
+    };
+  };
+  ORG_REPO_SYNC_CREATE: {
+    input: {
+      connectionId: string;
+      volume: string;
+      ref?: string | undefined;
+      paths?: { from: string; to?: string | undefined }[] | undefined;
+    };
+    output: {
+      config: {
+        id: string;
+        connectionId: string;
+        repoOwner: string;
+        repoName: string;
+        ref: string;
+        paths: { from: string; to?: string | undefined }[];
+        volume: string;
+        enabled: boolean;
+        lastSyncedAt: string | null;
+        lastSyncError: string | null;
+        createdAt: string;
+      };
+    };
+  };
+  ORG_REPO_SYNC_LIST: {
+    input: { [x: string]: never };
+    output: {
+      configs: {
+        id: string;
+        connectionId: string;
+        repoOwner: string;
+        repoName: string;
+        ref: string;
+        paths: { from: string; to?: string | undefined }[];
+        volume: string;
+        enabled: boolean;
+        lastSyncedAt: string | null;
+        lastSyncError: string | null;
+        createdAt: string;
+      }[];
+    };
+  };
+  ORG_REPO_SYNC_UPDATE: {
+    input: {
+      id: string;
+      enabled?: boolean | undefined;
+      ref?: string | undefined;
+      paths?: { from: string; to?: string | undefined }[] | undefined;
+    };
+    output: {
+      config: {
+        id: string;
+        connectionId: string;
+        repoOwner: string;
+        repoName: string;
+        ref: string;
+        paths: { from: string; to?: string | undefined }[];
+        volume: string;
+        enabled: boolean;
+        lastSyncedAt: string | null;
+        lastSyncError: string | null;
+        createdAt: string;
+      };
+    };
+  };
+  ORG_REPO_SYNC_DELETE: { input: { id: string }; output: { deleted: boolean } };
+  ORG_REPO_SYNC_RUN: {
+    input: { id: string };
+    output: {
+      result:
+        | {
+            id: string;
+            volume: string;
+            written: number;
+            deleted: number;
+            unchanged: number;
+          }
+        | { id: string; volume: string; error: string };
     };
   };
   LIST_OBJECTS: {

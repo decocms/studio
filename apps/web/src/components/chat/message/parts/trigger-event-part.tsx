@@ -1,6 +1,6 @@
 import { useT } from "@/i18n/use-t.ts";
 import { useState } from "react";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { ChevronDown, Lightning01 } from "@untitledui/icons";
 
 export interface TriggerEventData {

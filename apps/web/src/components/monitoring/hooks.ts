@@ -150,6 +150,7 @@ interface MonitoringHeatmapParams {
   startDate: string;
   endDate: string;
   virtualMcpIds?: string[];
+  excludeConnectionIds?: string[];
 }
 
 interface MonitoringHeatmapResult {
@@ -158,7 +159,7 @@ interface MonitoringHeatmapResult {
     toolName: string;
     calls: number;
     errors: number;
-    /** Sum of tool-output byte length — a proxy for context weight, not LLM token count. */
+    /** Sum of tool-output character length — a proxy for context weight, not LLM token count. */
     outputSize: number;
   }>;
 }

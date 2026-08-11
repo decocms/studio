@@ -1,15 +1,15 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { Alert, AlertDescription } from "@deco/ui/components/alert.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Card } from "@deco/ui/components/card.tsx";
+import { Alert, AlertDescription } from "@decocms/ui/components/alert.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Card } from "@decocms/ui/components/card.tsx";
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
-} from "@deco/ui/components/tabs.tsx";
-import { useCopy } from "@deco/ui/hooks/use-copy.ts";
+} from "@decocms/ui/components/tabs.tsx";
+import { useCopy } from "@decocms/ui/hooks/use-copy.ts";
 import { useProjectContext } from "@/sdk";
 import {
   AlertTriangle,

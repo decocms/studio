@@ -499,6 +499,7 @@ export function emptyBlogPayload(kind: BlogKind): Record<string, unknown> {
         slug: `untitled-${randomHex(8)}`,
         date: new Date().toISOString().slice(0, 10),
         image: "",
+        alt: "",
         authors: [],
         categories: [],
         sections: [],

@@ -1,4 +1,4 @@
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { Loading01, Minus, Plus } from "@untitledui/icons";
 
 export function ToggleButton({

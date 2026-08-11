@@ -36,6 +36,11 @@ export const MONITORING_HEATMAP = defineTool({
       .max(100)
       .optional()
       .describe("Filter by specific agent (Virtual MCP) IDs"),
+    excludeConnectionIds: z
+      .array(z.string())
+      .max(100)
+      .optional()
+      .describe("Exclude tool calls from these connection IDs"),
     limit: z
       .number()
       .int()
@@ -54,7 +59,7 @@ export const MONITORING_HEATMAP = defineTool({
         outputSize: z
           .number()
           .describe(
-            "Sum of tool-output byte length — a proxy for context weight, not LLM token count",
+            "Sum of tool-output character length — a proxy for context weight, not LLM token count",
           ),
       }),
     ),
@@ -68,7 +73,10 @@ export const MONITORING_HEATMAP = defineTool({
       organizationId: org.id,
       startDate: input.startDate ? new Date(input.startDate) : undefined,
       endDate: input.endDate ? new Date(input.endDate) : undefined,
-      filters: { virtualMcpIds: input.virtualMcpIds },
+      filters: {
+        virtualMcpIds: input.virtualMcpIds,
+        excludeConnectionIds: input.excludeConnectionIds,
+      },
       limit: input.limit,
     });
   },

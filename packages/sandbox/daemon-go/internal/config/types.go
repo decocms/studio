@@ -50,6 +50,14 @@ type TenantConfig struct {
 	CloneOnly   *bool             `json:"cloneOnly,omitempty"`
 	Application *Application      `json:"application,omitempty"`
 	Env         map[string]string `json:"env,omitempty"`
+	// Owning organization, stamped by Studio. Nothing in the boot path reads it;
+	// it exists so artifacts that outlive the pod can record whose they are.
+	//
+	// Concretely: the golden dependency cache. A repo hash does not isolate two
+	// organizations cloning the same URL (a public template), so a store shared
+	// across nodes must key by org — otherwise one org's dependency tree can be
+	// restored into another's sandbox. See setup.WriteGoldenMeta.
+	OrgId string `json:"orgId,omitempty"`
 }
 
 // IsCloneOnly reports whether this sandbox should stop after the checkout.
@@ -65,6 +73,10 @@ type Patch struct {
 	Application *Application
 	Env         map[string]*string
 	HasEnv      bool
+	// Pointer, not string: DeepMerge rebuilds TenantConfig field by field, so a
+	// field absent from BOTH the patch and the merge is silently dropped on every
+	// apply. Nil here means "not in this patch, keep current".
+	OrgId *string
 }
 
 func ParsePatch(raw map[string]json.RawMessage) (*Patch, error) {
@@ -76,6 +88,11 @@ func ParsePatch(raw map[string]json.RawMessage) (*Patch, error) {
 	}
 	if v, ok := raw["operator"]; ok && !isNull(v) {
 		if err := json.Unmarshal(v, &p.Operator); err != nil {
+			return nil, err
+		}
+	}
+	if v, ok := raw["orgId"]; ok && !isNull(v) {
+		if err := json.Unmarshal(v, &p.OrgId); err != nil {
 			return nil, err
 		}
 	}

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { DECK } from "./templates/tokens";
 import { useT } from "@/i18n/use-t.ts";
 

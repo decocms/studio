@@ -626,7 +626,9 @@ export class SqlMonitoringStorage implements MonitoringStorage {
     ];
 
     if (params.filters?.virtualMcpIds?.length) {
-      const ids = params.filters.virtualMcpIds.map((id) => `'${esc(id)}'`).join(",");
+      const ids = params.filters.virtualMcpIds
+        .map((id) => `'${esc(id)}'`)
+        .join(",");
       where.push(`virtual_mcp_id IN (${ids})`);
     }
     if (params.filters?.excludeConnectionIds?.length) {
@@ -642,10 +644,8 @@ export class SqlMonitoringStorage implements MonitoringStorage {
 
     const limit = Math.min(Math.max(1, Math.floor(params.limit ?? 500)), 1000);
 
-    // output_size is a proxy for context weight (bytes fed back into the LLM's
-    // context on the next turn), not LLM token count — tool_call rows carry no
-    // token data of their own, only the length of the tool's returned output.
-    const sql = `SELECT virtual_mcp_id, tool_name, count(*) AS calls, coalesce(sum(CASE WHEN is_error = 1 THEN 1 ELSE 0 END), 0) AS errors, coalesce(sum(LENGTH(output)), 0) AS output_size FROM ${source} WHERE ${where.join(" AND ")} GROUP BY virtual_mcp_id, tool_name ORDER BY calls DESC LIMIT ${limit}`;
+    // output_size = length of tool output, a proxy for context weight.
+    const sql = `SELECT virtual_mcp_id, tool_name, count(*) AS calls, coalesce(sum(CASE WHEN is_error = 1 THEN 1 ELSE 0 END), 0) AS errors, coalesce(sum(length(output)), 0) AS output_size FROM ${source} WHERE ${where.join(" AND ")} GROUP BY virtual_mcp_id, tool_name ORDER BY calls DESC LIMIT ${limit}`;
 
     const rows = await this.engine.query(sql);
 

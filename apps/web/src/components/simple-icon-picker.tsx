@@ -6,14 +6,14 @@
  * Stores the selection as "icon://<Name>" (no color).
  */
 
-import { Input } from "@deco/ui/components/input.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@deco/ui/components/popover.tsx";
-import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/popover.tsx";
+import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { LayoutLeft, SearchMd } from "@untitledui/icons";
 import { useState } from "react";
 import {
@@ -65,7 +65,7 @@ export function SimpleIconPicker({
         <button
           type="button"
           disabled={disabled}
-          aria-label="Change icon"
+          aria-label={t("common.simpleIconPicker.changeIcon")}
           className={cn(
             "size-7 shrink-0 rounded-md transition-colors flex items-center justify-center",
             disabled

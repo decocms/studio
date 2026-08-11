@@ -1,19 +1,19 @@
 import { useState } from "react";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Badge } from "@deco/ui/components/badge.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Badge } from "@decocms/ui/components/badge.tsx";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@deco/ui/components/select.tsx";
-import { MultiSelect } from "@deco/ui/components/multi-select.tsx";
+} from "@decocms/ui/components/select.tsx";
+import { MultiSelect } from "@decocms/ui/components/multi-select.tsx";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@deco/ui/components/popover.tsx";
+} from "@decocms/ui/components/popover.tsx";
 import { FilterLines } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
 

@@ -1,18 +1,18 @@
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
   DialogContent,
   DialogTitle,
   DialogTrigger,
-} from "@deco/ui/components/dialog.tsx";
+} from "@decocms/ui/components/dialog.tsx";
 import {
   Drawer,
   DrawerContent,
   DrawerTitle,
   DrawerTrigger,
-} from "@deco/ui/components/drawer.tsx";
-import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/drawer.tsx";
+import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useState, Suspense } from "react";
 import { useT } from "@/i18n/use-t.ts";
 import { type AiProviderModel } from "./select-model/shared";

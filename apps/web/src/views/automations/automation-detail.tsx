@@ -13,19 +13,19 @@ import {
 import { User } from "@/components/user/user.tsx";
 import { useAutomation, useAutomationActions } from "@/hooks/use-automations";
 import { useChatTask, useChatStream } from "@/components/chat/context";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@deco/ui/components/collapsible.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
-import { Switch } from "@deco/ui/components/switch.tsx";
+} from "@decocms/ui/components/collapsible.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
+import { Switch } from "@decocms/ui/components/switch.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import { StudioPackAgentId, useConnections, useProjectContext } from "@/sdk";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { buildImprovePromptDoc } from "@/components/chat/tiptap/build-improve-prompt-doc";

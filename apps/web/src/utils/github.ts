@@ -107,31 +107,3 @@ export function sanitizeReadmeHtml(html: string): string {
   result = addExternalLinkAttributes(result);
   return result;
 }
-
-/**
- * Fetch README HTML from GitHub API
- */
-export async function fetchGitHubReadme(
-  owner: string,
-  repo: string,
-): Promise<string | null> {
-  try {
-    const response = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/readme`,
-      {
-        headers: {
-          Accept: "application/vnd.github.v3.html",
-        },
-      },
-    );
-    if (!response.ok) {
-      if (response.status === 404) return null;
-      throw new Error(`Failed to fetch README: ${response.statusText}`);
-    }
-    const html = await response.text();
-    return sanitizeReadmeHtml(html);
-  } catch (error) {
-    console.error("Error fetching README:", error);
-    return null;
-  }
-}

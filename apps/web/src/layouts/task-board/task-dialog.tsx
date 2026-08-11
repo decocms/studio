@@ -3,23 +3,23 @@ import {
   Dialog,
   DialogContent,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
+} from "@decocms/ui/components/dialog.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@deco/ui/components/popover.tsx";
-import { Calendar as DayPickerCalendar } from "@deco/ui/components/calendar.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Avatar } from "@deco/ui/components/avatar.tsx";
-import { Skeleton } from "@deco/ui/components/skeleton.tsx";
-import { useCopy } from "@deco/ui/hooks/use-copy.ts";
+} from "@decocms/ui/components/popover.tsx";
+import { Calendar as DayPickerCalendar } from "@decocms/ui/components/calendar.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Avatar } from "@decocms/ui/components/avatar.tsx";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import { useCopy } from "@decocms/ui/hooks/use-copy.ts";
 import {
   AlertCircle,
   AlertSquare,
@@ -58,7 +58,7 @@ import { useMembers } from "@/hooks/use-members";
 import { useCreateTag, useDeleteTag, useTags } from "@/hooks/use-tags";
 import { getInitials } from "@/lib/get-initials";
 import { useT } from "@/i18n/use-t.ts";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   nextTagColor,
   PRIORITIES,
@@ -1736,6 +1736,31 @@ function describeActivity(
           });
     case "merge_conflict_resolution":
       return t("taskBoard.taskDialog.activityMergeConflictResolution");
+    case "merge_failed": {
+      // `detail` names the repo (no_connection) or carries GitHub's refusal
+      // text — the difference between "it's broken" and "connect this repo".
+      const detail = typeof d.detail === "string" ? d.detail : "";
+      switch (d.reason) {
+        case "no_pr":
+          return t("taskBoard.taskDialog.activityMergeFailedNoPr");
+        case "checks_failing":
+          return t("taskBoard.taskDialog.activityMergeFailedChecksFailing");
+        case "no_connection":
+          return detail
+            ? t("taskBoard.taskDialog.activityMergeFailedNoConnection", {
+                detail,
+              })
+            : t("taskBoard.taskDialog.activityMergeFailed");
+        case "refused":
+          return detail
+            ? t("taskBoard.taskDialog.activityMergeFailedRefused", { detail })
+            : t("taskBoard.taskDialog.activityMergeFailed");
+        default:
+          return detail
+            ? t("taskBoard.taskDialog.activityMergeFailedError", { detail })
+            : t("taskBoard.taskDialog.activityMergeFailed");
+      }
+    }
     default: {
       const _exhaustive: never = a.action;
       return String(_exhaustive);

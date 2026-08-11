@@ -2,14 +2,14 @@ import {
   displayToolName,
   getGatewayClientId,
 } from "@decocms/mcp-utils/aggregate";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
   DialogContent,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
+} from "@decocms/ui/components/dialog.tsx";
 import {
   Form,
   FormControl,
@@ -17,9 +17,9 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@deco/ui/components/form.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
-import { Spinner } from "@deco/ui/components/spinner.tsx";
+} from "@decocms/ui/components/form.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
 import { useId } from "react";

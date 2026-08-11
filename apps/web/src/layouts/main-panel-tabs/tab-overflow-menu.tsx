@@ -9,12 +9,12 @@
 
 import { useState } from "react";
 import { LayersThree01 } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@deco/ui/components/popover.tsx";
+} from "@decocms/ui/components/popover.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { TOUR_ANCHORS } from "@/components/cms-tour/anchors";
 import type { TabIcon } from "./resolve-tab-icon";

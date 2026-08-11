@@ -4,7 +4,7 @@
  * Tab switcher + shared state. Delegates to overview, audit, and threads tabs.
  */
 
-import { SearchInput } from "@deco/ui/components/search-input.tsx";
+import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import { Page } from "@/components/page";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -30,43 +30,43 @@ import {
   useProjectContext,
   useVirtualMCPs,
 } from "@/sdk";
-import { Badge } from "@deco/ui/components/badge.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { Badge } from "@decocms/ui/components/badge.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { FilterLines, Container } from "@untitledui/icons";
-import { Input } from "@deco/ui/components/input.tsx";
-import { MultiSelect } from "@deco/ui/components/multi-select.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
+import { MultiSelect } from "@decocms/ui/components/multi-select.tsx";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@deco/ui/components/popover.tsx";
+} from "@decocms/ui/components/popover.tsx";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@deco/ui/components/select.tsx";
+} from "@decocms/ui/components/select.tsx";
 import {
   TimeRangePicker,
   type TimeRange as TimeRangeValue,
-} from "@deco/ui/components/time-range-picker.tsx";
-import { expressionToDate } from "@deco/ui/lib/time-expressions.ts";
+} from "@decocms/ui/components/time-range-picker.tsx";
+import { expressionToDate } from "@decocms/ui/lib/time-expressions.ts";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Suspense, useRef, useState } from "react";
 import { Plus, Trash01, Code01, Grid01 } from "@untitledui/icons";
-import { Textarea } from "@deco/ui/components/textarea.tsx";
+import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import { CollectionTabs } from "@/components/collections/collection-tabs.tsx";
-import { Switch } from "@deco/ui/components/switch.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
+import { Switch } from "@decocms/ui/components/switch.tsx";
+import { Label } from "@decocms/ui/components/label.tsx";
 import { IntegrationIcon } from "@/components/integration-icon.tsx";
-import { Avatar } from "@deco/ui/components/avatar.tsx";
+import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { useT } from "@/i18n/use-t";
 
 import { OverviewTabContent, OverviewTabSkeleton } from "./overview.tsx";

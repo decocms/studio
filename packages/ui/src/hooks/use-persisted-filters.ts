@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import type { Filter } from "@deco/ui/components/filter-bar.tsx";
+import type { Filter } from "../components/filter-bar.tsx";
 
 export function usePersistedFilters(
   key: string,

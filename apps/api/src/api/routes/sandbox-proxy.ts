@@ -435,7 +435,7 @@ export function redactRepoDir(text: string): string {
   return text;
 }
 
-async function fetchDaemonJson<T>(
+export async function fetchDaemonJson<T>(
   runner: SandboxProvider,
   claimName: string,
   daemonPath: string,
@@ -475,15 +475,14 @@ async function fetchDaemonJson<T>(
 
   const text = await upstream.text();
   if (!upstream.ok) {
+    let message = `Daemon error (${upstream.status})`;
     try {
       const err = JSON.parse(text) as { error?: string };
-      throw new Error(err.error ?? `Daemon error (${upstream.status})`);
-    } catch (parseErr) {
-      if (parseErr instanceof Error && parseErr.message !== text) {
-        throw parseErr;
-      }
-      throw new Error(`Daemon error (${upstream.status})`);
+      message = err.error ?? message;
+    } catch {
+      /* non-JSON error body — keep the generic message */
     }
+    throw new Error(message);
   }
 
   return JSON.parse(text) as T;

@@ -9,9 +9,9 @@ import {
   FormField,
   FormItem,
   FormMessage,
-} from "@deco/ui/components/form.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
-import { DialogFooter } from "@deco/ui/components/dialog.tsx";
+} from "@decocms/ui/components/form.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { DialogFooter } from "@decocms/ui/components/dialog.tsx";
 import { KEYS } from "@/lib/query-keys";
 import { unwrapToolResult, toPropertyOptions } from "../companions-core.ts";
 import { useSaveCompanionConfig } from "./use-save-companion-config.ts";

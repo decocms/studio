@@ -1,10 +1,15 @@
 import { describe, expect, it } from "bun:test";
 import { delay } from "@decocms/shared/std";
+import type { SandboxProvider } from "@decocms/sandbox/provider";
 import {
   readBoundedText,
   UpstreamPayloadTooLargeError,
 } from "../../lib/bounded-text";
-import { redactRepoDir, withClaimGitLock } from "./sandbox-proxy";
+import {
+  fetchDaemonJson,
+  redactRepoDir,
+  withClaimGitLock,
+} from "./sandbox-proxy";
 
 describe("redactRepoDir", () => {
   it("nulls a container-internal repoDir while preserving other fields", () => {
@@ -90,5 +95,45 @@ describe("withClaimGitLock", () => {
 
     const after = await withClaimGitLock("claim-err", async () => "ok");
     expect(after).toBe("ok");
+  });
+});
+
+function fakeRunner(response: Response): SandboxProvider {
+  return {
+    kind: "agent-sandbox",
+    ensure: async () => {
+      throw new Error("unused");
+    },
+    delete: async () => {},
+    alive: async () => true,
+    getPreviewUrl: async () => null,
+    proxyDaemonRequest: async () => response,
+  } as unknown as SandboxProvider;
+}
+
+describe("fetchDaemonJson", () => {
+  it("surfaces the daemon's own error message on a JSON error body", async () => {
+    const runner = fakeRunner(
+      new Response(JSON.stringify({ error: "disk full" }), { status: 500 }),
+    );
+    await expect(
+      fetchDaemonJson(runner, "claim-a", "/_sandbox/git/status"),
+    ).rejects.toThrow("disk full");
+  });
+
+  it("falls back to a generic message on a non-JSON error body", async () => {
+    const runner = fakeRunner(
+      new Response("<html>502 Bad Gateway</html>", { status: 502 }),
+    );
+    await expect(
+      fetchDaemonJson(runner, "claim-a", "/_sandbox/git/status"),
+    ).rejects.toThrow("Daemon error (502)");
+  });
+
+  it("throws SANDBOX_GONE on a 404 with no adoptLiveClaim to retry", async () => {
+    const runner = fakeRunner(new Response("not found", { status: 404 }));
+    await expect(
+      fetchDaemonJson(runner, "claim-a", "/_sandbox/git/status"),
+    ).rejects.toThrow("SANDBOX_GONE");
   });
 });

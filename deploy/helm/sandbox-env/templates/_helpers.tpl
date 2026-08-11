@@ -363,6 +363,77 @@ agent-sandbox-system with every other release.
 {{- end }}
 
 {{/*
+Node-level uploader: DaemonSet, plus its own writable PV/PVC over the same
+store. A distinct name from goldenRemoteName because the two volumes differ in
+exactly the thing that matters — the tenant's is read-only at the mount, this
+one is not.
+*/}}
+{{- define "sandbox-env.goldenUploaderName" -}}
+{{- printf "studio-sandbox-golden-uploader-%s" (include "sandbox-env.envName" .) -}}
+{{- end }}
+
+{{/*
+Claim the uploader writes through. An explicit goldenUploader.pvcName wins and
+this chart renders no PV/PVC — the escape hatch for a store this chart does not
+manage.
+*/}}
+{{- define "sandbox-env.goldenUploaderClaimName" -}}
+{{- if .Values.goldenUploader.pvcName -}}
+{{- .Values.goldenUploader.pvcName -}}
+{{- else -}}
+{{- include "sandbox-env.goldenUploaderName" . -}}
+{{- end -}}
+{{- end }}
+
+{{- define "sandbox-env.goldenUploaderSelectorLabels" -}}
+app.kubernetes.io/name: {{ include "sandbox-env.goldenUploaderName" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+
+{{- define "sandbox-env.goldenUploaderLabels" -}}
+helm.sh/chart: {{ include "sandbox-env.chart" . }}
+{{ include "sandbox-env.goldenUploaderSelectorLabels" . }}
+app.kubernetes.io/component: golden-uploader
+studio.decocms.com/env: {{ include "sandbox-env.envName" . }}
+{{- if .Chart.AppVersion }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- end }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end }}
+
+{{/*
+Placement defaults to the sandbox pods': the hostPath this reads only exists on
+nodes that ran one, so following them is the correct default rather than a
+convenience.
+*/}}
+{{- define "sandbox-env.goldenUploaderNodeSelector" -}}
+{{- default .Values.nodeSelector .Values.goldenUploader.nodeSelector | toYaml -}}
+{{- end }}
+
+{{- define "sandbox-env.goldenUploaderTolerations" -}}
+{{- default .Values.tolerations .Values.goldenUploader.tolerations | toYaml -}}
+{{- end }}
+
+{{/*
+Validate the uploader before rendering a DaemonSet that cannot do its job.
+  - it reads the node-local store and writes the shared one, so both tiers must
+    be on.
+  - it needs a writable view of the shared store: either this chart provisions
+    one from depsCache.remote.volume.attributes, or an existing claim is named.
+    Neither means a DaemonSet that crash-loops on a missing volume.
+*/}}
+{{- define "sandbox-env.validateGoldenUploader" -}}
+{{- if .Values.goldenUploader.enabled }}
+{{- if not (and .Values.depsCache.enabled .Values.depsCache.remote.enabled) }}
+{{- fail "sandbox-env: goldenUploader.enabled=true requires depsCache.enabled and depsCache.remote.enabled — it bridges the node-local store to the shared one, so with either off there is nothing to read or nowhere to write." -}}
+{{- end }}
+{{- if and (not .Values.depsCache.remote.volume.attributes) (not .Values.goldenUploader.pvcName) }}
+{{- fail "sandbox-env: goldenUploader.enabled=true needs a writable view of the shared store — either depsCache.remote.volume.attributes (this chart renders a second, writable PV over the same store) or goldenUploader.pvcName (an existing writable claim). With the dynamic storageClassName path you must supply pvcName, because a StorageClass cannot express the read-only/read-write split this relies on." -}}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
 Claim the sandbox pod mounts for the L2 store. An explicit
 `depsCache.remote.pvcName` wins and nothing is rendered by
 sandbox-golden-remote.yaml — that is the escape hatch for a volume this chart

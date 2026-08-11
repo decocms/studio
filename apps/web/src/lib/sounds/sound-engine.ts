@@ -1,14 +1,14 @@
 let audioContext: AudioContext | null = null;
 const bufferCache = new Map<string, AudioBuffer>();
 
-export function getAudioContext(): AudioContext {
+function getAudioContext(): AudioContext {
   if (!audioContext) {
     audioContext = new AudioContext();
   }
   return audioContext;
 }
 
-export async function decodeAudioData(dataUri: string): Promise<AudioBuffer> {
+async function decodeAudioData(dataUri: string): Promise<AudioBuffer> {
   const cached = bufferCache.get(dataUri);
   if (cached) return cached;
 

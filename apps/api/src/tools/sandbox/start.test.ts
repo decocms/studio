@@ -208,6 +208,11 @@ function makeCtx(overrides: {
   /** Row returned by `storage.threads.get` — set `created_by` to exercise the
    *  thread-owner keying (see resolveSandboxUserId). */
   thread?: { created_by: string; metadata: Record<string, unknown> } | null;
+  /** Override `storage.connections` to exercise the dangling-connection heal. */
+  connections?: {
+    findById: ReturnType<typeof mock>;
+    list?: ReturnType<typeof mock>;
+  };
 }): StudioContext {
   const {
     orgId = ORG_ID,
@@ -215,6 +220,7 @@ function makeCtx(overrides: {
     virtualMcp,
     updateSpy = mock(async () => {}),
     thread = null,
+    connections,
   } = overrides;
 
   const findById = mock(async (_id: string) => virtualMcp ?? null);
@@ -240,9 +246,11 @@ function makeCtx(overrides: {
       // Non-repo-scoped org connection: getRepoScope() returns null, so the
       // repo-scoped mint path in provisionSandbox is skipped and these tests
       // exercise the clone/token path unchanged. (Minting is covered by the
-      // e2e suite, github-import-repo-scope.spec.ts.)
-      connections: {
+      // e2e suite, github-import-repo-scope.spec.ts.) The connection existing
+      // (truthy findById) also makes the dangling-connection heal a no-op.
+      connections: connections ?? {
         findById: mock(async (_id: string) => ({ metadata: null })),
+        list: mock(async () => ({ items: [], totalCount: 0 })),
       },
       // A `thread:` branch resolves the thread's creator + bound repo. Default
       // is no thread, so provisioning falls back to the VM's own githubRepo and
@@ -611,6 +619,78 @@ describe("SANDBOX_START", () => {
     const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
     const ctx = makeCtx({ virtualMcp });
 
+    await expect(
+      SANDBOX_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx),
+    ).rejects.toThrow("No GitHub token found");
+  });
+
+  it("heals a dangling repo connectionId via a live connection for the same repo", async () => {
+    // The recorded connection was deleted (e.g. force-delete left the metadata
+    // pointer dangling); another live connection covers the same repo. Its id
+    // is conn_github_1 so buildCloneInfo resolves through the token mock above.
+    const liveConnection = {
+      id: "conn_github_1",
+      status: "active",
+      metadata: {
+        repoScope: { installationId: 42, owner: "acme", repo: "app" },
+      },
+    };
+    const updateSpy = mock(async () => {});
+    const virtualMcp = makeVirtualMcp(ORG_ID, {
+      ...BASE_METADATA,
+      githubRepo: { owner: "acme", name: "app", connectionId: "conn_gone" },
+    });
+    const ctx = makeCtx({
+      virtualMcp,
+      updateSpy,
+      connections: {
+        findById: mock(async (id: string) =>
+          id === "conn_github_1" ? liveConnection : null,
+        ),
+        list: mock(async () => ({ items: [liveConnection], totalCount: 1 })),
+      },
+    });
+
+    await SANDBOX_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx);
+
+    // The runner clones through the live connection, not the dangling one.
+    const [, opts] = mockEnsure.mock.calls[0]! as [SandboxId, EnsureOptions];
+    expect(opts.repo?.connectionId).toBe("conn_github_1");
+
+    // The heal is persisted so publish/credential-sync read the live id too.
+    const persisted = (updateSpy.mock.calls as unknown[][]).find(
+      (call) =>
+        (call[2] as { metadata?: { githubRepo?: { connectionId?: string } } })
+          ?.metadata?.githubRepo?.connectionId === "conn_github_1",
+    );
+    expect(persisted).toBeDefined();
+    const meta = (
+      persisted![2] as {
+        metadata: {
+          githubRepo: { connectionId: string; installationId: number };
+        };
+      }
+    ).metadata;
+    expect(meta.githubRepo.installationId).toBe(42);
+  });
+
+  it("keeps failing loudly when the dangling repo connection has no live replacement", async () => {
+    (
+      mockTokenGet as unknown as {
+        mockImplementation: (fn: () => Promise<null>) => void;
+      }
+    ).mockImplementation(async () => null);
+    const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
+    const ctx = makeCtx({
+      virtualMcp,
+      connections: {
+        findById: mock(async (_id: string) => null),
+        list: mock(async () => ({ items: [], totalCount: 0 })),
+      },
+    });
+
+    // Never a silent anonymous-clone downgrade: no replacement → the existing
+    // loud GITHUB_NOT_AUTHENTICATED failure (client shows the reconnect card).
     await expect(
       SANDBOX_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx),
     ).rejects.toThrow("No GitHub token found");

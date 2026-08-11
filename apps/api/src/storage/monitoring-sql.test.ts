@@ -1183,9 +1183,7 @@ describe.skipIf(!duckdbAvailable)(
   },
 );
 
-// ============================================================================
 // queryToolCallHeatmap — tool-call volume per (agent, tool)
-// ============================================================================
 
 describe.skipIf(!duckdbAvailable)(
   "SqlMonitoringStorage.queryToolCallHeatmap",
@@ -1241,8 +1239,7 @@ describe.skipIf(!duckdbAvailable)(
           is_error: 0,
           output: TOOL_B_OUTPUT,
         }),
-        // llm_call row reusing a "tool_name" that's actually a model id — must
-        // never leak into the heatmap, which only counts real tool calls.
+        // llm_call rows reuse tool_name for the model id — must not leak in.
         makeTestMonitoringRow({
           id: "hm_4",
           type: MONITORING_LOG_TYPE_LLM_CALL,
@@ -1298,9 +1295,7 @@ describe.skipIf(!duckdbAvailable)(
         }),
       );
 
-      expect(cells.some((c) => c.toolName === "claude-3-7-sonnet")).toBe(
-        false,
-      );
+      expect(cells.some((c) => c.toolName === "claude-3-7-sonnet")).toBe(false);
     });
 
     test("filters by virtualMcpIds", async () => {

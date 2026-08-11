@@ -1,20 +1,20 @@
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { SORTABLE_DROP_ANIMATION } from "@/lib/dnd-drop-animation.ts";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
-import { cn } from "@deco/ui/lib/utils.js";
+} from "@decocms/ui/components/tooltip.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import {
   DndContext,
@@ -47,11 +47,10 @@ import { resolveEffectiveMatcherRule } from "./matcher-rules";
 import { resolveMatcherIconName } from "./matcher-icons";
 import type { PageVariant } from "./page-variants";
 import type { LiveMeta } from "./resolve-schema";
-
-const VARIANT_ROW_CLASS =
-  "text-[oklch(0.45_0.15_160)] hover:bg-[oklch(0.65_0.15_160/0.12)] dark:text-[oklch(0.78_0.15_160)] dark:hover:bg-[oklch(0.65_0.15_160/0.15)]";
-const VARIANT_SELECTED_ROW_CLASS =
-  "text-[oklch(0.45_0.15_160)] bg-[oklch(0.65_0.15_160/0.18)] dark:text-[oklch(0.78_0.15_160)] dark:bg-[oklch(0.65_0.15_160/0.2)]";
+import {
+  VARIANT_ROW_CLASS,
+  VARIANT_SELECTED_ROW_CLASS,
+} from "./section-variant-list";
 
 export function VariantTabIcon({
   rule,

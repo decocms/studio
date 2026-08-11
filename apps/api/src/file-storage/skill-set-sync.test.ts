@@ -4,6 +4,7 @@ import {
   parseTar,
   planVolumeTree,
   staleDirs,
+  tarballRequestFor,
 } from "./skill-set-sync";
 
 /** Build a minimal ustar archive in memory (the GitHub tarball shape). */
@@ -156,5 +157,26 @@ describe("isUpToDate", () => {
   it("rewrites on a content change", () => {
     expect(isUpToDate({ ...args, manifestHash: "old" })).toBe(false);
     expect(isUpToDate({ ...args, manifestHash: null })).toBe(false);
+  });
+});
+
+describe("tarballRequestFor", () => {
+  it("uses anonymous codeload without a token", () => {
+    const { url, headers } = tarballRequestFor("acme/widget", "main");
+    expect(url).toBe("https://codeload.github.com/acme/widget/tar.gz/main");
+    expect(headers).toEqual({});
+  });
+
+  it("uses the authenticated API endpoint with a token", () => {
+    const { url, headers } = tarballRequestFor("acme/widget", "main", "ghs_x");
+    expect(url).toBe("https://api.github.com/repos/acme/widget/tarball/main");
+    expect(headers.Authorization).toBe("Bearer ghs_x");
+    expect(headers.Accept).toBe("application/vnd.github+json");
+  });
+
+  it("encodes refs with slashes", () => {
+    expect(tarballRequestFor("acme/widget", "feat/x").url).toBe(
+      "https://codeload.github.com/acme/widget/tar.gz/feat%2Fx",
+    );
   });
 });

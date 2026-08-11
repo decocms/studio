@@ -1,9 +1,9 @@
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { SORTABLE_DROP_ANIMATION } from "@/lib/dnd-drop-animation.ts";
-import { cn } from "@deco/ui/lib/utils.js";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Copy01,
   DotsGrid,
@@ -21,12 +21,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import {
   DndContext,
   DragOverlay,
@@ -47,7 +47,10 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { canMakeSectionReusable } from "./page-sections";
-import { VARIANT_MENU_ITEM_CLASS } from "./section-variant-list";
+import {
+  VARIANT_MENU_ITEM_CLASS,
+  VARIANT_ROW_CLASS,
+} from "./section-variant-list";
 import { canAddSectionVariant } from "./section-variants";
 import { isLazyResolveType } from "./section-lazy";
 import { getSectionPreviewImageSrc } from "./section-preview-image";
@@ -195,7 +198,7 @@ function sectionRowClassName(section: ParsedSection, selected: boolean) {
       : saved
         ? GLOBAL_SECTION_ROW_CLASS
         : multivariate
-          ? "text-[oklch(0.45_0.15_160)] hover:bg-[oklch(0.65_0.15_160/0.12)] dark:text-[oklch(0.78_0.15_160)] dark:hover:bg-[oklch(0.65_0.15_160/0.15)]"
+          ? VARIANT_ROW_CLASS
           : "text-foreground/80 hover:bg-accent hover:text-accent-foreground",
   );
 }

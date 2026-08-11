@@ -2,7 +2,7 @@ import {
   SidebarGroup as SidebarGroupUI,
   SidebarGroupContent,
   SidebarMenu,
-} from "@deco/ui/components/sidebar.tsx";
+} from "@decocms/ui/components/sidebar.tsx";
 import type { PropsWithChildren } from "react";
 
 interface SidebarCollapsibleGroupProps extends PropsWithChildren {

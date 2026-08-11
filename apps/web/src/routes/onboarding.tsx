@@ -7,12 +7,12 @@ import {
 import { authClient } from "@/lib/auth-client";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
-import { Avatar } from "@deco/ui/components/avatar.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
-import { Switch } from "@deco/ui/components/switch.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { Avatar } from "@decocms/ui/components/avatar.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
+import { Label } from "@decocms/ui/components/label.tsx";
+import { Switch } from "@decocms/ui/components/switch.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   Building02,
   CheckCircle,

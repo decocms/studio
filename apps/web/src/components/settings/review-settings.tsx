@@ -1,5 +1,5 @@
 import { toast } from "sonner";
-import { Switch } from "@deco/ui/components/switch.tsx";
+import { Switch } from "@decocms/ui/components/switch.tsx";
 import {
   FileSearch02,
   GitMerge,

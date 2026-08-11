@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { MessageQuestionCircle } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
 import type { UserAskToolPart } from "../../../types.ts";

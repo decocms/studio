@@ -21,11 +21,11 @@ import { Plus } from "@untitledui/icons";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
 import { SORTABLE_DROP_ANIMATION } from "@/lib/dnd-drop-animation.ts";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
+  getArrayItemDisplayLabels,
   getArrayItemImageSrc,
   getArrayItemLabel,
-  getArrayItemLabels,
 } from "../array-item-display";
 import {
   arrayItemDisplayValue,
@@ -141,12 +141,10 @@ export function ArrayField({
   // Only plain object arrays (banners, links, …) get the hide toggle. Section
   // pickers have their own hide flow, and primitive arrays can't be wrapped.
   const canHideItems = !usesSectionPicker && itemSchema?.type === "object";
-  // Index of the item the user has explicitly opened. Array items are addressed
-  // in the breadcrumb by their (mutable) display label; `getArrayItemLabels`
-  // keeps those labels unique, but this preferred index still pins selection to
-  // the opened row through the brief window where an edit makes labels churn
-  // (e.g. typing a name/alt that momentarily matches a sibling before the
-  // positional suffix settles).
+  // Index of the item the user has explicitly opened. The breadcrumb crumb
+  // carries the item's index (see `Crumb`), so selection survives a remount on
+  // its own; this preferred index is only a churn-window fallback that pins the
+  // open row while an edit briefly changes its label.
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   const selection = resolveArrayItemSelection(
@@ -194,12 +192,10 @@ export function ArrayField({
     setEntries((current) => resizeArrayEntries(current, items.length));
   }
 
-  const itemLabel = (
-    item: unknown,
-    index: number,
-    siblings: unknown[] = items,
-  ) =>
-    getArrayItemLabel(arrayItemDisplayValue(item), index, itemSchema, siblings);
+  // The item's base (un-suffixed) label — the crumb carries the index for
+  // addressing, so the label is display-only and must stay clean.
+  const itemLabel = (item: unknown, index: number) =>
+    getArrayItemLabel(arrayItemDisplayValue(item), index, itemSchema);
 
   const openItem = (index: number) => {
     if (suppressClickRef.current) return;
@@ -210,6 +206,7 @@ export function ArrayField({
         breadcrumbPath,
         label,
         labelText,
+        index,
         drillDownOpts,
       ),
     );
@@ -220,12 +217,13 @@ export function ArrayField({
     onChange(next);
     const nextIndex = next.length - 1;
     setOpenIndex(nextIndex);
-    const labelText = getArrayItemLabel(item, nextIndex, itemSchema, next);
+    const labelText = itemLabel(item, nextIndex);
     onBreadcrumbChange?.(
       buildArrayDrillDownBreadcrumb(
         breadcrumbPath,
         label,
         labelText,
+        nextIndex,
         drillDownOpts,
       ),
     );
@@ -257,17 +255,13 @@ export function ArrayField({
     onChange(next);
     const nextIndex = next.length - 1;
     setOpenIndex(nextIndex);
-    const labelText = getArrayItemLabel(
-      defaultVal,
-      nextIndex,
-      itemSchema,
-      next,
-    );
+    const labelText = itemLabel(defaultVal, nextIndex);
     onBreadcrumbChange?.(
       buildArrayDrillDownBreadcrumb(
         breadcrumbPath,
         label,
         labelText,
+        nextIndex,
         drillDownOpts,
       ),
     );
@@ -324,20 +318,26 @@ export function ArrayField({
     next[index] = isArrayItemHidden(items[index]) ? hideArrayItem(val) : val;
     onChange(next);
 
-    // When editing the currently selected item, the display label may change
+    // When editing the currently selected item, its display label may change
     // (e.g. editing the "alt" or "name" field that drives getArrayItemLabel).
     // Rewrite the item's crumb IN PLACE — at the position resolution matched it
-    // (`selection.crumbIndex`), not by looking up its old text — so
-    // resolveArrayItemSelection keeps pointing at THIS item. A text lookup
-    // strands the crumb once the old label is gone: the edited item then
-    // re-resolves to a colliding sibling, e.g. the "original" a duplicate was
-    // copied from.
+    // (`selection.crumbIndex`) — keeping the same `itemIndex`. Syncing the label
+    // part still matters: ownership resolution matches the crumb's label against
+    // this array's current base labels, so a stale label would let the item
+    // re-resolve to a colliding sibling (the "editing a duplicate snaps to the
+    // original" bug).
     if (index === selectedIndex && selection) {
       const oldLabel = itemLabel(items[index], index);
-      const newLabel = itemLabel(next[index], index, next);
+      const newLabel = itemLabel(next[index], index);
       if (oldLabel !== newLabel) {
         const updatedBreadcrumb = [...breadcrumbPath];
-        updatedBreadcrumb[selection.crumbIndex] = newLabel;
+        const existing = breadcrumbPath[selection.crumbIndex];
+        // Preserve the crumb's `arrayLabel` disambiguator (if any) — only the
+        // display label changed, not which array this item belongs to.
+        updatedBreadcrumb[selection.crumbIndex] =
+          existing != null && typeof existing === "object"
+            ? { ...existing, label: newLabel, itemIndex: index }
+            : { label: newLabel, itemIndex: index };
         onBreadcrumbChange?.(updatedBreadcrumb);
       }
     }
@@ -383,9 +383,11 @@ export function ArrayField({
     ? entries.find((entry) => entry.id === activeEntryId)
     : null;
   const activeItem = activeEntry != null ? items[activeEntry.index] : undefined;
+  // Match the list row: the drag overlay is display only, so it shows the
+  // un-disambiguated base label (no positional " N" suffix).
   const activeLabel =
     activeEntry != null && activeItem !== undefined
-      ? itemLabel(activeItem, activeEntry.index)
+      ? getArrayItemDisplayLabels(items, itemSchema)[activeEntry.index]
       : null;
   const activeImage =
     activeEntry != null && activeItem !== undefined
@@ -407,6 +409,7 @@ export function ArrayField({
         breadcrumbPath,
         label,
         itemName,
+        selectedIndex,
         drillDownOpts,
       );
       const itemIndex = findBreadcrumbLabelIndex(trail, itemName);
@@ -503,9 +506,15 @@ export function ArrayField({
             >
               <div className="min-w-0 overflow-hidden rounded-xl border border-border/50 p-1.5">
                 {(() => {
-                  // Compute disambiguated labels once for the whole list rather
-                  // than per row (each derivation scans all siblings).
-                  const itemLabels = getArrayItemLabels(items, itemSchema);
+                  // Compute base labels once for the whole list rather than per
+                  // row. Display only — the row opens its item by `entry.index`,
+                  // not by label — so colliding rows share a clean label (no
+                  // positional " N" suffix); the breadcrumb addresses items by
+                  // the index its crumb carries.
+                  const itemLabels = getArrayItemDisplayLabels(
+                    items,
+                    itemSchema,
+                  );
                   return entries.map((entry) => {
                     const item = items[entry.index];
                     if (item === undefined) return null;

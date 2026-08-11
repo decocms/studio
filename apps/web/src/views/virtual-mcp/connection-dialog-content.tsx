@@ -8,17 +8,17 @@ import { useLocalStorage } from "@/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { KEYS } from "@/lib/query-keys";
 import { getRegistryItemAppName } from "@/utils/extract-connection-data";
-import { getGitHubAvatarUrl } from "@deco/ui/lib/github.ts";
+import { getGitHubAvatarUrl } from "@/utils/github.ts";
 import { useEnabledRegistries } from "@/hooks/use-enabled-registries";
 import { useMergedStoreDiscovery } from "@/hooks/use-merged-store-discovery";
-import { Badge } from "@deco/ui/components/badge.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Badge } from "@decocms/ui/components/badge.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/tooltip.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   type ConnectionEntity,
   SELF_MCP_ALIAS_ID,

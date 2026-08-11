@@ -1,8 +1,8 @@
 import { useDeferredValue, useRef, useState } from "react";
-import { Badge } from "@deco/ui/components/badge.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { Badge } from "@decocms/ui/components/badge.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import {
   Table,
   TableBody,
@@ -19,12 +19,12 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@deco/ui/components/table.tsx";
+} from "@decocms/ui/components/table.tsx";
 import {
   ToggleGroup,
   ToggleGroupItem,
-} from "@deco/ui/components/toggle-group.tsx";
-import { useViewMode } from "@deco/ui/hooks/use-view-mode.ts";
+} from "@decocms/ui/components/toggle-group.tsx";
+import { useViewMode } from "@decocms/ui/hooks/use-view-mode.ts";
 import { toast } from "sonner";
 import {
   DotsVertical,

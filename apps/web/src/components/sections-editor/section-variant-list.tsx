@@ -1,12 +1,12 @@
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { SORTABLE_DROP_ANIMATION } from "@/lib/dnd-drop-animation.ts";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import {
   Copy01,
   DotsGrid,
@@ -21,8 +21,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
-import { cn } from "@deco/ui/lib/utils.js";
+} from "@decocms/ui/components/dropdown-menu.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   DndContext,
   DragOverlay,
@@ -45,9 +45,11 @@ import { CSS } from "@dnd-kit/utilities";
 import { useT } from "@/i18n/use-t.ts";
 
 const VARIANT_ICON_COLOR = "oklch(0.65 0.15 160)";
-const VARIANT_ROW_CLASS =
+// Exported: page-variant-tabs.tsx and section-list.tsx share this exact
+// variant-row styling and import it here rather than re-declaring it.
+export const VARIANT_ROW_CLASS =
   "text-[oklch(0.45_0.15_160)] hover:bg-[oklch(0.65_0.15_160/0.12)] dark:text-[oklch(0.78_0.15_160)] dark:hover:bg-[oklch(0.65_0.15_160/0.15)]";
-const VARIANT_SELECTED_ROW_CLASS =
+export const VARIANT_SELECTED_ROW_CLASS =
   "text-[oklch(0.45_0.15_160)] bg-[oklch(0.65_0.15_160/0.18)] dark:text-[oklch(0.78_0.15_160)] dark:bg-[oklch(0.65_0.15_160/0.2)]";
 export const VARIANT_MENU_ITEM_CLASS =
   "text-[oklch(0.45_0.15_160)] focus:bg-[oklch(0.65_0.15_160/0.12)] focus:text-[oklch(0.45_0.15_160)] dark:text-[oklch(0.78_0.15_160)] dark:focus:bg-[oklch(0.65_0.15_160/0.15)] dark:focus:text-[oklch(0.78_0.15_160)]";

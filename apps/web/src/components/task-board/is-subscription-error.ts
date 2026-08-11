@@ -6,7 +6,7 @@
  * task-quota.ts`'s `QUOTA_MESSAGES`.
  *
  * Extracted as a pure .ts module so it can be tested without dragging in
- * @deco/ui transitively.
+ * @decocms/ui transitively.
  */
 const SUBSCRIPTION_REQUIRED_PREFIX = "[SUBSCRIPTION_REQUIRED]";
 

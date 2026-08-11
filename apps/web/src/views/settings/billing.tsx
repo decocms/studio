@@ -8,11 +8,11 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { CreditCard01, Loading01 } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.ts";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Badge } from "@deco/ui/components/badge.tsx";
-import { Progress } from "@deco/ui/components/progress.tsx";
-import { Skeleton } from "@deco/ui/components/skeleton.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Badge } from "@decocms/ui/components/badge.tsx";
+import { Progress } from "@decocms/ui/components/progress.tsx";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Page } from "@/components/page";
 import {
   SettingsCard,

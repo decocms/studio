@@ -2,17 +2,17 @@ import { useState } from "react";
 import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { RefreshCw01 } from "@untitledui/icons";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   SettingsCard,
   SettingsSection,
 } from "@/components/settings/settings-section";
-import { Input } from "@deco/ui/components/input.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
 import {
   ToggleGroup,
   ToggleGroupItem,
-} from "@deco/ui/components/toggle-group.tsx";
-import { Skeleton } from "@deco/ui/components/skeleton.tsx";
+} from "@decocms/ui/components/toggle-group.tsx";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,12 +22,12 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@deco/ui/components/alert-dialog.tsx";
+} from "@decocms/ui/components/alert-dialog.tsx";
 import { useAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import { useProjectContext } from "@/sdk";
 import { useStudioTools } from "@/lib/studio-tools";
 import { KEYS } from "@/lib/query-keys";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 
 // ── Quick Top-Up presets ──────────────────────────────────────────────

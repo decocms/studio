@@ -3,14 +3,14 @@ import { ToolAnnotationBadges } from "@/components/tools";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { IntegrationIcon } from "@/components/integration-icon.tsx";
 import { useMCPAuthStatus } from "@/hooks/use-mcp-auth-status";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Checkbox } from "@deco/ui/components/checkbox.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
 import {
   Dialog,
   DialogContent,
   DialogFooter,
-} from "@deco/ui/components/dialog.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/dialog.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   useConnection,
   useMCPClient,

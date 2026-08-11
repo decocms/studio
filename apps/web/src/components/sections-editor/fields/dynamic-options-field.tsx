@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Check, ChevronSelectorVertical } from "@untitledui/icons";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Command,
   CommandEmpty,
@@ -9,14 +9,14 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from "@deco/ui/components/command.tsx";
+} from "@decocms/ui/components/command.tsx";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@deco/ui/components/popover.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
-import { Input } from "@deco/ui/components/input.tsx";
+} from "@decocms/ui/components/popover.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { Input } from "@decocms/ui/components/input.tsx";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
 import type { FieldProps } from "./field-props";

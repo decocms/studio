@@ -13,7 +13,7 @@
  * they stay a plain title + description.
  */
 import { CheckCircle, Loading01 } from "@untitledui/icons";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
   DialogContent,
@@ -21,7 +21,7 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from "@deco/ui/components/dialog.tsx";
+} from "@decocms/ui/components/dialog.tsx";
 import { useOpenBillingUrl } from "@/hooks/use-open-billing-url";
 import { useT } from "@/i18n/use-t.ts";
 import type { SubscriptionErrorKind } from "@/components/task-board/is-subscription-error";

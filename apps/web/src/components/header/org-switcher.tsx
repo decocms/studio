@@ -13,10 +13,10 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@deco/ui/components/popover.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
+} from "@decocms/ui/components/popover.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { Check, Plus, SearchMd, XClose } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import {
   authClient,

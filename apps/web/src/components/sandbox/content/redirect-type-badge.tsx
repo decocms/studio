@@ -2,7 +2,7 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import { REDIRECT_STATUS, type RedirectType } from "./redirect-data";
 
 /** Compact status-code badge for a redirect row (301 permanent / 307 temporary). */

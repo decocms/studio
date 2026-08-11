@@ -15,8 +15,8 @@ import {
   useProjectContext,
 } from "@/sdk";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Skeleton } from "@deco/ui/components/skeleton.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { ArrowRight } from "@untitledui/icons";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";

@@ -29,6 +29,7 @@ import * as ClaudeSubscriptionTools from "./claude-subscription";
 import * as SecretsTools from "./secrets";
 import * as FileConfigTools from "./file-configs";
 import { ORG_FS_PUBLIC_SETS_SYNC } from "./org-fs/sync-public-sets";
+import * as OrgRepoSyncTools from "./org-repo-sync";
 import { getPrompts, getResources } from "./guides";
 import {
   getToolRegistration,
@@ -195,6 +196,13 @@ export const CORE_TOOLS = [
 
   // Org filesystem (shared public skill sets)
   ORG_FS_PUBLIC_SETS_SYNC,
+
+  // Per-org GitHub repo → volume syncs
+  OrgRepoSyncTools.ORG_REPO_SYNC_CREATE,
+  OrgRepoSyncTools.ORG_REPO_SYNC_LIST,
+  OrgRepoSyncTools.ORG_REPO_SYNC_UPDATE,
+  OrgRepoSyncTools.ORG_REPO_SYNC_DELETE,
+  OrgRepoSyncTools.ORG_REPO_SYNC_RUN,
 
   // Object Storage tools
   ObjectStorageTools.LIST_OBJECTS,

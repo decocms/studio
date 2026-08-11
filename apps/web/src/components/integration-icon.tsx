@@ -1,4 +1,4 @@
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { Container } from "@untitledui/icons";
 import { useState, type ReactNode } from "react";
 import { AgentAvatar, type AgentAvatarSize } from "./agent-icon";
