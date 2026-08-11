@@ -113,8 +113,16 @@ spec:
           volumeMounts:
             # Read-only: this reads what sandboxes published and must never be
             # able to alter a node's cache.
+            # Mounted at the PARENT path, deliberately without subPath: a subPath
+            # on a hostPath volume is CREATED by kubelet when missing, as root —
+            # which is the very ownership trap this change exists to avoid. With
+            # the parent mounted at its own path the container resolves
+            # DEPS_CACHE_ROOT naturally when the node has a cache, sees nothing
+            # when it does not, and nothing is ever created. Read-only, and this
+            # is node infrastructure rather than tenant code, so the slightly
+            # broader view costs nothing.
             - name: deps-cache
-              mountPath: {{ .Values.depsCache.hostPath | quote }}
+              mountPath: {{ dir (.Values.depsCache.hostPath | trimSuffix "/") | quote }}
               readOnly: true
             # The ONLY writable mount of the shared store in this chart. Never
             # add it to the sandbox PodSpec.
@@ -123,12 +131,32 @@ spec:
             - name: tmp
               mountPath: /tmp
       volumes:
+        # The PARENT of the cache root, not the cache root itself.
+        #
+        # A DaemonSet lands on every matching node, including one Karpenter
+        # created seconds ago that has never run a sandbox — and on that node the
+        # cache root does not exist yet, because the SANDBOX creates it (its
+        # deps-cache-init container, which also chowns it to the sandbox uid;
+        # hostPath dirs are born root:root and fsGroup does not apply to them).
+        # Pointing this volume at the cache root with `type: Directory` therefore
+        # wedged the pod in ContainerCreating indefinitely:
+        #   MountVolume.SetUp failed for volume "deps-cache": hostPath type check
+        #   failed: /var/cache/studio-sandbox-deps is not a directory
+        # Observed in prod on 2 of 17 nodes, both environments' uploaders stuck on
+        # each, 20+ minutes, on nodes with no sandbox pod to unwedge them.
+        #
+        # DirectoryOrCreate would be worse, not better: this pod would win the
+        # race on a fresh node and create the cache root as root:root, and the
+        # sandbox — running as uid 1000 — could then not write its own cache. A
+        # stuck uploader traded for a broken cache on that node.
+        #
+        # So mount the parent, which every node image already has, and let the
+        # cache root be absent. UploadNodeGoldens already treats an unreadable
+        # golden root as "nothing published on this node yet" and returns. A node
+        # with no cache is a normal state, not a mount error.
         - name: deps-cache
           hostPath:
-            path: {{ .Values.depsCache.hostPath | quote }}
-            # Never DirectoryOrCreate: a node with no cache has nothing to
-            # upload, and creating the path would only mask a misconfigured
-            # hostPath as an empty store.
+            path: {{ dir (.Values.depsCache.hostPath | trimSuffix "/") | quote }}
             type: Directory
         - name: golden-remote-rw
           persistentVolumeClaim:
