@@ -109,6 +109,17 @@ describe("buildConfigPayload", () => {
     ]);
   });
 
+  it("sends cloneOnly: false even with no repo/application/tenant, so a warm-pool pod's stale cloneOnly clears", () => {
+    const payload = buildConfigPayload({
+      runtime: "node",
+      packageManager: null,
+      repo: null,
+      cloneOnly: false,
+    });
+
+    expect(payload).toEqual({ cloneOnly: false });
+  });
+
   // Inverted deliberately: this used to omit the key, which the daemon reads as
   // "keep current" — so deleting your last credential row never revoked the PAT
   // on a live pod, and a re-bootstrapped pod kept the previous config's tokens.
