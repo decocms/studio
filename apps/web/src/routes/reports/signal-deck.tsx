@@ -545,7 +545,7 @@ export default function SignalDeck({
 
       {/* ───────── header — rounded translucent bar, deco logo, and the Share
           pill. Sits in the flow as the deck's top row. ───────── */}
-      <header className="relative shrink-0 px-3 pt-3 sm:px-6 sm:pt-4">
+      <header className="relative z-20 shrink-0 px-3 pt-3 sm:px-6 sm:pt-4">
         <div
           className="mx-auto flex h-14 max-w-[1360px] items-center gap-3 rounded-full border pl-4 pr-3 backdrop-blur-md sm:h-[60px] sm:pl-6 sm:pr-4"
           style={{
