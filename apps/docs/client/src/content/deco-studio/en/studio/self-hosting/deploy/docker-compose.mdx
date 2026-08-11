@@ -67,8 +67,21 @@ Set these in `.env` alongside the compose file:
 | `BASE_URL` / `BETTER_AUTH_URL` | `http://localhost:3000` | Public URLs for the app |
 | `DATABASE_URL` | see below | PostgreSQL connection string |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `studio_user` / — / `studio_db` | Credentials for the bundled Postgres (postgres compose file only) |
+| `STUDIO_TOPUP_FEE_PERCENT` | `15` | Percentage fee applied to AI Gateway credit top-ups. Accepts `0`–`100`; set to `0` to waive the fee entirely for a self-hosted deployment |
+| `STUDIO_TASK_QUOTA_ENFORCED` | `false` | Gate Super Agent task delegation behind the auto-task subscription (see [Task Board](/en/studio/task-board#billing-and-auto-task-quota)). Unset or `false` means auto-task runs are unlimited — the default for self-hosted deployments |
+| `STUDIO_FREE_TASKS` | `3` | Lifetime free auto-task runs before a subscription is required. Only relevant when `STUDIO_TASK_QUOTA_ENFORCED` is set |
+| `STUDIO_MONTHLY_TASKS` | `10` | Auto-task runs allowed per billing cycle once subscribed. Only relevant when `STUDIO_TASK_QUOTA_ENFORCED` is set |
+| `STUDIO_MAX_RUNS_PER_TASK` | `5` | Maximum re-runs allowed for a single task, regardless of subscription status. Only relevant when `STUDIO_TASK_QUOTA_ENFORCED` is set |
+
+<Callout type="tip">
+  `STUDIO_TOPUP_FEE_PERCENT` and the `STUDIO_TASK_QUOTA_ENFORCED` family only matter if you enable Stripe-backed billing (`STRIPE_SECRET_KEY` / `STRIPE_ORG_PRICE_ID`). Most self-hosted deployments don't set these and can ignore them — auto-task runs and credit top-ups stay unmetered.
+</Callout>
 
 The container runs as user `1001:1001` and persists data to the `studio-data` volume; the bundled Postgres persists to `postgres-data`.
+
+<Callout type="tip">
+  `PORT` must be a valid TCP port (1–65535). Studio validates this at boot and fails fast with a clear error if it's out of range, instead of failing later when the HTTP server tries to bind it.
+</Callout>
 
 ## Using your own PostgreSQL
 
@@ -99,7 +112,7 @@ AUTH_GITHUB_CLIENT_ID=...
 AUTH_GITHUB_CLIENT_SECRET=...
 ```
 
-For richer configuration (SAML/SSO, email providers, magic links), mount an `auth-config.json` into the container at `/app/apps/api/auth-config.json` by adding a volume to the `studio` service, using [`apps/api/auth-config.example.json`](https://github.com/decocms/studio/blob/main/apps/api/auth-config.example.json) as a starting point. See [Authentication](/en/studio/self-hosting/authentication) for the full reference.
+For richer configuration (SAML/SSO, email providers, magic links, email OTP), set the additional `AUTH_*` variables in the compose `environment` block (or your `.env`) — see [Authentication](/en/studio/self-hosting/authentication) for the full reference. There is no config file to mount; everything is env-var driven.
 
 ## Operations
 
@@ -150,4 +163,4 @@ docker compose -f docker-compose.postgres.yml up -d
 
 - Always generate a strong `BETTER_AUTH_SECRET` (`openssl rand -base64 32`) and a real `POSTGRES_PASSWORD`.
 - Don't commit `.env` (`echo ".env" >> .gitignore`; `chmod 600 .env`).
-- Don't commit secrets (client secrets, API keys) into any mounted `auth-config.json`.
+- Don't commit secrets (client secrets, API keys) into your `.env` file or any mounted secret files.

@@ -15,11 +15,25 @@ A **task** is your conversation with Decopilot — where you chat, Decopilot use
 Every task has one of four states:
 
 - **In progress** — the agent is working or waiting for your next message
-- **Requires action** — paused, waiting for your input (a tool needs approval, or it asked you a question)
+- **Requires action** — paused, waiting for your input. This is set only when there's a pending tool call that needs you — a tool-approval request or a `user_ask` — never just because the reply's text happens to contain a question mark (e.g. a rhetorical question, or a URL with a `?` query string)
 - **Completed** — work finished successfully
 - **Failed** — something went wrong, or the task timed out
 
 Tasks time out after **30 minutes of inactivity**. If you're working on something longer, send a message periodically to keep it active.
+
+Tasks assigned to a specialist agent show up as cards on the **task board**, where you can filter, prioritize, and track them across lanes.
+
+### Re-running a stuck task
+
+Occasionally a task assigned to the agent never actually starts a run, or its run gets wedged — the card sits in **In progress** or **Requires action** indefinitely with no activity. Since there's no state change left to react to, the agent won't pick it back up on its own.
+
+Select **Re-run** on the card (or from the task dialog) to force a fresh run. This closes out any run still open on the task and queues a new one from the same assignee.
+
+<Callout type="warning">
+Re-run is a takeover: it stops whatever run is currently open on the task, even if it's still streaming, before starting the new one. Use it only when you're confident the current run is stuck, not just slow.
+</Callout>
+
+Re-run only applies to tasks already assigned to the agent — reassigning a task to an agent already queues a run on its own, so it doesn't need this action.
 
 ---
 

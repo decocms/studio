@@ -242,9 +242,74 @@ If `sentinel.token` is omitted, the chart generates and preserves a Secret for s
 
 The optional warm-pool HPA requires `warmPool.enabled: true`, `warmPool.autoscaling.enabled: true`, and at least one explicit `autoscaling/v2` metric. The chart intentionally provides no default metric.
 
+### Tenant warm pools
+
+The generic warm pool above pre-warms *empty* pods. Tenant warm pools go one step further: each pod is already cloned, installed, and running the dev server for **one org's repo**, so a member of an opted-in org opens a project with no clone, no install, and no boot. This is additive to the generic warm pool — it does not replace it, and every path still works at size 0.
+
+A tenant pool is per-org opt-in and every warm slot is a permanently billed pod, so configure it deliberately. Each pool needs a matching entry on both sides:
+
+1. In `sandbox-env`'s `values.yaml`, add an entry to `tenantPools`. The chart shares the `agent-sandbox-system` namespace across releases, so the name must end with `-<envName>` (validated at template time, not derived, so both sides must use the identical literal):
+
+```yaml
+tenantPools:
+  - name: tenant-acme-site-production # DNS label ending in -<envName>
+    size: 2 # keep this many warm pods ready
+```
+
+2. On Studio's side, set `STUDIO_SANDBOX_TENANT_POOLS` to a JSON array with the matching `name` plus the org, repo, and (for private repos) connection details:
+
+```json
+[
+  {
+    "name": "tenant-acme-site-production",
+    "orgId": "acme",
+    "repo": "acme/site",
+    "connectionId": "github-connection-id",
+    "branch": "main",
+    "workload": { "runtime": "node", "packageManager": "pnpm" }
+  }
+]
+```
+
+`connectionId` is required for private repos and provides the short-lived clone credential; omit it only for a public repo. Studio resolves which pool (if any) to hand a claim from the **authenticated user's org** — never from a request field — so a pool never leaks across orgs.
+
+The reconciler also needs read access to the `SandboxWarmPool` it manages: grant the runner Role `sandboxwarmpools: get` (included by default when you install via the umbrella chart or the `self-host-studio` skill).
+
+An optional GitHub push webhook makes pool refresh immediate instead of waiting for the periodic refresh cycle. Configure `GITHUB_WEBHOOK_SECRET` on Studio and point a push webhook at `POST /api/_github/webhook`; without the secret configured, the route answers `503` and pools simply refresh on their own schedule.
+
+<Callout type="note">
+  Dispatches that only need a checkout — a Claude Code or other harness run against a specific branch, not an interactive dev server — never bind to a tenant warm pool. Binding one would de-warm it for no benefit: the dispatch's branch checkout is classified as a branch change, and a branch change stops the pod's running dev server. These `cloneOnly` claims always fall back to the generic pool (or a cold claim) instead. Separately, if a task asks a sandbox to start a process that's already running (typically `dev`), the daemon now returns the existing task instead of starting a second one — two dev servers on one pod's memory limit was a reliable way to OOM it.
+</Callout>
+
+### Admission and capacity
+
+Before making a claim, Studio checks whether the cluster can actually schedule another sandbox pod. `SANDBOX_MAX_CONCURRENT_HOSTED_RUNS` still caps concurrency per pod, but it has no visibility into whether any node has room — on a full node, a burst of runs used to produce a pile of pods stuck `Pending` with `FailedScheduling: Insufficient memory`, each one failing only after the 180s readiness timeout.
+
+The capacity check reads the scheduler's own verdict instead of forecasting: a pod the scheduler could not place stays `Pending` with a `PodScheduled=False`/`Unschedulable` condition, and Studio treats that as "the cluster is full." A run that would add to that pile is **parked** — held, not claimed — until a pod becomes schedulable again, instead of being dispatched straight into a node with no room. This is cluster-wide and complements, not replaces, the per-pod concurrency limit.
+
+The check fails open: if the probe itself errors, Studio treats capacity as available rather than turning a broken health check into a global stop on all sandbox runs.
+
+### Daemon telemetry (OTLP metrics)
+
+The sandbox daemon can export OTLP metrics to an OpenTelemetry collector. This is separate from — and unrelated to — Studio's own monitoring export described in [Monitoring](/en/studio/self-hosting/monitoring): here the metrics come from the sandbox daemon itself (process/runtime health), not from Studio's tool-call logs.
+
+It's off by default. Enabling it opens exactly one additional in-cluster egress destination in the sandbox's iptables policy — the collector — since sandbox pods otherwise cannot reach in-cluster services.
+
+```yaml
+telemetry:
+  enabled: true
+  otlp:
+    ip: "10.0.12.34" # the collector Service's ClusterIP — see below
+    port: 4318 # 4318 = OTLP/HTTP, 4317 = OTLP/gRPC
+```
+
+<Callout type="warning">
+  `telemetry.otlp.ip` must be a bare IPv4 address, not a DNS name. Sandbox pods run with `dnsPolicy: None` against public resolvers, so in-cluster service names (like `gateway-otlp.opentelemetry-collector`) do not resolve inside them. Get the collector's ClusterIP with `kubectl -n opentelemetry-collector get svc gateway-otlp -o jsonpath='{.spec.clusterIP}'`. If the collector Service is later recreated, its ClusterIP can change — the daemon logs export failures and keeps serving, but re-read the IP and upgrade the release to restore metrics.
+</Callout>
+
 ### Idle housekeeper
 
-Studio refreshes claim activity, while the optional housekeeper CronJob cleans up idle or unrecoverable claims and orphaned routes/pods. Its defaults run every five minutes and reap claims idle for 15 minutes.
+Studio refreshes claim activity from two sources: agent runs, and any open preview stream. As long as a user has a preview open, a heartbeat renews the claim's TTL every five minutes, so a sandbox someone is actively watching is never reaped just because its agent is idle — this renewal only ever pushes the shutdown time later, never earlier. The optional housekeeper CronJob still cleans up claims that are idle or unrecoverable on both fronts, plus orphaned routes/pods. Its defaults run every five minutes and reap claims idle for 15 minutes.
 
 ```yaml
 housekeeper:
@@ -313,17 +378,27 @@ These defaults come from `deploy/helm/studio/values.yaml`:
 
 ## Main sandbox values
 
+<Callout type="tip">
+  The Go daemon is the only sandbox implementation — the image itself
+  determines the daemon, so there is no runtime switch or org-level flag to
+  choose between a TypeScript and a Go daemon. `image.repository` points
+  directly at the `studio-sandbox-go` image.
+</Callout>
+
 | Parameter | Description | Default |
 | --- | --- | --- |
 | `envName` | DNS-label suffix for environment resources | Required |
-| `image.repository` / `image.tag` | Sandbox daemon image | `ghcr.io/decocms/studio/studio-sandbox` / `1.17.8` |
+| `image.repository` / `image.tag` | Sandbox daemon image | `ghcr.io/decocms/studio/studio-sandbox-go` / `1.17.8` |
 | `resources.requests` | Per-sandbox request | `500m` CPU / `1Gi` memory |
 | `resources.limits` | Per-sandbox limit | `2` CPU / `4Gi` memory / `10Gi` ephemeral storage |
 | `terminationGracePeriodSeconds` | Time for final git sync and unmount | `90` |
 | `netinit.enabled` | Install default iptables egress policy | `true` |
 | `readOnlyRootFilesystem` | Read-only sandbox root filesystem | `true` |
 | `depsCache.enabled` / `depsCache.golden` | Node-local dependency caches | `false` / `false` |
+| `telemetry.enabled` | Export sandbox daemon OTLP metrics to a collector | `false` |
+| `telemetry.otlp.ip` / `telemetry.otlp.port` | Collector ClusterIP (required if enabled) / port | `""` / `4318` |
 | `warmPool.enabled` / `warmPool.size` | Pre-warmed sandboxes | `false` / `0` |
+| `tenantPools` | Per-org warm pools already running that org's dev server (needs a matching `STUDIO_SANDBOX_TENANT_POOLS` entry) | `[]` |
 | `previewGateway.enabled` | Wildcard preview Gateway | `false` |
 | `housekeeper.enabled` | Idle-claim cleanup CronJob | `false` |
 
