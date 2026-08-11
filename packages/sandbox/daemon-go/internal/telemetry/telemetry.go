@@ -51,9 +51,31 @@ const scopeName = "github.com/decocms/studio/sandbox-daemon"
 // real one once SetMeterProvider is called, so this works in both orders and
 // needs no nil checks at any call site. With no provider ever installed these
 // stay no-ops.
+//
+// They are assigned in bindInstruments rather than inline in the var block so a
+// test can point them at a ManualReader and assert on the datapoints a Record
+// call actually produces. That is not cosmetic: the global provider delegates
+// exactly ONCE per process, so a test that installs its own provider after any
+// other test has installed one silently observes nothing — every instrument
+// stays bound to the first. Attribute sets are the part of this file most likely
+// to be broken by a well-meant edit, and they are unassertable without this.
 var (
-	meter = otel.Meter(scopeName)
+	phaseDuration        metric.Int64Histogram
+	depsRestore          metric.Int64Counter
+	goldenUpload         metric.Int64Counter
+	goldenUploadDuration metric.Int64Histogram
+	depsRestoreDuration  metric.Int64Histogram
+	readyDuration        metric.Int64Histogram
+	loopLag              metric.Int64Histogram
+	proxyDuration        metric.Int64Histogram
+	devServerExit        metric.Int64Counter
+	publishDuration      metric.Int64Histogram
+)
 
+func init() { bindInstruments(otel.Meter(scopeName)) }
+
+// bindInstruments (re)creates every instrument from meter.
+func bindInstruments(meter metric.Meter) {
 	phaseDuration, _ = meter.Int64Histogram(
 		"sandbox.daemon.phase.duration",
 		metric.WithUnit("ms"),
@@ -67,6 +89,22 @@ var (
 		metric.WithUnit("{step}"),
 		metric.WithDescription(
 			"Dependency-install outcomes by cache tier (l1 / l2 / miss / no-install). The golden-cache hit rate. Also emitted as a stdout line for parity with the TS daemon, but that path is sampled at 1% by the log pipeline and cannot be counted on.",
+		),
+	)
+
+	goldenUpload, _ = meter.Int64Counter(
+		"sandbox.daemon.golden.upload",
+		metric.WithUnit("{golden}"),
+		metric.WithDescription(
+			"Node-local goldens seen by one uploader sweep, by outcome (uploaded / present / no-provenance / other-env / failed). Emitted by the golden-uploader DaemonSet, not by a sandbox. `failed` rising, or `no-provenance` staying non-zero, is the signal that the shared tier is quietly doing nothing — the latter means the org is not reaching the daemon, which is exactly how this tier stayed broken unnoticed.",
+		),
+	)
+
+	goldenUploadDuration, _ = meter.Int64Histogram(
+		"sandbox.daemon.golden.upload.duration",
+		metric.WithUnit("ms"),
+		metric.WithDescription(
+			"Wall-clock duration of one uploader sweep. Compression is the cost and it shares a node with tenant sandboxes, so this is what to watch if the sandbox NodePool starts provisioning extra nodes — a boot made faster by a node added is not a win.",
 		),
 	)
 
@@ -117,7 +155,7 @@ var (
 			"The SIGTERM git sync — the one irrecoverable step of a teardown, and the reason the pod grace period is 90s. How close this runs to the grace period is how much of the user's work is one slow push from being lost.",
 		),
 	)
-)
+}
 
 // Explicit buckets for the boot-cost histograms, shared verbatim with the TS
 // daemon's telemetry.ts. Two panels can only be compared if their buckets
@@ -266,6 +304,24 @@ func RecordPhase(ctx context.Context, name, status string, durationMs int64) {
 		attribute.String("phase", name),
 		attribute.String("status", status),
 	))
+}
+
+// RecordGoldenSweep reports one uploader sweep. Attributes are the outcome only:
+// no repo, no org, no node — those are log fields, and as metric attributes they
+// would be one series per repo. The uploader runs on every node, forever, so its
+// cardinality has to stay flat.
+func RecordGoldenSweep(ctx context.Context, durationMs int64, outcomes map[string]int) {
+	for outcome, n := range outcomes {
+		if n == 0 {
+			// Zeroes still cost a series. `present` is the steady state and would
+			// otherwise dominate a dashboard with nothing happening.
+			continue
+		}
+		goldenUpload.Add(ctx, int64(n), metric.WithAttributes(
+			attribute.String("outcome", outcome),
+		))
+	}
+	goldenUploadDuration.Record(ctx, durationMs)
 }
 
 // RecordDepsRestore reports one dependency step and which cache tier served it.

@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
@@ -165,4 +167,123 @@ func firstLine(s string) string {
 		return s[:i]
 	}
 	return s
+}
+
+func TestRecordGoldenSweepKeepsCardinalityFlat(t *testing.T) {
+	// The uploader runs on every node forever, so this is the instrument most able
+	// to blow up a metrics backend. Two invariants, both easy to break later by
+	// "just adding" a useful-looking attribute:
+	//   - the only attribute is the outcome, from a closed set. No repo, no org,
+	//     no node: those are one series per value and they live in the log line.
+	//   - a zero count emits nothing, so the steady state does not carry four
+	//     empty series per node per sweep.
+	// Bound directly, NOT via otel.SetMeterProvider: the global delegates once per
+	// process and another test in this package already claimed it, so going
+	// through the global here would observe nothing and pass vacuously.
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader), sdkmetric.WithView(views()...))
+	bindInstruments(provider.Meter(scopeName))
+	t.Cleanup(func() { bindInstruments(otel.Meter(scopeName)) })
+
+	RecordGoldenSweep(context.Background(), 33_554, map[string]int{
+		"uploaded":      1,
+		"present":       2,
+		"no-provenance": 0,
+		"other-env":     0,
+		"failed":        0,
+	})
+
+	var rm metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &rm); err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+
+	counts := map[string]int64{}
+	sawDuration := false
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			switch m.Name {
+			case "sandbox.daemon.golden.upload":
+				sum, ok := m.Data.(metricdata.Sum[int64])
+				if !ok {
+					t.Fatalf("golden.upload should be a counter, got %T", m.Data)
+				}
+				for _, dp := range sum.DataPoints {
+					if n := dp.Attributes.Len(); n != 1 {
+						t.Errorf("want exactly 1 attribute (outcome), got %d: %v", n, dp.Attributes.ToSlice())
+					}
+					outcome, _ := dp.Attributes.Value(attribute.Key("outcome"))
+					counts[outcome.AsString()] = dp.Value
+				}
+			case "sandbox.daemon.golden.upload.duration":
+				h, ok := m.Data.(metricdata.Histogram[int64])
+				if !ok || len(h.DataPoints) == 0 {
+					t.Fatalf("upload duration should have a datapoint, got %T", m.Data)
+				}
+				if h.DataPoints[0].Sum != 33_554 {
+					t.Errorf("duration sum = %d, want 33554", h.DataPoints[0].Sum)
+				}
+				sawDuration = true
+			}
+		}
+	}
+
+	if counts["uploaded"] != 1 || counts["present"] != 2 {
+		t.Errorf("uploaded/present = %d/%d, want 1/2", counts["uploaded"], counts["present"])
+	}
+	for _, zero := range []string{"no-provenance", "other-env", "failed"} {
+		if _, emitted := counts[zero]; emitted {
+			t.Errorf("outcome %q had count 0 and must not emit a series", zero)
+		}
+	}
+	if !sawDuration {
+		t.Error("sweep duration was never recorded")
+	}
+}
+
+func TestRecordDepsRestoreCarriesPkgCache(t *testing.T) {
+	// The whole point of pkg_cache is splitting a slow `miss` into "downloaded the
+	// internet" and "had a warm cache and still took 35s". If the attribute is
+	// dropped on the metric — it is carried separately on the stdout line, which is
+	// sampled — the two collapse into one bar and the question stays unanswerable.
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader), sdkmetric.WithView(views()...))
+	bindInstruments(provider.Meter(scopeName))
+	t.Cleanup(func() { bindInstruments(otel.Meter(scopeName)) })
+
+	RecordDepsRestore(context.Background(), "miss", 34_815, "warm")
+	// Empty must not become an empty-string attribute value: an unset series is
+	// findable, a series labelled "" reads as a real state that does not exist.
+	RecordDepsRestore(context.Background(), "l1", 900, "")
+
+	var rm metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &rm); err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+
+	got := map[string]string{} // source -> pkg_cache
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != "sandbox.daemon.deps.restore" {
+				continue
+			}
+			sum := m.Data.(metricdata.Sum[int64])
+			for _, dp := range sum.DataPoints {
+				source, _ := dp.Attributes.Value(attribute.Key("source"))
+				cache, ok := dp.Attributes.Value(attribute.Key("pkg_cache"))
+				if !ok {
+					t.Errorf("source=%s has no pkg_cache attribute", source.AsString())
+					continue
+				}
+				got[source.AsString()] = cache.AsString()
+			}
+		}
+	}
+
+	if got["miss"] != "warm" {
+		t.Errorf("miss pkg_cache = %q, want warm", got["miss"])
+	}
+	if got["l1"] != "unknown" {
+		t.Errorf("unset pkg_cache = %q, want it normalised to unknown", got["l1"])
+	}
 }
