@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { shouldAdvanceToReview } from "@/storage/task-board";
-import { decideStallAction, isNeverStartedRun } from "./stall-recovery";
+import {
+  decideStallAction,
+  isNeverStartedRun,
+  nudgePrompt,
+} from "./stall-recovery";
 
 /** A used thread — `shouldAdvanceToReview` filters out message-less ones. */
 const thread = (status: string | null, hasMessages = true) => ({
@@ -51,15 +55,28 @@ describe("decideStallAction", () => {
     }
   });
 
-  test("failed native, unknown, or unpinned threads are never nudged", () => {
-    for (const harnessId of [
-      "claude-code",
-      "codex",
-      "opencode",
-      "future",
-      null,
-    ]) {
+  test("failed unknown or unpinned harnesses are never nudged", () => {
+    for (const harnessId of ["codex", "opencode", "future", null]) {
       expect(decideStallAction(ran("failed", { harnessId }))).toBe("none");
+    }
+  });
+
+  // The common case, and the whole reason this widened: every Super Agent run
+  // on an org with a repo imported is claude-code, so gating on Decopilot left
+  // those cards with no recovery but a full re-run.
+  test("a failed sandbox-hosted claude-code run gets nudged", () => {
+    expect(decideStallAction(ran("failed", { harnessId: "claude-code" }))).toBe(
+      "nudge",
+    );
+  });
+
+  test("claude-code outside an agent-sandbox has no pod to re-prompt into", () => {
+    for (const sandboxProviderKind of [null, "user-desktop"]) {
+      expect(
+        decideStallAction(
+          ran("failed", { harnessId: "claude-code", sandboxProviderKind }),
+        ),
+      ).toBe("none");
     }
   });
 
@@ -73,6 +90,23 @@ describe("decideStallAction", () => {
     expect(
       decideStallAction(ran("failed", { sandboxProviderKind: "user-desktop" })),
     ).toBe("nudge");
+  });
+});
+
+describe("nudgePrompt", () => {
+  // `user_ask` is a Decopilot built-in; claude-code has no such tool, and
+  // naming it sends the run looking for something that isn't there.
+  test("only Decopilot is told about user_ask", () => {
+    expect(nudgePrompt("decopilot")).toContain("user_ask");
+    expect(nudgePrompt("claude-code")).not.toContain("user_ask");
+    expect(nudgePrompt(null)).not.toContain("user_ask");
+  });
+
+  test("both are told to continue on the same branch, not start over", () => {
+    for (const harness of ["decopilot", "claude-code"]) {
+      expect(nudgePrompt(harness)).toContain("Don't start over");
+      expect(nudgePrompt(harness)).toContain("same branch");
+    }
   });
 });
 
