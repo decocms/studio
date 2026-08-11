@@ -5,6 +5,7 @@ import {
   claimTaskExecution,
   rollbackTaskExecution,
   TaskQuotaError,
+  userInitiatedTaskQuotaConfig,
 } from "../../billing/task-quota";
 import { isReportsTask } from "@decocms/shared/task-board";
 import { captureOrgEvent } from "@/posthog";
@@ -65,6 +66,9 @@ export type SuperAgentPromptOpts = {
    *  work that already failed, so it outranks a brand-new task for the next
    *  slot. Defaults to a new task. See `dispatch-queue/run-priority.ts`. */
   runClass?: RunClass;
+  /** A human asked for this run (`TASK_BOARD_ITEM_RERUN`), so the per-task run
+   *  cap — which bounds automatic re-dispatch — does not apply to it. */
+  userInitiated?: boolean;
 };
 
 /**
@@ -169,7 +173,11 @@ export async function enqueueSuperAgentForTask(
   // throws [SUBSCRIPTION_REQUIRED] and nothing enqueues. The interactive
   // flip pre-checks in TASK_BOARD_ITEM_UPDATE so the user sees the paywall
   // BEFORE the write; here the claim is the enforcement.
-  const claim = await claimTaskExecution(ctx, task);
+  const claim = await claimTaskExecution(
+    ctx,
+    task,
+    opts?.userInitiated ? userInitiatedTaskQuotaConfig() : undefined,
+  );
 
   let harness: "claude-code" | "decopilot" = "decopilot";
   try {

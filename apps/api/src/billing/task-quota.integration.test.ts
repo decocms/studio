@@ -133,6 +133,38 @@ describe("task quota (integration)", () => {
     expect(await runCountOf(task.id)).toBe(2);
   });
 
+  /**
+   * The per-task cap bounds automatic re-dispatch (re-delegation loops, review
+   * bounces, the sweeper's infrastructure retries) — and those spend the same
+   * tally. A prod card burned all 5 on transport failures plus the machine's own
+   * retry, so the human's Re-run answered "This task reached its limit" with no
+   * way left to run the task at all.
+   */
+  it("a HUMAN re-run is not blocked by the per-task cap", async () => {
+    const [claimed] = await database.db
+      .selectFrom("task_quota_claims")
+      .select(["task_board_item_id", "run_count"])
+      .where("organization_id", "=", ORG)
+      .where("run_count", ">=", CONFIG.maxRunsPerTask)
+      .limit(1)
+      .execute();
+    const task = {
+      id: claimed!.task_board_item_id,
+      createdBy: "system",
+      organizationId: ORG,
+    };
+    const manual = { ...CONFIG, maxRunsPerTask: Number.POSITIVE_INFINITY };
+
+    expect(await claimTaskExecution(ctx, task, manual)).toBe("rerun");
+    expect(await runCountOf(task.id)).toBe(CONFIG.maxRunsPerTask + 1);
+    await ensureTaskExecutionAllowed(ctx, task, manual);
+
+    // Automatic dispatch is still capped.
+    await expect(claimTaskExecution(ctx, task, CONFIG)).rejects.toThrow(
+      /execution limit/,
+    );
+  });
+
   it("user-created tasks are never gated or counted", async () => {
     const userTask = await makeTask("user_1");
     await claimTaskExecution(ctx, userTask, CONFIG); // no throw, no claim
