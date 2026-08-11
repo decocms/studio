@@ -464,6 +464,33 @@ export class TaskBoardStorage {
   }
 
   /**
+   * Attach tags to a task WITHOUT detaching anything — the additive half of
+   * `setItemTags`, for a machine writer (the reports import) that owns its own
+   * labels but must not touch the ones a human put on the card. Idempotent: an
+   * already-attached tag keeps its original `created_by`/`created_at`. The task
+   * and all `tagIds` must already be verified as belonging to the caller's org.
+   */
+  async addItemTags(
+    taskBoardItemId: string,
+    tagIds: string[],
+    by: string,
+  ): Promise<void> {
+    if (tagIds.length === 0) return;
+    await this.db
+      .insertInto("task_board_item_tags")
+      .values(
+        tagIds.map((id) => ({
+          task_board_item_id: taskBoardItemId,
+          id,
+          created_by: by,
+          created_at: new Date().toISOString(),
+        })),
+      )
+      .onConflict((oc) => oc.doNothing())
+      .execute();
+  }
+
+  /**
    * Link an agent thread to a task (many-to-many). Idempotent — re-linking the
    * same pair is a no-op, so a run replay can't duplicate the row.
    */
