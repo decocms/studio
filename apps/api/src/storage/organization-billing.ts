@@ -3,6 +3,7 @@
  * status, period end. Platform-written only (the webhook is the writer).
  */
 
+import { sql } from "kysely";
 import type { Kysely, Selectable } from "kysely";
 import type { Database } from "./types";
 
@@ -259,22 +260,31 @@ export class OrganizationBillingStorage {
   }
 
   /**
-   * Undo a claim whose dispatch never started. Frees the slot AND rolls the run
-   * tally back — unlike a refund, where the run DID happen and only produced
-   * nothing, so its tally has to stand. Nothing ran here, so nothing may be
-   * spent: a task whose dispatch keeps failing (no model configured) would
-   * otherwise burn its per-task cap and die with a quota error for runs that
-   * never existed.
+   * Undo a claim whose dispatch never started. Always rolls the run tally back —
+   * unlike a refund, where the run DID happen and only produced nothing, so its
+   * tally has to stand. Nothing ran here, so nothing may be spent: a task whose
+   * dispatch keeps failing (no model configured) would otherwise burn its
+   * per-task cap and die with a quota error for runs that never existed.
+   *
+   * `releaseSlot` is the difference between the two claim outcomes this undoes.
+   * A `"claimed"` dispatch TOOK a period slot, so it gives that back too. A
+   * `"rerun"` rode a slot an earlier run already paid for (and may have shipped
+   * a PR from) — releasing it would refund a run that really happened, so only
+   * the tally is rolled back.
+   *
+   * `greatest(…, 0)` because a claim can only be undone as many times as it was
+   * charged; a double call must not drive the cap negative.
    */
   async rollbackTaskClaim(
     organizationId: string,
     taskBoardItemId: string,
+    { releaseSlot }: { releaseSlot: boolean },
   ): Promise<void> {
     await this.db
       .updateTable("task_quota_claims")
-      .set((eb) => ({
-        state: "released",
-        run_count: eb("run_count", "-", 1),
+      .set(() => ({
+        ...(releaseSlot ? { state: "released" as const } : {}),
+        run_count: sql<number>`greatest(run_count - 1, 0)`,
       }))
       .where("organization_id", "=", organizationId)
       .where("task_board_item_id", "=", taskBoardItemId)

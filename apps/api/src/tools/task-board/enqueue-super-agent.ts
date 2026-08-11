@@ -239,18 +239,18 @@ export async function enqueueSuperAgentForTask(
     //
     // ROLLBACK, not refund: no run happened, so the per-task tally must not be
     // spent either — otherwise a task whose dispatch keeps failing dies at the
-    // run cap with a quota error for runs that never existed.
-    //
-    // Only a FRESH claim is ours to undo. A `"rerun"` rides a slot an earlier
-    // run already paid for (and may well have shipped a PR from) — undoing it
-    // here would refund a run that really happened.
-    if (claim === "claimed") {
-      await rollbackTaskExecution(
-        ctx.storage.organizationBilling,
-        task.organizationId,
-        task.id,
-      );
-    }
+    // run cap with a quota error for runs that never existed. That holds for a
+    // `"rerun"` too: it incremented the same tally, and the sweeper's automatic
+    // retries spend it, so a card whose re-dispatch keeps throwing used to walk
+    // itself to the cap without ever starting a run. Its period SLOT is not
+    // ours to give back (an earlier run really did ride it) — that distinction
+    // lives in `rollbackTaskExecution`.
+    await rollbackTaskExecution(
+      ctx.storage.organizationBilling,
+      task.organizationId,
+      task.id,
+      claim,
+    );
     throw err;
   }
 
