@@ -80,16 +80,6 @@ Quando um agent é apoiado por um sandbox (um repo do GitHub vinculado), o Decop
 
 Sandboxes também montam o **filesystem da organização** em `org/`: `org/home/` é a home compartilhada da org — editável, livre, compartilhada entre todos os membros, agents e runs, onde os agents registram conhecimento durável e checam contexto antes de começar a trabalhar; `org/upload` guarda os arquivos anexados à conversa atual (anexos do chat caem ali automaticamente — sem etapa de cópia); `org/output` é a pasta de saída compartilhada da run atual; e `org/public/<set>` expõe skill sets somente leitura e curados, sincronizados a partir de repos versionados. Arquivos escritos na pasta home e em `org/output` sincronizam com o cloud storage da sua organização e ficam visíveis para todos os membros e agents; mudanças externas aparecem dentro do sandbox em cerca de um segundo.
 
-<Callout type="info">
-  **Links de desktop no macOS:** quando um sandbox roda na sua máquina (`deco link`),
-  as pastas `org/` são volumes de rede, e o macOS pede uma vez por app
-  permissão para acessá-las. Aprove o prompt de "acessar arquivos em um volume de
-  rede" para o seu terminal ou editor — ou habilite manualmente em **System
-  Settings → Privacy & Security → Files & Folders → _seu app_ → Network
-  Volumes**. Sem essa permissão, leituras e escritas em `org/` falham com
-  "Operation not permitted".
-</Callout>
-
 Para a referência completa, veja [Tools](/pt-br/studio/decopilot/tools).
 
 ---

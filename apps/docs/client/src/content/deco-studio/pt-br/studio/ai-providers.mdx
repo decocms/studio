@@ -71,6 +71,21 @@ Quando o Studio roda localmente (via `bunx decocms`), dois providers extras apar
 
 Eles não aparecem no produto cloud.
 
+## Sua assinatura Claude (use seu próprio plano)
+
+Runs de coding hosted em sandbox (as tasks do Super Agent no Task Board, e outros fluxos que despacham um run `claude-code` para uma cloud sandbox) normalmente cobram do crédito de IA conectado da organização. Se você preferir pagar seus próprios runs de coding com seu plano pessoal **Claude Pro ou Max**, vincule-o em **Settings → AI Providers → Sua assinatura Claude**:
+
+1. Na sua própria máquina, execute `claude setup-token` e copie o token exibido.
+2. Cole o token no card **Sua assinatura Claude** e clique em **Link**.
+
+Depois de vinculado, seus próprios runs usam o seu plano em vez do crédito da org — ele tem prioridade sobre o provider configurado no tier Thinking da org, especificamente para runs `claude-code` hosted em sandbox. Se a Anthropic invalidar o token (por exemplo, quando ele expira), o Studio faz fallback automático para a credencial da org em vez de falhar o run; o card mostra um estado de **expirado** para que você saiba que precisa gerar um novo token.
+
+Clique em **Disconnect** para desvincular sua assinatura a qualquer momento.
+
+<Callout type="info">
+Isso afeta apenas runs `claude-code` hosted em sandbox. Não tem relação com o provider **Claude Code** somente local descrito acima, que conduz um CLI na sua própria máquina.
+</Callout>
+
 ## Como um provider é conectado
 
 **API key** — o método mais comum. Cole a key do dashboard do seu provider. Ela é armazenada criptografada e nunca exposta ao seu time.
