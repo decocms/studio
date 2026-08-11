@@ -17,11 +17,23 @@ import (
 // This per-repo partition is a security boundary — bun does not re-verify
 // cache integrity, so a shared writable cache across repos is cross-tenant
 // RCE. Do not widen.
+// stripCredentials removes any userinfo from a clone URL. Clone URLs carry a
+// short-lived GitHub App token (`x-access-token:ghs_...`), so anything that
+// records or hashes a URL must strip it first.
+func stripCredentials(cloneUrl string) string {
+	u, err := url.Parse(cloneUrl)
+	if err != nil {
+		// Unparseable: return nothing rather than risk persisting a token.
+		return ""
+	}
+	u.User = nil
+	return u.String()
+}
+
 func repoCacheKey(cloneUrl string) string {
-	key := cloneUrl
-	if u, err := url.Parse(cloneUrl); err == nil {
-		u.User = nil
-		key = u.String()
+	key := stripCredentials(cloneUrl)
+	if key == "" {
+		key = cloneUrl
 	}
 	sum := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(sum[:])[:16]

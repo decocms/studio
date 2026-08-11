@@ -591,7 +591,28 @@ them in the **first** PR — they are the difference between "works in the demo"
 5. **Formatting**: The pre-commit hook will reject commits if code isn't formatted with Biome
 6. **Never modify knip configuration** (`knip.json`, `knip.config.ts`, etc.) to silence warnings. Knip warnings indicate dead code, unused exports, or unused dependencies—these are code smells that should be fixed by removing the unused code/export/dependency, not by adding exclusions to the knip config.
 7. **CI errors are always on your branch**. The `main` branch CI always passes. When CI fails, the problem is in the code you changed—do not assume it's a pre-existing issue or a flaky test. Investigate and fix your code.
-8. **The sandbox daemon is Go** (`packages/sandbox/daemon-go/**`) — one static binary per sandbox pod, the only daemon there is (the TypeScript one is deleted). Write Go there, not TypeScript. Its health probe is unforgiving: Studio polls it and marks the sandbox **dead** on a single miss, tearing the pod down mid-session, so never hold a lock across slow I/O on that path. The daemon's contract is asserted black-box in `packages/sandbox/daemon-e2e/` (swap the binary under test with `DAEMON_E2E_CMD`). Blocking work is still banned in Studio's own Bun processes — see [`CONTRIBUTING.md`](./CONTRIBUTING.md).
+8. **Never persist, commit, or paste a real credential — redact at first sight.** Sandbox
+   clone URLs carry a live GitHub App token (`https://x-access-token:ghs_...@github.com/...`),
+   config payloads carry tenant secrets, and a node's cache is readable by every sandbox on
+   that node. So:
+   - **Strip at the write, not at the caller.** One guard at the single place a value is
+     persisted covers every caller present and future, and it must **fail closed** — an
+     unparseable URL persists nothing rather than falling through to the raw string. See
+     `stripCredentials` in `packages/sandbox/daemon-go/internal/setup/install.go`.
+   - **Assert on the artifact's bytes, not the struct.** The struct can be right while the
+     write path is wrong, and the file is what a co-tenant reads.
+   - **Fixtures are synthetic, always.** Never paste a real token into a test, not even
+     truncated — a committed test is not a place to keep a credential. Never a real
+     customer repo name either; shared artifacts stay neutral.
+   - **A force-push does NOT undo a leak.** GitHub keeps unreferenced objects and serves
+     them by SHA. Only GitHub Support purges, and [they refuse when the risk is mitigable
+     by rotating the credential](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository).
+     Rotate first; treat anything pushed as public forever.
+   - When you *read* a secret while debugging — a node's cache, a pod's env — redact it in
+     the very first message that mentions it. This entry exists because that step was
+     skipped and a customer's token reached a commit and a PR body.
+
+9. **The sandbox daemon is Go** (`packages/sandbox/daemon-go/**`) — one static binary per sandbox pod, the only daemon there is (the TypeScript one is deleted). Write Go there, not TypeScript. Its health probe is unforgiving: Studio polls it and marks the sandbox **dead** on a single miss, tearing the pod down mid-session, so never hold a lock across slow I/O on that path. The daemon's contract is asserted black-box in `packages/sandbox/daemon-e2e/` (swap the binary under test with `DAEMON_E2E_CMD`). Blocking work is still banned in Studio's own Bun processes — see [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
 ## API Path Convention
 
