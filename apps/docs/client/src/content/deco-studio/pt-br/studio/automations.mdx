@@ -77,7 +77,7 @@ Dispara quando um sistema externo envia uma requisição HTTP para uma URL dedic
 - Cada execução expira após 5 minutos
 - Payloads de evento são limitados a 1 MB
 
-Se a pessoa que criou uma automation sai da organização, ela é automaticamente desativada.
+Se a pessoa que criou uma automation sai da organização, ela é automaticamente desativada. O mesmo acontece quando uma execução encontra um erro irrecuperável — por exemplo, quando o model configurado para a automation deixa de ser permitido para o seu role após uma mudança de permissão — assim ela para de tentar de novo e falhar silenciosamente, mostrando um motivo claro de desativação em [Monitoring](/pt-br/studio/monitoring).
 
 ---
 

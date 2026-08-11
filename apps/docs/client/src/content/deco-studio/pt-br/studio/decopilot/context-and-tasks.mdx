@@ -15,11 +15,25 @@ Uma **task** é sua conversa com o Decopilot — onde você conversa, o Decopilo
 Toda task tem um destes quatro estados:
 
 - **In progress** — o agent está trabalhando ou aguardando sua próxima mensagem
-- **Requires action** — pausada, aguardando seu input (uma tool precisa de aprovação ou ele fez uma pergunta)
+- **Requires action** — pausada, aguardando seu input. Esse estado só é definido quando há uma tool call pendente que precisa de você — um pedido de aprovação ou um `user_ask` — nunca apenas porque o texto da resposta contém um ponto de interrogação (por exemplo, uma pergunta retórica, ou uma URL com uma query string `?`)
 - **Completed** — o trabalho terminou com sucesso
 - **Failed** — algo deu errado ou a task expirou
 
 Tasks expiram após **30 minutos de inatividade**. Se você está trabalhando em algo mais longo, envie uma mensagem periodicamente para mantê-la ativa.
+
+Tasks atribuídas a um agent especialista aparecem como cards no **task board**, onde você pode filtrar, priorizar e acompanhá-las entre as lanes.
+
+### Re-executando uma task travada
+
+De vez em quando, uma task atribuída ao agent nunca chega a iniciar um run, ou o run trava — o card fica parado em **In progress** ou **Requires action** indefinidamente, sem nenhuma atividade. Como não há mais nenhuma mudança de estado para reagir, o agent não retoma a task por conta própria.
+
+Selecione **Re-run** no card (ou na task dialog) para forçar um novo run. Isso encerra qualquer run ainda aberto na task e coloca um novo na fila, com o mesmo assignee.
+
+<Callout type="warning">
+Re-run é uma tomada de controle: ele interrompe qualquer run atualmente aberto na task, mesmo que ainda esteja em streaming, antes de iniciar o novo. Use apenas quando tiver certeza de que o run atual está travado, e não apenas lento.
+</Callout>
+
+Re-run só se aplica a tasks já atribuídas ao agent — reatribuir uma task a um agent já coloca um run na fila por conta própria, então essa ação não é necessária nesse caso.
 
 ---
 
