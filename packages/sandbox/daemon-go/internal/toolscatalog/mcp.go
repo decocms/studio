@@ -24,6 +24,11 @@ const protocolVersion = "2025-06-18"
 
 const clientName = "@decocms/sandbox-tools-catalog"
 
+// maxCatalogPages bounds the tools/list pagination loop: a misbehaving or
+// malicious endpoint that never returns an empty nextCursor would otherwise
+// hang FetchCatalog indefinitely and grow `out` without bound.
+const maxCatalogPages = 1000
+
 type mcpClient struct {
 	http      *http.Client
 	url       string
@@ -61,7 +66,10 @@ func FetchCatalog(ctx context.Context, ep Endpoint) ([]Tool, error) {
 
 	out := []Tool{}
 	cursor := ""
-	for {
+	for page := 0; ; page++ {
+		if page >= maxCatalogPages {
+			return nil, fmt.Errorf("tools/list: exceeded %d pages", maxCatalogPages)
+		}
 		params := map[string]any{}
 		if cursor != "" {
 			params["cursor"] = cursor
@@ -70,15 +78,15 @@ func FetchCatalog(ctx context.Context, ep Endpoint) ([]Tool, error) {
 		if err != nil {
 			return nil, err
 		}
-		var page listToolsResult
-		if err := json.Unmarshal(raw, &page); err != nil {
+		var result listToolsResult
+		if err := json.Unmarshal(raw, &result); err != nil {
 			return nil, fmt.Errorf("tools/list: %w", err)
 		}
-		out = append(out, page.Tools...)
-		if page.NextCursor == "" {
+		out = append(out, result.Tools...)
+		if result.NextCursor == "" {
 			return out, nil
 		}
-		cursor = page.NextCursor
+		cursor = result.NextCursor
 	}
 }
 
