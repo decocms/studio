@@ -70,6 +70,16 @@ func Start(deps Deps) *Prober {
 	return p
 }
 
+// Current returns the latest observed state — read synchronously, unlike the
+// goroutine-dispatched OnChange callback, so a consumer gating on liveness
+// (the dev-server watchdog) sees a consistent value instead of a mirror that
+// out-of-order callbacks can leave stale.
+func (p *Prober) Current() State {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.state
+}
+
 func (p *Prober) Reset() {
 	p.mu.Lock()
 	p.state = State{Status: StatusBooting}

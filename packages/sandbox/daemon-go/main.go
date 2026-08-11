@@ -80,15 +80,10 @@ type daemon struct {
 	baselineTimer   *time.Timer
 	firstWorkLogged bool
 
-	// Dev-server liveness watchdog state (see internal/devwatch). Guarded by its
-	// own mutex so a probe callback never contends with the hot d.mu.
-	devWatchMu         sync.Mutex
-	probeOnline        bool
-	notServingSince    time.Time // zero while serving
-	devRestartCount    int       // restarts fired this dead episode
-	devRestartInFlight bool
-	devGaveUp          bool
-	devWatchGrace      time.Duration // effective unreachable window (env-tunable)
+	// Dev-server liveness watchdog (see internal/devwatch). devTracker owns the
+	// grace/budget bookkeeping; devWatchMu guards it (kept off the hot d.mu).
+	devWatchMu sync.Mutex
+	devTracker *devwatch.Tracker
 
 	broadcaster  *events.Broadcaster
 	sniffer      *proc.PortSniffer
@@ -239,8 +234,6 @@ func (d *daemon) getDecofileVersion() (string, bool) {
 }
 
 func (d *daemon) onProbeChange(s probe.State) {
-	// Feed the liveness watchdog every probe change (online/offline/booting).
-	d.setProbeOnline(s.Status == probe.StatusOnline && s.Port != 0)
 	phase := d.lifecycle.Current().Phase
 	if s.Status == probe.StatusOnline && s.Port != 0 {
 		d.mu.Lock()
@@ -286,12 +279,6 @@ func (d *daemon) onProbeChange(s probe.State) {
 	}
 }
 
-func (d *daemon) setProbeOnline(online bool) {
-	d.devWatchMu.Lock()
-	d.probeOnline = online
-	d.devWatchMu.Unlock()
-}
-
 // restartablePhase reports the phases where a dev server is meant to be up, so
 // the watchdog respawns a dead one there but never interrupts a legitimate
 // build (installing/cloning/checking-out) or loops on a terminal *-failed.
@@ -306,12 +293,16 @@ func restartablePhase(phase string) bool {
 
 // devWatchLoop respawns the dev server when it dies out from under a live daemon
 // (idle-freeze, crash, or a stale port after a reclaim) — the case the proxy
-// otherwise papers over with an endless "Server is starting…". Bounded by
-// devwatch.MaxRestarts; on exhaustion it surfaces a real start-failed.
+// otherwise papers over with an endless "Server is starting…". Bounded by the
+// tracker's MaxRestarts; on exhaustion it surfaces a real start-failed.
 func (d *daemon) devWatchLoop() {
-	tick := envDuration("SANDBOX_DEV_WATCH_TICK_MS", 3*time.Second)
+	tick := envDuration("SANDBOX_DEV_WATCH_TICK_MS", 3*time.Second, 100*time.Millisecond)
 	d.devWatchMu.Lock()
-	d.devWatchGrace = envDuration("SANDBOX_DEV_WATCH_GRACE_MS", devwatch.DefaultGracePeriod)
+	d.devTracker = devwatch.NewTracker(devwatch.Config{
+		Grace:        envDuration("SANDBOX_DEV_WATCH_GRACE_MS", devwatch.DefaultGracePeriod, time.Second),
+		StableWindow: envDuration("SANDBOX_DEV_WATCH_STABLE_MS", devwatch.DefaultStableWindow, time.Second),
+		MaxRestarts:  envInt("SANDBOX_DEV_WATCH_MAX_RESTARTS", devwatch.DefaultMaxRestarts, 1),
+	})
 	d.devWatchMu.Unlock()
 	for {
 		time.Sleep(tick)
@@ -325,12 +316,30 @@ func (d *daemon) devWatchLoop() {
 	}
 }
 
-// envDuration reads a millisecond count from env, falling back to def when unset
-// or unparseable. Used to shrink the watchdog's grace/tick in tests.
-func envDuration(name string, def time.Duration) time.Duration {
+// envDuration reads a millisecond count from env, clamped to at least min, and
+// falls back to def when unset or unparseable. The floor stops a fat-fingered
+// value (ms entered as if seconds) from turning a poll loop into a hot spin.
+func envDuration(name string, def, min time.Duration) time.Duration {
 	if v := os.Getenv(name); v != "" {
 		if ms, err := strconv.Atoi(v); err == nil && ms > 0 {
-			return time.Duration(ms) * time.Millisecond
+			d := time.Duration(ms) * time.Millisecond
+			if d < min {
+				return min
+			}
+			return d
+		}
+	}
+	return def
+}
+
+// envInt reads an int from env, clamped to at least min, def when unset/bad.
+func envInt(name string, def, min int) int {
+	if v := os.Getenv(name); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			if n < min {
+				return min
+			}
+			return n
 		}
 	}
 	return def
@@ -348,71 +357,39 @@ func (d *daemon) devWatchTick() {
 	// set before the server binds, so treating it as known would let the
 	// watchdog restart a dev server that is simply still starting up.
 	portKnown := sniffed != 0 || lastRunning != 0
+	// Read synchronously, not via a mirror an out-of-order callback could
+	// leave stale (see probe.Prober.Current).
+	serving := d.prober.Current().Status == probe.StatusOnline
 
 	d.devWatchMu.Lock()
-	serving := d.probeOnline
-	if serving {
-		d.notServingSince = time.Time{}
-		d.devRestartCount = 0
-		d.devGaveUp = false
-	} else if d.notServingSince.IsZero() {
-		d.notServingSince = time.Now()
-	}
-	var unreachableFor time.Duration
-	if !d.notServingSince.IsZero() {
-		unreachableFor = time.Since(d.notServingSince)
-	}
-	in := devwatch.Input{
-		Serving:         serving,
-		Restartable:     restartablePhase(phase),
-		PortKnown:       portKnown,
-		UnreachableFor:  unreachableFor,
-		Attempts:        d.devRestartCount,
-		RestartInFlight: d.devRestartInFlight,
-	}
-	grace := d.devWatchGrace
-	gaveUp := d.devGaveUp
+	action := d.devTracker.Observe(devwatch.Snapshot{
+		Now:         time.Now(),
+		Serving:     serving,
+		Restartable: restartablePhase(phase),
+		PortKnown:   portKnown,
+	})
+	attempt, maxRestarts := d.devTracker.Attempts(), d.devTracker.MaxRestarts()
 	d.devWatchMu.Unlock()
 
-	if gaveUp {
-		return
-	}
-
-	switch devwatch.Decide(in, grace) {
+	switch action {
 	case devwatch.ActionRestart:
-		d.devWatchMu.Lock()
-		d.devRestartInFlight = true
-		d.devRestartCount++
-		attempt := d.devRestartCount
-		// Reset the grace window so the next restart is measured from now.
-		d.notServingSince = time.Now()
-		d.devWatchMu.Unlock()
-
 		d.broadcaster.BroadcastChunk("setup", fmt.Sprintf(
-			"[orchestrator] dev server unreachable for %s — restarting (attempt %d/%d)\r\n",
-			grace, attempt, devwatch.MaxRestarts))
+			"[orchestrator] dev server unreachable — restarting (attempt %d/%d)\r\n",
+			attempt, maxRestarts))
 		// Drop the stale sniffed port and probe state so the respawned dev
 		// server's port is relearned from its fresh output.
 		d.sniffer.Reset()
 		d.prober.Reset()
-		go func() {
-			d.orchestrator.RestartDev()
-			d.devWatchMu.Lock()
-			d.devRestartInFlight = false
-			d.devWatchMu.Unlock()
-		}()
+		go d.orchestrator.RestartDev()
 	case devwatch.ActionGiveUp:
-		d.devWatchMu.Lock()
-		d.devGaveUp = true
-		d.devWatchMu.Unlock()
 		d.broadcaster.BroadcastChunk("setup", fmt.Sprintf(
 			"[orchestrator] dev server did not stay up after %d restarts — giving up\r\n",
-			devwatch.MaxRestarts))
+			maxRestarts))
 		d.lifecycle.Transition(events.LifecycleState{
 			Phase: events.PhaseStartFailed,
 			Error: fmt.Sprintf(
 				"dev server did not stay up after %d automatic restarts",
-				devwatch.MaxRestarts),
+				maxRestarts),
 		})
 	case devwatch.ActionNone:
 	}
@@ -870,8 +847,8 @@ func main() {
 		GetPort:  d.getDevPort,
 		OnChange: d.onProbeChange,
 		OnLog:    func(msg string) { d.broadcaster.BroadcastChunk("setup", msg) },
-		Fast:     envDuration("SANDBOX_PROBE_FAST_MS", 0),
-		Slow:     envDuration("SANDBOX_PROBE_SLOW_MS", 0),
+		Fast:     envDuration("SANDBOX_PROBE_FAST_MS", 0, 100*time.Millisecond),
+		Slow:     envDuration("SANDBOX_PROBE_SLOW_MS", 0, 100*time.Millisecond),
 	})
 	// Respawn the dev server if it dies out from under the live daemon (idle
 	// freeze, crash, stale port after a reclaim). Dies with the process.
