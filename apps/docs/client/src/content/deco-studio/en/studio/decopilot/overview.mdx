@@ -80,16 +80,6 @@ When an agent is backed by a sandbox (a linked GitHub repo), Decopilot also gets
 
 Sandboxes also mount the **organization filesystem** under `org/`: `org/home/` is the org's shared home — editable, free-form, shared across every member, agent, and run, where agents record durable knowledge and check for context before starting work; `org/upload` holds the files attached to the current conversation (chat attachments land there automatically — no copy step); `org/output` is the current run's shared output folder; and `org/public/<set>` exposes curated read-only skill sets synced from versioned repositories. Files written to the home folder and `org/output` sync to your organization's cloud storage and are visible to every member and agent; external changes appear inside the sandbox within about a second.
 
-<Callout type="info">
-  **macOS desktop links:** when a sandbox runs on your machine (`deco link`),
-  the `org/` folders are network volumes, and macOS asks once per app for
-  permission to access them. Approve the "access files on a network volume"
-  prompt for your terminal or editor — or enable it manually under **System
-  Settings → Privacy & Security → Files & Folders → _your app_ → Network
-  Volumes**. Without the grant, reads and writes in `org/` fail with
-  "Operation not permitted".
-</Callout>
-
 For the full reference, see [Tools](/en/studio/decopilot/tools).
 
 ---
