@@ -23,6 +23,9 @@ import { LARGE_RESULT_TOKEN_THRESHOLD } from "./constants";
 // inspect-page.ts's BROWSERLESS_FETCH_TIMEOUT_MS).
 const BROWSERLESS_FETCH_TIMEOUT_MS = 45_000;
 
+// Upstream error bodies are unbounded — cap what lands in the tool error.
+const ERROR_BODY_MAX_CHARS = 500;
+
 const ScrapeUrlInputSchema = z.object({
   url: z.string().url().describe("The URL of the web page to scrape."),
 });
@@ -82,7 +85,7 @@ export function createScrapeUrlTool(
           const errorText = await response.text().catch(() => "Unknown error");
           return {
             success: false,
-            error: `Browserless content fetch failed (${response.status}): ${errorText}`,
+            error: `Browserless content fetch failed (${response.status}): ${errorText.slice(0, ERROR_BODY_MAX_CHARS)}`,
             url: input.url,
           };
         }
