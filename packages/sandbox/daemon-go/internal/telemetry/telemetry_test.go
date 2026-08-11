@@ -40,7 +40,7 @@ func TestInitExportsToEndpoint(t *testing.T) {
 	}
 
 	RecordPhase(context.Background(), "install", "done", 1234)
-	RecordDepsRestore(context.Background(), "no-install", 7)
+	RecordDepsRestore(context.Background(), "no-install", 7, "warm")
 	RecordReady(context.Background(), 9876)
 	RecordProxy(context.Background(), 12, "2xx")
 	RecordDevServerExit(context.Background(), false)
@@ -154,7 +154,7 @@ func TestInitIsNoopWithoutEndpoint(t *testing.T) {
 		t.Fatalf("Init without endpoint should not error: %v", err)
 	}
 	RecordPhase(context.Background(), "install", "done", 1)
-	RecordDepsRestore(context.Background(), "miss", 1)
+	RecordDepsRestore(context.Background(), "miss", 1, "warm")
 	if err := shutdown(context.Background()); err != nil {
 		t.Fatalf("no-op shutdown should not error: %v", err)
 	}

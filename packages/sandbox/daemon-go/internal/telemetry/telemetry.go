@@ -269,8 +269,16 @@ func RecordPhase(ctx context.Context, name, status string, durationMs int64) {
 }
 
 // RecordDepsRestore reports one dependency step and which cache tier served it.
-func RecordDepsRestore(ctx context.Context, source string, durationMs int64) {
-	attrs := metric.WithAttributes(attribute.String("source", source))
+func RecordDepsRestore(ctx context.Context, source string, durationMs int64, pkgCache string) {
+	// pkg_cache splits a slow `miss` into "downloaded everything" and
+	// "materialised a warm cache", which the single install timing cannot.
+	if pkgCache == "" {
+		pkgCache = "unknown"
+	}
+	attrs := metric.WithAttributes(
+		attribute.String("source", source),
+		attribute.String("pkg_cache", pkgCache),
+	)
 	depsRestore.Add(ctx, 1, attrs)
 	depsRestoreDuration.Record(ctx, durationMs, attrs)
 }

@@ -67,6 +67,48 @@ func DepsCacheEnv(cfg *config.Enriched, repoDir string) map[string]string {
 	}
 }
 
+// PkgCacheWarmth reports whether this repo's package-manager download cache was
+// already populated BEFORE the install ran: "warm", "cold", or "unknown" when
+// there is no cache root or no repo to key on.
+//
+// It exists to answer a design question the existing timing cannot: the install
+// phase is measured as one number, so a slow `miss` is indistinguishable between
+// "downloaded every tarball" and "materialised 100k files from a warm cache".
+// That distinction decides whether the golden tiers are worth their machinery —
+// if a warm install is nearly free, skipping install buys little and the effort
+// belongs on the filesystem instead (bun links near-instantly only when the
+// cache and node_modules share a reflink-capable mount, which they do not while
+// /app is an emptyDir).
+//
+// Must be called BEFORE the install: afterwards every cache is warm.
+func PkgCacheWarmth(cfg *config.Enriched, repoDir string) string {
+	cacheRoot := os.Getenv("DEPS_CACHE_ROOT")
+	if cacheRoot == "" {
+		return "unknown"
+	}
+	cloneUrl := resolveCloneUrl(cfg, repoDir)
+	if cloneUrl == "" {
+		return "unknown"
+	}
+	var dir string
+	switch cfg.PmName() {
+	case "deno":
+		dir = filepath.Join(cacheRoot, "deno", repoCacheKey(cloneUrl))
+	case "bun":
+		dir = filepath.Join(cacheRoot, "bun", repoCacheKey(cloneUrl))
+	default:
+		// npm/pnpm/yarn are not pointed at the shared cache at all, so their
+		// installs always pay full price. Saying "cold" would read as a warmable
+		// miss; this is a different fact.
+		return "unpointed"
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) == 0 {
+		return "cold"
+	}
+	return "warm"
+}
+
 func DenoCacheEnv(cfg *config.Enriched, repoDir string) map[string]string {
 	cacheRoot := os.Getenv("DEPS_CACHE_ROOT")
 	if cacheRoot == "" {
