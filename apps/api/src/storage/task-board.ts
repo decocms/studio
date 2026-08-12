@@ -650,6 +650,13 @@ export class TaskBoardStorage {
    * Park a card on a retry: it stays In Progress (the work is still ours) and
    * becomes due for re-dispatch at `retryAt`. Conditional on the card still
    * being In Progress so a human who moved it meanwhile keeps their move.
+   *
+   * `dismissed_at IS NULL` matters for the same reason as `listItemsDueForRetry`:
+   * a reports-pushed task's `delete()` only stamps `dismissed_at` and leaves
+   * `status` at `in_progress`. `reactToFailedTaskRun`/the review sweeper read
+   * that stale `status` off `getById` (which doesn't expose `dismissedAt`), so
+   * without this guard a dismissed card whose run then fails gets a fresh retry
+   * armed on it.
    */
   async scheduleRunRetry(
     id: string,
@@ -663,6 +670,7 @@ export class TaskBoardStorage {
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
       .where("status", "=", "in_progress")
+      .where("dismissed_at", "is", null)
       .returning("id")
       .execute();
     return rows.length > 0;
@@ -671,7 +679,9 @@ export class TaskBoardStorage {
   /**
    * Send a card back to To Do after a run failed for good (not infrastructure,
    * or out of retries). Clears the retry state so a later re-run starts with a
-   * full budget. Conditional on In Progress for the same reason as above.
+   * full budget. Conditional on In Progress and `dismissed_at IS NULL` for the
+   * same reason as `scheduleRunRetry` above — otherwise a dismissed card gets
+   * resurrected straight back onto the board.
    */
   async returnToTodoAfterFailure(
     id: string,
@@ -690,6 +700,7 @@ export class TaskBoardStorage {
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
       .where("status", "=", "in_progress")
+      .where("dismissed_at", "is", null)
       .returning("id")
       .execute();
     if (rows.length === 0) return null;
