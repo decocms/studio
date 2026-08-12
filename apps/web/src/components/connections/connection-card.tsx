@@ -9,7 +9,6 @@ export interface ConnectionCardData {
   title: string;
   description?: string | null;
   icon?: string | null;
-  status?: "active" | "inactive" | "error";
 }
 
 export interface ConnectionCardProps {
@@ -17,7 +16,6 @@ export interface ConnectionCardProps {
   onClick?: () => void;
   headerActions?: React.ReactNode;
   headerActionsAlwaysVisible?: boolean;
-  body?: React.ReactNode;
   footer?: React.ReactNode;
   className?: string;
   fallbackIcon?: ReactNode;
@@ -28,7 +26,6 @@ export function ConnectionCard({
   onClick,
   headerActions,
   headerActionsAlwaysVisible = false,
-  body,
   footer,
   className,
   fallbackIcon,
@@ -96,9 +93,6 @@ export function ConnectionCard({
                 t("connections.connectionCard.noDescription")}
             </p>
           </div>
-
-          {/* Body: Additional content like status */}
-          {body && <div>{body}</div>}
         </div>
 
         {/* Footer: Custom footer with border-t spanning full width */}
