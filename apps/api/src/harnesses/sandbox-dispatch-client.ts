@@ -33,6 +33,10 @@ import type { UIMessageChunk } from "ai";
 import { sleep } from "@decocms/shared/std";
 import type { SandboxClient } from "@decocms/sandbox/dispatch/sandbox-client";
 import { harnessRunResultSchema } from "@decocms/sandbox/dispatch/schemas";
+import {
+  SANDBOX_GONE_TERMINAL_CODE,
+  SANDBOX_UNREACHABLE_PREFIX,
+} from "@decocms/sandbox/dispatch/error-codes";
 import type { SandboxProvider } from "@decocms/sandbox/provider";
 import { isTransientStreamError } from "@/harnesses/decopilot/built-in-tools/subtask";
 import type { HarnessId, HarnessStreamInput } from "@/harnesses/lib/types";
@@ -93,7 +97,10 @@ const DAEMON_SILENCE_TIMEOUT_MS = 90_000;
  */
 export class SandboxUnreachableError extends Error {
   constructor(reason: string) {
-    super(reason);
+    // Prefixed in the CONSTRUCTOR, so the marker `isTransientRunFailure` reads
+    // downstream cannot be forgotten by a new throw site. See
+    // SANDBOX_UNREACHABLE_PREFIX.
+    super(`${SANDBOX_UNREACHABLE_PREFIX} ${reason}`);
     this.name = "SandboxUnreachableError";
   }
 }
@@ -565,12 +572,31 @@ async function* dispatchToDaemon(args: {
       `the sandbox stopped streaming after ${total} chunks without finishing the run`,
     );
   }
-  if (error?.code === SUPERSEDED_TERMINAL_CODE) {
-    // Another dispatch owns this run now. Whatever this attempt streamed above
-    // is already yielded; the successor publishes the terminal.
-    throw new RunSupersededError(error.message);
+  if (error) throw errorForTerminal(error.code, error.message);
+}
+
+/**
+ * What a daemon terminal frame means to this side. Three outcomes, and which
+ * one a code gets decides whether the turn is continued, dropped quietly, or
+ * failed — so it is pure and unit-tested rather than buried in the stream loop.
+ *
+ * - `superseded`: another dispatch owns this run now. Whatever this attempt
+ *   streamed is already yielded; the successor publishes the terminal.
+ * - `sandbox_gone`: the pod could not finish — it was shutting down (eviction,
+ *   scale-in) or our connection to it dropped. Nobody cancelled anything, so it
+ *   continues on a replacement pod exactly like a broken stream does. The
+ *   daemon used to report this case as `cancelled`, which reached the thread as
+ *   `Error: cancelled: run cancelled` and was never retried, on a turn whose
+ *   work was already committed to the branch by the shutdown publish.
+ * - anything else (`harness_crashed`, `cancelled`, `bad_input`, …): a real
+ *   terminal the run reported. Failing is the answer.
+ */
+export function errorForTerminal(code: string, message: string): Error {
+  if (code === SUPERSEDED_TERMINAL_CODE) return new RunSupersededError(message);
+  if (code === SANDBOX_GONE_TERMINAL_CODE) {
+    return new SandboxUnreachableError(message);
   }
-  if (error) throw new Error(`${error.code}: ${error.message}`);
+  return new Error(`${code}: ${message}`);
 }
 
 /**

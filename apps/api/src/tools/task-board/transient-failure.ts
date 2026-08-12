@@ -24,6 +24,8 @@
  * entry must be a message a healthy cluster does not produce.
  */
 
+import { SANDBOX_UNREACHABLE_PREFIX } from "@decocms/sandbox/dispatch/error-codes";
+
 /** Failure kinds that are infrastructure whatever the message says. */
 const TRANSIENT_KINDS = new Set([
   "stall",
@@ -103,5 +105,13 @@ export function isTransientRunFailure(failure: {
   if (TRANSIENT_KINDS.has(kind)) return true;
   const text = failure.errorText ?? "";
   if (!text) return false;
+  // Every `SandboxUnreachableError` — the pod stopped mid-turn, its stream
+  // broke, it went silent, or it reported `sandbox_gone`. Checked by MARKER
+  // rather than by wording: the class's constructor stamps it, so unlike the
+  // patterns below this cannot drift and a new throw site is covered the day it
+  // is written. This is the most common infrastructure failure the board sees
+  // and it matched none of the patterns, so every one of them got the
+  // unknown-error budget of a single attempt.
+  if (text.includes(SANDBOX_UNREACHABLE_PREFIX)) return true;
   return TRANSIENT_ERROR_PATTERNS.some((re) => re.test(text));
 }

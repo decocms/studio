@@ -18,6 +18,13 @@ import (
 
 const tombstoneTTL = 60 * time.Second
 
+// Terminal code for a run this pod could not finish (shutdown / dropped
+// connection) as opposed to one that was cancelled on purpose. Studio maps it
+// to `SandboxUnreachableError` and continues the turn elsewhere — the literal
+// is the contract, and its TypeScript half is
+// `SANDBOX_GONE_TERMINAL_CODE` in packages/sandbox/dispatch/error-codes.ts.
+const sandboxGoneCode = "sandbox_gone"
+
 // How long a takeover waits for the run it displaced to actually exit before
 // starting the new one. The displaced harness holds `claude` processes writing
 // into the checkout the new run is about to read, so overlapping them is how
@@ -452,11 +459,26 @@ func (reg *Registry) runHarness(
 				"a newer dispatch took over this run"))
 			return
 		}
-		// Genuinely cancelled: the client hung up, or a DELETE stopped the run
-		// and nothing replaced it. Terminal, so the reader is never left
-		// guessing.
-		slog.Info("dispatch cancelled", "harness", harnessId, "run_id", runId, "elapsed_s", elapsed)
-		body.write(terminalFrame("cancelled", "run cancelled"))
+		// A DELETE stopped this run and nothing replaced it — the tombstone is
+		// that request's own marker, so it is the only proof the cancel was
+		// ASKED FOR. Studio spends no retry on it, which is right: a human said
+		// stop.
+		if reg.tombstoned(runId) {
+			slog.Info("dispatch cancelled", "harness", harnessId, "run_id", runId, "elapsed_s", elapsed)
+			body.write(terminalFrame("cancelled", "run cancelled"))
+			return
+		}
+		// Nobody asked. The ctx died because this daemon is going away
+		// (SIGTERM → `CancelAll`, i.e. the pod was evicted or scaled in) or the
+		// client's connection dropped. Reporting `cancelled` here is how a
+		// pod eviction settled a live thread as `Error: cancelled: run
+		// cancelled` — a verdict Studio never retries, on a turn that was
+		// mid-edit. `sandbox_gone` says the pod could not finish, not that the
+		// run should not: the checkout is intact, the shutdown publish pushes it
+		// to the branch, and a replacement pod can pick the turn up.
+		slog.Info("dispatch sandbox gone", "harness", harnessId, "run_id", runId, "elapsed_s", elapsed)
+		body.write(terminalFrame(sandboxGoneCode,
+			"the sandbox stopped mid-run (pod shutting down or connection dropped)"))
 		return
 	}
 	if err != nil {
