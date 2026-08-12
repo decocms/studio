@@ -6,6 +6,7 @@ import {
   GITHUB_SCOPED_PERMISSIONS,
   isChecksPermissionRejected,
   isOrgSharedConnection,
+  listRepoScopeLabels,
   mintRepoTokenWithChecksFallback,
   permissionsWithoutChecks,
   type RepoScopeRecipe,
@@ -429,5 +430,50 @@ describe("findReusableRepoConnection", () => {
         "web",
       )?.id,
     ).toBe("c1");
+  });
+});
+
+describe("listRepoScopeLabels", () => {
+  const repoConn = (owner: string, repo: string) => ({
+    status: "active",
+    metadata: {
+      repoScope: { installationId: 1, owner, repo },
+    },
+  });
+
+  it("returns distinct owner/name labels for active repo-scoped connections", () => {
+    expect(
+      listRepoScopeLabels([repoConn("acme", "web"), repoConn("acme", "api")]),
+    ).toEqual(["acme/web", "acme/api"]);
+  });
+
+  it("dedupes case-insensitive duplicates, keeping the first-seen casing", () => {
+    expect(
+      listRepoScopeLabels([repoConn("Acme", "Web"), repoConn("acme", "web")]),
+    ).toEqual(["Acme/Web"]);
+  });
+
+  it("skips inactive connections", () => {
+    expect(
+      listRepoScopeLabels([
+        { ...repoConn("acme", "web"), status: "inactive" },
+        repoConn("acme", "api"),
+      ]),
+    ).toEqual(["acme/api"]);
+  });
+
+  it("skips connections that are not repo-scoped", () => {
+    expect(
+      listRepoScopeLabels([
+        { status: "active", metadata: { orgShared: true } },
+        repoConn("acme", "web"),
+      ]),
+    ).toEqual(["acme/web"]);
+  });
+
+  it("returns [] for null/undefined/empty input", () => {
+    expect(listRepoScopeLabels(null)).toEqual([]);
+    expect(listRepoScopeLabels(undefined)).toEqual([]);
+    expect(listRepoScopeLabels([])).toEqual([]);
   });
 });

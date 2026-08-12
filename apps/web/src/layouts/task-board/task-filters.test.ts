@@ -125,6 +125,15 @@ describe("taskMatchesFilters — repo", () => {
     ).toBe(false);
   });
 
+  test("a specific repo excludes a task with no repo", () => {
+    expect(
+      taskMatchesFilters(item({ repo: null }), {
+        ...EMPTY_FILTERS,
+        repo: "acme/site",
+      }),
+    ).toBe(false);
+  });
+
   test("repo match is case-insensitive (GitHub identity)", () => {
     expect(
       taskMatchesFilters(item({ repo: "Acme/Site" }), {
