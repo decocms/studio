@@ -48,6 +48,10 @@ export const registry = {
   "registry.deleteConfirmDialog.description":
     "Esta ação não pode ser desfeita. O item {title} será removido permanentemente deste registro privado.",
   "registry.deleteConfirmDialog.title": "Deletar item do registro?",
+  "registry.discoverTools.couldNotDiscoverTools":
+    "Não foi possível descobrir as ferramentas.",
+  "registry.discoverTools.noToolsFound":
+    "Nenhuma ferramenta encontrada neste servidor MCP.",
   "registry.imageUpload.change": "Alterar",
   "registry.imageUpload.clickOrDragToUpload": "Clique ou arraste para enviar",
   "registry.imageUpload.dropImageHere": "Solte a imagem aqui",

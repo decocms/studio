@@ -46,6 +46,8 @@ export const registry = {
   "registry.deleteConfirmDialog.description":
     "This action cannot be undone. Item {title} will be permanently removed from this private registry.",
   "registry.deleteConfirmDialog.title": "Delete registry item?",
+  "registry.discoverTools.couldNotDiscoverTools": "Could not discover tools.",
+  "registry.discoverTools.noToolsFound": "No tools found on this MCP server.",
   "registry.imageUpload.change": "Change",
   "registry.imageUpload.clickOrDragToUpload": "Click or drag to upload",
   "registry.imageUpload.dropImageHere": "Drop image here",
