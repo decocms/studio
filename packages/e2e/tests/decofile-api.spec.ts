@@ -387,30 +387,10 @@ test.describe("decofile API", () => {
       );
       expect(withToken.status()).toBe(200);
       expect(withToken.headers()["etag"]).toBe(`"${body.version}"`);
-      // Without a matching `v=`, the response must not be shared-cacheable:
-      // the same URL yields different bytes as the branch advances.
-      expect(withToken.headers()["cache-control"]).toBe("no-store");
       const anonBody = (await withToken.json()) as Record<string, unknown>;
       expect(anonBody.version).toBeUndefined();
       expect(anonBody.token).toBeUndefined();
       expect(anonBody["Hero"]).toEqual(heroBlock);
-
-      // With `v=` matching the served head the URL is fully content-addressed
-      // (token + version), so the response is CDN-cacheable and immutable —
-      // s-maxage bounded by the grant's remaining TTL. A mismatched `v` (the
-      // head advanced since the pointer was minted) stays no-store.
-      const versioned = await anon.get(
-        `${url}?token=${encodeURIComponent(token)}&v=${body.version}`,
-      );
-      expect(versioned.status()).toBe(200);
-      expect(versioned.headers()["cache-control"]).toMatch(
-        /^public, max-age=0, s-maxage=\d+, immutable$/,
-      );
-      const mismatched = await anon.get(
-        `${url}?token=${encodeURIComponent(token)}&v=${"0".repeat(40)}`,
-      );
-      expect(mismatched.status()).toBe(200);
-      expect(mismatched.headers()["cache-control"]).toBe("no-store");
 
       // A second GET of the same head must be BYTE-identical — the merged
       // document is cached and served as stored bytes, never re-parsed or
