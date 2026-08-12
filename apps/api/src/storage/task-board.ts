@@ -152,6 +152,20 @@ function threadHasClonableRepo(metadata: unknown): boolean {
   return typeof url === "string" && url.length > 0;
 }
 
+/** The newer of two nullable timestamps, as ISO. Both are the thread's own
+ *  heartbeat columns, so at least `updated_at` is always set. */
+function newestIso(
+  updatedAt: Date | string,
+  lastProgressAt: Date | string | null,
+): string {
+  const ms = (v: Date | string) =>
+    v instanceof Date ? v.getTime() : new Date(v).getTime();
+  const a = ms(updatedAt);
+  const b =
+    lastProgressAt === null ? Number.NEGATIVE_INFINITY : ms(lastProgressAt);
+  return new Date(Math.max(a, b)).toISOString();
+}
+
 export class TaskBoardStorage {
   constructor(private db: Kysely<Database>) {}
 
@@ -1330,6 +1344,8 @@ export class TaskBoardStorage {
         "t.title as title",
         "t.virtual_mcp_id as virtualMcpId",
         "t.metadata as metadata",
+        "t.updated_at as updatedAt",
+        "t.last_progress_at as lastProgressAt",
         "lastmsg.payload as lastMessagePayload",
         // Was this thread ever used? Both storage formats, any role — v2 writes
         // parts, deprecated v1 threads still have `thread_messages` rows, and a
@@ -1367,6 +1383,7 @@ export class TaskBoardStorage {
         lastMessage: extractPartText(row.lastMessagePayload),
         hasPreview: threadHasClonableRepo(row.metadata),
         hasMessages: !!row.hasMessages,
+        lastActiveAt: newestIso(row.updatedAt, row.lastProgressAt),
         createdAt:
           row.createdAt instanceof Date
             ? row.createdAt.toISOString()
