@@ -485,6 +485,42 @@ function toWireInput(input: HarnessStreamInput): unknown {
   return wire;
 }
 
+/**
+ * How often a streaming dispatch pushes its sandbox's shutdown deadline out.
+ * Same cadence as the preview SSE handler's `TTL_RENEW_MS`, and for the same
+ * reason: comfortably inside the 15-minute claim TTL, so a missed renewal (or a
+ * slow apiserver) still leaves two more chances before the pod is reaped.
+ */
+const TTL_RENEW_MS = 5 * 60_000;
+
+/**
+ * Keep the claim alive on an interval, returning the stop. Best-effort by
+ * construction — a failed renewal costs the run its pod at the deadline, which
+ * is exactly today's behavior, so it must never break the stream it is
+ * protecting.
+ */
+function renewWhileStreaming(
+  provider: SandboxProvider,
+  handle: string,
+): () => void {
+  if (!provider.renewTtl) return () => {};
+  const renew = () =>
+    void provider
+      .renewTtl?.(handle)
+      .catch((err) =>
+        console.warn(
+          `[sandbox-dispatch] TTL renew failed for ${handle}: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      );
+  // Immediately as well as on the interval: a run dispatched onto a reused
+  // sandbox is adopting a TTL that is already part-spent — that is how a run
+  // could die four minutes in.
+  renew();
+  const timer = setInterval(renew, TTL_RENEW_MS);
+  timer.unref?.();
+  return () => clearInterval(timer);
+}
+
 async function* dispatchToDaemon(args: {
   provider: SandboxProvider;
   handle: string;
@@ -535,6 +571,23 @@ async function* dispatchToDaemon(args: {
     throw new Error(summary);
   }
   if (!res.body) throw new SandboxUnreachableError("dispatch returned no body");
+  // Hold the pod open for as long as this run streams.
+  //
+  // A claim is created with `spec.lifecycle.shutdownTime = now + 15min`
+  // (`DEFAULT_IDLE_TTL_MS`) and the operator deletes the pod at that instant.
+  // `renewTtl` pushes it forward — and until now its ONLY caller was the
+  // preview SSE handler, i.e. a browser being attached. A Super Agent run has
+  // no browser, so nothing renewed it and every headless run had a hard
+  // 15-minute wall clock: at the deadline the operator SIGTERMs the daemon,
+  // `CancelAll` fires, and the turn dies mid-edit. That is the sandbox_gone
+  // case above, and it is why one prod card burned six runs without ever
+  // opening a PR.
+  //
+  // Deliberately NOT the daemon's `/idle` activity — that feeds the
+  // housekeeper's idle sweep, which can only end a claim early, never extend
+  // it. The claim's own deadline is a separate clock and this is the only thing
+  // that moves it.
+  const stopTtlRenew = renewWhileStreaming(args.provider, args.handle);
   let total = 0;
   // Sticky, and only acted on after every frame's chunks are yielded: partial
   // work first, THEN the throw, because the consumer's error path is what
@@ -543,17 +596,24 @@ async function* dispatchToDaemon(args: {
   // the FIRST reason is the real one.
   let error: { code: string; message: string } | null = null;
   let done = false;
-  for await (const line of ndjsonLines(res.body, args.signal)) {
-    const parsed = harnessRunResultSchema.safeParse(line);
-    if (!parsed.success) {
-      throw new Error(
-        `sandbox dispatch returned a malformed frame: ${parsed.error.message}`,
-      );
+  try {
+    for await (const line of ndjsonLines(res.body, args.signal)) {
+      const parsed = harnessRunResultSchema.safeParse(line);
+      if (!parsed.success) {
+        throw new Error(
+          `sandbox dispatch returned a malformed frame: ${parsed.error.message}`,
+        );
+      }
+      total += parsed.data.chunks.length;
+      yield* parsed.data.chunks as UIMessageChunk[];
+      error ??= parsed.data.error;
+      if (parsed.data.done) done = true;
     }
-    total += parsed.data.chunks.length;
-    yield* parsed.data.chunks as UIMessageChunk[];
-    error ??= parsed.data.error;
-    if (parsed.data.done) done = true;
+  } finally {
+    // Every exit path, including the consumer abandoning this generator: a
+    // leaked interval would keep a dead sandbox's claim alive for the rest of
+    // the process's life.
+    stopTtlRenew();
   }
   console.log("[sandbox-dispatch] run ended", {
     runId: args.runId,
