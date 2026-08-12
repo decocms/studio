@@ -177,9 +177,10 @@ export interface Settings {
    *  gates and why it ships behind its own flag. */
   sandboxStickyHeadRefEnabled: boolean;
   /** A task re-run pushes to the existing pull request's branch instead of
-   *  forking a new one (TASK_BOARD_RERUN_REUSES_PR_BRANCH). Own flag because it
-   *  changes which sandbox a dispatch resolves to; off by default. See
-   *  `enqueue-super-agent.ts`. */
+   *  forking a new one (TASK_BOARD_RERUN_REUSES_PR_BRANCH). ON by default —
+   *  forking is what makes a reviewer reject the fork as obsolete against
+   *  `main`, so the loop never converges. Set the env var to `false` to get the
+   *  old forking behavior back. See `enqueue-super-agent.ts`. */
   taskBoardRerunReusesPrBranch: boolean;
   /** Bring a `cloneOnly` sandbox's shutdown forward when its harness run
    *  finishes, instead of leaving it idle to the 15-min claim TTL

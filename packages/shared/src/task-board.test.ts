@@ -6,6 +6,7 @@ import {
   reviewBounceLimitReached,
   reviewCycleStart,
   reviewCycleVerdicts,
+  SUPER_AGENT_ASSIGNEE_ID,
   type ReviewCycleActivity,
 } from "./task-board";
 
@@ -204,6 +205,60 @@ describe("reviewBounceLimitReached", () => {
       bounce("2026-01-01T03:00:00.000Z"),
     ];
     expect(reviewBounceLimitReached(acrossCycles)).toBe(true);
+  });
+
+  // The reset that makes a re-run mean something. Four cards carrying 5-7 old
+  // bounces were re-delegated in prod and each was handed straight back on its
+  // FIRST change-request — one review round, zero retries.
+  it("counts only from the most recent hand-back to the Super Agent", () => {
+    const burntOut = Array.from({ length: 6 }, (_, i) =>
+      bounce(`2026-01-0${i + 1}T00:00:00.000Z`),
+    );
+    expect(reviewBounceLimitReached(burntOut)).toBe(true);
+
+    const reDelegated: ReviewCycleActivity[] = [
+      ...burntOut,
+      {
+        action: "assignee_changed",
+        data: { from: null, to: SUPER_AGENT_ASSIGNEE_ID },
+        occurredAt: "2026-01-08T00:00:00.000Z",
+      },
+    ];
+    expect(reviewBounceLimitReached(reDelegated)).toBe(false);
+  });
+
+  // ...and the loop still terminates: only a hand-back TO the Super Agent
+  // resets, and the automatic hand-off writes `to: null`.
+  it("is not reset by the automatic hand-off to a human", () => {
+    const four = Array.from({ length: 4 }, (_, i) =>
+      bounce(`2026-01-01T0${i}:00:00.000Z`),
+    );
+    expect(
+      reviewBounceLimitReached([
+        ...four,
+        {
+          action: "assignee_changed",
+          data: { from: SUPER_AGENT_ASSIGNEE_ID, to: null, reason: "burned" },
+          occurredAt: "2026-01-01T05:00:00.000Z",
+        },
+      ]),
+    ).toBe(true);
+  });
+
+  it("still trips within one delegation, after the reset", () => {
+    const reDelegated: ReviewCycleActivity[] = [
+      bounce("2026-01-01T00:00:00.000Z"),
+      bounce("2026-01-01T01:00:00.000Z"),
+      {
+        action: "assignee_changed",
+        data: { from: null, to: SUPER_AGENT_ASSIGNEE_ID },
+        occurredAt: "2026-01-02T00:00:00.000Z",
+      },
+      ...Array.from({ length: MAX_REVIEW_BOUNCES - 1 }, (_, i) =>
+        bounce(`2026-01-02T0${i + 1}:00:00.000Z`),
+      ),
+    ];
+    expect(reviewBounceLimitReached(reDelegated)).toBe(true);
   });
 
   it("ignores approvals and unrelated activity", () => {
