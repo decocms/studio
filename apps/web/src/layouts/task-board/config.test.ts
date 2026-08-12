@@ -12,6 +12,7 @@ function item(id: string, sortOrder: number): TaskBoardItem {
     priority: "none",
     assigneeId: null,
     assignedBy: null,
+    repo: null,
     dueDate: null,
     sortOrder,
     threads: [],

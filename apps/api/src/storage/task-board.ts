@@ -203,6 +203,8 @@ export class TaskBoardStorage {
     priority?: TaskBoardItemPriority;
     assigneeId?: string | null;
     assignedBy?: string | null;
+    /** `owner/name` of the repo (site) this task pertains to. */
+    repo?: string | null;
     dueDate?: string | null;
     /** Sender-minted finding identity — see task-board-import. */
     externalKey?: string | null;
@@ -230,6 +232,7 @@ export class TaskBoardStorage {
         priority: params.priority ?? "medium",
         assignee_id: params.assigneeId ?? null,
         assigned_by: params.assignedBy ?? null,
+        repo: params.repo ?? null,
         due_date: params.dueDate ?? null,
         external_key: params.externalKey ?? null,
         sort_order: sql<number>`(
@@ -260,6 +263,7 @@ export class TaskBoardStorage {
       priority?: TaskBoardItemPriority;
       assigneeId?: string | null;
       assignedBy?: string | null;
+      repo?: string | null;
       dueDate?: string | null;
       sortOrder?: number;
     },
@@ -280,6 +284,7 @@ export class TaskBoardStorage {
         ...(data.assignedBy !== undefined
           ? { assigned_by: data.assignedBy }
           : {}),
+        ...(data.repo !== undefined ? { repo: data.repo } : {}),
         ...(data.dueDate !== undefined ? { due_date: data.dueDate } : {}),
         ...(data.sortOrder !== undefined ? { sort_order: data.sortOrder } : {}),
         updated_by: by,
@@ -1633,6 +1638,7 @@ export class TaskBoardStorage {
     priority: string;
     assignee_id: string | null;
     assigned_by: string | null;
+    repo: string | null;
     due_date: string | Date | null;
     sort_order: number;
     retry_attempts?: number;
@@ -1650,6 +1656,7 @@ export class TaskBoardStorage {
       priority: row.priority as TaskBoardItemPriority,
       assigneeId: row.assignee_id,
       assignedBy: row.assigned_by,
+      repo: row.repo,
       dueDate:
         row.due_date instanceof Date
           ? row.due_date.toISOString()

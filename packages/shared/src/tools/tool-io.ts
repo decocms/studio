@@ -276,6 +276,7 @@ export interface StudioToolIO {
         | undefined;
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
       assigneeId?: string | null | undefined;
+      repo?: string | null | undefined;
       dueDate?: string | null | undefined;
       tagIds?: string[] | undefined;
     };
@@ -289,6 +290,7 @@ export interface StudioToolIO {
         priority: "none" | "low" | "medium" | "high" | "urgent";
         assigneeId: string | null;
         assignedBy: string | null;
+        repo: string | null;
         dueDate: string | null;
         sortOrder: number;
         threads: {
@@ -333,6 +335,7 @@ export interface StudioToolIO {
         priority: "none" | "low" | "medium" | "high" | "urgent";
         assigneeId: string | null;
         assignedBy: string | null;
+        repo: string | null;
         dueDate: string | null;
         sortOrder: number;
         threads: {
@@ -379,6 +382,7 @@ export interface StudioToolIO {
         | undefined;
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
       assigneeId?: string | null | undefined;
+      repo?: string | null | undefined;
       dueDate?: string | null | undefined;
       sortOrder?: number | undefined;
       tagIds?: string[] | undefined;
@@ -394,6 +398,7 @@ export interface StudioToolIO {
         priority: "none" | "low" | "medium" | "high" | "urgent";
         assigneeId: string | null;
         assignedBy: string | null;
+        repo: string | null;
         dueDate: string | null;
         sortOrder: number;
         threads: {

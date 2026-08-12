@@ -28,6 +28,7 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     status: TaskBoardItemStatusSchema.optional(),
     priority: TaskBoardItemPrioritySchema.optional(),
     assigneeId: z.string().nullable().optional(),
+    repo: z.string().nullable().optional(),
     dueDate: z.string().datetime().nullable().optional(),
     tagIds: z.array(z.string()).optional(),
   }),
@@ -68,6 +69,7 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       priority: input.priority,
       assigneeId: input.assigneeId ?? null,
       assignedBy: input.assigneeId ? getUserId(ctx)! : null,
+      repo: input.repo ?? null,
       dueDate: input.dueDate ?? null,
       by: getUserId(ctx)!,
     });

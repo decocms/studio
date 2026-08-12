@@ -114,6 +114,8 @@ export const taskBoard = {
   "taskBoard.taskDialog.noTagsFound":
     "Nenhuma tag ainda. Digite um nome para criar uma.",
   "taskBoard.taskDialog.assignButton": "Atribuir",
+  "taskBoard.taskDialog.repoButton": "Repositório",
+  "taskBoard.taskDialog.noRepo": "Sem repositório",
   "taskBoard.taskDialog.assignToPlaceholder": "Atribuir a…",
   "taskBoard.taskDialog.clearDueDateAriaLabel": "Limpar data de vencimento",
   "taskBoard.taskDialog.closeAriaLabel": "Fechar",
