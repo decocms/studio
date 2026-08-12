@@ -7,7 +7,7 @@
  * checkout in the app (`deco-credits-hero.tsx`).
  *
  * `trial_exhausted` is the only case with something to sell — it gets the
- * richer benefits/price layout (same shell as `backlog-paywall.tsx`'s modal,
+ * richer benefits/price layout (shell shared with the board's other dialogs,
  * per the "only one visual paywall pattern on the board" rule). The other two
  * are purely informational (quota renews on its own / make a new task), so
  * they stay a plain title + description.
@@ -25,13 +25,17 @@ import {
 import { useOpenBillingUrl } from "@/hooks/use-open-billing-url";
 import { useT } from "@/i18n/use-t.ts";
 import type { SubscriptionErrorKind } from "@/components/task-board/is-subscription-error";
-import { KANBAN_PREVIEW_SRC } from "./backlog-paywall";
 
 const BENEFIT_KEYS = [
   "taskBoard.subscriptionPaywall.trialBenefitMonitoring",
   "taskBoard.subscriptionPaywall.trialBenefitAutoFix",
   "taskBoard.subscriptionPaywall.trialBenefitRuns",
 ] as const;
+
+/** A preview of the unlocked board (carries the brand-lime edge), used as the
+ *  dialog hero — hosted on the deco CDN. */
+const KANBAN_PREVIEW_SRC =
+  "https://decoims.com/image?src=decocms%2F7263a67f-fb83-410b-a5f2-e54e87deaaac%2Freport-kanban.png&quality=original&fit=cover";
 
 export function SubscriptionPaywallDialog({
   kind,
@@ -54,7 +58,7 @@ export function SubscriptionPaywallDialog({
           className="gap-0 p-3 sm:max-w-[440px]"
           closeButtonClassName="z-10 rounded-full bg-background/70 p-1 text-foreground backdrop-blur transition-colors hover:bg-background"
         >
-          {/* Same hero as backlog-paywall.tsx's modal — one board-preview
+          {/* Board-preview hero — one image
               image, not a second asset. */}
           <div className="overflow-hidden rounded-xl bg-muted">
             <img
@@ -81,7 +85,7 @@ export function SubscriptionPaywallDialog({
               ))}
             </ul>
             {/* Price + actions — stacked full-width on mobile, price-left /
-                buttons-right on sm+ (matches backlog-paywall.tsx's modal). */}
+                buttons-right on sm+. */}
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-baseline gap-1.5">
                 <span className="text-2xl font-semibold text-foreground">
