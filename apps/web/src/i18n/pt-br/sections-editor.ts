@@ -77,6 +77,7 @@ export const sectionsEditor = {
     "Enviado {fileName}; arquivos adicionais foram ignorados (campo de seleção única).",
   "sectionsEditor.imageField.uploading": "Enviando…",
   "sectionsEditor.imageField.urlPlaceholder": "https://...",
+  "sectionsEditor.inlineUnionField.branchFallback": "Opção {index}",
   "sectionsEditor.inlineUnionField.selectPlaceholder": "Selecionar...",
   "sectionsEditor.locationField.cityDefault": "Cidade",
   "sectionsEditor.locationField.cityHelperText":

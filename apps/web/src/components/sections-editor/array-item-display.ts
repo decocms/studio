@@ -1,6 +1,7 @@
 import { arrayItemDisplayValue } from "./array-item-hidden";
 import { lazyWrappedInner } from "./block-ref-field-utils";
 import { extractUrl } from "./fields/extract-url";
+import { inferInlineUnionIndex } from "./fields/inline-union-value";
 import type { SchemaProperty } from "./resolve-schema";
 import { labelFromResolveType } from "./section-types";
 import { safeEditorImageUrl } from "./safe-editor-image-url";
@@ -85,6 +86,21 @@ function stripHtmlTags(html: string): string {
   return html.replace(/<[^>]*>/g, "").trim();
 }
 
+/** Drop Mustache tokens from a title, leaving only its static text
+ * (`Categoria {{{id}}}` → `Categoria`). For contexts with no item data. */
+export function stripMustacheTokens(title: string): string {
+  return title
+    .replace(/\{\{\{?[^{}]*\}?\}\}/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Resolve-schema fills a titleless inline-union branch with `Option N`; that
+ * synthetic default must not shadow the item's own fields when labelling. */
+function isSyntheticBranchTitle(title: string): boolean {
+  return /^Option \d+$/.test(title);
+}
+
 function readTitleByValue(
   obj: Record<string, unknown>,
   titleBy: string,
@@ -126,6 +142,22 @@ function baseArrayItemLabel(
     if (itemSchema?.titleBy) {
       const fromTitleBy = readTitleByValue(obj, itemSchema.titleBy);
       if (fromTitleBy) return fromTitleBy;
+    }
+    // Inline unions carry titles per-branch, not on `items`: label by the active branch.
+    if (itemSchema?.inlineUnionBranches?.length) {
+      const idx = inferInlineUnionIndex(
+        obj,
+        itemSchema.inlineUnionBranches.map((b) => ({
+          discriminators: b.discriminators,
+          propertyKeys: Object.keys(b.schema?.properties ?? {}),
+        })),
+      );
+      const branchTitle = itemSchema.inlineUnionBranches[idx]?.title;
+      if (branchTitle && !isSyntheticBranchTitle(branchTitle)) {
+        const rendered = renderMustacheTemplate(branchTitle, obj);
+        if (rendered) return rendered;
+        if (!branchTitle.includes("{")) return branchTitle;
+      }
     }
     for (const key of [
       "name",

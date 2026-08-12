@@ -4,6 +4,7 @@ import {
   getArrayItemImageSrc,
   getArrayItemLabel,
   renderMustacheTemplate,
+  stripMustacheTokens,
 } from "./array-item-display";
 import type { SchemaProperty } from "./resolve-schema";
 
@@ -93,6 +94,158 @@ describe("getArrayItemLabel", () => {
     expect(getArrayItemLabel(item, 0, undefined)).toBe(
       "BannerCarrouselDepartment",
     );
+  });
+
+  // Inline unions carry a per-branch Mustache title, resolved against branch data.
+  const matcherUnionSchema: SchemaProperty = {
+    type: "inline-union",
+    inlineUnionBranches: [
+      {
+        title: "Categoria {{{id}}}",
+        discriminators: { matcherType: "category" },
+        schema: {
+          type: "object",
+          properties: {
+            matcherType: { type: "string" },
+            id: { type: "string" },
+          },
+        },
+      },
+      {
+        title: "Cluster {{{value}}}",
+        discriminators: { matcherType: "cluster" },
+        schema: {
+          type: "object",
+          properties: {
+            matcherType: { type: "string" },
+            value: { type: "string" },
+          },
+        },
+      },
+    ],
+  };
+
+  test("labels an inline-union item by its active branch (discriminator match)", () => {
+    expect(
+      getArrayItemLabel(
+        { matcherType: "category", id: "123" },
+        0,
+        matcherUnionSchema,
+      ),
+    ).toBe("Categoria 123");
+    expect(
+      getArrayItemLabel(
+        { matcherType: "cluster", value: "45" },
+        1,
+        matcherUnionSchema,
+      ),
+    ).toBe("Cluster 45");
+  });
+
+  test("keeps the static branch prefix when Mustache fields are empty", () => {
+    expect(
+      getArrayItemLabel({ matcherType: "category" }, 0, matcherUnionSchema),
+    ).toBe("Categoria");
+  });
+
+  test("falls back past a purely-Mustache branch title with empty data", () => {
+    const schema: SchemaProperty = {
+      type: "inline-union",
+      inlineUnionBranches: [
+        {
+          title: "{{{value}}}",
+          discriminators: { matcherType: "cluster" },
+          schema: {
+            type: "object",
+            properties: {
+              matcherType: { type: "string" },
+              value: { type: "string" },
+            },
+          },
+        },
+      ],
+    };
+    expect(getArrayItemLabel({ matcherType: "cluster" }, 2, schema)).toBe(
+      "Item 3",
+    );
+  });
+
+  test("infers the branch by field presence when no discriminator matches", () => {
+    const schema: SchemaProperty = {
+      type: "inline-union",
+      inlineUnionBranches: [
+        {
+          title: "Período {{{start}}}",
+          schema: {
+            type: "object",
+            properties: { start: { type: "string" }, end: { type: "string" } },
+          },
+        },
+        {
+          title: "Produto {{{value}}}",
+          schema: {
+            type: "object",
+            properties: { value: { type: "string" } },
+          },
+        },
+      ],
+    };
+    expect(getArrayItemLabel({ value: "prod-9" }, 0, schema)).toBe(
+      "Produto prod-9",
+    );
+  });
+
+  test("labels a static (token-free) branch title verbatim", () => {
+    const schema: SchemaProperty = {
+      type: "inline-union",
+      inlineUnionBranches: [
+        {
+          title: "Localização",
+          discriminators: { kind: "location" },
+          schema: {
+            type: "object",
+            properties: { kind: { type: "string" }, city: { type: "string" } },
+          },
+        },
+      ],
+    };
+    expect(getArrayItemLabel({ kind: "location" }, 0, schema)).toBe(
+      "Localização",
+    );
+  });
+
+  // resolve-schema fills titleless branches with `Option N`; it must not shadow the item's own label.
+  test("falls through a synthetic 'Option N' branch title to the field scan", () => {
+    const schema: SchemaProperty = {
+      type: "inline-union",
+      inlineUnionBranches: [
+        {
+          title: "Option 1",
+          discriminators: { name: "max-age" },
+          schema: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              maxAge: { type: "number" },
+            },
+          },
+        },
+      ],
+    };
+    expect(getArrayItemLabel({ name: "max-age", maxAge: 60 }, 0, schema)).toBe(
+      "max-age",
+    );
+  });
+
+  test("colliding inline-union items share a clean label (no positional suffix)", () => {
+    const items = [
+      { matcherType: "category", id: "10" },
+      { matcherType: "category", id: "10" },
+    ];
+    expect(getArrayItemDisplayLabels(items, matcherUnionSchema)).toEqual([
+      "Categoria 10",
+      "Categoria 10",
+    ]);
   });
 
   test("colliding items keep an identical base label (no positional suffix)", () => {
@@ -187,6 +340,31 @@ describe("getArrayItemImageSrc", () => {
     expect(getArrayItemImageSrc(item, schema)).toBe(
       "https://example.com/mobile.jpg",
     );
+  });
+});
+
+describe("stripMustacheTokens", () => {
+  test("strips triple-brace tokens, keeping static text", () => {
+    expect(stripMustacheTokens("Categoria {{{id}}}")).toBe("Categoria");
+  });
+
+  test("strips double-brace tokens", () => {
+    expect(stripMustacheTokens("Cluster {{value}}")).toBe("Cluster");
+  });
+
+  test("collapses whitespace left between multiple tokens", () => {
+    expect(stripMustacheTokens("Período {{{start}}} — {{{end}}}")).toBe(
+      "Período —",
+    );
+  });
+
+  test("returns a token-free title unchanged", () => {
+    expect(stripMustacheTokens("Localização")).toBe("Localização");
+  });
+
+  test("returns empty string for a purely-Mustache title", () => {
+    expect(stripMustacheTokens("{{{value}}}")).toBe("");
+    expect(stripMustacheTokens("")).toBe("");
   });
 });
 
