@@ -86,7 +86,7 @@ export const TERMINAL_THREAD_STATUSES = new Set([
 /**
  * Should a task advance to In Review now that a thread finished? True iff it's
  * In Progress, has at least one thread that was actually used, and every such
- * thread's run has reached a terminal status. Agent-run tasks advance here
+ * thread's run has reached a terminal status. Repo-backed tasks advance here
  * too: the PR-open hook moves them earlier (mid-run, real-time) when it fires,
  * but thread-finish is the backstop so a task doesn't sit in In Progress forever
  * when PR detection misses (shell alias, script wrapper, or a PR opened by any
@@ -102,14 +102,11 @@ export const TERMINAL_THREAD_STATUSES = new Set([
  */
 export function shouldAdvanceToReview(item: {
   status: TaskBoardItemStatus;
-  repoOwner?: string | null;
   threads: { status: string | null; hasMessages: boolean }[];
 }): boolean {
   if (item.status !== "in_progress") return false;
   const used = item.threads.filter((t) => t.hasMessages);
   if (used.length === 0) return false;
-  // repoOwner-named (CMS) tasks wait for their PR: the CMS flow opens the PR and advances the card itself, so a finished edit with no PR must NOT jump to review.
-  if (item.repoOwner != null) return false;
   if (
     !used.every(
       (t) => t.status !== null && TERMINAL_THREAD_STATUSES.has(t.status),
@@ -206,8 +203,8 @@ export class TaskBoardStorage {
     priority?: TaskBoardItemPriority;
     assigneeId?: string | null;
     assignedBy?: string | null;
-    repoOwner?: string | null;
-    repoName?: string | null;
+    /** `owner/name` of the repo (site) this task pertains to. */
+    repo?: string | null;
     dueDate?: string | null;
     /** Sender-minted finding identity — see task-board-import. */
     externalKey?: string | null;
@@ -235,8 +232,7 @@ export class TaskBoardStorage {
         priority: params.priority ?? "medium",
         assignee_id: params.assigneeId ?? null,
         assigned_by: params.assignedBy ?? null,
-        repo_owner: params.repoOwner ?? null,
-        repo_name: params.repoName ?? null,
+        repo: params.repo ?? null,
         due_date: params.dueDate ?? null,
         external_key: params.externalKey ?? null,
         sort_order: sql<number>`(
@@ -267,8 +263,7 @@ export class TaskBoardStorage {
       priority?: TaskBoardItemPriority;
       assigneeId?: string | null;
       assignedBy?: string | null;
-      repoOwner?: string | null;
-      repoName?: string | null;
+      repo?: string | null;
       dueDate?: string | null;
       sortOrder?: number;
     },
@@ -289,8 +284,7 @@ export class TaskBoardStorage {
         ...(data.assignedBy !== undefined
           ? { assigned_by: data.assignedBy }
           : {}),
-        ...(data.repoOwner !== undefined ? { repo_owner: data.repoOwner } : {}),
-        ...(data.repoName !== undefined ? { repo_name: data.repoName } : {}),
+        ...(data.repo !== undefined ? { repo: data.repo } : {}),
         ...(data.dueDate !== undefined ? { due_date: data.dueDate } : {}),
         ...(data.sortOrder !== undefined ? { sort_order: data.sortOrder } : {}),
         updated_by: by,
@@ -1618,8 +1612,7 @@ export class TaskBoardStorage {
     priority: string;
     assignee_id: string | null;
     assigned_by: string | null;
-    repo_owner: string | null;
-    repo_name: string | null;
+    repo: string | null;
     due_date: string | Date | null;
     sort_order: number;
     retry_attempts?: number;
@@ -1637,8 +1630,7 @@ export class TaskBoardStorage {
       priority: row.priority as TaskBoardItemPriority,
       assigneeId: row.assignee_id,
       assignedBy: row.assigned_by,
-      repoOwner: row.repo_owner,
-      repoName: row.repo_name,
+      repo: row.repo,
       dueDate:
         row.due_date instanceof Date
           ? row.due_date.toISOString()

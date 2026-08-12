@@ -1632,8 +1632,7 @@ export interface TaskBoardItemTable {
   >;
   assignee_id: string | null;
   assigned_by: string | null;
-  repo_owner: string | null;
-  repo_name: string | null;
+  repo: string | null;
   due_date: ColumnType<
     Date | null,
     Date | string | null | undefined,
@@ -1804,10 +1803,9 @@ export interface TaskBoardItem {
   priority: TaskBoardItemPriority;
   assigneeId: string | null;
   assignedBy: string | null;
-  /** Which repo (site) this task pertains to — scopes it to a CMS/site.
-   *  Nullable: tasks created org-wide (no site context) carry neither. */
-  repoOwner: string | null;
-  repoName: string | null;
+  /** `owner/name` of the repo (site) this task pertains to. Nullable: tasks
+   *  created org-wide (no site context) carry none. */
+  repo: string | null;
   dueDate: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;

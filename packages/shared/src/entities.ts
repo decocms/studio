@@ -114,9 +114,8 @@ export interface TaskBoardItem {
   priority: TaskBoardItemPriority;
   assigneeId: string | null;
   assignedBy: string | null;
-  /** Which repo (site) this task pertains to — scopes it to a CMS/site. */
-  repoOwner: string | null;
-  repoName: string | null;
+  /** `owner/name` of the repo (site) this task pertains to. */
+  repo: string | null;
   dueDate: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;

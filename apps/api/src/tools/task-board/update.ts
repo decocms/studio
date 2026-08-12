@@ -118,8 +118,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     status: TaskBoardItemStatusSchema.optional(),
     priority: TaskBoardItemPrioritySchema.optional(),
     assigneeId: z.string().nullable().optional(),
-    repoOwner: z.string().nullable().optional(),
-    repoName: z.string().nullable().optional(),
+    repo: z.string().nullable().optional(),
     dueDate: z.string().datetime().nullable().optional(),
     /** New drag-to-reorder position within its lane (ascending). */
     sortOrder: z.number().optional(),
@@ -173,8 +172,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       input.status !== undefined ||
       input.priority !== undefined ||
       input.assigneeId !== undefined ||
-      input.repoOwner !== undefined ||
-      input.repoName !== undefined ||
+      input.repo !== undefined ||
       input.dueDate !== undefined ||
       input.sortOrder !== undefined ||
       input.tagIds !== undefined;
@@ -258,8 +256,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
               ? getUserId(ctx)!
               : null
             : undefined,
-          repoOwner: input.repoOwner,
-          repoName: input.repoName,
+          repo: input.repo,
           dueDate: input.dueDate,
           sortOrder: input.sortOrder,
         },
