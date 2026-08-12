@@ -272,6 +272,27 @@ Validates ExternalSecret configuration.
 {{- end }}
 
 {{/*
+Validates the optional Ingress. An enabled Ingress with no host renders a
+rules-less object the controller accepts and silently routes nothing, so fail
+at render time instead.
+*/}}
+{{- define "chart-deco-studio.validateIngress" -}}
+{{- if .Values.ingress.enabled }}
+{{- if not .Values.ingress.hosts }}
+{{- fail "chart-deco-studio: ingress.hosts is required when ingress.enabled=true" -}}
+{{- end }}
+{{- range .Values.ingress.hosts }}
+{{- if not .host }}
+{{- fail "chart-deco-studio: every entry in ingress.hosts needs a host" -}}
+{{- end }}
+{{- if not .paths }}
+{{- fail (printf "chart-deco-studio: ingress host %s has no paths — add at least { path: /, pathType: Prefix }" .host) -}}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
 Validates public NATS tunnel cluster-creds mount configuration.
 */}}
 {{- define "chart-deco-studio.validateNatsTunnel" -}}

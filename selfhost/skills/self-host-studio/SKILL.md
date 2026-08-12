@@ -63,13 +63,17 @@ detected environment, then walk these. Record answers into a values file you'll
    - **NATS**: bundled (default) OR their own (`nats.enabled=false` + `NATS_URL`).
 
 3. **Reachability / ingress** — the public URL → `BASE_URL` + `BETTER_AUTH_URL`
-   (`http://studio.localhost` locally; `https://studio.<domain>` real). The chart
-   renders NO Ingress, so ask what they have and expose accordingly:
-   - **have an ingress controller** (nginx/Traefik/ALB)? → they create an Ingress
-     to Service `<release>`:80 with their ingressClassName + TLS.
+   (`http://studio.localhost` locally; `https://studio.<domain>` real). The
+   chart's Ingress is optional and OFF by default, so ask what they have:
+   - **have an ingress controller** (nginx/Traefik/ALB)? → set `ingress.enabled=true`
+     + `className` + `hosts[].host` with a `/` `Prefix` path, and `tls` (chart
+     0.13.0+; it backs onto the release's own Service). Render fails if `hosts`
+     is empty or a host has no paths.
    - **cloud, no controller?** → `service.type=LoadBalancer` + DNS/TLS at the LB.
-   - **Istio/Gateway API?** → Gateway + HTTPRoute.
+   - **Istio/Gateway API?** → leave `ingress.enabled=false`, add Gateway + HTTPRoute.
    Locally it's just the `LoadBalancer:80` servicelb.
+   Whatever they pick, `BASE_URL`/`BETTER_AUTH_URL` must equal the public URL —
+   auth callbacks come from those, not from the request host.
 
 4. **Secrets** — how do they manage secrets? (ask; never inline in git)
    - **External Secrets Operator?** → `externalSecret.enabled=true` + `secretPath`
@@ -118,10 +122,15 @@ apiVersion: v2
 name: <name>
 version: 0.1.0
 dependencies:
+  # `repository` is the PARENT path — Helm appends the chart name. The Studio
+  # chart and the sandbox charts publish under DIFFERENT parents; using
+  # oci://ghcr.io/decocms for the sandbox ones 404s on `helm dependency build`.
   - { name: chart-deco-studio, version: "<pin>", repository: "oci://ghcr.io/decocms" }
-  - { name: sandbox-operator,  version: "<pin>", repository: "oci://ghcr.io/decocms" }
-  - { name: sandbox-env,       version: "<pin>", repository: "oci://ghcr.io/decocms" }
+  - { name: sandbox-operator,  version: "<pin>", repository: "oci://ghcr.io/decocms/studio/charts" }
+  - { name: sandbox-env,       version: "<pin>", repository: "oci://ghcr.io/decocms/studio/charts" }
 ```
+Run `helm dependency build <name>` right after writing Chart.yaml — it proves
+every path and pin resolves before you spend time on values.
 `<name>/values.yaml` — nest each subchart's config under its name, wiring the
 interview answers AND the cross-chart handshake: `chart-deco-studio.serviceAccount.create=true`,
 the shared sentinel token on both `chart-deco-studio…STUDIO_SANDBOX_SENTINEL_TOKEN`
@@ -263,7 +272,7 @@ wildcard **preview URLs** (Istio Gateway + cert-manager; needs Gateway API CRDs)
 | App `CrashLoop` with AWS-SDK `ECONNREFUSED` at boot | no S3 configured → the app tries to self-provision MinIO and fails; set `S3_ENDPOINT`+`S3_BUCKET`+`S3_ACCESS_KEY_ID`+`S3_SECRET_ACCESS_KEY` (bundled MinIO locally, managed S3 in prod) |
 | App/worker restarts early with `ECONNREFUSED :5432` | started before Postgres ready — benign, self-heals |
 | `insufficient storage resources` (NATS JetStream) | file store too small → raise `nats.config.jetstream.fileStore.pvc.size` (non-fatal) |
-| Sandbox pod `ImagePullBackOff` "no matching manifest for linux/arm64" | pinned a pre-1.17.3 `studio-sandbox` tag (amd64-only) → use ≥1.17.3 (multi-arch), which the umbrella already pins |
+| Sandbox pod `ImagePullBackOff` (manifest unknown, or "no matching manifest for linux/arm64") | overrode `sandbox-env.image.tag` with a stale/nonexistent tag — the daemon image is `studio-sandbox-go` and old `studio-sandbox` tags don't exist in it → drop the override and use the chart's own pin (multi-arch) |
 | `SandboxClaim` create → `403 Forbidden ... serviceaccount:deco-studio:default cannot create` | Studio ran as SA `default` but sandbox RBAC is granted to SA `deco-studio` → set `serviceAccount.create: true` so Studio runs as `deco-studio` (the umbrella does this) |
 | `SandboxClaim` stuck, condition `ReconcilerError: environment variable override is not allowed ... "DAEMON_TOKEN"` | Studio has no sentinel token → it cold-provisions (`warmpool: none`) and injects `DAEMON_TOKEN`, which the template rejects → set the SAME token on both sides: `sandbox-env.sentinel.token` and `STUDIO_SANDBOX_SENTINEL_TOKEN` (flips Studio to warm-pool mode; the umbrella wires both) |
 | Monitoring dashboard 500 / `UNKNOWN_TABLE: studio_monitoring_logs` | ClickHouse connects fine but the view isn't provisioned → the script creates it after ClickHouse + `otel_logs` are ready; if you ran raw helm, apply the DDL from `apps/api/src/monitoring/clickhouse-setup.md` |

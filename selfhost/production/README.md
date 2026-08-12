@@ -35,12 +35,21 @@ dependencies:
   - name: chart-deco-studio
     version: "<pin>"
     repository: "oci://ghcr.io/decocms"   # or file://… if vendored
+  # The sandbox charts publish under a different parent path. For an OCI
+  # dependency, `repository` is the PARENT — Helm appends the chart name.
   - name: sandbox-operator
     version: "<pin>"
-    repository: "oci://ghcr.io/decocms"
+    repository: "oci://ghcr.io/decocms/studio/charts"
   - name: sandbox-env
     version: "<pin>"
-    repository: "oci://ghcr.io/decocms"
+    repository: "oci://ghcr.io/decocms/studio/charts"
+```
+
+Confirm the pins resolve before wiring values — `helm dependency build` is the
+cheapest way to catch a wrong path or a version that was never published:
+
+```bash
+helm dependency build your-studio   # pulls all three into charts/
 ```
 
 Then `your-studio/values.yaml` wires all three consistently (SA, the shared
@@ -88,19 +97,37 @@ Two supported paths (never inline secret material in git):
 `BETTER_AUTH_SECRET` + `ENCRYPTION_KEY` MUST be stable across restarts; the
 sentinel token MUST equal `sandbox-env.sentinel.token`.
 
-### Ingress — the chart renders none; expose with what you have
+### Ingress — optional, off by default
 
 Studio's Service is `ClusterIP:80`. Pick the least-effort option for your cluster:
 
-1. **You already run an ingress controller** (nginx/Traefik/ALB) → create an
-   Ingress routing your host to Service `studio`:80 with your `ingressClassName`
-   + TLS (cert-manager or the controller's).
+1. **You already run an ingress controller** (nginx/Traefik/ALB) → turn on the
+   chart's Ingress (0.13.0+). It backs onto this release's Service, so you don't
+   hardcode the generated name, and `helm rollback`/`uninstall` cover it:
+
+   ```yaml
+   ingress:
+     enabled: true
+     className: nginx
+     annotations:
+       cert-manager.io/cluster-issuer: letsencrypt
+     hosts:
+       - host: studio.example.com
+         paths:
+           - path: /
+             pathType: Prefix
+     tls:
+       - hosts: [studio.example.com]
+         secretName: studio-tls
+   ```
+
 2. **Cloud, no controller** → `service.type=LoadBalancer`, then point DNS + TLS
    at the LB.
-3. **Istio / Gateway API** → a Gateway + HTTPRoute to the Service (same shape as
-   the sandbox preview gateway).
+3. **Istio / Gateway API** → leave `ingress.enabled: false` and add a Gateway +
+   HTTPRoute to the Service (same shape as the sandbox preview gateway).
 
-Set `BASE_URL` / `BETTER_AUTH_URL` to the public `https://` URL either way.
+Set `BASE_URL` / `BETTER_AUTH_URL` to the public `https://` URL either way —
+auth callbacks come from those, not from the request host.
 
 ## Sandbox (code-execution + previews)
 
