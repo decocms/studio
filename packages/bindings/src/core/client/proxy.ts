@@ -18,7 +18,17 @@ type Tool = {
   description: string;
 };
 
+// Caps toolsMap so distinct connection keys (e.g. refreshed OAuth tokens) can't leak memory forever.
+const MAX_CACHED_CONNECTIONS = 500;
 const toolsMap = new Map<string, Promise<Array<Tool>>>();
+
+function rememberToolsPromise(key: string, promise: Promise<Array<Tool>>) {
+  toolsMap.set(key, promise);
+  if (toolsMap.size > MAX_CACHED_CONNECTIONS) {
+    const oldest = toolsMap.keys().next().value;
+    if (oldest !== undefined) toolsMap.delete(oldest);
+  }
+}
 
 const mapTool = (
   tool: Tool,
@@ -141,7 +151,7 @@ export function createMCPClientProxy<T extends Record<string, unknown>>(
 
         try {
           if (!toolsMap.has(key)) {
-            toolsMap.set(key, listToolsFn());
+            rememberToolsPromise(key, listToolsFn());
           }
 
           return await toolsMap.get(key)!;
