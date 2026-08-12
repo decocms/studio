@@ -56,6 +56,35 @@ const DEVICES = {
   },
 };
 
+/**
+ * Scroll the whole page so lazy / IntersectionObserver-driven sections mount
+ * before the capture — the fix for below-the-fold product shelves and images
+ * that otherwise shoot as skeleton placeholders. Incremental steps (each
+ * section enters the viewport and trips its observer), a short pause per step
+ * for content to arrive, then back to the top. Bounded: stops when the page
+ * stops growing and hard-caps the step count so an infinite-scroll page can't
+ * loop forever. Runs entirely in the page, so it needs no network wait —
+ * `networkidle` would hang on analytics beacons.
+ */
+async function settleLazyContent(page) {
+  await page.evaluate(async () => {
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const vh = window.innerHeight || 800;
+    let y = 0;
+    for (let i = 0; i < 60; i++) {
+      window.scrollTo(0, y);
+      await sleep(250);
+      const max = document.documentElement.scrollHeight - vh;
+      if (y >= max) break;
+      y = Math.min(y + Math.round(vh * 0.85), max);
+    }
+    window.scrollTo(0, document.documentElement.scrollHeight);
+    await sleep(300);
+    window.scrollTo(0, 0);
+    await sleep(400);
+  });
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const flags = new Set(args.filter((a) => a.startsWith("--")));
@@ -80,8 +109,10 @@ async function main() {
     // `load` (not networkidle): analytics/beacons keep the network busy forever
     // on many sites, so networkidle hangs the capture.
     await page.goto(url, { waitUntil: "load", timeout: 45000 });
-    // Let late-mounting content (cookie bars, lazy sections) settle a beat.
-    await page.waitForTimeout(1500);
+    // Give the page a beat to hydrate, then scroll through it so lazy /
+    // below-the-fold sections actually mount instead of capturing as skeletons.
+    await page.waitForTimeout(800);
+    await settleLazyContent(page);
 
     // A full-page capture taller than the ceiling is truncated rather than
     // emitted oversized — an unusable image is worse than a partial one.
