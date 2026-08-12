@@ -32,9 +32,9 @@ describe("parseSelfToolResult", () => {
     ).toThrow("mensagem real");
   });
 
-  it("throws the default message when isError is set with no usable content", () => {
+  it("throws the sentinel message when isError is set with no usable content", () => {
     expect(() => parseSelfToolResult({ isError: true })).toThrow(
-      "A configuração do Commerce Discovery falhou.",
+      "__configurationFailed",
     );
   });
 
