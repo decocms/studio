@@ -41,9 +41,11 @@ aws s3 sync $DATA_DIR/traces s3://your-bucket/traces
 
 Para deployments em produção, o ClickHouse fornece agregações rápidas e escaláveis sobre os dados de monitoramento.
 
-1. Defina a variável de ambiente `CLICKHOUSE_URL` para o endpoint HTTP do seu ClickHouse.
-2. Crie tabelas chamadas `monitoring_logs` e `monitoring_metrics` na sua instância do ClickHouse.
-3. Quando configurado, a UI de monitoramento consulta o ClickHouse diretamente via HTTP.
+1. Aponte um collector OTLP para o ClickHouse. O Studio emite a telemetria de monitoramento como **log records** OpenTelemetry padrão com atributos `studio.monitoring.*`, que o exporter grava na tabela `otel_logs` — criada por ele na primeira escrita.
+2. Crie a **view** `studio_monitoring_logs` sobre `otel_logs`. O dashboard lê essa view, não uma tabela, e provisioná-la é uma etapa única que a aplicação nunca executa sozinha. O DDL e as ressalvas de nomes de coluna estão em [`apps/api/src/monitoring/clickhouse-setup.md`](https://github.com/decocms/studio/blob/main/apps/api/src/monitoring/clickhouse-setup.md).
+3. Defina `CLICKHOUSE_URL` com o endpoint HTTP do seu ClickHouse. Acesso de leitura basta — o Studio apenas consulta.
+
+Faça o deploy antes de provisionar a view, não o contrário: ela é definida sobre uma tabela que o collector cria na primeira escrita. Até a view existir, o dashboard falha em toda consulta — esperado, e resolve assim que você a cria. Não existe tabela separada de métricas: contagens, médias e percentis derivam das mesmas linhas de log.
 
 ```bash
 CLICKHOUSE_URL=https://your-clickhouse-instance:8123
