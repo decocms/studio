@@ -28,8 +28,15 @@ const BROWSERLESS_FETCH_TIMEOUT_MS = 45_000;
 // Upstream error bodies are unbounded — cap what lands in the tool error.
 const ERROR_BODY_MAX_CHARS = 500;
 
+// Reject non-http(s) schemes (file:, javascript:, ...) before forwarding to Browserless.
 const InspectPageInputSchema = z.object({
-  url: z.string().url().describe("The URL of the web page to inspect."),
+  url: z
+    .string()
+    .url()
+    .refine((url) => /^https?:\/\//i.test(url), {
+      message: "URL must use http or https",
+    })
+    .describe("The URL of the web page to inspect."),
   evaluate: z
     .string()
     .optional()
