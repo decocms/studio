@@ -24,4 +24,14 @@ describe("parsePositiveIntFlag", () => {
   test("rejects a non-integer value", () => {
     expect(() => parsePositiveIntFlag("batch", "1.5")).toThrow();
   });
+
+  test("accepts a value within an optional max", () => {
+    expect(parsePositiveIntFlag("port", "3000", 65535)).toBe(3000);
+  });
+
+  test("rejects a value above an optional max", () => {
+    expect(() => parsePositiveIntFlag("port", "70000", 65535)).toThrow(
+      'Invalid --port "70000" — must be a positive integer up to 65535.',
+    );
+  });
 });
