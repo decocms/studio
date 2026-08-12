@@ -87,24 +87,32 @@ interface FastPreviewProject {
 }
 
 /**
- * Full Fast Preview project wiring: org GitHub connection + repo-scoped child
- * (metadata.repoScope with sourceConnectionId — required even on the cached-
- * token path), a pre-seeded unexpired downstream token (short-circuits
- * minting), and a virtual MCP whose metadata carries the Fast Preview gate
- * (fastPreview + productionUrl) and githubRepo.connectionId listed among its
- * connections.
+ * Full Fast Preview project wiring: repo-scoped GitHub child + unexpired
+ * downstream token + a virtual MCP carrying the Fast Preview gate.
+ * `repoScopeMode` picks which real repo-child shape to seed; the two resolve
+ * credentials down different paths (see `client-for-repo`), and the default is
+ * the one every repo imported since refreshable grants landed actually has.
  */
 async function createFastPreviewProject(
   ctx: APIRequestContext,
   org: string,
-  params: { owner: string; repo: string },
+  params: {
+    owner: string;
+    repo: string;
+    repoScopeMode?: "refreshable" | "legacy-mint";
+  },
 ): Promise<FastPreviewProject> {
-  const { owner, repo } = params;
+  const { owner, repo, repoScopeMode = "refreshable" } = params;
 
-  const orgConn = await createHttpConnection(ctx, org, {
-    title: `Org GitHub ${Date.now()}`,
-    url: "https://example.com/mcp",
-  });
+  const sourceConnectionId =
+    repoScopeMode === "legacy-mint"
+      ? (
+          await createHttpConnection(ctx, org, {
+            title: `Org GitHub ${Date.now()}`,
+            url: "https://example.com/mcp",
+          })
+        ).id
+      : undefined;
 
   const child = await callSelfMcpTool<{ item: { id: string } }>(
     ctx,
@@ -118,7 +126,7 @@ async function createFastPreviewProject(
         connection_url: "https://example.com/mcp",
         metadata: {
           repoScope: {
-            sourceConnectionId: orgConn.id,
+            ...(sourceConnectionId ? { sourceConnectionId } : {}),
             installationId: 1,
             repositoryId: 99,
             owner,
@@ -132,7 +140,7 @@ async function createFastPreviewProject(
   const childConnectionId = child.item.id;
   expect(childConnectionId).toBeTruthy();
 
-  // Unexpired token -> ensureRepoScopedToken returns it without minting.
+  // Unexpired token: read back directly, or short-circuits the legacy mint.
   const tokenRes = await ctx.post(
     `/api/${org}/connections/${childConnectionId}/oauth-token`,
     {
@@ -416,6 +424,38 @@ test.describe("decofile API", () => {
       await ctx.dispose();
       await anon.dispose();
       await outsider.dispose();
+    }
+  });
+
+  test("legacy repo children (repoScope.sourceConnectionId) read through the mint path", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const user = await signUpViaApi(ctx);
+      const owner = uniqueOwner();
+      const repo = "site";
+      await seedStubRepo(ctx, {
+        owner,
+        repo,
+        defaultBranch: "main",
+        branches: {
+          main: { files: { ".deco/blocks/Hero.json": '{"n":1}\n' } },
+        },
+      });
+
+      const project = await createFastPreviewProject(ctx, user.orgSlug, {
+        owner,
+        repo,
+        repoScopeMode: "legacy-mint",
+      });
+
+      const res = await ctx.get(decofileUrl(project, "main"));
+      expect(res.status()).toBe(200);
+      const body = (await res.json()) as DecofileGetBody;
+      expect(body.decofile["Hero"]).toEqual({ n: 1 });
+    } finally {
+      await ctx.dispose();
     }
   });
 
