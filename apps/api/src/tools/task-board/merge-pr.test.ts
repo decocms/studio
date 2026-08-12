@@ -35,14 +35,17 @@ describe("mayBeConflict", () => {
   });
 
   // A 429 says nothing about mergeability, and re-asking IS the burst.
-  it("is false for a rate-limited refusal", () => {
+  it("is false for a rate limit however it is detailed", () => {
     expect(
       mayBeConflict({
         merged: false,
-        reason: "refused",
+        reason: "rate_limited",
         detail: "Streamable HTTP error: too many requests",
       }),
     ).toBe(false);
+    expect(mayBeConflict({ merged: false, reason: "rate_limited" })).toBe(
+      false,
+    );
   });
 
   it("is false for every non-refusal outcome", () => {
@@ -52,6 +55,7 @@ describe("mayBeConflict", () => {
       "checks_pending",
       "checks_failing",
       "no_connection",
+      "rate_limited",
       "error",
     ] as const) {
       expect(mayBeConflict({ merged: false, reason })).toBe(false);

@@ -104,6 +104,8 @@ export const taskBoard = {
     "não conseguiu mesclar — as verificações do pull request estão falhando",
   "taskBoard.taskDialog.activityMergeFailedNoConnection":
     "não conseguiu mesclar — esta organização não tem conexão do GitHub para {detail}. Conecte esse repositório para publicar esta tarefa.",
+  "taskBoard.taskDialog.activityMergeFailedRateLimited":
+    "ainda não deu para fazer o merge — o GitHub está limitando nossas requisições. Isso é tentado de novo automaticamente.",
   "taskBoard.taskDialog.activityMergeFailedRefused":
     "o GitHub recusou o merge: {detail}",
   "taskBoard.taskDialog.activityMergeFailedError":

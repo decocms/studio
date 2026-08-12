@@ -32,6 +32,7 @@ export type MergeFailureReason =
   | "checks_pending"
   | "checks_failing"
   | "no_connection"
+  | "rate_limited"
   | "refused"
   | "error";
 
@@ -156,6 +157,13 @@ export async function mergeLinkedPr(
       const content = JSON.stringify(
         (result as { content?: unknown })?.content,
       );
+      // A 429 arrives in the refusal's shape; calling it one reads as terminal.
+      if (isRateLimitError(content)) {
+        console.warn(
+          `[task-board] merge rate-limited on PR #${pr.number} — sweep retries`,
+        );
+        return fail("rate_limited", content?.slice(0, 500));
+      }
       console.error(
         `[task-board] merge refused by GitHub on PR #${pr.number}:`,
         content,
@@ -167,8 +175,11 @@ export async function mergeLinkedPr(
     invalidatePrReads(conn.id);
     return { merged: true };
   } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    // Same 429, thrown rather than returned — the transport decides which.
+    if (isRateLimitError(err)) return fail("rate_limited", detail);
     console.error("[task-board] merge PR failed", err);
-    return fail("error", err instanceof Error ? err.message : String(err));
+    return fail("error", detail);
   } finally {
     await client.close().catch(() => {});
   }
@@ -243,13 +254,12 @@ async function handUnverifiedApprovalToHuman(
  * whether the PR conflicts. Pure — unit-tested.
  *
  * Only a refusal can be a conflict; every other reason (no PR, no connection,
- * red or pending checks) is definitely not one. A rate-limited refusal is
- * excluded too: it says nothing about mergeability, and paying another GitHub
- * call into a 429 is the burst that keeps the limit shut.
+ * red or pending checks) is definitely not one. `rate_limited` is a separate
+ * reason precisely so it lands here: it says nothing about mergeability, and
+ * paying another GitHub call into a 429 is the burst that keeps the limit shut.
  */
 export function mayBeConflict(outcome: MergeOutcome): boolean {
-  if (outcome.merged || outcome.reason !== "refused") return false;
-  return !isRateLimitError(outcome.detail ?? "");
+  return !outcome.merged && outcome.reason === "refused";
 }
 
 /**
