@@ -4,6 +4,7 @@ import {
   getArrayItemImageSrc,
   getArrayItemLabel,
   renderMustacheTemplate,
+  stripMustacheTokens,
 } from "./array-item-display";
 import type { SchemaProperty } from "./resolve-schema";
 
@@ -194,6 +195,48 @@ describe("getArrayItemLabel", () => {
     );
   });
 
+  test("labels a static (token-free) branch title verbatim", () => {
+    const schema: SchemaProperty = {
+      type: "inline-union",
+      inlineUnionBranches: [
+        {
+          title: "Localização",
+          discriminators: { kind: "location" },
+          schema: {
+            type: "object",
+            properties: { kind: { type: "string" }, city: { type: "string" } },
+          },
+        },
+      ],
+    };
+    expect(getArrayItemLabel({ kind: "location" }, 0, schema)).toBe(
+      "Localização",
+    );
+  });
+
+  // resolve-schema fills titleless branches with `Option N`; it must not shadow the item's own label.
+  test("falls through a synthetic 'Option N' branch title to the field scan", () => {
+    const schema: SchemaProperty = {
+      type: "inline-union",
+      inlineUnionBranches: [
+        {
+          title: "Option 1",
+          discriminators: { name: "max-age" },
+          schema: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              maxAge: { type: "number" },
+            },
+          },
+        },
+      ],
+    };
+    expect(getArrayItemLabel({ name: "max-age", maxAge: 60 }, 0, schema)).toBe(
+      "max-age",
+    );
+  });
+
   test("colliding inline-union items share a clean label (no positional suffix)", () => {
     const items = [
       { matcherType: "category", id: "10" },
@@ -297,6 +340,31 @@ describe("getArrayItemImageSrc", () => {
     expect(getArrayItemImageSrc(item, schema)).toBe(
       "https://example.com/mobile.jpg",
     );
+  });
+});
+
+describe("stripMustacheTokens", () => {
+  test("strips triple-brace tokens, keeping static text", () => {
+    expect(stripMustacheTokens("Categoria {{{id}}}")).toBe("Categoria");
+  });
+
+  test("strips double-brace tokens", () => {
+    expect(stripMustacheTokens("Cluster {{value}}")).toBe("Cluster");
+  });
+
+  test("collapses whitespace left between multiple tokens", () => {
+    expect(stripMustacheTokens("Período {{{start}}} — {{{end}}}")).toBe(
+      "Período —",
+    );
+  });
+
+  test("returns a token-free title unchanged", () => {
+    expect(stripMustacheTokens("Localização")).toBe("Localização");
+  });
+
+  test("returns empty string for a purely-Mustache title", () => {
+    expect(stripMustacheTokens("{{{value}}}")).toBe("");
+    expect(stripMustacheTokens("")).toBe("");
   });
 });
 

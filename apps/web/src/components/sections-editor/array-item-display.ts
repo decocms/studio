@@ -86,6 +86,21 @@ function stripHtmlTags(html: string): string {
   return html.replace(/<[^>]*>/g, "").trim();
 }
 
+/** Drop Mustache tokens from a title, leaving only its static text
+ * (`Categoria {{{id}}}` → `Categoria`). For contexts with no item data. */
+export function stripMustacheTokens(title: string): string {
+  return title
+    .replace(/\{\{\{?[^{}]*\}?\}\}/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Resolve-schema fills a titleless inline-union branch with `Option N`; that
+ * synthetic default must not shadow the item's own fields when labelling. */
+function isSyntheticBranchTitle(title: string): boolean {
+  return /^Option \d+$/.test(title);
+}
+
 function readTitleByValue(
   obj: Record<string, unknown>,
   titleBy: string,
@@ -138,7 +153,7 @@ function baseArrayItemLabel(
         })),
       );
       const branchTitle = itemSchema.inlineUnionBranches[idx]?.title;
-      if (branchTitle) {
+      if (branchTitle && !isSyntheticBranchTitle(branchTitle)) {
         const rendered = renderMustacheTemplate(branchTitle, obj);
         if (rendered) return rendered;
         if (!branchTitle.includes("{")) return branchTitle;

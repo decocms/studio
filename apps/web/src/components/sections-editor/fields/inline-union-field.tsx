@@ -7,6 +7,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@decocms/ui/components/select.tsx";
+import { stripMustacheTokens } from "../array-item-display";
 import type { SchemaProperty } from "../resolve-schema";
 import { SchemaForm } from "../schema-form";
 import { FieldLabel } from "./field-label";
@@ -19,17 +20,6 @@ import { LocationField } from "./location-field";
 import { isLocationShape } from "./location/location-value";
 
 type Branch = NonNullable<SchemaProperty["inlineUnionBranches"]>[number];
-
-/** The dropdown has no item data, so show only the static part of a branch
- * title — drop Mustache tokens (`Categoria {{{id}}}` → `Categoria`). */
-function branchOptionLabel(title: string, index: number): string {
-  return (
-    title
-      .replace(/\{\{\{?[^{}]*\}?\}\}/g, "")
-      .replace(/\s+/g, " ")
-      .trim() || `Option ${index + 1}`
-  );
-}
 
 /** Drop const discriminator fields from a branch schema — they're implied by
  * the selected branch and shouldn't render as editable inputs. */
@@ -116,7 +106,10 @@ export function InlineUnionField(props: FieldProps) {
           <SelectContent>
             {branches.map((branch, index) => (
               <SelectItem key={branch.title} value={String(index)}>
-                {branchOptionLabel(branch.title, index)}
+                {stripMustacheTokens(branch.title) ||
+                  t("sectionsEditor.inlineUnionField.branchFallback", {
+                    index: index + 1,
+                  })}
               </SelectItem>
             ))}
           </SelectContent>
