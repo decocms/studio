@@ -1,17 +1,4 @@
-/**
- * Report Routes — `/api/_reports/*`
- *
- * Proxy between the report page (`/report/:domain`) and the reports engine
- * (reports.decocms.com, `/api/v2`). The engine's master API key stays
- * server-side; the caller's session email is the only delivery address
- * accepted when a scan starts.
- *
- * `GET /site/:domain` is the one route that also serves unauthenticated
- * callers — it returns only the cover slide of an already-completed scan, so
- * the first card of a report is visible before login. Everything else
- * (starting a scan, polling it, resolving email links) still requires a
- * session.
- */
+/** Report Routes — `/api/_reports/*`: proxy to the reports engine (`/api/v2`), master key server-side. Login gates reading the deck, not producing it — see each route below. */
 
 import { Hono, type MiddlewareHandler } from "hono";
 import { auth } from "@/auth";
@@ -93,8 +80,6 @@ const requireReportUser: MiddlewareHandler<ReportsEnv> = async (c, next) => {
   return undefined;
 };
 
-app.use("/run", requireReportUser);
-app.use("/status", requireReportUser);
 app.use("/link-token/*", requireReportUser);
 app.use("/suggest", requireReportUser);
 
@@ -125,14 +110,16 @@ app.get("/site/:domain", async (c) => {
   }
 });
 
-/** POST /api/_reports/run — trigger a scan (master-key, server-only). The
- *  engine is idempotent + single-flight, so spamming this for a domain never
- *  starts parallel runs. The engine receives the authenticated session email
- *  to notify the requester; it never accepts a caller-supplied address. The
- *  optional `distinctId` is the visitor's PostHog id, so the engine's
- *  server-side funnel events attribute to the same person. */
+/** POST /api/_reports/run — trigger a scan (master-key, server-only). Open to
+ *  anonymous callers: producing a report needs no account, only reading the
+ *  full deck does. The engine is idempotent + single-flight, so spamming this
+ *  for a domain never starts parallel runs. When there IS a session, its email
+ *  is sent as the requester's notification address — never a caller-supplied
+ *  one; anonymous runs send none and are followed in-tab instead. The optional
+ *  `distinctId` is the visitor's PostHog id, so the engine's server-side funnel
+ *  events attribute to the same person. */
 app.post("/run", async (c) => {
-  const user = c.get("reportUser")!;
+  const user = c.get("reportUser");
   let body: { domain?: unknown; distinctId?: unknown };
   try {
     body = await c.req.json();
@@ -141,7 +128,7 @@ app.post("/run", async (c) => {
   }
   const domain = typeof body.domain === "string" ? body.domain.trim() : "";
   if (!domain) return c.json({ error: "domain is required" }, 400);
-  const email = user.email;
+  const email = user?.email;
   const distinctId =
     typeof body.distinctId === "string" &&
     body.distinctId.trim() &&
@@ -156,7 +143,11 @@ app.post("/run", async (c) => {
         "Content-Type": "application/json",
         Authorization: `Bearer ${resolveApiKey({})}`,
       },
-      body: JSON.stringify({ url: domain, email, distinct_id: distinctId }),
+      body: JSON.stringify({
+        url: domain,
+        ...(email ? { email } : {}),
+        distinct_id: distinctId,
+      }),
     });
     if (!res.ok) return c.json({ error: `run HTTP ${res.status}` }, 502);
     const j = (await res.json()) as {

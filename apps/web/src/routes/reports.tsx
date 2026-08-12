@@ -245,10 +245,8 @@ export default function ReportPage() {
     />
   ) : session.isPending ? (
     <ReportAuthGate domain={domain} loading />
-  ) : !authenticated ? (
-    // No completed scan yet, and anonymous visitors can't start one.
-    <ReportAuthGate domain={domain} />
   ) : (
+    // No completed scan yet — anonymous visitors start one too.
     <ScanGate
       domain={domain}
       initial={initial.data}

@@ -11,7 +11,7 @@ import {
   reportDrops,
   type ScanPhase,
 } from "./orchestrate-scan";
-import { ReportAuthGate, ReportBackdrop } from "./auth-gate";
+import { ReportAuthGate, ReportAuthOverlay, ReportBackdrop } from "./auth-gate";
 import { ReportSocialProof } from "./report-social-proof";
 import SignalDeck from "./signal-deck";
 import { DECK } from "./templates/tokens";
@@ -201,7 +201,7 @@ function ScanScreen({
               {t("reports.scanGate.subtitle")}
             </p>
 
-            {/* Authenticated delivery address */}
+            {/* Delivery address, or the sign-in that becomes one */}
             <div
               className="mt-4 sm:mt-5 rounded-xl sm:rounded-2xl px-4 sm:px-5 py-4 sm:py-5"
               style={{ background: "#F2F1EF" }}
@@ -210,9 +210,17 @@ function ScanScreen({
                 className="mb-2.5 sm:mb-3 text-[15px] sm:text-[16px]"
                 style={{ color: DECK.ink }}
               >
-                {t("reports.scanGate.notificationLabel")}
+                {t(
+                  email
+                    ? "reports.scanGate.notificationLabel"
+                    : "reports.scanGate.anonymousLabel",
+                )}
               </p>
-              <NotificationEmail email={email} />
+              {email ? (
+                <NotificationEmail email={email} />
+              ) : (
+                <SignInToBeNotified domain={domain} />
+              )}
             </div>
 
             {/* Tracker */}
@@ -403,6 +411,35 @@ function StepDot({ state }: { state: StageState }) {
       className="h-[18px] w-[18px] shrink-0 rounded-full"
       style={{ border: `1.5px solid ${DECK.border}` }}
     />
+  );
+}
+
+// ── anonymous: sign in to get the finished report ────────────────────────────
+
+/** The scan runs without an account, so there's no address to deliver it to.
+ *  Signing in from here (same in-place card the deck uses — no navigation, so
+ *  the poll keeps running behind it) both registers the requester's email with
+ *  the engine's notification list and unlocks the deck past the cover. */
+function SignInToBeNotified({ domain }: { domain: string }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex h-11 w-full items-center justify-center rounded-xl px-5 text-[14px] font-medium transition-transform active:scale-[0.98]"
+        style={{ background: DECK.primary, color: DECK.primaryFg }}
+      >
+        {t("reports.scanGate.anonymousSignIn")}
+      </button>
+      <p className="mt-2.5 text-[12px] leading-4" style={{ color: DECK.muted }}>
+        {t("reports.scanGate.anonymousHelp")}
+      </p>
+      {open && (
+        <ReportAuthOverlay domain={domain} onClose={() => setOpen(false)} />
+      )}
+    </>
   );
 }
 
