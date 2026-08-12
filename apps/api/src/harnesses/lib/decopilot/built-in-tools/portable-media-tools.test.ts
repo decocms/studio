@@ -3,6 +3,7 @@ import {
   buildScreenshotOptions,
   buildScreenshotRequestBody,
   jpegHeight,
+  validateExternalUrl,
 } from "./portable-media-tools";
 
 describe("buildScreenshotOptions", () => {
@@ -123,6 +124,24 @@ function jpegWith(height: number, width = 1280): Uint8Array {
     ...sof,
   ]);
 }
+
+describe("validateExternalUrl", () => {
+  it("rejects loopback", () => {
+    expect(() => validateExternalUrl("https://127.0.0.1/x", false)).toThrow();
+  });
+
+  // fc00::/7 unique local addresses span fc00::/8 AND fd00::/8.
+  it("rejects fc00::/8 unique local addresses, not just fd00::/8", () => {
+    expect(() => validateExternalUrl("https://[fc00::1]/x", false)).toThrow();
+    expect(() => validateExternalUrl("https://[fd00::1]/x", false)).toThrow();
+  });
+
+  it("allows a normal public https URL", () => {
+    expect(() =>
+      validateExternalUrl("https://example.com/image.png", false),
+    ).not.toThrow();
+  });
+});
 
 describe("jpegHeight", () => {
   it("reads the height past intervening segments", () => {

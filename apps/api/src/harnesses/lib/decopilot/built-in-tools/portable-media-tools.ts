@@ -299,7 +299,8 @@ const PRIVATE_HOST_PATTERNS = [
   /^169\.254\./,
   /^0\./,
   /^\[::1\]$/,
-  /^\[fd/,
+  // RFC 4193 unique local addresses are fc00::/7 — first byte fc OR fd.
+  /^\[f[cd]/,
   /^\[fe80:/,
   /^\[::ffff:/i,
   /^localhost$/i,
@@ -315,7 +316,7 @@ function assertReferenceImageSize(bytes: number): void {
   }
 }
 
-function validateExternalUrl(url: string, allowHttp: boolean): void {
+export function validateExternalUrl(url: string, allowHttp: boolean): void {
   let parsed: URL;
   try {
     parsed = new URL(url);
