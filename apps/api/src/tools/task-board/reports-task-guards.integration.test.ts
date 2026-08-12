@@ -154,6 +154,29 @@ describe("reports-task guards", () => {
     expect((await taskBoard.getById(second.id, ORG))?.assigneeId).toBeNull();
   });
 
+  // Mirrors TASK_BOARD_ITEM_RERUN's userInitiatedTaskQuotaConfig() precheck.
+  it("a HUMAN re-delegating a runs-exhausted task is not blocked by the per-task cap", async () => {
+    const config = {
+      enforced: true,
+      freeTaskExecutions: 5,
+      monthlyTaskExecutions: 5,
+      maxRunsPerTask: 1,
+    };
+    const task = await taskBoard.create({
+      organizationId: ORG,
+      title: "finding-c",
+      by: "system",
+    });
+    await claimTaskExecution(ctx, task, config);
+    // The task already burned its one allowed run — the automatic config refuses it.
+    await expect(ensureTaskExecutionAllowed(ctx, task, config)).rejects.toThrow(
+      /execution limit/,
+    );
+    // Re-delegating it BY HAND must still be allowed.
+    const manual = { ...config, maxRunsPerTask: Number.POSITIVE_INFINITY };
+    await ensureTaskExecutionAllowed(ctx, task, manual);
+  });
+
   // Inverts the old assertion: delete used to be refused for a reports task.
   it("deletes a reports task and dismisses its finding", async () => {
     const reportsTask = await taskBoard.create({
