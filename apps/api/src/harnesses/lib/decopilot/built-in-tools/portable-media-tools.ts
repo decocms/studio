@@ -1,5 +1,6 @@
 import { generateImage, tool, type UIMessageStreamWriter } from "ai";
 import { zodSchema } from "ai";
+import { lookup } from "node:dns/promises";
 import { z } from "zod";
 import {
   parseStudioStorageKey,
@@ -338,6 +339,59 @@ export function validateExternalUrl(url: string, allowHttp: boolean): void {
   }
 }
 
+/** Bare resolved IP (no brackets) against the same private/loopback/link-local
+ *  ranges `PRIVATE_HOST_PATTERNS` vets on the literal hostname. */
+function isPrivateIpAddress(ip: string): boolean {
+  const v4 = ip.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (v4) {
+    const a = Number(v4[1]);
+    const b = Number(v4[2]);
+    if (a === 127 || a === 10 || a === 0) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 169 && b === 254) return true;
+    return false;
+  }
+  const v6 = ip.toLowerCase();
+  return (
+    v6 === "::1" ||
+    v6.startsWith("::ffff:") ||
+    v6.startsWith("fc") ||
+    v6.startsWith("fd") ||
+    v6.startsWith("fe80")
+  );
+}
+
+/**
+ * DNS-rebinding guard: `validateExternalUrl` only vets the literal hostname
+ * written in the URL, so a domain whose DNS record points at a private or
+ * cloud-metadata address (an attacker-controlled A record) sails right
+ * through it and reaches an internal service through this tool's own
+ * `fetch`. `resolveHost` is injectable for tests; production resolves real DNS.
+ */
+export async function assertUrlDoesNotResolvePrivate(
+  url: string,
+  resolveHost: (host: string) => Promise<string[]> = async (host) =>
+    (await lookup(host, { all: true })).map((r) => r.address),
+): Promise<void> {
+  const hostname = new URL(url).hostname;
+  const isIpLiteral =
+    /^\d+\.\d+\.\d+\.\d+$/.test(hostname) ||
+    (hostname.startsWith("[") && hostname.endsWith("]"));
+  // An IP literal is already fully vetted synchronously by validateExternalUrl.
+  if (isIpLiteral) return;
+  let addresses: string[];
+  try {
+    addresses = await resolveHost(hostname);
+  } catch {
+    // Can't verify where this hostname actually points — fail closed.
+    throw new Error("Image URL must not point to a private network address");
+  }
+  if (addresses.length === 0 || addresses.some(isPrivateIpAddress)) {
+    throw new Error("Image URL must not point to a private network address");
+  }
+}
+
 async function readFromObjectStorage(
   key: string,
   objectStorage: PortableMediaObjectStorage | null | undefined,
@@ -381,6 +435,7 @@ async function fetchImageBytes(
   }
 
   validateExternalUrl(url, params.allowHttpExternalUrls === true);
+  await assertUrlDoesNotResolvePrivate(url);
   const res = await fetch(url, { signal: params.abortSignal });
   if (!res.ok) {
     throw new Error(`Failed to fetch image from ${url}: ${res.status}`);

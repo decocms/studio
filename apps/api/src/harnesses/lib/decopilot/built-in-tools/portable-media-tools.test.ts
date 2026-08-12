@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  assertUrlDoesNotResolvePrivate,
   buildScreenshotOptions,
   buildScreenshotRequestBody,
   jpegHeight,
@@ -140,6 +141,32 @@ describe("validateExternalUrl", () => {
     expect(() =>
       validateExternalUrl("https://example.com/image.png", false),
     ).not.toThrow();
+  });
+});
+
+describe("assertUrlDoesNotResolvePrivate", () => {
+  // The DNS-rebinding case validateExternalUrl's literal-hostname check misses.
+  it("rejects a hostname whose DNS resolves to a private address", async () => {
+    const resolveHost = async () => ["169.254.169.254"];
+    await expect(
+      assertUrlDoesNotResolvePrivate("https://evil.example/x", resolveHost),
+    ).rejects.toThrow();
+  });
+
+  it("allows a hostname resolving only to public addresses", async () => {
+    const resolveHost = async () => ["93.184.216.34"];
+    await expect(
+      assertUrlDoesNotResolvePrivate("https://example.com/x", resolveHost),
+    ).resolves.toBeUndefined();
+  });
+
+  it("skips the DNS lookup for an IP literal — already vetted synchronously", async () => {
+    const resolveHost = async (): Promise<string[]> => {
+      throw new Error("resolveHost should not be called for an IP literal");
+    };
+    await expect(
+      assertUrlDoesNotResolvePrivate("https://127.0.0.1/x", resolveHost),
+    ).resolves.toBeUndefined();
   });
 });
 
