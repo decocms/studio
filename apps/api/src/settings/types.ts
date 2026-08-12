@@ -88,6 +88,12 @@ export interface Settings {
   /** The flat monthly org-subscription price (created in the Stripe
    *  dashboard); quantity is always 1. */
   stripeOrgPriceId: string | undefined;
+  /** The single catalog Product every top-up charge hangs off (created once in
+   *  the Stripe dashboard). Top-up amounts are arbitrary, so the Price is
+   *  ad-hoc per checkout — but it must point at THIS product, or Stripe's
+   *  catalog fills with one throwaway product per purchase and revenue can't
+   *  be aggregated. Unset → legacy per-purchase products. */
+  stripeTopupProductId: string | undefined;
   /** Fee on AI-credit top-ups, percent (default 15 — gateway parity). */
   topupFeePercent: number;
 
