@@ -21,7 +21,7 @@ folder has ready-made scripts, example values, and the full dependency map.
 | **Production — Kubernetes** | `helm install` [the chart](/en/studio/self-hosting/deploy/kubernetes) | external/managed Postgres + S3 + NATS + ClickHouse |
 
 <Callout type="tip">
-  **Prefer a guided install?** Add the interactive **self-host skill** to Claude Code — it walks you through the tiers below, asking what you have (dependencies managed or in-cluster, secrets, sandbox), filling the Helm values, validating with `helm template`, and installing.
+  **Prefer a guided install?** The **self-host guide for coding agents** ([`SKILL.md`](https://github.com/decocms/studio/blob/main/selfhost/skills/self-host-studio/SKILL.md)) interviews you — dependencies managed or in-cluster, secrets, sandbox — then writes an install directory you keep: an umbrella chart with pinned OCI dependencies plus your values, validated with `helm template` before anything is applied. The same directory installs on a laptop cluster and on a managed one, and no clone of this repo is involved. It's plain markdown, so point any coding agent at it; in Claude Code you can install it as a skill:
 </Callout>
 
 Add it once (the repo is public), then tell Claude Code **"install Studio"**:
