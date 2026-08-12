@@ -135,6 +135,12 @@ Global validations to ensure scaling requirements are met.
 {{- if and $usesPostgres (not .Values.database.url) (not .Values.secret.secretName) (not .Values.externalSecret.enabled) }}
 {{- fail "chart-deco-studio: set database.url when database.engine=postgresql, or use secret.secretName to provide DATABASE_URL via Secret" -}}
 {{- end }}
+{{- if and .Values.autoscaling.enabled (gt (int .Values.autoscaling.minReplicas) (int .Values.autoscaling.maxReplicas)) }}
+{{- fail (printf "chart-deco-studio: autoscaling.minReplicas (%d) must not exceed autoscaling.maxReplicas (%d)" (int .Values.autoscaling.minReplicas) (int .Values.autoscaling.maxReplicas)) -}}
+{{- end }}
+{{- if and .Values.worker.enabled .Values.worker.autoscaling.enabled (gt (int .Values.worker.autoscaling.minReplicas) (int .Values.worker.autoscaling.maxReplicas)) }}
+{{- fail (printf "chart-deco-studio: worker.autoscaling.minReplicas (%d) must not exceed worker.autoscaling.maxReplicas (%d)" (int .Values.worker.autoscaling.minReplicas) (int .Values.worker.autoscaling.maxReplicas)) -}}
+{{- end }}
 {{- end }}
 
 {{/*
