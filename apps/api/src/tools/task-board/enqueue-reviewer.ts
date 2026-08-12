@@ -326,9 +326,11 @@ async function enqueueReviewerForTask(
           // server on localhost); hosted Decopilot has no sandbox and uses its
           // Browserless-backed built-in, which streams the image into the thread.
           sandboxed
-            ? "- For a VISUAL change, capture before/after with `qa-screenshot <url> <outfile> [--mobile] [--full]` (headless Chromium, baked into the sandbox; also works against your own dev server on localhost). Then `Read` the files to actually LOOK at them — a screenshot you never opened is not verification. Add `--mobile` as well for a responsive change."
+            ? "- For a VISUAL change, capture before/after with `qa-screenshot <url> org/output/qa/<name>.png [--mobile] [--full]` (headless Chromium, baked into the sandbox; also works against your own dev server on localhost). WRITE them under `org/output/` — that's what surfaces them on the task. Then `Read` the files to actually LOOK at them — a screenshot you never opened is not verification. Add `--mobile` too for a responsive change."
             : '- For a VISUAL change, capture before/after with the `take_screenshot` tool (`device: "desktop"` and `device: "mobile"` for responsive changes) and use `inspect_page` for console/runtime errors; the images attach to the thread automatically.',
-          `- Record what you validated with \`${commentTool}\` (scenarios + pass/fail, a before→after screenshot pointer, the URL + viewport exercised, and anything you couldn't verify) BEFORE your decision.`,
+          sandboxed
+            ? `- Record what you validated with \`${commentTool}\` (scenarios + pass/fail, the exact URL + viewport, and anything you couldn't verify) BEFORE your decision. EMBED the before/after shots inline as markdown images referencing their org/output path, e.g. \`![before desktop](org/output/qa/before-desktop.png)\` — Studio renders those as real images in the comment.`
+            : `- Record what you validated with \`${commentTool}\` (scenarios + pass/fail, a before→after pointer to the attached shots, the exact URL + viewport, and anything you couldn't verify) BEFORE your decision.`,
         ]
       : []),
     `- End the run by calling \`${decisionTool}\` exactly once with the task id, ` +
