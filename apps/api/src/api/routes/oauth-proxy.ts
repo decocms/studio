@@ -801,6 +801,21 @@ const authServerMetadataHandler = async (c: {
     // Rewrite OAuth endpoint URLs to go through our proxy
     const rewrittenData = rewriteAuthServerMetadata(data, proxyBase);
 
+    // Providers without Dynamic Client Registration (e.g. accounts.google.com)
+    // publish no registration_endpoint, and the MCP SDK aborts with
+    // "Incompatible auth server" before ever attempting the flow. When the
+    // operator stored a pre-registered client on the connection
+    // (`oauth_config.clientId`), advertise the proxy's own register endpoint —
+    // the proxy answers it by synthesizing the DCR response from that config
+    // (see the register branch in the oauth-proxy dispatcher).
+    if (
+      !rewrittenData.registration_endpoint &&
+      connection.oauth_config?.clientId &&
+      connection.oauth_config.grantType !== "client_credentials"
+    ) {
+      rewrittenData.registration_endpoint = `${proxyBase}/register`;
+    }
+
     return new Response(JSON.stringify(rewrittenData), {
       status: 200,
       headers: { "Content-Type": "application/json" },
