@@ -124,6 +124,13 @@ export function ConnectionGroupCard({
             !allSelected &&
             "ring-1 ring-primary/50",
         )}
+        selected={
+          selectionMode
+            ? allSelected
+              ? true
+              : someSelected && "mixed"
+            : undefined
+        }
         fallbackIcon={<Container />}
         headerActionsAlwaysVisible
         headerActions={
