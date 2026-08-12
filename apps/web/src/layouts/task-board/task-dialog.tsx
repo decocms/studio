@@ -90,7 +90,7 @@ import {
 import { formatTimeAgo } from "@/lib/format-time";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { useConnections } from "@/sdk";
-import { getRepoScope } from "@decocms/shared/github-repo-scope";
+import { listRepoScopeLabels } from "@decocms/shared/github-repo-scope";
 import { AssigneePickerContent } from "./assignee-picker";
 import { TagPickerContent } from "./tag-picker";
 import { extractDescriptionLinks } from "./description-links";
@@ -181,16 +181,8 @@ export function TaskBoardItemDialog({
   const createTag = useCreateTag();
   const deleteTag = useDeleteTag();
 
-  // The org's repos (which site a task pertains to) — active repo-scoped
-  // GitHub connections as `owner/name`, deduped.
-  const repos = Array.from(
-    new Set(
-      (useConnections({ slug: "mcp-github" }) ?? [])
-        .map((c) => (c.status === "active" ? getRepoScope(c) : null))
-        .filter((s): s is NonNullable<typeof s> => s !== null)
-        .map((s) => `${s.owner}/${s.repo}`),
-    ),
-  );
+  // The org's repos (which site a task pertains to).
+  const repos = listRepoScopeLabels(useConnections({ slug: "mcp-github" }));
 
   const [title, setTitle] = useState(item?.title ?? "");
   const [description, setDescription] = useState(item?.description ?? "");

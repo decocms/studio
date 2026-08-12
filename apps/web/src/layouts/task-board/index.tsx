@@ -78,7 +78,10 @@ import {
   useConnections,
   useProjectContext,
 } from "@/sdk";
-import { getRepoScope } from "@decocms/shared/github-repo-scope";
+import {
+  getRepoScope,
+  listRepoScopeLabels,
+} from "@decocms/shared/github-repo-scope";
 import { GitHubRepoPicker } from "@/components/github-repo-picker";
 import { useConnectApp } from "@/hooks/use-connect-app";
 import { useMembers } from "@/hooks/use-members";
@@ -319,9 +322,12 @@ export function TaskBoardPage() {
   // built-in loads ANY active repo-scoped `mcp-github` connection — org-shared
   // OR per-agent (e.g. a repo imported by a Code Agent). So an existing
   // per-agent connection already satisfies this; don't force a fresh connect.
-  const hasRepo = (useConnections({ slug: "mcp-github" }) ?? []).some(
+  const githubConnections = useConnections({ slug: "mcp-github" }) ?? [];
+  const hasRepo = githubConnections.some(
     (c) => c.status === "active" && getRepoScope(c) !== null,
   );
+  // Repo filter options: distinct `owner/name` repos the org can reach.
+  const repos = listRepoScopeLabels(githubConnections);
   const [connectGithubOpen, setConnectGithubOpen] = useState(false);
   // Connecting only grants a broad org-level GitHub connection — Auto-fix
   // still needs a repo imported (see `hasRepo`), so once connected we chain
@@ -551,6 +557,7 @@ export function TaskBoardPage() {
                   filters={filters}
                   members={members}
                   tags={orgTags}
+                  repos={repos}
                   onChange={setFilters}
                 />
               </div>
@@ -559,6 +566,7 @@ export function TaskBoardPage() {
                   filters={filters}
                   members={members}
                   tags={orgTags}
+                  repos={repos}
                   onChange={setFilters}
                 />
               </div>

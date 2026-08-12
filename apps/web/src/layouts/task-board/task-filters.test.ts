@@ -95,3 +95,60 @@ describe("taskMatchesFilters — tags", () => {
     ).toBe(false);
   });
 });
+
+describe("taskMatchesFilters — repo", () => {
+  // NO_REPO_FILTER is module-private; assert against its raw sentinel value.
+  const NO_REPO = "__no_repo__";
+
+  test("no repo filter lets every task through", () => {
+    expect(taskMatchesFilters(item({ repo: "acme/site" }), EMPTY_FILTERS)).toBe(
+      true,
+    );
+    expect(taskMatchesFilters(item({ repo: null }), EMPTY_FILTERS)).toBe(true);
+  });
+
+  test("a specific repo matches the same repo", () => {
+    expect(
+      taskMatchesFilters(item({ repo: "acme/site" }), {
+        ...EMPTY_FILTERS,
+        repo: "acme/site",
+      }),
+    ).toBe(true);
+  });
+
+  test("a specific repo excludes a different repo", () => {
+    expect(
+      taskMatchesFilters(item({ repo: "acme/other" }), {
+        ...EMPTY_FILTERS,
+        repo: "acme/site",
+      }),
+    ).toBe(false);
+  });
+
+  test("repo match is case-insensitive (GitHub identity)", () => {
+    expect(
+      taskMatchesFilters(item({ repo: "Acme/Site" }), {
+        ...EMPTY_FILTERS,
+        repo: "acme/site",
+      }),
+    ).toBe(true);
+  });
+
+  test("'no repo' matches a task with no repo", () => {
+    expect(
+      taskMatchesFilters(item({ repo: null }), {
+        ...EMPTY_FILTERS,
+        repo: NO_REPO,
+      }),
+    ).toBe(true);
+  });
+
+  test("'no repo' excludes a repo-backed task", () => {
+    expect(
+      taskMatchesFilters(item({ repo: "acme/site" }), {
+        ...EMPTY_FILTERS,
+        repo: NO_REPO,
+      }),
+    ).toBe(false);
+  });
+});

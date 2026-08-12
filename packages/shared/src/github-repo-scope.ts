@@ -207,6 +207,28 @@ const repoIdentity = (owner: string, repo: string) =>
   `${owner}/${repo}`.toLowerCase();
 
 /**
+ * The distinct `owner/name` repos an org can reach — active repo-scoped
+ * connections, deduped by case-insensitive identity (keeping each repo's
+ * first-seen display casing). The option set for repo pickers/filters.
+ */
+export function listRepoScopeLabels<
+  T extends { status?: string; metadata: Record<string, unknown> | null },
+>(connections: T[] | undefined | null): string[] {
+  const seen = new Set<string>();
+  const labels: string[] = [];
+  for (const connection of connections ?? []) {
+    if (connection.status !== "active") continue;
+    const scope = getRepoScope(connection);
+    if (scope === null) continue;
+    const key = repoIdentity(scope.owner, scope.repo);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    labels.push(`${scope.owner}/${scope.repo}`);
+  }
+  return labels;
+}
+
+/**
  * An existing connection that already grants access to `owner/repo`, or null.
  *
  * One repository should have ONE connection. Provisioning used to mint and
