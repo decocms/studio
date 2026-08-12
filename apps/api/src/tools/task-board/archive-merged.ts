@@ -15,9 +15,18 @@
  */
 
 import type { StudioContext } from "@/core/studio-context";
+import type { TaskBoardItemPrRef } from "@/storage/types";
 import { recordTaskActivity } from "./activity";
 import { fetchPrMerged } from "./prs-get";
 import { emitTaskBoardUpdated } from "./run-reactions";
+
+/** How the sweep asks GitHub whether a PR merged — a parameter only so a
+ *  local/CI harness can drive the archive path without a GitHub connection. */
+type PrMergedReader = (
+  ctx: StudioContext,
+  orgId: string,
+  pr: TaskBoardItemPrRef,
+) => Promise<boolean | null>;
 
 /**
  * Is this Done card's work landed? Every linked PR merged, and at least one
@@ -41,13 +50,14 @@ async function archiveIfMerged(
   ctx: StudioContext,
   organizationId: string,
   itemId: string,
+  prMerged: PrMergedReader,
 ): Promise<boolean> {
   const item = await ctx.storage.taskBoard.getById(itemId, organizationId);
   if (!item || item.status !== "done") return false;
 
   const prs = await ctx.storage.taskBoard.listPrs(itemId, organizationId);
   const merged = await Promise.all(
-    prs.map((pr) => fetchPrMerged(ctx, organizationId, pr)),
+    prs.map((pr) => prMerged(ctx, organizationId, pr)),
   );
   if (!allPrsMerged(merged)) return false;
 
@@ -78,11 +88,14 @@ export async function archiveMergedForOrg(
   ctx: StudioContext,
   organizationId: string,
   itemIds: string[],
+  prMerged: PrMergedReader = fetchPrMerged,
 ): Promise<{ archived: number }> {
   let archived = 0;
   for (const itemId of itemIds) {
     try {
-      if (await archiveIfMerged(ctx, organizationId, itemId)) archived += 1;
+      if (await archiveIfMerged(ctx, organizationId, itemId, prMerged)) {
+        archived += 1;
+      }
     } catch (err) {
       console.error(`[task-board-archive] ${itemId} failed`, err);
     }
