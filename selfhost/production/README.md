@@ -35,12 +35,21 @@ dependencies:
   - name: chart-deco-studio
     version: "<pin>"
     repository: "oci://ghcr.io/decocms"   # or file://… if vendored
+  # The sandbox charts publish under a different parent path. For an OCI
+  # dependency, `repository` is the PARENT — Helm appends the chart name.
   - name: sandbox-operator
     version: "<pin>"
-    repository: "oci://ghcr.io/decocms"
+    repository: "oci://ghcr.io/decocms/studio/charts"
   - name: sandbox-env
     version: "<pin>"
-    repository: "oci://ghcr.io/decocms"
+    repository: "oci://ghcr.io/decocms/studio/charts"
+```
+
+Confirm the pins resolve before wiring values — `helm dependency build` is the
+cheapest way to catch a wrong path or a version that was never published:
+
+```bash
+helm dependency build your-studio   # pulls all three into charts/
 ```
 
 Then `your-studio/values.yaml` wires all three consistently (SA, the shared

@@ -122,10 +122,15 @@ apiVersion: v2
 name: <name>
 version: 0.1.0
 dependencies:
+  # `repository` is the PARENT path — Helm appends the chart name. The Studio
+  # chart and the sandbox charts publish under DIFFERENT parents; using
+  # oci://ghcr.io/decocms for the sandbox ones 404s on `helm dependency build`.
   - { name: chart-deco-studio, version: "<pin>", repository: "oci://ghcr.io/decocms" }
-  - { name: sandbox-operator,  version: "<pin>", repository: "oci://ghcr.io/decocms" }
-  - { name: sandbox-env,       version: "<pin>", repository: "oci://ghcr.io/decocms" }
+  - { name: sandbox-operator,  version: "<pin>", repository: "oci://ghcr.io/decocms/studio/charts" }
+  - { name: sandbox-env,       version: "<pin>", repository: "oci://ghcr.io/decocms/studio/charts" }
 ```
+Run `helm dependency build <name>` right after writing Chart.yaml — it proves
+every path and pin resolves before you spend time on values.
 `<name>/values.yaml` — nest each subchart's config under its name, wiring the
 interview answers AND the cross-chart handshake: `chart-deco-studio.serviceAccount.create=true`,
 the shared sentinel token on both `chart-deco-studio…STUDIO_SANDBOX_SENTINEL_TOKEN`
