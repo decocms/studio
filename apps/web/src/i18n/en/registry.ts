@@ -23,9 +23,9 @@ export const registry = {
   "registry.csvImportDialog.downloadTemplate": "Download template",
   "registry.csvImportDialog.emptyStateHint":
     "Choose a CSV file or download the template to get started.",
-  "registry.csvImportDialog.importButton": "Import {count} item(s)",
+  "registry.csvImportDialog.importButton": "Import {count} items",
   "registry.csvImportDialog.importedCount":
-    "Imported {count} item(s) successfully",
+    "Imported {count} items successfully",
   "registry.csvImportDialog.importingButton": "Importing...",
   "registry.csvImportDialog.itemsCount": "{count} items",
   "registry.csvImportDialog.linePrefix": "Line {line}:",
@@ -444,7 +444,7 @@ export const registry = {
   "registry.registryItemsPage.icon": "Icon",
   "registry.registryItemsPage.id": "ID",
   "registry.registryItemsPage.importCsv": "Import CSV",
-  "registry.registryItemsPage.importedItems": "Imported {count} item(s)",
+  "registry.registryItemsPage.importedItems": "Imported {count} items",
   "registry.registryItemsPage.items": "Items",
   "registry.registryItemsPage.loadingItems": "Loading items...",
   "registry.registryItemsPage.loadingMoreItems": "Loading more items...",
