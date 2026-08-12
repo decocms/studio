@@ -10,7 +10,9 @@ const BETTER_AUTH_RELATIVE =
 
 // The module reads `window.location` and falls back to a bare path when there
 // is no window (SSR), so the test provides one.
-const g = globalThis as { window?: { location: { search: string; hash: string } } };
+const g = globalThis as {
+  window?: { location: { search: string; hash: string } };
+};
 const setLocation = (search: string, hash: string) => {
   g.window = { location: { search, hash } };
 };
