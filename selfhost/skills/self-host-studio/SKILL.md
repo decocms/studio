@@ -63,13 +63,17 @@ detected environment, then walk these. Record answers into a values file you'll
    - **NATS**: bundled (default) OR their own (`nats.enabled=false` + `NATS_URL`).
 
 3. **Reachability / ingress** — the public URL → `BASE_URL` + `BETTER_AUTH_URL`
-   (`http://studio.localhost` locally; `https://studio.<domain>` real). The chart
-   renders NO Ingress, so ask what they have and expose accordingly:
-   - **have an ingress controller** (nginx/Traefik/ALB)? → they create an Ingress
-     to Service `<release>`:80 with their ingressClassName + TLS.
+   (`http://studio.localhost` locally; `https://studio.<domain>` real). The
+   chart's Ingress is optional and OFF by default, so ask what they have:
+   - **have an ingress controller** (nginx/Traefik/ALB)? → set `ingress.enabled=true`
+     + `className` + `hosts[].host` with a `/` `Prefix` path, and `tls` (chart
+     0.13.0+; it backs onto the release's own Service). Render fails if `hosts`
+     is empty or a host has no paths.
    - **cloud, no controller?** → `service.type=LoadBalancer` + DNS/TLS at the LB.
-   - **Istio/Gateway API?** → Gateway + HTTPRoute.
+   - **Istio/Gateway API?** → leave `ingress.enabled=false`, add Gateway + HTTPRoute.
    Locally it's just the `LoadBalancer:80` servicelb.
+   Whatever they pick, `BASE_URL`/`BETTER_AUTH_URL` must equal the public URL —
+   auth callbacks come from those, not from the request host.
 
 4. **Secrets** — how do they manage secrets? (ask; never inline in git)
    - **External Secrets Operator?** → `externalSecret.enabled=true` + `secretPath`
