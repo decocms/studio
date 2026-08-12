@@ -30,9 +30,10 @@ import {
 export async function reactToSuperAgentDelegation(
   ctx: StudioContext,
   item: TaskBoardItem,
+  opts?: Pick<SuperAgentPromptOpts, "userInitiated">,
 ): Promise<void> {
   if (item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID) return;
-  await enqueueSuperAgentForTask(ctx, item).catch((err) => {
+  await enqueueSuperAgentForTask(ctx, item, opts).catch((err) => {
     // A paywall rejection is NOT best-effort: swallowing it would leave the
     // task delegated-but-never-running with only a log line. Callers decide
     // (the update tool surfaces it; the import route un-delegates).

@@ -15,6 +15,7 @@ import { emitTaskBoardUpdated } from "./run-reactions";
 import {
   ensureTaskExecutionAllowed,
   isReportsTask,
+  userInitiatedTaskQuotaConfig,
 } from "../../billing/task-quota";
 
 /**
@@ -213,7 +214,12 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       // delegated-but-never-running (the dispatch-side claim would throw
       // after the assignee already persisted).
       if (becameSuperAgent) {
-        await ensureTaskExecutionAllowed(ctx, previous);
+        // A human is delegating this card manually — the per-task run cap must not block it, only the period bucket.
+        await ensureTaskExecutionAllowed(
+          ctx,
+          previous,
+          userInitiatedTaskQuotaConfig(),
+        );
       }
     }
 
@@ -293,7 +299,9 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     if (hasFieldUpdate || input.linkThreadId) {
       emitTaskBoardUpdated(organizationId, item);
     }
-    if (becameSuperAgent) await reactToSuperAgentDelegation(ctx, item);
+    if (becameSuperAgent) {
+      await reactToSuperAgentDelegation(ctx, item, { userInitiated: true });
+    }
 
     return { item };
   },
