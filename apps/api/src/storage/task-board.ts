@@ -606,6 +606,44 @@ export class TaskBoardStorage {
   }
 
   /**
+   * The archive sweep's work list, across EVERY org: Done cards that have sat
+   * untouched since `settledBefore` and have at least one linked PR.
+   *
+   * "Sat untouched" is `updated_at`, not a `done_at` this table doesn't have —
+   * so a Done card edited (retitled, retagged, re-prioritised) inside the window
+   * waits another window before it can archive. That's the conservative
+   * direction: it delays an archive, never archives something still being
+   * worked on. The PR requirement is the same gate `allPrsMerged` applies per
+   * task, hoisted into SQL so a board full of PR-less Done cards costs nothing.
+   */
+  async listItemsAwaitingArchive(
+    settledBefore: Date,
+    limit: number,
+  ): Promise<{ id: string; organizationId: string }[]> {
+    const rows = await this.db
+      .selectFrom("task_board_items as i")
+      .select(["i.id", "i.organization_id as organizationId"])
+      .where("i.status", "=", "done")
+      .where("i.dismissed_at", "is", null)
+      .where("i.updated_at", "<", settledBefore)
+      .where((eb) =>
+        eb.exists(
+          eb
+            .selectFrom("task_board_item_prs as p")
+            .select("p.url")
+            .whereRef("p.task_board_item_id", "=", "i.id"),
+        ),
+      )
+      .orderBy("i.updated_at", "asc")
+      .limit(limit)
+      .execute();
+    return rows.map((row) => ({
+      id: row.id,
+      organizationId: row.organizationId,
+    }));
+  }
+
+  /**
    * Stamp a card as swept. Claims the card's next interval for whichever replica
    * got there first, so the stamp must be written for every card the sweeper
    * LOOKS at, not only the ones it dispatches a reviewer for — a card that has no

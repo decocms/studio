@@ -486,10 +486,6 @@ export interface StudioToolIO {
     input: { url: string };
     output: { url: string; prNumber: number; taskBoardItemIds: string[] };
   };
-  TASK_BOARD_ARCHIVE_MERGED: {
-    input: { limit?: number | undefined };
-    output: { scanned: number; archivedIds: string[] };
-  };
   TASK_BOARD_ITEM_RERUN: {
     input: { id: string };
     output: { status: string; supersededThreadIds: string[] };

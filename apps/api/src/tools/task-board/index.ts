@@ -4,7 +4,6 @@ export { TASK_BOARD_ITEM_LIST } from "./list";
 export { TASK_BOARD_ITEM_UPDATE } from "./update";
 export { TASK_BOARD_ITEM_DELETE } from "./delete";
 export { TASK_BOARD_ITEM_PRS_GET } from "./prs-get";
-export { TASK_BOARD_ARCHIVE_MERGED } from "./archive-merged";
 export { TASK_BOARD_ITEM_PR_LINK } from "./pr-link";
 export { TASK_BOARD_ITEM_RERUN } from "./rerun";
 export { TASK_BOARD_REVIEW_DECISION } from "./review-decision";
