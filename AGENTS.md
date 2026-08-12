@@ -207,70 +207,22 @@ Virtual MCPs are configurable and extensible.
 Standardized interfaces that MCPs can implement (similar to TypeScript interfaces but with runtime validation):
 - Define contracts with Zod schemas
 - Tools check if connections implement specific bindings
-- Well-known bindings: collections (CRUD), models (AI providers), event bus, event subscriber
+- Well-known bindings: collections (CRUD), models (AI providers), event subscriber
 - Uses `createBindingChecker()` for runtime verification
 
-**Event Bus** (`apps/api/src/event-bus/`)
-Pub/sub system between connections following CloudEvents v1.0 spec:
-- At-least-once delivery with exponential backoff (1s to 1hr, max 20 attempts)
-- Scheduled delivery (`deliverAt`) and recurring events (`cron`)
-- Per-event results (subscribers can return individual results per event)
-- NotifyStrategy: NATS notify (immediate wake-up) + PollingStrategy (safety net for scheduled/cron delivery)
+**Events & Automations**
+The CloudEvents event-bus (worker, `EVENT_PUBLISH`/`EVENT_SUBSCRIBE` tools,
+NotifyStrategy, EventBusConfig) was removed. What exists today:
 
-#### Event Bus Files
-- `packages/bindings/src/well-known/event-bus.ts` - EVENT_BUS_BINDING (PUBLISH, SUBSCRIBE, UNSUBSCRIBE, CANCEL, ACK)
-- `packages/bindings/src/well-known/event-subscriber.ts` - EVENT_SUBSCRIBER_BINDING (ON_EVENTS)
-- `apps/api/src/event-bus/` - EventBus implementation and worker
-- `apps/api/src/event-bus/polling.ts` - Timer-based PollingStrategy (safety net for scheduled/cron delivery)
-- `apps/api/src/event-bus/nats-notify.ts` - NatsNotifyStrategy (immediate wake-up via NATS)
-- `apps/api/src/storage/event-bus.ts` - Database operations
-- `apps/api/src/tools/eventbus/` - MCP tools (publish, subscribe, unsubscribe, list, cancel, ack)
-- `apps/api/migrations/008-event-bus.ts` - Database schema
-
-#### Event Bus MCP Tools
-- `EVENT_PUBLISH` - Publish events (supports `deliverAt` for scheduled, `cron` for recurring)
-- `EVENT_SUBSCRIBE` - Subscribe to event types
-- `EVENT_UNSUBSCRIBE` - Remove subscriptions
-- `EVENT_SUBSCRIPTION_LIST` - List subscriptions
-- `EVENT_CANCEL` - Cancel a recurring cron event (only publisher can cancel)
-- `EVENT_ACK` - Acknowledge event delivery (used with `retryAfter` flow)
-
-#### Event Bus Bindings
-- `EVENT_BUS_BINDING` - For connections using the event bus (PUBLISH, SUBSCRIBE, UNSUBSCRIBE, CANCEL, ACK)
-- `EVENT_SUBSCRIBER_BINDING` - For connections receiving events (implements `ON_EVENTS`)
-
-#### ON_EVENTS Response
-Subscribers can return batch or per-event results:
-```typescript
-// Batch mode
-{ success: true }
-
-// Per-event mode
-{
-  results: {
-    "event-1": { success: true },
-    "event-2": { success: false, error: "Validation failed" },
-    "event-3": { retryAfter: 60000 }  // Retry in 1 minute, use EVENT_ACK to confirm
-  }
-}
-```
-
-#### NotifyStrategy Architecture
-The worker doesn't poll internally - it relies on a NotifyStrategy to trigger processing:
-- `NatsNotifyStrategy` - Primary: immediate wake-up via NATS pub/sub
-- `PollingStrategy(intervalMs)` - Safety net: picks up scheduled/cron deliveries
-- Both are composed together via `compose()` so the worker responds to either signal
-
-#### Event Bus Configuration (EventBusConfig)
-```typescript
-{
-  pollIntervalMs: 5000,    // Poll interval for PollingStrategy (default 5s)
-  batchSize: 100,          // Max events per batch
-  maxAttempts: 20,         // Delivery attempts before failure
-  retryDelayMs: 1000,      // Base delay (1s)
-  maxDelayMs: 3600000,     // Max delay cap (1hr)
-}
-```
+- `apps/api/src/event-bus/` is an **SSE hub** — cross-pod Server-Sent Events
+  fan-out over NATS pub/sub for real-time streaming (decopilot run updates).
+  Despite the directory name, it is not a durable event bus.
+- `apps/api/src/automations/` reacts to internal events: the
+  `automation-event-dispatcher` matches events against automation triggers and
+  enqueues durable DBOS workflows (fire-and-forget off the hot path).
+- `EVENT_SUBSCRIBER_BINDING` (`packages/bindings/src/well-known/event-subscriber.ts`,
+  `ON_EVENTS`) survives as published API — external MCPs built on
+  `@decocms/runtime` can still implement it.
 
 ### Database & Storage
 
@@ -587,7 +539,7 @@ them in the **first** PR — they are the difference between "works in the demo"
 1. **Never access environment variables directly in tools**—use StudioContext
 2. **Never access HTTP context in tools**—use StudioContext for all state
 3. **Database migrations**: Remember to run both Kysely migrations (`bun run migrate`) and Better Auth migrations (`bun run better-auth:migrate`)
-4. **Event bus**: The worker doesn't poll internally—it relies on NotifyStrategy to trigger processing
+4. **`apps/api/src/event-bus/` is an SSE hub, not a durable bus** — see Events & Automations above; automations own event→workflow dispatch
 5. **Formatting**: The pre-commit hook will reject commits if code isn't formatted with Biome
 6. **Never modify knip configuration** (`knip.json`, `knip.config.ts`, etc.) to silence warnings. Knip warnings indicate dead code, unused exports, or unused dependencies—these are code smells that should be fixed by removing the unused code/export/dependency, not by adding exclusions to the knip config.
 7. **CI errors are always on your branch**. The `main` branch CI always passes. When CI fails, the problem is in the code you changed—do not assume it's a pre-existing issue or a flaky test. Investigate and fix your code.
