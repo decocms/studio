@@ -395,6 +395,7 @@ export function TaskBoardPage() {
 
   const [layout, setLayout] = useState<Layout>("board");
   const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS);
+  const [preferences] = usePreferences();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const toggleSelect = (id: string) =>
     setSelectedIds((prev) => {
@@ -495,6 +496,12 @@ export function TaskBoardPage() {
 
   const visibleItems = items.filter((item) =>
     taskMatchesFilters(item, filters),
+  );
+  // The list view has no "Hidden columns" drawer, so it drops hidden lanes outright.
+  const visibleListItems = visibleItems.filter(
+    (item) =>
+      !HIDDEN_STATUSES.includes(item.status) ||
+      preferences.shownTaskBoardLanes.includes(item.status),
   );
 
   const openCreate = () => {
@@ -691,7 +698,7 @@ export function TaskBoardPage() {
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-6 pb-16 sm:px-8">
           <div className="mx-auto flex max-w-[820px] flex-col gap-2">
-            {visibleItems.map((item) => (
+            {visibleListItems.map((item) => (
               <ListRow
                 key={item.id}
                 item={item}
