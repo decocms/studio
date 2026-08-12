@@ -81,7 +81,8 @@ import {
 import { TaskQuotaError } from "@/billing/task-quota";
 import { ABANDONED_FAILURE_REASON } from "./stall-recovery";
 import { THREAD_EXPIRY_MS } from "@/tools/thread/helpers";
-import { fetchPrLiveState, prReadyForReview } from "./prs-get";
+import { prReadyForReview } from "./prs-get";
+import { readPrStateThrottled } from "./dbos-github-read";
 
 /** How often to LOOK for due cards. A minute is well under the time a human
  *  would take to notice a stuck card, and the work list is one index scan when
@@ -497,18 +498,19 @@ export class TaskBoardReviewSweeper {
     // auto-merge inside, so it can't ship anything the reviewers didn't.
     if (await retryAutoMergeIfApproved(ctx, item)) return true;
 
-    // Fetch live PR state (listPrs carries none) to tell an open PR from a
-    // closed/merged one — the same candidate check the dialog poll applies.
-    // Check status does NOT gate dispatch: reviewers run without waiting for CI
-    // (see `prReadyForReview`); the merge is gated on green checks separately,
-    // so nothing ships on red.
+    // One `get` per PR through the rate-limited queue, never straight at
+    // GitHub: `listPrs` carries no live state, and telling an open PR from a
+    // closed/merged one is all the dispatch decision needs. Check status does
+    // NOT gate it — reviewers run without waiting for CI (see
+    // `prReadyForReview`); the merge is gated on green checks separately, so
+    // nothing ships on red.
     const live = await Promise.all(
       prs.map(async (pr) => ({
         ...pr,
-        ...(await fetchPrLiveState(ctx, organizationId, pr)),
+        ...(await readPrStateThrottled(organizationId, pr)),
       })),
     );
-    // `fetchPrLiveState` is best-effort and yields ALL-NULL fields when the
+    // The read is best-effort and yields ALL-NULL fields when the
     // GitHub call fails, which is indistinguishable from a PR whose state we
     // simply haven't got. `prReadyForReview` no longer treats that as "not
     // ready" (it used to, and a quiet GitHub then froze every card), but a whole

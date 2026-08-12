@@ -25,6 +25,11 @@ import {
   registerTaskBoardArchiveSweepWorkflow,
   setTaskBoardArchiveSweepRuntime,
 } from "@/tools/task-board/dbos-archive-sweep";
+import {
+  GITHUB_READS_QUEUE_PARAMS,
+  registerTaskBoardGithubReadWorkflow,
+  setTaskBoardGithubReadRuntime,
+} from "@/tools/task-board/dbos-github-read";
 import { getPublicUrl } from "@/core/server-constants";
 import { usesLocalObjectStorage } from "../tools/connection/dev-assets";
 import { DECO_STORE_URL, isDecoHostedMcp } from "@/core/deco-constants";
@@ -178,6 +183,7 @@ import {
   THREAD_GATE_PARTITION_CONCURRENCY,
   THREAD_GATE_QUEUE,
 } from "../dispatch-queue";
+import { GITHUB_READS_QUEUE } from "../dispatch-queue/queue-names";
 import { hostedRunStats } from "../dispatch-queue/hosted-run-concurrency";
 import { setProjectorWorkflowRuntime } from "./routes/decopilot/projector-workflow";
 import { synthesizedErrorMessageId } from "./routes/decopilot/message-ids";
@@ -906,6 +912,7 @@ const DBOS_QUEUE_NAMES = new Set([
   THREAD_GATE_QUEUE,
   HOSTED_HARNESS_QUEUE,
   BACKGROUND_TOOLS_QUEUE,
+  GITHUB_READS_QUEUE,
 ]);
 const getHandleOAuthProtectedResourceMetadata = () =>
   oAuthProtectedResourceMetadata(auth);
@@ -1513,6 +1520,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Hourly auto-archive of settled Done cards, one org leg per candidate org.
   setTaskBoardArchiveSweepRuntime({ db: database.db });
 
+  // The review sweep's rate-limited GitHub reads.
+  setTaskBoardGithubReadRuntime({ db: database.db });
+
   // ============================================================================
   // Automation Runtime — wire storage + streaming into the DBOS workflow
   // ============================================================================
@@ -1777,6 +1787,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerPublicSetsSyncWorkflow();
   registerOrgRepoSyncWorkflow();
   registerTaskBoardArchiveSweepWorkflow();
+  registerTaskBoardGithubReadWorkflow();
 
   const automationRunner: StudioContext["automationRunner"] = async (
     automationId,
@@ -2290,6 +2301,10 @@ export async function createApp(options: CreateAppOptions = {}) {
       partitionQueue: true,
       concurrency: BACKGROUND_TOOLS_PARTITION_CONCURRENCY,
     });
+    // The board's review sweep reads PR state through here. `rateLimit` is
+    // enforced in the system DB, so it is a cap on ALL replicas together —
+    // the one thing an in-process token bucket could never be.
+    await DBOS.registerQueue(GITHUB_READS_QUEUE, GITHUB_READS_QUEUE_PARAMS);
     await reconcileAutomationSchedules(automationsStorage);
 
     // One-time cleanup of the retired per-automation/global gate queues.

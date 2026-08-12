@@ -746,7 +746,7 @@ export const prReadyForReview = (
   // A PR is a candidate unless we positively know it's finished with.
   prs.some((p) => p.state !== "closed" && p.merged !== true);
 
-export async function fetchPrLiveState(
+async function fetchPrLiveState(
   ctx: StudioContext,
   orgId: string,
   pr: TaskBoardItemPrRef,
@@ -813,17 +813,21 @@ export async function fetchPrLiveState(
 }
 
 /**
- * Just "is this PR merged?" — `null` when GitHub can't be reached, never read as
- * merged by callers. Deliberately NOT `fetchPrLiveState`, which also fetches
- * checks/preview extras (~5 calls per PR): the archive sweep reads every Done
- * task's PRs in one go, and that multiplier is exactly what took out the GitHub
- * App's rate limit once already (see `review-sweeper.ts`).
+ * ONE `pull_request_read get`, the whole call. Deliberately NOT
+ * `fetchPrLiveState`, which also fetches checks/preview extras (~5 calls per
+ * PR): the sweeps read every candidate PR in one go, and that multiplier is
+ * exactly what took out the GitHub App's rate limit once already (see
+ * `review-sweeper.ts`).
+ *
+ * Null on any failure, and never read as an answer by callers — an unreachable
+ * GitHub means "we could not ask", not "no".
  */
-export async function fetchPrMerged(
+async function fetchPrGet(
   ctx: StudioContext,
   orgId: string,
   pr: TaskBoardItemPrRef,
-): Promise<boolean | null> {
+  label: string,
+): Promise<Record<string, unknown> | null> {
   const conn = await resolveGithubConnection(ctx, orgId, pr.connectionId, {
     owner: pr.repoOwner,
     name: pr.repoName,
@@ -832,7 +836,7 @@ export async function fetchPrMerged(
   const client = await clientFromConnection(conn, ctx, true);
   const pending: Promise<void>[] = [];
   try {
-    const obj = await cachedPrRead(
+    return await cachedPrRead(
       client,
       conn.id,
       "pull_request_read",
@@ -842,15 +846,50 @@ export async function fetchPrMerged(
         repo: pr.repoName,
         pullNumber: pr.number,
       },
-      `${prLabel(pr)} (merged)`,
+      `${prLabel(pr)} (${label})`,
       pending,
     );
-    return typeof obj?.merged === "boolean" ? obj.merged : null;
   } catch {
     return null;
   } finally {
     void Promise.allSettled(pending).then(() => client.close().catch(() => {}));
   }
+}
+
+/** Just "is this PR merged?", for the archive sweep. */
+export async function fetchPrMerged(
+  ctx: StudioContext,
+  orgId: string,
+  pr: TaskBoardItemPrRef,
+): Promise<boolean | null> {
+  const obj = await fetchPrGet(ctx, orgId, pr, "merged");
+  return typeof obj?.merged === "boolean" ? obj.merged : null;
+}
+
+/**
+ * Exactly what `prReadyForReview` reads, and nothing else.
+ *
+ * The review sweep used to call `fetchPrLiveState` here — four GitHub calls per
+ * PR plus one per failing check — for two booleans. It has cost that since
+ * before the check gate was dropped from the dispatch decision, and a red PR
+ * parked In Review is swept forever, so it paid the per-failure summaries on
+ * every pass in perpetuity.
+ */
+export async function fetchPrCandidateState(
+  ctx: StudioContext,
+  orgId: string,
+  pr: TaskBoardItemPrRef,
+): Promise<{ state: "open" | "closed" | null; merged: boolean | null }> {
+  const obj = await fetchPrGet(ctx, orgId, pr, "candidate");
+  return {
+    state:
+      obj?.state === "closed"
+        ? "closed"
+        : obj?.state === "open"
+          ? "open"
+          : null,
+    merged: typeof obj?.merged === "boolean" ? obj.merged : null,
+  };
 }
 
 export const TASK_BOARD_ITEM_PRS_GET = defineTool({
