@@ -174,7 +174,20 @@ async function resolveRerunBranch(
 }
 
 /**
- * The task's own OPEN pull request, for a dispatch nobody named one for.
+ * Whether a PR's live state is trustworthy enough to pin the branch to: it
+ * isn't DEFINITIVELY closed. `null` (GitHub unreachable, the throttled queue
+ * timed out) counts as usable for the same reason it does in
+ * `pickActivePrIndex` — a read blip must not silently fall through to "no PR
+ * found", which is exactly the default, forking behavior this whole path
+ * exists to avoid. Pure; exported for the unit test.
+ */
+export function prStateIsPinnable(state: "open" | "closed" | null): boolean {
+  return state !== "closed";
+}
+
+/**
+ * The task's own open (or unreadable) pull request, for a dispatch nobody
+ * named one for.
  *
  * Only a reviewer bounce passes `opts.pr`. A person re-delegating the card
  * (`TASK_BOARD_ITEM_UPDATE`, `TASK_BOARD_ITEM_RERUN`) passes nothing, so the
@@ -182,9 +195,9 @@ async function resolveRerunBranch(
  * grew a third pull request that way in one afternoon, each one the reviewer
  * then rejected as obsolete against `main`.
  *
- * Open only, deliberately: `pickActivePr` falls back to the newest link when
- * every PR reads closed, and resuming work on a merged or abandoned branch is
- * worse than starting a fresh one. Reads go through the same throttled queue.
+ * Never falls back to a definitively-closed PR, unlike `pickActivePr`:
+ * resuming work on a merged or abandoned branch is worse than starting a
+ * fresh one. Reads go through the same throttled queue.
  */
 async function openPrForTask(
   ctx: StudioContext,
@@ -195,7 +208,7 @@ async function openPrForTask(
     .catch(() => []);
   for (const pr of prs) {
     const { state } = await readPrStateThrottled(task.organizationId, pr);
-    if (state === "open") return { number: pr.number, url: pr.url };
+    if (prStateIsPinnable(state)) return { number: pr.number, url: pr.url };
   }
   return undefined;
 }
