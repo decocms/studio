@@ -67,6 +67,8 @@ export function CatalogItemCard({
   );
 
   const isCommunity = isCommunityItem(item);
+  // Members without connections:manage can browse but not connect.
+  const isClickable = isConnected || canManage;
 
   const handleClick = () => {
     if (isConnected) {
@@ -76,11 +78,7 @@ export function CatalogItemCard({
       }
       return;
     }
-    // Connecting installs a connection (connections:manage). Members without it
-    // can browse the catalog but not connect.
-    if (canManage) {
-      handleConnect();
-    }
+    handleConnect();
   };
 
   const handleConnect = () => {
@@ -108,7 +106,7 @@ export function CatalogItemCard({
       <ConnectionCard
         connection={{ title, description, icon }}
         fallbackIcon={<Container />}
-        onClick={handleClick}
+        onClick={isClickable ? handleClick : undefined}
         headerActionsAlwaysVisible
         headerActions={
           <div className="flex items-center gap-2">
