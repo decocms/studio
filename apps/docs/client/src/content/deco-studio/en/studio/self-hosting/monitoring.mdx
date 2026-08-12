@@ -41,9 +41,11 @@ aws s3 sync $DATA_DIR/traces s3://your-bucket/traces
 
 For production deployments, ClickHouse provides scalable, fast aggregations over monitoring data.
 
-1. Set the `CLICKHOUSE_URL` environment variable to your ClickHouse HTTP endpoint.
-2. Create tables named `monitoring_logs` and `monitoring_metrics` in your ClickHouse instance.
-3. When configured, the monitoring UI queries ClickHouse directly via HTTP.
+1. Point an OTLP collector at ClickHouse. Studio emits monitoring telemetry as standard OpenTelemetry **log records** with `studio.monitoring.*` attributes, which the exporter writes into its `otel_logs` table — the exporter creates that table on first write.
+2. Create the `studio_monitoring_logs` **view** over `otel_logs`. The dashboard reads that view, not a table, and it is a one-time provisioning step the app never performs itself. The DDL and the column-name caveats are in [`apps/api/src/monitoring/clickhouse-setup.md`](https://github.com/decocms/studio/blob/main/apps/api/src/monitoring/clickhouse-setup.md).
+3. Set `CLICKHOUSE_URL` to your ClickHouse HTTP endpoint. Read access is enough — Studio only queries.
+
+Deploy before provisioning the view, not the other way round: the view is defined over a table the collector creates on its first write. Until it exists the dashboard errors on every query, which is expected and clears the moment you create it. There is no separate metrics table — counts, averages, and percentiles are derived from the same log rows.
 
 ```bash
 CLICKHOUSE_URL=https://your-clickhouse-instance:8123
