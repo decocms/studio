@@ -19,7 +19,7 @@ const ThreadListInputSchema = CollectionListInputSchema.extend({
   where: z
     .object({
       created_by: z.string().optional(),
-      trigger_ids: z.array(z.string()).optional(),
+      trigger_ids: z.array(z.string()).max(1000).optional(),
       virtual_mcp_id: z.string().optional(),
       /** Show archived (hidden=true) threads instead of open ones */
       hidden: z.boolean().optional(),
