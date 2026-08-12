@@ -30,6 +30,7 @@ import {
   recordSuccess,
 } from "./circuit-breaker";
 import { clientFromConnection } from "./client";
+import { isPerUserAuthorizationRequiredError } from "./outbound/errors";
 import { invalidateConnectionCaches } from "./mcp-cache-invalidation";
 import {
   fetchWithCache,
@@ -121,7 +122,14 @@ export function createLazyClient(
           // Clear cached promise so transient failures don't permanently
           // break the client — next call will retry the connection.
           realClientPromise = null;
-          recordFailure(connection.id);
+          // A per-user authorization prompt is an expected state for
+          // `auth_mode: "per_user"` connections without a token for the caller,
+          // NOT a downstream outage. Counting it as a failure trips the circuit
+          // breaker, which then 503s the connection — hiding the "Connect your
+          // account" UI and blocking the very OAuth the error is asking for.
+          if (!isPerUserAuthorizationRequiredError(err)) {
+            recordFailure(connection.id);
+          }
           throw err;
         });
     }

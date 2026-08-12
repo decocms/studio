@@ -80,6 +80,7 @@ export function createDevAssetsConnectionEntity(
     connection_token: null,
     connection_headers: null,
     oauth_config: null,
+    auth_mode: "shared",
     configuration_state: null,
     configuration_scopes: null,
     metadata: connectionData.metadata ?? null,

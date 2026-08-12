@@ -44,6 +44,7 @@ describe("DownstreamTokenStorage", () => {
     const token = {
       id: "test",
       connectionId: "c1",
+      userId: null,
       accessToken: "at",
       refreshToken: null,
       scope: null,
@@ -64,6 +65,7 @@ describe("DownstreamTokenStorage", () => {
     const token = {
       id: "test",
       connectionId: "c1",
+      userId: null,
       accessToken: "at",
       refreshToken: null,
       scope: null,

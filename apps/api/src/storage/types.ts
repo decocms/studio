@@ -228,6 +228,17 @@ export interface MCPConnectionTable {
   // OAuth config for downstream MCP (if MCP supports OAuth)
   oauth_config: JsonObject<OAuthConfig> | null;
 
+  // Authentication mode:
+  //   - "shared":  one downstream token shared across the org (legacy).
+  //   - "per_user": each member authorises with their own account; tokens
+  //                  are keyed by (connection_id, user_id).
+  // Insert is optional — the column defaults to 'shared' (migration 171).
+  auth_mode: ColumnType<
+    "shared" | "per_user",
+    "shared" | "per_user" | undefined,
+    "shared" | "per_user"
+  >;
+
   // Connection-provided configuration state
   configuration_state: string | null; // Encrypted JSON state
   configuration_scopes: JsonArray<string[]> | null; // Array of scope strings
@@ -522,7 +533,8 @@ export interface OAuthRefreshTokenTable {
  */
 export interface DownstreamTokenTable {
   id: string; // Primary key
-  connectionId: string; // Foreign key (unique - one token per connection)
+  connectionId: string;
+  userId: string | null; // NULL = shared token for the connection
   accessToken: string; // Encrypted
   refreshToken: string | null; // Encrypted
   scope: string | null;
@@ -612,6 +624,7 @@ export interface OAuthRefreshToken {
 export interface DownstreamToken {
   id: string;
   connectionId: string;
+  userId: string | null;
   accessToken: string;
   refreshToken: string | null;
   scope: string | null;

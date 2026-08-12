@@ -202,6 +202,7 @@ export function extractConnectionData(
     connection_token: null as string | null,
     connection_headers: connectionHeaders,
     oauth_config: oauthConfig,
+    auth_mode: "shared" as const,
     configuration_state: configState ?? null,
     configuration_scopes: configScopes ?? null,
     metadata: {

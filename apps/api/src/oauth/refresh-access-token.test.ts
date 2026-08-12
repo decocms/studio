@@ -5,6 +5,7 @@ import type { DownstreamToken } from "../storage/types";
 const baseToken: DownstreamToken = {
   id: "dtok_test",
   connectionId: "conn_test",
+  userId: null,
   accessToken: "stale",
   refreshToken: "rt",
   scope: "repo",

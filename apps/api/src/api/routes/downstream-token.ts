@@ -115,9 +115,17 @@ export const createDownstreamTokenRoutes = () => {
     // Create storage instance
     const tokenStorage = new DownstreamTokenStorage(ctx.db, ctx.vault);
 
+    // Pick the storage scope based on auth_mode:
+    //   - per_user: this token belongs to the authenticated caller.
+    //   - shared:   this token is org-wide. The endpoint is admin-facing
+    //               in this mode (any member with org-admin can authorise
+    //               the bot account once).
+    const tokenUserId = connection.auth_mode === "per_user" ? userId : null;
+
     // Save token
     const tokenData: DownstreamTokenData = {
       connectionId,
+      userId: tokenUserId,
       accessToken: body.accessToken,
       refreshToken: body.refreshToken ?? null,
       scope: body.scope ?? null,
@@ -164,7 +172,10 @@ export const createDownstreamTokenRoutes = () => {
     }
 
     const tokenStorage = new DownstreamTokenStorage(ctx.db, ctx.vault);
-    await tokenStorage.delete(connectionId);
+    // Same scoping rule as the upsert: per-user callers only erase their
+    // own token; admins of a shared connection erase the org-wide one.
+    const tokenUserId = connection.auth_mode === "per_user" ? userId : null;
+    await tokenStorage.delete(connectionId, tokenUserId);
 
     return c.json({ success: true });
   });
@@ -198,7 +209,11 @@ export const createDownstreamTokenRoutes = () => {
     }
 
     const tokenStorage = new DownstreamTokenStorage(ctx.db, ctx.vault);
-    const token = await tokenStorage.get(connectionId);
+    // Status reflects what THIS user can do. For per-user connections we
+    // look up their own token; for shared connections we look at the
+    // org-wide one.
+    const tokenUserId = connection.auth_mode === "per_user" ? userId : null;
+    const token = await tokenStorage.get(connectionId, tokenUserId);
 
     if (!token) {
       return c.json({

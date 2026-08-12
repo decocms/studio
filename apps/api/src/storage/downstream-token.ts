@@ -3,6 +3,15 @@
  *
  * Handles CRUD operations for downstream MCP OAuth tokens.
  * Supports token caching and refresh for OAuth-enabled MCP connections.
+ *
+ * Tokens are keyed by (connection_id, user_id):
+ *   - `userId = null`   → shared token (one per connection, used when the
+ *                          connection's auth_mode is "shared")
+ *   - `userId = <uuid>` → per-user token (one per (connection, user) pair,
+ *                          used when auth_mode is "per_user")
+ *
+ * The two cases are enforced by partial unique indexes on the database
+ * (see migration 171).
  */
 
 import type { Kysely } from "kysely";
@@ -15,6 +24,11 @@ import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
  */
 export interface DownstreamTokenData {
   connectionId: string;
+  /**
+   * Null (or omitted) for shared tokens; a user id for per-user tokens.
+   * Optional so shared-token callers don't have to spell out `userId: null`.
+   */
+  userId?: string | null;
   accessToken: string;
   refreshToken: string | null;
   scope: string | null;
@@ -34,12 +48,20 @@ export class DownstreamTokenStorage {
     private vault: CredentialVault,
   ) {}
 
-  async get(connectionId: string): Promise<DownstreamToken | null> {
-    const row = await this.db
+  async get(
+    connectionId: string,
+    userId: string | null = null,
+  ): Promise<DownstreamToken | null> {
+    const base = this.db
       .selectFrom("downstream_tokens")
       .selectAll()
-      .where("connectionId", "=", connectionId)
-      .executeTakeFirst();
+      .where("connectionId", "=", connectionId);
+
+    const query = userId
+      ? base.where("userId", "=", userId)
+      : base.where("userId", "is", null);
+
+    const row = await query.executeTakeFirst();
 
     if (!row) return null;
 
@@ -58,14 +80,20 @@ export class DownstreamTokenStorage {
       ? await this.vault.encrypt(data.clientSecret)
       : null;
 
+    const tokenUserId = data.userId ?? null;
+
     // Use transaction to prevent race conditions during upsert
     return await this.db.transaction().execute(async (trx) => {
-      // Check for existing token within transaction
-      const existing = await trx
+      // Look up existing token for this (connection, user) pair
+      const existingBase = trx
         .selectFrom("downstream_tokens")
         .select(["id", "createdAt"])
-        .where("connectionId", "=", data.connectionId)
-        .executeTakeFirst();
+        .where("connectionId", "=", data.connectionId);
+
+      const existing = await (tokenUserId
+        ? existingBase.where("userId", "=", tokenUserId)
+        : existingBase.where("userId", "is", null)
+      ).executeTakeFirst();
 
       if (existing) {
         // Update existing token
@@ -87,6 +115,7 @@ export class DownstreamTokenStorage {
         return {
           id: existing.id,
           connectionId: data.connectionId,
+          userId: tokenUserId,
           accessToken: data.accessToken,
           refreshToken: data.refreshToken,
           scope: data.scope,
@@ -107,6 +136,7 @@ export class DownstreamTokenStorage {
         .values({
           id,
           connectionId: data.connectionId,
+          userId: tokenUserId,
           accessToken: encryptedAccessToken,
           refreshToken: encryptedRefreshToken,
           scope: data.scope,
@@ -122,6 +152,7 @@ export class DownstreamTokenStorage {
       return {
         id,
         connectionId: data.connectionId,
+        userId: tokenUserId,
         accessToken: data.accessToken,
         refreshToken: data.refreshToken,
         scope: data.scope,
@@ -135,7 +166,25 @@ export class DownstreamTokenStorage {
     });
   }
 
-  async delete(connectionId: string): Promise<void> {
+  async delete(
+    connectionId: string,
+    userId: string | null = null,
+  ): Promise<void> {
+    const base = this.db
+      .deleteFrom("downstream_tokens")
+      .where("connectionId", "=", connectionId);
+
+    await (userId
+      ? base.where("userId", "=", userId)
+      : base.where("userId", "is", null)
+    ).execute();
+  }
+
+  /**
+   * Delete every token attached to a connection (shared + all per-user
+   * tokens). Used when a connection is removed.
+   */
+  async deleteByConnection(connectionId: string): Promise<void> {
     await this.db
       .deleteFrom("downstream_tokens")
       .where("connectionId", "=", connectionId)
@@ -174,6 +223,7 @@ export class DownstreamTokenStorage {
   private async decryptToken(row: {
     id: string;
     connectionId: string;
+    userId: string | null;
     accessToken: string;
     refreshToken: string | null;
     scope: string | null;
@@ -195,6 +245,7 @@ export class DownstreamTokenStorage {
     return {
       id: row.id,
       connectionId: row.connectionId,
+      userId: row.userId,
       accessToken,
       refreshToken,
       scope: row.scope,
