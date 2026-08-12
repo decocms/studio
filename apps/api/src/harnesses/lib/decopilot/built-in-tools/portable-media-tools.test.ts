@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { buildScreenshotOptions, jpegHeight } from "./portable-media-tools";
+import {
+  buildScreenshotOptions,
+  buildScreenshotRequestBody,
+  jpegHeight,
+} from "./portable-media-tools";
 
 describe("buildScreenshotOptions", () => {
   it("captures the viewport when fullPage is off", () => {
@@ -15,6 +19,71 @@ describe("buildScreenshotOptions", () => {
     expect(options).not.toHaveProperty("fullPage");
     expect(options).toMatchObject({
       clip: { x: 0, y: 0, width: 1280, height: 7000 },
+    });
+  });
+
+  it("clips to the emulated device's width, not the desktop default", () => {
+    const options = buildScreenshotOptions(true, true, {
+      width: 390,
+      deviceScaleFactor: 1,
+    });
+    expect(options).toMatchObject({
+      clip: { x: 0, y: 0, width: 390, height: 7000 },
+    });
+  });
+
+  // The clip is CSS px, the returned image is CSS px × scale factor. Clamping
+  // to a flat 7000 on a 2× device asks for a 14000px image — over the limit the
+  // clamp exists to stay under, so the retry could never succeed.
+  it("divides the clip height by the device scale factor", () => {
+    const options = buildScreenshotOptions(true, true, {
+      width: 390,
+      deviceScaleFactor: 2,
+    });
+    expect(options).toMatchObject({
+      clip: { x: 0, y: 0, width: 390, height: 3500 },
+    });
+  });
+});
+
+describe("buildScreenshotRequestBody", () => {
+  // Browserless's own `userAgent` field is version-specific (v1 wants a string,
+  // v2 wants an object, each 400s on the other); the header form is honored by
+  // both. Getting this wrong 400s EVERY mobile capture, so pin the wire shape.
+  it("sends a mobile user-agent as a request header, not a `userAgent` field", () => {
+    const body = buildScreenshotRequestBody(
+      "https://x.test",
+      "mobile",
+      false,
+      false,
+    );
+    expect(body).not.toHaveProperty("userAgent");
+    expect(body.setExtraHTTPHeaders?.["User-Agent"]).toContain("iPhone");
+  });
+
+  it("sends no user-agent override for desktop — Chrome's own is correct", () => {
+    const body = buildScreenshotRequestBody(
+      "https://x.test",
+      "desktop",
+      false,
+      false,
+    );
+    expect(body).not.toHaveProperty("setExtraHTTPHeaders");
+    expect(body).not.toHaveProperty("userAgent");
+  });
+
+  it("emulates the phone viewport, touch included", () => {
+    const body = buildScreenshotRequestBody(
+      "https://x.test",
+      "mobile",
+      false,
+      false,
+    );
+    expect(body.viewport).toMatchObject({
+      width: 390,
+      height: 844,
+      isMobile: true,
+      hasTouch: true,
     });
   });
 });

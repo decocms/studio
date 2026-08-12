@@ -43,9 +43,25 @@ const REVIEWER_FOCUS: Record<ReviewerKind, string> = {
   qa:
     "You are the QA Agent. Your job is to confirm the task ACTUALLY SOLVED THE " +
     "PROBLEM — not to review code style. Exercise the feature/behavior the task " +
-    "describes (use the PR's preview / dev server when available), check the " +
-    "acceptance criteria implied by the title and description, and look for " +
-    "regressions in the affected flow. Judge outcomes, not the diff.",
+    "describes, check the acceptance criteria implied by the title and " +
+    "description, and look for regressions in the affected flow. Judge outcomes, " +
+    "not the diff — and NEVER approve on inspection alone: an approval must be " +
+    "backed by evidence you actually exercised the change.\n" +
+    "Exercise the change on the PR's deploy preview, deep-linked to the specific " +
+    "page/route the task affects (not just its root). For any VISUAL change, " +
+    "capture the affected view BEFORE (the current production / base-branch site) " +
+    "and AFTER (the preview) so the two can be compared, and for a responsive " +
+    "change capture BOTH a desktop and a real mobile view (a phone viewport AND a " +
+    "mobile user-agent — not a narrowed desktop). The How-to steps below name the " +
+    "exact screenshot tool for your run.\n" +
+    "If the preview will not render (303s, hangs, blank) or you otherwise cannot " +
+    "exercise the change, do NOT approve: request changes stating what is blocking " +
+    "and what is needed to unblock. An unverified preview is not a pass.\n" +
+    "RECORD your QA pass as a task comment BEFORE the decision — a durable record, " +
+    "separate from the short decision summary. Structure it: the acceptance " +
+    "criteria / scenarios you checked with a pass/fail on each, a before→after " +
+    "pointer to the screenshots, the exact URL(s) and viewport you exercised, and " +
+    "anything you could not verify and why.",
   code_review:
     "You are the Code Reviewer. Review the code changes for correctness, " +
     "security, and quality. FIRST look for a review skill/command appropriate " +
@@ -311,6 +327,9 @@ async function enqueueReviewerForTask(
   const decisionTool = sandboxed
     ? "mcp__studio__TASK_BOARD_REVIEW_DECISION"
     : "TASK_BOARD_REVIEW_DECISION";
+  const commentTool = sandboxed
+    ? "mcp__studio__TASK_BOARD_COMMENT_CREATE"
+    : "TASK_BOARD_COMMENT_CREATE";
 
   // Who this run IS. On the sandboxed path this becomes the harness's system
   // instructions (`agent.instructions`), replacing the org agent's own — those
@@ -346,6 +365,21 @@ async function enqueueReviewerForTask(
       : sandboxed
         ? `- Your working directory is EMPTY. Call \`mcp__studio__TASK_ADD_REPO\` with the connectionId of the PR's repository FIRST; it clones the repository and waits for the checkout, and \`git\` and \`gh\` are authenticated once it returns.`
         : "- Load the PR's repository to inspect / exercise the change.",
+    ...(kind === "qa"
+      ? [
+          `- Exercise the change on the PR's deploy \`previewUrl\` (from \`${prsGetTool}\`), deep-linked to the page/route the task affects (not root). If you cannot render or exercise it, do NOT approve — \`request_changes\` with what's blocking.`,
+          // Two paths because the harnesses differ: the sandbox has a real
+          // browser baked in (`qa-screenshot`, which can also reach its own dev
+          // server on localhost); hosted Decopilot has no sandbox and uses its
+          // Browserless-backed built-in, which streams the image into the thread.
+          sandboxed
+            ? "- For a VISUAL change, capture before/after with `qa-screenshot <url> org/output/qa/<name>.png [--mobile] [--full] [--selector=<css>]` (headless Chromium, baked into the sandbox; also works against your own dev server on localhost). Choose the framing: default is the top viewport, `--full` is the whole page, and `--selector='<css>'` frames just the component you changed (best for a focused before/after). WRITE them under `org/output/` — that's what surfaces them on the task. Then `Read` the files to actually LOOK at them — a screenshot you never opened is not verification. Add `--mobile` too for a responsive change."
+            : '- For a VISUAL change, capture before/after with the `take_screenshot` tool (`device: "desktop"` and `device: "mobile"` for responsive changes) and use `inspect_page` for console/runtime errors; the images attach to the thread automatically.',
+          sandboxed
+            ? `- Record what you validated with \`${commentTool}\` (scenarios + pass/fail, the exact URL + viewport, and anything you couldn't verify) BEFORE your decision. EMBED the before/after shots inline as markdown images referencing their org/output path, e.g. \`![before desktop](org/output/qa/before-desktop.png)\` — Studio renders those as real images in the comment.`
+            : `- Record what you validated with \`${commentTool}\` (scenarios + pass/fail, a before→after pointer to the attached shots, the exact URL + viewport, and anything you couldn't verify) BEFORE your decision.`,
+        ]
+      : []),
     `- End the run by calling \`${decisionTool}\` exactly once with the task id, ` +
       `reviewer "${kind}", the reviewToken below, and your decision:`,
     "  - `approve` when it's good to ship. Include a short summary of what you verified.",

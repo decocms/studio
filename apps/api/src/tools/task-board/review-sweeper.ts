@@ -497,12 +497,11 @@ export class TaskBoardReviewSweeper {
     // auto-merge inside, so it can't ship anything the reviewers didn't.
     if (await retryAutoMergeIfApproved(ctx, item)) return true;
 
-    // Same check gate as the dialog poll, and it MUST be the same one: a
-    // reviewer claim is spent once per review cycle, and nothing re-dispatches
-    // within a cycle. Skipping the gate here would not mean "reviewed earlier" —
-    // the 60s tick beats a multi-minute CI run, so the sweeper would win every
-    // race, review a red PR, consume the cycle, and the green review would never
-    // happen. A PR whose checks are still pending is simply swept again later.
+    // Fetch live PR state (listPrs carries none) to tell an open PR from a
+    // closed/merged one — the same candidate check the dialog poll applies.
+    // Check status does NOT gate dispatch: reviewers run without waiting for CI
+    // (see `prReadyForReview`); the merge is gated on green checks separately,
+    // so nothing ships on red.
     const live = await Promise.all(
       prs.map(async (pr) => ({
         ...pr,

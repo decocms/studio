@@ -10,8 +10,46 @@ import { BROWSERLESS_BASE_URL } from "./constants";
 
 const FILES_URL_PATTERN = /\/api\/[^/]+\/files\/([^?#]+)/;
 const MAX_REFERENCE_IMAGE_BYTES = 20 * 1024 * 1024;
-const DEFAULT_VIEWPORT = { width: 1280, height: 800 };
 const JPEG_QUALITY = 80;
+
+/**
+ * Emulation presets for `take_screenshot`. `mobile` carries a phone viewport
+ * AND `isMobile`/`hasTouch` — but the load-bearing part for QA is that the tool
+ * also sends `MOBILE_USER_AGENT` with it. Many sites pick their layout from the
+ * request user-agent server-side (not just CSS breakpoints), so a desktop
+ * browser merely narrowed to 390px still gets desktop markup — a plausible but
+ * WRONG "mobile" shot. Emulating the device means the UA too; see
+ * `captureScreenshot` for how it is sent.
+ */
+const DEVICE_VIEWPORTS = {
+  desktop: {
+    width: 1280,
+    height: 800,
+    deviceScaleFactor: 1,
+    isMobile: false,
+    hasTouch: false,
+  },
+  mobile: {
+    width: 390,
+    height: 844,
+    // 2, not a phone's real 3: `clip` is in CSS px but the JPEG comes back in
+    // DEVICE px, so the scale factor multiplies the height that has to fit
+    // under MAX_SCREENSHOT_HEIGHT. At 3 a clamped full-page capture kept only
+    // the first 2333 CSS px; 2 keeps 3500 and is still legible.
+    deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
+  },
+} as const;
+
+export type ScreenshotDevice = keyof typeof DEVICE_VIEWPORTS;
+
+const DEFAULT_VIEWPORT = DEVICE_VIEWPORTS.desktop;
+
+/** Sent as the request user-agent when `device: "mobile"`, so server-side
+ *  user-agent sniffing returns the real mobile markup. A current iOS Safari. */
+const MOBILE_USER_AGENT =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
 /**
  * Anthropic rejects any image over 8000px on either side, and an oversized
  * screenshot poisons the thread permanently: it is inlined as base64 into the
@@ -20,22 +58,132 @@ const JPEG_QUALITY = 80;
  */
 const MAX_SCREENSHOT_HEIGHT = 7000;
 
-/** Puppeteer rejects `clip` together with `fullPage` — they are exclusive. */
-export function buildScreenshotOptions(fullPage: boolean, clamped = false) {
+/**
+ * Puppeteer rejects `clip` together with `fullPage` — they are exclusive.
+ *
+ * `clip` is CSS pixels; the returned JPEG is CSS px × `deviceScaleFactor`. The
+ * ceiling being enforced is on the IMAGE, so the clip height is divided by the
+ * device's scale factor — clamping to a flat 7000 on a 2×/3× device produced a
+ * 14000/21000px image, i.e. the clamped retry could never come back under the
+ * limit and every full-page mobile capture failed.
+ */
+export function buildScreenshotOptions(
+  fullPage: boolean,
+  clamped = false,
+  viewport: { width: number; deviceScaleFactor: number } = DEFAULT_VIEWPORT,
+) {
   return {
     ...(fullPage && clamped
       ? {
           clip: {
             x: 0,
             y: 0,
-            width: DEFAULT_VIEWPORT.width,
-            height: MAX_SCREENSHOT_HEIGHT,
+            width: viewport.width,
+            height: Math.floor(
+              MAX_SCREENSHOT_HEIGHT / viewport.deviceScaleFactor,
+            ),
           },
         }
       : { fullPage }),
     type: "jpeg" as const,
     quality: JPEG_QUALITY,
   };
+}
+
+/**
+ * The Browserless `/screenshot` request body.
+ *
+ * Split out and pure so the wire shape is assertable: a mobile capture carries
+ * its user-agent as a request HEADER, not in Browserless's own `userAgent`
+ * field, because that field's shape is version-specific and the two forms are
+ * mutually exclusive — v1 accepts a string and 400s on an object, v2 accepts an
+ * object and 400s on a string, while `setExtraHTTPHeaders` is accepted AND
+ * honored by both (verified against browserless/chrome and
+ * browserless/chromium). Sending the wrong one fails EVERY mobile capture with
+ * a 400, which is invisible until someone asks for a mobile screenshot.
+ *
+ * A header does not change `navigator.userAgent`, so client-side sniffing still
+ * sees Chrome — for that part, `isMobile`/`hasTouch` in the viewport is what
+ * carries.
+ */
+export function buildScreenshotRequestBody(
+  url: string,
+  device: ScreenshotDevice,
+  fullPage: boolean,
+  clamped: boolean,
+) {
+  const viewport = DEVICE_VIEWPORTS[device];
+  return {
+    url,
+    options: buildScreenshotOptions(fullPage, clamped, viewport),
+    viewport,
+    ...(viewport.isMobile
+      ? { setExtraHTTPHeaders: { "User-Agent": MOBILE_USER_AGENT } }
+      : {}),
+  };
+}
+
+/**
+ * Capture one page as a JPEG via Browserless, clamped to a height the model
+ * providers accept.
+ *
+ * Used by the Decopilot `take_screenshot` built-in. The sandbox-hosted harness
+ * does NOT come through here — it has a real browser in its image and runs
+ * `qa-screenshot` (packages/sandbox/image/bin/qa-screenshot), which keeps the
+ * same viewport presets and height ceiling so a before/after pair captured on
+ * the two paths is still comparable.
+ */
+async function captureScreenshot(params: {
+  url: string;
+  token: string;
+  device?: ScreenshotDevice;
+  fullPage?: boolean;
+}): Promise<
+  | { ok: true; bytes: Uint8Array; mediaType: "image/jpeg" }
+  | { ok: false; error: string }
+> {
+  const { url, token } = params;
+  const fullPage = params.fullPage ?? false;
+  const device = params.device ?? "desktop";
+
+  const shoot = async (clamped: boolean) =>
+    await fetch(
+      `${BROWSERLESS_BASE_URL}/screenshot?token=${encodeURIComponent(token)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          buildScreenshotRequestBody(url, device, fullPage, clamped),
+        ),
+      },
+    );
+
+  const response = await shoot(false);
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "Unknown error");
+    return {
+      ok: false,
+      error: `Browserless screenshot failed (${response.status}): ${errorText}`,
+    };
+  }
+
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const height = jpegHeight(bytes);
+  if (!fullPage || height === null || height <= MAX_SCREENSHOT_HEIGHT) {
+    return { ok: true, bytes, mediaType: "image/jpeg" };
+  }
+
+  const retry = await shoot(true);
+  const clipped = retry.ok ? new Uint8Array(await retry.arrayBuffer()) : null;
+  // Emitting an oversized capture would brick the thread, so fail the call
+  // instead — the caller can retry without `fullPage`.
+  if (!clipped || (jpegHeight(clipped) ?? 0) > MAX_SCREENSHOT_HEIGHT) {
+    return {
+      ok: false,
+      error: `Full-page screenshot of ${url} is ${height}px tall, over the ${MAX_SCREENSHOT_HEIGHT}px limit, and the clipped retry did not come back within it. Retry with fullPage: false.`,
+    };
+  }
+  return { ok: true, bytes: clipped, mediaType: "image/jpeg" };
 }
 
 /**
@@ -129,6 +277,15 @@ const TakeScreenshotInputSchema = z.object({
     .optional()
     .describe(
       "When true, captures the full scrollable page instead of just the viewport. Defaults to false.",
+    ),
+  device: z
+    .enum(["desktop", "mobile"])
+    .optional()
+    .describe(
+      "Device to emulate. `mobile` uses a phone viewport (390×844) AND a mobile " +
+        "user-agent, so sites that switch layout by user-agent — not just CSS " +
+        "breakpoints — return their real mobile markup. To document a responsive " +
+        "change, capture both `desktop` and `mobile`. Defaults to `desktop`.",
     ),
 });
 
@@ -368,6 +525,9 @@ export function createPortableTakeScreenshotTool(
       "Take a screenshot of a web page. " +
       "Use this when you need to visually see a website, check its layout, " +
       "verify a deployment, or inspect a page's appearance. " +
+      'Pass `device: "mobile"` to capture the true mobile layout (phone viewport ' +
+      "+ mobile user-agent), and capture both `desktop` and `mobile` to document " +
+      "a responsive change. " +
       "The screenshot is displayed automatically by the UI — do NOT include image URLs or markdown images in your response.",
     inputSchema: zodSchema(TakeScreenshotInputSchema),
     execute: async (input, options) => {
@@ -380,50 +540,22 @@ export function createPortableTakeScreenshotTool(
             error: "BROWSERLESS_TOKEN is not configured.",
           };
         }
-        const fullPage = input.fullPage ?? false;
-        const shoot = async (clamped: boolean) =>
-          await fetch(
-            `${BROWSERLESS_BASE_URL}/screenshot?token=${encodeURIComponent(token)}`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                url: input.url,
-                options: buildScreenshotOptions(fullPage, clamped),
-                viewport: DEFAULT_VIEWPORT,
-              }),
-            },
-          );
-
-        let response = await shoot(false);
-        if (!response.ok) {
-          const errorText = await response.text().catch(() => "Unknown error");
+        const device: ScreenshotDevice = input.device ?? "desktop";
+        const captured = await captureScreenshot({
+          url: input.url,
+          token,
+          device,
+          fullPage: input.fullPage ?? false,
+        });
+        if (!captured.ok) {
           return {
             success: false as const,
-            error: `Browserless screenshot failed (${response.status}): ${errorText}`,
+            error: captured.error,
             url: input.url,
           };
         }
-
-        let imgBytes = new Uint8Array(await response.arrayBuffer());
-        const height = jpegHeight(imgBytes);
-        if (fullPage && height !== null && height > MAX_SCREENSHOT_HEIGHT) {
-          response = await shoot(true);
-          const clipped = response.ok
-            ? new Uint8Array(await response.arrayBuffer())
-            : null;
-          // Emitting an oversized capture would brick the thread, so fail the
-          // tool call instead — the model can retry without `fullPage`.
-          if (!clipped || (jpegHeight(clipped) ?? 0) > MAX_SCREENSHOT_HEIGHT) {
-            return {
-              success: false as const,
-              error: `Full-page screenshot of ${input.url} is ${height}px tall, over the ${MAX_SCREENSHOT_HEIGHT}px limit, and the clipped retry did not come back within it. Retry with fullPage: false.`,
-              url: input.url,
-            };
-          }
-          imgBytes = clipped;
-        }
-        const mediaType = "image/jpeg";
+        let imgBytes = captured.bytes;
+        const mediaType = captured.mediaType;
         const key = `screenshots/${crypto.randomUUID()}.jpg`;
         let uri: string;
         let imageUrl: string | null = null;
@@ -454,13 +586,14 @@ export function createPortableTakeScreenshotTool(
         pendingImages.push({ url: imageUrl, mediaType, pageUrl: input.url });
         toolOutputMap.set(
           options.toolCallId,
-          `Screenshot of ${input.url} stored at ${uri}`,
+          `Screenshot (${device}) of ${input.url} stored at ${uri}`,
         );
 
         return {
           success: true as const,
           image: { uri, mediaType },
           url: input.url,
+          device,
         };
       } finally {
         writer.write({
@@ -479,7 +612,7 @@ export function createPortableTakeScreenshotTool(
       }
       return {
         type: "text",
-        value: `Screenshot of ${output.url} captured successfully. The image is attached below.`,
+        value: `Screenshot of ${output.url} (${output.device ?? "desktop"}) captured successfully. The image is attached below.`,
       };
     },
   });

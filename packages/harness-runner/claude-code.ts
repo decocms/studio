@@ -280,7 +280,12 @@ export async function runClaudeCode(
       .text()
       .catch(() => "")
   ).trim();
-  const sessionId = stored || crypto.randomUUID();
+  // Mutable: a crashed/duplicate prior run can leave this thread's Claude Code
+  // session locked, and the SDK then refuses to resume OR recreate it ("Session
+  // ID … is already in use"). The attempt loop below forks a fresh id once on
+  // that error, so both must be reassignable.
+  let sessionId = stored || crypto.randomUUID();
+  let resumeSession = stored.length > 0;
 
   const translator = new UiChunkTranslator();
   let messageId: string | undefined;
@@ -301,8 +306,31 @@ export async function runClaudeCode(
   };
 
   try {
+    let forkedForSession = false;
     for (let attempt = 1; ; attempt++) {
-      const broken = await attemptTurn();
+      let broken: string | null;
+      try {
+        broken = await attemptTurn();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // The SDK refuses a session id that is already in use — a prior run for
+        // this thread crashed or double-dispatched and left it locked, so every
+        // resume/recreate fails on the same id. Fork a FRESH session once and
+        // restart the attempt loop; losing that transcript beats failing every
+        // retry forever. Only once — a second "in use" is a real problem.
+        if (!forkedForSession && /is already in use/i.test(msg)) {
+          forkedForSession = true;
+          console.error(
+            `[claude-code] session ${sessionId} in use — forking a fresh ` +
+              `session and retrying`,
+          );
+          sessionId = crypto.randomUUID();
+          resumeSession = false;
+          attempt = 0;
+          continue;
+        }
+        throw err;
+      }
       if (!broken) return;
       if (attempt >= MCP_ATTEMPTS) {
         fail(
@@ -331,7 +359,7 @@ export async function runClaudeCode(
   async function attemptTurn(): Promise<string | null> {
     const stream = query({
       prompt: promptForRun(input),
-      options: buildOptions({ input, sessionId, resume: stored.length > 0 }),
+      options: buildOptions({ input, sessionId, resume: resumeSession }),
     });
 
     const startedAt = Date.now();

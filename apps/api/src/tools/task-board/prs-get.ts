@@ -720,41 +720,31 @@ async function fetchPrStatusExtras(
 /** Fetch a PR's live state via the GitHub MCP `pull_request_read` tool.
  *  Best-effort: any failure yields nulls so the modal still shows the link. */
 /**
- * Is this task's PR ready for a reviewer? Only a DEFINITE reason blocks —
- * a PR we know is closed or merged, or one sitting on a pending/failing check.
- * Anything unknown does not block.
+ * Is there a PR to dispatch a reviewer at? A PR we positively know is closed or
+ * merged is done with; anything else — open, or unknown because GitHub was quiet
+ * — is a candidate.
  *
- * That distinction is the whole point, and getting it backwards froze the review
- * pipeline in prod. `fetchPrLiveState` is best-effort: every field comes back
- * `null` when the GitHub call fails, so a version of this that asked for
- * `state === "open"` answered "not ready" for EVERY card the moment GitHub went
- * quiet. The sweeper then rejected its whole batch through a plain `return
- * false` that logs nothing, and dispatching stopped dead with no error anywhere.
- * Unknown means "we could not ask", not "no".
+ * Check status does NOT gate this: the reviewers run WITHOUT waiting for CI. The
+ * QA reviewer exercises the deploy preview and the Code Reviewer reads the diff,
+ * so we start them as soon as there's a PR rather than sitting on a slow or
+ * stuck check. Shipping stays safe — the MERGE is gated on green checks
+ * separately (`mergeLinkedPr` → `fetchPrChecksStatus`), so nothing merges on red
+ * no matter what a reviewer decided.
  *
- * `mergeLinkedPr` already had this right for checks ("Only a definite
- * failing/pending blocks; an unknown (null) does not") — this now matches it.
- *
- * Shared with `review-sweeper.ts` on purpose: a reviewer claim is spent once per
- * review cycle, so whichever path dispatches first decides what gets reviewed.
- * If the two disagreed, the sweeper's 60s tick would win the race against CI and
- * burn the cycle on a red PR.
+ * `fetchPrLiveState` is best-effort: every field comes back `null` when the
+ * GitHub call fails, which must read as "we could not ask", not "no PR" — a
+ * version that required `state === "open"` answered "not ready" for EVERY card
+ * the moment GitHub went quiet and silently froze dispatch. Shared with
+ * `review-sweeper.ts` so both dispatch paths agree on when a PR is reviewable.
  */
 export const prReadyForReview = (
   prs: {
     state: string | null;
     merged: boolean | null;
-    checksStatus: unknown;
   }[],
-): boolean => {
+): boolean =>
   // A PR is a candidate unless we positively know it's finished with.
-  const candidate = prs.find((p) => p.state !== "closed" && p.merged !== true);
-  return (
-    candidate != null &&
-    candidate.checksStatus !== "pending" &&
-    candidate.checksStatus !== "failing"
-  );
-};
+  prs.some((p) => p.state !== "closed" && p.merged !== true);
 
 export async function fetchPrLiveState(
   ctx: StudioContext,

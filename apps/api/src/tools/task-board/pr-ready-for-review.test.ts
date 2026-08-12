@@ -1,16 +1,14 @@
 /**
- * The reviewer hand-off gate, and specifically what it does when it does NOT
- * know the PR's state.
+ * The reviewer hand-off gate: is there a PR worth dispatching a reviewer at?
  *
- * This froze the review pipeline in prod. `fetchPrLiveState` is best-effort and
- * returns EVERY field as `null` when the GitHub call fails, so the previous
- * `state === "open"` form answered "not ready" for every card the moment GitHub
- * went quiet — and the sweeper rejected its whole batch through a plain `return
- * false` that logged nothing. 45 cards sat In Review with dispatching stopped
- * dead and no error anywhere.
- *
- * So the rule under test is: only a DEFINITE reason blocks. Unknown means "we
- * could not ask", not "no".
+ * Two rules under test:
+ * 1. Only a DEFINITE reason blocks — a PR we know is closed or merged. Unknown
+ *    (all-null, a failed GitHub read) means "we could not ask", not "no"; the
+ *    old `state === "open"` form froze 45 cards In Review the moment GitHub went
+ *    quiet.
+ * 2. Check status does NOT gate — reviewers run without waiting for CI (the
+ *    merge is gated on green separately). `prReadyForReview` no longer even
+ *    receives `checksStatus`, so a pending/failing PR is still reviewable.
  */
 import { describe, expect, test } from "bun:test";
 import { prReadyForReview } from "./prs-get";
@@ -20,32 +18,17 @@ type Pr = Parameters<typeof prReadyForReview>[0][number];
 const pr = (o: Partial<Pr> = {}): Pr => ({
   state: "open",
   merged: false,
-  checksStatus: null,
   ...o,
 });
 
 describe("prReadyForReview", () => {
-  test("an open PR with no CI is ready — a card without a pipeline must not sit forever", () => {
-    expect(prReadyForReview([pr({ checksStatus: null })])).toBe(true);
-  });
-
-  test("an open PR with passing checks is ready", () => {
-    expect(prReadyForReview([pr({ checksStatus: "passing" })])).toBe(true);
+  test("an open PR is ready — regardless of CI", () => {
+    expect(prReadyForReview([pr()])).toBe(true);
   });
 
   // The regression. All-null is what a failed GitHub read looks like.
   test("unknown state does NOT block — this is the prod freeze", () => {
-    expect(
-      prReadyForReview([{ state: null, merged: null, checksStatus: null }]),
-    ).toBe(true);
-  });
-
-  test("unknown state with a known-pending check still blocks", () => {
-    expect(
-      prReadyForReview([
-        { state: null, merged: null, checksStatus: "pending" },
-      ]),
-    ).toBe(false);
+    expect(prReadyForReview([{ state: null, merged: null }])).toBe(true);
   });
 
   test("a definitely closed PR blocks", () => {
@@ -54,14 +37,6 @@ describe("prReadyForReview", () => {
 
   test("a definitely merged PR blocks", () => {
     expect(prReadyForReview([pr({ merged: true })])).toBe(false);
-  });
-
-  test("pending checks block — the sweeper's 60s tick must not beat CI", () => {
-    expect(prReadyForReview([pr({ checksStatus: "pending" })])).toBe(false);
-  });
-
-  test("failing checks block", () => {
-    expect(prReadyForReview([pr({ checksStatus: "failing" })])).toBe(false);
   });
 
   test("no PRs at all is not ready", () => {

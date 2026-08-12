@@ -58,6 +58,29 @@ export const TASK_BOARD_COMMENT_LIST = defineTool({
   },
 });
 
+/**
+ * A task-run agent (the QA reviewer) writes screenshots to `org/output/…` and
+ * references them in its comment as markdown images `![alt](org/output/x.png)`.
+ * `org/output` materializes into the org-fs `outputs` volume under the run's
+ * thread id, served at `/api/<org>/fs/outputs/read?path=<threadId>/<subpath>` —
+ * the same URL the thread Outputs panel builds. Rewrite those refs to that URL
+ * here (the agent can't know its own thread id) so the image renders inline in
+ * the comment. Only `org/output/…` image refs are touched; every other URL is
+ * left as-is. `outputs` is a member-readable volume, so the browser's session
+ * loads the same-origin `<img>`.
+ */
+const ORG_OUTPUT_IMG_RE = /(!\[[^\]]*\]\()org\/output\/([^)\s]+)(\))/g;
+export function embedOrgOutputImages(
+  body: string,
+  threadId: string,
+  orgSlug: string,
+): string {
+  return body.replace(ORG_OUTPUT_IMG_RE, (_m, pre, subpath, post) => {
+    const path = encodeURIComponent(`${threadId}/${subpath}`);
+    return `${pre}/api/${encodeURIComponent(orgSlug)}/fs/outputs/read?path=${path}${post}`;
+  });
+}
+
 export const TASK_BOARD_COMMENT_CREATE = defineTool({
   name: "TASK_BOARD_COMMENT_CREATE",
   description: "Post a comment on a task board item, or a reply to one.",
@@ -78,19 +101,25 @@ export const TASK_BOARD_COMMENT_CREATE = defineTool({
   handler: async (input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
+    const organizationId = requireOrg(ctx);
+    // A comment from a task run is the Super Agent's, not the user's whose
+    // credential the run acts under (the assigner) — see authorId below. The
+    // store also carries the run's thread id, which is what turns the agent's
+    // `org/output/…` screenshot refs into renderable image URLs.
+    const taskRun = taskRunContextStore.getStore();
+    const orgSlug = ctx.organization?.slug;
+    const body =
+      taskRun?.threadId && orgSlug
+        ? embedOrgOutputImages(input.body, taskRun.threadId, orgSlug)
+        : input.body;
     const comment = await ctx.storage.taskBoard.createComment({
       taskBoardItemId: input.taskBoardItemId,
-      organizationId: requireOrg(ctx),
+      organizationId,
       parentId: input.parentId ?? null,
-      // A comment from a task run is the Super Agent's, not the user's whose
-      // credential the run acts under (the assigner). Attributing it to that
-      // person reads as them writing about work they didn't do. Same id the
-      // board already uses for the agent as an assignee, so the UI renders it
-      // as the agent without a second concept.
-      authorId: taskRunContextStore.getStore()
-        ? SUPER_AGENT_ASSIGNEE_ID
-        : getUserId(ctx)!,
-      body: input.body,
+      // Same id the board already uses for the agent as an assignee, so the UI
+      // renders it as the agent without a second concept.
+      authorId: taskRun ? SUPER_AGENT_ASSIGNEE_ID : getUserId(ctx)!,
+      body,
     });
     if (!comment) throw new Error("Task board item not found");
     return { comment };
