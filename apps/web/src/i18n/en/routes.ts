@@ -99,6 +99,7 @@ export const routes = {
     "Could not prepare an organization for commerce setup. Try again from this page or contact support.",
   "routes.commerceOnboarding.couldNotVerifyCommerceSetting":
     "Unable to verify Commerce Discovery configuration.",
+  "routes.commerceOnboarding.createNewOrg": "Create new organization",
   "routes.commerceOnboarding.emailAccessMultipleOrgs":
     "Your email can access more than one organization. Choose where commerce setup should continue.",
   "routes.commerceOnboarding.onboardingNeedsSupport":

@@ -1,6 +1,6 @@
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
-import { Loading01 } from "@untitledui/icons";
+import { Loading01, Plus } from "@untitledui/icons";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -21,6 +21,8 @@ export interface OrganizationChoiceProps {
   onJoined?: (organization: OrganizationChoiceItem, slug: string) => void;
   onRequestCompleted?: (organization: OrganizationChoiceItem) => void;
   selectLabel?: string;
+  onCreateNew?: () => void;
+  createNewLabel?: string;
 }
 
 interface DomainJoinResult {
@@ -60,6 +62,8 @@ export function OrganizationChoice({
   onJoined,
   onRequestCompleted,
   selectLabel = "Select",
+  onCreateNew,
+  createNewLabel = "Create new organization",
 }: OrganizationChoiceProps) {
   const [localRequestedSlugs, setLocalRequestedSlugs] = useState<Set<string>>(
     new Set(),
@@ -116,6 +120,16 @@ export function OrganizationChoice({
 
   return (
     <div className="grid grid-cols-1 gap-2">
+      {onCreateNew && (
+        <button
+          type="button"
+          onClick={onCreateNew}
+          className="rounded-xl border border-dashed border-border p-4 flex items-center justify-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+        >
+          <Plus size={16} />
+          {createNewLabel}
+        </button>
+      )}
       {organizations.map((org) => {
         const isJoining =
           joinOrgMutation.isPending && pendingJoinSlug === org.slug;
