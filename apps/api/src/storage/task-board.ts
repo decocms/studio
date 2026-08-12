@@ -86,7 +86,7 @@ export const TERMINAL_THREAD_STATUSES = new Set([
 /**
  * Should a task advance to In Review now that a thread finished? True iff it's
  * In Progress, has at least one thread that was actually used, and every such
- * thread's run has reached a terminal status. Agent-run tasks advance here
+ * thread's run has reached a terminal status. Repo-backed tasks advance here
  * too: the PR-open hook moves them earlier (mid-run, real-time) when it fires,
  * but thread-finish is the backstop so a task doesn't sit in In Progress forever
  * when PR detection misses (shell alias, script wrapper, or a PR opened by any
@@ -102,14 +102,11 @@ export const TERMINAL_THREAD_STATUSES = new Set([
  */
 export function shouldAdvanceToReview(item: {
   status: TaskBoardItemStatus;
-  repoOwner?: string | null;
   threads: { status: string | null; hasMessages: boolean }[];
 }): boolean {
   if (item.status !== "in_progress") return false;
   const used = item.threads.filter((t) => t.hasMessages);
   if (used.length === 0) return false;
-  // repoOwner-named (CMS) tasks wait for their PR: the CMS flow opens the PR and advances the card itself, so a finished edit with no PR must NOT jump to review.
-  if (item.repoOwner != null) return false;
   if (
     !used.every(
       (t) => t.status !== null && TERMINAL_THREAD_STATUSES.has(t.status),
@@ -206,8 +203,8 @@ export class TaskBoardStorage {
     priority?: TaskBoardItemPriority;
     assigneeId?: string | null;
     assignedBy?: string | null;
-    repoOwner?: string | null;
-    repoName?: string | null;
+    /** `owner/name` of the repo (site) this task pertains to. */
+    repo?: string | null;
     dueDate?: string | null;
     /** Sender-minted finding identity — see task-board-import. */
     externalKey?: string | null;
@@ -235,8 +232,7 @@ export class TaskBoardStorage {
         priority: params.priority ?? "medium",
         assignee_id: params.assigneeId ?? null,
         assigned_by: params.assignedBy ?? null,
-        repo_owner: params.repoOwner ?? null,
-        repo_name: params.repoName ?? null,
+        repo: params.repo ?? null,
         due_date: params.dueDate ?? null,
         external_key: params.externalKey ?? null,
         sort_order: sql<number>`(
@@ -267,8 +263,7 @@ export class TaskBoardStorage {
       priority?: TaskBoardItemPriority;
       assigneeId?: string | null;
       assignedBy?: string | null;
-      repoOwner?: string | null;
-      repoName?: string | null;
+      repo?: string | null;
       dueDate?: string | null;
       sortOrder?: number;
     },
@@ -289,8 +284,7 @@ export class TaskBoardStorage {
         ...(data.assignedBy !== undefined
           ? { assigned_by: data.assignedBy }
           : {}),
-        ...(data.repoOwner !== undefined ? { repo_owner: data.repoOwner } : {}),
-        ...(data.repoName !== undefined ? { repo_name: data.repoName } : {}),
+        ...(data.repo !== undefined ? { repo: data.repo } : {}),
         ...(data.dueDate !== undefined ? { due_date: data.dueDate } : {}),
         ...(data.sortOrder !== undefined ? { sort_order: data.sortOrder } : {}),
         updated_by: by,
@@ -661,6 +655,13 @@ export class TaskBoardStorage {
    * Park a card on a retry: it stays In Progress (the work is still ours) and
    * becomes due for re-dispatch at `retryAt`. Conditional on the card still
    * being In Progress so a human who moved it meanwhile keeps their move.
+   *
+   * `dismissed_at IS NULL` matters for the same reason as `listItemsDueForRetry`:
+   * a reports-pushed task's `delete()` only stamps `dismissed_at` and leaves
+   * `status` at `in_progress`. `reactToFailedTaskRun`/the review sweeper read
+   * that stale `status` off `getById` (which doesn't expose `dismissedAt`), so
+   * without this guard a dismissed card whose run then fails gets a fresh retry
+   * armed on it.
    */
   async scheduleRunRetry(
     id: string,
@@ -674,6 +675,7 @@ export class TaskBoardStorage {
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
       .where("status", "=", "in_progress")
+      .where("dismissed_at", "is", null)
       .returning("id")
       .execute();
     return rows.length > 0;
@@ -682,7 +684,9 @@ export class TaskBoardStorage {
   /**
    * Send a card back to To Do after a run failed for good (not infrastructure,
    * or out of retries). Clears the retry state so a later re-run starts with a
-   * full budget. Conditional on In Progress for the same reason as above.
+   * full budget. Conditional on In Progress and `dismissed_at IS NULL` for the
+   * same reason as `scheduleRunRetry` above — otherwise a dismissed card gets
+   * resurrected straight back onto the board.
    */
   async returnToTodoAfterFailure(
     id: string,
@@ -701,6 +705,7 @@ export class TaskBoardStorage {
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
       .where("status", "=", "in_progress")
+      .where("dismissed_at", "is", null)
       .returning("id")
       .execute();
     if (rows.length === 0) return null;
@@ -835,6 +840,14 @@ export class TaskBoardStorage {
   /**
    * Cards whose retry is due, oldest first. Claimed one at a time by the caller
    * via `claimDueRetry`, so a batch read here is safe across replicas.
+   *
+   * `dismissed_at IS NULL` matters here specifically: a reports-pushed task's
+   * `delete()` only sets `dismissed_at` (it keeps the row so re-import doesn't
+   * recreate the card), leaving `status`/`retry_at` untouched. Without this
+   * filter a card dismissed while its retry was still pending gets a brand-new
+   * Super Agent run dispatched on it after the user already deleted it from the
+   * board — the same class of bug the other list queries here already guard
+   * against.
    */
   async listItemsDueForRetry(
     limit: number,
@@ -850,6 +863,7 @@ export class TaskBoardStorage {
       .where("retry_at", "is not", null)
       .where("retry_at", "<=", now)
       .where("status", "=", "in_progress")
+      .where("dismissed_at", "is", null)
       .orderBy("retry_at", "asc")
       .limit(limit)
       .execute();
@@ -1042,6 +1056,11 @@ export class TaskBoardStorage {
    * The `where status = 'in_progress'` predicate is the whole point: it makes
    * the advance idempotent under concurrency, which the plain `update()` is not.
    * See the caller above for what the duplicates cost.
+   *
+   * `dismissed_at IS NULL` matters for the same reason as `listItemsDueForRetry`:
+   * a reports-pushed task's `delete()` only stamps `dismissed_at` and leaves
+   * `status` at `in_progress`, so a dismissed card whose linked thread finishes
+   * afterward would otherwise get resurrected straight into the reviewers' lane.
    */
   async advanceToReviewIfInProgress(
     id: string,
@@ -1058,6 +1077,7 @@ export class TaskBoardStorage {
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
       .where("status", "=", "in_progress")
+      .where("dismissed_at", "is", null)
       .returningAll()
       .executeTakeFirst();
 
@@ -1618,8 +1638,7 @@ export class TaskBoardStorage {
     priority: string;
     assignee_id: string | null;
     assigned_by: string | null;
-    repo_owner: string | null;
-    repo_name: string | null;
+    repo: string | null;
     due_date: string | Date | null;
     sort_order: number;
     retry_attempts?: number;
@@ -1637,8 +1656,7 @@ export class TaskBoardStorage {
       priority: row.priority as TaskBoardItemPriority,
       assigneeId: row.assignee_id,
       assignedBy: row.assigned_by,
-      repoOwner: row.repo_owner,
-      repoName: row.repo_name,
+      repo: row.repo,
       dueDate:
         row.due_date instanceof Date
           ? row.due_date.toISOString()

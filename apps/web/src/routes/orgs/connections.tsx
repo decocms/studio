@@ -577,6 +577,7 @@ function ConnectionResults({
                     className={cn(
                       isSelected && "ring-2 ring-primary bg-primary/5",
                     )}
+                    selected={selectionMode ? isSelected : undefined}
                     headerActionsAlwaysVisible
                     headerActions={
                       <ConnectionCardHeaderActions

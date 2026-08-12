@@ -75,6 +75,15 @@ const { values, positionals } = parseArgs({
   allowPositionals: true,
 });
 
+// Fail fast with a usage error naming the flag, instead of a bad --port/--vite-port crashing net.Server.listen() with a confusing RangeError.
+try {
+  parsePositiveIntFlag("port", values.port, 65535);
+  parsePositiveIntFlag("vite-port", values["vite-port"], 65535);
+} catch (err) {
+  console.error((err as Error).message);
+  process.exit(1);
+}
+
 // ── Help ───────────────────────────────────────────────────────────────
 if (values.help) {
   console.log(`

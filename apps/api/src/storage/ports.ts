@@ -28,7 +28,6 @@ import type {
   OrganizationJoinRequest,
   OrgSite,
   OrganizationSettings,
-  OrganizationTag,
   Thread,
   ThreadMessage,
 } from "./types";
@@ -691,38 +690,6 @@ export interface VirtualMcpPluginConfigStoragePort {
   getBoundConnectionsForVirtualMcps(
     virtualMcpIds: string[],
   ): Promise<Map<string, BoundConnectionSummary[]>>;
-}
-
-// ============================================================================
-// Tag Storage Port
-// ============================================================================
-
-export interface TagStoragePort {
-  // Organization tags
-  listOrgTags(organizationId: string): Promise<OrganizationTag[]>;
-  getTag(tagId: string): Promise<OrganizationTag | null>;
-  getTagByName(
-    organizationId: string,
-    name: string,
-  ): Promise<OrganizationTag | null>;
-  createTag(organizationId: string, name: string): Promise<OrganizationTag>;
-  deleteTag(tagId: string): Promise<void>;
-
-  // Member tags
-  getMemberTags(memberId: string): Promise<OrganizationTag[]>;
-  setMemberTags(memberId: string, tagIds: string[]): Promise<void>;
-  addMemberTag(memberId: string, tagId: string): Promise<void>;
-  removeMemberTag(memberId: string, tagId: string): Promise<void>;
-
-  // Member verification
-  verifyMemberOrg(memberId: string, organizationId: string): Promise<boolean>;
-
-  // Bulk operations for monitoring
-  getUserTagsInOrg(
-    userId: string,
-    organizationId: string,
-  ): Promise<OrganizationTag[]>;
-  getMembersWithTags(organizationId: string): Promise<Map<string, string[]>>;
 }
 
 // ============================================================================

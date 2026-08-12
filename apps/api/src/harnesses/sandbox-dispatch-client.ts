@@ -33,6 +33,10 @@ import type { UIMessageChunk } from "ai";
 import { sleep } from "@decocms/shared/std";
 import type { SandboxClient } from "@decocms/sandbox/dispatch/sandbox-client";
 import { harnessRunResultSchema } from "@decocms/sandbox/dispatch/schemas";
+import {
+  SANDBOX_GONE_TERMINAL_CODE,
+  SANDBOX_UNREACHABLE_PREFIX,
+} from "@decocms/sandbox/dispatch/error-codes";
 import type { SandboxProvider } from "@decocms/sandbox/provider";
 import { isTransientStreamError } from "@/harnesses/decopilot/built-in-tools/subtask";
 import type { HarnessId, HarnessStreamInput } from "@/harnesses/lib/types";
@@ -66,13 +70,28 @@ const SANDBOX_REPO_CWD = "/repo";
 const SANDBOX_HOSTED_HARNESSES = new Set<HarnessId>(["claude-code"]);
 
 /**
- * Dispatches per run: the first, plus ONE continuation after the sandbox goes
- * away. A second failure is the run's failure — repeated re-provisioning of a
- * sandbox that keeps dying burns model budget on a turn that never lands, and
- * the durable path already retries at a higher level (DBOS recovery re-enters
- * this client with the run's seq floor intact).
+ * Dispatches per run WITHOUT PROGRESS: the first, plus ONE continuation after
+ * the sandbox goes away. A second failure that streamed nothing is the run's
+ * failure — re-provisioning a sandbox that keeps dying on boot burns model
+ * budget on a turn that never lands, and the durable path already retries at a
+ * higher level (DBOS recovery re-enters this client with the run's seq floor
+ * intact).
+ *
+ * Counted CONSECUTIVELY, not per run: the break this bounds is the apiserver
+ * hanging up the daemon's port-forward, which is a routine blip, not a sick
+ * pod. A lifetime budget failed runs that had streamed thirty tool calls
+ * between two unrelated hangups minutes apart — which is exactly the run this
+ * is meant to save, and it also burns the org's task quota. Any chunk from the
+ * replacement pod proves the continuation worked, so it resets the count.
  */
 const MAX_DISPATCH_ATTEMPTS = 2;
+
+/**
+ * Hard ceiling on dispatches per run, however much progress each one makes.
+ * Guards the pathological shape the consecutive count alone would loop on: a
+ * pod that answers with one chunk and dies, forever.
+ */
+const MAX_TOTAL_DISPATCH_ATTEMPTS = 5;
 
 /**
  * How long Studio waits for ANY byte from the daemon before calling the pod
@@ -93,7 +112,10 @@ const DAEMON_SILENCE_TIMEOUT_MS = 90_000;
  */
 export class SandboxUnreachableError extends Error {
   constructor(reason: string) {
-    super(reason);
+    // Prefixed in the CONSTRUCTOR, so the marker `isTransientRunFailure` reads
+    // downstream cannot be forgotten by a new throw site. See
+    // SANDBOX_UNREACHABLE_PREFIX.
+    super(`${SANDBOX_UNREACHABLE_PREFIX} ${reason}`);
     this.name = "SandboxUnreachableError";
   }
 }
@@ -407,15 +429,23 @@ export async function* dispatchWithContinuation(args: {
   dispatchOnce: (
     resume: { reason: string } | null,
   ) => AsyncIterable<UIMessageChunk>;
+  /** Consecutive no-progress dispatches allowed. */
   maxAttempts?: number;
+  /** Dispatches allowed in total, progress or not. */
+  maxTotalAttempts?: number;
 }): AsyncIterable<UIMessageChunk> {
   const maxAttempts = args.maxAttempts ?? MAX_DISPATCH_ATTEMPTS;
+  const maxTotalAttempts = args.maxTotalAttempts ?? MAX_TOTAL_DISPATCH_ATTEMPTS;
   let resume = args.resume;
   let forwardedStart = resume !== null;
+  /** Consecutive failures whose dispatch streamed nothing. */
+  let stalled = 0;
 
   for (let attempt = 1; ; attempt++) {
+    let progressed = false;
     try {
       for await (const chunk of args.dispatchOnce(resume)) {
+        progressed = true;
         if ((chunk as { type?: string }).type === "start") {
           if (forwardedStart) continue;
           forwardedStart = true;
@@ -425,12 +455,18 @@ export async function* dispatchWithContinuation(args: {
       return;
     } catch (err) {
       if (args.aborted()) throw err;
-      if (!(err instanceof SandboxUnreachableError) || attempt >= maxAttempts) {
+      stalled = progressed ? 1 : stalled + 1;
+      if (
+        !(err instanceof SandboxUnreachableError) ||
+        stalled >= maxAttempts ||
+        attempt >= maxTotalAttempts
+      ) {
         throw err;
       }
       console.warn("[sandbox-dispatch] sandbox lost mid-run; continuing", {
         runId: args.runId,
         attempt,
+        progressed,
         reason: err.message,
       });
       resume = {
@@ -476,6 +512,42 @@ async function pushSandboxEnv(
 function toWireInput(input: HarnessStreamInput): unknown {
   const { signal: _signal, ...wire } = input;
   return wire;
+}
+
+/**
+ * How often a streaming dispatch pushes its sandbox's shutdown deadline out.
+ * Same cadence as the preview SSE handler's `TTL_RENEW_MS`, and for the same
+ * reason: comfortably inside the 15-minute claim TTL, so a missed renewal (or a
+ * slow apiserver) still leaves two more chances before the pod is reaped.
+ */
+const TTL_RENEW_MS = 5 * 60_000;
+
+/**
+ * Keep the claim alive on an interval, returning the stop. Best-effort by
+ * construction — a failed renewal costs the run its pod at the deadline, which
+ * is exactly today's behavior, so it must never break the stream it is
+ * protecting.
+ */
+function renewWhileStreaming(
+  provider: SandboxProvider,
+  handle: string,
+): () => void {
+  if (!provider.renewTtl) return () => {};
+  const renew = () =>
+    void provider
+      .renewTtl?.(handle)
+      .catch((err) =>
+        console.warn(
+          `[sandbox-dispatch] TTL renew failed for ${handle}: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      );
+  // Immediately as well as on the interval: a run dispatched onto a reused
+  // sandbox is adopting a TTL that is already part-spent — that is how a run
+  // could die four minutes in.
+  renew();
+  const timer = setInterval(renew, TTL_RENEW_MS);
+  timer.unref?.();
+  return () => clearInterval(timer);
 }
 
 async function* dispatchToDaemon(args: {
@@ -528,6 +600,23 @@ async function* dispatchToDaemon(args: {
     throw new Error(summary);
   }
   if (!res.body) throw new SandboxUnreachableError("dispatch returned no body");
+  // Hold the pod open for as long as this run streams.
+  //
+  // A claim is created with `spec.lifecycle.shutdownTime = now + 15min`
+  // (`DEFAULT_IDLE_TTL_MS`) and the operator deletes the pod at that instant.
+  // `renewTtl` pushes it forward — and until now its ONLY caller was the
+  // preview SSE handler, i.e. a browser being attached. A Super Agent run has
+  // no browser, so nothing renewed it and every headless run had a hard
+  // 15-minute wall clock: at the deadline the operator SIGTERMs the daemon,
+  // `CancelAll` fires, and the turn dies mid-edit. That is the sandbox_gone
+  // case above, and it is why one prod card burned six runs without ever
+  // opening a PR.
+  //
+  // Deliberately NOT the daemon's `/idle` activity — that feeds the
+  // housekeeper's idle sweep, which can only end a claim early, never extend
+  // it. The claim's own deadline is a separate clock and this is the only thing
+  // that moves it.
+  const stopTtlRenew = renewWhileStreaming(args.provider, args.handle);
   let total = 0;
   // Sticky, and only acted on after every frame's chunks are yielded: partial
   // work first, THEN the throw, because the consumer's error path is what
@@ -536,17 +625,24 @@ async function* dispatchToDaemon(args: {
   // the FIRST reason is the real one.
   let error: { code: string; message: string } | null = null;
   let done = false;
-  for await (const line of ndjsonLines(res.body, args.signal)) {
-    const parsed = harnessRunResultSchema.safeParse(line);
-    if (!parsed.success) {
-      throw new Error(
-        `sandbox dispatch returned a malformed frame: ${parsed.error.message}`,
-      );
+  try {
+    for await (const line of ndjsonLines(res.body, args.signal)) {
+      const parsed = harnessRunResultSchema.safeParse(line);
+      if (!parsed.success) {
+        throw new Error(
+          `sandbox dispatch returned a malformed frame: ${parsed.error.message}`,
+        );
+      }
+      total += parsed.data.chunks.length;
+      yield* parsed.data.chunks as UIMessageChunk[];
+      error ??= parsed.data.error;
+      if (parsed.data.done) done = true;
     }
-    total += parsed.data.chunks.length;
-    yield* parsed.data.chunks as UIMessageChunk[];
-    error ??= parsed.data.error;
-    if (parsed.data.done) done = true;
+  } finally {
+    // Every exit path, including the consumer abandoning this generator: a
+    // leaked interval would keep a dead sandbox's claim alive for the rest of
+    // the process's life.
+    stopTtlRenew();
   }
   console.log("[sandbox-dispatch] run ended", {
     runId: args.runId,
@@ -565,12 +661,31 @@ async function* dispatchToDaemon(args: {
       `the sandbox stopped streaming after ${total} chunks without finishing the run`,
     );
   }
-  if (error?.code === SUPERSEDED_TERMINAL_CODE) {
-    // Another dispatch owns this run now. Whatever this attempt streamed above
-    // is already yielded; the successor publishes the terminal.
-    throw new RunSupersededError(error.message);
+  if (error) throw errorForTerminal(error.code, error.message);
+}
+
+/**
+ * What a daemon terminal frame means to this side. Three outcomes, and which
+ * one a code gets decides whether the turn is continued, dropped quietly, or
+ * failed — so it is pure and unit-tested rather than buried in the stream loop.
+ *
+ * - `superseded`: another dispatch owns this run now. Whatever this attempt
+ *   streamed is already yielded; the successor publishes the terminal.
+ * - `sandbox_gone`: the pod could not finish — it was shutting down (eviction,
+ *   scale-in) or our connection to it dropped. Nobody cancelled anything, so it
+ *   continues on a replacement pod exactly like a broken stream does. The
+ *   daemon used to report this case as `cancelled`, which reached the thread as
+ *   `Error: cancelled: run cancelled` and was never retried, on a turn whose
+ *   work was already committed to the branch by the shutdown publish.
+ * - anything else (`harness_crashed`, `cancelled`, `bad_input`, …): a real
+ *   terminal the run reported. Failing is the answer.
+ */
+export function errorForTerminal(code: string, message: string): Error {
+  if (code === SUPERSEDED_TERMINAL_CODE) return new RunSupersededError(message);
+  if (code === SANDBOX_GONE_TERMINAL_CODE) {
+    return new SandboxUnreachableError(message);
   }
-  if (error) throw new Error(`${error.code}: ${error.message}`);
+  return new Error(`${code}: ${message}`);
 }
 
 /**

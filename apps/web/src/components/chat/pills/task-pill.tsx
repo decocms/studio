@@ -81,14 +81,11 @@ export function TaskPill({ virtualMcpId }: { virtualMcpId: string }) {
   // from the sandboxMap — which silently lands two tasks on one branch.
   const freshBranch = () => generateBranchName(branchUserLabel(session?.user));
 
-  // This site's repo — the task's `repoOwner`/`repoName` is the source-of-truth
-  // scope. Legacy tasks (pre-repo column) fall back to a linked thread on this
-  // agent so they don't vanish.
-  const repo = getActiveGithubRepo(useVirtualMCP(virtualMcpId));
+  // This site's repo as the task's `repo` value (`owner/name`) — the scope. Legacy tasks (pre-repo column) fall back to a linked thread on this agent so they don't vanish.
+  const activeRepo = getActiveGithubRepo(useVirtualMCP(virtualMcpId));
+  const repoSlug = activeRepo ? `${activeRepo.owner}/${activeRepo.name}` : null;
   const belongsToSite = (item: TaskBoardItem) =>
-    (repo != null &&
-      item.repoOwner === repo.owner &&
-      item.repoName === repo.name) ||
+    (repoSlug != null && item.repo === repoSlug) ||
     item.threads.some((th) => th.virtualMcpId === virtualMcpId);
 
   // The board is org-wide; scope to this site + "yours" (createdBy) client-side.
@@ -169,8 +166,7 @@ export function TaskPill({ virtualMcpId }: { virtualMcpId: string }) {
       const { item } = await tb.create.mutateAsync({
         title: (firstLine || prompt).slice(0, 120),
         description: prompt,
-        repoOwner: repo?.owner ?? null,
-        repoName: repo?.name ?? null,
+        repo: repoSlug,
       });
       await tb.link.mutateAsync({ id: item.id, linkThreadId: newId });
       setTaskId(newId, virtualMcpId, { main: "preview", autosend: true });

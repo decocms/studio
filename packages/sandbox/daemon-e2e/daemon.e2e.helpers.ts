@@ -182,7 +182,11 @@ export async function stopDaemon(d: Daemon | null): Promise<void> {
     // ChildProcess.kill() terminates only the Bun parent; an in-flight npm.cmd
     // child can survive and keep appDir locked. taskkill /T closes that tree.
     await new Promise<void>((resolve) => {
-      proc.once("exit", () => resolve());
+      let killTimer: ReturnType<typeof setTimeout> | undefined;
+      proc.once("exit", () => {
+        if (killTimer) clearTimeout(killTimer);
+        resolve();
+      });
       if (process.platform === "win32" && proc.pid !== undefined) {
         const killer = spawn(
           "taskkill",
@@ -195,7 +199,13 @@ export async function stopDaemon(d: Daemon | null): Promise<void> {
         killer.once("error", fallBackToParentKill);
         killer.once("exit", fallBackToParentKill);
       } else {
-        proc.kill("SIGKILL");
+        // SIGTERM (not SIGKILL) so the daemon reaps any dev server it spawned.
+        proc.kill("SIGTERM");
+        killTimer = setTimeout(() => {
+          if (proc.exitCode === null && proc.signalCode === null) {
+            proc.kill("SIGKILL");
+          }
+        }, 5000);
       }
     });
   }

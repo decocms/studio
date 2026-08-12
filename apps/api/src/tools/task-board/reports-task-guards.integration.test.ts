@@ -129,36 +129,31 @@ describe("reports-task guards", () => {
     const task = await taskBoard.create({
       organizationId: ORG,
       title: "scoped",
-      repoOwner: "acme",
-      repoName: "site",
+      repo: "acme/site",
       by: USER,
     });
-    expect(task.repoOwner).toBe("acme");
-    expect(task.repoName).toBe("site");
+    expect(task.repo).toBe("acme/site");
 
     // Re-point to a different repo — proves the UPDATE whitelist actually
-    // carries repo_owner/repo_name (an in-memory fake would accept the column
-    // but silently drop it), and that it round-trips on re-read.
+    // carries `repo` (an in-memory fake would accept the column but silently
+    // drop it), and that it round-trips on re-read.
     const moved = await TASK_BOARD_ITEM_UPDATE.handler(
-      { id: task.id, repoOwner: "acme", repoName: "store" },
+      { id: task.id, repo: "acme/store" },
       ctx,
     );
-    expect(moved.item.repoName).toBe("store");
+    expect(moved.item.repo).toBe("acme/store");
     const reread = await taskBoard.getById(task.id, ORG);
-    expect(reread?.repoName).toBe("store");
+    expect(reread?.repo).toBe("acme/store");
 
     // Clearing round-trips too — explicit null, not "unchanged".
     const cleared = await TASK_BOARD_ITEM_UPDATE.handler(
-      { id: task.id, repoOwner: null, repoName: null },
+      { id: task.id, repo: null },
       ctx,
     );
-    expect(cleared.item.repoOwner).toBeNull();
-    expect(cleared.item.repoName).toBeNull();
+    expect(cleared.item.repo).toBeNull();
   });
 
-  // The CMS submit-for-review path: the browser opens the PR directly (no run),
-  // so it links the PR + advances via UPDATE. A run-based flow never reaches
-  // here, so this is the only place these two effects can happen together.
+  // The CMS submit-for-review path opens the PR directly (no run), so it links the PR + advances via UPDATE — the only place these two effects happen together off a run.
   it("links a PR and advances to In Review via UPDATE (CMS submit-for-review)", async () => {
     const task = await taskBoard.create({
       organizationId: ORG,
@@ -213,6 +208,29 @@ describe("reports-task guards", () => {
       ensureTaskExecutionAllowed(ctx, second, config),
     ).rejects.toThrow(/^\[SUBSCRIPTION_REQUIRED\]/);
     expect((await taskBoard.getById(second.id, ORG))?.assigneeId).toBeNull();
+  });
+
+  // Mirrors TASK_BOARD_ITEM_RERUN's userInitiatedTaskQuotaConfig() precheck.
+  it("a HUMAN re-delegating a runs-exhausted task is not blocked by the per-task cap", async () => {
+    const config = {
+      enforced: true,
+      freeTaskExecutions: 5,
+      monthlyTaskExecutions: 5,
+      maxRunsPerTask: 1,
+    };
+    const task = await taskBoard.create({
+      organizationId: ORG,
+      title: "finding-c",
+      by: "system",
+    });
+    await claimTaskExecution(ctx, task, config);
+    // The task already burned its one allowed run — the automatic config refuses it.
+    await expect(ensureTaskExecutionAllowed(ctx, task, config)).rejects.toThrow(
+      /execution limit/,
+    );
+    // Re-delegating it BY HAND must still be allowed.
+    const manual = { ...config, maxRunsPerTask: Number.POSITIVE_INFINITY };
+    await ensureTaskExecutionAllowed(ctx, task, manual);
   });
 
   // Inverts the old assertion: delete used to be refused for a reports task.

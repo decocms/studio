@@ -15,7 +15,7 @@ Chart sources:
 - [Sandbox environment](https://github.com/decocms/studio/tree/main/deploy/helm/sandbox-env)
 
 <Callout type="tip">
-  **Easiest path:** for a one-command install with bundled dependencies (local or a POC cluster), use the [umbrella chart](https://github.com/decocms/studio/tree/main/selfhost/examples/k8s-local) or `selfhost/scripts/local-k8s.sh` (see [Quickstart](/en/studio/self-hosting/quickstart)). There's also an **interactive install skill** (`self-host-studio`) that interviews you, fills the values, and validates before installing. This page is the **chart reference** for installing directly and for production — the full dependency guide (managed vs in-cluster Postgres/S3/ClickHouse, secrets with/without ESO, ingress, sandbox) lives in [`selfhost/production`](https://github.com/decocms/studio/tree/main/selfhost/production).
+  **Easiest path:** for a one-command install with bundled dependencies (local or a POC cluster), use the [umbrella chart](https://github.com/decocms/studio/tree/main/selfhost/examples/k8s-local) or `selfhost/scripts/local-k8s.sh` (see [Quickstart](/en/studio/self-hosting/quickstart)). There's also a **guide for coding agents** ([`SKILL.md`](https://github.com/decocms/studio/blob/main/selfhost/skills/self-host-studio/SKILL.md)) that interviews you and writes a reusable install directory — an umbrella chart with pinned OCI dependencies plus your values. This page is the **chart reference** for installing directly and for production — the full dependency guide (managed vs in-cluster Postgres/S3/ClickHouse, secrets with/without ESO, ingress, sandbox) lives in [`selfhost/production`](https://github.com/decocms/studio/tree/main/selfhost/production).
 </Callout>
 
 For the runtime architecture (web/API/worker split, Postgres, NATS, and sandbox providers), see [Architecture](/en/studio/architecture).
@@ -51,8 +51,8 @@ For production, schedule sandbox pods on a dedicated, tainted node pool. Sandbox
 The commands below pin chart versions explicitly. Pin them in your own deployment too, instead of tracking whatever is newest.
 
 ```bash
-export STUDIO_CHART_VERSION=0.13.0
-export SANDBOX_OPERATOR_CHART_VERSION=0.1.3
+export STUDIO_CHART_VERSION=0.13.1
+export SANDBOX_OPERATOR_CHART_VERSION=0.1.4
 export SANDBOX_ENV_CHART_VERSION=0.15.3
 ```
 
@@ -237,6 +237,22 @@ A self-hosted deployment ships with no model access. Agents and Decopilot stay u
 
 Egress note: unless you run the models in your own network, Studio pods need outbound HTTPS to the provider's API.
 
+### 7. Configure authentication
+
+Studio uses Better Auth. For Kubernetes, configure it with environment variables in the same Secret or ConfigMap the chart already injects — there is nothing extra to mount:
+
+| Method | Variables |
+| --- | --- |
+| Social login | `AUTH_GOOGLE_CLIENT_ID` / `AUTH_GOOGLE_CLIENT_SECRET`, `AUTH_GITHUB_CLIENT_ID` / `AUTH_GITHUB_CLIENT_SECRET` |
+| Deployment-wide SSO | `AUTH_SSO_DOMAIN` plus the Microsoft Entra ID or Google Workspace variables |
+| Magic link, email OTP, email/password | `AUTH_MAGIC_LINK_ENABLED`, `AUTH_EMAIL_OTP_ENABLED`, `AUTH_EMAIL_PASSWORD_ENABLED`, plus a mail provider (`AUTH_RESEND_API_KEY` or `AUTH_SENDGRID_API_KEY`) |
+
+See [Authentication](/en/studio/self-hosting/authentication) for the full reference.
+
+<Callout type="note">
+  The `auth-config.json` file mentioned in the authentication reference is a Docker Compose convenience — the Kubernetes path does not need it. If you want it anyway (for SAML, or to keep one config artifact), mount it at `/app/apps/api/auth-config.json` from a ConfigMap using the chart's `volumes` and `volumeMounts` values, which apply to both the API and worker Deployments. Keep provider secrets in the Secret, not in that file.
+</Callout>
+
 ## Sandbox configuration
 
 ### Isolation and egress
@@ -305,6 +321,10 @@ housekeeper:
 `STUDIO_ENV` is required when the housekeeper is enabled because its default selectors are environment-scoped. Without the matching label, it intentionally selects no claims.
 
 ### Preview Gateway
+
+<Callout type="tip">
+  Treat public preview URLs as a later phase. They need Gateway API CRDs, a Gateway controller, wildcard DNS, and a wildcard certificate via DNS-01 — dependencies that usually belong to another team and another schedule. Studio, agents, and code execution all work without them; only shareable preview links are missing.
+</Callout>
 
 Without a preview Gateway, Studio can use its legacy in-process preview proxy when a preview URL pattern and the required external routing are provided. The current production design uses Gateway API and routes each preview directly to its sandbox daemon:
 

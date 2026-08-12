@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { SandboxUnreachableError } from "@/harnesses/sandbox-dispatch-client";
 import {
   isTransientRunFailure,
   retryBudgetFor,
@@ -82,6 +83,41 @@ describe("isTransientRunFailure", () => {
       false,
     );
     expect(isTransientRunFailure({ kind: null })).toBe(false);
+  });
+});
+
+// Every message this class carries is infrastructure by construction, and the
+// board matched NONE of them by wording — so the failure it sees most often got
+// one attempt instead of three. These are the real messages, built through the
+// real constructor, so a reworded one still passes and a DROPPED marker fails.
+describe("SandboxUnreachableError is always infrastructure", () => {
+  const reasons = [
+    "the sandbox stream broke mid-run: The socket connection was closed unexpectedly",
+    "the sandbox stopped mid-run (pod shutting down or connection dropped)",
+    "the sandbox stopped streaming after 94 chunks without finishing the run",
+    "no output from the sandbox for 90s (its keepalive is every 15s, so the pod is gone)",
+    "could not reach the sandbox daemon: fetch failed",
+  ];
+
+  for (const reason of reasons) {
+    test(reason.slice(0, 48), () => {
+      const errorText = `Error: ${new SandboxUnreachableError(reason).message}`;
+      expect(isTransientRunFailure({ kind: "error", errorText })).toBe(true);
+      expect(retryBudgetFor({ kind: "error", errorText })).toBe(
+        TRANSIENT_RETRY_BUDGET,
+      );
+    });
+  }
+
+  // The prefix is what is matched, so a plain error that merely mentions a
+  // sandbox must NOT be promoted to the infrastructure budget.
+  test("prose about a sandbox is not the marker", () => {
+    expect(
+      isTransientRunFailure({
+        kind: "error",
+        errorText: "TypeError: sandbox.stream is not a function",
+      }),
+    ).toBe(false);
   });
 });
 

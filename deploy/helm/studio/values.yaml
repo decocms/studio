@@ -52,6 +52,19 @@ ingress:
   #      - studio.example.com
   #    secretName: studio-tls
 
+# ServiceAccount for the API and worker pods. Undocumented until now, though the
+# templates have always honoured it — and the sandbox layer depends on it: the
+# sandbox-env chart grants claim/port-forward RBAC to a NAMED service account,
+# so leaving Studio on `default` yields 403 "cannot create sandboxclaims".
+# Set create: true with a name matching sandbox-env's mesh.serviceAccountName.
+serviceAccount:
+  # Renders the ServiceAccount and runs the pods as it.
+  create: false
+  # Empty + create: true → the release fullname. Empty + create: false → `default`.
+  name: ""
+  annotations: {}
+  automount: true
+
 service:
   type: ClusterIP
   port: 80

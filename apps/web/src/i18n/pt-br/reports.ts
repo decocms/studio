@@ -113,6 +113,11 @@ export const reports = {
   "reports.listTemplate.moreSignals": "outros sinais no diagnóstico completo",
   "reports.listTemplate.unlockRevenue": "Destravar minha receita",
   "reports.paginasVariant.found": "achados",
+  "reports.scanGate.anonymousHelp":
+    "Entrar também libera o relatório completo quando ficar pronto.",
+  "reports.scanGate.anonymousLabel":
+    "Quer receber por e-mail quando ficar pronto?",
+  "reports.scanGate.anonymousSignIn": "Entrar para ser avisado",
   "reports.scanGate.errorBlocked":
     "Este relatório não está disponível publicamente.",
   "reports.scanGate.errorEmpty":
@@ -129,7 +134,7 @@ export const reports = {
   "reports.scanGate.stageNow": "agora",
   "reports.scanGate.stageReady": "Relatório pronto",
   "reports.scanGate.subtitle":
-    "Você pode acompanhar por aqui. Também avisaremos quando estiver pronto.",
+    "Você pode acompanhar por aqui — leva alguns minutos.",
   "reports.scanGate.tryAnother": "Tentar outra loja",
   "reports.scorecardTemplate.noComparison": "Sem comparação",
   "reports.scorecardTemplate.rivalLeads": "{rival} lidera",

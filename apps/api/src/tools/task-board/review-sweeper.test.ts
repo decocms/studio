@@ -9,7 +9,7 @@
 import { describe, expect, it } from "bun:test";
 import { TaskQuotaError } from "@/billing/task-quota";
 import { prReadyForReview } from "./prs-get";
-import { isPermanentDispatchFailure } from "./review-sweeper";
+import { isPermanentDispatchFailure, noPrHandoffDue } from "./review-sweeper";
 
 const pr = (over: Partial<Parameters<typeof prReadyForReview>[0][number]>) => ({
   state: "open",
@@ -90,5 +90,31 @@ describe("isPermanentDispatchFailure", () => {
     );
     expect(isPermanentDispatchFailure("no model configured")).toBe(false);
     expect(isPermanentDispatchFailure(undefined)).toBe(false);
+  });
+});
+
+/**
+ * The other terminal the sweeper owns: a card parked In Review with no PR. No
+ * reviewer is ever dispatched at it, so without a handover it is swept forever
+ * and reads like a card whose reviewers are still thinking.
+ */
+describe("noPrHandoffDue", () => {
+  const CYCLE = new Date("2026-01-01T10:00:00Z").getTime();
+  const at = (mins: number) => CYCLE + mins * 60_000;
+
+  it("waits out the grace — the PR link and the status move are two calls", () => {
+    expect(noPrHandoffDue(CYCLE, at(1))).toBe(false);
+    expect(noPrHandoffDue(CYCLE, at(14))).toBe(false);
+  });
+
+  it("hands over once the card has sat there past the grace", () => {
+    expect(noPrHandoffDue(CYCLE, at(15))).toBe(true);
+    expect(noPrHandoffDue(CYCLE, at(60 * 24))).toBe(true);
+  });
+
+  // No `→ in_review` entry on the timeline reads as infinitely old, which is
+  // right: those are the oldest strands and no PR is coming for them either.
+  it("hands over a card with no recorded review cycle at all", () => {
+    expect(noPrHandoffDue(0, at(0))).toBe(true);
   });
 });

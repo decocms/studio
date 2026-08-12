@@ -8,6 +8,7 @@ import type {
 import { faviconForDomain } from "@decocms/shared/report-seo";
 import { isPostHogInitialized } from "@/lib/posthog-client";
 import { KEYS } from "@/lib/query-keys";
+import { callbackUrl } from "./callback-url";
 import { useT } from "@/i18n/use-t.ts";
 import { ReportSocialProof } from "./report-social-proof";
 import {
@@ -71,12 +72,6 @@ function getReportAuthCopy(
     verify: t("reports.authGate.verify"),
     useDifferentEmail: t("reports.authGate.useDifferentEmail"),
   };
-}
-
-function callbackUrl(domain: string): string {
-  const path = `/report/${encodeURIComponent(domain)}`;
-  if (typeof window === "undefined") return path;
-  return `${path}${window.location.search}${window.location.hash}`;
 }
 
 // Mock findings mirroring the deck cover's clickable TOC.

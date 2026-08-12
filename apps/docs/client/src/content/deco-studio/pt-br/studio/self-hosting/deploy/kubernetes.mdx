@@ -15,7 +15,7 @@ Código-fonte dos charts:
 - [Ambiente de sandbox](https://github.com/decocms/studio/tree/main/deploy/helm/sandbox-env)
 
 <Callout type="tip">
-  **Caminho mais fácil:** para uma instalação de um comando com dependências embutidas (local ou cluster de POC), use o [umbrella chart](https://github.com/decocms/studio/tree/main/selfhost/examples/k8s-local) ou `selfhost/scripts/local-k8s.sh` (veja o [Quickstart](/pt-br/studio/self-hosting/quickstart)). Há também uma **skill de instalação interativa** (`self-host-studio`) que entrevista você, preenche os values e valida antes de instalar. Esta página é a **referência do chart** para instalar direto e para produção — o guia completo de dependências (Postgres/S3/ClickHouse managed ou in-cluster, secrets com/sem ESO, ingress, sandbox) está em [`selfhost/production`](https://github.com/decocms/studio/tree/main/selfhost/production).
+  **Caminho mais fácil:** para uma instalação de um comando com dependências embutidas (local ou cluster de POC), use o [umbrella chart](https://github.com/decocms/studio/tree/main/selfhost/examples/k8s-local) ou `selfhost/scripts/local-k8s.sh` (veja o [Quickstart](/pt-br/studio/self-hosting/quickstart)). Há também um **guia para agentes de código** ([`SKILL.md`](https://github.com/decocms/studio/blob/main/selfhost/skills/self-host-studio/SKILL.md)) que entrevista você e escreve um diretório de instalação reutilizável — um umbrella chart com dependências OCI fixadas mais os seus values. Esta página é a **referência do chart** para instalar direto e para produção — o guia completo de dependências (Postgres/S3/ClickHouse managed ou in-cluster, secrets com/sem ESO, ingress, sandbox) está em [`selfhost/production`](https://github.com/decocms/studio/tree/main/selfhost/production).
 </Callout>
 
 Para entender a arquitetura em runtime (separação web/API/worker, Postgres, NATS e providers de sandbox), veja [Arquitetura](/pt-br/studio/architecture).
@@ -51,8 +51,8 @@ Em produção, agende pods de sandbox em um node pool dedicado e com taint. Esse
 Os comandos abaixo fixam versões de chart explicitamente. Fixe também no seu deployment, em vez de acompanhar a versão mais recente.
 
 ```bash
-export STUDIO_CHART_VERSION=0.13.0
-export SANDBOX_OPERATOR_CHART_VERSION=0.1.3
+export STUDIO_CHART_VERSION=0.13.1
+export SANDBOX_OPERATOR_CHART_VERSION=0.1.4
 export SANDBOX_ENV_CHART_VERSION=0.15.3
 ```
 
@@ -237,6 +237,22 @@ Um deployment self-hosted não vem com acesso a modelos. Agentes e Decopilot fic
 
 Nota de egress: a menos que os modelos rodem na sua própria rede, os pods do Studio precisam de HTTPS de saída para a API do provedor.
 
+### 7. Configure a autenticação
+
+O Studio usa o Better Auth. No Kubernetes, configure por variáveis de ambiente no mesmo Secret ou ConfigMap que o chart já injeta — não há nada extra para montar:
+
+| Método | Variáveis |
+| --- | --- |
+| Login social | `AUTH_GOOGLE_CLIENT_ID` / `AUTH_GOOGLE_CLIENT_SECRET`, `AUTH_GITHUB_CLIENT_ID` / `AUTH_GITHUB_CLIENT_SECRET` |
+| SSO para todo o deployment | `AUTH_SSO_DOMAIN` mais as variáveis do Microsoft Entra ID ou do Google Workspace |
+| Magic link, OTP por e-mail, e-mail/senha | `AUTH_MAGIC_LINK_ENABLED`, `AUTH_EMAIL_OTP_ENABLED`, `AUTH_EMAIL_PASSWORD_ENABLED`, mais um provedor de e-mail (`AUTH_RESEND_API_KEY` ou `AUTH_SENDGRID_API_KEY`) |
+
+Veja [Autenticação](/pt-br/studio/self-hosting/authentication) para a referência completa.
+
+<Callout type="note">
+  O arquivo `auth-config.json` citado na referência de autenticação é uma conveniência do Docker Compose — o caminho de Kubernetes não precisa dele. Se você quiser usá-lo mesmo assim (para SAML, ou para manter um único artefato de configuração), monte-o em `/app/apps/api/auth-config.json` a partir de um ConfigMap usando os values `volumes` e `volumeMounts` do chart, que valem para os Deployments de API e worker. Mantenha os secrets dos provedores no Secret, não nesse arquivo.
+</Callout>
+
 ## Configuração de sandbox
 
 ### Isolamento e egress
@@ -305,6 +321,10 @@ housekeeper:
 `STUDIO_ENV` é obrigatório quando o housekeeper está habilitado, pois seus seletores padrão são limitados ao ambiente. Sem o label correspondente, ele intencionalmente não seleciona nenhum claim.
 
 ### Gateway de preview
+
+<Callout type="tip">
+  Trate URLs públicas de preview como uma fase posterior. Elas exigem CRDs de Gateway API, um Gateway controller, DNS wildcard e certificado wildcard via DNS-01 — dependências que normalmente pertencem a outro time e a outro cronograma. Studio, agentes e execução de código funcionam sem isso; só os links compartilháveis de preview ficam de fora.
+</Callout>
 
 Sem um Gateway de preview, o Studio pode usar seu proxy de preview legado em processo quando um padrão de URL e o roteamento externo necessário são fornecidos. O design atual de produção usa Gateway API e encaminha cada preview diretamente para seu daemon de sandbox:
 

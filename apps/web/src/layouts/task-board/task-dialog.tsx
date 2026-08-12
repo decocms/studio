@@ -160,8 +160,7 @@ export function TaskBoardItemDialog({
     status: TaskBoardItemStatus;
     priority: TaskBoardItemPriority;
     assigneeId: string | null;
-    repoOwner: string | null;
-    repoName: string | null;
+    repo: string | null;
     dueDate: string | null;
     tagIds: string[];
   }) => void;
@@ -183,14 +182,14 @@ export function TaskBoardItemDialog({
   const deleteTag = useDeleteTag();
 
   // The org's repos (which site a task pertains to) — active repo-scoped
-  // GitHub connections, deduped by owner/name.
+  // GitHub connections as `owner/name`, deduped.
   const repos = Array.from(
-    new Map(
+    new Set(
       (useConnections({ slug: "mcp-github" }) ?? [])
         .map((c) => (c.status === "active" ? getRepoScope(c) : null))
         .filter((s): s is NonNullable<typeof s> => s !== null)
-        .map((s) => [`${s.owner}/${s.repo}`, { owner: s.owner, name: s.repo }]),
-    ).values(),
+        .map((s) => `${s.owner}/${s.repo}`),
+    ),
   );
 
   const [title, setTitle] = useState(item?.title ?? "");
@@ -204,12 +203,7 @@ export function TaskBoardItemDialog({
   const [assigneeId, setAssigneeId] = useState<string | null>(
     item?.assigneeId ?? null,
   );
-  const [repoOwner, setRepoOwner] = useState<string | null>(
-    item?.repoOwner ?? null,
-  );
-  const [repoName, setRepoName] = useState<string | null>(
-    item?.repoName ?? null,
-  );
+  const [repo, setRepo] = useState<string | null>(item?.repo ?? null);
   const [dueDate, setDueDate] = useState<Date | null>(
     parseIsoDate(item?.dueDate),
   );
@@ -226,8 +220,7 @@ export function TaskBoardItemDialog({
     setStatus(item?.status ?? defaultStatus ?? "triage");
     setPriority(item?.priority ?? "medium");
     setAssigneeId(item?.assigneeId ?? null);
-    setRepoOwner(item?.repoOwner ?? null);
-    setRepoName(item?.repoName ?? null);
+    setRepo(item?.repo ?? null);
     setDueDate(parseIsoDate(item?.dueDate));
     setTagIds(item?.tags.map((tag) => tag.id) ?? []);
   };
@@ -256,8 +249,7 @@ export function TaskBoardItemDialog({
       status,
       priority,
       assigneeId,
-      repoOwner,
-      repoName,
+      repo,
       dueDate: dueDate ? toEndOfDayIso(dueDate) : null,
       tagIds,
     });
@@ -290,8 +282,7 @@ export function TaskBoardItemDialog({
     status !== item.status ||
     priority !== item.priority ||
     assigneeId !== (item.assigneeId ?? null) ||
-    repoOwner !== (item.repoOwner ?? null) ||
-    repoName !== (item.repoName ?? null) ||
+    repo !== (item.repo ?? null) ||
     (dueDate ? toEndOfDayIso(dueDate) : null) !== (item.dueDate ?? null) ||
     tagIds.length !== initialTagIds.length ||
     !tagIds.every((id) => initialTagIds.includes(id));
@@ -520,39 +511,27 @@ export function TaskBoardItemDialog({
                     className={cn(
                       PROPERTY_BUTTON,
                       "w-full min-w-0",
-                      !repoName && "text-muted-foreground",
+                      !repo && "text-muted-foreground",
                     )}
                   >
                     <GitHubIcon className="size-4 shrink-0" />
                     <span className="min-w-0 flex-1 truncate text-left">
-                      {repoName
-                        ? `${repoOwner}/${repoName}`
-                        : t("taskBoard.taskDialog.repoButton")}
+                      {repo ?? t("taskBoard.taskDialog.repoButton")}
                     </span>
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-56">
-                  <DropdownMenuItem
-                    onSelect={() => {
-                      setRepoOwner(null);
-                      setRepoName(null);
-                    }}
-                  >
+                  <DropdownMenuItem onSelect={() => setRepo(null)}>
                     {t("taskBoard.taskDialog.noRepo")}
                   </DropdownMenuItem>
                   {repos.map((r) => (
                     <DropdownMenuItem
-                      key={`${r.owner}/${r.name}`}
+                      key={r}
                       className="gap-2"
-                      onSelect={() => {
-                        setRepoOwner(r.owner);
-                        setRepoName(r.name);
-                      }}
+                      onSelect={() => setRepo(r)}
                     >
                       <GitHubIcon className="size-4 shrink-0" />
-                      <span className="truncate">
-                        {r.owner}/{r.name}
-                      </span>
+                      <span className="truncate">{r}</span>
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>

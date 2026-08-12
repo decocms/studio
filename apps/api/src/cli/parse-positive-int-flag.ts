@@ -7,11 +7,20 @@
 export function parsePositiveIntFlag(
   flag: string,
   raw: string | undefined,
+  max?: number,
 ): number | undefined {
   if (raw === undefined) return undefined;
   const value = Number(raw);
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new Error(`Invalid --${flag} "${raw}" — must be a positive integer.`);
+  if (
+    !Number.isSafeInteger(value) ||
+    value <= 0 ||
+    (max !== undefined && value > max)
+  ) {
+    throw new Error(
+      `Invalid --${flag} "${raw}" — must be a positive integer${
+        max !== undefined ? ` up to ${max}` : ""
+      }.`,
+    );
   }
   return value;
 }

@@ -6,34 +6,57 @@ import { expect, newApiContext, test } from "../fixtures/test";
 // locale. Pin it rather than inherit the runner's.
 test.use({ locale: "en-US" });
 
-test("anonymous shared report shows login over a blurred preview", async ({
+test("an anonymous visitor's scan starts without a login wall", async ({
   page,
 }) => {
+  const domain = `anon-visitor-${crypto.randomUUID()}.example`;
   await page.goto(
-    "/report/example.com?share_id=example%3Aslide%3Atest&utm_source=share#overview",
+    `/report/${domain}?share_id=example%3Aslide%3Atest&utm_source=share#overview`,
   );
 
-  const dialog = page.getByRole("dialog", { name: "Access your report" });
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByText("Already received by")).toBeVisible();
+  // No completed scan and no session ⇒ the scan screen, not the login gate.
+  await expect(page.getByText("Analysis started")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Sign in to get notified" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("dialog", { name: "Access your report" }),
+  ).toHaveCount(0);
 
-  const preview = page.locator('div[aria-hidden="true"]').filter({
-    hasText: "A complete view of your store and where to grow first.",
-  });
-  await expect(preview).toHaveCSS("filter", "blur(9px)");
   await expect(page).toHaveURL(/share_id=example%3Aslide%3Atest/);
   await expect(page).toHaveURL(/#overview$/);
 });
 
-test("scan operations reject anonymous callers, but reading a report doesn't", async ({
+test("anonymous callers can start and follow a scan, with no delivery address", async ({
   playwright,
 }) => {
   const anonymous = await newApiContext(playwright);
+  const domain = `anon-run-${crypto.randomUUID()}.example`;
+
+  const run = await anonymous.post("/api/_reports/run", {
+    data: { domain, email: "attacker-controlled@example.com" },
+  });
+  expect(run.status()).toBe(200);
+
+  const commerceMock = await playwright.request.newContext({
+    baseURL: `http://localhost:${process.env.COMMERCE_MOCK_PORT ?? "4100"}`,
+  });
+  const captured = (await (
+    await commerceMock.get(
+      `/__e2e/report-run?domain=${encodeURIComponent(domain)}`,
+    )
+  ).json()) as { url?: string; email?: string };
+  expect(captured.url).toBe(domain);
+  // Sessionless run ⇒ no notification address, least of all the caller's.
+  expect(captured.email).toBeUndefined();
+  await commerceMock.dispose();
+
+  // Polling is open too — 400 (missing id) proves the 401 gate is gone.
+  const status = await anonymous.get("/api/_reports/status");
+  expect(status.status()).toBe(400);
+
+  // Still session-only: anything tied to a person.
   const gated = await Promise.all([
-    anonymous.post("/api/_reports/run", {
-      data: { domain: "example.com", email: "other@example.com" },
-    }),
-    anonymous.get("/api/_reports/status?id=run-id"),
     anonymous.get("/api/_reports/link-token/token-id"),
     anonymous.get("/api/_reports/suggest?q=e"),
   ]);
@@ -42,10 +65,10 @@ test("scan operations reject anonymous callers, but reading a report doesn't", a
     expect(response.headers()["cache-control"]).toContain("no-store");
   }
 
-  // GET /site is the one route anonymous callers can reach — it's how the
-  // cover slide of an already-completed scan shows before login. There's no
-  // completed scan for this domain, so it comes back "not_found", not a 401.
-  const site = await anonymous.get("/api/_reports/site/example.com");
+  // Reading is open, but a never-scanned domain has nothing to read.
+  const site = await anonymous.get(
+    `/api/_reports/site/${encodeURIComponent(domain)}`,
+  );
   expect(site.status()).toBe(200);
   expect(site.headers()["cache-control"]).toContain("no-store");
   expect((await site.json()).status).toBe("not_found");
@@ -81,9 +104,14 @@ test("an expired report session returns to the inline login", async ({
 
   await page.goto("/report/session-expired.example");
 
-  await expect(
-    page.getByRole("dialog", { name: "Access your report" }),
-  ).toBeVisible();
+  const dialog = page.getByRole("dialog", { name: "Access your report" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("Already received by")).toBeVisible();
+
+  const preview = page.locator('div[aria-hidden="true"]').filter({
+    hasText: "A complete view of your store and where to grow first.",
+  });
+  await expect(preview).toHaveCSS("filter", "blur(9px)");
 });
 
 test("a failed initial read never triggers a scan", async ({ page }) => {

@@ -15,6 +15,7 @@ import { emitTaskBoardUpdated } from "./run-reactions";
 import {
   ensureTaskExecutionAllowed,
   isReportsTask,
+  userInitiatedTaskQuotaConfig,
 } from "../../billing/task-quota";
 
 /**
@@ -118,8 +119,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     status: TaskBoardItemStatusSchema.optional(),
     priority: TaskBoardItemPrioritySchema.optional(),
     assigneeId: z.string().nullable().optional(),
-    repoOwner: z.string().nullable().optional(),
-    repoName: z.string().nullable().optional(),
+    repo: z.string().nullable().optional(),
     dueDate: z.string().datetime().nullable().optional(),
     /** New drag-to-reorder position within its lane (ascending). */
     sortOrder: z.number().optional(),
@@ -179,8 +179,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       );
     }
 
-    // Associate a PR opened outside a run (the CMS submit-for-review flow). Verify
-    // the task belongs to this org before the (idempotent) insert.
+    // Associate a PR opened outside a run (CMS submit-for-review) — org-verify, then idempotent insert.
     if (input.linkPr) {
       const target = await ctx.storage.taskBoard.getById(
         input.id,
@@ -204,6 +203,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       input.status !== undefined ||
       input.priority !== undefined ||
       input.assigneeId !== undefined ||
+      input.repo !== undefined ||
       input.dueDate !== undefined ||
       input.sortOrder !== undefined ||
       input.tagIds !== undefined;
@@ -246,7 +246,12 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       // delegated-but-never-running (the dispatch-side claim would throw
       // after the assignee already persisted).
       if (becameSuperAgent) {
-        await ensureTaskExecutionAllowed(ctx, previous);
+        // A human is delegating this card manually — the per-task run cap must not block it, only the period bucket.
+        await ensureTaskExecutionAllowed(
+          ctx,
+          previous,
+          userInitiatedTaskQuotaConfig(),
+        );
       }
     }
 
@@ -287,8 +292,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
               ? getUserId(ctx)!
               : null
             : undefined,
-          repoOwner: input.repoOwner,
-          repoName: input.repoName,
+          repo: input.repo,
           dueDate: input.dueDate,
           sortOrder: input.sortOrder,
         },
@@ -328,7 +332,9 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     if (hasFieldUpdate || input.linkThreadId) {
       emitTaskBoardUpdated(organizationId, item);
     }
-    if (becameSuperAgent) await reactToSuperAgentDelegation(ctx, item);
+    if (becameSuperAgent) {
+      await reactToSuperAgentDelegation(ctx, item, { userInitiated: true });
+    }
 
     return { item };
   },
