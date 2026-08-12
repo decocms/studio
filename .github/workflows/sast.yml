@@ -1,0 +1,40 @@
+name: SAST
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: sast-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# All third-party actions are pinned to a full commit SHA, not a tag.
+
+jobs:
+  gitleaks:
+    name: Gitleaks (secret history)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # On pull_request the action calls GET /repos/{o}/{r}/pulls/{n}/commits
+      # to scan only the PR range. Without this it 403s with
+      # "Resource not accessible by integration".
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0 # full history so rotated-but-committed secrets are caught
+
+      # gitleaks-action requires a license key for ORGANIZATION-owned repos.
+      # Free for personal accounts and public repos, where the var is unused.
+      # Get a key at https://gitleaks.io and add it as a repo/org secret
+      # named GITLEAKS_LICENSE (Settings > Secrets and variables > Actions).
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
