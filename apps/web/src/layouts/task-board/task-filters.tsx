@@ -47,6 +47,7 @@ import {
   User01,
 } from "@untitledui/icons";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
+import { GitHubIcon } from "@/components/icons/github-icon";
 import { getInitials } from "@/lib/get-initials";
 import {
   PRIORITIES,
@@ -62,6 +63,9 @@ import {
 /** Sentinel assignee filter matching tasks with no assignee. */
 const UNASSIGNED_FILTER = "__unassigned__";
 
+/** Sentinel repo filter matching tasks with no associated repo. */
+const NO_REPO_FILTER = "__no_repo__";
+
 export type DueFilter = "overdue" | "today" | "week" | "none";
 
 export type TaskFilters = {
@@ -71,6 +75,8 @@ export type TaskFilters = {
   due: DueFilter | null;
   /** Org tag ids — a task matches if it has at least one of these. */
   tags: string[];
+  /** `owner/name` | NO_REPO_FILTER | null (any repo) */
+  repo: string | null;
 };
 
 export const EMPTY_FILTERS: TaskFilters = {
@@ -78,6 +84,7 @@ export const EMPTY_FILTERS: TaskFilters = {
   priority: null,
   due: null,
   tags: [],
+  repo: null,
 };
 
 function hasActiveFilters(f: TaskFilters): boolean {
@@ -85,7 +92,8 @@ function hasActiveFilters(f: TaskFilters): boolean {
     f.assignee !== null ||
     f.priority !== null ||
     f.due !== null ||
-    f.tags.length > 0
+    f.tags.length > 0 ||
+    f.repo !== null
   );
 }
 
@@ -94,7 +102,8 @@ function activeFilterCount(f: TaskFilters): number {
     (f.assignee !== null ? 1 : 0) +
     (f.priority !== null ? 1 : 0) +
     (f.due !== null ? 1 : 0) +
-    (f.tags.length > 0 ? 1 : 0)
+    (f.tags.length > 0 ? 1 : 0) +
+    (f.repo !== null ? 1 : 0)
   );
 }
 
@@ -137,6 +146,14 @@ export function taskMatchesFilters(
   if (f.tags.length > 0) {
     const itemTagIds = item.tags.map((tag) => tag.id);
     if (!f.tags.some((id) => itemTagIds.includes(id))) return false;
+  }
+  if (f.repo !== null) {
+    if (f.repo === NO_REPO_FILTER) {
+      if (item.repo != null) return false;
+      // GitHub treats owner/repo case-insensitively, so the filter must too.
+    } else if (item.repo?.toLowerCase() !== f.repo.toLowerCase()) {
+      return false;
+    }
   }
   return true;
 }
@@ -466,17 +483,97 @@ function TagFilter({
   );
 }
 
-/** The four filter controls, shared by the inline bar and the mobile drawer. */
+function RepoFilter({
+  value,
+  repos,
+  onChange,
+  block,
+}: {
+  value: string | null;
+  repos: string[];
+  onChange: (next: string | null) => void;
+  block?: boolean;
+}) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const label =
+    value === null
+      ? t("taskBoard.taskFilters.repoLabel")
+      : value === NO_REPO_FILTER
+        ? t("taskBoard.taskFilters.repoNoRepo")
+        : value;
+  const select = (next: string | null) => {
+    onChange(next);
+    setOpen(false);
+  };
+  const triggerClass = chipClass(value !== null, block);
+  const chevronClass = cn("shrink-0 opacity-60", block && "ml-auto");
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button type="button" className={triggerClass}>
+          <GitHubIcon className="size-3.5 shrink-0" />
+          <span className="max-w-[12rem] truncate">{label}</span>
+          <ChevronDown size={12} className={chevronClass} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64 p-0">
+        <Command>
+          <CommandInput
+            placeholder={t("taskBoard.taskFilters.repoFilterPlaceholder")}
+            className="h-9"
+          />
+          <CommandList>
+            <CommandEmpty>
+              {t("taskBoard.taskFilters.repoNoReposFound")}
+            </CommandEmpty>
+            <CommandGroup>
+              <CommandItem value="Any repo" onSelect={() => select(null)}>
+                {t("taskBoard.taskFilters.repoAnyRepo")}
+              </CommandItem>
+              <CommandItem
+                value="No repo"
+                onSelect={() => select(NO_REPO_FILTER)}
+              >
+                {t("taskBoard.taskFilters.repoNoRepo")}
+              </CommandItem>
+            </CommandGroup>
+            <CommandGroup>
+              {repos.map((repo) => (
+                <CommandItem
+                  key={repo}
+                  value={repo}
+                  onSelect={() => select(repo)}
+                  className="gap-2"
+                >
+                  <GitHubIcon className="size-4 shrink-0" />
+                  <span className="flex-1 truncate">{repo}</span>
+                  {value === repo && (
+                    <Check size={14} className="shrink-0 text-foreground" />
+                  )}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** The five filter controls, shared by the inline bar and the mobile drawer. */
 function FilterControls({
   filters,
   members,
   tags,
+  repos,
   onChange,
   block,
 }: {
   filters: TaskFilters;
   members: Member[];
   tags: OrgTag[];
+  repos: string[];
   onChange: (next: TaskFilters) => void;
   block?: boolean;
 }) {
@@ -504,6 +601,17 @@ function FilterControls({
         tags={tags}
         onChange={(tags) => onChange({ ...filters, tags })}
       />
+      {/* Keep the control mounted while a repo filter is active even if the
+          option list empties (last repo connection removed) — otherwise it
+          silently hides tasks with no visible chip to clear. */}
+      {(repos.length > 0 || filters.repo !== null) && (
+        <RepoFilter
+          block={block}
+          value={filters.repo}
+          repos={repos}
+          onChange={(repo) => onChange({ ...filters, repo })}
+        />
+      )}
     </>
   );
 }
@@ -513,11 +621,13 @@ export function TaskFiltersBar({
   filters,
   members,
   tags,
+  repos,
   onChange,
 }: {
   filters: TaskFilters;
   members: Member[];
   tags: OrgTag[];
+  repos: string[];
   onChange: (next: TaskFilters) => void;
 }) {
   const t = useT();
@@ -531,6 +641,7 @@ export function TaskFiltersBar({
         filters={filters}
         members={members}
         tags={tags}
+        repos={repos}
         onChange={onChange}
       />
       {hasActiveFilters(filters) && (
@@ -555,11 +666,13 @@ export function TaskFiltersDrawer({
   filters,
   members,
   tags,
+  repos,
   onChange,
 }: {
   filters: TaskFilters;
   members: Member[];
   tags: OrgTag[];
+  repos: string[];
   onChange: (next: TaskFilters) => void;
 }) {
   const t = useT();
@@ -589,6 +702,7 @@ export function TaskFiltersDrawer({
             filters={filters}
             members={members}
             tags={tags}
+            repos={repos}
             onChange={onChange}
           />
         </div>
