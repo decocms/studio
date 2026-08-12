@@ -347,6 +347,36 @@ shallow-merge (explicit `false` persists, omitted keys survive); unset reads as
 off. Flags are product gating, not access control. Anything non-boolean or ever
 needing an index/constraint gets its own column instead.
 
+### A/B tests (PostHog experiments)
+
+Different mechanism from org flags above, different job: org flags are
+deterministic gating we set; an experiment is a randomized assignment PostHog
+sets. Never use one for the other.
+
+Read the variant with `useExperiment("<flag-key>")`
+(`apps/web/src/hooks/use-experiment.ts`). Reading IS the exposure
+(`$feature_flag_called`), so call it only where the experiment applies —
+reading it "just to know" pollutes the control group. It returns `undefined`
+until flags load and on deployments without `POSTHOG_KEY`, so every caller
+needs a control-equivalent fallback.
+
+**In-product experiments are randomized by organization**, never by user — two
+teammates in one workspace must not see different UIs. Set that on the flag in
+PostHog (aggregate by the `organization` group type); `PostHogGroupSync`
+already binds the org to the session, so nothing is needed in app code.
+User-level randomization is for pre-signup surfaces only, where no org exists
+yet.
+
+Declare the success-metric event (`track(...)` in web, `captureOrgEvent(...)` in
+api) *before* writing variant code — an experiment without a pre-declared
+primary metric is a coin flip you watch. The permanent `experiment-pipeline-check`
+A/A flag is the noise floor: read a real experiment's lift against it.
+
+Above-the-fold variants will flash control first, because flags resolve after
+`/api/config`. The fix when that matters is to evaluate flags server-side in the
+`/api/config` handler and pass them to `posthog.init` via
+`bootstrap: { featureFlags }` — not yet implemented.
+
 ### Style & Formatting
 - **Biome** enforces two-space indentation and double quotes
 - **ALWAYS** run `bun run fmt` after making code changes (pre-commit hook via lefthook)
