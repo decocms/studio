@@ -143,8 +143,6 @@ import { useThreadActions } from "@/components/chat/store/hooks";
 import { writeChatDraft } from "@/lib/chat-draft";
 import { createMentionDoc } from "@/components/chat/tiptap/mention";
 import type { TiptapDoc } from "@/components/chat/types";
-import { useReportsOnly } from "@/hooks/use-organization-settings";
-import { BacklogPaywallBanner } from "./backlog-paywall";
 
 // Warm the chat chunk so opening a task's activity doesn't cold-load it (flash).
 void import("../agent-shell-layout/index.tsx").catch(() => {});
@@ -328,7 +326,6 @@ export function TaskBoardPage() {
   const { items, isLoading } = useTaskBoardItems();
   const { data: orgTags = [] } = useTags();
   const actions = useTaskBoardItemActions();
-  const reportsOnly = useReportsOnly();
   // Handing a task to the Super Agent makes it open a PR — so it needs at
   // least one repo imported (a repo-scoped mcp-github connection; the bare
   // org-level connection has no `repoScope` and isn't loadable). Every path that
@@ -568,7 +565,6 @@ export function TaskBoardPage() {
 
         {/* Commerce orgs: a persistent unlock CTA that self-hides once the
             diagnostic is paid. The board stays usable in the meantime. */}
-        {reportsOnly && <BacklogPaywallBanner />}
 
         {/* Toolbar — filters on the left (inline bar on desktop, a single
             drawer button on mobile), view toggle + New task on the right. */}
