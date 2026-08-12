@@ -1,6 +1,18 @@
 1. Get the application URL by running these commands:
 
-{{- if contains "ClusterIP" .Values.service.type }}
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+{{- $host := .host }}
+{{- $scheme := "http" }}
+{{- range $.Values.ingress.tls }}
+{{- if has $host .hosts }}{{ $scheme = "https" }}{{ end }}
+{{- end }}
+  Visit {{ $scheme }}://{{ $host }}
+{{- end }}
+
+  Set BASE_URL and BETTER_AUTH_URL to that same URL — auth callbacks are
+  built from them, not from the request host.
+{{- else if contains "ClusterIP" .Values.service.type }}
   export SERVICE_NAME={{ include "chart-deco-studio.fullname" . }}
   echo "To access the application, run:"
   echo "  kubectl --namespace {{ .Release.Namespace }} port-forward svc/$SERVICE_NAME 8080:{{ .Values.service.port }}"

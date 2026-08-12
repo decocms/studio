@@ -135,15 +135,32 @@ persistence:
   storageClass: "<your-storage-class>"   # e.g. gp3
   size: 10Gi                             # deco prod
 
-# ── Exposing Studio (ingress) — the chart renders NO Ingress; pick what fits ──
+# ── Exposing Studio — the Ingress is optional and OFF by default ──────────────
 # Studio's Service is ClusterIP:80 by default. Expose it with whatever your
 # cluster already has (best → least effort):
-#   1. Ingress controller you already run (nginx/Traefik/ALB): create an Ingress
-#      routing host → Service `<release>`:80, with your ingressClassName + TLS.
+#   1. Ingress controller you already run (nginx/Traefik/ALB): turn on the
+#      chart's Ingress below (chart 0.13.0+). It backs onto this release's
+#      Service, so the generated name is never hardcoded, and the object lives
+#      in the Helm release (rollback/uninstall cover it).
 #   2. Cloud without an ingress controller: set the Service to LoadBalancer:
 #        service: { type: LoadBalancer }
 #      then point DNS/TLS at the LB (cert via cert-manager or the cloud LB).
-#   3. Istio/Gateway API: a Gateway + HTTPRoute to the Service (same as previews).
-# Set BASE_URL / BETTER_AUTH_URL (above) to the public https URL either way.
+#   3. Istio/Gateway API: leave ingress.enabled=false and add a Gateway +
+#      HTTPRoute to the Service (same shape as the sandbox previews).
+# Set BASE_URL / BETTER_AUTH_URL (above) to the public https URL either way —
+# auth callbacks are built from those, not from the request host.
+# ingress:
+#   enabled: true
+#   className: nginx                       # or traefik / alb / your class
+#   annotations:
+#     cert-manager.io/cluster-issuer: <your-issuer>
+#   hosts:
+#     - host: studio.<your-domain>
+#       paths:
+#         - path: /
+#           pathType: Prefix
+#   tls:
+#     - hosts: [studio.<your-domain>]
+#       secretName: studio-tls
 # service:
 #   type: LoadBalancer
