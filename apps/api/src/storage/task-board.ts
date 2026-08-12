@@ -1040,6 +1040,11 @@ export class TaskBoardStorage {
    * The `where status = 'in_progress'` predicate is the whole point: it makes
    * the advance idempotent under concurrency, which the plain `update()` is not.
    * See the caller above for what the duplicates cost.
+   *
+   * `dismissed_at IS NULL` matters for the same reason as `listItemsDueForRetry`:
+   * a reports-pushed task's `delete()` only stamps `dismissed_at` and leaves
+   * `status` at `in_progress`, so a dismissed card whose linked thread finishes
+   * afterward would otherwise get resurrected straight into the reviewers' lane.
    */
   async advanceToReviewIfInProgress(
     id: string,
@@ -1056,6 +1061,7 @@ export class TaskBoardStorage {
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
       .where("status", "=", "in_progress")
+      .where("dismissed_at", "is", null)
       .returningAll()
       .executeTakeFirst();
 
