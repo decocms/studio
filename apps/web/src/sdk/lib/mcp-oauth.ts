@@ -23,19 +23,6 @@ import type {
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { resolveStudioUrl } from "./studio-url";
 
-/**
- * Simple hash function for server URLs
- */
-function hashServerUrl(url: string): string {
-  let hash = 0;
-  for (let i = 0; i < url.length; i++) {
-    const char = url.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash;
-  }
-  return Math.abs(hash).toString(16);
-}
-
 function getOAuthRedirectOrigin(): string {
   return window.location.origin;
 }
@@ -56,11 +43,6 @@ function isLocalDev(): boolean {
     return false;
   }
 }
-
-/**
- * Global in-memory store for active OAuth sessions.
- */
-const activeOAuthSessions = new Map<string, McpOAuthProvider>();
 
 /**
  * Storage key prefix for OAuth callback fallback
@@ -171,7 +153,6 @@ export interface McpOAuthProviderOptions {
  * No localStorage or sessionStorage - everything is ephemeral.
  */
 class McpOAuthProvider implements OAuthClientProvider {
-  private serverUrl: string;
   private _clientMetadata: OAuthClientMetadata;
   private _redirectUrl: string;
   private _windowMode: OAuthWindowMode;
@@ -183,7 +164,6 @@ class McpOAuthProvider implements OAuthClientProvider {
   private _tokens: OAuthTokens | null = null;
 
   constructor(options: McpOAuthProviderOptions) {
-    this.serverUrl = options.serverUrl;
     // An explicit callbackUrl still wins; otherwise an installed adapter picks
     // the target, because the page that receives the redirect has to be one
     // the adapter can actually read the result back out of.
@@ -209,9 +189,6 @@ class McpOAuthProvider implements OAuthClientProvider {
       // Only include scope if explicitly provided - some servers have their own scope requirements
       ...(scopeStr && { scope: scopeStr }),
     };
-
-    // Register this session for callback handling
-    activeOAuthSessions.set(hashServerUrl(this.serverUrl), this);
   }
 
   get redirectUrl(): string {
@@ -302,14 +279,6 @@ class McpOAuthProvider implements OAuthClientProvider {
     this._tokens = null;
     this._codeVerifier = null;
     this._state = null;
-  }
-
-  getServerUrl(): string {
-    return this.serverUrl;
-  }
-
-  cleanup(): void {
-    activeOAuthSessions.delete(hashServerUrl(this.serverUrl));
   }
 }
 
@@ -663,8 +632,6 @@ export async function authenticateMcp(params: {
       tokenInfo: null,
       error: error instanceof Error ? error.message : String(error),
     };
-  } finally {
-    provider.cleanup();
   }
 }
 
