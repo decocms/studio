@@ -465,6 +465,13 @@ function CommerceOnboardingContent({
         <CreateOrganizationDialog
           open={creatingOrg}
           onOpenChange={setCreatingOrg}
+          onCreated={(orgSlug) => {
+            invalidateOrganizationListCache();
+            navigate({
+              to: "/commerce-onboarding",
+              search: { org: orgSlug, siteUrl },
+            });
+          }}
         />
       </CommerceOnboardingLayout>
     );
@@ -528,6 +535,13 @@ function CommerceOnboardingContent({
         <CreateOrganizationDialog
           open={creatingOrg}
           onOpenChange={setCreatingOrg}
+          onCreated={(orgSlug) => {
+            invalidateOrganizationListCache();
+            navigate({
+              to: "/commerce-onboarding",
+              search: { org: orgSlug, siteUrl },
+            });
+          }}
         />
       </CommerceOnboardingLayout>
     );
