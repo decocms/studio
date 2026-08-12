@@ -39,7 +39,6 @@ export type ToolCategory =
   | "GitHub"
   | "VM"
   | "Search"
-  | "Browser"
   | "Task Board";
 
 /**
@@ -223,9 +222,6 @@ const ALL_TOOL_NAMES = [
 
   // Search tools
   "GLOBAL_SEARCH",
-
-  // Browser tools
-  "TAKE_SCREENSHOT",
 
   // Task board tools
   "TASK_BOARD_ITEM_CREATE",
@@ -1039,13 +1035,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
       "Search across organization resources (currently threads). Returns a typed union of matches.",
     category: "Search",
   },
-  // Browser tools
-  {
-    name: "TAKE_SCREENSHOT",
-    description:
-      "Screenshot a web page (desktop or mobile emulation) and store it, returning a link to the image.",
-    category: "Browser",
-  },
   // Task board tools
   {
     name: "TASK_BOARD_ITEM_CREATE",
@@ -1690,7 +1679,6 @@ export function getToolsByCategory(): Record<ToolCategory, ToolMetadata[]> {
     GitHub: [],
     VM: [],
     Search: [],
-    Browser: [],
     "Task Board": [],
   };
 

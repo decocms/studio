@@ -81,11 +81,6 @@ export interface Settings {
    *  top-up tool falls back to the gateway's own checkout. */
   aiGatewayAdminToken: string | undefined;
 
-  /** Browserless (hosted headless Chrome) credential, shared by the Decopilot
-   *  browser built-ins and the `TAKE_SCREENSHOT` tool. Absent → both report
-   *  they cannot capture. */
-  browserlessToken: string | undefined;
-
   // Stripe (per-org subscription + AI-credit top-ups). Absent → webhook
   // 503s, no checkout.
   stripeWebhookSecret: string | undefined;

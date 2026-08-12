@@ -1,0 +1,133 @@
+#!/usr/bin/env node
+/**
+ * qa-screenshot — capture a page screenshot from inside the sandbox.
+ *
+ * The sandbox-hosted claude-code harness has no Decopilot `take_screenshot`
+ * built-in, so this is its equivalent: headless Chromium via playwright-core,
+ * both baked into the image. Unlike the hosted tool it can also reach the
+ * sandbox's OWN dev server on localhost, which is the reason a browser lives
+ * here at all.
+ *
+ * Usage:
+ *   qa-screenshot <url> <outfile> [--mobile] [--full]
+ *
+ * `--mobile` emulates a phone: viewport, touch, AND the user-agent — many sites
+ * pick their layout from the UA server-side, so a narrowed desktop returns
+ * desktop markup and a plausible but WRONG "mobile" shot. Playwright's
+ * `userAgent` sets both the request header and `navigator.userAgent`, so
+ * server- and client-side sniffing both see the phone.
+ *
+ * The outfile extension picks the format (.jpg/.jpeg → JPEG, else PNG).
+ */
+const path = require("node:path");
+
+// playwright-core is installed globally in the image (API only — the browser is
+// Debian's `chromium` package, at QA_CHROMIUM). Resolve it from the global
+// module root rather than relative to this script.
+const GLOBAL_MODULES =
+  process.env.QA_SCREENSHOT_MODULES || "/usr/local/lib/node_modules";
+const { chromium } = require(path.join(GLOBAL_MODULES, "playwright-core"));
+const CHROMIUM_PATH = process.env.QA_CHROMIUM || "/usr/bin/chromium";
+
+const MOBILE_USER_AGENT =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) " +
+  "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
+
+/**
+ * Kept in lockstep with `MAX_SCREENSHOT_HEIGHT` / `DEVICE_VIEWPORTS` in
+ * apps/api/src/harnesses/lib/decopilot/built-in-tools/portable-media-tools.ts —
+ * the hosted `take_screenshot` and this must frame a page the same way, or a
+ * before/after pair captured on different paths isn't comparable.
+ *
+ * The ceiling is not cosmetic: a capture over ~8000px on either side is
+ * rejected outright when it reaches a model, so a full-page shot of a long page
+ * has to be clipped. `clip` is CSS px while the image is CSS px × scale factor,
+ * hence the division.
+ */
+const MAX_IMAGE_HEIGHT = 7000;
+const DEVICES = {
+  desktop: { viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 },
+  mobile: {
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
+    userAgent: MOBILE_USER_AGENT,
+  },
+};
+
+async function main() {
+  const args = process.argv.slice(2);
+  const flags = new Set(args.filter((a) => a.startsWith("--")));
+  const [url, outfile] = args.filter((a) => !a.startsWith("--"));
+  if (!url || !outfile) {
+    console.error("usage: qa-screenshot <url> <outfile> [--mobile] [--full]");
+    process.exit(2);
+  }
+  const device = flags.has("--mobile") ? DEVICES.mobile : DEVICES.desktop;
+  const fullPage = flags.has("--full");
+  const type = /\.jpe?g$/i.test(outfile) ? "jpeg" : "png";
+
+  // --no-sandbox: the container drops all capabilities, so Chromium's own
+  // setuid sandbox can't initialize; the pod is the isolation boundary here.
+  const browser = await chromium.launch({
+    executablePath: CHROMIUM_PATH,
+    args: ["--no-sandbox"],
+  });
+  try {
+    const context = await browser.newContext(device);
+    const page = await context.newPage();
+    // `load` (not networkidle): analytics/beacons keep the network busy forever
+    // on many sites, so networkidle hangs the capture.
+    await page.goto(url, { waitUntil: "load", timeout: 45000 });
+    // Let late-mounting content (cookie bars, lazy sections) settle a beat.
+    await page.waitForTimeout(1500);
+
+    // A full-page capture taller than the ceiling is truncated rather than
+    // emitted oversized — an unusable image is worse than a partial one.
+    //
+    // Truncation grows the VIEWPORT to the ceiling and takes a viewport shot,
+    // rather than passing `clip`: Playwright does not capture beyond the
+    // viewport for a clip, so a clip taller than the viewport silently comes
+    // back viewport-sized (measured: a 7000px clip on an 800px viewport yielded
+    // 1280x800, and on a mobile context the width was wrong too). Resizing is
+    // the only form that actually produces the requested pixels.
+    let truncated = 0;
+    if (fullPage) {
+      const cssHeight = await page.evaluate(
+        () => document.documentElement.scrollHeight,
+      );
+      const maxCss = Math.floor(MAX_IMAGE_HEIGHT / device.deviceScaleFactor);
+      if (cssHeight > maxCss) {
+        truncated = cssHeight - maxCss;
+        await page.setViewportSize({
+          width: device.viewport.width,
+          height: maxCss,
+        });
+      }
+    }
+
+    await page.screenshot({
+      path: outfile,
+      type,
+      ...(type === "jpeg" ? { quality: 80 } : {}),
+      fullPage: fullPage && truncated === 0,
+    });
+
+    const scale = `${device.viewport.width}x${device.viewport.height} @${device.deviceScaleFactor}x`;
+    console.log(
+      `saved ${outfile} (${flags.has("--mobile") ? "mobile" : "desktop"} ${scale}` +
+        `${fullPage ? ", full page" : ""})` +
+        (truncated
+          ? `\nNOTE: clipped — ${truncated}px of page height omitted to stay under the ${MAX_IMAGE_HEIGHT}px image limit.`
+          : ""),
+    );
+  } finally {
+    await browser.close();
+  }
+}
+
+main().catch((err) => {
+  console.error(`qa-screenshot failed: ${err?.message ?? err}`);
+  process.exit(1);
+});

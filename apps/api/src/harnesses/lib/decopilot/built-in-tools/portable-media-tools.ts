@@ -127,12 +127,13 @@ export function buildScreenshotRequestBody(
  * Capture one page as a JPEG via Browserless, clamped to a height the model
  * providers accept.
  *
- * Shared by the Decopilot `take_screenshot` built-in and the `TAKE_SCREENSHOT`
- * management tool (which is how a sandbox-hosted harness — claude-code, with no
- * Decopilot built-ins — screenshots a page). Storing the bytes is the caller's
- * job; the two differ only in where the image goes.
+ * Used by the Decopilot `take_screenshot` built-in. The sandbox-hosted harness
+ * does NOT come through here — it has a real browser in its image and runs
+ * `qa-screenshot` (packages/sandbox/image/bin/qa-screenshot), which keeps the
+ * same viewport presets and height ceiling so a before/after pair captured on
+ * the two paths is still comparable.
  */
-export async function captureScreenshot(params: {
+async function captureScreenshot(params: {
   url: string;
   token: string;
   device?: ScreenshotDevice;
@@ -269,7 +270,7 @@ export const GenerateImageInputSchema = z.object({
 
 export type GenerateImageInput = z.infer<typeof GenerateImageInputSchema>;
 
-export const TakeScreenshotInputSchema = z.object({
+const TakeScreenshotInputSchema = z.object({
   url: z.string().url().describe("The URL of the web page to screenshot."),
   fullPage: z
     .boolean()

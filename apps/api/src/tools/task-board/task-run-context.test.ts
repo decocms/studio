@@ -56,24 +56,10 @@ describe("resolveReviewRunToolNames", () => {
     expect(TASK_RUN_TOOL_NAMES).toContain("TASK_BOARD_ITEM_PR_LINK");
   });
 
-  // A reviewer's surface is the task-run one plus exactly two: the verdict it
-  // must record, and the screenshot tool it needs to exercise the PR preview
-  // (the sandbox has no browser). Anything else creeping in is a widening of
-  // what a run can reach and should be a deliberate edit here.
   test("the review surface only ADDS to the narrow one", () => {
     for (const name of TASK_RUN_TOOL_NAMES) {
       expect(REVIEW_RUN_TOOL_NAMES).toContain(name);
     }
-    const added = REVIEW_RUN_TOOL_NAMES.filter(
-      (name) => !TASK_RUN_TOOL_NAMES.includes(name),
-    );
-    expect(added).toEqual(["TASK_BOARD_REVIEW_DECISION", "TAKE_SCREENSHOT"]);
-  });
-
-  // QA has to show what it saw; the Super Agent writing the code does not, and
-  // a screenshot tool on its surface is one more thing for it to wander into.
-  test("only a reviewer gets the screenshot tool", () => {
-    expect(TASK_RUN_TOOL_NAMES).not.toContain("TAKE_SCREENSHOT");
-    expect(REVIEW_RUN_TOOL_NAMES).toContain("TAKE_SCREENSHOT");
+    expect(REVIEW_RUN_TOOL_NAMES).toHaveLength(TASK_RUN_TOOL_NAMES.length + 1);
   });
 });

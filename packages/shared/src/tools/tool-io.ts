@@ -6780,19 +6780,6 @@ export interface StudioToolIO {
       totalCount: number;
     };
   };
-  TAKE_SCREENSHOT: {
-    input: {
-      url: string;
-      fullPage?: boolean | undefined;
-      device?: "desktop" | "mobile" | undefined;
-    };
-    output: {
-      url: string;
-      key: string;
-      device: "desktop" | "mobile";
-      expiresIn: number;
-    };
-  };
 }
 
 export type StudioToolName = keyof StudioToolIO;

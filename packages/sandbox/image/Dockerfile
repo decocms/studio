@@ -108,6 +108,28 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/* \
   && npm install -g node-gyp
 
+# Headless browser for the QA reviewer's `qa-screenshot` (below). Debian's own
+# `chromium` package, driven by `playwright-core` — the API only, no browser
+# download. Playwright's `install --with-deps chromium` is avoided on purpose:
+# on Debian it falls back to an Ubuntu dependency list and dies on obsolete font
+# packages (ttf-unifont / ttf-ubuntu-font-family).
+#
+# This is the one heavy thing in the image that only ONE kind of run uses (~700MB
+# measured). It lives in the base image anyway, rather than a separate QA image:
+# a second image needs a second SandboxTemplate, its own warm pool, and per-run
+# routing to pick between them — infrastructure that costs more to operate than
+# the bytes cost to carry. Revisit if image pull ever shows up in cold-start
+# numbers; `playwright install --only-shell` is the lighter option, but its
+# saving comes from the shared libraries, so it only pays off if those are
+# already present.
+ARG PLAYWRIGHT_VERSION=1.55.0
+ENV QA_CHROMIUM=/usr/bin/chromium
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends chromium \
+  && rm -rf /var/lib/apt/lists/* \
+  && npm install -g "playwright-core@${PLAYWRIGHT_VERSION}" \
+  && chromium --version
+
 # Install the typegen build produced from this exact source revision. Installing
 # from npm here would race the post-merge package release and could bake the
 # previous CLI, which does not discover the materialized endpoint file.
@@ -121,6 +143,10 @@ COPY --chown=sandbox:sandbox image/skills /mnt/skills/public
 # run e.g. `pptx-thumbnail deck.pptx` instead of typing the full python path.
 RUN chmod +x /mnt/skills/public/_bin/* \
   && ln -s /mnt/skills/public/_bin/* /usr/local/bin/
+
+# The QA reviewer's screenshot helper, driving the chromium installed above.
+COPY --chown=sandbox:sandbox image/bin/qa-screenshot /usr/local/bin/qa-screenshot
+RUN chmod +x /usr/local/bin/qa-screenshot
 
 # `gh`, so an agent can open the pull request its task prompt asks for. Pushing
 # already works off the credentialed `origin` git clone stored; `gh` is the half

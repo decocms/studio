@@ -321,11 +321,12 @@ async function enqueueReviewerForTask(
     ...(kind === "qa"
       ? [
           `- Exercise the change on the PR's deploy \`previewUrl\` (from \`${prsGetTool}\`), deep-linked to the page/route the task affects (not root). If you cannot render or exercise it, do NOT approve — \`request_changes\` with what's blocking.`,
-          // The sandbox has no browser: `TAKE_SCREENSHOT` captures Studio-side
-          // (see `tools/browser/take-screenshot.ts`). Hosted Decopilot uses its
-          // own built-in, which streams the image into the thread instead.
+          // Two paths because the harnesses differ: the sandbox has a real
+          // browser baked in (`qa-screenshot`, which can also reach its own dev
+          // server on localhost); hosted Decopilot has no sandbox and uses its
+          // Browserless-backed built-in, which streams the image into the thread.
           sandboxed
-            ? `- For a VISUAL change, capture before/after with \`mcp__studio__TAKE_SCREENSHOT\` (\`device: "desktop"\`, and \`device: "mobile"\` too for a responsive change). It returns a link to each image: put those links in the comment below so a human can compare them. To look at one yourself, \`curl -o shot.jpg "<url>"\` and open it.`
+            ? "- For a VISUAL change, capture before/after with `qa-screenshot <url> <outfile> [--mobile] [--full]` (headless Chromium, baked into the sandbox; also works against your own dev server on localhost). Then `Read` the files to actually LOOK at them — a screenshot you never opened is not verification. Add `--mobile` as well for a responsive change."
             : '- For a VISUAL change, capture before/after with the `take_screenshot` tool (`device: "desktop"` and `device: "mobile"` for responsive changes) and use `inspect_page` for console/runtime errors; the images attach to the thread automatically.',
           `- Record what you validated with \`${commentTool}\` (scenarios + pass/fail, a before→after screenshot pointer, the URL + viewport exercised, and anything you couldn't verify) BEFORE your decision.`,
         ]
