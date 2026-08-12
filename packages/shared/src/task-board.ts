@@ -184,19 +184,54 @@ export function approvedButUnverified(
 export const MAX_REVIEW_BOUNCES = 5;
 
 /**
+ * When the task was most recently handed TO the Super Agent (ms since epoch),
+ * else 0 — the start of its current delegation, and the point the bounce budget
+ * counts from.
+ *
+ * `assignee_changed` with `to` = the Super Agent is only ever written by
+ * `TASK_BOARD_ITEM_UPDATE`, i.e. a person assigning the card (or the intake
+ * auto-assign). The automatic hand-off writes `to: null`, so it can't reset
+ * anything — a runaway loop still terminates.
+ */
+export function delegationStart(activity: ReviewCycleActivity[]): number {
+  let latest = 0;
+  for (const a of activity) {
+    if (a.action !== "assignee_changed") continue;
+    if (
+      (a.data as { to?: unknown } | null | undefined)?.to !==
+      SUPER_AGENT_ASSIGNEE_ID
+    ) {
+      continue;
+    }
+    latest = Math.max(latest, new Date(a.occurredAt).getTime());
+  }
+  return latest;
+}
+
+/**
  * True when this task has already been handed back to the Super Agent
  * `MAX_REVIEW_BOUNCES` times, counting the change-request about to be recorded.
  *
- * Deliberately counts across ALL review cycles, not the current one: the
- * runaway loop IS the cycles: each bounce starts a fresh cycle, so a per-cycle
- * count is always 1 and would never trip.
+ * Counts across all review CYCLES since the current delegation, not the current
+ * cycle: the runaway loop IS the cycles — each bounce starts a fresh one, so a
+ * per-cycle count is always 1 and would never trip.
+ *
+ * But it resets when a person hands the card back (see {@link delegationStart}).
+ * Counting a card's whole lifetime made re-running a burnt-out task pointless:
+ * four cards carrying 5-7 old bounces were re-delegated, and the very first
+ * change-request tripped `6 + 1 >= 5` and handed each straight back — one review
+ * round, zero retries. A person re-assigning the card is them saying "try
+ * again"; this is what makes that mean something.
  */
 export function reviewBounceLimitReached(
   activity: ReviewCycleActivity[],
   limit: number = MAX_REVIEW_BOUNCES,
 ): boolean {
+  const since = delegationStart(activity);
   const bounces = activity.filter(
-    (a) => a.action === "review_changes_requested",
+    (a) =>
+      a.action === "review_changes_requested" &&
+      new Date(a.occurredAt).getTime() >= since,
   ).length;
   return bounces + 1 >= limit;
 }
