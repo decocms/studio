@@ -13,6 +13,9 @@ const FILES_URL_PATTERN = /\/api\/[^/]+\/files\/([^?#]+)/;
 const MAX_REFERENCE_IMAGE_BYTES = 20 * 1024 * 1024;
 const JPEG_QUALITY = 80;
 
+/** Headroom over Browserless's own 30s page.goto timeout, so an unresponsive Browserless can't hang the harness run forever. */
+const BROWSERLESS_SCREENSHOT_TIMEOUT_MS = 45_000;
+
 /**
  * Emulation presets for `take_screenshot`. `mobile` carries a phone viewport
  * AND `isMobile`/`hasTouch` — but the load-bearing part for QA is that the tool
@@ -156,10 +159,22 @@ async function captureScreenshot(params: {
         body: JSON.stringify(
           buildScreenshotRequestBody(url, device, fullPage, clamped),
         ),
+        signal: AbortSignal.timeout(BROWSERLESS_SCREENSHOT_TIMEOUT_MS),
       },
     );
 
-  const response = await shoot(false);
+  let response: Response;
+  try {
+    response = await shoot(false);
+  } catch (err) {
+    const isTimeout = err instanceof Error && err.name === "TimeoutError";
+    return {
+      ok: false,
+      error: isTimeout
+        ? `Browserless screenshot of ${url} timed out after ${BROWSERLESS_SCREENSHOT_TIMEOUT_MS}ms`
+        : `Browserless screenshot failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
   if (!response.ok) {
     const errorText = await response.text().catch(() => "Unknown error");
     return {
@@ -174,8 +189,8 @@ async function captureScreenshot(params: {
     return { ok: true, bytes, mediaType: "image/jpeg" };
   }
 
-  const retry = await shoot(true);
-  const clipped = retry.ok ? new Uint8Array(await retry.arrayBuffer()) : null;
+  const retry = await shoot(true).catch(() => null);
+  const clipped = retry?.ok ? new Uint8Array(await retry.arrayBuffer()) : null;
   // Emitting an oversized capture would brick the thread, so fail the call
   // instead — the caller can retry without `fullPage`.
   if (!clipped || (jpegHeight(clipped) ?? 0) > MAX_SCREENSHOT_HEIGHT) {
