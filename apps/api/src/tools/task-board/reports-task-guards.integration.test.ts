@@ -125,6 +125,37 @@ describe("reports-task guards", () => {
     expect(renamed.item.title).toBe("renamed");
   });
 
+  it("persists a task's repo through create and update", async () => {
+    const task = await taskBoard.create({
+      organizationId: ORG,
+      title: "scoped",
+      repoOwner: "acme",
+      repoName: "site",
+      by: USER,
+    });
+    expect(task.repoOwner).toBe("acme");
+    expect(task.repoName).toBe("site");
+
+    // Re-point to a different repo — proves the UPDATE whitelist actually
+    // carries repo_owner/repo_name (an in-memory fake would accept the column
+    // but silently drop it), and that it round-trips on re-read.
+    const moved = await TASK_BOARD_ITEM_UPDATE.handler(
+      { id: task.id, repoOwner: "acme", repoName: "store" },
+      ctx,
+    );
+    expect(moved.item.repoName).toBe("store");
+    const reread = await taskBoard.getById(task.id, ORG);
+    expect(reread?.repoName).toBe("store");
+
+    // Clearing round-trips too — explicit null, not "unchanged".
+    const cleared = await TASK_BOARD_ITEM_UPDATE.handler(
+      { id: task.id, repoOwner: null, repoName: null },
+      ctx,
+    );
+    expect(cleared.item.repoOwner).toBeNull();
+    expect(cleared.item.repoName).toBeNull();
+  });
+
   it("the paywall fires BEFORE the delegation write (no delegated-but-idle task)", async () => {
     const config = {
       enforced: true,

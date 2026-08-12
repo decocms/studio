@@ -20,6 +20,8 @@ function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     priority: "medium",
     assigneeId: null,
     assignedBy: null,
+    repoOwner: null,
+    repoName: null,
     dueDate: null,
     sortOrder: 0,
     retryAttempts: 0,

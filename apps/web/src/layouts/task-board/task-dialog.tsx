@@ -89,6 +89,8 @@ import {
 } from "./review-status";
 import { formatTimeAgo } from "@/lib/format-time";
 import { GitHubIcon } from "@/components/icons/github-icon";
+import { useConnections } from "@/sdk";
+import { getRepoScope } from "@decocms/shared/github-repo-scope";
 import { AssigneePickerContent } from "./assignee-picker";
 import { TagPickerContent } from "./tag-picker";
 import { extractDescriptionLinks } from "./description-links";
@@ -158,6 +160,8 @@ export function TaskBoardItemDialog({
     status: TaskBoardItemStatus;
     priority: TaskBoardItemPriority;
     assigneeId: string | null;
+    repoOwner: string | null;
+    repoName: string | null;
     dueDate: string | null;
     tagIds: string[];
   }) => void;
@@ -178,6 +182,17 @@ export function TaskBoardItemDialog({
   const createTag = useCreateTag();
   const deleteTag = useDeleteTag();
 
+  // The org's repos (which site a task pertains to) — active repo-scoped
+  // GitHub connections, deduped by owner/name.
+  const repos = Array.from(
+    new Map(
+      (useConnections({ slug: "mcp-github" }) ?? [])
+        .map((c) => (c.status === "active" ? getRepoScope(c) : null))
+        .filter((s): s is NonNullable<typeof s> => s !== null)
+        .map((s) => [`${s.owner}/${s.repo}`, { owner: s.owner, name: s.repo }]),
+    ).values(),
+  );
+
   const [title, setTitle] = useState(item?.title ?? "");
   const [description, setDescription] = useState(item?.description ?? "");
   const [status, setStatus] = useState<TaskBoardItemStatus>(
@@ -188,6 +203,12 @@ export function TaskBoardItemDialog({
   );
   const [assigneeId, setAssigneeId] = useState<string | null>(
     item?.assigneeId ?? null,
+  );
+  const [repoOwner, setRepoOwner] = useState<string | null>(
+    item?.repoOwner ?? null,
+  );
+  const [repoName, setRepoName] = useState<string | null>(
+    item?.repoName ?? null,
   );
   const [dueDate, setDueDate] = useState<Date | null>(
     parseIsoDate(item?.dueDate),
@@ -205,6 +226,8 @@ export function TaskBoardItemDialog({
     setStatus(item?.status ?? defaultStatus ?? "triage");
     setPriority(item?.priority ?? "medium");
     setAssigneeId(item?.assigneeId ?? null);
+    setRepoOwner(item?.repoOwner ?? null);
+    setRepoName(item?.repoName ?? null);
     setDueDate(parseIsoDate(item?.dueDate));
     setTagIds(item?.tags.map((tag) => tag.id) ?? []);
   };
@@ -233,6 +256,8 @@ export function TaskBoardItemDialog({
       status,
       priority,
       assigneeId,
+      repoOwner,
+      repoName,
       dueDate: dueDate ? toEndOfDayIso(dueDate) : null,
       tagIds,
     });
@@ -265,6 +290,8 @@ export function TaskBoardItemDialog({
     status !== item.status ||
     priority !== item.priority ||
     assigneeId !== (item.assigneeId ?? null) ||
+    repoOwner !== (item.repoOwner ?? null) ||
+    repoName !== (item.repoName ?? null) ||
     (dueDate ? toEndOfDayIso(dueDate) : null) !== (item.dueDate ?? null) ||
     tagIds.length !== initialTagIds.length ||
     !tagIds.every((id) => initialTagIds.includes(id));
@@ -479,6 +506,53 @@ export function TaskBoardItemDialog({
                         )}
                       />
                       {t(PRIORITY_CONFIG[p].labelKey)}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Which repo (site) this task pertains to — scopes it to a
+                  site's task pill in the task-based flow. */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className={cn(
+                      PROPERTY_BUTTON,
+                      "w-full min-w-0",
+                      !repoName && "text-muted-foreground",
+                    )}
+                  >
+                    <GitHubIcon className="size-4 shrink-0" />
+                    <span className="min-w-0 flex-1 truncate text-left">
+                      {repoName
+                        ? `${repoOwner}/${repoName}`
+                        : t("taskBoard.taskDialog.repoButton")}
+                    </span>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setRepoOwner(null);
+                      setRepoName(null);
+                    }}
+                  >
+                    {t("taskBoard.taskDialog.noRepo")}
+                  </DropdownMenuItem>
+                  {repos.map((r) => (
+                    <DropdownMenuItem
+                      key={`${r.owner}/${r.name}`}
+                      className="gap-2"
+                      onSelect={() => {
+                        setRepoOwner(r.owner);
+                        setRepoName(r.name);
+                      }}
+                    >
+                      <GitHubIcon className="size-4 shrink-0" />
+                      <span className="truncate">
+                        {r.owner}/{r.name}
+                      </span>
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>

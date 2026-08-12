@@ -172,6 +172,56 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
 
     expect(results.filter((r) => r !== null)).toHaveLength(1);
   });
+
+  // Repo-backed work advances to review ONLY via the PR-open hook. A finished
+  // run that opened no PR has nothing to review yet — In Review with no PR is
+  // the wrong state — so on thread-finish it must stay In Progress until the
+  // user submits (which opens the PR).
+  //
+  // This is the CMS/site case: the repo lives on the AGENT, so the thread's own
+  // `metadata` is EMPTY (hasPreview false) and only the TASK's `repoOwner` marks
+  // it repo-backed. The hasPreview-only check missed exactly this and advanced
+  // the card with no PR.
+  it("does NOT advance a repo-NAMED task on thread-finish — it waits for the PR", async () => {
+    const task = await taskBoard.create({
+      organizationId: ORG,
+      title: "repo-named, no PR",
+      status: "in_progress",
+      repoOwner: "deco-sites",
+      repoName: "casaevideo",
+      by: USER,
+    });
+    const thread = await threads.create({
+      organization_id: ORG,
+      title: "Site Agent: run",
+      status: "completed",
+      message_storage_version: 2,
+      created_by: USER,
+      // No githubRepo on the thread — the repo lives on the agent, so
+      // hasPreview is false. The task's repoOwner is the repo-backed signal.
+    });
+    await taskBoard.linkThread(task.id, thread.id, ORG);
+    await database.db
+      .insertInto("thread_message_parts")
+      .values({
+        id: `${thread.id}:m:0`,
+        seq: 0,
+        org_id: ORG,
+        thread_id: thread.id,
+        run_id: thread.id,
+        message_id: `${thread.id}:m`,
+        role: "user",
+        kind: "text",
+        payload: JSON.stringify({ type: "text", text: "go" }),
+        created_at: new Date().toISOString(),
+      })
+      .execute();
+
+    await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(thread.id, ORG);
+
+    expect((await taskBoard.getById(task.id, ORG))?.status).toBe("in_progress");
+    expect(await inReviewStamps(task.id)).toBe(0);
+  });
 });
 
 /**

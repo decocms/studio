@@ -73,13 +73,15 @@ describe("shouldAdvanceToReview", () => {
     ).toBe(false);
   });
 
-  it("advances a repo-backed task on thread-finish too (backstop for missed PR detection)", () => {
+  // A repoOwner-named (CMS) task waits for its PR — that flow opens the PR and advances the card itself, so a finished edit with no PR must NOT jump to review. Agent-run tasks (no repoOwner) keep the thread-finish backstop above.
+  it("does NOT advance a repo-named (CMS) task on finish", () => {
     expect(
       shouldAdvanceToReview({
         status: "in_progress",
+        repoOwner: "deco-sites",
         threads: [thread("completed")],
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("only fires from in_progress, not from other lanes", () => {
