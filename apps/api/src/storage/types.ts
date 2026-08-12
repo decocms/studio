@@ -1606,7 +1606,8 @@ export type TaskBoardItemStatus =
   | "todo"
   | "in_progress"
   | "in_review"
-  | "done";
+  | "done"
+  | "archived";
 
 export type TaskBoardItemPriority =
   | "none"

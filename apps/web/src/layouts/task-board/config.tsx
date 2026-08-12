@@ -1,5 +1,6 @@
 import {
   AlertCircle,
+  Archive,
   CheckCircle,
   Circle,
   Eye,
@@ -125,6 +126,7 @@ export const STATUSES: TaskBoardItemStatus[] = [
   "in_progress",
   "in_review",
   "done",
+  "archived",
 ];
 
 export const STATUS_CONFIG: Record<
@@ -155,6 +157,11 @@ export const STATUS_CONFIG: Record<
     labelKey: "taskBoard.config.statusDone",
     icon: CheckCircle,
     iconClassName: "text-success",
+  },
+  archived: {
+    labelKey: "taskBoard.config.statusArchived",
+    icon: Archive,
+    iconClassName: "text-muted-foreground",
   },
 };
 

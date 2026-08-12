@@ -45,6 +45,7 @@ const RANK: Record<TaskBoardItemStatus, number> = {
   in_progress: 2,
   in_review: 3,
   done: 4,
+  archived: 5,
 };
 
 /** Run-lifecycle funnel events (auto-fix leg of the PLG funnel). System

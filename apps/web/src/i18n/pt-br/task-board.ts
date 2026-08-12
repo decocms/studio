@@ -20,6 +20,7 @@ export const taskBoard = {
   "taskBoard.config.priorityMedium": "Média",
   "taskBoard.config.priorityNone": "Sem prioridade",
   "taskBoard.config.priorityUrgent": "Urgente",
+  "taskBoard.config.statusArchived": "Arquivado",
   "taskBoard.config.statusBacklog": "Backlog",
   "taskBoard.config.statusDone": "Concluído",
   "taskBoard.config.statusInProgress": "Em Progresso",

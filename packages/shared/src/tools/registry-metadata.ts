@@ -238,6 +238,7 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_ITEM_DELETE",
   "TASK_BOARD_ITEM_PRS_GET",
   "TASK_BOARD_ITEM_PR_LINK",
+  "TASK_BOARD_ARCHIVE_MERGED",
   "TASK_BOARD_ITEM_RERUN",
   "TASK_BOARD_REVIEW_DECISION",
   "TASK_BOARD_PROMOTE_TO_PRODUCTION",
@@ -1106,6 +1107,13 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Task Board",
   },
   {
+    name: "TASK_BOARD_ARCHIVE_MERGED",
+    description:
+      "Archive Done tasks whose linked pull requests have all been merged",
+    category: "Task Board",
+    dangerous: true,
+  },
+  {
     name: "TASK_BOARD_ITEM_RERUN",
     description:
       "Re-run a task with the Super Agent, failing any run still holding it open",
@@ -1271,6 +1279,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_ITEM_DELETE",
       "TASK_BOARD_ITEM_PRS_GET",
       "TASK_BOARD_ITEM_PR_LINK",
+      "TASK_BOARD_ARCHIVE_MERGED",
       "TASK_BOARD_ITEM_RERUN",
       "TASK_BOARD_REVIEW_DECISION",
       "TASK_BOARD_PROMOTE_TO_PRODUCTION",
