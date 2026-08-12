@@ -28,6 +28,12 @@ export const connectionFormSchema = z
     stdio_cwd: z.string().optional(),
     // Shared: Environment variables for both NPX and STDIO
     env_vars: z.array(envVarSchema).optional(),
+    // Per-user OAuth: when enabled, each member of the org authorises with
+    // their own downstream account. Tokens are scoped to (connection, user).
+    // Required at the form level — defaults to "shared" via useForm
+    // `defaultValues`. Keeping it required keeps zod's input/output types in
+    // sync so react-hook-form's resolver type stays happy.
+    auth_mode: z.enum(["shared", "per_user"]),
     // Preserved fields
     configuration_scopes: z.array(z.string()).nullable().optional(),
     configuration_state: z

@@ -108,6 +108,7 @@ function connectionToFormValues(
     title: connection.title,
     description: connection.description ?? "",
     icon: connection.icon ?? null,
+    auth_mode: connection.auth_mode ?? "shared",
     configuration_state: connection.configuration_state ?? {},
     configuration_scopes: scopes || connection.configuration_scopes || [],
   };
@@ -162,10 +163,18 @@ function connectionToFormValues(
 }
 
 /**
- * Convert form values back to connection entity update
+ * Convert form values back to connection entity update.
+ *
+ * `dirtyFields` (from react-hook-form's `formState`) controls which fields
+ * actually land in the payload. Without this guard, every save would
+ * overwrite policy fields like `auth_mode` with whatever stale value
+ * `values:` had hydrated the form with — quietly demoting a `per_user`
+ * connection back to `shared` when the user only meant to update an
+ * unrelated field.
  */
 function formValuesToConnectionUpdate(
   data: ConnectionFormData,
+  dirtyFields: Partial<Record<keyof ConnectionFormData, unknown>> = {},
 ): Partial<ConnectionEntity> {
   let connectionType: "HTTP" | "SSE" | "Websocket" | "STDIO";
   let connectionUrl: string | null = null;
@@ -203,6 +212,11 @@ function formValuesToConnectionUpdate(
     icon: data.icon ?? null,
     connection_type: connectionType,
     connection_url: connectionUrl,
+    // Only send `auth_mode` when the user actually toggled it. Otherwise
+    // the form's hydrated value (which can briefly disagree with the DB
+    // during the first render or a race with a server refetch) would
+    // silently overwrite the canonical setting.
+    ...(dirtyFields.auth_mode ? { auth_mode: data.auth_mode } : {}),
     ...(connectionToken && { connection_token: connectionToken }),
     ...(connectionParameters && { connection_headers: connectionParameters }),
     configuration_state: data.configuration_state ?? null,
@@ -289,7 +303,10 @@ function ConnectionInspectorViewWithConnection({
     if (!isValid) return;
 
     const data = form.getValues();
-    const updateData = formValuesToConnectionUpdate(data);
+    const updateData = formValuesToConnectionUpdate(
+      data,
+      form.formState.dirtyFields,
+    );
     const idToUpdate = configureInstance?.id ?? connectionId;
     await connectionActions.update.mutateAsync({
       id: idToUpdate,
