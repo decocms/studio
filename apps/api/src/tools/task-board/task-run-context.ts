@@ -57,7 +57,13 @@ export const TASK_RUN_TOOL_NAMES: readonly ToolName[] = [
 ];
 
 /**
- * The same surface plus `TASK_BOARD_REVIEW_DECISION`, for a REVIEWER's run.
+ * The same surface plus `TASK_BOARD_REVIEW_DECISION` and `TAKE_SCREENSHOT`, for
+ * a REVIEWER's run.
+ *
+ * `TAKE_SCREENSHOT` is here and not in `TASK_RUN_TOOL_NAMES` because it exists
+ * for the QA reviewer, which must exercise the PR's deploy preview and show
+ * what it saw. The sandbox has no browser (deliberately — see the tool's own
+ * comment), so the capture happens Studio-side.
  *
  * A reviewer is told "end the run by calling `TASK_BOARD_REVIEW_DECISION`" — it
  * has to actually have it. It didn't: reviewer runs went out on Decopilot, which
@@ -74,6 +80,7 @@ export const TASK_RUN_TOOL_NAMES: readonly ToolName[] = [
 export const REVIEW_RUN_TOOL_NAMES: readonly ToolName[] = [
   ...TASK_RUN_TOOL_NAMES,
   "TASK_BOARD_REVIEW_DECISION",
+  "TAKE_SCREENSHOT",
 ];
 
 /**

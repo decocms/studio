@@ -40,6 +40,7 @@ import * as RegistryTools from "./registry/index";
 import * as SandboxTools from "./sandbox";
 import * as GitHubTools from "./github";
 import * as SearchTools from "./search";
+import * as BrowserTools from "./browser";
 import type { ToolName } from "@decocms/shared/tools/registry-metadata";
 // Core tools - always available
 export const CORE_TOOLS = [
@@ -217,6 +218,9 @@ export const CORE_TOOLS = [
 
   // Search tools
   SearchTools.GLOBAL_SEARCH,
+
+  // Browser tools
+  BrowserTools.TAKE_SCREENSHOT,
 ] as const satisfies { name: ToolName }[];
 
 /**

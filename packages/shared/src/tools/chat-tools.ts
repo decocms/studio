@@ -104,14 +104,31 @@ export type StudioChatTools = {
         };
   };
   take_screenshot: {
-    input: { url: string; fullPage?: boolean | undefined };
+    input: {
+      url: string;
+      fullPage?: boolean | undefined;
+      device?: "desktop" | "mobile" | undefined;
+    };
     output:
-      | { success: false; error: string; url?: undefined; image?: undefined }
-      | { success: false; error: string; url: string; image?: undefined }
+      | {
+          success: false;
+          error: string;
+          url?: undefined;
+          image?: undefined;
+          device?: undefined;
+        }
+      | {
+          success: false;
+          error: string;
+          url: string;
+          image?: undefined;
+          device?: undefined;
+        }
       | {
           success: true;
-          image: { uri: string; mediaType: string };
+          image: { uri: string; mediaType: "image/jpeg" };
           url: string;
+          device: "desktop" | "mobile";
           error?: undefined;
         };
   };

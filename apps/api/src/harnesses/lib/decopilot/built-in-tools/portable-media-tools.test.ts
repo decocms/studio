@@ -18,10 +18,26 @@ describe("buildScreenshotOptions", () => {
     });
   });
 
-  it("clamps to the emulated device width — mobile clips to the phone width", () => {
-    const options = buildScreenshotOptions(true, true, 390);
+  it("clips to the emulated device's width, not the desktop default", () => {
+    const options = buildScreenshotOptions(true, true, {
+      width: 390,
+      deviceScaleFactor: 1,
+    });
     expect(options).toMatchObject({
       clip: { x: 0, y: 0, width: 390, height: 7000 },
+    });
+  });
+
+  // The clip is CSS px, the returned image is CSS px × scale factor. Clamping
+  // to a flat 7000 on a 2× device asks for a 14000px image — over the limit the
+  // clamp exists to stay under, so the retry could never succeed.
+  it("divides the clip height by the device scale factor", () => {
+    const options = buildScreenshotOptions(true, true, {
+      width: 390,
+      deviceScaleFactor: 2,
+    });
+    expect(options).toMatchObject({
+      clip: { x: 0, y: 0, width: 390, height: 3500 },
     });
   });
 });

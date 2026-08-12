@@ -1229,12 +1229,6 @@ export class AgentSandboxProvider implements SandboxProvider {
     // warmpool != "none". Studio delivers the per-claim secret post-bind via
     // POST /_sandbox/config + auth.rotateToken instead.
     const warmPoolMode = this.sentinelToken !== null;
-    // Per-run template override (e.g. the QA reviewer's browser image). Drives
-    // BOTH the template ref AND the warm-pool name below — they must stay in
-    // lockstep or the claim would adopt a pod built from the wrong template.
-    // The named template must have a matching warm pool (see the QA template +
-    // warm pool in the sandbox-env chart), else adoption finds no ready pod.
-    const templateName = opts.sandboxTemplateName ?? this.sandboxTemplateName;
     // Tenant isolation lives here: the pool is resolved from the org of the
     // user being served, never from anything in the request. The operator has
     // no notion of a tenant — it binds whatever pool a claim names — and
@@ -1273,7 +1267,7 @@ export class AgentSandboxProvider implements SandboxProvider {
         ...(hasAnnotations ? { annotations } : {}),
       },
       spec: {
-        sandboxTemplateRef: { name: templateName },
+        sandboxTemplateRef: { name: this.sandboxTemplateName },
         // additionalPodMetadata.labels is the operator's pod-label propagation
         // hook (CRD field, not a generic patch). Tenant labels here flow to
         // the pod and become joinable in cAdvisor/kubelet metrics. `role`
@@ -1288,7 +1282,11 @@ export class AgentSandboxProvider implements SandboxProvider {
           ...(hasAnnotations ? { annotations } : {}),
         },
         env: envEntries,
-        warmpool: claimWarmPoolName(tenantPool, warmPoolMode, templateName),
+        warmpool: claimWarmPoolName(
+          tenantPool,
+          warmPoolMode,
+          this.sandboxTemplateName,
+        ),
         lifecycle: {
           shutdownPolicy: "Delete",
           shutdownTime: this.computeShutdownTime(),
@@ -2984,10 +2982,6 @@ export function stripEnsureOpts(opts: EnsureOptions): EnsureOptions | null {
   // the same operator-facing annotation as the original.
   if (opts.branch) out.branch = opts.branch;
   if (opts.repo) out.repo = opts.repo;
-  // Without this, a resurrected QA-reviewer claim would re-provision onto the
-  // default template (losing its browser image).
-  if (opts.sandboxTemplateName)
-    out.sandboxTemplateName = opts.sandboxTemplateName;
   if (opts.workload) out.workload = opts.workload;
   if (opts.env && Object.keys(opts.env).length > 0) out.env = opts.env;
   if (opts.tenant) out.tenant = opts.tenant;

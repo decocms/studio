@@ -31,7 +31,11 @@ const DEVICE_VIEWPORTS = {
   mobile: {
     width: 390,
     height: 844,
-    deviceScaleFactor: 3,
+    // 2, not a phone's real 3: `clip` is in CSS px but the JPEG comes back in
+    // DEVICE px, so the scale factor multiplies the height that has to fit
+    // under MAX_SCREENSHOT_HEIGHT. At 3 a clamped full-page capture kept only
+    // the first 2333 CSS px; 2 keeps 3500 and is still legible.
+    deviceScaleFactor: 2,
     isMobile: true,
     hasTouch: true,
   },
@@ -53,13 +57,19 @@ const MOBILE_USER_AGENT =
  */
 const MAX_SCREENSHOT_HEIGHT = 7000;
 
-/** Puppeteer rejects `clip` together with `fullPage` — they are exclusive.
- *  `clipWidth` is the emulated device's width, so the clamped mobile retry
- *  clips to the phone width, not the desktop default. */
+/**
+ * Puppeteer rejects `clip` together with `fullPage` — they are exclusive.
+ *
+ * `clip` is CSS pixels; the returned JPEG is CSS px × `deviceScaleFactor`. The
+ * ceiling being enforced is on the IMAGE, so the clip height is divided by the
+ * device's scale factor — clamping to a flat 7000 on a 2×/3× device produced a
+ * 14000/21000px image, i.e. the clamped retry could never come back under the
+ * limit and every full-page mobile capture failed.
+ */
 export function buildScreenshotOptions(
   fullPage: boolean,
   clamped = false,
-  clipWidth: number = DEFAULT_VIEWPORT.width,
+  viewport: { width: number; deviceScaleFactor: number } = DEFAULT_VIEWPORT,
 ) {
   return {
     ...(fullPage && clamped
@@ -67,14 +77,85 @@ export function buildScreenshotOptions(
           clip: {
             x: 0,
             y: 0,
-            width: clipWidth,
-            height: MAX_SCREENSHOT_HEIGHT,
+            width: viewport.width,
+            height: Math.floor(
+              MAX_SCREENSHOT_HEIGHT / viewport.deviceScaleFactor,
+            ),
           },
         }
       : { fullPage }),
     type: "jpeg" as const,
     quality: JPEG_QUALITY,
   };
+}
+
+/**
+ * Capture one page as a JPEG via Browserless, clamped to a height the model
+ * providers accept.
+ *
+ * Shared by the Decopilot `take_screenshot` built-in and the `TAKE_SCREENSHOT`
+ * management tool (which is how a sandbox-hosted harness — claude-code, with no
+ * Decopilot built-ins — screenshots a page). Storing the bytes is the caller's
+ * job; the two differ only in where the image goes.
+ */
+export async function captureScreenshot(params: {
+  url: string;
+  token: string;
+  device?: ScreenshotDevice;
+  fullPage?: boolean;
+}): Promise<
+  | { ok: true; bytes: Uint8Array; mediaType: "image/jpeg" }
+  | { ok: false; error: string }
+> {
+  const { url, token } = params;
+  const fullPage = params.fullPage ?? false;
+  const viewport = DEVICE_VIEWPORTS[params.device ?? "desktop"];
+  // Sniffing sites pick their layout from the UA, not the viewport — send a
+  // mobile UA so `device: "mobile"` returns real mobile markup (omitted for
+  // desktop, which uses Chrome's own).
+  const userAgent = viewport.isMobile ? MOBILE_USER_AGENT : undefined;
+
+  const shoot = async (clamped: boolean) =>
+    await fetch(
+      `${BROWSERLESS_BASE_URL}/screenshot?token=${encodeURIComponent(token)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url,
+          options: buildScreenshotOptions(fullPage, clamped, viewport),
+          viewport,
+          ...(userAgent ? { userAgent } : {}),
+        }),
+      },
+    );
+
+  const response = await shoot(false);
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "Unknown error");
+    return {
+      ok: false,
+      error: `Browserless screenshot failed (${response.status}): ${errorText}`,
+    };
+  }
+
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const height = jpegHeight(bytes);
+  if (!fullPage || height === null || height <= MAX_SCREENSHOT_HEIGHT) {
+    return { ok: true, bytes, mediaType: "image/jpeg" };
+  }
+
+  const retry = await shoot(true);
+  const clipped = retry.ok ? new Uint8Array(await retry.arrayBuffer()) : null;
+  // Emitting an oversized capture would brick the thread, so fail the call
+  // instead — the caller can retry without `fullPage`.
+  if (!clipped || (jpegHeight(clipped) ?? 0) > MAX_SCREENSHOT_HEIGHT) {
+    return {
+      ok: false,
+      error: `Full-page screenshot of ${url} is ${height}px tall, over the ${MAX_SCREENSHOT_HEIGHT}px limit, and the clipped retry did not come back within it. Retry with fullPage: false.`,
+    };
+  }
+  return { ok: true, bytes: clipped, mediaType: "image/jpeg" };
 }
 
 /**
@@ -161,7 +242,7 @@ export const GenerateImageInputSchema = z.object({
 
 export type GenerateImageInput = z.infer<typeof GenerateImageInputSchema>;
 
-const TakeScreenshotInputSchema = z.object({
+export const TakeScreenshotInputSchema = z.object({
   url: z.string().url().describe("The URL of the web page to screenshot."),
   fullPage: z
     .boolean()
@@ -431,61 +512,22 @@ export function createPortableTakeScreenshotTool(
             error: "BROWSERLESS_TOKEN is not configured.",
           };
         }
-        const fullPage = input.fullPage ?? false;
         const device: ScreenshotDevice = input.device ?? "desktop";
-        const viewport = DEVICE_VIEWPORTS[device];
-        const userAgent = device === "mobile" ? MOBILE_USER_AGENT : undefined;
-        const shoot = async (clamped: boolean) =>
-          await fetch(
-            `${BROWSERLESS_BASE_URL}/screenshot?token=${encodeURIComponent(token)}`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                url: input.url,
-                options: buildScreenshotOptions(
-                  fullPage,
-                  clamped,
-                  viewport.width,
-                ),
-                viewport,
-                // Sniffing sites pick their layout from the UA, not the
-                // viewport — send a mobile UA so `device: "mobile"` returns real
-                // mobile markup (omitted for desktop, which uses Chrome's own).
-                ...(userAgent ? { userAgent } : {}),
-              }),
-            },
-          );
-
-        let response = await shoot(false);
-        if (!response.ok) {
-          const errorText = await response.text().catch(() => "Unknown error");
+        const captured = await captureScreenshot({
+          url: input.url,
+          token,
+          device,
+          fullPage: input.fullPage ?? false,
+        });
+        if (!captured.ok) {
           return {
             success: false as const,
-            error: `Browserless screenshot failed (${response.status}): ${errorText}`,
+            error: captured.error,
             url: input.url,
           };
         }
-
-        let imgBytes = new Uint8Array(await response.arrayBuffer());
-        const height = jpegHeight(imgBytes);
-        if (fullPage && height !== null && height > MAX_SCREENSHOT_HEIGHT) {
-          response = await shoot(true);
-          const clipped = response.ok
-            ? new Uint8Array(await response.arrayBuffer())
-            : null;
-          // Emitting an oversized capture would brick the thread, so fail the
-          // tool call instead — the model can retry without `fullPage`.
-          if (!clipped || (jpegHeight(clipped) ?? 0) > MAX_SCREENSHOT_HEIGHT) {
-            return {
-              success: false as const,
-              error: `Full-page screenshot of ${input.url} is ${height}px tall, over the ${MAX_SCREENSHOT_HEIGHT}px limit, and the clipped retry did not come back within it. Retry with fullPage: false.`,
-              url: input.url,
-            };
-          }
-          imgBytes = clipped;
-        }
-        const mediaType = "image/jpeg";
+        let imgBytes = captured.bytes;
+        const mediaType = captured.mediaType;
         const key = `screenshots/${crypto.randomUUID()}.jpg`;
         let uri: string;
         let imageUrl: string | null = null;

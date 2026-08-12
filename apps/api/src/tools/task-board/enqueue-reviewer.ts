@@ -11,7 +11,6 @@ import {
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { enqueueAgentRunForTask } from "./enqueue-task-run";
-import { readSandboxQaTemplateName } from "@/sandbox/lifecycle";
 import { resolveTaskRepoChoice } from "./claude-code-task-run";
 
 /** Thread statuses past which a reviewer run is done — a live run has a
@@ -322,8 +321,11 @@ async function enqueueReviewerForTask(
     ...(kind === "qa"
       ? [
           `- Exercise the change on the PR's deploy \`previewUrl\` (from \`${prsGetTool}\`), deep-linked to the page/route the task affects (not root). If you cannot render or exercise it, do NOT approve — \`request_changes\` with what's blocking.`,
+          // The sandbox has no browser: `TAKE_SCREENSHOT` captures Studio-side
+          // (see `tools/browser/take-screenshot.ts`). Hosted Decopilot uses its
+          // own built-in, which streams the image into the thread instead.
           sandboxed
-            ? "- For a VISUAL change, capture before/after with `qa-screenshot <url> <outfile.png> [--mobile] [--full]` (headless Chromium, baked into the sandbox). Write the files under `org/output/` (e.g. `org/output/qa/before-desktop.png`, `after-mobile.png`) so they surface on the task; capture both desktop AND `--mobile` for responsive changes."
+            ? `- For a VISUAL change, capture before/after with \`mcp__studio__TAKE_SCREENSHOT\` (\`device: "desktop"\`, and \`device: "mobile"\` too for a responsive change). It returns a link to each image: put those links in the comment below so a human can compare them. To look at one yourself, \`curl -o shot.jpg "<url>"\` and open it.`
             : '- For a VISUAL change, capture before/after with the `take_screenshot` tool (`device: "desktop"` and `device: "mobile"` for responsive changes) and use `inspect_page` for console/runtime errors; the images attach to the thread automatically.',
           `- Record what you validated with \`${commentTool}\` (scenarios + pass/fail, a before→after screenshot pointer, the URL + viewport exercised, and anything you couldn't verify) BEFORE your decision.`,
         ]
@@ -354,13 +356,6 @@ async function enqueueReviewerForTask(
             instructions,
             disallowedTools: REVIEWER_DISALLOWED_TOOLS[kind],
           },
-          // QA runs need the browser-bearing QA sandbox image to screenshot the
-          // preview. Only when a QA template is configured — else undefined, so
-          // QA falls back to the default template (no browser) and just reports
-          // it couldn't screenshot. Never applied to the Code Reviewer.
-          ...(kind === "qa" && readSandboxQaTemplateName()
-            ? { sandboxTemplateName: readSandboxQaTemplateName() }
-            : {}),
         }
       : {}),
     ...(repo ? { repo } : {}),

@@ -108,11 +108,6 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/* \
   && npm install -g node-gyp
 
-# NOTE: the headless browser for the QA reviewer is NOT in this base image —
-# only the QA reviewer needs it, and it adds ~750MB. It lives in a separate
-# image built FROM this one: packages/sandbox/image/Dockerfile.qa
-# (studio-sandbox-go-qa). Every other sandbox stays lean.
-
 # Install the typegen build produced from this exact source revision. Installing
 # from npm here would race the post-merge package release and could bake the
 # previous CLI, which does not discover the materialized endpoint file.
