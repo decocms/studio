@@ -25,6 +25,9 @@ import { LARGE_RESULT_TOKEN_THRESHOLD } from "./constants";
 // Give it headroom over the inner timeout instead of leaving it unbounded.
 const BROWSERLESS_FETCH_TIMEOUT_MS = 45_000;
 
+// Upstream error bodies are unbounded — cap what lands in the tool error.
+const ERROR_BODY_MAX_CHARS = 500;
+
 const InspectPageInputSchema = z.object({
   url: z.string().url().describe("The URL of the web page to inspect."),
   evaluate: z
@@ -149,7 +152,7 @@ export function createInspectPageTool(
           const errorText = await response.text().catch(() => "Unknown error");
           return {
             success: false,
-            error: `Browserless function call failed (${response.status}): ${errorText}`,
+            error: `Browserless function call failed (${response.status}): ${errorText.slice(0, ERROR_BODY_MAX_CHARS)}`,
             url: input.url,
           };
         }
