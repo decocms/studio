@@ -43,8 +43,10 @@ import {
   ChevronDown,
   Flag01,
   FilterLines,
+  SearchSm,
   Tag01,
   User01,
+  X,
 } from "@untitledui/icons";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { GitHubIcon } from "@/components/icons/github-icon";
@@ -77,6 +79,8 @@ export type TaskFilters = {
   tags: string[];
   /** `owner/name` | NO_REPO_FILTER | null (any repo) */
   repo: string | null;
+  /** Free-text match against title/description, empty string = no filter. */
+  search: string;
 };
 
 export const EMPTY_FILTERS: TaskFilters = {
@@ -85,6 +89,7 @@ export const EMPTY_FILTERS: TaskFilters = {
   due: null,
   tags: [],
   repo: null,
+  search: "",
 };
 
 function hasActiveFilters(f: TaskFilters): boolean {
@@ -93,7 +98,8 @@ function hasActiveFilters(f: TaskFilters): boolean {
     f.priority !== null ||
     f.due !== null ||
     f.tags.length > 0 ||
-    f.repo !== null
+    f.repo !== null ||
+    f.search.trim() !== ""
   );
 }
 
@@ -103,7 +109,8 @@ function activeFilterCount(f: TaskFilters): number {
     (f.priority !== null ? 1 : 0) +
     (f.due !== null ? 1 : 0) +
     (f.tags.length > 0 ? 1 : 0) +
-    (f.repo !== null ? 1 : 0)
+    (f.repo !== null ? 1 : 0) +
+    (f.search.trim() !== "" ? 1 : 0)
   );
 }
 
@@ -123,6 +130,11 @@ export function taskMatchesFilters(
   item: TaskBoardItem,
   f: TaskFilters,
 ): boolean {
+  const search = f.search.trim().toLowerCase();
+  if (search !== "") {
+    const haystack = `${item.title} ${item.description ?? ""}`.toLowerCase();
+    if (!haystack.includes(search)) return false;
+  }
   if (f.assignee !== null) {
     if (f.assignee === UNASSIGNED_FILTER) {
       if (item.assigneeId !== null) return false;
@@ -561,6 +573,70 @@ function RepoFilter({
   );
 }
 
+/**
+ * Search toggle: a plain icon button that expands into a text input on click
+ * (collapsing back once empty and blurred), rather than reserving space for a
+ * full-width input at all times.
+ */
+function SearchToggle({
+  value,
+  onChange,
+  block,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  block?: boolean;
+}) {
+  const t = useT();
+  const [open, setOpen] = useState(value !== "");
+  const expanded = open || block;
+
+  return (
+    <div
+      className={cn(
+        "inline-flex h-8 shrink-0 items-center gap-1.5 overflow-hidden rounded-lg border border-border px-2.5 text-xs text-foreground transition-all duration-200 ease-out",
+        expanded ? "w-32 sm:w-44" : "w-8 px-0 justify-center",
+        block && "h-10 w-full px-3 text-sm sm:w-full",
+      )}
+    >
+      <button
+        type="button"
+        aria-label={t("taskBoard.taskFilters.searchLabel")}
+        onClick={() => setOpen(true)}
+        className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <SearchSm size={14} />
+      </button>
+      {expanded && (
+        <input
+          autoFocus={!block}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={() => {
+            if (value === "") setOpen(false);
+          }}
+          placeholder={t("taskBoard.taskFilters.searchPlaceholder")}
+          className="w-full min-w-0 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+        />
+      )}
+      {value !== "" && (
+        <button
+          type="button"
+          aria-label={t("taskBoard.taskFilters.searchClearLabel")}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            onChange("");
+            if (!block) setOpen(false);
+          }}
+          className="shrink-0 text-muted-foreground hover:text-foreground"
+        >
+          <X size={14} />
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** The five filter controls, shared by the inline bar and the mobile drawer. */
 function FilterControls({
   filters,
@@ -579,6 +655,11 @@ function FilterControls({
 }) {
   return (
     <>
+      <SearchToggle
+        block={block}
+        value={filters.search}
+        onChange={(search) => onChange({ ...filters, search })}
+      />
       <AssigneeFilter
         block={block}
         value={filters.assignee}
