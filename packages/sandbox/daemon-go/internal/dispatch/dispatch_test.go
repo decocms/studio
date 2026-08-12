@@ -259,6 +259,7 @@ func TestTerminalFrameAlwaysMarksDone(t *testing.T) {
 		{"clean", ""},
 		{"crash", "harness_crashed"},
 		{"cancelled", "cancelled"},
+		{"sandbox gone", sandboxGoneCode},
 	} {
 		var frame struct {
 			Chunks []json.RawMessage `json:"chunks"`
@@ -297,5 +298,59 @@ func TestKeepaliveCountsAsActivity(t *testing.T) {
 
 	if idle := activity.Idle().IdleMs; idle > 100 {
 		t.Fatalf("a keepalive tick must count as activity; idle reported %dms", idle)
+	}
+}
+
+// The discriminator between "a human said stop" and "this pod could not
+// finish". Both cancel the run's ctx, and for a long time both reported
+// `cancelled` — which Studio reads as a deliberate act and never retries. A pod
+// evicted mid-turn therefore killed the turn permanently, with the work sitting
+// committed on the branch.
+func TestTombstoneMarksOnlyAskedForCancels(t *testing.T) {
+	const token = "tkn"
+	reg := NewRegistry()
+	entry, _ := reg.claim("run-1", func() {})
+
+	// Shutdown (`CancelAll`) and a dropped connection leave no tombstone: the
+	// run is continuable, so it must NOT be reported as cancelled.
+	reg.CancelAll()
+	if reg.tombstoned("run-1") {
+		t.Fatal("a shutdown cancel must not look like an asked-for cancel")
+	}
+	if reg.displaced("run-1", entry) {
+		t.Fatal("nothing took the run over, so it is not superseded either")
+	}
+
+	// A DELETE is the asked-for one, and it says so on the registry.
+	req := httptest.NewRequest("DELETE", "/runs/run-1", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	reg.HandleCancel(rec, req, func() string { return token })
+	if rec.Code != 204 {
+		t.Fatalf("cancel returned %d", rec.Code)
+	}
+	if !reg.tombstoned("run-1") {
+		t.Fatal("a DELETE must mark the run as deliberately cancelled")
+	}
+
+	// Scoped to the run it named — a sibling run on the same pod is untouched.
+	if reg.tombstoned("run-2") {
+		t.Fatal("a cancel must not tombstone another run")
+	}
+}
+
+// An unauthorized DELETE must not be able to turn a continuable failure into a
+// permanent one.
+func TestUnauthorizedCancelLeavesNoTombstone(t *testing.T) {
+	reg := NewRegistry()
+	reg.claim("run-1", func() {})
+	rec := httptest.NewRecorder()
+	reg.HandleCancel(rec, httptest.NewRequest("DELETE", "/runs/run-1", nil),
+		func() string { return "tkn" })
+	if rec.Code != 401 {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+	if reg.tombstoned("run-1") {
+		t.Fatal("a rejected cancel must not tombstone the run")
 	}
 }

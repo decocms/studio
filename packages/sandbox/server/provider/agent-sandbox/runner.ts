@@ -243,7 +243,9 @@ const PORT_WALK_LIMIT = 256;
 // one type isn't worth it.
 interface ForwardWebSocket {
   close: () => void;
-  on: (event: "close" | "error", handler: () => void) => void;
+  /** `error` carries the cause; `close` does not. Optional so a `close`
+   *  handler that ignores it still satisfies the type. */
+  on: (event: "close" | "error", handler: (err?: unknown) => void) => void;
 }
 
 interface PortForwarder {
@@ -2557,7 +2559,17 @@ export class AgentSandboxProvider implements SandboxProvider {
         }
         ws = opened as ForwardWebSocket;
         ws.on("close", cleanup);
-        ws.on("error", () => {
+        ws.on("error", (err?: unknown) => {
+          // Logged for the same reason as the `.catch` below, and it matters
+          // MORE here: this branch fires when an ESTABLISHED forward dies
+          // mid-run, which is what a dispatch sees as "the socket connection
+          // was closed unexpectedly". It was silent, so the one question that
+          // failure raises — apiserver recycling the connection, the pod going
+          // away, a TLS error — had no answer anywhere in the logs.
+          console.warn(
+            `[${LOG_LABEL}] port-forward to ${podName}:${containerPort} dropped mid-connection: ${errMsg(err)}`,
+            JSON.stringify(describeErrorChain(err)),
+          );
           this.invalidateRecord(handle);
           cleanup();
         });

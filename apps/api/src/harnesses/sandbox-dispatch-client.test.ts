@@ -3,6 +3,7 @@ import type { UIMessageChunk } from "ai";
 import { harnessRunResultSchema } from "@decocms/sandbox/dispatch/schemas";
 import {
   dispatchWithContinuation,
+  errorForTerminal,
   harnessRunsInSandbox,
   isRunSuperseded,
   isUnreachableStatus,
@@ -308,6 +309,35 @@ describe("dispatchWithContinuation", () => {
     });
     await expect(collect(run)).rejects.toThrow("a newer dispatch took over");
     expect(attempts).toBe(1);
+  });
+});
+
+// Which terminal code continues the turn, which drops it quietly, and which
+// fails it. `sandbox_gone` is the one that changed: the daemon reported an
+// evicted pod as `cancelled`, so a turn nobody stopped was settled as a
+// deliberate cancel and never retried.
+describe("errorForTerminal", () => {
+  test("a sandbox that could not finish is continuable, not a failure", () => {
+    const err = errorForTerminal("sandbox_gone", "the sandbox stopped mid-run");
+    expect(err).toBeInstanceOf(SandboxUnreachableError);
+    expect(isRunSuperseded(err)).toBe(false);
+  });
+
+  test("a takeover stops this attempt quietly", () => {
+    const err = errorForTerminal("superseded", "a newer dispatch took over");
+    expect(isRunSuperseded(err)).toBe(true);
+    expect(err).not.toBeInstanceOf(SandboxUnreachableError);
+  });
+
+  // A cancel a human asked for, and a harness that really crashed, are the
+  // run's own outcome — continuing either would re-run work that already ended.
+  test("a real terminal fails the run", () => {
+    for (const code of ["cancelled", "harness_crashed", "bad_input"]) {
+      const err = errorForTerminal(code, "why");
+      expect(err).not.toBeInstanceOf(SandboxUnreachableError);
+      expect(isRunSuperseded(err)).toBe(false);
+      expect(err.message).toBe(`${code}: why`);
+    }
   });
 });
 
