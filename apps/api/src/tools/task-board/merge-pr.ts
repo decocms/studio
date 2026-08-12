@@ -3,16 +3,20 @@ import type { TaskBoardItem } from "@/storage/types";
 import { clientFromConnection } from "@/mcp-clients";
 import {
   allReviewersApproved,
+  approvedButUnverified,
   REVIEWER_FLAG,
   REVIEWER_KINDS,
 } from "@decocms/shared/task-board";
 import { recordTaskActivity } from "./activity";
+import { reactToApprovedPrConflict } from "./conflict-reaction";
 import {
   fetchPrChecksStatus,
+  fetchPrConflict,
   invalidatePrReads,
+  isRateLimitError,
   resolveGithubConnection,
 } from "./prs-get";
-import { emitTaskBoardUpdated } from "./run-reactions";
+import { emitTaskBoardUpdated, handTaskToHuman } from "./run-reactions";
 
 /** Cap the merge round-trip so a slow GitHub can't hang the caller. */
 const MERGE_TIMEOUT_MS = 15000;
@@ -199,6 +203,88 @@ export async function allEnabledReviewersVerifiedApproved(
 }
 
 /**
+ * True when every enabled reviewer approved but at least one approval did NOT
+ * verify — the auto-merge gate is unsatisfiable for the rest of this cycle.
+ *
+ * A reviewer's token binds its decision to its dispatch, so an approval that
+ * fails to verify (the model dropped the token from its prompt, or replayed one
+ * minted for an earlier cycle) is recorded but doesn't count. Nothing then
+ * re-dispatches that reviewer — its claim for the cycle is spent — so the card
+ * shows two green approvals on the board and can never merge. One sat like that
+ * for seven days. There is no automatic way out, which is exactly what makes it
+ * a person's: hand it over rather than sweeping it forever.
+ */
+async function handUnverifiedApprovalToHuman(
+  ctx: StudioContext,
+  item: TaskBoardItem,
+): Promise<void> {
+  const settings = await ctx.storage.organizationSettings.get(
+    item.organizationId,
+  );
+  const flags = settings?.flags ?? {};
+  const enabled = REVIEWER_KINDS.filter(
+    (k) => flags[REVIEWER_FLAG[k]] === true,
+  );
+  const activity = await ctx.storage.taskBoard.listActivity(
+    item.id,
+    item.organizationId,
+  );
+  if (!approvedButUnverified(activity, enabled)) return;
+  await handTaskToHuman(
+    ctx,
+    item,
+    "every reviewer approved, but an approval could not be verified — " +
+      "auto-merge is blocked and no reviewer can be re-dispatched this cycle",
+  );
+}
+
+/**
+ * True when a merge outcome is worth a `pull_request_read` to ask GitHub
+ * whether the PR conflicts. Pure — unit-tested.
+ *
+ * Only a refusal can be a conflict; every other reason (no PR, no connection,
+ * red or pending checks) is definitely not one. A rate-limited refusal is
+ * excluded too: it says nothing about mergeability, and paying another GitHub
+ * call into a 429 is the burst that keeps the limit shut.
+ */
+export function mayBeConflict(outcome: MergeOutcome): boolean {
+  if (outcome.merged || outcome.reason !== "refused") return false;
+  return !isRateLimitError(outcome.detail ?? "");
+}
+
+/**
+ * Hand an approved-but-conflicting PR back to the Super Agent to rebase.
+ *
+ * The inline approval path does this (`review-decision.ts`), but the SWEEP's
+ * retry didn't — so a conflict that appeared after the approval (the base
+ * branch moved on, which is the common case for a card that waited) left the
+ * card retrying the same 405 every five minutes, forever, with no run ever
+ * dispatched to fix it. Two cards in one org, `merge_conflict_resolution` count
+ * zero across the whole board.
+ *
+ * `mayBeConflict` decides which outcomes are worth the extra GitHub read; the
+ * reaction itself re-checks approval, the org flag and its own dispatch cap.
+ */
+async function resolveConflictAfterRefusedMerge(
+  ctx: StudioContext,
+  item: TaskBoardItem,
+  outcome: MergeOutcome,
+): Promise<void> {
+  if (!mayBeConflict(outcome)) return;
+  const orgId = item.organizationId;
+  const prs = await ctx.storage.taskBoard.listPrs(item.id, orgId);
+  // The newest linked PR — the one `mergeLinkedPr` just tried to merge.
+  const pr = prs[0];
+  if (!pr) return;
+  await reactToApprovedPrConflict(ctx, orgId, item, {
+    pr: { number: pr.number, url: pr.url },
+    conflict: await fetchPrConflict(ctx, orgId, pr),
+  }).catch((err) => {
+    console.error("[task-board] sweep conflict auto-resolve failed", err);
+  });
+}
+
+/**
  * Retry the auto-merge for a card that finished its review but never shipped.
  *
  * The reviewer decision merges inline, and when that merge fails the card is
@@ -221,11 +307,15 @@ export async function retryAutoMergeIfApproved(
   const settings = await ctx.storage.organizationSettings.get(orgId);
   if (settings?.flags?.auto_merge !== true) return false;
   if (!(await allEnabledReviewersVerifiedApproved(ctx, orgId, item.id))) {
+    await handUnverifiedApprovalToHuman(ctx, item);
     return false;
   }
 
   const outcome = await mergeLinkedPr(ctx, orgId, item.id);
-  if (!outcome.merged) return false;
+  if (!outcome.merged) {
+    await resolveConflictAfterRefusedMerge(ctx, item, outcome);
+    return false;
+  }
 
   const done = await ctx.storage.taskBoard.update(
     item.id,

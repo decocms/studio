@@ -9,7 +9,7 @@ import {
   type ReviewerKind,
 } from "@decocms/shared/task-board";
 import { recordTaskActivity } from "./activity";
-import { emitTaskBoardUpdated } from "./run-reactions";
+import { emitTaskBoardUpdated, handTaskToHuman } from "./run-reactions";
 import { enqueueAgentRunForTask } from "./enqueue-task-run";
 import { resolveTaskRepoChoice } from "./claude-code-task-run";
 
@@ -89,6 +89,16 @@ export async function enqueueEnabledReviewers(
   // and Code Reviewer are enabled.
   await Promise.all(
     enabled.map(async (kind) => {
+      // A dead end, not a wait — see `reviewerAttemptsExhausted`.
+      if (reviewerAttemptsExhausted(task, kind, lastInReviewAt)) {
+        await handTaskToHuman(
+          ctx,
+          task,
+          `${REVIEWER_LABEL[kind]} failed ${MAX_REVIEWER_ATTEMPTS} times on ` +
+            `this review — it will not be retried`,
+        );
+        return;
+      }
       if (reviewerHandledThisCycle(task, kind, lastInReviewAt)) return;
       // Getting here with a dead reviewer thread from THIS cycle means the last
       // attempt failed (see `reviewerHandledThisCycle`). Its claim row is still
@@ -166,6 +176,48 @@ export function hasFailedAttemptThisCycle(
   );
 }
 
+/** The reviewer's threads belonging to the current cycle: created since the
+ *  cycle started, plus any still-live one (which owns the cycle wherever it
+ *  started). Pure. */
+function reviewerThreadsThisCycle(
+  task: TaskBoardItem,
+  kind: ReviewerKind,
+  lastInReviewAt: number,
+): TaskBoardItem["threads"] {
+  return task.threads.filter((thr) => {
+    if (!isReviewerThreadTitle(thr.title, kind)) return false;
+    const live =
+      thr.status !== null && !TERMINAL_THREAD_STATUSES.has(thr.status);
+    return live || new Date(thr.createdAt).getTime() >= lastInReviewAt;
+  });
+}
+
+/**
+ * True when this reviewer has spent every attempt of the cycle on a FAILED run.
+ *
+ * This is a dead end, not a wait: the claim key is (task, reviewer, cycle), so
+ * `claimReviewer` refuses every further dispatch until the card leaves and
+ * re-enters In Review — which only a reviewer verdict or a human can cause. The
+ * verdict is therefore never coming and the all-approved gate can never close,
+ * so the caller hands the card to a person instead of letting the sweeper visit
+ * it forever. Two cards sat In Review for six days on exactly this: one
+ * approval each, and a QA Agent that had died twice.
+ *
+ * Pure — unit-tested.
+ */
+export function reviewerAttemptsExhausted(
+  task: TaskBoardItem,
+  kind: ReviewerKind,
+  lastInReviewAt: number,
+): boolean {
+  const thisCycle = reviewerThreadsThisCycle(task, kind, lastInReviewAt);
+  return (
+    thisCycle.length > 0 &&
+    thisCycle.every((thr) => thr.status === "failed") &&
+    thisCycle.length >= MAX_REVIEWER_ATTEMPTS
+  );
+}
+
 /**
  * True when a reviewer of `kind` needs no further dispatch this cycle — the
  * guard that stops a duplicate reviewer run on every poll / re-trigger.
@@ -194,12 +246,7 @@ export function reviewerHandledThisCycle(
   kind: ReviewerKind,
   lastInReviewAt: number,
 ): boolean {
-  const thisCycle = task.threads.filter((thr) => {
-    if (!isReviewerThreadTitle(thr.title, kind)) return false;
-    const live =
-      thr.status !== null && !TERMINAL_THREAD_STATUSES.has(thr.status);
-    return live || new Date(thr.createdAt).getTime() >= lastInReviewAt;
-  });
+  const thisCycle = reviewerThreadsThisCycle(task, kind, lastInReviewAt);
   if (thisCycle.length === 0) return false;
   // A live run owns the cycle; never dispatch alongside it.
   if (

@@ -149,6 +149,26 @@ export function allReviewersApproved(
 }
 
 /**
+ * True when every enabled reviewer approved, but the approvals do NOT satisfy
+ * the verified gate the auto-merge requires.
+ *
+ * The card then shows a full set of green approvals and can never merge: the
+ * reviewer whose token didn't verify has already spent its claim for the cycle,
+ * so nothing re-dispatches it and no later event can change the verdict. It is
+ * a dead end that looks like progress, which is why it gets its own predicate
+ * rather than living as an `!allReviewersApproved(…, verifiedOnly)` fall-through.
+ */
+export function approvedButUnverified(
+  activity: ReviewCycleActivity[],
+  enabled: ReviewerKind[],
+): boolean {
+  return (
+    allReviewersApproved(activity, enabled) &&
+    !allReviewersApproved(activity, enabled, { verifiedOnly: true })
+  );
+}
+
+/**
  * How many times a task may be bounced back to the Super Agent by a reviewer
  * before the loop is broken and a human takes over.
  *

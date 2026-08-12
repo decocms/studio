@@ -9,7 +9,7 @@ import {
 } from "@decocms/shared/task-board";
 import { TaskBoardItemStatusSchema } from "./schema";
 import { recordTaskActivity } from "./activity";
-import { emitTaskBoardUpdated } from "./run-reactions";
+import { emitTaskBoardUpdated, handTaskToHuman } from "./run-reactions";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
 import { allEnabledReviewersVerifiedApproved, mergeLinkedPr } from "./merge-pr";
 import { fetchPrConflict } from "./prs-get";
@@ -153,28 +153,18 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
           actorId: null,
           data: { reviewer, notes, verified, bounceLimitReached: true },
         });
-        console.warn(
-          `[task-board] ${taskBoardItemId}: ${MAX_REVIEW_BOUNCES} review ` +
-            `bounces reached — unassigning the Super Agent, needs a human`,
+        // Stays In Review with the reviewer's notes, where a human picks it up.
+        await handTaskToHuman(
+          ctx,
+          item,
+          `${MAX_REVIEW_BOUNCES} review bounces reached — the reviewer and the ` +
+            `Super Agent are not converging`,
         );
-        // Unassign so the card reads as a person's problem rather than an
-        // agent's, and so nothing downstream re-dispatches it. It stays In
-        // Review with the reviewer's notes: that is where a human wants to
-        // pick it up, and the ship button stays hidden because nothing is
-        // approved.
-        const handed = await ctx.storage.taskBoard.update(
-          taskBoardItemId,
-          organizationId,
-          { assigneeId: null },
-          item.updatedBy,
-        );
-        await recordTaskActivity(ctx, {
-          taskBoardItemId,
-          action: "assignee_changed",
-          actorId: null,
-          data: { from: item.assigneeId, to: null },
-        });
-        emitTaskBoardUpdated(organizationId, handed);
+        const handed =
+          (await ctx.storage.taskBoard.getById(
+            taskBoardItemId,
+            organizationId,
+          )) ?? item;
         return { status: handed.status, merged: false };
       }
 

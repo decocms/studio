@@ -61,14 +61,20 @@
  */
 
 import type { StudioContextFactory } from "@/automations/fire";
+import type { StudioContext } from "@/core/studio-context";
 import type { OrganizationBillingStorage } from "@/storage/organization-billing";
 import type { TaskBoardStorage } from "@/storage/task-board";
-import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import type { TaskBoardItem } from "@/storage/types";
+import {
+  reviewCycleStart,
+  SUPER_AGENT_ASSIGNEE_ID,
+} from "@decocms/shared/task-board";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
 import { retryAutoMergeIfApproved } from "./merge-pr";
 import {
   emitTaskBoardUpdated,
+  handTaskToHuman,
   reactToFailedTaskRun,
   refundUnproductiveTaskClaims,
 } from "./run-reactions";
@@ -101,6 +107,12 @@ const DEFAULT_BATCH_SIZE = 50;
  *  blip in the context factory or the quota read. */
 const REARM_DELAY_MS = 60 * 1000;
 
+/** How long a card may sit In Review with no linked PR before it is handed to a
+ *  person. A run links its PR and moves the card in two separate calls, so a
+ *  sweep can land between them — this is the margin that stops a card being
+ *  handed over a second before its PR arrives. */
+const NO_PR_HANDOFF_GRACE_MS = 15 * 60 * 1000;
+
 /** How long a failed run may sit unreacted-to before the sweeper steps in. Long
  *  enough that the in-band reaction (which runs within milliseconds of the
  *  failure) always wins the normal case, short enough that a card whose pod died
@@ -119,6 +131,19 @@ const UNHANDLED_FAILURE_GRACE_MS = 2 * 60 * 1000;
  */
 export function isPermanentDispatchFailure(err: unknown): boolean {
   return err instanceof TaskQuotaError;
+}
+
+/**
+ * True when a PR-less card has been In Review long enough to hand over.
+ *
+ * A cycle start of 0 means the card has no `→ in_review` entry on its timeline
+ * at all — a card moved there before the activity log recorded the transition,
+ * or by a path that doesn't. That reads as "infinitely old", which is the right
+ * answer: those are the oldest strands, and there is no PR coming for them
+ * either. Pure — unit-tested.
+ */
+export function noPrHandoffDue(cycleStartMs: number, nowMs: number): boolean {
+  return nowMs - cycleStartMs >= NO_PR_HANDOFF_GRACE_MS;
 }
 
 export interface TaskBoardReviewSweeperOptions {
@@ -392,6 +417,36 @@ export class TaskBoardReviewSweeper {
     }
   }
 
+  /**
+   * Hand a card parked In Review with no pull request to a person.
+   *
+   * There is nothing for a reviewer to review, so no reviewer is ever
+   * dispatched — the run either finished without opening a PR or opened one and
+   * never called `TASK_BOARD_ITEM_PR_LINK`. Until now that was a silent
+   * `return`: the card was swept every five minutes forever and read on the
+   * board exactly like one waiting on its reviewers. Four sat that way in one
+   * org, the oldest for a week.
+   *
+   * Waits out `NO_PR_HANDOFF_GRACE_MS` first, because the run links its PR and
+   * moves the card in two separate calls and the sweep can land between them.
+   */
+  private async handOffReviewWithoutPr(
+    ctx: StudioContext,
+    item: TaskBoardItem,
+  ): Promise<void> {
+    const activity = await this.taskBoard.listActivity(
+      item.id,
+      item.organizationId,
+    );
+    if (!noPrHandoffDue(reviewCycleStart(activity), Date.now())) return;
+    await handTaskToHuman(
+      ctx,
+      item,
+      "no pull request is linked to this task — there is nothing for a " +
+        "reviewer to review",
+    );
+  }
+
   /** Hand a card with a linked, ready PR off to the enabled reviewers. Returns
    *  true when reviewers were considered (i.e. the card had a PR to review). */
   private async reconcileItem(
@@ -419,10 +474,7 @@ export class TaskBoardReviewSweeper {
     // mid-sweep costs one interval of delay — the right trade for a slow floor.
     await this.taskBoard.markSwept(id, organizationId);
 
-    // Nothing to review without a PR — a research/answer task reaches In Review
-    // too, and dispatching a reviewer at it would burn a run on nothing.
     const prs = await this.taskBoard.listPrs(id, organizationId);
-    if (prs.length === 0) return false;
 
     // Built as the task's owner, like the run-finish trigger does — the sweeper
     // has storage only, and the reviewer dispatch needs a full context.
@@ -431,6 +483,11 @@ export class TaskBoardReviewSweeper {
       item.assignedBy ?? item.createdBy,
     );
     if (!ctx) return false;
+
+    if (prs.length === 0) {
+      await this.handOffReviewWithoutPr(ctx, item);
+      return false;
+    }
 
     // A card whose review already COMPLETED but whose merge failed is stranded:
     // the cycle's reviewer claims are spent, so the dispatch below is a no-op
