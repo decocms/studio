@@ -824,6 +824,14 @@ export class TaskBoardStorage {
   /**
    * Cards whose retry is due, oldest first. Claimed one at a time by the caller
    * via `claimDueRetry`, so a batch read here is safe across replicas.
+   *
+   * `dismissed_at IS NULL` matters here specifically: a reports-pushed task's
+   * `delete()` only sets `dismissed_at` (it keeps the row so re-import doesn't
+   * recreate the card), leaving `status`/`retry_at` untouched. Without this
+   * filter a card dismissed while its retry was still pending gets a brand-new
+   * Super Agent run dispatched on it after the user already deleted it from the
+   * board — the same class of bug the other list queries here already guard
+   * against.
    */
   async listItemsDueForRetry(
     limit: number,
@@ -839,6 +847,7 @@ export class TaskBoardStorage {
       .where("retry_at", "is not", null)
       .where("retry_at", "<=", now)
       .where("status", "=", "in_progress")
+      .where("dismissed_at", "is", null)
       .orderBy("retry_at", "asc")
       .limit(limit)
       .execute();
