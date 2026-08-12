@@ -15,10 +15,11 @@ const JPEG_QUALITY = 80;
 /**
  * Emulation presets for `take_screenshot`. `mobile` carries a phone viewport
  * AND `isMobile`/`hasTouch` — but the load-bearing part for QA is that the tool
- * also sends `MOBILE_USER_AGENT` for it. Many sites pick their layout from the
+ * also sends `MOBILE_USER_AGENT` with it. Many sites pick their layout from the
  * request user-agent server-side (not just CSS breakpoints), so a desktop
  * browser merely narrowed to 390px still gets desktop markup — a plausible but
- * WRONG "mobile" shot. Emulating the device means the UA too.
+ * WRONG "mobile" shot. Emulating the device means the UA too; see
+ * `captureScreenshot` for how it is sent.
  */
 const DEVICE_VIEWPORTS = {
   desktop: {
@@ -90,6 +91,39 @@ export function buildScreenshotOptions(
 }
 
 /**
+ * The Browserless `/screenshot` request body.
+ *
+ * Split out and pure so the wire shape is assertable: a mobile capture carries
+ * its user-agent as a request HEADER, not in Browserless's own `userAgent`
+ * field, because that field's shape is version-specific and the two forms are
+ * mutually exclusive — v1 accepts a string and 400s on an object, v2 accepts an
+ * object and 400s on a string, while `setExtraHTTPHeaders` is accepted AND
+ * honored by both (verified against browserless/chrome and
+ * browserless/chromium). Sending the wrong one fails EVERY mobile capture with
+ * a 400, which is invisible until someone asks for a mobile screenshot.
+ *
+ * A header does not change `navigator.userAgent`, so client-side sniffing still
+ * sees Chrome — for that part, `isMobile`/`hasTouch` in the viewport is what
+ * carries.
+ */
+export function buildScreenshotRequestBody(
+  url: string,
+  device: ScreenshotDevice,
+  fullPage: boolean,
+  clamped: boolean,
+) {
+  const viewport = DEVICE_VIEWPORTS[device];
+  return {
+    url,
+    options: buildScreenshotOptions(fullPage, clamped, viewport),
+    viewport,
+    ...(viewport.isMobile
+      ? { setExtraHTTPHeaders: { "User-Agent": MOBILE_USER_AGENT } }
+      : {}),
+  };
+}
+
+/**
  * Capture one page as a JPEG via Browserless, clamped to a height the model
  * providers accept.
  *
@@ -109,11 +143,7 @@ export async function captureScreenshot(params: {
 > {
   const { url, token } = params;
   const fullPage = params.fullPage ?? false;
-  const viewport = DEVICE_VIEWPORTS[params.device ?? "desktop"];
-  // Sniffing sites pick their layout from the UA, not the viewport — send a
-  // mobile UA so `device: "mobile"` returns real mobile markup (omitted for
-  // desktop, which uses Chrome's own).
-  const userAgent = viewport.isMobile ? MOBILE_USER_AGENT : undefined;
+  const device = params.device ?? "desktop";
 
   const shoot = async (clamped: boolean) =>
     await fetch(
@@ -121,12 +151,9 @@ export async function captureScreenshot(params: {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url,
-          options: buildScreenshotOptions(fullPage, clamped, viewport),
-          viewport,
-          ...(userAgent ? { userAgent } : {}),
-        }),
+        body: JSON.stringify(
+          buildScreenshotRequestBody(url, device, fullPage, clamped),
+        ),
       },
     );
 
