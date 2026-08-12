@@ -13,6 +13,11 @@ const FILES_URL_PATTERN = /\/api\/[^/]+\/files\/([^?#]+)/;
 const MAX_REFERENCE_IMAGE_BYTES = 20 * 1024 * 1024;
 const JPEG_QUALITY = 80;
 
+/** Without this, an unresponsive reference-image host hangs the fetch (and the
+ *  whole harness run) forever — `params.abortSignal` only covers user-initiated
+ *  cancellation, not a stalled remote server. */
+const REFERENCE_IMAGE_FETCH_TIMEOUT_MS = 45_000;
+
 /** Headroom over Browserless's own 30s page.goto timeout, so an unresponsive Browserless can't hang the harness run forever. */
 const BROWSERLESS_SCREENSHOT_TIMEOUT_MS = 45_000;
 
@@ -423,7 +428,7 @@ async function readFromObjectStorage(
   return bytes;
 }
 
-async function fetchImageBytes(
+export async function fetchImageBytes(
   url: string,
   params: {
     objectStorage?: PortableMediaObjectStorage | null;
@@ -451,7 +456,21 @@ async function fetchImageBytes(
 
   validateExternalUrl(url, params.allowHttpExternalUrls === true);
   await assertUrlDoesNotResolvePrivate(url);
-  const res = await fetch(url, { signal: params.abortSignal });
+  const timeoutSignal = AbortSignal.timeout(REFERENCE_IMAGE_FETCH_TIMEOUT_MS);
+  const signal = params.abortSignal
+    ? AbortSignal.any([params.abortSignal, timeoutSignal])
+    : timeoutSignal;
+  let res: Response;
+  try {
+    res = await fetch(url, { signal });
+  } catch (err) {
+    if (err instanceof Error && err.name === "TimeoutError") {
+      throw new Error(
+        `Fetching image from ${url} timed out after ${REFERENCE_IMAGE_FETCH_TIMEOUT_MS}ms`,
+      );
+    }
+    throw err;
+  }
   if (!res.ok) {
     throw new Error(`Failed to fetch image from ${url}: ${res.status}`);
   }

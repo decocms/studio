@@ -4,6 +4,7 @@ import {
   buildScreenshotOptions,
   buildScreenshotRequestBody,
   createPortableTakeScreenshotTool,
+  fetchImageBytes,
   jpegHeight,
   validateExternalUrl,
 } from "./portable-media-tools";
@@ -201,6 +202,26 @@ describe("createPortableTakeScreenshotTool", () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("timed out");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+describe("fetchImageBytes", () => {
+  it("times out instead of hanging forever on an unresponsive reference-image host", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      const err = new Error("The operation was aborted");
+      err.name = "TimeoutError";
+      throw err;
+    }) as unknown as typeof fetch;
+
+    try {
+      await expect(
+        // IP literal skips the DNS-rebinding check's real lookup.
+        fetchImageBytes("https://93.184.216.34/reference.png", {}),
+      ).rejects.toThrow(/timed out/);
     } finally {
       globalThis.fetch = originalFetch;
     }
