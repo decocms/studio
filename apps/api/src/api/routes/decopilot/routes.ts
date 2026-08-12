@@ -133,7 +133,9 @@ async function validateRequest(
   c: Context<{ Variables: { studioContext: StudioContext } }>,
 ) {
   const organization = ensureOrganization(c);
-  const rawPayload = await c.req.json();
+  const rawPayload = await c.req.json().catch(() => {
+    throw new HTTPException(400, { message: "Invalid JSON body" });
+  });
 
   const parseResult = StreamRequestSchema.safeParse(rawPayload);
   if (!parseResult.success) {
