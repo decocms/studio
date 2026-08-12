@@ -96,6 +96,41 @@ describe("taskMatchesFilters — tags", () => {
   });
 });
 
+describe("taskMatchesFilters — search", () => {
+  test("empty search lets every task through", () => {
+    expect(
+      taskMatchesFilters(item({ title: "Fix login bug" }), EMPTY_FILTERS),
+    ).toBe(true);
+  });
+
+  test("matches a title case-insensitively", () => {
+    expect(
+      taskMatchesFilters(item({ title: "Fix Login Bug" }), {
+        ...EMPTY_FILTERS,
+        search: "login",
+      }),
+    ).toBe(true);
+  });
+
+  test("matches a description when the title doesn't match", () => {
+    expect(
+      taskMatchesFilters(
+        item({ title: "Task", description: "Related to onboarding flow" }),
+        { ...EMPTY_FILTERS, search: "onboarding" },
+      ),
+    ).toBe(true);
+  });
+
+  test("excludes a task matching neither title nor description", () => {
+    expect(
+      taskMatchesFilters(item({ title: "Fix login bug" }), {
+        ...EMPTY_FILTERS,
+        search: "billing",
+      }),
+    ).toBe(false);
+  });
+});
+
 describe("taskMatchesFilters — repo", () => {
   // NO_REPO_FILTER is module-private; assert against its raw sentinel value.
   const NO_REPO = "__no_repo__";
