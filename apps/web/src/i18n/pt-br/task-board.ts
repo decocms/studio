@@ -38,8 +38,11 @@ export const taskBoard = {
   "taskBoard.taskBoard.connectGithubDescription":
     "O Auto-fix coloca o Super Agent para trabalhar nesta tarefa e salva a mudança no seu projeto, pronta para seu time revisar e aprovar.",
   "taskBoard.taskBoard.connectGithubTitle": "Conectar GitHub",
+  "taskBoard.taskBoard.handedToHumanBadgeTitle":
+    "A automação parou nesta tarefa — abra para ver o motivo",
   "taskBoard.taskBoard.layoutViewAriaLabel": "visualização {label}",
   "taskBoard.taskBoard.needsInput": "Precisa de entrada",
+  "taskBoard.taskBoard.needsYou": "Precisa de você",
   "taskBoard.taskBoard.newTask": "Nova tarefa",
   "taskBoard.taskBoard.newTaskInLaneAriaLabel": "Nova tarefa em {lane}",
   "taskBoard.taskBoard.newTaskInLaneTitle": "Nova tarefa em {lane}",

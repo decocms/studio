@@ -2,10 +2,16 @@
  * Real-Postgres coverage for the review sweeper's work list.
  *
  * This is the query that decides which stuck cards get rescued, so its
- * predicates are the contract: Super Agent only (a human's card is not the
- * sweeper's business), In Review only, dismissed cards excluded, oldest-touched
- * first so a long backlog drains fairly instead of starving the cards that have
- * been stuck longest, and bounded by `limit` so one tick can't scan the world.
+ * predicates are the contract: In Review only, dismissed cards excluded,
+ * oldest-touched first so a long backlog drains fairly instead of starving the
+ * cards that have been stuck longest, and bounded by `limit` so one tick can't
+ * scan the world.
+ *
+ * Deliberately NOT filtered on assignee. It used to be Super Agent only, which
+ * made every hand-off terminal: a card whose reviewers all approved but whose
+ * merge failed was unassigned, vanished from this query and never merged again.
+ * `reconcileItem` re-applies the assignee gate to everything except that merge
+ * retry, so a handed-off card still burns no agent runs.
  *
  * Cross-org on purpose — the sweeper is a process-level reconciler with no
  * request org — which is exactly the kind of thing an in-memory fake would get
@@ -123,9 +129,10 @@ describe("listItemsPendingReview (real Postgres)", () => {
     expect(ids).not.toContain(shipped.id);
   });
 
-  // A human's card in review is a human's business — dispatching a reviewer at
-  // it would burn a run nobody asked for.
-  it("skips a card that is not the Super Agent's", async () => {
+  // Approvals belong to the card, not to whoever holds it — an unassigned card
+  // is precisely the one the merge retry exists for. `reconcileItem` is what
+  // stops a reviewer being dispatched at either of these.
+  it("keeps a card that is not the Super Agent's", async () => {
     const mine = await card({ org: ORG_A, title: "mine", assignee: USER });
     const nobodys = await card({
       org: ORG_A,
@@ -134,8 +141,8 @@ describe("listItemsPendingReview (real Postgres)", () => {
     });
 
     const ids = (await taskBoard.listItemsPendingReview(50)).map((p) => p.id);
-    expect(ids).not.toContain(mine.id);
-    expect(ids).not.toContain(nobodys.id);
+    expect(ids).toContain(mine.id);
+    expect(ids).toContain(nobodys.id);
   });
 
   it("skips a dismissed card", async () => {

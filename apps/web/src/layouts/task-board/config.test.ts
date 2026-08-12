@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { insertSortOrder, runSortOrders, statusIconClassName } from "./config";
+import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import {
+  insertSortOrder,
+  isTaskHandedToHuman,
+  runSortOrders,
+  statusIconClassName,
+} from "./config";
 import type { TaskBoardItem } from "./config";
 
 function item(id: string, sortOrder: number): TaskBoardItem {
@@ -88,5 +94,35 @@ describe("statusIconClassName", () => {
 
   test("other statuses keep their static class", () => {
     expect(statusIconClassName(item("a", 0))).toBe("text-muted-foreground");
+  });
+});
+
+/**
+ * The card badge for a task the automation gave up on. Without it a handed-off
+ * card renders exactly like one still waiting on its reviewers, which is how
+ * five sat In Review for a week in one org with nobody noticing.
+ */
+describe("isTaskHandedToHuman", () => {
+  const inReview = (assigneeId: string | null): TaskBoardItem => ({
+    ...item("t", 0),
+    status: "in_review",
+    assigneeId,
+  });
+
+  test("an In Review card with no assignee is waiting on a person", () => {
+    expect(isTaskHandedToHuman(inReview(null))).toBe(true);
+  });
+
+  test("a card the Super Agent or a human still owns is not", () => {
+    expect(isTaskHandedToHuman(inReview(SUPER_AGENT_ASSIGNEE_ID))).toBe(false);
+    expect(isTaskHandedToHuman(inReview("user-1"))).toBe(false);
+  });
+
+  // Unassigned is the norm everywhere else on the board — only In Review means
+  // automation stopped.
+  test("an unassigned card in any other lane is not", () => {
+    for (const status of ["triage", "todo", "in_progress", "done"] as const) {
+      expect(isTaskHandedToHuman({ ...item("t", 0), status })).toBe(false);
+    }
   });
 });

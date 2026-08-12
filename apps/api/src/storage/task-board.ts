@@ -547,13 +547,18 @@ export class TaskBoardStorage {
    * without bounding what the sweep can ever reach.
    */
   /**
-   * The review sweeper's work list: Super Agent cards parked In Review that are
-   * DUE a sweep, i.e. never swept or last swept before `dueBefore`.
+   * The review sweeper's work list: cards parked In Review that are DUE a
+   * sweep, i.e. never swept or last swept before `dueBefore`.
    *
    * That predicate is what bounds the sweeper's GitHub cost. Without it the same
    * cards came back on every tick of every replica — a card whose checks never
    * go green never leaves this set — so the cost was (cards x replicas x ticks)
    * rather than (cards x intervals). See migration 166.
+   *
+   * Deliberately NOT filtered on the Super Agent assignee. A card handed to a
+   * human keeps its reviewers' approvals, and if they all approved it is still
+   * merge-eligible — `reconcileItem` is what re-applies the assignee gate to
+   * everything except that merge retry.
    */
   async listItemsPendingReview(
     limit: number,
@@ -564,7 +569,6 @@ export class TaskBoardStorage {
       .selectFrom("task_board_items")
       .select(["id", "organization_id as organizationId", "updated_at"])
       .where("status", "=", "in_review")
-      .where("assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID)
       .where("dismissed_at", "is", null);
     if (dueBefore) {
       // A never-swept card (NULL) is always due — `<` alone would exclude it.

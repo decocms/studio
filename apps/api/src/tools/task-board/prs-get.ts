@@ -892,6 +892,51 @@ export async function fetchPrCandidateState(
   };
 }
 
+/**
+ * Index of the PR the automation should act on, given each linked PR's live
+ * state in `listPrs` order (newest first): the newest one not definitively
+ * closed, falling back to the newest.
+ *
+ * `null` (GitHub unreadable) counts as usable — a blip must not silently
+ * redirect a merge to an older PR. `states` may be shorter than the PR list,
+ * since {@link pickActivePr} stops reading at the first usable one.
+ */
+export function pickActivePrIndex(
+  states: readonly ("open" | "closed" | null)[],
+): number {
+  const i = states.findIndex((state) => state !== "closed");
+  // Every PR read closed — the newest is still the best guess, and the merged
+  // ones are handled by the reconcile-to-Done path.
+  return i === -1 ? 0 : i;
+}
+
+/**
+ * Which of a task's linked PRs the automation should act on.
+ *
+ * `listPrs` is newest-first, and taking `[0]` blindly is wrong once a task has
+ * more than one PR — a bounce that opens a fresh PR instead of pushing to the
+ * reviewed one leaves the newest link pointing at an abandoned branch, so the
+ * merge gate reads ITS red checks and reports `checks_failing` forever while
+ * the approved, green PR sits unmerged.
+ */
+export async function pickActivePr(
+  ctx: StudioContext,
+  orgId: string,
+  prs: TaskBoardItemPrRef[],
+): Promise<TaskBoardItemPrRef | undefined> {
+  if (prs.length <= 1) return prs[0];
+  const states: ("open" | "closed" | null)[] = [];
+  for (const pr of prs) {
+    const { state } = await fetchPrCandidateState(ctx, orgId, pr);
+    states.push(state);
+    // Stop at the first usable PR: the common case is one extra read, not one
+    // per link, which is what the GitHub rate limit cares about. The read is the
+    // same cached `get` the sweep's own candidate pass makes.
+    if (state !== "closed") break;
+  }
+  return prs[pickActivePrIndex(states)];
+}
+
 export const TASK_BOARD_ITEM_PRS_GET = defineTool({
   name: "TASK_BOARD_ITEM_PRS_GET",
   description:

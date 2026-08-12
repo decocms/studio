@@ -42,6 +42,18 @@ export function isTaskBlocked(item: TaskBoardItem): boolean {
 }
 
 /**
+ * A task the automation gave up on: parked In Review with no assignee.
+ *
+ * Every automatic path except the auto-merge retry requires the Super Agent as
+ * assignee, so this card is waiting on a person — but it renders exactly like
+ * one still waiting on its reviewers. The hand-off reason is on the timeline
+ * (`assignee_changed`); the badge is what makes it findable at all.
+ */
+export function isTaskHandedToHuman(item: TaskBoardItem): boolean {
+  return item.status === "in_review" && !item.assigneeId;
+}
+
+/**
  * Status-icon classes for a task card/row. An in-progress task's spinner spins,
  * but one waiting on input stops spinning and pulses in `warning` — same token
  * as its "Needs input" badge, so a stalled task doesn't look like it's working.
