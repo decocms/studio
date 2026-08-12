@@ -920,6 +920,28 @@ export async function isConnectionAuthenticated({
           ? await checkOAuthTokenStatus(connectionId, orgSlug, apiBaseUrl)
           : { hasToken: false };
 
+      // Some servers (e.g. Google-hosted MCPs) accept unauthenticated
+      // initialize/tools-list and only 401 on tools/call — so a 200 here
+      // does NOT prove the connection is usable. RFC 9728 metadata is the
+      // server explicitly declaring "this resource is OAuth-protected":
+      // when it exists and the caller has no stored token yet, surface the
+      // authenticate flow instead of reporting the connection as all set.
+      if (!oauthStatus.hasToken) {
+        try {
+          const resourceMetadata =
+            await discoverOAuthProtectedResourceMetadata(url);
+          if (resourceMetadata?.authorization_servers?.length) {
+            return {
+              isAuthenticated: false,
+              supportsOAuth: true,
+              hasOAuthToken: false,
+            };
+          }
+        } catch {
+          // No metadata published — genuinely unauthenticated server.
+        }
+      }
+
       return {
         isAuthenticated: true,
         // When authenticated, we can't determine OAuth support from the response
