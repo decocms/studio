@@ -228,12 +228,28 @@ export function reviewBounceLimitReached(
   limit: number = MAX_REVIEW_BOUNCES,
 ): boolean {
   const since = delegationStart(activity);
-  const bounces = activity.filter(
-    (a) =>
-      a.action === "review_changes_requested" &&
-      new Date(a.occurredAt).getTime() >= since,
-  ).length;
-  return bounces + 1 >= limit;
+  // Count review CYCLES that ended in a change-request, not change-request
+  // rows. A reviewer can land more than one verdict against a single dispatch
+  // — the claim fences the dispatch, not the decision — and only the first
+  // moves the card, so counting rows charged a card twice for one bounce and
+  // halved the real budget. Three of four cards in one org did exactly that.
+  const bounced = new Set<number>();
+  let cycle = 0;
+  for (const a of [...activity].sort((x, y) =>
+    x.occurredAt.localeCompare(y.occurredAt),
+  )) {
+    const at = new Date(a.occurredAt).getTime();
+    if (a.action === "status_changed") {
+      if ((a.data as { to?: unknown } | null | undefined)?.to === "in_review") {
+        cycle = at;
+      }
+      continue;
+    }
+    if (a.action === "review_changes_requested" && at >= since) {
+      bounced.add(cycle);
+    }
+  }
+  return bounced.size + 1 >= limit;
 }
 
 /**

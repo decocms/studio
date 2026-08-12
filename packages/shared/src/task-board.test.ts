@@ -154,66 +154,79 @@ describe("allReviewersApproved", () => {
 // bounce starts a new cycle, so a per-cycle count is always 1 and would never
 // trip, which is exactly how a board reached 179 change-requests.
 
-function bounce(at: string): ReviewCycleActivity {
+function bounce(at: string, reviewer = "code_review"): ReviewCycleActivity {
   return {
     action: "review_changes_requested",
-    data: { reviewer: "code_review" },
+    data: { reviewer },
     occurredAt: at,
   };
+}
+
+function enteredReview(at: string): ReviewCycleActivity {
+  return {
+    action: "status_changed",
+    data: { to: "in_review" },
+    occurredAt: at,
+  };
+}
+
+/**
+ * `n` real bounces: a card enters In Review, a reviewer requests changes, the
+ * card goes back and re-enters. A bare run of `review_changes_requested` rows
+ * is NOT n bounces — the counter groups by cycle, because one dispatch can land
+ * more than one verdict.
+ */
+function bounceCycles(n: number, fromHour = 0): ReviewCycleActivity[] {
+  return Array.from({ length: n }, (_, i) => {
+    const h = String(fromHour + i).padStart(2, "0");
+    return [
+      enteredReview(`2026-01-01T${h}:00:00.000Z`),
+      bounce(`2026-01-01T${h}:30:00.000Z`),
+    ];
+  }).flat();
 }
 
 describe("reviewBounceLimitReached", () => {
   it("allows the first bounces through", () => {
     expect(reviewBounceLimitReached([])).toBe(false);
-    expect(
-      reviewBounceLimitReached([
-        bounce("2026-01-01T00:00:00.000Z"),
-        bounce("2026-01-01T01:00:00.000Z"),
-        bounce("2026-01-01T02:00:00.000Z"),
-      ]),
-    ).toBe(false);
+    expect(reviewBounceLimitReached(bounceCycles(3))).toBe(false);
   });
 
   it("trips on the bounce that would reach the limit, counting the pending one", () => {
-    const four = Array.from({ length: 4 }, (_, i) =>
-      bounce(`2026-01-01T0${i}:00:00.000Z`),
+    expect(reviewBounceLimitReached(bounceCycles(MAX_REVIEW_BOUNCES - 1))).toBe(
+      true,
     );
-    expect(four).toHaveLength(MAX_REVIEW_BOUNCES - 1);
-    expect(reviewBounceLimitReached(four)).toBe(true);
+  });
+
+  // The claim fences the DISPATCH, not the decision, so a reviewer can land two
+  // verdicts against one dispatch — only the first moves the card. Charging
+  // both halved the real budget on three of four cards in one org.
+  it("counts one bounce per cycle, however many verdicts land in it", () => {
+    // The prod shape: two cycles, QA landing a duplicate verdict in each. Four
+    // rows — which the old row-count read as four bounces and tripped on.
+    const doubleCharged: ReviewCycleActivity[] = [
+      enteredReview("2026-01-01T00:00:00.000Z"),
+      bounce("2026-01-01T00:30:00.000Z", "qa"),
+      bounce("2026-01-01T00:31:00.000Z", "qa"),
+      enteredReview("2026-01-01T01:00:00.000Z"),
+      bounce("2026-01-01T01:30:00.000Z", "qa"),
+      bounce("2026-01-01T01:31:00.000Z", "qa"),
+    ];
+    expect(reviewBounceLimitReached(doubleCharged)).toBe(false);
+
+    // Four REAL cycles still trip, on the same number of rows.
+    expect(reviewBounceLimitReached(bounceCycles(4))).toBe(true);
   });
 
   it("counts bounces from earlier review cycles, not just the current one", () => {
-    const acrossCycles: ReviewCycleActivity[] = [
-      bounce("2026-01-01T00:00:00.000Z"),
-      {
-        action: "status_changed",
-        data: { to: "in_review" },
-        occurredAt: "2026-01-01T00:30:00.000Z",
-      },
-      bounce("2026-01-01T01:00:00.000Z"),
-      {
-        action: "status_changed",
-        data: { to: "in_review" },
-        occurredAt: "2026-01-01T01:30:00.000Z",
-      },
-      bounce("2026-01-01T02:00:00.000Z"),
-      {
-        action: "status_changed",
-        data: { to: "in_review" },
-        occurredAt: "2026-01-01T02:30:00.000Z",
-      },
-      bounce("2026-01-01T03:00:00.000Z"),
-    ];
-    expect(reviewBounceLimitReached(acrossCycles)).toBe(true);
+    expect(reviewBounceLimitReached(bounceCycles(4))).toBe(true);
   });
 
   // The reset that makes a re-run mean something. Four cards carrying 5-7 old
   // bounces were re-delegated in prod and each was handed straight back on its
   // FIRST change-request — one review round, zero retries.
   it("counts only from the most recent hand-back to the Super Agent", () => {
-    const burntOut = Array.from({ length: 6 }, (_, i) =>
-      bounce(`2026-01-0${i + 1}T00:00:00.000Z`),
-    );
+    const burntOut = bounceCycles(6);
     expect(reviewBounceLimitReached(burntOut)).toBe(true);
 
     const reDelegated: ReviewCycleActivity[] = [
@@ -230,12 +243,9 @@ describe("reviewBounceLimitReached", () => {
   // ...and the loop still terminates: only a hand-back TO the Super Agent
   // resets, and the automatic hand-off writes `to: null`.
   it("is not reset by the automatic hand-off to a human", () => {
-    const four = Array.from({ length: 4 }, (_, i) =>
-      bounce(`2026-01-01T0${i}:00:00.000Z`),
-    );
     expect(
       reviewBounceLimitReached([
-        ...four,
+        ...bounceCycles(4),
         {
           action: "assignee_changed",
           data: { from: SUPER_AGENT_ASSIGNEE_ID, to: null, reason: "burned" },
@@ -247,16 +257,13 @@ describe("reviewBounceLimitReached", () => {
 
   it("still trips within one delegation, after the reset", () => {
     const reDelegated: ReviewCycleActivity[] = [
-      bounce("2026-01-01T00:00:00.000Z"),
-      bounce("2026-01-01T01:00:00.000Z"),
+      ...bounceCycles(2),
       {
         action: "assignee_changed",
         data: { from: null, to: SUPER_AGENT_ASSIGNEE_ID },
-        occurredAt: "2026-01-02T00:00:00.000Z",
+        occurredAt: "2026-01-01T05:00:00.000Z",
       },
-      ...Array.from({ length: MAX_REVIEW_BOUNCES - 1 }, (_, i) =>
-        bounce(`2026-01-02T0${i + 1}:00:00.000Z`),
-      ),
+      ...bounceCycles(MAX_REVIEW_BOUNCES - 1, 6),
     ];
     expect(reviewBounceLimitReached(reDelegated)).toBe(true);
   });
