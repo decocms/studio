@@ -107,6 +107,19 @@ persistence:
   distributed: false  # Mark as true if storage offers ReadWriteMany
   emptyDirSizeLimit: "10Gi"  # Cap for the emptyDir volume when persistence.enabled=false. Prevents a single pod from exhausting node ephemeral-storage.
 
+# Disk cache for the sandbox-less decofile read path (see
+# apps/api/src/decofile/disk-cache-spec.md §Deploy). A dedicated emptyDir walls
+# the cache off the node's root filesystem; keep sizeLimit comfortably ABOVE
+# the app's own byte budget (FAST_PREVIEW_CACHE_MAX_BYTES, default 2GiB — the app
+# evicts at that budget, so the kubelet's pod-eviction enforcement at
+# sizeLimit stays dormant). Disabling removes the volume AND the env var, so
+# the app falls back to caching under the container's tmpdir — set
+# FAST_PREVIEW_CACHE_DIR: "" in configMap.meshConfig to turn caching off entirely.
+fastPreviewCache:
+  enabled: true
+  mountPath: /app/fast-preview-cache
+  sizeLimit: 4Gi
+
 autoscaling:
   enabled: false
   minReplicas: 3

@@ -1,4 +1,7 @@
 import { useMCPClient, useProjectContext, useVirtualMCP } from "@/sdk";
+import { resolveFastPreview } from "@/sdk/fast-preview";
+import { useIsMutating, useQuery, useQueryClient } from "@tanstack/react-query";
+import { decofileWriteMutationKey } from "@/components/sections-editor/decofile-api";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -11,6 +14,7 @@ import {
 import { useState, useRef, type ComponentType } from "react";
 import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client.ts";
+import { KEYS } from "@/lib/query-keys";
 import { coAuthorFromSessionUser } from "@/lib/co-author-identity.ts";
 import { resolveGithubAttachment } from "@/lib/github-repo.ts";
 import {
@@ -36,7 +40,18 @@ import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycl
 import { usePublishGate } from "@/components/sandbox/hooks/use-publish-gate.ts";
 import { useChecks, usePrByBranch } from "./use-pr-data.ts";
 import { usePrReviews } from "./use-pr-reviews.ts";
-import { normalizePublishPolicy, type PublishGate } from "./sandbox-git-api.ts";
+import {
+  fetchGitStatus,
+  normalizePublishPolicy,
+  readGitHeadBranch,
+  rebaseGitBranch,
+  sandboxGitStatusQueryKey,
+  type PublishGate,
+} from "./sandbox-git-api.ts";
+import type {
+  BranchMeta,
+  LifecycleState,
+} from "@/components/sandbox/hooks/sandbox-events-context";
 import { useT, type TFunction } from "@/i18n/use-t";
 import { TOUR_ANCHORS } from "@/components/cms-tour/anchors";
 import {
@@ -102,12 +117,20 @@ function makeBranchLoadingButton(t: TFunction): HeaderButton {
  * When attached the button always renders — disabled status pills (Loading…,
  * Up to date, Published, …) cover cases with no actionable next step. When
  * detached it renders a reconnect pill rather than nothing.
+ *
+ * Sandbox-less Fast Preview projects use the SAME component and dialogs: the
+ * `/git/*` routes answer from the GitHub API server-side, and the only client
+ * difference is where branch metadata comes from — the daemon's `branch` SSE
+ * event has no daemon to emit it, so it's polled from `/git/status` instead
+ * (see `effectiveBranchMeta` below).
  */
 export function HeaderActions({ virtualMcpId }: Props) {
   const t = useT();
   const { org } = useProjectContext();
+  const queryClient = useQueryClient();
   const { data: session } = authClient.useSession();
   const vm = useVirtualMCP(virtualMcpId);
+  const fastPreviewActive = resolveFastPreview(vm?.metadata).active;
   const { currentBranch: branch, setCurrentTaskBranch } = useChatTask();
   const chat = useChatStream();
   const { openSidePanel } = usePanelActions();
@@ -116,6 +139,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
     "open-pr" | "publish-only"
   >("open-pr");
   const [githubActionPending, setGithubActionPending] = useState(false);
+  const [syncPending, setSyncPending] = useState(false);
   const debugKeyRef = useRef("");
 
   const attachment = resolveGithubAttachment(vm);
@@ -132,10 +156,45 @@ export function HeaderActions({ virtualMcpId }: Props) {
   });
 
   const {
-    lifecycle,
-    branch: branchMeta,
+    lifecycle: sseLifecycle,
+    branch: sseBranchMeta,
     phase: claimPhase,
   } = useSandboxEvents();
+
+  // Sandbox-less: no daemon → no `branch` SSE event. Fetch the (GitHub-backed)
+  // status route into the same BranchMeta shape — but never on an interval:
+  // every route below forwards to the GitHub API, and a timer here burns rate
+  // limit for data that only changes when WE commit. The only in-app mutation
+  // is the decofile PATCH, whose save hooks invalidate this key; external
+  // pushes are picked up on window focus. (In sandbox mode the equivalent
+  // traffic hits the local daemon, where polling is free.)
+  const fpStatusQuery = useQuery({
+    queryKey: sandboxGitStatusQueryKey(org.slug, virtualMcpId, branch ?? ""),
+    queryFn: () => fetchGitStatus(org.slug, virtualMcpId, branch ?? ""),
+    enabled: fastPreviewActive && !!branch,
+    staleTime: 15_000,
+  });
+  const fpStatus = fpStatusQuery.data ?? null;
+  const branchMeta: BranchMeta = fastPreviewActive
+    ? fpStatus
+      ? {
+          kind: "ready",
+          branch: readGitHeadBranch(fpStatus) ?? branch ?? "",
+          base: fpStatus.base ?? "main",
+          workingTreeDirty: false,
+          unpushed: 0,
+          aheadOfBase: fpStatus.aheadOfBase ?? 0,
+          behindBase: fpStatus.behindBase ?? 0,
+          headSha: fpStatus.headSha ?? "",
+        }
+      : { kind: "unknown" }
+    : sseBranchMeta;
+  // The lifecycle gates the header copy through clone/checkout; sandbox-less
+  // has no boot pipeline, so it reads as permanently running (the port /
+  // htmlSupport fields are dev-server facts nothing on this surface reads).
+  const lifecycle: LifecycleState = fastPreviewActive
+    ? { phase: "running", port: 0, htmlSupport: true }
+    : sseLifecycle;
 
   const sandboxBranch = branchMeta.kind === "ready" ? branchMeta.branch : null;
   const sandboxMapBranch = resolveSandboxBranchFromMap(
@@ -191,7 +250,13 @@ export function HeaderActions({ virtualMcpId }: Props) {
   // there's local work not yet merged (i.e. a side Publish button could show).
   const publishGateBase =
     effectiveBranchMeta.kind === "ready" ? effectiveBranchMeta.base : "main";
+  // Fast Preview: never pre-fetch the gate. Its queryFn re-polls status and
+  // assembles the full-content base…head diff every 10s, which in sandbox-less
+  // mode is all GitHub API traffic (the 429 path). Disabled, the gate resolves
+  // `{allowed: true, ready: false}`, so the side Publish click falls through to
+  // the dialog — which loads the diff once, on open, and gates there.
   const publishGateEnabled =
+    !fastPreviewActive &&
     effectiveBranchMeta.kind === "ready" &&
     Boolean(sandboxRouteBranch) &&
     (effectiveBranchMeta.workingTreeDirty ||
@@ -213,6 +278,19 @@ export function HeaderActions({ virtualMcpId }: Props) {
     policy: publishPolicy,
     enabled: publishGateEnabled,
   });
+
+  // An in-flight block autosave (decofile PATCH, or the sandbox file write)
+  // means the branch state the publish surfaces would act on is mid-change:
+  // disable them and render the same animated bar the preview shows, so
+  // "wait for the save" is legible right where the user is about to click.
+  const decofileSaving =
+    useIsMutating({
+      mutationKey: decofileWriteMutationKey(
+        org.slug,
+        virtualMcpId,
+        branch ?? sandboxRouteBranch ?? "",
+      ),
+    }) > 0;
 
   // Detached: repo linked via a GitHub connection that's no longer aggregated.
   // Render a reconnect pill instead of nothing so the user has a recovery path
@@ -299,18 +377,57 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const baseBranch =
     effectiveBranchMeta.kind === "ready" ? effectiveBranchMeta.base : "main";
 
-  // Org-level opt-in (metadata.syncButtonEnabled) so a business user doesn't
-  // have to know they need to commit before they can rebase. One
-  // deterministic chat prompt: commit local changes, pull --rebase (picks up
-  // anything a teammate pushed straight to this branch), rebase onto the
-  // latest base, push.
+  // Sandbox mode: org-level opt-in (metadata.syncButtonEnabled) so a business
+  // user doesn't have to know they need to commit before they can rebase —
+  // one deterministic chat prompt does the git work in the sandbox.
+  // Fast Preview: no sandbox and no chat to delegate to, so Sync shows
+  // whenever the branch is behind base and calls the GitHub-backed rebase
+  // route directly, auto-resolving conflicts in the branch's favour (the
+  // person syncing is the person editing; a conflict dialog is worse for a
+  // non-technical user than a branch-favoured merge).
   const showSync =
-    vm?.metadata?.syncButtonEnabled === true &&
+    (vm?.metadata?.syncButtonEnabled === true ||
+      (fastPreviewActive &&
+        effectiveBranchMeta.kind === "ready" &&
+        effectiveBranchMeta.behindBase > 0)) &&
     Boolean(githubRepo) &&
     Boolean(githubHeadBranch);
   const handleSync = () => {
     if (isStreaming || !githubHeadBranch) return;
-    void send(tpl.syncBranch({ branch: githubHeadBranch, base: baseBranch }));
+    if (!fastPreviewActive) {
+      void send(tpl.syncBranch({ branch: githubHeadBranch, base: baseBranch }));
+      return;
+    }
+    if (syncPending) return;
+    setSyncPending(true);
+    rebaseGitBranch(org.slug, virtualMcpId, githubHeadBranch, baseBranch, {
+      onConflict: "branch-wins",
+    })
+      .then(() => {
+        toast.success(
+          t("thread.headerActions.syncedWithBase", { base: baseBranch }),
+        );
+        // The merge moved the head: refresh drift AND the editor's content
+        // (the refetch re-stashes the draft version, which reloads the frame).
+        return Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: sandboxGitStatusQueryKey(
+              org.slug,
+              virtualMcpId,
+              branch ?? githubHeadBranch,
+            ),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: KEYS.decofile(
+              `${org.slug}/${virtualMcpId}/${githubHeadBranch}`,
+            ),
+          }),
+        ]);
+      })
+      .catch((err: unknown) => {
+        toast.error(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => setSyncPending(false));
   };
 
   const refreshPrState = async () => {
@@ -402,7 +519,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   // yet merged, and never on merge-split (where the primary button IS publish).
   const showPublishSide = button.showPublishSide ?? false;
 
-  const actionBusy = githubActionPending || isStreaming;
+  const actionBusy = githubActionPending || isStreaming || syncPending;
 
   return (
     <>
@@ -417,6 +534,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
         showSync={showSync}
         onSync={handleSync}
         publishGate={publishGate}
+        savePending={decofileSaving}
         prNumber={pr?.number}
         prBase={pr?.base}
         onSquashMerge={handleSquashMerge}
@@ -469,6 +587,7 @@ function HeaderButtonRenderer(props: {
   showSync: boolean;
   onSync: () => void;
   publishGate: PublishGate;
+  savePending: boolean;
   prNumber?: number;
   prBase?: string;
   onSquashMerge: (pullNumber: number) => void | Promise<void>;
@@ -518,17 +637,24 @@ function HeaderButtonRenderer(props: {
   // of panel header; the label stays reachable via the tooltip. Plain status
   // pills (no action, not loading) keep their text at every size.
   const collapseLabel = Boolean(ActionIcon) || loading;
+  // "Submit for review" acts on the branch head, which an in-flight autosave
+  // is about to move — hold it (and show the save bar) until the write lands.
+  const savingBlocksSubmit = props.savePending && button.action === "create-pr";
 
   return (
     <div className="flex items-center gap-2">
       {props.showSync ? (
         <SyncButton t={t} busy={actionBusy} onClick={props.onSync} />
       ) : null}
-      <WithTooltip label={tooltipLabel}>
+      <WithTooltip
+        label={
+          savingBlocksSubmit ? t("thread.headerActions.saving") : tooltipLabel
+        }
+      >
         <Button
           size="sm"
           variant={button.variant}
-          disabled={disabled}
+          disabled={disabled || savingBlocksSubmit}
           aria-label={button.label}
           // Only anchor the tour's "submit for review" step when the button is
           // actually in that state. In neutral states (e.g. "Up to date", which
@@ -554,19 +680,25 @@ function HeaderButtonRenderer(props: {
       {props.showPublishSide ? (
         <WithTooltip
           label={
-            props.publishGate.pending
-              ? t("thread.headerActions.reviewingChanges")
-              : props.publishGate.allowed
-                ? t("thread.headerActions.publishDirectlySkipReview")
-                : (props.publishGate.reason ??
-                  t("thread.headerActions.publishNeedsReview"))
+            props.savePending
+              ? t("thread.headerActions.saving")
+              : props.publishGate.pending
+                ? t("thread.headerActions.reviewingChanges")
+                : props.publishGate.allowed
+                  ? t("thread.headerActions.publishDirectlySkipReview")
+                  : (props.publishGate.reason ??
+                    t("thread.headerActions.publishNeedsReview"))
           }
         >
           <Button
             size="sm"
-            variant="success"
+            variant="brand"
             data-tour={TOUR_ANCHORS.publish}
-            disabled={props.githubActionPending || !props.publishGate.allowed}
+            disabled={
+              props.githubActionPending ||
+              !props.publishGate.allowed ||
+              props.savePending
+            }
             onClick={props.onPublishSide}
             aria-label={t("thread.headerActions.publish")}
           >

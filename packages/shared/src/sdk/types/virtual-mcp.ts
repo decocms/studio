@@ -606,28 +606,42 @@ const publishPolicyMetadataField = PublishPolicySchema.nullable()
   );
 
 /**
- * Reusable `metadata.fastPreview` field. When true — and `productionUrl` is set —
- * the CMS preview renders the site's own real page on the production
- * deployment, carrying a `?__draft=<daemon-host>@<version>` pointer that the
- * site's framework resolves by pulling the merged working-tree decofile from
- * the sandbox daemon's `GET /_sandbox/decofile`, instead of waiting for the
- * sandbox dev server to boot. The gate requires BOTH the flag and a
- * production URL, so a bare flag with no URL is inert.
+ * Reusable `metadata.fastPreview` field. When true — and a preview server URL
+ * is set (`previewServerUrl`, or the legacy `productionUrl` key) — the project
+ * is SANDBOX-LESS: the CMS preview renders the site's own real page on the
+ * preview server, carrying a `?__draft=<authority><path>?token=…@<version>`
+ * pointer that the site's framework resolves by pulling the merged decofile
+ * from Studio's decofile API (`/api/:org/decofile/:virtualMcpId/:branch`).
+ * Reads merge `.deco/blocks/*.json` at the branch head on GitHub, saves land
+ * as coalesced commits, publish merges into the default branch. The gate
+ * requires BOTH the flag and a URL, so a bare flag with no URL is inert.
  *
- * It changes *when* the preview is ready, not which surface is shown: both modes
- * paint the published site while the sandbox provisions, but Fast Preview swaps
- * in the draft render as soon as the daemon can serve it (shortly after the
- * clone) rather than at dev-server `running`. The draft render is the site's
- * own page — real routing and hydration, not a static single-component
- * render — and it keeps the canvas for as long as Fast Preview is on; the
- * sandbox dev-server surface is not swapped in behind it.
+ * The draft render is the site's own page — real routing and hydration, not a
+ * static single-component render — and it keeps the canvas for as long as
+ * Fast Preview is on.
  */
 const fastPreviewMetadataField = z
   .boolean()
   .nullable()
   .optional()
   .describe(
-    "Enable Fast Preview: render the draft instantly on productionUrl's own page via a ?__draft pointer while the sandbox boots. Requires productionUrl to be set to take effect.",
+    "Enable Fast Preview (sandbox-less): render the draft instantly on the preview server's own page via a ?__draft pointer, with reads/writes served by the decofile API against GitHub. Requires previewServerUrl (or legacy productionUrl) to be set to take effect.",
+  );
+
+/**
+ * Reusable `metadata.previewServerUrl` field — the deployment the CMS preview
+ * renders against. Usually the live production site, but any deco-runtime
+ * deployment works (a local `https://localhost:3100` during development, a
+ * staging URL, ...), which is why it is NOT named "production". Replaces the
+ * legacy `productionUrl` key: readers go through `resolvePreviewServerUrl`
+ * (dual-read, new key wins), writers write this key.
+ */
+const previewServerUrlMetadataField = z
+  .string()
+  .nullable()
+  .optional()
+  .describe(
+    "Preview server URL — the deployment the CMS preview renders against (often the live site, e.g. https://acme.com). Painted in the preview iframe, and the render target for Fast Preview drafts. Supersedes the legacy productionUrl key.",
   );
 
 /**
@@ -716,12 +730,13 @@ export const VirtualMCPEntitySchema = z.object({
         .optional()
         .describe("Linked asset site slug (managed storage tenancy)"),
       publishPolicy: publishPolicyMetadataField,
+      previewServerUrl: previewServerUrlMetadataField,
       productionUrl: z
         .string()
         .nullable()
         .optional()
         .describe(
-          "Live production URL of the linked site (e.g. https://acme.com). Painted in the preview iframe while the sandbox dev server is waking.",
+          "Legacy key for previewServerUrl — still read as a fallback. New writes use previewServerUrl.",
         ),
       fieldDescriptionTooltips: z
         .boolean()
@@ -831,12 +846,13 @@ export const VirtualMCPCreateDataSchema = z.object({
         .optional()
         .describe("Linked asset site slug (managed storage tenancy)"),
       publishPolicy: publishPolicyMetadataField,
+      previewServerUrl: previewServerUrlMetadataField,
       productionUrl: z
         .string()
         .nullable()
         .optional()
         .describe(
-          "Live production URL of the linked site (e.g. https://acme.com). Painted in the preview iframe while the sandbox dev server is waking.",
+          "Legacy key for previewServerUrl — still read as a fallback. New writes use previewServerUrl.",
         ),
       fieldDescriptionTooltips: z
         .boolean()
@@ -927,12 +943,13 @@ export const VirtualMCPUpdateDataSchema = z.object({
         .optional()
         .describe("Linked asset site slug (managed storage tenancy)"),
       publishPolicy: publishPolicyMetadataField,
+      previewServerUrl: previewServerUrlMetadataField,
       productionUrl: z
         .string()
         .nullable()
         .optional()
         .describe(
-          "Live production URL of the linked site (e.g. https://acme.com). Painted in the preview iframe while the sandbox dev server is waking.",
+          "Legacy key for previewServerUrl — still read as a fallback. New writes use previewServerUrl.",
         ),
       fieldDescriptionTooltips: z
         .boolean()

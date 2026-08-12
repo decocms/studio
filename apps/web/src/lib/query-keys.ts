@@ -577,6 +577,9 @@ export const KEYS = {
 
   // Deco sections editor (sandbox preview)
   decofile: (previewUrl: string) => ["decofile", previewUrl] as const,
+  // Sandbox-less Fast Preview draft pointer: {version, token} for the current
+  // branch head, populated by decofile API reads/writes (never fetched itself).
+  decofileDraft: (cacheKey: string) => ["decofile-draft", cacheKey] as const,
   // Variadic so an invalidation call can pass just the org/vmid/branch prefix
   // and still partial-match the full org/vmid/branch/previewUrl query key.
   liveMeta: (...parts: string[]) => ["live-meta", ...parts] as const,

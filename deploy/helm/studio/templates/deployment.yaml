@@ -132,6 +132,10 @@ spec:
               value: "$(POD_NAME_BASE)-{{ $api.portName }}"
             - name: STUDIO_DISPATCH_ROLE
               value: "api"
+            {{- if $.Values.fastPreviewCache.enabled }}
+            - name: FAST_PREVIEW_CACHE_DIR
+              value: {{ $.Values.fastPreviewCache.mountPath | quote }}
+            {{- end }}
             {{- if $.Values.terminationGracePeriodSeconds }}
             - name: SHUTDOWN_GRACE_SECONDS
               value: {{ $.Values.terminationGracePeriodSeconds | quote }}
@@ -217,6 +221,10 @@ spec:
           volumeMounts:
             - name: data
               mountPath: {{ $.Values.configMap.meshConfig.DATA_DIR | default "/app/data" }}
+            {{- if $.Values.fastPreviewCache.enabled }}
+            - name: fast-preview-cache
+              mountPath: {{ $.Values.fastPreviewCache.mountPath | quote }}
+            {{- end }}
             {{- if and (eq (lower (default "sqlite" $.Values.database.engine)) "postgresql") $.Values.database.caCert }}
             - name: ca-cert
               mountPath: /etc/ssl/certs
@@ -276,6 +284,14 @@ spec:
         - name: data
           emptyDir:
             sizeLimit: {{ .Values.persistence.emptyDirSizeLimit | default "10Gi" }}
+        {{- end }}
+        {{- if .Values.fastPreviewCache.enabled }}
+        # Content-addressed decofile cache: per-pod, rebuilt on reschedule, so
+        # emptyDir (not a PVC) is the right lifetime. sizeLimit is the hard
+        # wall; the app's own byte budget evicts well below it.
+        - name: fast-preview-cache
+          emptyDir:
+            sizeLimit: {{ .Values.fastPreviewCache.sizeLimit | default "4Gi" }}
         {{- end }}
         {{- if .Values.s3Sync.enabled }}
         - name: s3-sync-script

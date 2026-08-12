@@ -1,8 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useVirtualMCP } from "@/sdk";
+import { resolveFastPreview } from "@/sdk/fast-preview";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { KEYS } from "@/lib/query-keys";
 import { decoRepoPath } from "./deco-repo-path";
+import { fetchDecofile } from "./decofile-api";
 import { buildDecofileFetchUrl } from "./preview-fetch-url";
 import { readCommittedJson } from "./read-committed-file";
 
@@ -39,11 +41,20 @@ export function useDecofile(
   // (`metadata.runtime.path`) when the project isn't at the repo root — the
   // daemon reads resolve against the repo root, so prefix it. The live
   // `/.decofile` route already resolves relative to the dev-server cwd.
-  const packagePath =
-    useVirtualMCP(params?.virtualMcpId)?.metadata?.runtime?.path ?? null;
+  const vmcp = useVirtualMCP(params?.virtualMcpId);
+  const packagePath = vmcp?.metadata?.runtime?.path ?? null;
+  // Sandbox-less mode: the decofile API merges `.deco/blocks/*.json` at the
+  // branch head on GitHub — no dev server, no working tree. The read also
+  // seeds KEYS.decofileDraft ({version, token}) so the preview can build its
+  // `?__draft=` pointer before any save happens.
+  const fastPreviewActive = resolveFastPreview(vmcp?.metadata).active;
+  const queryClient = useQueryClient();
   return useQuery({
     queryKey: KEYS.decofile(key),
     queryFn: async () => {
+      if (fastPreviewActive) {
+        return fetchDecofile(queryClient, params!);
+      }
       const readCommitted = () =>
         readCommittedJson<Record<string, unknown>>(
           params!,
@@ -80,8 +91,15 @@ export function useDecofile(
     // `running`), so the recovery is event-driven. The first-contact trigger is
     // load-bearing for Fast Preview: it renders off the daemon alone, so
     // waiting for `running` would strand it behind the install it skips.
+    //
+    // Sandbox-less Fast Preview inverts the rule: there is no lifecycle event
+    // coming, and the API maps transient GitHub failures (rate limits,
+    // upstream 5xx) to 502 — so a single hiccup would otherwise stick as a
+    // terminal error card. Bounded retries with backoff ARE the recovery.
     retry: (failureCount, error) =>
-      (error as { status?: number }).status !== 502 && failureCount < 2,
+      fastPreviewActive
+        ? failureCount < 3
+        : (error as { status?: number }).status !== 502 && failureCount < 2,
     retryDelay: (attempt) =>
       exponentialBackoffWithJitter(5000, 1000, attempt, 2, 0),
   });

@@ -817,7 +817,7 @@ function PublishButton({
   const button = (
     <Button
       type="button"
-      variant="success"
+      variant="brand"
       className="w-full"
       onClick={onPublish}
       disabled={!canPublish || isPublishing}

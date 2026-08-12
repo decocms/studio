@@ -18,6 +18,8 @@ const buttonVariants = cva(
           "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         success:
           "bg-success text-success-foreground hover:bg-success/90 focus-visible:ring-success/20 dark:focus-visible:ring-success/40",
+        brand:
+          "bg-brand text-brand-foreground hover:bg-brand/90 focus-visible:ring-brand/20 dark:focus-visible:ring-brand/40",
         special:
           "bg-special text-special-foreground hover:bg-special/90 focus-visible:ring-special/20 dark:focus-visible:ring-special/40",
         ghost:

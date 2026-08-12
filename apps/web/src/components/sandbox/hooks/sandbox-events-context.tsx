@@ -76,14 +76,6 @@ export interface SandboxEventsValue {
   branch: BranchMeta;
   /** True after a `gone` event — handle gone, reprovision via SANDBOX_START. */
   notFound: boolean;
-  /**
-   * Content version of the working-tree draft decofile, or null until the
-   * daemon first announces one. Same value `/_sandbox/decofile` serves as its
-   * ETag, so it can be used verbatim in a draft pointer. Changes on every
-   * `.deco/blocks/*` save, which is what lets the preview refresh without
-   * polling.
-   */
-  decofileVersion: string | null;
   scripts: string[];
   activeProcesses: string[];
   getBuffer: (source: string) => string;
@@ -105,7 +97,6 @@ const DEFAULT_VALUE: SandboxEventsValue = {
   status: { state: "running" },
   branch: { kind: "unknown" },
   notFound: false,
-  decofileVersion: null,
   scripts: [],
   activeProcesses: [],
   getBuffer: () => "",
@@ -148,7 +139,6 @@ const DAEMON_EVENT_TYPES: readonly DaemonEventName[] = [
   "branch",
   "reload",
   "file-changed",
-  "decofile",
 ] as const;
 // `log` is broadcast separately — same SSE stream, different shape.
 const LOG_EVENT = "log" as const;
@@ -235,7 +225,6 @@ export function SandboxEventsProvider({
   fastPreviewActiveRef.current = fastPreviewActive;
   const [phase, setPhase] = useState<ClaimPhase | null>(null);
   const [lifecycle, setLifecycle] = useState<LifecycleState>({ phase: "idle" });
-  const [decofileVersion, setDecofileVersion] = useState<string | null>(null);
   const [status, setStatus] = useState<DaemonStatus>({ state: "running" });
   const [branchMeta, setBranchMeta] = useState<BranchMeta>({ kind: "unknown" });
   const [notFound, setNotFound] = useState(false);
@@ -270,7 +259,6 @@ export function SandboxEventsProvider({
     setBranchMeta({ kind: "unknown" });
     prevPortRef.current = null;
     setNotFound(false);
-    setDecofileVersion(null);
     setScripts([]);
     setActiveProcesses([]);
     buffers.current.clear();
@@ -424,11 +412,6 @@ export function SandboxEventsProvider({
             }
             return;
           }
-          case "decofile":
-            setDecofileVersion(
-              (payload as DaemonEventPayload<"decofile">).version,
-            );
-            return;
           case "status":
             setStatus(payload as DaemonEventPayload<"status">);
             return;
@@ -691,7 +674,6 @@ export function SandboxEventsProvider({
     status,
     branch: branchMeta,
     notFound,
-    decofileVersion,
     scripts,
     activeProcesses,
     getBuffer: (source: string) => buffers.current.get(source)?.get() ?? "",

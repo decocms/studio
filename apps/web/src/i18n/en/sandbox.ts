@@ -519,15 +519,15 @@ export const sandbox = {
   "sandbox.cmsSettings.fastPreview.label": "Fast Preview",
   "sandbox.cmsSettings.fastPreview.description":
     "Preview changes on your preview server instead of the sandbox.",
-  "sandbox.cmsSettings.fastPreview.needsProductionUrl":
+  "sandbox.cmsSettings.fastPreview.needsPreviewServerUrl":
     "Set a preview server above to enable Fast Preview.",
   "sandbox.cmsSettings.editing.title": "Editing",
   "sandbox.cmsSettings.editing.description":
     "Customize the content-editing experience in the blocks form.",
-  "sandbox.productionUrlField.description":
+  "sandbox.previewServerUrlField.description":
     "Your live server's address, used to preview content. Required for Fast Preview.",
-  "sandbox.productionUrlField.label": "Preview server",
-  "sandbox.productionUrlField.placeholder": "https://example.com",
+  "sandbox.previewServerUrlField.label": "Preview server",
+  "sandbox.previewServerUrlField.placeholder": "https://example.com",
   "sandbox.fieldDescriptionTooltipsField.label": "Compact descriptions",
   "sandbox.fieldDescriptionTooltipsField.description":
     "In the blocks form, show a field's description as a hover tooltip on its title instead of text below the title.",

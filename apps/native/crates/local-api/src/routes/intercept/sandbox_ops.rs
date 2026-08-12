@@ -62,12 +62,13 @@ pub(super) async fn try_dispatch(
         .handle_for_agent(&virtual_mcp_id, &branch)
     {
         Ok(Some(handle)) => handle,
-        Ok(None) => {
-            return Some(
-                ApiError::not_found(format!("sandbox not found: {virtual_mcp_id}@{branch}"))
-                    .into_response(),
-            )
-        }
+        // No LOCAL worktree for this (vm, branch) — the sandbox isn't ours to
+        // serve. Fall through to the upstream proxy: hosted-sandbox projects
+        // and sandbox-less Fast Preview projects (whose /git/* the upstream
+        // answers from the GitHub API) are routed there, and a reaped desktop
+        // sandbox still surfaces as an upstream 404 rather than a false local
+        // one.
+        Ok(None) => return None,
         Err(error) => return Some(ApiError::internal(error).into_response()),
     };
     let sandbox = match state.sandbox_manager.adopt(&handle).await {

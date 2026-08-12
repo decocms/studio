@@ -526,14 +526,6 @@ async function provisionSandbox(
   // runners free to assign a unique dynamic port (user-desktop needs this;
   // multiple sandboxes on the user's machine share the host network and
   // can't all bind 3000).
-  // Live production URL (already normalized to an https URL by the settings
-  // form). Forwarded so the daemon's Fast Preview route can render the draft
-  // against production. Harmless when Fast Preview is off — the daemon only
-  // reads it when that route is hit.
-  const productionUrl =
-    typeof metadata.productionUrl === "string" && metadata.productionUrl.trim()
-      ? metadata.productionUrl.trim()
-      : undefined;
   const workload: Workload | undefined =
     runtime && packageManager && !cloneOnly
       ? {
@@ -541,7 +533,6 @@ async function provisionSandbox(
           packageManager,
           ...(port !== null ? { devPort: Number(port) } : {}),
           ...(packageManagerPath ? { packageManagerPath } : {}),
-          ...(productionUrl ? { productionUrl } : {}),
         }
       : undefined;
 

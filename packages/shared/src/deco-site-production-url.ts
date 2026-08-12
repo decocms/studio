@@ -1,15 +1,18 @@
 /**
- * Production-URL helpers for linked deco.cx sites.
+ * Site-URL helpers for linked deco.cx sites.
  *
- * The live production URL is persisted on the agent's `metadata.productionUrl`
- * at import time and painted in the preview iframe while the sandbox dev server
- * wakes (Lovable-style). We deliberately do NOT derive it from `siteSlug` (the
- * `{slug}.deco.site` guess) — a site's real production URL can be a custom
- * domain, so we persist what deco.cx actually reports.
+ * The URL the CMS preview renders against is persisted on the agent's
+ * `metadata.previewServerUrl` (legacy key: `metadata.productionUrl` — written
+ * by imports before the rename and still read as a fallback). It is usually
+ * the live production site, but any deco-runtime deployment works (staging, a
+ * local `https://localhost:3100`, ...), which is why the canonical name is
+ * "preview server". We deliberately do NOT derive it from `siteSlug` (the
+ * `{slug}.deco.site` guess) — a site's real URL can be a custom domain, so we
+ * persist what deco.cx actually reports at import time.
  */
 
-/** Validate/normalize a stored production URL. Returns the canonical href or `null`. */
-export function sanitizeProductionUrl(
+/** Validate/normalize a stored site URL. Returns the canonical href or `null`. */
+export function sanitizeSiteUrl(
   value: string | null | undefined,
 ): string | null {
   const raw = value?.trim();
@@ -24,6 +27,24 @@ export function sanitizeProductionUrl(
 }
 
 /**
+ * The ONE reader for the preview server URL: `previewServerUrl` wins, the
+ * legacy `productionUrl` key is the fallback. Every consumer (web gate, API
+ * gate, preview surfaces) goes through here so the dual-read lives in exactly
+ * one place; writers write `previewServerUrl` only.
+ */
+export function resolvePreviewServerUrl(
+  metadata:
+    | { previewServerUrl?: string | null; productionUrl?: string | null }
+    | null
+    | undefined,
+): string | null {
+  return (
+    sanitizeSiteUrl(metadata?.previewServerUrl) ??
+    sanitizeSiteUrl(metadata?.productionUrl)
+  );
+}
+
+/**
  * Pick the site's production domain from the deco.cx `domains` list: the one
  * flagged `production`, else the first. Returns `undefined` when there are none.
  */
@@ -34,7 +55,7 @@ export function pickProductionDomain(
 }
 
 /**
- * Build a production URL from a deco.cx domain. Domains come back as bare hosts
+ * Build a site URL from a deco.cx domain. Domains come back as bare hosts
  * (e.g. `acme.com`, `acme.deco.site`), so we prepend `https://` when no scheme
  * is present, then validate. Returns `null` for empty/whitespace/invalid input.
  */
@@ -44,5 +65,5 @@ export function productionUrlFromDomain(
   const raw = domain?.trim();
   if (!raw) return null;
   const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
-  return sanitizeProductionUrl(withProtocol);
+  return sanitizeSiteUrl(withProtocol);
 }

@@ -4,7 +4,8 @@ import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { KEYS } from "@/lib/query-keys";
 import { decoRepoPath } from "./deco-repo-path";
 import { readCommittedJson } from "./read-committed-file";
-import { sanitizeProductionUrl } from "@decocms/shared/deco-site-production-url";
+import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
+import { resolveFastPreview } from "@/sdk/fast-preview";
 import type { LiveMeta } from "./resolve-schema";
 
 interface UseLiveMetaParams {
@@ -66,9 +67,8 @@ export function useLiveMeta(
   // `/live/_meta` route already resolves relative to the dev-server cwd.
   const virtualMcp = useVirtualMCP(params?.virtualMcpId);
   const packagePath = virtualMcp?.metadata?.runtime?.path ?? null;
-  const productionUrl = sanitizeProductionUrl(
-    virtualMcp?.metadata?.productionUrl,
-  );
+  const productionUrl = resolvePreviewServerUrl(virtualMcp?.metadata);
+  const fastPreviewActive = resolveFastPreview(virtualMcp?.metadata).active;
   return useQuery({
     // productionUrl is appended so a settings edit re-fetches; invalidators key
     // on the (org, vm, branch) prefix, which still matches (variadic key).
@@ -122,9 +122,14 @@ export function useLiveMeta(
     staleTime: 300_000,
     // 502 = nothing reachable yet. The sandbox lifecycle re-invalidates this
     // query when the dev server comes up (see sandbox-events-context), so
-    // retrying just hammers a known-down endpoint.
+    // retrying just hammers a known-down endpoint. Sandbox-less Fast Preview
+    // has no lifecycle event coming — a transient failure of the production
+    // /live/_meta fetch would stick as a terminal error card, so bounded
+    // retries ARE the recovery there.
     retry: (failureCount, error) =>
-      (error as { status?: number }).status !== 502 && failureCount < 3,
+      fastPreviewActive
+        ? failureCount < 3
+        : (error as { status?: number }).status !== 502 && failureCount < 3,
     retryDelay: (attempt) =>
       exponentialBackoffWithJitter(5000, 1000, attempt, 2, 0),
   });

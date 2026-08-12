@@ -10,7 +10,12 @@ import {
 import { useT } from "@/i18n/use-t.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { getWellKnownDecopilotVirtualMCP, useProjectContext } from "@/sdk";
+import {
+  getWellKnownDecopilotVirtualMCP,
+  useProjectContext,
+  useVirtualMCP,
+} from "@/sdk";
+import { resolveFastPreview } from "@/sdk/fast-preview";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowUp,
@@ -380,6 +385,8 @@ export function ChatInput({
 
   const { org, locator } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
+  const selectedVm = useVirtualMCP(selectedVirtualMcp?.id);
+  const fastPreviewActive = resolveFastPreview(selectedVm?.metadata).active;
   const playSwitchSound = useSound(question004Sound);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const { unsupportedFile, onUnsupportedFile, clearUnsupportedFile } =
@@ -625,6 +632,16 @@ export function ChatInput({
       <ChatInputDisabledState
         message={t("chat.input.codingAgentRequiresDesktop")}
       />
+    );
+  }
+
+  // Fast Preview projects are sandbox-less, and a chat run still dispatches to
+  // a sandbox runner — a message would hang against a runner that will never
+  // exist. Hold the composer with an honest notice until the agent learns to
+  // work through the decofile API (or per-thread sandbox fallback lands).
+  if (fastPreviewActive) {
+    return (
+      <ChatInputDisabledState message={t("chat.input.fastPreviewComingSoon")} />
     );
   }
 
