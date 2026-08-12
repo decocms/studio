@@ -61,12 +61,17 @@
  */
 
 import type { StudioContextFactory } from "@/automations/fire";
+import type { OrganizationBillingStorage } from "@/storage/organization-billing";
 import type { TaskBoardStorage } from "@/storage/task-board";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
 import { retryAutoMergeIfApproved } from "./merge-pr";
-import { emitTaskBoardUpdated, reactToFailedTaskRun } from "./run-reactions";
+import {
+  emitTaskBoardUpdated,
+  reactToFailedTaskRun,
+  refundUnproductiveTaskClaims,
+} from "./run-reactions";
 import { TaskQuotaError } from "@/billing/task-quota";
 import { ABANDONED_FAILURE_REASON } from "./stall-recovery";
 import { THREAD_EXPIRY_MS } from "@/tools/thread/helpers";
@@ -135,6 +140,7 @@ export class TaskBoardReviewSweeper {
   constructor(
     private readonly taskBoard: TaskBoardStorage,
     private readonly contextFactory: StudioContextFactory,
+    private readonly billing: OrganizationBillingStorage,
     private readonly options: TaskBoardReviewSweeperOptions = {},
   ) {}
 
@@ -233,7 +239,7 @@ export class TaskBoardReviewSweeper {
    * no longer advances to In Review, that would be a permanent strand. This is
    * the floor: the reaction is idempotent (it re-reads the card and both writes
    * are conditional on In Progress), so re-running it costs a query and fixes the
-   * gap with no bookkeeping of its own.
+   * gap and refunds the claim.
    */
   private async reactToUnhandledFailures(limit: number): Promise<void> {
     const stuck = await this.taskBoard.listItemsStuckAfterFailure(
@@ -246,6 +252,12 @@ export class TaskBoardReviewSweeper {
           `[task-board-review-sweeper] reacting to an unhandled failure on ${id}`,
         );
         await reactToFailedTaskRun(this.taskBoard, threadId, organizationId);
+        await refundUnproductiveTaskClaims(
+          this.taskBoard,
+          this.billing,
+          threadId,
+          organizationId,
+        );
       } catch (err) {
         console.error(
           `[task-board-review-sweeper] unhandled-failure reaction for ${id} failed`,

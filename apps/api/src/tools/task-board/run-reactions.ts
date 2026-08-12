@@ -391,7 +391,7 @@ export async function reactToFailedTaskRun(
  * stall recovery) costs the customer their execution rather than costing us an
  * unbilled one.
  */
-async function refundUnproductiveTaskClaims(
+export async function refundUnproductiveTaskClaims(
   taskBoard: TaskBoardStorage,
   billing: OrganizationBillingStorage,
   threadId: string,
