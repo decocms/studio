@@ -12,7 +12,7 @@ import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated, handTaskToHuman } from "./run-reactions";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
 import { allEnabledReviewersVerifiedApproved, mergeLinkedPr } from "./merge-pr";
-import { fetchPrConflict } from "./prs-get";
+import { fetchPrConflict, pickActivePr } from "./prs-get";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
 import { TaskQuotaError } from "@/billing/task-quota";
 
@@ -203,12 +203,12 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
       }
       emitTaskBoardUpdated(organizationId, updated);
       // Pass the PR under review so the re-run updates it in place (checks out
-      // its branch) instead of opening a second PR. Newest linked PR is the one.
+      // its branch) instead of opening a second PR.
       const prs = await ctx.storage.taskBoard.listPrs(
         taskBoardItemId,
         organizationId,
       );
-      const pr = prs[0];
+      const pr = await pickActivePr(ctx, organizationId, prs);
       // Best-effort, like the auto-merge conflict path below — a dispatch
       // failure (no model configured, queue error) must never fail this
       // decision: the bounce-to-in_progress + activity write already
@@ -290,9 +290,8 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
         taskBoardItemId,
         organizationId,
       );
-      // The newest linked PR is the one under review (the same one
-      // `mergeLinkedPr` just tried to merge) — detect and act on it.
-      const pr = prs[0];
+      // The same PR `mergeLinkedPr` just tried to merge — detect and act on it.
+      const pr = await pickActivePr(ctx, organizationId, prs);
       // Best-effort, like the poll path in `prs-get` — a dispatch failure (no
       // model configured, queue error) must never fail this decision: the
       // approval + bounce-to-in_progress + activity write already committed,

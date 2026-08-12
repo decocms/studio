@@ -457,17 +457,14 @@ export class TaskBoardReviewSweeper {
     const item = await this.taskBoard.getById(id, organizationId);
     if (!item) return false;
     // Re-check against the fresh row: `listItemsPendingReview` scanned a
-    // possibly-stale snapshot, and a human can bounce/reassign the card between
-    // that scan and this reconcile. Without this the sweeper would still
-    // dispatch reviewers at a task that's no longer awaiting the Super Agent's
-    // review — the same gate `TASK_BOARD_ITEM_PRS_GET` applies before its own
-    // `enqueueEnabledReviewers` call.
-    if (
-      item.status !== "in_review" ||
-      item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID
-    ) {
-      return false;
-    }
+    // possibly-stale snapshot, and a human can bounce the card between that scan
+    // and this reconcile.
+    if (item.status !== "in_review") return false;
+    // Everything below EXCEPT the merge retry needs the Super Agent to still own
+    // the card — the same gate `TASK_BOARD_ITEM_PRS_GET` applies before its own
+    // `enqueueEnabledReviewers` call. A handed-off card burns no agent runs, but
+    // its approvals stay valid, so it stays eligible to merge.
+    const owned = item.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
 
     // Claim the interval BEFORE the GitHub work, not after: that is what makes a
     // second replica skip this card, and what stops a card that comes back
@@ -486,7 +483,7 @@ export class TaskBoardReviewSweeper {
     if (!ctx) return false;
 
     if (prs.length === 0) {
-      await this.handOffReviewWithoutPr(ctx, item);
+      if (owned) await this.handOffReviewWithoutPr(ctx, item);
       return false;
     }
 
@@ -497,6 +494,7 @@ export class TaskBoardReviewSweeper {
     // a card that has no reviewer left to enqueue. Gated on verified approval +
     // auto-merge inside, so it can't ship anything the reviewers didn't.
     if (await retryAutoMergeIfApproved(ctx, item)) return true;
+    if (!owned) return false;
 
     // One `get` per PR through the rate-limited queue, never straight at
     // GitHub: `listPrs` carries no live state, and telling an open PR from a

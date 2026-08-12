@@ -35,8 +35,11 @@ export const taskBoard = {
   "taskBoard.taskBoard.connectGithubDescription":
     "Auto-fix puts the Super Agent to work on this task and saves the change to your codebase, ready for your team to review and approve.",
   "taskBoard.taskBoard.connectGithubTitle": "Connect GitHub",
+  "taskBoard.taskBoard.handedToHumanBadgeTitle":
+    "Automation stopped on this task — open it to see why",
   "taskBoard.taskBoard.layoutViewAriaLabel": "{label} view",
   "taskBoard.taskBoard.needsInput": "Needs input",
+  "taskBoard.taskBoard.needsYou": "Needs you",
   "taskBoard.taskBoard.newTask": "New task",
   "taskBoard.taskBoard.newTaskInLaneAriaLabel": "New task in {lane}",
   "taskBoard.taskBoard.newTaskInLaneTitle": "New task in {lane}",

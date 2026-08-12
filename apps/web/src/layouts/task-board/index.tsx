@@ -95,6 +95,7 @@ import {
   insertSortOrder,
   isReviewerThreadTitle,
   isTaskBlocked,
+  isTaskHandedToHuman,
   HIDDEN_STATUSES,
   primaryThread,
   reviewerThreads,
@@ -178,6 +179,19 @@ function BlockedBadge() {
     >
       <HelpCircle size={14} />
       {t("taskBoard.taskBoard.needsInput")}
+    </span>
+  );
+}
+
+function HandedToHumanBadge() {
+  const t = useT();
+  return (
+    <span
+      className={cn(PILL, "border-warning/30 text-warning")}
+      title={t("taskBoard.taskBoard.handedToHumanBadgeTitle")}
+    >
+      <HelpCircle size={14} />
+      {t("taskBoard.taskBoard.needsYou")}
     </span>
   );
 }
@@ -1945,11 +1959,13 @@ function TaskCard({
       </div>
 
       {(isTaskBlocked(item) ||
+        isTaskHandedToHuman(item) ||
         item.priority !== "none" ||
         Boolean(item.dueDate) ||
         item.tags.length > 0) && (
         <div className="flex flex-wrap items-center gap-1.5 pl-6">
           {isTaskBlocked(item) && <BlockedBadge />}
+          {isTaskHandedToHuman(item) && <HandedToHumanBadge />}
           {item.priority !== "none" && (
             <PriorityPill priority={item.priority} />
           )}

@@ -14,6 +14,7 @@ import {
   fetchPrConflict,
   invalidatePrReads,
   isRateLimitError,
+  pickActivePr,
   resolveGithubConnection,
 } from "./prs-get";
 import { emitTaskBoardUpdated, handTaskToHuman } from "./run-reactions";
@@ -106,7 +107,7 @@ export async function mergeLinkedPr(
   };
 
   const prs = await ctx.storage.taskBoard.listPrs(taskBoardItemId, orgId);
-  const pr = prs[0];
+  const pr = await pickActivePr(ctx, orgId, prs);
   if (!pr) {
     console.warn(
       `[task-board] merge skipped — no linked PR on ${taskBoardItemId}`,
@@ -283,8 +284,8 @@ async function resolveConflictAfterRefusedMerge(
   if (!mayBeConflict(outcome)) return;
   const orgId = item.organizationId;
   const prs = await ctx.storage.taskBoard.listPrs(item.id, orgId);
-  // The newest linked PR — the one `mergeLinkedPr` just tried to merge.
-  const pr = prs[0];
+  // The same PR `mergeLinkedPr` just tried to merge.
+  const pr = await pickActivePr(ctx, orgId, prs);
   if (!pr) return;
   await reactToApprovedPrConflict(ctx, orgId, item, {
     pr: { number: pr.number, url: pr.url },
