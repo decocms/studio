@@ -6,6 +6,7 @@ import {
   nextTagColor,
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
+import { captureOrgEvent } from "@/posthog";
 import { TagStorage } from "@/storage/tags";
 import { TaskBoardStorage } from "@/storage/task-board";
 import type { TaskBoardItem } from "@/storage/types";
@@ -387,6 +388,23 @@ export const createTaskBoardImportRoutes = () => {
           });
       }
     }
+
+    // Funnel event: the only signal a diagnostic run reached the board.
+    captureOrgEvent({
+      event: "report_tasks_pushed",
+      organizationId,
+      properties: {
+        created: outcome.created,
+        updated: outcome.updated,
+        skipped: outcome.skipped,
+        delegated,
+        quota_blocked: quotaBlocked,
+        ...(runId ? { run_id: runId } : {}),
+        ...(parsed.data.source?.url
+          ? { source_url: parsed.data.source.url }
+          : {}),
+      },
+    });
 
     return c.json({
       created: outcome.created,

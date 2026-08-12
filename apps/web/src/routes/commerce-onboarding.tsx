@@ -14,6 +14,7 @@ import {
   useActiveOrganizations,
 } from "@/lib/auth-client";
 import { isPostHogInitialized, track } from "@/lib/posthog-client";
+import { reportAttributionFromSearch } from "@/routes/reports/track";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
 import { usePreferences } from "@/hooks/use-preferences.ts";
@@ -271,9 +272,14 @@ function CommerceOnboardingPage() {
 
   if (!onboardingViewTracked && isPostHogInitialized()) {
     onboardingViewTracked = true;
+    // Joins back to the report deck's connect CTA — see reports/onboarding.ts.
+    const reportAttribution = reportAttributionFromSearch(
+      window.location.search,
+    );
     track("commerce_onboarding_viewed", {
       site_url: siteUrl,
       domain: siteHost ?? undefined,
+      ...reportAttribution,
       // Person-level copy so the store follows the user across sessions.
       ...(siteHost ? { $set: { last_scanned_domain: siteHost } } : {}),
     });
