@@ -19,6 +19,8 @@ export interface ConnectionCardProps {
   footer?: React.ReactNode;
   className?: string;
   fallbackIcon?: ReactNode;
+  /** When the card acts as a selection toggle, its current pressed state. */
+  selected?: boolean | "mixed";
 }
 
 export function ConnectionCard({
@@ -29,6 +31,7 @@ export function ConnectionCard({
   footer,
   className,
   fallbackIcon,
+  selected,
 }: ConnectionCardProps) {
   const t = useT();
   return (
@@ -41,6 +44,7 @@ export function ConnectionCard({
       onClick={onClick}
       role={onClick ? "button" : undefined}
       tabIndex={onClick ? 0 : undefined}
+      aria-pressed={onClick && selected !== undefined ? selected : undefined}
       onKeyDown={
         onClick
           ? (e) => {
