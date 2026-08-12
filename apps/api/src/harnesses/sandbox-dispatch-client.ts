@@ -70,13 +70,28 @@ const SANDBOX_REPO_CWD = "/repo";
 const SANDBOX_HOSTED_HARNESSES = new Set<HarnessId>(["claude-code"]);
 
 /**
- * Dispatches per run: the first, plus ONE continuation after the sandbox goes
- * away. A second failure is the run's failure — repeated re-provisioning of a
- * sandbox that keeps dying burns model budget on a turn that never lands, and
- * the durable path already retries at a higher level (DBOS recovery re-enters
- * this client with the run's seq floor intact).
+ * Dispatches per run WITHOUT PROGRESS: the first, plus ONE continuation after
+ * the sandbox goes away. A second failure that streamed nothing is the run's
+ * failure — re-provisioning a sandbox that keeps dying on boot burns model
+ * budget on a turn that never lands, and the durable path already retries at a
+ * higher level (DBOS recovery re-enters this client with the run's seq floor
+ * intact).
+ *
+ * Counted CONSECUTIVELY, not per run: the break this bounds is the apiserver
+ * hanging up the daemon's port-forward, which is a routine blip, not a sick
+ * pod. A lifetime budget failed runs that had streamed thirty tool calls
+ * between two unrelated hangups minutes apart — which is exactly the run this
+ * is meant to save, and it also burns the org's task quota. Any chunk from the
+ * replacement pod proves the continuation worked, so it resets the count.
  */
 const MAX_DISPATCH_ATTEMPTS = 2;
+
+/**
+ * Hard ceiling on dispatches per run, however much progress each one makes.
+ * Guards the pathological shape the consecutive count alone would loop on: a
+ * pod that answers with one chunk and dies, forever.
+ */
+const MAX_TOTAL_DISPATCH_ATTEMPTS = 5;
 
 /**
  * How long Studio waits for ANY byte from the daemon before calling the pod
@@ -414,15 +429,23 @@ export async function* dispatchWithContinuation(args: {
   dispatchOnce: (
     resume: { reason: string } | null,
   ) => AsyncIterable<UIMessageChunk>;
+  /** Consecutive no-progress dispatches allowed. */
   maxAttempts?: number;
+  /** Dispatches allowed in total, progress or not. */
+  maxTotalAttempts?: number;
 }): AsyncIterable<UIMessageChunk> {
   const maxAttempts = args.maxAttempts ?? MAX_DISPATCH_ATTEMPTS;
+  const maxTotalAttempts = args.maxTotalAttempts ?? MAX_TOTAL_DISPATCH_ATTEMPTS;
   let resume = args.resume;
   let forwardedStart = resume !== null;
+  /** Consecutive failures whose dispatch streamed nothing. */
+  let stalled = 0;
 
   for (let attempt = 1; ; attempt++) {
+    let progressed = false;
     try {
       for await (const chunk of args.dispatchOnce(resume)) {
+        progressed = true;
         if ((chunk as { type?: string }).type === "start") {
           if (forwardedStart) continue;
           forwardedStart = true;
@@ -432,12 +455,18 @@ export async function* dispatchWithContinuation(args: {
       return;
     } catch (err) {
       if (args.aborted()) throw err;
-      if (!(err instanceof SandboxUnreachableError) || attempt >= maxAttempts) {
+      stalled = progressed ? 1 : stalled + 1;
+      if (
+        !(err instanceof SandboxUnreachableError) ||
+        stalled >= maxAttempts ||
+        attempt >= maxTotalAttempts
+      ) {
         throw err;
       }
       console.warn("[sandbox-dispatch] sandbox lost mid-run; continuing", {
         runId: args.runId,
         attempt,
+        progressed,
         reason: err.message,
       });
       resume = {
