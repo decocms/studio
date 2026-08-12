@@ -23,6 +23,34 @@ describe("shouldAdvanceToReview", () => {
     ).toBe(true);
   });
 
+  // A repo-backed task that finished with no PR has nothing to review yet.
+  it("does NOT advance a repo-backed task on finish with no PR", () => {
+    expect(
+      shouldAdvanceToReview(
+        {
+          status: "in_progress",
+          repo: "acme/site",
+          threads: [thread("completed")],
+        },
+        false,
+      ),
+    ).toBe(false);
+  });
+
+  // Backstop for missed PR-open detection: a PR exists, so finishing means there is one to review.
+  it("advances a repo-backed task on finish once a PR is linked", () => {
+    expect(
+      shouldAdvanceToReview(
+        {
+          status: "in_progress",
+          repo: "acme/site",
+          threads: [thread("completed")],
+        },
+        true,
+      ),
+    ).toBe(true);
+  });
+
   // Inverted deliberately: this used to assert that a failed run advances the
   // card. It is how eight tasks whose sandboxes never came up landed In Review
   // with no PR and no work done. In Review means there is something to review.
