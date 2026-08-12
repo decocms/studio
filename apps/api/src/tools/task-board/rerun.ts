@@ -45,6 +45,7 @@ import { cancelThreadGateHead } from "@/dispatch-queue/thread-gate-queue";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
+import { allEnabledReviewersVerifiedApproved } from "./merge-pr";
 import {
   ensureTaskExecutionAllowed,
   userInitiatedTaskQuotaConfig,
@@ -133,6 +134,42 @@ async function stopSupersededRun(
   broadcastRunCancel(threadId);
 }
 
+/**
+ * Refuse a re-run of a card whose merge is already queued and will retry.
+ *
+ * A re-run opens a NEW review cycle, and the auto-merge gate
+ * (`retryAutoMergeIfApproved`) reads only the current one — so re-running an
+ * In Review card that every enabled reviewer verifiably approved discards a
+ * merge that was one sweep tick from shipping, and the fresh cycle can bounce
+ * forever instead. Observed on `board_pA_7SsIEhMmcStEcAidCs`: a rate-limited
+ * merge, then a re-run, then five review bounces and a hand-off to a human on a
+ * PR that had already been approved twice.
+ *
+ * Narrow on purpose: a card sitting In Review WITHOUT that gate satisfied is
+ * exactly the wedge this tool exists to clear, so it still re-runs.
+ */
+export async function refuseIfMergePending(
+  ctx: StudioContext,
+  item: { id: string; status: string; organizationId: string },
+): Promise<void> {
+  if (item.status !== "in_review") return;
+  const settings = await ctx.storage.organizationSettings.get(
+    item.organizationId,
+  );
+  if (settings?.flags?.auto_merge !== true) return;
+  const approved = await allEnabledReviewersVerifiedApproved(
+    ctx,
+    item.organizationId,
+    item.id,
+  );
+  if (!approved) return;
+  throw new Error(
+    "Every reviewer approved this task and its merge is retrying — re-running " +
+      "would throw that away and start a new review cycle. Wait for the merge, " +
+      "or use the ship button if the PR needs a nudge.",
+  );
+}
+
 export const TASK_BOARD_ITEM_RERUN = defineTool({
   name: "TASK_BOARD_ITEM_RERUN",
   description:
@@ -186,6 +223,8 @@ export const TASK_BOARD_ITEM_RERUN = defineTool({
           "the Super Agent instead — that queues a run by itself.",
       );
     }
+
+    await refuseIfMergePending(ctx, item);
 
     // Paywall before any write: a refused re-run must leave the card untouched.
     await ensureTaskExecutionAllowed(ctx, item, userInitiatedTaskQuotaConfig());

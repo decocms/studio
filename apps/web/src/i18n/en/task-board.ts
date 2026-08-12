@@ -97,6 +97,8 @@ export const taskBoard = {
     "couldn't merge — the pull request's checks are failing",
   "taskBoard.taskDialog.activityMergeFailedNoConnection":
     "couldn't merge — this organization has no GitHub connection for {detail}. Connect that repository to ship this task.",
+  "taskBoard.taskDialog.activityMergeFailedRateLimited":
+    "couldn't merge yet — GitHub is rate-limiting us. This retries automatically.",
   "taskBoard.taskDialog.activityMergeFailedRefused":
     "GitHub refused the merge: {detail}",
   "taskBoard.taskDialog.activityMergeFailedError":

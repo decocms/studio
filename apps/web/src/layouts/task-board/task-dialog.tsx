@@ -1809,6 +1809,8 @@ function describeActivity(
                 detail,
               })
             : t("taskBoard.taskDialog.activityMergeFailed");
+        case "rate_limited":
+          return t("taskBoard.taskDialog.activityMergeFailedRateLimited");
         case "refused":
           return detail
             ? t("taskBoard.taskDialog.activityMergeFailedRefused", { detail })
