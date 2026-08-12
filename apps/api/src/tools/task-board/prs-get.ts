@@ -14,6 +14,7 @@ import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
+import { readPrStateThrottled } from "./dbos-github-read";
 
 /** Cap a single live PR fetch — the modal shouldn't hang on a slow GitHub. */
 const PR_FETCH_TIMEOUT_MS = 8000;
@@ -918,20 +919,26 @@ export function pickActivePrIndex(
  * reviewed one leaves the newest link pointing at an abandoned branch, so the
  * merge gate reads ITS red checks and reports `checks_failing` forever while
  * the approved, green PR sits unmerged.
+ *
+ * `ctx` is unused here on purpose — kept so callers don't need a special case
+ * — the read goes through `readPrStateThrottled`, the same rate-limited DBOS
+ * queue the review sweep's own candidate pass uses. This runs on every merge
+ * attempt and every review decision, not just the sweep's own timer tick, so
+ * calling `fetchPrCandidateState` straight at GitHub here would reopen the
+ * exact unbounded-reads problem the queue exists to cap.
  */
 export async function pickActivePr(
-  ctx: StudioContext,
+  _ctx: StudioContext,
   orgId: string,
   prs: TaskBoardItemPrRef[],
 ): Promise<TaskBoardItemPrRef | undefined> {
   if (prs.length <= 1) return prs[0];
   const states: ("open" | "closed" | null)[] = [];
   for (const pr of prs) {
-    const { state } = await fetchPrCandidateState(ctx, orgId, pr);
+    const { state } = await readPrStateThrottled(orgId, pr);
     states.push(state);
     // Stop at the first usable PR: the common case is one extra read, not one
-    // per link, which is what the GitHub rate limit cares about. The read is the
-    // same cached `get` the sweep's own candidate pass makes.
+    // per link, which is what the GitHub rate limit cares about.
     if (state !== "closed") break;
   }
   return prs[pickActivePrIndex(states)];
