@@ -124,6 +124,22 @@ export function setMcpOAuthBrowserAdapter(
 /** How often to ask the adapter whether the callback has landed. */
 const ADAPTER_POLL_INTERVAL_MS = 600;
 
+/** How often to read the localStorage callback key directly. The `storage`
+ * event is not delivered reliably everywhere (observed lost in Edge after
+ * GitHub's COOP hop severs `window.opener`, leaving localStorage as the only
+ * channel home), so the event listener gets this poll as a belt. */
+const STORAGE_POLL_INTERVAL_MS = 1_000;
+
+/**
+ * Default ceiling for the whole consent round trip. First-time authorizations
+ * routinely take minutes (provider login, 2FA, org/app install screens), and a
+ * shorter timer was killing flows the user then completed into a void — the
+ * popup reported success while nobody was listening anymore. We cannot watch
+ * the popup instead: after a COOP-severing hop (github.com) its WindowProxy is
+ * disowned and `closed` reads true mid-flow.
+ */
+const DEFAULT_OAUTH_TIMEOUT_MS = 10 * 60_000;
+
 /**
  * Ceiling for the `initialize` probe in `isConnectionAuthenticated`. Without
  * it, a hung MCP server left the caller waiting on the browser's own fetch
@@ -343,7 +359,7 @@ interface FullTokenResult {
  * @param params.clientName - OAuth client name
  * @param params.clientUri - OAuth client URI
  * @param params.callbackUrl - OAuth callback URL (defaults to current origin + /oauth/callback)
- * @param params.timeout - Timeout in ms (default 120000)
+ * @param params.timeout - Timeout in ms (default 600000 — see DEFAULT_OAUTH_TIMEOUT_MS)
  * @param params.scope - OAuth scopes to request
  * @param params.windowMode - "popup" (default) or "tab" (for devices that block popups)
  */
@@ -387,9 +403,10 @@ export async function authenticateMcp(params: {
     // Uses both postMessage (primary) and localStorage (fallback for when opener is lost)
     const oauthCompletePromise = new Promise<FullTokenResult>(
       (resolve, reject) => {
-        const timeout = params.timeout || 120000;
+        const timeout = params.timeout || DEFAULT_OAUTH_TIMEOUT_MS;
         let timeoutId: ReturnType<typeof setTimeout>;
         let pollId: ReturnType<typeof setInterval> | undefined;
+        let storagePollId: ReturnType<typeof setInterval> | undefined;
         let resolved = false;
         // Use the OAuth state as the storage key - it's already unique per flow
         // and will be available to the callback page via URL params
@@ -403,6 +420,7 @@ export async function authenticateMcp(params: {
           window.removeEventListener("storage", handleStorageEvent);
           clearTimeout(timeoutId);
           clearInterval(pollId);
+          clearInterval(storagePollId);
           // Clean up storage key
           try {
             localStorage.removeItem(storageKey);
@@ -524,6 +542,25 @@ export async function authenticateMcp(params: {
 
         window.addEventListener("message", handleMessage);
         window.addEventListener("storage", handleStorageEvent);
+
+        // Belt for the storage listener above — read the key directly too,
+        // since the event alone is what gets lost (see
+        // STORAGE_POLL_INTERVAL_MS). processCallback dedupes via `resolved`.
+        storagePollId = setInterval(() => {
+          if (resolved) return;
+          let raw: string | null = null;
+          try {
+            raw = localStorage.getItem(storageKey);
+          } catch {
+            return; // Storage unavailable — rely on the other channels.
+          }
+          if (!raw) return;
+          try {
+            void processCallback(JSON.parse(raw));
+          } catch {
+            // Ignore parse errors, same as the storage-event path.
+          }
+        }, STORAGE_POLL_INTERVAL_MS);
 
         // Third channel: when consent completes in a separate browser process
         // neither listener above can ever fire, so ask the adapter instead.
