@@ -154,6 +154,22 @@ func (m *TaskManager) purgeStaleLogs() {
 }
 
 func (m *TaskManager) Spawn(spec TaskSpec) TaskSummary {
+	summary, _ := m.spawn(spec, false)
+	return summary
+}
+
+// SpawnUnlessLogNameRunning atomically checks for a running task with the
+// same LogName and spawns only if none exists, returning the existing task
+// (alreadyRunning=true) otherwise. RunningByLogName+Spawn as two separate
+// calls raced: two concurrent requests for the same well-known dev-server
+// script could both see "not running" and each start a process, doubling
+// memory use on the pod. Doing the check inside the same critical section
+// that registers the new task closes that window.
+func (m *TaskManager) SpawnUnlessLogNameRunning(spec TaskSpec) (summary TaskSummary, alreadyRunning bool) {
+	return m.spawn(spec, true)
+}
+
+func (m *TaskManager) spawn(spec TaskSpec, skipIfLogNameRunning bool) (TaskSummary, bool) {
 	if spec.ReplaceByLogName && spec.LogName != "" {
 		var waiters []chan struct{}
 		m.mu.Lock()
@@ -173,6 +189,15 @@ func (m *TaskManager) Spawn(spec TaskSpec) TaskSummary {
 	}
 
 	m.mu.Lock()
+	if skipIfLogNameRunning && spec.LogName != "" {
+		for _, t := range m.tasks {
+			if t.status == StatusRunning && t.spec.LogName == spec.LogName {
+				summary := m.summarizeLocked(t)
+				m.mu.Unlock()
+				return summary, true
+			}
+		}
+	}
 	m.counter++
 	id := fmt.Sprintf("%s%d", taskFilePrefix, m.counter)
 	logPath := filepath.Join(m.deps.LogsDir, id)
@@ -215,7 +240,7 @@ func (m *TaskManager) Spawn(spec TaskSpec) TaskSummary {
 	if m.deps.OnChange != nil {
 		m.deps.OnChange()
 	}
-	return m.summarize(task)
+	return m.summarize(task), false
 }
 
 func buildEnv(inherit bool, overrides map[string]string, extra map[string]string) []string {
@@ -462,22 +487,6 @@ func (m *TaskManager) fanOut(task *taskInternal, chunk OutputChunk) {
 	if task.spec.LogName != "" && m.deps.BroadcastChunk != nil {
 		m.deps.BroadcastChunk(task.spec.LogName, chunk.Data, false)
 	}
-}
-
-// RunningByLogName finds a live task by its log name. Used to answer "is the
-// dev server already up?" without guessing from ports.
-func (m *TaskManager) RunningByLogName(logName string) (TaskSummary, bool) {
-	if logName == "" {
-		return TaskSummary{}, false
-	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for _, t := range m.tasks {
-		if t.status == StatusRunning && t.spec.LogName == logName {
-			return m.summarizeLocked(t), true
-		}
-	}
-	return TaskSummary{}, false
 }
 
 func (m *TaskManager) Get(id string) (TaskSummary, bool) {
