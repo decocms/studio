@@ -501,6 +501,12 @@ export function TaskBoardPage() {
   const openEdit = (item: TaskBoardItem) => {
     setEditingItem(item);
     setDialogOpen(true);
+    // Keep the URL shareable regardless of how the modal was opened.
+    navigate({
+      to: ".",
+      search: (prev: Record<string, unknown>) => ({ ...prev, task: item.id }),
+      replace: true,
+    });
   };
 
   // Opening a card always opens the task modal. The modal's activity area is
