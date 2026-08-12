@@ -11,20 +11,19 @@ correctly, run it, then **verify it actually works** (pods Running + UI reachabl
 + signup) — don't just report "installed".
 
 Studio hard-needs **PostgreSQL** and an **S3-compatible object store**; NATS is
-bundled; the sandbox (code-exec + previews) is an optional layer. Full details
-and ready-made files live in the repo under `selfhost/` and `deploy/`.
+bundled; the sandbox (code-exec + previews) is an optional layer.
+
+**What you produce is a directory, not a running pod.** Every install — laptop
+or EKS — ends with an install directory the user owns and keeps: an umbrella
+chart with pinned OCI dependencies plus the values you filled in. Installing is
+then `helm upgrade --install` on that directory, and it behaves the same on
+Rancher Desktop and on a managed cluster — see "The artifact" below. **Do not
+clone this repo** and do not install from a checkout; the charts are public OCI
+artifacts and need no credentials.
 
 ## 0. Detect the environment
 
-First, make sure the repo is present — the install uses its Helm charts +
-scripts. If `selfhost/` isn't in the working dir, offer to clone it and `cd` in:
-
-```bash
-test -d selfhost/examples/k8s-local || \
-  git clone https://github.com/decocms/studio.git && cd studio
-```
-
-Then detect what the user has:
+Detect what the user has:
 
 ```bash
 uname -m                                   # arm64 (Apple Silicon) or x86_64
@@ -46,14 +45,14 @@ detected environment, then walk these. Record answers into a values file you'll
 `helm template`-validate and show the user before installing.
 
 1. **Goal / tier** — "Trying it out, a POC on a real cluster, or production?"
-   → *try-out* → Compose or the local umbrella (fixed dev values, bundled deps).
-   → *POC on a real cluster* → the chart with deps you choose below, dev-grade secrets OK.
-   → *production* → the chart + external secrets + HPA (start from `selfhost/production/`).
+   → *try-out* → Compose (no artifact), or the artifact with bundled dev deps.
+   → *POC on a real cluster* → the artifact, deps you choose below, dev-grade secrets OK.
+   → *production* → the artifact + external secrets + HPA.
 
 2. **Each dependency — managed or in-cluster?** (ask per item)
    - **PostgreSQL** (required): managed URL (`database.url` / `DATABASE_URL`) OR
-     their own in-cluster Postgres. The chart bundles none for prod (local
-     umbrella has a throwaway one).
+     their own in-cluster Postgres. The chart bundles none — for a local tier
+     the artifact carries a throwaway one in `templates/`.
    - **Object storage** (required — else the API crashes self-provisioning MinIO):
      managed S3/GCS/R2 (`S3_FORCE_PATH_STYLE=false`) OR in-cluster MinIO/Ceph
      (`true`). Always set `S3_ENDPOINT`+`S3_BUCKET`+ keys.
@@ -96,25 +95,37 @@ detected environment, then walk these. Record answers into a values file you'll
      Missing → Studio cold-provisions and the template rejects `DAEMON_TOKEN`.
    - `STUDIO_SANDBOX_PROVIDER=agent-sandbox`, `STUDIO_ENV=<env>`,
      `STUDIO_SANDBOX_TEMPLATE_NAME=studio-sandbox-<env>`.
+   All three live in ONE artifact, so the values file is the only place the
+   handshake has to be right.
    Preview URLs need the preview Gateway (prod) or the in-process proxy (local).
    (In-cluster **ClickHouse** is likewise separate-ish — the Studio chart's
    `clickhouse-operator`/`-cluster` subcharts, opt-in, two-phase CRD.)
 
-6. **Render → validate → confirm → install.** Write the answers to a values
-   file, `helm template … | less` (or grep the wiring), show the user the plan,
+6. **Write the artifact → validate → confirm → install.** Generate the directory
+   below, `helm dependency build`, `helm template` it, show the user the plan,
    then install and **verify** (§3). Never install before the template renders clean.
 
-The local umbrella (`selfhost/examples/k8s-local`) already encodes all of §5 and
-bundled deps — for *try-out*/*POC-local* just use it. For real clusters, start
-from `selfhost/production/` and fill the answers above.
+## The artifact — a directory the user owns
 
-## Recommend (and generate) an umbrella chart for real installs
+A full install spans **three charts** (Studio + sandbox-operator + sandbox-env)
+that must agree on a service account and a shared token. Threading that by hand
+across three `helm install` commands is where installs break. So always produce
+one umbrella directory instead, whatever the tier:
 
-Because a full install spans **multiple charts** (Studio + sandbox-operator +
-sandbox-env, plus their extras) that must share values, offer to generate a small
-**umbrella chart the user owns** — one `helm install`, everything wired, and a
-place for THEIR extras (ExternalSecrets, Ingress, a CNPG Postgres, config). This
-is how `examples/k8s-local` and deco's own internal deploy work. Generate:
+```
+<name>/                    # e.g. studio-local, studio-prod
+├── Chart.yaml             # the three charts as OCI dependencies, versions PINNED
+├── values.yaml            # every interview answer + the cross-chart handshake
+├── templates/             # the user's own extras live here
+├── secrets.sh             # commands that create the Secret — gitignored, never committed
+├── .gitignore             # charts/  Chart.lock  secrets.sh
+└── README.md              # install / upgrade / verify / uninstall, for whoever inherits this
+```
+
+This is the deliverable. It is portable — the same directory installs on Rancher
+Desktop and on EKS, because nothing in it points at a local path — and it is
+reviewable, diffable, and committable to *their* infra repo. It is also how
+deco's own internal deploy works.
 
 `<name>/Chart.yaml`:
 ```yaml
@@ -129,82 +140,103 @@ dependencies:
   - { name: sandbox-operator,  version: "<pin>", repository: "oci://ghcr.io/decocms/studio/charts" }
   - { name: sandbox-env,       version: "<pin>", repository: "oci://ghcr.io/decocms/studio/charts" }
 ```
-Run `helm dependency build <name>` right after writing Chart.yaml — it proves
-every path and pin resolves before you spend time on values.
-`<name>/values.yaml` — nest each subchart's config under its name, wiring the
-interview answers AND the cross-chart handshake: `chart-deco-studio.serviceAccount.create=true`,
-the shared sentinel token on both `chart-deco-studio…STUDIO_SANDBOX_SENTINEL_TOKEN`
-and `sandbox-env.sentinel.token`, `sandbox-operator.allowForeignNamespace=true`
-(operator self-pins to agent-sandbox-system), and compute from `selfhost/production/`.
-`<name>/templates/` — the user's extras. Then `helm dependency build` → template →
-install. Copy `selfhost/examples/k8s-local` as the working reference.
 
-If the user prefers not to wrap, install the charts separately (§2 + the chart
-directly) — but flag that threading the shared values by hand is the error-prone
-path.
+**Pin real versions, never `"*"` or a range.** Resolve the current ones first and
+write those numbers in:
+
+```bash
+helm show chart oci://ghcr.io/decocms/chart-deco-studio            | grep '^version:'
+helm show chart oci://ghcr.io/decocms/studio/charts/sandbox-operator | grep '^version:'
+helm show chart oci://ghcr.io/decocms/studio/charts/sandbox-env      | grep '^version:'
+helm dependency build <name>   # proves every path and pin before any values work
+```
+
+`<name>/values.yaml` — nest each subchart's config under its name, wiring the
+interview answers AND the cross-chart handshake:
+`chart-deco-studio.serviceAccount.create=true`, the shared sentinel token on both
+`chart-deco-studio…STUDIO_SANDBOX_SENTINEL_TOKEN` and `sandbox-env.sentinel.token`,
+and `sandbox-operator.allowForeignNamespace=true` (the operator self-pins to
+`agent-sandbox-system` regardless).
+
+`<name>/templates/` — the user's extras: ExternalSecrets, a CNPG Postgres, extra
+config. For a **local** tier, also drop in throwaway Postgres + MinIO; the
+reference copy is self-contained (it reads no values), so fetch it verbatim:
+
+```bash
+mkdir -p <name>/templates && curl -fsSL \
+  https://raw.githubusercontent.com/decocms/studio/main/selfhost/examples/k8s-local/templates/dev-deps.yaml \
+  -o <name>/templates/dev-deps.yaml
+```
+
+That gives fixed Services `studio-db` and `studio-minio` to point `database.url`
+and the `S3_*` values at. **Local only** — say so in the README you generate, and
+never suggest it for a real cluster.
+
+`<name>/secrets.sh` — the `kubectl create secret` command with the generated
+values, so a rerun is reproducible. Gitignore it; never inline secret material in
+`values.yaml`. With ESO, skip it and set `externalSecret.*` instead.
+
+For the value shapes (managed vs in-cluster deps, secrets with and without ESO,
+ingress, sandbox posture, compute sizing) read
+[`selfhost/production`](https://github.com/decocms/studio/tree/main/selfhost/production)
+and the [Kubernetes guide](https://docs.decocms.com/deco-studio/en/studio/self-hosting/deploy/kubernetes).
 
 ## 1. Pick a tier
 
-| Tier | How | Deps | Best for |
-|------|-----|------|----------|
-| **Local — Compose** | `docker compose -f deploy/docker-compose/docker-compose.postgres.yml up` | all bundled | trying it out, one host |
-| **Local — Kubernetes** | one `helm install` of the umbrella `selfhost/examples/k8s-local` (or `./selfhost/scripts/local-k8s.sh`) | all bundled (dev Postgres+MinIO+NATS+sandbox) | testing on a real cluster |
-| **Production — Kubernetes** | `helm install` the chart (`deploy/helm/studio`) directly | **external/managed** Postgres + S3 + NATS + ClickHouse | staging / prod |
+The tiers differ in what `values.yaml` says, not in how you install. Kubernetes
+tiers produce the same artifact and the same command; only the dependency
+choices and the secret handling change.
+
+| Tier | Deps | Best for |
+|------|------|----------|
+| **Local — Compose** | all bundled, no Kubernetes | trying it out on one host |
+| **Local — Kubernetes** | throwaway Postgres + MinIO in `templates/`, bundled NATS | testing on a laptop cluster |
+| **Production — Kubernetes** | **external/managed** Postgres + S3, optional managed ClickHouse | staging / prod |
 
 ### 1a. Compose (bundled everything)
 
-Runs Studio + Postgres + NATS + MinIO, all wired — no external services.
-`open http://localhost:3000`, sign up (first user = org owner). Override secrets
-via a `.env` next to the compose file.
-
-### 1b. Local Kubernetes (umbrella chart)
-
-The umbrella `selfhost/examples/k8s-local` declares the lean Studio chart, the
-sandbox operator, and `sandbox-env` as Helm `dependencies` and adds throwaway
-Postgres + MinIO as its own templates.
-
-**Recommended path — the script** (installs core + sandbox + warm pool by
-default; observability is opt-in):
+The only tier with no artifact — it is a single compose file, not Helm. Runs
+Studio + Postgres + NATS + MinIO, all wired, no external services:
 
 ```bash
-./selfhost/scripts/local-k8s.sh                  # install / upgrade (core + sandbox + warm pool)
-OBSERVABILITY=1 ./selfhost/scripts/local-k8s.sh  # + in-cluster ClickHouse + OTel collector + monitoring view
-WARMPOOL=0 ./selfhost/scripts/local-k8s.sh       # skip the warm pool
-./selfhost/scripts/local-k8s.sh uninstall        # remove everything
+curl -fsSLO https://raw.githubusercontent.com/decocms/studio/main/deploy/docker-compose/docker-compose.postgres.yml
+docker compose -f docker-compose.postgres.yml up
 ```
 
-It is **idempotent** — re-run any time to update (see §5). It resolves deps,
-`helm upgrade --install`s, waits for rollout, bounces stuck sandbox pods, and
-(with observability) provisions the `studio_monitoring_logs` view.
+`open http://localhost:3000`, sign up (first user = org owner). Override the dev
+defaults via a `.env` next to the compose file.
 
-**Raw helm** (leaner — core + sandbox, no observability; observability via helm
-needs the overlay + a one-time two-phase, which the script handles for you):
+### 1b. Install the artifact (both Kubernetes tiers)
 
 ```bash
-helm dependency build selfhost/examples/k8s-local
-helm install deco-studio selfhost/examples/k8s-local -n deco-studio --create-namespace
+helm dependency build <name>
+helm template deco-studio <name> -n deco-studio | less    # never skip
+helm upgrade --install deco-studio <name> -n deco-studio --create-namespace
 ```
 
 Use release name **`deco-studio`** (the Studio subchart derives Service/SA/NATS/
 instance-label names from it; sandbox RBAC is granted to the `deco-studio` SA).
+Re-running the same three commands is how upgrades work — see §5.
 
 **Access — port-forward is the reliable path**, any cluster:
 `kubectl -n deco-studio port-forward svc/deco-studio 8080:80` → `http://localhost:8080`.
-The Service is `LoadBalancer:80`, so `http://studio.localhost` ALSO works **iff**
-the LB claimed host :80 — but on stock Rancher Desktop k3s Traefik's servicelb
-already owns :80, so Studio's LB stays `<pending>` and `studio.localhost` hits
-Traefik (404). The script detects this and prints the right path; don't promise
-the URL blindly. To use the URL: disable Traefik or front Studio with an ingress.
+If you set `service.type: LoadBalancer` locally, `http://studio.localhost` works
+**iff** the LB actually claimed host :80 — on stock Rancher Desktop, k3s Traefik's
+servicelb already owns :80, so Studio's LB stays `<pending>` and the URL hits
+Traefik (404). Check `kubectl -n deco-studio get svc` before promising a URL. For
+a real cluster, use the chart's `ingress` block (0.13.0+) instead.
 
-**Observability** (ClickHouse monitoring dashboard + OTel collector) is **opt-in**
-(`OBSERVABILITY=1`) — OFF by default. The clickhouse.com operator's version-probe
-races Job-pod GC on older k8s (e.g. RD's 1.25), leaving the collector crashlooping
-and no ClickHouse, so it's not in the default path. When enabled: the operator
-ships CRDs as templates (not `crds/`), so the script does a one-time two-phase
-(CR off → wait for CRD → CR on) only when the CRD is absent, and provisions the
-`studio_monitoring_logs` view over `otel_logs` once ClickHouse is ready.
+**Observability** (ClickHouse monitoring dashboard + OTel collector) is opt-in via
+the Studio chart's `clickhouse-operator`/`clickhouse-cluster` subcharts. Two
+caveats: the operator ships its CRDs as templates rather than in `crds/`, so a
+first install needs a two-phase (cluster CR off → CRD exists → CR on); and once
+ClickHouse is running you must provision the `studio_monitoring_logs` view over
+`otel_logs` or the dashboard 500s. Never flip `clickhouse-cluster.enabled=false`
+on a live release — the operator deletes ClickHouse. On older k8s the operator's
+version-probe races Job-pod GC and leaves the collector crashlooping; if that
+happens, drop observability rather than fighting it.
 
-### 1c. Production Kubernetes — configure the chart
+### 1c. Production values
 
 The chart is **lean**: it deploys Studio + NATS and expects **external** managed
 services. Configure them (never inline secrets in prod — use `externalSecret` or
@@ -238,7 +270,7 @@ Every dependency is a toggle: **bundled** (`postgresql.enabled` — dev only /
 
 Optional layer: `sandbox-operator` (CRDs + controller) + `sandbox-env`
 (SandboxTemplate/RBAC/NetworkPolicy) + Studio wiring. The local umbrella
-installs it by default (wired inline in `selfhost/examples/k8s-local/values.yaml`).
+belongs in the same artifact, wired in its `values.yaml`.
 For a standalone/prod install, wire Studio with:
 
 ```yaml
@@ -260,8 +292,8 @@ wildcard **preview URLs** (Istio Gateway + cert-manager; needs Gateway API CRDs)
   plus deps. K8s: `kubectl -n deco-studio get pods`.
 - DB reachable, UI loads, **signup works** (first user = owner; no preset admin
   in the served `--no-local-mode`).
-- Access: LoadBalancer → `http://localhost` (k3s/Rancher servicelb); or
-  `kubectl -n deco-studio port-forward svc/deco-studio 8080:80`.
+- Access: `kubectl -n deco-studio port-forward svc/deco-studio 8080:80`; a
+  LoadBalancer/Ingress URL only after checking `kubectl -n deco-studio get svc`.
 
 ## 4. Troubleshooting (real failure modes)
 
@@ -273,12 +305,12 @@ wildcard **preview URLs** (Istio Gateway + cert-manager; needs Gateway API CRDs)
 | App/worker restarts early with `ECONNREFUSED :5432` | started before Postgres ready — benign, self-heals |
 | `insufficient storage resources` (NATS JetStream) | file store too small → raise `nats.config.jetstream.fileStore.pvc.size` (non-fatal) |
 | Sandbox pod `ImagePullBackOff` (manifest unknown, or "no matching manifest for linux/arm64") | overrode `sandbox-env.image.tag` with a stale/nonexistent tag — the daemon image is `studio-sandbox-go` and old `studio-sandbox` tags don't exist in it → drop the override and use the chart's own pin (multi-arch) |
-| `SandboxClaim` create → `403 Forbidden ... serviceaccount:deco-studio:default cannot create` | Studio ran as SA `default` but sandbox RBAC is granted to SA `deco-studio` → set `serviceAccount.create: true` so Studio runs as `deco-studio` (the umbrella does this) |
-| `SandboxClaim` stuck, condition `ReconcilerError: environment variable override is not allowed ... "DAEMON_TOKEN"` | Studio has no sentinel token → it cold-provisions (`warmpool: none`) and injects `DAEMON_TOKEN`, which the template rejects → set the SAME token on both sides: `sandbox-env.sentinel.token` and `STUDIO_SANDBOX_SENTINEL_TOKEN` (flips Studio to warm-pool mode; the umbrella wires both) |
-| Monitoring dashboard 500 / `UNKNOWN_TABLE: studio_monitoring_logs` | ClickHouse connects fine but the view isn't provisioned → the script creates it after ClickHouse + `otel_logs` are ready; if you ran raw helm, apply the DDL from `apps/api/src/monitoring/clickhouse-setup.md` |
-| ClickHouse torn down / `UPGRADE FAILED` after a re-run with observability | disabling the `clickhouse-cluster` CR on a running release makes the operator delete ClickHouse → only two-phase when the CRD is ABSENT (first install); the script does this — never do `--set clickhouse-cluster.enabled=false` on a live release |
+| `SandboxClaim` create → `403 Forbidden ... serviceaccount:deco-studio:default cannot create` | Studio ran as SA `default` but sandbox RBAC is granted to SA `deco-studio` → set `serviceAccount.create: true` so Studio runs as `deco-studio` (set it in the artifact's values) |
+| `SandboxClaim` stuck, condition `ReconcilerError: environment variable override is not allowed ... "DAEMON_TOKEN"` | Studio has no sentinel token → it cold-provisions (`warmpool: none`) and injects `DAEMON_TOKEN`, which the template rejects → set the SAME token on both sides: `sandbox-env.sentinel.token` and `STUDIO_SANDBOX_SENTINEL_TOKEN` (flips Studio to warm-pool mode; the artifact must set both) |
+| Monitoring dashboard 500 / `UNKNOWN_TABLE: studio_monitoring_logs` | ClickHouse connects fine but the view isn't provisioned → apply the DDL from `apps/api/src/monitoring/clickhouse-setup.md` once ClickHouse is up and `otel_logs` exists |
+| ClickHouse torn down / `UPGRADE FAILED` after a re-run with observability | disabling the `clickhouse-cluster` CR on a running release makes the operator delete ClickHouse → only two-phase when the CRD is ABSENT (first install) — never do `--set clickhouse-cluster.enabled=false` on a live release |
 | `helm install` fails "must be installed into the 'agent-sandbox-system' namespace" | installing `sandbox-operator` as a subchart under another release namespace → set `sandbox-operator.allowForeignNamespace=true` (operator resources are pinned to agent-sandbox-system regardless); the umbrella does this |
-| `kind: SandboxTemplate` / CRD not found on install | operator's CRDs must exist before the CR → the operator ships them in `crds/` (installed before templates), so a single umbrella release works; standalone, install the operator + wait for the CRD first |
+| `kind: SandboxTemplate` / CRD not found on install | operator's CRDs must exist before the CR → the operator ships them in `crds/` (installed before templates), so a single umbrella release works; if you installed the charts separately, install the operator and wait for the CRD first |
 | Namespace stuck / "object has been deleted" on re-install | previous `uninstall` still Terminating → wait for it to clear before recreating |
 
 Always show real evidence (`kubectl get pods`, `logs`, `get events
@@ -286,52 +318,73 @@ Always show real evidence (`kubectl get pods`, `logs`, `get events
 
 ## 5. Updates (re-running / upgrading)
 
-The script is **idempotent** — to update, just run it again:
+Edit the artifact, then run the same three commands:
 
 ```bash
-./selfhost/scripts/local-k8s.sh
+helm dependency build <name>          # only needed after changing a pin
+helm template deco-studio <name> -n deco-studio | less
+helm upgrade --install deco-studio <name> -n deco-studio
 ```
 
-What that does, safely, on a re-run:
-- **Deps track `deploy/`**: `helm dependency build || helm dependency update`
-  re-resolves the local `file://` charts, so template/values changes in
-  `deploy/helm/**` (and chart version bumps) flow through — no manual edits. The
-  umbrella pins dependency versions as `"*"` for exactly this.
-- **`helm upgrade --install`**: reconciles to the current chart. New image tags,
-  values, and resources roll out. First image pull can take minutes.
-- **Non-destructive observability**: the ClickHouse two-phase runs ONLY on the
-  first install (CRD absent). On re-runs the CR stays enabled — ClickHouse is
-  never torn down. The monitoring view is re-applied (`CREATE OR REPLACE`).
-- **Self-heal**: not-ready sandbox pool pods are bounced to pick up corrected
-  secrets/templates.
+The artifact is the source of truth, so an upgrade is a diff someone can review:
 
-To pick up a **new Studio image**, bump the tag (or repull `latest`) and re-run;
-Helm rolls the Deployments. To change a toggle (warm pool, observability), re-run
-with the env var (`WARMPOOL=0`, `OBSERVABILITY=0`).
+- **New chart version** → bump the pin in `Chart.yaml`, re-run `helm dependency
+  build`, re-render, upgrade. Because the pins are explicit, nothing moves
+  underneath the user between two installs of the same directory.
+- **New Studio image** → set `chart-deco-studio.image.tag` (and
+  `nginx.image.tag`) and upgrade. Leaving them unset resolves to the chart's
+  appVersion, which is `latest` — fine locally, wrong for anything real.
+- **Toggle change** (warm pool, sandbox, observability) → edit `values.yaml`.
+  Never `--set` a toggle straight onto a live release; the change would not
+  exist in the artifact and the next upgrade would silently revert it.
+- **ClickHouse**: on re-runs leave the cluster CR enabled. Disabling it makes the
+  operator delete ClickHouse. The `studio_monitoring_logs` view survives, but
+  re-apply it (`CREATE OR REPLACE`) if you rebuilt the database.
+- Sandbox pool pods that stay not-ready after a values change are picking up a
+  stale secret/template — delete them and let the pool respawn.
 
-One caveat NOT auto-caught: if a `deploy/` chart **renames or removes** a values
-key the umbrella/overlays set, nothing errors — the wiring silently no-ops.
-After pulling a big `deploy/helm/**` change, `helm template` the umbrella and
-skim for dropped values before trusting a re-run.
+One caveat NOT auto-caught: if a new chart version **renames or removes** a
+values key the artifact sets, nothing errors — the wiring silently no-ops. After
+bumping a pin across several versions, `helm template` and skim for values that
+stopped appearing in the render before trusting the upgrade.
 
 ## 6. Teardown
 
 ```bash
-./selfhost/scripts/local-k8s.sh uninstall          # k8s (everything)
-docker compose -f deploy/docker-compose/docker-compose.postgres.yml down -v   # compose
+helm uninstall deco-studio -n deco-studio
+kubectl delete ns deco-studio agent-sandbox-system
+docker compose -f docker-compose.postgres.yml down -v   # compose tier
 ```
 
-The uninstall removes both namespaces but leaves the cluster-scoped CRDs
-(agent-sandbox + clickhouse.com). For a truly clean slate:
+That leaves the cluster-scoped CRDs (agent-sandbox + clickhouse.com). For a truly
+clean slate:
 
 ```bash
 kubectl get crd -o name | grep -E 'agents.x-k8s.io|clickhouse.com' | xargs -r kubectl delete
 ```
 
+## Hand the artifact over
+
+Finish by telling the user what they now own, because the directory outlives this
+session and probably outlives them in the role:
+
+- The directory is the install. Commit it to their infra repo — minus
+  `secrets.sh`, `charts/`, and `Chart.lock`.
+- Reinstalling anywhere is `helm dependency build` → `helm template` →
+  `helm upgrade --install`. Nothing else is required, and no clone of this repo.
+- Every pin is explicit, so a rebuild months from now produces the same thing.
+- The generated `README.md` should state: the release name, the namespaces, which
+  values are dev-only, where the secrets come from, and how to upgrade.
+
 ## Notes
 
 - Bundled Postgres/MinIO are dev-only; production points at managed services.
-- The official chart (`deploy/helm/studio`) stays lean — no bundled DB/object
-  store. Batteries-included lives in Compose and `selfhost/`.
+- The official chart stays lean — no bundled DB/object store. Batteries-included
+  lives in Compose and in the artifact's own `templates/`.
+- A clone of `decocms/studio` is only for people changing the charts themselves.
+  For that dev loop the repo has `selfhost/scripts/local-k8s.sh` and
+  `selfhost/examples/k8s-local`, whose `file://` dependencies deliberately track
+  the working tree. That is the wrong property for an install someone must
+  reproduce — never point a user at them.
 - Full reference: https://docs.decocms.com (Studio → Self-hosting) and
-  `selfhost/README.md`.
+  [`selfhost/`](https://github.com/decocms/studio/tree/main/selfhost).
