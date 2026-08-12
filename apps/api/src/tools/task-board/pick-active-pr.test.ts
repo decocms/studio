@@ -8,7 +8,28 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { pickActivePrIndex } from "./prs-get";
+import type { StudioContext } from "@/core/studio-context";
+import type { TaskBoardItemPrRef } from "@/storage/types";
+import { pickActivePr, pickActivePrIndex } from "./prs-get";
+
+/** Throws on any access — proves a code path never touches `ctx`. */
+const UNTOUCHABLE_CTX = new Proxy(
+  {},
+  {
+    get(_target, prop) {
+      throw new Error(`pickActivePr must not read ctx.${String(prop)}`);
+    },
+  },
+) as StudioContext;
+
+const pr = (number: number): TaskBoardItemPrRef => ({
+  repoOwner: "deco",
+  repoName: "studio",
+  number,
+  url: `https://github.com/deco/studio/pull/${number}`,
+  connectionId: "conn_1",
+  createdAt: new Date(0).toISOString(),
+});
 
 describe("pickActivePrIndex", () => {
   it("takes the newest PR when it is open", () => {
@@ -35,5 +56,21 @@ describe("pickActivePrIndex", () => {
 
   it("holds for an empty read — the caller indexes an empty list to undefined", () => {
     expect(pickActivePrIndex([])).toBe(0);
+  });
+});
+
+describe("pickActivePr", () => {
+  // The multi-PR read must go through the rate-limited queue, not straight at GitHub.
+  it("never reads ctx — the multi-PR read goes through the throttled queue", async () => {
+    await expect(
+      pickActivePr(UNTOUCHABLE_CTX, "org_1", [pr(2), pr(1)]),
+    ).resolves.toBeDefined();
+  });
+
+  it("skips the read entirely for a single linked PR", async () => {
+    const only = pr(1);
+    await expect(pickActivePr(UNTOUCHABLE_CTX, "org_1", [only])).resolves.toBe(
+      only,
+    );
   });
 });
