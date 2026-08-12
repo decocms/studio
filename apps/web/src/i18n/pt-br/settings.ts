@@ -208,6 +208,40 @@ export const settings = {
     "Armazena apenas um endpoint de atualiza\u00e7\u00e3o + chave API; credenciais de curta dura\u00e7\u00e3o s\u00e3o buscadas sob demanda e atualizadas automaticamente.",
   "settings.buckets.temporarySessionOption":
     "Sess\u00e3o tempor\u00e1ria (STS, auto-atualizada)",
+  "settings.connectClients.activeKeys": "Chaves ativas",
+  "settings.connectClients.activeKeysDescription":
+    "Chaves que você gerou para clientes headless. Revogue quando quiser.",
+  "settings.connectClients.apiKeyTab": "Chave API",
+  "settings.connectClients.copy": "Copiar",
+  "settings.connectClients.createdAt": "Criada em {date}",
+  "settings.connectClients.customClientHint":
+    "Conectando um cliente personalizado?",
+  "settings.connectClients.doneHideKey": "Concluído, ocultar chave",
+  "settings.connectClients.failedToLoadKeys":
+    "Falha ao carregar chaves: {error}",
+  "settings.connectClients.generateKeyFor": "Gerar chave para {client}",
+  "settings.connectClients.generatingKey": "Gerando…",
+  "settings.connectClients.headlessKeyHint":
+    "Para CI, Conductor, ou agentes headless que não conseguem abrir um navegador.",
+  "settings.connectClients.keyCreated": "Chave criada",
+  "settings.connectClients.keyRevoked": "Chave revogada",
+  "settings.connectClients.loadingActiveKeys": "Carregando chaves ativas…",
+  "settings.connectClients.noConnectKeysYet":
+    "Nenhuma chave de conexão criada ainda. Gere uma na aba de um cliente acima para configurações headless.",
+  "settings.connectClients.oauthKeyHint":
+    "Recomendado para seu laptop. O navegador abrirá no primeiro uso para você entrar — sem token para gerenciar.",
+  "settings.connectClients.oauthMetadataHint":
+    "Os metadados do OAuth 2.1 Protected Resource são anunciados no 401:",
+  "settings.connectClients.oauthTab": "OAuth",
+  "settings.connectClients.orgUnifiedMcp": "O MCP unificado da sua org",
+  "settings.connectClients.orgUnifiedMcpDescription":
+    "Insira esta URL em qualquer cliente MCP para dar a esse runtime toda conexão habilitada nesta org, governada pelas suas regras do Decopilot.",
+  "settings.connectClients.pageTitle": "Conectar a clientes",
+  "settings.connectClients.revoke": "Revogar",
+  "settings.connectClients.revokeConfirm":
+    'Revogar "{name}"? Qualquer cliente que ainda use esta chave perderá o acesso.',
+  "settings.connectClients.snippetOneTimeWarning":
+    "Copie este snippet agora — a chave não será exibida novamente. Você pode revogá-la mais tarde na lista abaixo.",
   "settings.connectForms.apiKeyField": "Chave API",
   "settings.connectForms.apiKeyRequired": "A chave API é obrigatória",
   "settings.connectForms.baseUrlField": "URL Base",

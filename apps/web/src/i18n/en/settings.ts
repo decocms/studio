@@ -197,6 +197,38 @@ export const settings = {
     "Stores only a refresh endpoint + API key; short-lived credentials are fetched on demand and refreshed automatically.",
   "settings.buckets.temporarySessionOption":
     "Temporary session (STS, auto-refreshed)",
+  "settings.connectClients.activeKeys": "Active keys",
+  "settings.connectClients.activeKeysDescription":
+    "Keys you've generated for headless clients. Revoke any time.",
+  "settings.connectClients.apiKeyTab": "API key",
+  "settings.connectClients.copy": "Copy",
+  "settings.connectClients.createdAt": "Created {date}",
+  "settings.connectClients.customClientHint": "Wiring a custom client?",
+  "settings.connectClients.doneHideKey": "Done, hide key",
+  "settings.connectClients.failedToLoadKeys": "Failed to load keys: {error}",
+  "settings.connectClients.generateKeyFor": "Generate key for {client}",
+  "settings.connectClients.generatingKey": "Generating…",
+  "settings.connectClients.headlessKeyHint":
+    "For CI, Conductor, or headless agents that can't open a browser.",
+  "settings.connectClients.keyCreated": "Key created",
+  "settings.connectClients.keyRevoked": "Key revoked",
+  "settings.connectClients.loadingActiveKeys": "Loading active keys…",
+  "settings.connectClients.noConnectKeysYet":
+    "No connect keys minted yet. Generate one from a client tab above for headless setups.",
+  "settings.connectClients.oauthKeyHint":
+    "Recommended for your laptop. Browser will open on first use to sign in — no token to manage.",
+  "settings.connectClients.oauthMetadataHint":
+    "OAuth 2.1 Protected Resource Metadata is advertised on 401:",
+  "settings.connectClients.oauthTab": "OAuth",
+  "settings.connectClients.orgUnifiedMcp": "Your org's unified MCP",
+  "settings.connectClients.orgUnifiedMcpDescription":
+    "Plug this URL into any MCP client to give that runtime every connection enabled in this org, governed by your Decopilot rules.",
+  "settings.connectClients.pageTitle": "Connect to clients",
+  "settings.connectClients.revoke": "Revoke",
+  "settings.connectClients.revokeConfirm":
+    'Revoke "{name}"? Any client still using this key will lose access.',
+  "settings.connectClients.snippetOneTimeWarning":
+    "Copy this snippet now — the key won't be shown again. You can revoke it later from the list below.",
   "settings.connectForms.apiKeyField": "API Key",
   "settings.connectForms.apiKeyRequired": "API key is required",
   "settings.connectForms.baseUrlField": "Base URL",
