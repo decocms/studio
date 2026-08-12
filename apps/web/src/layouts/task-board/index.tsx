@@ -2154,6 +2154,7 @@ function ListRow({
         {item.title}
       </span>
       {isTaskBlocked(item) && <BlockedBadge />}
+      {isTaskHandedToHuman(item) && <HandedToHumanBadge />}
       {item.priority !== "none" && (
         <span className="hidden sm:inline-flex">
           <PriorityPill priority={item.priority} />
