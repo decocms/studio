@@ -95,6 +95,116 @@ describe("getArrayItemLabel", () => {
     );
   });
 
+  // Inline unions carry a per-branch Mustache title, resolved against branch data.
+  const matcherUnionSchema: SchemaProperty = {
+    type: "inline-union",
+    inlineUnionBranches: [
+      {
+        title: "Categoria {{{id}}}",
+        discriminators: { matcherType: "category" },
+        schema: {
+          type: "object",
+          properties: {
+            matcherType: { type: "string" },
+            id: { type: "string" },
+          },
+        },
+      },
+      {
+        title: "Cluster {{{value}}}",
+        discriminators: { matcherType: "cluster" },
+        schema: {
+          type: "object",
+          properties: {
+            matcherType: { type: "string" },
+            value: { type: "string" },
+          },
+        },
+      },
+    ],
+  };
+
+  test("labels an inline-union item by its active branch (discriminator match)", () => {
+    expect(
+      getArrayItemLabel(
+        { matcherType: "category", id: "123" },
+        0,
+        matcherUnionSchema,
+      ),
+    ).toBe("Categoria 123");
+    expect(
+      getArrayItemLabel(
+        { matcherType: "cluster", value: "45" },
+        1,
+        matcherUnionSchema,
+      ),
+    ).toBe("Cluster 45");
+  });
+
+  test("keeps the static branch prefix when Mustache fields are empty", () => {
+    expect(
+      getArrayItemLabel({ matcherType: "category" }, 0, matcherUnionSchema),
+    ).toBe("Categoria");
+  });
+
+  test("falls back past a purely-Mustache branch title with empty data", () => {
+    const schema: SchemaProperty = {
+      type: "inline-union",
+      inlineUnionBranches: [
+        {
+          title: "{{{value}}}",
+          discriminators: { matcherType: "cluster" },
+          schema: {
+            type: "object",
+            properties: {
+              matcherType: { type: "string" },
+              value: { type: "string" },
+            },
+          },
+        },
+      ],
+    };
+    expect(getArrayItemLabel({ matcherType: "cluster" }, 2, schema)).toBe(
+      "Item 3",
+    );
+  });
+
+  test("infers the branch by field presence when no discriminator matches", () => {
+    const schema: SchemaProperty = {
+      type: "inline-union",
+      inlineUnionBranches: [
+        {
+          title: "Período {{{start}}}",
+          schema: {
+            type: "object",
+            properties: { start: { type: "string" }, end: { type: "string" } },
+          },
+        },
+        {
+          title: "Produto {{{value}}}",
+          schema: {
+            type: "object",
+            properties: { value: { type: "string" } },
+          },
+        },
+      ],
+    };
+    expect(getArrayItemLabel({ value: "prod-9" }, 0, schema)).toBe(
+      "Produto prod-9",
+    );
+  });
+
+  test("colliding inline-union items share a clean label (no positional suffix)", () => {
+    const items = [
+      { matcherType: "category", id: "10" },
+      { matcherType: "category", id: "10" },
+    ];
+    expect(getArrayItemDisplayLabels(items, matcherUnionSchema)).toEqual([
+      "Categoria 10",
+      "Categoria 10",
+    ]);
+  });
+
   test("colliding items keep an identical base label (no positional suffix)", () => {
     // Items with no distinguishing field share a label — intentional: the
     // breadcrumb addresses an item by index (Crumb.itemIndex), never by a unique

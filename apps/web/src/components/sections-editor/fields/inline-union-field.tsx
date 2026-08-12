@@ -20,6 +20,17 @@ import { isLocationShape } from "./location/location-value";
 
 type Branch = NonNullable<SchemaProperty["inlineUnionBranches"]>[number];
 
+/** The dropdown has no item data, so show only the static part of a branch
+ * title — drop Mustache tokens (`Categoria {{{id}}}` → `Categoria`). */
+function branchOptionLabel(title: string, index: number): string {
+  return (
+    title
+      .replace(/\{\{\{?[^{}]*\}?\}\}/g, "")
+      .replace(/\s+/g, " ")
+      .trim() || `Option ${index + 1}`
+  );
+}
+
 /** Drop const discriminator fields from a branch schema — they're implied by
  * the selected branch and shouldn't render as editable inputs. */
 function branchFormSchema(branch: Branch): SchemaProperty | null {
@@ -105,7 +116,7 @@ export function InlineUnionField(props: FieldProps) {
           <SelectContent>
             {branches.map((branch, index) => (
               <SelectItem key={branch.title} value={String(index)}>
-                {branch.title}
+                {branchOptionLabel(branch.title, index)}
               </SelectItem>
             ))}
           </SelectContent>
