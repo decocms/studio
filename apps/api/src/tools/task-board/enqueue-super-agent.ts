@@ -13,6 +13,7 @@ import { getSettings } from "@/settings";
 import { enqueueAgentRunForTask } from "./enqueue-task-run";
 import type { RunClass } from "@/dispatch-queue/run-priority";
 import { fetchPrHeadRef } from "./prs-get";
+import { readPrStateThrottled } from "./dbos-github-read";
 import {
   buildClaudeCodeTaskPrompt,
   resolveTaskRepoChoice,
@@ -123,13 +124,26 @@ export function buildSuperAgentTaskPrompt(
               : "Address this feedback.",
             "",
           ].join("\n")
-        : "",
+        : // A person re-delegated a task that already has an open PR. No
+          // feedback to lead with, but the sandbox booted on that PR's branch,
+          // so the default "commit on a new branch and open a pull request"
+          // below would contradict where the run actually is — and produce the
+          // second PR this pin exists to prevent.
+          opts?.pr
+          ? [
+              `This task already has an open pull request #${opts.pr.number} (${opts.pr.url}), and you are already on its branch.`,
+              `Continue that work: commit and push to update the SAME pull request — do NOT open a new one or start a new branch. If you find it already does everything the task asks, say so and stop rather than changing it.`,
+              "",
+            ].join("\n")
+          : "",
     "How to work:",
     "- First decide whether this task requires changing code in a repository. Some tasks (research, answering a question, planning) don't. If it doesn't, just do the work directly — don't load a repo or open a PR.",
     // A re-run's lead block above (reviewer feedback OR conflict resolution)
     // overrides this: only a FIRST attempt opens a new branch + PR; a re-run
     // checks out the existing PR's branch and pushes to it.
-    "- If it DOES need code changes: use the `load_repo` tool to load the relevant repository, then make the change, commit on a new branch, push, and open a pull request. Only then does a PR apply.",
+    opts?.pr
+      ? "- If it DOES need code changes: use the `load_repo` tool to load the relevant repository, make the change, then commit and push to the pull request named above."
+      : "- If it DOES need code changes: use the `load_repo` tool to load the relevant repository, then make the change, commit on a new branch, push, and open a pull request. Only then does a PR apply.",
     "- Prefer the GitHub tool to open the PR. If it errors or targets the wrong repo, fall back to `git push` + the GitHub REST API (the auth token is embedded in the `origin` URL).",
     "- If a dev server is running it hot-reloads your changes — don't restart it, hunt for its port, or run a full typecheck/build just to verify a small edit.",
     "- Change only what the task needs. Don't trace the definition of a pre-existing symbol that's incidental to your change — note it in one line and move on. Prefer one or two broad searches over many narrow retries.",
@@ -157,6 +171,33 @@ async function resolveRerunBranch(
   const pr = prs.find((p) => p.number === prNumber);
   if (!pr) return null;
   return fetchPrHeadRef(ctx, task.organizationId, pr).catch(() => null);
+}
+
+/**
+ * The task's own OPEN pull request, for a dispatch nobody named one for.
+ *
+ * Only a reviewer bounce passes `opts.pr`. A person re-delegating the card
+ * (`TASK_BOARD_ITEM_UPDATE`, `TASK_BOARD_ITEM_RERUN`) passes nothing, so the
+ * branch pin below never applied to the path people actually use — three cards
+ * grew a third pull request that way in one afternoon, each one the reviewer
+ * then rejected as obsolete against `main`.
+ *
+ * Open only, deliberately: `pickActivePr` falls back to the newest link when
+ * every PR reads closed, and resuming work on a merged or abandoned branch is
+ * worse than starting a fresh one. Reads go through the same throttled queue.
+ */
+async function openPrForTask(
+  ctx: StudioContext,
+  task: TaskBoardItem,
+): Promise<{ number: number; url: string } | undefined> {
+  const prs = await ctx.storage.taskBoard
+    .listPrs(task.id, task.organizationId)
+    .catch(() => []);
+  for (const pr of prs) {
+    const { state } = await readPrStateThrottled(task.organizationId, pr);
+    if (state === "open") return { number: pr.number, url: pr.url };
+  }
+  return undefined;
 }
 
 export async function enqueueSuperAgentForTask(
@@ -194,10 +235,22 @@ export async function enqueueSuperAgentForTask(
     // push updates the same PR. Best-effort: a null head ref (GitHub
     // unreachable, PR already closed/merged) falls back to today's behavior
     // rather than pinning a ref we can't confirm exists.
+    //
+    // Applies to a person re-delegating the card too, not just a reviewer
+    // bounce: only the bounce names a PR, and the human path is the one that
+    // kept forking (see `openPrForTask`).
+    const reusesPrBranch = getSettings().taskBoardRerunReusesPrBranch;
+    const pr =
+      opts?.pr ?? (reusesPrBranch ? await openPrForTask(ctx, task) : undefined);
     const pinnedRef =
-      getSettings().taskBoardRerunReusesPrBranch && opts?.pr
-        ? await resolveRerunBranch(ctx, task, opts.pr.number)
+      reusesPrBranch && pr
+        ? await resolveRerunBranch(ctx, task, pr.number)
         : null;
+    // The prompt must name the same PR the sandbox booted on. Only widened when
+    // the flag is on: naming a PR the run is NOT pinned to is the combination
+    // that produced the duplicates.
+    const promptOpts: SuperAgentPromptOpts | undefined =
+      pr && pr !== opts?.pr ? { ...opts, pr } : opts;
 
     // Sandbox-hosted claude-code takes every task that has a repo it could work
     // in — bound before dispatch when there's exactly one, otherwise chosen
@@ -213,7 +266,7 @@ export async function enqueueSuperAgentForTask(
         ...(opts?.runClass ? { runClass: opts.runClass } : {}),
         ...(pinnedRef ? { pinnedRef } : {}),
         prompt: buildClaudeCodeTaskPrompt(task, repo, {
-          ...opts,
+          ...promptOpts,
           // Names the candidates in the prompt so the run doesn't spend its first
           // step asking what exists.
           ...("choices" in choice ? { repoChoices: choice.choices } : {}),
@@ -226,7 +279,7 @@ export async function enqueueSuperAgentForTask(
       await enqueueAgentRunForTask(ctx, task, {
         title: `Super Agent: ${task.title}`,
         ...(opts?.runClass ? { runClass: opts.runClass } : {}),
-        prompt: buildSuperAgentTaskPrompt(task, opts),
+        prompt: buildSuperAgentTaskPrompt(task, promptOpts),
         temperature: 0.5,
         ...(pinnedRef ? { pinnedRef } : {}),
       });

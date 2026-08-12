@@ -232,6 +232,15 @@ export function buildClaudeCodeTaskPrompt(
         : "Address this feedback.",
       "",
     );
+  } else if (opts?.pr) {
+    // A person re-delegated a task that already has an open PR. No feedback to
+    // lead with, but the sandbox booted on that PR's branch, so "open a pull
+    // request" below would contradict where the run actually is.
+    lines.push(
+      `This task already has an open pull request #${opts.pr.number} (${opts.pr.url}), and you are already on its branch.`,
+      `Continue that work: commit and push to update the SAME pull request — do NOT open a new one. If it already does everything the task asks, say so and stop rather than changing it.`,
+      "",
+    );
   }
 
   lines.push(
