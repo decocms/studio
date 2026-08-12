@@ -76,7 +76,7 @@ export function ConnectionCard({
                   className={cn(
                     "transition-opacity",
                     !headerActionsAlwaysVisible &&
-                      "sm:opacity-0 sm:group-hover:opacity-100",
+                      "sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100",
                   )}
                   onClick={(e) => e.stopPropagation()}
                 >
