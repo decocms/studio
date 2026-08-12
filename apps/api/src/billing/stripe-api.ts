@@ -165,6 +165,12 @@ export async function createTopUpCheckoutSession(input: {
     input.currency,
     await getUsdToBrl(),
   );
+  const productId = getSettings().stripeTopupProductId;
+  const topupMetadata = {
+    kind: "topup",
+    orgId: input.organizationId,
+    creditCents,
+  };
   const label =
     input.currency === "brl"
       ? `Studio AI credits (R$ ${(input.amountCents / 100).toFixed(2)})`
@@ -182,17 +188,18 @@ export async function createTopUpCheckoutSession(input: {
           price_data: {
             currency: input.currency,
             unit_amount: chargeCents,
-            product_data: { name: label },
+            // Ad-hoc price, one fixed catalog Product — see stripeTopupProductId.
+            ...(productId
+              ? { product: productId }
+              : { product_data: { name: label } }),
           },
         },
       ],
       success_url: input.successUrl,
       cancel_url: input.cancelUrl,
-      metadata: {
-        kind: "topup",
-        orgId: input.organizationId,
-        creditCents,
-      },
+      // On the PaymentIntent too — the charge is what finance exports.
+      metadata: topupMetadata,
+      payment_intent_data: { metadata: topupMetadata },
     },
   });
   if (!session.url) throw new StripeApiError(500, "checkout session lacks url");

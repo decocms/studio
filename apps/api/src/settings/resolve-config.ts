@@ -305,6 +305,7 @@ export function resolveConfig(
     stripeWebhookSecret: envVars.STRIPE_WEBHOOK_SECRET,
     stripeSecretKey: envVars.STRIPE_SECRET_KEY,
     stripeOrgPriceId: envVars.STRIPE_ORG_PRICE_ID,
+    stripeTopupProductId: envVars.STRIPE_TOPUP_PRODUCT_ID,
     // Capped at 100: above that is a fat-fingered misconfig ("150" for "15")
     // that would silently more-than-double every top-up charge. 0 is valid —
     // a self-hosted deployment may want to waive the fee entirely.
