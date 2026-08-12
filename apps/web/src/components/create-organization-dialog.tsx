@@ -46,11 +46,16 @@ type CreateOrgFormData = z.infer<typeof createOrgSchema>;
 interface CreateOrganizationDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Called with the new org's slug on success, instead of the default
+   *  full-page redirect to `/${orgSlug}` — use this when the caller needs to
+   *  keep query-string context (e.g. commerce onboarding's `siteUrl`). */
+  onCreated?: (orgSlug: string) => void;
 }
 
 export function CreateOrganizationDialog({
   open,
   onOpenChange,
+  onCreated,
 }: CreateOrganizationDialogProps) {
   const t = useT();
   const form = useForm<CreateOrgFormData>({
@@ -85,6 +90,10 @@ export function CreateOrganizationDialog({
       return { orgSlug };
     },
     onSuccess: ({ orgSlug }) => {
+      if (onCreated) {
+        onCreated(orgSlug);
+        return;
+      }
       window.location.href = `/${orgSlug}`;
     },
   });
