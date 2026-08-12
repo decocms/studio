@@ -8,6 +8,7 @@ export const TaskBoardItemStatusSchema = z.enum([
   "in_progress",
   "in_review",
   "done",
+  "archived",
 ]);
 
 export const TaskBoardItemPrioritySchema = z.enum([

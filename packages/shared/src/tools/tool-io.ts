@@ -273,6 +273,7 @@ export interface StudioToolIO {
         | "todo"
         | "in_progress"
         | "in_review"
+        | "archived"
         | undefined;
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
       assigneeId?: string | null | undefined;
@@ -286,7 +287,13 @@ export interface StudioToolIO {
         organizationId: string;
         title: string;
         description: string | null;
-        status: "done" | "triage" | "todo" | "in_progress" | "in_review";
+        status:
+          | "done"
+          | "triage"
+          | "todo"
+          | "in_progress"
+          | "in_review"
+          | "archived";
         priority: "none" | "low" | "medium" | "high" | "urgent";
         assigneeId: string | null;
         assignedBy: string | null;
@@ -331,7 +338,13 @@ export interface StudioToolIO {
         organizationId: string;
         title: string;
         description: string | null;
-        status: "done" | "triage" | "todo" | "in_progress" | "in_review";
+        status:
+          | "done"
+          | "triage"
+          | "todo"
+          | "in_progress"
+          | "in_review"
+          | "archived";
         priority: "none" | "low" | "medium" | "high" | "urgent";
         assigneeId: string | null;
         assignedBy: string | null;
@@ -379,6 +392,7 @@ export interface StudioToolIO {
         | "todo"
         | "in_progress"
         | "in_review"
+        | "archived"
         | undefined;
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
       assigneeId?: string | null | undefined;
@@ -394,7 +408,13 @@ export interface StudioToolIO {
         organizationId: string;
         title: string;
         description: string | null;
-        status: "done" | "triage" | "todo" | "in_progress" | "in_review";
+        status:
+          | "done"
+          | "triage"
+          | "todo"
+          | "in_progress"
+          | "in_review"
+          | "archived";
         priority: "none" | "low" | "medium" | "high" | "urgent";
         assigneeId: string | null;
         assignedBy: string | null;
@@ -479,14 +499,26 @@ export interface StudioToolIO {
       reviewToken?: string | undefined;
     };
     output: {
-      status: "done" | "triage" | "todo" | "in_progress" | "in_review";
+      status:
+        | "done"
+        | "triage"
+        | "todo"
+        | "in_progress"
+        | "in_review"
+        | "archived";
       merged: boolean;
     };
   };
   TASK_BOARD_PROMOTE_TO_PRODUCTION: {
     input: { taskBoardItemId: string };
     output: {
-      status: "done" | "triage" | "todo" | "in_progress" | "in_review";
+      status:
+        | "done"
+        | "triage"
+        | "todo"
+        | "in_progress"
+        | "in_review"
+        | "archived";
       merged: boolean;
     };
   };

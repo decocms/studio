@@ -21,6 +21,10 @@ import {
   registerOrgRepoSyncWorkflow,
   setOrgRepoSyncRuntime,
 } from "@/file-storage/dbos-org-repo-sync";
+import {
+  registerTaskBoardArchiveSweepWorkflow,
+  setTaskBoardArchiveSweepRuntime,
+} from "@/tools/task-board/dbos-archive-sweep";
 import { getPublicUrl } from "@/core/server-constants";
 import { usesLocalObjectStorage } from "../tools/connection/dev-assets";
 import { DECO_STORE_URL, isDecoHostedMcp } from "@/core/deco-constants";
@@ -1506,6 +1510,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Per-org repo syncs: same DBOS-scheduled shape, work list from the DB.
   setOrgRepoSyncRuntime({ db: database.db });
 
+  // Hourly auto-archive of settled Done cards, one org leg per candidate org.
+  setTaskBoardArchiveSweepRuntime({ db: database.db });
+
   // ============================================================================
   // Automation Runtime — wire storage + streaming into the DBOS workflow
   // ============================================================================
@@ -1769,6 +1776,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerMonitoringRetentionWorkflow();
   registerPublicSetsSyncWorkflow();
   registerOrgRepoSyncWorkflow();
+  registerTaskBoardArchiveSweepWorkflow();
 
   const automationRunner: StudioContext["automationRunner"] = async (
     automationId,

@@ -812,6 +812,47 @@ export async function fetchPrLiveState(
   }
 }
 
+/**
+ * Just "is this PR merged?" — `null` when GitHub can't be reached, never read as
+ * merged by callers. Deliberately NOT `fetchPrLiveState`, which also fetches
+ * checks/preview extras (~5 calls per PR): the archive sweep reads every Done
+ * task's PRs in one go, and that multiplier is exactly what took out the GitHub
+ * App's rate limit once already (see `review-sweeper.ts`).
+ */
+export async function fetchPrMerged(
+  ctx: StudioContext,
+  orgId: string,
+  pr: TaskBoardItemPrRef,
+): Promise<boolean | null> {
+  const conn = await resolveGithubConnection(ctx, orgId, pr.connectionId, {
+    owner: pr.repoOwner,
+    name: pr.repoName,
+  });
+  if (!conn) return null;
+  const client = await clientFromConnection(conn, ctx, true);
+  const pending: Promise<void>[] = [];
+  try {
+    const obj = await cachedPrRead(
+      client,
+      conn.id,
+      "pull_request_read",
+      {
+        method: "get",
+        owner: pr.repoOwner,
+        repo: pr.repoName,
+        pullNumber: pr.number,
+      },
+      `${prLabel(pr)} (merged)`,
+      pending,
+    );
+    return typeof obj?.merged === "boolean" ? obj.merged : null;
+  } catch {
+    return null;
+  } finally {
+    void Promise.allSettled(pending).then(() => client.close().catch(() => {}));
+  }
+}
+
 export const TASK_BOARD_ITEM_PRS_GET = defineTool({
   name: "TASK_BOARD_ITEM_PRS_GET",
   description:
@@ -916,10 +957,10 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
     // ponytail: reconcile-on-view — there's no GitHub PR webhook, so a merged PR
     // only advances the card to Done when someone opens this modal. Upgrade path:
     // a `pull_request` webhook calling the same forward move. Best-effort; a
-    // failure must never break the read. Forward-only (never un-does Done).
+    // failure must never break the read. Forward-only: never un-does Done or Archived.
     if (prs.some((p) => p.merged)) {
       try {
-        if (item && item.status !== "done") {
+        if (item && item.status !== "done" && item.status !== "archived") {
           const updated = await ctx.storage.taskBoard.update(
             taskBoardItemId,
             organizationId,

@@ -164,7 +164,8 @@ export function HomeTasks({ afterSummary }: { afterSummary?: ReactNode }) {
   const [createOpen, setCreateOpen] = useState(false);
 
   // Keep the home surface usable if the task query fails.
-  const tasks = error ? [] : items;
+  // Archived tasks live only in the board's Archived lane, not on home.
+  const tasks = (error ? [] : items).filter((t) => t.status !== "archived");
   const sorted = [...tasks].sort((a, b) =>
     (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""),
   );

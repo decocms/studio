@@ -1,5 +1,6 @@
 import {
   AlertCircle,
+  Archive,
   CheckCircle,
   Circle,
   Eye,
@@ -125,7 +126,15 @@ export const STATUSES: TaskBoardItemStatus[] = [
   "in_progress",
   "in_review",
   "done",
+  "archived",
 ];
+
+/**
+ * Lanes that don't earn a board column by default — they sit collapsed under
+ * "Hidden columns" until shown. They stay in `STATUSES`, so "Move to", drag
+ * targets and status validation still know about them.
+ */
+export const HIDDEN_STATUSES: TaskBoardItemStatus[] = ["archived"];
 
 export const STATUS_CONFIG: Record<
   TaskBoardItemStatus,
@@ -155,6 +164,11 @@ export const STATUS_CONFIG: Record<
     labelKey: "taskBoard.config.statusDone",
     icon: CheckCircle,
     iconClassName: "text-success",
+  },
+  archived: {
+    labelKey: "taskBoard.config.statusArchived",
+    icon: Archive,
+    iconClassName: "text-muted-foreground",
   },
 };
 
