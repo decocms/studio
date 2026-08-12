@@ -59,7 +59,7 @@ export function ReviewSettings() {
 }
 
 /** One org flag as a switch. Shared with the other org-settings sections. */
-function FlagToggle({
+export function FlagToggle({
   flag,
   icon,
   titleKey,

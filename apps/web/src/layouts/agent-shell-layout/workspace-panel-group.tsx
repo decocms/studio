@@ -35,6 +35,9 @@ import { CmsTour } from "@/components/cms-tour/cms-tour";
 import { headerLayout } from "./header-layout";
 import { VirtualMcpHeaderInfo } from "@/views/virtual-mcp/header-info";
 import { ChatModeRow } from "@/components/chat/pills/chat-mode-row";
+import { TaskPill } from "@/components/chat/pills/task-pill";
+import { useTaskBasedFlow } from "@/hooks/use-organization-settings";
+import { getActiveGithubRepo } from "@/lib/github-repo";
 import { useOptionalChatTask } from "@/components/chat/context";
 import {
   AgentSwitcherCrumb,
@@ -157,8 +160,21 @@ export function WorkspacePanelGroup({
   // sandbox/preview runs on), shared by chat and preview alike. Renders null for
   // agents without a connected GitHub repo. Reads the branch from the task
   // context (this tree is inside Chat.ActiveTaskProvider).
+  //
+  // Task-based flow hides Git: the branch selector becomes a task selector —
+  // names the task you're on and switches between your tasks (each a branch
+  // under the hood).
+  const taskBasedFlow = useTaskBasedFlow();
   const currentBranch = useOptionalChatTask()?.currentBranch ?? null;
-  const branchSelector = (
+  // Both selectors are only meaningful for repo-bound agents (a site with a
+  // GitHub repo) — mirror ChatModeRow's own null-for-no-repo guard so the task
+  // pill doesn't show on the Super Agent / any repo-less agent.
+  const repoBound = !!getActiveGithubRepo(entity)?.connectionId;
+  const branchSelector = taskBasedFlow ? (
+    repoBound ? (
+      <TaskPill virtualMcpId={virtualMcpId} />
+    ) : null
+  ) : (
     <ChatModeRow virtualMcp={entity} currentBranch={currentBranch} />
   );
 

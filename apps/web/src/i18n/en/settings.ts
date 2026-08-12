@@ -464,6 +464,12 @@ export const settings = {
   "settings.review.autoAssignReportTasksDescription":
     "Tasks created from a report are delegated to the Super Agent automatically instead of landing unassigned.",
   "settings.review.updateError": "Couldn't update the setting",
+  "settings.experimental.title": "Experimental",
+  "settings.experimental.description":
+    "Opt-in previews still under construction. Toggle them per organization to try them out.",
+  "settings.experimental.taskBasedFlowTitle": "Task-based flow",
+  "settings.experimental.taskBasedFlowDescription":
+    "Operate entirely in terms of Tasks and hide Git details (branches, PRs, sync). Every change starts a new Task.",
   "settings.orgRoleDetail.addMember": "Add Member",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Add members to grant them the configured permissions.",

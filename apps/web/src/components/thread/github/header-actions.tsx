@@ -20,6 +20,9 @@ import {
 import { useChatStream } from "../../chat/chat-context.tsx";
 import { useChatTask } from "../../chat/index";
 import { usePanelActions } from "@/layouts/shell-layout";
+import { useTaskBasedFlow } from "@/hooks/use-organization-settings";
+import { useTaskForThread } from "@/hooks/use-task-for-thread";
+import { useTaskBoardItemActions } from "@/hooks/use-task-board-items";
 import { squashMergePullRequest } from "./github-pr-api.ts";
 import { MergeSplitButton } from "./merge-split-button.tsx";
 import { PublishDialog } from "./publish-dialog.tsx";
@@ -108,7 +111,14 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
   const vm = useVirtualMCP(virtualMcpId);
-  const { currentBranch: branch, setCurrentTaskBranch } = useChatTask();
+  // Task-based flow hides Git vocabulary: sync (rebase) becomes invisible/auto.
+  const taskBasedFlow = useTaskBasedFlow();
+  const { currentBranch: branch, setCurrentTaskBranch, taskId } = useChatTask();
+  // The board task this thread belongs to — the CMS opens PRs via a direct API
+  // call (outside any run), so the run-based PR hooks never link/advance it. We
+  // do it from here when a PR opens (task-based flow only).
+  const boardTaskId = useTaskForThread(taskId);
+  const taskBoardActions = useTaskBoardItemActions();
   const chat = useChatStream();
   const { openSidePanel } = usePanelActions();
   const [publishOpen, setPublishOpen] = useState(false);
@@ -305,6 +315,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   // anything a teammate pushed straight to this branch), rebase onto the
   // latest base, push.
   const showSync =
+    !taskBasedFlow &&
     vm?.metadata?.syncButtonEnabled === true &&
     Boolean(githubRepo) &&
     Boolean(githubHeadBranch);
@@ -451,6 +462,22 @@ export function HeaderActions({ virtualMcpId }: Props) {
           }
           openPullRequest={pr?.state === "open" ? pr : null}
           onPullRequestChanged={refreshPrState}
+          onPrOpened={
+            taskBasedFlow && boardTaskId
+              ? (opened) =>
+                  taskBoardActions.update.mutate({
+                    id: boardTaskId,
+                    status: "in_review",
+                    linkPr: {
+                      url: opened.url,
+                      prNumber: opened.number,
+                      repoOwner: githubRepo.owner,
+                      repoName: githubRepo.name,
+                      connectionId: githubRepo.connectionId ?? null,
+                    },
+                  })
+              : undefined
+          }
           onPublished={switchToFreshBranch}
         />
       )}

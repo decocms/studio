@@ -161,6 +161,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "When a report import creates a task board item without an assignee, delegate it to the Super Agent automatically instead of leaving it unassigned.",
     ),
+  taskBasedFlow: z
+    .boolean()
+    .optional()
+    .describe(
+      "Task-based flow: the UI operates entirely in terms of Tasks and hides all Git vocabulary (branches, PRs, merge, sync, staging/main). Every change is a new Task; branches remain an implementation detail under the hood. Targets non-technical users.",
+    ),
 });
 
 export type OrgFlags = z.infer<typeof OrgFlagsSchema>;

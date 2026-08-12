@@ -153,6 +153,34 @@ describe("reports-task guards", () => {
     expect(cleared.item.repo).toBeNull();
   });
 
+  // The CMS submit-for-review path opens the PR directly (no run), so it links the PR + advances via UPDATE — the only place these two effects happen together off a run.
+  it("links a PR and advances to In Review via UPDATE (CMS submit-for-review)", async () => {
+    const task = await taskBoard.create({
+      organizationId: ORG,
+      title: "cms review",
+      status: "in_progress",
+      by: USER,
+    });
+    const pr = {
+      url: "https://github.com/deco-sites/casaevideo/pull/7",
+      prNumber: 7,
+      repoOwner: "deco-sites",
+      repoName: "casaevideo",
+    };
+    const res = await TASK_BOARD_ITEM_UPDATE.handler(
+      { id: task.id, status: "in_review", linkPr: pr },
+      ctx,
+    );
+    expect(res.item.status).toBe("in_review");
+    expect(
+      (await taskBoard.listPrs(task.id, ORG)).map((p) => p.number),
+    ).toEqual([7]);
+
+    // Idempotent — re-linking the same PR (a retry) does not duplicate.
+    await TASK_BOARD_ITEM_UPDATE.handler({ id: task.id, linkPr: pr }, ctx);
+    expect(await taskBoard.listPrs(task.id, ORG)).toHaveLength(1);
+  });
+
   it("the paywall fires BEFORE the delegation write (no delegated-but-idle task)", async () => {
     const config = {
       enforced: true,

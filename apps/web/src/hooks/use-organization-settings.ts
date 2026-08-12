@@ -241,6 +241,15 @@ export function useReportsOnly(): boolean {
 }
 
 /**
+ * Task-based flow: the UI operates entirely in terms of Tasks and hides all Git
+ * vocabulary (branches, PRs, merge, sync). Non-blocking read — used for cosmetic
+ * gating where a brief pre-resolution render is harmless.
+ */
+export function useTaskBasedFlow(): boolean {
+  return useOrgFlag("taskBasedFlow");
+}
+
+/**
  * Read one org flag from the `flags` bag (see OrgFlagsSchema in
  * @decocms/shared/organization/schema — the single place flags are defined).
  * Unset and NULL both read as `false`. Non-blocking, cosmetic-gating only.

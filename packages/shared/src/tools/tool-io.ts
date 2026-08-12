@@ -387,6 +387,15 @@ export interface StudioToolIO {
       sortOrder?: number | undefined;
       tagIds?: string[] | undefined;
       linkThreadId?: string | undefined;
+      linkPr?:
+        | {
+            url: string;
+            prNumber: number;
+            repoOwner: string;
+            repoName: string;
+            connectionId?: string | null | undefined;
+          }
+        | undefined;
     };
     output: {
       item: {

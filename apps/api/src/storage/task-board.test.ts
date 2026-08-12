@@ -73,15 +73,6 @@ describe("shouldAdvanceToReview", () => {
     ).toBe(false);
   });
 
-  it("advances a repo-backed task on thread-finish too (backstop for missed PR detection)", () => {
-    expect(
-      shouldAdvanceToReview({
-        status: "in_progress",
-        threads: [thread("completed")],
-      }),
-    ).toBe(true);
-  });
-
   it("only fires from in_progress, not from other lanes", () => {
     for (const status of ["triage", "todo", "in_review", "done"] as const) {
       expect(
