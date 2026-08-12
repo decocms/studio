@@ -7,6 +7,7 @@ import { AuthEntry } from "@/components/auth-entry";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { AuthSplitLayout } from "@/components/auth-split-layout";
 import { OrganizationChoice } from "@/components/organization-choice";
+import { CreateOrganizationDialog } from "@/components/create-organization-dialog";
 import { ScrollReveal } from "@/components/scroll-reveal";
 import {
   authClient,
@@ -351,6 +352,7 @@ function CommerceOnboardingContent({
   );
   const [settledEnsureResult, setSettledEnsureResult] =
     useState<EnsureOrganizationResponse | null>(null);
+  const [creatingOrg, setCreatingOrg] = useState(false);
 
   const activeOrganizations: CommerceOrganization[] =
     organizationsQuery.data?.map((org: CommerceOrganization) => ({
@@ -443,7 +445,7 @@ function CommerceOnboardingContent({
               "routes.commerceOnboarding.selectWhereCommerceContinues",
             )}
           />
-          <ScrollReveal className="-mx-1 max-h-[60vh] overflow-y-auto px-1">
+          <ScrollReveal className="-mx-1 -my-1 max-h-[60vh] overflow-y-auto px-1 py-1">
             <OrganizationChoice
               organizations={activeOrganizations}
               selectLabel={t("routes.commerceOnboarding.authCopy.continue")}
@@ -455,9 +457,15 @@ function CommerceOnboardingContent({
                   search: { org: organization.slug, siteUrl },
                 })
               }
+              onCreateNew={() => setCreatingOrg(true)}
+              createNewLabel={t("routes.commerceOnboarding.createNewOrg")}
             />
           </ScrollReveal>
         </div>
+        <CreateOrganizationDialog
+          open={creatingOrg}
+          onOpenChange={setCreatingOrg}
+        />
       </CommerceOnboardingLayout>
     );
   }
@@ -500,7 +508,7 @@ function CommerceOnboardingContent({
             title={t("routes.commerceOnboarding.chooseOrg")}
             description={t("routes.commerceOnboarding.emailAccessMultipleOrgs")}
           />
-          <ScrollReveal className="-mx-1 max-h-[60vh] overflow-y-auto px-1">
+          <ScrollReveal className="-mx-1 -my-1 max-h-[60vh] overflow-y-auto px-1 py-1">
             <OrganizationChoice
               organizations={ensureResult.organizations}
               domain={ensureResult.domain ?? undefined}
@@ -512,9 +520,15 @@ function CommerceOnboardingContent({
                   search: { org: slug, siteUrl },
                 });
               }}
+              onCreateNew={() => setCreatingOrg(true)}
+              createNewLabel={t("routes.commerceOnboarding.createNewOrg")}
             />
           </ScrollReveal>
         </div>
+        <CreateOrganizationDialog
+          open={creatingOrg}
+          onOpenChange={setCreatingOrg}
+        />
       </CommerceOnboardingLayout>
     );
   }
