@@ -125,6 +125,14 @@ export function setMcpOAuthBrowserAdapter(
 const ADAPTER_POLL_INTERVAL_MS = 600;
 
 /**
+ * Ceiling for the `initialize` probe in `isConnectionAuthenticated`. Without
+ * it, a hung MCP server left the caller waiting on the browser's own fetch
+ * timeout (which can be minutes), showing a stuck "checking connection" UI
+ * instead of a clear error.
+ */
+const CONNECTION_CHECK_TIMEOUT_MS = 15_000;
+
+/**
  * Options for the MCP OAuth provider
  */
 export interface McpOAuthProviderOptions {
@@ -887,6 +895,7 @@ export async function isConnectionAuthenticated({
           },
         },
       }),
+      signal: AbortSignal.timeout(CONNECTION_CHECK_TIMEOUT_MS),
     });
 
     // Extract connection ID for OAuth token status check
@@ -948,11 +957,14 @@ export async function isConnectionAuthenticated({
     };
   } catch (error) {
     console.error("[isConnectionAuthenticated] Error:", error);
+    const isTimeout = error instanceof Error && error.name === "TimeoutError";
     return {
       isAuthenticated: false,
       supportsOAuth: false,
       hasOAuthToken: false,
-      error: (error as Error).message,
+      error: isTimeout
+        ? `Connection check timed out after ${CONNECTION_CHECK_TIMEOUT_MS / 1000}s`
+        : (error as Error).message,
     };
   }
 }
