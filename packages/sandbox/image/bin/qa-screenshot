@@ -9,7 +9,12 @@
  * here at all.
  *
  * Usage:
- *   qa-screenshot <url> <outfile> [--mobile] [--full]
+ *   qa-screenshot <url> <outfile> [--mobile] [--full] [--selector=<css>]
+ *
+ * Default framing is the top viewport. `--full` captures the whole scrollable
+ * page (clipped at a height ceiling). `--selector=<css>` captures just that one
+ * element (scrolled into view) — a focused before/after of the affected
+ * component instead of the whole page.
  *
  * `--mobile` emulates a phone: viewport, touch, AND the user-agent — many sites
  * pick their layout from the UA server-side, so a narrowed desktop returns
@@ -87,14 +92,28 @@ async function settleLazyContent(page) {
 
 async function main() {
   const args = process.argv.slice(2);
-  const flags = new Set(args.filter((a) => a.startsWith("--")));
-  const [url, outfile] = args.filter((a) => !a.startsWith("--"));
+  const opts = {};
+  const positional = [];
+  for (const a of args) {
+    if (a.startsWith("--")) {
+      const [k, ...v] = a.slice(2).split("=");
+      opts[k] = v.length ? v.join("=") : true;
+    } else positional.push(a);
+  }
+  const [url, outfile] = positional;
   if (!url || !outfile) {
-    console.error("usage: qa-screenshot <url> <outfile> [--mobile] [--full]");
+    console.error(
+      "usage: qa-screenshot <url> <outfile> [--mobile] [--full] [--selector=<css>]",
+    );
     process.exit(2);
   }
-  const device = flags.has("--mobile") ? DEVICES.mobile : DEVICES.desktop;
-  const fullPage = flags.has("--full");
+  const mobile = opts.mobile === true;
+  const device = mobile ? DEVICES.mobile : DEVICES.desktop;
+  const fullPage = opts.full === true;
+  // Target a specific element (e.g. `--selector='[data-section=hero]'`) for a
+  // focused before/after of just the affected component instead of the whole
+  // page or the top viewport.
+  const selector = typeof opts.selector === "string" ? opts.selector : null;
   const type = /\.jpe?g$/i.test(outfile) ? "jpeg" : "png";
 
   // --no-sandbox: the container drops all capabilities, so Chromium's own
@@ -124,31 +143,46 @@ async function main() {
     // 1280x800, and on a mobile context the width was wrong too). Resizing is
     // the only form that actually produces the requested pixels.
     let truncated = 0;
-    if (fullPage) {
-      const cssHeight = await page.evaluate(
-        () => document.documentElement.scrollHeight,
-      );
-      const maxCss = Math.floor(MAX_IMAGE_HEIGHT / device.deviceScaleFactor);
-      if (cssHeight > maxCss) {
-        truncated = cssHeight - maxCss;
-        await page.setViewportSize({
-          width: device.viewport.width,
-          height: maxCss,
-        });
+    if (selector) {
+      // Just the targeted element: Playwright scrolls it into view and clips to
+      // its bounding box, so `--full` and the height ceiling don't apply.
+      const el = page.locator(selector).first();
+      await el.scrollIntoViewIfNeeded({ timeout: 10000 });
+      await el.screenshot({
+        path: outfile,
+        type,
+        ...(type === "jpeg" ? { quality: 80 } : {}),
+      });
+    } else {
+      if (fullPage) {
+        const cssHeight = await page.evaluate(
+          () => document.documentElement.scrollHeight,
+        );
+        const maxCss = Math.floor(MAX_IMAGE_HEIGHT / device.deviceScaleFactor);
+        if (cssHeight > maxCss) {
+          truncated = cssHeight - maxCss;
+          await page.setViewportSize({
+            width: device.viewport.width,
+            height: maxCss,
+          });
+        }
       }
+      await page.screenshot({
+        path: outfile,
+        type,
+        ...(type === "jpeg" ? { quality: 80 } : {}),
+        fullPage: fullPage && truncated === 0,
+      });
     }
 
-    await page.screenshot({
-      path: outfile,
-      type,
-      ...(type === "jpeg" ? { quality: 80 } : {}),
-      fullPage: fullPage && truncated === 0,
-    });
-
     const scale = `${device.viewport.width}x${device.viewport.height} @${device.deviceScaleFactor}x`;
+    const framed = selector
+      ? `element ${selector}`
+      : fullPage
+        ? "full page"
+        : "viewport";
     console.log(
-      `saved ${outfile} (${flags.has("--mobile") ? "mobile" : "desktop"} ${scale}` +
-        `${fullPage ? ", full page" : ""})` +
+      `saved ${outfile} (${mobile ? "mobile" : "desktop"} ${scale}, ${framed})` +
         (truncated
           ? `\nNOTE: clipped — ${truncated}px of page height omitted to stay under the ${MAX_IMAGE_HEIGHT}px image limit.`
           : ""),
