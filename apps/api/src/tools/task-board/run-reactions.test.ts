@@ -1,10 +1,13 @@
 import { describe, expect, it } from "bun:test";
 import {
   capturePrForRun,
+  handTaskToHuman,
   isPrCreateBashCommand,
   isPrCreateMcpTool,
   resolveAdvanceTargets,
 } from "./run-reactions";
+import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import type { TaskBoardItem } from "@/storage/types";
 
 type LinkPrCall = {
   taskBoardItemId: string;
@@ -188,5 +191,65 @@ describe("isPrCreateBashCommand", () => {
     expect(
       isPrCreateBashCommand("curl https://api.github.com/repos/o/r/pulls"),
     ).toBe(false);
+  });
+});
+
+function makeItem(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
+  return {
+    id: "item-1",
+    organizationId: "org-1",
+    title: "t",
+    description: null,
+    status: "in_review",
+    priority: "medium",
+    assigneeId: SUPER_AGENT_ASSIGNEE_ID,
+    assignedBy: null,
+    repo: null,
+    dueDate: null,
+    sortOrder: 0,
+    retryAttempts: 0,
+    threads: [],
+    tags: [],
+    createdBy: "system",
+    createdAt: "now",
+    updatedBy: "system",
+    updatedAt: "now",
+    ...overrides,
+  };
+}
+
+describe("handTaskToHuman", () => {
+  it("records the handover when unassignSuperAgent wins the race", async () => {
+    const activityCalls: unknown[] = [];
+    const ctx = {
+      storage: {
+        taskBoard: {
+          unassignSuperAgent: async () => makeItem({ assigneeId: null }),
+          recordActivity: async (p: unknown) => {
+            activityCalls.push(p);
+          },
+        },
+      },
+    } as never;
+    const handed = await handTaskToHuman(ctx, makeItem(), "burned retries");
+    expect(handed).toBe(true);
+    expect(activityCalls).toHaveLength(1);
+  });
+
+  it("does not record activity when a concurrent reassignment already won", async () => {
+    const activityCalls: unknown[] = [];
+    const ctx = {
+      storage: {
+        taskBoard: {
+          unassignSuperAgent: async () => null,
+          recordActivity: async (p: unknown) => {
+            activityCalls.push(p);
+          },
+        },
+      },
+    } as never;
+    const handed = await handTaskToHuman(ctx, makeItem(), "burned retries");
+    expect(handed).toBe(false);
+    expect(activityCalls).toHaveLength(0);
   });
 });

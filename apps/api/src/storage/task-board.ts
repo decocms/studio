@@ -1191,6 +1191,40 @@ export class TaskBoardStorage {
   }
 
   /**
+   * Atomically hand a task from the Super Agent to a human: clear
+   * `assigneeId` ONLY if it's still the Super Agent, returning the updated
+   * item, or null if it already changed. `handTaskToHuman`'s caller re-checks
+   * a stale, previously-read `item.assigneeId` before calling this — several
+   * dead-end paths (a bounce limit, a burned reviewer retry, a PR-less card)
+   * can race to hand off the SAME card, and a human can reassign it away from
+   * the Super Agent in between. Without this fence, a plain `update()` would
+   * stomp that human's reassignment back to null. Same conditional-UPDATE
+   * pattern as `claimInReviewSuperAgentSlot`.
+   */
+  async unassignSuperAgent(
+    id: string,
+    organizationId: string,
+    by: string,
+  ): Promise<TaskBoardItem | null> {
+    const row = await this.db
+      .updateTable("task_board_items")
+      .set({
+        assignee_id: null,
+        updated_by: by,
+        updated_at: new Date().toISOString(),
+      })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .where("assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID)
+      .returningAll()
+      .executeTakeFirst();
+    if (!row) return null;
+    const item = this.itemFromDbRow(row);
+    await this.attachRefs([item], organizationId);
+    return item;
+  }
+
+  /**
    * Populate each item's `threads` and `tags` — one transaction, so a card
    * can't read its threads from before a concurrent edit and its tags from
    * after.
