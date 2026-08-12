@@ -392,6 +392,18 @@ test.describe("decofile API", () => {
       expect(anonBody.token).toBeUndefined();
       expect(anonBody["Hero"]).toEqual(heroBlock);
 
+      // A second GET of the same head must be BYTE-identical — the merged
+      // document is cached and served as stored bytes, never re-parsed or
+      // re-serialized (a serialization drift would break preview-side ETag
+      // and content diffing).
+      const secondRead = await anon.get(
+        `${url}?token=${encodeURIComponent(token)}`,
+      );
+      expect(secondRead.status()).toBe(200);
+      expect((await secondRead.body()).equals(await withToken.body())).toBe(
+        true,
+      );
+
       // Anonymous with a garbage token: 401.
       const garbage = await anon.get(`${url}?token=garbage.garbage`);
       expect(garbage.status()).toBe(401);
@@ -404,6 +416,54 @@ test.describe("decofile API", () => {
       await ctx.dispose();
       await anon.dispose();
       await outsider.dispose();
+    }
+  });
+
+  test("cold read of a many-block repo succeeds via the blob fallback (the stub serves no tarballs)", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const user = await signUpViaApi(ctx);
+      const owner = uniqueOwner();
+      const repo = "site";
+
+      // Above the server's cold-read threshold (50 cache-missing blobs) the
+      // API prefers ONE tarball download over per-blob fetches. The stub has
+      // no tarball endpoint, so this read exercises the fallback: tarball
+      // 404s, the server degrades to bounded per-blob fetches, and the full
+      // document still comes back. (The tar-subprocess happy path cannot run
+      // against the stub; it is covered by the live smoke against a real
+      // repo.) Note the smaller repos in the other tests never cross the
+      // threshold, so this is the only test that reaches the tarball branch.
+      const blockFor = (i: number): Record<string, unknown> => ({
+        __resolveType: `site/sections/Block${i}.tsx`,
+        n: i,
+      });
+      const files: Record<string, string> = {};
+      for (let i = 0; i < 60; i++) {
+        files[`.deco/blocks/Block${i}.json`] = blockFileContent(blockFor(i));
+      }
+      await seedStubRepo(ctx, {
+        owner,
+        repo,
+        defaultBranch: "main",
+        branches: { main: { files } },
+      });
+      const project = await createFastPreviewProject(ctx, user.orgSlug, {
+        owner,
+        repo,
+      });
+
+      const res = await ctx.get(decofileUrl(project, "main"));
+      expect(res.status()).toBe(200);
+      const body = (await res.json()) as DecofileGetBody;
+      expect(Object.keys(body.decofile).length).toBe(60);
+      expect(body.decofile["Block0"]).toEqual(blockFor(0));
+      expect(body.decofile["Block42"]).toEqual(blockFor(42));
+      expect(body.decofile["Block59"]).toEqual(blockFor(59));
+    } finally {
+      await ctx.dispose();
     }
   });
 

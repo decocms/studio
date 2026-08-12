@@ -435,6 +435,9 @@ async function handleRepos(
         mode: "100644",
         type: "blob",
         sha: blobSha,
+        // GitHub returns the blob byte size for blob entries; the decofile
+        // cold-read path pre-validates tarball downloads against it.
+        size: Buffer.byteLength(repo.blobs.get(blobSha) ?? "", "utf8"),
       })),
     });
     return;

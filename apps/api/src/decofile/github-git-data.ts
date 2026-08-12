@@ -32,7 +32,17 @@ function githubApiBaseUrl(): string {
  * caller GitHub itself would refuse.
  */
 const ETAG_CACHE_MAX = 512;
-const etagCache = new Map<string, { etag: string; body: unknown }>();
+/** Byte budget across all stored bodies (approximated as the JSON.stringify
+ * length, computed once at insert). Primary bound; entry count is secondary. */
+const ETAG_CACHE_MAX_BYTES = 8 * 1024 * 1024;
+/** Bodies over this are not cached at all — one huge response must not evict
+ * the whole working set. */
+const ETAG_CACHE_MAX_BODY_BYTES = 256 * 1024;
+const etagCache = new Map<
+  string,
+  { etag: string; body: unknown; bytes: number }
+>();
+let etagCacheBytes = 0;
 
 function etagCacheable(method: string, path: string): boolean {
   return (
@@ -43,12 +53,31 @@ function etagCacheable(method: string, path: string): boolean {
   );
 }
 
-function etagCachePut(url: string, etag: string, body: unknown): void {
+function etagCacheDelete(url: string): void {
+  const existing = etagCache.get(url);
+  if (!existing) return;
   etagCache.delete(url);
-  etagCache.set(url, { etag, body });
-  if (etagCache.size > ETAG_CACHE_MAX) {
+  etagCacheBytes -= existing.bytes;
+}
+
+function etagCachePut(url: string, etag: string, body: unknown): void {
+  let bytes: number;
+  try {
+    bytes = JSON.stringify(body)?.length ?? 0;
+  } catch {
+    return; // unserializable body — don't cache
+  }
+  etagCacheDelete(url);
+  if (bytes > ETAG_CACHE_MAX_BODY_BYTES) return; // stale entry already dropped
+  etagCache.set(url, { etag, body, bytes });
+  etagCacheBytes += bytes;
+  while (
+    etagCacheBytes > ETAG_CACHE_MAX_BYTES ||
+    etagCache.size > ETAG_CACHE_MAX
+  ) {
     const oldest = etagCache.keys().next().value;
-    if (oldest !== undefined) etagCache.delete(oldest);
+    if (oldest === undefined) break;
+    etagCacheDelete(oldest);
   }
 }
 
@@ -69,6 +98,9 @@ export interface TreeEntry {
   mode: string;
   type: "blob" | "tree" | "commit";
   sha: string;
+  /** Blob byte size — GitHub returns it for blob entries (absent for
+   * trees/commits). Feeds the cold-read tarball pre-validation. */
+  size?: number;
 }
 
 /** Tree write entry — `sha: null` deletes the path (Git Data API contract). */
@@ -90,11 +122,14 @@ export interface GitDataClient {
   getDefaultBranch(): Promise<string>;
   getHeadSha(branch: string): Promise<string>;
   /**
-   * Gzipped tar of the repo at `ref` — ONE request for every file, vs one
-   * blob request per block. The preferred cold-read path; callers fall back
-   * to tree+blob reads when the server doesn't support it (the e2e stub).
+   * Gzipped tar of the repo at `ref`, as a stream — ONE request for every
+   * file, vs one blob request per block. The preferred cold-read path. The
+   * body is NEVER buffered here (golden rule 1: the archive must not touch
+   * the JS heap); the caller pipes it straight into a `tar` subprocess.
+   * Callers fall back to tree+blob reads when the server doesn't support it
+   * (the e2e stub) or the download/extraction fails.
    */
-  getTarball(ref: string): Promise<Uint8Array>;
+  getTarballStream(ref: string): Promise<ReadableStream<Uint8Array>>;
   getCommitTreeSha(commitSha: string): Promise<string>;
   getTreeRecursive(treeSha: string): Promise<TreeEntry[]>;
   getBlobText(blobSha: string): Promise<string>;
@@ -218,9 +253,11 @@ export function createGitDataClient(params: {
       return json.object.sha;
     },
 
-    async getTarball(ref) {
+    async getTarballStream(ref) {
       // Redirects to codeload; fetch follows them. Longer deadline — this is
-      // one multi-MB download instead of hundreds of small calls.
+      // one multi-MB download instead of hundreds of small calls. The signal
+      // covers the whole body, so a stalled download aborts the stream and
+      // the consumer's tar pipeline fails over to per-blob fetches.
       const path = `${repoBase}/tarball/${encodeRefPath(ref)}`;
       const res = await fetch(`${githubApiBaseUrl()}${path}`, {
         headers: {
@@ -233,7 +270,10 @@ export function createGitDataClient(params: {
         const text = await res.text().catch(() => "");
         throw new GitHubApiError(res.status, "GET", path, text.slice(0, 300));
       }
-      return new Uint8Array(await res.arrayBuffer());
+      if (!res.body) {
+        throw new GitHubApiError(502, "GET", path, "tarball had no body");
+      }
+      return res.body;
     },
 
     async getCommitTreeSha(commitSha) {

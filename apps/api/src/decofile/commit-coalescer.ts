@@ -138,7 +138,9 @@ async function commitBatch(batch: Batch): Promise<string> {
       const aliases = aliasPathsForKey(entries, key);
       const content = `${JSON.stringify(value, null, 2)}\n`;
       const blobSha = await client.createBlob(content);
-      primeBlobCache(client.owner, client.repo, blobSha, content);
+      // Write-through to the disk store (fail-open) so the read after this
+      // save never re-fetches content the replica already has in hand.
+      await primeBlobCache(client.owner, client.repo, blobSha, content);
       // Land on the existing on-disk spelling (a differently-encoded stem would
       // otherwise become a duplicate sibling); collapse extra aliases.
       const target =

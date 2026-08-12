@@ -1,7 +1,20 @@
-import { mergeBlocks, decodeUntilStable } from "@decocms/shared/decofile";
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { decodeUntilStable, mergeBlocks } from "@decocms/shared/decofile";
+import type { Counter } from "@opentelemetry/api";
+import { meter } from "../observability";
+import {
+  getBlob,
+  getMerged,
+  makeScratchDir,
+  putBlob,
+  putMerged,
+  removeScratchDir,
+} from "./disk-cache";
 import type { GitDataClient, TreeEntry } from "./github-git-data";
 import { GitHubApiError } from "./github-git-data";
-import { extractTarGz } from "./tar";
+import { createSingleFlight } from "./single-flight";
+import { extractBlocksFromTarball } from "./tar-extract";
 
 /**
  * Branch head sha, creating the branch from the default branch's head when it
@@ -34,21 +47,10 @@ export async function resolveOrCreateHead(
 /**
  * Read model for the sandbox-less decofile: the branch head IS the draft, so
  * the merged document is fully determined by (repo, commit sha) and cached by
- * it. Content-addressed → a hit is always correct; a small cap bounds memory
- * (each entry is a multi-MB string).
+ * it — on disk (see disk-cache.ts), content-addressed, so a hit is always
+ * correct and survives restarts. The OS page cache keeps hot entries at
+ * memory speed without an in-heap copy.
  */
-const MERGED_CACHE_MAX = 20;
-const mergedCache = new Map<string, string>();
-
-/**
- * Blob contents keyed by (repo, blob sha) — content-addressed, so entries are
- * immutable and a hit is always correct. This is what makes the per-save read
- * cheap: a new commit changes ONE block's blob sha, so re-merging at the new
- * head fetches one blob instead of all ~700 of a real site. Sized for a
- * handful of multi-hundred-block repos per replica.
- */
-const BLOB_CACHE_MAX = 8192;
-const blobCache = new Map<string, string>();
 
 /** Real-GitHub politeness: an unbounded Promise.all over ~700 blob fetches
  * stampedes the connection pool, flakes into timeouts, and can trip GitHub's
@@ -60,28 +62,32 @@ const BLOB_FETCH_CONCURRENCY = 12;
  * per-blob API calls (rate-limit- and latency-wise). */
 const COLD_READ_TARBALL_THRESHOLD = 50;
 
-function lruGet(cache: Map<string, string>, key: string): string | null {
-  const hit = cache.get(key);
-  if (hit === undefined) return null;
-  // Refresh recency (Map preserves insertion order).
-  cache.delete(key);
-  cache.set(key, hit);
-  return hit;
+/** Spec §Limits: refuse the tarball path when the tree-derived blocks
+ * aggregate size exceeds this (golden rule 3 beats golden rule 2). Read here
+ * rather than exposed from disk-cache config because it guards the fetch
+ * path, not the store; read per cold read (rare) so tests can tune it via
+ * env without a reset hook. */
+const COLD_TARBALL_MAX_BYTES_DEFAULT = 128 * 1024 * 1024;
+
+function coldTarballMaxBytes(): number {
+  const raw = Bun.env.DECOFILE_COLD_TARBALL_MAX_BYTES;
+  if (raw === undefined || raw === "") return COLD_TARBALL_MAX_BYTES_DEFAULT;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0
+    ? Math.floor(value)
+    : COLD_TARBALL_MAX_BYTES_DEFAULT;
 }
 
-function lruPut(
-  cache: Map<string, string>,
-  key: string,
-  value: string,
-  max: number,
-): void {
-  cache.delete(key);
-  cache.set(key, value);
-  while (cache.size > max) {
-    const oldest = cache.keys().next().value;
-    if (oldest === undefined) break;
-    cache.delete(oldest);
-  }
+/** Lazily created so it binds the post-SDK-start meter (same pattern as
+ * disk-cache.ts — `meter` is a live binding reassigned when the SDK starts). */
+let coldReadsCounter: Counter | null = null;
+
+function countColdRead(path: "tarball" | "blobs"): void {
+  coldReadsCounter ??= meter.createCounter("decofile_cold_reads", {
+    description: "Decofile cold snapshot reads by resolution path",
+    unit: "{reads}",
+  });
+  coldReadsCounter.add(1, { path });
 }
 
 export async function mapBounded<T, R>(
@@ -113,14 +119,16 @@ export function blocksDirPath(packagePath: string | null): string {
 /**
  * Direct children of `<packagePath>/.deco/blocks/` named `*.json`
  * (case-insensitive), mirroring the daemon's non-recursive ReadDir. Returns
- * `{stem, sha}` pairs; stems are NOT decoded here.
+ * `{stem, sha}` pairs (plus the blob `size` when the tree carried it); stems
+ * are NOT decoded here.
  */
 export function blockEntriesInTree(
   tree: TreeEntry[],
   packagePath: string | null,
-): Array<{ stem: string; sha: string; path: string }> {
+): Array<{ stem: string; sha: string; path: string; size?: number }> {
   const prefix = `${blocksDirPath(packagePath)}/`;
-  const out: Array<{ stem: string; sha: string; path: string }> = [];
+  const out: Array<{ stem: string; sha: string; path: string; size?: number }> =
+    [];
   for (const entry of tree) {
     if (entry.type !== "blob" || !entry.path.startsWith(prefix)) continue;
     const name = entry.path.slice(prefix.length);
@@ -130,6 +138,7 @@ export function blockEntriesInTree(
       stem: name.slice(0, -".json".length),
       sha: entry.sha,
       path: entry.path,
+      size: entry.size,
     });
   }
   return out;
@@ -152,14 +161,15 @@ export function aliasPathsForKey(
 }
 
 /** Let writers prime blobs they just created, so the read after a save never
- * re-fetches content this replica already has in hand. */
+ * re-fetches content this replica already has in hand. Write-through to the
+ * disk store; fail-open (a store problem is a no-op, never an error). */
 export function primeBlobCache(
   owner: string,
   repo: string,
   blobSha: string,
   content: string,
-): void {
-  lruPut(blobCache, `${owner}/${repo}@${blobSha}`, content, BLOB_CACHE_MAX);
+): Promise<void> {
+  return putBlob(owner, repo, blobSha, content);
 }
 
 export interface DecofileSnapshot {
@@ -168,6 +178,27 @@ export interface DecofileSnapshot {
   /** Merged decofile document (JSON text). */
   decofile: string;
 }
+
+/**
+ * Disk key for the merged document. The store keys merged entries by a single
+ * 40-hex sha; a root project uses the head sha itself, but the merged doc
+ * also depends on `packagePath` (two nested projects can share one repo), so
+ * nested projects key by a sha1 of (head sha, packagePath) — still
+ * deterministic and content-addressed, so restart-warmness is preserved.
+ * (Deviation from the spec's `merged/<owner>/<repo>/<headSha>.json` sketch,
+ * which ignored packagePath.)
+ */
+function mergedDocSha(sha: string, packagePath: string | null): string {
+  if (!packagePath) return sha;
+  return createHash("sha1").update(`${sha}:${packagePath}`).digest("hex");
+}
+
+/** Concurrent snapshot reads of the same content share ONE resolution — this
+ * exists for the thundering herd on cold reads (spec §Cold read) but wraps
+ * warm reads too (cheap). Keyed by content, not branch: the branch → sha
+ * resolution happens BEFORE the flight. `packagePath` is part of the key
+ * (the merged doc depends on it). */
+const snapshotFlight = createSingleFlight<DecofileSnapshot>();
 
 export async function readDecofileSnapshot(
   client: GitDataClient,
@@ -183,54 +214,49 @@ export async function readDecofileSnapshot(
   const sha = options?.createBranchIfMissing
     ? await resolveOrCreateHead(client, branch)
     : await client.getHeadSha(branch);
-  const repoKey = `${client.owner}/${client.repo}`;
-  const cacheKey = `${repoKey}@${sha}:${packagePath ?? ""}`;
-  const cached = lruGet(mergedCache, cacheKey);
-  if (cached !== null) return { sha, decofile: cached };
+  return snapshotFlight.run(
+    `${client.owner}/${client.repo}@${sha}:${packagePath ?? ""}`,
+    () => resolveSnapshot(client, sha, packagePath),
+  );
+}
+
+async function resolveSnapshot(
+  client: GitDataClient,
+  sha: string,
+  packagePath: string | null,
+): Promise<DecofileSnapshot> {
+  const { owner, repo } = client;
+  const docSha = mergedDocSha(sha, packagePath);
+
+  // Merged disk hit: serve the stored string as-is — no JSON parse, no
+  // re-serialization (byte-identical responses across reads).
+  const cachedMerged = await getMerged(owner, repo, docSha);
+  if (cachedMerged !== null) return { sha, decofile: cachedMerged };
 
   const treeSha = await client.getCommitTreeSha(sha);
   const tree = await client.getTreeRecursive(treeSha);
   const entries = blockEntriesInTree(tree, packagePath);
-  const missing = entries.filter(
-    (e) => lruGet(blobCache, `${repoKey}@${e.sha}`) === null,
-  ).length;
+
+  // Per-blob disk hits first; only what's left goes to GitHub.
+  const known = new Map<string, string>(); // tree path -> block content
+  await mapBounded(entries, BLOB_FETCH_CONCURRENCY, async (e) => {
+    const hit = await getBlob(owner, repo, e.sha);
+    if (hit !== null) known.set(e.path, hit);
+  });
+  const missing = entries.length - known.size;
 
   // Truly cold (most blobs unknown): ONE tarball request instead of one blob
   // request per block — a ~700-block site would otherwise burn hundreds of
   // API calls and can trip GitHub's abuse limiter. NOT worth it warm: after a
   // save only the changed blob is missing, and the tarball is the whole repo
-  // archive (tens of MB on a real site — observed 50s) versus one small blob
-  // fetch. Falls through to blobs when the server can't serve tarballs (the
-  // e2e stub) or the download fails.
+  // archive versus one small blob fetch. Any failure (no tarball endpoint —
+  // the e2e stub —, oversized blocks, cache disabled, tar error) falls back
+  // to the bounded blob fetches below.
   if (missing > COLD_READ_TARBALL_THRESHOLD) {
-    try {
-      const prefix = `${blocksDirPath(packagePath)}/`;
-      const files = extractTarGz(await client.getTarball(sha));
-      const contents = files
-        .filter((f) => {
-          if (!f.path.startsWith(prefix)) return false;
-          const name = f.path.slice(prefix.length);
-          return !name.includes("/") && name.toLowerCase().endsWith(".json");
-        })
-        .map((f) => ({
-          stem: f.path.slice(prefix.length, -".json".length),
-          content: new TextDecoder().decode(f.content),
-        }));
-      // Prime per-blob entries so the NEXT head only fetches what it changes.
-      const shaByPath = new Map(entries.map((e) => [e.path, e.sha]));
-      for (const c of contents) {
-        const blobSha = shaByPath.get(
-          `${blocksDirPath(packagePath)}/${c.stem}.json`,
-        );
-        if (blobSha) {
-          lruPut(blobCache, `${repoKey}@${blobSha}`, c.content, BLOB_CACHE_MAX);
-        }
-      }
-      const decofile = mergeBlocks(contents);
-      lruPut(mergedCache, cacheKey, decofile, MERGED_CACHE_MAX);
-      return { sha, decofile };
-    } catch {
-      // Tarball unavailable — blob path below.
+    const extracted = await tryTarballIngest(client, sha, packagePath, entries);
+    countColdRead(extracted !== null ? "tarball" : "blobs");
+    if (extracted !== null) {
+      for (const [path, content] of extracted) known.set(path, content);
     }
   }
 
@@ -238,15 +264,96 @@ export async function readDecofileSnapshot(
     entries,
     BLOB_FETCH_CONCURRENCY,
     async (e) => {
-      const blobKey = `${repoKey}@${e.sha}`;
-      const hit = lruGet(blobCache, blobKey);
-      if (hit !== null) return { stem: e.stem, content: hit };
+      const hit = known.get(e.path);
+      if (hit !== undefined) return { stem: e.stem, content: hit };
       const content = await client.getBlobText(e.sha);
-      lruPut(blobCache, blobKey, content, BLOB_CACHE_MAX);
+      await putBlob(owner, repo, e.sha, content);
       return { stem: e.stem, content };
     },
   );
   const decofile = mergeBlocks(contents);
-  lruPut(mergedCache, cacheKey, decofile, MERGED_CACHE_MAX);
+  await putMerged(owner, repo, docSha, decofile);
   return { sha, decofile };
+}
+
+/**
+ * The tarball cold path (spec §Cold read): pre-validate aggregate size from
+ * the tree, stream the tarball into a `tar` subprocess (the archive never
+ * touches the JS heap), read each extracted block, and write blobs through
+ * the disk store keyed by the tree's sha for that path. Returns the extracted
+ * contents by tree path, or `null` on ANY failure/refusal — the caller then
+ * falls back to bounded per-blob fetches. The extracted map feeds the shared
+ * merge/putMerged tail in `resolveSnapshot`, so an incomplete extraction
+ * (e.g. an uppercase `.JSON` member the tar glob misses) degrades to a few
+ * blob fetches instead of a wrong document.
+ */
+async function tryTarballIngest(
+  client: GitDataClient,
+  sha: string,
+  packagePath: string | null,
+  entries: Array<{ stem: string; sha: string; path: string; size?: number }>,
+): Promise<Map<string, string> | null> {
+  const repoKey = `${client.owner}/${client.repo}`;
+
+  // Pre-validate BEFORE downloading (golden rule 3 beats golden rule 2): the
+  // extracted files are only "small" in aggregate if the tree says so. A tree
+  // entry without a size cannot be validated, so it refuses the path too.
+  const maxBytes = coldTarballMaxBytes();
+  let aggregateBytes = 0;
+  for (const e of entries) {
+    if (e.size === undefined) {
+      console.warn(
+        "decofile cold read: tarball skipped (tree entry missing size; cannot pre-validate)",
+        { repo: repoKey, sha, path: e.path },
+      );
+      return null;
+    }
+    aggregateBytes += e.size;
+  }
+  if (aggregateBytes > maxBytes) {
+    console.warn(
+      "decofile cold read: tarball skipped (blocks over DECOFILE_COLD_TARBALL_MAX_BYTES)",
+      { repo: repoKey, sha, aggregateBytes, maxBytes },
+    );
+    return null;
+  }
+
+  // Scratch dir lives under the cache root; null means the cache is disabled
+  // or unavailable — no place to extract to, so take the blob path.
+  const scratchDir = await makeScratchDir();
+  if (scratchDir === null) return null;
+  try {
+    const body = await client.getTarballStream(sha);
+    const files = await extractBlocksFromTarball(
+      body,
+      scratchDir,
+      blocksDirPath(packagePath),
+    );
+    const shaByPath = new Map(entries.map((e) => [e.path, e.sha]));
+    const out = new Map<string, string>();
+    for (const f of files) {
+      const blobSha = shaByPath.get(f.path);
+      // Extracted member not in this head's tree view (shouldn't happen —
+      // same ref): skip rather than cache under a wrong sha.
+      if (blobSha === undefined) continue;
+      const content = await readFile(f.diskPath, "utf8");
+      await putBlob(client.owner, client.repo, blobSha, content);
+      out.set(f.path, content);
+    }
+    return out;
+  } catch (err) {
+    // TarExtractError (spawn/exit/empty), a fetch failure, or a read race —
+    // golden rule 4: fall back to bounded blob fetches, never fail the read.
+    console.warn(
+      "decofile cold read: tarball path failed; falling back to blob fetches",
+      {
+        repo: repoKey,
+        sha,
+        error: err instanceof Error ? err.message : String(err),
+      },
+    );
+    return null;
+  } finally {
+    await removeScratchDir(scratchDir);
+  }
 }
