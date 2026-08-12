@@ -6,9 +6,14 @@
  *   is present (server returns `posthog: null` when unconfigured).
  * - Calls `identify` when a logged-in user is present.
  * - Calls `reset` when the session clears (logout).
+ * - Puts the singleton on React context so `useExperiment` (and any other
+ *   posthog-js/react hook) can subscribe to feature-flag loads.
  *
  * Must render below the Suspense boundary that fetches /api/config.
  */
+
+import posthog from "posthog-js";
+import { PostHogProvider } from "posthog-js/react";
 
 import { authClient } from "@/lib/auth-client";
 import { identifyUser, initPostHog, resetUser } from "@/lib/posthog-client";
@@ -41,5 +46,5 @@ export function PostHogIdentitySync({
     }
   }
 
-  return <>{children}</>;
+  return <PostHogProvider client={posthog}>{children}</PostHogProvider>;
 }
