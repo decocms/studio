@@ -3,6 +3,7 @@ import {
   assertUrlDoesNotResolvePrivate,
   buildScreenshotOptions,
   buildScreenshotRequestBody,
+  createPortableTakeScreenshotTool,
   jpegHeight,
   validateExternalUrl,
 } from "./portable-media-tools";
@@ -167,6 +168,42 @@ describe("assertUrlDoesNotResolvePrivate", () => {
     await expect(
       assertUrlDoesNotResolvePrivate("https://127.0.0.1/x", resolveHost),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("createPortableTakeScreenshotTool", () => {
+  it("returns a graceful error instead of throwing when the browserless fetch aborts", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      const err = new Error("The operation was aborted");
+      err.name = "TimeoutError";
+      throw err;
+    }) as unknown as typeof fetch;
+
+    try {
+      const writer = { write: () => {} } as never;
+      const screenshotTool = createPortableTakeScreenshotTool(writer, {
+        toolOutputMap: new Map(),
+        pendingImages: [],
+        browserlessToken: "browserless-test-token",
+      });
+      const result = (await (
+        screenshotTool as unknown as {
+          execute: (
+            input: { url: string },
+            options: { toolCallId: string },
+          ) => Promise<{ success: boolean; error?: string }>;
+        }
+      ).execute({ url: "https://example.com" }, { toolCallId: "tool-1" })) as {
+        success: boolean;
+        error?: string;
+      };
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("timed out");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 
