@@ -259,7 +259,9 @@ func (m *TaskManager) startPipe(task *taskInternal) {
 		m.spawnError(task, err)
 		return
 	}
+	m.mu.Lock()
 	task.pid = cmd.Process.Pid
+	m.mu.Unlock()
 	m.armTimeout(task)
 
 	var wg sync.WaitGroup
@@ -300,7 +302,9 @@ func (m *TaskManager) startPty(task *taskInternal) {
 		m.spawnError(task, err)
 		return
 	}
+	m.mu.Lock()
 	task.pid = cmd.Process.Pid
+	m.mu.Unlock()
 	m.armTimeout(task)
 
 	go func() {
