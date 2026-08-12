@@ -446,12 +446,13 @@ export async function handTaskToHuman(
   const orgId = item.organizationId;
   if (item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID) return false;
   try {
-    const handed = await ctx.storage.taskBoard.update(
+    // Re-checks the assignee against the DB, not this stale `item`.
+    const handed = await ctx.storage.taskBoard.unassignSuperAgent(
       item.id,
       orgId,
-      { assigneeId: null },
       item.updatedBy,
     );
+    if (!handed) return false;
     await recordTaskActivity(ctx, {
       taskBoardItemId: item.id,
       action: "assignee_changed",
