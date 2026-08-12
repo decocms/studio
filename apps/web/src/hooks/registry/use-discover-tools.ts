@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useStudioTools } from "@/lib/studio-tools";
 import type { RegistryToolMeta } from "@/lib/registry/types";
+import { useT } from "@/i18n/use-t.ts";
 
 export type DiscoverStatus =
   | "idle"
@@ -10,6 +11,7 @@ export type DiscoverStatus =
   | "auth_required";
 
 export function useDiscoverTools() {
+  const t = useT();
   const [discoverStatus, setDiscoverStatus] = useState<DiscoverStatus>("idle");
   const [discoverError, setDiscoverError] = useState<string | null>(null);
 
@@ -42,7 +44,7 @@ export function useDiscoverTools() {
       }
 
       if (!data.tools || data.tools.length === 0) {
-        setDiscoverError("No tools found on this MCP server.");
+        setDiscoverError(t("registry.discoverTools.noToolsFound"));
         setDiscoverStatus("error");
         return null;
       }
@@ -51,7 +53,9 @@ export function useDiscoverTools() {
       return data.tools;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      setDiscoverError(message || "Could not discover tools.");
+      setDiscoverError(
+        message || t("registry.discoverTools.couldNotDiscoverTools"),
+      );
       setDiscoverStatus("error");
       return null;
     }
