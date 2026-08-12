@@ -105,15 +105,17 @@ sandbox-env:
     podSelectorLabels:
       app.kubernetes.io/name: "chart-deco-studio"
       app.kubernetes.io/instance: "deco-studio"   # = the release name
-  # First multi-arch studio-sandbox tag (arm64 + amd64).
-  image:
-    tag: "1.17.3"
+  # No image override: the sandbox-env chart already pins a multi-arch
+  # (arm64 + amd64) tag of its own daemon image. Pinning a tag here means
+  # bumping it in lockstep with the chart, and a stale one is an
+  # ImagePullBackOff on a fresh install.
   # Local: previews via Studio's in-process proxy (no Gateway API / cert-manager).
   previewGateway:
     enabled: false
   # Pre-warmed sandbox pool ON — one pod, zero cold-start on the first sandbox.
-  # Safe now that studio-sandbox 1.17.3 is multi-arch (runs on arm64). Turn off
-  # with --set sandbox-env.warmPool.enabled=false to save laptop resources.
+  # The chart's pinned sandbox image is multi-arch, so this works on Apple
+  # Silicon. Turn off with --set sandbox-env.warmPool.enabled=false to save
+  # laptop resources.
   warmPool:
     enabled: true
     size: 1
