@@ -88,13 +88,11 @@ function BacklogPaywallModal({
   open,
   onOpenChange,
   cdClient,
-  organizationId,
   onExpired,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   cdClient: CommerceDiscoveryClient | null;
-  organizationId: string;
   /** Called when checkout can't start because the report app is the only place
    *  that can (no client) — falls back to opening it. */
   onExpired: () => void;
@@ -103,14 +101,7 @@ function BacklogPaywallModal({
   const [starting, setStarting] = useState(false);
 
   const startCheckout = async () => {
-    track("board_paywall_checkout_started", {
-      organization_id: organizationId,
-    });
     if (!cdClient) {
-      track("board_paywall_checkout_failed", {
-        organization_id: organizationId,
-        reason: "no_client",
-      });
       onExpired();
       return;
     }
@@ -123,18 +114,11 @@ function BacklogPaywallModal({
       const { url } = unwrapToolResult<{ url: string }>(result);
       if (new URL(url).protocol !== "https:")
         throw new Error("unsafe checkout url");
-      track("board_paywall_checkout_opened", {
-        organization_id: organizationId,
-      });
       // Stripe hosted checkout opens in a new tab; on return the diagnostic
       // re-polls and unlocks (locked → false), clearing the banner/modal.
       window.open(url, "_blank", "noopener,noreferrer");
       onOpenChange(false);
     } catch {
-      track("board_paywall_checkout_failed", {
-        organization_id: organizationId,
-        reason: "tool_error",
-      });
       // Couldn't start checkout here — fall back to the report app, which owns
       // the full paywall + checkout flow.
       onExpired();
@@ -271,7 +255,6 @@ function BacklogPaywallBannerInner() {
         open={modalOpen}
         onOpenChange={dismiss}
         cdClient={cdClient}
-        organizationId={org.id}
         onExpired={openReport}
       />
     </>

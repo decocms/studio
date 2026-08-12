@@ -389,9 +389,9 @@ export const createTaskBoardImportRoutes = () => {
       }
     }
 
-    // Funnel event: the only signal a diagnostic run reached the board.
+    // Receiver's counterpart to the engine's diagnostic_tasks_pushed — join on run_id, never sum.
     captureOrgEvent({
-      event: "report_tasks_pushed",
+      event: "task_board_import_landed",
       organizationId,
       properties: {
         created: outcome.created,
