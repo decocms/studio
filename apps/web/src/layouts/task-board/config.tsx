@@ -129,6 +129,13 @@ export const STATUSES: TaskBoardItemStatus[] = [
   "archived",
 ];
 
+/**
+ * Lanes that don't earn a board column by default — they sit collapsed under
+ * "Hidden columns" until shown. They stay in `STATUSES`, so "Move to", drag
+ * targets and status validation still know about them.
+ */
+export const HIDDEN_STATUSES: TaskBoardItemStatus[] = ["archived"];
+
 export const STATUS_CONFIG: Record<
   TaskBoardItemStatus,
   { labelKey: TranslationKey; icon: typeof Circle; iconClassName: string }

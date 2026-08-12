@@ -17,6 +17,12 @@ interface Preferences {
    * default. A per-VM Show/Hide choice still overrides this default.
    */
   terminalVisibleByDefault: boolean;
+  /**
+   * Task-board lanes hidden by default (`HIDDEN_STATUSES`) that this person has
+   * pulled back onto the board. Statuses, not lane indexes, so a reordered or
+   * renamed lane can't resurrect the wrong column.
+   */
+  shownTaskBoardLanes: string[];
 }
 
 const DEFAULT_PREFERENCES: Preferences = {
@@ -26,6 +32,7 @@ const DEFAULT_PREFERENCES: Preferences = {
   theme: "system",
   language: detectLocale(),
   terminalVisibleByDefault: false,
+  shownTaskBoardLanes: [],
 };
 
 const VALID_TOOL_APPROVAL_LEVELS: ToolApprovalLevel[] = ["auto", "readonly"];
@@ -92,6 +99,9 @@ export function usePreferences() {
       }
       if (!VALID_LOCALES.includes(merged.language)) {
         merged.language = detectLocale();
+      }
+      if (!Array.isArray(merged.shownTaskBoardLanes)) {
+        merged.shownTaskBoardLanes = [];
       }
       return merged;
     },

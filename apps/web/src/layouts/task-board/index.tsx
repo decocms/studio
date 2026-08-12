@@ -35,6 +35,7 @@ import { useT } from "@/i18n/use-t.ts";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import {
   Calendar,
+  ChevronRight,
   Columns03,
   DotsHorizontal,
   HelpCircle,
@@ -91,6 +92,7 @@ import {
   insertSortOrder,
   isReviewerThreadTitle,
   isTaskBlocked,
+  HIDDEN_STATUSES,
   primaryThread,
   reviewerThreads,
   PRIORITIES,
@@ -109,6 +111,7 @@ import {
   type Member,
 } from "./config";
 import { useTags } from "@/hooks/use-tags";
+import { usePreferences } from "@/hooks/use-preferences";
 import {
   TaskBoardItemDialog,
   threadStatusStyle,
@@ -1210,6 +1213,7 @@ function Lanes({
   //      to its old lane for a frame.
   // Entries retire themselves once `items` reports the same placement.
   const [overrides, setOverrides] = useState<Map<string, Placement>>(new Map());
+  const [preferences, setPreferences] = usePreferences();
   const boardRef = useRef<HTMLDivElement>(null);
 
   // A plain mouse wheel only emits vertical deltas, so on a board that overflows
@@ -1299,6 +1303,20 @@ function Lanes({
 
   const laneItems = (status: TaskBoardItemStatus) =>
     placed.filter((item) => item.status === status).sort(bySortOrder);
+
+  /** Shown-again lanes persist per person (localStorage), so pulling Archived
+   *  onto the board survives a reload. */
+  const hiddenLanes = HIDDEN_STATUSES.filter(
+    (status) => !preferences.shownTaskBoardLanes.includes(status),
+  );
+  const boardLanes = STATUSES.filter((status) => !hiddenLanes.includes(status));
+  const setLaneShown = (status: TaskBoardItemStatus, shown: boolean) =>
+    setPreferences((prev) => ({
+      ...prev,
+      shownTaskBoardLanes: shown
+        ? [...prev.shownTaskBoardLanes, status]
+        : prev.shownTaskBoardLanes.filter((s) => s !== status),
+    }));
 
   /** The lane a drop target belongs to: a lane's own droppable, or the lane of
    *  the card being hovered. Resolved against `placed` rather than dnd-kit's
@@ -1440,7 +1458,7 @@ function Lanes({
             here would eat into this row's h-full and cut every column short,
             since it no longer wraps a single page-level scroll. */}
         <div className="mx-auto flex h-full w-full max-w-[1680px] gap-3 px-4 pt-6 sm:px-8">
-          {STATUSES.map((status) => (
+          {boardLanes.map((status) => (
             <Lane
               key={status}
               status={status}
@@ -1462,8 +1480,20 @@ function Lanes({
               onAutoFix={onAutoFix}
               onRerun={onRerun}
               onAssign={onAssign}
+              onHide={
+                HIDDEN_STATUSES.includes(status)
+                  ? () => setLaneShown(status, false)
+                  : undefined
+              }
             />
           ))}
+          {hiddenLanes.length > 0 && (
+            <HiddenLanes
+              statuses={hiddenLanes}
+              countOf={(status) => laneItems(status).length}
+              onShow={(status) => setLaneShown(status, true)}
+            />
+          )}
         </div>
       </div>
       {/* Portal to body so the overlay's `position: fixed` resolves against the
@@ -1511,6 +1541,73 @@ function Lanes({
   );
 }
 
+/** The board's tail: lanes that don't get a column until asked for. `<details>`
+ *  gives the collapse (closed by default) without any state of its own. */
+function HiddenLanes({
+  statuses,
+  countOf,
+  onShow,
+}: {
+  statuses: TaskBoardItemStatus[];
+  countOf: (status: TaskBoardItemStatus) => number;
+  onShow: (status: TaskBoardItemStatus) => void;
+}) {
+  const t = useT();
+  return (
+    <details className="group h-full w-[300px] shrink-0 py-1">
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 px-2 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
+        <ChevronRight
+          size={14}
+          className="shrink-0 transition-transform group-open:rotate-90"
+        />
+        {t("taskBoard.taskBoard.hiddenColumns")}
+      </summary>
+      <div className="flex flex-col gap-2 px-1 pt-1">
+        {statuses.map((status) => {
+          const config = STATUS_CONFIG[status];
+          const LaneIcon = config.icon;
+          return (
+            <div
+              key={status}
+              data-hidden-lane={status}
+              className="flex items-center gap-2 rounded-xl bg-background px-3 py-2.5 card-shadow"
+            >
+              <LaneIcon
+                size={15}
+                className={cn("shrink-0", config.iconClassName)}
+              />
+              <span className="text-sm font-medium text-foreground">
+                {t(config.labelKey)}
+              </span>
+              <span className="ml-auto text-[11px] font-medium text-muted-foreground">
+                {countOf(status)}
+              </span>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={t("taskBoard.taskBoard.laneMenuAriaLabel", {
+                      lane: t(config.labelKey),
+                    })}
+                    className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <DotsHorizontal size={15} />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => onShow(status)}>
+                    {t("taskBoard.taskBoard.showColumn")}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          );
+        })}
+      </div>
+    </details>
+  );
+}
+
 function Lane({
   status,
   items,
@@ -1527,6 +1624,7 @@ function Lane({
   onAutoFix,
   onRerun,
   onAssign,
+  onHide,
 }: {
   status: TaskBoardItemStatus;
   items: TaskBoardItem[];
@@ -1545,6 +1643,8 @@ function Lane({
   onAutoFix?: (item: TaskBoardItem) => void;
   onRerun?: (item: TaskBoardItem) => void;
   onAssign?: (id: string, userId: string | null) => void;
+  /** Present only for a hidden-by-default lane, which can be put back away. */
+  onHide?: () => void;
 }) {
   const t = useT();
   const config = STATUS_CONFIG[status];
@@ -1608,6 +1708,11 @@ function Lane({
             <DropdownMenuItem onClick={() => onSelectAllInLane(status)}>
               {t("taskBoard.taskBoard.selectAllInLane")}
             </DropdownMenuItem>
+            {onHide && (
+              <DropdownMenuItem onClick={onHide}>
+                {t("taskBoard.taskBoard.hideColumn")}
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
         <button
