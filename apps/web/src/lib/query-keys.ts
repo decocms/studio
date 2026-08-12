@@ -305,6 +305,8 @@ export const KEYS = {
     ["MONITORING_STATS", orgId, "tool-calls", paramsKey] as const,
   monitoringStatsLlm: (orgId: string, paramsKey: string) =>
     ["MONITORING_STATS", orgId, "llm", paramsKey] as const,
+  monitoringHeatmap: (orgId: string, paramsKey: string) =>
+    ["MONITORING_HEATMAP", orgId, paramsKey] as const,
   monitoringThreadUsage: (locator: string, paramsKey: string) =>
     ["MONITORING_THREAD_USAGE", locator, paramsKey] as const,
   monitoringLogs: (filters: {
@@ -488,6 +490,7 @@ export const KEYS = {
   orgFsStat: (orgId: string, volume: string, path: string) =>
     ["org-fs", orgId, volume, "stat", path] as const,
   orgFsPublicSets: (orgId: string) => ["org-fs-public-sets", orgId] as const,
+  orgRepoSyncs: (orgId: string) => ["org-repo-syncs", orgId] as const,
   // Cross-volume recent-files feed (Library home). Separate root key so a
   // volume named like the segment can never collide; mutations invalidate it
   // explicitly alongside the volume prefix.
@@ -574,6 +577,9 @@ export const KEYS = {
 
   // Deco sections editor (sandbox preview)
   decofile: (previewUrl: string) => ["decofile", previewUrl] as const,
+  // Sandbox-less Fast Preview draft pointer: {version, token} for the current
+  // branch head, populated by decofile API reads/writes (never fetched itself).
+  decofileDraft: (cacheKey: string) => ["decofile-draft", cacheKey] as const,
   // Variadic so an invalidation call can pass just the org/vmid/branch prefix
   // and still partial-match the full org/vmid/branch/previewUrl query key.
   liveMeta: (...parts: string[]) => ["live-meta", ...parts] as const,

@@ -7,7 +7,31 @@ export const settings = {
   "settings.nav.secrets": "Secrets",
   "settings.nav.billing": "Billing",
   "settings.nav.buckets": "Buckets",
+  "settings.nav.syncedRepos": "Synced repos",
   "settings.nav.build": "Build",
+  "settings.syncedRepos.pageDescription":
+    "GitHub repositories mirrored into read-only library folders and kept in sync every few minutes. Great for a shared skills repo.",
+  "settings.syncedRepos.addRepo": "Add repo",
+  "settings.syncedRepos.cancel": "Cancel",
+  "settings.syncedRepos.create": "Create",
+  "settings.syncedRepos.creating": "Creating…",
+  "settings.syncedRepos.created":
+    'Sync created — syncing into "{volume}" in the background',
+  "settings.syncedRepos.emptyTitle": "No synced repos yet",
+  "settings.syncedRepos.emptyDescription":
+    "Pick a GitHub repository and it will appear in the library as a read-only folder, kept in sync automatically.",
+  "settings.syncedRepos.failed": "Something went wrong",
+  "settings.syncedRepos.nameDialogDescription":
+    "{repo} will be kept in sync into this read-only library folder.",
+  "settings.syncedRepos.nameDialogTitle": "Name the synced folder",
+  "settings.syncedRepos.namePlaceholder": "folder-name",
+  "settings.syncedRepos.pickerTitle": "Sync a repo into the library",
+  "settings.syncedRepos.remove": "Stop syncing",
+  "settings.syncedRepos.removeDescription":
+    "The already-synced files stay in the library; only the sync stops. You can delete the folder afterwards if you don't need it.",
+  "settings.syncedRepos.removeTitle": 'Stop syncing "{volume}"?',
+  "settings.syncedRepos.removed": "Sync removed",
+  "settings.syncedRepos.rowSubtitle": "Library folder: {volume}",
   "settings.nav.connections": "Connections",
   "settings.nav.agents": "Agents",
   "settings.nav.automations": "Automations",
@@ -173,9 +197,43 @@ export const settings = {
     "Stores only a refresh endpoint + API key; short-lived credentials are fetched on demand and refreshed automatically.",
   "settings.buckets.temporarySessionOption":
     "Temporary session (STS, auto-refreshed)",
+  "settings.connectClients.activeKeys": "Active keys",
+  "settings.connectClients.activeKeysDescription":
+    "Keys you've generated for headless clients. Revoke any time.",
+  "settings.connectClients.apiKeyTab": "API key",
+  "settings.connectClients.copy": "Copy",
+  "settings.connectClients.createdAt": "Created {date}",
+  "settings.connectClients.customClientHint": "Wiring a custom client?",
+  "settings.connectClients.doneHideKey": "Done, hide key",
+  "settings.connectClients.failedToLoadKeys": "Failed to load keys: {error}",
+  "settings.connectClients.generateKeyFor": "Generate key for {client}",
+  "settings.connectClients.generatingKey": "Generating…",
+  "settings.connectClients.headlessKeyHint":
+    "For CI, Conductor, or headless agents that can't open a browser.",
+  "settings.connectClients.keyCreated": "Key created",
+  "settings.connectClients.keyRevoked": "Key revoked",
+  "settings.connectClients.loadingActiveKeys": "Loading active keys…",
+  "settings.connectClients.noConnectKeysYet":
+    "No connect keys minted yet. Generate one from a client tab above for headless setups.",
+  "settings.connectClients.oauthKeyHint":
+    "Recommended for your laptop. Browser will open on first use to sign in — no token to manage.",
+  "settings.connectClients.oauthMetadataHint":
+    "OAuth 2.1 Protected Resource Metadata is advertised on 401:",
+  "settings.connectClients.oauthTab": "OAuth",
+  "settings.connectClients.orgUnifiedMcp": "Your org's unified MCP",
+  "settings.connectClients.orgUnifiedMcpDescription":
+    "Plug this URL into any MCP client to give that runtime every connection enabled in this org, governed by your Decopilot rules.",
+  "settings.connectClients.pageTitle": "Connect to clients",
+  "settings.connectClients.revoke": "Revoke",
+  "settings.connectClients.revokeConfirm":
+    'Revoke "{name}"? Any client still using this key will lose access.',
+  "settings.connectClients.snippetOneTimeWarning":
+    "Copy this snippet now — the key won't be shown again. You can revoke it later from the list below.",
   "settings.connectForms.apiKeyField": "API Key",
+  "settings.connectForms.apiKeyRequired": "API key is required",
   "settings.connectForms.baseUrlField": "Base URL",
   "settings.connectForms.baseUrlPlaceholder": "http://localhost:4000/v1",
+  "settings.connectForms.baseUrlRequired": "Base URL is required",
   "settings.connectForms.cancel": "Cancel",
   "settings.connectForms.connectionSavedSuccess":
     "Connection saved successfully",

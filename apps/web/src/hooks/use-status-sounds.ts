@@ -1,5 +1,5 @@
-import { playSound } from "@deco/ui/lib/sound-engine.ts";
-import { question004Sound } from "@deco/ui/lib/question-004.ts";
+import { playSound } from "@/lib/sounds/sound-engine.ts";
+import { question004Sound } from "@/lib/sounds/question-004.ts";
 import { useDecopilotEvents } from "./use-decopilot-events";
 import { usePreferences } from "./use-preferences";
 

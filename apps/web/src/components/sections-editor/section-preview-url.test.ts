@@ -1,76 +1,80 @@
 import { describe, expect, it } from "bun:test";
 import {
-  buildDraftPreviewUrl,
+  buildFastPreviewDraftUrl,
   resolveSectionPreviewBase,
 } from "./section-preview-url";
 
 const PROD = "https://www.acme.com";
 const SANDBOX = "https://h.preview-studio.decocms.com";
 
-describe("buildDraftPreviewUrl", () => {
+const SCOPE = {
+  previewServerUrl: PROD,
+  apiHost: "studio.decocms.com",
+  orgSlug: "fila",
+  virtualMcpId: "vm-1",
+  branch: "main",
+  token: "tok.abc",
+  version: "8c1d44e0f2a34567890123456789012345678901",
+};
+
+describe("buildFastPreviewDraftUrl", () => {
   it("targets the real page on the production origin", () => {
-    // Not the daemon and not /live/previews: the site renders its OWN route, so
-    // hydration and in-preview navigation work.
+    // Not /live/previews: the site renders its OWN route, so hydration and
+    // in-preview navigation work.
     const url = new URL(
-      buildDraftPreviewUrl({
-        productionUrl: PROD,
-        previewUrl: "https://gimenes-abc-1234.preview-studio.decocms.com",
-        version: "ff00",
-        path: "/blog/hello",
-      }),
+      buildFastPreviewDraftUrl({ ...SCOPE, path: "/blog/hello" }),
     );
     expect(url.origin).toBe(PROD);
     expect(url.pathname).toBe("/blog/hello");
   });
 
-  it("carries the token as <host[:port]>@<version> — an authority, never a URL", () => {
-    // The site validates the authority against its configured preview-API
+  it("carries the pointer as <authority><path>?token=…@<version> — never a scheme", () => {
+    // The runtime validates the authority against its configured preview-API
     // domains and derives the scheme itself; a full URL here would be the
     // SSRF surface the design exists to avoid.
-    const url = new URL(
-      buildDraftPreviewUrl({
-        productionUrl: PROD,
-        previewUrl: "https://gimenes-abc-1234.preview-studio.decocms.com",
-        version: "ff00",
-        path: "/",
-      }),
-    );
+    const url = new URL(buildFastPreviewDraftUrl({ ...SCOPE, path: "/" }));
     expect(url.searchParams.get("__draft")).toBe(
-      "gimenes-abc-1234.preview-studio.decocms.com@ff00",
+      `studio.decocms.com/api/fila/decofile/vm-1/main?token=tok.abc@${SCOPE.version}`,
     );
   });
 
-  it("keeps the desktop link's per-run port in the token", () => {
+  it("keeps a local dev port in the authority", () => {
     const url = new URL(
-      buildDraftPreviewUrl({
-        productionUrl: PROD,
-        previewUrl: "http://gimenes-abc-1234.localhost:60534",
-        version: "v1",
+      buildFastPreviewDraftUrl({
+        ...SCOPE,
+        apiHost: "localhost:4000",
         path: "/",
       }),
     );
     expect(url.searchParams.get("__draft")).toBe(
-      "gimenes-abc-1234.localhost:60534@v1",
+      `localhost:4000/api/fila/decofile/vm-1/main?token=tok.abc@${SCOPE.version}`,
+    );
+  });
+
+  it("percent-encodes branch and virtualMcpId path segments", () => {
+    const url = new URL(
+      buildFastPreviewDraftUrl({
+        ...SCOPE,
+        branch: "feat/hero",
+        path: "/",
+      }),
+    );
+    expect(url.searchParams.get("__draft")).toContain(
+      "/decofile/vm-1/feat%2Fhero?token=",
     );
   });
 
   it("changes with the version, so a save re-navigates the frame", () => {
     const at = (version: string) =>
-      buildDraftPreviewUrl({
-        productionUrl: PROD,
-        previewUrl: "https://h.preview-studio.decocms.com",
-        version,
-        path: "/",
-      });
-    expect(at("v1")).not.toBe(at("v2"));
+      buildFastPreviewDraftUrl({ ...SCOPE, version, path: "/" });
+    expect(at("a".repeat(40))).not.toBe(at("b".repeat(40)));
   });
 
   it("preserves a production origin that carries a trailing slash", () => {
     const url = new URL(
-      buildDraftPreviewUrl({
-        productionUrl: "https://fila.vtex.app/",
-        previewUrl: "https://h.preview-studio.decocms.com",
-        version: "v1",
+      buildFastPreviewDraftUrl({
+        ...SCOPE,
+        previewServerUrl: "https://fila.vtex.app/",
         path: "/institucional/historia",
       }),
     );
@@ -80,12 +84,7 @@ describe("buildDraftPreviewUrl", () => {
 
   it("keeps path params already filled in", () => {
     const url = new URL(
-      buildDraftPreviewUrl({
-        productionUrl: PROD,
-        previewUrl: "https://h.preview-studio.decocms.com",
-        version: "v1",
-        path: "/produto/tenis-123/p",
-      }),
+      buildFastPreviewDraftUrl({ ...SCOPE, path: "/produto/tenis-123/p" }),
     );
     expect(url.pathname).toBe("/produto/tenis-123/p");
   });
@@ -96,7 +95,7 @@ describe("resolveSectionPreviewBase", () => {
     expect(
       resolveSectionPreviewBase({
         sandboxUrl: SANDBOX,
-        productionUrl: PROD,
+        previewServerUrl: PROD,
         fastPreviewActive: false,
       }),
     ).toBe(SANDBOX);
@@ -108,7 +107,7 @@ describe("resolveSectionPreviewBase", () => {
     expect(
       resolveSectionPreviewBase({
         sandboxUrl: SANDBOX,
-        productionUrl: PROD,
+        previewServerUrl: PROD,
         fastPreviewActive: true,
       }),
     ).toBe(PROD);
@@ -118,7 +117,7 @@ describe("resolveSectionPreviewBase", () => {
     expect(
       resolveSectionPreviewBase({
         sandboxUrl: null,
-        productionUrl: PROD,
+        previewServerUrl: PROD,
         fastPreviewActive: true,
       }),
     ).toBe(PROD);
@@ -130,7 +129,7 @@ describe("resolveSectionPreviewBase", () => {
     expect(
       resolveSectionPreviewBase({
         sandboxUrl: SANDBOX,
-        productionUrl: null,
+        previewServerUrl: null,
         fastPreviewActive: true,
       }),
     ).toBe(SANDBOX);
@@ -140,19 +139,19 @@ describe("resolveSectionPreviewBase", () => {
     expect(
       resolveSectionPreviewBase({
         sandboxUrl: null,
-        productionUrl: null,
+        previewServerUrl: null,
         fastPreviewActive: false,
       }),
     ).toBeNull();
   });
 
   it("never leaks production into the gallery when Fast Preview is off", () => {
-    // The negative gate: a set productionUrl must be ignored unless the flag
+    // The negative gate: a set previewServerUrl must be ignored unless the flag
     // is on, so the gallery is withheld rather than pointing at production.
     expect(
       resolveSectionPreviewBase({
         sandboxUrl: null,
-        productionUrl: PROD,
+        previewServerUrl: PROD,
         fastPreviewActive: false,
       }),
     ).toBeNull();
@@ -162,7 +161,7 @@ describe("resolveSectionPreviewBase", () => {
     expect(
       resolveSectionPreviewBase({
         sandboxUrl: undefined,
-        productionUrl: undefined,
+        previewServerUrl: undefined,
         fastPreviewActive: false,
       }),
     ).toBeNull();

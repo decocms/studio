@@ -3,7 +3,7 @@
 import { Check, ChevronSelectorVertical } from "@untitledui/icons";
 import { ReactNode, useState } from "react";
 
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "../lib/utils.ts";
 import { Button } from "./button.tsx";
 import {
   Command,

@@ -1,8 +1,8 @@
 import { ChevronRight, Loading01 } from "@untitledui/icons";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { cn } from "@deco/ui/lib/utils.js";
-import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import { AddSectionModal } from "@/components/sections-editor/add-section-modal";
 import { useSectionPreviewBase } from "@/components/sections-editor/use-section-preview-base";
 import { appLabel } from "@/components/sections-editor/page-list";
@@ -16,7 +16,11 @@ import {
 import { resolveAppEditorSchema } from "./app-editor-schema";
 import { buildSectionBlockFromCatalogEntry } from "./section-create";
 import { SchemaForm } from "@/components/sections-editor/schema-form";
-import { breadcrumbsForHeaderClick } from "@/components/sections-editor/schema-form-breadcrumb";
+import {
+  breadcrumbsForHeaderClick,
+  type Crumb,
+  crumbLabel,
+} from "@/components/sections-editor/schema-form-breadcrumb";
 import { SaveStatus } from "./blog/save-status";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -76,7 +80,7 @@ export function AppEditor({
     null,
   );
   const [formResetKey, setFormResetKey] = useState(0);
-  const [breadcrumbs, setBreadcrumbs] = useState<string[]>([]);
+  const [breadcrumbs, setBreadcrumbs] = useState<Crumb[]>([]);
   const [addSectionOpen, setAddSectionOpen] = useState(false);
   const pendingAppendRef = useRef<((item: unknown) => void) | null>(null);
 
@@ -102,7 +106,7 @@ export function AppEditor({
     });
   };
 
-  const handleBreadcrumbChange = (next: string[]) => {
+  const handleBreadcrumbChange = (next: Crumb[]) => {
     setBreadcrumbs(next);
   };
 
@@ -162,9 +166,10 @@ export function AppEditor({
           >
             {headerCrumbs.map((crumb, index) => {
               const isLast = index === headerCrumbs.length - 1;
+              const crumbText = crumbLabel(crumb);
               return (
                 <span
-                  key={`${crumb}-${index}`}
+                  key={`${crumbText}-${index}`}
                   className="flex min-w-0 items-center gap-1 overflow-hidden"
                 >
                   {index > 0 && (
@@ -182,7 +187,7 @@ export function AppEditor({
                       }
                       setFormResetKey((key) => key + 1);
                     }}
-                    title={crumb}
+                    title={crumbText}
                     className={cn(
                       "min-w-0 truncate rounded-md px-1 py-0.5 text-left transition-colors",
                       isLast
@@ -190,7 +195,7 @@ export function AppEditor({
                         : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
                     )}
                   >
-                    {crumb}
+                    {crumbText}
                   </button>
                 </span>
               );

@@ -1,6 +1,7 @@
 import { arrayItemDisplayValue } from "./array-item-hidden";
 import { lazyWrappedInner } from "./block-ref-field-utils";
 import { extractUrl } from "./fields/extract-url";
+import { inferInlineUnionIndex } from "./fields/inline-union-value";
 import type { SchemaProperty } from "./resolve-schema";
 import { labelFromResolveType } from "./section-types";
 import { safeEditorImageUrl } from "./safe-editor-image-url";
@@ -85,6 +86,21 @@ function stripHtmlTags(html: string): string {
   return html.replace(/<[^>]*>/g, "").trim();
 }
 
+/** Drop Mustache tokens from a title, leaving only its static text
+ * (`Categoria {{{id}}}` → `Categoria`). For contexts with no item data. */
+export function stripMustacheTokens(title: string): string {
+  return title
+    .replace(/\{\{\{?[^{}]*\}?\}\}/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Resolve-schema fills a titleless inline-union branch with `Option N`; that
+ * synthetic default must not shadow the item's own fields when labelling. */
+function isSyntheticBranchTitle(title: string): boolean {
+  return /^Option \d+$/.test(title);
+}
+
 function readTitleByValue(
   obj: Record<string, unknown>,
   titleBy: string,
@@ -126,6 +142,22 @@ function baseArrayItemLabel(
     if (itemSchema?.titleBy) {
       const fromTitleBy = readTitleByValue(obj, itemSchema.titleBy);
       if (fromTitleBy) return fromTitleBy;
+    }
+    // Inline unions carry titles per-branch, not on `items`: label by the active branch.
+    if (itemSchema?.inlineUnionBranches?.length) {
+      const idx = inferInlineUnionIndex(
+        obj,
+        itemSchema.inlineUnionBranches.map((b) => ({
+          discriminators: b.discriminators,
+          propertyKeys: Object.keys(b.schema?.properties ?? {}),
+        })),
+      );
+      const branchTitle = itemSchema.inlineUnionBranches[idx]?.title;
+      if (branchTitle && !isSyntheticBranchTitle(branchTitle)) {
+        const rendered = renderMustacheTemplate(branchTitle, obj);
+        if (rendered) return rendered;
+        if (!branchTitle.includes("{")) return branchTitle;
+      }
     }
     for (const key of [
       "name",
@@ -175,78 +207,29 @@ function baseArrayItemLabel(
 }
 
 /**
- * Normalize a label the same way breadcrumb matching does (`labelsMatch` in
- * schema-form-breadcrumb.ts) so collision detection here agrees with crumb
- * resolution there. Duplicated locally rather than imported to avoid a cyclic
- * dependency (that module already imports from this one).
- */
-function normalizeLabel(label: string): string {
-  return label.normalize("NFC").trim();
-}
-
-/**
- * Display labels for a whole array, disambiguated so every label is unique.
+ * Base display labels for a whole array.
  *
- * When an item's base label is shared by another item (e.g. an object array
- * with no name/title field, so every row falls back to the item schema's static
- * `title`), the label is suffixed with the item's position. Uniqueness is not
- * cosmetic: the breadcrumb addresses an array item by its label, and the only
- * other handle — the transiently-opened index in `ArrayField` — is reset
- * whenever the form subtree remounts (a `formResetKey` bump on back/breadcrumb
- * navigation). A non-unique label would then collapse every item back to the
- * first one on the next remount, so the editor appears to show the same content
- * for every item.
- *
- * Computed as a set (not per item) so the result is globally unique and
- * deterministic in `(items, itemSchema)` — the crumb built from this list
- * re-resolves to the same index even when a positional suffix happens to equal
- * another row's literal label. Comparison uses `normalizeLabel` to match the
- * resolver, so NFC/NFD and whitespace near-duplicates disambiguate too.
+ * Two items with no distinguishing field share a label — which is fine, and
+ * deliberately so: array items are addressed by their index (the breadcrumb
+ * crumb carries `itemIndex` — see `Crumb` in schema-form-breadcrumb.ts), never
+ * by a unique label, and the list rows / drag overlay open an item by its
+ * `entry.index`. So the displayed label stays clean — no positional " N" suffix
+ * ever reaches the UI, even when items collide.
  */
-export function getArrayItemLabels(
+export function getArrayItemDisplayLabels(
   items: unknown[],
   itemSchema?: SchemaProperty,
 ): string[] {
-  const bases = items.map((item, i) => baseArrayItemLabel(item, i, itemSchema));
-  const baseCounts = new Map<string, number>();
-  for (const base of bases) {
-    const key = normalizeLabel(base);
-    baseCounts.set(key, (baseCounts.get(key) ?? 0) + 1);
-  }
-  const seen = new Set<string>();
-  return bases.map((base, i) => {
-    let label =
-      (baseCounts.get(normalizeLabel(base)) ?? 0) > 1
-        ? `${base} ${i + 1}`
-        : base;
-    // A suffixed label can still coincide with another row's literal label;
-    // keep extending (positions are unique, so this terminates quickly) until
-    // the final set has no duplicates.
-    while (seen.has(normalizeLabel(label))) label = `${label} ${i + 1}`;
-    seen.add(normalizeLabel(label));
-    return label;
-  });
+  return items.map((item, i) => baseArrayItemLabel(item, i, itemSchema));
 }
 
-/**
- * Display label for a single array item. Pass `siblings` (the whole array) to
- * get a label disambiguated against the others — see {@link getArrayItemLabels}.
- * Callers that build or resolve a breadcrumb crumb MUST pass `siblings` so the
- * built and resolved labels agree; only genuinely single-item callers omit it.
- */
+/** Base display label for a single array item. */
 export function getArrayItemLabel(
   item: unknown,
   index: number,
   itemSchema?: SchemaProperty,
-  siblings?: unknown[],
 ): string {
-  if (!siblings || siblings.length < 2) {
-    return baseArrayItemLabel(item, index, itemSchema);
-  }
-  return (
-    getArrayItemLabels(siblings, itemSchema)[index] ??
-    baseArrayItemLabel(item, index, itemSchema)
-  );
+  return baseArrayItemLabel(item, index, itemSchema);
 }
 
 function getArrayItemImageTemplate(

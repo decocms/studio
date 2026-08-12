@@ -203,6 +203,8 @@ export class TaskBoardStorage {
     priority?: TaskBoardItemPriority;
     assigneeId?: string | null;
     assignedBy?: string | null;
+    /** `owner/name` of the repo (site) this task pertains to. */
+    repo?: string | null;
     dueDate?: string | null;
     /** Sender-minted finding identity — see task-board-import. */
     externalKey?: string | null;
@@ -230,6 +232,7 @@ export class TaskBoardStorage {
         priority: params.priority ?? "medium",
         assignee_id: params.assigneeId ?? null,
         assigned_by: params.assignedBy ?? null,
+        repo: params.repo ?? null,
         due_date: params.dueDate ?? null,
         external_key: params.externalKey ?? null,
         sort_order: sql<number>`(
@@ -260,6 +263,7 @@ export class TaskBoardStorage {
       priority?: TaskBoardItemPriority;
       assigneeId?: string | null;
       assignedBy?: string | null;
+      repo?: string | null;
       dueDate?: string | null;
       sortOrder?: number;
     },
@@ -280,6 +284,7 @@ export class TaskBoardStorage {
         ...(data.assignedBy !== undefined
           ? { assigned_by: data.assignedBy }
           : {}),
+        ...(data.repo !== undefined ? { repo: data.repo } : {}),
         ...(data.dueDate !== undefined ? { due_date: data.dueDate } : {}),
         ...(data.sortOrder !== undefined ? { sort_order: data.sortOrder } : {}),
         updated_by: by,
@@ -464,6 +469,33 @@ export class TaskBoardStorage {
   }
 
   /**
+   * Attach tags to a task WITHOUT detaching anything — the additive half of
+   * `setItemTags`, for a machine writer (the reports import) that owns its own
+   * labels but must not touch the ones a human put on the card. Idempotent: an
+   * already-attached tag keeps its original `created_by`/`created_at`. The task
+   * and all `tagIds` must already be verified as belonging to the caller's org.
+   */
+  async addItemTags(
+    taskBoardItemId: string,
+    tagIds: string[],
+    by: string,
+  ): Promise<void> {
+    if (tagIds.length === 0) return;
+    await this.db
+      .insertInto("task_board_item_tags")
+      .values(
+        tagIds.map((id) => ({
+          task_board_item_id: taskBoardItemId,
+          id,
+          created_by: by,
+          created_at: new Date().toISOString(),
+        })),
+      )
+      .onConflict((oc) => oc.doNothing())
+      .execute();
+  }
+
+  /**
    * Link an agent thread to a task (many-to-many). Idempotent — re-linking the
    * same pair is a no-op, so a run replay can't duplicate the row.
    */
@@ -598,16 +630,18 @@ export class TaskBoardStorage {
   ): Promise<{ kind: string | null; errorText: string | null } | null> {
     const row = await this.db
       .selectFrom("threads as t")
-      .leftJoin(
+      // LATERAL: uncorrelated, `LIMIT 1` took the newest error part in the TABLE.
+      .leftJoinLateral(
         (eb) =>
           eb
             .selectFrom("thread_message_parts as p")
-            .select(["p.thread_id", "p.payload"])
+            .select("p.payload")
+            .whereRef("p.thread_id", "=", "t.id")
             .where("p.kind", "=", "error")
             .orderBy("p.created_at", "desc")
             .limit(1)
             .as("err"),
-        (join) => join.onRef("err.thread_id", "=", "t.id"),
+        (join) => join.onTrue(),
       )
       .select(["t.status", "t.failure_kind as kind", "err.payload as payload"])
       .where("t.id", "=", threadId)
@@ -621,6 +655,13 @@ export class TaskBoardStorage {
    * Park a card on a retry: it stays In Progress (the work is still ours) and
    * becomes due for re-dispatch at `retryAt`. Conditional on the card still
    * being In Progress so a human who moved it meanwhile keeps their move.
+   *
+   * `dismissed_at IS NULL` matters for the same reason as `listItemsDueForRetry`:
+   * a reports-pushed task's `delete()` only stamps `dismissed_at` and leaves
+   * `status` at `in_progress`. `reactToFailedTaskRun`/the review sweeper read
+   * that stale `status` off `getById` (which doesn't expose `dismissedAt`), so
+   * without this guard a dismissed card whose run then fails gets a fresh retry
+   * armed on it.
    */
   async scheduleRunRetry(
     id: string,
@@ -634,6 +675,7 @@ export class TaskBoardStorage {
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
       .where("status", "=", "in_progress")
+      .where("dismissed_at", "is", null)
       .returning("id")
       .execute();
     return rows.length > 0;
@@ -642,7 +684,9 @@ export class TaskBoardStorage {
   /**
    * Send a card back to To Do after a run failed for good (not infrastructure,
    * or out of retries). Clears the retry state so a later re-run starts with a
-   * full budget. Conditional on In Progress for the same reason as above.
+   * full budget. Conditional on In Progress and `dismissed_at IS NULL` for the
+   * same reason as `scheduleRunRetry` above — otherwise a dismissed card gets
+   * resurrected straight back onto the board.
    */
   async returnToTodoAfterFailure(
     id: string,
@@ -661,6 +705,7 @@ export class TaskBoardStorage {
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
       .where("status", "=", "in_progress")
+      .where("dismissed_at", "is", null)
       .returning("id")
       .execute();
     if (rows.length === 0) return null;
@@ -795,6 +840,14 @@ export class TaskBoardStorage {
   /**
    * Cards whose retry is due, oldest first. Claimed one at a time by the caller
    * via `claimDueRetry`, so a batch read here is safe across replicas.
+   *
+   * `dismissed_at IS NULL` matters here specifically: a reports-pushed task's
+   * `delete()` only sets `dismissed_at` (it keeps the row so re-import doesn't
+   * recreate the card), leaving `status`/`retry_at` untouched. Without this
+   * filter a card dismissed while its retry was still pending gets a brand-new
+   * Super Agent run dispatched on it after the user already deleted it from the
+   * board — the same class of bug the other list queries here already guard
+   * against.
    */
   async listItemsDueForRetry(
     limit: number,
@@ -810,6 +863,7 @@ export class TaskBoardStorage {
       .where("retry_at", "is not", null)
       .where("retry_at", "<=", now)
       .where("status", "=", "in_progress")
+      .where("dismissed_at", "is", null)
       .orderBy("retry_at", "asc")
       .limit(limit)
       .execute();
@@ -1002,6 +1056,11 @@ export class TaskBoardStorage {
    * The `where status = 'in_progress'` predicate is the whole point: it makes
    * the advance idempotent under concurrency, which the plain `update()` is not.
    * See the caller above for what the duplicates cost.
+   *
+   * `dismissed_at IS NULL` matters for the same reason as `listItemsDueForRetry`:
+   * a reports-pushed task's `delete()` only stamps `dismissed_at` and leaves
+   * `status` at `in_progress`, so a dismissed card whose linked thread finishes
+   * afterward would otherwise get resurrected straight into the reviewers' lane.
    */
   async advanceToReviewIfInProgress(
     id: string,
@@ -1018,6 +1077,7 @@ export class TaskBoardStorage {
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
       .where("status", "=", "in_progress")
+      .where("dismissed_at", "is", null)
       .returningAll()
       .executeTakeFirst();
 
@@ -1121,6 +1181,40 @@ export class TaskBoardStorage {
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
       .where("status", "=", "in_review")
+      .where("assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID)
+      .returningAll()
+      .executeTakeFirst();
+    if (!row) return null;
+    const item = this.itemFromDbRow(row);
+    await this.attachRefs([item], organizationId);
+    return item;
+  }
+
+  /**
+   * Atomically hand a task from the Super Agent to a human: clear
+   * `assigneeId` ONLY if it's still the Super Agent, returning the updated
+   * item, or null if it already changed. `handTaskToHuman`'s caller re-checks
+   * a stale, previously-read `item.assigneeId` before calling this — several
+   * dead-end paths (a bounce limit, a burned reviewer retry, a PR-less card)
+   * can race to hand off the SAME card, and a human can reassign it away from
+   * the Super Agent in between. Without this fence, a plain `update()` would
+   * stomp that human's reassignment back to null. Same conditional-UPDATE
+   * pattern as `claimInReviewSuperAgentSlot`.
+   */
+  async unassignSuperAgent(
+    id: string,
+    organizationId: string,
+    by: string,
+  ): Promise<TaskBoardItem | null> {
+    const row = await this.db
+      .updateTable("task_board_items")
+      .set({
+        assignee_id: null,
+        updated_by: by,
+        updated_at: new Date().toISOString(),
+      })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
       .where("assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID)
       .returningAll()
       .executeTakeFirst();
@@ -1578,6 +1672,7 @@ export class TaskBoardStorage {
     priority: string;
     assignee_id: string | null;
     assigned_by: string | null;
+    repo: string | null;
     due_date: string | Date | null;
     sort_order: number;
     retry_attempts?: number;
@@ -1595,6 +1690,7 @@ export class TaskBoardStorage {
       priority: row.priority as TaskBoardItemPriority,
       assigneeId: row.assignee_id,
       assignedBy: row.assigned_by,
+      repo: row.repo,
       dueDate:
         row.due_date instanceof Date
           ? row.due_date.toISOString()

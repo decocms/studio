@@ -22,9 +22,9 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
-import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/dropdown-menu.tsx";
+import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { DotsGrid, DotsHorizontal, Trash01 } from "@untitledui/icons";
 import { type ReactNode, useRef, useState } from "react";
 import { createPortal } from "react-dom";

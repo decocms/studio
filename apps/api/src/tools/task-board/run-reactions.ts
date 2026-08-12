@@ -30,9 +30,11 @@ import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { sseHub } from "@/event-bus/sse-hub";
 import {
   isReportsTask,
+  SUPER_AGENT_ASSIGNEE_ID,
   TASK_BOARD_ITEM_DELETED_EVENT,
   TASK_BOARD_ITEM_UPDATED_EVENT,
 } from "@decocms/shared/task-board";
+import { recordTaskActivity } from "./activity";
 import type { TaskBoardStorage } from "@/storage/task-board";
 import type { TaskBoardItem, TaskBoardItemStatus } from "@/storage/types";
 
@@ -391,7 +393,7 @@ export async function reactToFailedTaskRun(
  * stall recovery) costs the customer their execution rather than costing us an
  * unbilled one.
  */
-async function refundUnproductiveTaskClaims(
+export async function refundUnproductiveTaskClaims(
   taskBoard: TaskBoardStorage,
   billing: OrganizationBillingStorage,
   threadId: string,
@@ -415,6 +417,54 @@ async function refundUnproductiveTaskClaims(
     }
   } catch (err) {
     console.error("[task-board] quota refund pass failed", err);
+  }
+}
+
+/**
+ * Stop automating a card and hand it to a person, with the reason on its
+ * timeline.
+ *
+ * Every automatic lane out of In Review can dead-end: the reviewer's approval
+ * didn't verify, its runs burned their attempts, the run parked a card there
+ * with no PR to review. Each of those used to `return` silently — the card kept
+ * being swept, kept costing GitHub calls, and read on the board exactly like a
+ * card whose reviewers were still thinking. Twelve of them accumulated in one
+ * org, the oldest for a week.
+ *
+ * Unassigning is what makes it terminal AND idempotent: every automatic path
+ * (the sweeper's `reconcileItem`, the reviewer dispatch, the conflict reaction)
+ * requires the Super Agent as assignee, so a handed-over card is visited once
+ * and then left alone. Deliberately leaves the STATUS untouched — In Review is
+ * where a human wants to pick a reviewed card up, and moving it would lose the
+ * reviewers' notes' context. Returns true when this call did the handover.
+ */
+export async function handTaskToHuman(
+  ctx: StudioContext,
+  item: TaskBoardItem,
+  reason: string,
+): Promise<boolean> {
+  const orgId = item.organizationId;
+  if (item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID) return false;
+  try {
+    // Re-checks the assignee against the DB, not this stale `item`.
+    const handed = await ctx.storage.taskBoard.unassignSuperAgent(
+      item.id,
+      orgId,
+      item.updatedBy,
+    );
+    if (!handed) return false;
+    await recordTaskActivity(ctx, {
+      taskBoardItemId: item.id,
+      action: "assignee_changed",
+      actorId: null,
+      data: { from: item.assigneeId, to: null, reason },
+    });
+    console.warn(`[task-board] ${item.id} handed to a human: ${reason}`);
+    emitTaskBoardUpdated(orgId, handed);
+    return true;
+  } catch (err) {
+    console.error(`[task-board] handing ${item.id} to a human failed`, err);
+    return false;
   }
 }
 

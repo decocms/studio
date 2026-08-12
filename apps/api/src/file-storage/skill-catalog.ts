@@ -156,6 +156,35 @@ function buildOrgFs(ctx: StudioContext, orgId: string): OrgFs {
   return new OrgFs(storage, ctx.storage.orgFsEntries, orgId);
 }
 
+/** Repo-sync skills: bounded probe of each synced volume's root. */
+async function buildSyncedEntries(
+  ctx: StudioContext,
+  orgId: string,
+  budget: { remaining: number },
+): Promise<SkillCatalogEntry[]> {
+  const volumes = await ctx.storage.orgRepoSyncs
+    .listEnabledVolumes(orgId)
+    .catch(() => [] as string[]);
+  if (volumes.length === 0) return [];
+  const fs = buildOrgFs(ctx, orgId);
+  const entries: SkillCatalogEntry[] = [];
+  for (const volume of volumes) {
+    const detected = await detectSkills(fs, volume, "", budget);
+    for (const s of detected) {
+      entries.push({
+        id: `repo/${volume}/${s.dirPath}`,
+        name: s.name,
+        description: s.description,
+        source: `repo:${volume}`,
+        sandboxPath: orgFsSandboxPath(volume, s.dirPath),
+        volume,
+        path: s.dirPath,
+      });
+    }
+  }
+  return entries;
+}
+
 /** Home skills: bounded probe of `org/home/*` and `org/home/skills/*`. */
 async function buildHomeEntries(
   ctx: StudioContext,
@@ -188,11 +217,12 @@ export async function buildSkillCatalog(
   orgId: string,
 ): Promise<SkillCatalogEntry[]> {
   const budget = { remaining: MAX_SKILLS };
-  const [pub, home] = await Promise.all([
+  const [pub, home, synced] = await Promise.all([
     buildPublicEntries(ctx, budget),
     buildHomeEntries(ctx, orgId, budget),
+    buildSyncedEntries(ctx, orgId, budget),
   ]);
-  return [...pub, ...home].sort(
+  return [...pub, ...home, ...synced].sort(
     (a, b) => a.source.localeCompare(b.source) || a.id.localeCompare(b.id),
   );
 }

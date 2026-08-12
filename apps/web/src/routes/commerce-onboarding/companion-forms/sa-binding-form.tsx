@@ -1,6 +1,6 @@
 import { KEYS } from "@/lib/query-keys";
-import { Button } from "@deco/ui/components/button.tsx";
-import { DialogFooter } from "@deco/ui/components/dialog.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { DialogFooter } from "@decocms/ui/components/dialog.tsx";
 import {
   Form,
   FormControl,
@@ -8,8 +8,8 @@ import {
   FormField,
   FormItem,
   FormMessage,
-} from "@deco/ui/components/form.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
+} from "@decocms/ui/components/form.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";

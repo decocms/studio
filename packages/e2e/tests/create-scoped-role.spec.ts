@@ -20,6 +20,7 @@ import { expect, newApiContext, test } from "../fixtures/test";
 
 // The tools backing the monitoring:view capability (registry-metadata).
 const MONITORING_TOOLS = [
+  "MONITORING_HEATMAP",
   "MONITORING_LOG_GET",
   "MONITORING_LOGS_LIST",
   "MONITORING_STATS",

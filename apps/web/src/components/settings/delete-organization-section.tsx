@@ -1,4 +1,5 @@
 import { invalidateOrganizationListCache } from "@/lib/auth-client";
+import { clearLastLocation, readLastLocation } from "@/lib/last-location";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { track } from "@/lib/posthog-client";
 import { useStudioTools } from "@/lib/studio-tools";
@@ -13,9 +14,9 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@deco/ui/components/alert-dialog.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
+} from "@decocms/ui/components/alert-dialog.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
 import { useMutation } from "@tanstack/react-query";
 import {
   SettingsCard,
@@ -43,6 +44,12 @@ export function DeleteOrganizationSection() {
       // Drop the cached slug so homeRoute doesn't try to redirect us back here
       if (localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug()) === org.slug) {
         localStorage.removeItem(LOCALSTORAGE_KEYS.lastOrgSlug());
+      }
+
+      // homeRoute reads lastLocation *before* lastOrgSlug, so drop it too or the
+      // loader redirects straight back to the just-deleted org's slug.
+      if (readLastLocation()?.org === org.slug) {
+        clearLastLocation();
       }
 
       // Drop the TTL-cached org list so the homeRoute loader doesn't redirect

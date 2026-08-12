@@ -1,5 +1,6 @@
 import { sleep } from "@decocms/shared/std";
 import { useState, useRef, useEffect } from "react";
+import { useIsMutating } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { formatCodeTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { useChatTask } from "@/components/chat/context";
@@ -11,8 +12,8 @@ import { useInsetContext } from "@/layouts/agent-shell-layout";
 import { resolvePreviewDisplay } from "./preview-display";
 import { useIframeLoadRecovery } from "./preview-iframe-recovery";
 import { buildPreviewLabel } from "./preview-label";
-import { sanitizeProductionUrl } from "@decocms/shared/deco-site-production-url";
-import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
+import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
+import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 
@@ -37,13 +38,13 @@ import {
   Tablet01,
   Terminal,
 } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.js";
-import { Button } from "@deco/ui/components/button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { HeaderTabButton } from "@/layouts/main-panel-tabs/header-tab-button";
 import {
@@ -58,7 +59,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import { useDecofile } from "@/components/sections-editor/use-decofile";
 import { withVariantMatcherOverride } from "@/components/sections-editor/variant-matcher-override";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
@@ -83,9 +84,13 @@ import {
 import { decoBlockFileViewPath } from "@/components/sections-editor/deco-block-key";
 import { findLivePageResolveType } from "@/components/sections-editor/section-catalog";
 import {
-  buildDraftPreviewUrl,
+  buildFastPreviewDraftUrl,
   buildGlobalSectionPreviewUrl,
 } from "@/components/sections-editor/section-preview-url";
+import {
+  decofileWriteMutationKey,
+  useDecofileDraft,
+} from "@/components/sections-editor/decofile-api";
 import { useCreatePage } from "@/components/sections-editor/use-create-page";
 import { CreatePageModal } from "@/components/sections-editor/create-page-modal";
 import { toast } from "sonner";
@@ -257,10 +262,16 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     useState<PreviewDeviceSize>("desktop");
   const [visualElement, setVisualElement] =
     useState<VisualEditorPayload | null>(null);
-  /** Section index selected via click-through from the preview iframe. */
-  const [cmsSelectedSectionIndex, setCmsSelectedSectionIndex] = useState<
-    number | null
-  >(null);
+  /**
+   * Section selected via click-through from the preview iframe. Carries the
+   * iframe's per-click counter so that re-clicking the SAME section is still a
+   * new selection — without it, reopening a section the editor had navigated
+   * away from looked like "no change" and silently did nothing.
+   */
+  const [cmsSelectedSection, setCmsSelectedSection] = useState<{
+    index: number;
+    seq: number;
+  } | null>(null);
   const previewIframeRef = useRef<HTMLIFrameElement>(null);
   const blocksPanelRef = useRef<PanelImperativeHandle>(null);
   /** Origin most recently confirmed registered with the native shell via
@@ -321,7 +332,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const vmEntry = lifecycle.vmEntry;
   const previewUrl = lifecycle.previewUrl;
   const lifecyclePhase = vmEvents.lifecycle.phase;
-  const decofileVersion = vmEvents.decofileVersion;
   const devServerReady = lifecyclePhase === "running";
 
   const isDesktopSandbox = vmEntry?.sandboxProviderKind === "user-desktop";
@@ -335,6 +345,26 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // can retain a stale repoDir after the provider kind changes from desktop to
   // agent-sandbox, whose daemon reports a container-internal path ("/app/repo").
   const repoDir = isDesktopSandbox ? rawRepoDir : null;
+
+  // Live production URL of the linked site, persisted on the agent's
+  // `metadata.previewServerUrl` at import time (deco.cx reports the real domain,
+  // which can be a custom one — so we store it rather than guess it). Used as a
+  // published-site fallback while the sandbox provisions (non-blocking) instead
+  // of a blank overlay. `null` (no field, or a site imported before this was
+  // persisted) → the original blocking overlay is kept.
+  const inset = useInsetContext();
+  const previewServerUrl =
+    inset?.entity?.id === virtualMcpId
+      ? resolvePreviewServerUrl(inset.entity.metadata)
+      : null;
+  // Fast Preview (opt-in switch in CMS settings): sandbox-less mode — the
+  // draft is the branch head served by the decofile API, rendered against
+  // `previewServerUrl`. Requires BOTH the switch and a production URL — a bare
+  // flag is inert (nothing to render against), and `previewServerUrl` is non-null
+  // only for this agent's entity, so reading `metadata.fastPreview` off the
+  // same object is safe.
+  const fastPreviewEnabled =
+    !!previewServerUrl && inset?.entity?.metadata?.fastPreview === true;
 
   // Decofile pages/global sections for the URL bar dropdown. Not gated on the
   // dev server: when it's down we read the committed `.deco/*.gen.json` snapshot
@@ -362,6 +392,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       decofile: toBlocksQueryState(decofileQuery),
       meta: toBlocksQueryState(metaQuery),
       hasEditableContent: hasEditableDecoContent(decofile, meta),
+      fastPreviewActive: fastPreviewEnabled,
     }).kind === "content";
   const createPageParams =
     virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
@@ -473,20 +504,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const previewState = lifecycle.previewState;
   const userStopped = lifecycle.userStopped;
 
-  // Live production URL of the linked site, persisted on the agent's
-  // `metadata.productionUrl` at import time (deco.cx reports the real domain,
-  // which can be a custom one — so we store it rather than guess it). Used as a
-  // published-site fallback while the sandbox provisions (non-blocking) instead
-  // of a blank overlay; once the daemon is up, Fast Preview swaps to the daemon
-  // render (`draftPreviewUrl` below). `null` (no field, or a site imported
-  // before this was persisted) → the original blocking overlay is kept.
-  const inset = useInsetContext();
-  const productionUrl =
-    inset?.entity?.id === virtualMcpId
-      ? sanitizeProductionUrl(inset.entity.metadata?.productionUrl)
-      : null;
   // Per-agent "Open CMS" Layout setting, read off the entity already in
-  // context (same source as productionUrl above). Off by default (absent /
+  // context (same source as previewServerUrl above). Off by default (absent /
   // null → false): Preview stays on the site until the user opens the CMS
   // manually, unless an agent opts in to auto-open.
   const cmsDefaultOpen =
@@ -494,38 +513,53 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       ? inset.entity.metadata?.ui?.layout?.cmsDefaultOpen
       : null) ?? false;
 
-  // Fast Preview (opt-in switch in CMS settings): render the draft against
-  // `productionUrl` instead of the published site while the sandbox boots.
-  // Requires BOTH the switch and a production URL — a bare flag is inert
-  // (nothing to render against), and `productionUrl` is non-null only for this
-  // agent's entity, so reading `metadata.fastPreview` off the same object is
-  // safe.
-  const fastPreviewEnabled =
-    !!productionUrl && inset?.entity?.metadata?.fastPreview === true;
-
   // Fast Preview (gated by the CMS switch): render the site's REAL page on
-  // `productionUrl`, carrying a `?__draft=<handle>@<version>` pointer that the
-  // site's framework resolves by pulling the merged working-tree decofile from
-  // the sandbox daemon. Replaces POSTing the decofile at `/live/previews`,
-  // which only deco's own runtime honoured and could only render one component
-  // statically.
+  // `previewServerUrl`, carrying a `?__draft=` pointer the site's framework
+  // resolves by pulling the merged decofile. Replaces POSTing the decofile at
+  // `/live/previews`, which only deco's own runtime honoured and could only
+  // render one component statically.
   //
-  // Needs the daemon origin and a draft version — NOT the dev server, and
-  // notably not `currentPageKey` any more: the site does its own routing, so
-  // the preview no longer waits on the decofile query that used to stall the
-  // whole surface behind a cold-start 502.
-  //
-  // `version` changes on every `.deco/blocks/*` save (the daemon's `decofile`
-  // event), which re-navigates the frame — no cache-busting nonce needed.
+  // Sandbox-less: the draft is served by Studio's decofile API — the pointer
+  // carries the API authority + a signed token, and `version` is the branch
+  // head commit sha from KEYS.decofileDraft (seeded by the decofile read,
+  // bumped by every save). No sandbox, no SSE — a new version after a save is
+  // still what re-navigates the frame.
   //
   // Computed BEFORE `display`: it is an input to that decision, so it must not
   // depend on `display.mode` in turn.
+  const decofileDraft = useDecofileDraft(
+    fastPreviewEnabled && virtualMcpId && branch
+      ? { orgSlug: org.slug, virtualMcpId, branch }
+      : null,
+  );
+  // Autosave indicator: an in-flight block write shows the same thin top bar
+  // as navigation. In sandbox mode the daemon's `.deco/` change SSE drives the
+  // bar; sandbox-less has no daemon, so the mutation itself is the signal. The
+  // handoff is seamless — when the write lands, the new draft version changes
+  // `draftPreviewUrl`, and the re-navigation effect keeps the bar up (via
+  // `beginNavigation`) until the reloaded iframe fires onLoad.
+  const decofileWriting =
+    useIsMutating({
+      mutationKey: decofileWriteMutationKey(
+        org.slug,
+        virtualMcpId ?? "",
+        branch ?? "",
+      ),
+    }) > 0;
   const draftPreviewUrl =
-    fastPreviewEnabled && productionUrl && previewUrl && decofileVersion
-      ? buildDraftPreviewUrl({
-          productionUrl,
-          previewUrl,
-          version: decofileVersion,
+    fastPreviewEnabled &&
+    previewServerUrl &&
+    decofileDraft &&
+    virtualMcpId &&
+    branch
+      ? buildFastPreviewDraftUrl({
+          previewServerUrl,
+          apiHost: decofileDraft.apiHost,
+          orgSlug: org.slug,
+          virtualMcpId,
+          branch,
+          token: decofileDraft.token,
+          version: decofileDraft.version,
           path: resolvedPath,
         })
       : null;
@@ -539,7 +573,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const display = resolvePreviewDisplay({
     previewState,
     progressStatus: progress.status,
-    productionUrl,
+    previewServerUrl,
     fastPreviewActive: fastPreviewEnabled,
     fastPreviewReady: !!draftPreviewUrl,
   });
@@ -809,7 +843,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       } else if (e.data?.type === "cms-editor::section-clicked") {
         const result = CmsEditorPayloadSchema.safeParse(e.data.payload);
         if (result.success)
-          setCmsSelectedSectionIndex(result.data.sectionIndex);
+          setCmsSelectedSection({
+            index: result.data.sectionIndex,
+            seq: result.data.clickSeq,
+          });
       }
     };
     window.addEventListener("message", handler);
@@ -887,7 +924,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     }
     setEditingMode(mode);
     setVisualElement(null);
-    setCmsSelectedSectionIndex(null);
+    setCmsSelectedSection(null);
     if (previousMode === "visual") deactivateVisualEditor();
     if (mode === "visual") injectVisualEditor();
     if (previousMode === "blocks" && mode !== "blocks") deactivateCmsEditor();
@@ -922,6 +959,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   const handleRefresh = () => {
     if (!previewIframeRef.current || !iframeSrc) return;
+    // Same progress bar as page navigation; the iframe's onLoad clears it.
+    beginNavigation();
     const iframe = previewIframeRef.current;
     // biome-ignore lint/correctness/noSelfAssign: reloads the iframe
     // oxlint-disable-next-line no-self-assign
@@ -1033,7 +1072,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     setDirectPreviewUrl(null);
     // A click-through index from the previous page must not auto-select on the
     // next page's remounted editor.
-    setCmsSelectedSectionIndex(null);
+    setCmsSelectedSection(null);
     setPinnedPageKey(page.key);
     setCurrentPath(page.path);
     persistLastPage({ path: page.path, pageKey: page.key, params });
@@ -1069,7 +1108,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     );
     setActiveGlobalSection(section);
     setDirectPreviewUrl(url);
-    setCmsSelectedSectionIndex(null);
+    setCmsSelectedSection(null);
     workspace.selectTarget({ kind: "section", key: section.key });
   };
 
@@ -1446,8 +1485,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // whenever there's at least one available action: the Terminal toggle is
   // always available (so it stays reachable during boot, before the iframe is
   // up), while copy / SEO items are gated on the preview being live.
+  // Fast Preview is sandbox-less — there is no terminal to show, so the
+  // toggle is withheld entirely rather than opening an empty drawer.
+  const terminalToggle = fastPreviewEnabled ? null : terminal;
   const moreMenu =
-    showPreviewToolbar || terminal ? (
+    showPreviewToolbar || terminalToggle ? (
       <div className="flex shrink-0 items-center">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -1460,19 +1502,21 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44">
-            {terminal && (
+            {terminalToggle && (
               <DropdownMenuItem
-                onClick={() => terminal.setVisible(!terminal.visible)}
+                onClick={() =>
+                  terminalToggle.setVisible(!terminalToggle.visible)
+                }
               >
                 <Terminal size={14} />
-                {terminal.visible
+                {terminalToggle.visible
                   ? t("sandbox.preview.hideTerminal")
                   : t("sandbox.preview.showTerminal")}
               </DropdownMenuItem>
             )}
             {showPreviewToolbar && (
               <>
-                {terminal && <DropdownMenuSeparator />}
+                {terminalToggle && <DropdownMenuSeparator />}
                 <DropdownMenuItem onClick={handleCopyUrl}>
                   <Copy01 size={14} />
                   {t("sandbox.preview.copyCurrentUrl")}
@@ -1676,7 +1720,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           <div className="relative h-full min-h-0 overflow-hidden">
             <BlocksPanel
               virtualMcpId={virtualMcpId}
-              externalSelectedIndex={cmsSelectedSectionIndex}
+              externalSelection={cmsSelectedSection}
             />
             {floatingPreviewControls}
           </div>
@@ -1697,7 +1741,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               {effectiveEditingMode === "blocks" && (
                 <BlocksPanel
                   virtualMcpId={virtualMcpId}
-                  externalSelectedIndex={cmsSelectedSectionIndex}
+                  externalSelection={cmsSelectedSection}
                 />
               )}
             </ResizablePanel>
@@ -1718,9 +1762,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     "flex justify-center bg-muted/30",
                 )}
               >
-                {navigating && previewSurfaceActive && (
-                  <div className="absolute inset-x-0 top-0 z-40 h-0.5 overflow-hidden bg-primary/15">
-                    <div className="absolute inset-y-0 w-2/5 rounded-full bg-primary animate-preview-nav" />
+                {/* Asymptotic "commit ramp" progress: brand lime fill over a
+                    transparent track — no strip across the site, just the
+                    moving edge itself, with a soft same-color glow for
+                    presence on busy content. */}
+                {(navigating || decofileWriting) && previewSurfaceActive && (
+                  <div className="absolute inset-x-0 top-0 z-40 h-1 overflow-hidden">
+                    <div className="absolute inset-y-0 left-0 rounded-r-full bg-brand shadow-[0_0_6px] shadow-brand/60 animate-preview-ramp" />
                   </div>
                 )}
 

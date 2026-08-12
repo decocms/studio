@@ -15,6 +15,7 @@ import { emitTaskBoardUpdated } from "./run-reactions";
 import {
   ensureTaskExecutionAllowed,
   isReportsTask,
+  userInitiatedTaskQuotaConfig,
 } from "../../billing/task-quota";
 
 /**
@@ -73,6 +74,33 @@ export function diffTaskActivityEntries(
   return entries;
 }
 
+/**
+ * Does this update delegate the task to the Super Agent, i.e. queue a run?
+ *
+ * Not "did the assignee change": a run that fails out of its retry budget puts
+ * the card back in To Do with the Super Agent still assigned
+ * (`returnToTodoAfterFailure`), so the obvious recovery — clicking Auto fix
+ * again — was a silent no-op and the card sat in To Do forever. An explicit
+ * delegation to the Super Agent on a card sitting in To Do re-dispatches it.
+ *
+ * Any other lane keeps the old assignee-changed gate: In Progress already has
+ * a run in flight, and In Review / Done have their own Rerun path — none of
+ * them should be yanked back to To Do by a stray Auto fix click.
+ *
+ * Pure so the gate is unit-tested; `previous` is null only when nothing else
+ * changed either, which can't be a delegation.
+ */
+export function delegatesToSuperAgent(
+  inputAssigneeId: string | null | undefined,
+  previous: Pick<TaskBoardItem, "assigneeId" | "status"> | null,
+): boolean {
+  if (inputAssigneeId !== SUPER_AGENT_ASSIGNEE_ID) return false;
+  if (!previous) return false;
+  return previous.assigneeId !== SUPER_AGENT_ASSIGNEE_ID
+    ? true
+    : previous.status === "todo";
+}
+
 export const TASK_BOARD_ITEM_UPDATE = defineTool({
   name: "TASK_BOARD_ITEM_UPDATE",
   description:
@@ -91,6 +119,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     status: TaskBoardItemStatusSchema.optional(),
     priority: TaskBoardItemPrioritySchema.optional(),
     assigneeId: z.string().nullable().optional(),
+    repo: z.string().nullable().optional(),
     dueDate: z.string().datetime().nullable().optional(),
     /** New drag-to-reorder position within its lane (ascending). */
     sortOrder: z.number().optional(),
@@ -144,6 +173,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       input.status !== undefined ||
       input.priority !== undefined ||
       input.assigneeId !== undefined ||
+      input.repo !== undefined ||
       input.dueDate !== undefined ||
       input.sortOrder !== undefined ||
       input.tagIds !== undefined;
@@ -165,8 +195,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       input.assigneeId !== (previous?.assigneeId ?? null);
     // Delegating a task to the Super Agent queues it to run — force To Do,
     // overriding any status the caller passed alongside the reassignment.
-    const becameSuperAgent =
-      assigneeChanged && input.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
+    const becameSuperAgent = delegatesToSuperAgent(input.assigneeId, previous);
 
     if (previous && isReportsTask(previous)) {
       // Reports-pushed tasks are the report's findings — their CONTENT is
@@ -187,7 +216,12 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       // delegated-but-never-running (the dispatch-side claim would throw
       // after the assignee already persisted).
       if (becameSuperAgent) {
-        await ensureTaskExecutionAllowed(ctx, previous);
+        // A human is delegating this card manually — the per-task run cap must not block it, only the period bucket.
+        await ensureTaskExecutionAllowed(
+          ctx,
+          previous,
+          userInitiatedTaskQuotaConfig(),
+        );
       }
     }
 
@@ -228,6 +262,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
               ? getUserId(ctx)!
               : null
             : undefined,
+          repo: input.repo,
           dueDate: input.dueDate,
           sortOrder: input.sortOrder,
         },
@@ -267,7 +302,9 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     if (hasFieldUpdate || input.linkThreadId) {
       emitTaskBoardUpdated(organizationId, item);
     }
-    if (becameSuperAgent) await reactToSuperAgentDelegation(ctx, item);
+    if (becameSuperAgent) {
+      await reactToSuperAgentDelegation(ctx, item, { userInitiated: true });
+    }
 
     return { item };
   },

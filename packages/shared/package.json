@@ -1,6 +1,6 @@
 {
   "name": "@decocms/shared",
-  "version": "0.29.0",
+  "version": "0.33.0",
   "description": "Private isomorphic code shared by Studio workspaces",
   "private": true,
   "type": "module",
@@ -16,6 +16,7 @@
     "./sdk/types": "./src/sdk/types/index.ts",
     "./sdk/types/*": "./src/sdk/types/*.ts",
     "./sdk/lib/*": "./src/sdk/lib/*.ts",
+    "./decofile": "./src/decofile/index.ts",
     "./*": "./src/*.ts"
   },
   "dependencies": {

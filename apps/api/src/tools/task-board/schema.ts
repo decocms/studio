@@ -92,6 +92,8 @@ export const TaskBoardItemSchema = z.object({
   priority: TaskBoardItemPrioritySchema,
   assigneeId: z.string().nullable(),
   assignedBy: z.string().nullable(),
+  // `owner/name` of the repo (site) this task pertains to.
+  repo: z.string().nullable(),
   dueDate: z.string().datetime().nullable(),
   // Manual drag-to-reorder position within a lane, ascending.
   sortOrder: z.number(),
@@ -126,6 +128,7 @@ export const TASK_BOARD_ACTIVITY_ACTIONS = [
   "review_approved",
   "review_changes_requested",
   "merge_conflict_resolution",
+  "merge_failed",
 ] as const;
 
 export type TaskBoardActivityAction =

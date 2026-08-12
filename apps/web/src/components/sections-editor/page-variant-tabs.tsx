@@ -1,20 +1,20 @@
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { SORTABLE_DROP_ANIMATION } from "@/lib/dnd-drop-animation.ts";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
-import { cn } from "@deco/ui/lib/utils.js";
+} from "@decocms/ui/components/tooltip.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import {
   DndContext,
@@ -47,11 +47,10 @@ import { resolveEffectiveMatcherRule } from "./matcher-rules";
 import { resolveMatcherIconName } from "./matcher-icons";
 import type { PageVariant } from "./page-variants";
 import type { LiveMeta } from "./resolve-schema";
-
-const VARIANT_ROW_CLASS =
-  "text-[oklch(0.45_0.15_160)] hover:bg-[oklch(0.65_0.15_160/0.12)] dark:text-[oklch(0.78_0.15_160)] dark:hover:bg-[oklch(0.65_0.15_160/0.15)]";
-const VARIANT_SELECTED_ROW_CLASS =
-  "text-[oklch(0.45_0.15_160)] bg-[oklch(0.65_0.15_160/0.18)] dark:text-[oklch(0.78_0.15_160)] dark:bg-[oklch(0.65_0.15_160/0.2)]";
+import {
+  VARIANT_ROW_CLASS,
+  VARIANT_SELECTED_ROW_CLASS,
+} from "./section-variant-list";
 
 export function VariantTabIcon({
   rule,
@@ -89,6 +88,34 @@ function createEntries(variants: PageVariant[]): VariantTabEntry[] {
     index,
     variant,
   }));
+}
+
+/**
+ * Re-derive entries for a changed variant list, reusing each tab's existing
+ * id by matching on label rather than array position. A delete/duplicate
+ * before a tab shifts every later tab's position, so matching by position
+ * hands it a stale id — remounting its DnD-sortable identity and dropping
+ * e.g. an open row menu on an unrelated tab.
+ */
+export function reuseVariantEntryIds(
+  current: VariantTabEntry[],
+  variants: PageVariant[],
+): VariantTabEntry[] {
+  // Duplicate tabs clone the label as-is, so match same-label entries FIFO.
+  const byLabel = new Map<string, VariantTabEntry[]>();
+  for (const entry of current) {
+    const queue = byLabel.get(entry.variant.label);
+    if (queue) queue.push(entry);
+    else byLabel.set(entry.variant.label, [entry]);
+  }
+  return variants.map((variant, index) => {
+    const prior = byLabel.get(variant.label)?.shift();
+    return {
+      id: prior?.id ?? crypto.randomUUID(),
+      index,
+      variant,
+    };
+  });
 }
 
 function remapEntryIndices(entries: VariantTabEntry[]): VariantTabEntry[] {
@@ -182,7 +209,6 @@ function PageVariantRowContent({
 
 function SortablePageVariantRow({
   entry,
-  sortableId,
   isActive,
   canDelete,
   decofile,
@@ -194,7 +220,6 @@ function SortablePageVariantRow({
   onDelete,
 }: {
   entry: VariantTabEntry;
-  sortableId: string;
   isActive: boolean;
   canDelete: boolean;
   decofile: Record<string, unknown>;
@@ -207,7 +232,7 @@ function SortablePageVariantRow({
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useSortable({
-      id: sortableId,
+      id: entry.id,
       animateLayoutChanges: () => false,
     });
 
@@ -340,22 +365,15 @@ export function PageVariantTabs({
     setPrevVariantCount(variants.length);
     setPrevDisplayKey(displayKey);
     setEntries(createEntries(variants));
-  } else if (prevVariantCount !== variants.length) {
+  } else if (
+    prevVariantCount !== variants.length ||
+    prevDisplayKey !== displayKey
+  ) {
+    // Duplicate/delete/reorder all land here (a count change always also
+    // changes the display key).
     setPrevVariantCount(variants.length);
     setPrevDisplayKey(displayKey);
-    setEntries(createEntries(variants));
-  } else if (prevDisplayKey !== displayKey) {
-    setPrevDisplayKey(displayKey);
-    setEntries((current) =>
-      variants.map((variant, index) => {
-        const prior = current[index];
-        return {
-          id: prior?.id ?? crypto.randomUUID(),
-          index,
-          variant,
-        };
-      }),
-    );
+    setEntries((current) => reuseVariantEntryIds(current, variants));
   }
 
   const sensors = useSensors(
@@ -443,7 +461,6 @@ export function PageVariantTabs({
             {entries.map((entry) => (
               <SortablePageVariantRow
                 key={entry.id}
-                sortableId={entry.id}
                 entry={entry}
                 isActive={entry.index === activeIndex}
                 canDelete={canDelete}

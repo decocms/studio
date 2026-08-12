@@ -8,8 +8,8 @@ import {
   usePendingJoinRequests,
 } from "@/hooks/use-join-requests";
 import { useT } from "@/i18n/use-t.ts";
-import { Avatar } from "@deco/ui/components/avatar.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Avatar } from "@decocms/ui/components/avatar.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 
 /**
  * Pending domain join requests, shown at the top of the members page so admins

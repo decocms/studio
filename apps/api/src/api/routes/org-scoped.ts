@@ -33,6 +33,7 @@ import { createToolsRestRoutes } from "./tools-rest";
 import { createTriggerCallbackRoutes } from "./trigger-callback";
 import { createVirtualMcpRoutes } from "./virtual-mcp";
 import { createSandboxRoutes } from "./sandbox-proxy";
+import { createDecofileRoutes } from "./decofile";
 
 interface OrgScopedDeps {
   kvStorage: KVStorage;
@@ -100,6 +101,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
     createOrgFsRoutes({ getConnection: deps.getNatsConnection }),
   ); // /api/:org/fs/:volume/...
   app.route("/sandbox", createSandboxRoutes()); // /api/:org/sandbox/:virtualMcpId/:branch/*
+  app.route("/decofile", createDecofileRoutes()); // /api/:org/decofile/:virtualMcpId/:branch[/*] — sandbox-less Fast Preview CMS
   app.route("/", createHomeNextActionsRoutes());
   app.route("/deco-sites", createDecoSitesOrgRoutes()); // /api/:org/deco-sites
   app.route("/sso", createSsoRoutes()); // /api/:org/sso/* (renamed from /api/org-sso)

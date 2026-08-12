@@ -1,5 +1,6 @@
 import type { SchemaProperty } from "./resolve-schema";
 import { SchemaForm } from "./schema-form";
+import type { Crumb } from "./schema-form-breadcrumb";
 import { GeneralSeoForm } from "./general-seo-form";
 import { filterSeoSchema, getSeoFormMode } from "./seo-form-mode";
 
@@ -9,7 +10,7 @@ interface SeoFormFieldsProps {
   value: Record<string, unknown>;
   formResetKey: number;
   onChange: (value: unknown) => void;
-  onBreadcrumbChange?: (path: string[]) => void;
+  onBreadcrumbChange?: (path: Crumb[]) => void;
   /** Page SEO only — enables General "Use default" toggles. */
   siteDefaultSeo?: Record<string, unknown>;
 }

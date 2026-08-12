@@ -1,11 +1,11 @@
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
-import { Spinner } from "@deco/ui/components/spinner.tsx";
+} from "@decocms/ui/components/dropdown-menu.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { ChevronDown } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
 import { publishToBaseLabel } from "./publish-label.ts";
@@ -37,8 +37,8 @@ export function MergeSplitButton({
     <div className="inline-flex items-stretch rounded-md">
       <Button
         size="sm"
-        variant="success"
-        className="rounded-r-none border-r border-success-foreground/20"
+        variant="brand"
+        className="rounded-r-none border-r border-brand-foreground/20"
         disabled={disabled}
         data-tour={TOUR_ANCHORS.publish}
         onClick={() => void onPublish()}
@@ -50,7 +50,7 @@ export function MergeSplitButton({
         <DropdownMenuTrigger asChild>
           <Button
             size="sm"
-            variant="success"
+            variant="brand"
             className="rounded-l-none px-2"
             disabled={disabled}
             aria-label={t("thread.mergeSplitButton.moreActionsAriaLabel")}

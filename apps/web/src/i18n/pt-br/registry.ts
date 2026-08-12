@@ -25,9 +25,9 @@ export const registry = {
   "registry.csvImportDialog.downloadTemplate": "Baixar modelo",
   "registry.csvImportDialog.emptyStateHint":
     "Escolha um arquivo CSV ou baixe o modelo para começar.",
-  "registry.csvImportDialog.importButton": "Importar {count} item(ns)",
+  "registry.csvImportDialog.importButton": "Importar {count} itens",
   "registry.csvImportDialog.importedCount":
-    "Importados {count} item(ns) com sucesso",
+    "Importados {count} itens com sucesso",
   "registry.csvImportDialog.importingButton": "Importando...",
   "registry.csvImportDialog.itemsCount": "{count} itens",
   "registry.csvImportDialog.linePrefix": "Linha {line}:",
@@ -48,14 +48,30 @@ export const registry = {
   "registry.deleteConfirmDialog.description":
     "Esta ação não pode ser desfeita. O item {title} será removido permanentemente deste registro privado.",
   "registry.deleteConfirmDialog.title": "Deletar item do registro?",
+  "registry.discoverTools.couldNotDiscoverTools":
+    "Não foi possível descobrir as ferramentas.",
+  "registry.discoverTools.noToolsFound":
+    "Nenhuma ferramenta encontrada neste servidor MCP.",
   "registry.imageUpload.change": "Alterar",
   "registry.imageUpload.clickOrDragToUpload": "Clique ou arraste para enviar",
   "registry.imageUpload.dropImageHere": "Solte a imagem aqui",
+  "registry.imageUpload.failedToGetPresignedUrl":
+    "Falha ao obter a URL pré-assinada",
+  "registry.imageUpload.failedToGetPublicUrl": "Falha ao obter a URL pública",
+  "registry.imageUpload.failedToUpload":
+    "Falha ao enviar a imagem. Tente novamente.",
   "registry.imageUpload.image": "Imagem",
+  "registry.imageUpload.needsObjectStorageConnection":
+    "O envio de imagem requer uma conexão de armazenamento de objetos. Configure uma nas configurações do plugin.",
+  "registry.imageUpload.onlyImageFiles":
+    "Apenas arquivos de imagem são aceitos",
   "registry.imageUpload.orPasteImageUrl": "Ou cole um URL de imagem",
   "registry.imageUpload.previewAlt": "Visualização",
   "registry.imageUpload.remove": "Remover",
-  "registry.imageUpload.supportedFormats": "PNG, JPG, SVG até 2MB",
+  "registry.imageUpload.sizeTooLarge":
+    "O tamanho da imagem deve ser menor que 5MB",
+  "registry.imageUpload.supportedFormats": "PNG, JPG, SVG até 5MB",
+  "registry.imageUpload.uploadFailed": "Falha no envio: {statusText}",
   "registry.imageUpload.uploadingImage": "Enviando imagem...",
   "registry.imageUpload.urlPlaceholder": "https://example.com/logo.png",
   "registry.monitorConfiguration.aboutLabel": "Sobre {label}",
@@ -457,7 +473,7 @@ export const registry = {
   "registry.registryItemsPage.icon": "Ícone",
   "registry.registryItemsPage.id": "ID",
   "registry.registryItemsPage.importCsv": "Importar CSV",
-  "registry.registryItemsPage.importedItems": "Importado(s) {count} item(ns)",
+  "registry.registryItemsPage.importedItems": "Importados {count} itens",
   "registry.registryItemsPage.items": "Itens",
   "registry.registryItemsPage.loadingItems": "Carregando itens...",
   "registry.registryItemsPage.loadingMoreItems": "Carregando mais itens...",

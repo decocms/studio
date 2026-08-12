@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Lock01 } from "@untitledui/icons";
 import { Link, useParams } from "@tanstack/react-router";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 
 interface NoPermissionStateProps {
   /** Short label describing the section the user tried to open. */

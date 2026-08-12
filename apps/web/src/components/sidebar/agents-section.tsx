@@ -1,11 +1,11 @@
 import { Suspense, useState, type ReactElement, type ReactNode } from "react";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import {
   Link,
   useNavigate,
@@ -16,20 +16,20 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
-} from "@deco/ui/components/sidebar.tsx";
-import { Skeleton } from "@deco/ui/components/skeleton.tsx";
+} from "@decocms/ui/components/sidebar.tsx";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@deco/ui/components/popover.tsx";
+} from "@decocms/ui/components/popover.tsx";
 import {
   Drawer,
   DrawerContent,
   DrawerTitle,
-} from "@deco/ui/components/drawer.tsx";
-import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
-import { CollectionSearch } from "@deco/ui/components/collection-search.tsx";
+} from "@decocms/ui/components/drawer.tsx";
+import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
+import { CollectionSearch } from "@decocms/ui/components/collection-search.tsx";
 import { Check, Plus } from "@untitledui/icons";
 import {
   getWellKnownDecopilotVirtualMCP,

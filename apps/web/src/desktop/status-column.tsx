@@ -6,7 +6,7 @@
  * transitions between states — see
  * the native authentication-success contract §5.2.
  */
-import { Spinner } from "@deco/ui/components/spinner.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 
 export function StatusColumn({
   label,

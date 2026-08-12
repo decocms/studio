@@ -3,23 +3,23 @@ import {
   Dialog,
   DialogContent,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
+} from "@decocms/ui/components/dialog.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@deco/ui/components/popover.tsx";
-import { Calendar as DayPickerCalendar } from "@deco/ui/components/calendar.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Avatar } from "@deco/ui/components/avatar.tsx";
-import { Skeleton } from "@deco/ui/components/skeleton.tsx";
-import { useCopy } from "@deco/ui/hooks/use-copy.ts";
+} from "@decocms/ui/components/popover.tsx";
+import { Calendar as DayPickerCalendar } from "@decocms/ui/components/calendar.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Avatar } from "@decocms/ui/components/avatar.tsx";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import { useCopy } from "@decocms/ui/hooks/use-copy.ts";
 import {
   AlertCircle,
   AlertSquare,
@@ -58,7 +58,7 @@ import { useMembers } from "@/hooks/use-members";
 import { useCreateTag, useDeleteTag, useTags } from "@/hooks/use-tags";
 import { getInitials } from "@/lib/get-initials";
 import { useT } from "@/i18n/use-t.ts";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   nextTagColor,
   PRIORITIES,
@@ -89,6 +89,8 @@ import {
 } from "./review-status";
 import { formatTimeAgo } from "@/lib/format-time";
 import { GitHubIcon } from "@/components/icons/github-icon";
+import { useConnections } from "@/sdk";
+import { getRepoScope } from "@decocms/shared/github-repo-scope";
 import { AssigneePickerContent } from "./assignee-picker";
 import { TagPickerContent } from "./tag-picker";
 import { extractDescriptionLinks } from "./description-links";
@@ -158,6 +160,7 @@ export function TaskBoardItemDialog({
     status: TaskBoardItemStatus;
     priority: TaskBoardItemPriority;
     assigneeId: string | null;
+    repo: string | null;
     dueDate: string | null;
     tagIds: string[];
   }) => void;
@@ -178,6 +181,17 @@ export function TaskBoardItemDialog({
   const createTag = useCreateTag();
   const deleteTag = useDeleteTag();
 
+  // The org's repos (which site a task pertains to) — active repo-scoped
+  // GitHub connections as `owner/name`, deduped.
+  const repos = Array.from(
+    new Set(
+      (useConnections({ slug: "mcp-github" }) ?? [])
+        .map((c) => (c.status === "active" ? getRepoScope(c) : null))
+        .filter((s): s is NonNullable<typeof s> => s !== null)
+        .map((s) => `${s.owner}/${s.repo}`),
+    ),
+  );
+
   const [title, setTitle] = useState(item?.title ?? "");
   const [description, setDescription] = useState(item?.description ?? "");
   const [status, setStatus] = useState<TaskBoardItemStatus>(
@@ -189,6 +203,7 @@ export function TaskBoardItemDialog({
   const [assigneeId, setAssigneeId] = useState<string | null>(
     item?.assigneeId ?? null,
   );
+  const [repo, setRepo] = useState<string | null>(item?.repo ?? null);
   const [dueDate, setDueDate] = useState<Date | null>(
     parseIsoDate(item?.dueDate),
   );
@@ -205,6 +220,7 @@ export function TaskBoardItemDialog({
     setStatus(item?.status ?? defaultStatus ?? "triage");
     setPriority(item?.priority ?? "medium");
     setAssigneeId(item?.assigneeId ?? null);
+    setRepo(item?.repo ?? null);
     setDueDate(parseIsoDate(item?.dueDate));
     setTagIds(item?.tags.map((tag) => tag.id) ?? []);
   };
@@ -233,6 +249,7 @@ export function TaskBoardItemDialog({
       status,
       priority,
       assigneeId,
+      repo,
       dueDate: dueDate ? toEndOfDayIso(dueDate) : null,
       tagIds,
     });
@@ -265,6 +282,7 @@ export function TaskBoardItemDialog({
     status !== item.status ||
     priority !== item.priority ||
     assigneeId !== (item.assigneeId ?? null) ||
+    repo !== (item.repo ?? null) ||
     (dueDate ? toEndOfDayIso(dueDate) : null) !== (item.dueDate ?? null) ||
     tagIds.length !== initialTagIds.length ||
     !tagIds.every((id) => initialTagIds.includes(id));
@@ -484,6 +502,41 @@ export function TaskBoardItemDialog({
                 </DropdownMenuContent>
               </DropdownMenu>
 
+              {/* Which repo (site) this task pertains to — scopes it to a
+                  site's task pill in the task-based flow. */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className={cn(
+                      PROPERTY_BUTTON,
+                      "w-full min-w-0",
+                      !repo && "text-muted-foreground",
+                    )}
+                  >
+                    <GitHubIcon className="size-4 shrink-0" />
+                    <span className="min-w-0 flex-1 truncate text-left">
+                      {repo ?? t("taskBoard.taskDialog.repoButton")}
+                    </span>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  <DropdownMenuItem onSelect={() => setRepo(null)}>
+                    {t("taskBoard.taskDialog.noRepo")}
+                  </DropdownMenuItem>
+                  {repos.map((r) => (
+                    <DropdownMenuItem
+                      key={r}
+                      className="gap-2"
+                      onSelect={() => setRepo(r)}
+                    >
+                      <GitHubIcon className="size-4 shrink-0" />
+                      <span className="truncate">{r}</span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
               <div className="flex flex-col">
                 {/* modal: without it the parent Dialog's scroll-lock
                     (react-remove-scroll) swallows wheel events over this
@@ -572,8 +625,21 @@ export function TaskBoardItemDialog({
                     <AssigneePickerContent
                       members={members}
                       onSelect={(userId) => {
-                        setAssigneeId(userId);
                         setAssigneeOpen(false);
+                        // Re-picking the Super Agent on a card it already owns
+                        // leaves the form clean, so Save never appears and the
+                        // pick is silently discarded — which is what "I
+                        // assigned it to Auto fix and it stayed in To Do"
+                        // actually was. That intent is a re-run; hand it to the
+                        // same confirm the Rerun button uses.
+                        if (
+                          userId === SUPER_AGENT_ASSIGNEE_ID &&
+                          item?.assigneeId === SUPER_AGENT_ASSIGNEE_ID
+                        ) {
+                          onRerun?.();
+                          return;
+                        }
+                        setAssigneeId(userId);
                       }}
                     />
                   </PopoverContent>
@@ -1736,6 +1802,31 @@ function describeActivity(
           });
     case "merge_conflict_resolution":
       return t("taskBoard.taskDialog.activityMergeConflictResolution");
+    case "merge_failed": {
+      // `detail` names the repo (no_connection) or carries GitHub's refusal
+      // text — the difference between "it's broken" and "connect this repo".
+      const detail = typeof d.detail === "string" ? d.detail : "";
+      switch (d.reason) {
+        case "no_pr":
+          return t("taskBoard.taskDialog.activityMergeFailedNoPr");
+        case "checks_failing":
+          return t("taskBoard.taskDialog.activityMergeFailedChecksFailing");
+        case "no_connection":
+          return detail
+            ? t("taskBoard.taskDialog.activityMergeFailedNoConnection", {
+                detail,
+              })
+            : t("taskBoard.taskDialog.activityMergeFailed");
+        case "refused":
+          return detail
+            ? t("taskBoard.taskDialog.activityMergeFailedRefused", { detail })
+            : t("taskBoard.taskDialog.activityMergeFailed");
+        default:
+          return detail
+            ? t("taskBoard.taskDialog.activityMergeFailedError", { detail })
+            : t("taskBoard.taskDialog.activityMergeFailed");
+      }
+    }
     default: {
       const _exhaustive: never = a.action;
       return String(_exhaustive);

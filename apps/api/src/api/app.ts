@@ -16,7 +16,11 @@ import {
   kickPublicSetsBootSync,
   registerPublicSetsSyncWorkflow,
   setPublicSetsSyncRuntime,
-} from "../file-storage/dbos-public-sets-sync";
+} from "@/file-storage/dbos-public-sets-sync";
+import {
+  registerOrgRepoSyncWorkflow,
+  setOrgRepoSyncRuntime,
+} from "@/file-storage/dbos-org-repo-sync";
 import { getPublicUrl } from "@/core/server-constants";
 import { usesLocalObjectStorage } from "../tools/connection/dev-assets";
 import { DECO_STORE_URL, isDecoHostedMcp } from "@/core/deco-constants";
@@ -101,6 +105,7 @@ import {
 } from "./utils/paths";
 import { CredentialVault } from "../encryption/credential-vault";
 import type { CancelBroadcast } from "./routes/decopilot/cancel-broadcast";
+import { setCancelBroadcast } from "./routes/decopilot/cancel-registry";
 import {
   createNatsConnectionProvider,
   type NatsConnectionProvider,
@@ -313,10 +318,24 @@ export function isSsoExemptPath(path: string): boolean {
  * cookie-authenticated cross-site request against this API and read the
  * response — a permissive-CORS-with-credentials hole. Only reflect
  * localhost/127.0.0.1 (the Vite dev server, on a different port than the
- * API) and the deployment's own origin, falling back to the request's own
- * origin when `baseUrl` isn't configured (same fallback already used for
- * redirect_uri validation above).
+ * API), the native desktop app's local control origin (see below), and the
+ * deployment's own origin, falling back to the request's own origin when
+ * `baseUrl` isn't configured (same fallback already used for redirect_uri
+ * validation above).
  */
+/**
+ * The native desktop app terminates local TLS on its own real domain
+ * (`local.studio.decocms.com`, any port — see apps/native's
+ * `control_origin.rs`/`local_tls.rs`) rather than `localhost`, because a
+ * secure context needs a real domain and per-sandbox cookie isolation needs
+ * one the browser groups as a single site. Exact hostname match only — a
+ * subdomain or suffix (`evil.local.studio.decocms.com`,
+ * `local.studio.decocms.com.evil.example`) must NOT pass.
+ */
+function isNativeDesktopControlOrigin(hostname: string): boolean {
+  return hostname === "local.studio.decocms.com";
+}
+
 export function resolveCorsOrigin(
   origin: string,
   {
@@ -333,6 +352,16 @@ export function resolveCorsOrigin(
   if (originHost === "localhost" || originHost === "127.0.0.1") {
     return origin;
   }
+  // A connection's OAuth `authorization_servers` / `token_endpoint` /
+  // `registration_endpoint` legitimately point straight at this deployment
+  // (oauth-proxy.ts deliberately doesn't proxy those — see
+  // `apps/native/crates/local-api/src/routes/upstream.rs`'s
+  // `rewrite_origin_urls`), so the desktop webview calls them cross-origin —
+  // without this, every discovery/register/token fetch in that flow fails
+  // with no ACAO header ("Load failed" client-side).
+  if (isNativeDesktopControlOrigin(originHost)) {
+    return origin;
+  }
 
   const allowedOrigin = baseUrl ?? requestOrigin;
   try {
@@ -343,6 +372,28 @@ export function resolveCorsOrigin(
     // malformed baseUrl config — fall through to reject
   }
   return null;
+}
+
+/**
+ * Decide whether `redirectUrl` may receive the `/authorize` proxy's
+ * redirect — this is the OAuth-hijacking guard: an attacker who could name
+ * an arbitrary `redirect_uri` could have the authorization code delivered to
+ * their own origin instead of ours. Allows this deployment's own origin,
+ * bare `localhost` (any port, for local web dev), and the native desktop
+ * app's local control origin (its `/_auth/mcp-callback` — see
+ * `apps/native/src/lib/desktop/mcp-oauth-adapter.ts` — lives there, not on
+ * this deployment, since consent happens in the user's REAL browser as a top-
+ * level navigation, which no cross-origin fetch or cookie ever touches).
+ */
+export function isAllowedOAuthRedirectUri(
+  redirectUrl: URL,
+  allowedOrigin: string,
+): boolean {
+  return (
+    redirectUrl.origin === new URL(allowedOrigin).origin ||
+    redirectUrl.hostname === "localhost" ||
+    isNativeDesktopControlOrigin(redirectUrl.hostname)
+  );
 }
 
 /**
@@ -464,16 +515,7 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
     if (redirectUri) {
       const allowedOrigin = getSettings().baseUrl ?? reqUrl.origin;
       try {
-        const redirectUrl = new URL(redirectUri);
-        const allowedOriginObj = new URL(allowedOrigin);
-
-        // Check if redirect_uri origin matches the allowed origin
-        const isAllowed =
-          redirectUrl.origin === allowedOriginObj.origin ||
-          // Allow localhost for development
-          redirectUrl.hostname === "localhost";
-
-        if (!isAllowed) {
+        if (!isAllowedOAuthRedirectUri(new URL(redirectUri), allowedOrigin)) {
           return c.json(
             {
               error: "invalid_request",
@@ -1082,6 +1124,11 @@ export async function createApp(options: CreateAppOptions = {}) {
   );
   asyncResearchJobSweeper.start();
 
+  // Publish the broadcaster so callers outside the HTTP layer can stop a run
+  // (see cancel-registry.ts). After both assignment branches, so it holds the
+  // NATS broadcaster or the local stub, whichever this process built.
+  setCancelBroadcast(cancelBroadcast);
+
   cancelBroadcast
     .start((taskId) => {
       // Abort any in-flight background-tool work (e.g. generate_image) on this
@@ -1456,6 +1503,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   // workflow no-ops when ORGFS_PUBLIC_SETS is unset.
   setPublicSetsSyncRuntime({ db: database.db, baseUrl: getPublicUrl() });
 
+  // Per-org repo syncs: same DBOS-scheduled shape, work list from the DB.
+  setOrgRepoSyncRuntime({ db: database.db });
+
   // ============================================================================
   // Automation Runtime — wire storage + streaming into the DBOS workflow
   // ============================================================================
@@ -1517,6 +1567,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   // automations/thread-gate: it only sets a module-level pointer.
   const projectorThreadStorage = new SqlThreadStorage(database.db);
   const projectorTaskBoard = new TaskBoardStorage(database.db);
+  // Quota bookkeeping for the projector's thread-finish reaction: a run that
+  // ended without a PR releases its held slot (billing/task-quota.ts).
+  const projectorBilling = new OrganizationBillingStorage(database.db);
   // Reconciles Super Agent tasks parked In Review: links the PR a sandboxed
   // `claude-code` run opened (nothing else does — see review-sweeper.ts) and
   // hands off to the enabled reviewers. It has to be a timer rather than part of
@@ -1528,6 +1581,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   const taskBoardReviewSweeper = new TaskBoardReviewSweeper(
     projectorTaskBoard,
     automationContextFactory,
+    projectorBilling,
   );
   if (getSettings().taskBoardReviewSweeperEnabled) {
     taskBoardReviewSweeper.start();
@@ -1539,9 +1593,6 @@ export async function createApp(options: CreateAppOptions = {}) {
       taskBoardReviewSweeper.dispose();
     };
   }
-  // Quota bookkeeping for the projector's thread-finish reaction: a run that
-  // ended without a PR releases its held slot (billing/task-quota.ts).
-  const projectorBilling = new OrganizationBillingStorage(database.db);
   setProjectorWorkflowRuntime({
     getJetStream: () => natsProvider?.getJetStream() ?? null,
     getJetStreamManager: async () => {
@@ -1717,6 +1768,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Must run before DBOS.launch() (which fires in index.ts after createApp).
   registerMonitoringRetentionWorkflow();
   registerPublicSetsSyncWorkflow();
+  registerOrgRepoSyncWorkflow();
 
   const automationRunner: StudioContext["automationRunner"] = async (
     automationId,

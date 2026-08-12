@@ -1,4 +1,4 @@
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import type { ReactNode } from "react";
 
 interface AuthSplitLayoutProps {

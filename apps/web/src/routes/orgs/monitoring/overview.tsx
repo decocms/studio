@@ -3,24 +3,30 @@
  */
 
 import type { ReactNode } from "react";
-import { useState } from "react";
-import type { useConnections } from "@/sdk";
+import { Fragment, useState } from "react";
+import type { useConnections, useVirtualMCPs } from "@/sdk";
 import { useProjectContext } from "@/sdk";
 import { useNavigate } from "@tanstack/react-router";
 import {
   Alert,
   AlertDescription,
   AlertTitle,
-} from "@deco/ui/components/alert.tsx";
-import { Card } from "@deco/ui/components/card.tsx";
+} from "@decocms/ui/components/alert.tsx";
+import { Card } from "@decocms/ui/components/card.tsx";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@deco/ui/components/select.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/select.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@decocms/ui/components/tooltip.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { AlertTriangle, Container } from "@untitledui/icons";
 import { IntegrationIcon } from "@/components/integration-icon.tsx";
 import {
@@ -31,11 +37,13 @@ import {
 import {
   useMonitoringStats,
   useMonitoringLlmStats,
+  useMonitoringHeatmap,
 } from "@/components/monitoring/hooks.ts";
 import { getConnectionSlug } from "@decocms/shared/utils/connection-slug";
 import { useT } from "@/i18n/use-t.ts";
 import {
   buildFilledStatsData,
+  computeHeatmapView,
   formatCompactNumber,
   formatDuration,
   formatMetricValue,
@@ -258,6 +266,121 @@ function ModelLeaderboardTable({
   );
 }
 
+// ── Tool-call heatmap ───────────────────────────────────────────────────────
+
+const HEATMAP_MAX_TOOLS = 12;
+const HEATMAP_MAX_AGENTS = 8;
+
+type HeatmapMetric = "calls" | "outputSize";
+
+function heatmapLevelClass(value: number, maxValue: number): string {
+  if (value === 0) return "bg-muted-foreground/10";
+  const ratio = maxValue > 0 ? value / maxValue : 0;
+  if (ratio <= 0.15) return "bg-success/25";
+  if (ratio <= 0.4) return "bg-success/45";
+  if (ratio <= 0.7) return "bg-success/70";
+  return "bg-success";
+}
+
+function ToolAgentHeatmap({
+  cells,
+  virtualMcps,
+  metric,
+}: {
+  cells: Array<{
+    virtualMcpId: string | null;
+    toolName: string;
+    calls: number;
+    errors: number;
+    outputSize: number;
+  }>;
+  virtualMcps: ReturnType<typeof useVirtualMCPs>;
+  metric: HeatmapMetric;
+}) {
+  const t = useT();
+
+  if (cells.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">
+        {t("orgs.overview.noHeatmapData")}
+      </div>
+    );
+  }
+
+  const { topTools, topAgentIds, cellMap, maxValue } = computeHeatmapView(
+    cells,
+    metric,
+    HEATMAP_MAX_TOOLS,
+    HEATMAP_MAX_AGENTS,
+  );
+
+  const agentNameOf = (id: string) =>
+    id === ""
+      ? t("orgs.overview.noAgent")
+      : (virtualMcps.find((vm) => vm.id === id)?.title ?? id);
+
+  return (
+    <TooltipProvider delayDuration={0}>
+      <div className="overflow-x-auto">
+        <div
+          className="grid gap-1 min-w-max"
+          style={{
+            gridTemplateColumns: `140px repeat(${topTools.length}, 28px)`,
+          }}
+        >
+          <div />
+          {topTools.map((tool) => (
+            <Tooltip key={tool}>
+              <TooltipTrigger asChild>
+                <div className="h-[80px] flex items-end justify-center pb-1 text-[10px] text-muted-foreground overflow-hidden [writing-mode:vertical-rl]">
+                  {tool}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>{tool}</TooltipContent>
+            </Tooltip>
+          ))}
+
+          {topAgentIds.map((agentId) => (
+            <Fragment key={agentId || "none"}>
+              <div
+                className="text-xs text-muted-foreground truncate flex items-center pr-2"
+                title={agentNameOf(agentId)}
+              >
+                {agentNameOf(agentId)}
+              </div>
+              {topTools.map((tool) => {
+                const cell = cellMap.get(`${agentId}::${tool}`);
+                const value = cell?.[metric] ?? 0;
+                return (
+                  <Tooltip key={tool}>
+                    <TooltipTrigger asChild>
+                      <div
+                        className={cn(
+                          "aspect-square rounded-[2px]",
+                          heatmapLevelClass(value, maxValue),
+                        )}
+                      />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {t("orgs.overview.heatmapCellTooltip", {
+                        agent: agentNameOf(agentId),
+                        tool,
+                        calls: cell?.calls ?? 0,
+                        errors: cell?.errors ?? 0,
+                        outputSize: formatCompactNumber(cell?.outputSize ?? 0),
+                      })}
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </Fragment>
+          ))}
+        </div>
+      </div>
+    </TooltipProvider>
+  );
+}
+
 // ── Props ───────────────────────────────────────────────────────────────────
 
 interface MonitoringStatsProps {
@@ -274,6 +397,9 @@ export interface OverviewTabProps extends MonitoringStatsProps {
   streamingRefetchInterval: number;
   /** Member (user) IDs to scope AI usage by. Empty = all members. */
   llmUserIds?: string[];
+  /** Agent (Virtual MCP) IDs to scope the tool-call heatmap by. Empty = all agents. */
+  virtualMcpIds?: string[];
+  virtualMcps: ReturnType<typeof useVirtualMCPs>;
 }
 
 // ── Main overview tab ───────────────────────────────────────────────────────
@@ -288,6 +414,8 @@ export function OverviewTabContent({
   isStreaming,
   streamingRefetchInterval,
   llmUserIds,
+  virtualMcpIds,
+  virtualMcps,
 }: OverviewTabProps) {
   const t = useT();
   const interval = getIntervalFromRange(displayDateRange);
@@ -312,6 +440,16 @@ export function OverviewTabContent({
       startDate: displayDateRange.startDate.toISOString(),
       endDate: displayDateRange.endDate.toISOString(),
       userIds: llmUserIds?.length ? llmUserIds : undefined,
+    },
+    { refetchInterval },
+  );
+
+  const { data: heatmapStats } = useMonitoringHeatmap(
+    {
+      startDate: displayDateRange.startDate.toISOString(),
+      endDate: displayDateRange.endDate.toISOString(),
+      virtualMcpIds,
+      excludeConnectionIds,
     },
     { refetchInterval },
   );
@@ -366,6 +504,7 @@ export function OverviewTabContent({
   const connectionBreakdown = serverStats?.connectionBreakdown ?? [];
 
   const [latencyMetric, setLatencyMetric] = useState<"avg" | "p95">("avg");
+  const [heatmapMetric, setHeatmapMetric] = useState<HeatmapMetric>("calls");
 
   return (
     <div className="flex flex-col gap-4 px-4 md:px-10 pt-2 pb-6 max-w-[1200px] mx-auto w-full overflow-auto">
@@ -399,6 +538,47 @@ export function OverviewTabContent({
           connections={connections}
           mode="requests"
           total={stats.totalCalls}
+        />
+      </MonitoringMetricCard>
+
+      {/* Row 1b: Tool-call heatmap (tool × agent) — full width */}
+      <MonitoringMetricCard
+        title={t("orgs.overview.toolCallHeatmap")}
+        value={
+          heatmapMetric === "calls"
+            ? (heatmapStats?.cells ?? [])
+                .reduce((sum, cell) => sum + cell.calls, 0)
+                .toLocaleString()
+            : formatCompactNumber(
+                (heatmapStats?.cells ?? []).reduce(
+                  (sum, cell) => sum + cell.outputSize,
+                  0,
+                ),
+              )
+        }
+        action={
+          <Select
+            value={heatmapMetric}
+            onValueChange={(v) => setHeatmapMetric(v as HeatmapMetric)}
+          >
+            <SelectTrigger className="w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="calls">
+                {t("orgs.overview.heatmapMetricCalls")}
+              </SelectItem>
+              <SelectItem value="outputSize">
+                {t("orgs.overview.heatmapMetricOutputSize")}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        }
+      >
+        <ToolAgentHeatmap
+          cells={heatmapStats?.cells ?? []}
+          virtualMcps={virtualMcps}
+          metric={heatmapMetric}
         />
       </MonitoringMetricCard>
 

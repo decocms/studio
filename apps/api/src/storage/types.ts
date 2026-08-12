@@ -1557,6 +1557,50 @@ export interface OrgSite {
   updatedAt: string;
 }
 
+// ============================================================================
+// Org Repo Sync (per-org GitHub repo → org-fs volume mirror)
+// ============================================================================
+
+export interface OrgRepoSyncTable {
+  id: ColumnType<string, string | undefined, never>;
+  organization_id: string;
+  /** Repo-scoped `mcp-github` connection the sync mints tokens from. */
+  connection_id: string;
+  repo_owner: string;
+  repo_name: string;
+  ref: ColumnType<string, string | undefined, string>;
+  /** Same shape as PublicSkillSetSource.paths: [{from, to?}]. */
+  paths: ColumnType<
+    Array<{ from: string; to?: string }>,
+    string | undefined,
+    string
+  >;
+  volume: string;
+  enabled: ColumnType<boolean, boolean | undefined, boolean>;
+  last_synced_at: ColumnType<Date | null, never, Date | string | null>;
+  last_sync_error: ColumnType<string | null, never, string | null>;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+export interface OrgRepoSync {
+  id: string;
+  organizationId: string;
+  connectionId: string;
+  repoOwner: string;
+  repoName: string;
+  ref: string;
+  paths: Array<{ from: string; to?: string }>;
+  volume: string;
+  enabled: boolean;
+  lastSyncedAt: string | null;
+  lastSyncError: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type TaskBoardItemStatus =
   | "triage"
   | "todo"
@@ -1588,6 +1632,7 @@ export interface TaskBoardItemTable {
   >;
   assignee_id: string | null;
   assigned_by: string | null;
+  repo: string | null;
   due_date: ColumnType<
     Date | null,
     Date | string | null | undefined,
@@ -1758,6 +1803,9 @@ export interface TaskBoardItem {
   priority: TaskBoardItemPriority;
   assigneeId: string | null;
   assignedBy: string | null;
+  /** `owner/name` of the repo (site) this task pertains to. Nullable: tasks
+   *  created org-wide (no site context) carry none. */
+  repo: string | null;
   dueDate: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;
@@ -1955,6 +2003,7 @@ export interface Database extends PrivateRegistryDatabase {
 
   // Asset tenancy: org ownership of globally-unique site slugs
   org_sites: OrgSiteTable;
+  org_repo_sync: OrgRepoSyncTable;
   task_board_items: TaskBoardItemTable;
   task_board_item_threads: TaskBoardItemThreadTable;
   task_board_activity: TaskBoardActivityTable;

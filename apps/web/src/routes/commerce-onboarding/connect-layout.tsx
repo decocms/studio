@@ -1,5 +1,5 @@
 import { useT } from "@/i18n/use-t.ts";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { ChevronRight, X } from "@untitledui/icons";
 import type { ReactNode } from "react";
 import { ConnectQuotePanel, ConnectTrustSignals } from "./connect-extras.tsx";

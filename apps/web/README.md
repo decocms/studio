@@ -73,7 +73,7 @@ bun run build:studio
 providers; `src/index.web.tsx` is the browser entry that renders it (the Tauri
 desktop build has its own entry, `src/index.native.tsx`). Route components load
 lazily, TanStack Query manages remote state, and shared UI primitives come from
-`@deco/ui`.
+`@decocms/ui`.
 
 ```text
 TanStack Router
@@ -147,7 +147,7 @@ Do not change it to `bun --bun vite dev`: the proxy depends on Node's
   isomorphic contracts in explicit `@decocms/shared/*` exports.
 - Keep React hooks, contexts, and other browser runtime code in `apps/web`,
   including `src/sdk`; do not move them into the shared package.
-- Consume design-system primitives from `@deco/ui` and use design tokens rather
+- Consume design-system primitives from `@decocms/ui` and use design tokens rather
   than raw palette values.
 - Route every user-facing string through `useT()`. Add matching English and
   Brazilian Portuguese dictionary entries.

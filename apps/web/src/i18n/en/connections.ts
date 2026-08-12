@@ -1,4 +1,5 @@
 export const connections = {
+  "connections.connectionCard.noDescription": "No description",
   "connections.createConnectionDialog.argumentsLabel": "Arguments",
   "connections.createConnectionDialog.argumentsPlaceholder":
     "arg1 arg2 --flag value",

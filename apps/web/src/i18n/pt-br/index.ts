@@ -33,9 +33,9 @@ import { automations } from "./automations.ts";
 import { agentShellLayout } from "./agent-shell-layout.ts";
 import { admin } from "./admin.ts";
 import { sandbox } from "./sandbox.ts";
-import type { TranslationKey } from "../en/index.ts";
-import { announcements } from "./announcements.ts";
 import { settings } from "./settings.ts";
+import { announcements } from "./announcements.ts";
+import type { TranslationKey } from "../en/index.ts";
 
 export const ptBR = {
   ...virtualMcp,

@@ -1,6 +1,7 @@
 import type { connections as connectionsEn } from "../en/connections.ts";
 
 export const connections = {
+  "connections.connectionCard.noDescription": "Sem descrição",
   "connections.createConnectionDialog.argumentsLabel": "Argumentos",
   "connections.createConnectionDialog.argumentsPlaceholder":
     "arg1 arg2 --flag value",

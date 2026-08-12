@@ -8,10 +8,10 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@deco/ui/components/alert-dialog.tsx";
-import { Badge } from "@deco/ui/components/badge.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Card } from "@deco/ui/components/card.tsx";
+} from "@decocms/ui/components/alert-dialog.tsx";
+import { Badge } from "@decocms/ui/components/badge.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Card } from "@decocms/ui/components/card.tsx";
 import {
   useRegistryMonitorConfig,
   useMonitorResults,
@@ -26,7 +26,7 @@ import type {
   MonitorResult,
   MonitorToolResult,
 } from "@/lib/registry/types";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   formatMonitorDuration,
   monitorStatusBadgeClass,

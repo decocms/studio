@@ -1,7 +1,7 @@
 import type * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "../lib/utils.ts";
 
 const alertVariants = cva(
   "relative w-full rounded-lg border px-4 py-3 text-sm flex items-start gap-3 [&>svg]:size-4 [&>svg]:flex-shrink-0 [&>svg]:mt-0.5 [&>svg]:text-current",

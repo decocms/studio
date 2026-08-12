@@ -4,8 +4,8 @@ import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@deco/ui/components/collapsible.tsx";
-import { cn } from "@deco/ui/lib/utils.js";
+} from "@decocms/ui/components/collapsible.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 
 type IconComponent = React.ComponentType<{ size?: number; className?: string }>;
 

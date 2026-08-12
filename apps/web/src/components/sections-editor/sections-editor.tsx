@@ -13,14 +13,14 @@ import {
   Loading01,
   CreditCardSearch,
 } from "@untitledui/icons";
-import { Button } from "@deco/ui/components/button.tsx";
-import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
-import { cn } from "@deco/ui/lib/utils.js";
+} from "@decocms/ui/components/tooltip.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { VariantRenameDialog } from "./variant-rename-dialog";
 import { toast } from "sonner";
 import { useDecofile } from "./use-decofile";
@@ -50,7 +50,11 @@ import { AddSectionModal } from "./add-section-modal";
 import { useSectionPreviewBase } from "./use-section-preview-base";
 import type { SectionCatalogEntry } from "./section-catalog";
 import { SectionVariantList } from "./section-variant-list";
-import { headerBackTargetIndex } from "./schema-form-breadcrumb";
+import {
+  type Crumb,
+  crumbLabel,
+  headerBackTargetIndex,
+} from "./schema-form-breadcrumb";
 import { ALWAYS_MATCHER_RESOLVE_TYPE, type RawSection } from "./section-types";
 import {
   buildMatcherBlockData,
@@ -127,7 +131,7 @@ export function SectionsEditor({
   currentPath,
   activePageBlockKey = null,
   activeGlobalBlockKey = null,
-  externalSelectedIndex,
+  externalSelection,
   onSaved,
   initialEditSeo = false,
   onExitSeo,
@@ -149,7 +153,8 @@ export function SectionsEditor({
   /** When set, edits a saved global block instead of a page. */
   activeGlobalBlockKey?: string | null;
   /** Section index selected via click-through from the preview iframe. */
-  externalSelectedIndex?: number | null;
+  /** Click-through from the preview iframe; `seq` distinguishes repeat clicks. */
+  externalSelection?: { index: number; seq: number } | null;
   /** Called after a successful auto-save so the parent can reload the preview. */
   onSaved?: () => void;
   /** Open the inline page SEO form on mount (e.g. after "Edit SEO" from a host menu). */
@@ -200,7 +205,7 @@ export function SectionsEditor({
     null,
   );
   const [activeVariantIndex, setActiveVariantIndex] = useState(0);
-  const [prevExternalIdx, setPrevExternalIdx] = useState<
+  const [prevExternalSeq, setPrevExternalSeq] = useState<
     number | null | undefined
   >(undefined);
   const [ruleFormValue, setRuleFormValue] = useState<Record<
@@ -208,7 +213,7 @@ export function SectionsEditor({
     unknown
   > | null>(null);
   const [ruleResolveType, setRuleResolveType] = useState<string | null>(null);
-  const [fieldBreadcrumbs, setFieldBreadcrumbs] = useState<string[]>([]);
+  const [fieldBreadcrumbs, setFieldBreadcrumbs] = useState<Crumb[]>([]);
   // Reset the form panel's scroll to the top whenever the drill-down DEPTH
   // changes (entering/leaving an item), so a drilled-in item form always starts
   // at the top instead of inheriting the previous view's scroll offset. Keyed on
@@ -261,7 +266,7 @@ export function SectionsEditor({
   const [seoRawOverride, setSeoRawOverride] = useState<
     Record<string, unknown> | null | undefined
   >(undefined);
-  const [seoFieldBreadcrumbs, setSeoFieldBreadcrumbs] = useState<string[]>([]);
+  const [seoFieldBreadcrumbs, setSeoFieldBreadcrumbs] = useState<Crumb[]>([]);
   const [seoFormResetKey, setSeoFormResetKey] = useState(0);
   const [activeSectionVariantIndex, setActiveSectionVariantIndex] = useState(0);
   const [sectionRuleFormValue, setSectionRuleFormValue] = useState<Record<
@@ -611,12 +616,13 @@ export function SectionsEditor({
       syncVariantPreviewOverride(mvObj, sectionIndex, variantIndex);
   };
 
-  // Auto-select section when parent signals a click-through from the preview.
+  // Auto-select on preview click-through, keyed on `seq` so repeat clicks count.
+  const externalSelectedIndex = externalSelection?.index;
   if (
-    externalSelectedIndex !== undefined &&
-    externalSelectedIndex !== prevExternalIdx
+    externalSelection !== undefined &&
+    (externalSelection?.seq ?? null) !== prevExternalSeq
   ) {
-    setPrevExternalIdx(externalSelectedIndex ?? null);
+    setPrevExternalSeq(externalSelection?.seq ?? null);
     if (typeof externalSelectedIndex === "number") {
       const rawSection = rawSections[externalSelectedIndex];
       const parsed = parsedSections[externalSelectedIndex];
@@ -2553,10 +2559,11 @@ export function SectionsEditor({
               >
                 {headerCrumbs.map((crumb, index) => {
                   const isLast = index === headerCrumbs.length - 1;
+                  const crumbText = crumbLabel(crumb);
 
                   return (
                     <span
-                      key={`${crumb}-${index}`}
+                      key={`${crumbText}-${index}`}
                       className="flex min-w-0 items-center gap-1 overflow-hidden"
                     >
                       {index > 0 && (
@@ -2565,7 +2572,7 @@ export function SectionsEditor({
                       <button
                         type="button"
                         onClick={() => handleBreadcrumbClick(index)}
-                        title={crumb}
+                        title={crumbText}
                         className={cn(
                           "min-w-0 truncate rounded-md px-1 py-0.5 text-left transition-colors",
                           isLast
@@ -2580,7 +2587,7 @@ export function SectionsEditor({
                             : "hover:bg-accent hover:text-accent-foreground",
                         )}
                       >
-                        {crumb}
+                        {crumbText}
                       </button>
                     </span>
                   );

@@ -23,23 +23,23 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@deco/ui/components/alert-dialog.tsx";
+} from "@decocms/ui/components/alert-dialog.tsx";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Card, CardContent } from "@deco/ui/components/card.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
-import { Switch } from "@deco/ui/components/switch.tsx";
-import { Textarea } from "@deco/ui/components/textarea.tsx";
+} from "@decocms/ui/components/dialog.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Card, CardContent } from "@decocms/ui/components/card.tsx";
+import { Label } from "@decocms/ui/components/label.tsx";
+import { Switch } from "@decocms/ui/components/switch.tsx";
+import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import {
   ENV_VAR_KEY_RE,
   StudioPackAgentId,
@@ -80,7 +80,8 @@ import { EnvVarsField } from "@/components/sandbox/runtime-card/env-vars-field";
 import { SubmoduleCredentialsField } from "@/components/sandbox/runtime-card/submodule-credentials-field";
 import { RepoRow } from "@/components/sandbox/runtime-card/repo-row";
 import { RuntimeFields } from "@/components/sandbox/runtime-card/runtime-fields";
-import { ProductionUrlField } from "@/components/sandbox/runtime-card/production-url-field";
+import { PreviewServerUrlField } from "@/components/sandbox/runtime-card/preview-server-url-field";
+import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { FieldDescriptionTooltipsField } from "@/components/sandbox/runtime-card/field-description-tooltips-field";
 import { FastPreviewField } from "@/components/sandbox/runtime-card/fast-preview-field";
 import { PublishPolicyField } from "./publish-policy-field";
@@ -313,10 +314,18 @@ function VirtualMcpDetailViewWithData({
   const queryClient = useQueryClient();
   const studio = useStudioTools();
 
-  // Form setup
+  // Form setup. Seed `metadata.previewServerUrl` through the dual-read
+  // resolver so a project persisted under the legacy `productionUrl` key
+  // shows its value — and migrates it to the new key on the next save.
   const form = useForm<VirtualMcpFormData>({
     resolver: zodResolver(VirtualMcpFormSchema),
-    defaultValues: virtualMcp,
+    defaultValues: {
+      ...virtualMcp,
+      metadata: {
+        ...virtualMcp.metadata,
+        previewServerUrl: resolvePreviewServerUrl(virtualMcp.metadata),
+      },
+    },
   });
 
   // Watch connections for reactive UI
@@ -1085,10 +1094,10 @@ function VirtualMcpDetailViewWithData({
                       {t("sandbox.cmsSettings.preview.description")}
                     </p>
                   </div>
-                  <ProductionUrlField control={form.control} />
+                  <PreviewServerUrlField control={form.control} />
                   <FastPreviewField
                     control={form.control}
-                    productionUrl={form.watch("metadata.productionUrl")}
+                    previewServerUrl={form.watch("metadata.previewServerUrl")}
                   />
                 </CardContent>
 

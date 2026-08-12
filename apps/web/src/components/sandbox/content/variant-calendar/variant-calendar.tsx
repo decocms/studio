@@ -12,17 +12,17 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "@untitledui/icons";
-import { Button } from "@deco/ui/components/button.tsx";
-import { cn } from "@deco/ui/lib/utils.js";
-import { Label } from "@deco/ui/components/label.tsx";
-import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
-import { Switch } from "@deco/ui/components/switch.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { Label } from "@decocms/ui/components/label.tsx";
+import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
+import { Switch } from "@decocms/ui/components/switch.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
-import { ViewModeToggle } from "@deco/ui/components/view-mode-toggle.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
+import { ViewModeToggle } from "@decocms/ui/components/view-mode-toggle.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import {
   type BlockColor,

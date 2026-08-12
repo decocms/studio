@@ -94,16 +94,43 @@ func NewOrchestrator(deps OrchestratorDeps) *Orchestrator {
 }
 
 func (o *Orchestrator) ResumeFrom(step Step) {
+	o.clearCrashError()
+	o.enqueue(step)
+}
+
+// RestartDev force-respawns the dev server. It clears a latched crash error
+// (so the start step below isn't skipped) and unconditionally stops the current
+// dev task before restarting, so it recovers a process that is alive-but-wedged
+// (bound the wrong port, hung after a reclaim) as well as one that has already
+// died. Used by the liveness watchdog (see internal/devwatch); a plain
+// ResumeFrom(StepStart) would short-circuit on "dev already running".
+func (o *Orchestrator) RestartDev() {
+	o.clearCrashError()
+	o.stopDevTask()
+	o.enqueue(StepStart)
+}
+
+// clearCrashError un-latches the `error` status a non-zero dev-script exit sets
+// (see OnTaskExit). Without this, stepStartInner's `status != running` guard
+// silently skips every subsequent start — so a reclaim or watchdog restart onto
+// a VM whose dev server had crashed would never bring it back.
+func (o *Orchestrator) clearCrashError() {
 	if o.deps.GetStatus().State == "error" {
 		o.deps.SetStatus(events.DaemonStatus{State: "running"})
 	}
-	o.enqueue(step)
 }
 
 func (o *Orchestrator) Handle(t config.Transition) {
 	if t.Kind == config.KindGitCredentialRefresh {
 		o.syncGitRemoteCredentials(t.CloneUrl)
 		return
+	}
+	// A fresh claim/reclaim or branch switch is an explicit "start over" — clear
+	// a latched dev-crash error so the pipeline's start step isn't skipped. This
+	// is what makes a SANDBOX_START reclaim onto a VM whose dev server had
+	// crashed actually restart it, instead of reusing the wedged process.
+	if t.Kind == config.KindBootstrap || t.Kind == config.KindBranchChange {
+		o.clearCrashError()
 	}
 	step, ok := transitionToStep(t)
 	if !ok {
@@ -146,6 +173,12 @@ func (o *Orchestrator) PublishPendingGolden() {
 	pending.Log = func(m string) { o.rawChunk(m + "\r\n") }
 	PublishGolden(*pending)
 	PruneGoldens("")
+	// L2 last: it is the slow one (compress + read-back over the network), and a
+	// no-op both when the key already exists — the common case after an L2
+	// restore — and when GOLDEN_CACHE_REMOTE is unset. The store is read-only in
+	// a tenant pod, so today this only ever logs a failure to write; that changes
+	// when a trusted publisher gets the writable mount.
+	PublishRemoteGolden(RemoteGoldenFrom(*pending))
 }
 
 func (o *Orchestrator) enqueue(step Step) {
@@ -307,9 +340,13 @@ func (o *Orchestrator) stepCloneInner() bool {
 		os.Remove(cloneLogPath)
 		cloneTee := proc.NewLogTee(cloneLogPath, installLogMaxBytes)
 		result := SpawnClone(CloneDeps{
-			RepoDir:  o.deps.RepoDir,
-			CloneUrl: cloneUrl,
-			Branch:   cfg.Branch(),
+			RepoDir:              o.deps.RepoDir,
+			CloneUrl:             cloneUrl,
+			Branch:               cfg.Branch(),
+			SubmoduleCredentials: cfg.SubmoduleCredentials(),
+			// LogsDir IS the daemon's tmp dir (appRoot/tmp); the submodule fetch
+			// parks its credentials file there rather than in the shared /tmp.
+			TmpDir: o.deps.LogsDir,
 			OnChunk: func(data string) {
 				o.rawChunk(data)
 				cloneTee.Write(data)
@@ -405,6 +442,9 @@ func (o *Orchestrator) stepInstallInner() bool {
 	depsStartedAt := time.Now()
 	cloneUrl := resolveCloneUrl(cfg, o.deps.RepoDir)
 	bootId := os.Getenv("DAEMON_BOOT_ID")
+	// Sampled BEFORE any restore or install touches the cache — afterwards every
+	// cache reads as warm and the attribute would be useless.
+	pkgCache := PkgCacheWarmth(cfg, o.deps.RepoDir)
 	elapsedMs := func() int64 { return time.Since(depsStartedAt).Milliseconds() }
 
 	// Golden fast path: reflink a cached node_modules for this exact lockfile and
@@ -413,13 +453,32 @@ func (o *Orchestrator) stepInstallInner() bool {
 		CloneUrl:    cloneUrl,
 		InstallRoot: paths.ResolvePmRoot(o.deps.RepoDir, cfg.PmPath()),
 		Pm:          pm,
+		OrgId:       cfg.OrgId,
+		Env:         os.Getenv("SANDBOX_ENV"),
 		Log:         func(m string) { o.chunk(m + "\r\n") },
 	}
 	if TryRestoreGolden(golden) {
 		o.mu.Lock()
 		o.pendingGolden = nil // restored an existing golden — nothing to publish
 		o.mu.Unlock()
-		EmitDepsRestore(RestoreL1, cloneUrl, elapsedMs(), bootId)
+		EmitDepsRestore(RestoreL1, cloneUrl, elapsedMs(), bootId, pkgCache)
+		o.markInstallSucceeded(cfg)
+		return true
+	}
+
+	// L2: the same lockfile may already be archived on the shared store even
+	// though this node has never built it. Extracting it beats installing, and it
+	// is the only tier that helps a pod that landed in a cold zone.
+	//
+	// A hit leaves pendingGolden set, so the healthy-boot transition seeds THIS
+	// node's L1 from the extracted tree — the next pod here gets the reflink
+	// instead of another extract. PublishRemoteGolden no-ops on an existing key,
+	// so it is safe that the same transition also runs the L2 publish.
+	if TryRestoreRemoteGolden(RemoteGoldenFrom(golden)) {
+		o.mu.Lock()
+		o.pendingGolden = &golden
+		o.mu.Unlock()
+		EmitDepsRestore(RestoreL2, cloneUrl, elapsedMs(), bootId, pkgCache)
 		o.markInstallSucceeded(cfg)
 		return true
 	}
@@ -439,7 +498,7 @@ func (o *Orchestrator) stepInstallInner() bool {
 		// Reported, not silent: this is the path every Deno project takes, and
 		// without a line here "no data" and "the cache is irrelevant for this
 		// runtime" look identical in the log store.
-		EmitDepsRestore(RestoreNoInstall, cloneUrl, elapsedMs(), bootId)
+		EmitDepsRestore(RestoreNoInstall, cloneUrl, elapsedMs(), bootId, pkgCache)
 		o.markInstallSucceeded(cfg)
 		return true
 	}
@@ -450,7 +509,7 @@ func (o *Orchestrator) stepInstallInner() bool {
 		o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseInstallFailed, Error: errMsg})
 		return false
 	}
-	EmitDepsRestore(RestoreMiss, cloneUrl, elapsedMs(), bootId)
+	EmitDepsRestore(RestoreMiss, cloneUrl, elapsedMs(), bootId, pkgCache)
 	o.markInstallSucceeded(cfg)
 
 	// Not published yet: PublishPendingGolden runs off the probe's `running`

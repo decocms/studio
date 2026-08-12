@@ -8,13 +8,13 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from "@deco/ui/components/command.tsx";
+} from "@decocms/ui/components/command.tsx";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
+} from "@decocms/ui/components/dialog.tsx";
 import {
   fillPathTemplate,
   stripSurroundingSlashes,

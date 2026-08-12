@@ -7,16 +7,16 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Checkbox } from "@deco/ui/components/checkbox.tsx";
+} from "@decocms/ui/components/dialog.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/dropdown-menu.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { type ConnectionEntity, type VirtualMCPEntity } from "@/sdk";
 import {
   CheckSquare,
@@ -124,6 +124,13 @@ export function ConnectionGroupCard({
             !allSelected &&
             "ring-1 ring-primary/50",
         )}
+        selected={
+          selectionMode
+            ? allSelected
+              ? true
+              : someSelected && "mixed"
+            : undefined
+        }
         fallbackIcon={<Container />}
         headerActionsAlwaysVisible
         headerActions={

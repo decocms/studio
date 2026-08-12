@@ -23,15 +23,15 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@deco/ui/components/alert-dialog.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
-import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
+} from "@decocms/ui/components/alert-dialog.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
-import { cn } from "@deco/ui/lib/utils.js";
+} from "@decocms/ui/components/tooltip.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useProjectContext } from "@/sdk";
 import { useInsetContext } from "@/layouts/agent-shell-layout";
 import { useChatTask } from "@/components/chat/context";

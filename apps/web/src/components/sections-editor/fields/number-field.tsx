@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Input } from "@deco/ui/components/input.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
 import type { FieldProps } from "./field-props";
 import { FieldLabel } from "./field-label";
 import { isPartialNumericInput } from "./partial-number-input";

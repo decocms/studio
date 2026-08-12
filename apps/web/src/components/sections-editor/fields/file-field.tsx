@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { File02, Film01, Trash01, Upload01 } from "@untitledui/icons";
 import { toast } from "sonner";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import {
   FilePickerDialog,
@@ -107,6 +107,10 @@ export function FileField({
   }
   function onDrop(e: React.DragEvent) {
     e.preventDefault();
+    // Stop the drop from bubbling to the chat composer's window-level
+    // drop listener (input.tsx `useWindowFileDrop`), which would otherwise
+    // upload the same file into the chat input too.
+    e.stopPropagation();
     setIsDragging(false);
     handleFiles(e.dataTransfer.files);
   }

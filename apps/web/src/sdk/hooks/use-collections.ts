@@ -88,7 +88,7 @@ export type CollectionEntity = Omit<BaseCollectionEntity, "id"> & {
 };
 
 /**
- * Filter definition for collection queries (matches @deco/ui Filter shape)
+ * Filter definition for collection queries (matches @decocms/ui Filter shape)
  */
 export interface CollectionFilter {
   /** Field to filter on (must match an entity property) */

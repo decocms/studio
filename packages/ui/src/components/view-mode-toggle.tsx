@@ -1,11 +1,7 @@
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "../lib/utils.ts";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip.tsx";
 
 export interface ViewModeOption<T extends string = string> {
   value: T;

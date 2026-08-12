@@ -83,30 +83,7 @@ func Exec(deps ExecDeps) http.HandlerFunc {
 		env := setup.BuildDevEnv(cfg, overrides)
 		rc := setup.PmRunCommand(cfg.RuntimePathPrefix, cwd, pmConf.RunPrefix, name)
 
-		if proc.IsWellKnownStarter(name) {
-			// The dev server is already up — hand back the task that is running
-			// it instead of starting a second one. An agent that runs `dev`
-			// without checking (the common case in a sandbox that was warmed
-			// for it) would otherwise put two Vite/Next builds on one pod's
-			// memory limit and OOM the pod out from under itself.
-			if existing, ok := deps.TaskManager.RunningByLogName(name); ok {
-				httpx.JSON(w, 200, map[string]any{
-					"taskId":         existing.ID,
-					"status":         existing.Status,
-					"alreadyRunning": true,
-				})
-				return
-			}
-			if deps.GetStatus().State == "error" {
-				deps.SetStatus(events.DaemonStatus{State: "running"})
-			}
-			phase := deps.Lifecycle.Current().Phase
-			if phase == events.PhaseIdle || phase == events.PhaseStartFailed || phase == events.PhaseCrashed {
-				deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseStarting})
-			}
-		}
-
-		task := deps.TaskManager.Spawn(proc.TaskSpec{
+		spec := proc.TaskSpec{
 			Command:   rc.Cmd,
 			Cwd:       cwd,
 			Env:       env,
@@ -114,7 +91,37 @@ func Exec(deps ExecDeps) http.HandlerFunc {
 			TimeoutMs: body.TimeoutMs,
 			Label:     rc.Label,
 			LogName:   name,
-		})
+		}
+
+		var task proc.TaskSummary
+		if proc.IsWellKnownStarter(name) {
+			// The dev server is already up — hand back the task that is running
+			// it instead of starting a second one. An agent that runs `dev`
+			// without checking (the common case in a sandbox that was warmed
+			// for it) would otherwise put two Vite/Next builds on one pod's
+			// memory limit and OOM the pod out from under itself. The
+			// check-and-spawn must be atomic: two concurrent requests both
+			// seeing "not running" and each spawning is exactly that race.
+			existing, alreadyRunning := deps.TaskManager.SpawnUnlessLogNameRunning(spec)
+			if alreadyRunning {
+				httpx.JSON(w, 200, map[string]any{
+					"taskId":         existing.ID,
+					"status":         existing.Status,
+					"alreadyRunning": true,
+				})
+				return
+			}
+			task = existing
+			if deps.GetStatus().State == "error" {
+				deps.SetStatus(events.DaemonStatus{State: "running"})
+			}
+			phase := deps.Lifecycle.Current().Phase
+			if phase == events.PhaseIdle || phase == events.PhaseStartFailed || phase == events.PhaseCrashed {
+				deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseStarting})
+			}
+		} else {
+			task = deps.TaskManager.Spawn(spec)
+		}
 
 		if mode == "background" {
 			httpx.JSON(w, 200, map[string]any{"taskId": task.ID, "status": task.Status})

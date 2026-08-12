@@ -28,8 +28,10 @@ import {
 import {
   breadcrumbPathForActiveField,
   consumedBreadcrumbPrefix,
+  type Crumb,
   fieldDisplayLabel,
   isArrayDrillDownField,
+  objectSiblingsNeedingAncestorCrumb,
   prependCrumbIfAbsent,
   resolveActiveFieldKey,
   siblingFieldLabel,
@@ -421,8 +423,8 @@ export function SchemaForm({
   value: unknown;
   onChange: (value: unknown) => void;
   basePath: string;
-  breadcrumbPath?: string[];
-  onBreadcrumbChange?: (path: string[]) => void;
+  breadcrumbPath?: Crumb[];
+  onBreadcrumbChange?: (path: Crumb[]) => void;
   meta?: LiveMeta;
   decofile?: Record<string, unknown>;
   onSaveReferencedBlock?: (
@@ -529,6 +531,14 @@ export function SchemaForm({
       return s != null && isArrayDrillDownField(s, objValue[key]);
     }).length > 1;
 
+  // Object siblings whose drill trails would collide (each holds a nested
+  // drill-down array). Computed once per scope, not per rendered field, so the
+  // schema walk doesn't run O(keys) times on every keystroke.
+  const siblingsNeedingAncestorCrumb = objectSiblingsNeedingAncestorCrumb(
+    keys,
+    properties,
+  );
+
   const activeKey =
     breadcrumbPath.length > 0
       ? resolveActiveFieldKey(
@@ -566,7 +576,7 @@ export function SchemaForm({
   );
   const fieldOnBreadcrumbChange =
     consumedPrefix.length > 0 && onBreadcrumbChange
-      ? (next: string[]) => onBreadcrumbChange([...consumedPrefix, ...next])
+      ? (next: Crumb[]) => onBreadcrumbChange([...consumedPrefix, ...next])
       : onBreadcrumbChange;
   return (
     <div className="min-w-0 space-y-6">
@@ -594,9 +604,18 @@ export function SchemaForm({
               fieldDisplayLabel(k, other) === plainLabel
             );
           });
+        // Distinct-titled object siblings that each hold a nested drill-down
+        // array (e.g. `shelfProps` / `shelfPropsOffer`, both with
+        // `cardLayout.productTags`) don't collide by label, but a bare item trail
+        // still resolves ambiguously across them. Stamp this field's label so the
+        // trail names the right sibling. See `objectSiblingsNeedingAncestorCrumb`.
+        const needsAncestorCrumb =
+          collidesWithSibling ||
+          (consumedPrefix.length === 0 &&
+            siblingsNeedingAncestorCrumb.has(key));
         const fieldOnBreadcrumbChangeForKey =
-          collidesWithSibling && fieldOnBreadcrumbChange
-            ? (next: string[]) =>
+          needsAncestorCrumb && fieldOnBreadcrumbChange
+            ? (next: Crumb[]) =>
                 fieldOnBreadcrumbChange(prependCrumbIfAbsent(label, next))
             : fieldOnBreadcrumbChange;
 
@@ -609,6 +628,10 @@ export function SchemaForm({
           breadcrumbPath: fieldBreadcrumbPath,
           onBreadcrumbChange: fieldOnBreadcrumbChangeForKey,
           hasSiblingDrillDownFields,
+          // When the trail narrows to a single field, the form is drilled into
+          // it — object fields then render flat (no wrapper header) so a deep
+          // drill shows just the leaf item's fields, not a stack of headers.
+          focused: activeKey === key,
           meta,
           decofile,
           onSaveReferencedBlock,

@@ -10,6 +10,7 @@ import {
   hasFailedAttemptThisCycle,
   MAX_REVIEWER_ATTEMPTS,
   REVIEWER_DISALLOWED_TOOLS,
+  reviewerAttemptsExhausted,
   reviewerHandledThisCycle,
 } from "./enqueue-reviewer";
 import { REVIEW_RUN_TOOL_NAMES } from "./task-run-context";
@@ -112,6 +113,8 @@ describe("reviewerHandledThisCycle", () => {
       ),
     );
     expect(reviewerHandledThisCycle(task, "qa", CYCLE_START)).toBe(true);
+    // …and says WHY: no verdict is coming, so the card needs a human.
+    expect(reviewerAttemptsExhausted(task, "qa", CYCLE_START)).toBe(true);
   });
 
   it("a completed review alongside a failed attempt is still handled", () => {
@@ -174,6 +177,61 @@ describe("reviewerHandledThisCycle", () => {
     expect(reviewerHandledThisCycle(task, "qa", CYCLE_START)).toBe(false);
     expect(reviewerHandledThisCycle(task, "code_review", CYCLE_START)).toBe(
       true,
+    );
+  });
+});
+
+describe("reviewerAttemptsExhausted", () => {
+  const failed = (createdAt: string) =>
+    thread({ title: "QA Agent: fix", status: "failed", createdAt });
+
+  it("is false below the attempt budget", () => {
+    const task = taskWith([failed("2026-01-01T10:01:00Z")]);
+    expect(reviewerAttemptsExhausted(task, "qa", CYCLE_START)).toBe(false);
+  });
+
+  // The distinction that matters: `reviewerHandledThisCycle` is also true for a
+  // reviewer that ran fine, and that card must NOT be handed to a human.
+  it("is false when a review actually completed", () => {
+    const task = taskWith([
+      failed("2026-01-01T10:01:00Z"),
+      thread({
+        title: "QA Agent: fix",
+        status: "completed",
+        createdAt: "2026-01-01T10:02:00Z",
+      }),
+    ]);
+    expect(reviewerHandledThisCycle(task, "qa", CYCLE_START)).toBe(true);
+    expect(reviewerAttemptsExhausted(task, "qa", CYCLE_START)).toBe(false);
+  });
+
+  it("is false while an attempt is still live", () => {
+    const task = taskWith([
+      failed("2026-01-01T10:01:00Z"),
+      thread({
+        title: "QA Agent: fix",
+        status: "in_progress",
+        createdAt: "2026-01-01T10:02:00Z",
+      }),
+    ]);
+    expect(reviewerAttemptsExhausted(task, "qa", CYCLE_START)).toBe(false);
+  });
+
+  it("ignores failures from a prior cycle", () => {
+    const task = taskWith([
+      failed("2026-01-01T09:00:00Z"),
+      failed("2026-01-01T09:30:00Z"),
+    ]);
+    expect(reviewerAttemptsExhausted(task, "qa", CYCLE_START)).toBe(false);
+  });
+
+  it("scopes to the given reviewer", () => {
+    const task = taskWith([
+      failed("2026-01-01T10:01:00Z"),
+      failed("2026-01-01T10:02:00Z"),
+    ]);
+    expect(reviewerAttemptsExhausted(task, "code_review", CYCLE_START)).toBe(
+      false,
     );
   });
 });

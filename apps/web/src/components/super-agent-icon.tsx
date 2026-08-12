@@ -1,4 +1,4 @@
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { SUPER_AGENT_ICON_URL } from "@/sdk";
 
 /** The Super Agent (Decopilot) capybara glyph, rendered as a round avatar. */

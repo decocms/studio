@@ -128,7 +128,7 @@ and the Studio `STUDIO_SANDBOX_*` config. Previews run in-process locally (no
 Gateway/ingress).
 
 **Warm pool** (pre-spawned sandbox pods for zero cold-start) is **on by default**
-in the umbrella (size 1) — safe now that `studio-sandbox` 1.17.3 is multi-arch.
+in the umbrella (size 1) — safe because the sandbox image is multi-arch.
 It pre-spawns one real runtime pod, so disable it to save laptop resources with
 `--set sandbox-env.warmPool.enabled=false` (or `WARMPOOL=0 ./selfhost/scripts/local-k8s.sh`);
 resize with `WARMPOOL_SIZE=N`.
@@ -147,11 +147,12 @@ shows it with placeholders (nothing environment-specific baked in):
   exist).
 
 > **Architecture:** the whole sandbox layer — operator
-> (`agent-sandbox-controller`), `orgfs-sidecar`, and the `studio-sandbox` runtime
-> image — is multi-arch (arm64 + amd64) from `studio-sandbox` tag **1.17.3**
-> onward, which the umbrella pins. So creating and *running* a code-exec/preview
-> sandbox works natively on Apple Silicon. (Older tags were amd64-only; if you
-> pin one, running a sandbox on arm64 will `CrashLoop` on the image gate.)
+> (`agent-sandbox-controller`), `orgfs-sidecar`, and the sandbox runtime image
+> (`studio-sandbox-go`) — is multi-arch (arm64 + amd64) at the tag the
+> `sandbox-env` chart pins. So creating and *running* a code-exec/preview sandbox
+> works natively on Apple Silicon. Don't override `sandbox-env.image.tag` unless
+> you have a reason: a stale pin is an `ImagePullBackOff`, and old
+> `studio-sandbox` tags predate the Go daemon entirely.
 
 ## Access & teardown
 

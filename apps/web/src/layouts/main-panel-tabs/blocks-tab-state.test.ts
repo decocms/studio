@@ -226,3 +226,57 @@ describe("resolveBlocksTabState", () => {
     ).toEqual({ kind: "content" });
   });
 });
+
+describe("sandbox-less Fast Preview (fastPreviewActive)", () => {
+  test("ignores the lifecycle phase entirely — no sandbox will ever boot", () => {
+    // Without the flag, "idle" classifies as booting and spins forever.
+    expect(
+      resolveBlocksTabState(
+        input({
+          lifecyclePhase: "idle",
+          hasEditableContent: true,
+          fastPreviewActive: true,
+        }),
+      ),
+    ).toEqual({ kind: "content" });
+    // A stale sandbox failure must not error-card the GitHub-backed CMS.
+    expect(
+      resolveBlocksTabState(
+        input({
+          lifecyclePhase: "clone-failed",
+          hasEditableContent: true,
+          fastPreviewActive: true,
+        }),
+      ),
+    ).toEqual({ kind: "content" });
+  });
+
+  test("a failed decofile read is immediately real — no lifecycle recovery is coming", () => {
+    expect(
+      resolveBlocksTabState(
+        input({
+          lifecyclePhase: "idle",
+          decofile: { status: "error", hasData: false, errorStatus: 502 },
+          fastPreviewActive: true,
+        }),
+      ),
+    ).toEqual({ kind: "error", source: "data" });
+  });
+
+  test("loading until both queries have data, then content/empty by data alone", () => {
+    expect(
+      resolveBlocksTabState(
+        input({
+          lifecyclePhase: "idle",
+          decofile: { status: "pending", hasData: false },
+          fastPreviewActive: true,
+        }),
+      ),
+    ).toEqual({ kind: "loading" });
+    expect(
+      resolveBlocksTabState(
+        input({ lifecyclePhase: "idle", fastPreviewActive: true }),
+      ),
+    ).toEqual({ kind: "empty" });
+  });
+});

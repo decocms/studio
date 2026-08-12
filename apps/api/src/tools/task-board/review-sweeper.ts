@@ -46,6 +46,14 @@
  * parked card costs one sweep per `DEFAULT_ITEM_SWEEP_INTERVAL_MS` instead of one
  * per tick. `DEFAULT_BATCH_SIZE` remains the ceiling on any single tick.
  *
+ * It later grew a third job for the same reason — **retrying a failed merge**.
+ * A card whose reviewers all approved but whose merge was refused (GitHub down,
+ * the repo's connection deleted, a transient 500) is left In Review by
+ * `TASK_BOARD_REVIEW_DECISION`, and the cycle's reviewer claims are already
+ * spent, so nothing re-dispatches and nothing re-merges: the card is stranded
+ * forever on a failure that has usually fixed itself minutes later. The sweeper
+ * is again the only place that can retry, for the same reason as above.
+ *
  * Deliberately NOT a replacement for the instant paths. `TASK_BOARD_ITEM_PRS_GET`
  * dispatches reviewers on the dialog's poll, and the projector hook still fires —
  * the sweeper is the floor that guarantees it happens without a human, not the
@@ -53,11 +61,24 @@
  */
 
 import type { StudioContextFactory } from "@/automations/fire";
+import type { StudioContext } from "@/core/studio-context";
+import type { OrganizationBillingStorage } from "@/storage/organization-billing";
 import type { TaskBoardStorage } from "@/storage/task-board";
-import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import type { TaskBoardItem } from "@/storage/types";
+import {
+  reviewCycleStart,
+  SUPER_AGENT_ASSIGNEE_ID,
+} from "@decocms/shared/task-board";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
-import { reactToFailedTaskRun } from "./run-reactions";
+import { retryAutoMergeIfApproved } from "./merge-pr";
+import {
+  emitTaskBoardUpdated,
+  handTaskToHuman,
+  reactToFailedTaskRun,
+  refundUnproductiveTaskClaims,
+} from "./run-reactions";
+import { TaskQuotaError } from "@/billing/task-quota";
 import { ABANDONED_FAILURE_REASON } from "./stall-recovery";
 import { THREAD_EXPIRY_MS } from "@/tools/thread/helpers";
 import { fetchPrLiveState, prReadyForReview } from "./prs-get";
@@ -86,11 +107,44 @@ const DEFAULT_BATCH_SIZE = 50;
  *  blip in the context factory or the quota read. */
 const REARM_DELAY_MS = 60 * 1000;
 
+/** How long a card may sit In Review with no linked PR before it is handed to a
+ *  person. A run links its PR and moves the card in two separate calls, so a
+ *  sweep can land between them — this is the margin that stops a card being
+ *  handed over a second before its PR arrives. */
+const NO_PR_HANDOFF_GRACE_MS = 15 * 60 * 1000;
+
 /** How long a failed run may sit unreacted-to before the sweeper steps in. Long
  *  enough that the in-band reaction (which runs within milliseconds of the
  *  failure) always wins the normal case, short enough that a card whose pod died
  *  mid-reaction recovers on its own. */
 const UNHANDLED_FAILURE_GRACE_MS = 2 * 60 * 1000;
+
+/**
+ * True for a retry dispatch failure that a later tick cannot fix.
+ *
+ * Everything else the dispatch can throw (the context factory, a quota READ, a
+ * DB blip) is a blip worth re-arming for. A quota REJECTION is not: the
+ * per-task cap and an exhausted period bucket both stay exhausted, and the
+ * re-arm deliberately leaves `attempts` untouched — so that one failure mode
+ * would re-throw every minute forever with a budget that never terminates.
+ * Pure — unit-tested.
+ */
+export function isPermanentDispatchFailure(err: unknown): boolean {
+  return err instanceof TaskQuotaError;
+}
+
+/**
+ * True when a PR-less card has been In Review long enough to hand over.
+ *
+ * A cycle start of 0 means the card has no `→ in_review` entry on its timeline
+ * at all — a card moved there before the activity log recorded the transition,
+ * or by a path that doesn't. That reads as "infinitely old", which is the right
+ * answer: those are the oldest strands, and there is no PR coming for them
+ * either. Pure — unit-tested.
+ */
+export function noPrHandoffDue(cycleStartMs: number, nowMs: number): boolean {
+  return nowMs - cycleStartMs >= NO_PR_HANDOFF_GRACE_MS;
+}
 
 export interface TaskBoardReviewSweeperOptions {
   intervalMs?: number;
@@ -111,6 +165,7 @@ export class TaskBoardReviewSweeper {
   constructor(
     private readonly taskBoard: TaskBoardStorage,
     private readonly contextFactory: StudioContextFactory,
+    private readonly billing: OrganizationBillingStorage,
     private readonly options: TaskBoardReviewSweeperOptions = {},
   ) {}
 
@@ -209,7 +264,7 @@ export class TaskBoardReviewSweeper {
    * no longer advances to In Review, that would be a permanent strand. This is
    * the floor: the reaction is idempotent (it re-reads the card and both writes
    * are conditional on In Progress), so re-running it costs a query and fixes the
-   * gap with no bookkeeping of its own.
+   * gap and refunds the claim.
    */
   private async reactToUnhandledFailures(limit: number): Promise<void> {
     const stuck = await this.taskBoard.listItemsStuckAfterFailure(
@@ -222,6 +277,12 @@ export class TaskBoardReviewSweeper {
           `[task-board-review-sweeper] reacting to an unhandled failure on ${id}`,
         );
         await reactToFailedTaskRun(this.taskBoard, threadId, organizationId);
+        await refundUnproductiveTaskClaims(
+          this.taskBoard,
+          this.billing,
+          threadId,
+          organizationId,
+        );
       } catch (err) {
         console.error(
           `[task-board-review-sweeper] unhandled-failure reaction for ${id} failed`,
@@ -282,6 +343,19 @@ export class TaskBoardReviewSweeper {
           `[task-board-review-sweeper] retry dispatch for ${id} failed`,
           err,
         );
+        // A failure no later tick can fix must not be re-armed (see
+        // `isPermanentDispatchFailure`) — the card would sit In Progress with
+        // no run behind it and the same rejection every minute. Send it back
+        // to To Do with the reason, the same terminal the retry budget itself
+        // has when it runs out.
+        if (isPermanentDispatchFailure(err)) {
+          await this.returnToTodo(
+            id,
+            organizationId,
+            err instanceof Error ? err.message : String(err),
+          );
+          continue;
+        }
         // The claim already cleared `retry_at`, so leaving it here would spend
         // the attempt on a run that never started — the exact silent strand this
         // whole path exists to remove. Re-arm it instead: the dispatch itself can
@@ -304,6 +378,73 @@ export class TaskBoardReviewSweeper {
       }
     }
     return count;
+  }
+
+  /**
+   * Park a card a retry can no longer help back on To Do, with the reason on
+   * its timeline — the same landing `reactToFailedTaskRun` gives a card that
+   * runs out of retry budget, so a human sees one shape for "the agent stopped
+   * and it needs you" rather than a card frozen In Progress.
+   */
+  private async returnToTodo(
+    id: string,
+    organizationId: string,
+    reason: string,
+  ): Promise<void> {
+    try {
+      const item = await this.taskBoard.getById(id, organizationId);
+      if (!item || item.status !== "in_progress") return;
+      const returned = await this.taskBoard.returnToTodoAfterFailure(
+        id,
+        organizationId,
+        item.updatedBy,
+      );
+      if (!returned) return;
+      await this.taskBoard
+        .recordActivity({
+          taskBoardItemId: id,
+          action: "status_changed",
+          actorId: null,
+          data: { from: "in_progress", to: "todo", reason },
+        })
+        .catch(() => {});
+      emitTaskBoardUpdated(organizationId, returned);
+    } catch (err) {
+      console.error(
+        `[task-board-review-sweeper] returning ${id} to todo failed`,
+        err,
+      );
+    }
+  }
+
+  /**
+   * Hand a card parked In Review with no pull request to a person.
+   *
+   * There is nothing for a reviewer to review, so no reviewer is ever
+   * dispatched — the run either finished without opening a PR or opened one and
+   * never called `TASK_BOARD_ITEM_PR_LINK`. Until now that was a silent
+   * `return`: the card was swept every five minutes forever and read on the
+   * board exactly like one waiting on its reviewers. Four sat that way in one
+   * org, the oldest for a week.
+   *
+   * Waits out `NO_PR_HANDOFF_GRACE_MS` first, because the run links its PR and
+   * moves the card in two separate calls and the sweep can land between them.
+   */
+  private async handOffReviewWithoutPr(
+    ctx: StudioContext,
+    item: TaskBoardItem,
+  ): Promise<void> {
+    const activity = await this.taskBoard.listActivity(
+      item.id,
+      item.organizationId,
+    );
+    if (!noPrHandoffDue(reviewCycleStart(activity), Date.now())) return;
+    await handTaskToHuman(
+      ctx,
+      item,
+      "no pull request is linked to this task — there is nothing for a " +
+        "reviewer to review",
+    );
   }
 
   /** Hand a card with a linked, ready PR off to the enabled reviewers. Returns
@@ -333,10 +474,7 @@ export class TaskBoardReviewSweeper {
     // mid-sweep costs one interval of delay — the right trade for a slow floor.
     await this.taskBoard.markSwept(id, organizationId);
 
-    // Nothing to review without a PR — a research/answer task reaches In Review
-    // too, and dispatching a reviewer at it would burn a run on nothing.
     const prs = await this.taskBoard.listPrs(id, organizationId);
-    if (prs.length === 0) return false;
 
     // Built as the task's owner, like the run-finish trigger does — the sweeper
     // has storage only, and the reviewer dispatch needs a full context.
@@ -345,6 +483,19 @@ export class TaskBoardReviewSweeper {
       item.assignedBy ?? item.createdBy,
     );
     if (!ctx) return false;
+
+    if (prs.length === 0) {
+      await this.handOffReviewWithoutPr(ctx, item);
+      return false;
+    }
+
+    // A card whose review already COMPLETED but whose merge failed is stranded:
+    // the cycle's reviewer claims are spent, so the dispatch below is a no-op
+    // and nothing else ever retries. Retry the merge first — it's the only path
+    // back out of In Review for these, and it's why the sweep must keep visiting
+    // a card that has no reviewer left to enqueue. Gated on verified approval +
+    // auto-merge inside, so it can't ship anything the reviewers didn't.
+    if (await retryAutoMergeIfApproved(ctx, item)) return true;
 
     // Fetch live PR state (listPrs carries none) to tell an open PR from a
     // closed/merged one — the same candidate check the dialog poll applies.

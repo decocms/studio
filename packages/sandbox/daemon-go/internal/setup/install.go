@@ -17,11 +17,23 @@ import (
 // This per-repo partition is a security boundary — bun does not re-verify
 // cache integrity, so a shared writable cache across repos is cross-tenant
 // RCE. Do not widen.
+// stripCredentials removes any userinfo from a clone URL. Clone URLs carry a
+// short-lived GitHub App token (`x-access-token:ghs_...`), so anything that
+// records or hashes a URL must strip it first.
+func stripCredentials(cloneUrl string) string {
+	u, err := url.Parse(cloneUrl)
+	if err != nil {
+		// Unparseable: return nothing rather than risk persisting a token.
+		return ""
+	}
+	u.User = nil
+	return u.String()
+}
+
 func repoCacheKey(cloneUrl string) string {
-	key := cloneUrl
-	if u, err := url.Parse(cloneUrl); err == nil {
-		u.User = nil
-		key = u.String()
+	key := stripCredentials(cloneUrl)
+	if key == "" {
+		key = cloneUrl
 	}
 	sum := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(sum[:])[:16]
@@ -53,6 +65,48 @@ func DepsCacheEnv(cfg *config.Enriched, repoDir string) map[string]string {
 	return map[string]string{
 		"BUN_INSTALL_CACHE_DIR": filepath.Join(cacheRoot, "bun", repoCacheKey(cloneUrl)),
 	}
+}
+
+// PkgCacheWarmth reports whether this repo's package-manager download cache was
+// already populated BEFORE the install ran: "warm", "cold", or "unknown" when
+// there is no cache root or no repo to key on.
+//
+// It exists to answer a design question the existing timing cannot: the install
+// phase is measured as one number, so a slow `miss` is indistinguishable between
+// "downloaded every tarball" and "materialised 100k files from a warm cache".
+// That distinction decides whether the golden tiers are worth their machinery —
+// if a warm install is nearly free, skipping install buys little and the effort
+// belongs on the filesystem instead (bun links near-instantly only when the
+// cache and node_modules share a reflink-capable mount, which they do not while
+// /app is an emptyDir).
+//
+// Must be called BEFORE the install: afterwards every cache is warm.
+func PkgCacheWarmth(cfg *config.Enriched, repoDir string) string {
+	cacheRoot := os.Getenv("DEPS_CACHE_ROOT")
+	if cacheRoot == "" {
+		return "unknown"
+	}
+	cloneUrl := resolveCloneUrl(cfg, repoDir)
+	if cloneUrl == "" {
+		return "unknown"
+	}
+	var dir string
+	switch cfg.PmName() {
+	case "deno":
+		dir = filepath.Join(cacheRoot, "deno", repoCacheKey(cloneUrl))
+	case "bun":
+		dir = filepath.Join(cacheRoot, "bun", repoCacheKey(cloneUrl))
+	default:
+		// npm/pnpm/yarn are not pointed at the shared cache at all, so their
+		// installs always pay full price. Saying "cold" would read as a warmable
+		// miss; this is a different fact.
+		return "unpointed"
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) == 0 {
+		return "cold"
+	}
+	return "warm"
 }
 
 func DenoCacheEnv(cfg *config.Enriched, repoDir string) map[string]string {

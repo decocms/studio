@@ -9,6 +9,30 @@ export const settings = {
   "settings.nav.secrets": "Segredos",
   "settings.nav.billing": "Cobrança",
   "settings.nav.buckets": "Buckets",
+  "settings.nav.syncedRepos": "Repos sincronizados",
+  "settings.syncedRepos.pageDescription":
+    "Repositórios do GitHub espelhados em pastas somente leitura da biblioteca, sincronizados a cada poucos minutos. Ótimo para um repo de skills compartilhado.",
+  "settings.syncedRepos.addRepo": "Adicionar repo",
+  "settings.syncedRepos.cancel": "Cancelar",
+  "settings.syncedRepos.create": "Criar",
+  "settings.syncedRepos.creating": "Criando…",
+  "settings.syncedRepos.created":
+    'Sincronização criada — sincronizando em "{volume}" em segundo plano',
+  "settings.syncedRepos.emptyTitle": "Nenhum repo sincronizado ainda",
+  "settings.syncedRepos.emptyDescription":
+    "Escolha um repositório do GitHub e ele aparecerá na biblioteca como uma pasta somente leitura, sincronizada automaticamente.",
+  "settings.syncedRepos.failed": "Algo deu errado",
+  "settings.syncedRepos.nameDialogDescription":
+    "{repo} será mantido em sincronia nesta pasta somente leitura da biblioteca.",
+  "settings.syncedRepos.nameDialogTitle": "Nomeie a pasta sincronizada",
+  "settings.syncedRepos.namePlaceholder": "nome-da-pasta",
+  "settings.syncedRepos.pickerTitle": "Sincronizar um repo na biblioteca",
+  "settings.syncedRepos.remove": "Parar de sincronizar",
+  "settings.syncedRepos.removeDescription":
+    "Os arquivos já sincronizados continuam na biblioteca; só a sincronização para. Você pode apagar a pasta depois, se não precisar dela.",
+  "settings.syncedRepos.removeTitle": 'Parar de sincronizar "{volume}"?',
+  "settings.syncedRepos.removed": "Sincronização removida",
+  "settings.syncedRepos.rowSubtitle": "Pasta da biblioteca: {volume}",
   "settings.nav.build": "Criação",
   "settings.nav.connections": "Conexões",
   "settings.nav.agents": "Agentes",
@@ -184,9 +208,45 @@ export const settings = {
     "Armazena apenas um endpoint de atualiza\u00e7\u00e3o + chave API; credenciais de curta dura\u00e7\u00e3o s\u00e3o buscadas sob demanda e atualizadas automaticamente.",
   "settings.buckets.temporarySessionOption":
     "Sess\u00e3o tempor\u00e1ria (STS, auto-atualizada)",
+  "settings.connectClients.activeKeys": "Chaves ativas",
+  "settings.connectClients.activeKeysDescription":
+    "Chaves que você gerou para clientes headless. Revogue quando quiser.",
+  "settings.connectClients.apiKeyTab": "Chave API",
+  "settings.connectClients.copy": "Copiar",
+  "settings.connectClients.createdAt": "Criada em {date}",
+  "settings.connectClients.customClientHint":
+    "Conectando um cliente personalizado?",
+  "settings.connectClients.doneHideKey": "Concluído, ocultar chave",
+  "settings.connectClients.failedToLoadKeys":
+    "Falha ao carregar chaves: {error}",
+  "settings.connectClients.generateKeyFor": "Gerar chave para {client}",
+  "settings.connectClients.generatingKey": "Gerando…",
+  "settings.connectClients.headlessKeyHint":
+    "Para CI, Conductor, ou agentes headless que não conseguem abrir um navegador.",
+  "settings.connectClients.keyCreated": "Chave criada",
+  "settings.connectClients.keyRevoked": "Chave revogada",
+  "settings.connectClients.loadingActiveKeys": "Carregando chaves ativas…",
+  "settings.connectClients.noConnectKeysYet":
+    "Nenhuma chave de conexão criada ainda. Gere uma na aba de um cliente acima para configurações headless.",
+  "settings.connectClients.oauthKeyHint":
+    "Recomendado para seu laptop. O navegador abrirá no primeiro uso para você entrar — sem token para gerenciar.",
+  "settings.connectClients.oauthMetadataHint":
+    "Os metadados do OAuth 2.1 Protected Resource são anunciados no 401:",
+  "settings.connectClients.oauthTab": "OAuth",
+  "settings.connectClients.orgUnifiedMcp": "O MCP unificado da sua org",
+  "settings.connectClients.orgUnifiedMcpDescription":
+    "Insira esta URL em qualquer cliente MCP para dar a esse runtime toda conexão habilitada nesta org, governada pelas suas regras do Decopilot.",
+  "settings.connectClients.pageTitle": "Conectar a clientes",
+  "settings.connectClients.revoke": "Revogar",
+  "settings.connectClients.revokeConfirm":
+    'Revogar "{name}"? Qualquer cliente que ainda use esta chave perderá o acesso.',
+  "settings.connectClients.snippetOneTimeWarning":
+    "Copie este snippet agora — a chave não será exibida novamente. Você pode revogá-la mais tarde na lista abaixo.",
   "settings.connectForms.apiKeyField": "Chave API",
+  "settings.connectForms.apiKeyRequired": "A chave API é obrigatória",
   "settings.connectForms.baseUrlField": "URL Base",
   "settings.connectForms.baseUrlPlaceholder": "http://localhost:4000/v1",
+  "settings.connectForms.baseUrlRequired": "A URL base é obrigatória",
   "settings.connectForms.cancel": "Cancelar",
   "settings.connectForms.connectionSavedSuccess":
     "Conex\u00e3o salva com sucesso",

@@ -4,8 +4,8 @@ import { formatDistanceToNow } from "date-fns";
 import { ptBR as ptBRLocale } from "date-fns/locale/pt-BR";
 import { toast } from "sonner";
 import { Edit01, Trash01 } from "@untitledui/icons";
-import { Avatar } from "@deco/ui/components/avatar.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Avatar } from "@decocms/ui/components/avatar.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { SettingsCardItem } from "@/components/settings/settings-section";
 import {
   AlertDialog,
@@ -16,7 +16,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@deco/ui/components/alert-dialog.tsx";
+} from "@decocms/ui/components/alert-dialog.tsx";
 import {
   useProjectContext,
   type AiProviderInfo,

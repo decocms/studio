@@ -175,9 +175,11 @@ test("editing a label field whose value equals the array label keeps the editor 
   mount,
 }) => {
   // Regression: an array labelled "Banner" whose single item is ALSO labelled
-  // "Banner" (its label comes from `alt` via titleBy). The breadcrumb is
-  // ["Banner", "Banner"]; editing `alt` must not collapse the trail and kick
-  // you back to the list. Guards the SchemaForm consumed-prefix re-prepend.
+  // "Banner" (its label comes from `alt` via titleBy). The array's disambiguator
+  // now rides ON the item crumb (`arrayLabel`), so the breadcrumb is a single
+  // ["Banner"] — no standalone array-list stop. Drilling in, then editing `alt`,
+  // must keep the item's editor open (breadcrumbPathForActiveField must not strip
+  // the item crumb, and updateItem must preserve the folded arrayLabel).
   const meta = sectionWithProps({
     banner: {
       type: "array",
@@ -199,9 +201,7 @@ test("editing a label field whose value equals the array label keeps the editor 
   );
 
   await itemRow(component, "Banner").click();
-  await expect
-    .poll(() => readBreadcrumb(component))
-    .toEqual(["Banner", "Banner"]);
+  await expect.poll(() => readBreadcrumb(component)).toEqual(["Banner"]);
 
   const altInput = component.getByLabel("Alt");
   await expect(altInput).toHaveAttribute("id", "banner.0.alt");
@@ -278,11 +278,12 @@ test("colliding fallback-title rows are position-disambiguated and each drills i
   mount,
 }) => {
   // The osklen bug: object-array items with no name/title field all fall back
-  // to the item schema `title` ("Spec"), so every row's label collided and
-  // navigation collapsed every item back to the first ("all items show the
-  // same content"). Rows must now render as "Spec 1/2/3", and drilling a
-  // NON-first row must uniquely address that row (no reliance on a transient
-  // open-index), showing its own value.
+  // to the item schema `title` ("Spec"), so every row's label collides and
+  // navigation used to collapse every item back to the first ("all items show
+  // the same content"). Rows now render with the clean, identical label "Spec"
+  // (the crumb carries the item's index, not a positional suffix), and drilling
+  // a NON-first row must still uniquely address that row — showing its own
+  // value — with no reliance on a transient open-index.
   const meta = sectionWithProps({
     specs: {
       type: "array",
@@ -302,13 +303,14 @@ test("colliding fallback-title rows are position-disambiguated and each drills i
     />,
   );
 
-  await expect(itemRow(component, "Spec 1")).toBeVisible();
-  await expect(itemRow(component, "Spec 2")).toBeVisible();
-  await expect(itemRow(component, "Spec 3")).toBeVisible();
+  // All three rows render the same clean label "Spec" (no positional suffix).
+  await expect(itemRow(component, "Spec")).toHaveCount(3);
 
-  await itemRow(component, "Spec 3").click();
+  // Drill into the THIRD row (index 2). Its crumb carries itemIndex 2, so it
+  // addresses that exact row — the editor shows its own value "c".
+  await itemRow(component, "Spec").nth(2).click();
 
-  await expect.poll(() => readBreadcrumb(component)).toContain("Spec 3");
+  await expect.poll(() => readBreadcrumb(component)).toContain("Spec");
   const body = component.getByLabel("Body");
   await expect(body).toHaveAttribute("id", "specs.2.body");
   await expect(body).toHaveValue("c");

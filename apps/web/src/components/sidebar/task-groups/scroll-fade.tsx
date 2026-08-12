@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 
 /**
  * Wraps a scrollable area and shows a bottom fade when there is more content

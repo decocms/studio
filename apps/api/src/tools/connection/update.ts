@@ -28,9 +28,35 @@ import {
   buildVirtualUrl,
   type ConnectionEntity,
   ConnectionEntitySchema,
+  type ConnectionUpdateData,
   ConnectionUpdateDataSchema,
   parseVirtualUrl,
 } from "./schema";
+
+/**
+ * Fields that are system-managed and must never be settable through
+ * COLLECTION_CONNECTIONS_UPDATE. ConnectionUpdateDataSchema is
+ * ConnectionEntitySchema.partial(), so without this a caller with ordinary
+ * connection-update permission could reassign a connection to a different
+ * organization (organization_id), forge its creator (created_by), backdate
+ * it (created_at), or rewrite its primary key (id).
+ */
+const IMMUTABLE_UPDATE_FIELDS = [
+  "id",
+  "organization_id",
+  "created_by",
+  "created_at",
+] as const;
+
+export function stripImmutableUpdateFields(
+  data: ConnectionUpdateData,
+): ConnectionUpdateData {
+  const sanitized = { ...data };
+  for (const field of IMMUTABLE_UPDATE_FIELDS) {
+    delete sanitized[field];
+  }
+  return sanitized;
+}
 
 /**
  * Input schema for updating connections
@@ -85,7 +111,8 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
       throw new Error("User ID required to update connection");
     }
 
-    const { id, data } = input;
+    const { id } = input;
+    const data = stripImmutableUpdateFields(input.data);
     const configChanged =
       data.configuration_state !== undefined ||
       data.configuration_scopes !== undefined;

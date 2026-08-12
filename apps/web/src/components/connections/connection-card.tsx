@@ -1,6 +1,7 @@
-import { Card } from "@deco/ui/components/card.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { Card } from "@decocms/ui/components/card.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import type { ReactNode } from "react";
+import { useT } from "@/i18n/use-t.ts";
 import { IntegrationIcon } from "../integration-icon.tsx";
 
 export interface ConnectionCardData {
@@ -8,7 +9,6 @@ export interface ConnectionCardData {
   title: string;
   description?: string | null;
   icon?: string | null;
-  status?: "active" | "inactive" | "error";
 }
 
 export interface ConnectionCardProps {
@@ -16,10 +16,11 @@ export interface ConnectionCardProps {
   onClick?: () => void;
   headerActions?: React.ReactNode;
   headerActionsAlwaysVisible?: boolean;
-  body?: React.ReactNode;
   footer?: React.ReactNode;
   className?: string;
   fallbackIcon?: ReactNode;
+  /** When the card acts as a selection toggle, its current pressed state. */
+  selected?: boolean | "mixed";
 }
 
 export function ConnectionCard({
@@ -27,19 +28,35 @@ export function ConnectionCard({
   onClick,
   headerActions,
   headerActionsAlwaysVisible = false,
-  body,
   footer,
   className,
   fallbackIcon,
+  selected,
 }: ConnectionCardProps) {
+  const t = useT();
   return (
     <Card
       className={cn(
-        "cursor-pointer transition-colors group overflow-hidden flex flex-col h-full",
-        onClick && "hover:bg-muted/50",
+        "transition-colors group overflow-hidden flex flex-col h-full",
+        onClick && "cursor-pointer hover:bg-muted/50",
         className,
       )}
       onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      aria-pressed={onClick && selected !== undefined ? selected : undefined}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              // Skip keydowns bubbled from a nested control (header actions).
+              if (e.target !== e.currentTarget) return;
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
     >
       <div className="flex flex-col flex-1">
         {/* Top Section: Icon, Title, Description, Header Actions */}
@@ -60,7 +77,7 @@ export function ConnectionCard({
                   className={cn(
                     "transition-opacity",
                     !headerActionsAlwaysVisible &&
-                      "sm:opacity-0 sm:group-hover:opacity-100",
+                      "sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100",
                   )}
                   onClick={(e) => e.stopPropagation()}
                 >
@@ -76,12 +93,10 @@ export function ConnectionCard({
               {connection.title}
             </h3>
             <p className="text-sm text-muted-foreground line-clamp-2">
-              {connection.description || "No description"}
+              {connection.description ||
+                t("connections.connectionCard.noDescription")}
             </p>
           </div>
-
-          {/* Body: Additional content like status */}
-          {body && <div>{body}</div>}
         </div>
 
         {/* Footer: Custom footer with border-t spanning full width */}

@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
+  getArrayItemDisplayLabels,
   getArrayItemImageSrc,
   getArrayItemLabel,
-  getArrayItemLabels,
   renderMustacheTemplate,
+  stripMustacheTokens,
 } from "./array-item-display";
 import type { SchemaProperty } from "./resolve-schema";
 
@@ -95,106 +96,198 @@ describe("getArrayItemLabel", () => {
     );
   });
 
-  describe("collision disambiguation (siblings)", () => {
-    // An object array with no distinguishing field: every item's label falls
-    // back to the item schema title, so all rows collapse to one string. The
-    // breadcrumb addresses an item by its label and the transient open-index is
-    // wiped whenever the form subtree remounts (formResetKey), so a non-unique
-    // label makes every item resolve back to the first one — the "all items
-    // show the same content" bug. Positional suffixes keep them addressable.
+  // Inline unions carry a per-branch Mustache title, resolved against branch data.
+  const matcherUnionSchema: SchemaProperty = {
+    type: "inline-union",
+    inlineUnionBranches: [
+      {
+        title: "Categoria {{{id}}}",
+        discriminators: { matcherType: "category" },
+        schema: {
+          type: "object",
+          properties: {
+            matcherType: { type: "string" },
+            id: { type: "string" },
+          },
+        },
+      },
+      {
+        title: "Cluster {{{value}}}",
+        discriminators: { matcherType: "cluster" },
+        schema: {
+          type: "object",
+          properties: {
+            matcherType: { type: "string" },
+            value: { type: "string" },
+          },
+        },
+      },
+    ],
+  };
+
+  test("labels an inline-union item by its active branch (discriminator match)", () => {
+    expect(
+      getArrayItemLabel(
+        { matcherType: "category", id: "123" },
+        0,
+        matcherUnionSchema,
+      ),
+    ).toBe("Categoria 123");
+    expect(
+      getArrayItemLabel(
+        { matcherType: "cluster", value: "45" },
+        1,
+        matcherUnionSchema,
+      ),
+    ).toBe("Cluster 45");
+  });
+
+  test("keeps the static branch prefix when Mustache fields are empty", () => {
+    expect(
+      getArrayItemLabel({ matcherType: "category" }, 0, matcherUnionSchema),
+    ).toBe("Categoria");
+  });
+
+  test("falls back past a purely-Mustache branch title with empty data", () => {
+    const schema: SchemaProperty = {
+      type: "inline-union",
+      inlineUnionBranches: [
+        {
+          title: "{{{value}}}",
+          discriminators: { matcherType: "cluster" },
+          schema: {
+            type: "object",
+            properties: {
+              matcherType: { type: "string" },
+              value: { type: "string" },
+            },
+          },
+        },
+      ],
+    };
+    expect(getArrayItemLabel({ matcherType: "cluster" }, 2, schema)).toBe(
+      "Item 3",
+    );
+  });
+
+  test("infers the branch by field presence when no discriminator matches", () => {
+    const schema: SchemaProperty = {
+      type: "inline-union",
+      inlineUnionBranches: [
+        {
+          title: "Período {{{start}}}",
+          schema: {
+            type: "object",
+            properties: { start: { type: "string" }, end: { type: "string" } },
+          },
+        },
+        {
+          title: "Produto {{{value}}}",
+          schema: {
+            type: "object",
+            properties: { value: { type: "string" } },
+          },
+        },
+      ],
+    };
+    expect(getArrayItemLabel({ value: "prod-9" }, 0, schema)).toBe(
+      "Produto prod-9",
+    );
+  });
+
+  test("labels a static (token-free) branch title verbatim", () => {
+    const schema: SchemaProperty = {
+      type: "inline-union",
+      inlineUnionBranches: [
+        {
+          title: "Localização",
+          discriminators: { kind: "location" },
+          schema: {
+            type: "object",
+            properties: { kind: { type: "string" }, city: { type: "string" } },
+          },
+        },
+      ],
+    };
+    expect(getArrayItemLabel({ kind: "location" }, 0, schema)).toBe(
+      "Localização",
+    );
+  });
+
+  // resolve-schema fills titleless branches with `Option N`; it must not shadow the item's own label.
+  test("falls through a synthetic 'Option N' branch title to the field scan", () => {
+    const schema: SchemaProperty = {
+      type: "inline-union",
+      inlineUnionBranches: [
+        {
+          title: "Option 1",
+          discriminators: { name: "max-age" },
+          schema: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              maxAge: { type: "number" },
+            },
+          },
+        },
+      ],
+    };
+    expect(getArrayItemLabel({ name: "max-age", maxAge: 60 }, 0, schema)).toBe(
+      "max-age",
+    );
+  });
+
+  test("colliding inline-union items share a clean label (no positional suffix)", () => {
+    const items = [
+      { matcherType: "category", id: "10" },
+      { matcherType: "category", id: "10" },
+    ];
+    expect(getArrayItemDisplayLabels(items, matcherUnionSchema)).toEqual([
+      "Categoria 10",
+      "Categoria 10",
+    ]);
+  });
+
+  test("colliding items keep an identical base label (no positional suffix)", () => {
+    // Items with no distinguishing field share a label — intentional: the
+    // breadcrumb addresses an item by index (Crumb.itemIndex), never by a unique
+    // label, so no positional " N" suffix is added.
     const itemSchema: SchemaProperty = {
       type: "object",
       title: "ProductSpecifications",
       properties: { body: { type: "string" } },
     };
-    const specs = [{ body: "a" }, { body: "b" }, { body: "c" }];
-
-    test("suffixes the position when the base label collides", () => {
-      expect(getArrayItemLabel(specs[0], 0, itemSchema, specs)).toBe(
-        "ProductSpecifications 1",
-      );
-      expect(getArrayItemLabel(specs[2], 2, itemSchema, specs)).toBe(
-        "ProductSpecifications 3",
-      );
-    });
-
-    test("leaves a unique label untouched", () => {
-      const mixed = [{ title: "Alpha" }, { title: "Beta" }];
-      const schema: SchemaProperty = {
-        type: "object",
-        properties: { title: { type: "string" } },
-      };
-      expect(getArrayItemLabel(mixed[0], 0, schema, mixed)).toBe("Alpha");
-      expect(getArrayItemLabel(mixed[1], 1, schema, mixed)).toBe("Beta");
-    });
-
-    test("only the colliding items get a suffix", () => {
-      const mixed = [{ title: "Dup" }, { title: "Unique" }, { title: "Dup" }];
-      const schema: SchemaProperty = {
-        type: "object",
-        properties: { title: { type: "string" } },
-      };
-      expect(getArrayItemLabel(mixed[0], 0, schema, mixed)).toBe("Dup 1");
-      expect(getArrayItemLabel(mixed[1], 1, schema, mixed)).toBe("Unique");
-      expect(getArrayItemLabel(mixed[2], 2, schema, mixed)).toBe("Dup 3");
-    });
-
-    test("no siblings argument keeps the legacy bare label", () => {
-      expect(getArrayItemLabel(specs[1], 1, itemSchema)).toBe(
-        "ProductSpecifications",
-      );
-    });
+    const specs = [{ body: "a" }, { body: "b" }];
+    expect(getArrayItemLabel(specs[0], 0, itemSchema)).toBe(
+      "ProductSpecifications",
+    );
+    expect(getArrayItemLabel(specs[1], 1, itemSchema)).toBe(
+      "ProductSpecifications",
+    );
   });
 });
 
-describe("getArrayItemLabels (batch disambiguation)", () => {
-  const titleSchema = (title: string): SchemaProperty => ({
+describe("getArrayItemDisplayLabels (no positional suffix)", () => {
+  const schema: SchemaProperty = {
     type: "object",
-    title,
-    properties: { body: { type: "string" } },
-  });
+    properties: { name: { type: "string" } },
+  };
 
-  test("suffixes every item when they all share the fallback title", () => {
-    const items = [{ body: "a" }, { body: "b" }, { body: "c" }];
-    expect(getArrayItemLabels(items, titleSchema("Spec"))).toEqual([
-      "Spec 1",
-      "Spec 2",
-      "Spec 3",
+  test("keeps colliding base labels un-suffixed (display only)", () => {
+    const items = [
+      { name: "Cozinha – Festival da CASA" },
+      { name: "Cozinha – Festival da CASA" },
+    ];
+    // getArrayItemLabels would return "... 1"/"... 2"; the display variant must not.
+    expect(getArrayItemDisplayLabels(items, schema)).toEqual([
+      "Cozinha – Festival da CASA",
+      "Cozinha – Festival da CASA",
     ]);
   });
 
-  test("disambiguates NFC/NFD near-duplicates the resolver would treat as equal", () => {
-    // "café" composed (U+00E9) vs decomposed (e + U+0301). labelsMatch
-    // NFC-normalizes both, so a bare label would collapse them to index 0.
-    const schema: SchemaProperty = {
-      type: "object",
-      properties: { name: { type: "string" } },
-    };
-    const items = [{ name: "café" }, { name: "café" }];
-    const labels = getArrayItemLabels(items, schema);
-    expect(labels[0]).not.toBe(labels[1]);
-    expect(labels[0]!.normalize("NFC")).not.toBe(labels[1]!.normalize("NFC"));
-  });
-
-  test("keeps the final set unique when a suffix collides with a literal label", () => {
-    // ["X","X","X 2"]: naive per-item suffixing yields "X 1","X 2","X 2".
-    const schema: SchemaProperty = {
-      type: "object",
-      properties: { title: { type: "string" } },
-    };
-    const items = [{ title: "X" }, { title: "X" }, { title: "X 2" }];
-    const labels = getArrayItemLabels(items, schema);
-    expect(new Set(labels).size).toBe(labels.length);
-    expect(labels[0]).toBe("X 1");
-  });
-
-  test("leaves unique labels untouched", () => {
-    const schema: SchemaProperty = {
-      type: "object",
-      properties: { title: { type: "string" } },
-    };
-    const items = [{ title: "Alpha" }, { title: "Beta" }];
-    expect(getArrayItemLabels(items, schema)).toEqual(["Alpha", "Beta"]);
+  test("still resolves distinct base labels", () => {
+    const items = [{ name: "Alpha" }, { name: "Beta" }];
+    expect(getArrayItemDisplayLabels(items, schema)).toEqual(["Alpha", "Beta"]);
   });
 });
 
@@ -247,6 +340,31 @@ describe("getArrayItemImageSrc", () => {
     expect(getArrayItemImageSrc(item, schema)).toBe(
       "https://example.com/mobile.jpg",
     );
+  });
+});
+
+describe("stripMustacheTokens", () => {
+  test("strips triple-brace tokens, keeping static text", () => {
+    expect(stripMustacheTokens("Categoria {{{id}}}")).toBe("Categoria");
+  });
+
+  test("strips double-brace tokens", () => {
+    expect(stripMustacheTokens("Cluster {{value}}")).toBe("Cluster");
+  });
+
+  test("collapses whitespace left between multiple tokens", () => {
+    expect(stripMustacheTokens("Período {{{start}}} — {{{end}}}")).toBe(
+      "Período —",
+    );
+  });
+
+  test("returns a token-free title unchanged", () => {
+    expect(stripMustacheTokens("Localização")).toBe("Localização");
+  });
+
+  test("returns empty string for a purely-Mustache title", () => {
+    expect(stripMustacheTokens("{{{value}}}")).toBe("");
+    expect(stripMustacheTokens("")).toBe("");
   });
 });
 

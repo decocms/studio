@@ -34,7 +34,7 @@ import { useChatPrefs } from "@/components/chat/context";
 import { ChatSidePanel } from "@/components/chat/side-panel-chat";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { isModKey } from "@/lib/keyboard-shortcuts";
-import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
+import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { AlertCircle, Loading01 } from "@untitledui/icons";
 import {
   getWellKnownDecopilotVirtualMCP,
@@ -49,7 +49,7 @@ import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useIsSandboxStartPending } from "@/components/sandbox/hooks/use-sandbox-start";
 import { useStatusSounds } from "../../hooks/use-status-sounds";
 import { authClient } from "@/lib/auth-client";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { EmptyState } from "@/components/empty-state";
 import {
   resolveMobileSurface,

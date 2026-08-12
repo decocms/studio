@@ -1,0 +1,215 @@
+{{- if and .Values.depsCache.enabled .Values.depsCache.remote.enabled .Values.goldenUploader.enabled }}
+{{- /*
+Node-level bridge from the L1 hostPath golden store to the shared one.
+
+WHY THIS IS NOT IN THE SANDBOX POD. Writing to a store shared across nodes needs
+write access to it, and a sandbox pod runs untrusted code — a package manager
+installs cached content as-is, so a tenant able to write the shared store could
+poison another node's boot. The tenant's write path stops at its own node's
+hostPath, which is already the accepted trust domain there; this DaemonSet
+carries goldens the rest of the way.
+
+Consequences of that choice, and why it beats a sidecar in the sandbox pod:
+  - the sandbox PodSpec is untouched, so no per-pod request, no effect on how
+    many sandboxes pack onto a node, and nothing new that can degrade the
+    health probe Studio tears the pod down on.
+  - CPU can be capped here without competing with a user's dev server. The
+    compression is the expensive part and nobody is waiting on it.
+  - the writable mount exists once per node, in infrastructure, instead of
+    inside every tenant's pod.
+
+It decides nothing about WHAT to cache. Sandboxes are multi-tenant and run
+third-party code, so the set of (repo, lockfile) pairs cannot be known ahead of
+time — no list, no pre-baked image, no prediction. It only forwards what a real
+boot already produced and the daemon already judged healthy enough to publish.
+*/ -}}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "sandbox-env.goldenUploaderName" . }}
+  namespace: agent-sandbox-system
+  labels:
+    {{- include "sandbox-env.goldenUploaderLabels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "sandbox-env.goldenUploaderSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "sandbox-env.goldenUploaderLabels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      # Placement follows the sandbox pods by default: the hostPath it reads only
+      # exists on nodes that ran one.
+      {{- with (fromYaml (include "sandbox-env.goldenUploaderNodeSelector" .)) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- /* fromYamlArray, not fromYaml: tolerations are a LIST, and fromYaml on
+             a list yields an empty map — `with` then drops the block and this
+             cannot schedule on the tainted sandbox NodePool at all. */ -}}
+      {{- with (fromYamlArray (include "sandbox-env.goldenUploaderTolerations" .)) }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      # Same uid as the sandbox, so it can read goldens the sandbox wrote. It
+      # does not need root: the hostPath is already handed to 1000 by the
+      # sandbox pod's chown init container.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: uploader
+          image: "{{ include "sandbox-env.sandboxImage" . }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # Same binary as the daemon, different role. Keeps the archive format
+          # impossible to drift between writer and reader, and adds no second
+          # image to build or keep in lockstep.
+          #
+          # `command`, not `args`: the image's ENTRYPOINT comes from the oven/bun
+          # base and its CMD is the daemon binary. Overriding only `args` hands
+          # the subcommand to bun, which looks for a SCRIPT by that name and
+          # exits 1 with `Script not found "golden-uploader"`. Overriding
+          # `command` replaces the entrypoint, so the binary is exec'd directly.
+          command: ["/opt/sandbox-daemon/daemon-go", "golden-uploader"]
+          env:
+            - name: DEPS_CACHE_ROOT
+              value: {{ .Values.depsCache.hostPath | quote }}
+            - name: GOLDEN_CACHE_REMOTE
+              value: {{ .Values.depsCache.remote.mountPath | quote }}
+            - name: GOLDEN_UPLOAD_INTERVAL_SECONDS
+              value: {{ .Values.goldenUploader.intervalSeconds | quote }}
+            # Which environment's goldens to forward. The hostPath store is per
+            # NODE and every environment's sandboxes share one NodePool, so a
+            # node holds a mix; without this each uploader would compress and
+            # ship its neighbours' trees into a key prefix they never read.
+            - name: SANDBOX_ENV
+              value: {{ include "sandbox-env.envName" . | quote }}
+            {{- if .Values.telemetry.enabled }}
+            # Turns the sweep counters on. Without it the daemon's Init is a
+            # no-op and `sandbox.daemon.golden.upload` never reaches the
+            # collector, which leaves the shared tier observable only by reading
+            # this pod's log on every node.
+            #
+            # Unlike a sandbox this pod runs dnsPolicy: ClusterFirst with no
+            # netinit, so the collector is reachable by name too — but the same
+            # helper is used so the endpoint cannot drift between the two
+            # workloads that report to it.
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ include "sandbox-env.otlpEndpoint" . | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.goldenUploader.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            # Read-only: this reads what sandboxes published and must never be
+            # able to alter a node's cache.
+            # Mounted at the PARENT path, deliberately without subPath: a subPath
+            # on a hostPath volume is CREATED by kubelet when missing, as root —
+            # which is the very ownership trap this change exists to avoid. With
+            # the parent mounted at its own path the container resolves
+            # DEPS_CACHE_ROOT naturally when the node has a cache, sees nothing
+            # when it does not, and nothing is ever created. Read-only, and this
+            # is node infrastructure rather than tenant code, so the slightly
+            # broader view costs nothing.
+            - name: deps-cache
+              mountPath: {{ dir (.Values.depsCache.hostPath | trimSuffix "/") | quote }}
+              readOnly: true
+            # The ONLY writable mount of the shared store in this chart. Never
+            # add it to the sandbox PodSpec.
+            - name: golden-remote-rw
+              mountPath: {{ .Values.depsCache.remote.mountPath | quote }}
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        # The PARENT of the cache root, not the cache root itself.
+        #
+        # A DaemonSet lands on every matching node, including one Karpenter
+        # created seconds ago that has never run a sandbox — and on that node the
+        # cache root does not exist yet, because the SANDBOX creates it (its
+        # deps-cache-init container, which also chowns it to the sandbox uid;
+        # hostPath dirs are born root:root and fsGroup does not apply to them).
+        # Pointing this volume at the cache root with `type: Directory` therefore
+        # wedged the pod in ContainerCreating indefinitely:
+        #   MountVolume.SetUp failed for volume "deps-cache": hostPath type check
+        #   failed: /var/cache/studio-sandbox-deps is not a directory
+        # Observed in prod on 2 of 17 nodes, both environments' uploaders stuck on
+        # each, 20+ minutes, on nodes with no sandbox pod to unwedge them.
+        #
+        # DirectoryOrCreate would be worse, not better: this pod would win the
+        # race on a fresh node and create the cache root as root:root, and the
+        # sandbox — running as uid 1000 — could then not write its own cache. A
+        # stuck uploader traded for a broken cache on that node.
+        #
+        # So mount the parent, which every node image already has, and let the
+        # cache root be absent. UploadNodeGoldens already treats an unreadable
+        # golden root as "nothing published on this node yet" and returns. A node
+        # with no cache is a normal state, not a mount error.
+        - name: deps-cache
+          hostPath:
+            path: {{ dir (.Values.depsCache.hostPath | trimSuffix "/") | quote }}
+            type: Directory
+        - name: golden-remote-rw
+          persistentVolumeClaim:
+            claimName: {{ include "sandbox-env.goldenUploaderClaimName" . }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+{{- if not .Values.goldenUploader.pvcName }}
+---
+{{- /*
+Writable view of the same store the sandboxes read. A second PV over one bucket,
+because the mount options are the boundary: the tenant's PV is `read-only` at
+the mount, this one carries allow-delete/allow-overwrite. Splitting by mount
+rather than by convention means a consumer that forgets `readOnly: true` still
+cannot write through the tenant volume.
+*/ -}}
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ include "sandbox-env.goldenUploaderName" . }}
+  labels:
+    {{- include "sandbox-env.goldenUploaderLabels" . | nindent 4 }}
+spec:
+  capacity:
+    storage: {{ .Values.depsCache.remote.capacity }}
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  {{- with .Values.goldenUploader.volume.mountOptions }}
+  mountOptions:
+    {{- tpl (toYaml .) $ | nindent 4 }}
+  {{- end }}
+  csi:
+    driver: {{ .Values.depsCache.remote.volume.driver | quote }}
+    volumeHandle: {{ include "sandbox-env.goldenUploaderName" . }}
+    volumeAttributes:
+      {{- toYaml .Values.depsCache.remote.volume.attributes | nindent 6 }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "sandbox-env.goldenUploaderName" . }}
+  namespace: agent-sandbox-system
+  labels:
+    {{- include "sandbox-env.goldenUploaderLabels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: ""
+  volumeName: {{ include "sandbox-env.goldenUploaderName" . }}
+  resources:
+    requests:
+      storage: {{ .Values.depsCache.remote.capacity }}
+{{- end }}
+{{- end }}

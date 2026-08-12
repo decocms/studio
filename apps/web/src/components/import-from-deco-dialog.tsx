@@ -28,9 +28,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/dialog.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { ArrowLeft } from "@untitledui/icons";
 import { authClient } from "@/lib/auth-client";
 import { KEYS } from "@/lib/query-keys";
@@ -271,10 +271,12 @@ export function ImportFromDecoDialog({
         const projectIcon = connBody.icon ?? null;
         const slug = generateSlug(siteName);
         const siteSlug = siteName.toLowerCase();
-        // Persist the site's real production URL (custom domain when present,
-        // else the deco.site host) so the preview can paint it while the
-        // sandbox dev server wakes. `null` when the site has no domains.
-        const productionUrl = productionUrlFromDomain(
+        // Persist the site's real deployed URL (custom domain when present,
+        // else the deco.site host) as the preview server so the CMS preview
+        // can render against it. `null` when the site has no domains. The
+        // legacy `productionUrl` key is dual-written so an older app version
+        // rolling back still finds the value.
+        const previewServerUrl = productionUrlFromDomain(
           pickProductionDomain(site.domains),
         );
 
@@ -294,7 +296,8 @@ export function ImportFromDecoDialog({
                 // Link the agent to its asset site so the CMS resolves uploads
                 // to the managed storage for this slug.
                 siteSlug,
-                productionUrl,
+                previewServerUrl,
+                productionUrl: previewServerUrl,
                 githubRepo: {
                   owner: githubRepo.owner,
                   name: githubRepo.name,

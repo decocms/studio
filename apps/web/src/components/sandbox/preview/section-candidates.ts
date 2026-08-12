@@ -1,6 +1,5 @@
+import { isLazyResolveType } from "@/components/sections-editor/section-lazy";
 import { NEVER_MATCHER_RESOLVE_TYPE } from "@/components/sections-editor/section-types";
-
-const LAZY_RESOLVE_TYPE = "website/sections/Rendering/Lazy.tsx";
 
 /**
  * Candidate top-level `data-manifest-key`s a page section can render as, used
@@ -62,8 +61,8 @@ export function resolveSectionCandidates(
     }
     return keys;
   }
-  // A Lazy whose inner section can never render effectively renders nothing.
-  if (rt === LAZY_RESOLVE_TYPE) {
+  // Suffix-tolerant like every other lazy check; a never-rendering inner = null.
+  if (isLazyResolveType(rt)) {
     const inner =
       obj.section && typeof obj.section === "object"
         ? resolveSectionCandidates(

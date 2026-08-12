@@ -5,7 +5,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
-} from "@deco/ui/components/sidebar.tsx";
+} from "@decocms/ui/components/sidebar.tsx";
 import { Settings02, UserPlus01, ZapSquare } from "@untitledui/icons";
 import { useState } from "react";
 import { InviteMemberDialog } from "@/components/invite-member-dialog";

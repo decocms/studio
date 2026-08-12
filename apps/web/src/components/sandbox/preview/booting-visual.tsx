@@ -1,4 +1,4 @@
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import type { ReactNode } from "react";
 import { GridLoader } from "@/components/grid-loader";
 import type { ClaimPhase } from "../hooks/sandbox-events-context";

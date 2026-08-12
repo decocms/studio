@@ -1,6 +1,6 @@
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import { CollectionDisplayButton } from "@/components/collections/collection-display-button.tsx";
-import { SearchInput } from "@deco/ui/components/search-input.tsx";
+import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import { useT } from "@/i18n/use-t";
 import { CollectionTabs } from "@/components/collections/collection-tabs.tsx";
 import { ConnectionCard } from "@/components/connections/connection-card.tsx";
@@ -22,7 +22,7 @@ import { useMergedStoreDiscovery } from "@/hooks/use-merged-store-discovery";
 import { getConnectionSlug } from "@decocms/shared/utils/connection-slug";
 import { BulkDeleteDialog } from "./bulk-delete-dialog.tsx";
 import { CatalogItemCard } from "./catalog-item-card.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
   DialogContent,
@@ -30,7 +30,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
+} from "@decocms/ui/components/dialog.tsx";
 import {
   Drawer,
   DrawerClose,
@@ -39,8 +39,8 @@ import {
   DrawerFooter,
   DrawerHeader,
   DrawerTitle,
-} from "@deco/ui/components/drawer.tsx";
-import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
+} from "@decocms/ui/components/drawer.tsx";
+import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import {
   Form,
   FormControl,
@@ -48,17 +48,17 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@deco/ui/components/form.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
+} from "@decocms/ui/components/form.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@deco/ui/components/select.tsx";
-import { Textarea } from "@deco/ui/components/textarea.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/select.tsx";
+import { Textarea } from "@decocms/ui/components/textarea.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   useConnectionActions,
   useConnections,
@@ -577,6 +577,7 @@ function ConnectionResults({
                     className={cn(
                       isSelected && "ring-2 ring-primary bg-primary/5",
                     )}
+                    selected={selectionMode ? isSelected : undefined}
                     headerActionsAlwaysVisible
                     headerActions={
                       <ConnectionCardHeaderActions

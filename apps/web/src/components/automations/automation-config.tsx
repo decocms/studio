@@ -32,16 +32,16 @@ import {
   TerminalSquare,
   Tool01,
 } from "@untitledui/icons";
-import { Badge } from "@deco/ui/components/badge.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Checkbox } from "@deco/ui/components/checkbox.tsx";
-import { Switch } from "@deco/ui/components/switch.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { Badge } from "@decocms/ui/components/badge.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
+import { Switch } from "@decocms/ui/components/switch.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@deco/ui/components/popover.tsx";
+} from "@decocms/ui/components/popover.tsx";
 import {
   Command,
   CommandEmpty,
@@ -49,7 +49,7 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from "@deco/ui/components/command.tsx";
+} from "@decocms/ui/components/command.tsx";
 import {
   getGatewayClientId,
   stripToolNamespace,

@@ -277,7 +277,7 @@ describeLocalApi(
       });
     });
 
-    it("returns a local 404 for an unregistered URL identity instead of forwarding upstream", async () => {
+    it("forwards an unregistered URL identity upstream instead of answering locally", async () => {
       const response = await writeSandboxFile(
         a,
         FEATURE_BRANCH,
@@ -285,9 +285,10 @@ describeLocalApi(
         "{}",
         "unknown/vmcp",
       );
-      expect(response.status).toBe(404);
+      // 401 = the upstream proxy's auth boundary (no session in this harness).
+      expect(response.status).toBe(401);
       const body = (await response.json()) as { error: string };
-      expect(body.error).toContain("sandbox not found");
+      expect(body.error).not.toContain("sandbox not found");
     });
 
     it("resolves the exact SQLite-registered sandbox after a local-api process restart", async () => {

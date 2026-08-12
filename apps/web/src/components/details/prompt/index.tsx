@@ -11,9 +11,9 @@ import {
   FormControl,
   FormField,
   FormItem,
-} from "@deco/ui/components/form.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
-import { Textarea } from "@deco/ui/components/textarea.tsx";
+} from "@decocms/ui/components/form.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
+import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { PromptSchema } from "@decocms/bindings/prompt";
 import { Suspense } from "react";
 import { useForm, type UseFormReturn } from "react-hook-form";

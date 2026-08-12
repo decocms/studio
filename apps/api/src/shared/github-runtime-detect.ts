@@ -142,7 +142,15 @@ async function fetchGithubFile(
   }
 }
 
-function extractDevPort(content: string | null): string | null {
+/**
+ * `PORT_RE` allows 4-5 digits, but a 5-digit match can exceed the valid TCP
+ * port range (e.g. a script's `--port 99999`, or a version-looking number the
+ * regex happens to catch). The repo's `dev`/`start` script is untrusted
+ * content from GitHub — bound the match to 1-65535 before it reaches
+ * `start.ts`'s `Number(port)` as `devPort`, same rationale as `helpers.ts`'s
+ * `parseValidPort` for the user-pinned port.
+ */
+export function extractDevPort(content: string | null): string | null {
   if (!content) return null;
   try {
     const parsed = JSON.parse(content) as {
@@ -151,8 +159,10 @@ function extractDevPort(content: string | null): string | null {
     };
     const cmds = parsed.tasks ?? parsed.scripts ?? {};
     const cmd = cmds.dev ?? cmds.start ?? "";
-    const match = cmd.match(PORT_RE);
-    return match?.[1] ?? null;
+    const port = cmd.match(PORT_RE)?.[1] ?? null;
+    if (!port) return null;
+    const n = Number(port);
+    return n >= 1 && n <= 65535 ? port : null;
   } catch {
     return null;
   }

@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { Calendar as CalendarIcon } from "@untitledui/icons";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Calendar } from "@deco/ui/components/calendar.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Calendar } from "@decocms/ui/components/calendar.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@deco/ui/components/popover.tsx";
-import { Textarea } from "@deco/ui/components/textarea.tsx";
+} from "@decocms/ui/components/popover.tsx";
+import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import type { FieldProps } from "./field-props";
 import { FieldLabel } from "./field-label";

@@ -19,12 +19,12 @@ import {
   Loading01,
 } from "@untitledui/icons";
 import { useProjectContext } from "@/sdk";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
   DialogContent,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
+} from "@decocms/ui/components/dialog.tsx";
 import { ErrorBoundary } from "@/components/error-boundary";
 import {
   type CommerceDiscoveryClient,

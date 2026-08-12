@@ -29,10 +29,10 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { getInitials } from "@/lib/get-initials";
-import { cn } from "@deco/ui/lib/utils.ts";
-import { Button } from "@deco/ui/components/button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { useT } from "@/i18n/use-t.ts";
-import { Avatar } from "@deco/ui/components/avatar.tsx";
+import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import {
   Calendar,
   Columns03,
@@ -50,7 +50,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@deco/ui/components/popover.tsx";
+} from "@decocms/ui/components/popover.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -60,7 +60,7 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { QaAgentIcon } from "@/components/qa-agent-icon";
 import { CodeReviewerIcon } from "@/components/code-reviewer-icon";
@@ -72,7 +72,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
+} from "@decocms/ui/components/dialog.tsx";
 import {
   getWellKnownDecopilotVirtualMCP,
   useConnections,
@@ -120,7 +120,7 @@ import { RerunDialog } from "./rerun-dialog";
 import { subscriptionErrorKind } from "@/components/task-board/is-subscription-error";
 import { isReportsTask, type ReviewerKind } from "@decocms/shared/task-board";
 import { useFlipLanes } from "./use-flip-lanes";
-import { Calendar as DayPickerCalendar } from "@deco/ui/components/calendar.tsx";
+import { Calendar as DayPickerCalendar } from "@decocms/ui/components/calendar.tsx";
 import { buildTaskChatContext } from "./build-task-chat-context";
 import { useStudioTools } from "@/lib/studio-tools";
 import {
@@ -306,6 +306,7 @@ function AssigneeDisplay({
 export function TaskBoardPage() {
   const t = useT();
   const { items, isLoading } = useTaskBoardItems();
+  const { data: orgTags = [] } = useTags();
   const actions = useTaskBoardItemActions();
   const reportsOnly = useReportsOnly();
   // Handing a task to the Super Agent makes it open a PR — so it needs at
@@ -549,6 +550,7 @@ export function TaskBoardPage() {
                 <TaskFiltersDrawer
                   filters={filters}
                   members={members}
+                  tags={orgTags}
                   onChange={setFilters}
                 />
               </div>
@@ -556,6 +558,7 @@ export function TaskBoardPage() {
                 <TaskFiltersBar
                   filters={filters}
                   members={members}
+                  tags={orgTags}
                   onChange={setFilters}
                 />
               </div>
@@ -1209,6 +1212,54 @@ function Lanes({
   const [overrides, setOverrides] = useState<Map<string, Placement>>(new Map());
   const boardRef = useRef<HTMLDivElement>(null);
 
+  // A plain mouse wheel only emits vertical deltas, so on a board that overflows
+  // sideways the columns off-screen to the right are unreachable without a
+  // trackpad (two-finger swipe) or Shift+wheel — neither of which a mouse user
+  // has. Translate a vertical wheel into horizontal board scroll, but only when
+  // the pointer isn't over a lane that can still absorb that scroll itself, so
+  // scrolling a column's cards keeps working. Registered natively (not via
+  // React's passive onWheel) so preventDefault can suppress the browser's own
+  // vertical scroll/overscroll; React 19 ref cleanup unregisters it.
+  const attachBoard = (node: HTMLDivElement | null) => {
+    boardRef.current = node;
+    if (!node) return;
+    const onWheel = (event: WheelEvent) => {
+      // Trackpad / Shift+wheel already produce a horizontal delta — let the
+      // browser handle those natively.
+      if (event.deltaX !== 0 || event.deltaY === 0) return;
+      if (node.scrollWidth <= node.clientWidth) return;
+      // Walk up from the pointer target: if a lane under it can still scroll
+      // vertically in this direction, that's what the wheel is for.
+      for (
+        let el = event.target as HTMLElement | null;
+        el && el !== node;
+        el = el.parentElement
+      ) {
+        if (el.hasAttribute("data-lane-scroll")) {
+          const hasRoom =
+            event.deltaY < 0
+              ? el.scrollTop > 0
+              : el.scrollTop + el.clientHeight < el.scrollHeight - 1;
+          if (hasRoom) return;
+          break;
+        }
+      }
+      event.preventDefault();
+      const factor =
+        event.deltaMode === 1
+          ? 16
+          : event.deltaMode === 2
+            ? node.clientWidth
+            : 1;
+      node.scrollLeft += event.deltaY * factor;
+    };
+    node.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      boardRef.current = null;
+      node.removeEventListener("wheel", onWheel);
+    };
+  };
+
   const placed =
     overrides.size > 0
       ? items.map((item) => {
@@ -1382,7 +1433,7 @@ function Lanes({
     >
       {/* Scroll container spans the full panel width so the wheel works even
           when the pointer is in the empty margins on wide monitors. */}
-      <div ref={boardRef} className="min-h-0 flex-1 overflow-x-auto">
+      <div ref={attachBoard} className="min-h-0 flex-1 overflow-x-auto">
         {/* Padding lives on the capped row (not the scroll container) so its
             left edge matches the header's max-w + px exactly. Bottom breathing
             room is handled per-lane by each column's own scrollable div — a pb

@@ -110,6 +110,10 @@ export const reports = {
   "reports.listTemplate.moreSignals": "more signals in the full diagnostic",
   "reports.listTemplate.unlockRevenue": "Unlock my revenue",
   "reports.paginasVariant.found": "found",
+  "reports.scanGate.anonymousHelp":
+    "Signing in also unlocks the full report when it's done.",
+  "reports.scanGate.anonymousLabel": "Want it in your inbox when it's ready?",
+  "reports.scanGate.anonymousSignIn": "Sign in to get notified",
   "reports.scanGate.errorBlocked": "This report is not publicly available.",
   "reports.scanGate.errorEmpty":
     "We scanned your store, but the report is still being assembled. Check back soon.",
@@ -126,7 +130,7 @@ export const reports = {
   "reports.scanGate.stageNow": "now",
   "reports.scanGate.stageReady": "Report ready",
   "reports.scanGate.subtitle":
-    "You can follow along here. We'll also let you know when it's ready.",
+    "You can follow along here — it takes a few minutes.",
   "reports.scanGate.tryAnother": "Try another store",
   "reports.scorecardTemplate.noComparison": "No comparison",
   "reports.scorecardTemplate.rivalLeads": "{rival} leads",

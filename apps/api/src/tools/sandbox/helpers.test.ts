@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import {
+  readValidatedRuntimeEnv,
   readValidatedSubmoduleCredentials,
   resolveRuntimeConfig,
 } from "./helpers";
@@ -104,6 +105,46 @@ describe("resolveRuntimeConfig", () => {
   });
 });
 
+describe("readValidatedRuntimeEnv", () => {
+  it("returns null when metadata / runtime / array is absent", () => {
+    expect(readValidatedRuntimeEnv(null)).toBeNull();
+    expect(readValidatedRuntimeEnv({})).toBeNull();
+    expect(readValidatedRuntimeEnv({ runtime: {} })).toBeNull();
+    expect(readValidatedRuntimeEnv({ runtime: { env: "nope" } })).toBeNull();
+  });
+
+  // Feeds SANDBOX_START's secret-resolving loop; a malformed row must be dropped here, not thrown there.
+  it("drops malformed entries instead of letting them through", () => {
+    const result = readValidatedRuntimeEnv({
+      runtime: {
+        env: [
+          { key: "FOO", kind: "literal", value: "bar" },
+          { key: "bad key", kind: "literal", value: "x" }, // invalid key
+          { key: "NO_VALUE", kind: "literal" }, // missing value
+          { key: "NO_SECRET", kind: "secret" }, // missing secretId
+          { key: "EMPTY_SECRET", kind: "secret", secretId: "" },
+          { kind: "literal", value: "no-key" }, // missing key
+          "garbage",
+          null,
+          { key: "SECRET_KEY", kind: "secret", secretId: "sec_1" },
+        ],
+      },
+    });
+    expect(result).toEqual([
+      { key: "FOO", kind: "literal", value: "bar" },
+      { key: "SECRET_KEY", kind: "secret", secretId: "sec_1" },
+    ]);
+  });
+
+  it("returns null when every entry is invalid", () => {
+    expect(
+      readValidatedRuntimeEnv({
+        runtime: { env: [{ key: "bad key", kind: "literal", value: "x" }] },
+      }),
+    ).toBeNull();
+  });
+});
+
 describe("readValidatedSubmoduleCredentials", () => {
   it("returns null when metadata / runtime / array is absent", () => {
     expect(readValidatedSubmoduleCredentials(null)).toBeNull();
@@ -136,11 +177,22 @@ describe("readValidatedSubmoduleCredentials", () => {
     ]);
   });
 
-  it("returns null when every entry is invalid", () => {
+  // Inverted deliberately: "the user emptied the list" must not collapse into
+  // the same value as "never configured". The daemon reads an absent field as
+  // "keep current", so returning null here left a revoked PAT live in the pod.
+  it("returns an empty array when the list is present but empty", () => {
+    expect(
+      readValidatedSubmoduleCredentials({
+        runtime: { submoduleCredentials: [] },
+      }),
+    ).toEqual([]);
+  });
+
+  it("returns an empty array when every entry is invalid", () => {
     expect(
       readValidatedSubmoduleCredentials({
         runtime: { submoduleCredentials: [{ host: "", secretId: "" }] },
       }),
-    ).toBeNull();
+    ).toEqual([]);
   });
 });

@@ -541,12 +541,14 @@ fn failure_page_html(message: &str) -> String {
     // Chrome is shared with the other browser-facing dead-end pages (see
     // `crate::browser_page`) so they cannot drift apart; `render` does the
     // escaping.
+    let session = crate::global();
     browser_page::render(browser_page::Page {
         title: "Sign-in failed — deco Studio",
         heading: "Sign-in failed",
         body: message,
         hint: Some("Close this tab and try signing in again from the app."),
         destructive: true,
+        visual_origin: session.target(),
     })
 }
 

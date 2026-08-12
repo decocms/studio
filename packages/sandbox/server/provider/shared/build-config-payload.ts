@@ -26,9 +26,13 @@ export function buildConfigPayload(args: {
           cloneUrl: repo.cloneUrl,
           repoName: repo.displayName ?? deriveRepoLabel(repo.cloneUrl),
           ...(repo.branch ? { branch: repo.branch } : {}),
-          ...(repo.submoduleCredentials && repo.submoduleCredentials.length > 0
-            ? { submoduleCredentials: repo.submoduleCredentials }
-            : {}),
+          // Always sent, empty array included — never as an absent-means-none.
+          // The daemon's merge reads an absent field as "keep current", so
+          // omitting it when the user deletes their last credential row leaves
+          // the revoked PAT live in the pod's store for its whole lifetime, and
+          // leaves a re-bootstrapped pod holding the previous config's tokens.
+          // Same reasoning as `cloneOnly` below.
+          submoduleCredentials: repo.submoduleCredentials ?? [],
         },
         // Omitted when there is no user: a tenant warm pool bootstraps its pods
         // with a repo and no author, and the daemon rejects a blank identity
@@ -66,10 +70,20 @@ export function buildConfigPayload(args: {
       }
     : undefined;
 
-  if (!git && !application && !operator && !args.cloneOnly) return null;
+  const orgId = tenant?.orgId;
+
+  if (!git && !application && !operator && !args.cloneOnly && !orgId) {
+    return null;
+  }
   return {
     ...(git ? { git } : {}),
     ...(operator ? { operator } : {}),
+    // Provenance for artifacts that outlive the pod. The daemon does not use it
+    // to boot; it stamps it on the golden dependency cache so the shared tier
+    // can key by org. Repo hash alone does not isolate two orgs cloning the
+    // same public template, and a shared cache without this would let one org's
+    // tree restore into another's sandbox.
+    ...(orgId ? { orgId } : {}),
     // Always sent when true, never as an absent-means-false: a sandbox reused
     // from a warm pool carries the previous claim's config, so the flag has to
     // be able to turn itself back off on a normal (dev-server) provision.

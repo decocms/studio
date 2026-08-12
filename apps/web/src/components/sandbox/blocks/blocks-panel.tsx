@@ -1,6 +1,7 @@
 import { Suspense, lazy } from "react";
 import { Loading01 } from "@untitledui/icons";
-import { useProjectContext } from "@/sdk";
+import { useProjectContext, useVirtualMCP } from "@/sdk";
+import { resolveFastPreview } from "@/sdk/fast-preview";
 import { useChatTask } from "@/components/chat/context";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
@@ -30,11 +31,15 @@ const SectionsEditor = lazy(() =>
 
 export function BlocksPanel({
   virtualMcpId,
-  externalSelectedIndex = null,
+  externalSelection = null,
 }: {
   virtualMcpId: string;
-  /** Section index selected via click-through from the preview iframe. */
-  externalSelectedIndex?: number | null;
+  /**
+   * Section selected via click-through from the preview iframe. `seq` is the
+   * iframe's per-click counter — it makes two clicks on the same section two
+   * distinct selections, so re-clicking one reopens its form.
+   */
+  externalSelection?: { index: number; seq: number } | null;
 }) {
   const { org } = useProjectContext();
   const { currentBranch } = useChatTask();
@@ -56,11 +61,13 @@ export function BlocksPanel({
     : null;
   const decofile = useDecofile(fetchParams, { fetchEnabled: devServerReady });
   const meta = useLiveMeta(fetchParams, { fetchEnabled: devServerReady });
+  const vmcp = useVirtualMCP(virtualMcpId);
   const state = resolveBlocksTabState({
     lifecyclePhase: sandboxEvents.lifecycle.phase,
     decofile: toBlocksQueryState(decofile),
     meta: toBlocksQueryState(meta),
     hasEditableContent: hasEditableDecoContent(decofile.data, meta.data),
+    fastPreviewActive: resolveFastPreview(vmcp?.metadata).active,
   });
 
   if (state.kind === "loading") return <MainPanelLoading />;
@@ -128,9 +135,7 @@ export function BlocksPanel({
           currentPath={currentPath}
           activePageBlockKey={activePageBlockKey}
           activeGlobalBlockKey={activeGlobalBlockKey}
-          externalSelectedIndex={
-            activeGlobalBlockKey ? null : externalSelectedIndex
-          }
+          externalSelection={activeGlobalBlockKey ? null : externalSelection}
           initialEditSeo={
             !!activePageBlockKey &&
             workspace.state.editSeoPageKey === activePageBlockKey

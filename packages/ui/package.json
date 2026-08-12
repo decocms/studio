@@ -1,15 +1,58 @@
 {
-  "name": "@deco/ui",
-  "private": true,
-  "version": "1.8.2",
+  "name": "@decocms/ui",
+  "version": "1.9.1",
+  "description": "decocms product design system — React components, hooks, and Tailwind v4 tokens",
+  "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/decocms/studio.git",
+    "directory": "packages/ui"
+  },
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "files": [
+    "src",
+    "dist",
+    "!src/**/*.stories.tsx",
+    "!src/foundations",
+    "LICENSE.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
-    "./components/*": "./src/components/*",
-    "./hooks/*": "./src/hooks/*",
-    "./lib/*": "./src/lib/*",
+    "./components/*.tsx": "./src/components/*.tsx",
+    "./components/*": {
+      "types": "./dist/components/*.d.ts",
+      "default": "./dist/components/*.js"
+    },
+    "./hooks/*.ts": "./src/hooks/*.ts",
+    "./hooks/*": {
+      "types": "./dist/hooks/*.d.ts",
+      "default": "./dist/hooks/*.js"
+    },
+    "./lib/*.ts": "./src/lib/*.ts",
+    "./lib/*": {
+      "types": "./dist/lib/*.d.ts",
+      "default": "./dist/lib/*.js"
+    },
     "./styles/*": "./src/styles/*",
-    "./assets/*": "./src/assets/*",
-    "./providers/*": "./src/providers/*"
+    "./assets/*": "./src/assets/*"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "tsc -p tsconfig.build.json --noEmit",
+    "prepublishOnly": "bun run build",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-hook-form": "^7.55.0",
+    "sonner": "^2.0.3"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.3",
@@ -43,25 +86,31 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
-    "date-fns": "^3.0.0",
     "embla-carousel-react": "^8.5.2",
     "input-otp": "^1.4.2",
     "next-themes": "^0.4.6",
-    "react": "^19.2.6",
     "react-day-picker": "^8.10.1",
-    "react-dom": "^19.2.6",
-    "react-hook-form": "^7.55.0",
     "react-markdown": "^10.1.0",
     "recharts": "2.15.1",
     "remark-gfm": "^4.0.1",
-    "sonner": "^2.0.3",
     "tailwind-merge": "^3.1.0",
     "tw-animate-css": "^1.2.5",
     "vaul": "^1.1.2",
     "zod": "4.3.6"
   },
-  "packageManager": "npm@10.5.0",
   "devDependencies": {
-    "tailwindcss": "^4.1.1"
+    "@storybook/addon-a11y": "^10.5.7",
+    "@storybook/addon-docs": "^10.5.7",
+    "@storybook/addon-themes": "^10.5.7",
+    "@storybook/react-vite": "^10.5.7",
+    "@tailwindcss/vite": "^4.3.3",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-hook-form": "^7.55.0",
+    "sonner": "^2.0.3",
+    "storybook": "^10.5.7",
+    "tailwindcss": "^4.1.1",
+    "vite": "^8.2.1",
+    "wrangler": "^4.120.0"
   }
 }

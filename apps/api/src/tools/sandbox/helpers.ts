@@ -98,7 +98,11 @@ export function readValidatedSubmoduleCredentials(
       out.push({ host: c.host, secretId: c.secretId });
     }
   }
-  return out.length === 0 ? null : out;
+  // An emptied list returns `[]`, not null: the daemon reads an absent field as
+  // "keep current", so collapsing "the user deleted their last row" into the
+  // same value as "never configured" makes a revoked PAT unrevokable for the
+  // pod's lifetime. Null stays reserved for "the key isn't there at all".
+  return out;
 }
 
 /**

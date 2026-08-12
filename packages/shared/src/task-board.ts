@@ -6,6 +6,28 @@
  */
 export const SUPER_AGENT_ASSIGNEE_ID = "super-agent";
 
+/** Suggested colors a new tag cycles through, so consecutive tags are visually
+ *  distinct without anyone having to choose. Any hex is valid — the picker's
+ *  `<input type="color">` isn't limited to these, and neither is the reports
+ *  import (which needs the palette server-side, hence its home here). */
+const TAG_COLORS = [
+  "#9ca3af",
+  "#ef4444",
+  "#f97316",
+  "#f59e0b",
+  "#22c55e",
+  "#3b82f6",
+  "#a855f7",
+  "#ec4899",
+];
+
+export const DEFAULT_TAG_COLOR = TAG_COLORS[0]!;
+
+/** Suggested color for the `existingCount`-th tag created in an org. */
+export function nextTagColor(existingCount: number): string {
+  return TAG_COLORS[existingCount % TAG_COLORS.length] ?? DEFAULT_TAG_COLOR;
+}
+
 /**
  * True for a task pushed by the Reports import route (`created_by = "system"`,
  * the sentinel for non-user principals — see `apps/api/src/api/routes/
@@ -124,6 +146,26 @@ export function allReviewersApproved(
   if (enabled.length === 0) return false;
   const verdicts = reviewCycleVerdicts(activity, opts);
   return enabled.every((k) => verdicts.get(k) === "approved");
+}
+
+/**
+ * True when every enabled reviewer approved, but the approvals do NOT satisfy
+ * the verified gate the auto-merge requires.
+ *
+ * The card then shows a full set of green approvals and can never merge: the
+ * reviewer whose token didn't verify has already spent its claim for the cycle,
+ * so nothing re-dispatches it and no later event can change the verdict. It is
+ * a dead end that looks like progress, which is why it gets its own predicate
+ * rather than living as an `!allReviewersApproved(…, verifiedOnly)` fall-through.
+ */
+export function approvedButUnverified(
+  activity: ReviewCycleActivity[],
+  enabled: ReviewerKind[],
+): boolean {
+  return (
+    allReviewersApproved(activity, enabled) &&
+    !allReviewersApproved(activity, enabled, { verifiedOnly: true })
+  );
 }
 
 /**

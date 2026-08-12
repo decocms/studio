@@ -10,7 +10,7 @@
  * cache, so a brand save re-renders it.
  */
 
-import { Skeleton } from "@deco/ui/components/skeleton.tsx";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { useFileText } from "@/hooks/use-org-fs";
 

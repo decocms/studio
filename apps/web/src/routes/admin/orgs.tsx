@@ -5,10 +5,10 @@ import { Page } from "@/components/page";
 import { CollectionTableWrapper } from "@/components/collections/collection-table-wrapper.tsx";
 import type { TableColumn } from "@/components/collections/collection-table.tsx";
 import { EmptyState } from "@/components/empty-state.tsx";
-import { SearchInput } from "@deco/ui/components/search-input.tsx";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
+import { SearchInput } from "@decocms/ui/components/search-input.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
+import { Label } from "@decocms/ui/components/label.tsx";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import {
   Dialog,
@@ -17,14 +17,14 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@deco/ui/components/dialog.tsx";
+} from "@decocms/ui/components/dialog.tsx";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@deco/ui/components/select.tsx";
+} from "@decocms/ui/components/select.tsx";
 import { BUILTIN_ROLES } from "@decocms/shared/auth/roles";
 import { adminFetch } from "@/lib/admin-fetch";
 import { formatDate } from "@/lib/format-time";

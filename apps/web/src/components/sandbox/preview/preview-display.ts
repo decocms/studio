@@ -47,7 +47,7 @@ export interface PreviewDisplayInput {
   /** Current boot step status (`derivePhaseProgress(...).status`). */
   progressStatus: PhaseStatus;
   /** Live production URL to fall back to while waking, or `null` if unknown. */
-  productionUrl: string | null;
+  previewServerUrl: string | null;
   /**
    * Fast Preview is on (its switch is enabled AND a production URL is set).
    * Fast Preview does not change the *surface* — it changes when the surface is
@@ -78,7 +78,7 @@ export function resolvePreviewDisplay(
   const {
     previewState,
     progressStatus,
-    productionUrl,
+    previewServerUrl,
     // Optional: a caller that knows nothing about Fast Preview gets exactly
     // the pre-existing behaviour.
     fastPreviewActive = false,
@@ -97,10 +97,10 @@ export function resolvePreviewDisplay(
   // skip. `iframeBase` stays the PUBLISHED url: the caller layers the draft URL
   // over it, so every production-mode base is a page we can actually navigate to
   // (and the URL-bar label doesn't jump between origins mid-boot).
-  if (fastPreviewActive && fastPreviewReady && productionUrl) {
+  if (fastPreviewActive && fastPreviewReady && previewServerUrl) {
     return {
       mode: "production",
-      iframeBase: productionUrl,
+      iframeBase: previewServerUrl,
       showBlockingOverlay: false,
       showWakingPill: false,
     };
@@ -125,21 +125,22 @@ export function resolvePreviewDisplay(
   }
 
   // Nothing better is ready yet — paint the published site + a "waking" pill.
-  // Shared by both modes: Fast Preview holds here until the daemon can render
-  // the draft, the normal path until the dev server is routable. Fast Preview
-  // guarantees a `productionUrl` (its gate requires one), so it always lands
-  // here rather than on the blocking overlay below.
-  if (productionUrl) {
+  // Shared by both modes: Fast Preview holds here while the first draft
+  // version/token round-trip is in flight, the normal path until the dev
+  // server is routable. Fast Preview guarantees a `previewServerUrl` (its gate
+  // requires one), so it always lands here rather than on the blocking
+  // overlay below.
+  if (previewServerUrl) {
     return {
       mode: "production",
-      iframeBase: productionUrl,
+      iframeBase: previewServerUrl,
       showBlockingOverlay: false,
       showWakingPill: true,
     };
   }
 
   // No fallback available (e.g. a GitHub-only project, or a site imported
-  // before productionUrl was persisted): keep the original blocking overlay.
+  // before previewServerUrl was persisted): keep the original blocking overlay.
   return {
     mode: "none",
     iframeBase: null,

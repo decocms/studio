@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
-import { Button } from "@deco/ui/components/button.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   Dialog,
   DialogContent,
@@ -8,19 +8,19 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
+} from "@decocms/ui/components/dialog.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
+import { Label } from "@decocms/ui/components/label.tsx";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@deco/ui/components/select.tsx";
-import { Switch } from "@deco/ui/components/switch.tsx";
-import { Textarea } from "@deco/ui/components/textarea.tsx";
-import { Badge } from "@deco/ui/components/badge.tsx";
+} from "@decocms/ui/components/select.tsx";
+import { Switch } from "@decocms/ui/components/switch.tsx";
+import { Textarea } from "@decocms/ui/components/textarea.tsx";
+import { Badge } from "@decocms/ui/components/badge.tsx";
 import {
   AlertCircle,
   ArrowLeft,

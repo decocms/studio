@@ -1,4 +1,4 @@
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { AlertCircle, AlertTriangle, Copy01 } from "@untitledui/icons";
 import { toast } from "sonner";
 import {

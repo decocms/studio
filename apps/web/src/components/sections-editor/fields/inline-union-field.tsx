@@ -6,7 +6,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@deco/ui/components/select.tsx";
+} from "@decocms/ui/components/select.tsx";
+import { stripMustacheTokens } from "../array-item-display";
 import type { SchemaProperty } from "../resolve-schema";
 import { SchemaForm } from "../schema-form";
 import { FieldLabel } from "./field-label";
@@ -105,7 +106,10 @@ export function InlineUnionField(props: FieldProps) {
           <SelectContent>
             {branches.map((branch, index) => (
               <SelectItem key={branch.title} value={String(index)}>
-                {branch.title}
+                {stripMustacheTokens(branch.title) ||
+                  t("sectionsEditor.inlineUnionField.branchFallback", {
+                    index: index + 1,
+                  })}
               </SelectItem>
             ))}
           </SelectContent>

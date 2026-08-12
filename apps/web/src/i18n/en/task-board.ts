@@ -86,6 +86,17 @@ export const taskBoard = {
     "{reviewer} requested changes: {notes}",
   "taskBoard.taskDialog.activityMergeConflictResolution":
     "couldn't merge the pull request — resolving a merge conflict",
+  "taskBoard.taskDialog.activityMergeFailed": "couldn't merge the pull request",
+  "taskBoard.taskDialog.activityMergeFailedNoPr":
+    "couldn't merge — no pull request is linked to this task",
+  "taskBoard.taskDialog.activityMergeFailedChecksFailing":
+    "couldn't merge — the pull request's checks are failing",
+  "taskBoard.taskDialog.activityMergeFailedNoConnection":
+    "couldn't merge — this organization has no GitHub connection for {detail}. Connect that repository to ship this task.",
+  "taskBoard.taskDialog.activityMergeFailedRefused":
+    "GitHub refused the merge: {detail}",
+  "taskBoard.taskDialog.activityMergeFailedError":
+    "couldn't merge the pull request: {detail}",
   "taskBoard.taskDialog.tagsButton": "Tags",
   "taskBoard.taskDialog.removeTagAriaLabel": "Remove tag {name}",
   "taskBoard.taskDialog.addTagButton": "Add tag",
@@ -95,6 +106,8 @@ export const taskBoard = {
   "taskBoard.taskDialog.createTagOption": 'Create tag "{name}"',
   "taskBoard.taskDialog.noTagsFound": "No tags yet. Type a name to create one.",
   "taskBoard.taskDialog.assignButton": "Assign",
+  "taskBoard.taskDialog.repoButton": "Repository",
+  "taskBoard.taskDialog.noRepo": "No repository",
   "taskBoard.taskDialog.assignToPlaceholder": "Assign to…",
   "taskBoard.taskDialog.clearDueDateAriaLabel": "Clear due date",
   "taskBoard.taskDialog.closeAriaLabel": "Close",
@@ -178,6 +191,10 @@ export const taskBoard = {
   "taskBoard.taskFilters.filterDrawerTitle": "Filters",
   "taskBoard.taskFilters.priorityAnyPriority": "Any priority",
   "taskBoard.taskFilters.priorityLabel": "Priority",
+  "taskBoard.taskFilters.tagsLabel": "Tags",
+  "taskBoard.taskFilters.tagsSelectedCount": "{count} tags",
+  "taskBoard.taskFilters.tagsFilterPlaceholder": "Filter by tag…",
+  "taskBoard.taskFilters.tagsNoTagsFound": "No tags found.",
   "taskBoard.rerun.title": "Re-run this task?",
   "taskBoard.rerun.description":
     "The Super Agent will start a fresh run on this task.",

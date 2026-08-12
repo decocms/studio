@@ -2,9 +2,17 @@ apiVersion: v2
 name: chart-deco-studio
 description: Helm chart for deco Studio — supports inline secrets, external secretName, and AWS Secrets Manager via ExternalSecret
 type: application
+# 0.13.2: dedicated emptyDir + FAST_PREVIEW_CACHE_DIR for the sandbox-less
+# Fast Preview disk cache (fastPreviewCache values block).
+# 0.13.1: documents the pre-existing `serviceAccount` values block. The
+# templates already honoured it; it was simply absent from values.yaml, so
+# `helm show values` hid a key the sandbox layer depends on. The render is
+# byte-identical with default values.
+# 0.13.0: optional Ingress (ingress.enabled, default false). Renders nothing
+# when disabled, so existing releases are unaffected.
 # 0.12.4: chart-managed API/worker dispatch roles now use
 # STUDIO_DISPATCH_ROLE; legacy overrides are rejected.
-version: 0.12.4
+version: 0.13.2
 appVersion: "latest"
 
 dependencies:

@@ -58,7 +58,12 @@
       // Standalone mock servers spawned by Playwright's `webServer` via a
       // `bun run fixtures/...` command string — knip can't trace a process
       // launch, so without this entry it flags the file as unused.
-      "entry": ["fixtures/commerce-upgrade-mock.ts"]
+      // github-stub-server.ts wraps fixtures/github-stub.ts (the in-memory
+      // Git Data stub the decofile-api spec points GITHUB_API_BASE_URL at).
+      "entry": [
+        "fixtures/commerce-upgrade-mock.ts",
+        "fixtures/github-stub-server.ts"
+      ]
     },
     "apps/native": {
       // Included from Rust and evaluated inside the self-test webview.

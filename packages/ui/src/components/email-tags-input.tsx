@@ -14,7 +14,7 @@ import {
 import { z } from "zod";
 import { Badge } from "./badge.tsx";
 import { Button } from "./button.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+import { cn } from "../lib/utils.ts";
 import { X } from "@untitledui/icons";
 
 // Email validation schema

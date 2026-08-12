@@ -16,17 +16,17 @@ import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@/sdk";
 import { toast } from "sonner";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
   DialogClose,
   DialogContent,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
-import { Skeleton } from "@deco/ui/components/skeleton.tsx";
-import { Textarea } from "@deco/ui/components/textarea.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/dialog.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import { Textarea } from "@decocms/ui/components/textarea.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   ChevronDown,
   ChevronUp,

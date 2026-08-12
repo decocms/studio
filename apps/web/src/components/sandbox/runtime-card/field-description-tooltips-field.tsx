@@ -4,8 +4,8 @@ import {
   type FieldPath,
   type FieldValues,
 } from "react-hook-form";
-import { Label } from "@deco/ui/components/label.tsx";
-import { Switch } from "@deco/ui/components/switch.tsx";
+import { Label } from "@decocms/ui/components/label.tsx";
+import { Switch } from "@decocms/ui/components/switch.tsx";
 import { useT } from "@/i18n/use-t.ts";
 
 // Generic over the parent form schema, same pattern as ProductionUrlField.

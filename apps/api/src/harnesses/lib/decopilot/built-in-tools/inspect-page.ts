@@ -25,8 +25,18 @@ import { LARGE_RESULT_TOKEN_THRESHOLD } from "./constants";
 // Give it headroom over the inner timeout instead of leaving it unbounded.
 const BROWSERLESS_FETCH_TIMEOUT_MS = 45_000;
 
+// Upstream error bodies are unbounded — cap what lands in the tool error.
+const ERROR_BODY_MAX_CHARS = 500;
+
+// Reject non-http(s) schemes (file:, javascript:, ...) before forwarding to Browserless.
 const InspectPageInputSchema = z.object({
-  url: z.string().url().describe("The URL of the web page to inspect."),
+  url: z
+    .string()
+    .url()
+    .refine((url) => /^https?:\/\//i.test(url), {
+      message: "URL must use http or https",
+    })
+    .describe("The URL of the web page to inspect."),
   evaluate: z
     .string()
     .optional()
@@ -149,23 +159,24 @@ export function createInspectPageTool(
           const errorText = await response.text().catch(() => "Unknown error");
           return {
             success: false,
-            error: `Browserless function call failed (${response.status}): ${errorText}`,
+            error: `Browserless function call failed (${response.status}): ${errorText.slice(0, ERROR_BODY_MAX_CHARS)}`,
             url: input.url,
           };
         }
 
+        // Read as text first so a failed parse can still report the raw body.
+        const rawText = await response.text();
         let result: {
           consoleLogs?: { type: string; text: string }[];
           errors?: string[];
           evaluateResult?: unknown;
         };
         try {
-          result = await response.json();
+          result = JSON.parse(rawText);
         } catch {
-          const text = await response.text().catch(() => "");
           return {
             success: false,
-            error: `Browserless returned non-JSON response: ${text.slice(0, 200)}`,
+            error: `Browserless returned non-JSON response: ${rawText.slice(0, 200)}`,
             url: input.url,
           };
         }

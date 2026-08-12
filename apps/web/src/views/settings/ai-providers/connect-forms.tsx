@@ -5,9 +5,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Eye, EyeOff } from "@untitledui/icons";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
-import { DialogFooter } from "@deco/ui/components/dialog.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
+import { DialogFooter } from "@decocms/ui/components/dialog.tsx";
 import { useProjectContext } from "@/sdk";
 import { useStudioTools } from "@/lib/studio-tools";
 import { useT } from "@/i18n/use-t.ts";
@@ -15,12 +15,14 @@ import type { StudioToolInput as ToolInput } from "@decocms/shared/tools/tool-io
 import { KEYS } from "@/lib/query-keys";
 import type { OpenAICompatiblePreset } from "@/utils/openai-compatible-presets";
 
-const apiKeyFormSchema = z.object({
-  label: z.string().optional(),
-  apiKey: z.string().min(1, "API key is required"),
-});
+function apiKeyFormSchema(requiredMessage: string) {
+  return z.object({
+    label: z.string().optional(),
+    apiKey: z.string().min(1, requiredMessage),
+  });
+}
 
-type ApiKeyFormData = z.infer<typeof apiKeyFormSchema>;
+type ApiKeyFormData = z.infer<ReturnType<typeof apiKeyFormSchema>>;
 
 export function ConnectApiKeyForm({
   providerId,
@@ -42,7 +44,9 @@ export function ConnectApiKeyForm({
     handleSubmit,
     formState: { errors },
   } = useForm<ApiKeyFormData>({
-    resolver: zodResolver(apiKeyFormSchema),
+    resolver: zodResolver(
+      apiKeyFormSchema(t("settings.connectForms.apiKeyRequired")),
+    ),
     defaultValues: { label: "", apiKey: "" },
   });
 
@@ -138,13 +142,17 @@ export function ConnectApiKeyForm({
   );
 }
 
-const openaiCompatibleFormSchema = z.object({
-  label: z.string().optional(),
-  baseUrl: z.string().min(1, "Base URL is required"),
-  apiKey: z.string().optional(),
-});
+function openaiCompatibleFormSchema(requiredMessage: string) {
+  return z.object({
+    label: z.string().optional(),
+    baseUrl: z.string().min(1, requiredMessage),
+    apiKey: z.string().optional(),
+  });
+}
 
-type OpenAICompatibleFormData = z.infer<typeof openaiCompatibleFormSchema>;
+type OpenAICompatibleFormData = z.infer<
+  ReturnType<typeof openaiCompatibleFormSchema>
+>;
 
 export function ConnectOpenAICompatibleForm({
   preset,
@@ -166,7 +174,9 @@ export function ConnectOpenAICompatibleForm({
     handleSubmit,
     formState: { errors },
   } = useForm<OpenAICompatibleFormData>({
-    resolver: zodResolver(openaiCompatibleFormSchema),
+    resolver: zodResolver(
+      openaiCompatibleFormSchema(t("settings.connectForms.baseUrlRequired")),
+    ),
     defaultValues: {
       label: "",
       baseUrl: preset?.defaultBaseUrl ?? "",

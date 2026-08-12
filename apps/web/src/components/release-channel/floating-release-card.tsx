@@ -1,4 +1,4 @@
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { useState } from "react";
 import { AnnouncementCard } from "@/components/announcement-card";
 import { DownloadAppDialog } from "@/components/download-app-dialog";

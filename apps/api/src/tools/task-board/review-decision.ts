@@ -1,47 +1,45 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
-import type { StudioContext } from "@/core/studio-context";
 import {
-  allReviewersApproved,
   MAX_REVIEW_BOUNCES,
-  REVIEWER_FLAG,
-  REVIEWER_KINDS,
   REVIEWER_LABEL,
   reviewBounceLimitReached,
+  reviewCycleStart,
 } from "@decocms/shared/task-board";
 import { TaskBoardItemStatusSchema } from "./schema";
 import { recordTaskActivity } from "./activity";
-import { emitTaskBoardUpdated } from "./run-reactions";
+import { emitTaskBoardUpdated, handTaskToHuman } from "./run-reactions";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
-import { mergeLinkedPr } from "./merge-pr";
+import { allEnabledReviewersVerifiedApproved, mergeLinkedPr } from "./merge-pr";
 import { fetchPrConflict } from "./prs-get";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
 import { TaskQuotaError } from "@/billing/task-quota";
 
 /**
- * True when EVERY enabled reviewer has a token-VERIFIED `approve` as its latest
- * decision in the current review cycle. `verifiedOnly` is the point: a
- * self-asserted approval (missing/wrong reviewToken) must never trigger an
- * automatic merge, otherwise one agent could forge the two-reviewer gate. Reads
- * the activity log through the shared cycle reducer (same logic the ship button
- * uses, minus the verification requirement).
+ * True when a resolved reviewToken claim actually belongs to THIS reviewer's
+ * claim on the CURRENT review cycle.
+ *
+ * `claimReviewer` mints a fresh row (and token) for every review cycle but
+ * never deletes the old one, so comparing only the reviewer field — as this
+ * used to — let a token minted for an EARLIER cycle still verify: a reviewer
+ * that kept its token from a prior bounce (visible in that run's own prompt,
+ * see `enqueueReviewerForTask`) could replay it after being bounced back and
+ * re-approving with no real review this cycle, counting toward the
+ * two-reviewer auto-merge gate the token exists to protect. Comparing
+ * `cycleAt` closes that: a claim from any cycle but the current one no longer
+ * verifies. Pure — unit-tested.
  */
-async function allEnabledReviewersVerifiedApproved(
-  ctx: StudioContext,
-  orgId: string,
-  taskBoardItemId: string,
-): Promise<boolean> {
-  const settings = await ctx.storage.organizationSettings.get(orgId);
-  const flags = settings?.flags ?? {};
-  const enabled = REVIEWER_KINDS.filter(
-    (k) => flags[REVIEWER_FLAG[k]] === true,
+export function reviewTokenVerified(
+  claim: { reviewer: string; cycleAt: Date } | null,
+  reviewer: string,
+  currentCycleAt: number,
+): boolean {
+  return (
+    claim !== null &&
+    claim.reviewer === reviewer &&
+    claim.cycleAt.getTime() === currentCycleAt
   );
-  const activity = await ctx.storage.taskBoard.listActivity(
-    taskBoardItemId,
-    orgId,
-  );
-  return allReviewersApproved(activity, enabled, { verifiedOnly: true });
 }
 
 export const TASK_BOARD_REVIEW_DECISION = defineTool({
@@ -115,17 +113,22 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
       throw new Error(`Task board item not found: ${taskBoardItemId}`);
     }
 
-    // Verify the caller is the reviewer it claims to be: the reviewToken must
-    // resolve to a claim for THIS task whose reviewer matches. An unverified
-    // decision is still recorded (so a dropped token never stalls the flow) but
-    // won't count toward an automatic merge (see the verified gate below).
+    // Verify the caller's reviewToken against THIS task's CURRENT cycle.
     const claim = reviewToken
       ? await ctx.storage.taskBoard.resolveReviewClaimByToken(
           taskBoardItemId,
           reviewToken,
         )
       : null;
-    const verified = claim?.reviewer === reviewer;
+    const currentCycleAt = claim
+      ? reviewCycleStart(
+          await ctx.storage.taskBoard.listActivity(
+            taskBoardItemId,
+            organizationId,
+          ),
+        )
+      : 0;
+    const verified = reviewTokenVerified(claim, reviewer, currentCycleAt);
 
     if (decision === "request_changes") {
       // Break a runaway review loop BEFORE bouncing. A reviewer that keeps
@@ -150,28 +153,18 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
           actorId: null,
           data: { reviewer, notes, verified, bounceLimitReached: true },
         });
-        console.warn(
-          `[task-board] ${taskBoardItemId}: ${MAX_REVIEW_BOUNCES} review ` +
-            `bounces reached — unassigning the Super Agent, needs a human`,
+        // Stays In Review with the reviewer's notes, where a human picks it up.
+        await handTaskToHuman(
+          ctx,
+          item,
+          `${MAX_REVIEW_BOUNCES} review bounces reached — the reviewer and the ` +
+            `Super Agent are not converging`,
         );
-        // Unassign so the card reads as a person's problem rather than an
-        // agent's, and so nothing downstream re-dispatches it. It stays In
-        // Review with the reviewer's notes: that is where a human wants to
-        // pick it up, and the ship button stays hidden because nothing is
-        // approved.
-        const handed = await ctx.storage.taskBoard.update(
-          taskBoardItemId,
-          organizationId,
-          { assigneeId: null },
-          item.updatedBy,
-        );
-        await recordTaskActivity(ctx, {
-          taskBoardItemId,
-          action: "assignee_changed",
-          actorId: null,
-          data: { from: item.assigneeId, to: null },
-        });
-        emitTaskBoardUpdated(organizationId, handed);
+        const handed =
+          (await ctx.storage.taskBoard.getById(
+            taskBoardItemId,
+            organizationId,
+          )) ?? item;
         return { status: handed.status, merged: false };
       }
 
@@ -262,7 +255,7 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
     const settings = await ctx.storage.organizationSettings.get(organizationId);
     const autoMerge = settings?.flags?.auto_merge === true;
     const merged = autoMerge
-      ? await mergeLinkedPr(ctx, organizationId, taskBoardItemId)
+      ? (await mergeLinkedPr(ctx, organizationId, taskBoardItemId)).merged
       : false;
 
     // A merge ships the task → Done.

@@ -70,12 +70,10 @@ pub(super) async fn try_dispatch(
         .handle_for_agent(&virtual_mcp_id, &branch)
     {
         Ok(Some(handle)) => handle,
-        Ok(None) => {
-            return Some(
-                ApiError::not_found(format!("sandbox not found: {virtual_mcp_id}@{branch}"))
-                    .into_response(),
-            )
-        }
+        // No LOCAL worktree for this (vm, branch) — not ours to serve. Fall
+        // through to the upstream proxy (hosted sandboxes; sandbox-less Fast
+        // Preview, whose write/read the upstream decofile API answers).
+        Ok(None) => return None,
         Err(error) => return Some(ApiError::internal(error).into_response()),
     };
 
@@ -309,7 +307,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unknown_identity_is_a_404_and_never_falls_back_to_global_repo() {
+    async fn unknown_identity_falls_through_and_never_touches_the_global_repo() {
+        // An identity with no LOCAL worktree is not ours to answer: hosted
+        // sandboxes and sandbox-less Fast Preview live behind the upstream
+        // proxy, which enforces its own auth. (This inverts the original
+        // 404 assertion — the intercept used to assume every sandbox was
+        // local.) The invariant that MUST hold either way: nothing is ever
+        // written locally, least of all into the global repo.
         let root = tempfile::tempdir().unwrap();
         let global_repo = root.path().join("repo");
         std::fs::create_dir_all(&global_repo).unwrap();
@@ -327,13 +331,12 @@ mod tests {
                 .unwrap(),
             ),
         )
-        .await
-        .expect("filesystem route is intercepted");
+        .await;
 
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
-        assert!(response_json(response).await["error"]
-            .as_str()
-            .is_some_and(|message| message.starts_with("sandbox not found:")));
+        assert!(
+            response.is_none(),
+            "unknown identity must fall through to the upstream proxy"
+        );
         assert!(!global_repo.join("wrong-target.json").exists());
     }
 

@@ -11,12 +11,12 @@
 import { Suspense, lazy } from "react";
 import { Loading01 } from "@untitledui/icons";
 import { useProjectContext } from "@/sdk";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import { useInsetContext } from "@/layouts/agent-shell-layout";
 import { useChatTask } from "@/components/chat/context";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";

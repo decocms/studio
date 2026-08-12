@@ -114,6 +114,8 @@ export interface TaskBoardItem {
   priority: TaskBoardItemPriority;
   assigneeId: string | null;
   assignedBy: string | null;
+  /** `owner/name` of the repo (site) this task pertains to. */
+  repo: string | null;
   dueDate: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;

@@ -243,8 +243,12 @@ export const chat = {
   "chat.input.planMode": "Modo de planejamento",
   "chat.input.codingAgentRequiresDesktop":
     "Continue este chat do agente de código no aplicativo Studio para desktop.",
+  "chat.input.fastPreviewComingSoon":
+    "O chat ainda não está disponível em projetos Fast Preview — em breve. Use o CMS para editar o conteúdo.",
   "chat.input.readOnlyOthersChat":
     "Apenas leitura - você está visualizando um chat de outra pessoa",
+  "chat.input.readOnlyOthersChatNamed":
+    "Apenas leitura - você está visualizando o chat de {name}",
   "chat.input.readOnlyThread":
     "Apenas leitura - este chat rodou de forma autônoma e não aceita respostas",
   "chat.input.sendMessage": "Enviar mensagem",

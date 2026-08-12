@@ -28,7 +28,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* Explicitly scan @deco/ui components for Tailwind classes */
+/* Explicitly scan @decocms/ui components for Tailwind classes */
 @source "../components/**/*.tsx";
 
 @custom-variant dark (&:is(.dark *));
@@ -279,7 +279,7 @@
     infinite;
   --animate-connection-arrive: connection-arrive 2.6s var(--ease-out-cubic)
     infinite;
-  --animate-preview-nav: preview-nav 1.1s var(--ease-in-out-cubic) infinite;
+  --animate-preview-ramp: preview-ramp 20s var(--ease-out-cubic) forwards;
   --animate-card-land: card-land 240ms var(--ease-out-quint) both;
 }
 
@@ -371,29 +371,36 @@
   }
 }
 
-/* Indeterminate top progress bar shown the instant a page/section is selected,
-   until the preview iframe finishes loading — immediate click feedback. */
-@keyframes preview-nav {
+/* Top progress bar over the preview, shown while a page/section loads or a
+   block autosave commit is in flight. YouTube-style asymptotic fill: races to
+   ~60% in the first moments, then decelerates along a log-ish curve and creeps
+   toward — but never reaches — full. It has no completion state on purpose:
+   when the work actually lands the bar unmounts, so "done" is the bar
+   disappearing, not a fake 100%. Runs once (`forwards`) and parks at 96%. */
+@keyframes preview-ramp {
   0% {
-    left: -40%;
-    width: 40%;
+    width: 0%;
   }
-  50% {
-    width: 55%;
+  4% {
+    width: 58%;
+  }
+  15% {
+    width: 78%;
+  }
+  40% {
+    width: 88%;
   }
   100% {
-    left: 100%;
-    width: 40%;
+    width: 96%;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  /* Park it as a static full-width bar — still signals loading, no motion. */
-  @keyframes preview-nav {
+  /* Park it as a static near-full bar — still signals loading, no motion. */
+  @keyframes preview-ramp {
     0%,
     100% {
-      left: 0%;
-      width: 100%;
+      width: 96%;
     }
   }
 

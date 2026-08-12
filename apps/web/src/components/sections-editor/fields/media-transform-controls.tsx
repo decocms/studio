@@ -1,18 +1,18 @@
 import { useId } from "react";
 import { DotsVertical } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
-import { Button } from "@deco/ui/components/button.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Label } from "@decocms/ui/components/label.tsx";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@deco/ui/components/popover.tsx";
-import { Switch } from "@deco/ui/components/switch.tsx";
+} from "@decocms/ui/components/popover.tsx";
+import { Switch } from "@decocms/ui/components/switch.tsx";
 import {
   ToggleGroup,
   ToggleGroupItem,
-} from "@deco/ui/components/toggle-group.tsx";
+} from "@decocms/ui/components/toggle-group.tsx";
 import {
   getMutedFromUrl,
   getQualityFromUrl,

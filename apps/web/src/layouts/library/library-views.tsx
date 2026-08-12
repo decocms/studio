@@ -1,8 +1,8 @@
 import type { ComponentType, SVGProps } from "react";
 import { useProjectContext } from "@/sdk";
 import { ChevronRight, Stars01, Upload01, Zap } from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.ts";
-import { Skeleton } from "@deco/ui/components/skeleton.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import {
   HOME_MOUNT_PATH,
   homeDisplayName,
@@ -38,6 +38,7 @@ import {
   segmentLabel,
 } from "./location";
 import type { ShareTarget } from "./file-share-button";
+import { SyncedRepoFolders } from "./synced-repos";
 
 /** Absolute proxy link to copy when sharing a file. */
 function publicFileUrl(path: string): string {
@@ -240,6 +241,7 @@ function SystemFolders({ onOpenDir }: { onOpenDir: (path: string) => void }) {
           onOpen={() => onOpenDir("public")}
         />
       )}
+      <SyncedRepoFolders onOpenDir={onOpenDir} />
     </>
   );
 }

@@ -7,6 +7,7 @@ import {
 } from "@untitledui/icons";
 import type { StudioToolOutput as ToolOutput } from "@decocms/shared/tools/tool-io";
 import {
+  DEFAULT_TAG_COLOR,
   isReviewerThreadTitle,
   REVIEWER_KINDS,
   type ReviewerKind,
@@ -16,6 +17,7 @@ import type { TranslationKey } from "@/i18n/use-t.ts";
 export {
   SUPER_AGENT_ASSIGNEE_ID,
   isReviewerThreadTitle,
+  nextTagColor,
 } from "@decocms/shared/task-board";
 
 export type TaskBoardItem = ToolOutput<"TASK_BOARD_ITEM_LIST">["items"][number];
@@ -199,29 +201,8 @@ export const PRIORITY_CONFIG: Record<
   },
 };
 
-/** Suggested colors a new tag cycles through, so consecutive tags are visually
- *  distinct without the user having to choose. Any hex is valid — the picker's
- *  `<input type="color">` isn't limited to these. */
-const TAG_COLORS = [
-  "#9ca3af",
-  "#ef4444",
-  "#f97316",
-  "#f59e0b",
-  "#22c55e",
-  "#3b82f6",
-  "#a855f7",
-  "#ec4899",
-];
-
-const DEFAULT_TAG_COLOR = TAG_COLORS[0]!;
-
 /** A tag's dot color — arbitrary hex off `organization_tags.color`, hence an
  *  inline style rather than a Tailwind token. */
 export function tagDotColor(color: string | null | undefined): string {
   return color ?? DEFAULT_TAG_COLOR;
-}
-
-/** Suggested color for the `existingCount`-th tag created in an org. */
-export function nextTagColor(existingCount: number): string {
-  return TAG_COLORS[existingCount % TAG_COLORS.length] ?? DEFAULT_TAG_COLOR;
 }

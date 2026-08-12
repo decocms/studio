@@ -8,9 +8,14 @@ import {
   writeChatDraft,
 } from "@/lib/chat-draft";
 import { useT } from "@/i18n/use-t.ts";
-import { Button } from "@deco/ui/components/button.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
-import { getWellKnownDecopilotVirtualMCP, useProjectContext } from "@/sdk";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import {
+  getWellKnownDecopilotVirtualMCP,
+  useProjectContext,
+  useVirtualMCP,
+} from "@/sdk";
+import { resolveFastPreview } from "@/sdk/fast-preview";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowUp,
@@ -25,7 +30,7 @@ import {
   Upload01,
   X,
 } from "@untitledui/icons";
-import type { FormEvent } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { Metadata } from "./types.ts";
@@ -57,9 +62,11 @@ import { isTiptapDocEmpty } from "./tiptap/utils";
 import { ToolsPopover } from "./tools-popover";
 import { SessionStats } from "./usage-stats";
 import { authClient } from "@/lib/auth-client.ts";
+import { Avatar } from "@decocms/ui/components/avatar.tsx";
+import { useMembersQuery } from "@/hooks/use-members";
 import { track } from "@/lib/posthog-client";
 import { useSound } from "@/hooks/use-sound.ts";
-import { question004Sound } from "@deco/ui/lib/question-004.ts";
+import { question004Sound } from "@/lib/sounds/question-004.ts";
 import { AddConnectionDialog } from "@/views/virtual-mcp/add-connection-dialog";
 import { ConnectionsBanner } from "./connections-banner";
 import { useVoiceInput } from "@/hooks/use-voice-input.ts";
@@ -72,10 +79,16 @@ import { shouldBlockHostedRuntime } from "./hosted-runtime-guard";
 // useWindowFileDrop - Reusable hook for window-level file drag & drop
 // ============================================================================
 
-function ChatInputDisabledState({ message }: { message: string }) {
+function ChatInputDisabledState({
+  message,
+  icon,
+}: {
+  message: string;
+  icon?: ReactNode;
+}) {
   return (
     <div className="flex w-full items-center gap-2 px-3 py-2.5 rounded-xl border border-border bg-muted/40 text-muted-foreground">
-      <Lock01 size={14} className="shrink-0" />
+      {icon ?? <Lock01 size={14} className="shrink-0" />}
       <span className="text-sm">{message ?? ""}</span>
     </div>
   );
@@ -372,6 +385,8 @@ export function ChatInput({
 
   const { org, locator } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
+  const selectedVm = useVirtualMCP(selectedVirtualMcp?.id);
+  const fastPreviewActive = resolveFastPreview(selectedVm?.metadata).active;
   const playSwitchSound = useSound(question004Sound);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const { unsupportedFile, onUnsupportedFile, clearUnsupportedFile } =
@@ -422,6 +437,23 @@ export function ChatInput({
   }, [voice.transcript, voice.interimTranscript, voice.status]);
 
   const task = taskCtx?.activeTask ?? null;
+  const ownerId = task?.created_by;
+  const isOthersThread = Boolean(userId && ownerId && ownerId !== userId);
+  // Only someone else's thread needs the member list — the read-only banner
+  // names its owner.
+  const { data: membersData } = useMembersQuery({ enabled: isOthersThread });
+  const owner = (
+    (membersData?.data?.members ?? []) as {
+      userId: string;
+      user?: {
+        name?: string | null;
+        email?: string | null;
+        image?: string | null;
+      };
+    }[]
+  ).find((m) => m.userId === ownerId);
+  const ownerName =
+    owner?.user?.name ?? owner?.user?.email?.split("@")[0] ?? null;
   const isDesktopApp = useIsDesktopApp();
   const hostedRuntimeBlocked = shouldBlockHostedRuntime({
     isDesktopApp,
@@ -567,9 +599,25 @@ export function ChatInput({
     }
   };
 
-  if (userId && task?.created_by && task.created_by !== userId) {
+  if (isOthersThread) {
     return (
-      <ChatInputDisabledState message={t("chat.input.readOnlyOthersChat")} />
+      <ChatInputDisabledState
+        message={
+          ownerName
+            ? t("chat.input.readOnlyOthersChatNamed", { name: ownerName })
+            : t("chat.input.readOnlyOthersChat")
+        }
+        icon={
+          ownerName ? (
+            <Avatar
+              shape="circle"
+              size="2xs"
+              url={owner?.user?.image ?? undefined}
+              fallback={ownerName.slice(0, 2).toUpperCase()}
+            />
+          ) : undefined
+        }
+      />
     );
   }
 
@@ -584,6 +632,16 @@ export function ChatInput({
       <ChatInputDisabledState
         message={t("chat.input.codingAgentRequiresDesktop")}
       />
+    );
+  }
+
+  // Fast Preview projects are sandbox-less, and a chat run still dispatches to
+  // a sandbox runner — a message would hang against a runner that will never
+  // exist. Hold the composer with an honest notice until the agent learns to
+  // work through the decofile API (or per-thread sandbox fallback lands).
+  if (fastPreviewActive) {
+    return (
+      <ChatInputDisabledState message={t("chat.input.fastPreviewComingSoon")} />
     );
   }
 

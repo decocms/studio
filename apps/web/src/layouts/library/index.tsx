@@ -28,8 +28,8 @@ import {
   Upload01,
   XClose,
 } from "@untitledui/icons";
-import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
-import { Button } from "@deco/ui/components/button.tsx";
+import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,7 +39,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@deco/ui/components/alert-dialog.tsx";
+} from "@decocms/ui/components/alert-dialog.tsx";
 import {
   Dialog,
   DialogContent,
@@ -47,8 +47,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
+} from "@decocms/ui/components/dialog.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
 import {
   HOME_MOUNT_PATH,
   homeDisplayName,
@@ -57,6 +57,7 @@ import { KEYS } from "@/lib/query-keys";
 import { useDebouncedValue } from "@/hooks/use-debounced-value.ts";
 import { useOrgFsMutations } from "@/hooks/use-org-fs";
 import { basename, parseLibraryPath, segmentLabel } from "./location";
+import { useOrgRepoSyncVolumes } from "@/hooks/use-org-repo-syncs";
 import { BrandPreviewDialog } from "./brand-preview";
 import { ShareDialog, type ShareTarget } from "./file-share-button";
 import { LibraryPreviewDialog } from "./preview-dialog";
@@ -95,7 +96,15 @@ export function LibraryPage({
   // The home folder is the top of the tree, so a missing (or emptied) `?path=`
   // lands there rather than on a volumes listing.
   const browsePath = search.path || HOME_MOUNT_PATH;
-  const location = parseLibraryPath(browsePath);
+  const parsedLocation = parseLibraryPath(browsePath);
+  // Synced-repo volumes are mirrors of their GitHub source: local writes would
+  // be deleted on the next sync cycle, so the Library browses them read-only
+  // (same treatment as the public sets).
+  const syncedVolumes = useOrgRepoSyncVolumes();
+  const location =
+    parsedLocation.volume !== null && syncedVolumes.has(parsedLocation.volume)
+      ? { ...parsedLocation, readOnly: true }
+      : parsedLocation;
 
   const setSearchParam = (
     key: "path" | "preview" | "skill" | "brand",
@@ -227,6 +236,10 @@ export function LibraryPage({
   function handleDrop(e: React.DragEvent) {
     if (!canDrop) return;
     e.preventDefault();
+    // We own this file. Stop it bubbling to the chat composer's
+    // window-level drop listener (input.tsx `useWindowFileDrop`), which
+    // would otherwise upload the same file into the chat input too.
+    e.stopPropagation();
     dragDepth.current = 0;
     setIsDragging(false);
     if (e.dataTransfer.files.length > 0) {

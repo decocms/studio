@@ -254,7 +254,7 @@ pub async fn proxy(State(state): State<AppState>, req: Request) -> Response {
     // A payload we intend to rewrite must arrive uncompressed — reqwest is
     // built without `gzip`, so a compressed body would fail to parse and the
     // rewrite would silently fail open.
-    if is_protected_resource_metadata(&path) {
+    if needs_origin_localization(&path) {
         out_headers.insert(
             header::ACCEPT_ENCODING,
             HeaderValue::from_static("identity"),
@@ -272,8 +272,8 @@ pub async fn proxy(State(state): State<AppState>, req: Request) -> Response {
     )
     .await
     {
-        Ok(upstream_resp) if is_protected_resource_metadata(&path) => {
-            localized_resource_metadata(upstream_resp, session.target(), &parts.headers).await
+        Ok(upstream_resp) if needs_origin_localization(&path) => {
+            localized_oauth_metadata(upstream_resp, session.target(), &parts.headers).await
         }
         Ok(upstream_resp) => build_response(upstream_resp).await,
         Err(ProxyError::Network(msg)) => {
@@ -290,22 +290,47 @@ fn is_protected_resource_metadata(path: &str) -> bool {
         || path.contains("/.well-known/oauth-protected-resource")
 }
 
-/// Rewrite the metadata's `resource` to the origin the CALLER reached us at.
+/// RFC 8414 authorization-server metadata for a connection's oauth-proxy —
+/// the second discovery hop the MCP SDK takes, using the (now-localized)
+/// `authorization_servers` entry from the protected-resource document above.
+/// Only exists at this one legacy-shaped path server-side (see oauth-proxy.ts's
+/// `createWellKnownAuthServerRoutes`), so no org-scoped variant to match.
+fn is_auth_server_metadata(path: &str) -> bool {
+    path.starts_with("/.well-known/oauth-authorization-server/oauth-proxy/")
+}
+
+fn needs_origin_localization(path: &str) -> bool {
+    is_protected_resource_metadata(path) || is_auth_server_metadata(path)
+}
+
+/// Rewrite every URL in an OAuth discovery document that points at
+/// `upstream_origin` to point at the origin the CALLER reached us at instead.
 ///
-/// Upstream builds it from its own origin, so a desktop client is told the
-/// protected resource is `https://studio.decocms.com/api/<org>/mcp/<conn>`
-/// while it is talking to `http://localhost:<port>/…`. The MCP SDK validates
-/// that the two agree and refuses the mismatch:
+/// Upstream builds these from its own origin, so a desktop client is told
+/// e.g. the protected resource is `https://studio.decocms.com/api/<org>/mcp/<conn>`
+/// while it is talking to `https://local.studio.decocms.com:<port>/…`. Two
+/// problems follow from that mismatch:
 ///
-/// ```text
-/// Protected resource https://studio.decocms.com/api/o/mcp/c
-///   does not match expected http://localhost:4420/api/o/mcp/c (or origin)
-/// ```
+/// 1. The MCP SDK validates `resource` against the URL it actually dialed and
+///    refuses a disagreement outright:
+///    ```text
+///    Protected resource https://studio.decocms.com/api/o/mcp/c
+///      does not match expected https://local.studio.decocms.com:4420/api/o/mcp/c (or origin)
+///    ```
+/// 2. Every OTHER URL in these documents (`authorization_servers`, and then
+///    `authorization_endpoint` / `token_endpoint` / `registration_endpoint`
+///    once the SDK follows that link) points the webview at a fetch it has to
+///    make ITSELF, cross-origin, straight to the deployment — which the
+///    deployment's CORS policy does not allow from this origin, so every one
+///    of those calls fails client-side with a bare "Load failed" before the
+///    user ever sees a GitHub consent screen.
 ///
-/// `authorization_servers` is deliberately left pointing upstream: that IS
-/// where the authorization endpoints live, and this proxy has no OAuth
-/// endpoints of its own to offer instead.
-async fn localized_resource_metadata(
+/// Localizing every such URL keeps every discovery/DCR/token fetch same-origin
+/// through this proxy's own already-working `/oauth-proxy/*` forwarding
+/// instead, sidestepping CORS entirely. `redirectToAuthorization`'s system-
+/// browser navigation is unaffected either way — that's a real top-level
+/// navigation in a separate process, never subject to CORS.
+async fn localized_oauth_metadata(
     upstream: reqwest::Response,
     target: &str,
     request_headers: &HeaderMap,
@@ -313,7 +338,7 @@ async fn localized_resource_metadata(
     if !upstream.status().is_success() {
         return build_response(upstream).await;
     }
-    let Some(local_origin) = caller_origin(request_headers) else {
+    let Some(local_origin) = caller_origin(request_headers, intercept::preview_scheme()) else {
         return build_response(upstream).await;
     };
 
@@ -327,7 +352,7 @@ async fn localized_resource_metadata(
     };
     // Fail OPEN: an unparseable or unchanged body is forwarded verbatim, so a
     // shape this does not recognize can never break OAuth outright.
-    let body = rewrite_resource_field(&bytes, target.trim_end_matches('/'), &local_origin)
+    let body = rewrite_origin_urls(&bytes, target.trim_end_matches('/'), &local_origin)
         .map(axum::body::Bytes::from)
         .unwrap_or(bytes);
     headers.remove(header::CONTENT_LENGTH);
@@ -339,8 +364,13 @@ async fn localized_resource_metadata(
 
 /// The origin the webview used to reach us — `Origin` when it sent one, else
 /// derived from the exact `Host` it addressed (which the embedded guard has
-/// already validated).
-fn caller_origin(headers: &HeaderMap) -> Option<String> {
+/// already validated). The `Host`-only fallback has no TLS info of its own to
+/// go on, so it takes the same decided-at-startup "did this instance's
+/// listeners terminate TLS" scheme the preview host uses (`fallback_scheme`,
+/// `intercept::preview_scheme()` at the real call site below) rather than
+/// assuming `http`, which broke MCP SDK resource validation on the real-TLS
+/// `local.studio.decocms.com` origin.
+fn caller_origin(headers: &HeaderMap, fallback_scheme: &str) -> Option<String> {
     if let Some(origin) = headers
         .get(header::ORIGIN)
         .and_then(|v| v.to_str().ok())
@@ -349,29 +379,69 @@ fn caller_origin(headers: &HeaderMap) -> Option<String> {
         return Some(origin.trim_end_matches('/').to_string());
     }
     let host = headers.get(header::HOST)?.to_str().ok()?;
-    (!host.is_empty()).then(|| format!("http://{host}"))
+    (!host.is_empty()).then(|| format!("{fallback_scheme}://{host}"))
 }
 
-/// Swap the upstream origin for the local one in `resource`. `None` when the
-/// body is not JSON, has no `resource` string, or it does not name upstream.
-fn rewrite_resource_field(
-    bytes: &[u8],
+/// Swap the upstream origin for the local one in every string value that
+/// names it, anywhere in the document — `resource` and `authorization_servers`
+/// in protected-resource metadata; `token_endpoint` / `registration_endpoint`
+/// in authorization-server metadata; and any field added to either shape
+/// later, without this needing to learn its name. `authorization_endpoint` is
+/// the one deliberate exception — see `SKIP_LOCALIZING`.
+/// `None` when the body is not JSON or names upstream nowhere.
+fn rewrite_origin_urls(bytes: &[u8], upstream_origin: &str, local_origin: &str) -> Option<Vec<u8>> {
+    let mut value: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    let mut changed = false;
+    rewrite_origin_urls_in(&mut value, upstream_origin, local_origin, &mut changed);
+    changed.then(|| serde_json::to_vec(&value).ok()).flatten()
+}
+
+/// Every other localized URL here is fetched BY THIS WEBVIEW (`fetch`,
+/// same-origin through this proxy, upstream's session-cookie-free bearer
+/// auth). `authorization_endpoint` is different: `redirectToAuthorization`
+/// (mcp-oauth.ts) hands it to the SYSTEM BROWSER as a real top-level
+/// navigation — never subject to CORS in the first place — and upstream's
+/// authorize page needs THAT browser's own session cookie with upstream,
+/// which only exists on upstream's real origin. Localizing it anyway 401s the
+/// authorize page outright: verified live by opening it and watching Chrome
+/// land on `{"error":"unauthorized"}` instead of GitHub's consent screen.
+const SKIP_LOCALIZING: &str = "authorization_endpoint";
+
+fn rewrite_origin_urls_in(
+    value: &mut serde_json::Value,
     upstream_origin: &str,
     local_origin: &str,
-) -> Option<Vec<u8>> {
-    let mut value: serde_json::Value = serde_json::from_slice(bytes).ok()?;
-    let resource = value.get("resource")?.as_str()?;
-    let path = resource.strip_prefix(upstream_origin)?;
-    // The remainder MUST begin the path, or this is a lookalike host that
-    // merely starts with the origin string — `studio.decocms.com.evil.example`
-    // prefix-matches `studio.decocms.com` and would otherwise be rewritten as
-    // if it were ours.
-    if !path.is_empty() && !path.starts_with('/') {
-        return None;
+    changed: &mut bool,
+) {
+    match value {
+        serde_json::Value::String(s) => {
+            if let Some(path) = s.strip_prefix(upstream_origin) {
+                // The remainder MUST begin the path, or this is a lookalike
+                // host that merely starts with the origin string —
+                // `studio.decocms.com.evil.example` prefix-matches
+                // `studio.decocms.com` and would otherwise be rewritten as if
+                // it were ours.
+                if path.is_empty() || path.starts_with('/') {
+                    *s = format!("{local_origin}{path}");
+                    *changed = true;
+                }
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                rewrite_origin_urls_in(item, upstream_origin, local_origin, changed);
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for (key, v) in map.iter_mut() {
+                if key == SKIP_LOCALIZING {
+                    continue;
+                }
+                rewrite_origin_urls_in(v, upstream_origin, local_origin, changed);
+            }
+        }
+        _ => {}
     }
-    let localized = format!("{local_origin}{path}");
-    *value.get_mut("resource")? = serde_json::Value::String(localized);
-    serde_json::to_vec(&value).ok()
 }
 
 /// The cookie-relay branch — see this module's doc comment ("Two
@@ -1349,19 +1419,50 @@ mod tests {
     fn protected_resource_metadata_points_at_the_caller_origin() {
         // The real RFC 9728 shape, built by upstream from ITS own origin.
         let body = br#"{"resource":"https://studio.decocms.com/api/acme/mcp/conn_1","authorization_servers":["https://studio.decocms.com/oauth-proxy/conn_1"],"bearer_methods_supported":["header"]}"#;
-        let out =
-            rewrite_resource_field(body, "https://studio.decocms.com", "http://localhost:4420")
-                .expect("rewritten");
+        let out = rewrite_origin_urls(body, "https://studio.decocms.com", "http://localhost:4420")
+            .expect("rewritten");
         let v: serde_json::Value = serde_json::from_slice(&out).unwrap();
 
         assert_eq!(v["resource"], "http://localhost:4420/api/acme/mcp/conn_1");
-        // The authorization server is upstream's and stays upstream's — this
-        // proxy has no OAuth endpoints of its own to offer instead.
+        // `authorization_servers` is localized too: the webview would
+        // otherwise have to fetch it cross-origin straight from upstream,
+        // which upstream's CORS policy doesn't allow from this origin — see
+        // `localized_oauth_metadata`'s doc comment.
         assert_eq!(
             v["authorization_servers"][0],
-            "https://studio.decocms.com/oauth-proxy/conn_1"
+            "http://localhost:4420/oauth-proxy/conn_1"
         );
         assert_eq!(v["bearer_methods_supported"][0], "header");
+    }
+
+    #[test]
+    fn auth_server_metadata_localizes_fetch_endpoints_but_not_authorize() {
+        // The real RFC 8414 shape `authServerMetadataHandler` returns: three
+        // endpoint URLs plus an `issuer` that is the DOWNSTREAM MCP's own
+        // identity, not this deployment's — it must NOT be touched.
+        let body = br#"{"issuer":"https://github-mcp.decocms.com","authorization_endpoint":"https://studio.decocms.com/api/acme/oauth-proxy/conn_1/authorize","token_endpoint":"https://studio.decocms.com/api/acme/oauth-proxy/conn_1/token","registration_endpoint":"https://studio.decocms.com/api/acme/oauth-proxy/conn_1/register"}"#;
+        let out = rewrite_origin_urls(body, "https://studio.decocms.com", "http://localhost:4420")
+            .expect("rewritten");
+        let v: serde_json::Value = serde_json::from_slice(&out).unwrap();
+
+        assert_eq!(v["issuer"], "https://github-mcp.decocms.com");
+        // `token_endpoint` / `registration_endpoint` are fetched by this
+        // webview through this proxy, so they're localized to dodge CORS.
+        assert_eq!(
+            v["token_endpoint"],
+            "http://localhost:4420/api/acme/oauth-proxy/conn_1/token"
+        );
+        assert_eq!(
+            v["registration_endpoint"],
+            "http://localhost:4420/api/acme/oauth-proxy/conn_1/register"
+        );
+        // `authorization_endpoint` stays on upstream: the system browser
+        // navigates there directly and needs upstream's own session cookie,
+        // which the local origin doesn't have.
+        assert_eq!(
+            v["authorization_endpoint"],
+            "https://studio.decocms.com/api/acme/oauth-proxy/conn_1/authorize"
+        );
     }
 
     #[test]
@@ -1371,12 +1472,12 @@ mod tests {
             br#"{"resource":"http://localhost:4420/api/a/mcp/c"}"#.as_slice(),
             // A different host that merely starts the same way.
             br#"{"resource":"https://studio.decocms.com.evil.example/api/a/mcp/c"}"#.as_slice(),
-            // No `resource` field at all.
-            br#"{"authorization_servers":["https://studio.decocms.com/x"]}"#.as_slice(),
+            // No field naming upstream at all.
+            br#"{"issuer":"https://github-mcp.decocms.com"}"#.as_slice(),
             // Not JSON.
             b"<html>nope</html>".as_slice(),
         ] {
-            assert!(rewrite_resource_field(
+            assert!(rewrite_origin_urls(
                 untouched,
                 "https://studio.decocms.com",
                 "http://localhost:4420"
@@ -1389,13 +1490,36 @@ mod tests {
     fn caller_origin_prefers_origin_then_falls_back_to_host() {
         let mut h = HeaderMap::new();
         h.insert(header::HOST, HeaderValue::from_static("localhost:4420"));
-        assert_eq!(caller_origin(&h).as_deref(), Some("http://localhost:4420"));
+        assert_eq!(
+            caller_origin(&h, "http").as_deref(),
+            Some("http://localhost:4420")
+        );
 
         h.insert(
             header::ORIGIN,
             HeaderValue::from_static("http://localhost:9999"),
         );
-        assert_eq!(caller_origin(&h).as_deref(), Some("http://localhost:9999"));
+        assert_eq!(
+            caller_origin(&h, "http").as_deref(),
+            Some("http://localhost:9999")
+        );
+    }
+
+    #[test]
+    fn caller_origin_host_fallback_follows_the_listener_scheme() {
+        // No `Origin` header (the MCP SDK's protected-resource fetch doesn't
+        // send one) on the real-TLS packaged-app origin — the fallback must
+        // say `https`, not hardcode `http`, or the SDK's resource check fails
+        // exactly like it did against `local.studio.decocms.com`.
+        let mut h = HeaderMap::new();
+        h.insert(
+            header::HOST,
+            HeaderValue::from_static("local.studio.decocms.com:43120"),
+        );
+        assert_eq!(
+            caller_origin(&h, "https").as_deref(),
+            Some("https://local.studio.decocms.com:43120")
+        );
     }
 
     #[test]
@@ -1407,6 +1531,17 @@ mod tests {
             "/mcp/conn_1/.well-known/oauth-protected-resource"
         ));
         assert!(!is_protected_resource_metadata("/api/acme/mcp/conn_1"));
+    }
+
+    #[test]
+    fn rfc8414_auth_server_metadata_path_is_recognized() {
+        assert!(is_auth_server_metadata(
+            "/.well-known/oauth-authorization-server/oauth-proxy/conn_1"
+        ));
+        assert!(!is_auth_server_metadata("/oauth-proxy/conn_1/register"));
+        assert!(!is_auth_server_metadata(
+            "/.well-known/oauth-protected-resource/api/acme/mcp/conn_1"
+        ));
     }
 
     #[test]

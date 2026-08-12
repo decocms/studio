@@ -21,6 +21,20 @@ describe("resolveSkillPath", () => {
     expect(resolveSkillPath("home/foo")).toBe("org/home/foo/SKILL.md");
   });
 
+  test("resolves a synced-repo skill against the org volume mount", () => {
+    expect(resolveSkillPath("repo/my-skills/slides")).toBe(
+      "org/my-skills/slides/SKILL.md",
+    );
+    expect(resolveSkillPath("repo/my-skills/nested/dir")).toBe(
+      "org/my-skills/nested/dir/SKILL.md",
+    );
+  });
+
+  test("rejects a repo id without a skill dir", () => {
+    // `repo/<volume>` alone names the volume, not a skill.
+    expect(resolveSkillPath("repo/my-skills")).toBeNull();
+  });
+
   test("rejects traversal, absolute, and malformed ids", () => {
     expect(resolveSkillPath("../etc/passwd")).toBeNull();
     expect(resolveSkillPath("core/../../secret")).toBeNull();

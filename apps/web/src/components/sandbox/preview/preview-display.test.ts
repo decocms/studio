@@ -24,7 +24,7 @@ function run(overrides: Partial<PreviewDisplayInput>) {
   return resolvePreviewDisplay({
     previewState: STARTING,
     progressStatus: "doing",
-    productionUrl: PROD,
+    previewServerUrl: PROD,
     fastPreviewActive: false,
     fastPreviewReady: false,
     ...overrides,
@@ -71,7 +71,7 @@ describe("resolvePreviewDisplay", () => {
       run({
         previewState: STARTING,
         progressStatus: "doing",
-        productionUrl: null,
+        previewServerUrl: null,
       }),
     ).toEqual({
       mode: "none",
@@ -85,7 +85,7 @@ describe("resolvePreviewDisplay", () => {
     const result = run({
       previewState: IFRAME,
       progressStatus: "doing",
-      productionUrl: null,
+      previewServerUrl: null,
     });
     expect(result.mode).toBe("none");
     expect(result.showBlockingOverlay).toBe(true);
@@ -129,10 +129,10 @@ describe("resolvePreviewDisplay", () => {
       });
     });
 
-    it("shows the published site + pill while the sandbox provisions", () => {
-      // Inverted from the original rule (blocking overlay, never the published
-      // site). Boot should be invisible: the published site holds the canvas
-      // until the draft render is renderable.
+    it("shows the published site + pill while the draft round-trip is in flight", () => {
+      // The published site holds the canvas and the pill says a fresher
+      // render is on its way — the draft URL needs one server round-trip
+      // (version + signed token) before it is addressable.
       expect(
         run({
           previewState: STARTING,
@@ -148,7 +148,7 @@ describe("resolvePreviewDisplay", () => {
       });
     });
 
-    it("holds the published site when the daemon is up but no page matched yet", () => {
+    it("holds the published site when the draft URL isn't buildable yet", () => {
       // previewUrl exists, but the decofile hasn't yielded a page key, so the
       // draft URL isn't buildable. Keep the pill rather than blanking.
       const result = run({

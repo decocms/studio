@@ -3,7 +3,7 @@
  * The backend prefixes these with `[CREDITS]` so detection is deterministic.
  *
  * Extracted as a pure .ts module so it can be imported by bun:test code
- * without dragging in @deco/ui transitively.
+ * without dragging in @decocms/ui transitively.
  */
 export function isCreditError(error: Error | null): boolean {
   if (!error) return false;

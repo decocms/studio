@@ -73,6 +73,7 @@ export const sectionsEditor = {
     "Uploaded {fileName}; extra files were ignored (single-select field).",
   "sectionsEditor.imageField.uploading": "Uploading…",
   "sectionsEditor.imageField.urlPlaceholder": "https://...",
+  "sectionsEditor.inlineUnionField.branchFallback": "Option {index}",
   "sectionsEditor.inlineUnionField.selectPlaceholder": "Select...",
   "sectionsEditor.locationField.cityDefault": "City",
   "sectionsEditor.locationField.cityHelperText":

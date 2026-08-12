@@ -187,7 +187,7 @@ export function selectHeaderButton(
     return {
       label: t("thread.headerActions.submitForReview"),
       action: "create-pr",
-      variant: "default",
+      variant: "outline",
       tooltip: t("thread.headerActions.pushAndOpenPrTooltip", {
         branch: ready.branch,
         base: ready.base,
@@ -209,7 +209,7 @@ export function selectHeaderButton(
       return {
         label: t("thread.headerActions.submitForReview"),
         action: "create-pr",
-        variant: "default",
+        variant: "outline",
         tooltip: t("thread.headerActions.pushAndOpenPrTooltip", {
           branch: ready.branch,
           base: ready.base,
@@ -220,7 +220,7 @@ export function selectHeaderButton(
     return {
       label: t("thread.headerActions.submitForReview"),
       action: "create-pr",
-      variant: "default",
+      variant: "outline",
       tooltip: t("thread.headerActions.pushLocalCommitsTooltip", {
         prNumber: String(pr.number),
       }),
@@ -284,7 +284,7 @@ export function selectHeaderButton(
       return {
         label: t("thread.headerActions.submitForReview"),
         action: "create-pr",
-        variant: "default",
+        variant: "outline",
         tooltip: t("thread.headerActions.openPrForBranchTooltip", {
           branch: ready.branch,
           base: ready.base,

@@ -593,6 +593,73 @@ export class SqlMonitoringStorage implements MonitoringStorage {
     };
   }
 
+  async queryToolCallHeatmap(params: {
+    organizationId: string;
+    startDate?: Date;
+    endDate?: Date;
+    filters?: {
+      virtualMcpIds?: string[];
+      excludeConnectionIds?: string[];
+    };
+    limit?: number;
+  }): Promise<{
+    cells: Array<{
+      virtualMcpId: string | null;
+      toolName: string;
+      calls: number;
+      errors: number;
+      outputSize: number;
+    }>;
+  }> {
+    if (!params.organizationId) {
+      throw new Error("organizationId is required");
+    }
+
+    const source = this.sourceFactory(params.organizationId, {
+      startDate: params.startDate,
+      endDate: params.endDate,
+    });
+
+    const where: string[] = [
+      `organization_id = '${esc(params.organizationId)}'`,
+      `type = 'tool_call'`,
+    ];
+
+    if (params.filters?.virtualMcpIds?.length) {
+      const ids = params.filters.virtualMcpIds
+        .map((id) => `'${esc(id)}'`)
+        .join(",");
+      where.push(`virtual_mcp_id IN (${ids})`);
+    }
+    if (params.filters?.excludeConnectionIds?.length) {
+      const ids = params.filters.excludeConnectionIds
+        .map((id) => `'${esc(id)}'`)
+        .join(",");
+      where.push(`connection_id NOT IN (${ids})`);
+    }
+    applyStartDateBound(where, params.startDate, this.dialect);
+    if (params.endDate) {
+      where.push(tsLte(params.endDate, this.dialect));
+    }
+
+    const limit = Math.min(Math.max(1, Math.floor(params.limit ?? 500)), 1000);
+
+    // output_size = length of tool output, a proxy for context weight.
+    const sql = `SELECT virtual_mcp_id, tool_name, count(*) AS calls, coalesce(sum(CASE WHEN is_error = 1 THEN 1 ELSE 0 END), 0) AS errors, coalesce(sum(length(output)), 0) AS output_size FROM ${source} WHERE ${where.join(" AND ")} GROUP BY virtual_mcp_id, tool_name ORDER BY calls DESC LIMIT ${limit}`;
+
+    const rows = await this.engine.query(sql);
+
+    return {
+      cells: rows.map((row) => ({
+        virtualMcpId: row.virtual_mcp_id ? String(row.virtual_mcp_id) : null,
+        toolName: String(row.tool_name ?? ""),
+        calls: Number(row.calls ?? 0),
+        errors: Number(row.errors ?? 0),
+        outputSize: Number(row.output_size ?? 0),
+      })),
+    };
+  }
+
   /**
    * Aggregate LLM-call usage (tokens + USD cost) from the raw log rows.
    *

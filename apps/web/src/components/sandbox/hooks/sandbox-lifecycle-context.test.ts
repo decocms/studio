@@ -106,10 +106,15 @@ describe("shouldAutoStart", () => {
     userStopped: false,
     isPending: false,
     attempted: false,
+    fastPreviewActive: false,
   };
 
   test("all conditions met → true", () => {
     expect(shouldAutoStart(base)).toBe(true);
+  });
+
+  test("fast preview active → false (sandbox-less mode never auto-boots)", () => {
+    expect(shouldAutoStart({ ...base, fastPreviewActive: true })).toBe(false);
   });
 
   test("disabled execution boundary → false", () => {

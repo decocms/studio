@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { ClipboardCheck } from "@untitledui/icons";
 import { CollapsibleHighlight } from "./collapsible-highlight";
 import { MessageTextPart } from "../message/parts/text-part.tsx";

@@ -5,8 +5,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@deco/ui/components/table.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/table.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import type { ReactNode } from "react";
 import { ArrowUp, ArrowDown } from "@untitledui/icons";
 

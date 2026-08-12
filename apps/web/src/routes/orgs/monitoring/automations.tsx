@@ -10,7 +10,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@deco/ui/components/select.tsx";
+} from "@decocms/ui/components/select.tsx";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { useAutomation, useAutomations } from "@/hooks/use-automations";

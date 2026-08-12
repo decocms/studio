@@ -1,4 +1,4 @@
-import { cn } from "@deco/ui/lib/utils.js";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import type { GlobalSectionEntry } from "@/components/sections-editor/page-list";
 
 export interface SavedSectionGroup {

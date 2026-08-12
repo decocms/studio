@@ -3,6 +3,7 @@ import type { UIMessageChunk } from "ai";
 import { harnessRunResultSchema } from "@decocms/sandbox/dispatch/schemas";
 import {
   dispatchWithContinuation,
+  errorForTerminal,
   harnessRunsInSandbox,
   isRunSuperseded,
   isUnreachableStatus,
@@ -289,6 +290,56 @@ describe("dispatchWithContinuation", () => {
     expect(attempts).toBe(2);
   });
 
+  // The budget is CONSECUTIVE no-progress failures. A run that streamed work
+  // between two unrelated apiserver hangups is the case this exists for: the
+  // old lifetime count failed it on the second break however long it had run.
+  test("a dispatch that made progress resets the continuation budget", async () => {
+    let attempts = 0;
+    const chunks = await collect(
+      dispatchWithContinuation({
+        runId: "run_1",
+        resume: null,
+        aborted: () => false,
+        maxAttempts: 2,
+        dispatchOnce: () => {
+          attempts++;
+          if (attempts === 3) return dispatch([chunk("finish")])();
+          return dispatch(
+            [chunk("start"), chunk("text-delta")],
+            new SandboxUnreachableError("pod gone"),
+          )();
+        },
+      }),
+    );
+    expect(attempts).toBe(3);
+    expect(chunks.map((c) => c.type)).toEqual([
+      "start",
+      "text-delta",
+      "text-delta",
+      "finish",
+    ]);
+  });
+
+  test("the total ceiling stops a pod that dies after every chunk", async () => {
+    let attempts = 0;
+    const run = dispatchWithContinuation({
+      runId: "run_1",
+      resume: null,
+      aborted: () => false,
+      maxAttempts: 2,
+      maxTotalAttempts: 3,
+      dispatchOnce: () => {
+        attempts++;
+        return dispatch(
+          [chunk("text-delta")],
+          new SandboxUnreachableError("pod gone yet again"),
+        )();
+      },
+    });
+    await expect(collect(run)).rejects.toThrow("pod gone yet again");
+    expect(attempts).toBe(3);
+  });
+
   // A displaced attempt must NOT continue: continuing re-dispatches the same
   // runId, which takes the run back off the successor that displaced us — the
   // two attempts would trade it back and forth until maxAttempts.
@@ -308,6 +359,35 @@ describe("dispatchWithContinuation", () => {
     });
     await expect(collect(run)).rejects.toThrow("a newer dispatch took over");
     expect(attempts).toBe(1);
+  });
+});
+
+// Which terminal code continues the turn, which drops it quietly, and which
+// fails it. `sandbox_gone` is the one that changed: the daemon reported an
+// evicted pod as `cancelled`, so a turn nobody stopped was settled as a
+// deliberate cancel and never retried.
+describe("errorForTerminal", () => {
+  test("a sandbox that could not finish is continuable, not a failure", () => {
+    const err = errorForTerminal("sandbox_gone", "the sandbox stopped mid-run");
+    expect(err).toBeInstanceOf(SandboxUnreachableError);
+    expect(isRunSuperseded(err)).toBe(false);
+  });
+
+  test("a takeover stops this attempt quietly", () => {
+    const err = errorForTerminal("superseded", "a newer dispatch took over");
+    expect(isRunSuperseded(err)).toBe(true);
+    expect(err).not.toBeInstanceOf(SandboxUnreachableError);
+  });
+
+  // A cancel a human asked for, and a harness that really crashed, are the
+  // run's own outcome — continuing either would re-run work that already ended.
+  test("a real terminal fails the run", () => {
+    for (const code of ["cancelled", "harness_crashed", "bad_input"]) {
+      const err = errorForTerminal(code, "why");
+      expect(err).not.toBeInstanceOf(SandboxUnreachableError);
+      expect(isRunSuperseded(err)).toBe(false);
+      expect(err.message).toBe(`${code}: why`);
+    }
   });
 });
 

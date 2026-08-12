@@ -6,23 +6,23 @@ import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
 import { FIXED_SYSTEM_TABS } from "@/layouts/main-panel-tabs/tab-id";
 import { useT } from "@/i18n/use-t.ts";
-import { Card, CardContent } from "@deco/ui/components/card.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
+import { Card, CardContent } from "@decocms/ui/components/card.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
+import { Label } from "@decocms/ui/components/label.tsx";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@deco/ui/components/select.tsx";
-import { Switch } from "@deco/ui/components/switch.tsx";
+} from "@decocms/ui/components/select.tsx";
+import { Switch } from "@decocms/ui/components/switch.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
+} from "@decocms/ui/components/tooltip.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useVirtualMCP } from "@/sdk";
 import { useQuery } from "@tanstack/react-query";
 import { useRef } from "react";

@@ -1,12 +1,12 @@
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { SORTABLE_DROP_ANIMATION } from "@/lib/dnd-drop-animation.ts";
-import { Button } from "@deco/ui/components/button.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
+} from "@decocms/ui/components/tooltip.tsx";
 import {
   Copy01,
   DotsGrid,
@@ -21,8 +21,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
-import { cn } from "@deco/ui/lib/utils.js";
+} from "@decocms/ui/components/dropdown-menu.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   DndContext,
   DragOverlay,
@@ -45,9 +45,11 @@ import { CSS } from "@dnd-kit/utilities";
 import { useT } from "@/i18n/use-t.ts";
 
 const VARIANT_ICON_COLOR = "oklch(0.65 0.15 160)";
-const VARIANT_ROW_CLASS =
+// Exported: page-variant-tabs.tsx and section-list.tsx share this exact
+// variant-row styling and import it here rather than re-declaring it.
+export const VARIANT_ROW_CLASS =
   "text-[oklch(0.45_0.15_160)] hover:bg-[oklch(0.65_0.15_160/0.12)] dark:text-[oklch(0.78_0.15_160)] dark:hover:bg-[oklch(0.65_0.15_160/0.15)]";
-const VARIANT_SELECTED_ROW_CLASS =
+export const VARIANT_SELECTED_ROW_CLASS =
   "text-[oklch(0.45_0.15_160)] bg-[oklch(0.65_0.15_160/0.18)] dark:text-[oklch(0.78_0.15_160)] dark:bg-[oklch(0.65_0.15_160/0.2)]";
 export const VARIANT_MENU_ITEM_CLASS =
   "text-[oklch(0.45_0.15_160)] focus:bg-[oklch(0.65_0.15_160/0.12)] focus:text-[oklch(0.45_0.15_160)] dark:text-[oklch(0.78_0.15_160)] dark:focus:bg-[oklch(0.65_0.15_160/0.15)] dark:focus:text-[oklch(0.78_0.15_160)]";
@@ -75,6 +77,34 @@ function createEntries(
     index: variant.index,
     label: variant.label,
   }));
+}
+
+/**
+ * Re-derive entries for a changed variant list, reusing each row's existing
+ * id by matching on label rather than array position. A delete/duplicate
+ * before a row shifts every later row's position, so matching by position
+ * hands it a stale id — remounting its DnD-sortable identity and dropping
+ * e.g. an open row menu on an unrelated row.
+ */
+export function reuseVariantEntryIds(
+  current: SortableVariantEntry[],
+  variants: SectionVariantEntry[],
+): SortableVariantEntry[] {
+  // Duplicate rows clone the label as-is, so match same-label entries FIFO.
+  const byLabel = new Map<string, SortableVariantEntry[]>();
+  for (const entry of current) {
+    const queue = byLabel.get(entry.label);
+    if (queue) queue.push(entry);
+    else byLabel.set(entry.label, [entry]);
+  }
+  return variants.map((variant) => {
+    const prior = byLabel.get(variant.label)?.shift();
+    return {
+      id: prior?.id ?? crypto.randomUUID(),
+      index: variant.index,
+      label: variant.label,
+    };
+  });
 }
 
 function remapEntryIndices(
@@ -127,7 +157,7 @@ function VariantRowContent({
                 "sectionsEditor.sectionVariantList.openActionsFor",
                 { label },
               )}
-              className="size-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
+              className="size-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100 data-[state=open]:opacity-100"
               onClick={(e) => e.stopPropagation()}
               onPointerDown={(e) => e.stopPropagation()}
             >
@@ -277,22 +307,15 @@ export function SectionVariantList({
     setPrevVariantCount(variants.length);
     setPrevDisplayKey(displayKey);
     setEntries(createEntries(variants));
-  } else if (prevVariantCount !== variants.length) {
+  } else if (
+    prevVariantCount !== variants.length ||
+    prevDisplayKey !== displayKey
+  ) {
+    // Duplicate/delete/reorder all land here (a count change always also
+    // changes the display key).
     setPrevVariantCount(variants.length);
     setPrevDisplayKey(displayKey);
-    setEntries(createEntries(variants));
-  } else if (prevDisplayKey !== displayKey) {
-    setPrevDisplayKey(displayKey);
-    setEntries((current) =>
-      variants.map((variant, index) => {
-        const prior = current[index];
-        return {
-          id: prior?.id ?? crypto.randomUUID(),
-          index: variant.index,
-          label: variant.label,
-        };
-      }),
-    );
+    setEntries((current) => reuseVariantEntryIds(current, variants));
   }
 
   const sensors = useSensors(
