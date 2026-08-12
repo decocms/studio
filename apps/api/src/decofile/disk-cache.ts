@@ -16,13 +16,13 @@
  *   caps, free-space floor, ENOSPC handled with eviction to 50% of budget.
  *
  * Limits come from env (spec §Limits), read lazily at first use. Empty
- * `DECOFILE_CACHE_DIR` is the kill switch: every get returns null, every put
+ * `FAST_PREVIEW_CACHE_DIR` is the kill switch: every get returns null, every put
  * no-ops, `makeScratchDir` returns null.
  *
  * Metrics use the module-level OTel `meter` (live binding — instruments are
  * created lazily at first cache init, so they bind the post-SDK-start meter in
  * production). A plain in-process counter mirror is exposed via
- * `decofileCacheStats()` for tests and for chunk 4's log lines.
+ * `fastPreviewCacheStats()` for tests and for chunk 4's log lines.
  */
 
 import { randomUUID } from "node:crypto";
@@ -85,28 +85,34 @@ let config: DiskCacheConfig | null = null;
 
 function getConfig(): DiskCacheConfig {
   if (config) return config;
-  const dirRaw = Bun.env.DECOFILE_CACHE_DIR;
+  const dirRaw = Bun.env.FAST_PREVIEW_CACHE_DIR;
   const root =
-    dirRaw === undefined ? join(tmpdir(), "studio-decofile-cache") : dirRaw;
+    dirRaw === undefined ? join(tmpdir(), "studio-fast-preview-cache") : dirRaw;
   config = {
     enabled: root !== "",
     root,
     index: {
-      maxTotalBytes: envBytes("DECOFILE_CACHE_MAX_BYTES", 2 * GiB),
-      maxMergedBytes: envBytes("DECOFILE_CACHE_MERGED_MAX_BYTES", 512 * MiB),
+      maxTotalBytes: envBytes("FAST_PREVIEW_CACHE_MAX_BYTES", 2 * GiB),
+      maxMergedBytes: envBytes(
+        "FAST_PREVIEW_CACHE_MERGED_MAX_BYTES",
+        512 * MiB,
+      ),
       maxEntryBytes: {
-        blobs: envBytes("DECOFILE_CACHE_MAX_BLOB_BYTES", MiB),
-        merged: envBytes("DECOFILE_CACHE_MAX_MERGED_BYTES", 32 * MiB),
+        blobs: envBytes("FAST_PREVIEW_CACHE_MAX_BLOB_BYTES", MiB),
+        merged: envBytes("FAST_PREVIEW_CACHE_MAX_MERGED_BYTES", 32 * MiB),
       },
     },
-    freeFloorBytes: envBytes("DECOFILE_CACHE_FREE_FLOOR_BYTES", GiB),
-    sweepIntervalMs: envBytes("DECOFILE_CACHE_SWEEP_INTERVAL_MS", 10 * 60_000),
+    freeFloorBytes: envBytes("FAST_PREVIEW_CACHE_FREE_FLOOR_BYTES", GiB),
+    sweepIntervalMs: envBytes(
+      "FAST_PREVIEW_CACHE_SWEEP_INTERVAL_MS",
+      10 * 60_000,
+    ),
   };
   return config;
 }
 
-/** True unless the `DECOFILE_CACHE_DIR=""` kill switch is set. */
-export function decofileCacheEnabled(): boolean {
+/** True unless the `FAST_PREVIEW_CACHE_DIR=""` kill switch is set. */
+export function fastPreviewCacheEnabled(): boolean {
   return getConfig().enabled;
 }
 
@@ -142,29 +148,29 @@ let counters = zeroCounters();
 function ensureInstruments(): void {
   if (instruments) return;
   instruments = {
-    hits: meter.createCounter("decofile_cache_hits", {
+    hits: meter.createCounter("fast_preview_cache_hits", {
       description: "Decofile disk cache hits by area",
       unit: "{reads}",
     }),
-    misses: meter.createCounter("decofile_cache_misses", {
+    misses: meter.createCounter("fast_preview_cache_misses", {
       description: "Decofile disk cache misses by area",
       unit: "{reads}",
     }),
-    evictions: meter.createCounter("decofile_cache_evictions", {
+    evictions: meter.createCounter("fast_preview_cache_evictions", {
       description: "Decofile disk cache entries evicted",
       unit: "{entries}",
     }),
-    errors: meter.createCounter("decofile_cache_errors", {
+    errors: meter.createCounter("fast_preview_cache_errors", {
       description: "Decofile disk cache swallowed errors by operation",
       unit: "{errors}",
     }),
-    floorSkips: meter.createCounter("decofile_cache_floor_skips", {
+    floorSkips: meter.createCounter("fast_preview_cache_floor_skips", {
       description: "Decofile disk cache writes skipped by the free-space floor",
       unit: "{writes}",
     }),
   };
   meter
-    .createObservableGauge("decofile_cache_bytes", {
+    .createObservableGauge("fast_preview_cache_bytes", {
       description: "Decofile disk cache bytes by area",
       unit: "By",
     })
@@ -174,7 +180,7 @@ function ensureInstruments(): void {
       result.observe(currentState.index.areaBytes.merged, { area: "merged" });
     });
   meter
-    .createObservableGauge("decofile_cache_entries", {
+    .createObservableGauge("fast_preview_cache_entries", {
       description: "Decofile disk cache entry count by area",
       unit: "{entries}",
     })
@@ -219,7 +225,7 @@ function countInvalidKey(op: string): void {
  * unit tests and available to chunk 4 for log lines; the OTel instruments
  * above are the primary observability surface.
  */
-export function decofileCacheStats() {
+export function fastPreviewCacheStats() {
   return {
     enabled: getConfig().enabled,
     totalBytes: currentState?.index.totalBytes ?? 0,

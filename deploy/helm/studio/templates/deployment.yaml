@@ -132,9 +132,9 @@ spec:
               value: "$(POD_NAME_BASE)-{{ $api.portName }}"
             - name: STUDIO_DISPATCH_ROLE
               value: "api"
-            {{- if $.Values.decofileCache.enabled }}
-            - name: DECOFILE_CACHE_DIR
-              value: {{ $.Values.decofileCache.mountPath | quote }}
+            {{- if $.Values.fastPreviewCache.enabled }}
+            - name: FAST_PREVIEW_CACHE_DIR
+              value: {{ $.Values.fastPreviewCache.mountPath | quote }}
             {{- end }}
             {{- if $.Values.terminationGracePeriodSeconds }}
             - name: SHUTDOWN_GRACE_SECONDS
@@ -221,9 +221,9 @@ spec:
           volumeMounts:
             - name: data
               mountPath: {{ $.Values.configMap.meshConfig.DATA_DIR | default "/app/data" }}
-            {{- if $.Values.decofileCache.enabled }}
-            - name: decofile-cache
-              mountPath: {{ $.Values.decofileCache.mountPath | quote }}
+            {{- if $.Values.fastPreviewCache.enabled }}
+            - name: fast-preview-cache
+              mountPath: {{ $.Values.fastPreviewCache.mountPath | quote }}
             {{- end }}
             {{- if and (eq (lower (default "sqlite" $.Values.database.engine)) "postgresql") $.Values.database.caCert }}
             - name: ca-cert
@@ -285,13 +285,13 @@ spec:
           emptyDir:
             sizeLimit: {{ .Values.persistence.emptyDirSizeLimit | default "10Gi" }}
         {{- end }}
-        {{- if .Values.decofileCache.enabled }}
+        {{- if .Values.fastPreviewCache.enabled }}
         # Content-addressed decofile cache: per-pod, rebuilt on reschedule, so
         # emptyDir (not a PVC) is the right lifetime. sizeLimit is the hard
         # wall; the app's own byte budget evicts well below it.
-        - name: decofile-cache
+        - name: fast-preview-cache
           emptyDir:
-            sizeLimit: {{ .Values.decofileCache.sizeLimit | default "4Gi" }}
+            sizeLimit: {{ .Values.fastPreviewCache.sizeLimit | default "4Gi" }}
         {{- end }}
         {{- if .Values.s3Sync.enabled }}
         - name: s3-sync-script

@@ -14,8 +14,8 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  decofileCacheEnabled,
-  decofileCacheStats,
+  fastPreviewCacheEnabled,
+  fastPreviewCacheStats,
   getBlob,
   getMerged,
   makeScratchDir,
@@ -27,13 +27,13 @@ import {
 } from "./disk-cache";
 
 const ENV_KEYS = [
-  "DECOFILE_CACHE_DIR",
-  "DECOFILE_CACHE_MAX_BYTES",
-  "DECOFILE_CACHE_MERGED_MAX_BYTES",
-  "DECOFILE_CACHE_MAX_BLOB_BYTES",
-  "DECOFILE_CACHE_MAX_MERGED_BYTES",
-  "DECOFILE_CACHE_FREE_FLOOR_BYTES",
-  "DECOFILE_CACHE_SWEEP_INTERVAL_MS",
+  "FAST_PREVIEW_CACHE_DIR",
+  "FAST_PREVIEW_CACHE_MAX_BYTES",
+  "FAST_PREVIEW_CACHE_MERGED_MAX_BYTES",
+  "FAST_PREVIEW_CACHE_MAX_BLOB_BYTES",
+  "FAST_PREVIEW_CACHE_MAX_MERGED_BYTES",
+  "FAST_PREVIEW_CACHE_FREE_FLOOR_BYTES",
+  "FAST_PREVIEW_CACHE_SWEEP_INTERVAL_MS",
 ] as const;
 
 function sha(seed: string): string {
@@ -63,10 +63,10 @@ let root: string;
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "decofile-disk-cache-test-"));
   for (const key of ENV_KEYS) delete Bun.env[key];
-  Bun.env.DECOFILE_CACHE_DIR = root;
+  Bun.env.FAST_PREVIEW_CACHE_DIR = root;
   // The default 1 GiB floor could legitimately trip on a full dev machine;
   // tests that don't exercise the floor disable it.
-  Bun.env.DECOFILE_CACHE_FREE_FLOOR_BYTES = "0";
+  Bun.env.FAST_PREVIEW_CACHE_FREE_FLOOR_BYTES = "0";
   resetDecofileDiskCacheForTests();
 });
 
@@ -89,7 +89,7 @@ describe("disk-cache", () => {
     expect(files).toContain(`blobs/acme/site/${sha("a")}`);
     expect(files).toContain(`merged/acme/site/${sha("b")}.json`);
 
-    const stats = decofileCacheStats();
+    const stats = fastPreviewCacheStats();
     expect(stats.hits.blobs).toBe(1);
     expect(stats.hits.merged).toBe(1);
     expect(stats.totalBytes).toBe(
@@ -99,32 +99,32 @@ describe("disk-cache", () => {
 
   it("misses on unknown keys", async () => {
     expect(await getBlob("acme", "site", sha("f"))).toBeNull();
-    expect(decofileCacheStats().misses.blobs).toBe(1);
+    expect(fastPreviewCacheStats().misses.blobs).toBe(1);
   });
 
-  it("is fully disabled when DECOFILE_CACHE_DIR is empty", async () => {
-    Bun.env.DECOFILE_CACHE_DIR = "";
+  it("is fully disabled when FAST_PREVIEW_CACHE_DIR is empty", async () => {
+    Bun.env.FAST_PREVIEW_CACHE_DIR = "";
     resetDecofileDiskCacheForTests();
 
-    expect(decofileCacheEnabled()).toBe(false);
+    expect(fastPreviewCacheEnabled()).toBe(false);
     await putBlob("acme", "site", sha("a"), "content");
     expect(await getBlob("acme", "site", sha("a"))).toBeNull();
     expect(await makeScratchDir()).toBeNull();
   });
 
   it("refuses admission for oversized entries", async () => {
-    Bun.env.DECOFILE_CACHE_MAX_BLOB_BYTES = "4";
+    Bun.env.FAST_PREVIEW_CACHE_MAX_BLOB_BYTES = "4";
     resetDecofileDiskCacheForTests();
 
     await putBlob("acme", "site", sha("a"), "way-too-large");
     expect(await getBlob("acme", "site", sha("a"))).toBeNull();
     expect(await walkFiles(join(root, "blobs"))).toEqual([]);
-    expect(decofileCacheStats().admissionRefusals).toBe(1);
+    expect(fastPreviewCacheStats().admissionRefusals).toBe(1);
   });
 
   it("evicts oldest entries and deletes their files", async () => {
-    Bun.env.DECOFILE_CACHE_MAX_BYTES = "100";
-    Bun.env.DECOFILE_CACHE_MERGED_MAX_BYTES = "100";
+    Bun.env.FAST_PREVIEW_CACHE_MAX_BYTES = "100";
+    Bun.env.FAST_PREVIEW_CACHE_MERGED_MAX_BYTES = "100";
     resetDecofileDiskCacheForTests();
 
     const sixty = "x".repeat(60);
@@ -135,8 +135,8 @@ describe("disk-cache", () => {
     expect(await getBlob("acme", "site", sha("b"))).toBe(sixty);
     const files = await walkFiles(join(root, "blobs"));
     expect(files).toEqual([`acme/site/${sha("b")}`]);
-    expect(decofileCacheStats().evictions).toBe(1);
-    expect(decofileCacheStats().totalBytes).toBe(60);
+    expect(fastPreviewCacheStats().evictions).toBe(1);
+    expect(fastPreviewCacheStats().totalBytes).toBe(60);
   });
 
   it("leaves no partial files outside tmp/ (atomic writes)", async () => {
@@ -160,7 +160,7 @@ describe("disk-cache", () => {
 
     expect(await walkFiles(join(root, "blobs"))).toEqual([]);
     expect(await walkFiles(join(root, "merged"))).toEqual([]);
-    expect(decofileCacheStats().invalidKeySkips).toBe(4);
+    expect(fastPreviewCacheStats().invalidKeySkips).toBe(4);
 
     expect(await getBlob("acme", "site", "not-a-sha")).toBeNull();
     expect(await getMerged("", "site", sha("a"))).toBeNull();
@@ -175,19 +175,19 @@ describe("disk-cache", () => {
 
     expect(await getBlob("acme", "site", sha("a"))).toBe("persisted");
     expect(await getMerged("acme", "site", sha("b"))).toBe("merged-doc");
-    const stats = decofileCacheStats();
+    const stats = fastPreviewCacheStats();
     expect(stats.entryCount).toBe(2);
     expect(stats.totalBytes).toBe("persisted".length + "merged-doc".length);
   });
 
   it("skips writes when free space is under the floor", async () => {
     // Absurdly high floor: no volume has this much free space.
-    Bun.env.DECOFILE_CACHE_FREE_FLOOR_BYTES = "999999999999999999";
+    Bun.env.FAST_PREVIEW_CACHE_FREE_FLOOR_BYTES = "999999999999999999";
     resetDecofileDiskCacheForTests();
 
     await putBlob("acme", "site", sha("a"), "content");
     expect(await getBlob("acme", "site", sha("a"))).toBeNull();
-    expect(decofileCacheStats().floorSkips).toBe(1);
+    expect(fastPreviewCacheStats().floorSkips).toBe(1);
   });
 
   it("creates and removes scratch dirs under tmp/", async () => {
@@ -218,7 +218,7 @@ describe("disk-cache", () => {
 
     await sweepDecofileCacheForTests();
 
-    const stats = decofileCacheStats();
+    const stats = fastPreviewCacheStats();
     expect(stats.entryCount).toBe(1);
     expect(stats.totalBytes).toBe(4);
     const tmpEntries = await readdir(join(root, "tmp"));

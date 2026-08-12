@@ -70,7 +70,7 @@ const COLD_READ_TARBALL_THRESHOLD = 50;
 const COLD_TARBALL_MAX_BYTES_DEFAULT = 128 * 1024 * 1024;
 
 function coldTarballMaxBytes(): number {
-  const raw = Bun.env.DECOFILE_COLD_TARBALL_MAX_BYTES;
+  const raw = Bun.env.FAST_PREVIEW_COLD_TARBALL_MAX_BYTES;
   if (raw === undefined || raw === "") return COLD_TARBALL_MAX_BYTES_DEFAULT;
   const value = Number(raw);
   return Number.isFinite(value) && value >= 0
@@ -312,7 +312,7 @@ async function tryTarballIngest(
   }
   if (aggregateBytes > maxBytes) {
     console.warn(
-      "decofile cold read: tarball skipped (blocks over DECOFILE_COLD_TARBALL_MAX_BYTES)",
+      "decofile cold read: tarball skipped (blocks over FAST_PREVIEW_COLD_TARBALL_MAX_BYTES)",
       { repo: repoKey, sha, aggregateBytes, maxBytes },
     );
     return null;

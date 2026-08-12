@@ -60,7 +60,7 @@ Entry-count cap stays as a secondary bound.
 ## Disk layout
 
 ```
-$DECOFILE_CACHE_DIR/
+$FAST_PREVIEW_CACHE_DIR/
   blobs/<owner>/<repo>/<blobSha>            raw block file content (bytes)
   merged/<owner>/<repo>/<headSha>.json      merged decofile document
   tmp/<random>/                             per-operation scratch (tar extract,
@@ -78,14 +78,14 @@ $DECOFILE_CACHE_DIR/
 
 | Env var | Default | Meaning |
 | --- | --- | --- |
-| `DECOFILE_CACHE_DIR` | `<os.tmpdir()>/studio-decofile-cache` | Root. Empty string disables the disk cache entirely (kill switch — requests then always fetch; single-flight still applies). |
-| `DECOFILE_CACHE_MAX_BYTES` | 2 GiB | Total budget across `blobs/` + `merged/`. |
-| `DECOFILE_CACHE_MERGED_MAX_BYTES` | 512 MiB | Sub-budget for `merged/` so many-tenant merged docs can't evict every blob. |
-| `DECOFILE_CACHE_MAX_BLOB_BYTES` | 1 MiB | Admission cap for a single blob entry. Larger blobs are served but not cached. |
-| `DECOFILE_CACHE_MAX_MERGED_BYTES` | 32 MiB | Admission cap for a single merged doc. |
-| `DECOFILE_CACHE_FREE_FLOOR_BYTES` | 1 GiB | If `statfs` free space on the cache volume is below this, skip ALL cache writes (reads still served) and emit `decofile_cache_floor_skips`. |
-| `DECOFILE_COLD_TARBALL_MAX_BYTES` | 128 MiB | Refuse the tarball path when the tree-derived `.deco/blocks` aggregate size exceeds this; fall back to bounded blob fetches. |
-| `DECOFILE_CACHE_SWEEP_INTERVAL_MS` | 10 min | Reconciliation sweep (drift + `tmp/` orphans older than 1 h). |
+| `FAST_PREVIEW_CACHE_DIR` | `<os.tmpdir()>/studio-fast-preview-cache` | Root. Empty string disables the disk cache entirely (kill switch — requests then always fetch; single-flight still applies). |
+| `FAST_PREVIEW_CACHE_MAX_BYTES` | 2 GiB | Total budget across `blobs/` + `merged/`. |
+| `FAST_PREVIEW_CACHE_MERGED_MAX_BYTES` | 512 MiB | Sub-budget for `merged/` so many-tenant merged docs can't evict every blob. |
+| `FAST_PREVIEW_CACHE_MAX_BLOB_BYTES` | 1 MiB | Admission cap for a single blob entry. Larger blobs are served but not cached. |
+| `FAST_PREVIEW_CACHE_MAX_MERGED_BYTES` | 32 MiB | Admission cap for a single merged doc. |
+| `FAST_PREVIEW_CACHE_FREE_FLOOR_BYTES` | 1 GiB | If `statfs` free space on the cache volume is below this, skip ALL cache writes (reads still served) and emit `fast_preview_cache_floor_skips`. |
+| `FAST_PREVIEW_COLD_TARBALL_MAX_BYTES` | 128 MiB | Refuse the tarball path when the tree-derived `.deco/blocks` aggregate size exceeds this; fall back to bounded blob fetches. |
+| `FAST_PREVIEW_CACHE_SWEEP_INTERVAL_MS` | 10 min | Reconciliation sweep (drift + `tmp/` orphans older than 1 h). |
 
 Fixed (not env): tarball threshold stays `> 50` missing blobs; blob fetch
 concurrency stays 12; GitHub compare/tree truncation guards stay as they are.
@@ -125,7 +125,7 @@ in-memory path, plus restart-warmness today's path lacks.
 When `missing > 50`:
 
 1. **Pre-validate**: sum `size` of matching `.deco/blocks/*.json` entries from
-   the already-fetched tree. Over `DECOFILE_COLD_TARBALL_MAX_BYTES` → skip to
+   the already-fetched tree. Over `FAST_PREVIEW_COLD_TARBALL_MAX_BYTES` → skip to
    bounded blob fetches (log + metric; golden rule 3 beats golden rule 2 here).
 2. **Stream**: `fetch` the tarball; pipe `res.body` directly into
    `Bun.spawn(["tar", "-xz", "--strip-components=1", "-C", scratchDir,
@@ -141,7 +141,7 @@ When `missing > 50`:
 
 ### Sweeper
 
-Every `DECOFILE_CACHE_SWEEP_INTERVAL_MS`: reconcile index vs disk (files
+Every `FAST_PREVIEW_CACHE_SWEEP_INTERVAL_MS`: reconcile index vs disk (files
 deleted externally, drift), enforce budget if drifted, remove `tmp/` dirs
 older than 1 h. The sweeper is a backstop — write-time eviction is the primary
 control. Runs with a jittered start; skips silently if the dir is gone.
@@ -149,21 +149,21 @@ control. Runs with a jittered start; skips silently if the dir is gone.
 ### Failure handling
 
 Every store operation catches and: returns miss (reads) or no-ops (writes),
-increments `decofile_cache_errors{op}`, and on ENOSPC additionally triggers an
+increments `fast_preview_cache_errors{op}`, and on ENOSPC additionally triggers an
 emergency eviction to 50% of budget. No store error propagates to a request.
 
 ## Observability
 
 OTel gauges/counters (module-level meter, same pattern as existing
-observability): `decofile_cache_bytes{area}`, `decofile_cache_entries{area}`,
-`decofile_cache_hits{area}` / `_misses{area}`, `decofile_cache_evictions`,
-`decofile_cache_errors{op}`, `decofile_cache_floor_skips`,
+observability): `fast_preview_cache_bytes{area}`, `fast_preview_cache_entries{area}`,
+`fast_preview_cache_hits{area}` / `_misses{area}`, `fast_preview_cache_evictions`,
+`fast_preview_cache_errors{op}`, `fast_preview_cache_floor_skips`,
 `decofile_cold_reads{path=tarball|blobs}`.
 
 ## Deploy
 
 The chart/manifest (see `deploy/`) mounts a dedicated `emptyDir` at
-`DECOFILE_CACHE_DIR` with `sizeLimit` ≥ 2× `DECOFILE_CACHE_MAX_BYTES`
+`FAST_PREVIEW_CACHE_DIR` with `sizeLimit` ≥ 2× `FAST_PREVIEW_CACHE_MAX_BYTES`
 (default: 4 GiB limit for the 2 GiB budget). Rationale: the volume wall keeps
 a bug from filling the node, and the headroom keeps the kubelet's
 pod-eviction enforcement dormant. Multi-replica pods each have their own
