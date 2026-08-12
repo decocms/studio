@@ -290,6 +290,56 @@ describe("dispatchWithContinuation", () => {
     expect(attempts).toBe(2);
   });
 
+  // The budget is CONSECUTIVE no-progress failures. A run that streamed work
+  // between two unrelated apiserver hangups is the case this exists for: the
+  // old lifetime count failed it on the second break however long it had run.
+  test("a dispatch that made progress resets the continuation budget", async () => {
+    let attempts = 0;
+    const chunks = await collect(
+      dispatchWithContinuation({
+        runId: "run_1",
+        resume: null,
+        aborted: () => false,
+        maxAttempts: 2,
+        dispatchOnce: () => {
+          attempts++;
+          if (attempts === 3) return dispatch([chunk("finish")])();
+          return dispatch(
+            [chunk("start"), chunk("text-delta")],
+            new SandboxUnreachableError("pod gone"),
+          )();
+        },
+      }),
+    );
+    expect(attempts).toBe(3);
+    expect(chunks.map((c) => c.type)).toEqual([
+      "start",
+      "text-delta",
+      "text-delta",
+      "finish",
+    ]);
+  });
+
+  test("the total ceiling stops a pod that dies after every chunk", async () => {
+    let attempts = 0;
+    const run = dispatchWithContinuation({
+      runId: "run_1",
+      resume: null,
+      aborted: () => false,
+      maxAttempts: 2,
+      maxTotalAttempts: 3,
+      dispatchOnce: () => {
+        attempts++;
+        return dispatch(
+          [chunk("text-delta")],
+          new SandboxUnreachableError("pod gone yet again"),
+        )();
+      },
+    });
+    await expect(collect(run)).rejects.toThrow("pod gone yet again");
+    expect(attempts).toBe(3);
+  });
+
   // A displaced attempt must NOT continue: continuing re-dispatches the same
   // runId, which takes the run back off the successor that displaced us — the
   // two attempts would trade it back and forth until maxAttempts.
