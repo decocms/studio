@@ -19,6 +19,39 @@ image:
     - deco
     - --no-local-mode
 
+# Optional Ingress in front of the Service. OFF by default: clusters differ in
+# controller, class, TLS issuer, and annotations, and deployments that front
+# Studio with a LoadBalancer or Gateway API want no Ingress at all.
+#
+# When enabled, the backend is this release's Service on service.port — you
+# don't hardcode the generated name. Set BASE_URL and BETTER_AUTH_URL to the
+# same public https:// URL you put in hosts[].host, or auth callbacks break.
+#
+# Gateway API users: leave this off and create a Gateway + HTTPRoute pointing
+# at the same Service (the sandbox preview Gateway is configured separately,
+# in the sandbox-env chart).
+ingress:
+  enabled: false
+  # Ingress controller class, e.g. "nginx", "traefik", "alb". Empty → the
+  # cluster's default IngressClass.
+  className: ""
+  # Controller-specific config, e.g. cert-manager's
+  # cert-manager.io/cluster-issuer, or nginx body-size/timeout tuning.
+  annotations: {}
+  # Required when enabled. Studio serves the whole app from the root path,
+  # so a single "/" Prefix rule per host is the normal shape.
+  hosts: []
+  #  - host: studio.example.com
+  #    paths:
+  #      - path: /
+  #        pathType: Prefix
+  # TLS is the controller's job. With cert-manager, name a secret that does
+  # not exist yet and the issuer annotation above will populate it.
+  tls: []
+  #  - hosts:
+  #      - studio.example.com
+  #    secretName: studio-tls
+
 service:
   type: ClusterIP
   port: 80

@@ -9,8 +9,8 @@
 # its own templates. No scattered `kubectl apply` steps: the chart owns it all.
 #
 # The umbrella installs the full sandbox layer by default (code-execution +
-# previews). The studio-sandbox RUNTIME image is multi-arch (arm64 + amd64) from
-# tag 1.17.3, so running a sandbox works natively on Apple Silicon.
+# previews). The sandbox RUNTIME image pinned by the sandbox-env chart is
+# multi-arch (arm64 + amd64), so running a sandbox works natively on Apple Silicon.
 #
 # Idempotent: re-run it any time (fresh install or upgrade) — it resolves deps,
 # `helm upgrade --install`s, waits for rollout, and bounces any stuck sandbox
@@ -29,7 +29,7 @@ NAMESPACE="${NAMESPACE:-deco-studio}"
 RELEASE="${RELEASE:-deco-studio}"   # keep = deco-studio: derived names/SA depend on it
 SANDBOX_NS="agent-sandbox-system"
 ENVNAME="${ENVNAME:-local}"         # sandbox-env envName (umbrella default: local)
-# Warm pool is ON by default in the umbrella (studio-sandbox 1.17.3 is multi-arch).
+# Warm pool is ON by default in the umbrella (the pinned sandbox image is multi-arch).
 # Leave WARMPOOL unset to keep it on; set WARMPOOL=0 to disable, or WARMPOOL_SIZE=N.
 WARMPOOL="${WARMPOOL:-}"
 WARMPOOL_SIZE="${WARMPOOL_SIZE:-}"

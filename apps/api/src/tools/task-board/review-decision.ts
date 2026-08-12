@@ -5,6 +5,7 @@ import {
   MAX_REVIEW_BOUNCES,
   REVIEWER_LABEL,
   reviewBounceLimitReached,
+  reviewCycleStart,
 } from "@decocms/shared/task-board";
 import { TaskBoardItemStatusSchema } from "./schema";
 import { recordTaskActivity } from "./activity";
@@ -14,6 +15,32 @@ import { allEnabledReviewersVerifiedApproved, mergeLinkedPr } from "./merge-pr";
 import { fetchPrConflict } from "./prs-get";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
 import { TaskQuotaError } from "@/billing/task-quota";
+
+/**
+ * True when a resolved reviewToken claim actually belongs to THIS reviewer's
+ * claim on the CURRENT review cycle.
+ *
+ * `claimReviewer` mints a fresh row (and token) for every review cycle but
+ * never deletes the old one, so comparing only the reviewer field — as this
+ * used to — let a token minted for an EARLIER cycle still verify: a reviewer
+ * that kept its token from a prior bounce (visible in that run's own prompt,
+ * see `enqueueReviewerForTask`) could replay it after being bounced back and
+ * re-approving with no real review this cycle, counting toward the
+ * two-reviewer auto-merge gate the token exists to protect. Comparing
+ * `cycleAt` closes that: a claim from any cycle but the current one no longer
+ * verifies. Pure — unit-tested.
+ */
+export function reviewTokenVerified(
+  claim: { reviewer: string; cycleAt: Date } | null,
+  reviewer: string,
+  currentCycleAt: number,
+): boolean {
+  return (
+    claim !== null &&
+    claim.reviewer === reviewer &&
+    claim.cycleAt.getTime() === currentCycleAt
+  );
+}
 
 export const TASK_BOARD_REVIEW_DECISION = defineTool({
   name: "TASK_BOARD_REVIEW_DECISION",
@@ -86,17 +113,22 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
       throw new Error(`Task board item not found: ${taskBoardItemId}`);
     }
 
-    // Verify the caller is the reviewer it claims to be: the reviewToken must
-    // resolve to a claim for THIS task whose reviewer matches. An unverified
-    // decision is still recorded (so a dropped token never stalls the flow) but
-    // won't count toward an automatic merge (see the verified gate below).
+    // Verify the caller's reviewToken against THIS task's CURRENT cycle.
     const claim = reviewToken
       ? await ctx.storage.taskBoard.resolveReviewClaimByToken(
           taskBoardItemId,
           reviewToken,
         )
       : null;
-    const verified = claim?.reviewer === reviewer;
+    const currentCycleAt = claim
+      ? reviewCycleStart(
+          await ctx.storage.taskBoard.listActivity(
+            taskBoardItemId,
+            organizationId,
+          ),
+        )
+      : 0;
+    const verified = reviewTokenVerified(claim, reviewer, currentCycleAt);
 
     if (decision === "request_changes") {
       // Break a runaway review loop BEFORE bouncing. A reviewer that keeps

@@ -48,13 +48,23 @@ For production, schedule sandbox pods on a dedicated, tainted node pool. Sandbox
 
 ## Install Studio with agent sandboxes
 
-The commands below use the versions currently declared by the charts. Pin versions in your own deployment instead of tracking `latest`.
+The commands below pin chart versions explicitly. Pin them in your own deployment too, instead of tracking whatever is newest.
 
 ```bash
-export STUDIO_CHART_VERSION=0.12.4
+export STUDIO_CHART_VERSION=0.13.0
 export SANDBOX_OPERATOR_CHART_VERSION=0.1.3
-export SANDBOX_ENV_CHART_VERSION=0.9.13
+export SANDBOX_ENV_CHART_VERSION=0.15.3
 ```
+
+The charts are published as public OCI artifacts, so no registry credentials are needed. To pick a newer version, list what is published:
+
+```bash
+helm show chart oci://ghcr.io/decocms/chart-deco-studio | grep '^version:'
+helm show chart oci://ghcr.io/decocms/studio/charts/sandbox-operator | grep '^version:'
+helm show chart oci://ghcr.io/decocms/studio/charts/sandbox-env | grep '^version:'
+```
+
+Every published version is also listed on the package pages: [chart-deco-studio](https://github.com/orgs/decocms/packages/container/package/chart-deco-studio), [sandbox-operator](https://github.com/orgs/decocms/packages/container/package/studio%2Fcharts%2Fsandbox-operator), [sandbox-env](https://github.com/orgs/decocms/packages/container/package/studio%2Fcharts%2Fsandbox-env).
 
 ### 1. Install the cluster-wide sandbox operator
 
@@ -188,6 +198,45 @@ kubectl port-forward svc/deco-studio 8080:80 -n deco-studio
 
 Studio is then available at `http://localhost:8080`.
 
+### 5. Expose Studio
+
+The chart's Service is `ClusterIP` and the Ingress is optional and off by default, because the controller, class, TLS issuer, and annotations differ per cluster. Pick the option that matches what you already run.
+
+**Ingress (chart-managed).** Set `ingress.enabled` and the chart renders an Ingress backed by this release's Service — you don't hardcode the generated Service name, and the object joins the Helm release, so `helm rollback` and `helm uninstall` cover it:
+
+```yaml
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+  hosts:
+    - host: studio.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - hosts:
+        - studio.example.com
+      secretName: studio-tls
+```
+
+Studio serves the whole app from the root, so one `/` `Prefix` rule per host is the normal shape. With `ingress.enabled=true`, the chart fails to render if `hosts` is empty or a host has no paths — an Ingress without rules is accepted by controllers and silently routes nothing.
+
+**LoadBalancer.** No controller in the cluster: set `service.type: LoadBalancer` and point DNS and TLS at the load balancer.
+
+**Gateway API.** Leave `ingress.enabled: false` and create a Gateway and HTTPRoute targeting the same Service. This is separate from the sandbox preview Gateway, which the `sandbox-env` chart configures.
+
+<Callout type="warning">
+  Whichever you choose, set `BASE_URL` and `BETTER_AUTH_URL` to the same public `https://` URL. Auth callbacks are built from those values, not from the incoming request host, so a mismatch produces sign-in redirects that fail.
+</Callout>
+
+### 6. Connect an AI provider
+
+A self-hosted deployment ships with no model access. Agents and Decopilot stay unusable until an organization owner connects a provider under **Settings → AI Providers** with a key you own — Anthropic, Google Gemini, OpenRouter, or any OpenAI-compatible endpoint, including a self-hosted vLLM server. The hosted deco AI Gateway and its starter credits are a feature of the managed offering; do not plan a self-hosted rollout around them. See [AI Providers](/en/studio/ai-providers).
+
+Egress note: unless you run the models in your own network, Studio pods need outbound HTTPS to the provider's API.
+
 ## Sandbox configuration
 
 ### Isolation and egress
@@ -300,9 +349,10 @@ These defaults come from `deploy/helm/studio/values.yaml`:
 | Parameter | Description | Default |
 | --- | --- | --- |
 | `replicaCount` | API pod replicas | `1` |
-| `image.repository` | Studio API/worker image | `ghcr.io/decocms/studio/studio` |
-| `nginx.image.repository` | Front-door image | `ghcr.io/decocms/studio/studio-nginx` |
+| `image.repository` / `image.tag` | Studio API/worker image ([tags](https://github.com/orgs/decocms/packages/container/package/studio%2Fstudio)) | `ghcr.io/decocms/studio/studio` / unset |
+| `nginx.image.repository` / `nginx.image.tag` | Front-door image ([tags](https://github.com/orgs/decocms/packages/container/package/studio%2Fstudio-nginx)) | `ghcr.io/decocms/studio/studio-nginx` / unset |
 | `service.type` / `service.port` | Service exposure | `ClusterIP` / `80` |
+| `ingress.enabled` / `ingress.className` / `ingress.hosts` | Optional chart-managed Ingress | `false` / `""` / `[]` |
 | `database.engine` | Database engine | `postgresql` |
 | `worker.enabled` / `worker.replicaCount` | Queue worker Deployment | `true` / `2` |
 | `worker.autoscaling.enabled` | Worker HPA | `true` |
@@ -311,12 +361,16 @@ These defaults come from `deploy/helm/studio/values.yaml`:
 | `autoscaling.enabled` | API HPA | `false` |
 | `metrics.scrape` | Prometheus pod annotations | `true` |
 
+<Callout type="warning">
+  `image.tag` and `nginx.image.tag` are unset by default, so both fall back to the chart's `appVersion`, which is `latest`. **Set both explicitly in production** to a released version (for example `4.152.1`) — otherwise a pod restart can silently pull a different build than the one you validated. A digest (`sha256:…`) is also accepted. The sandbox chart already pins its own image; do not override it with `latest`.
+</Callout>
+
 ## Main sandbox values
 
 | Parameter | Description | Default |
 | --- | --- | --- |
 | `envName` | DNS-label suffix for environment resources | Required |
-| `image.repository` / `image.tag` | Sandbox daemon image | `ghcr.io/decocms/studio/studio-sandbox` / `1.17.8` |
+| `image.repository` / `image.tag` | Sandbox daemon image ([tags](https://github.com/orgs/decocms/packages/container/package/studio%2Fstudio-sandbox-go)) | `ghcr.io/decocms/studio/studio-sandbox-go` / pinned by the chart |
 | `resources.requests` | Per-sandbox request | `500m` CPU / `1Gi` memory |
 | `resources.limits` | Per-sandbox limit | `2` CPU / `4Gi` memory / `10Gi` ephemeral storage |
 | `terminationGracePeriodSeconds` | Time for final git sync and unmount | `90` |

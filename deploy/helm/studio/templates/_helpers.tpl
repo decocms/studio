@@ -135,6 +135,12 @@ Global validations to ensure scaling requirements are met.
 {{- if and $usesPostgres (not .Values.database.url) (not .Values.secret.secretName) (not .Values.externalSecret.enabled) }}
 {{- fail "chart-deco-studio: set database.url when database.engine=postgresql, or use secret.secretName to provide DATABASE_URL via Secret" -}}
 {{- end }}
+{{- if and .Values.autoscaling.enabled (gt (int .Values.autoscaling.minReplicas) (int .Values.autoscaling.maxReplicas)) }}
+{{- fail (printf "chart-deco-studio: autoscaling.minReplicas (%d) must not exceed autoscaling.maxReplicas (%d)" (int .Values.autoscaling.minReplicas) (int .Values.autoscaling.maxReplicas)) -}}
+{{- end }}
+{{- if and .Values.worker.enabled .Values.worker.autoscaling.enabled (gt (int .Values.worker.autoscaling.minReplicas) (int .Values.worker.autoscaling.maxReplicas)) }}
+{{- fail (printf "chart-deco-studio: worker.autoscaling.minReplicas (%d) must not exceed worker.autoscaling.maxReplicas (%d)" (int .Values.worker.autoscaling.minReplicas) (int .Values.worker.autoscaling.maxReplicas)) -}}
+{{- end }}
 {{- end }}
 
 {{/*
@@ -262,6 +268,27 @@ Validates ExternalSecret configuration.
 {{- end }}
 {{- if and .Values.externalSecret.enabled (not .Values.externalSecret.secretPath) }}
 {{- fail "chart-deco-studio: externalSecret.secretPath is required when externalSecret.enabled=true" -}}
+{{- end }}
+{{- end }}
+
+{{/*
+Validates the optional Ingress. An enabled Ingress with no host renders a
+rules-less object the controller accepts and silently routes nothing, so fail
+at render time instead.
+*/}}
+{{- define "chart-deco-studio.validateIngress" -}}
+{{- if .Values.ingress.enabled }}
+{{- if not .Values.ingress.hosts }}
+{{- fail "chart-deco-studio: ingress.hosts is required when ingress.enabled=true" -}}
+{{- end }}
+{{- range .Values.ingress.hosts }}
+{{- if not .host }}
+{{- fail "chart-deco-studio: every entry in ingress.hosts needs a host" -}}
+{{- end }}
+{{- if not .paths }}
+{{- fail (printf "chart-deco-studio: ingress host %s has no paths — add at least { path: /, pathType: Prefix }" .host) -}}
+{{- end }}
+{{- end }}
 {{- end }}
 {{- end }}
 

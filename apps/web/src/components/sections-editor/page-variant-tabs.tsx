@@ -209,7 +209,6 @@ function PageVariantRowContent({
 
 function SortablePageVariantRow({
   entry,
-  sortableId,
   isActive,
   canDelete,
   decofile,
@@ -221,7 +220,6 @@ function SortablePageVariantRow({
   onDelete,
 }: {
   entry: VariantTabEntry;
-  sortableId: string;
   isActive: boolean;
   canDelete: boolean;
   decofile: Record<string, unknown>;
@@ -234,7 +232,7 @@ function SortablePageVariantRow({
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useSortable({
-      id: sortableId,
+      id: entry.id,
       animateLayoutChanges: () => false,
     });
 
@@ -463,7 +461,6 @@ export function PageVariantTabs({
             {entries.map((entry) => (
               <SortablePageVariantRow
                 key={entry.id}
-                sortableId={entry.id}
                 entry={entry}
                 isActive={entry.index === activeIndex}
                 canDelete={canDelete}

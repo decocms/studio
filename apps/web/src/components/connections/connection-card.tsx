@@ -37,8 +37,8 @@ export function ConnectionCard({
   return (
     <Card
       className={cn(
-        "cursor-pointer transition-colors group overflow-hidden flex flex-col h-full",
-        onClick && "hover:bg-muted/50",
+        "transition-colors group overflow-hidden flex flex-col h-full",
+        onClick && "cursor-pointer hover:bg-muted/50",
         className,
       )}
       onClick={onClick}
@@ -76,7 +76,7 @@ export function ConnectionCard({
                   className={cn(
                     "transition-opacity",
                     !headerActionsAlwaysVisible &&
-                      "sm:opacity-0 sm:group-hover:opacity-100",
+                      "sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100",
                   )}
                   onClick={(e) => e.stopPropagation()}
                 >
