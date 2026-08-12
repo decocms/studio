@@ -173,6 +173,8 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       input.status !== undefined ||
       input.priority !== undefined ||
       input.assigneeId !== undefined ||
+      input.repoOwner !== undefined ||
+      input.repoName !== undefined ||
       input.dueDate !== undefined ||
       input.sortOrder !== undefined ||
       input.tagIds !== undefined;
