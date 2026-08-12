@@ -399,10 +399,20 @@ describe("daemon e2e: dispatch runs a harness", () => {
   );
 
   it(
-    "cancelling a run kills the harness instead of waiting for it",
+    "cancelling a run kills the harness and reports `cancelled`, not `sandbox_gone`",
     async () => {
       const started = Date.now();
-      const run = dispatch("hang", "run-hang");
+      const res = await dispatch("hang", "run-hang");
+      expect(res.status).toBe(200);
+
+      // Read the body in the background so the terminal the cancel produces is
+      // observed rather than discarded.
+      const ended = (async () => {
+        const frames: DispatchFrame[] = [];
+        for await (const { frame } of readFrames(res)) frames.push(frame);
+        return frames;
+      })();
+
       // Let the daemon exec the harness before cancelling it.
       await new Promise((r) => setTimeout(r, 500));
       const cancel = await fetch(url(d, "/_sandbox/runs/run-hang"), {
@@ -410,12 +420,17 @@ describe("daemon e2e: dispatch runs a harness", () => {
         headers: authHeaders(),
       });
       expect(cancel.status).toBe(204);
-      // The dispatch ends with the run — either a dropped connection or an
-      // answered request, but never by outliving the cancel.
-      await run.then(
-        (res) => res.body?.cancel(),
-        () => undefined,
-      );
+
+      const frames = await ended;
+      // A DELETE is the ONE cancel a human asked for, and the tombstone it
+      // leaves is the only proof of that. Everything else that cancels the run's
+      // ctx — this daemon shutting down, the client hanging up — now reports
+      // `sandbox_gone`, which Studio CONTINUES on a replacement pod. Reporting
+      // that here would make a deliberate stop restart itself.
+      const terminal = frames.at(-1);
+      expect(terminal?.done).toBe(true);
+      expect(terminal?.error?.code).toBe("cancelled");
+      // The run ended with the cancel, never by outliving it.
       expect(Date.now() - started).toBeLessThan(20_000);
     },
     HOOK_TIMEOUT_MS,
