@@ -44,6 +44,9 @@ interface DecofileScope {
   githubRepo: GithubRepo;
   /** Present only for session-authenticated (member) requests. */
   userId: string | null;
+  /** Anonymous (token) requests only: the grant's remaining validity, in
+   *  seconds — bounds how long a shared cache may serve the response. */
+  tokenTtlSeconds: number | null;
 }
 
 type DecofileEnv = Env & {
@@ -94,20 +97,21 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
   }
 
   const userId = ctx.auth?.user?.id ?? null;
+  let tokenTtlSeconds: number | null = null;
   if (!userId) {
     // Anonymous: only the plain GET is reachable, and only with a valid token.
     const token = c.req.query("token");
     const isPlainGet =
       c.req.method === "GET" && !c.req.path.match(/\/(publish|status)$/);
     if (!isPlainGet) return c.json({ error: "Unauthorized" }, 401);
-    if (
-      !token ||
-      !verifyDraftToken(token, {
-        organizationId: organization.id,
-        virtualMcpId,
-        branch,
-      })
-    ) {
+    tokenTtlSeconds = token
+      ? verifyDraftToken(token, {
+          organizationId: organization.id,
+          virtualMcpId,
+          branch,
+        })
+      : null;
+    if (tokenTtlSeconds === null) {
       return c.json({ error: "Unauthorized" }, 401);
     }
   }
@@ -143,6 +147,7 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
     packagePath: runtime?.path?.replace(/^\/+|\/+$/g, "") || null,
     githubRepo,
     userId,
+    tokenTtlSeconds,
   });
   return next();
 });
@@ -209,9 +214,26 @@ export function createDecofileRoutes() {
         { createBranchIfMissing: !!scope.userId },
       );
 
+      // CDN caching for the anonymous (runtime) pull: the fetch URL carries
+      // `v=<pointer version>` + the token, so the cache key is fully
+      // content-addressed. Only when the requested version matches the sha
+      // actually served is the response immutable — a stale pointer (the head
+      // advanced between mint and fetch) serves the newer head with no-store,
+      // never poisoning an edge entry. `s-maxage` is bounded by the grant's
+      // remaining TTL so an expired token cannot keep being served from the
+      // edge; `max-age=0` keeps private caches revalidating (the runtime does
+      // its own per-version caching anyway). Session (editor) responses stay
+      // no-store — they mint a fresh token per read.
+      const requestedVersion = c.req.query("v");
+      const cacheable =
+        !scope.userId &&
+        requestedVersion === snapshot.sha &&
+        (scope.tokenTtlSeconds ?? 0) > 0;
       const headers: Record<string, string> = {
         ETag: `"${snapshot.sha}"`,
-        "Cache-Control": "no-store",
+        "Cache-Control": cacheable
+          ? `public, max-age=0, s-maxage=${scope.tokenTtlSeconds}, immutable`
+          : "no-store",
         "Access-Control-Allow-Origin": "*",
       };
       if (c.req.header("if-none-match") === `"${snapshot.sha}"`) {

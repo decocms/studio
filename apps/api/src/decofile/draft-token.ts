@@ -56,6 +56,12 @@ export function signDraftToken(scope: {
   return `${payload}.${mac}`;
 }
 
+/**
+ * Verify a draft token against the expected scope. Returns the token's
+ * remaining validity in SECONDS (callers bound shared-cache lifetimes by it —
+ * see the decofile GET's s-maxage), or null when the token is invalid,
+ * mis-scoped, or expired.
+ */
 export function verifyDraftToken(
   token: string,
   expect: {
@@ -64,29 +70,29 @@ export function verifyDraftToken(
     branch: string;
     nowMs?: number;
   },
-): boolean {
+): number | null {
   const dot = token.indexOf(".");
-  if (dot < 0) return false;
+  if (dot < 0) return null;
   const payload = token.slice(0, dot);
   const mac = Buffer.from(token.slice(dot + 1));
   const expected = Buffer.from(
     createHmac("sha256", getSigningKey()).update(payload).digest("base64url"),
   );
   if (mac.length !== expected.length || !timingSafeEqual(mac, expected)) {
-    return false;
+    return null;
   }
   let claims: DraftClaims;
   try {
     claims = JSON.parse(Buffer.from(payload, "base64url").toString());
   } catch {
-    return false;
+    return null;
   }
   const nowSec = Math.floor((expect.nowMs ?? Date.now()) / 1000);
-  return (
+  const valid =
     claims.o === expect.organizationId &&
     claims.m === expect.virtualMcpId &&
     claims.b === expect.branch &&
     typeof claims.e === "number" &&
-    claims.e >= nowSec
-  );
+    claims.e >= nowSec;
+  return valid ? claims.e - nowSec : null;
 }

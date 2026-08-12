@@ -14,18 +14,18 @@ const scope = {
 describe("draft token", () => {
   it("round-trips a valid scope", () => {
     const token = signDraftToken(scope);
-    expect(verifyDraftToken(token, scope)).toBe(true);
+    expect(verifyDraftToken(token, scope)).toBeGreaterThan(0);
   });
 
   it("rejects any scope mismatch", () => {
     const token = signDraftToken(scope);
-    expect(verifyDraftToken(token, { ...scope, organizationId: "org-2" })).toBe(
-      false,
-    );
-    expect(verifyDraftToken(token, { ...scope, virtualMcpId: "vm-2" })).toBe(
-      false,
-    );
-    expect(verifyDraftToken(token, { ...scope, branch: "dev" })).toBe(false);
+    expect(
+      verifyDraftToken(token, { ...scope, organizationId: "org-2" }),
+    ).toBeNull();
+    expect(
+      verifyDraftToken(token, { ...scope, virtualMcpId: "vm-2" }),
+    ).toBeNull();
+    expect(verifyDraftToken(token, { ...scope, branch: "dev" })).toBeNull();
   });
 
   it("rejects an expired token", () => {
@@ -36,13 +36,13 @@ describe("draft token", () => {
         ...scope,
         nowMs: now + DRAFT_TOKEN_TTL_MS + 1_000,
       }),
-    ).toBe(false);
+    ).toBeNull();
     expect(
       verifyDraftToken(token, {
         ...scope,
         nowMs: now + DRAFT_TOKEN_TTL_MS - 1_000,
       }),
-    ).toBe(true);
+    ).toBeGreaterThan(0);
   });
 
   it("rejects tampered payloads and garbage", () => {
@@ -51,9 +51,9 @@ describe("draft token", () => {
     const forged = Buffer.from(
       JSON.stringify({ o: "org-1", m: "vm-1", b: "dev", e: 9999999999 }),
     ).toString("base64url");
-    expect(verifyDraftToken(`${forged}.${mac}`, scope)).toBe(false);
-    expect(verifyDraftToken(payload, scope)).toBe(false);
-    expect(verifyDraftToken("", scope)).toBe(false);
-    expect(verifyDraftToken("not.a.token", scope)).toBe(false);
+    expect(verifyDraftToken(`${forged}.${mac}`, scope)).toBeNull();
+    expect(verifyDraftToken(payload, scope)).toBeNull();
+    expect(verifyDraftToken("", scope)).toBeNull();
+    expect(verifyDraftToken("not.a.token", scope)).toBeNull();
   });
 });
