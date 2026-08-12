@@ -1792,6 +1792,11 @@ export interface TaskBoardItemThreadRef {
    *  thread looks finished without ever having run. Status alone can't tell the
    *  two apart; see `shouldAdvanceToReview`. */
   hasMessages: boolean;
+  /** Newest of the thread's `updated_at` / `last_progress_at` — the same
+   *  heartbeat the stall reaper trusts. A non-terminal thread whose heartbeat
+   *  went cold is not running, whatever its status says; see
+   *  `reviewerHandledThisCycle`. */
+  lastActiveAt: string;
   createdAt: string;
 }
 

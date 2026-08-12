@@ -12,10 +12,35 @@ import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated, handTaskToHuman } from "./run-reactions";
 import { enqueueAgentRunForTask } from "./enqueue-task-run";
 import { resolveTaskRepoChoice } from "./claude-code-task-run";
+import { isThreadRunStale } from "@/tools/thread/helpers";
 
 /** Thread statuses past which a reviewer run is done — a live run has a
  *  non-terminal status. Mirrors the storage-layer set. */
 const TERMINAL_THREAD_STATUSES = new Set(["completed", "failed", "expired"]);
+
+/**
+ * True when a reviewer thread is genuinely still running: non-terminal status
+ * AND a heartbeat inside the stall window.
+ *
+ * Status alone is not liveness. A reviewer whose pod died mid-run stays
+ * `in_progress` forever — the in-memory idle reaper is per-pod, and
+ * `failNeverStartedThreads` only covers runs that never started
+ * (`run_started_at IS NULL`), so a run that started and then went silent is
+ * reaped by nobody. Uses the same heartbeat and window as the rest of the
+ * codebase (`isThreadRunStale`), so "how long is too long" has one definition.
+ */
+function isReviewerThreadLive(
+  thr: TaskBoardItem["threads"][number],
+  now: number,
+): boolean {
+  if (thr.status === null || TERMINAL_THREAD_STATUSES.has(thr.status)) {
+    return false;
+  }
+  return !isThreadRunStale(
+    { updated_at: thr.lastActiveAt, last_progress_at: null },
+    now,
+  );
+}
 
 /**
  * Built-in harness tools each reviewer must NOT have — the enforcement behind
@@ -121,7 +146,7 @@ export async function enqueueEnabledReviewers(
       // there, and the claim key is (task, reviewer, cycle) — so without
       // releasing it first, `claimReviewer` below would lose to the corpse and
       // the retry would be a no-op.
-      if (hasFailedAttemptThisCycle(task, kind, lastInReviewAt)) {
+      if (hasSpentAttemptThisCycle(task, kind, lastInReviewAt)) {
         await ctx.storage.taskBoard
           .releaseReviewerClaim(task.id, kind, cycleAt)
           .catch((err) =>
@@ -176,19 +201,35 @@ export async function enqueueEnabledReviewers(
  */
 export const MAX_REVIEWER_ATTEMPTS = 2;
 
-/** Does this cycle already have a FAILED reviewer thread of `kind`? Decides
- *  whether the dispatch below is a retry (and so has a stale claim row to clear
- *  first). Pure; exported for the unit test. */
-export function hasFailedAttemptThisCycle(
+/** Does this cycle already have a SPENT reviewer attempt of `kind` — one that
+ *  failed, or one stuck non-terminal with a cold heartbeat? Decides whether the
+ *  dispatch below is a retry (and so has a stale claim row to clear first).
+ *  Pure; exported for the unit test. */
+export function hasSpentAttemptThisCycle(
   task: TaskBoardItem,
   kind: ReviewerKind,
   lastInReviewAt: number,
+  now: number = Date.now(),
 ): boolean {
   return task.threads.some(
     (thr) =>
       isReviewerThreadTitle(thr.title, kind) &&
-      thr.status === "failed" &&
+      isSpentAttempt(thr, now) &&
       new Date(thr.createdAt).getTime() >= lastInReviewAt,
+  );
+}
+
+/** A reviewer attempt that produced no verdict and never will: it failed, or it
+ *  is non-terminal with a heartbeat past the stall window. */
+function isSpentAttempt(
+  thr: TaskBoardItem["threads"][number],
+  now: number,
+): boolean {
+  if (thr.status === "failed") return true;
+  return (
+    thr.status !== null &&
+    !TERMINAL_THREAD_STATUSES.has(thr.status) &&
+    !isReviewerThreadLive(thr, now)
   );
 }
 
@@ -199,12 +240,14 @@ function reviewerThreadsThisCycle(
   task: TaskBoardItem,
   kind: ReviewerKind,
   lastInReviewAt: number,
+  now: number = Date.now(),
 ): TaskBoardItem["threads"] {
   return task.threads.filter((thr) => {
     if (!isReviewerThreadTitle(thr.title, kind)) return false;
-    const live =
-      thr.status !== null && !TERMINAL_THREAD_STATUSES.has(thr.status);
-    return live || new Date(thr.createdAt).getTime() >= lastInReviewAt;
+    return (
+      isReviewerThreadLive(thr, now) ||
+      new Date(thr.createdAt).getTime() >= lastInReviewAt
+    );
   });
 }
 
@@ -225,11 +268,15 @@ export function reviewerAttemptsExhausted(
   task: TaskBoardItem,
   kind: ReviewerKind,
   lastInReviewAt: number,
+  now: number = Date.now(),
 ): boolean {
-  const thisCycle = reviewerThreadsThisCycle(task, kind, lastInReviewAt);
+  const thisCycle = reviewerThreadsThisCycle(task, kind, lastInReviewAt, now);
   return (
     thisCycle.length > 0 &&
-    thisCycle.every((thr) => thr.status === "failed") &&
+    // A hung attempt counts as spent, not just a failed one — otherwise a
+    // reviewer whose pod keeps dying is re-dispatched forever, which is the
+    // opposite mistake to the deadlock this replaced.
+    thisCycle.every((thr) => isSpentAttempt(thr, now)) &&
     thisCycle.length >= MAX_REVIEWER_ATTEMPTS
   );
 }
@@ -261,23 +308,23 @@ export function reviewerHandledThisCycle(
   task: TaskBoardItem,
   kind: ReviewerKind,
   lastInReviewAt: number,
+  now: number = Date.now(),
 ): boolean {
-  const thisCycle = reviewerThreadsThisCycle(task, kind, lastInReviewAt);
+  const thisCycle = reviewerThreadsThisCycle(task, kind, lastInReviewAt, now);
   if (thisCycle.length === 0) return false;
-  // A live run owns the cycle; never dispatch alongside it.
-  if (
-    thisCycle.some(
-      (thr) => thr.status !== null && !TERMINAL_THREAD_STATUSES.has(thr.status),
-    )
-  ) {
-    return true;
-  }
-  const failed = thisCycle.filter((thr) => thr.status === "failed");
-  // Every attempt failed and the budget is gone — stop, a human owns it now.
-  if (failed.length >= MAX_REVIEWER_ATTEMPTS) return true;
+  // A live run owns the cycle; never dispatch alongside it. "Live" is the
+  // heartbeat, not the status: a reviewer whose pod died mid-run keeps
+  // `in_progress` forever, and taking that at face value deadlocked the card —
+  // the claim stays spent so nothing re-dispatches, and the merge gate waits on
+  // a verdict that will never come. One sat that way while its co-reviewer had
+  // approved in 68 seconds.
+  if (thisCycle.some((thr) => isReviewerThreadLive(thr, now))) return true;
+  const spent = thisCycle.filter((thr) => isSpentAttempt(thr, now));
+  // Every attempt spent and the budget is gone — stop, a human owns it now.
+  if (spent.length >= MAX_REVIEWER_ATTEMPTS) return true;
   // Anything that finished without failing IS a review (a reviewer records its
   // decision and completes), so the cycle is handled.
-  return failed.length !== thisCycle.length;
+  return spent.length !== thisCycle.length;
 }
 
 /** When the task most recently entered In Review (ms), else 0. Drawn from the
