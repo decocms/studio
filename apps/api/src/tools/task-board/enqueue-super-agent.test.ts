@@ -5,7 +5,10 @@
  * that wrong sends the agent to re-do the task or open a second PR.
  */
 import { describe, expect, it } from "bun:test";
-import { buildSuperAgentTaskPrompt } from "./enqueue-super-agent";
+import {
+  buildSuperAgentTaskPrompt,
+  prStateIsPinnable,
+} from "./enqueue-super-agent";
 
 const task = { id: "board_1", title: "Fix the thing", description: null };
 const pr = { number: 7, url: "https://github.com/x/y/pull/7" };
@@ -82,5 +85,26 @@ describe("buildSuperAgentTaskPrompt", () => {
     // guard so a bad call can't emit a conflict instruction with no branch.
     const p = buildSuperAgentTaskPrompt(task, { resolveConflict: true });
     expect(p).not.toContain(CONFLICT_LEAD);
+  });
+});
+
+/**
+ * The bug: `openPrForTask` used to require `state === "open"`, so a throttled
+ * or unreachable GitHub read (`readPrStateThrottled`'s `null`) silently fell
+ * through to "no PR found" — the exact default, forking behavior this whole
+ * path exists to prevent, just triggered by a read blip instead of a missing
+ * PR.
+ */
+describe("prStateIsPinnable", () => {
+  it("is true for open", () => {
+    expect(prStateIsPinnable("open")).toBe(true);
+  });
+
+  it("is true for unknown (a GitHub read blip must not un-pin the branch)", () => {
+    expect(prStateIsPinnable(null)).toBe(true);
+  });
+
+  it("is false for a definitively closed PR", () => {
+    expect(prStateIsPinnable("closed")).toBe(false);
   });
 });
