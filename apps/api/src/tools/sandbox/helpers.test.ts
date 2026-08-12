@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import {
+  readValidatedRuntimeEnv,
   readValidatedSubmoduleCredentials,
   resolveRuntimeConfig,
 } from "./helpers";
@@ -101,6 +102,46 @@ describe("resolveRuntimeConfig", () => {
       runtime: { selected: "npm", port: "65535" },
     };
     expect(resolveRuntimeConfig(metadata).port).toBe("65535");
+  });
+});
+
+describe("readValidatedRuntimeEnv", () => {
+  it("returns null when metadata / runtime / array is absent", () => {
+    expect(readValidatedRuntimeEnv(null)).toBeNull();
+    expect(readValidatedRuntimeEnv({})).toBeNull();
+    expect(readValidatedRuntimeEnv({ runtime: {} })).toBeNull();
+    expect(readValidatedRuntimeEnv({ runtime: { env: "nope" } })).toBeNull();
+  });
+
+  // Feeds SANDBOX_START's secret-resolving loop; a malformed row must be dropped here, not thrown there.
+  it("drops malformed entries instead of letting them through", () => {
+    const result = readValidatedRuntimeEnv({
+      runtime: {
+        env: [
+          { key: "FOO", kind: "literal", value: "bar" },
+          { key: "bad key", kind: "literal", value: "x" }, // invalid key
+          { key: "NO_VALUE", kind: "literal" }, // missing value
+          { key: "NO_SECRET", kind: "secret" }, // missing secretId
+          { key: "EMPTY_SECRET", kind: "secret", secretId: "" },
+          { kind: "literal", value: "no-key" }, // missing key
+          "garbage",
+          null,
+          { key: "SECRET_KEY", kind: "secret", secretId: "sec_1" },
+        ],
+      },
+    });
+    expect(result).toEqual([
+      { key: "FOO", kind: "literal", value: "bar" },
+      { key: "SECRET_KEY", kind: "secret", secretId: "sec_1" },
+    ]);
+  });
+
+  it("returns null when every entry is invalid", () => {
+    expect(
+      readValidatedRuntimeEnv({
+        runtime: { env: [{ key: "bad key", kind: "literal", value: "x" }] },
+      }),
+    ).toBeNull();
   });
 });
 

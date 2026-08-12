@@ -31,6 +31,7 @@ import {
   type StudioContext,
 } from "../../core/studio-context";
 import {
+  readValidatedRuntimeEnv,
   readValidatedSubmoduleCredentials,
   resolveRuntimeConfig,
   type RuntimeConfigMeta,
@@ -646,7 +647,7 @@ async function provisionSandbox(
   // Resolve declared env (literals + secret refs) and push to the daemon
   // *before* it can start install/dev. Daemon deep-merges, so resuming an
   // already-claimed sandbox stays idempotent.
-  const envEntries = (metadata as RuntimeConfigMeta).runtime?.env ?? null;
+  const envEntries = readValidatedRuntimeEnv(metadata);
   await resolveAndPushEnv({
     ctx,
     runner,
