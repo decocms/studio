@@ -164,18 +164,19 @@ export function createInspectPageTool(
           };
         }
 
+        // Read as text first so a failed parse can still report the raw body.
+        const rawText = await response.text();
         let result: {
           consoleLogs?: { type: string; text: string }[];
           errors?: string[];
           evaluateResult?: unknown;
         };
         try {
-          result = await response.json();
+          result = JSON.parse(rawText);
         } catch {
-          const text = await response.text().catch(() => "");
           return {
             success: false,
-            error: `Browserless returned non-JSON response: ${text.slice(0, 200)}`,
+            error: `Browserless returned non-JSON response: ${rawText.slice(0, 200)}`,
             url: input.url,
           };
         }

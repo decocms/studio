@@ -49,4 +49,24 @@ describe("createInspectPageTool", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  test("reports the raw body when browserless returns a 200 with non-JSON", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response("<html>not json</html>", { status: 200 })) as never;
+    try {
+      const tool = createInspectPageTool(writer, {
+        browserless: { baseUrl: "https://bl.example", token: "t" },
+        objectStorage: { put: async () => ({ key: "k" }) } as never,
+        toolOutputMap: new Map(),
+      });
+      const result = (await tool.execute!({ url: "https://example.com" }, {
+        toolCallId: "tc1",
+      } as never)) as { success: boolean; error: string };
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("<html>not json</html>");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
