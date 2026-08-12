@@ -18,11 +18,10 @@
 
 import { DBOS, SchedulerMode } from "@dbos-inc/dbos-sdk";
 import type { Kysely } from "kysely";
-import { ContextFactory, rebindOrgScope } from "@/core/context-factory";
-import type { StudioContext } from "@/core/studio-context";
 import { TaskBoardStorage } from "@/storage/task-board";
 import type { Database } from "@/storage/types";
 import { archiveMergedForOrg, groupByOrg } from "./archive-merged";
+import { buildOrgContext } from "./org-context";
 
 /** Hourly, at :23 — off the other sweeps' ticks so one pod never runs two. */
 const ARCHIVE_SWEEP_CRONTAB = "23 * * * *";
@@ -55,25 +54,6 @@ function requireRuntime(): TaskBoardArchiveSweepRuntime {
     );
   }
   return runtime;
-}
-
-/** User-less StudioContext bound to one org — the sweep needs `ctx.organization`
- *  for the GitHub connection lookup and the org-rebound storage facets. Null when
- *  the org row is gone. */
-async function buildOrgContext(
-  db: Kysely<Database>,
-  orgId: string,
-): Promise<StudioContext | null> {
-  const org = await db
-    .selectFrom("organization")
-    .select(["id", "slug", "name"])
-    .where("id", "=", orgId)
-    .executeTakeFirst();
-  if (!org) return null;
-  const ctx = await ContextFactory.create();
-  ctx.organization = { id: org.id, slug: org.slug, name: org.name };
-  rebindOrgScope(ctx, { id: org.id, slug: org.slug });
-  return ctx;
 }
 
 /** One org, folded to a result — the step body must never throw. */

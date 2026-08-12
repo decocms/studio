@@ -10,3 +10,5 @@ export const THREAD_GATE_QUEUE = "thread-gate";
 export const HOSTED_HARNESS_QUEUE = "decopilot-hosted-harness";
 export const AUTOMATIONS_QUEUE = "automations";
 export const BACKGROUND_TOOLS_QUEUE = "background-tools";
+/** Rate-limited GitHub reads for the task board's review sweep. */
+export const GITHUB_READS_QUEUE = "task-board-github-reads";

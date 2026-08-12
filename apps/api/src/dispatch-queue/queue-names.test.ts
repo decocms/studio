@@ -8,6 +8,7 @@ describe("DBOS queue names", () => {
       THREAD_GATE_QUEUE: "thread-gate",
       HOSTED_HARNESS_QUEUE: "decopilot-hosted-harness",
       BACKGROUND_TOOLS_QUEUE: "background-tools",
+      GITHUB_READS_QUEUE: "task-board-github-reads",
     });
     expect(queueNames).not.toHaveProperty("PROJECTOR_QUEUE");
   });

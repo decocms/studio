@@ -15,6 +15,10 @@ describe("DBOS worker queue selection", () => {
       "THREAD_GATE_QUEUE",
       "HOSTED_HARNESS_QUEUE",
       "BACKGROUND_TOOLS_QUEUE",
+      // The review sweeper AWAITS its enqueued read, so an "api"-role pod that
+      // enqueued one no worker dequeues would block until the workflow timeout
+      // — every sweep, forever.
+      "GITHUB_READS_QUEUE",
     ]) {
       expect(runQueues).toContain(queue);
     }

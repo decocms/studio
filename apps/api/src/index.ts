@@ -12,6 +12,7 @@ import { retry, sleep } from "@decocms/shared/std";
 import {
   AUTOMATIONS_QUEUE,
   BACKGROUND_TOOLS_QUEUE,
+  GITHUB_READS_QUEUE,
   HOSTED_HARNESS_QUEUE,
   THREAD_GATE_QUEUE,
 } from "./dispatch-queue/queue-names";
@@ -77,6 +78,10 @@ const RUN_QUEUES = [
   // "worker"-role pods must dequeue them too — otherwise a split deployment
   // enqueues the job but never runs it.
   BACKGROUND_TOOLS_QUEUE,
+  // The board's throttled GitHub reads. The review sweeper runs on every pod
+  // and awaits its enqueued read, so an "api"-only deployment would block
+  // forever if no worker dequeued this.
+  GITHUB_READS_QUEUE,
 ];
 const listenQueues: string[] | undefined =
   settings.dispatchRole === "worker"
