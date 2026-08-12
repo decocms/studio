@@ -2,8 +2,7 @@ import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
 import {
   allReviewersApproved,
-  REVIEWER_FLAG,
-  REVIEWER_KINDS,
+  enabledReviewerKinds,
   type ReviewCycleActivity,
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
@@ -83,9 +82,7 @@ export async function reactToApprovedPrConflict(
   // token-verified approval in the current cycle. With no reviewer enabled
   // `allReviewersApproved` is false, so a conflict never auto-resolves without
   // an approval standing behind it.
-  const enabled = REVIEWER_KINDS.filter(
-    (k) => flags[REVIEWER_FLAG[k]] === true,
-  );
+  const enabled = enabledReviewerKinds(flags);
   const activity = await ctx.storage.taskBoard.listActivity(item.id, orgId);
   if (!allReviewersApproved(activity, enabled, { verifiedOnly: true })) {
     return false;

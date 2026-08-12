@@ -4,8 +4,7 @@ import { clientFromConnection } from "@/mcp-clients";
 import {
   allReviewersApproved,
   approvedButUnverified,
-  REVIEWER_FLAG,
-  REVIEWER_KINDS,
+  enabledReviewerKinds,
 } from "@decocms/shared/task-board";
 import { recordTaskActivity } from "./activity";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
@@ -203,10 +202,7 @@ export async function allEnabledReviewersVerifiedApproved(
   taskBoardItemId: string,
 ): Promise<boolean> {
   const settings = await ctx.storage.organizationSettings.get(orgId);
-  const flags = settings?.flags ?? {};
-  const enabled = REVIEWER_KINDS.filter(
-    (k) => flags[REVIEWER_FLAG[k]] === true,
-  );
+  const enabled = enabledReviewerKinds(settings?.flags);
   const activity = await ctx.storage.taskBoard.listActivity(
     taskBoardItemId,
     orgId,
@@ -233,10 +229,7 @@ async function handUnverifiedApprovalToHuman(
   const settings = await ctx.storage.organizationSettings.get(
     item.organizationId,
   );
-  const flags = settings?.flags ?? {};
-  const enabled = REVIEWER_KINDS.filter(
-    (k) => flags[REVIEWER_FLAG[k]] === true,
-  );
+  const enabled = enabledReviewerKinds(settings?.flags);
   const activity = await ctx.storage.taskBoard.listActivity(
     item.id,
     item.organizationId,

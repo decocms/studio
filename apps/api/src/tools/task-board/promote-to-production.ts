@@ -4,8 +4,7 @@ import { requireAuth } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
 import {
   allReviewersApproved,
-  REVIEWER_FLAG,
-  REVIEWER_KINDS,
+  enabledReviewerKinds,
   type ReviewCycleActivity,
   type ReviewerKind,
 } from "@decocms/shared/task-board";
@@ -70,10 +69,7 @@ export const TASK_BOARD_PROMOTE_TO_PRODUCTION = defineTool({
     }
 
     const settings = await ctx.storage.organizationSettings.get(organizationId);
-    const flags = settings?.flags ?? {};
-    const enabled = REVIEWER_KINDS.filter(
-      (k) => flags[REVIEWER_FLAG[k]] === true,
-    );
+    const enabled = enabledReviewerKinds(settings?.flags);
     const activity = await ctx.storage.taskBoard.listActivity(
       taskBoardItemId,
       organizationId,

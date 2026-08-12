@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   allReviewersApproved,
+  enabledReviewerKinds,
   isReviewerThreadTitle,
   MAX_REVIEW_BOUNCES,
   reviewBounceLimitReached,
@@ -9,6 +10,31 @@ import {
   SUPER_AGENT_ASSIGNEE_ID,
   type ReviewCycleActivity,
 } from "./task-board";
+
+describe("enabledReviewerKinds", () => {
+  it("returns nothing for missing/empty flags", () => {
+    expect(enabledReviewerKinds(null)).toEqual([]);
+    expect(enabledReviewerKinds(undefined)).toEqual([]);
+    expect(enabledReviewerKinds({})).toEqual([]);
+  });
+
+  it("returns only the reviewers whose flag is exactly true", () => {
+    expect(
+      enabledReviewerKinds({
+        qa_agent_enabled: true,
+        code_reviewer_enabled: false,
+      }),
+    ).toEqual(["qa"]);
+    expect(
+      enabledReviewerKinds({
+        qa_agent_enabled: true,
+        code_reviewer_enabled: true,
+      }),
+    ).toEqual(["qa", "code_review"]);
+    // Truthy-but-not-`true` must not enable it (org flags are booleans).
+    expect(enabledReviewerKinds({ qa_agent_enabled: "true" })).toEqual([]);
+  });
+});
 
 const at = (
   action: string,

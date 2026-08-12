@@ -72,6 +72,15 @@ export const REVIEWER_FLAG: Record<
   code_review: "code_reviewer_enabled",
 };
 
+/** The reviewer kinds this org has enabled, per its settings flags. Single
+ *  home for a filter repeated at every call site that reads the review gate
+ *  (enqueue, auto-merge, conflict resolution, manual ship). */
+export function enabledReviewerKinds(
+  flags: Record<string, unknown> | null | undefined,
+): ReviewerKind[] {
+  return REVIEWER_KINDS.filter((k) => flags?.[REVIEWER_FLAG[k]] === true);
+}
+
 /** True when a thread title belongs to the given reviewer's run. */
 export function isReviewerThreadTitle(
   title: string | null | undefined,
