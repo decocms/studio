@@ -100,13 +100,20 @@ export const TERMINAL_THREAD_STATUSES = new Set([
  * one would advance a card whose work nobody ever started; a card whose only
  * thread is empty has effectively no thread at all.
  */
-export function shouldAdvanceToReview(item: {
-  status: TaskBoardItemStatus;
-  threads: { status: string | null; hasMessages: boolean }[];
-}): boolean {
+export function shouldAdvanceToReview(
+  item: {
+    status: TaskBoardItemStatus;
+    repo?: string | null;
+    threads: { status: string | null; hasMessages: boolean }[];
+  },
+  /** Whether a PR is linked — a repo-backed task needs one to advance on finish. */
+  hasPr = false,
+): boolean {
   if (item.status !== "in_progress") return false;
   const used = item.threads.filter((t) => t.hasMessages);
   if (used.length === 0) return false;
+  // A repo-backed task reaches In Review only once a PR exists (the agent's PR-open hook moves it mid-run); on thread-finish we require a linked PR so a finished edit with no PR doesn't dead-end In Review. Non-repo tasks advance on finish.
+  if (item.repo != null && !hasPr) return false;
   if (
     !used.every(
       (t) => t.status !== null && TERMINAL_THREAD_STATUSES.has(t.status),
@@ -1005,7 +1012,12 @@ export class TaskBoardStorage {
     const moved: TaskBoardItem[] = [];
     for (const taskId of await this.linkedTaskIds(threadId, organizationId)) {
       const item = await this.getById(taskId, organizationId);
-      if (!item || !shouldAdvanceToReview(item)) continue;
+      if (!item) continue;
+      // Only query PRs for a repo-backed task — that's the one gate that needs it.
+      const hasPr =
+        item.repo != null &&
+        (await this.listPrs(taskId, organizationId)).length > 0;
+      if (!shouldAdvanceToReview(item, hasPr)) continue;
       // The status flip is a CONDITIONAL update guarded on the status we just
       // read, so exactly one concurrent caller can win it.
       //

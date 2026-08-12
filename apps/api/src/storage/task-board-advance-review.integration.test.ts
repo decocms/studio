@@ -172,6 +172,56 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
 
     expect(results.filter((r) => r !== null)).toHaveLength(1);
   });
+
+  // A repo-backed task can't dead-end In Review with no PR — on finish it stays In Progress until a PR is linked, then the finish backstop advances it.
+  it("holds a repo-backed task on finish until a PR is linked", async () => {
+    const task = await taskBoard.create({
+      organizationId: ORG,
+      title: "repo, no PR yet",
+      status: "in_progress",
+      repo: "acme/site",
+      by: USER,
+    });
+    const thread = await threads.create({
+      organization_id: ORG,
+      title: "run",
+      status: "completed",
+      message_storage_version: 2,
+      created_by: USER,
+    });
+    await taskBoard.linkThread(task.id, thread.id, ORG);
+    await database.db
+      .insertInto("thread_message_parts")
+      .values({
+        id: `${thread.id}:m:0`,
+        seq: 0,
+        org_id: ORG,
+        thread_id: thread.id,
+        run_id: thread.id,
+        message_id: `${thread.id}:m`,
+        role: "user",
+        kind: "text",
+        payload: JSON.stringify({ type: "text", text: "go" }),
+        created_at: new Date().toISOString(),
+      })
+      .execute();
+
+    // No PR → stays In Progress.
+    await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(thread.id, ORG);
+    expect((await taskBoard.getById(task.id, ORG))?.status).toBe("in_progress");
+
+    // Link a PR → the finish backstop now advances it.
+    await taskBoard.linkPr({
+      taskBoardItemId: task.id,
+      organizationId: ORG,
+      url: "https://github.com/acme/site/pull/3",
+      prNumber: 3,
+      repoOwner: "acme",
+      repoName: "site",
+    });
+    await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(thread.id, ORG);
+    expect((await taskBoard.getById(task.id, ORG))?.status).toBe("in_review");
+  });
 });
 
 /**

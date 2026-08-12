@@ -281,7 +281,11 @@ export async function recoverStalledTasks(
     // costs zero queries. Threads are newest-first (`attachThreads` orders by
     // `link.created_at desc`), so the newest *used* one is the last run to have
     // happened — an empty thread linked afterwards must not shadow it.
-    if (!shouldAdvanceToReview(item)) continue;
+    // Only query PRs for a repo-backed task — that's the one gate that needs it.
+    const hasPr =
+      item.repo != null &&
+      (await ctx.storage.taskBoard.listPrs(item.id, organizationId)).length > 0;
+    if (!shouldAdvanceToReview(item, hasPr)) continue;
     const thread = item.threads.find((t) => t.hasMessages);
     if (!thread) continue;
     try {
