@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -23,10 +24,16 @@ func TestInitExportsToEndpoint(t *testing.T) {
 	var mu sync.Mutex
 	var bodies []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		buf := make([]byte, 1<<16)
-		n, _ := r.Body.Read(buf)
+		// ReadAll, not one Read: an io.Reader may return fewer bytes than asked
+		// for, so a single Read keeps only the first segment of an export the
+		// runner happened to split — dropping whichever metric names sit past
+		// the cut and failing the assertions below on a payload that was fine.
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("reading export body: %v", err)
+		}
 		mu.Lock()
-		bodies = append(bodies, r.URL.Path+"\x00"+string(buf[:n]))
+		bodies = append(bodies, r.URL.Path+"\x00"+string(body))
 		mu.Unlock()
 		w.Write([]byte("{}"))
 	}))
