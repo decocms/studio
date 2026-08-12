@@ -12,14 +12,42 @@ const pr = { number: 7, url: "https://github.com/x/y/pull/7" };
 
 const CONFLICT_LEAD = "MERGE CONFLICT";
 const FEEDBACK_LEAD = "A reviewer requested changes";
+const CONTINUE_LEAD = "already has an open pull request";
+const OPEN_A_PR = "commit on a new branch, push, and open a pull request";
 
 describe("buildSuperAgentTaskPrompt", () => {
-  it("a fresh attempt has neither lead block", () => {
+  it("a fresh attempt has no lead block, and opens a PR", () => {
     const p = buildSuperAgentTaskPrompt(task);
     expect(p).not.toContain(CONFLICT_LEAD);
     expect(p).not.toContain(FEEDBACK_LEAD);
+    expect(p).not.toContain(CONTINUE_LEAD);
+    expect(p).toContain(OPEN_A_PR);
     expect(p).toContain("Fix the thing");
     expect(p).toContain("(task id: board_1)");
+  });
+
+  /**
+   * A person re-delegating a card with an open PR. The sandbox boots on that
+   * PR's branch, so the prompt must not also say "open a pull request" — that
+   * contradiction is what produced a third PR on three cards in one afternoon.
+   */
+  it("a PR with no feedback leads with continue-this-PR, and never says open one", () => {
+    const p = buildSuperAgentTaskPrompt(task, { pr });
+    expect(p).toContain(CONTINUE_LEAD);
+    expect(p).toContain("#7");
+    expect(p).toContain("do NOT open a new one");
+    expect(p).not.toContain(OPEN_A_PR);
+    expect(p).not.toContain(CONFLICT_LEAD);
+    expect(p).not.toContain(FEEDBACK_LEAD);
+  });
+
+  it("feedback and conflict still win over the plain continue lead", () => {
+    expect(
+      buildSuperAgentTaskPrompt(task, { pr, feedback: "x" }),
+    ).not.toContain(CONTINUE_LEAD);
+    expect(
+      buildSuperAgentTaskPrompt(task, { pr, resolveConflict: true }),
+    ).not.toContain(CONTINUE_LEAD);
   });
 
   it("a conflict re-run leads with the conflict-resolution instruction", () => {

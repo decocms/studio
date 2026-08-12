@@ -72,6 +72,21 @@ describe("buildClaudeCodeTaskPrompt", () => {
     expect(prompt).toContain("do NOT open a new one");
   });
 
+  /**
+   * A person re-delegating a card that already has an open PR. The sandbox
+   * boots on that PR's branch, so the prompt must say continue-this-PR rather
+   * than the default open-a-new-one.
+   */
+  test("a PR with no feedback leads with continue-this-PR", () => {
+    const prompt = buildClaudeCodeTaskPrompt(task, repo, {
+      pr: { number: 7, url: "https://github.com/acme/web/pull/7" },
+    });
+    expect(prompt).toContain("already has an open pull request");
+    expect(prompt).toContain("#7");
+    expect(prompt).toContain("do NOT open a new one");
+    expect(prompt).toContain("push to the existing one");
+  });
+
   test("feedback with no PR asks for the fix without a checkout", () => {
     const prompt = buildClaudeCodeTaskPrompt(task, repo, {
       feedback: "Wrong approach.",
