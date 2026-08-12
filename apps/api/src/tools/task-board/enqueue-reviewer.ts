@@ -1,9 +1,8 @@
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
 import {
+  enabledReviewerKinds,
   isReviewerThreadTitle,
-  REVIEWER_FLAG,
-  REVIEWER_KINDS,
   REVIEWER_LABEL,
   reviewCycleStart,
   type ReviewerKind,
@@ -111,10 +110,7 @@ export async function enqueueEnabledReviewers(
   const settings = await ctx.storage.organizationSettings.get(
     task.organizationId,
   );
-  const flags = settings?.flags ?? {};
-  const enabled = REVIEWER_KINDS.filter(
-    (k) => flags[REVIEWER_FLAG[k]] === true,
-  );
+  const enabled = enabledReviewerKinds(settings?.flags);
   if (enabled.length === 0) return;
 
   // A reviewer belongs to the current cycle if its thread is still live, or was
