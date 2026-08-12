@@ -6,6 +6,7 @@ import {
   nextTagColor,
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
+import { captureOrgEvent } from "@/posthog";
 import { TagStorage } from "@/storage/tags";
 import { TaskBoardStorage } from "@/storage/task-board";
 import type { TaskBoardItem } from "@/storage/types";
@@ -387,6 +388,23 @@ export const createTaskBoardImportRoutes = () => {
           });
       }
     }
+
+    // Receiver's counterpart to the engine's diagnostic_tasks_pushed — join on run_id, never sum.
+    captureOrgEvent({
+      event: "task_board_import_landed",
+      organizationId,
+      properties: {
+        created: outcome.created,
+        updated: outcome.updated,
+        skipped: outcome.skipped,
+        delegated,
+        quota_blocked: quotaBlocked,
+        ...(runId ? { run_id: runId } : {}),
+        ...(parsed.data.source?.url
+          ? { source_url: parsed.data.source.url }
+          : {}),
+      },
+    });
 
     return c.json({
       created: outcome.created,

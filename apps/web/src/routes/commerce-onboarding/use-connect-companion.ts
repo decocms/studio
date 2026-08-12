@@ -1,5 +1,6 @@
 import { authenticateAndPersistOAuth } from "@/lib/authenticate-and-persist-oauth";
 import { track } from "@/lib/posthog-client";
+import { reportAttributionFromSearch } from "@/routes/reports/track";
 import { KEYS } from "@/lib/query-keys";
 import type { RegistryItem } from "@/components/store/types";
 import { extractConnectionData } from "@/utils/extract-connection-data";
@@ -63,6 +64,7 @@ export function useConnectCompanion({
       organization_id: org.id,
       domain,
       site_url: siteUrl,
+      ...reportAttributionFromSearch(window.location.search),
     };
     track("commerce_onboarding_companion_connect_clicked", basePayload);
     try {
@@ -188,6 +190,7 @@ export function useConnectCompanion({
       organization_id: org.id,
       domain,
       site_url: siteUrl,
+      ...reportAttributionFromSearch(window.location.search),
     };
     track("commerce_onboarding_companion_disconnect_clicked", basePayload);
     try {

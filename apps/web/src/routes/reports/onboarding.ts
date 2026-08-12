@@ -1,12 +1,21 @@
 import type { MouseEvent } from "react";
-import { captureReport } from "./track";
+import { captureReport, reportAttributionFromSearch } from "./track";
 
 /** The "connect my store" destination. Every connect CTA in the report deck
  *  lands the visitor on the commerce onboarding flow with the scanned store
- *  URL preserved (so onboarding starts pre-filled for the same store).
+ *  URL preserved (so onboarding starts pre-filled for the same store), and
+ *  the report's attribution carried along so `commerce_onboarding_*` events
+ *  can be joined back to the report view that sent them here.
  *  Same-origin now — no cross-domain `ph_did` stamp needed. */
 export function onboardingUrl(storeUrl: string): string {
-  return `/commerce-onboarding?siteUrl=${encodeURIComponent(storeUrl)}`;
+  const params = new URLSearchParams({ siteUrl: storeUrl });
+  const attribution = reportAttributionFromSearch(
+    typeof window === "undefined" ? "" : window.location.search,
+  );
+  for (const [key, value] of Object.entries(attribution)) {
+    if (typeof value === "string") params.set(key, value);
+  }
+  return `/commerce-onboarding?${params.toString()}`;
 }
 
 export interface ConnectCtaContext {
