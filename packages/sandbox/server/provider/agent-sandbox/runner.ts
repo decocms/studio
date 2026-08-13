@@ -50,6 +50,7 @@ import {
   waitForDaemonReady,
 } from "../../daemon-client";
 import {
+  ActiveGaugeTracker,
   Inflight,
   applyPreviewPattern,
   buildConfigPayload,
@@ -451,6 +452,8 @@ export class AgentSandboxProvider implements SandboxProvider {
 
   private readonly records = new Map<string, K8sRecord>();
   private readonly inflight = new Inflight<string, Sandbox>();
+  /** See `ActiveGaugeTracker` doc — decides which teardown owes a gauge decrement. */
+  private readonly activeGauge = new ActiveGaugeTracker();
   private readonly stateStore: RunnerStateStore | null;
   private readonly previewUrlPattern: string | null;
   private readonly kubeConfig: KubeConfig;
@@ -595,13 +598,7 @@ export class AgentSandboxProvider implements SandboxProvider {
   async delete(handle: string): Promise<void> {
     const rec = await this.getRecord(handle);
     this.records.delete(handle);
-    if (rec) {
-      this.closeForwarder(rec.daemonForward);
-      // Decrement only when we actually held the record — getRecord can be
-      // null after restart-without-state-store, in which case the gauge
-      // was never incremented for this handle in this process.
-      this.metrics?.active.add(-1, tenantAttrs(rec.tenant));
-    }
+    if (rec) this.dropRecord(rec);
     // Drop the HTTPRoute first so traffic stops resolving immediately —
     // the operator's claim teardown can take a few seconds, and we don't
     // want browsers landing on a half-deleted Service in the interim.
@@ -1192,7 +1189,10 @@ export class AgentSandboxProvider implements SandboxProvider {
       // Only increment the active gauge on first observation to avoid
       // double-counting when the same handle is rehydrated multiple times
       // (studio-process internal cache hit; ensureLocked is invoked again).
-      if (!wasCached) this.metrics.active.add(1, attrs);
+      if (!wasCached) {
+        this.metrics.active.add(1, attrs);
+        this.activeGauge.markCounted(rec.handle);
+      }
     }
     return this.toSandbox(rec);
   }
@@ -2324,7 +2324,22 @@ export class AgentSandboxProvider implements SandboxProvider {
     const rec = this.records.get(handle);
     if (!rec) return;
     this.records.delete(handle);
+    this.dropRecord(rec);
+  }
+
+  /**
+   * Common teardown for a record leaving `this.records`: close its
+   * port-forward and decrement the active gauge, but only if this record
+   * actually owes a decrement (see `ActiveGaugeTracker`). Shared by every
+   * eviction path — explicit `delete()`, a stale/401'd cache entry, an
+   * operator-driven claim reap, and provider `close()` — so none of them can
+   * silently under- or over-count.
+   */
+  private dropRecord(rec: K8sRecord): void {
     this.closeForwarder(rec.daemonForward);
+    if (this.metrics && this.activeGauge.consume(rec.handle)) {
+      this.metrics.active.add(-1, tenantAttrs(rec.tenant));
+    }
   }
 
   // ---- Metric helpers -------------------------------------------------------
@@ -2612,7 +2627,7 @@ export class AgentSandboxProvider implements SandboxProvider {
     this.closed = true;
     this.claimWatchAbort.abort();
     for (const rec of this.records.values()) {
-      this.closeForwarder(rec.daemonForward);
+      this.dropRecord(rec);
     }
     this.records.clear();
   }

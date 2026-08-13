@@ -1,3 +1,4 @@
+export { ActiveGaugeTracker } from "./active-gauge-tracker";
 export { Inflight } from "./inflight";
 export { withSandboxLock } from "./lock";
 export { computeHandle } from "./handle";
