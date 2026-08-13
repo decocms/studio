@@ -262,6 +262,9 @@ describe("listItemsPendingReview (real Postgres)", () => {
   // whole mechanism is one NULL-aware SQL predicate plus one narrow UPDATE.
   describe("due filter (last_swept_at)", () => {
     const ORG_DUE = "org_pending_due";
+    /** The cutoff a live tick passes: one interval ago. It must be in the PAST
+     *  — a future cutoff re-claims a card this same tick already stamped. */
+    const dueNow = () => new Date(Date.now() - 5 * 60_000);
 
     beforeAll(async () => {
       await database.db
@@ -315,7 +318,7 @@ describe("listItemsPendingReview (real Postgres)", () => {
     // costs. Also asserts the stamp does NOT move `updated_at` — that column is
     // the keyset cursor and the UI's "edited" signal, and churning it on every
     // sweep would reorder the backlog under the cursor.
-    it("markSwept claims the interval without touching updated_at", async () => {
+    it("claimSweep claims the interval without touching updated_at", async () => {
       const item = await card({ org: ORG_DUE, title: "claimed" });
       const before = await database.db
         .selectFrom("task_board_items")
@@ -324,7 +327,7 @@ describe("listItemsPendingReview (real Postgres)", () => {
         .executeTakeFirstOrThrow();
       expect(before.last_swept_at).toBeNull();
 
-      await taskBoard.markSwept(item.id, ORG_DUE);
+      expect(await taskBoard.claimSweep(item.id, ORG_DUE, dueNow())).toBe(true);
 
       const after = await database.db
         .selectFrom("task_board_items")
@@ -343,9 +346,9 @@ describe("listItemsPendingReview (real Postgres)", () => {
 
     // Org-scoped like every other write here: a task id alone must not let one
     // org's sweep stamp another org's card.
-    it("markSwept will not stamp a card from another org", async () => {
+    it("claimSweep will not stamp a card from another org", async () => {
       const item = await card({ org: ORG_DUE, title: "other org" });
-      await taskBoard.markSwept(item.id, ORG_A);
+      expect(await taskBoard.claimSweep(item.id, ORG_A, dueNow())).toBe(false);
 
       const row = await database.db
         .selectFrom("task_board_items")
@@ -353,6 +356,41 @@ describe("listItemsPendingReview (real Postgres)", () => {
         .where("id", "=", item.id)
         .executeTakeFirstOrThrow();
       expect(row.last_swept_at).toBeNull();
+    });
+
+    // The reason this is a claim and not a stamp. Every replica reads the same
+    // work list in the same second, and an unconditional write let all of them
+    // through to the GitHub calls that follow: two `merge_pull_request` calls
+    // landed on one PR inside a second, the loser answered "405 Merge already
+    // in progress" and recorded as a merge failure on the card's timeline.
+    it("a second replica in the same round loses the claim", async () => {
+      const item = await card({ org: ORG_DUE, title: "contended" });
+
+      const cutoff = dueNow();
+      expect(await taskBoard.claimSweep(item.id, ORG_DUE, cutoff)).toBe(true);
+      expect(await taskBoard.claimSweep(item.id, ORG_DUE, cutoff)).toBe(false);
+    });
+
+    it("the card is claimable again once its interval has passed", async () => {
+      const item = await card({ org: ORG_DUE, title: "next round" });
+      await sweptAt(item.id, "2026-01-01T00:05:00.000Z");
+
+      // Same boundary the work list uses: swept at :05, so a tick whose cutoff
+      // is :00 must not re-claim it, and one at :10 must.
+      expect(
+        await taskBoard.claimSweep(
+          item.id,
+          ORG_DUE,
+          new Date("2026-01-01T00:00:00.000Z"),
+        ),
+      ).toBe(false);
+      expect(
+        await taskBoard.claimSweep(
+          item.id,
+          ORG_DUE,
+          new Date("2026-01-01T00:10:00.000Z"),
+        ),
+      ).toBe(true);
     });
   });
 });
