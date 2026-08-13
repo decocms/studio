@@ -46,8 +46,11 @@ import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { resolveFastPreview } from "@/sdk/fast-preview";
 import { decofileWriteMutationKey } from "../../sections-editor/decofile-api.ts";
 import { useChatTask } from "../../chat/index";
-import { selectCmsHeaderButton, type CmsAction } from "./cms-panel-state.ts";
-import { isPrStateActivelyLoading } from "./panel-state.ts";
+import {
+  isCmsStateSettling,
+  selectCmsHeaderButton,
+  type CmsAction,
+} from "./cms-panel-state.ts";
 import { PublishDialog, type PublishDialogIntent } from "./publish-dialog.tsx";
 import {
   fetchGitStatus,
@@ -145,6 +148,13 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     owner: githubRepo?.owner ?? "",
     repo: githubRepo?.name ?? "",
     prNumber: pr && pr.state === "open" ? pr.number : null,
+  });
+
+  const settling = isCmsStateSettling({
+    pr,
+    prQuery,
+    checksQuery,
+    reviewsQuery,
   });
 
   const refreshPrState = async () => {
@@ -268,7 +278,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
         : statusQuery.error
           ? String(statusQuery.error)
           : null,
-    loading: isPrStateActivelyLoading(prQuery),
+    loading: Boolean(settling),
     t,
   });
 

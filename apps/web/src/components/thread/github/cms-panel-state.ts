@@ -2,7 +2,11 @@
 
 import type { BranchMeta } from "@decocms/sandbox/shared";
 import type { TFunction } from "@/i18n/use-t.ts";
-import { isCheckFailed, isCheckInProgress } from "./panel-state.ts";
+import {
+  isCheckFailed,
+  isCheckInProgress,
+  isPrStateActivelyLoading,
+} from "./panel-state.ts";
 import type { CheckRun, PrSummary } from "./use-pr-data.ts";
 import type { PrReviewSignals } from "./use-pr-reviews.ts";
 
@@ -163,6 +167,34 @@ function isLevelWithMergedPr(
       branch.kind === "ready" &&
       !branch.workingTreeDirty &&
       branch.headSha === pr.headSha,
+  );
+}
+
+interface QueryLoadState {
+  isPending: boolean;
+  fetchStatus: string;
+}
+
+/**
+ * Whether the PR picture is still assembling, as ONE window rather than three.
+ *
+ * `checks` and `reviews` cannot start until `pr` returns their number, so
+ * treating only `pr` as loading paints a confident state from data still
+ * missing the part that can contradict it — and a failing check landing a beat
+ * later recolours a green button to warning in front of the editor, which
+ * reads as a bug rather than as convergence.
+ */
+export function isCmsStateSettling(input: {
+  pr: PrSummary | null;
+  prQuery: QueryLoadState;
+  checksQuery: QueryLoadState;
+  reviewsQuery: QueryLoadState;
+}): boolean {
+  if (isPrStateActivelyLoading(input.prQuery)) return true;
+  if (input.pr?.state !== "open" || input.pr.merged) return false;
+  return (
+    isPrStateActivelyLoading(input.checksQuery) ||
+    isPrStateActivelyLoading(input.reviewsQuery)
   );
 }
 

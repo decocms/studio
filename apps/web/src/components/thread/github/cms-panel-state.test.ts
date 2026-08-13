@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { BranchMeta } from "@decocms/sandbox/shared";
 import {
+  isCmsStateSettling,
   selectCmsHeaderButton,
   type SelectCmsHeaderButtonInput,
 } from "./cms-panel-state";
@@ -594,6 +595,68 @@ describe("selectCmsHeaderButton — Get latest in every menu when behind", () =>
     );
     expect(r.variant).toBe("warning");
     expect(menuKeys(r.menu)).toEqual(["view-on-github", "get-latest"]);
+  });
+});
+
+describe("isCmsStateSettling", () => {
+  const idle = { isPending: false, fetchStatus: "idle" };
+  const inFlight = { isPending: true, fetchStatus: "fetching" };
+
+  test("the PR query alone can hold the window", () => {
+    expect(
+      isCmsStateSettling({
+        pr: null,
+        prQuery: inFlight,
+        checksQuery: idle,
+        reviewsQuery: idle,
+      }),
+    ).toBe(true);
+  });
+
+  test("checks still in flight keep it settling — the flicker this prevents", () => {
+    expect(
+      isCmsStateSettling({
+        pr: pr(),
+        prQuery: idle,
+        checksQuery: inFlight,
+        reviewsQuery: idle,
+      }),
+    ).toBe(true);
+  });
+
+  test("reviews still in flight keep it settling", () => {
+    expect(
+      isCmsStateSettling({
+        pr: pr(),
+        prQuery: idle,
+        checksQuery: idle,
+        reviewsQuery: inFlight,
+      }),
+    ).toBe(true);
+  });
+
+  test("settled once all three are idle", () => {
+    expect(
+      isCmsStateSettling({
+        pr: pr(),
+        prQuery: idle,
+        checksQuery: idle,
+        reviewsQuery: idle,
+      }),
+    ).toBe(false);
+  });
+
+  test("without an open PR the dependent queries never run, so they cannot hold it", () => {
+    for (const p of [null, pr({ state: "closed", merged: true })]) {
+      expect(
+        isCmsStateSettling({
+          pr: p,
+          prQuery: idle,
+          checksQuery: inFlight,
+          reviewsQuery: inFlight,
+        }),
+      ).toBe(false);
+    }
   });
 });
 
