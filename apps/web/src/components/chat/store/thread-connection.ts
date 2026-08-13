@@ -1637,9 +1637,6 @@ export function getOrOpenStream(
   }
   current?.dispose();
   current = new ThreadConnection(orgSlug, threadId, opts);
-  // DEBUG (temporary): expose the live store for inspecting in-memory order.
-  if (typeof window !== "undefined")
-    (window as unknown as { __conn?: ThreadConnection }).__conn = current;
   return current;
 }
 
