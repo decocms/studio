@@ -48,6 +48,21 @@ describe("buildClaudeCodeTaskPrompt", () => {
     expect(buildClaudeCodeTaskPrompt(task, repo)).toContain("AUTONOMOUSLY");
   });
 
+  test("requires reachability and a preview check before handing over", () => {
+    const prompt = buildClaudeCodeTaskPrompt(task, repo);
+    expect(prompt).toContain("must be REACHABLE");
+    expect(prompt).toContain("mcp__studio__TASK_BOARD_ITEM_PRS_GET");
+    expect(prompt).toContain("A green test suite is not the bar");
+  });
+
+  test("a reviewer bounce says to reproduce the check on the preview", () => {
+    const prompt = buildClaudeCodeTaskPrompt(task, repo, {
+      feedback: "view_item never fires",
+      pr: { number: 340, url: "https://github.com/acme/web/pull/340" },
+    });
+    expect(prompt).toContain("judged the DEPLOYED PREVIEW");
+  });
+
   // Inverted: this used to say "move it to review anyway so a human can close
   // it out". In Review is the reviewers' lane and reviewers are only enqueued
   // for a task that HAS a PR, so a no-PR task parked there had nobody to pick
