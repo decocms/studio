@@ -22,10 +22,18 @@ describe("parseCommitSuggestionJson", () => {
     expect(result?.title).toBe("Fix bug");
   });
 
-  test("falls back to first line as title", () => {
-    const result = parseCommitSuggestionJson("Plain title\n\nMore detail");
-    expect(result?.title).toBe("Plain title");
-    expect(result?.body).toBe("More detail");
+  test("returns null for non-JSON output instead of dumping it", () => {
+    // A leaked scratchpad must fall through to the deterministic summary.
+    expect(parseCommitSuggestionJson("Plain title\n\nMore detail")).toBeNull();
+    expect(
+      parseCommitSuggestionJson(
+        "1. Analyze the Request:\n * Task: Write a commit message\n2. Drafting the Title:",
+      ),
+    ).toBeNull();
+  });
+
+  test("returns null when JSON is missing a title", () => {
+    expect(parseCommitSuggestionJson('{"body":"no title here"}')).toBeNull();
   });
 });
 
