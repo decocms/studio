@@ -9,7 +9,11 @@
 import { describe, expect, it } from "bun:test";
 import type { ReviewCycleActivity } from "@decocms/shared/task-board";
 import { approvedButUnverified } from "@decocms/shared/task-board";
-import { checksBlockMerge, mayBeConflict } from "./merge-pr";
+import {
+  checksBlockMerge,
+  isMergeMethodNotAllowed,
+  mayBeConflict,
+} from "./merge-pr";
 
 const BOTH = ["qa", "code_review"] as const;
 const at = "2026-08-12T00:00:00.000Z";
@@ -60,6 +64,38 @@ describe("mayBeConflict", () => {
     ] as const) {
       expect(mayBeConflict({ merged: false, reason })).toBe(false);
     }
+  });
+});
+
+describe("isMergeMethodNotAllowed", () => {
+  // The 405 a repo returns when it forbids the merge method just tried.
+  it("is true for the 405 that means the repo forbids this method", () => {
+    for (const detail of [
+      "PUT https://api.github.com/repos/o/r/pulls/71/merge: 405 Merge commits are not allowed on this repository. []",
+      "405 Squash merges are not allowed on this repository",
+      "405 Rebase merges are not allowed on this repository",
+    ]) {
+      expect(isMergeMethodNotAllowed(detail)).toBe(true);
+    }
+  });
+
+  // A conflict is also a 405, but no other method fixes it — must NOT advance.
+  it("is false for a 405 that is not a forbidden-method refusal", () => {
+    expect(isMergeMethodNotAllowed("405 Pull Request is not mergeable")).toBe(
+      false,
+    );
+    expect(isMergeMethodNotAllowed("405 Method Not Allowed")).toBe(false);
+  });
+
+  // Every other refusal shape is method-independent and reported as-is.
+  it("is false for non-405 refusals", () => {
+    expect(isMergeMethodNotAllowed("409 Merge conflict")).toBe(false);
+    expect(
+      isMergeMethodNotAllowed(
+        "422 At least 1 approving review is required by reviewers with write access",
+      ),
+    ).toBe(false);
+    expect(isMergeMethodNotAllowed("")).toBe(false);
   });
 });
 

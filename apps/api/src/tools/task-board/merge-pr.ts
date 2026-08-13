@@ -23,6 +23,32 @@ import { emitTaskBoardUpdated, handTaskToHuman } from "./run-reactions";
 const MERGE_TIMEOUT_MS = 15000;
 
 /**
+ * Merge methods to try, best-first. A repo can forbid any subset of these in its
+ * settings, and forbidding the one GitHub defaults to (a merge commit) is what
+ * this ladder exists for: `merge_pull_request` with no `merge_method` asks for a
+ * merge commit, and a repo with "Allow merge commits" off answers `405 Merge
+ * commits are not allowed on this repository` — a card that would then sit In
+ * Review forever, retried every sweep against the same refusal. Squash is first
+ * to match the web "Ship to production" path (`github-pr-api.ts`) and keep a
+ * linear history; the others are the fallbacks for repos that forbid squash.
+ */
+const MERGE_METHODS = ["squash", "merge", "rebase"] as const;
+
+/**
+ * True when a merge refusal is GitHub rejecting THIS merge method (a `405 … are
+ * not allowed on this repository`) — the one refusal a different method can fix,
+ * so the ladder advances on it. Every other refusal (branch protection, a
+ * required review, a conflict) is method-independent: no method fixes it, so the
+ * caller reports it as-is instead of burning through the ladder. Pure —
+ * unit-tested.
+ */
+export function isMergeMethodNotAllowed(content: string): boolean {
+  return (
+    /\b405\b/.test(content) && /not allowed on this repository/i.test(content)
+  );
+}
+
+/**
  * Why a merge didn't happen. `checks_pending` is the one ROUTINE outcome — CI
  * is still running and the next attempt will simply succeed — so it is the one
  * reason that never reaches the card's timeline. Everything else means a human
@@ -98,6 +124,51 @@ async function recordMergeFailure(
   });
 }
 
+/** The outcome of one `merge_pull_request` round-trip, classified. */
+type MergeAttempt =
+  | { kind: "merged" }
+  | { kind: "rate_limited"; detail: string }
+  | { kind: "method_not_allowed"; detail: string }
+  | { kind: "refused"; detail: string };
+
+/**
+ * One `merge_pull_request` round-trip with a specific `merge_method`, classified
+ * into the outcome {@link mergeLinkedPr}'s ladder branches on.
+ *
+ * GitHub refuses a merge (branch protection, a required review, a forbidden
+ * method, a lost race) via `isError` on an otherwise-resolved tool call — NOT a
+ * throw — so the payload is parsed here, not caught. A 429 wears the refusal's
+ * shape but is transient (`rate_limited`); a `405 … not allowed on this
+ * repository` is the repo forbidding THIS method (`method_not_allowed`, the one
+ * a different method can fix); anything else is method-independent (`refused`).
+ */
+async function attemptMerge(
+  client: Awaited<ReturnType<typeof clientFromConnection>>,
+  pr: { repoOwner: string; repoName: string; number: number },
+  mergeMethod: string,
+): Promise<MergeAttempt> {
+  const result = await client.callTool(
+    {
+      name: "merge_pull_request",
+      arguments: {
+        owner: pr.repoOwner,
+        repo: pr.repoName,
+        pullNumber: pr.number,
+        merge_method: mergeMethod,
+      },
+    },
+    undefined,
+    { timeout: MERGE_TIMEOUT_MS },
+  );
+  if (!(result as { isError?: boolean })?.isError) return { kind: "merged" };
+  const detail = JSON.stringify((result as { content?: unknown })?.content);
+  if (isRateLimitError(detail)) return { kind: "rate_limited", detail };
+  if (isMergeMethodNotAllowed(detail)) {
+    return { kind: "method_not_allowed", detail };
+  }
+  return { kind: "refused", detail };
+}
+
 /**
  * Merge the task's open PR via the GitHub MCP `merge_pull_request` tool. Shared
  * by the reviewer decision (auto-merge on all-approved) and the manual "promote
@@ -154,43 +225,43 @@ export async function mergeLinkedPr(
   }
   const client = await clientFromConnection(conn, ctx, true);
   try {
-    const result = await client.callTool(
-      {
-        name: "merge_pull_request",
-        arguments: {
-          owner: pr.repoOwner,
-          repo: pr.repoName,
-          pullNumber: pr.number,
-        },
-      },
-      undefined,
-      { timeout: MERGE_TIMEOUT_MS },
-    );
-    // GitHub refusing the merge (branch protection, a required review, a lost
-    // race) comes back as `isError` on an otherwise successful tool call — NOT
-    // as a throw, so the catch below never saw it. Surface the payload: this is
-    // the case that looks identical to "nothing happened" from the outside.
-    if ((result as { isError?: boolean })?.isError) {
-      const content = JSON.stringify(
-        (result as { content?: unknown })?.content,
-      );
-      // A 429 arrives in the refusal's shape; calling it one reads as terminal.
-      if (isRateLimitError(content)) {
+    // Try each allowed merge method in turn — see {@link MERGE_METHODS}.
+    let lastRefusal: string | null = null;
+    for (const mergeMethod of MERGE_METHODS) {
+      const attempt = await attemptMerge(client, pr, mergeMethod);
+      if (attempt.kind === "merged") {
+        // Drop the polled read cache so the next poll sees `merged` → Done.
+        invalidatePrReads(conn.id);
+        return { merged: true };
+      }
+      // A 429 says nothing about the method; re-asking IS the burst — stop.
+      if (attempt.kind === "rate_limited") {
         console.warn(
           `[task-board] merge rate-limited on PR #${pr.number} — sweep retries`,
         );
-        return fail("rate_limited", content?.slice(0, 500));
+        return fail("rate_limited", attempt.detail.slice(0, 500));
       }
+      // The repo forbids THIS method — remember it and try the next.
+      if (attempt.kind === "method_not_allowed") {
+        console.warn(
+          `[task-board] merge method '${mergeMethod}' not allowed on ${repo} — trying next`,
+        );
+        lastRefusal = attempt.detail;
+        continue;
+      }
+      // Method-independent refusal (branch protection, conflict) — no method fixes it.
       console.error(
         `[task-board] merge refused by GitHub on PR #${pr.number}:`,
-        content,
+        attempt.detail,
       );
-      return fail("refused", content?.slice(0, 500));
+      return fail("refused", attempt.detail.slice(0, 500));
     }
-    // The PR just changed under the polled read cache — drop it so the next
-    // poll sees `merged` and moves the card to Done immediately.
-    invalidatePrReads(conn.id);
-    return { merged: true };
+    // The repo allows none of squash/merge/rebase — report the last refusal.
+    console.error(
+      `[task-board] no merge method allowed on ${repo} (PR #${pr.number})`,
+      lastRefusal,
+    );
+    return fail("refused", lastRefusal?.slice(0, 500));
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     // Same 429, thrown rather than returned — the transport decides which.
