@@ -11,6 +11,7 @@ import {
 } from "./read-tool-output";
 import { type VirtualClient } from "./sandbox";
 import { BROWSERLESS_BASE_URL } from "./constants";
+import { browserlessFetch } from "./browserless-fetch";
 import type { ToolApprovalLevel } from "../mcp-tools";
 import { toStudioStorageUri } from "../studio-storage-uri";
 import {
@@ -92,7 +93,8 @@ function createPortableBrowserlessTool(
         }
 
         if (kind === "scrape") {
-          const response = await fetch(
+          const fetched = await browserlessFetch(
+            "Browserless content fetch",
             `${BROWSERLESS_BASE_URL}/content?token=${encodeURIComponent(token)}`,
             {
               method: "POST",
@@ -100,6 +102,10 @@ function createPortableBrowserlessTool(
               body: JSON.stringify({ url: input.url }),
             },
           );
+          if (!fetched.ok) {
+            return { success: false, error: fetched.error, url: input.url };
+          }
+          const response = fetched.response;
           if (!response.ok) {
             const errorText = await response
               .text()
@@ -159,7 +165,8 @@ function createPortableBrowserlessTool(
             return { consoleLogs, errors, evaluateResult };
           }
         `;
-        const response = await fetch(
+        const fetched = await browserlessFetch(
+          "Browserless function call",
           `${BROWSERLESS_BASE_URL}/function?token=${encodeURIComponent(token)}`,
           {
             method: "POST",
@@ -167,6 +174,14 @@ function createPortableBrowserlessTool(
             body: code,
           },
         );
+        if (!fetched.ok) {
+          return {
+            success: false,
+            error: fetched.error,
+            url: inspectInput.url,
+          };
+        }
+        const response = fetched.response;
         if (!response.ok) {
           const errorText = await response.text().catch(() => "Unknown error");
           return {

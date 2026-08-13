@@ -136,4 +136,47 @@ describe("buildPortableBuiltInTools", () => {
       }
     }
   });
+
+  it("returns a graceful error instead of throwing when the browserless fetch aborts", async () => {
+    const originalBrowserlessToken = process.env.BROWSERLESS_TOKEN;
+    const originalFetch = globalThis.fetch;
+    process.env.BROWSERLESS_TOKEN = "browserless-test-token";
+
+    globalThis.fetch = (async () => {
+      const err = new Error("The operation was aborted");
+      err.name = "TimeoutError";
+      throw err;
+    }) as unknown as typeof fetch;
+
+    try {
+      const tools = buildPortableBuiltInTools({
+        writer,
+        toolOutputMap: new Map(),
+        passthroughClient,
+        toolApprovalLevel: "auto",
+        isPlanMode: false,
+      });
+
+      const scrape = tools.scrape_url as unknown as {
+        execute: (
+          input: { url: string },
+          options: { toolCallId: string },
+        ) => Promise<unknown>;
+      };
+      const result = (await scrape.execute(
+        { url: "https://example.com" },
+        { toolCallId: "tool-1" },
+      )) as { success: boolean; error?: string };
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("timed out");
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalBrowserlessToken === undefined) {
+        delete process.env.BROWSERLESS_TOKEN;
+      } else {
+        process.env.BROWSERLESS_TOKEN = originalBrowserlessToken;
+      }
+    }
+  });
 });
