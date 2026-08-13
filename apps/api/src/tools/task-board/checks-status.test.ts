@@ -474,4 +474,26 @@ describe("isRateLimitError", () => {
     expect(isRateLimitError("too many requests")).toBe(true);
     expect(isRateLimitError(null)).toBe(false);
   });
+
+  // A bare 429 in the PR URL path (`…/pulls/429/merge`) is not the HTTP status.
+  it("does not treat a 429 inside the request URL as a rate limit", () => {
+    expect(
+      isRateLimitError(
+        new Error(
+          "failed to merge pull request: PUT https://api.github.com/repos/o/r/pulls/429/merge: 405 Merge commits are not allowed on this repository. []",
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  // A real 429 status follows the URL after a space, so it survives the scrub.
+  it("still catches a real 429 status that follows a URL", () => {
+    expect(
+      isRateLimitError(
+        new Error(
+          "PUT https://api.github.com/repos/o/r/pulls/71/merge: 429 Too Many Requests",
+        ),
+      ),
+    ).toBe(true);
+  });
 });
