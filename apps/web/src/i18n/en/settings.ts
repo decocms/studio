@@ -748,6 +748,10 @@ export const settings = {
     "Bring your own model server (advanced)",
   "settings.aiProviders.moreProvidersSingular": "{count} more provider",
   "settings.aiProviders.moreProvidersPlural": "{count} more providers",
+  "settings.aiProviders.decoConnectSuccess":
+    "Deco AI Gateway connected successfully",
+  "settings.aiProviders.decoConnectError":
+    "Failed to connect Deco AI Gateway: {error}",
   "settings.billing.title": "Billing",
   "settings.billing.autoTasksTitle": "Auto tasks",
   "settings.billing.unlimitedDescription":
