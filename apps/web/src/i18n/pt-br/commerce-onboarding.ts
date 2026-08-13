@@ -24,6 +24,10 @@ export const commerceOnboarding = {
   "commerceOnboarding.companionCard.required": "Obrigatório",
   "commerceOnboarding.connectSourceDialog.connecting": "Conectando {title}...",
   "commerceOnboarding.connectSourceDialog.loading": "Carregando...",
+  "commerceOnboarding.connectSourceDialog.noConnectionMethod":
+    "{title} não pode ser conectado: nenhum método de conexão disponível",
+  "commerceOnboarding.connectSourceDialog.signInFailed":
+    "Não foi possível entrar em {title}: {error}",
   "commerceOnboarding.connectSourceDialog.title": "Conectar fonte de dados",
   "commerceOnboarding.githubConfigForm.cancel": "Cancelar",
   "commerceOnboarding.githubConfigForm.failedToSave":
