@@ -72,7 +72,14 @@ export function buildConfigPayload(args: {
 
   const orgId = tenant?.orgId;
 
-  if (!git && !application && !operator && !args.cloneOnly && !orgId) {
+  // `cloneOnly: false` must still reach the daemon; only an absent one is "nothing to say".
+  if (
+    !git &&
+    !application &&
+    !operator &&
+    args.cloneOnly === undefined &&
+    !orgId
+  ) {
     return null;
   }
   return {
