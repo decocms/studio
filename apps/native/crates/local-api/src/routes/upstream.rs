@@ -171,8 +171,15 @@ pub async fn proxy(State(state): State<AppState>, req: Request) -> Response {
     // whether there's a valid session), so it must never wait on, or be
     // gated by, this proxy's auth machinery. See that module's doc comment
     // for the full route table and the map citations behind each entry.
-    if let Some(response) =
-        intercept::try_intercept(&state, &parts.method, &path, parts.uri.query(), &body_bytes).await
+    if let Some(response) = intercept::try_intercept(
+        &state,
+        &parts.method,
+        &path,
+        parts.uri.query(),
+        &body_bytes,
+        &parts.headers,
+    )
+    .await
     {
         return response;
     }

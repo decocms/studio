@@ -102,9 +102,10 @@ function useDecofileHead(
 export function useCmsPublishState(args: CmsPublishStateArgs): CmsPublishState {
   const { orgSlug, virtualMcpId, branch, threadId, baseBranch } = args;
   const sandboxRef = { orgSlug, virtualMcpId, branch, threadId };
+  const fastPreviewCall = { fastPreview: true } as const;
 
   const statusQuery = useSuspenseQuery(
-    sandboxGitStatusQueryOptions(sandboxRef),
+    sandboxGitStatusQueryOptions(sandboxRef, fastPreviewCall),
   );
   const status = statusQuery.data;
   const manifest = status.changedFiles ?? null;
@@ -123,7 +124,8 @@ export function useCmsPublishState(args: CmsPublishStateArgs): CmsPublishState {
       baseBranch,
       headSha,
     ),
-    queryFn: () => fetchGitDiff(sandboxRef, { base: baseBranch }),
+    queryFn: () =>
+      fetchGitDiff(sandboxRef, { base: baseBranch }, fastPreviewCall),
     enabled: wantsBodies,
     staleTime: BODIES_STALE_MS,
   });

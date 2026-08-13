@@ -72,6 +72,8 @@ export interface PublishTarget {
   branch: string;
   /** The session publishing. Decides which runtime answers the git routes. */
   threadId: string | null;
+  /** Route sandbox-less Fast Preview git operations to the upstream API. */
+  fastPreview?: boolean;
   baseBranch: string;
   githubClient: GithubMcpClient;
   owner: string;
@@ -138,6 +140,10 @@ function sandboxRef(target: PublishTarget): SandboxProxyRef {
   };
 }
 
+function sandboxCall(target: PublishTarget) {
+  return target.fastPreview ? { fastPreview: true } : undefined;
+}
+
 async function runStep<T>(
   step: PublishStep,
   fallback: string,
@@ -162,7 +168,10 @@ async function runStep<T>(
 async function assertHeadUnchanged(target: PublishTarget): Promise<void> {
   const expected = target.expectedHeadSha;
   if (!expected) return;
-  const status = await fetchGitStatus(sandboxRef(target)).catch(() => null);
+  const status = await fetchGitStatus(
+    sandboxRef(target),
+    sandboxCall(target),
+  ).catch(() => null);
   const actual = status?.headSha;
   if (actual && actual !== expected) {
     throw new PublishHeadMovedError(expected, actual);
@@ -170,7 +179,7 @@ async function assertHeadUnchanged(target: PublishTarget): Promise<void> {
 }
 
 function pushChanges(target: PublishTarget, message: string): Promise<void> {
-  return publishGitChanges(sandboxRef(target), message);
+  return publishGitChanges(sandboxRef(target), message, sandboxCall(target));
 }
 
 function openPullRequest(
@@ -204,7 +213,7 @@ export async function runPublishFlow(
     pushChanges(target, parts.message),
   );
   await runStep("sync", t("thread.publishDialog.failedRebase"), () =>
-    rebaseGitBranch(sandboxRef(target), target.baseBranch),
+    rebaseGitBranch(sandboxRef(target), target.baseBranch, sandboxCall(target)),
   );
   const pr = await runStep(
     "open-pr",
