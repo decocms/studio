@@ -342,18 +342,6 @@ export interface AgentSandboxProviderOptions {
   /** SandboxTemplate all claims reference. */
   sandboxTemplateName?: string;
   /**
-   * SandboxTemplate for `cloneOnly` claims — the headless Claude Code dispatch
-   * path, which is where prod's 4Gi OOMKills happened (agent loop, no dev
-   * server). The sandbox-env chart renders it as `<template>-medium` with a
-   * 3Gi/6Gi memory request/limit. A SandboxClaim cannot override resources, so
-   * a second ceiling has to be a second template.
-   *
-   * Unset → cloneOnly claims use `sandboxTemplateName` like everything else,
-   * i.e. today's behavior. That's the rollout switch: the chart can ship the
-   * template before anything claims it.
-   */
-  mediumTemplateName?: string;
-  /**
    * Shared sentinel token baked into the SandboxTemplate's pod env (via the
    * sandbox-env helm chart's Secret). Presence flips the runner into
    * warm-pool mode:
@@ -477,8 +465,6 @@ export class AgentSandboxProvider implements SandboxProvider {
   private readonly portForward: PortForward;
   private readonly namespace: string;
   private readonly sandboxTemplateName: string;
-  /** See {@link AgentSandboxProviderOptions.mediumTemplateName}. */
-  private readonly mediumTemplateName: string | null;
   private readonly envName: string | null;
   private readonly tokenGenerator: () => string;
   private readonly idleTtlMs: number;
@@ -532,8 +518,6 @@ export class AgentSandboxProvider implements SandboxProvider {
     this.namespace = opts.namespace ?? DEFAULT_NAMESPACE;
     this.sandboxTemplateName =
       opts.sandboxTemplateName ?? DEFAULT_TEMPLATE_NAME;
-    const trimmedMedium = opts.mediumTemplateName?.trim() ?? "";
-    this.mediumTemplateName = trimmedMedium.length > 0 ? trimmedMedium : null;
     this.envName = normalizeEnvName(opts.envName);
     this.tokenGenerator =
       opts.tokenGenerator ??
@@ -1276,7 +1260,6 @@ export class AgentSandboxProvider implements SandboxProvider {
     const templateName = claimTemplateName(
       opts.cloneOnly,
       this.sandboxTemplateName,
-      this.mediumTemplateName,
     );
     const envEntries = warmPoolMode
       ? []

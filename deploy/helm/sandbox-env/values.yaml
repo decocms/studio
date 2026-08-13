@@ -68,11 +68,10 @@ resources:
     ephemeral-storage: 10Gi
 
 # ── the `-medium` SandboxTemplate's ceilings ───────────────────────────
-# Deep-merged over `resources` above, so state only what differs. Studio
-# points headless agent-loop claims (Claude Code dispatch: cloneOnly, no dev
-# server) at the `-medium` template by setting
-# STUDIO_SANDBOX_MEDIUM_TEMPLATE_NAME=studio-sandbox-<envName>-medium; unset
-# there, nothing claims it and this template just sits unused.
+# Deep-merged over `resources` above, so state only what differs. Studio sends
+# headless agent-loop claims (Claude Code dispatch: cloneOnly, no dev server)
+# to `<STUDIO_SANDBOX_TEMPLATE_NAME>-medium` unconditionally, so this chart
+# version must be deployed before the Studio release that does.
 #
 # Why a separate template instead of raising the shared limit: prod OOMKilled
 # three pods at the 4Gi limit on 2026-08-13, all inside a claude-code loop

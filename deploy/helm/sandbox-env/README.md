@@ -122,10 +122,6 @@ configMap:
     STUDIO_SANDBOX_PROVIDER: "agent-sandbox"
     STUDIO_ENV: "staging"
     STUDIO_SANDBOX_TEMPLATE_NAME: "studio-sandbox-staging"
-    # Optional: headless agent-loop (cloneOnly) claims get the roomier
-    # `-medium` template (mediumResources) instead. Unset → they use the
-    # template above, so this is safe to add after the chart upgrade.
-    STUDIO_SANDBOX_MEDIUM_TEMPLATE_NAME: "studio-sandbox-staging-medium"
     # The next three values are required only when previewGateway.enabled=true.
     STUDIO_SANDBOX_PREVIEW_URL_PATTERN: "https://{handle}.preview.staging.example.com"
     # Per-claim HTTPRoute attaches to this Gateway. Both required whenever
@@ -274,7 +270,7 @@ See `values.yaml` for the full set. The most-tuned ones:
 | `image.repository` | `ghcr.io/decocms/studio/studio-sandbox-go` | sandbox image (Go daemon — the implementation IS the image) |
 | `image.tag` | chart `appVersion` | bump in lockstep with packages/sandbox/package.json |
 | `resources.*` | 0.5/2 CPU, 2/4Gi RAM | per sandbox pod |
-| `mediumResources.*` | 3/6Gi RAM | deep-merged over `resources.*` into a second `<name>-medium` SandboxTemplate; Studio points `cloneOnly` (Claude Code dispatch) claims at it via `STUDIO_SANDBOX_MEDIUM_TEMPLATE_NAME` |
+| `mediumResources.*` | 3/6Gi RAM | deep-merged over `resources.*` into a second `<name>-medium` SandboxTemplate; Studio sends `cloneOnly` (Claude Code dispatch) claims to `<STUDIO_SANDBOX_TEMPLATE_NAME>-medium`, so this chart must be upgraded before the Studio release that names it |
 | `nodeSelector` / `tolerations` / `affinity` | `{}` | for sandbox isolation NodePool |
 | `topologySpreadConstraints` | `[]` | spread sandbox pods across AZs; see `values.yaml` for the recommended config |
 | `disruptionProtection.doNotDisrupt` | `false` | annotate pods with Karpenter's `do-not-disrupt` to block voluntary node consolidation/drift while a sandbox is claimed; trades cluster cost/upgrade cadence for session safety |
