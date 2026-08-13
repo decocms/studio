@@ -1,8 +1,28 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import {
+  encodeSandboxStartError,
+  SANDBOX_START_ERROR_CODES,
+} from "@decocms/shared/sandbox-start-errors";
+import type { StudioContext } from "../../core/studio-context";
+import type { SandboxProvider } from "@decocms/sandbox/provider";
+
+mock.module("../../shared/github-clone-info", () => ({
+  buildCloneInfo: mock(async () => {
+    throw new Error(
+      encodeSandboxStartError(
+        SANDBOX_START_ERROR_CODES.githubConnectionMissing,
+        "GitHub connection conn_1 no longer exists. Link acme/site again.",
+      ),
+    );
+  }),
+  ensureGithubCloneToken: mock(async () => {}),
+}));
+
+const {
   GitPushAuthError,
   parseGithubRepoFromMetadata,
-} from "./sync-git-credentials";
+  refreshSandboxGitCredentials,
+} = await import("./sync-git-credentials");
 
 describe("parseGithubRepoFromMetadata", () => {
   test("returns public-clone repo without connectionId", () => {
@@ -53,5 +73,30 @@ describe("GitPushAuthError", () => {
     const err = new GitPushAuthError("nope");
     expect(err).toBeInstanceOf(Error);
     expect(err.name).toBe("GitPushAuthError");
+  });
+});
+
+describe("refreshSandboxGitCredentials", () => {
+  test("decodes buildCloneInfo's SANDBOX_START_ERROR_CODES prefix into a clean GitPushAuthError", async () => {
+    const ctx = {
+      organization: { id: "org_1" },
+      storage: { connections: { findById: async () => null } },
+      db: {},
+      vault: {},
+    } as unknown as StudioContext;
+    const runner = {} as SandboxProvider;
+
+    await expect(
+      refreshSandboxGitCredentials(ctx, runner, "handle_1", {
+        url: "https://github.com/acme/site",
+        owner: "acme",
+        name: "site",
+        connectionId: "conn_1",
+      }),
+    ).rejects.toThrow(
+      new GitPushAuthError(
+        "GitHub connection conn_1 no longer exists. Link acme/site again.",
+      ),
+    );
   });
 });

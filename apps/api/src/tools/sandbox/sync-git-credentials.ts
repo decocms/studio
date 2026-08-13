@@ -4,6 +4,7 @@ import type { StudioContext } from "../../core/studio-context";
 import { RECONNECT_ERROR } from "../../oauth/token-refresh";
 import { coAuthorFromStudioContext } from "../../lib/co-author-identity";
 import { readBoundedText } from "../../lib/bounded-text";
+import { decodeSandboxStartError } from "@decocms/shared/sandbox-start-errors";
 import {
   buildCloneInfo,
   ensureGithubCloneToken,
@@ -69,7 +70,13 @@ export async function refreshSandboxGitCredentials(
     githubRepo.name,
     ctx.db,
     ctx.vault,
-  );
+  ).catch((error) => {
+    // Strip buildCloneInfo's SANDBOX_START_ERROR_CODES prefix so it doesn't leak raw into the publish-dialog UI.
+    const { code, message } = decodeSandboxStartError(
+      error instanceof Error ? error.message : String(error),
+    );
+    throw code ? new GitPushAuthError(message) : error;
+  });
 
   const operator = coAuthorFromStudioContext(ctx);
 
