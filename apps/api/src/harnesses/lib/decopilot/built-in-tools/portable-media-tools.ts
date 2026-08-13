@@ -21,6 +21,12 @@ const REFERENCE_IMAGE_FETCH_TIMEOUT_MS = 45_000;
 /** Headroom over Browserless's own 30s page.goto timeout, so an unresponsive Browserless can't hang the harness run forever. */
 const BROWSERLESS_SCREENSHOT_TIMEOUT_MS = 45_000;
 
+/** Same reasoning as REFERENCE_IMAGE_FETCH_TIMEOUT_MS above: `params.abortSignal`
+ *  only fires on user/run cancellation, so an unresponsive image-model provider
+ *  would otherwise hang the harness run forever. Longer than the other timeouts
+ *  in this file because image generation is genuinely slower than a plain fetch. */
+const GENERATE_IMAGE_TIMEOUT_MS = 120_000;
+
 /**
  * Emulation presets for `take_screenshot`. `mobile` carries a phone viewport
  * AND `isMobile`/`hasTouch` — but the load-bearing part for QA is that the tool
@@ -525,13 +531,27 @@ export async function generateImageCore(
   const prompt = hasRefs
     ? { text: input.prompt, images: refImageBytes }
     : input.prompt;
-  const result = await generateImage({
-    model: imageModel,
-    prompt,
-    n: input.n ?? 1,
-    ...(input.aspectRatio ? { aspectRatio: input.aspectRatio } : {}),
-    ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
-  });
+  const timeoutSignal = AbortSignal.timeout(GENERATE_IMAGE_TIMEOUT_MS);
+  const signal = params.abortSignal
+    ? AbortSignal.any([params.abortSignal, timeoutSignal])
+    : timeoutSignal;
+  let result: Awaited<ReturnType<typeof generateImage>>;
+  try {
+    result = await generateImage({
+      model: imageModel,
+      prompt,
+      n: input.n ?? 1,
+      ...(input.aspectRatio ? { aspectRatio: input.aspectRatio } : {}),
+      abortSignal: signal,
+    });
+  } catch (err) {
+    if (timeoutSignal.aborted && !params.abortSignal?.aborted) {
+      throw new Error(
+        `Image generation timed out after ${GENERATE_IMAGE_TIMEOUT_MS}ms`,
+      );
+    }
+    throw err;
+  }
 
   if (!objectStorage) {
     throw new Error(
