@@ -14,7 +14,11 @@ import { TaskBoardItemStatusSchema } from "./schema";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated, handTaskToHuman } from "./run-reactions";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
-import { allEnabledReviewersVerifiedApproved, mergeLinkedPr } from "./merge-pr";
+import {
+  allEnabledReviewersVerifiedApproved,
+  conflictSignal,
+  mergeLinkedPr,
+} from "./merge-pr";
 import { fetchPrConflict, pickActivePr } from "./prs-get";
 import { verifyReviewToken } from "./review-token";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
@@ -309,9 +313,10 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
 
     const settings = await ctx.storage.organizationSettings.get(organizationId);
     const autoMerge = settings?.flags?.auto_merge === true;
-    const merged = autoMerge
-      ? (await mergeLinkedPr(ctx, organizationId, taskBoardItemId)).merged
-      : false;
+    const outcome = autoMerge
+      ? await mergeLinkedPr(ctx, organizationId, taskBoardItemId)
+      : null;
+    const merged = outcome?.merged === true;
 
     // A merge ships the task → Done.
     if (merged) {
@@ -356,7 +361,10 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
       const resolving = pr
         ? await reactToApprovedPrConflict(ctx, organizationId, current, {
             pr: { number: pr.number, url: pr.url },
-            conflict: await fetchPrConflict(ctx, organizationId, pr),
+            conflict: conflictSignal(
+              await fetchPrConflict(ctx, organizationId, pr),
+              outcome,
+            ),
           }).catch((err) => {
             // Same paywall exception as above — a TaskQuotaError must
             // surface, not be swallowed as a routine auto-resolve failure.

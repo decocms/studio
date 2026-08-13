@@ -643,18 +643,36 @@ export async function fetchPrChecksStatus(
 }
 
 /** Map a `pull_request_read get` response to whether the PR conflicts with its
- *  base branch. `true` = conflicts (`mergeable === false`); `false` = mergeable,
- *  OR the PR is not open (a merged/closed PR reports `mergeable: null` but is
- *  never "conflicting"); `null` = GitHub hasn't computed mergeability yet (it's
- *  async) or the read gave nothing — an unknown must NEVER read as a conflict,
- *  so the caller only acts on an explicit `true`. Pure — unit-tested; the single
- *  home for the `mergeable` polarity, so the two callers can't drift. */
+ *  base branch. `true` = conflicts; `false` = mergeable, OR the PR is not open
+ *  (a merged/closed PR reports no mergeability but is never "conflicting");
+ *  `null` = GitHub hasn't computed mergeability yet (it's async) or the read
+ *  gave nothing — an unknown must NEVER read as a conflict, so the caller only
+ *  acts on an explicit `true`. Pure — unit-tested; the single home for the
+ *  mergeability polarity, so the two callers can't drift.
+ *
+ *  `mergeable_state` is the field that actually arrives: `pull_request_read`
+ *  returns github-mcp's `MinimalPullRequest`, which has no `mergeable`. Reading
+ *  only that boolean yielded `null` for every PR ever, so the conflict
+ *  auto-resolution it gates never fired once in production — zero
+ *  `merge_conflict_resolution` rows across every org, while an approved,
+ *  conflicting PR retried the same 405 every five minutes for two days. The
+ *  boolean is still read first: a non-minimal response (a direct GitHub
+ *  payload, a different MCP server) carries it and it is the richer signal.
+ *
+ *  Of the `mergeable_state` values only `dirty` means conflicts; `unknown`/`""`
+ *  is GitHub still computing, and the rest (`blocked`, `behind`, `unstable`, …)
+ *  are for the checks gate to judge, not this. */
 export function conflictFromPrGet(
   obj: Record<string, unknown> | null,
 ): boolean | null {
   if (!obj) return null;
   if (obj.state !== "open") return false;
-  return typeof obj.mergeable === "boolean" ? !obj.mergeable : null;
+  if (typeof obj.mergeable === "boolean") return !obj.mergeable;
+  const state = obj.mergeable_state;
+  if (typeof state !== "string" || state === "" || state === "unknown") {
+    return null;
+  }
+  return state === "dirty";
 }
 
 /** Whether the PR conflicts with its base branch — the definite "can't merge"
@@ -853,16 +871,15 @@ async function fetchPrLiveState(
     if (!obj) return NO_LIVE_STATE;
     const rawState = obj.state;
     const isOpen = rawState === "open";
+    const conflict = conflictFromPrGet(obj);
     return {
       title: typeof obj.title === "string" ? obj.title : null,
       body: typeof obj.body === "string" ? obj.body : null,
       state: rawState === "closed" ? "closed" : isOpen ? "open" : null,
       draft: typeof obj.draft === "boolean" ? obj.draft : null,
       merged: typeof obj.merged === "boolean" ? obj.merged : null,
-      // Mergeability only means something for an open PR (a merged/closed PR
-      // reports `mergeable: null`). Anything but a boolean is "unknown".
-      mergeable:
-        isOpen && typeof obj.mergeable === "boolean" ? obj.mergeable : null,
+      // Same reducer as the auto-resolution gate, so the two can't drift.
+      mergeable: isOpen && conflict !== null ? !conflict : null,
       // Checks/preview only mean something for an open PR.
       checksStatus: isOpen ? extras.checksStatus : null,
       checks: isOpen ? extras.checks : [],
