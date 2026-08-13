@@ -368,8 +368,7 @@ async function provisionSandbox(
     runner,
     purpose,
   } = params;
-  // The workload consequence of `harness-run`: one agent loop needs the
-  // checkout, not the tenant's install + dev server.
+  // One agent loop needs the checkout, not the install + dev server.
   const cloneOnly = purpose === "harness-run";
 
   // A recorded connectionId can dangle — deleting a connection (force-delete,

@@ -191,9 +191,7 @@ describe("claimTemplateName", () => {
     ).toBe("studio-sandbox-medium");
   });
 
-  // The generic pool is for interactive claims only; a tenant pool never
-  // reaches a harness run (resolveTenantPool above), so these two are the
-  // whole matrix of what a claim can name.
+  // With tenant pools ruled out above, these two are the whole matrix.
   it("an interactive claim names the default pool, not the medium one", () => {
     expect(
       claimWarmPoolName(

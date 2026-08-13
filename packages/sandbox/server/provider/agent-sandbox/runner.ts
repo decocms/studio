@@ -3068,8 +3068,7 @@ export function stripEnsureOpts(opts: EnsureOptions): EnsureOptions | null {
   // silently re-enabling install + dev-server for a sandbox provisioned
   // clone-only.
   if (opts.cloneOnly) out.cloneOnly = true;
-  // Same reason, one layer up: a resurrected `harness-run` claim rebuilt without
-  // this would name the default template — the 4Gi ceiling it was moved off.
+  // Lose it and a resurrected harness run names the default template again.
   if (opts.purpose) out.purpose = opts.purpose;
   // Without this, `resurrectByHandle` re-provisioning from these persisted
   // opts (no SANDBOX_START in that loop) would silently drop the org-fs

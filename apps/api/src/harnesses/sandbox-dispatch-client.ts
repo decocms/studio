@@ -366,9 +366,7 @@ export class SandboxDispatchClient implements SandboxClient {
             virtualMcpId,
             branch,
             sandboxProviderKind: kind,
-            // This pod runs one agent loop and returns its output: no preview,
-            // no dev server, and a memory ceiling of its own (the agent loop is
-            // what OOMKilled 4Gi pods in prod).
+            // One agent loop, no preview, and a memory ceiling of its own.
             purpose: "harness-run",
           },
           ctx,
