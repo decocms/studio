@@ -1,8 +1,20 @@
+import { z } from "zod";
 import { BROWSERLESS_FETCH_TIMEOUT_MS } from "./constants";
 
 export type BrowserlessFetchResult =
   | { ok: true; response: Response }
   | { ok: false; error: string };
+
+// Upstream error bodies are unbounded — cap what lands in the tool error.
+export const BROWSERLESS_ERROR_BODY_MAX_CHARS = 500;
+
+// Reject non-http(s) schemes (file:, javascript:, ...) before forwarding to Browserless.
+export const httpUrlSchema = z
+  .string()
+  .url()
+  .refine((url) => /^https?:\/\//i.test(url), {
+    message: "URL must use http or https",
+  });
 
 /**
  * Human-readable reason for a Browserless call that never produced a response.
