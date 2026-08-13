@@ -50,7 +50,6 @@ export type {
 } from "./lifecycle-types";
 
 const SANDBOX_HANDLE_LABEL = "studio.decocms.com/sandbox-handle";
-const MAIN_CONTAINER_NAME = "sandbox";
 
 const DEFAULT_SCHEDULING_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -561,7 +560,7 @@ function applyPodSnapshot(pod: PodResource, state: State, _now: () => number) {
   }
 
   const main = (pod.status?.containerStatuses ?? []).find(
-    (c) => c.name === MAIN_CONTAINER_NAME,
+    (c) => c.name === K8S_CONSTANTS.MAIN_CONTAINER_NAME,
   );
   if (main) {
     state.pod.containerWaitingReason = main.state?.waiting?.reason;

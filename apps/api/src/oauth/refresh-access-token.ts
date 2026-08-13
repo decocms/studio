@@ -22,6 +22,9 @@ const PERMANENT_REFRESH_ERROR_CODES = new Set([
   "bad_refresh_token",
 ]);
 
+/** Bound the outbound refresh call — a hanging token endpoint shouldn't hang the caller. */
+const TOKEN_REFRESH_FETCH_TIMEOUT_MS = 10_000;
+
 export interface TokenRefreshResult {
   success: boolean;
   /**
@@ -93,6 +96,7 @@ export async function refreshAccessToken(
         Accept: "application/json",
       },
       body: params.toString(),
+      signal: AbortSignal.timeout(TOKEN_REFRESH_FETCH_TIMEOUT_MS),
     });
 
     if (!response.ok) {

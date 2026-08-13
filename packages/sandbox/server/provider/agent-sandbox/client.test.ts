@@ -7,6 +7,8 @@ import {
 import {
   applyHttpRoute,
   createSandboxClaim,
+  podTermination,
+  readPodTermination,
   deleteSandboxClaim,
   ensureServicePort,
   getSandboxClaim,
@@ -650,5 +652,147 @@ describe("waitForSandboxReady", () => {
     await expect(p).rejects.toThrow(
       /Watch stream error while waiting for sandbox: watch channel expired/,
     );
+  });
+});
+
+describe("podTermination", () => {
+  const oomStatus = (state: "state" | "lastState") => ({
+    spec: {
+      containers: [
+        { name: "sandbox", resources: { limits: { memory: "4Gi" } } },
+        { name: "orgfs-sidecar", resources: { limits: { memory: "512Mi" } } },
+      ],
+    },
+    status: {
+      containerStatuses: [
+        {
+          name: "sandbox",
+          [state]: { terminated: { reason: "OOMKilled", exitCode: 137 } },
+        },
+      ],
+    },
+  });
+
+  it("reads an OOM kill and the limit that was hit", () => {
+    expect(podTermination(oomStatus("state"), "sandbox")).toEqual({
+      reason: "OOMKilled",
+      oomKilled: true,
+      exitCode: 137,
+      memoryLimit: "4Gi",
+    });
+  });
+
+  it("finds the same kill after the kubelet restarted the container in place", () => {
+    expect(podTermination(oomStatus("lastState"), "sandbox")?.oomKilled).toBe(
+      true,
+    );
+  });
+
+  it("reports a non-OOM termination without claiming it was one", () => {
+    const t = podTermination(
+      {
+        status: {
+          containerStatuses: [
+            { name: "sandbox", state: { terminated: { reason: "Error" } } },
+          ],
+        },
+      },
+      "sandbox",
+    );
+    expect(t).toEqual({ reason: "Error", oomKilled: false });
+  });
+
+  it("ignores a sibling container's kill — the sidecar is not the sandbox", () => {
+    expect(
+      podTermination(
+        {
+          status: {
+            containerStatuses: [
+              {
+                name: "orgfs-sidecar",
+                state: { terminated: { reason: "OOMKilled" } },
+              },
+            ],
+          },
+        },
+        "sandbox",
+      ),
+    ).toBeNull();
+  });
+
+  it("a running container has nothing to report", () => {
+    expect(
+      podTermination(
+        { status: { containerStatuses: [{ name: "sandbox", state: {} }] } },
+        "sandbox",
+      ),
+    ).toBeNull();
+    expect(podTermination({}, "sandbox")).toBeNull();
+  });
+});
+
+describe("readPodTermination", () => {
+  const pod = (
+    name: string,
+    creationTimestamp: string,
+    terminated?: { reason: string },
+  ) => ({
+    metadata: { name, creationTimestamp },
+    status: {
+      containerStatuses: [
+        { name: "sandbox", state: terminated ? { terminated } : {} },
+      ],
+    },
+  });
+
+  it("reads the newest pod, not an earlier attempt's corpse under the same handle", async () => {
+    fetchImpl = async () =>
+      jsonResponse(200, {
+        items: [
+          pod("old", "2026-08-13T18:00:00Z", { reason: "OOMKilled" }),
+          pod("new", "2026-08-13T18:05:00Z"),
+        ],
+      });
+    expect(
+      await readPodTermination(
+        makeKc(),
+        NS,
+        "studio.decocms.com/sandbox-handle",
+        "h1",
+        "sandbox",
+      ),
+    ).toBeNull();
+  });
+
+  it("reports the newest pod's own kill", async () => {
+    fetchImpl = async () =>
+      jsonResponse(200, {
+        items: [
+          pod("old", "2026-08-13T18:00:00Z", { reason: "Error" }),
+          pod("new", "2026-08-13T18:05:00Z", { reason: "OOMKilled" }),
+        ],
+      });
+    expect(
+      (
+        await readPodTermination(
+          makeKc(),
+          NS,
+          "studio.decocms.com/sandbox-handle",
+          "h1",
+          "sandbox",
+        )
+      )?.oomKilled,
+    ).toBe(true);
+  });
+
+  it("degrades to null when the pod is already gone or the read fails", async () => {
+    fetchImpl = async () => jsonResponse(200, { items: [] });
+    expect(
+      await readPodTermination(makeKc(), NS, "k", "h1", "sandbox"),
+    ).toBeNull();
+    fetchImpl = async () => jsonResponse(403, { message: "forbidden" });
+    expect(
+      await readPodTermination(makeKc(), NS, "k", "h1", "sandbox"),
+    ).toBeNull();
   });
 });
