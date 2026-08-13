@@ -149,12 +149,26 @@ export async function refreshAccessToken(
     }
 
     const data = (await response.json()) as {
-      access_token: string;
+      access_token?: string;
       refresh_token?: string;
       expires_in?: number;
       token_type?: string;
       scope?: string;
     };
+
+    if (!data.access_token) {
+      // Spec-violating 200 (no access_token) — treat as transient, not silent success.
+      console.warn("[TokenRefresh] 200 response missing access_token", {
+        connectionId: token.connectionId,
+        tokenEndpoint: token.tokenEndpoint,
+      });
+      return {
+        success: false,
+        permanent: false,
+        status: response.status,
+        error: "Token endpoint returned no access_token",
+      };
+    }
 
     return {
       success: true,
