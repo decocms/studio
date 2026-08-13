@@ -4,11 +4,13 @@ import { useProjectContext } from "@/sdk";
 import { KEYS } from "@/lib/query-keys";
 import { track } from "@/lib/posthog-client";
 import { useStudioTools } from "@/lib/studio-tools";
+import { useT } from "@/i18n/use-t";
 
 export function useDecoConnect() {
   const { org } = useProjectContext();
   const studio = useStudioTools();
   const queryClient = useQueryClient();
+  const t = useT();
 
   return useMutation({
     mutationFn: async () => {
@@ -18,14 +20,16 @@ export function useDecoConnect() {
       track("ai_provider_provision_succeeded", { provider_id: "deco" });
       queryClient.invalidateQueries({ queryKey: KEYS.aiProviderKeys(org.id) });
       queryClient.invalidateQueries({ queryKey: KEYS.aiProviders(org.id) });
-      toast.success("Deco AI Gateway connected successfully");
+      toast.success(t("settings.aiProviders.decoConnectSuccess"));
     },
     onError: (err) => {
       track("ai_provider_provision_failed", {
         provider_id: "deco",
         error: err.message,
       });
-      toast.error(`Failed to connect Deco AI Gateway: ${err.message}`);
+      toast.error(
+        t("settings.aiProviders.decoConnectError", { error: err.message }),
+      );
     },
   });
 }

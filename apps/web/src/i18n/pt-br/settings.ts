@@ -792,6 +792,10 @@ export const settings = {
     "Traga seu pr\u00f3prio servidor de modelos (avan\u00e7ado)",
   "settings.aiProviders.moreProvidersSingular": "{count} provedor adicional",
   "settings.aiProviders.moreProvidersPlural": "{count} provedores adicionais",
+  "settings.aiProviders.decoConnectSuccess":
+    "Deco AI Gateway conectado com sucesso",
+  "settings.aiProviders.decoConnectError":
+    "Falha ao conectar o Deco AI Gateway: {error}",
   "settings.billing.title": "Cobrança",
   "settings.billing.autoTasksTitle": "Auto tasks",
   "settings.billing.unlimitedDescription":
