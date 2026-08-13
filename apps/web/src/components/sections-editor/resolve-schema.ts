@@ -568,7 +568,7 @@ export function resolveSchema(
         // App config arrays (e.g. flag lists) share anyOf with product-list loaders;
         // prefer the array branch when items are plain objects, not section refs.
         const arrayBranch = nonNull
-          .map(resolveBranchDef)
+          .map((branch) => unwrapRefAliases(branch))
           .find(isArraySchemaBranch);
         const hasPageMultivariateLoader = loaderBranches.some((branch) => {
           const rtEnum = (
