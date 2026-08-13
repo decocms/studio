@@ -27,7 +27,7 @@ import { buildOrgContext } from "./org-context";
 const ARCHIVE_SWEEP_CRONTAB = "23 * * * *";
 
 /** A Done card is only archivable once it has sat untouched this long. */
-const SETTLED_FOR_MS = 24 * 60 * 60 * 1000;
+const SETTLED_FOR_MS = 5 * 24 * 60 * 60 * 1000;
 
 /** Ceiling on candidates per tick, across all orgs — each costs one GitHub read
  *  per linked PR. A backlog drains over the following hours. */

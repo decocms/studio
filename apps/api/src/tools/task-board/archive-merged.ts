@@ -1,7 +1,7 @@
 /**
- * Auto-archive: a Done card whose PRs landed and which nobody has touched for a
- * day is history, and history belongs in the Archived lane rather than in a Done
- * column with 77 cards nobody reads.
+ * Auto-archive: a Done card whose PRs landed and which nobody has touched for
+ * five days is history, and history belongs in the Archived lane rather than in
+ * a Done column with 77 cards nobody reads.
  *
  * Deliberately NOT an MCP tool and not a button: nothing about it is a decision
  * a human or an agent makes per task, so it runs unattended on the hourly
