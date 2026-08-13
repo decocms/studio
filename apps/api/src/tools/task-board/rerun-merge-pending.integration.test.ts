@@ -131,4 +131,42 @@ describe("refuseIfMergePending", () => {
     });
     await expect(refuseIfMergePending(ctx, item)).resolves.toBeUndefined();
   });
+  // The deadlock escape must not open on a guess: with a PR linked but its
+  // mergeability unreadable (no GitHub connection in this org), the guard keeps
+  // refusing. A `null` that fell through to "not deadlocked... so allow" would
+  // re-open the very bug this guard was written for, on every read blip.
+  it("still refuses when the PR's mergeability cannot be read", async () => {
+    // Re-arm the flag: the auto-merge-off case above mutates the shared org.
+    await organizationSettings.upsert(ORG, {
+      flags: {
+        auto_merge: true,
+        qa_agent_enabled: true,
+        code_reviewer_enabled: true,
+      },
+    });
+    const item = await cardWithVerdicts([
+      { reviewer: "qa", verified: true },
+      { reviewer: "code_review", verified: true },
+    ]);
+    await taskBoard.linkPr({
+      taskBoardItemId: item.id,
+      organizationId: ORG,
+      url: "https://github.com/acme/widgets/pull/7",
+      prNumber: 7,
+      repoOwner: "acme",
+      repoName: "widgets",
+    });
+    // Cap already spent — so ONLY the unknown conflict signal keeps the refusal.
+    for (let i = 0; i < 3; i++) {
+      await taskBoard.recordActivity({
+        taskBoardItemId: item.id,
+        action: "merge_conflict_resolution",
+        actorId: null,
+        data: { prNumber: 7 },
+      });
+    }
+    await expect(refuseIfMergePending(ctx, item)).rejects.toThrow(
+      /merge is retrying/,
+    );
+  });
 });

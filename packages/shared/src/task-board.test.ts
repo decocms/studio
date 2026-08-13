@@ -353,6 +353,17 @@ describe("outstandingReviewFeedback", () => {
     ).toBe("the newest ask");
   });
 
+  // Two verdicts recorded in the same millisecond compare equal (the storage
+  // row round-trips through a JS `Date`), so the append order decides. Getting
+  // this backwards made the real-Postgres test flake, not fail.
+  it("breaks a same-millisecond tie in favor of the later row", () => {
+    const at = "2026-01-01T01:00:00.000Z";
+    expect(outstandingReviewFeedback([approved(at), changes(at)])).toBe(
+      "fix the landmark",
+    );
+    expect(outstandingReviewFeedback([changes(at), approved(at)])).toBeNull();
+  });
+
   it("carries the latest ask across review cycles, unlike the cycle helpers", () => {
     expect(
       outstandingReviewFeedback([

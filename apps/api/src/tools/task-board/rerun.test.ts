@@ -9,7 +9,7 @@
  * wedged card stays wedged; too broad and it discards a real terminal state.
  */
 import { describe, expect, test } from "bun:test";
-import { threadsToSupersede } from "./rerun";
+import { mergeDeadlocked, threadsToSupersede } from "./rerun";
 
 const thread = (threadId: string, status: string | null) => ({
   threadId,
@@ -67,5 +67,38 @@ describe("threadsToSupersede", () => {
   // take over, so the re-run is purely additive.
   test("a task with no open run supersedes nothing", () => {
     expect(threadsToSupersede({ threads: [] })).toEqual([]);
+  });
+});
+
+/**
+ * The half of `refuseIfMergePending` that is not "approved": whether a merge
+ * can still happen at all. Refusing when it cannot deadlocked three prod cards
+ * — an approved PR conflicting with its base, its conflict auto-resolution cap
+ * spent, so every poll re-attempted the same merge and got the same 405, while
+ * Re-run (the only escape) answered "its merge is retrying".
+ */
+describe("mergeDeadlocked", () => {
+  const resolutions = (n: number) =>
+    Array.from({ length: n }, () => ({
+      action: "merge_conflict_resolution",
+      occurredAt: "2026-08-13T18:28:00.000Z",
+    }));
+
+  test("is true only once a conflicting PR has spent the cap", () => {
+    expect(mergeDeadlocked(true, resolutions(3))).toBe(true);
+    expect(mergeDeadlocked(true, resolutions(2))).toBe(false);
+  });
+
+  test("is false for a PR that merges cleanly, however many resolutions it took", () => {
+    expect(mergeDeadlocked(false, resolutions(3))).toBe(false);
+  });
+
+  test("is false when mergeability is unknown — never break a merge that may be real", () => {
+    expect(mergeDeadlocked(null, resolutions(3))).toBe(false);
+  });
+
+  test("is false for a card that never conflicted at all", () => {
+    expect(mergeDeadlocked(false, [])).toBe(false);
+    expect(mergeDeadlocked(true, [])).toBe(false);
   });
 });
