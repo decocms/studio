@@ -228,6 +228,7 @@ function registerSsoRoutes(app: SsoApp) {
         client_secret: ssoConfig.clientSecret,
         code_verifier: stateData.codeVerifier,
       }),
+      signal: AbortSignal.timeout(SSO_FETCH_TIMEOUT_MS),
     });
 
     if (!tokenResponse.ok) {
@@ -471,6 +472,9 @@ interface OIDCDiscovery {
   userinfo_endpoint?: string;
 }
 
+/** Bound outbound calls to the IdP — a hanging issuer shouldn't hang the callback. */
+const SSO_FETCH_TIMEOUT_MS = 10_000;
+
 // Simple in-memory cache for OIDC discovery documents
 const discoveryCache = new Map<
   string,
@@ -545,7 +549,9 @@ async function discoverOIDC(
 
   validateOIDCUrl(url);
 
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(SSO_FETCH_TIMEOUT_MS),
+  });
   if (!response.ok) {
     throw new Error(
       `OIDC discovery failed: ${response.status} ${response.statusText}`,
