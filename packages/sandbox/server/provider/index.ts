@@ -13,6 +13,7 @@ import {
 export type {
   EnsureOptions,
   LegacySandboxProviderKind,
+  PodTermination,
   ProxyRequestInit,
   SandboxProviderKind,
   Sandbox,

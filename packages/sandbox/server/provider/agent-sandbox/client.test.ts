@@ -7,6 +7,7 @@ import {
 import {
   applyHttpRoute,
   createSandboxClaim,
+  podTermination,
   deleteSandboxClaim,
   ensureServicePort,
   getSandboxClaim,
@@ -650,5 +651,81 @@ describe("waitForSandboxReady", () => {
     await expect(p).rejects.toThrow(
       /Watch stream error while waiting for sandbox: watch channel expired/,
     );
+  });
+});
+
+describe("podTermination", () => {
+  const oomStatus = (state: "state" | "lastState") => ({
+    spec: {
+      containers: [
+        { name: "sandbox", resources: { limits: { memory: "4Gi" } } },
+        { name: "orgfs-sidecar", resources: { limits: { memory: "512Mi" } } },
+      ],
+    },
+    status: {
+      containerStatuses: [
+        {
+          name: "sandbox",
+          [state]: { terminated: { reason: "OOMKilled", exitCode: 137 } },
+        },
+      ],
+    },
+  });
+
+  it("reads an OOM kill and the limit that was hit", () => {
+    expect(podTermination(oomStatus("state"), "sandbox")).toEqual({
+      reason: "OOMKilled",
+      oomKilled: true,
+      exitCode: 137,
+      memoryLimit: "4Gi",
+    });
+  });
+
+  it("finds the same kill after the kubelet restarted the container in place", () => {
+    expect(podTermination(oomStatus("lastState"), "sandbox")?.oomKilled).toBe(
+      true,
+    );
+  });
+
+  it("reports a non-OOM termination without claiming it was one", () => {
+    const t = podTermination(
+      {
+        status: {
+          containerStatuses: [
+            { name: "sandbox", state: { terminated: { reason: "Error" } } },
+          ],
+        },
+      },
+      "sandbox",
+    );
+    expect(t).toEqual({ reason: "Error", oomKilled: false });
+  });
+
+  it("ignores a sibling container's kill — the sidecar is not the sandbox", () => {
+    expect(
+      podTermination(
+        {
+          status: {
+            containerStatuses: [
+              {
+                name: "orgfs-sidecar",
+                state: { terminated: { reason: "OOMKilled" } },
+              },
+            ],
+          },
+        },
+        "sandbox",
+      ),
+    ).toBeNull();
+  });
+
+  it("a running container has nothing to report", () => {
+    expect(
+      podTermination(
+        { status: { containerStatuses: [{ name: "sandbox", state: {} }] } },
+        "sandbox",
+      ),
+    ).toBeNull();
+    expect(podTermination({}, "sandbox")).toBeNull();
   });
 });

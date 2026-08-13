@@ -25,6 +25,7 @@ import {
   type KubeConfig,
   type V1Status as V1StatusUpstream,
 } from "@kubernetes/client-node";
+import type { PodTermination } from "../types";
 import {
   K8S_CONSTANTS,
   SandboxAlreadyExistsError,
@@ -609,6 +610,91 @@ export async function isPodUnbound(
   } catch {
     return false;
   }
+}
+
+/**
+ * How the main container of this handle's pod last stopped, per the kubelet.
+ *
+ * The only source for an OOM kill: the cgroup limit is enforced by the kernel,
+ * the process is SIGKILLed, and the daemon gets no chance to report anything —
+ * from Studio's side the stream simply breaks. Without this, "the sandbox
+ * stopped answering" is all anyone (user, agent, on-call) ever learns.
+ *
+ * Read by label, not pod name, because a warm-pool pod keeps its generated
+ * name after binding. `state.terminated` while the container is still down,
+ * `lastState.terminated` once the kubelet restarted it in place — same kill.
+ *
+ * Best-effort by construction: the operator deletes the pod shortly after the
+ * kill, so null means "no longer knowable", never "not an OOM".
+ */
+export async function readPodTermination(
+  kc: KubeConfig,
+  namespace: string,
+  handleLabelKey: string,
+  handle: string,
+  containerName: string,
+): Promise<PodTermination | null> {
+  try {
+    const resp = await kubeFetch(kc, {
+      method: "GET",
+      path:
+        `/api/v1/namespaces/${encodeURIComponent(namespace)}/pods` +
+        `?labelSelector=${encodeURIComponent(`${handleLabelKey}=${handle}`)}`,
+    });
+    if (!resp.ok) return null;
+    const body = (await resp.json()) as { items?: PodTerminationSource[] };
+    for (const pod of body.items ?? []) {
+      const termination = podTermination(pod, containerName);
+      if (termination) return termination;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+interface TerminatedState {
+  reason?: string;
+  exitCode?: number;
+}
+
+interface PodTerminationSource {
+  spec?: {
+    containers?: Array<{
+      name?: string;
+      resources?: { limits?: { memory?: string } };
+    }>;
+  };
+  status?: {
+    containerStatuses?: Array<{
+      name?: string;
+      state?: { terminated?: TerminatedState };
+      lastState?: { terminated?: TerminatedState };
+    }>;
+  };
+}
+
+/** Exported for the unit test; the wire read above is the only caller. */
+export function podTermination(
+  pod: PodTerminationSource,
+  containerName: string,
+): PodTermination | null {
+  const status = (pod.status?.containerStatuses ?? []).find(
+    (c) => c.name === containerName,
+  );
+  const terminated = status?.state?.terminated ?? status?.lastState?.terminated;
+  if (!terminated?.reason) return null;
+  const memoryLimit = (pod.spec?.containers ?? []).find(
+    (c) => c.name === containerName,
+  )?.resources?.limits?.memory;
+  return {
+    reason: terminated.reason,
+    oomKilled: terminated.reason === "OOMKilled",
+    ...(terminated.exitCode === undefined
+      ? {}
+      : { exitCode: terminated.exitCode }),
+    ...(memoryLimit === undefined ? {} : { memoryLimit }),
+  };
 }
 
 // ---- HTTPRoute (Gateway API) ------------------------------------------------
