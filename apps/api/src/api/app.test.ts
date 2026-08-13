@@ -26,6 +26,12 @@ describe("isSsoExemptPath", () => {
     expect(isSsoExemptPath("/api/_admin/orgs")).toBe(true);
   });
 
+  test("exempts the canonical org-scoped sso mount", () => {
+    expect(isSsoExemptPath("/api/acme-corp/sso/authorize")).toBe(true);
+    expect(isSsoExemptPath("/api/acme-corp/sso/callback")).toBe(true);
+    expect(isSsoExemptPath("/api/acme-corp/sso/status")).toBe(true);
+  });
+
   test("does not exempt other org-scoped routes", () => {
     expect(isSsoExemptPath("/api/acme-corp/connections")).toBe(false);
     expect(isSsoExemptPath("/api/acme-corp/mcp/conn_123")).toBe(false);

@@ -310,6 +310,8 @@ function buildDecoOAuthParams(projectLocator: string | null): URLSearchParams {
 export function isSsoExemptPath(path: string): boolean {
   return (
     path.startsWith("/api/org-sso/") ||
+    // Canonical org-scoped mount — the auth/callback endpoints themselves.
+    /^\/api\/[^/]+\/sso\//.test(path) ||
     path.startsWith("/api/auth/") ||
     path.startsWith("/api/tools/management") ||
     path.startsWith("/oauth-proxy/") ||
