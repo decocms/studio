@@ -47,6 +47,7 @@ export const taskBoard = {
   "taskBoard.taskBoard.dueDateButton": "Due date",
   "taskBoard.taskBoard.addTagButton": "Add tag",
   "taskBoard.taskBoard.deleteSelectedButton": "Delete",
+  "taskBoard.taskBoard.actionError": "Couldn't do that. Please try again.",
   "taskBoard.taskBoard.deleteError":
     "Couldn't delete the task. Please try again.",
   "taskBoard.taskBoard.deleteBulkError":

@@ -143,6 +143,7 @@ import { useThreadActions } from "@/components/chat/store/hooks";
 import { writeChatDraft } from "@/lib/chat-draft";
 import { createMentionDoc } from "@/components/chat/tiptap/mention";
 import type { TiptapDoc } from "@/components/chat/types";
+import { toast } from "sonner";
 
 // Warm the chat chunk so opening a task's activity doesn't cold-load it (flash).
 void import("../agent-shell-layout/index.tsx").catch(() => {});
@@ -364,9 +365,17 @@ export function TaskBoardPage() {
   // `actions.update`, so a single per-call `onError` here covers both.
   const [subscriptionPaywall, setSubscriptionPaywall] =
     useState<ReturnType<typeof subscriptionErrorKind>>(null);
+  // Anything that is not the paywall gets a toast: these tools refuse with a
+  // sentence written for the user (a re-run whose merge is still retrying, a
+  // card not assigned to the Super Agent), and dropping it made the button look
+  // broken — the click did nothing and the reason only reached the Network tab.
   const onDelegateError = (err: Error) => {
     const kind = subscriptionErrorKind(err);
-    if (kind) setSubscriptionPaywall(kind);
+    if (kind) {
+      setSubscriptionPaywall(kind);
+      return;
+    }
+    toast.error(err.message || t("taskBoard.taskBoard.actionError"));
   };
   // The task awaiting a re-run confirmation, or null. A re-run supersedes the
   // task's live run, so it is confirmed rather than fired on click.
