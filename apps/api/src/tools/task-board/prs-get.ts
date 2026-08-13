@@ -394,6 +394,35 @@ export function extractPreviewUrlFromComments(raw: unknown): string | null {
   return null;
 }
 
+/** Pull the preview URL out of a `GET_PREVIEW_DEPLOYMENT` result — the newest
+ *  successful GitHub Deployment status's `environmentUrl`, gated through the
+ *  same trusted-host check as the other two sources. Some hosts (VTEX FastStore
+ *  WebOps) publish the preview ONLY as a deployment — not a status `target_url`
+ *  and not a bot comment — so this is the third and last source tried. `null`
+ *  when the commit has no deployment with a published url yet (an in-flight
+ *  deploy) or the url isn't a trusted host. Exported for the pure-logic unit
+ *  test. */
+export function extractPreviewUrlFromDeployment(
+  obj: Record<string, unknown> | null,
+): string | null {
+  const url =
+    obj && typeof obj.environmentUrl === "string" ? obj.environmentUrl : null;
+  return url && isTrustedPreviewHost(url) ? url : null;
+}
+
+/** The PR head commit sha from a combined-status response (`get_status`
+ *  returns the head commit's status, which carries its `sha`). The
+ *  deployment-preview lookup keys on it. `null` when absent or not a 7–40 char
+ *  hex string, which also keeps a malformed value from reaching the GitHub
+ *  query. Exported for the pure-logic unit test. */
+export function headShaFromStatus(
+  statusObj: Record<string, unknown> | null,
+): string | null {
+  const sha =
+    statusObj && typeof statusObj.sha === "string" ? statusObj.sha : null;
+  return sha && /^[0-9a-fA-F]{7,40}$/.test(sha) ? sha : null;
+}
+
 /** Map a GitHub combined-status `state` to our three-value checks summary.
  *  A response with no statuses (`total_count === 0`) reads as "no checks",
  *  not "pending" — a PR without CI shouldn't look stuck. Exported for the
@@ -691,8 +720,24 @@ async function fetchPrStatusExtras(
     toCheckRunsStatus(runsRaw),
   );
   // Preview: a status `target_url` (rare) else the deploy bot's PR comment.
-  const previewUrl =
+  let previewUrl =
     extractPreviewUrl(statusObj) ?? extractPreviewUrlFromComments(commentsRaw);
+  if (!previewUrl) {
+    // Last resort: a GitHub Deployment env url (VTEX FastStore posts it only there), scanned only when the cheap sources missed and the head sha is known.
+    const headSha = headShaFromStatus(statusObj);
+    if (headSha) {
+      previewUrl = extractPreviewUrlFromDeployment(
+        await cachedPrRead(
+          client,
+          connectionId,
+          "GET_PREVIEW_DEPLOYMENT",
+          { owner: pr.repoOwner, repo: pr.repoName, sha: headSha },
+          `${prLabel(pr)} (deployment preview)`,
+          pending,
+        ),
+      );
+    }
+  }
   // Per-check list for the footer; pull the output markdown only for failing
   // runs (bounded, in parallel).
   const checks = await Promise.all(
