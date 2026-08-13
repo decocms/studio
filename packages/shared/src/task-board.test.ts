@@ -4,6 +4,7 @@ import {
   enabledReviewerKinds,
   isReviewerThreadTitle,
   MAX_REVIEW_BOUNCES,
+  outstandingReviewFeedback,
   reviewBounceLimitReached,
   reviewCycleStart,
   reviewCycleVerdicts,
@@ -306,5 +307,74 @@ describe("reviewBounceLimitReached", () => {
         bounce("2026-01-01T01:00:00.000Z"),
       ]),
     ).toBe(false);
+  });
+});
+
+describe("outstandingReviewFeedback", () => {
+  const changes = (
+    occurredAt: string,
+    notes: unknown = "fix the landmark",
+  ) => ({
+    action: "review_changes_requested",
+    data: { reviewer: "qa", notes },
+    occurredAt,
+  });
+  const approved = (occurredAt: string) => ({
+    action: "review_approved",
+    data: { reviewer: "code_review", notes: "looks good" },
+    occurredAt,
+  });
+
+  it("returns the notes when the latest verdict asked for changes", () => {
+    expect(
+      outstandingReviewFeedback([
+        approved("2026-01-01T00:00:00.000Z"),
+        changes("2026-01-01T01:00:00.000Z"),
+      ]),
+    ).toBe("fix the landmark");
+  });
+
+  it("returns null when the latest verdict is an approval", () => {
+    expect(
+      outstandingReviewFeedback([
+        changes("2026-01-01T01:00:00.000Z"),
+        approved("2026-01-01T02:00:00.000Z"),
+      ]),
+    ).toBeNull();
+  });
+
+  it("is ordered by time, not array position", () => {
+    expect(
+      outstandingReviewFeedback([
+        changes("2026-01-01T03:00:00.000Z", "the newest ask"),
+        approved("2026-01-01T02:00:00.000Z"),
+        changes("2026-01-01T01:00:00.000Z", "an older ask"),
+      ]),
+    ).toBe("the newest ask");
+  });
+
+  it("carries the latest ask across review cycles, unlike the cycle helpers", () => {
+    expect(
+      outstandingReviewFeedback([
+        changes("2026-01-01T01:00:00.000Z"),
+        {
+          action: "status_changed",
+          data: { to: "in_review" },
+          occurredAt: "2026-01-01T02:00:00.000Z",
+        },
+      ]),
+    ).toBe("fix the landmark");
+  });
+
+  it("returns null with no verdicts, or with non-string notes", () => {
+    expect(outstandingReviewFeedback([])).toBeNull();
+    expect(
+      outstandingReviewFeedback([
+        { action: "created", occurredAt: "2026-01-01T00:00:00.000Z" },
+      ]),
+    ).toBeNull();
+    expect(
+      outstandingReviewFeedback([changes("2026-01-01T01:00:00.000Z", null)]),
+    ).toBeNull();
   });
 });

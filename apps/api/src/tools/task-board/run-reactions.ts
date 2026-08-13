@@ -19,7 +19,7 @@
  * Each transition also pushes the updated item over SSE for a real-time board.
  */
 
-import { releaseTaskExecution } from "@/billing/task-quota";
+import { releaseTaskExecution, TaskQuotaError } from "@/billing/task-quota";
 import { captureOrgEvent } from "@/posthog";
 import type { OrganizationBillingStorage } from "@/storage/organization-billing";
 import { TERMINAL_THREAD_STATUSES } from "@/storage/task-board";
@@ -467,6 +467,41 @@ export async function handTaskToHuman(
     console.error(`[task-board] handing ${item.id} to a human failed`, err);
     return false;
   }
+}
+
+/**
+ * The per-task run cap (`maxRunsPerTask`) refused an AUTOMATIC re-dispatch, so
+ * nothing will run on this task again on its own. Hand it to a human saying so.
+ *
+ * Without this the refusal is invisible: `runs_exhausted` throws out of
+ * `enqueueSuperAgentForTask` into a log line, and the state machine keeps
+ * cycling on a PR that never gains a commit. Four prod cards sat like that —
+ * reviewers re-reviewed an untouched PR five times over ninety minutes and the
+ * board's only explanation was "the reviewer and the Super Agent are not
+ * converging". They HAD converged; the agent was never dispatched.
+ *
+ * Narrow to `runs_exhausted` on purpose. The other quota reasons are org-wide
+ * paywalls that existing callers deliberately surface to the user; only the
+ * per-task cap is a dead end that a card can neither report nor escape (a human
+ * Re-run is exempt from it, which is exactly the action this hand-off asks for).
+ *
+ * Returns true when it handled `err` — the caller must then stop treating the
+ * dispatch as pending. False for any other error, which the caller still owns.
+ */
+export async function parkOnRunsExhausted(
+  ctx: StudioContext,
+  item: TaskBoardItem,
+  err: unknown,
+): Promise<boolean> {
+  if (!(err instanceof TaskQuotaError)) return false;
+  if (err.reason !== "runs_exhausted") return false;
+  await handTaskToHuman(
+    ctx,
+    item,
+    "per-task run limit reached — the Super Agent can no longer re-dispatch " +
+      "itself on this task. Re-run it manually to continue.",
+  );
+  return true;
 }
 
 /**
