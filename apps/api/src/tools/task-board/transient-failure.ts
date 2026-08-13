@@ -113,5 +113,7 @@ export function isTransientRunFailure(failure: {
   // and it matched none of the patterns, so every one of them got the
   // unknown-error budget of a single attempt.
   if (text.includes(SANDBOX_UNREACHABLE_PREFIX)) return true;
-  return TRANSIENT_ERROR_PATTERNS.some((re) => re.test(text));
+  // A `429`/`503` inside a URL path (`…/pulls/429/files`) is a PR number, not a status.
+  const withoutUrls = text.replace(/https?:\/\/\S+/gi, " ");
+  return TRANSIENT_ERROR_PATTERNS.some((re) => re.test(withoutUrls));
 }
