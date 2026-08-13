@@ -43,6 +43,18 @@ export const thread = {
   "thread.checksTab.rerun": "Re-run",
   "thread.checksTab.success": "Success",
   "thread.checksTab.viewRun": "View run",
+  "thread.cmsActions.checksFailing":
+    "{failed} of {total} checks are not passing",
+  "thread.cmsActions.checksRunning": "Running checks {done} of {total} done",
+  "thread.cmsActions.getLatest": "Get latest",
+  "thread.cmsActions.getLatestTooltip": "Bring in new changes from production",
+  "thread.cmsActions.moreActionsAriaLabel": "More actions",
+  "thread.cmsActions.publishing": "Publishing…",
+  "thread.cmsActions.requestApproval": "Request approval",
+  "thread.cmsActions.resolveOnGithub": "Resolve on GitHub",
+  "thread.cmsActions.reviewAndPublish": "Review & Publish",
+  "thread.cmsActions.viewOnGithub": "View on GitHub",
+  "thread.cmsActions.waitingForApproval": "Waiting for approval",
   "thread.gitTab.by": "by @{author}",
   "thread.gitTab.closed": "✗ Closed",
   "thread.gitTab.couldNotLoadPrState":

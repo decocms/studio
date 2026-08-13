@@ -72,14 +72,16 @@ const FAILED_CONCLUSIONS = new Set<FailedConclusion>([
   "action_required",
 ]);
 
-function isCheckFailed(c: CheckRun): boolean {
+/** Shared with the Fast Preview state machine (`cms-panel-state.ts`). */
+export function isCheckFailed(c: CheckRun): boolean {
   return (
     c.status === "completed" &&
     FAILED_CONCLUSIONS.has(c.conclusion as FailedConclusion)
   );
 }
 
-function isCheckInProgress(c: CheckRun): boolean {
+/** Shared with the Fast Preview state machine (`cms-panel-state.ts`). */
+export function isCheckInProgress(c: CheckRun): boolean {
   return c.status === "queued" || c.status === "in_progress";
 }
 

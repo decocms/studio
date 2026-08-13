@@ -1,0 +1,298 @@
+/**
+ * Header button state machine for **Fast Preview** (CMS) mode.
+ *
+ * Fast Preview is the sandbox-less, content-only editing surface: there is no
+ * working tree (`workingTreeDirty` is always false and `unpushed` always 0 —
+ * edits are committed as they are made), no coding agent, and no chat. That
+ * removes every "commit / push / fix tests / address feedback" branch of
+ * {@link ./panel-state.ts selectHeaderButton} and leaves seven states driven
+ * only by `aheadOfBase`, `behindBase`, the pull request, and its check runs.
+ *
+ * The vocabulary is the editor's, not git's: "Review & Publish" instead of
+ * "Submit for review", "Get latest" instead of "Sync with main".
+ */
+
+import type { BranchMeta } from "@decocms/sandbox/shared";
+import type { TFunction } from "@/i18n/use-t.ts";
+import { isCheckFailed, isCheckInProgress } from "./panel-state.ts";
+import type { CheckRun, PrSummary } from "./use-pr-data.ts";
+import type { PrReviewSignals } from "./use-pr-reviews.ts";
+
+/**
+ * What a click resolves to. The renderer maps these to mutations; the state
+ * machine never performs them.
+ *
+ * - `publish` — merge the PR (opening one first when there isn't one yet).
+ * - `request-approval` — open the PR so a reviewer can approve it.
+ * - `get-latest` — bring `base` into the working branch.
+ * - `open-pr` — open the PR on GitHub in a new tab.
+ */
+export type CmsAction =
+  | "publish"
+  | "request-approval"
+  | "get-latest"
+  | "open-pr";
+
+/** One entry of the split button's dropdown half. `key` is the React key. */
+export interface CmsMenuItem {
+  key: string;
+  label: string;
+  action: CmsAction;
+  tooltip?: string;
+}
+
+/**
+ * Descriptor returned by {@link selectCmsHeaderButton}.
+ *
+ * An absent `action` means the primary half is an inert status pill. `loading`
+ * puts a spinner in the primary half and reads as "wait"; `pulse` animates the
+ * whole control and reads as "something is happening, but you may still act" —
+ * the two are deliberately never both set. `disabled` and a non-empty `menu`
+ * can coexist: "Up to date" has nothing to publish yet still offers
+ * "Get latest" when the branch is behind.
+ */
+export interface CmsHeaderButton {
+  label: string;
+  /** Absent = inert status pill. */
+  action?: CmsAction;
+  variant: "brand" | "warning" | "outline" | "default";
+  disabled?: boolean;
+  /** Spinner in the primary half. */
+  loading?: boolean;
+  /** Whole control pulses. */
+  pulse?: boolean;
+  tooltip?: string;
+  menu: CmsMenuItem[];
+}
+
+export interface SelectCmsHeaderButtonInput {
+  branch: BranchMeta;
+  pr: PrSummary | null;
+  checks: CheckRun[];
+  reviews: PrReviewSignals | null;
+  /** A publish is in flight — optimistic, set at click time. */
+  publishing: boolean;
+  /** Branch/PR/check data is still being fetched. */
+  loading: boolean;
+  t: TFunction;
+}
+
+function viewOnGithubItem(t: TFunction): CmsMenuItem {
+  return {
+    key: "view-on-github",
+    label: t("thread.cmsActions.viewOnGithub"),
+    action: "open-pr",
+  };
+}
+
+/**
+ * Appends "Get latest" to `menu` when the branch has commits on `base` it
+ * hasn't taken in yet. Applied to every state whose primary action isn't
+ * already `get-latest`, including the disabled "Up to date" pill.
+ */
+function withGetLatest(
+  menu: CmsMenuItem[],
+  branch: BranchMeta,
+  t: TFunction,
+): CmsMenuItem[] {
+  if (branch.kind !== "ready" || branch.behindBase <= 0) return menu;
+  return [
+    ...menu,
+    {
+      key: "get-latest",
+      label: t("thread.cmsActions.getLatest"),
+      action: "get-latest",
+      tooltip: t("thread.cmsActions.getLatestTooltip"),
+    },
+  ];
+}
+
+/**
+ * Folds check-run status into a button descriptor. Only meaningful for the two
+ * open-PR states — checks exist only once a PR does.
+ *
+ * Running beats failing: while anything is still queued the failure set isn't
+ * final. A failure never disables the button; publishing with red checks is a
+ * judgement call the editor is allowed to make, so it only recolours to
+ * `warning` and explains itself in the tooltip.
+ *
+ * `runningTreatment` splits the two states: "Waiting for approval" is a
+ * genuine wait, so it takes a spinner; "Ready to publish" stays actionable, so
+ * it pulses instead — a spinner there would wrongly imply the editor should
+ * hold off.
+ */
+function applyCheckTreatment(
+  button: CmsHeaderButton,
+  checks: CheckRun[],
+  runningTreatment: "loading" | "pulse",
+  t: TFunction,
+): CmsHeaderButton {
+  const total = checks.length;
+  if (total === 0) return button;
+
+  const running = checks.filter(isCheckInProgress).length;
+  if (running > 0) {
+    const done = checks.filter((c) => c.status === "completed").length;
+    const tooltip = t("thread.cmsActions.checksRunning", { done, total });
+    return runningTreatment === "loading"
+      ? { ...button, loading: true, tooltip }
+      : { ...button, pulse: true, tooltip };
+  }
+
+  const failed = checks.filter(isCheckFailed).length;
+  if (failed > 0) {
+    return {
+      ...button,
+      variant: "warning",
+      tooltip: t("thread.cmsActions.checksFailing", { failed, total }),
+    };
+  }
+
+  return button;
+}
+
+/**
+ * Whether the branch sits exactly on a PR that has already been merged.
+ *
+ * A squash-merge leaves the branch's own commits on origin with their original
+ * SHAs, so `aheadOfBase` stays positive after a successful publish. Publishing
+ * moves the editor to a fresh branch, but when that hasn't happened the branch
+ * is level with its merged PR — and offering to publish again would open a
+ * second pull request for content that is already live.
+ */
+function isLevelWithMergedPr(
+  pr: PrSummary | null,
+  branch: BranchMeta,
+): boolean {
+  return Boolean(
+    pr?.merged &&
+      pr.headSha &&
+      branch.kind === "ready" &&
+      branch.headSha === pr.headSha,
+  );
+}
+
+/**
+ * Picks the Fast Preview header button. First match wins, in the order below:
+ *
+ * 1. Loading — data in flight, or branch metadata not yet known.
+ * 2. Publishing — a publish is in flight.
+ * 3. Needs attention — open PR conflicting with base.
+ * 4. Waiting for approval — open PR blocked on review, or still a draft.
+ * 5. Ready to publish — open PR, every other mergeable state.
+ * 6. Draft — committed edits with no PR to carry them.
+ * 7. Up to date — nothing to publish.
+ */
+export function selectCmsHeaderButton(
+  input: SelectCmsHeaderButtonInput,
+): CmsHeaderButton {
+  const { branch, pr, checks, reviews, publishing, loading, t } = input;
+
+  // Fetching and "branch metadata not here yet" are one state to the editor.
+  if (loading || branch.kind !== "ready") {
+    return {
+      label: t("thread.headerActions.loading"),
+      variant: "outline",
+      disabled: true,
+      loading: true,
+      menu: [],
+    };
+  }
+
+  if (publishing) {
+    return {
+      label: t("thread.cmsActions.publishing"),
+      variant: "outline",
+      disabled: true,
+      loading: true,
+      menu: [],
+    };
+  }
+
+  const openPr = pr && pr.state === "open" && !pr.merged ? pr : null;
+
+  if (openPr) {
+    const mergeableState = reviews?.mergeableState ?? "unknown";
+
+    // Conflicts outrank CI, and "Get latest" is already the primary here.
+    if (mergeableState === "dirty") {
+      return {
+        label: t("thread.cmsActions.getLatest"),
+        action: "get-latest",
+        variant: "default",
+        tooltip: t("thread.cmsActions.getLatestTooltip"),
+        menu: [
+          {
+            key: "resolve-on-github",
+            label: t("thread.cmsActions.resolveOnGithub"),
+            action: "open-pr",
+          },
+        ],
+      };
+    }
+
+    // Blocked on a human; the primary opens the PR, the only place they act.
+    if (mergeableState === "blocked" || reviews?.draft) {
+      return applyCheckTreatment(
+        {
+          label: t("thread.cmsActions.waitingForApproval"),
+          action: "open-pr",
+          variant: "outline",
+          menu: withGetLatest([viewOnGithubItem(t)], branch, t),
+        },
+        checks,
+        "loading",
+        t,
+      );
+    }
+
+    // clean / unstable / behind / unknown — all publishable.
+    return applyCheckTreatment(
+      {
+        label: t("thread.cmsActions.reviewAndPublish"),
+        action: "publish",
+        variant: "brand",
+        menu: withGetLatest([viewOnGithubItem(t)], branch, t),
+      },
+      checks,
+      "pulse",
+      t,
+    );
+  }
+
+  if (isLevelWithMergedPr(pr, branch)) {
+    return {
+      label: t("thread.headerActions.upToDate"),
+      variant: "outline",
+      disabled: true,
+      menu: withGetLatest([], branch, t),
+    };
+  }
+
+  if (branch.aheadOfBase > 0) {
+    return {
+      label: t("thread.cmsActions.reviewAndPublish"),
+      action: "publish",
+      variant: "brand",
+      menu: withGetLatest(
+        [
+          {
+            key: "request-approval",
+            label: t("thread.cmsActions.requestApproval"),
+            action: "request-approval",
+          },
+        ],
+        branch,
+        t,
+      ),
+    };
+  }
+
+  // Disabled primary, live menu: nothing to publish but base may have moved.
+  return {
+    label: t("thread.headerActions.upToDate"),
+    variant: "outline",
+    disabled: true,
+    menu: withGetLatest([], branch, t),
+  };
+}
