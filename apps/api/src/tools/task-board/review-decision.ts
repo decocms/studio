@@ -4,8 +4,11 @@ import { requireAuth } from "@/core/studio-context";
 import {
   MAX_REVIEW_BOUNCES,
   REVIEWER_LABEL,
+  type ReviewCycleActivity,
   reviewBounceLimitReached,
   reviewCycleStart,
+  reviewCycleVerdicts,
+  type ReviewerKind,
 } from "@decocms/shared/task-board";
 import { TaskBoardItemStatusSchema } from "./schema";
 import { recordTaskActivity } from "./activity";
@@ -42,6 +45,33 @@ export function reviewTokenVerified(
     claim.reviewer === reviewer &&
     claim.cycleAt.getTime() === currentCycleAt
   );
+}
+
+/**
+ * True when this reviewer already requested changes in the current review
+ * cycle — the call is a repeat, not a second verdict. Pure — unit-tested.
+ *
+ * Reviewer runs do call twice: an agent that gets a tool result it doesn't
+ * recognise as terminal calls again, and one QA run landed the same notes twice
+ * ten seconds apart on six cards in one night. The first call already bounced
+ * the card, so the repeat is *usually* absorbed by `claimReviewChangesBounce`
+ * (the card has left In Review and the claim returns null) — but only usually:
+ * if the re-run finished in between, the card is back In Review and the stale
+ * repeat bounces it a second time, spending a run and a bounce on a verdict
+ * already answered. It also charged the bounce budget a cycle early, which is
+ * how four of these cards were handed over one round sooner than the cap says.
+ *
+ * Scoped to the CYCLE, so a genuine second opinion after the Super Agent pushes
+ * a fix is a fresh verdict, not a duplicate. Only `request_changes`: it is the
+ * decision with a side effect, and a repeated approval is inert — while
+ * dropping one could discard the verified retry of an approval whose first call
+ * lost its token.
+ */
+export function isDuplicateChangeRequest(
+  history: ReviewCycleActivity[],
+  reviewer: ReviewerKind,
+): boolean {
+  return reviewCycleVerdicts(history).get(reviewer) === "changes_requested";
 }
 
 export const TASK_BOARD_REVIEW_DECISION = defineTool({
@@ -168,6 +198,9 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
         taskBoardItemId,
         organizationId,
       );
+      if (isDuplicateChangeRequest(history, reviewer)) {
+        return { status: item.status, merged: false };
+      }
       if (reviewBounceLimitReached(history)) {
         await recordTaskActivity(ctx, {
           taskBoardItemId,
