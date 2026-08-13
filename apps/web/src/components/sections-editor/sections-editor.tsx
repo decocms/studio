@@ -2673,7 +2673,10 @@ export function SectionsEditor({
 
       {/* Drill-down: SEO form, section form, or section list */}
       {editingSeo ? (
-        <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
+        <ScrollArea
+          key="editor-seo"
+          className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block"
+        >
           <div className="min-w-0 max-w-full overflow-x-hidden px-6 py-4">
             <div className="mx-auto max-w-2xl">
               {pageData && activePageKey ? (
@@ -2702,6 +2705,7 @@ export function SectionsEditor({
         </ScrollArea>
       ) : isEditing ? (
         <ScrollArea
+          key="editor-section-form"
           viewportRef={fieldScrollRef}
           className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block"
         >
@@ -2780,6 +2784,7 @@ export function SectionsEditor({
         </ScrollArea>
       ) : isGlobalBlockMode ? (
         <ScrollArea
+          key="editor-global-block"
           viewportRef={fieldScrollRef}
           className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block"
         >
@@ -2802,7 +2807,10 @@ export function SectionsEditor({
           />
         </ScrollArea>
       ) : (
-        <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
+        <ScrollArea
+          key="editor-section-list"
+          className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block"
+        >
           {/* Variant selector (when page sections are multivariate) */}
           {hasMultipleVariants && activePageKey && (
             <PageVariantTabs
