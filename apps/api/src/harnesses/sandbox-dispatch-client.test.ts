@@ -140,6 +140,23 @@ describe("ndjsonLines", () => {
     expect(thrown).toBeInstanceOf(SandboxUnreachableError);
   });
 
+  test("a chunk boundary mid multi-byte character does not lose the rest of the line", async () => {
+    // "日" is 3 UTF-8 bytes (E6 97 A5); split the read right after the first.
+    const text = '{"chunks":[],"note":"日本語"}\n';
+    const bytes = new TextEncoder().encode(text);
+    const cut = bytes.indexOf(0xe6) + 1;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(bytes.slice(0, cut));
+        controller.enqueue(bytes.slice(cut));
+        controller.close();
+      },
+    });
+    const seen: unknown[] = [];
+    for await (const line of ndjsonLines(body)) seen.push(line);
+    expect(seen).toEqual([{ chunks: [], note: "日本語" }]);
+  });
+
   test("a non-transport read failure stays terminal", async () => {
     const body = new ReadableStream<Uint8Array>({
       pull(controller) {

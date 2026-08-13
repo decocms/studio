@@ -867,6 +867,8 @@ export async function* ndjsonLines(
       buffer += decoder.decode(step.value, { stream: true });
       yield* drain(true);
     }
+    // Flush a multi-byte character `{ stream: true }` held back mid-sequence.
+    buffer += decoder.decode();
     yield* drain(false);
   } finally {
     // Close the socket on every exit path — a thrown silence timeout otherwise
