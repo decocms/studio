@@ -8,5 +8,5 @@
   "harnesses/decopilot/background-tool-workflow.ts": "9febb699f45b63b418481ed998aee0ec8251c97cb5c409d54d714eb365a08fd0",
   "monitoring/dbos-retention-workflow.ts": "757e9999af900d9395c6629d4966b84c723512d0a5a8e488f70b7ba634752bd8",
   "tools/task-board/dbos-archive-sweep.ts": "fe2db3802dd291f4d9ad5369a21c28854403bd2756518d9b48c1fcda4f100000",
-  "tools/task-board/dbos-github-read.ts": "bc498f9d45d1470e08efb1992434d07148e1bd444d2c19fc2bfcb2d2d096aa49"
+  "tools/task-board/dbos-github-read.ts": "af41b496ceb924823fa99930fcf2da092bc85dcec5512a0133a541bd5d8a5a6d"
 }
