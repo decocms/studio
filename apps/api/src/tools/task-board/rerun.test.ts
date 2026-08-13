@@ -9,7 +9,11 @@
  * wedged card stays wedged; too broad and it discards a real terminal state.
  */
 import { describe, expect, test } from "bun:test";
-import { mergeDeadlocked, threadsToSupersede } from "./rerun";
+import {
+  mergeDeadlocked,
+  mergeRetryExpired,
+  threadsToSupersede,
+} from "./rerun";
 
 const thread = (threadId: string, status: string | null) => ({
   threadId,
@@ -100,5 +104,61 @@ describe("mergeDeadlocked", () => {
   test("is false for a card that never conflicted at all", () => {
     expect(mergeDeadlocked(false, [])).toBe(false);
     expect(mergeDeadlocked(true, [])).toBe(false);
+  });
+});
+
+/**
+ * The bound on the same refusal, for every way a merge stays stuck that
+ * `mergeDeadlocked` cannot see (a failing required check, branch protection, a
+ * base branch that moved). Those still hit the refusal in prod after the
+ * conflict fix shipped: approved, unmergeable, and un-re-runnable.
+ */
+describe("mergeRetryExpired", () => {
+  const NOW = Date.parse("2026-08-13T18:00:00.000Z");
+  const ago = (ms: number) => new Date(NOW - ms).toISOString();
+  const MINUTE = 60 * 1000;
+  const inReview = (at: string) => ({
+    action: "status_changed",
+    data: { to: "in_review" },
+    occurredAt: at,
+  });
+  const approved = (at: string) => ({
+    action: "review_approved",
+    data: { reviewer: "qa", verified: true },
+    occurredAt: at,
+  });
+
+  test("protects a merge that is plausibly one sweep tick away", () => {
+    expect(
+      mergeRetryExpired(
+        [inReview(ago(12 * MINUTE)), approved(ago(MINUTE))],
+        NOW,
+      ),
+    ).toBe(false);
+  });
+
+  test("expires once the merge has had its sweep attempts and lost", () => {
+    expect(
+      mergeRetryExpired(
+        [inReview(ago(30 * MINUTE)), approved(ago(20 * MINUTE))],
+        NOW,
+      ),
+    ).toBe(true);
+  });
+
+  // An approval from a PREVIOUS cycle is not evidence this one is shipping.
+  test("ignores approvals recorded before the current review cycle", () => {
+    expect(
+      mergeRetryExpired(
+        [approved(ago(60 * MINUTE)), inReview(ago(MINUTE))],
+        NOW,
+      ),
+    ).toBe(true);
+  });
+
+  // No approval to read at all (activity unreadable) — the human is here and
+  // the machine has shown nothing, so the re-run wins.
+  test("expires when there is no approval to read", () => {
+    expect(mergeRetryExpired([], NOW)).toBe(true);
   });
 });

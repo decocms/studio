@@ -39,6 +39,7 @@ import {
 } from "@/core/studio-context";
 import {
   type ReviewCycleActivity,
+  reviewCycleStart,
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
 import { TERMINAL_THREAD_STATUSES } from "@/storage/task-board";
@@ -164,6 +165,7 @@ export function mergeDeadlocked(
 async function mergeIsDeadlocked(
   ctx: StudioContext,
   item: { id: string; organizationId: string },
+  activity: ReviewCycleActivity[],
 ): Promise<boolean> {
   const orgId = item.organizationId;
   const prs = await ctx.storage.taskBoard
@@ -172,11 +174,48 @@ async function mergeIsDeadlocked(
   const pr = await pickActivePr(ctx, orgId, prs).catch(() => undefined);
   if (!pr) return false;
   const conflict = await fetchPrConflict(ctx, orgId, pr).catch(() => null);
-  if (conflict !== true) return false;
-  const activity = await ctx.storage.taskBoard
-    .listActivity(item.id, orgId)
-    .catch(() => []);
   return mergeDeadlocked(conflict, activity);
+}
+
+/**
+ * How long an approved card may sit unmerged before a human's Re-run outranks
+ * the merge retry. Three item-sweep ticks (`DEFAULT_ITEM_SWEEP_INTERVAL_MS` is
+ * 5 minutes), so the merge has had its attempts and lost.
+ */
+const MERGE_RETRY_GRACE_MS = 15 * 60 * 1000;
+
+/**
+ * True when the approved merge has had long enough that "it is retrying" has
+ * stopped being an explanation.
+ *
+ * `mergeDeadlocked` enumerates ONE way the retry can never succeed — a spent
+ * conflict cap. The refusal still fires on every other one, and they are not
+ * enumerable from here: a failing required check, a branch-protection rule the
+ * App can't satisfy, a draft PR, a base branch that moved. Each of those makes
+ * the sweep re-attempt the same merge every 5 minutes forever, and the human
+ * pressing Re-run is the only thing that can break it — which is exactly the
+ * wedge this tool exists to clear.
+ *
+ * So the refusal is bounded rather than made smarter: it protects the merge
+ * that is genuinely one tick from shipping, and gets out of the way once the
+ * card has been approved-and-unmerged for `MERGE_RETRY_GRACE_MS`. No approval
+ * timestamp at all (unreadable activity) reads as expired for the same reason —
+ * the human is here and the machine has shown nothing.
+ *
+ * Pure, so the boundary is unit-tested.
+ */
+export function mergeRetryExpired(
+  activity: ReviewCycleActivity[],
+  nowMs: number,
+): boolean {
+  const cycleStart = reviewCycleStart(activity);
+  let latestApproval = 0;
+  for (const a of activity) {
+    if (a.action !== "review_approved") continue;
+    const at = new Date(a.occurredAt).getTime();
+    if (at >= cycleStart) latestApproval = Math.max(latestApproval, at);
+  }
+  return nowMs - latestApproval >= MERGE_RETRY_GRACE_MS;
 }
 
 /**
@@ -203,7 +242,10 @@ async function mergeIsDeadlocked(
  *
  * So the refusal now requires that an automatic path to a merge still exists.
  * An unknown mergeability (`null` — GitHub unreachable) keeps refusing: the
- * conservative answer is the one that protects a merge that might be real.
+ * conservative answer is the one that protects a merge that might be real —
+ * but only until `mergeRetryExpired`, which is what keeps the un-enumerable
+ * ways a merge stays stuck (failing checks, branch protection) from wedging the
+ * card the same way the conflict cap did.
  */
 export async function refuseIfMergePending(
   ctx: StudioContext,
@@ -220,7 +262,11 @@ export async function refuseIfMergePending(
     item.id,
   );
   if (!approved) return;
-  if (await mergeIsDeadlocked(ctx, item)) return;
+  const activity = await ctx.storage.taskBoard
+    .listActivity(item.id, item.organizationId)
+    .catch(() => []);
+  if (mergeRetryExpired(activity, Date.now())) return;
+  if (await mergeIsDeadlocked(ctx, item, activity)) return;
   throw new Error(
     "Every reviewer approved this task and its merge is retrying — re-running " +
       "would throw that away and start a new review cycle. Wait for the merge, " +

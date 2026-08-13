@@ -169,4 +169,20 @@ describe("refuseIfMergePending", () => {
       /merge is retrying/,
     );
   });
+
+  // The bound on that same conservatism. A merge blocked by anything the
+  // deadlock check can't see — a failing required check, branch protection —
+  // retries every sweep forever, and the card was un-re-runnable the whole
+  // time. Aged rows rather than a fake clock: the guard reads `now()`.
+  it("allows a re-run once the merge has been retrying past the grace window", async () => {
+    const item = await cardWithVerdicts([
+      { reviewer: "qa", verified: true },
+      { reviewer: "code_review", verified: true },
+    ]);
+    await sql`
+      UPDATE task_board_activity SET occurred_at = now() - interval '30 minutes'
+      WHERE task_board_item_id = ${item.id}
+    `.execute(database.db);
+    await expect(refuseIfMergePending(ctx, item)).resolves.toBeUndefined();
+  });
 });
