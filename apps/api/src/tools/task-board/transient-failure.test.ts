@@ -71,6 +71,24 @@ describe("isTransientRunFailure", () => {
     }
   });
 
+  // A PR number that happens to be 429/503 is not a rate-limit/capacity status.
+  test("a PR number inside a URL is not mistaken for a status code", () => {
+    expect(
+      isTransientRunFailure({
+        kind: "error",
+        errorText:
+          "Error fetching https://api.github.com/repos/o/r/pulls/429/files: 404 Not Found",
+      }),
+    ).toBe(false);
+    expect(
+      isTransientRunFailure({
+        kind: "error",
+        errorText:
+          "Error fetching https://api.github.com/repos/o/r/pulls/503/files: 404 Not Found",
+      }),
+    ).toBe(false);
+  });
+
   // The whole point of the split: retrying this would burn a run reproducing it.
   test("an error the agent produced is not retried", () => {
     expect(
