@@ -264,13 +264,8 @@ export function parseCommitSuggestionJson(
       message: body ? `${title}\n\n${body}` : title,
     };
   } catch {
-    const firstLine = cleaned.split("\n")[0]?.trim() ?? "";
-    if (!firstLine) return null;
-    return {
-      title: firstLine.slice(0, 120),
-      body: cleaned.slice(firstLine.length).trim(),
-      message: cleaned,
-    };
+    // Non-JSON output (e.g. a leaked scratchpad) must never reach a PR body.
+    return null;
   }
 }
 
