@@ -575,17 +575,25 @@ const PUSH_ENV_TIMEOUT_MS = 30_000;
  * ⚠️ SECURITY: `env` holds a model credential. Never log it, and never include
  * the request body in an error message.
  */
-async function pushSandboxEnv(
+export async function pushSandboxEnv(
   provider: SandboxProvider,
   handle: string,
   env: Record<string, string | null>,
 ): Promise<void> {
-  const res = await provider.proxyDaemonRequest(handle, "/_sandbox/config", {
-    method: "PUT",
-    headers: new Headers({ "content-type": "application/json" }),
-    body: JSON.stringify({ env }),
-    signal: AbortSignal.timeout(PUSH_ENV_TIMEOUT_MS),
-  });
+  let res: Response;
+  try {
+    res = await provider.proxyDaemonRequest(handle, "/_sandbox/config", {
+      method: "PUT",
+      headers: new Headers({ "content-type": "application/json" }),
+      body: JSON.stringify({ env }),
+      signal: AbortSignal.timeout(PUSH_ENV_TIMEOUT_MS),
+    });
+  } catch (err) {
+    // A wedged or dead daemon here is exactly what dispatchToDaemon's own fetch already retries on a replacement.
+    throw new SandboxUnreachableError(
+      `could not push the model env to the sandbox: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
   if (!res.ok) {
     // Hard failure, unlike the tool-catalog sync: without the credential the
     // harness cannot reach a model at all, so proceeding wastes a pod boot and

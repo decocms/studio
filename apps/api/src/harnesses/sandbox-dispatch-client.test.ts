@@ -9,6 +9,7 @@ import {
   isRunSuperseded,
   isUnreachableStatus,
   ndjsonLines,
+  pushSandboxEnv,
   RunSupersededError,
   SandboxUnreachableError,
 } from "./sandbox-dispatch-client";
@@ -170,6 +171,38 @@ describe("isUnreachableStatus", () => {
     for (const status of [400, 401, 403, 409]) {
       expect(isUnreachableStatus(status)).toBe(false);
     }
+  });
+});
+
+describe("pushSandboxEnv", () => {
+  const fakeProvider = (proxyDaemonRequest: () => Promise<Response>) =>
+    ({ proxyDaemonRequest }) as unknown as Parameters<typeof pushSandboxEnv>[0];
+
+  test("a wedged/dead daemon is retriable, not a hard failure", async () => {
+    const provider = fakeProvider(() => {
+      throw new Error("The operation was aborted due to timeout");
+    });
+    let thrown: unknown;
+    try {
+      await pushSandboxEnv(provider, "handle-1", { FOO: "bar" });
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(SandboxUnreachableError);
+  });
+
+  test("the daemon's own rejection of the config is a hard failure", async () => {
+    const provider = fakeProvider(
+      async () => new Response("bad env", { status: 400 }),
+    );
+    let thrown: unknown;
+    try {
+      await pushSandboxEnv(provider, "handle-1", { FOO: "bar" });
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).not.toBeInstanceOf(SandboxUnreachableError);
+    expect(thrown).toBeInstanceOf(Error);
   });
 });
 
