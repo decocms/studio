@@ -144,4 +144,20 @@ describe("refreshAccessToken", () => {
     expect(result.permanent).toBeUndefined();
     expect(result.accessToken).toBe("new");
   });
+
+  it("treats a 200 with no access_token as a transient failure, not success", async () => {
+    installFetch(
+      () =>
+        new Response(JSON.stringify({ token_type: "Bearer" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+
+    const result = await refreshAccessToken(baseToken);
+
+    expect(result.success).toBe(false);
+    expect(result.permanent).toBe(false);
+    expect(result.accessToken).toBeUndefined();
+  });
 });
