@@ -5,21 +5,40 @@
 //! parts that must stay identical: the 502 `Preview unreachable` refusals and
 //! the status/`Content-Type`/body mirror.
 
+use std::time::Duration;
+
 use axum::body::Body;
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 
 use crate::error::ApiError;
 
+/// Both call sites build a fresh `reqwest::Client` per request with no
+/// timeout of its own, so a dev server that accepted the connection and then
+/// hung (starting up, wedged, deadlocked) would otherwise stall the native
+/// API request indefinitely — there is no daemon-side watchdog for a
+/// straight-to-dev-port call. 10s is generous for a same-machine loopback
+/// hop.
+const DEV_SERVER_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// Sends `request` to the dev server and mirrors its response back: status,
 /// `Content-Type` (falling back to `default_content_type` when the dev server
 /// sent none — `None` omits the header instead), and the full body. A send or
-/// body-read failure is the family's uniform 502 `Preview unreachable`.
+/// body-read failure — including a timeout — is the family's uniform 502
+/// `Preview unreachable`.
 pub(super) async fn send_and_mirror(
     request: reqwest::RequestBuilder,
     default_content_type: Option<HeaderValue>,
 ) -> Response {
-    let Ok(response) = request.send().await else {
+    send_and_mirror_with_timeout(request, default_content_type, DEV_SERVER_TIMEOUT).await
+}
+
+async fn send_and_mirror_with_timeout(
+    request: reqwest::RequestBuilder,
+    default_content_type: Option<HeaderValue>,
+    timeout: Duration,
+) -> Response {
+    let Ok(response) = request.timeout(timeout).send().await else {
         return ApiError::new(StatusCode::BAD_GATEWAY, "Preview unreachable").into_response();
     };
     let status =
@@ -124,6 +143,32 @@ mod tests {
         let res = send_and_mirror(
             reqwest::Client::new().get(format!("http://127.0.0.1:{free_port}/x")),
             None,
+        )
+        .await;
+        assert_eq!(res.status(), StatusCode::BAD_GATEWAY);
+        let body = axum::body::to_bytes(res.into_body(), 1024).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["error"], "Preview unreachable");
+    }
+
+    /// A dev server that accepts the connection and then never answers (still
+    /// starting up, wedged) must not hang the native API request forever —
+    /// it gets the same uniform 502 as a dead port, once the timeout fires.
+    #[tokio::test]
+    async fn a_hung_dev_server_times_out_as_preview_unreachable() {
+        let app = axum::Router::new().route(
+            "/slow",
+            get(|| async {
+                tokio::time::sleep(Duration::from_secs(60)).await;
+                "too late"
+            }),
+        );
+        let port = spawn_upstream(app).await;
+
+        let res = send_and_mirror_with_timeout(
+            reqwest::Client::new().get(format!("http://127.0.0.1:{port}/slow")),
+            None,
+            Duration::from_millis(50),
         )
         .await;
         assert_eq!(res.status(), StatusCode::BAD_GATEWAY);
