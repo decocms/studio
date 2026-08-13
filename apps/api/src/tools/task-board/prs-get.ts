@@ -32,7 +32,9 @@ const PR_FETCH_TIMEOUT_MS = 8000;
  */
 export function isRateLimitError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
-  return /too many requests|rate limit|\b429\b/i.test(message);
+  // Scrub the request URL first: a `429` in `…/pulls/429/merge` is not a status.
+  const withoutUrls = message.replace(/https?:\/\/\S+/gi, " ");
+  return /too many requests|rate limit|\b429\b/i.test(withoutUrls);
 }
 
 /**
