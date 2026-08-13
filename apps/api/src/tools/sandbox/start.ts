@@ -685,7 +685,8 @@ async function provisionSandbox(
   // Decopilot agent, so also persist the record on the thread — the only place
   // the frontend reads previewUrl/handle from for these sandboxes. Applies to
   // EVERY provisioning path (load_repo, SANDBOX_START auto-start, fs tools).
-  const threadId = threadIdFromBranch(branch);
+  // ctx fallback: a `pinnedRef` run is keyed by a real git ref, not `thread:<id>`.
+  const threadId = threadIdFromBranch(branch) ?? ctx.metadata?.threadId;
   if (threadId) {
     await setThreadSandboxMapEntry(
       ctx,
