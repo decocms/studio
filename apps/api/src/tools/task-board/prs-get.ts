@@ -410,17 +410,33 @@ export function extractPreviewUrlFromDeployment(
   return url && isTrustedPreviewHost(url) ? url : null;
 }
 
-/** The PR head commit sha from a combined-status response (`get_status`
- *  returns the head commit's status, which carries its `sha`). The
- *  deployment-preview lookup keys on it. `null` when absent or not a 7–40 char
- *  hex string, which also keeps a malformed value from reaching the GitHub
- *  query. Exported for the pure-logic unit test. */
+/** A git commit sha, validated 7–40 hex — also what keeps a malformed value
+ *  from reaching the GitHub query the deployment lookup builds from it. */
+function asHeadSha(sha: unknown): string | null {
+  return typeof sha === "string" && /^[0-9a-fA-F]{7,40}$/.test(sha)
+    ? sha
+    : null;
+}
+
+/** The PR head commit sha from a `pull_request_read get` response's `head.sha`
+ *  — the documented, stable source (present regardless of CI), preferred over
+ *  {@link headShaFromStatus}. `null` when absent or not a hex sha. Exported for
+ *  the pure-logic unit test. */
+export function headShaFromPrGet(
+  obj: Record<string, unknown> | null,
+): string | null {
+  const head = obj?.head as { sha?: unknown } | undefined;
+  return asHeadSha(head?.sha);
+}
+
+/** The PR head commit sha from a combined-status response (`get_status` returns
+ *  the head commit's status, which carries its `sha`). A fallback for
+ *  {@link headShaFromPrGet} when the `get` read is the one that flaked. `null`
+ *  when absent or not a hex sha. Exported for the pure-logic unit test. */
 export function headShaFromStatus(
   statusObj: Record<string, unknown> | null,
 ): string | null {
-  const sha =
-    statusObj && typeof statusObj.sha === "string" ? statusObj.sha : null;
-  return sha && /^[0-9a-fA-F]{7,40}$/.test(sha) ? sha : null;
+  return asHeadSha(statusObj?.sha);
 }
 
 /** Map a GitHub combined-status `state` to our three-value checks summary.
@@ -687,6 +703,7 @@ async function fetchPrStatusExtras(
   connectionId: string,
   pr: TaskBoardItemPrRef,
   pending: Promise<void>[],
+  prGet: Promise<Record<string, unknown> | null>,
 ): Promise<{
   checksStatus: ChecksStatus;
   checks: PrCheck[];
@@ -722,9 +739,11 @@ async function fetchPrStatusExtras(
   // Preview: a status `target_url` (rare) else the deploy bot's PR comment.
   let previewUrl =
     extractPreviewUrl(statusObj) ?? extractPreviewUrlFromComments(commentsRaw);
+  // TODO(e2e): cover the miss-path gate + head-sha threading below (only the pure extractors are unit-tested).
   if (!previewUrl) {
-    // Last resort: a GitHub Deployment env url (VTEX FastStore posts it only there), scanned only when the cheap sources missed and the head sha is known.
-    const headSha = headShaFromStatus(statusObj);
+    // Last resort: a GitHub Deployment env url (VTEX FastStore posts it only there), scanned only on the miss path once the head sha is known.
+    const headSha =
+      headShaFromPrGet(await prGet) ?? headShaFromStatus(statusObj);
     if (headSha) {
       previewUrl = extractPreviewUrlFromDeployment(
         await cachedPrRead(
@@ -811,21 +830,23 @@ async function fetchPrLiveState(
     // An open PR (the common case in the review dialog) is fully populated in a
     // single round-trip window instead of ~5 serial hops; a merged/closed PR
     // wastes the extras, but that's rare here and best-effort.
+    // One `get`, shared: it populates the PR fields and feeds the deployment preview its head sha (stable, unlike the flakier `get_status`).
+    const prGet = cachedPrRead(
+      client,
+      conn.id,
+      "pull_request_read",
+      {
+        method: "get",
+        owner: pr.repoOwner,
+        repo: pr.repoName,
+        pullNumber: pr.number,
+      },
+      `${prLabel(pr)} (get)`,
+      pending,
+    );
     const [obj, extras] = await Promise.all([
-      cachedPrRead(
-        client,
-        conn.id,
-        "pull_request_read",
-        {
-          method: "get",
-          owner: pr.repoOwner,
-          repo: pr.repoName,
-          pullNumber: pr.number,
-        },
-        `${prLabel(pr)} (get)`,
-        pending,
-      ),
-      fetchPrStatusExtras(client, conn.id, pr, pending),
+      prGet,
+      fetchPrStatusExtras(client, conn.id, pr, pending, prGet),
     ]);
     if (!obj) return NO_LIVE_STATE;
     const rawState = obj.state;

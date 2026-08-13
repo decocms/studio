@@ -8,6 +8,7 @@ import {
   conflictFromPrGet,
   extractPreviewUrl,
   extractPreviewUrlFromDeployment,
+  headShaFromPrGet,
   headShaFromStatus,
   isRateLimitError,
   extractPreviewUrlFromComments,
@@ -409,6 +410,26 @@ describe("extractPreviewUrlFromDeployment", () => {
           "https://evil.example.com/torrafaststore.preview.vtex.app",
       }),
     ).toBeNull();
+  });
+});
+
+describe("headShaFromPrGet", () => {
+  it("reads head.sha from a pull_request_read get response", () => {
+    expect(
+      headShaFromPrGet({
+        state: "open",
+        head: { ref: "fix/x", sha: "f9f522ce9642cf7f2024e45b9ddc618a6f78bf8c" },
+      }),
+    ).toBe("f9f522ce9642cf7f2024e45b9ddc618a6f78bf8c");
+  });
+
+  it("is null when head/sha is absent or not a hex sha", () => {
+    expect(headShaFromPrGet(null)).toBeNull();
+    expect(headShaFromPrGet({})).toBeNull();
+    expect(headShaFromPrGet({ head: {} })).toBeNull();
+    expect(headShaFromPrGet({ head: { sha: 123 } })).toBeNull();
+    expect(headShaFromPrGet({ head: { sha: "not-a-sha" } })).toBeNull();
+    expect(headShaFromPrGet({ head: "nope" })).toBeNull();
   });
 });
 
