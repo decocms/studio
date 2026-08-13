@@ -22,7 +22,7 @@
  *    `DBOS.startWorkflow`, which DBOS rejects from a step:
  *    `DBOSInvalidWorkflowTransitionError` ("Invalid call to a `workflow`
  *    function from within a `step` or `transaction`", code 21). The per-reviewer
- *    `.catch` logged it and released the claim, so it retried and failed
+ *    `.catch` logged it, so it retried and failed
  *    forever. Even a task WITH a linked PR never got a reviewer.
  *
  * A sweeper fixes both at once and is the only shape that can: it runs on a
@@ -30,9 +30,9 @@
  * also makes the pipeline self-healing — every card already stranded is picked
  * up on the next tick, with no backfill.
  *
- * Everything it calls is idempotent: `enqueueEnabledReviewers` claims per
- * (task, reviewer, cycle), so re-running every tick cannot spawn duplicate
- * reviewer runs.
+ * Everything it calls is idempotent: `enqueueEnabledReviewers` fences on a
+ * thread id derived from (task, reviewer, cycle, attempt) and a matching run
+ * workflow id, so re-running every tick cannot spawn duplicate reviewer runs.
  *
  * Idempotent is not the same as terminating, though, and conflating the two is
  * what took out the GitHub App's rate limit: a card whose checks never go green
@@ -49,7 +49,7 @@
  * It later grew a third job for the same reason — **retrying a failed merge**.
  * A card whose reviewers all approved but whose merge was refused (GitHub down,
  * the repo's connection deleted, a transient 500) is left In Review by
- * `TASK_BOARD_REVIEW_DECISION`, and the cycle's reviewer claims are already
+ * `TASK_BOARD_REVIEW_DECISION`, and the cycle's reviewer attempts are already
  * spent, so nothing re-dispatches and nothing re-merges: the card is stranded
  * forever on a failure that has usually fixed itself minutes later. The sweeper
  * is again the only place that can retry, for the same reason as above.
@@ -488,7 +488,7 @@ export class TaskBoardReviewSweeper {
     }
 
     // A card whose review already COMPLETED but whose merge failed is stranded:
-    // the cycle's reviewer claims are spent, so the dispatch below is a no-op
+    // the cycle's reviewer attempts are spent, so the dispatch below is a no-op
     // and nothing else ever retries. Retry the merge first — it's the only path
     // back out of In Review for these, and it's why the sweep must keep visiting
     // a card that has no reviewer left to enqueue. Gated on verified approval +

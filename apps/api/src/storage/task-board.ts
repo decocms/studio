@@ -1185,7 +1185,8 @@ export class TaskBoardStorage {
    * the Super Agent, returning the updated item to the single winner and null
    * to everyone else. The auto-resolve reaction fires from two triggers that
    * can coincide — a reviewer's approval (`review-decision`) and the PR
-   * modal's poll (`prs-get`) — so, like `claimReviewer`, this fence must be
+   * modal's poll (`prs-get`) — so, like the reviewer dispatch's derived thread
+   * id, this fence must be
    * atomic: a read-then-write would let both dispatch a Super Agent run on the
    * same PR. The assignee re-check closes a second race: the caller's
    * assignee check runs against a read taken before this write, so a human
@@ -1466,67 +1467,12 @@ export class TaskBoardStorage {
       .execute();
   }
 
-  /**
-   * Atomically claim the (task, reviewer, cycle) slot, minting a token.
-   * `claimed` is false when the slot was already taken (a concurrent enqueue
-   * won the race) — the caller then skips enqueueing that reviewer. Either way
-   * returns the winning claim's `token`, which the reviewer run carries and
-   * echoes back to prove its identity when it records a decision.
-   */
-  async claimReviewer(
-    taskBoardItemId: string,
-    reviewer: string,
-    cycleAt: Date,
-  ): Promise<{ claimed: boolean; token: string }> {
-    const token = `rtok_${crypto.randomUUID()}`;
-    const inserted = await this.db
-      .insertInto("task_board_review_claims")
-      .values({
-        task_board_item_id: taskBoardItemId,
-        reviewer,
-        cycle_at: cycleAt,
-        token,
-      })
-      .onConflict((oc) =>
-        oc.columns(["task_board_item_id", "reviewer", "cycle_at"]).doNothing(),
-      )
-      .returning("token")
-      .executeTakeFirst();
-    if (inserted) return { claimed: true, token: inserted.token };
-    const existing = await this.db
-      .selectFrom("task_board_review_claims")
-      .select("token")
-      .where("task_board_item_id", "=", taskBoardItemId)
-      .where("reviewer", "=", reviewer)
-      .where("cycle_at", "=", cycleAt)
-      .executeTakeFirst();
-    return { claimed: false, token: existing?.token ?? token };
-  }
-
-  /**
-   * Release a reviewer's claim on a cycle — the counterpart to `claimReviewer`
-   * for when the dispatch it was minted for never actually ran (e.g. the
-   * enqueue itself threw). Without this, a transient dispatch failure leaves
-   * the slot permanently claimed with no thread behind it: `claimReviewer`'s
-   * unique (task, reviewer, cycle) key would refuse every retry for the rest
-   * of that review cycle, so that reviewer would simply never run.
-   */
-  async releaseReviewerClaim(
-    taskBoardItemId: string,
-    reviewer: string,
-    cycleAt: Date,
-  ): Promise<void> {
-    await this.db
-      .deleteFrom("task_board_review_claims")
-      .where("task_board_item_id", "=", taskBoardItemId)
-      .where("reviewer", "=", reviewer)
-      .where("cycle_at", "=", cycleAt)
-      .execute();
-  }
-
-  /** Resolve a review token to its claim (which reviewer, which cycle) for a
-   *  task. Null when the token doesn't belong to this task — used to verify
-   *  that a decision's caller really is the reviewer it claims to be. */
+  /** Resolve a legacy review token to its claim for a task. Null when the token
+   *  doesn't belong to this task.
+   *
+   *  LEGACY: claims are no longer written — reviewer identity is an HMAC now
+   *  (`tools/task-board/review-token.ts`). This only serves runs dispatched
+   *  before that deploy; delete it with the table once they've drained. */
   async resolveReviewClaimByToken(
     taskBoardItemId: string,
     token: string,

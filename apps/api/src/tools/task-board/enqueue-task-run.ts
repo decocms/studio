@@ -53,8 +53,15 @@ export async function enqueueAgentRunForTask(
     pinnedRef?: string | null;
     /** Admission class for this run. See `dispatch-queue/run-priority.ts`. */
     runClass?: RunClass;
+    /**
+     * Deterministic thread id + run workflow id, for a caller whose triggers can
+     * race (the reviewer enqueues). Both are `INSERT … ON CONFLICT DO NOTHING`
+     * in effect: the losing racer gets `isNew: false` and nothing is dispatched
+     * twice. Omit for a caller with a single trigger.
+     */
+    fence?: { threadId: string; workflowID: string };
   },
-): Promise<{ threadId: string }> {
+): Promise<{ threadId: string; isNew: boolean }> {
   const organizationId = task.organizationId;
   const userId = task.assignedBy ?? task.createdBy;
   const harnessId = opts.harnessId ?? "decopilot";
@@ -63,6 +70,7 @@ export async function enqueueAgentRunForTask(
   const agentId = getDecopilotId(organizationId);
 
   const thread = await ctx.storage.threads.create({
+    ...(opts.fence ? { id: opts.fence.threadId } : {}),
     organization_id: organizationId,
     title: opts.title,
     status: "in_progress",
@@ -73,6 +81,8 @@ export async function enqueueAgentRunForTask(
     sandbox_provider_kind: "agent-sandbox",
     created_by: userId,
   });
+  // Another trigger already created this run — it owns the dispatch.
+  if (!thread.isNew) return { threadId: thread.id, isNew: false };
 
   // Bind the repo to the thread the way `load_repo` does — it's the only place a
   // repo persists for the synthetic Super Agent, and it's what makes
@@ -144,41 +154,44 @@ export async function enqueueAgentRunForTask(
     runId: thread.id,
   }).emitRequestMessage(requestMessage);
 
-  await enqueueThreadRun({
-    threadId: thread.id,
-    source: "background-tool",
-    request: {
-      messages: [requestMessage],
-      models: {
-        credentialId: model.credentialId,
-        thinking: { id: model.modelId, title: model.modelMeta.title },
-      },
-      agent: { id: agentId, ...(opts.agent ?? {}) },
-      temperature: opts.temperature,
-      toolApprovalLevel: "auto",
-      mode: "default",
-      organizationId,
-      userId,
-      harnessId,
-      sandboxProviderKind: "agent-sandbox",
-      // Only meaningful for the repo-less sandbox run above: `resolveSandboxBranch`
-      // derives the key from the thread's repo when there is one, and needs the
-      // explicit bare key when there isn't. Carried in the durable snapshot, so a
-      // recovered re-dispatch resolves the same pod.
-      ...(opts.repo ? {} : sandboxBranch ? { branch: sandboxBranch } : {}),
-      taskId: thread.id,
-      // Reports tasks carry the subscription-billing stamp: their AI usage
-      // is included in the org subscription (billing/subsidized-runs.ts).
-      // `runClass` orders admission when the pod is at its cap — a reviewer or
-      // a retry outranks a brand-new task (see dispatch-queue/run-priority.ts).
-      // A free-form metadata string, so it changes no schema and no DBOS step
-      // I/O. Defaults to a new task: the class that nothing is waiting on.
-      runMetadata: {
-        ...taskRunMetadata(task),
-        [RUN_CLASS_METADATA_KEY]: opts.runClass ?? "new_task",
+  await enqueueThreadRun(
+    {
+      threadId: thread.id,
+      source: "background-tool",
+      request: {
+        messages: [requestMessage],
+        models: {
+          credentialId: model.credentialId,
+          thinking: { id: model.modelId, title: model.modelMeta.title },
+        },
+        agent: { id: agentId, ...(opts.agent ?? {}) },
+        temperature: opts.temperature,
+        toolApprovalLevel: "auto",
+        mode: "default",
+        organizationId,
+        userId,
+        harnessId,
+        sandboxProviderKind: "agent-sandbox",
+        // Only meaningful for the repo-less sandbox run above: `resolveSandboxBranch`
+        // derives the key from the thread's repo when there is one, and needs the
+        // explicit bare key when there isn't. Carried in the durable snapshot, so a
+        // recovered re-dispatch resolves the same pod.
+        ...(opts.repo ? {} : sandboxBranch ? { branch: sandboxBranch } : {}),
+        taskId: thread.id,
+        // Reports tasks carry the subscription-billing stamp: their AI usage
+        // is included in the org subscription (billing/subsidized-runs.ts).
+        // `runClass` orders admission when the pod is at its cap — a reviewer or
+        // a retry outranks a brand-new task (see dispatch-queue/run-priority.ts).
+        // A free-form metadata string, so it changes no schema and no DBOS step
+        // I/O. Defaults to a new task: the class that nothing is waiting on.
+        runMetadata: {
+          ...taskRunMetadata(task),
+          [RUN_CLASS_METADATA_KEY]: opts.runClass ?? "new_task",
+        },
       },
     },
-  });
+    opts.fence ? { workflowID: opts.fence.workflowID } : undefined,
+  );
 
-  return { threadId: thread.id };
+  return { threadId: thread.id, isNew: true };
 }
