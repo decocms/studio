@@ -18,14 +18,21 @@ import {
 
 // ─── Test Helpers ────────────────────────────────────────────────────────────
 
-/** Start an HTTP server that immediately returns 500 */
+/**
+ * Start an HTTP server that immediately returns 500, counting every request it
+ * receives — that count is how a test proves an open circuit never reached the
+ * network, without timing the machine.
+ */
 function startErrorServer() {
-  return Bun.serve({
+  let requestCount = 0;
+  const server = Bun.serve({
     port: 0,
     fetch() {
+      requestCount++;
       return new Response("Internal Server Error", { status: 500 });
     },
   });
+  return { server, requests: () => requestCount };
 }
 
 /** Try to connect an MCP client to a URL, measure time, return result */
@@ -56,7 +63,7 @@ describe("circuit breaker - real HTTP servers", () => {
   });
 
   it("connection to error server fails fast (not 60s timeout)", async () => {
-    const server = startErrorServer();
+    const { server } = startErrorServer();
     const url = `http://localhost:${server.port}/mcp`;
 
     try {
@@ -71,7 +78,7 @@ describe("circuit breaker - real HTTP servers", () => {
     }
   });
 
-  it("circuit breaker prevents repeated 60s waits", async () => {
+  it("circuit breaker prevents repeated 60s waits", () => {
     const connId = "conn_hanging_test";
 
     // Simulate 3 failures (as if 3 requests already timed out)
@@ -79,17 +86,23 @@ describe("circuit breaker - real HTTP servers", () => {
     recordFailure(connId);
     recordFailure(connId);
 
-    // Now the circuit should be open — fail fast
-    const start = Date.now();
-    expect(() => assertCircuitClosed(connId)).toThrow(CircuitOpenError);
-    const elapsed = Date.now() - start;
+    // The circuit is open. Rejection is synchronous — this is a plain call, so
+    // nothing could have been awaited — meaning the caller never waits on the
+    // network, and the error carries the cooldown telling it when to retry.
+    let thrown: unknown;
+    try {
+      assertCircuitClosed(connId);
+    } catch (e) {
+      thrown = e;
+    }
 
-    console.log(`  Circuit open fail-fast: ${elapsed}ms`);
-    expect(elapsed).toBeLessThan(5); // sub-millisecond
+    expect(thrown).toBeInstanceOf(CircuitOpenError);
+    if (!(thrown instanceof CircuitOpenError)) throw thrown;
+    expect(thrown.cooldownRemainingMs).toBeGreaterThan(0);
   });
 
   it("circuit breaker with real error server: 3 fast failures then instant reject", async () => {
-    const server = startErrorServer();
+    const { server, requests } = startErrorServer();
     const url = `http://localhost:${server.port}/mcp`;
     const connId = "conn_error_e2e";
 
@@ -104,13 +117,15 @@ describe("circuit breaker - real HTTP servers", () => {
         );
       }
 
-      // Now circuit is open — should fail instantly without hitting the server
-      const start = Date.now();
-      expect(() => assertCircuitClosed(connId)).toThrow(CircuitOpenError);
-      const elapsed = Date.now() - start;
+      // Now the circuit is open — the 4th attempt is rejected without the
+      // server ever seeing a request, which is what "fail fast" means here.
+      const requestsBeforeBlock = requests();
+      expect(requestsBeforeBlock).toBeGreaterThan(0);
 
-      console.log(`  Circuit open (4th attempt): ${elapsed}ms — BLOCKED`);
-      expect(elapsed).toBeLessThan(5);
+      expect(() => assertCircuitClosed(connId)).toThrow(CircuitOpenError);
+
+      console.log("  Circuit open (4th attempt): BLOCKED");
+      expect(requests()).toBe(requestsBeforeBlock);
     } finally {
       server.stop(true);
     }

@@ -42,6 +42,7 @@ import { TERMINAL_THREAD_STATUSES } from "@/storage/task-board";
 import { broadcastRunCancel } from "@/api/routes/decopilot/cancel-registry";
 import { cancelHostedHarness } from "@/dispatch-queue";
 import { cancelThreadGateHead } from "@/dispatch-queue/thread-gate-queue";
+import { cancelThreadBackgroundJobs } from "@/harnesses/decopilot/background-tool-workflow";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
@@ -115,6 +116,9 @@ async function stopSupersededRun(
   await ctx.storage.threads
     .setCancelRequested(threadId, organizationId)
     .catch(onError("cancel-flag"));
+
+  // A queued background-tool job has no AbortController yet for the broadcast below to reach.
+  await cancelThreadBackgroundJobs(threadId).catch(onError("background-jobs"));
 
   // A run still parked as the PENDING gate head has no in-memory registry entry
   // to abort; cancelling the workflow is what frees its partition slot.
