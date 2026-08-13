@@ -38,6 +38,23 @@ function crumbArrayLabel(crumb: Crumb): string | undefined {
   return isItemCrumb(crumb) ? crumb.arrayLabel : undefined;
 }
 
+/**
+ * Rewrite an array-item crumb's display label at `itemIndex`, preserving any
+ * `arrayLabel` disambiguator on the existing crumb. `existing` may be undefined
+ * or (defensively) a plain string; either way a fresh item crumb is returned.
+ * The single place crumb shape is (re)built for a label change — used by both
+ * `ArrayField.updateItem` (label edit) and `ArrayField.arrayItemPrefix`.
+ */
+export function withItemCrumbLabel(
+  existing: Crumb | undefined,
+  label: string,
+  itemIndex: number,
+): Crumb {
+  return existing != null && typeof existing === "object"
+    ? { ...existing, label, itemIndex }
+    : { label, itemIndex };
+}
+
 function humanize(key: string): string {
   return key
     .replace(/([a-z])([A-Z])/g, "$1 $2")
@@ -261,16 +278,6 @@ export function breadcrumbsForHeaderClick(
 ): Crumb[] {
   if (headerIndex <= 0) return [];
   return breadcrumbs.slice(0, headerIndex);
-}
-
-export function findBreadcrumbLabelIndex(
-  path: Crumb[],
-  targetLabel: string,
-): number {
-  const normalized = normalizeBreadcrumbLabel(targetLabel);
-  return path.findIndex(
-    (crumb) => normalizeBreadcrumbLabel(crumbLabel(crumb)) === normalized,
-  );
 }
 
 /** Breadcrumb drill-down applies to array fields only (not nested objects). */
@@ -709,7 +716,24 @@ function findItemIndexForCrumb(
   ) {
     return crumb.itemIndex;
   }
-  // Churn-window fallback: keep the open row while its label is mid-edit.
+  /**
+   * Open-row pin: the crumb still addresses the row the user has open, but its
+   * label lags `items[itemIndex]` mid-edit — e.g. a titleBy driven by a field
+   * being typed, or a value edited deep in a nested array whose label re-sync
+   * races the nested trail rebuild. The index is the source of truth (the label
+   * is display-only), so trust it rather than fall through to the label search
+   * below, which would snap to a colliding sibling (the duplicated-item
+   * "original").
+   */
+  if (
+    preferredIndex != null &&
+    preferredIndex === crumb.itemIndex &&
+    preferredIndex >= 0 &&
+    preferredIndex < items.length
+  ) {
+    return preferredIndex;
+  }
+  // Churn-window fallback: the item shifted but its label still matches the open row.
   const preferred = preferredIndex != null ? labels[preferredIndex] : undefined;
   if (preferred !== undefined && labelsMatch(preferred, crumb.label)) {
     return preferredIndex!;

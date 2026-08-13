@@ -36,8 +36,8 @@ import {
 import { isEmbeddedUnionResolveType } from "../block-type-utils";
 import {
   buildArrayDrillDownBreadcrumb,
-  findBreadcrumbLabelIndex,
   resolveArrayItemSelection,
+  withItemCrumbLabel,
 } from "../schema-form-breadcrumb";
 import { isSectionArrayField } from "../section-array-field";
 import {
@@ -181,6 +181,19 @@ export function ArrayField({
   const [prevListKey, setPrevListKey] = useState(path);
   const [prevItemCount, setPrevItemCount] = useState(items.length);
   const suppressClickRef = useRef(false);
+  /**
+   * The open item's freshest display label, stashed by `updateItem` so the
+   * nested-field breadcrumb rebuild (`arrayItemPrefix`) can carry it before the
+   * edited value re-renders this array — otherwise the item crumb keeps the
+   * label it had at drill-in time (the duplicated-from value the user saw stuck
+   * in the breadcrumb). Keyed by `path` + `index` so a reused instance driving a
+   * different array (or a different open row) never serves a foreign label.
+   */
+  const openItemLabelRef = useRef<{
+    path: string;
+    index: number;
+    label: string;
+  } | null>(null);
 
   if (prevListKey !== path) {
     setPrevListKey(path);
@@ -329,15 +342,14 @@ export function ArrayField({
     if (index === selectedIndex && selection) {
       const oldLabel = itemLabel(items[index], index);
       const newLabel = itemLabel(next[index], index);
+      openItemLabelRef.current = { path, index, label: newLabel };
       if (oldLabel !== newLabel) {
         const updatedBreadcrumb = [...breadcrumbPath];
-        const existing = breadcrumbPath[selection.crumbIndex];
-        // Preserve the crumb's `arrayLabel` disambiguator (if any) — only the
-        // display label changed, not which array this item belongs to.
-        updatedBreadcrumb[selection.crumbIndex] =
-          existing != null && typeof existing === "object"
-            ? { ...existing, label: newLabel, itemIndex: index }
-            : { label: newLabel, itemIndex: index };
+        updatedBreadcrumb[selection.crumbIndex] = withItemCrumbLabel(
+          breadcrumbPath[selection.crumbIndex],
+          newLabel,
+          index,
+        );
         onBreadcrumbChange?.(updatedBreadcrumb);
       }
     }
@@ -403,20 +415,40 @@ export function ArrayField({
       containerResolveType,
       arrayFieldKey,
     );
+    /**
+     * Trail prefix through the open item's own crumb — the base that nested
+     * fields prepend their breadcrumb changes onto.
+     *
+     * Locate that crumb by INDEX (`selection.crumbIndex`), never by a label
+     * lookup: a churning or duplicate label matches the wrong crumb — a
+     * colliding sibling, or a same-labelled nested crumb — and strands the
+     * prefix, snapping the editor back to the item the open one was duplicated
+     * from. Refresh its label from `openItemLabelRef` (the fresh value stashed
+     * by `updateItem` this same edit, before the new value re-renders here) so
+     * the crumb tracks the item instead of freezing at its drill-in label.
+     */
     const arrayItemPrefix = () => {
-      const itemName = itemLabel(item, selectedIndex);
-      const trail = buildArrayDrillDownBreadcrumb(
-        breadcrumbPath,
-        label,
-        itemName,
-        selectedIndex,
-        drillDownOpts,
-      );
-      const itemIndex = findBreadcrumbLabelIndex(trail, itemName);
-      if (itemIndex >= 0) {
-        return trail.slice(0, itemIndex + 1);
+      if (!selection) {
+        return buildArrayDrillDownBreadcrumb(
+          breadcrumbPath,
+          label,
+          itemLabel(item, selectedIndex),
+          selectedIndex,
+          drillDownOpts,
+        );
       }
-      return trail;
+      const prefix = breadcrumbPath.slice(0, selection.crumbIndex + 1);
+      const stashed = openItemLabelRef.current;
+      const freshLabel =
+        stashed?.path === path && stashed.index === selectedIndex
+          ? stashed.label
+          : itemLabel(item, selectedIndex);
+      prefix[selection.crumbIndex] = withItemCrumbLabel(
+        prefix[selection.crumbIndex],
+        freshLabel,
+        selectedIndex,
+      );
+      return prefix;
     };
 
     return (
