@@ -107,7 +107,7 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
         },
         {
           key: "connect",
-          label: "Connect to clients",
+          label: t("settings.nav.connect"),
           icon: <LinkExternal01 size={14} />,
           to: "/$org/settings/connect",
         },
