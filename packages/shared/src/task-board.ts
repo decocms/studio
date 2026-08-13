@@ -193,6 +193,10 @@ export function approvedButUnverified(
  * left In Review). An approval as the latest verdict returns null: there is
  * nothing outstanding to continue, so the re-run starts clean, exactly as
  * today. Pure, so the ordering rule is unit-tested.
+ *
+ * Ties go to the later element: `occurred_at` comes back through a JS `Date`,
+ * so two verdicts recorded in the same millisecond compare equal and only the
+ * activity list's own (append) order says which came second.
  */
 export function outstandingReviewFeedback(
   activity: ReviewCycleActivity[],
@@ -206,7 +210,7 @@ export function outstandingReviewFeedback(
       continue;
     }
     const at = new Date(a.occurredAt).getTime();
-    if (latest && at <= latest.at) continue;
+    if (latest && at < latest.at) continue;
     const notes = (a.data as { notes?: unknown } | null | undefined)?.notes;
     latest = {
       at,
