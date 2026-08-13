@@ -172,6 +172,20 @@ const sharedProxy = {
     : {}),
 };
 
+/**
+ * Emit sourcemaps so PostHog error tracking can un-minify stack traces —
+ * without them a real captured frame reads `Wr.optimisticHide` at
+ * `hooks-12yWjb31.js:15:9394`, naming no file anyone can open.
+ *
+ * Off unless `BUILD_SOURCEMAPS=1`, which ONLY the release workflow sets. The
+ * maps are uploaded and then deleted there, before anything is packed:
+ * `build-studio.ts` recursively copies `apps/web/dist` into the shipped
+ * package, so a `.map` left behind would publish Studio's sources.
+ * The upload lives in CI rather than in a build plugin because a failed
+ * upload must never fail a release, and must still clean up after itself.
+ */
+const emitSourcemaps = process.env.BUILD_SOURCEMAPS === "1" && !isNativeBuild;
+
 export default defineConfig({
   define: {
     // What `v{__STUDIO_VERSION__}` renders (account popover, settings
@@ -192,6 +206,7 @@ export default defineConfig({
   },
   build: {
     outDir: isNativeBuild ? "dist/native" : "dist",
+    sourcemap: emitSourcemaps,
     ...(isNativeBuild
       ? {
           rollupOptions: {
