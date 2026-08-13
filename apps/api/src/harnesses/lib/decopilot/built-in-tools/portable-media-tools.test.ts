@@ -5,6 +5,7 @@ import {
   buildScreenshotRequestBody,
   createPortableTakeScreenshotTool,
   fetchImageBytes,
+  generateImageCore,
   jpegHeight,
   validateExternalUrl,
 } from "./portable-media-tools";
@@ -224,6 +225,48 @@ describe("fetchImageBytes", () => {
       ).rejects.toThrow(/timed out/);
     } finally {
       globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+describe("generateImageCore", () => {
+  it("times out instead of hanging forever on an unresponsive image provider", async () => {
+    const originalTimeout = AbortSignal.timeout;
+    // Stub out the real 120s wait with an already-aborted signal.
+    AbortSignal.timeout = (() => {
+      const controller = new AbortController();
+      controller.abort(new DOMException("timed out", "TimeoutError"));
+      return controller.signal;
+    }) as typeof AbortSignal.timeout;
+
+    const doGenerate = (opts: { abortSignal?: AbortSignal }) =>
+      new Promise((_resolve, reject) => {
+        opts.abortSignal?.addEventListener("abort", () =>
+          reject(new DOMException("aborted", "AbortError")),
+        );
+      });
+
+    try {
+      await expect(
+        generateImageCore(
+          { prompt: "a cat wearing a hat" },
+          {
+            provider: {
+              aiSdk: {
+                imageModel: () =>
+                  ({ doGenerate }) as unknown as ReturnType<
+                    Parameters<
+                      typeof generateImageCore
+                    >[1]["provider"]["aiSdk"]["imageModel"]
+                  >,
+              },
+            },
+            imageModelInfo: { id: "test-model" },
+          },
+        ),
+      ).rejects.toThrow(/timed out/);
+    } finally {
+      AbortSignal.timeout = originalTimeout;
     }
   });
 });
