@@ -9,7 +9,6 @@ import {
   crumbLabel,
   headerBackTargetIndex,
   fieldDisplayLabel,
-  findBreadcrumbLabelIndex,
   isArrayDrillDownField,
   normalizeBreadcrumbLabel,
   objectSiblingsNeedingAncestorCrumb,
@@ -65,14 +64,6 @@ describe("headerBackTargetIndex", () => {
     expect(headerBackTargetIndex(3, { isMultivariateSectionTop: true })).toBe(
       0,
     );
-  });
-});
-
-describe("findBreadcrumbLabelIndex", () => {
-  test("matches labels with NFC normalization", () => {
-    const nfd = "cafe\u0301";
-    const nfc = "caf\u00e9";
-    expect(findBreadcrumbLabelIndex(["Flag", nfd], nfc)).toBe(1);
   });
 });
 
@@ -1214,6 +1205,60 @@ describe("resolveArrayItemSelection", () => {
           5,
         ),
       ).toEqual({ index: 1, innerPath: [], crumbIndex: 0 });
+    });
+
+    test("open-row pin: a stale crumb label sticks to the open row, not a colliding sibling", () => {
+      /**
+       * The crumb carries the OLD label ("Men's") because a deep re-sync hasn't
+       * reached it, but items[1] already holds the edited value. A label search
+       * would snap to the colliding sibling at index 0 (the bug); the open-row
+       * pin (preferredIndex === itemIndex) keeps selection on 1.
+       */
+      const edited = [{ title: "Men's" }, { title: "Men's edited" }];
+      expect(
+        resolveArrayItemSelection(
+          "Cards",
+          [{ label: "Men's", itemIndex: 1 }],
+          edited,
+          itemSchema,
+          1,
+        ),
+      ).toEqual({ index: 1, innerPath: [], crumbIndex: 0 });
+    });
+
+    test("open-row pin holds the last of three colliding items (label search would pick the first)", () => {
+      /**
+       * With three identical labels the last-resort search always returns 0, so
+       * the index pin is the ONLY thing keeping selection on the edited row.
+       */
+      const triple = [{ title: "x" }, { title: "x" }, { title: "edited" }];
+      expect(
+        resolveArrayItemSelection(
+          "Cards",
+          [{ label: "x", itemIndex: 2 }],
+          triple,
+          itemSchema,
+          2,
+        ),
+      ).toEqual({ index: 2, innerPath: [], crumbIndex: 0 });
+    });
+
+    test("open-row pin does NOT fire when preferredIndex differs from the crumb index", () => {
+      /**
+       * A genuine shift: the crumb's stale label still matches item 0, and the
+       * open row (0) is not the crumb's index (1). The label match must win, so
+       * selection lands on the real owner rather than blindly on the crumb index.
+       */
+      const shifted = [{ title: "A" }, { title: "B" }];
+      expect(
+        resolveArrayItemSelection(
+          "Cards",
+          [{ label: "A", itemIndex: 1 }],
+          shifted,
+          itemSchema,
+          0,
+        ),
+      ).toEqual({ index: 0, innerPath: [], crumbIndex: 0 });
     });
   });
 });

@@ -113,10 +113,9 @@ test("duplicate a deeply-labelled item, edit the copy's matcher — stays on the
       ],
     });
 
-  // Item crumb tracks the edit; it must not freeze at the duplicated-from label.
-  await expect
-    .poll(() => readBreadcrumb(component))
-    .not.toContain("/feminino$");
+  // Item crumb re-syncs to the edit (positive check: an empty trail passes .not).
+  await expect.poll(() => readBreadcrumb(component)).toContain("/nova$");
+  expect(await readBreadcrumb(component)).not.toContain("/feminino$");
 });
 
 test("editing a deeply-labelled item's matcher to collide with an existing item stays put", async ({

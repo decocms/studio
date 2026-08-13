@@ -38,6 +38,23 @@ function crumbArrayLabel(crumb: Crumb): string | undefined {
   return isItemCrumb(crumb) ? crumb.arrayLabel : undefined;
 }
 
+/**
+ * Rewrite an array-item crumb's display label at `itemIndex`, preserving any
+ * `arrayLabel` disambiguator on the existing crumb. `existing` may be undefined
+ * or (defensively) a plain string; either way a fresh item crumb is returned.
+ * The single place crumb shape is (re)built for a label change — used by both
+ * `ArrayField.updateItem` (label edit) and `ArrayField.arrayItemPrefix`.
+ */
+export function withItemCrumbLabel(
+  existing: Crumb | undefined,
+  label: string,
+  itemIndex: number,
+): Crumb {
+  return existing != null && typeof existing === "object"
+    ? { ...existing, label, itemIndex }
+    : { label, itemIndex };
+}
+
 function humanize(key: string): string {
   return key
     .replace(/([a-z])([A-Z])/g, "$1 $2")
@@ -261,16 +278,6 @@ export function breadcrumbsForHeaderClick(
 ): Crumb[] {
   if (headerIndex <= 0) return [];
   return breadcrumbs.slice(0, headerIndex);
-}
-
-export function findBreadcrumbLabelIndex(
-  path: Crumb[],
-  targetLabel: string,
-): number {
-  const normalized = normalizeBreadcrumbLabel(targetLabel);
-  return path.findIndex(
-    (crumb) => normalizeBreadcrumbLabel(crumbLabel(crumb)) === normalized,
-  );
 }
 
 /** Breadcrumb drill-down applies to array fields only (not nested objects). */
