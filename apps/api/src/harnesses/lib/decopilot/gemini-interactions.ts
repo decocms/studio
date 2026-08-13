@@ -33,6 +33,18 @@ function interactionsBaseUrl(): string {
 
 const DEFAULT_POLL_INTERVAL_MS = 5_000;
 
+/** Each Interactions API call is a metadata request (submit the job, or check
+ *  its status) — not the async job itself, which legitimately runs for
+ *  minutes. `opts.abortSignal` only covers user/run cancellation, not a
+ *  stalled connection to Google, so an unresponsive endpoint would hang the
+ *  harness run forever without this. */
+const INTERACTIONS_FETCH_TIMEOUT_MS = 30_000;
+
+function withFetchTimeout(signal?: AbortSignal): AbortSignal {
+  const timeoutSignal = AbortSignal.timeout(INTERACTIONS_FETCH_TIMEOUT_MS);
+  return signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+}
+
 export function isInteractionsOnlyModel(modelId: string): boolean {
   // All Gemini Deep Research variants share the `deep-research-` prefix
   // (deep-research-preview-*, deep-research-max-preview-*,
@@ -78,23 +90,33 @@ interface OutputBlock {
 export async function submitInteraction(
   opts: SubmitInteractionOptions,
 ): Promise<{ interactionId: string }> {
-  const res = await fetch(interactionsBaseUrl(), {
-    method: "POST",
-    headers: {
-      "x-goog-api-key": opts.apiKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      agent: opts.agent,
-      input: opts.query,
-      background: true,
-      agent_config: {
-        type: "deep-research",
-        thinking_summaries: "auto",
+  let res: Response;
+  try {
+    res = await fetch(interactionsBaseUrl(), {
+      method: "POST",
+      headers: {
+        "x-goog-api-key": opts.apiKey,
+        "Content-Type": "application/json",
       },
-    }),
-    signal: opts.abortSignal,
-  });
+      body: JSON.stringify({
+        agent: opts.agent,
+        input: opts.query,
+        background: true,
+        agent_config: {
+          type: "deep-research",
+          thinking_summaries: "auto",
+        },
+      }),
+      signal: withFetchTimeout(opts.abortSignal),
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "TimeoutError") {
+      throw new Error(
+        `Gemini Interactions submit timed out after ${INTERACTIONS_FETCH_TIMEOUT_MS}ms`,
+      );
+    }
+    throw err;
+  }
 
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
@@ -122,10 +144,20 @@ export async function pollInteraction(
       throw makeAbortError(opts.abortSignal);
     }
 
-    const res = await fetch(url, {
-      headers: { "x-goog-api-key": opts.apiKey },
-      signal: opts.abortSignal,
-    });
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        headers: { "x-goog-api-key": opts.apiKey },
+        signal: withFetchTimeout(opts.abortSignal),
+      });
+    } catch (err) {
+      if (err instanceof Error && err.name === "TimeoutError") {
+        throw new Error(
+          `Gemini Interactions poll timed out after ${INTERACTIONS_FETCH_TIMEOUT_MS}ms`,
+        );
+      }
+      throw err;
+    }
 
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
