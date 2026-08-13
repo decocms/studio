@@ -61,6 +61,7 @@ import {
 import type { RunnerStateStore, RunnerStateStoreOps } from "../state-store";
 import type {
   EnsureOptions,
+  PodTermination,
   ProxyRequestInit,
   Sandbox,
   SandboxId,
@@ -77,6 +78,7 @@ import {
   HTTPROUTE_CONSTANTS,
   isPodUnbound,
   listWarmPoolPods,
+  readPodTermination,
   type WarmPoolPod,
   patchSandboxClaimShutdown,
   waitForClaimAdoptedSandbox,
@@ -616,6 +618,20 @@ export class AgentSandboxProvider implements SandboxProvider {
       if (rec) await this.stateStore.delete(rec.id, RUNNER_KIND);
       else await this.stateStore.deleteByHandle(RUNNER_KIND, handle);
     }
+  }
+
+  /**
+   * See `SandboxProvider.lastTermination`. Reads the kubelet's own verdict on
+   * the pod behind `handle` — the only place an OOM kill is recorded.
+   */
+  lastTermination(handle: string): Promise<PodTermination | null> {
+    return readPodTermination(
+      this.kubeConfig,
+      this.namespace,
+      LABEL_KEYS.sandboxHandle,
+      handle,
+      K8S_CONSTANTS.MAIN_CONTAINER_NAME,
+    );
   }
 
   async alive(handle: string): Promise<boolean> {

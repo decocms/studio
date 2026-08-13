@@ -178,12 +178,37 @@ export function normalizeSandboxProviderKind(
   return kind === "cluster" ? "agent-sandbox" : kind;
 }
 
+/**
+ * How the infrastructure — not the daemon — saw a sandbox stop. An OOM kill is
+ * the case that only exists here: the kernel SIGKILLs the process at the cgroup
+ * limit, so the dying sandbox reports nothing and Studio just sees the stream
+ * break.
+ */
+export interface PodTermination {
+  /** k8s `terminated.reason`, e.g. `OOMKilled`, `Error`, `Completed`. */
+  reason: string;
+  oomKilled: boolean;
+  exitCode?: number;
+  /** The limit that was hit, as k8s spells it (`4Gi`). */
+  memoryLimit?: string;
+}
+
 export interface SandboxProvider {
   readonly kind: SandboxProviderKind;
 
   ensure(id: SandboxId, opts?: EnsureOptions): Promise<Sandbox>;
   delete(handle: string): Promise<void>;
   alive(handle: string): Promise<boolean>;
+
+  /**
+   * Why this sandbox's container last stopped, for a caller that already knows
+   * it stopped. Best-effort and racy against the pod's own deletion — null
+   * means "cannot tell", so callers must degrade to their unqualified message
+   * rather than asserting anything.
+   *
+   * Optional: callers must `?.()`.
+   */
+  lastTermination?(handle: string): Promise<PodTermination | null>;
 
   /**
    * Bring this sandbox's shutdown forward to `graceMs` from now, because the

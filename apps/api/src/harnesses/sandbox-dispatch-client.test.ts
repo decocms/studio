@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { UIMessageChunk } from "ai";
 import { harnessRunResultSchema } from "@decocms/sandbox/dispatch/schemas";
 import {
+  describeTermination,
   dispatchWithContinuation,
   errorForTerminal,
   harnessRunsInSandbox,
@@ -20,6 +21,22 @@ function bodyOf(text: string): ReadableStream<Uint8Array> {
     },
   });
 }
+
+const chunk = (type: string, extra: Record<string, unknown> = {}) =>
+  ({ type, ...extra }) as UIMessageChunk;
+
+/** A dispatch that streams `chunks`, then optionally dies. */
+const dispatch = (chunks: UIMessageChunk[], err?: Error) =>
+  async function* () {
+    for (const c of chunks) yield c;
+    if (err) throw err;
+  };
+
+const collect = async (it: AsyncIterable<UIMessageChunk>) => {
+  const out: UIMessageChunk[] = [];
+  for await (const c of it) out.push(c);
+  return out;
+};
 
 describe("harnessRunsInSandbox", () => {
   test("claude-code is sandbox-hosted", () => {
@@ -157,22 +174,6 @@ describe("isUnreachableStatus", () => {
 });
 
 describe("dispatchWithContinuation", () => {
-  const chunk = (type: string, extra: Record<string, unknown> = {}) =>
-    ({ type, ...extra }) as UIMessageChunk;
-
-  /** A dispatch that streams `chunks`, then optionally dies. */
-  const dispatch = (chunks: UIMessageChunk[], err?: Error) =>
-    async function* () {
-      for (const c of chunks) yield c;
-      if (err) throw err;
-    };
-
-  const collect = async (it: AsyncIterable<UIMessageChunk>) => {
-    const out: UIMessageChunk[] = [];
-    for await (const c of it) out.push(c);
-    return out;
-  };
-
   test("a healthy dispatch is forwarded verbatim", async () => {
     const seen: Array<{ reason: string } | null> = [];
     const chunks = await collect(
@@ -227,6 +228,28 @@ describe("dispatchWithContinuation", () => {
     // The second dispatch is told it is continuing, and why.
     expect(resumes[0]).toBeNull();
     expect(resumes[1]?.reason).toContain("pod gone");
+  });
+
+  test("an attempt that died before streaming anything lets the continuation open the message", async () => {
+    // Dropping this `start` too left the run with parts and no message: the
+    // projector never opened one, so the turn rendered empty.
+    let attempt = 0;
+    const chunks = await collect(
+      dispatchWithContinuation({
+        runId: "run_1",
+        resume: null,
+        aborted: () => false,
+        dispatchOnce: () =>
+          ++attempt === 1
+            ? dispatch([], new SandboxUnreachableError("pod never answered"))()
+            : dispatch([
+                chunk("start", { messageId: "msg_b" }),
+                chunk("finish"),
+              ])(),
+      }),
+    );
+    expect(chunks.map((c) => c.type)).toEqual(["start", "finish"]);
+    expect((chunks[0] as { messageId?: string }).messageId).toBe("msg_b");
   });
 
   test("a caller-supplied resume drops the harness's first `start` too", async () => {
@@ -416,5 +439,142 @@ describe("isRunSuperseded", () => {
     );
     expect(replayed instanceof RunSupersededError).toBe(false);
     expect(isRunSuperseded(replayed)).toBe(true);
+  });
+});
+
+describe("describeTermination", () => {
+  test("an OOM kill names the limit, because that is the actionable part", () => {
+    expect(
+      describeTermination({
+        reason: "OOMKilled",
+        oomKilled: true,
+        exitCode: 137,
+        memoryLimit: "4Gi",
+      }),
+    ).toBe(
+      "it was killed by the kernel for exceeding its memory limit (memory limit 4Gi) — OOMKilled",
+    );
+  });
+
+  test("an OOM kill still reports without a known limit", () => {
+    expect(
+      describeTermination({ reason: "OOMKilled", oomKilled: true }),
+    ).toContain("OOMKilled");
+  });
+
+  // Null is what makes the caller fall back to its unqualified message, so
+  // "nothing to add" must never render as a sentence.
+  test("nothing to add returns null, not a sentence", () => {
+    expect(describeTermination(null)).toBeNull();
+    expect(
+      describeTermination({ reason: "Completed", oomKilled: false }),
+    ).toBeNull();
+  });
+
+  test("any other termination reason is reported with its exit code", () => {
+    expect(
+      describeTermination({ reason: "Error", oomKilled: false, exitCode: 1 }),
+    ).toBe("the sandbox container terminated with reason Error (exit code 1)");
+  });
+});
+
+describe("a lost sandbox's cause reaches the agent and the thread", () => {
+  test("the continuation is told it was an OOM, and what to do about it", async () => {
+    const resumes: Array<{ reason: string } | null> = [];
+    let attempt = 0;
+    await collect(
+      dispatchWithContinuation({
+        runId: "run_1",
+        resume: null,
+        aborted: () => false,
+        lastHandle: () => "thread-abc",
+        describeTermination: async (handle) =>
+          handle === "thread-abc"
+            ? "it was OOMKilled (memory limit 4Gi)"
+            : null,
+        dispatchOnce: (resume) => {
+          resumes.push(resume);
+          return ++attempt === 1
+            ? dispatch([], new SandboxUnreachableError("stream broke"))()
+            : dispatch([chunk("start"), chunk("finish")])();
+        },
+      }),
+    );
+    expect(resumes[1]?.reason).toContain("OOMKilled");
+    expect(resumes[1]?.reason).toContain("memory limit 4Gi");
+    // Without these the model re-runs the step that was killed, or reports
+    // edits it only remembers making.
+    expect(resumes[1]?.reason).toContain("re-read the files");
+    expect(resumes[1]?.reason).toContain("split it");
+  });
+
+  test("the last attempt's failure carries the OOM into the run's error, exactly one prefix", async () => {
+    let thrown: unknown;
+    try {
+      await collect(
+        dispatchWithContinuation({
+          runId: "run_1",
+          resume: null,
+          aborted: () => false,
+          maxAttempts: 1,
+          lastHandle: () => "thread-abc",
+          describeTermination: async () =>
+            "it was OOMKilled (memory limit 4Gi)",
+          dispatchOnce: () =>
+            dispatch([], new SandboxUnreachableError("stream broke"))(),
+        }),
+      );
+    } catch (err) {
+      thrown = err;
+    }
+    const message = (thrown as Error).message;
+    expect(message).toContain("stream broke");
+    expect(message).toContain("OOMKilled");
+    // The prefix is what marks the failure transient downstream; doubling it
+    // would still match, but the user reads this string.
+    expect(message.match(/\[SANDBOX_UNREACHABLE\]/g)).toHaveLength(1);
+  });
+
+  test("an unknowable termination leaves the message it already had", async () => {
+    let thrown: unknown;
+    try {
+      await collect(
+        dispatchWithContinuation({
+          runId: "run_1",
+          resume: null,
+          aborted: () => false,
+          maxAttempts: 1,
+          lastHandle: () => "thread-abc",
+          describeTermination: async () => null,
+          dispatchOnce: () =>
+            dispatch([], new SandboxUnreachableError("stream broke"))(),
+        }),
+      );
+    } catch (err) {
+      thrown = err;
+    }
+    expect((thrown as Error).message).toBe(
+      "[SANDBOX_UNREACHABLE] stream broke",
+    );
+  });
+
+  test("a probe that throws never fails the run it was explaining", async () => {
+    let attempt = 0;
+    const chunks = await collect(
+      dispatchWithContinuation({
+        runId: "run_1",
+        resume: null,
+        aborted: () => false,
+        lastHandle: () => "thread-abc",
+        describeTermination: async () => {
+          throw new Error("kube api down");
+        },
+        dispatchOnce: () =>
+          ++attempt === 1
+            ? dispatch([], new SandboxUnreachableError("stream broke"))()
+            : dispatch([chunk("start"), chunk("finish")])(),
+      }),
+    );
+    expect(chunks.map((c) => c.type)).toEqual(["start", "finish"]);
   });
 });

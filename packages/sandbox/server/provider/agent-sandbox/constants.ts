@@ -15,6 +15,9 @@ export const K8S_CONSTANTS = {
   SANDBOX_PLURAL: "sandboxes",
 
   POD_NAME_ANNOTATION: "agents.x-k8s.io/pod-name",
+
+  /** The agent container in every sandbox pod; siblings are the org-fs sidecar and init containers. */
+  MAIN_CONTAINER_NAME: "sandbox",
 } as const;
 
 export class SandboxError extends Error {
