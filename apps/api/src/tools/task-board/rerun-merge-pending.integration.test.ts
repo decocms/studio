@@ -136,6 +136,14 @@ describe("refuseIfMergePending", () => {
   // refusing. A `null` that fell through to "not deadlocked... so allow" would
   // re-open the very bug this guard was written for, on every read blip.
   it("still refuses when the PR's mergeability cannot be read", async () => {
+    // Re-arm the flag: the auto-merge-off case above mutates the shared org.
+    await organizationSettings.upsert(ORG, {
+      flags: {
+        auto_merge: true,
+        qa_agent_enabled: true,
+        code_reviewer_enabled: true,
+      },
+    });
     const item = await cardWithVerdicts([
       { reviewer: "qa", verified: true },
       { reviewer: "code_review", verified: true },
