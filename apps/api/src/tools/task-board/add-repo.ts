@@ -15,9 +15,9 @@
  * repo (`pickSoleTaskRepo`) because the checkout was resolved at dispatch;
  * everything else fell back to Decopilot.
  *
- * The sandbox key stays the BARE `thread:<id>` for the whole run — see
- * `resolveSandboxBranch`. Deriving it from the repo (as `load_repo` does) would
- * move the claim handle out from under the live pod.
+ * The sandbox key is whatever the run was DISPATCHED on (`threads.branch`) — see
+ * `resolveSandboxBranch`. Deriving it (from the repo like `load_repo`, or as the
+ * bare key this tool used to assume) misses the pod the agent loop is in.
  */
 
 import { z } from "zod";
@@ -29,6 +29,7 @@ import {
   type StudioContext,
 } from "@/core/studio-context";
 import { selectLoadableRepos } from "@/harnesses/decopilot/built-in-tools/load-repo";
+import { pickGitBranch } from "@/sandbox/head-ref";
 import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
 import {
   buildCloneInfo,
@@ -199,9 +200,8 @@ export const TASK_ADD_REPO = defineTool({
     const thread = await ctx.storage.threads.get(threadId);
     if (!thread) throw new Error(`Thread not found: ${threadId}`);
 
-    // The pod is keyed by the BARE thread branch — the key this run was
-    // dispatched on, and the one `resolveSandboxBranch` keeps returning for it.
-    const branch = threadBranch(threadId);
+    // The key this run was dispatched on — bare thread branch, or a pinned ref.
+    const branch = thread.branch ?? threadBranch(threadId);
     const sandboxUserId = await resolveSandboxUserId(ctx, branch, userId);
     const { provider, kind } = await resolveSandboxProvider(ctx, {
       userId: sandboxUserId,
@@ -267,7 +267,12 @@ export const TASK_ADD_REPO = defineTool({
     // provision, so no install and no dev server follow. The explicit
     // `setup/clone` behind it makes the outcome independent of that
     // classification — the step no-ops when the checkout is already there.
-    const gitRef = syntheticBranchToGitRef(branch);
+    const gitRef = pickGitBranch({
+      branch,
+      derivedRef: syntheticBranchToGitRef(branch),
+      recordedHeadRef: null,
+      sticky: false,
+    });
     const configRes = await provider.proxyDaemonRequest(
       record.sandboxHandle,
       "/_sandbox/config",
