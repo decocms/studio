@@ -392,7 +392,7 @@ Estes padrões vêm de `deploy/helm/studio/values.yaml`:
 | `envName` | Sufixo DNS-label dos recursos do ambiente | Obrigatório |
 | `image.repository` / `image.tag` | Imagem do daemon do sandbox ([tags](https://github.com/orgs/decocms/packages/container/package/studio%2Fstudio-sandbox-go)) | `ghcr.io/decocms/studio/studio-sandbox-go` / fixada pelo chart |
 | `resources.requests` | Request por sandbox | `500m` CPU / `1Gi` memória |
-| `resources.limits` | Limite por sandbox | `2` CPU / `4Gi` memória / `10Gi` armazenamento efêmero |
+| `resources.limits` | Limite por sandbox | `2` CPU / `6Gi` memória / `10Gi` armazenamento efêmero |
 | `terminationGracePeriodSeconds` | Tempo para sync final do git e unmount | `90` |
 | `netinit.enabled` | Instalar política padrão de egress no iptables | `true` |
 | `readOnlyRootFilesystem` | Root filesystem do sandbox somente leitura | `true` |

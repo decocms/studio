@@ -268,7 +268,7 @@ See `values.yaml` for the full set. The most-tuned ones:
 | `envName` | _(required)_ | DNS-label suffix on every resource name |
 | `image.repository` | `ghcr.io/decocms/studio/studio-sandbox-go` | sandbox image (Go daemon — the implementation IS the image) |
 | `image.tag` | chart `appVersion` | bump in lockstep with packages/sandbox/package.json |
-| `resources.*` | 0.5/2 CPU, 1/4Gi RAM | per sandbox pod |
+| `resources.*` | 0.5/2 CPU, 2/6Gi RAM | per sandbox pod |
 | `nodeSelector` / `tolerations` / `affinity` | `{}` | for sandbox isolation NodePool |
 | `topologySpreadConstraints` | `[]` | spread sandbox pods across AZs; see `values.yaml` for the recommended config |
 | `disruptionProtection.doNotDisrupt` | `false` | annotate pods with Karpenter's `do-not-disrupt` to block voluntary node consolidation/drift while a sandbox is claimed; trades cluster cost/upgrade cadence for session safety |

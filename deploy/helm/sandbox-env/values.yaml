@@ -55,16 +55,29 @@ image:
 # memory request = observed p95 of per-pod peak working-set (~2Gi over 7d;
 # 2d raw p90 2.2Gi, p95 2.4Gi). It was 1Gi — but busy pods spend ~100% of
 # their life above 1Gi, so the scheduler bin-packed on a request less than
-# half of real usage and prod nodes hit memory-pressure eviction (never
-# per-pod OOM: 0 pods reach the 4Gi limit). Sizing the request to real p95
-# stops the node-pressure evictions at the cost of lower packing density.
+# half of real usage and prod nodes hit memory-pressure eviction. Sizing the
+# request to real p95 stops those evictions at the cost of packing density.
+#
+# memory limit is the ceiling a single agent loop may burst to, and it is NOT
+# what the scheduler packs on — only the request is. It was 4Gi, chosen when no
+# pod had ever reached it; on 2026-08-13 three did, one thread twice inside 20
+# minutes (a claude-code run climbing 242MiB → 3.6Gi of RSS in three minutes,
+# then killed and reproduced on its replacement). 6Gi covers that burst without
+# costing a byte of scheduled capacity.
+#
+# The cost of raising it is overcommit: a node packed on 2Gi requests now has
+# pods that may each reach 6Gi, and node memory-pressure eviction is the failure
+# mode this file already fought once. Today's burst rate (3 pods in 24h) makes
+# that risk small — if node-pressure evictions come back, the answer is a
+# separate SandboxTemplate so only the agent-loop pods carry the higher ceiling
+# (see tenantPools[].resources for the machinery), not a blanket raise.
 resources:
   requests:
     cpu: 500m
     memory: 2Gi
   limits:
     cpu: "2"
-    memory: 4Gi
+    memory: 6Gi
     ephemeral-storage: 10Gi
 
 # ── shutdown grace period ──────────────────────────────────────────────
