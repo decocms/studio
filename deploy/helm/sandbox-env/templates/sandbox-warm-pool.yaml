@@ -25,4 +25,26 @@ spec:
     type: OnReplenish
   sandboxTemplateRef:
     name: {{ include "sandbox-env.sandboxName" . }}
+---
+# Same pool for the `-medium` template — a SandboxWarmPool binds exactly one
+# SandboxTemplate, so the second template needs its own pool to be prewarmable
+# (and its own autoscaler; see sandbox-warmpool-hpa.yaml).
+#
+# Size 0 by default, and unlike the generic pool that is not a footgun: verified
+# against operator v0.4.5, a claim whose pool is empty (or absent) is served by
+# a cold pod built from the claim's OWN template, so nothing breaks and nothing
+# idles. Prewarming medium claims is then one value (warmPool.mediumSize).
+apiVersion: extensions.agents.x-k8s.io/v1alpha1
+kind: SandboxWarmPool
+metadata:
+  name: {{ include "sandbox-env.sandboxName" . }}-medium
+  namespace: agent-sandbox-system
+  labels:
+    {{- include "sandbox-env.sandboxLabels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.warmPool.mediumSize | default 0 }}
+  updateStrategy:
+    type: OnReplenish
+  sandboxTemplateRef:
+    name: {{ include "sandbox-env.sandboxName" . }}-medium
 {{- end }}

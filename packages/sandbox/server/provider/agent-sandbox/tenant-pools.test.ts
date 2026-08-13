@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test";
 
 import {
+  claimTemplateName,
   claimWarmPoolName,
+  resolveClaimTemplateName,
   parseTenantPools,
   poolsMatchingPush,
   repoKeyFromCloneUrl,
@@ -84,22 +86,22 @@ describe("resolveTenantPool", () => {
     ).toBe("tenant-acme-site");
   });
 
-  it("a checkout-only claim never takes a tenant pod", () => {
+  it("a harness-run claim never takes a tenant pod", () => {
     // The Claude Code dispatch path. It wants no dev server, and binding a warm
     // pod would stop the one already running on it.
     expect(
       resolveTenantPool(POOLS, {
         orgId: "org-acme",
         cloneUrl: url,
-        cloneOnly: true,
+        purpose: "harness-run",
       }),
     ).toBeNull();
-    // ...but an explicit false is a normal claim.
+    // ...but an explicit `interactive` is a normal claim.
     expect(
       resolveTenantPool(POOLS, {
         orgId: "org-acme",
         cloneUrl: url,
-        cloneOnly: false,
+        purpose: "interactive",
       })?.name,
     ).toBe("tenant-acme-site");
   });
@@ -159,6 +161,139 @@ describe("claimWarmPoolName", () => {
 
   it("no sentinel → `none`, so the operator still accepts per-claim env", () => {
     expect(claimWarmPoolName(null, false, "studio-sandbox")).toBe("none");
+  });
+});
+
+describe("claimTemplateName", () => {
+  it("a harness run takes the -medium template", () => {
+    expect(claimTemplateName("harness-run", "studio-sandbox")).toBe(
+      "studio-sandbox-medium",
+    );
+  });
+
+  it("interactive claims stay on the default template", () => {
+    expect(claimTemplateName("interactive", "studio-sandbox")).toBe(
+      "studio-sandbox",
+    );
+    expect(claimTemplateName(undefined, "studio-sandbox")).toBe(
+      "studio-sandbox",
+    );
+  });
+
+  // Pool name == template name, so a harness claim can't bind a 4Gi pod.
+  it("the warm pool follows the template it picked", () => {
+    expect(
+      claimWarmPoolName(
+        null,
+        true,
+        claimTemplateName("harness-run", "studio-sandbox"),
+      ),
+    ).toBe("studio-sandbox-medium");
+  });
+
+  // With tenant pools ruled out above, these two are the whole matrix.
+  it("an interactive claim names the default pool, not the medium one", () => {
+    expect(
+      claimWarmPoolName(
+        null,
+        true,
+        claimTemplateName("interactive", "studio-sandbox"),
+      ),
+    ).toBe("studio-sandbox");
+  });
+});
+
+describe("resolveClaimTemplateName", () => {
+  const base = {
+    templateName: "studio-sandbox",
+    now: 1_000_000,
+    ttlMs: 60_000,
+  };
+
+  it("never probes for an interactive claim", async () => {
+    let probes = 0;
+    const result = await resolveClaimTemplateName({
+      ...base,
+      purpose: "interactive",
+      probe: null,
+      exists: async () => {
+        probes++;
+        return true;
+      },
+    });
+    expect(result.name).toBe("studio-sandbox");
+    expect(probes).toBe(0);
+  });
+
+  it("uses -medium when the cluster has it", async () => {
+    const result = await resolveClaimTemplateName({
+      ...base,
+      purpose: "harness-run",
+      probe: null,
+      exists: async (name) => name === "studio-sandbox-medium",
+    });
+    expect(result.name).toBe("studio-sandbox-medium");
+    expect(result.probe).toEqual({ checkedAt: base.now, present: true });
+  });
+
+  // Studio ahead of the chart: that claim would park at TemplateNotFound.
+  it("falls back to the default template when -medium is absent", async () => {
+    const warned: string[] = [];
+    const result = await resolveClaimTemplateName({
+      ...base,
+      purpose: "harness-run",
+      probe: null,
+      exists: async () => false,
+      onAbsent: (name) => warned.push(name),
+    });
+    expect(result.name).toBe("studio-sandbox");
+    expect(result.probe).toEqual({ checkedAt: base.now, present: false });
+    expect(warned).toEqual(["studio-sandbox-medium"]);
+  });
+
+  it("reuses a fresh probe instead of hitting the API per claim", async () => {
+    let probes = 0;
+    const result = await resolveClaimTemplateName({
+      ...base,
+      purpose: "harness-run",
+      probe: { checkedAt: base.now - 59_999, present: true },
+      exists: async () => {
+        probes++;
+        return true;
+      },
+    });
+    expect(result.name).toBe("studio-sandbox-medium");
+    expect(probes).toBe(0);
+  });
+
+  it("re-probes once the TTL is up, so an upgrade heals on its own", async () => {
+    const result = await resolveClaimTemplateName({
+      ...base,
+      purpose: "harness-run",
+      probe: { checkedAt: base.now - 60_000, present: false },
+      exists: async () => true,
+    });
+    expect(result.name).toBe("studio-sandbox-medium");
+    expect(result.probe).toEqual({ checkedAt: base.now, present: true });
+  });
+
+  it("warns once per absence, not once per claim", async () => {
+    const warned: string[] = [];
+    const first = await resolveClaimTemplateName({
+      ...base,
+      purpose: "harness-run",
+      probe: null,
+      exists: async () => false,
+      onAbsent: (name) => warned.push(name),
+    });
+    await resolveClaimTemplateName({
+      ...base,
+      purpose: "harness-run",
+      probe: first.probe,
+      exists: async () => false,
+      onAbsent: (name) => warned.push(name),
+    });
+    expect(warned).toEqual(["studio-sandbox-medium"]);
   });
 });
 

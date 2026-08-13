@@ -55,6 +55,13 @@ rules:
   - apiGroups: ["extensions.agents.x-k8s.io"]
     resources: ["sandboxwarmpools"]
     verbs: ["get"]
+  # Studio checks that the `-medium` SandboxTemplate exists before naming it on
+  # a claim (see the runner's resolveTemplateName). A 403 here reads the same as
+  # absent, so a deploy that misses this rule silently keeps every claim on the
+  # default template rather than breaking.
+  - apiGroups: ["extensions.agents.x-k8s.io"]
+    resources: ["sandboxtemplates"]
+    verbs: ["get"]
   - apiGroups: ["agents.x-k8s.io"]
     resources: ["sandboxes"]
     verbs: ["get", "list", "watch"]

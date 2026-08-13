@@ -16,6 +16,7 @@ export type {
   PodTermination,
   ProxyRequestInit,
   SandboxProviderKind,
+  SandboxPurpose,
   Sandbox,
   SandboxId,
   SandboxProvider,

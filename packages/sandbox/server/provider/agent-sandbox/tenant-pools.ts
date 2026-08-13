@@ -11,6 +11,8 @@
  */
 import { z } from "zod";
 
+import type { SandboxPurpose } from "../types";
+
 const tenantPoolSchema = z.object({
   /**
    * SandboxWarmPool object name. Must match a pool rendered by the sandbox-env
@@ -90,18 +92,18 @@ export function resolveTenantPool(
     orgId: string | undefined;
     cloneUrl: string | undefined;
     /**
-     * Checkout-only claims (the Claude Code dispatch path) must never take a
-     * tenant pod. They don't want a dev server, and binding one is actively
-     * destructive: Studio posts `cloneOnly` + the thread branch, the daemon
-     * classifies `branch-change`, and its clone step stops the dev task — so a
-     * dispatch would consume a warm slot AND de-warm the pod it took. They get
-     * the generic pool instead, which is exactly what an empty pod is for.
+     * A `harness-run` claim must never take a tenant pod. It doesn't want a dev
+     * server, and binding one is actively destructive: Studio posts `cloneOnly`
+     * + the thread branch, the daemon classifies `branch-change`, and its clone
+     * step stops the dev task — so a dispatch would consume a warm slot AND
+     * de-warm the pod it took. It gets its own pool instead (see
+     * `claimTemplateName`), which is exactly what an empty pod is for.
      */
-    cloneOnly?: boolean;
+    purpose?: SandboxPurpose;
   },
 ): TenantPool | null {
   const { orgId, cloneUrl } = claim;
-  if (claim.cloneOnly === true) return null;
+  if (claim.purpose === "harness-run") return null;
   if (!orgId || !cloneUrl) return null;
   const repoKey = repoKeyFromCloneUrl(cloneUrl);
   if (!repoKey) return null;
@@ -134,6 +136,65 @@ export function claimWarmPoolName(
   genericPoolName: string,
 ): string {
   return pool?.name ?? (warmPoolMode ? genericPoolName : "none");
+}
+
+/**
+ * The claim's `spec.sandboxTemplateRef`. A `harness-run` claim gets the roomier
+ * `-medium` template the sandbox-env chart renders alongside the default one —
+ * that is where prod's 4Gi OOMKills happened, and a SandboxClaim cannot
+ * override resources, so the ceiling can only come from another template.
+ *
+ * The returned name is also the warm pool's name (the chart names pool after
+ * template), so it feeds `claimWarmPoolName`: naming the pool built from this
+ * template is what lets the claim bind a warm pod at all. It is not what keeps
+ * the ceiling right — operator v0.4.5 matches warm pods by template hash, so a
+ * mismatched pool costs a warm bind (cold pod), never a wrong-size pod.
+ */
+export function claimTemplateName(
+  purpose: SandboxPurpose | undefined,
+  templateName: string,
+): string {
+  return purpose === "harness-run" ? `${templateName}-medium` : templateName;
+}
+
+/** Result of the last `-medium` template lookup, cached for `ttlMs`. */
+export interface MediumTemplateProbe {
+  checkedAt: number;
+  present: boolean;
+}
+
+/**
+ * `claimTemplateName`, degraded to the default template while the `-medium` one
+ * is not on the cluster.
+ *
+ * Studio and the sandbox-env chart deploy independently (the chart is pinned by
+ * targetRevision), so there is a window where Studio names a template the
+ * cluster doesn't have. The operator accepts that claim and parks it at
+ * `Ready=False TemplateNotFound` — every dispatch would burn its full readiness
+ * timeout and fail. Probing instead costs one cached GET and degrades to the
+ * ceiling we had before this feature.
+ *
+ * Both outcomes are cached for `ttlMs`, so the upgrade heals within one TTL and
+ * a chart rollback is survived just as quietly.
+ */
+export async function resolveClaimTemplateName(args: {
+  purpose: SandboxPurpose | undefined;
+  templateName: string;
+  probe: MediumTemplateProbe | null;
+  now: number;
+  ttlMs: number;
+  exists: (name: string) => Promise<boolean>;
+  onAbsent?: (name: string) => void;
+}): Promise<{ name: string; probe: MediumTemplateProbe | null }> {
+  const wanted = claimTemplateName(args.purpose, args.templateName);
+  if (wanted === args.templateName) return { name: wanted, probe: args.probe };
+  const fresh =
+    args.probe !== null && args.now - args.probe.checkedAt < args.ttlMs
+      ? args.probe
+      : { checkedAt: args.now, present: await args.exists(wanted) };
+  if (fresh.present) return { name: wanted, probe: fresh };
+  if (args.probe?.present !== false) args.onAbsent?.(wanted);
+  return { name: args.templateName, probe: fresh };
 }
 
 /**

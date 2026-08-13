@@ -20,6 +20,7 @@ import {
   normalizeSandboxProviderKind,
   type SandboxProvider,
   type SandboxProviderKind,
+  type SandboxPurpose,
   type Workload,
 } from "@decocms/sandbox/provider";
 import { sleep } from "@decocms/shared/std";
@@ -234,15 +235,12 @@ export async function ensureSandbox(
     branch: string;
     sandboxProviderKind: SandboxProviderKind;
     /**
-     * Clone the repo but skip the application workload (install + dev server).
-     *
-     * For a sandbox-hosted harness the pod exists to run one agent loop and
-     * hand back its final output — nothing reads a preview URL, so booting the
-     * tenant's dev server only adds install time and a port to babysit. Drops
-     * the `application` block from the daemon config; `git` still applies, so
-     * the checkout the harness needs is there.
+     * What the sandbox is for. `harness-run` — one headless agent loop, no
+     * preview — drops the application workload (install + dev server) from the
+     * daemon config and, on the hosted runner, moves the pod onto the
+     * agent-run SandboxTemplate + warm pool. Defaults to `interactive`.
      */
-    cloneOnly?: boolean;
+    purpose?: SandboxPurpose;
   },
   ctx: StudioContext,
 ): Promise<SandboxRecord> {
@@ -329,7 +327,7 @@ export async function ensureSandbox(
     existing: null,
     providerKind,
     runner,
-    ...(input.cloneOnly ? { cloneOnly: true } : {}),
+    ...(input.purpose ? { purpose: input.purpose } : {}),
   });
   return entry;
 }
@@ -351,8 +349,8 @@ type StartParams = {
   existing: SandboxRecord | null;
   providerKind: SandboxProviderKind;
   runner: SandboxProvider;
-  /** See `ensureSandbox`'s `cloneOnly`: checkout without install + dev server. */
-  cloneOnly?: boolean;
+  /** See `ensureSandbox`'s `purpose`. `harness-run` implies checkout-only. */
+  purpose?: SandboxPurpose;
 };
 
 async function provisionSandbox(
@@ -368,8 +366,10 @@ async function provisionSandbox(
     metadata,
     existing,
     runner,
-    cloneOnly,
+    purpose,
   } = params;
+  // One agent loop needs the checkout, not the install + dev server.
+  const cloneOnly = purpose === "harness-run";
 
   // A recorded connectionId can dangle — deleting a connection (force-delete,
   // or another agent's delete tearing down its repo-scoped child) removes
@@ -614,7 +614,8 @@ async function provisionSandbox(
       // package manager from the lockfile when the config names none, so an
       // omitted workload still installed (404 packages, competing with the run
       // that only wanted the checkout).
-      cloneOnly: cloneOnly === true,
+      cloneOnly,
+      ...(purpose ? { purpose } : {}),
       tenant: {
         orgId,
         // The sandbox's owner, so the pod's `user_id` label/metric matches the

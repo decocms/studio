@@ -7,11 +7,12 @@ is suffixed with `envName` so multiple releases coexist in the shared
 
 Renders:
 
-- `SandboxTemplate` `studio-sandbox-<envName>`
+- `SandboxTemplate` `studio-sandbox-<envName>` + `studio-sandbox-<envName>-medium`
+  (same pod spec, roomier memory — see `mediumResources`)
 - `Role` + `RoleBinding` `studio-sandbox-runner-<envName>` (for the Studio
   ServiceAccount of THIS env's studio install)
 - `Secret` `studio-sandbox-sentinel-<envName>` (initial daemon token)
-- `SandboxWarmPool` `studio-sandbox-<envName>` (optional)
+- `SandboxWarmPool` `studio-sandbox-<envName>` and `...-medium` (optional)
 - `HorizontalPodAutoscaler` for the warm pool (optional; requires explicit metrics)
 - `Deployment` `studio-sandbox-placeholder-<envName>` — node "balloon" (optional)
 - `Gateway` + `Certificate` `agent-sandbox-preview-<envName>` (optional;
@@ -268,7 +269,8 @@ See `values.yaml` for the full set. The most-tuned ones:
 | `envName` | _(required)_ | DNS-label suffix on every resource name |
 | `image.repository` | `ghcr.io/decocms/studio/studio-sandbox-go` | sandbox image (Go daemon — the implementation IS the image) |
 | `image.tag` | chart `appVersion` | bump in lockstep with packages/sandbox/package.json |
-| `resources.*` | 0.5/2 CPU, 1/4Gi RAM | per sandbox pod |
+| `resources.*` | 0.5/2 CPU, 2/4Gi RAM | per sandbox pod |
+| `mediumResources.*` | 3/6Gi RAM | deep-merged over `resources.*` into a second `<name>-medium` SandboxTemplate; Studio sends `cloneOnly` (Claude Code dispatch) claims to `<STUDIO_SANDBOX_TEMPLATE_NAME>-medium`, so this chart must be upgraded before the Studio release that names it |
 | `nodeSelector` / `tolerations` / `affinity` | `{}` | for sandbox isolation NodePool |
 | `topologySpreadConstraints` | `[]` | spread sandbox pods across AZs; see `values.yaml` for the recommended config |
 | `disruptionProtection.doNotDisrupt` | `false` | annotate pods with Karpenter's `do-not-disrupt` to block voluntary node consolidation/drift while a sandbox is claimed; trades cluster cost/upgrade cadence for session safety |

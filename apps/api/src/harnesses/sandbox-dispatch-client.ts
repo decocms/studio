@@ -366,10 +366,8 @@ export class SandboxDispatchClient implements SandboxClient {
             virtualMcpId,
             branch,
             sandboxProviderKind: kind,
-            // This pod runs one agent loop and returns its output. Nothing here
-            // opens a preview, so the tenant's install + dev server is pure boot
-            // latency — the harness only needs the checkout.
-            cloneOnly: true,
+            // One agent loop, no preview, and a memory ceiling of its own.
+            purpose: "harness-run",
           },
           ctx,
         );

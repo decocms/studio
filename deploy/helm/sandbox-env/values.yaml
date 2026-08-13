@@ -67,6 +67,26 @@ resources:
     memory: 4Gi
     ephemeral-storage: 10Gi
 
+# ── the `-medium` SandboxTemplate's ceilings ───────────────────────────
+# Deep-merged over `resources` above, so state only what differs. Studio sends
+# headless agent-loop claims (Claude Code dispatch: cloneOnly, no dev server)
+# to `<STUDIO_SANDBOX_TEMPLATE_NAME>-medium` unconditionally, so this chart
+# version must be deployed before the Studio release that does.
+#
+# Why a separate template instead of raising the shared limit: prod OOMKilled
+# three pods at the 4Gi limit on 2026-08-13, all inside a claude-code loop
+# (container_memory_rss 257Mi → 3.6Gi in 9 min). Raising the shared limit to
+# 6Gi while leaving the 2Gi request would let every node pack on 2Gi and burst
+# to 6Gi — node memory-pressure eviction is exactly what drove the request from
+# 1Gi to 2Gi in 0.9.14. So the higher ceiling is carried by the pods that need
+# it, with a request that actually reserves most of it (3Gi/6Gi = 2x
+# overcommit, same ratio as the default 2Gi/4Gi).
+mediumResources:
+  requests:
+    memory: 3Gi
+  limits:
+    memory: 6Gi
+
 # ── shutdown grace period ──────────────────────────────────────────────
 # On SIGTERM (rollout, spot reclaim, idle eviction) the daemon commits and
 # pushes the working tree to git — the only durable copy of the user's work
@@ -570,6 +590,10 @@ warmPool:
   # the full resources.requests above.
   enabled: false
   size: 0
+  # Replicas for the `-medium` pool (see mediumResources). 0 = harness-run
+  # claims cold-start, same as the dispatch path does today. Their pods are the
+  # expensive ones (3Gi request), so warm only what you measure.
+  mediumSize: 0
 
   # Optional: scale `size` dynamically via a HorizontalPodAutoscaler
   # targeting the SandboxWarmPool's native scale subresource (kubectl scale
@@ -594,6 +618,22 @@ warmPool:
     # Optional autoscaling/v2 `behavior` block (scale-up/down stabilization
     # windows, policies). Left empty = cluster defaults.
     behavior: {}
+    # The `-medium` pool scales separately or not at all: a SandboxWarmPool
+    # binds exactly one SandboxTemplate, so one HPA cannot straddle both, and
+    # the two pools see different claim rates. Every key here falls back to the
+    # block above when unset — but set `minReplicas` deliberately: inheriting 1
+    # keeps one 3Gi pod idle forever.
+    #
+    # Deploys that autoscale the pools with KEDA instead (a ScaledObject on the
+    # pool's scale subresource) need a SECOND ScaledObject for `-medium` for the
+    # same reason. Leave this off there — two controllers on one scale
+    # subresource fight.
+    medium:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 10
+      metrics: []
+      behavior: {}
 
 # ── tenant warm pools ──────────────────────────────────────────────────
 # Warm pods that are already running ONE org's repo + dev server (the generic

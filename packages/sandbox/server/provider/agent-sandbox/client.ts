@@ -324,6 +324,28 @@ async function callSwallowing404<T>(
 
 const CLAIM_PATH_PREFIX = `/apis/${K8S_CONSTANTS.CLAIM_API_GROUP}/${K8S_CONSTANTS.CLAIM_API_VERSION}/namespaces`;
 
+/**
+ * Whether a SandboxTemplate is on the cluster. `403` answers `false` alongside
+ * `404`: a claim naming a template this deploy cannot even see is a claim that
+ * sits `Ready=False TemplateNotFound` until it times out, so "absent" and
+ * "cannot confirm" have the same consequence and deserve the same answer.
+ */
+export async function sandboxTemplateExists(
+  kc: KubeConfig,
+  namespace: string,
+  name: string,
+): Promise<boolean> {
+  const path = `${CLAIM_PATH_PREFIX}/${encodeURIComponent(namespace)}/${K8S_CONSTANTS.TEMPLATE_PLURAL}/${encodeURIComponent(name)}`;
+  try {
+    const resp = await kubeFetch(kc, { method: "GET", path });
+    if (resp.status === 404 || resp.status === 403) return false;
+    await ensureOk(resp, "sandboxTemplateExists");
+    return true;
+  } catch (error) {
+    throw new SandboxError(`Failed to get SandboxTemplate: ${name}`, error);
+  }
+}
+
 export async function createSandboxClaim(
   kc: KubeConfig,
   namespace: string,

@@ -40,7 +40,25 @@ export interface Workload {
   packageManagerPath?: string;
 }
 
+/**
+ * What a sandbox is for. Runners MAY size, pool, and place the two differently;
+ * a runner that treats them identically is still correct.
+ *
+ * - `interactive` (default): a person is in the loop — dev server, preview URL,
+ *   long-lived, one per (user, project).
+ * - `harness-run`: one headless agent loop (Claude Code) dispatched to the
+ *   in-pod daemon, torn down when the run settles. `cloneOnly` and the absent
+ *   preview are consequences of this, not the definition of it.
+ */
+export type SandboxPurpose = "interactive" | "harness-run";
+
 export interface EnsureOptions {
+  /**
+   * Defaults to `interactive` when absent. On the agent-sandbox runner this
+   * decides the SandboxTemplate (memory ceiling) and the warm pool, so it has
+   * to survive into the persisted opts a resurrected claim is rebuilt from.
+   */
+  purpose?: SandboxPurpose;
   /**
    * The synthetic isolation key, recorded as the claim's `git-branch`
    * ANNOTATION for operators reading `kubectl get sandboxclaim -o yaml`.
