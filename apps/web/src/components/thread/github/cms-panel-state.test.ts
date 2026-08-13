@@ -54,6 +54,8 @@ function input(
     saving: false,
     loading: false,
     statusError: null,
+    syncing: false,
+    statusRetrying: false,
     t: mockT,
     ...over,
   };
@@ -247,7 +249,7 @@ describe("selectCmsHeaderButton — 4. waiting for approval", () => {
     expect(r.action).toBe("open-pr");
   });
 
-  test("no checks → outline, no spinner, no pulse, no tooltip", () => {
+  test("no checks → outline, no spinner, no tooltip", () => {
     const r = selectCmsHeaderButton(
       input({
         branch: ready({ aheadOfBase: 2 }),
@@ -257,11 +259,10 @@ describe("selectCmsHeaderButton — 4. waiting for approval", () => {
     );
     expect(r.variant).toBe("outline");
     expect(r.loading).toBeFalsy();
-    expect(r.pulse).toBeFalsy();
     expect(r.tooltip).toBeUndefined();
   });
 
-  test("all checks passed → outline, no spinner, no pulse", () => {
+  test("all checks passed → outline, no spinner", () => {
     const r = selectCmsHeaderButton(
       input({
         branch: ready({ aheadOfBase: 2 }),
@@ -272,7 +273,6 @@ describe("selectCmsHeaderButton — 4. waiting for approval", () => {
     );
     expect(r.variant).toBe("outline");
     expect(r.loading).toBeFalsy();
-    expect(r.pulse).toBeFalsy();
     expect(r.tooltip).toBeUndefined();
   });
 
@@ -286,7 +286,6 @@ describe("selectCmsHeaderButton — 4. waiting for approval", () => {
       }),
     );
     expect(r.loading).toBe(true);
-    expect(r.pulse).toBeFalsy();
     expect(r.tooltip).toBe("Running checks 1 of 2 done");
     expect(r.variant).toBe("outline");
   });
@@ -305,7 +304,6 @@ describe("selectCmsHeaderButton — 4. waiting for approval", () => {
     expect(r.disabled).toBeFalsy();
     expect(r.action).toBe("open-pr");
     expect(r.loading).toBeFalsy();
-    expect(r.pulse).toBeFalsy();
   });
 
   test("mixed failed + running → running wins (spinner, outline)", () => {
@@ -318,7 +316,6 @@ describe("selectCmsHeaderButton — 4. waiting for approval", () => {
       }),
     );
     expect(r.loading).toBe(true);
-    expect(r.pulse).toBeFalsy();
     expect(r.variant).toBe("outline");
     expect(r.tooltip).toBe("Running checks 2 of 3 done");
   });
@@ -364,7 +361,7 @@ describe("selectCmsHeaderButton — 5. ready to publish", () => {
     },
   );
 
-  test("no checks → brand, no spinner, no pulse, no tooltip", () => {
+  test("no checks → brand, no spinner, no tooltip", () => {
     const r = selectCmsHeaderButton(
       input({
         branch: ready({ aheadOfBase: 2 }),
@@ -374,11 +371,10 @@ describe("selectCmsHeaderButton — 5. ready to publish", () => {
     );
     expect(r.variant).toBe("brand");
     expect(r.loading).toBeFalsy();
-    expect(r.pulse).toBeFalsy();
     expect(r.tooltip).toBeUndefined();
   });
 
-  test("all checks passed → brand, no spinner, no pulse", () => {
+  test("all checks passed → brand, no spinner", () => {
     const r = selectCmsHeaderButton(
       input({
         branch: ready({ aheadOfBase: 2 }),
@@ -389,11 +385,10 @@ describe("selectCmsHeaderButton — 5. ready to publish", () => {
     );
     expect(r.variant).toBe("brand");
     expect(r.loading).toBeFalsy();
-    expect(r.pulse).toBeFalsy();
     expect(r.tooltip).toBeUndefined();
   });
 
-  test("check running → pulse (not spinner) + progress tooltip", () => {
+  test("check running → still, tooltip only (never animates a clickable button)", () => {
     const r = selectCmsHeaderButton(
       input({
         branch: ready({ aheadOfBase: 2 }),
@@ -402,7 +397,6 @@ describe("selectCmsHeaderButton — 5. ready to publish", () => {
         reviews: reviews(),
       }),
     );
-    expect(r.pulse).toBe(true);
     expect(r.loading).toBeFalsy();
     expect(r.tooltip).toBe("Running checks 1 of 2 done");
     expect(r.variant).toBe("brand");
@@ -422,10 +416,9 @@ describe("selectCmsHeaderButton — 5. ready to publish", () => {
     expect(r.tooltip).toBe("2 of 3 checks are not passing");
     expect(r.action).toBe("publish");
     expect(r.disabled).toBeFalsy();
-    expect(r.pulse).toBeFalsy();
   });
 
-  test("mixed failed + running → running wins (pulse, brand)", () => {
+  test("mixed failed + running → running wins (brand, no warning)", () => {
     const r = selectCmsHeaderButton(
       input({
         branch: ready({ aheadOfBase: 2 }),
@@ -434,7 +427,6 @@ describe("selectCmsHeaderButton — 5. ready to publish", () => {
         reviews: reviews(),
       }),
     );
-    expect(r.pulse).toBe(true);
     expect(r.loading).toBeFalsy();
     expect(r.variant).toBe("brand");
     expect(r.tooltip).toBe("Running checks 1 of 2 done");
@@ -492,7 +484,6 @@ describe("selectCmsHeaderButton — 6. draft (no open PR)", () => {
     expect(r.variant).toBe("brand");
     expect(r.tooltip).toBeUndefined();
     expect(r.loading).toBeFalsy();
-    expect(r.pulse).toBeFalsy();
   });
 });
 
@@ -689,6 +680,39 @@ describe("status read failure", () => {
     const r = selectCmsHeaderButton(input({ branch: { kind: "unknown" } }));
     expect(r.label).toBe(threadEn["thread.headerActions.loading"]);
     expect(r.loading).toBe(true);
+  });
+});
+
+describe("in-flight actions", () => {
+  test("a Get latest merge holds the button with a spinner", () => {
+    const r = selectCmsHeaderButton(
+      input({
+        branch: ready({ aheadOfBase: 2, behindBase: 3 }),
+        syncing: true,
+      }),
+    );
+    expect(r.label).toBe(threadEn["thread.cmsActions.gettingLatest"]);
+    expect(r.disabled).toBe(true);
+    expect(r.loading).toBe(true);
+    expect(r.menu).toEqual([]);
+  });
+
+  test("publishing outranks syncing", () => {
+    const r = selectCmsHeaderButton(input({ publishing: true, syncing: true }));
+    expect(r.label).toBe(threadEn["thread.cmsActions.publishing"]);
+  });
+
+  test("a retry in flight spins on the Retry button", () => {
+    const r = selectCmsHeaderButton(
+      input({
+        branch: { kind: "unknown" },
+        statusError: "repository not initialized",
+        statusRetrying: true,
+      }),
+    );
+    expect(r.label).toBe(threadEn["thread.cmsActions.retry"]);
+    expect(r.loading).toBe(true);
+    expect(r.disabled).toBe(true);
   });
 });
 

@@ -272,6 +272,8 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     reviews: reviewsQuery.data ?? null,
     publishing,
     saving,
+    syncing: getLatest.isPending,
+    statusRetrying: statusQuery.isFetching && !!statusQuery.error,
     statusError:
       statusQuery.error instanceof Error
         ? statusQuery.error.message
@@ -328,7 +330,6 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
         variant={button.variant}
         disabled={Boolean(button.disabled) || !action}
         loading={Boolean(button.loading)}
-        pulse={Boolean(button.pulse)}
         {...(action && !button.loading ? { icon: actionIcon(action) } : {})}
         {...(button.tooltip ? { tooltip: button.tooltip } : {})}
         items={items}

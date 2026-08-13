@@ -54,6 +54,7 @@ export const thread = {
     "Trazer as novas alterações da produção",
   "thread.cmsActions.moreActionsAriaLabel": "Mais ações",
   "thread.cmsActions.publishing": "Publicando…",
+  "thread.cmsActions.gettingLatest": "Obtendo atualizações…",
   "thread.cmsActions.retry": "Tentar novamente",
   "thread.cmsActions.resolveOnGithub": "Resolver no GitHub",
   "thread.cmsActions.reviewAndPublish": "Revisar e publicar",

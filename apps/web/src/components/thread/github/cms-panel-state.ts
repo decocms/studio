@@ -38,11 +38,9 @@ export interface CmsMenuItem {
  * Descriptor returned by {@link selectCmsHeaderButton}.
  *
  * An absent `action` means the primary half is an inert status pill. `loading`
- * puts a spinner in the primary half and reads as "wait"; `pulse` animates the
- * whole control and reads as "something is happening, but you may still act" —
- * the two are deliberately never both set. `disabled` and a non-empty `menu`
- * can coexist: "Up to date" has nothing to publish yet still offers
- * "Get latest" when the branch is behind.
+ * puts a spinner in the primary half and is reserved for a genuine wait.
+ * `disabled` and a non-empty `menu` can coexist: "Up to date" has nothing to
+ * publish yet still offers "Get latest" when the branch is behind.
  */
 export interface CmsHeaderButton {
   label: string;
@@ -52,8 +50,6 @@ export interface CmsHeaderButton {
   disabled?: boolean;
   /** Spinner in the primary half. */
   loading?: boolean;
-  /** Whole control pulses. */
-  pulse?: boolean;
   tooltip?: string;
   menu: CmsMenuItem[];
 }
@@ -67,6 +63,10 @@ export interface SelectCmsHeaderButtonInput {
   publishing: boolean;
   /** A block write is in flight; the branch state is mid-change. */
   saving: boolean;
+  /** A "Get latest" merge is in flight. */
+  syncing: boolean;
+  /** A failed status read is being retried. */
+  statusRetrying: boolean;
   /** Branch/PR/check data is still being fetched. */
   loading: boolean;
   /** Why the branch status could not be read, if it could not. */
@@ -113,15 +113,13 @@ function withGetLatest(
  * judgement call the editor is allowed to make, so it only recolours to
  * `warning` and explains itself in the tooltip.
  *
- * `runningTreatment` splits the two states: "Waiting for approval" is a
- * genuine wait, so it takes a spinner; "Ready to publish" stays actionable, so
- * it pulses instead — a spinner there would wrongly imply the editor should
- * hold off.
+ * Only a genuine wait animates. A button the editor may click right now must
+ * sit still; the tooltip carries the progress.
  */
 function applyCheckTreatment(
   button: CmsHeaderButton,
   checks: CheckRun[],
-  runningTreatment: "loading" | "pulse",
+  runningTreatment: "loading" | "none",
   t: TFunction,
 ): CmsHeaderButton {
   const total = checks.length;
@@ -133,7 +131,7 @@ function applyCheckTreatment(
     const tooltip = t("thread.cmsActions.checksRunning", { done, total });
     return runningTreatment === "loading"
       ? { ...button, loading: true, tooltip }
-      : { ...button, pulse: true, tooltip };
+      : { ...button, tooltip };
   }
 
   const failed = checks.filter(isCheckFailed).length;
@@ -217,6 +215,8 @@ export function selectCmsHeaderButton(
       label: t("thread.cmsActions.retry"),
       action: "retry-status",
       variant: "outline",
+      disabled: input.statusRetrying,
+      loading: input.statusRetrying,
       tooltip: input.statusError,
       menu: [],
     };
@@ -236,6 +236,17 @@ export function selectCmsHeaderButton(
   if (publishing) {
     return {
       label: t("thread.cmsActions.publishing"),
+      variant: "outline",
+      disabled: true,
+      loading: true,
+      menu: [],
+    };
+  }
+
+  /** A merge is rewriting the branch under the editor. */
+  if (input.syncing) {
+    return {
+      label: t("thread.cmsActions.gettingLatest"),
       variant: "outline",
       disabled: true,
       loading: true,
@@ -300,7 +311,7 @@ export function selectCmsHeaderButton(
         menu: withGetLatest([viewOnGithubItem(t)], branch, t),
       },
       checks,
-      "pulse",
+      "none",
       t,
     );
   }

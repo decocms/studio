@@ -50,6 +50,7 @@ export const thread = {
   "thread.cmsActions.getLatestTooltip": "Bring in new changes from production",
   "thread.cmsActions.moreActionsAriaLabel": "More actions",
   "thread.cmsActions.publishing": "Publishing…",
+  "thread.cmsActions.gettingLatest": "Getting latest…",
   "thread.cmsActions.retry": "Retry",
   "thread.cmsActions.resolveOnGithub": "Resolve on GitHub",
   "thread.cmsActions.reviewAndPublish": "Review & Publish",
