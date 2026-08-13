@@ -1,16 +1,4 @@
-/**
- * Header button state machine for **Fast Preview** (CMS) mode.
- *
- * Fast Preview is the sandbox-less, content-only editing surface: there is no
- * working tree (`workingTreeDirty` is always false and `unpushed` always 0 —
- * edits are committed as they are made), no coding agent, and no chat. That
- * removes every "commit / push / fix tests / address feedback" branch of
- * {@link ./panel-state.ts selectHeaderButton} and leaves seven states driven
- * only by `aheadOfBase`, `behindBase`, the pull request, and its check runs.
- *
- * The vocabulary is the editor's, not git's: "Review & Publish" instead of
- * "Submit for review", "Get latest" instead of "Sync with main".
- */
+/** Fast Preview (CMS) header button state machine; see ./panel-state.ts for vibecoding's. */
 
 import type { BranchMeta } from "@decocms/sandbox/shared";
 import type { TFunction } from "@/i18n/use-t.ts";
@@ -72,6 +60,8 @@ export interface SelectCmsHeaderButtonInput {
   reviews: PrReviewSignals | null;
   /** A publish is in flight — optimistic, set at click time. */
   publishing: boolean;
+  /** A block write is in flight; the branch state is mid-change. */
+  saving: boolean;
   /** Branch/PR/check data is still being fetched. */
   loading: boolean;
   t: TFunction;
@@ -168,25 +158,23 @@ function isLevelWithMergedPr(
     pr?.merged &&
       pr.headSha &&
       branch.kind === "ready" &&
+      !branch.workingTreeDirty &&
       branch.headSha === pr.headSha,
   );
 }
 
-/**
- * Picks the Fast Preview header button. First match wins, in the order below:
- *
- * 1. Loading — data in flight, or branch metadata not yet known.
- * 2. Publishing — a publish is in flight.
- * 3. Needs attention — open PR conflicting with base.
- * 4. Waiting for approval — open PR blocked on review, or still a draft.
- * 5. Ready to publish — open PR, every other mergeable state.
- * 6. Draft — committed edits with no PR to carry them.
- * 7. Up to date — nothing to publish.
- */
+/** Not live yet: one `/git/status` backend commits each save, the other doesn't. */
+function hasUnpublishedWork(
+  branch: Extract<BranchMeta, { kind: "ready" }>,
+): boolean {
+  return branch.aheadOfBase > 0 || branch.workingTreeDirty;
+}
+
+/** Picks the Fast Preview header button; first match wins, so order is behavior. */
 export function selectCmsHeaderButton(
   input: SelectCmsHeaderButtonInput,
 ): CmsHeaderButton {
-  const { branch, pr, checks, reviews, publishing, loading, t } = input;
+  const { branch, pr, checks, reviews, publishing, saving, loading, t } = input;
 
   // Fetching and "branch metadata not here yet" are one state to the editor.
   if (loading || branch.kind !== "ready") {
@@ -202,6 +190,17 @@ export function selectCmsHeaderButton(
   if (publishing) {
     return {
       label: t("thread.cmsActions.publishing"),
+      variant: "outline",
+      disabled: true,
+      loading: true,
+      menu: [],
+    };
+  }
+
+  /** Publishing mid-write would ship whichever half of the edit landed. */
+  if (saving) {
+    return {
+      label: t("thread.headerActions.saving"),
       variant: "outline",
       disabled: true,
       loading: true,
@@ -269,7 +268,7 @@ export function selectCmsHeaderButton(
     };
   }
 
-  if (branch.aheadOfBase > 0) {
+  if (hasUnpublishedWork(branch)) {
     return {
       label: t("thread.cmsActions.reviewAndPublish"),
       action: "publish",

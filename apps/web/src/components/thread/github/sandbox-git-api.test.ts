@@ -5,6 +5,7 @@ import {
   DEFAULT_PUBLISH_POLICY,
   hasGitLocalWork,
   hasLocalWorkToPush,
+  hasPublishableLocalWork,
   hasUnpublishedWork,
   isDecoOnlyDiff,
   needsSmartReviewJudgment,
@@ -235,6 +236,66 @@ describe("hasGitLocalWork", () => {
     expect(hasGitLocalWork({ ...cleanStatus, ahead: 2, unpushed: 2 })).toBe(
       false,
     );
+  });
+});
+
+describe("hasPublishableLocalWork", () => {
+  const GENERATED = [
+    ".deco/generate.digests.json",
+    ".deco/meta.gen.json",
+    "blocks.gen.json",
+    "static/tailwind.css",
+  ];
+
+  test("false for null and a clean tree", () => {
+    expect(hasPublishableLocalWork(null)).toBe(false);
+    expect(hasPublishableLocalWork(cleanStatus)).toBe(false);
+  });
+
+  test("false when only generated artifacts changed", () => {
+    expect(
+      hasPublishableLocalWork({
+        ...cleanStatus,
+        modified: GENERATED,
+        staged: [".deco/generate.digests.json"],
+      }),
+    ).toBe(false);
+  });
+
+  test("true when a block changed alongside generated artifacts", () => {
+    expect(
+      hasPublishableLocalWork({
+        ...cleanStatus,
+        modified: [...GENERATED, ".deco/blocks/hero.json"],
+      }),
+    ).toBe(true);
+  });
+
+  test("true for conflicts even with no listed paths", () => {
+    expect(
+      hasPublishableLocalWork({ ...cleanStatus, conflicted: ["a.ts"] }),
+    ).toBe(true);
+  });
+
+  test("counts created, deleted and untracked content", () => {
+    expect(
+      hasPublishableLocalWork({
+        ...cleanStatus,
+        created: [".deco/blocks/a.json"],
+      }),
+    ).toBe(true);
+    expect(
+      hasPublishableLocalWork({
+        ...cleanStatus,
+        deleted: [".deco/blocks/a.json"],
+      }),
+    ).toBe(true);
+    expect(
+      hasPublishableLocalWork({
+        ...cleanStatus,
+        not_added: [".deco/blocks/a.json"],
+      }),
+    ).toBe(true);
   });
 });
 

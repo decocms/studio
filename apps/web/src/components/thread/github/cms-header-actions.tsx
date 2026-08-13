@@ -28,7 +28,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useIsMutating,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t";
@@ -37,12 +42,14 @@ import { resolveGithubAttachment } from "@/lib/github-repo.ts";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { resolveFastPreview } from "@/sdk/fast-preview";
+import { decofileWriteMutationKey } from "../../sections-editor/decofile-api.ts";
 import { useChatTask } from "../../chat/index";
 import { selectCmsHeaderButton, type CmsAction } from "./cms-panel-state.ts";
 import { isPrStateActivelyLoading } from "./panel-state.ts";
 import { PublishDialog, type PublishDialogIntent } from "./publish-dialog.tsx";
 import {
   fetchGitStatus,
+  hasPublishableLocalWork,
   normalizePublishPolicy,
   readGitHeadBranch,
   rebaseGitBranch,
@@ -73,14 +80,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
       : null;
   const { previewServerUrl } = resolveFastPreview(vm?.metadata);
 
-  /**
-   * Sandbox-less: no daemon → no `branch` SSE event. Fetch the (GitHub-backed)
-   * status route into the same BranchMeta shape — but never on an interval:
-   * every call forwards to the GitHub API, and a timer here burns rate limit
-   * for data that only changes when WE commit. The only in-app mutation is the
-   * decofile PATCH, whose save hooks invalidate this key; external pushes are
-   * picked up on window focus.
-   */
+  /** Poll-free on purpose: every call forwards to GitHub; save hooks invalidate this key. */
   const statusQuery = useQuery({
     queryKey: sandboxGitStatusQueryKey(org.slug, virtualMcpId, branch ?? ""),
     queryFn: () => fetchGitStatus(org.slug, virtualMcpId, branch ?? ""),
@@ -93,8 +93,8 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
         kind: "ready",
         branch: readGitHeadBranch(status) ?? branch ?? "",
         base: status.base ?? "main",
-        workingTreeDirty: false,
-        unpushed: 0,
+        workingTreeDirty: hasPublishableLocalWork(status),
+        unpushed: status.unpushed ?? 0,
         aheadOfBase: status.aheadOfBase ?? 0,
         behindBase: status.behindBase ?? 0,
         headSha: status.headSha ?? "",
@@ -195,6 +195,16 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     },
   });
 
+  /** Same in-flight signal the preview's autosave indicator reads. */
+  const saving =
+    useIsMutating({
+      mutationKey: decofileWriteMutationKey(
+        org.slug,
+        virtualMcpId,
+        branch ?? "",
+      ),
+    }) > 0;
+
   /**
    * Detached: repo linked via a GitHub connection that's no longer aggregated.
    * Render a reconnect pill instead of nothing so the user has a recovery path.
@@ -237,6 +247,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     checks: checksQuery.data ?? [],
     reviews: reviewsQuery.data ?? null,
     publishing,
+    saving,
     loading: isPrStateActivelyLoading(prQuery),
     t,
   });

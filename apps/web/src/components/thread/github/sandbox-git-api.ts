@@ -225,6 +225,31 @@ function isTailwindCssPath(path: string): boolean {
   );
 }
 
+/** Rewritten as a side effect of any save, and never reverted by an undo. */
+function isGeneratedArtifactPath(path: string): boolean {
+  return (
+    isBlocksGenJsonPath(path) ||
+    isTailwindCssPath(path) ||
+    path.endsWith("generate.digests.json") ||
+    path.endsWith("meta.gen.json")
+  );
+}
+
+/** Uncommitted work that would actually change the site. */
+export function hasPublishableLocalWork(
+  status: GitStatus | null | undefined,
+): boolean {
+  if (!status) return false;
+  if (status.conflicted.length > 0 || status.renamed.length > 0) return true;
+  return [
+    ...status.modified,
+    ...status.created,
+    ...status.deleted,
+    ...status.not_added,
+    ...status.staged,
+  ].some((path) => !isGeneratedArtifactPath(path));
+}
+
 /**
  * CMS artifacts live under a `.deco/` directory. The `/.deco/` (and `/.deco`)
  * forms also match projects whose package path isn't the repo root

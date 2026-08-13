@@ -50,6 +50,7 @@ function input(
     checks: [],
     reviews: null,
     publishing: false,
+    saving: false,
     loading: false,
     t: mockT,
     ...over,
@@ -592,6 +593,68 @@ describe("selectCmsHeaderButton — Get latest in every menu when behind", () =>
     );
     expect(r.variant).toBe("warning");
     expect(menuKeys(r.menu)).toEqual(["view-on-github", "get-latest"]);
+  });
+});
+
+describe("saving", () => {
+  test("an in-flight block write holds the button", () => {
+    const r = selectCmsHeaderButton(
+      input({ branch: ready({ aheadOfBase: 2 }), saving: true }),
+    );
+    expect(r.label).toBe(threadEn["thread.headerActions.saving"]);
+    expect(r.disabled).toBe(true);
+    expect(r.loading).toBe(true);
+    expect(r.action).toBeUndefined();
+    expect(r.menu).toEqual([]);
+  });
+
+  test("Get latest is withheld while saving, even when behind", () => {
+    const r = selectCmsHeaderButton(
+      input({ branch: ready({ behindBase: 4 }), saving: true }),
+    );
+    expect(r.menu).toEqual([]);
+  });
+
+  test("publishing outranks saving", () => {
+    const r = selectCmsHeaderButton(input({ publishing: true, saving: true }));
+    expect(r.label).toBe(threadEn["thread.cmsActions.publishing"]);
+  });
+
+  test("saving is transparent once the write settles", () => {
+    const r = selectCmsHeaderButton(
+      input({ branch: ready({ aheadOfBase: 2 }), saving: false }),
+    );
+    expect(r.label).toBe(threadEn["thread.cmsActions.reviewAndPublish"]);
+  });
+});
+
+describe("uncommitted work", () => {
+  test("a dirty tree with nothing committed is still Draft", () => {
+    const r = selectCmsHeaderButton(
+      input({ branch: ready({ aheadOfBase: 0, workingTreeDirty: true }) }),
+    );
+    expect(r.label).toBe(threadEn["thread.cmsActions.reviewAndPublish"]);
+    expect(r.action).toBe("publish");
+    expect(r.disabled).toBeFalsy();
+  });
+
+  test("a clean branch level with base is Up to date", () => {
+    const r = selectCmsHeaderButton(
+      input({ branch: ready({ aheadOfBase: 0, workingTreeDirty: false }) }),
+    );
+    expect(r.label).toBe(threadEn["thread.headerActions.upToDate"]);
+    expect(r.disabled).toBe(true);
+  });
+
+  test("a dirty tree beats a merged PR at the same head", () => {
+    const r = selectCmsHeaderButton(
+      input({
+        branch: ready({ headSha: "merged-sha", workingTreeDirty: true }),
+        pr: pr({ state: "closed", merged: true, headSha: "merged-sha" }),
+      }),
+    );
+    expect(r.label).toBe(threadEn["thread.cmsActions.reviewAndPublish"]);
+    expect(r.action).toBe("publish");
   });
 });
 
