@@ -21,7 +21,12 @@ import type { UIMessage, UIMessageChunk } from "ai";
 const CREATES_PART = new Set(["tool-input-start", "tool-input-available"]);
 
 /** Chunk types that require a pre-existing part and throw without one. */
-const REQUIRES_PART = new Set(["tool-output-available", "tool-output-error"]);
+const REQUIRES_PART = new Set([
+  "tool-output-available",
+  "tool-output-error",
+  "tool-approval-request",
+  "tool-output-denied",
+]);
 
 /** Placeholder name for a tool whose input part was lost. */
 const UNKNOWN_TOOL_NAME = "unknown";
