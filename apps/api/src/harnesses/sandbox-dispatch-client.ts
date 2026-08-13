@@ -564,6 +564,14 @@ export function describeTermination(
 }
 
 /**
+ * Bound the env-push PUT — a wedged daemon (pod up, TCP open, nothing
+ * draining it) must not hang the dispatch forever. `DAEMON_SILENCE_TIMEOUT_MS`
+ * only bounds the streaming dispatch itself; this call happens before that
+ * stream even opens, so without its own timeout it has no ceiling at all.
+ */
+const PUSH_ENV_TIMEOUT_MS = 30_000;
+
+/**
  * PUT the run's model env onto the daemon's config channel.
  *
  * ⚠️ SECURITY: `env` holds a model credential. Never log it, and never include
@@ -578,6 +586,7 @@ async function pushSandboxEnv(
     method: "PUT",
     headers: new Headers({ "content-type": "application/json" }),
     body: JSON.stringify({ env }),
+    signal: AbortSignal.timeout(PUSH_ENV_TIMEOUT_MS),
   });
   if (!res.ok) {
     // Hard failure, unlike the tool-catalog sync: without the credential the
