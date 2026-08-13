@@ -567,7 +567,9 @@ export function resolveSchema(
         // page multivariate flag branch. Prefer the array (admin hides the flag UI).
         // App config arrays (e.g. flag lists) share anyOf with product-list loaders;
         // prefer the array branch when items are plain objects, not section refs.
-        const arrayBranch = nonNull.find(isArraySchemaBranch);
+        const arrayBranch = nonNull
+          .map((branch) => unwrapRefAliases(branch))
+          .find(isArraySchemaBranch);
         const hasPageMultivariateLoader = loaderBranches.some((branch) => {
           const rtEnum = (
             (branch.properties as RawSchema | undefined)?.__resolveType as
