@@ -625,7 +625,7 @@ export async function isPodUnbound(
  * `lastState.terminated` once the kubelet restarted it in place — same kill.
  *
  * Best-effort by construction: the operator deletes the pod shortly after the
- * kill, so null means "no longer knowable", never "not an OOM".
+ * kill, so null means "no longer knowable", never "not an OOM". Only the newest labelled pod counts — a continuation reuses the handle, so an earlier attempt's corpse still carries it.
  */
 export async function readPodTermination(
   kc: KubeConfig,
@@ -643,11 +643,16 @@ export async function readPodTermination(
     });
     if (!resp.ok) return null;
     const body = (await resp.json()) as { items?: PodTerminationSource[] };
-    for (const pod of body.items ?? []) {
-      const termination = podTermination(pod, containerName);
-      if (termination) return termination;
-    }
-    return null;
+    const newest = (body.items ?? []).reduce<PodTerminationSource | null>(
+      (latest, pod) =>
+        latest === null ||
+        (pod.metadata?.creationTimestamp ?? "") >
+          (latest.metadata?.creationTimestamp ?? "")
+          ? pod
+          : latest,
+      null,
+    );
+    return newest ? podTermination(newest, containerName) : null;
   } catch {
     return null;
   }
@@ -659,6 +664,7 @@ interface TerminatedState {
 }
 
 interface PodTerminationSource {
+  metadata?: { creationTimestamp?: string };
   spec?: {
     containers?: Array<{
       name?: string;

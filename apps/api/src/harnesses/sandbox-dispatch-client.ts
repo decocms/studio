@@ -527,10 +527,7 @@ export async function* dispatchWithContinuation(args: {
  * work that just died — reproducing the kill — or reports success from memory
  * of edits that were never pushed.
  */
-function resumeReason(
-  errorMessage: string,
-  infra: string | null,
-): string {
+function resumeReason(errorMessage: string, infra: string | null): string {
   const lost = `the sandbox running the previous attempt stopped answering (${errorMessage})`;
   if (!infra) return lost;
   return (
