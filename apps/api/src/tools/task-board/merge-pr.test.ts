@@ -11,9 +11,19 @@ import type { ReviewCycleActivity } from "@decocms/shared/task-board";
 import { approvedButUnverified } from "@decocms/shared/task-board";
 import {
   checksBlockMerge,
+  classifyMergeResult,
   isMergeMethodNotAllowed,
   mayBeConflict,
 } from "./merge-pr";
+
+/** The MCP tool-result shape `classifyMergeResult` reads: an error with a text
+ *  content array (what GitHub's refusal actually arrives as). */
+const errorResult = (text: string) => ({
+  isError: true,
+  content: [{ type: "text", text }],
+});
+const notAllowed = (method: string, pr = 71) =>
+  `failed to merge pull request: PUT https://api.github.com/repos/o/r/pulls/${pr}/merge: 405 ${method} are not allowed on this repository. []`;
 
 const BOTH = ["qa", "code_review"] as const;
 const at = "2026-08-12T00:00:00.000Z";
@@ -96,6 +106,51 @@ describe("isMergeMethodNotAllowed", () => {
       ),
     ).toBe(false);
     expect(isMergeMethodNotAllowed("")).toBe(false);
+  });
+});
+
+describe("classifyMergeResult", () => {
+  it("is 'merged' when the tool call did not error", () => {
+    expect(classifyMergeResult({}).kind).toBe("merged");
+    expect(classifyMergeResult({ isError: false }).kind).toBe("merged");
+  });
+
+  it("reads the real serialized content-array wire shape", () => {
+    const a = classifyMergeResult(errorResult(notAllowed("Merge commits")));
+    expect(a.kind).toBe("method_not_allowed");
+    if (a.kind === "method_not_allowed") {
+      expect(a.detail).toContain("not allowed on this repository");
+    }
+  });
+
+  // PR #429 puts a bare 429 in the error URL — method-not-allowed must still win.
+  it("classifies a forbidden method on PR #429 as method_not_allowed, not rate-limited", () => {
+    const a = classifyMergeResult(
+      errorResult(notAllowed("Merge commits", 429)),
+    );
+    expect(a.kind).toBe("method_not_allowed");
+  });
+
+  it("is 'rate_limited' for a genuine too-many-requests refusal", () => {
+    expect(
+      classifyMergeResult(
+        errorResult("Streamable HTTP error: too many requests"),
+      ).kind,
+    ).toBe("rate_limited");
+  });
+
+  // A conflict is a 405 without the forbidden-method phrase → stays 'refused'.
+  it("is 'refused' for a merge conflict", () => {
+    expect(
+      classifyMergeResult(errorResult("405 Pull Request is not mergeable"))
+        .kind,
+    ).toBe("refused");
+  });
+
+  it("is 'refused' with an empty detail when the error has no content", () => {
+    const a = classifyMergeResult({ isError: true });
+    expect(a.kind).toBe("refused");
+    if (a.kind === "refused") expect(a.detail).toBe("");
   });
 });
 

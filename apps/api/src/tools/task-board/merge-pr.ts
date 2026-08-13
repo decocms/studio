@@ -23,16 +23,15 @@ import { emitTaskBoardUpdated, handTaskToHuman } from "./run-reactions";
 const MERGE_TIMEOUT_MS = 15000;
 
 /**
- * Merge methods to try, best-first. A repo can forbid any subset of these in its
- * settings, and forbidding the one GitHub defaults to (a merge commit) is what
- * this ladder exists for: `merge_pull_request` with no `merge_method` asks for a
- * merge commit, and a repo with "Allow merge commits" off answers `405 Merge
- * commits are not allowed on this repository` — a card that would then sit In
- * Review forever, retried every sweep against the same refusal. Squash is first
- * to match the web "Ship to production" path (`github-pr-api.ts`) and keep a
- * linear history; the others are the fallbacks for repos that forbid squash.
+ * Merge methods to try in order, stopping at the first that succeeds. `merge` is
+ * first because it is GitHub's own default — a bare `merge_pull_request` asks for
+ * a merge commit — so keeping it first changes nothing for every repo that
+ * allows one. The fallback is the whole point: a repo with "Allow merge commits"
+ * off answers `405 Merge commits are not allowed on this repository`, which used
+ * to strand the card In Review forever, retried every sweep against the same
+ * refusal; now it advances to `squash`, then `rebase`.
  */
-const MERGE_METHODS = ["squash", "merge", "rebase"] as const;
+const MERGE_METHODS = ["merge", "squash", "rebase"] as const;
 
 /**
  * True when a merge refusal is GitHub rejecting THIS merge method (a `405 … are
@@ -132,16 +131,30 @@ type MergeAttempt =
   | { kind: "refused"; detail: string };
 
 /**
- * One `merge_pull_request` round-trip with a specific `merge_method`, classified
- * into the outcome {@link mergeLinkedPr}'s ladder branches on.
+ * Classify a raw `merge_pull_request` tool result. Pure — unit-tested.
  *
  * GitHub refuses a merge (branch protection, a required review, a forbidden
  * method, a lost race) via `isError` on an otherwise-resolved tool call — NOT a
- * throw — so the payload is parsed here, not caught. A 429 wears the refusal's
- * shape but is transient (`rate_limited`); a `405 … not allowed on this
- * repository` is the repo forbidding THIS method (`method_not_allowed`, the one
- * a different method can fix); anything else is method-independent (`refused`).
+ * throw — so the payload is parsed here. Method-not-allowed is tested BEFORE the
+ * rate-limit heuristic on purpose: that heuristic matches a bare `429` anywhere
+ * in the payload, which the error's own PR URL can carry (`pulls/429/merge`),
+ * while a forbidden-method refusal names itself unambiguously — so it wins the
+ * tie and the ladder still advances for PR #429. `detail` defaults to `""` so a
+ * refusal with no `content` (which `JSON.stringify` renders as `undefined`, not
+ * a string) can't throw downstream.
  */
+export function classifyMergeResult(result: unknown): MergeAttempt {
+  if (!(result as { isError?: boolean })?.isError) return { kind: "merged" };
+  const detail =
+    JSON.stringify((result as { content?: unknown })?.content) ?? "";
+  if (isMergeMethodNotAllowed(detail)) {
+    return { kind: "method_not_allowed", detail };
+  }
+  if (isRateLimitError(detail)) return { kind: "rate_limited", detail };
+  return { kind: "refused", detail };
+}
+
+/** One `merge_pull_request` round-trip with a specific `merge_method`. */
 async function attemptMerge(
   client: Awaited<ReturnType<typeof clientFromConnection>>,
   pr: { repoOwner: string; repoName: string; number: number },
@@ -160,13 +173,7 @@ async function attemptMerge(
     undefined,
     { timeout: MERGE_TIMEOUT_MS },
   );
-  if (!(result as { isError?: boolean })?.isError) return { kind: "merged" };
-  const detail = JSON.stringify((result as { content?: unknown })?.content);
-  if (isRateLimitError(detail)) return { kind: "rate_limited", detail };
-  if (isMergeMethodNotAllowed(detail)) {
-    return { kind: "method_not_allowed", detail };
-  }
-  return { kind: "refused", detail };
+  return classifyMergeResult(result);
 }
 
 /**
