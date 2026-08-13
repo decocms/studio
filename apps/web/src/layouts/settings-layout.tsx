@@ -142,6 +142,13 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           to: "/$org/settings/secrets",
           requires: "secrets:manage",
         },
+        {
+          key: "api-keys",
+          label: t("settings.nav.apiKeys"),
+          icon: <Key01 size={14} />,
+          to: "/$org/settings/api-keys",
+          requires: "api-keys:manage",
+        },
         // Files moved to the top-level Library (/$org/files); the old
         // settings route redirects there.
         {
