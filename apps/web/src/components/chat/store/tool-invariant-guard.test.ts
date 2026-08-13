@@ -121,6 +121,29 @@ describe("createToolInvariantGuard", () => {
     }
   });
 
+  it("synthesizes a tool-input-available before an orphan approval request", () => {
+    const guard = createToolInvariantGuard();
+    const out = flat(guard, [
+      { type: "tool-approval-request", toolCallId: "tc", approvalId: "a1" },
+    ] as UIMessageChunk[]);
+    expect(out.map((c) => c.type)).toEqual([
+      "tool-input-available",
+      "tool-approval-request",
+    ]);
+    expect(out[0]).toMatchObject({ toolCallId: "tc", toolName: "unknown" });
+  });
+
+  it("synthesizes a tool-input-available before an orphan output-denied", () => {
+    const guard = createToolInvariantGuard();
+    const out = flat(guard, [
+      { type: "tool-output-denied", toolCallId: "tc" },
+    ] as UIMessageChunk[]);
+    expect(out.map((c) => c.type)).toEqual([
+      "tool-input-available",
+      "tool-output-denied",
+    ]);
+  });
+
   it("leaves non-tool chunks alone", () => {
     const guard = createToolInvariantGuard();
     const out = flat(guard, [
