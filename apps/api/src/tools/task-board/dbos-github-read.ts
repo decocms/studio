@@ -23,7 +23,7 @@
  *
  * Throttling makes the sweep SLOWER, deliberately. It is the floor, not the
  * fast path: the dialog's poll and the run's terminal hook still react
- * immediately, `markSwept` claims a card's interval before this call so a slow
+ * immediately, `claimSweep` claims a card's interval before this call so a slow
  * tick simply visits fewer cards, and the sweeper's `running` flag stops ticks
  * overlapping. A card waits on CI for minutes anyway.
  */

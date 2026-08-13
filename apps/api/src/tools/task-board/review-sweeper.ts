@@ -44,7 +44,7 @@
  * happened to restart. So the sweep budget now lives on the CARD
  * (`task_board_items.last_swept_at`, migration 166): replicas share it, and a
  * parked card costs one sweep per `DEFAULT_ITEM_SWEEP_INTERVAL_MS` instead of one
- * per tick. `DEFAULT_BATCH_SIZE` remains the ceiling on any single tick.
+ * per tick, CLAIMED not stamped (`claimSweep`) so replicas can't race it.
  *
  * It later grew a third job for the same reason — **retrying a failed merge**.
  * A card whose reviewers all approved but whose merge was refused (GitHub down,
@@ -188,10 +188,11 @@ export class TaskBoardReviewSweeper {
       const batchSize = this.options.batchSize ?? DEFAULT_BATCH_SIZE;
       const itemInterval =
         this.options.itemIntervalMs ?? DEFAULT_ITEM_SWEEP_INTERVAL_MS;
+      const dueBefore = new Date(Date.now() - itemInterval);
       const pending = await this.taskBoard.listItemsPendingReview(
         batchSize,
         this.cursor,
-        new Date(Date.now() - itemInterval),
+        dueBefore,
       );
       // A short page means the backlog is exhausted — wrap around so cards that
       // moved back into In Review behind the cursor get picked up again.
@@ -204,7 +205,9 @@ export class TaskBoardReviewSweeper {
         // Best-effort per item: one card's failure must not stop the batch, or a
         // single wedged org would starve every other org's cards behind it.
         try {
-          if (await this.reconcileItem(id, organizationId)) dispatched++;
+          if (await this.reconcileItem(id, organizationId, dueBefore)) {
+            dispatched++;
+          }
         } catch (err) {
           console.error(`[task-board-review-sweeper] ${id} failed`, err);
         }
@@ -453,7 +456,12 @@ export class TaskBoardReviewSweeper {
   private async reconcileItem(
     id: string,
     organizationId: string,
+    dueBefore: Date,
   ): Promise<boolean> {
+    // Lost the claim: another replica owns this card's interval (`claimSweep`).
+    if (!(await this.taskBoard.claimSweep(id, organizationId, dueBefore))) {
+      return false;
+    }
     const item = await this.taskBoard.getById(id, organizationId);
     if (!item) return false;
     // Re-check against the fresh row: `listItemsPendingReview` scanned a
@@ -465,12 +473,6 @@ export class TaskBoardReviewSweeper {
     // `enqueueEnabledReviewers` call. A handed-off card burns no agent runs, but
     // its approvals stay valid, so it stays eligible to merge.
     const owned = item.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
-
-    // Claim the interval BEFORE the GitHub work, not after: that is what makes a
-    // second replica skip this card, and what stops a card that comes back
-    // rate-limited from being retried on the very next tick. A pod crashing
-    // mid-sweep costs one interval of delay — the right trade for a slow floor.
-    await this.taskBoard.markSwept(id, organizationId);
 
     const prs = await this.taskBoard.listPrs(id, organizationId);
 

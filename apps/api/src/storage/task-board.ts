@@ -662,23 +662,42 @@ export class TaskBoardStorage {
   }
 
   /**
-   * Stamp a card as swept. Claims the card's next interval for whichever replica
-   * got there first, so the stamp must be written for every card the sweeper
-   * LOOKS at, not only the ones it dispatches a reviewer for — a card that has no
-   * PR, or whose checks are still pending, is exactly the card that otherwise
-   * comes back on every tick forever.
+   * Claim the card's next sweep interval. Returns true only for the replica that
+   * won it; a loser must skip the card entirely. Claimed for every card the
+   * sweeper LOOKS at, not only the ones it dispatches a reviewer for — a card
+   * that has no PR, or whose checks are still pending, is exactly the card that
+   * otherwise comes back on every tick forever.
+   *
+   * `dueBefore` is the same cutoff the work list was read with, and it is what
+   * makes this a claim rather than a stamp. An unconditional write was not one:
+   * three replicas that all read the card as due all passed it, and all three
+   * went on to call GitHub — two `merge_pull_request` calls on the same PR
+   * inside one second, the loser answered `405 Merge already in progress` and
+   * written to the card's timeline as a failure. The per-card interval bounded
+   * the number of ROUNDS but never the pods within one.
    *
    * Writes `last_swept_at` alone, on purpose: it does not go through `update()`
    * (whose column whitelist is for user edits) and it must not touch
    * `updated_at`, which is this table's keyset cursor and its UI "edited" signal.
    */
-  async markSwept(id: string, organizationId: string): Promise<void> {
-    await this.db
+  async claimSweep(
+    id: string,
+    organizationId: string,
+    dueBefore: Date,
+  ): Promise<boolean> {
+    const rows = await this.db
       .updateTable("task_board_items")
       .set({ last_swept_at: new Date() })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
-      .execute();
+      .where((eb) =>
+        eb.or([
+          eb("last_swept_at", "is", null),
+          eb("last_swept_at", "<", dueBefore),
+        ]),
+      )
+      .executeTakeFirst();
+    return Number(rows.numUpdatedRows ?? 0) > 0;
   }
 
   /**
@@ -971,7 +990,7 @@ export class TaskBoardStorage {
    * bound GitHub calls on a card that keeps coming back unchanged; a PR landing
    * on it is new information, so it earns one immediate look instead of waiting
    * out a budget claimed while there was nothing to see. Same narrow write as
-   * `markSwept` — never `updated_at`.
+   * `claimSweep` — never `updated_at`.
    */
   async clearSweepBudget(id: string, organizationId: string): Promise<void> {
     await this.db
