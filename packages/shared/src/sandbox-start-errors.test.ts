@@ -23,6 +23,17 @@ test("preserves ':: ' inside the message", () => {
   });
 });
 
+test("round-trips the missing-connection code distinctly", () => {
+  const encoded = encodeSandboxStartError(
+    SANDBOX_START_ERROR_CODES.githubConnectionMissing,
+    "GitHub connection conn_x no longer exists.",
+  );
+  expect(decodeSandboxStartError(encoded)).toEqual({
+    code: SANDBOX_START_ERROR_CODES.githubConnectionMissing,
+    message: "GitHub connection conn_x no longer exists.",
+  });
+});
+
 test("plain (uncoded) text → code null, full text as message", () => {
   expect(decodeSandboxStartError("some raw failure")).toEqual({
     code: null,

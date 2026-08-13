@@ -103,6 +103,23 @@ export async function buildCloneInfo(
     bufferMs?: number;
   },
 ): Promise<GitHubCloneInfo> {
+  // A deleted connection has no row (and its downstream_tokens cascaded away),
+  // which would otherwise surface as a bogus "not authenticated" error telling
+  // the user to reconnect something that no longer exists.
+  const connection = await db
+    .selectFrom("connections")
+    .select("id")
+    .where("id", "=", connectionId)
+    .executeTakeFirst();
+  if (!connection) {
+    throw new Error(
+      encodeSandboxStartError(
+        SANDBOX_START_ERROR_CODES.githubConnectionMissing,
+        `GitHub connection ${connectionId} no longer exists. Link ${owner}/${name} again.`,
+      ),
+    );
+  }
+
   const tokenStorage = new DownstreamTokenStorage(db, vault);
   const tokenResult = await getValidDownstreamAccessToken({
     connectionId,

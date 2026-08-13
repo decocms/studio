@@ -131,6 +131,10 @@ export const COLLECTION_VIRTUAL_MCP_DELETE = defineTool({
         // Both checks run BEFORE the revoke. Relying on the ON DELETE RESTRICT
         // FK to stop the delete is not enough: the token would already have
         // been revoked by then, leaving a live connection with a dead grant.
+        //  - a thread pinned to it (`metadata.githubRepo.connectionId`, set by
+        //    `load_repo` / the repo picker) keeps working long after the agent
+        //    that minted the connection is gone. Deleting it stranded 152
+        //    prod threads on a sandbox that can never boot again.
         const heldBySomeoneElse =
           child &&
           (isOrgSharedConnection(child) ||
@@ -139,7 +143,10 @@ export const COLLECTION_VIRTUAL_MCP_DELETE = defineTool({
                 organization.id,
                 childConnectionId,
               )
-            ).length > 0);
+            ).length > 0 ||
+            (await ctx.storage.connections.isReferencedByThread(
+              childConnectionId,
+            )));
         if (child && getRepoScope(child) && !heldBySomeoneElse) {
           const tokenStorage = new DownstreamTokenStorage(ctx.db, ctx.vault);
           const tok = await tokenStorage.get(childConnectionId);

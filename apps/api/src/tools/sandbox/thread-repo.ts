@@ -18,6 +18,10 @@ import type {
 } from "@decocms/shared/sdk";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 import {
+  findReusableRepoConnection,
+  getRepoScope,
+} from "@decocms/shared/github-repo-scope";
+import {
   deleteSandboxMapEntry,
   mergeSandboxMapEntry,
   readSandboxMap,
@@ -158,13 +162,82 @@ export async function setThreadHeadRef(
     .catch((err) => console.warn("[thread-repo] setThreadHeadRef failed", err));
 }
 
-/** Read the repo bound to a thread, or null. Never throws. */
+/**
+ * The repo binding to use when the one recorded on the thread points at a
+ * connection that is gone, or null when nothing in the org can stand in.
+ *
+ * Repo connections are not immortal: deleting the agent that owned one tears
+ * it down (`VIRTUAL_MCP_DELETE`), and re-importing a repo mints a new id. A
+ * thread pinned to the dead id can never boot a sandbox again even though the
+ * org still has a perfectly good connection for the same repository — so
+ * re-point it at that one instead. Pure so the choice is testable without a DB.
+ */
+export function repointedRepoBinding(
+  repo: GithubRepo,
+  connections: {
+    id: string;
+    status?: string;
+    metadata: Record<string, unknown> | null;
+  }[],
+): GithubRepo | null {
+  const replacement = findReusableRepoConnection(
+    connections,
+    repo.owner,
+    repo.name,
+  );
+  if (!replacement || replacement.id === repo.connectionId) return null;
+  const scope = getRepoScope(replacement);
+  return {
+    ...repo,
+    connectionId: replacement.id,
+    ...(scope?.installationId ? { installationId: scope.installationId } : {}),
+  };
+}
+
+/**
+ * Read the repo bound to a thread, or null. Never throws.
+ *
+ * Self-heals a dangling `connectionId` (see {@link repointedRepoBinding}) and
+ * persists the repoint, so every consumer — sandbox provisioning, the fs tools,
+ * dispatch — agrees on the live connection. When no replacement exists the
+ * dead binding is returned untouched and SANDBOX_START fails with
+ * `GITHUB_CONNECTION_MISSING`, which tells the user to link the repo again.
+ *
+ * Note: the sandbox branch embeds the connection id (`threadBranch`), so a
+ * repoint yields a fresh sandbox. The old one was unusable anyway.
+ */
 export async function getThreadGithubRepo(
   ctx: StudioContext,
   threadId: string | undefined | null,
 ): Promise<GithubRepo | null> {
   const meta = await getThreadMeta(ctx, threadId);
-  return (meta as { githubRepo?: GithubRepo } | null)?.githubRepo ?? null;
+  const repo = (meta as { githubRepo?: GithubRepo } | null)?.githubRepo ?? null;
+  if (!threadId || !meta || !repo?.connectionId) return repo;
+
+  try {
+    // The org the thread was just read under — `ctx.organization` is unset on
+    // some dispatch paths, this binding never is.
+    const orgId = ctx.storage.threads.getOrganizationId();
+    if (!orgId) return repo;
+    if (await ctx.storage.connections.findById(repo.connectionId, orgId)) {
+      return repo;
+    }
+    const { items } = await ctx.storage.connections.list(orgId);
+    const repointed = repointedRepoBinding(repo, items);
+    if (!repointed) return repo;
+    await ctx.storage.threads.update(threadId, {
+      metadata: { ...meta, githubRepo: repointed },
+    });
+    console.warn("[thread-repo] re-pointed thread at a live repo connection", {
+      threadId,
+      from: repo.connectionId,
+      to: repointed.connectionId,
+    });
+    return repointed;
+  } catch (err) {
+    console.warn("[thread-repo] repoint check failed", err);
+    return repo;
+  }
 }
 
 /**
