@@ -753,6 +753,106 @@ describe("resolveSchema – plainSchema on block-ref", () => {
   });
 });
 
+describe("resolveSchema – array branch hidden behind a $ref", () => {
+  test("prefers the inline array over colliding loader/Resolvable branches", () => {
+    // Real farmrio EtcMediaKits `mediaKits`: array member is a bare $ref beside loader/named-block branches.
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        mediaKits: {
+          title: "Kits de mídia",
+          anyOf: [
+            { $ref: "#/definitions/MediaKitArray", title: "[MediaKit]" },
+            {
+              type: "object",
+              properties: {
+                __resolveType: {
+                  type: "string",
+                  enum: ["site/loaders/MediaKits.tsx"],
+                  default: "site/loaders/MediaKits.tsx",
+                },
+              },
+            },
+            {
+              type: "object",
+              properties: {
+                __resolveType: {
+                  type: "string",
+                  enum: ["MediaKits"],
+                  default: "MediaKits",
+                },
+              },
+            },
+          ],
+        },
+      },
+    });
+    (meta.schema as { definitions?: Record<string, unknown> }).definitions = {
+      MediaKitArray: {
+        type: "array",
+        items: { $ref: "#/definitions/MediaKitItem" },
+      },
+      MediaKitItem: {
+        type: "object",
+        properties: {
+          name: { type: "string", title: "Nome" },
+          content: { type: "string" },
+        },
+        required: ["name", "content"],
+      },
+    };
+
+    const mediaKits = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.mediaKits;
+    expect(mediaKits?.type).toBe("array");
+    expect(mediaKits?.title).toBe("Kits de mídia");
+    expect(mediaKits?.items?.properties?.name?.title).toBe("Nome");
+  });
+
+  test("a section array behind a $ref stays a picker (items are section refs)", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        children: {
+          anyOf: [
+            { $ref: "#/definitions/SectionArray" },
+            {
+              type: "object",
+              properties: {
+                __resolveType: {
+                  type: "string",
+                  enum: ["site/loaders/sections.ts"],
+                  default: "site/loaders/sections.ts",
+                },
+              },
+            },
+          ],
+        },
+      },
+    });
+    (meta.schema as { definitions?: Record<string, unknown> }).definitions = {
+      SectionArray: {
+        type: "array",
+        items: { $ref: "#/definitions/SectionItem" },
+      },
+      SectionItem: {
+        type: "object",
+        properties: {
+          __resolveType: {
+            type: "string",
+            enum: ["site/sections/Hero.tsx"],
+            default: "site/sections/Hero.tsx",
+          },
+        },
+      },
+    };
+
+    const children = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.children;
+    expect(children?.type).toBe("block-ref");
+  });
+});
+
 describe("resolveSchema – @hide on block-ref fields", () => {
   // Mirrors @decocms/start ≥6.10: a hidden loader/block-ref prop is emitted as
   // `{ anyOf: [Resolvable, loaderRef], hide: "true" }`. The block-ref return in
