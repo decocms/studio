@@ -87,7 +87,7 @@ export function createVmTools(params: VmToolsParams) {
           message: "Image attached below.",
         };
       }
-      return maybeTruncate(result, toolOutputMap);
+      return maybeTruncate(result, toolOutputMap, options.toolCallId);
     },
   });
 
@@ -137,7 +137,7 @@ export function createVmTools(params: VmToolsParams) {
     inputSchema: zodSchema(GrepInputSchema),
     execute: async (input, options) => {
       const result = await call("/_sandbox/grep", input, options.abortSignal);
-      return maybeTruncate(result, toolOutputMap);
+      return maybeTruncate(result, toolOutputMap, options.toolCallId);
     },
   });
 
@@ -147,7 +147,7 @@ export function createVmTools(params: VmToolsParams) {
     inputSchema: zodSchema(GlobInputSchema),
     execute: async (input, options) => {
       const result = await call("/_sandbox/glob", input, options.abortSignal);
-      return maybeTruncate(result, toolOutputMap);
+      return maybeTruncate(result, toolOutputMap, options.toolCallId);
     },
   });
 
@@ -157,7 +157,7 @@ export function createVmTools(params: VmToolsParams) {
     inputSchema: zodSchema(BashInputSchema),
     execute: async (input, options) => {
       const result = await call("/_sandbox/bash", input, options.abortSignal);
-      return maybeTruncate(result, toolOutputMap);
+      return maybeTruncate(result, toolOutputMap, options.toolCallId);
     },
   });
 
@@ -181,7 +181,7 @@ export function createVmTools(params: VmToolsParams) {
           { path },
           options.abortSignal,
         );
-        return maybeTruncate(result, toolOutputMap);
+        return maybeTruncate(result, toolOutputMap, options.toolCallId);
       } catch {
         return {
           error: `Skill "${id}" not found. Use an id from <available-skills>.`,
