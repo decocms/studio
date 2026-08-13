@@ -4,11 +4,16 @@ import { DECK } from "./tokens";
 import { useT } from "@/i18n/use-t.ts";
 import type { TableProps } from "@decocms/shared/reports/deck-types";
 
-// Severity chips are graded by the engine's pt-BR badge label — the badge tone
-// alone can't tell "Atenção" from "Menor" (both arrive `neutral`).
+// Severity chips are graded by the engine's badge LABEL — the badge tone alone
+// can't tell "Atenção" from "Menor" (both arrive `neutral`). The label is
+// client copy, so it arrives translated on a non-pt deck: key both languages.
+const CRITICAL = { color: "#ef4444", tint: "rgba(239,68,68,0.12)" };
+const WARNING = { color: "#d98324", tint: "rgba(217,131,36,0.12)" };
 const SEVERITY_STYLE: Record<string, { color: string; tint: string }> = {
-  Crítico: { color: "#ef4444", tint: "rgba(239,68,68,0.12)" },
-  Atenção: { color: "#d98324", tint: "rgba(217,131,36,0.12)" },
+  Crítico: CRITICAL,
+  Critical: CRITICAL,
+  Atenção: WARNING,
+  Warning: WARNING,
 };
 const SEVERITY_FALLBACK = { color: DECK.muted, tint: "rgba(13,9,6,0.06)" };
 
