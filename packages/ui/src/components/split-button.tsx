@@ -24,6 +24,8 @@ export interface SplitButtonMenuItem {
   onSelect: () => void;
   disabled?: boolean;
   tooltip?: string;
+  /** Rendered before the label. */
+  icon?: React.ReactNode;
 }
 
 export interface SplitButtonProps {
@@ -58,6 +60,7 @@ function SplitButtonMenuEntry({ item }: { item: SplitButtonMenuItem }) {
         item.onSelect();
       }}
     >
+      {item.icon}
       {item.label}
     </DropdownMenuItem>
   );

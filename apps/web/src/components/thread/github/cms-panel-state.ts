@@ -234,7 +234,7 @@ export function selectCmsHeaderButton(
     if (mergeableState === "blocked" || reviews?.draft) {
       return applyCheckTreatment(
         {
-          label: t("thread.cmsActions.waitingForApproval"),
+          label: t("thread.cmsActions.waitingForReview"),
           action: "open-pr",
           variant: "outline",
           menu: withGetLatest([viewOnGithubItem(t)], branch, t),
@@ -277,7 +277,7 @@ export function selectCmsHeaderButton(
         [
           {
             key: "request-approval",
-            label: t("thread.cmsActions.requestApproval"),
+            label: t("thread.headerActions.submitForReview"),
             action: "request-approval",
           },
         ],

@@ -50,11 +50,10 @@ export const thread = {
   "thread.cmsActions.getLatestTooltip": "Bring in new changes from production",
   "thread.cmsActions.moreActionsAriaLabel": "More actions",
   "thread.cmsActions.publishing": "Publishing…",
-  "thread.cmsActions.requestApproval": "Request approval",
   "thread.cmsActions.resolveOnGithub": "Resolve on GitHub",
   "thread.cmsActions.reviewAndPublish": "Review & Publish",
   "thread.cmsActions.viewOnGithub": "View on GitHub",
-  "thread.cmsActions.waitingForApproval": "Waiting for approval",
+  "thread.cmsActions.waitingForReview": "Waiting for review",
   "thread.gitTab.by": "by @{author}",
   "thread.gitTab.closed": "✗ Closed",
   "thread.gitTab.couldNotLoadPrState":

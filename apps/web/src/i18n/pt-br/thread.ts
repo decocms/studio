@@ -54,11 +54,10 @@ export const thread = {
     "Trazer as novas alterações da produção",
   "thread.cmsActions.moreActionsAriaLabel": "Mais ações",
   "thread.cmsActions.publishing": "Publicando…",
-  "thread.cmsActions.requestApproval": "Pedir aprovação",
   "thread.cmsActions.resolveOnGithub": "Resolver no GitHub",
   "thread.cmsActions.reviewAndPublish": "Revisar e publicar",
   "thread.cmsActions.viewOnGithub": "Ver no GitHub",
-  "thread.cmsActions.waitingForApproval": "Aguardando aprovação",
+  "thread.cmsActions.waitingForReview": "Aguardando revisão",
   "thread.gitTab.by": "por @{author}",
   "thread.gitTab.closed": "✗ Fechado",
   "thread.gitTab.couldNotLoadPrState":

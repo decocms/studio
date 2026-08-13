@@ -36,6 +36,8 @@ import {
 } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
+import { GitPullRequest, RefreshCw01, Rocket02 } from "@untitledui/icons";
+import { GitHubIcon } from "@/components/icons/github-icon.tsx";
 import { useT } from "@/i18n/use-t";
 import { authClient } from "@/lib/auth-client.ts";
 import { resolveGithubAttachment } from "@/lib/github-repo.ts";
@@ -60,6 +62,16 @@ import { usePrReviews } from "./use-pr-reviews.ts";
 
 interface Props {
   virtualMcpId: string;
+}
+
+/** `open-pr` covers both the GitHub links; `key` separates them from each other. */
+function actionIcon(action: CmsAction, key?: string) {
+  if (action === "open-pr" || key === "resolve-on-github") {
+    return <GitHubIcon size={16} />;
+  }
+  if (action === "publish") return <Rocket02 className="size-4" />;
+  if (action === "get-latest") return <RefreshCw01 className="size-4" />;
+  return <GitPullRequest className="size-4" />;
 }
 
 export function CmsHeaderActions({ virtualMcpId }: Props) {
@@ -280,6 +292,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   const items: SplitButtonMenuItem[] = button.menu.map((item) => ({
     key: item.key,
     label: item.label,
+    icon: actionIcon(item.action, item.key),
     ...(item.tooltip ? { tooltip: item.tooltip } : {}),
     onSelect: () => dispatch(item.action),
   }));
@@ -295,6 +308,9 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
         disabled={Boolean(button.disabled) || !action}
         loading={Boolean(button.loading)}
         pulse={Boolean(button.pulse)}
+        {...(action === "publish" && !button.loading
+          ? { icon: <Rocket02 className="size-4" /> }
+          : {})}
         {...(button.tooltip ? { tooltip: button.tooltip } : {})}
         items={items}
         menuAriaLabel={t("thread.cmsActions.moreActionsAriaLabel")}

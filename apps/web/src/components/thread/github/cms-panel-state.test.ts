@@ -216,7 +216,7 @@ describe("selectCmsHeaderButton — 3. needs attention (conflicts)", () => {
 });
 
 describe("selectCmsHeaderButton — 4. waiting for approval", () => {
-  test("open PR + blocked → Waiting for approval (opens the PR)", () => {
+  test("open PR + blocked → Waiting for review (opens the PR)", () => {
     const r = selectCmsHeaderButton(
       input({
         branch: ready({ aheadOfBase: 2 }),
@@ -224,7 +224,7 @@ describe("selectCmsHeaderButton — 4. waiting for approval", () => {
         reviews: reviews({ mergeableState: "blocked" }),
       }),
     );
-    expect(r.label).toBe("Waiting for approval");
+    expect(r.label).toBe("Waiting for review");
     expect(r.action).toBe("open-pr");
     expect(r.variant).toBe("outline");
     expect(r.disabled).toBeFalsy();
@@ -233,7 +233,7 @@ describe("selectCmsHeaderButton — 4. waiting for approval", () => {
     ]);
   });
 
-  test("open PR + draft (clean mergeable state) → Waiting for approval", () => {
+  test("open PR + draft (clean mergeable state) → Waiting for review", () => {
     const r = selectCmsHeaderButton(
       input({
         branch: ready({ aheadOfBase: 2 }),
@@ -241,7 +241,7 @@ describe("selectCmsHeaderButton — 4. waiting for approval", () => {
         reviews: reviews({ draft: true }),
       }),
     );
-    expect(r.label).toBe("Waiting for approval");
+    expect(r.label).toBe("Waiting for review");
     expect(r.action).toBe("open-pr");
   });
 
@@ -440,7 +440,7 @@ describe("selectCmsHeaderButton — 5. ready to publish", () => {
 });
 
 describe("selectCmsHeaderButton — 6. draft (no open PR)", () => {
-  test("ahead of base, no PR → Review & Publish + Request approval", () => {
+  test("ahead of base, no PR → Review & Publish + Submit for review", () => {
     const r = selectCmsHeaderButton(
       input({ branch: ready({ aheadOfBase: 3 }) }),
     );
@@ -450,7 +450,7 @@ describe("selectCmsHeaderButton — 6. draft (no open PR)", () => {
     expect(r.menu).toEqual([
       {
         key: "request-approval",
-        label: "Request approval",
+        label: "Submit for review",
         action: "request-approval",
       },
     ]);
