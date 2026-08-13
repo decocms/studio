@@ -608,13 +608,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           workspace.state.variantOverride ?? [],
         )
       : display.mode === "production" && productionOriginReady
-        ? // The published site is the base for both modes while the sandbox
-          // provisions; Fast Preview swaps in the same page carrying a
-          // `?__draft=` pointer the moment one exists. Same origin either way,
-          // so the swap changes content, not surface.
-          withDeviceHint(
-            draftPreviewUrl ?? new URL(resolvedPath, display.iframeBase!).href,
-            previewDeviceSize,
+        ? // Fast Preview's draft route honours the variant matcher override like the sandbox dev server, so append it here too.
+          withVariantMatcherOverride(
+            withDeviceHint(
+              draftPreviewUrl ??
+                new URL(resolvedPath, display.iframeBase!).href,
+              previewDeviceSize,
+            ),
+            workspace.state.variantOverride ?? [],
           )
         : null;
 
@@ -656,12 +657,19 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
    * Preview this is the draft URL itself, which is shareable precisely because
    * the pointer is a query param on the site's own route.
    */
+  const productionOpenTabBase =
+    draftPreviewUrl ??
+    (display.iframeBase
+      ? new URL(resolvedPath, display.iframeBase).href
+      : null);
   const openInNewTabUrl =
     display.mode === "production"
-      ? (draftPreviewUrl ??
-        (display.iframeBase
-          ? new URL(resolvedPath, display.iframeBase).href
-          : null))
+      ? productionOpenTabBase
+        ? withVariantMatcherOverride(
+            productionOpenTabBase,
+            workspace.state.variantOverride ?? [],
+          )
+        : null
       : (iframeSrc ?? display.iframeBase);
 
   const handleOpenPreview = async () => {
