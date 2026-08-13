@@ -421,6 +421,7 @@ export const sandbox = {
   "sandbox.preview.globalComponents": "Componentes globais",
   "sandbox.preview.globalLoaders": "Loaders globais",
   "sandbox.preview.invalidPageBlockKey": "Chave de bloco de página inválida",
+  "sandbox.preview.loaderBadge": "Loader",
   "sandbox.preview.loaderNoLongerExists": "Este loader não existe mais.",
   "sandbox.preview.moreOptions": "Mais opções",
   "sandbox.preview.noPagesFound": "Nenhuma página encontrada neste site.",

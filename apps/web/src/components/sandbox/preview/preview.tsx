@@ -802,6 +802,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       setPinnedPageKey(saved.pageKey);
       setDirectPreviewUrl(null);
       setActiveGlobalSection(null);
+      setActiveLoaderKey(null);
       if (saved.pageKey && Object.keys(saved.params).length > 0) {
         const pageKey = saved.pageKey;
         setPathParamsByPage((prev) => ({ ...prev, [pageKey]: saved.params }));
@@ -813,6 +814,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       setDirectPreviewUrl(null);
       setPinnedPageKey(null);
       setActiveGlobalSection(null);
+      setActiveLoaderKey(null);
     }
   }
 
@@ -963,6 +965,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     setEditingMode(mode);
     setVisualElement(null);
     setCmsSelectedSection(null);
+    // A loader has no canvas, so leaving Blocks deselects it back to the page.
+    if (mode !== "blocks") setActiveLoaderKey(null);
     if (previousMode === "visual") deactivateVisualEditor();
     if (mode === "visual") injectVisualEditor();
     if (previousMode === "blocks" && mode !== "blocks") deactivateCmsEditor();
@@ -1294,7 +1298,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             {activeLoader && (
               <span className="shrink-0 inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
                 <Database01 size={11} />
-                Loader
+                {t("sandbox.preview.loaderBadge")}
               </span>
             )}
             {/* Page name in focus, followed by the route path.
@@ -1750,6 +1754,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     </div>
   ) : null;
 
+  // Full-width Blocks (no canvas): the mobile layout, or a loader (no canvas).
+  const blocksFullWidth =
+    (isMobile || !!activeLoaderKey) && effectiveEditingMode === "blocks";
+
   return (
     <div className="flex flex-col w-full h-full">
       {/* Headless: auto-opens the CMS once (renders nothing). Mounted only
@@ -1818,8 +1826,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       )}
 
       <div className="flex-1 overflow-hidden">
-        {/* Loaders have no canvas — the editor takes the full width. */}
-        {(isMobile || activeLoaderKey) && effectiveEditingMode === "blocks" ? (
+        {blocksFullWidth ? (
           <div className="relative h-full min-h-0 overflow-hidden">
             <BlocksPanel
               virtualMcpId={virtualMcpId}

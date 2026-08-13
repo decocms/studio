@@ -405,6 +405,7 @@ export const sandbox = {
   "sandbox.preview.globalComponents": "Global components",
   "sandbox.preview.globalLoaders": "Global loaders",
   "sandbox.preview.invalidPageBlockKey": "Invalid page block key",
+  "sandbox.preview.loaderBadge": "Loader",
   "sandbox.preview.loaderNoLongerExists": "This loader no longer exists.",
   "sandbox.preview.moreOptions": "More options",
   "sandbox.preview.noPagesFound": "No pages found in this site.",

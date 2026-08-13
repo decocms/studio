@@ -21,6 +21,35 @@ describe("blocksPreviewWorkspaceReducer", () => {
     });
   });
 
+  test("selects a loader", () => {
+    const next = blocksPreviewWorkspaceReducer(
+      INITIAL_BLOCKS_PREVIEW_WORKSPACE,
+      {
+        type: "select",
+        target: { kind: "loader", key: "myLoader" },
+      },
+    );
+
+    expect(next.target).toEqual({ kind: "loader", key: "myLoader" });
+  });
+
+  test("selecting a loader clears a stale variant override", () => {
+    const withOverride = blocksPreviewWorkspaceReducer(
+      INITIAL_BLOCKS_PREVIEW_WORKSPACE,
+      {
+        type: "variant-override",
+        params: ["pages-home@sections.variants.1.rule=1"],
+      },
+    );
+
+    const next = blocksPreviewWorkspaceReducer(withOverride, {
+      type: "select",
+      target: { kind: "loader", key: "myLoader" },
+    });
+
+    expect(next.variantOverride).toBeNull();
+  });
+
   test("edit SEO records both target and intent", () => {
     const next = blocksPreviewWorkspaceReducer(
       INITIAL_BLOCKS_PREVIEW_WORKSPACE,

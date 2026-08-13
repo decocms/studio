@@ -3,12 +3,14 @@ import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { createReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { RunnableBlockEditor } from "@/components/sandbox/content/runnable-block-editor";
+import { readSavedRunnableBlock } from "@/components/sandbox/content/runnable-catalog";
 
 /**
- * Renders the loader editor (form + JSON + Run) for a saved global loader,
- * inline in the Blocks panel next to the preview. This mirrors the "saved"
- * branch of {@link RunnableBlocksBrowser}: a saved block autosaves on change,
- * so `onCreate` (available-only) is never reached here.
+ * Renders the loader editor (form + JSON) for a saved global loader, inline in
+ * the Blocks panel next to the preview. This mirrors the "saved" branch of
+ * {@link RunnableBlocksBrowser}: a saved block autosaves on change, so
+ * `onCreate` (available-only) is never reached here, and the Run button is
+ * hidden (`showRun={false}`) on this edit-only surface.
  */
 export function GlobalLoaderEditor({
   orgSlug,
@@ -33,9 +35,10 @@ export function GlobalLoaderEditor({
     saveBlock.mutate({ blockKey: key, data }),
   );
 
-  const block = decofile[blockKey] as Record<string, unknown> | undefined;
-  const resolveType =
-    block && typeof block.__resolveType === "string" ? block.__resolveType : "";
+  const { resolveType, props, title } = readSavedRunnableBlock(
+    decofile,
+    blockKey,
+  );
   if (!resolveType) {
     return (
       <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
@@ -43,12 +46,6 @@ export function GlobalLoaderEditor({
       </div>
     );
   }
-
-  const { __resolveType: _rt, ...props } = block ?? {};
-  const title =
-    block && typeof block.name === "string" && block.name
-      ? block.name
-      : blockKey;
 
   return (
     <RunnableBlockEditor
@@ -61,7 +58,7 @@ export function GlobalLoaderEditor({
       decofile={decofile}
       kind="loaders"
       target={{ mode: "saved", blockKey, resolveType, title }}
-      initialValue={props as Record<string, unknown>}
+      initialValue={props}
       isCreating={saveBlock.isPending}
       onCreate={async () => {}}
       onSaveReferencedBlock={saveReferencedBlock}
