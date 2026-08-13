@@ -1,4 +1,5 @@
 import { authenticateAndPersistOAuth } from "@/lib/authenticate-and-persist-oauth";
+import { translate } from "@/i18n/use-t";
 import { track } from "@/lib/posthog-client";
 import { reportAttributionFromSearch } from "@/routes/reports/track";
 import { KEYS } from "@/lib/query-keys";
@@ -96,7 +97,12 @@ export function useConnectCompanion({
             error: "no_connection_method",
           });
           setError(
-            `${card.title} cannot be connected: no connection method available`,
+            translate(
+              "commerceOnboarding.connectSourceDialog.noConnectionMethod",
+              {
+                title: card.title,
+              },
+            ),
           );
           return false;
         }
@@ -125,7 +131,12 @@ export function useConnectCompanion({
           ...basePayload,
           error: auth.error,
         });
-        setError(`Couldn't sign in to ${card.title}: ${auth.error}`);
+        setError(
+          translate("commerceOnboarding.connectSourceDialog.signInFailed", {
+            title: card.title,
+            error: auth.error ?? "",
+          }),
+        );
         return false; // keep connection, no CD write
       }
 

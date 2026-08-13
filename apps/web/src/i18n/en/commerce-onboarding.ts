@@ -22,6 +22,10 @@ export const commerceOnboarding = {
   "commerceOnboarding.companionCard.required": "Required",
   "commerceOnboarding.connectSourceDialog.connecting": "Connecting {title}...",
   "commerceOnboarding.connectSourceDialog.loading": "Loading...",
+  "commerceOnboarding.connectSourceDialog.noConnectionMethod":
+    "{title} cannot be connected: no connection method available",
+  "commerceOnboarding.connectSourceDialog.signInFailed":
+    "Couldn't sign in to {title}: {error}",
   "commerceOnboarding.connectSourceDialog.title": "Connect data source",
   "commerceOnboarding.githubConfigForm.cancel": "Cancel",
   "commerceOnboarding.githubConfigForm.failedToSave":
