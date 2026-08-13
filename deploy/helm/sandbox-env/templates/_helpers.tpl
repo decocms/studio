@@ -190,6 +190,17 @@ worth catching at template time rather than letting the API server reject
 {{- fail "sandbox-env: warmPool.autoscaling.enabled=true requires at least one entry in warmPool.autoscaling.metrics — this chart ships no default metric. See values.yaml for an example External-metric entry." -}}
 {{- end }}
 {{- end }}
+{{/* Same two checks for the `-medium` pool's own HPA, against the metrics it
+     actually renders with (its own, else inherited from the block above). */}}
+{{- if .Values.warmPool.autoscaling.medium.enabled }}
+{{- if not .Values.warmPool.enabled }}
+{{- fail "sandbox-env: warmPool.autoscaling.medium.enabled=true requires warmPool.enabled=true (the -medium SandboxWarmPool is rendered with the pools)." -}}
+{{- end }}
+{{- $metrics := default .Values.warmPool.autoscaling.metrics .Values.warmPool.autoscaling.medium.metrics }}
+{{- if eq (len $metrics) 0 }}
+{{- fail "sandbox-env: warmPool.autoscaling.medium.enabled=true requires at least one metric — warmPool.autoscaling.medium.metrics, or warmPool.autoscaling.metrics to inherit. An HPA with no metrics sits at minReplicas forever." -}}
+{{- end }}
+{{- end }}
 {{- end }}
 
 {{/*

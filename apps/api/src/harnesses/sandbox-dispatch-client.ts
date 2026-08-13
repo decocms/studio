@@ -37,7 +37,10 @@ import {
   SANDBOX_GONE_TERMINAL_CODE,
   SANDBOX_UNREACHABLE_PREFIX,
 } from "@decocms/sandbox/dispatch/error-codes";
-import type { SandboxProvider } from "@decocms/sandbox/provider";
+import type {
+  PodTermination,
+  SandboxProvider,
+} from "@decocms/sandbox/provider";
 import { isTransientStreamError } from "@/harnesses/decopilot/built-in-tools/subtask";
 import type { HarnessId, HarnessStreamInput } from "@/harnesses/lib/types";
 import {
@@ -111,12 +114,21 @@ const DAEMON_SILENCE_TIMEOUT_MS = 90_000;
  * the model.
  */
 export class SandboxUnreachableError extends Error {
-  constructor(reason: string) {
+  /**
+   * The bare reason, without the prefix — so a caller that learns WHY the pod
+   * went away can re-wrap without doubling the marker.
+   */
+  readonly reason: string;
+
+  constructor(reason: string, infra?: string) {
     // Prefixed in the CONSTRUCTOR, so the marker `isTransientRunFailure` reads
     // downstream cannot be forgotten by a new throw site. See
     // SANDBOX_UNREACHABLE_PREFIX.
-    super(`${SANDBOX_UNREACHABLE_PREFIX} ${reason}`);
+    super(
+      `${SANDBOX_UNREACHABLE_PREFIX} ${reason}${infra ? ` — ${infra}` : ""}`,
+    );
     this.name = "SandboxUnreachableError";
+    this.reason = reason;
   }
 }
 
@@ -354,10 +366,10 @@ export class SandboxDispatchClient implements SandboxClient {
             virtualMcpId,
             branch,
             sandboxProviderKind: kind,
-            // This pod runs one agent loop and returns its output. Nothing here
-            // opens a preview, so the tenant's install + dev server is pure boot
-            // latency — the harness only needs the checkout.
-            cloneOnly: true,
+            // This pod runs one agent loop and returns its output: no preview,
+            // no dev server, and a memory ceiling of its own (the agent loop is
+            // what OOMKilled 4Gi pods in prod).
+            purpose: "harness-run",
           },
           ctx,
         );
@@ -381,6 +393,13 @@ export class SandboxDispatchClient implements SandboxClient {
         resume: this.resume,
         aborted: () => input.signal?.aborted === true,
         dispatchOnce,
+        lastHandle: () => lastHandle,
+        describeTermination: async (handle) =>
+          handle === null
+            ? null
+            : describeTermination(
+                (await provider.lastTermination?.(handle)) ?? null,
+              ),
       });
     } finally {
       // The run is over — cleanly, failed, or aborted. This pod is `cloneOnly`:
@@ -415,7 +434,9 @@ export class SandboxDispatchClient implements SandboxClient {
  *  - The continuation's own `start` chunk is dropped. `start` RENAMES the message
  *    being folded (AI SDK `processUIMessageStream` assigns `state.message.id`),
  *    so forwarding a second one re-ids a message the projector has already
- *    written parts for. The first `start` of the run wins.
+ *    written parts for. The first `start` of the run wins — but if the interrupted
+ *    attempt died before sending one, the continuation's IS the first and passes,
+ *    or the run's message never opens at all.
  *
  * What it does NOT do is re-run the task: `resume` tells the harness its own
  * context is gone but the work is in the checkout, so it continues from there.
@@ -429,6 +450,18 @@ export async function* dispatchWithContinuation(args: {
   dispatchOnce: (
     resume: { reason: string } | null,
   ) => AsyncIterable<UIMessageChunk>;
+  /**
+   * Ask the infrastructure why the sandbox went away, once it has. Answers the
+   * question the broken stream cannot: an OOM kill leaves no trace in the
+   * daemon's output, so without this both the agent and the user are told only
+   * that the pod "stopped answering" — and a run that OOMs twice reads as a
+   * flaky network instead of a sandbox too small for the work.
+   *
+   * Best-effort: null (or a throw) degrades to the unqualified message.
+   */
+  describeTermination?: (handle: string | null) => Promise<string | null>;
+  /** The handle the failed attempt ran on, for `describeTermination`. */
+  lastHandle?: () => string | null;
   /** Consecutive no-progress dispatches allowed. */
   maxAttempts?: number;
   /** Dispatches allowed in total, progress or not. */
@@ -456,11 +489,21 @@ export async function* dispatchWithContinuation(args: {
     } catch (err) {
       if (args.aborted()) throw err;
       stalled = progressed ? 1 : stalled + 1;
+      const infra =
+        err instanceof SandboxUnreachableError
+          ? ((await args
+              .describeTermination?.(args.lastHandle?.() ?? null)
+              .catch(() => null)) ?? null)
+          : null;
       if (
         !(err instanceof SandboxUnreachableError) ||
         stalled >= maxAttempts ||
         attempt >= maxTotalAttempts
       ) {
+        // Out of attempts — this message is the run's error terminal, what the user reads.
+        if (infra && err instanceof SandboxUnreachableError) {
+          throw new SandboxUnreachableError(err.reason, infra);
+        }
         throw err;
       }
       console.warn("[sandbox-dispatch] sandbox lost mid-run; continuing", {
@@ -468,15 +511,56 @@ export async function* dispatchWithContinuation(args: {
         attempt,
         progressed,
         reason: err.message,
+        termination: infra,
       });
-      resume = {
-        reason: `the sandbox running the previous attempt stopped answering (${err.message})`,
-      };
-      // Whatever the interrupted attempt streamed already opened the run's
-      // message; the continuation must extend it, not re-open it.
-      forwardedStart = true;
+      resume = { reason: resumeReason(err.message, infra) };
     }
   }
+}
+
+/**
+ * What the harness is told about the sandbox it lost. `infra` is the
+ * infrastructure's verdict when we have one (an OOM kill, typically).
+ *
+ * The instructions are the point: the continuation runs in a pod that has the
+ * branch but not the transcript, so left to itself a model either re-runs the
+ * work that just died — reproducing the kill — or reports success from memory
+ * of edits that were never pushed.
+ */
+function resumeReason(errorMessage: string, infra: string | null): string {
+  const lost = `the sandbox running the previous attempt stopped answering (${errorMessage})`;
+  if (!infra) return lost;
+  return (
+    `${lost}. ${infra}. A replacement sandbox has been started from the last state pushed to the branch. ` +
+    `Tell the user this happened, re-read the files you had been editing rather than trusting your memory of them, ` +
+    `and if a step needs more memory than the sandbox has, split it instead of repeating what was killed`
+  );
+}
+
+/**
+ * The kubelet's verdict as one sentence for a prompt, a log line, and a thread
+ * error — the same text for all three, because an OOM the agent is told about
+ * and the user is not is how "it just stopped" survived in prod.
+ *
+ * Null for a stop that carries no information beyond the broken stream we
+ * already reported (a graceful shutdown, an eviction, a pod already gone).
+ */
+export function describeTermination(
+  termination: PodTermination | null,
+): string | null {
+  if (!termination) return null;
+  if (termination.oomKilled) {
+    const limit = termination.memoryLimit
+      ? ` (memory limit ${termination.memoryLimit})`
+      : "";
+    return `it was killed by the kernel for exceeding its memory limit${limit} — OOMKilled`;
+  }
+  if (termination.reason === "Completed") return null;
+  const code =
+    termination.exitCode === undefined
+      ? ""
+      : ` (exit code ${termination.exitCode})`;
+  return `the sandbox container terminated with reason ${termination.reason}${code}`;
 }
 
 /**

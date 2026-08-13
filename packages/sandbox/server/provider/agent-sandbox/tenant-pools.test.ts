@@ -85,22 +85,22 @@ describe("resolveTenantPool", () => {
     ).toBe("tenant-acme-site");
   });
 
-  it("a checkout-only claim never takes a tenant pod", () => {
+  it("a harness-run claim never takes a tenant pod", () => {
     // The Claude Code dispatch path. It wants no dev server, and binding a warm
     // pod would stop the one already running on it.
     expect(
       resolveTenantPool(POOLS, {
         orgId: "org-acme",
         cloneUrl: url,
-        cloneOnly: true,
+        purpose: "harness-run",
       }),
     ).toBeNull();
-    // ...but an explicit false is a normal claim.
+    // ...but an explicit `interactive` is a normal claim.
     expect(
       resolveTenantPool(POOLS, {
         orgId: "org-acme",
         cloneUrl: url,
-        cloneOnly: false,
+        purpose: "interactive",
       })?.name,
     ).toBe("tenant-acme-site");
   });
@@ -164,24 +164,43 @@ describe("claimWarmPoolName", () => {
 });
 
 describe("claimTemplateName", () => {
-  it("cloneOnly takes the -medium template", () => {
-    expect(claimTemplateName(true, "studio-sandbox")).toBe(
+  it("a harness run takes the -medium template", () => {
+    expect(claimTemplateName("harness-run", "studio-sandbox")).toBe(
       "studio-sandbox-medium",
     );
   });
 
   it("interactive claims stay on the default template", () => {
-    expect(claimTemplateName(false, "studio-sandbox")).toBe("studio-sandbox");
+    expect(claimTemplateName("interactive", "studio-sandbox")).toBe(
+      "studio-sandbox",
+    );
     expect(claimTemplateName(undefined, "studio-sandbox")).toBe(
       "studio-sandbox",
     );
   });
 
-  // Pool name == template name, so a medium claim can't bind a 4Gi pod.
+  // Pool name == template name, so a harness claim can't bind a 4Gi pod.
   it("the warm pool follows the template it picked", () => {
     expect(
-      claimWarmPoolName(null, true, claimTemplateName(true, "studio-sandbox")),
+      claimWarmPoolName(
+        null,
+        true,
+        claimTemplateName("harness-run", "studio-sandbox"),
+      ),
     ).toBe("studio-sandbox-medium");
+  });
+
+  // The generic pool is for interactive claims only; a tenant pool never
+  // reaches a harness run (resolveTenantPool above), so these two are the
+  // whole matrix of what a claim can name.
+  it("an interactive claim names the default pool, not the medium one", () => {
+    expect(
+      claimWarmPoolName(
+        null,
+        true,
+        claimTemplateName("interactive", "studio-sandbox"),
+      ),
+    ).toBe("studio-sandbox");
   });
 });
 

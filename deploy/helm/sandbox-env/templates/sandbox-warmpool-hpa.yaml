@@ -1,4 +1,16 @@
-{{- if and .Values.warmPool.enabled .Values.warmPool.autoscaling.enabled }}
+{{- if .Values.warmPool.enabled }}
+{{- $pools := list }}
+{{- if .Values.warmPool.autoscaling.enabled }}
+{{- $pools = append $pools (dict "suffix" "" "cfg" .Values.warmPool.autoscaling) }}
+{{- end }}
+{{- if .Values.warmPool.autoscaling.medium.enabled }}
+{{- $medium := mergeOverwrite (deepCopy .Values.warmPool.autoscaling) .Values.warmPool.autoscaling.medium }}
+{{- $pools = append $pools (dict "suffix" "-medium" "cfg" $medium) }}
+{{- end }}
+{{- range $i, $pool := $pools }}
+{{- if $i }}
+---
+{{- end }}
 # Scales the SandboxWarmPool via its native scale subresource (see
 # sandbox-operator/crds/agent-sandbox-crds.yaml: spec.versions[].subresources.scale,
 # specReplicasPath=.spec.replicas). Off by default — warmPool.size stays a
@@ -9,24 +21,29 @@
 # at whatever signals pool pressure in your cluster (e.g. a Prometheus
 # External/Object metric on claim-creation rate or pending-claim count via
 # the Prometheus adapter). See validations.yaml for the enforced minimum.
+#
+# One HPA per pool: a SandboxWarmPool binds exactly one SandboxTemplate, so the
+# default pool and the `-medium` one scale on their own claim series. Each is
+# opted in separately (warmPool.autoscaling.enabled / .medium.enabled).
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: {{ include "sandbox-env.sandboxName" . }}
+  name: {{ include "sandbox-env.sandboxName" $ }}{{ $pool.suffix }}
   namespace: agent-sandbox-system
   labels:
-    {{- include "sandbox-env.sandboxLabels" . | nindent 4 }}
+    {{- include "sandbox-env.sandboxLabels" $ | nindent 4 }}
 spec:
   scaleTargetRef:
     apiVersion: extensions.agents.x-k8s.io/v1alpha1
     kind: SandboxWarmPool
-    name: {{ include "sandbox-env.sandboxName" . }}
-  minReplicas: {{ .Values.warmPool.autoscaling.minReplicas }}
-  maxReplicas: {{ .Values.warmPool.autoscaling.maxReplicas }}
+    name: {{ include "sandbox-env.sandboxName" $ }}{{ $pool.suffix }}
+  minReplicas: {{ $pool.cfg.minReplicas }}
+  maxReplicas: {{ $pool.cfg.maxReplicas }}
   metrics:
-    {{- toYaml .Values.warmPool.autoscaling.metrics | nindent 4 }}
-  {{- with .Values.warmPool.autoscaling.behavior }}
+    {{- toYaml $pool.cfg.metrics | nindent 4 }}
+  {{- with $pool.cfg.behavior }}
   behavior:
     {{- toYaml . | nindent 4 }}
   {{- end }}
+{{- end }}
 {{- end }}

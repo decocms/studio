@@ -1255,10 +1255,10 @@ export class AgentSandboxProvider implements SandboxProvider {
     const tenantPool = resolveTenantPool(this.tenantPools, {
       orgId: opts.tenant?.orgId,
       cloneUrl: opts.repo?.cloneUrl,
-      cloneOnly: opts.cloneOnly,
+      purpose: opts.purpose,
     });
     const templateName = claimTemplateName(
-      opts.cloneOnly,
+      opts.purpose,
       this.sandboxTemplateName,
     );
     const envEntries = warmPoolMode
@@ -3034,6 +3034,9 @@ export function stripEnsureOpts(opts: EnsureOptions): EnsureOptions | null {
   // silently re-enabling install + dev-server for a sandbox provisioned
   // clone-only.
   if (opts.cloneOnly) out.cloneOnly = true;
+  // Same reason, one layer up: a resurrected `harness-run` claim rebuilt without
+  // this would name the default template — the 4Gi ceiling it was moved off.
+  if (opts.purpose) out.purpose = opts.purpose;
   // Without this, `resurrectByHandle` re-provisioning from these persisted
   // opts (no SANDBOX_START in that loop) would silently drop the org-fs
   // mounts a live sandbox had.

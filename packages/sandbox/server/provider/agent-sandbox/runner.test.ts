@@ -41,6 +41,15 @@ describe("stripEnsureOpts", () => {
     const opts: EnsureOptions = { cloneOnly: false, branch: "b" };
     expect(stripEnsureOpts(opts)).toEqual({ branch: "b" });
   });
+
+  // Lose it and the resurrected claim names the default template + pool again.
+  it("retains purpose so a resurrected harness run keeps its own template", () => {
+    const opts: EnsureOptions = { purpose: "harness-run", cloneOnly: true };
+    expect(stripEnsureOpts(opts)).toEqual({
+      purpose: "harness-run",
+      cloneOnly: true,
+    });
+  });
 });
 
 describe("earlierShutdown", () => {

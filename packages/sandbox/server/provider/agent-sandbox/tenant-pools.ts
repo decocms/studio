@@ -11,6 +11,8 @@
  */
 import { z } from "zod";
 
+import type { SandboxPurpose } from "../types";
+
 const tenantPoolSchema = z.object({
   /**
    * SandboxWarmPool object name. Must match a pool rendered by the sandbox-env
@@ -90,18 +92,18 @@ export function resolveTenantPool(
     orgId: string | undefined;
     cloneUrl: string | undefined;
     /**
-     * Checkout-only claims (the Claude Code dispatch path) must never take a
-     * tenant pod. They don't want a dev server, and binding one is actively
-     * destructive: Studio posts `cloneOnly` + the thread branch, the daemon
-     * classifies `branch-change`, and its clone step stops the dev task — so a
-     * dispatch would consume a warm slot AND de-warm the pod it took. They get
-     * the generic pool instead, which is exactly what an empty pod is for.
+     * A `harness-run` claim must never take a tenant pod. It doesn't want a dev
+     * server, and binding one is actively destructive: Studio posts `cloneOnly`
+     * + the thread branch, the daemon classifies `branch-change`, and its clone
+     * step stops the dev task — so a dispatch would consume a warm slot AND
+     * de-warm the pod it took. It gets its own pool instead (see
+     * `claimTemplateName`), which is exactly what an empty pod is for.
      */
-    cloneOnly?: boolean;
+    purpose?: SandboxPurpose;
   },
 ): TenantPool | null {
   const { orgId, cloneUrl } = claim;
-  if (claim.cloneOnly === true) return null;
+  if (claim.purpose === "harness-run") return null;
   if (!orgId || !cloneUrl) return null;
   const repoKey = repoKeyFromCloneUrl(cloneUrl);
   if (!repoKey) return null;
@@ -137,21 +139,20 @@ export function claimWarmPoolName(
 }
 
 /**
- * The claim's `spec.sandboxTemplateRef`. `cloneOnly` (the headless Claude Code
- * dispatch path) gets the roomier `-medium` template the sandbox-env chart
- * renders alongside the default one — that's where prod's 4Gi OOMKills
- * happened, and a claim cannot override resources, so the ceiling can only
- * come from a different template.
+ * The claim's `spec.sandboxTemplateRef`. A `harness-run` claim gets the roomier
+ * `-medium` template the sandbox-env chart renders alongside the default one —
+ * that is where prod's 4Gi OOMKills happened, and a SandboxClaim cannot
+ * override resources, so the ceiling can only come from another template.
  *
  * The returned name is also the warm pool's name (the chart names pool after
  * template), so it feeds `claimWarmPoolName` — a claim naming the medium
  * template must not bind a default-template pod, and vice versa.
  */
 export function claimTemplateName(
-  cloneOnly: boolean | undefined,
+  purpose: SandboxPurpose | undefined,
   templateName: string,
 ): string {
-  return cloneOnly === true ? `${templateName}-medium` : templateName;
+  return purpose === "harness-run" ? `${templateName}-medium` : templateName;
 }
 
 /**
