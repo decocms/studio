@@ -1109,9 +1109,8 @@ function PrCard({
   const style = prStateStyle(pr, t);
   const checksHeader = prChecksStyle(pr.checksStatus, t);
   const isOpen = pr.state === "open" && !pr.merged;
-  // Never ship on red/in-flight CI — only passing or no checks.
-  const checksOk =
-    pr.checksStatus !== "failing" && pr.checksStatus !== "pending";
+  // Hide Ship only on red CI; a human may ship over in-flight (pending) checks.
+  const checksOk = pr.checksStatus !== "failing";
   const showShip = reviewsReady && isOpen && checksOk;
   const hasActions = !!previewThread || !!pr.previewUrl || showShip;
   // Null-safe: react-query cache from before `checks` shipped can lack it.

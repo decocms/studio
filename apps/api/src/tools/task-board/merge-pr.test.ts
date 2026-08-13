@@ -9,7 +9,7 @@
 import { describe, expect, it } from "bun:test";
 import type { ReviewCycleActivity } from "@decocms/shared/task-board";
 import { approvedButUnverified } from "@decocms/shared/task-board";
-import { mayBeConflict } from "./merge-pr";
+import { checksBlockMerge, mayBeConflict } from "./merge-pr";
 
 const BOTH = ["qa", "code_review"] as const;
 const at = "2026-08-12T00:00:00.000Z";
@@ -60,6 +60,31 @@ describe("mayBeConflict", () => {
     ] as const) {
       expect(mayBeConflict({ merged: false, reason })).toBe(false);
     }
+  });
+});
+
+describe("checksBlockMerge", () => {
+  it("blocks red CI for every caller, override or not", () => {
+    expect(checksBlockMerge("failing")).toBe(true);
+    expect(checksBlockMerge("failing", { allowPendingChecks: true })).toBe(
+      true,
+    );
+  });
+
+  it("blocks pending CI by default (the automatic paths must wait)", () => {
+    expect(checksBlockMerge("pending")).toBe(true);
+  });
+
+  it("lets a human ship over pending CI with allowPendingChecks", () => {
+    expect(checksBlockMerge("pending", { allowPendingChecks: true })).toBe(
+      false,
+    );
+  });
+
+  it("never blocks on passing or unknown checks", () => {
+    expect(checksBlockMerge("passing")).toBe(false);
+    expect(checksBlockMerge(null)).toBe(false);
+    expect(checksBlockMerge(null, { allowPendingChecks: true })).toBe(false);
   });
 });
 

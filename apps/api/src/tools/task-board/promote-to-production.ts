@@ -82,7 +82,10 @@ export const TASK_BOARD_PROMOTE_TO_PRODUCTION = defineTool({
 
     // A refused merge is already on the card's timeline (`mergeLinkedPr` writes
     // the reason), so the button no longer looks like it did nothing.
-    const outcome = await mergeLinkedPr(ctx, organizationId, taskBoardItemId);
+    const outcome = await mergeLinkedPr(ctx, organizationId, taskBoardItemId, {
+      // The human clicked Ship, so in-flight CI doesn't block — only red does.
+      allowPendingChecks: true,
+    });
     if (!outcome.merged) {
       const refreshed =
         (await ctx.storage.taskBoard.getById(
