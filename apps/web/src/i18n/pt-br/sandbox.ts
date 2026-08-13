@@ -419,7 +419,9 @@ export const sandbox = {
   "sandbox.preview.failedToCopyUrl": "Falha ao copiar URL",
   "sandbox.preview.failedToCreatePage": "Falha ao criar página",
   "sandbox.preview.globalComponents": "Componentes globais",
+  "sandbox.preview.globalLoaders": "Loaders globais",
   "sandbox.preview.invalidPageBlockKey": "Chave de bloco de página inválida",
+  "sandbox.preview.loaderNoLongerExists": "Este loader não existe mais.",
   "sandbox.preview.moreOptions": "Mais opções",
   "sandbox.preview.noPagesFound": "Nenhuma página encontrada neste site.",
   "sandbox.preview.noSearchResults":

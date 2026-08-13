@@ -17,7 +17,7 @@ interface RunnableEntry {
 }
 
 /** A loader/action already saved as a global block in the decofile. */
-interface SavedRunnableEntry {
+export interface SavedRunnableEntry {
   /** Decofile block key. */
   key: string;
   /** The module resolveType the block instantiates. */

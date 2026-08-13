@@ -23,6 +23,7 @@ import {
   Compass01,
   Copy01,
   CursorClick01,
+  Database01,
   DotsHorizontal,
   Globe02,
   LayoutAlt01,
@@ -135,7 +136,11 @@ import {
   PathParamPickerChip,
 } from "./path-param-picker-chip";
 import { PathParamInput } from "./path-param-input";
-import { manifestLoaderResolveTypes } from "@/components/sandbox/content/runnable-catalog";
+import {
+  listSavedRunnables,
+  manifestLoaderResolveTypes,
+  type SavedRunnableEntry,
+} from "@/components/sandbox/content/runnable-catalog";
 import { track } from "@/lib/posthog-client";
 import { useSandboxRepoDir } from "../hooks/use-sandbox-repo-dir";
 import { useBlocksPreviewWorkspace } from "@/components/sandbox/blocks/blocks-preview-workspace-context";
@@ -291,6 +296,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // the daemon re-reads the fresh `.deco/blocks/*` (the "save → refresh" step).
   const [activeGlobalSection, setActiveGlobalSection] =
     useState<GlobalSectionEntry | null>(null);
+  /** Decofile key of the global loader open in the Blocks panel, if any. */
+  const [activeLoaderKey, setActiveLoaderKey] = useState<string | null>(null);
   /** Overrides iframe src for global-section live previews (stable URL, not recomputed). */
   const [directPreviewUrl, setDirectPreviewUrl] = useState<string | null>(null);
 
@@ -402,6 +409,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     : [];
   const globalSections =
     decofile && meta ? extractGlobalSections(decofile, meta) : [];
+  const globalLoaders =
+    decofile && meta ? listSavedRunnables(meta, decofile, "loaders") : [];
   const normPath = normalizePagePath;
   const filteredPages = pages.filter((page) => {
     if (!pagesSearch) return true;
@@ -419,12 +428,26 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       section.resolveType.toLowerCase().includes(q)
     );
   });
-  const currentPage = activeGlobalSection
-    ? null
-    : findPageForPath(pages, currentPath, pinnedPageKey);
+  const filteredGlobalLoaders = globalLoaders.filter((loader) => {
+    if (!pagesSearch) return true;
+    const q = pagesSearch.toLowerCase();
+    return (
+      loader.title.toLowerCase().includes(q) ||
+      loader.key.toLowerCase().includes(q) ||
+      loader.resolveType.toLowerCase().includes(q)
+    );
+  });
+  const activeLoader = activeLoaderKey
+    ? (globalLoaders.find((loader) => loader.key === activeLoaderKey) ?? null)
+    : null;
+  // A loader isn't a page: null `currentPage` so the publish effect skips it.
+  const currentPage =
+    activeGlobalSection || activeLoaderKey
+      ? null
+      : findPageForPath(pages, currentPath, pinnedPageKey);
   const currentPageName = activeGlobalSection
     ? activeGlobalSection.name
-    : currentPage?.name;
+    : (activeLoader?.title ?? currentPage?.name);
   const currentPageKey = currentPage?.key ?? null;
   const currentPagePath = currentPage?.path ?? null;
 
@@ -703,6 +726,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       const params = pathParamsByPage[sharedTarget.key] ?? {};
       intendedPathRef.current = fillPathTemplate(sharedTarget.path, params);
       setActiveGlobalSection(null);
+      setActiveLoaderKey(null);
       setDirectPreviewUrl(null);
       setPinnedPageKey(sharedTarget.key);
       setCurrentPath(sharedTarget.path);
@@ -711,6 +735,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         pageKey: sharedTarget.key,
         params,
       });
+    } else if (sharedTarget.kind === "loader") {
+      intendedPathRef.current = null;
+      setActiveGlobalSection(null);
+      setActiveLoaderKey(sharedTarget.key);
+      setDirectPreviewUrl(null);
     } else {
       const section = globalSections.find(
         (candidate) => candidate.key === sharedTarget.key,
@@ -718,6 +747,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       if (section) {
         intendedPathRef.current = null;
         const livePageRt = findLivePageResolveType(meta);
+        setActiveLoaderKey(null);
         setActiveGlobalSection(section);
         setDirectPreviewUrl(
           buildGlobalSectionPreviewUrl(previewUrl, livePageRt, section.key),
@@ -1077,6 +1107,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     }
     intendedPathRef.current = target;
     setActiveGlobalSection(null);
+    setActiveLoaderKey(null);
     setDirectPreviewUrl(null);
     // A click-through index from the previous page must not auto-select on the
     // next page's remounted editor.
@@ -1115,9 +1146,19 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       section.key,
     );
     setActiveGlobalSection(section);
+    setActiveLoaderKey(null);
     setDirectPreviewUrl(url);
     setCmsSelectedSection(null);
     workspace.selectTarget({ kind: "section", key: section.key });
+  };
+
+  // Loaders open full-width in the Blocks panel (form + Run), no canvas.
+  const navigatePreviewToLoader = (loader: SavedRunnableEntry) => {
+    setActiveGlobalSection(null);
+    setActiveLoaderKey(loader.key);
+    setDirectPreviewUrl(null);
+    activateEditingMode("blocks");
+    workspace.selectTarget({ kind: "loader", key: loader.key });
   };
 
   const handleCreatePage = async ({
@@ -1250,6 +1291,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                 Global
               </span>
             )}
+            {activeLoader && (
+              <span className="shrink-0 inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                <Database01 size={11} />
+                Loader
+              </span>
+            )}
             {/* Page name in focus, followed by the route path.
                       Path-template segments (`:param`/`*`) stay editable
                       inputs; plain paths render as muted text. */}
@@ -1267,51 +1314,54 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             >
               {currentPageName ?? previewLabel}
             </span>
-            {!activeGlobalSection && currentPageName != null && currentPath && (
-              <span className="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap text-[12px] text-muted-foreground">
-                {splitPathTemplate(currentPath).map((token, i) => {
-                  if (token.type === "text") {
+            {!activeGlobalSection &&
+              !activeLoaderKey &&
+              currentPageName != null &&
+              currentPath && (
+                <span className="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap text-[12px] text-muted-foreground">
+                  {splitPathTemplate(currentPath).map((token, i) => {
+                    if (token.type === "text") {
+                      return (
+                        <span
+                          key={`text-${i}`}
+                          className={cn(
+                            i === 0 ? "min-w-0 truncate" : "shrink-0",
+                          )}
+                        >
+                          {token.text}
+                        </span>
+                      );
+                    }
+                    const sources = pathParamSources[token.name];
+                    // Params with a source render as a modal chip; rest inline.
+                    if (sources && pickerSandboxRef) {
+                      return (
+                        <PathParamPickerChip
+                          key={`${currentPageKey}:${token.name}`}
+                          sources={sources}
+                          template={currentPath}
+                          paramName={token.name}
+                          value={pathParamValues[token.name] ?? ""}
+                          sandboxRef={pickerSandboxRef}
+                          onCommit={(value) =>
+                            setPathParamValue(token.name, value)
+                          }
+                        />
+                      );
+                    }
                     return (
-                      <span
-                        key={`text-${i}`}
-                        className={cn(
-                          i === 0 ? "min-w-0 truncate" : "shrink-0",
-                        )}
-                      >
-                        {token.text}
-                      </span>
-                    );
-                  }
-                  const sources = pathParamSources[token.name];
-                  // Params with option sources render as a chip that
-                  // opens the modal (search or free-form value);
-                  // the rest keep the inline input.
-                  if (sources && pickerSandboxRef) {
-                    return (
-                      <PathParamPickerChip
+                      <PathParamInput
                         key={`${currentPageKey}:${token.name}`}
-                        sources={sources}
-                        template={currentPath}
-                        paramName={token.name}
+                        name={token.name}
                         value={pathParamValues[token.name] ?? ""}
-                        sandboxRef={pickerSandboxRef}
                         onCommit={(value) =>
                           setPathParamValue(token.name, value)
                         }
                       />
                     );
-                  }
-                  return (
-                    <PathParamInput
-                      key={`${currentPageKey}:${token.name}`}
-                      name={token.name}
-                      value={pathParamValues[token.name] ?? ""}
-                      onCommit={(value) => setPathParamValue(token.name, value)}
-                    />
-                  );
-                })}
-              </span>
-            )}
+                  })}
+                </span>
+              )}
           </div>
           <button
             type="button"
@@ -1380,9 +1430,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               </button>
             </div>
             {filteredPages.length === 0 &&
-            filteredGlobalSections.length === 0 ? (
+            filteredGlobalSections.length === 0 &&
+            filteredGlobalLoaders.length === 0 ? (
               <div className="px-4 py-5 text-center text-xs text-muted-foreground">
-                {pages.length === 0 && globalSections.length === 0
+                {pages.length === 0 &&
+                globalSections.length === 0 &&
+                globalLoaders.length === 0
                   ? t("sandbox.preview.noPagesFound")
                   : t("sandbox.preview.noSearchResults")}
               </div>
@@ -1447,6 +1500,47 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                         </span>
                         <span className="shrink-0 text-xs text-muted-foreground">
                           {section.resolveType
+                            .split("/")
+                            .pop()
+                            ?.replace(/\.tsx?$/, "")}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {filteredGlobalLoaders.length > 0 && (
+                  <div
+                    className={cn(
+                      "p-1.5",
+                      (filteredPages.length > 0 ||
+                        filteredGlobalSections.length > 0) &&
+                        "border-t",
+                    )}
+                  >
+                    <div className="px-3 py-2 text-xs font-medium text-muted-foreground">
+                      {t("sandbox.preview.globalLoaders")}
+                    </div>
+                    {filteredGlobalLoaders.map((loader) => (
+                      <button
+                        key={loader.key}
+                        type="button"
+                        className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setPagesOpen(false);
+                          setPagesSearch("");
+                          navigatePreviewToLoader(loader);
+                        }}
+                      >
+                        <Database01
+                          size={16}
+                          className="shrink-0 text-muted-foreground"
+                        />
+                        <span className="min-w-0 flex-1 truncate font-medium">
+                          {loader.title}
+                        </span>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {loader.resolveType
                             .split("/")
                             .pop()
                             ?.replace(/\.tsx?$/, "")}
@@ -1724,13 +1818,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       )}
 
       <div className="flex-1 overflow-hidden">
-        {isMobile && effectiveEditingMode === "blocks" ? (
+        {/* Loaders have no canvas — the editor takes the full width. */}
+        {(isMobile || activeLoaderKey) && effectiveEditingMode === "blocks" ? (
           <div className="relative h-full min-h-0 overflow-hidden">
             <BlocksPanel
               virtualMcpId={virtualMcpId}
               externalSelection={cmsSelectedSection}
             />
-            {floatingPreviewControls}
+            {isMobile && floatingPreviewControls}
           </div>
         ) : (
           <ResizablePanelGroup
