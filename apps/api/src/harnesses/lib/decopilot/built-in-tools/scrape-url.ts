@@ -13,8 +13,7 @@
 import { tool, zodSchema, type UIMessageStreamWriter } from "ai";
 import { z } from "zod";
 import type { ObjectStorageHooks } from "../../harness-deps";
-import { createOutputPreview, estimateJsonTokens } from "./read-tool-output";
-import { toStudioStorageUri } from "../studio-storage-uri";
+import { estimateJsonTokens, offloadLargeResult } from "./read-tool-output";
 import { LARGE_RESULT_TOKEN_THRESHOLD } from "./constants";
 import {
   browserlessFetch,
@@ -87,25 +86,21 @@ export function createScrapeUrlTool(
 
         // Large results → blob storage with preview
         if (tokenCount > LARGE_RESULT_TOKEN_THRESHOLD) {
-          const key = `scraped-pages/${crypto.randomUUID()}.html`;
-          const bytes = new TextEncoder().encode(htmlText);
-          try {
-            await objectStorage.put(key, bytes, {
-              contentType: "text/html",
-            });
-            const preview = createOutputPreview(htmlText);
+          const offloaded = await offloadLargeResult(
+            objectStorage,
+            `scraped-pages/${crypto.randomUUID()}.html`,
+            htmlText,
+            "text/html",
+            "scrape-url",
+          );
+          if (offloaded) {
             return {
               success: true,
-              uri: toStudioStorageUri(key),
-              preview,
+              uri: offloaded.uri,
+              preview: offloaded.preview,
               url: input.url,
               tokenCount,
             };
-          } catch (err) {
-            console.error(
-              "[scrape-url] Failed to upload to storage, returning inline",
-              err,
-            );
           }
         }
 

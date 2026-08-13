@@ -16,8 +16,7 @@
 import { tool, zodSchema, type UIMessageStreamWriter } from "ai";
 import { z } from "zod";
 import type { ObjectStorageHooks } from "../../harness-deps";
-import { createOutputPreview, estimateJsonTokens } from "./read-tool-output";
-import { toStudioStorageUri } from "../studio-storage-uri";
+import { estimateJsonTokens, offloadLargeResult } from "./read-tool-output";
 import { LARGE_RESULT_TOKEN_THRESHOLD } from "./constants";
 import {
   browserlessFetch,
@@ -171,28 +170,24 @@ export function createInspectPageTool(
 
         // Large results → blob storage with preview
         if (tokenCount > LARGE_RESULT_TOKEN_THRESHOLD) {
-          const key = `inspect-pages/${crypto.randomUUID()}.json`;
-          const bytes = new TextEncoder().encode(resultJson);
-          try {
-            await objectStorage.put(key, bytes, {
-              contentType: "application/json",
-            });
-            const preview = createOutputPreview(resultJson);
+          const offloaded = await offloadLargeResult(
+            objectStorage,
+            `inspect-pages/${crypto.randomUUID()}.json`,
+            resultJson,
+            "application/json",
+            "inspect-page",
+          );
+          if (offloaded) {
             return {
               success: true,
-              uri: toStudioStorageUri(key),
-              preview,
+              uri: offloaded.uri,
+              preview: offloaded.preview,
               url: input.url,
               tokenCount,
               consoleLogCount: result.consoleLogs?.length ?? 0,
               errorCount: result.errors?.length ?? 0,
               hasEvaluateResult: result.evaluateResult != null,
             };
-          } catch (err) {
-            console.error(
-              "[inspect-page] Failed to upload to storage, returning inline",
-              err,
-            );
           }
         }
 
