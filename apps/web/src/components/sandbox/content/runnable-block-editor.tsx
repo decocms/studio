@@ -71,6 +71,7 @@ export function RunnableBlockEditor({
   onCreate,
   onSaveReferencedBlock,
   onBack,
+  showRun = true,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -89,6 +90,8 @@ export function RunnableBlockEditor({
   ) => void;
   /** Navigates back to the folder browser. */
   onBack?: () => void;
+  /** Show the "Run" button (invoke + result panel). Defaults to true. */
+  showRun?: boolean;
 }) {
   const t = useT();
   const inset = useInsetContext();
@@ -281,23 +284,25 @@ export function RunnableBlockEditor({
           {target.mode === "saved" && (
             <SaveStatus isPending={isSaving} isError={false} />
           )}
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 shrink-0 gap-1.5"
-            onClick={handleRun}
-            disabled={run.isPending}
-            aria-label={t("sandbox.runnableBlockEditor.runAriaLabel", {
-              singular,
-            })}
-          >
-            {run.isPending ? (
-              <Loading01 size={14} className="animate-spin" />
-            ) : (
-              <Play size={14} />
-            )}
-            {t("sandbox.runnableBlockEditor.run")}
-          </Button>
+          {showRun && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 shrink-0 gap-1.5"
+              onClick={handleRun}
+              disabled={run.isPending}
+              aria-label={t("sandbox.runnableBlockEditor.runAriaLabel", {
+                singular,
+              })}
+            >
+              {run.isPending ? (
+                <Loading01 size={14} className="animate-spin" />
+              ) : (
+                <Play size={14} />
+              )}
+              {t("sandbox.runnableBlockEditor.run")}
+            </Button>
+          )}
           {target.mode === "available" && (
             <Tooltip>
               <TooltipTrigger asChild>

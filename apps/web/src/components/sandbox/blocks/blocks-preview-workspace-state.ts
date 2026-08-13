@@ -1,6 +1,7 @@
 export type BlocksTarget =
   | { kind: "page"; key: string; path: string }
-  | { kind: "section"; key: string };
+  | { kind: "section"; key: string }
+  | { kind: "loader"; key: string };
 
 export interface BlocksPreviewWorkspaceState {
   target: BlocksTarget | null;

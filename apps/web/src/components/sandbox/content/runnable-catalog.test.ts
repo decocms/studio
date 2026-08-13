@@ -4,6 +4,7 @@ import {
   isManifestRunnableResolveType,
   listAvailableRunnables,
   listSavedRunnables,
+  readSavedRunnableBlock,
   runnableFolderPath,
   runnableGroupKey,
 } from "./runnable-catalog";
@@ -184,6 +185,40 @@ describe("runnable-catalog", () => {
         title: "MySubmit",
       },
     ]);
+  });
+
+  it("listSavedRunnables skips auto-preview stubs and hidden workflow groups", () => {
+    // The preview picker renders this list, so stubs/workflows must not leak in.
+    const decofile: Record<string, unknown> = {
+      MyProducts: { __resolveType: "site/loaders/products.ts" },
+      "Preview Home": { __resolveType: "site/loaders/products.ts" },
+      MyEvents: { __resolveType: "workflows/loaders/events.ts" },
+    };
+
+    expect(
+      listSavedRunnables(meta, decofile, "loaders").map((l) => l.key),
+    ).toEqual(["MyProducts"]);
+  });
+
+  it("readSavedRunnableBlock strips __resolveType, keeps props, falls back title to the key", () => {
+    const decofile: Record<string, unknown> = {
+      MyProducts: {
+        __resolveType: "site/loaders/products.ts",
+        name: "My products",
+        count: 10,
+      },
+      Bare: { __resolveType: "site/loaders/products.ts" },
+    };
+
+    expect(readSavedRunnableBlock(decofile, "MyProducts")).toEqual({
+      resolveType: "site/loaders/products.ts",
+      props: { name: "My products", count: 10 },
+      title: "My products",
+    });
+    // No `name` → title falls back to the block key.
+    expect(readSavedRunnableBlock(decofile, "Bare").title).toBe("Bare");
+    // Missing block → empty resolveType (callers show "no longer exists").
+    expect(readSavedRunnableBlock(decofile, "Gone").resolveType).toBe("");
   });
 
   it("excludes redirect loaders — they have a dedicated Redirects collection", () => {

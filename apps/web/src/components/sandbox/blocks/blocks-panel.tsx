@@ -13,6 +13,7 @@ import {
   readLastPreviewPage,
 } from "@/components/sandbox/preview/last-preview-page";
 import { useBlocksPreviewWorkspace } from "@/components/sandbox/blocks/blocks-preview-workspace-context";
+import { GlobalLoaderEditor } from "@/components/sandbox/blocks/global-loader-editor";
 import {
   resolveBlocksTabState,
   toBlocksQueryState,
@@ -87,6 +88,27 @@ export function BlocksPanel({
   // workspace target is published by Preview; when Preview hasn't run yet,
   // fall back to the last visited page persisted for this project + branch.
   const target = workspace.state.target;
+
+  // Loaders have their own editor (form + Run), not the sections editor.
+  if (target?.kind === "loader" && decofile.data && meta.data) {
+    return (
+      <div
+        data-testid="blocks-panel"
+        className="h-full min-h-0 overflow-hidden"
+      >
+        <GlobalLoaderEditor
+          orgSlug={org.slug}
+          virtualMcpId={virtualMcpId}
+          branch={currentBranch ?? ""}
+          previewUrl={previewUrl ?? null}
+          meta={meta.data}
+          decofile={decofile.data}
+          blockKey={target.key}
+        />
+      </div>
+    );
+  }
+
   const saved =
     target || !currentBranch
       ? null

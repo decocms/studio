@@ -29,6 +29,7 @@ import {
 import {
   listAvailableRunnables,
   listSavedRunnables,
+  readSavedRunnableBlock,
   runnableFolderPath,
   runnableGroupTitle,
   runnableSingular,
@@ -519,14 +520,10 @@ function buildTarget(
     };
   }
 
-  const block = decofile[selection.key] as Record<string, unknown> | undefined;
-  const resolveType =
-    block && typeof block.__resolveType === "string" ? block.__resolveType : "";
-  const { __resolveType: _rt, ...props } = block ?? {};
-  const title =
-    block && typeof block.name === "string" && block.name
-      ? block.name
-      : selection.key;
+  const { resolveType, props, title } = readSavedRunnableBlock(
+    decofile,
+    selection.key,
+  );
 
   return {
     mode: "saved",
@@ -538,6 +535,6 @@ function buildTarget(
       resolveType,
       title,
     },
-    initialValue: props as Record<string, unknown>,
+    initialValue: props,
   };
 }

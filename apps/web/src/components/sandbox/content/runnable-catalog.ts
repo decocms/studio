@@ -17,7 +17,7 @@ interface RunnableEntry {
 }
 
 /** A loader/action already saved as a global block in the decofile. */
-interface SavedRunnableEntry {
+export interface SavedRunnableEntry {
   /** Decofile block key. */
   key: string;
   /** The module resolveType the block instantiates. */
@@ -216,4 +216,23 @@ export function listSavedRunnables(
   }
 
   return entries.sort((a, b) => a.title.localeCompare(b.title));
+}
+
+/**
+ * The editor seed for a saved runnable block: its resolveType, form props
+ * (the block minus `__resolveType`), and display title (`name` or the key).
+ * `resolveType` is `""` when the block is missing or malformed — callers that
+ * need a valid block treat that as "no longer exists".
+ */
+export function readSavedRunnableBlock(
+  decofile: Record<string, unknown>,
+  blockKey: string,
+): { resolveType: string; props: Record<string, unknown>; title: string } {
+  const block = decofile[blockKey] as Record<string, unknown> | undefined;
+  const resolveType =
+    typeof block?.__resolveType === "string" ? block.__resolveType : "";
+  const { __resolveType: _rt, ...props } = block ?? {};
+  const title =
+    typeof block?.name === "string" && block.name ? block.name : blockKey;
+  return { resolveType, props: props as Record<string, unknown>, title };
 }
