@@ -145,6 +145,44 @@ describe("refreshAccessToken", () => {
     expect(result.accessToken).toBe("new");
   });
 
+  it("ignores a malformed expires_in instead of producing an Invalid Date", async () => {
+    installFetch(
+      () =>
+        new Response(
+          JSON.stringify({
+            access_token: "new",
+            token_type: "Bearer",
+            expires_in: "not-a-number",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+
+    const result = await refreshAccessToken(baseToken);
+
+    expect(result.success).toBe(true);
+    expect(result.expiresIn).toBeUndefined();
+  });
+
+  it("ignores a negative expires_in", async () => {
+    installFetch(
+      () =>
+        new Response(
+          JSON.stringify({
+            access_token: "new",
+            token_type: "Bearer",
+            expires_in: -1,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+
+    const result = await refreshAccessToken(baseToken);
+
+    expect(result.success).toBe(true);
+    expect(result.expiresIn).toBeUndefined();
+  });
+
   it("treats a 200 with no access_token as a transient failure, not success", async () => {
     installFetch(
       () =>

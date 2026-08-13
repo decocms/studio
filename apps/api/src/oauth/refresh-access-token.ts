@@ -151,7 +151,7 @@ export async function refreshAccessToken(
     const data = (await response.json()) as {
       access_token?: string;
       refresh_token?: string;
-      expires_in?: number;
+      expires_in?: unknown;
       token_type?: string;
       scope?: string;
     };
@@ -170,11 +170,26 @@ export async function refreshAccessToken(
       };
     }
 
+    // expires_in is untrusted server input — reject non-finite/non-positive values.
+    let expiresIn: number | undefined;
+    if (data.expires_in !== undefined) {
+      const parsed = Number(data.expires_in);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        expiresIn = parsed;
+      } else {
+        console.warn("[TokenRefresh] ignoring malformed expires_in", {
+          connectionId: token.connectionId,
+          tokenEndpoint: token.tokenEndpoint,
+          expiresIn: data.expires_in,
+        });
+      }
+    }
+
     return {
       success: true,
       accessToken: data.access_token,
       refreshToken: data.refresh_token || token.refreshToken,
-      expiresIn: data.expires_in,
+      expiresIn,
       scope: data.scope,
     };
   } catch (error) {
