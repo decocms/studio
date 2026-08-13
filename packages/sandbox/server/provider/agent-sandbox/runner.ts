@@ -2997,6 +2997,11 @@ export function stripEnsureOpts(opts: EnsureOptions): EnsureOptions | null {
   if (opts.workload) out.workload = opts.workload;
   if (opts.env && Object.keys(opts.env).length > 0) out.env = opts.env;
   if (opts.tenant) out.tenant = opts.tenant;
+  // Without this, a recreated warm-pool pod's rebootstrap would compute
+  // `cloneOnly: false` (workloadConfigPayload only sees this persisted blob),
+  // silently re-enabling install + dev-server for a sandbox provisioned
+  // clone-only.
+  if (opts.cloneOnly) out.cloneOnly = true;
   // Without this, `resurrectByHandle` re-provisioning from these persisted
   // opts (no SANDBOX_START in that loop) would silently drop the org-fs
   // mounts a live sandbox had.

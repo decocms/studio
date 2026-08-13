@@ -28,6 +28,19 @@ describe("stripEnsureOpts", () => {
   it("drops orgFsConfigJson along with everything else when unset", () => {
     expect(stripEnsureOpts({})).toBeNull();
   });
+
+  // Without this, a recreated warm-pool pod's rebootstrap would compute
+  // `cloneOnly: false` from the persisted opts, silently re-enabling install +
+  // dev-server for a sandbox provisioned clone-only.
+  it("retains cloneOnly so resurrection doesn't silently install/start a dev server", () => {
+    const opts: EnsureOptions = { cloneOnly: true };
+    expect(stripEnsureOpts(opts)).toEqual({ cloneOnly: true });
+  });
+
+  it("drops cloneOnly: false rather than persisting a redundant flag", () => {
+    const opts: EnsureOptions = { cloneOnly: false, branch: "b" };
+    expect(stripEnsureOpts(opts)).toEqual({ branch: "b" });
+  });
 });
 
 describe("earlierShutdown", () => {
