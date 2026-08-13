@@ -4,6 +4,7 @@ export const settings = {
   "settings.title": "Perfil e preferências",
   "settings.nav.organization": "Organização",
   "settings.nav.general": "Geral",
+  "settings.nav.connect": "Conectar a clientes",
   "settings.nav.brandContext": "Contexto da marca",
   "settings.nav.aiProviders": "Provedores de IA",
   "settings.nav.secrets": "Segredos",

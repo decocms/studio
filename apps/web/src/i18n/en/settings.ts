@@ -2,6 +2,7 @@ export const settings = {
   "settings.title": "Profile & Preferences",
   "settings.nav.organization": "Organization",
   "settings.nav.general": "General",
+  "settings.nav.connect": "Connect to clients",
   "settings.nav.brandContext": "Brand Context",
   "settings.nav.aiProviders": "AI Providers",
   "settings.nav.secrets": "Secrets",
