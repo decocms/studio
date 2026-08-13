@@ -117,6 +117,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      # Hoisted to the job because `secrets` is not readable from a step `if:`.
+      HAS_POSTHOG_SOURCEMAPS: ${{ secrets.POSTHOG_CLI_API_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -126,8 +129,38 @@ jobs:
           node-version: "24"
       - name: Setup Bun and install dependencies
         uses: ./.github/actions/setup-bun
+      # Sourcemaps are emitted ONLY when the PostHog secret exists, uploaded so
+      # error tracking can un-minify stack traces, then deleted before packing.
+      # Without them production frames name no file anyone can open.
       - name: Build combined Studio distribution
         run: bun run build:studio
+        env:
+          BUILD_SOURCEMAPS: ${{ env.HAS_POSTHOG_SOURCEMAPS == 'true' && '1' || '0' }}
+
+      # Telemetry must never break a release, so this cannot fail the job
+      # (`--no-fail` plus `continue-on-error`). The cleanup below runs
+      # regardless, so a partial upload still cannot leak sources.
+      - name: Upload sourcemaps to PostHog
+        if: env.HAS_POSTHOG_SOURCEMAPS == 'true'
+        continue-on-error: true
+        env:
+          POSTHOG_CLI_API_KEY: ${{ secrets.POSTHOG_CLI_API_KEY }}
+          POSTHOG_CLI_PROJECT_ID: ${{ secrets.POSTHOG_PROJECT_ID }}
+        run: |
+          npx --yes --package=@posthog/cli@0.11.0 posthog-cli --no-fail \
+            sourcemap process \
+            --directory apps/api/dist/client \
+            --release-name studio-web \
+            --release-version "${{ github.sha }}"
+
+      # Unconditional: a `.map` reaching this point would be published in the
+      # npm tarball AND the Docker image, since build-studio copies dist wholesale.
+      - name: Strip sourcemaps before packing
+        if: always()
+        run: |
+          find apps/web/dist apps/api/dist -name '*.map' -delete 2>/dev/null || true
+          remaining=$(find apps/web/dist apps/api/dist -name '*.map' 2>/dev/null | wc -l | tr -d ' ')
+          test "$remaining" = "0" || { echo "::error::$remaining sourcemap(s) survived cleanup"; exit 1; }
       - name: Verify combined distribution layout
         run: |
           test -f apps/web/dist/index.html
