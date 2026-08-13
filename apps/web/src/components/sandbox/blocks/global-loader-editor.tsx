@@ -65,6 +65,7 @@ export function GlobalLoaderEditor({
       isCreating={saveBlock.isPending}
       onCreate={async () => {}}
       onSaveReferencedBlock={saveReferencedBlock}
+      showRun={false}
     />
   );
 }
