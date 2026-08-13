@@ -11,6 +11,7 @@ import {
 export function maybeTruncate(
   result: unknown,
   toolOutputMap: Map<string, string>,
+  toolCallId: string,
 ): unknown {
   let serialized: string;
   try {
@@ -21,7 +22,6 @@ export function maybeTruncate(
   }
   const tokenCount = estimateJsonTokens(serialized);
   if (tokenCount > MAX_RESULT_TOKENS) {
-    const toolCallId = `vm_${Date.now()}`;
     toolOutputMap.set(toolCallId, serialized);
     const preview = createOutputPreview(serialized);
     return {
