@@ -9,6 +9,7 @@ import {
 import { recordTaskActivity } from "./activity";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
 import {
+  type ChecksStatus,
   fetchPrChecksStatus,
   fetchPrConflict,
   invalidatePrReads,
@@ -42,6 +43,24 @@ export type MergeOutcome =
 
 /** Reasons worth a timeline entry — see {@link MergeFailureReason}. */
 const SILENT_REASONS = new Set<MergeFailureReason>(["checks_pending"]);
+
+/**
+ * Whether a PR's CI state should stop the merge. Pure — unit-tested.
+ *
+ * Red CI (`failing`) blocks every caller, always. In-flight CI (`pending`)
+ * blocks the automatic paths (auto-merge, a stale client), but a human clicking
+ * "Ship to production" passes `allowPendingChecks` to override it — they decided
+ * the pending run isn't worth waiting for. An unknown state (`null`) never
+ * blocks: we can't prove it's bad, and GitHub branch protection is the real gate.
+ */
+export function checksBlockMerge(
+  checks: ChecksStatus,
+  opts: { allowPendingChecks?: boolean } = {},
+): boolean {
+  if (checks === "failing") return true;
+  if (checks === "pending") return !opts.allowPendingChecks;
+  return false;
+}
 
 /**
  * Append a `merge_failed` entry, unless the task's newest entry is already a
@@ -96,6 +115,7 @@ export async function mergeLinkedPr(
   ctx: StudioContext,
   orgId: string,
   taskBoardItemId: string,
+  opts: { allowPendingChecks?: boolean } = {},
 ): Promise<MergeOutcome> {
   const fail = async (
     reason: MergeFailureReason,
@@ -113,11 +133,8 @@ export async function mergeLinkedPr(
     );
     return fail("no_pr");
   }
-  // Never ship on red or in-flight CI — the ship button hides in this case, but
-  // guard the server path too (auto-merge, a stale client). Only a definite
-  // failing/pending blocks; an unknown (null) does not.
   const checks = await fetchPrChecksStatus(ctx, orgId, pr);
-  if (checks === "failing" || checks === "pending") {
+  if (checksBlockMerge(checks, opts)) {
     console.warn(
       `[task-board] merge blocked — checks ${checks} on PR #${pr.number}`,
     );
