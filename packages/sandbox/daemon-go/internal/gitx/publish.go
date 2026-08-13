@@ -101,6 +101,32 @@ func changedPaths(status WorkingTreeStatus) []string {
 	return out
 }
 
+// NeverCommit are paths publish drops from the commit unconditionally, whatever
+// `.git/info/exclude` says: they are daemon-managed, and `.deco/tools/` holds the
+// run's MCP bearer token, which a push would leak into the repo's history.
+var NeverCommit = []string{".deco/tools/"}
+
+// dropNeverCommit filters {@link NeverCommit} paths out of a publish's file list.
+func dropNeverCommit(paths []string) []string {
+	out := make([]string, 0, len(paths))
+	for _, p := range paths {
+		rel := strings.TrimPrefix(filepath.ToSlash(p), "./")
+		skip := false
+		for _, deny := range NeverCommit {
+			if rel == strings.TrimSuffix(deny, "/") || strings.HasPrefix(rel, deny) {
+				skip = true
+				break
+			}
+		}
+		if skip {
+			slog.Warn("skipping from sync", "reason", "daemon-managed path", "path", rel)
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
 // filterInvalidDecofileBlocks is publish's last-resort net: /write and /edit
 // already reject invalid blocks, but a mutation that bypassed them (bash, a git
 // merge) would otherwise be committed verbatim and break the whole site render.
@@ -224,7 +250,7 @@ func Publish(deps PublishDeps, message string) error {
 	}
 	paths, err := filterInvalidDecofileBlocks(
 		repoDir,
-		expandUntrackedDirs(repoDir, changedPaths(status)),
+		dropNeverCommit(expandUntrackedDirs(repoDir, changedPaths(status))),
 		deps.OnInvalidBlock,
 	)
 	if err != nil {
