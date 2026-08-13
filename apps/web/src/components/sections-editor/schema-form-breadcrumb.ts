@@ -709,7 +709,24 @@ function findItemIndexForCrumb(
   ) {
     return crumb.itemIndex;
   }
-  // Churn-window fallback: keep the open row while its label is mid-edit.
+  /**
+   * Open-row pin: the crumb still addresses the row the user has open, but its
+   * label lags `items[itemIndex]` mid-edit — e.g. a titleBy driven by a field
+   * being typed, or a value edited deep in a nested array whose label re-sync
+   * races the nested trail rebuild. The index is the source of truth (the label
+   * is display-only), so trust it rather than fall through to the label search
+   * below, which would snap to a colliding sibling (the duplicated-item
+   * "original").
+   */
+  if (
+    preferredIndex != null &&
+    preferredIndex === crumb.itemIndex &&
+    preferredIndex >= 0 &&
+    preferredIndex < items.length
+  ) {
+    return preferredIndex;
+  }
+  // Churn-window fallback: the item shifted but its label still matches the open row.
   const preferred = preferredIndex != null ? labels[preferredIndex] : undefined;
   if (preferred !== undefined && labelsMatch(preferred, crumb.label)) {
     return preferredIndex!;
