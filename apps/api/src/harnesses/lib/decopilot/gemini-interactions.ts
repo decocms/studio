@@ -14,6 +14,7 @@
  * `Error` for transient HTTP/network problems (the job may still be running,
  * keep the handle for a future reconnect).
  */
+import { sleep } from "@decocms/shared/std";
 import { AsyncResearchTerminalError } from "./async-research-terminal-error";
 
 /**
@@ -216,7 +217,7 @@ export async function pollInteraction(
       // "in_progress" / unknown → keep polling
     }
 
-    await sleep(interval, opts.abortSignal);
+    await sleep(interval, { signal: opts.abortSignal });
   }
 }
 
@@ -395,21 +396,6 @@ function parseUsage(payload: Record<string, unknown>): {
     numberField(usage, "output_tokens") ??
     Math.max(0, (numberField(usage, "total_tokens") ?? 0) - inputTokens);
   return { inputTokens, outputTokens };
-}
-
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) return reject(makeAbortError(signal));
-    const t = setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    const onAbort = () => {
-      clearTimeout(t);
-      reject(makeAbortError(signal));
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
 }
 
 function makeAbortError(signal?: AbortSignal): Error {
