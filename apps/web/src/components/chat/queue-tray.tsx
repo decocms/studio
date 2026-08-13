@@ -91,7 +91,7 @@ export function QueueTray({ taskId }: { taskId: string }) {
           <span className="min-w-0 flex-1 truncate text-sm text-foreground">
             {item.text}
           </span>
-          <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover/queuerow:opacity-100">
+          <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover/queuerow:opacity-100">
             <Button
               type="button"
               variant="ghost"
