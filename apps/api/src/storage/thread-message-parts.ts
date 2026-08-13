@@ -297,28 +297,25 @@ export class SqlThreadMessagePartStorage {
     threadId: string,
     options: { limit: number; offset?: number; includeInFlight?: boolean },
   ): Promise<{ messages: FoldedMessage[]; total: number }> {
-    const anchors = await this.db
-      .selectFrom("thread_message_parts")
-      .select(["message_id"])
-      .where("thread_id", "=", threadId)
-      .where("kind", "=", "finish")
-      .orderBy("created_at", "desc")
-      .orderBy("id", "desc")
-      .limit(options.limit)
-      .offset(options.offset ?? 0)
-      .execute();
-
-    const totalRow = await this.db
-      .selectFrom("thread_message_parts")
-      .select((eb) => eb.fn.count<string>("id").as("count"))
-      .where("thread_id", "=", threadId)
-      .where("kind", "=", "finish")
-      .executeTakeFirst();
-    const total = Number(totalRow?.count ?? 0);
-
-    const inFlight =
+    const [anchors, totalRow, inFlight] = await Promise.all([
+      this.db
+        .selectFrom("thread_message_parts")
+        .select(["message_id"])
+        .where("thread_id", "=", threadId)
+        .where("kind", "=", "finish")
+        .orderBy("created_at", "desc")
+        .orderBy("id", "desc")
+        .limit(options.limit)
+        .offset(options.offset ?? 0)
+        .execute(),
+      this.db
+        .selectFrom("thread_message_parts")
+        .select((eb) => eb.fn.count<string>("id").as("count"))
+        .where("thread_id", "=", threadId)
+        .where("kind", "=", "finish")
+        .executeTakeFirst(),
       options.includeInFlight && (options.offset ?? 0) === 0
-        ? await this.db
+        ? this.db
             .selectFrom("thread_message_parts as p")
             .select("p.message_id")
             .distinct()
@@ -336,7 +333,9 @@ export class SqlThreadMessagePartStorage {
               ),
             )
             .execute()
-        : [];
+        : Promise.resolve([]),
+    ]);
+    const total = Number(totalRow?.count ?? 0);
 
     const messageIds = [
       ...anchors.map((a) => a.message_id),
