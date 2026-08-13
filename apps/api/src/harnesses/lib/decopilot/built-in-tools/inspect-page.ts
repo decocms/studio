@@ -19,20 +19,14 @@ import type { ObjectStorageHooks } from "../../harness-deps";
 import { createOutputPreview, estimateJsonTokens } from "./read-tool-output";
 import { toStudioStorageUri } from "../studio-storage-uri";
 import { LARGE_RESULT_TOKEN_THRESHOLD } from "./constants";
-import { browserlessFetch } from "./browserless-fetch";
+import {
+  browserlessFetch,
+  BROWSERLESS_ERROR_BODY_MAX_CHARS,
+  httpUrlSchema,
+} from "./browserless-fetch";
 
-// Upstream error bodies are unbounded — cap what lands in the tool error.
-const ERROR_BODY_MAX_CHARS = 500;
-
-// Reject non-http(s) schemes (file:, javascript:, ...) before forwarding to Browserless.
 const InspectPageInputSchema = z.object({
-  url: z
-    .string()
-    .url()
-    .refine((url) => /^https?:\/\//i.test(url), {
-      message: "URL must use http or https",
-    })
-    .describe("The URL of the web page to inspect."),
+  url: httpUrlSchema.describe("The URL of the web page to inspect."),
   evaluate: z
     .string()
     .optional()
@@ -147,7 +141,7 @@ export function createInspectPageTool(
           const errorText = await response.text().catch(() => "Unknown error");
           return {
             success: false,
-            error: `Browserless function call failed (${response.status}): ${errorText.slice(0, ERROR_BODY_MAX_CHARS)}`,
+            error: `Browserless function call failed (${response.status}): ${errorText.slice(0, BROWSERLESS_ERROR_BODY_MAX_CHARS)}`,
             url: input.url,
           };
         }
