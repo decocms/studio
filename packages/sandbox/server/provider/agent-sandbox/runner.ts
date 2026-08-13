@@ -61,6 +61,7 @@ import {
 import type { RunnerStateStore, RunnerStateStoreOps } from "../state-store";
 import type {
   EnsureOptions,
+  PodTermination,
   ProxyRequestInit,
   Sandbox,
   SandboxId,
@@ -77,6 +78,7 @@ import {
   HTTPROUTE_CONSTANTS,
   isPodUnbound,
   listWarmPoolPods,
+  readPodTermination,
   type WarmPoolPod,
   patchSandboxClaimShutdown,
   waitForClaimAdoptedSandbox,
@@ -93,6 +95,7 @@ import {
 } from "./constants";
 import { watchClaimDeletions, watchClaimLifecycle } from "./lifecycle-watcher";
 import {
+  claimTemplateName,
   claimWarmPoolName,
   poolCloneUrl,
   poolsMatchingPush,
@@ -339,6 +342,18 @@ export interface AgentSandboxProviderOptions {
   /** SandboxTemplate all claims reference. */
   sandboxTemplateName?: string;
   /**
+   * SandboxTemplate for `cloneOnly` claims — the headless Claude Code dispatch
+   * path, which is where prod's 4Gi OOMKills happened (agent loop, no dev
+   * server). The sandbox-env chart renders it as `<template>-medium` with a
+   * 3Gi/6Gi memory request/limit. A SandboxClaim cannot override resources, so
+   * a second ceiling has to be a second template.
+   *
+   * Unset → cloneOnly claims use `sandboxTemplateName` like everything else,
+   * i.e. today's behavior. That's the rollout switch: the chart can ship the
+   * template before anything claims it.
+   */
+  mediumTemplateName?: string;
+  /**
    * Shared sentinel token baked into the SandboxTemplate's pod env (via the
    * sandbox-env helm chart's Secret). Presence flips the runner into
    * warm-pool mode:
@@ -462,6 +477,8 @@ export class AgentSandboxProvider implements SandboxProvider {
   private readonly portForward: PortForward;
   private readonly namespace: string;
   private readonly sandboxTemplateName: string;
+  /** See {@link AgentSandboxProviderOptions.mediumTemplateName}. */
+  private readonly mediumTemplateName: string | null;
   private readonly envName: string | null;
   private readonly tokenGenerator: () => string;
   private readonly idleTtlMs: number;
@@ -515,6 +532,8 @@ export class AgentSandboxProvider implements SandboxProvider {
     this.namespace = opts.namespace ?? DEFAULT_NAMESPACE;
     this.sandboxTemplateName =
       opts.sandboxTemplateName ?? DEFAULT_TEMPLATE_NAME;
+    const trimmedMedium = opts.mediumTemplateName?.trim() ?? "";
+    this.mediumTemplateName = trimmedMedium.length > 0 ? trimmedMedium : null;
     this.envName = normalizeEnvName(opts.envName);
     this.tokenGenerator =
       opts.tokenGenerator ??
@@ -616,6 +635,20 @@ export class AgentSandboxProvider implements SandboxProvider {
       if (rec) await this.stateStore.delete(rec.id, RUNNER_KIND);
       else await this.stateStore.deleteByHandle(RUNNER_KIND, handle);
     }
+  }
+
+  /**
+   * See `SandboxProvider.lastTermination`. Reads the kubelet's own verdict on
+   * the pod behind `handle` — the only place an OOM kill is recorded.
+   */
+  lastTermination(handle: string): Promise<PodTermination | null> {
+    return readPodTermination(
+      this.kubeConfig,
+      this.namespace,
+      LABEL_KEYS.sandboxHandle,
+      handle,
+      K8S_CONSTANTS.MAIN_CONTAINER_NAME,
+    );
   }
 
   async alive(handle: string): Promise<boolean> {
@@ -1240,6 +1273,11 @@ export class AgentSandboxProvider implements SandboxProvider {
       cloneUrl: opts.repo?.cloneUrl,
       cloneOnly: opts.cloneOnly,
     });
+    const templateName = claimTemplateName(
+      opts.cloneOnly,
+      this.sandboxTemplateName,
+      this.mediumTemplateName,
+    );
     const envEntries = warmPoolMode
       ? []
       : Object.entries(this.buildEnvMap(opts, boot))
@@ -1269,7 +1307,7 @@ export class AgentSandboxProvider implements SandboxProvider {
         ...(hasAnnotations ? { annotations } : {}),
       },
       spec: {
-        sandboxTemplateRef: { name: this.sandboxTemplateName },
+        sandboxTemplateRef: { name: templateName },
         // additionalPodMetadata.labels is the operator's pod-label propagation
         // hook (CRD field, not a generic patch). Tenant labels here flow to
         // the pod and become joinable in cAdvisor/kubelet metrics. `role`
@@ -1284,11 +1322,7 @@ export class AgentSandboxProvider implements SandboxProvider {
           ...(hasAnnotations ? { annotations } : {}),
         },
         env: envEntries,
-        warmpool: claimWarmPoolName(
-          tenantPool,
-          warmPoolMode,
-          this.sandboxTemplateName,
-        ),
+        warmpool: claimWarmPoolName(tenantPool, warmPoolMode, templateName),
         lifecycle: {
           shutdownPolicy: "Delete",
           shutdownTime: this.computeShutdownTime(),

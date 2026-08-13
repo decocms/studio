@@ -18,7 +18,7 @@ resources:
     memory: 1Gi
   limits:
     cpu: 2
-    memory: 6Gi
+    memory: 4Gi
 
 # Legacy sandbox-env values key retained for upgrade compatibility.
 mesh:

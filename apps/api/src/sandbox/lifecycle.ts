@@ -90,6 +90,17 @@ function readSandboxTemplateName(): string | undefined {
   return raw && raw.trim() !== "" ? raw : undefined;
 }
 
+/**
+ * SandboxTemplate for headless agent-loop (`cloneOnly`) claims — the
+ * sandbox-env chart renders it as `<template>-medium` with a 3Gi/6Gi memory
+ * request/limit. Unset (the default) → those claims use the same template as
+ * everything else, so set it only where that chart version is deployed.
+ */
+function readMediumTemplateName(): string | undefined {
+  const raw = process.env.STUDIO_SANDBOX_MEDIUM_TEMPLATE_NAME;
+  return raw && raw.trim() !== "" ? raw : undefined;
+}
+
 function readEnvName(): string | undefined {
   const raw = process.env.STUDIO_ENV;
   return raw && raw.trim() !== "" ? raw : undefined;
@@ -161,6 +172,7 @@ async function instantiate(
         stateStore,
         previewUrlPattern,
         sandboxTemplateName: readSandboxTemplateName(),
+        mediumTemplateName: readMediumTemplateName(),
         envName: readEnvName(),
         previewGateway: readPreviewGateway(),
         sentinelToken: readSandboxSentinelToken(),

@@ -391,8 +391,9 @@ These defaults come from `deploy/helm/studio/values.yaml`:
 | --- | --- | --- |
 | `envName` | DNS-label suffix for environment resources | Required |
 | `image.repository` / `image.tag` | Sandbox daemon image ([tags](https://github.com/orgs/decocms/packages/container/package/studio%2Fstudio-sandbox-go)) | `ghcr.io/decocms/studio/studio-sandbox-go` / pinned by the chart |
-| `resources.requests` | Per-sandbox request | `500m` CPU / `1Gi` memory |
-| `resources.limits` | Per-sandbox limit | `2` CPU / `6Gi` memory / `10Gi` ephemeral storage |
+| `resources.requests` | Per-sandbox request | `500m` CPU / `2Gi` memory |
+| `resources.limits` | Per-sandbox limit | `2` CPU / `4Gi` memory / `10Gi` ephemeral storage |
+| `mediumResources` | Overrides for the second, roomier `-medium` SandboxTemplate (headless agent-loop claims) | `3Gi` request / `6Gi` limit |
 | `terminationGracePeriodSeconds` | Time for final git sync and unmount | `90` |
 | `netinit.enabled` | Install default iptables egress policy | `true` |
 | `readOnlyRootFilesystem` | Read-only sandbox root filesystem | `true` |

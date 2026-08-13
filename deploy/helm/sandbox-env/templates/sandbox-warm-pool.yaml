@@ -25,4 +25,23 @@ spec:
     type: OnReplenish
   sandboxTemplateRef:
     name: {{ include "sandbox-env.sandboxName" . }}
+---
+# Same pool for the `-medium` template. Size 0 by default and that is not a
+# footgun here: a claim must name a pool that exists, and an empty pool falls
+# back to a cold pod — so this exists to give medium claims a valid name, and
+# prewarming them is a one-value change (warmPool.mediumSize) if dispatch
+# cold-start ever shows up in a latency budget.
+apiVersion: extensions.agents.x-k8s.io/v1alpha1
+kind: SandboxWarmPool
+metadata:
+  name: {{ include "sandbox-env.sandboxName" . }}-medium
+  namespace: agent-sandbox-system
+  labels:
+    {{- include "sandbox-env.sandboxLabels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.warmPool.mediumSize | default 0 }}
+  updateStrategy:
+    type: OnReplenish
+  sandboxTemplateRef:
+    name: {{ include "sandbox-env.sandboxName" . }}-medium
 {{- end }}

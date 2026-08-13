@@ -1,15 +1,20 @@
-# Shared SandboxTemplate consumed by every SandboxClaim the Studio runner
-# creates for THIS environment. Resource ceilings come from values.resources.
+# SandboxTemplates consumed by the SandboxClaims the Studio runner creates for
+# THIS environment. Rendered once per size (see the bottom of this file): the
+# default one that interactive claims use, and `-medium`, which differs ONLY in
+# `resources` — a SandboxClaim has no resource override (CRD: additionalPodMetadata,
+# env, lifecycle, sandboxTemplateRef, warmpool), so a second ceiling means a
+# second template. Studio picks it per claim; see values.yaml mediumResources.
 #
 # Hardcoded to the operator's own namespace (agent-sandbox-system) — the CRDs
 # ship with that as the install target, and the operator's RBAC watches it by
 # default. The template *name* is suffixed with envName so multiple
 # environments' SandboxTemplates coexist; Studio in this env must reference
 # the suffixed name via STUDIO_SANDBOX_TEMPLATE_NAME.
+{{ define "sandbox-env.sandboxTemplate" -}}
 apiVersion: extensions.agents.x-k8s.io/v1alpha1
 kind: SandboxTemplate
 metadata:
-  name: {{ include "sandbox-env.sandboxName" . }}
+  name: {{ include "sandbox-env.sandboxName" . }}{{ .sizeSuffix }}
   namespace: agent-sandbox-system
   labels:
     {{- include "sandbox-env.sandboxLabels" . | nindent 4 }}
@@ -308,7 +313,7 @@ spec:
               containerPort: 3000
               protocol: TCP
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
+            {{- toYaml .resources | nindent 12 }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -409,3 +414,7 @@ spec:
           emptyDir:
             sizeLimit: 1Mi
         {{- end }}
+{{- end }}
+{{ include "sandbox-env.sandboxTemplate" (merge (dict "sizeSuffix" "" "resources" .Values.resources) .) }}
+---
+{{ include "sandbox-env.sandboxTemplate" (merge (dict "sizeSuffix" "-medium" "resources" (mergeOverwrite (deepCopy .Values.resources) .Values.mediumResources)) .) }}

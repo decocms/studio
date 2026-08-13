@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
 import {
+  claimTemplateName,
   claimWarmPoolName,
   parseTenantPools,
   poolsMatchingPush,
@@ -159,6 +160,42 @@ describe("claimWarmPoolName", () => {
 
   it("no sentinel → `none`, so the operator still accepts per-claim env", () => {
     expect(claimWarmPoolName(null, false, "studio-sandbox")).toBe("none");
+  });
+});
+
+describe("claimTemplateName", () => {
+  it("cloneOnly takes the medium template", () => {
+    expect(
+      claimTemplateName(true, "studio-sandbox", "studio-sandbox-medium"),
+    ).toBe("studio-sandbox-medium");
+  });
+
+  it("interactive claims stay on the default template", () => {
+    expect(
+      claimTemplateName(false, "studio-sandbox", "studio-sandbox-medium"),
+    ).toBe("studio-sandbox");
+    expect(
+      claimTemplateName(undefined, "studio-sandbox", "studio-sandbox-medium"),
+    ).toBe("studio-sandbox");
+  });
+
+  // The rollout switch: chart deployed, Studio not configured yet.
+  it("no medium template configured → cloneOnly keeps today's template", () => {
+    expect(claimTemplateName(true, "studio-sandbox", null)).toBe(
+      "studio-sandbox",
+    );
+  });
+
+  // Pool name == template name, so a medium claim can't bind a 4Gi pod.
+  it("the warm pool follows the template it picked", () => {
+    const template = claimTemplateName(
+      true,
+      "studio-sandbox",
+      "studio-sandbox-medium",
+    );
+    expect(claimWarmPoolName(null, true, template)).toBe(
+      "studio-sandbox-medium",
+    );
   });
 });
 

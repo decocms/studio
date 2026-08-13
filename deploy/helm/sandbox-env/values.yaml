@@ -55,30 +55,38 @@ image:
 # memory request = observed p95 of per-pod peak working-set (~2Gi over 7d;
 # 2d raw p90 2.2Gi, p95 2.4Gi). It was 1Gi — but busy pods spend ~100% of
 # their life above 1Gi, so the scheduler bin-packed on a request less than
-# half of real usage and prod nodes hit memory-pressure eviction. Sizing the
-# request to real p95 stops those evictions at the cost of packing density.
-#
-# memory limit is the ceiling a single agent loop may burst to, and it is NOT
-# what the scheduler packs on — only the request is. It was 4Gi, chosen when no
-# pod had ever reached it; on 2026-08-13 three did, one thread twice inside 20
-# minutes (a claude-code run climbing 242MiB → 3.6Gi of RSS in three minutes,
-# then killed and reproduced on its replacement). 6Gi covers that burst without
-# costing a byte of scheduled capacity.
-#
-# The cost of raising it is overcommit: a node packed on 2Gi requests now has
-# pods that may each reach 6Gi, and node memory-pressure eviction is the failure
-# mode this file already fought once. Today's burst rate (3 pods in 24h) makes
-# that risk small — if node-pressure evictions come back, the answer is a
-# separate SandboxTemplate so only the agent-loop pods carry the higher ceiling
-# (see tenantPools[].resources for the machinery), not a blanket raise.
+# half of real usage and prod nodes hit memory-pressure eviction (never
+# per-pod OOM: 0 pods reach the 4Gi limit). Sizing the request to real p95
+# stops the node-pressure evictions at the cost of lower packing density.
 resources:
   requests:
     cpu: 500m
     memory: 2Gi
   limits:
     cpu: "2"
-    memory: 6Gi
+    memory: 4Gi
     ephemeral-storage: 10Gi
+
+# ── the `-medium` SandboxTemplate's ceilings ───────────────────────────
+# Deep-merged over `resources` above, so state only what differs. Studio
+# points headless agent-loop claims (Claude Code dispatch: cloneOnly, no dev
+# server) at the `-medium` template by setting
+# STUDIO_SANDBOX_MEDIUM_TEMPLATE_NAME=studio-sandbox-<envName>-medium; unset
+# there, nothing claims it and this template just sits unused.
+#
+# Why a separate template instead of raising the shared limit: prod OOMKilled
+# three pods at the 4Gi limit on 2026-08-13, all inside a claude-code loop
+# (container_memory_rss 257Mi → 3.6Gi in 9 min). Raising the shared limit to
+# 6Gi while leaving the 2Gi request would let every node pack on 2Gi and burst
+# to 6Gi — node memory-pressure eviction is exactly what drove the request from
+# 1Gi to 2Gi in 0.9.14. So the higher ceiling is carried by the pods that need
+# it, with a request that actually reserves most of it (3Gi/6Gi = 2x
+# overcommit, same ratio as the default 2Gi/4Gi).
+mediumResources:
+  requests:
+    memory: 3Gi
+  limits:
+    memory: 6Gi
 
 # ── shutdown grace period ──────────────────────────────────────────────
 # On SIGTERM (rollout, spot reclaim, idle eviction) the daemon commits and
@@ -583,6 +591,9 @@ warmPool:
   # the full resources.requests above.
   enabled: false
   size: 0
+  # Replicas for the `-medium` pool (see mediumResources). 0 = medium claims
+  # cold-start, which is today's behavior for the dispatch path anyway.
+  mediumSize: 0
 
   # Optional: scale `size` dynamically via a HorizontalPodAutoscaler
   # targeting the SandboxWarmPool's native scale subresource (kubectl scale

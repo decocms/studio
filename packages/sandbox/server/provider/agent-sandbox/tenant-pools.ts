@@ -128,6 +128,26 @@ export function resolveTenantPool(
  * 2026-08-07: claims for montecarlo and `ephemeral-*` dispatches bound
  * `tenant-electrolux-prod-*` pods.
  */
+/**
+ * The claim's `spec.sandboxTemplateRef`. `cloneOnly` (the headless Claude Code
+ * dispatch path) gets the roomier `-medium` template when one is configured —
+ * that's where prod's 4Gi OOMKills happened, and a claim cannot override
+ * resources, so the ceiling can only come from a different template.
+ *
+ * The returned name is also the warm pool's name (the chart names pool after
+ * template), so it feeds `claimWarmPoolName` — a claim naming the medium
+ * template must not bind a default-template pod, and vice versa.
+ */
+export function claimTemplateName(
+  cloneOnly: boolean | undefined,
+  templateName: string,
+  mediumTemplateName: string | null,
+): string {
+  return cloneOnly === true && mediumTemplateName
+    ? mediumTemplateName
+    : templateName;
+}
+
 export function claimWarmPoolName(
   pool: TenantPool | null,
   warmPoolMode: boolean,

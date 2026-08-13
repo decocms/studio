@@ -9,10 +9,6 @@ description: |
   releases coexist in the shared `agent-sandbox-system` namespace.
   Requires the sandbox-operator chart to already be installed.
 type: application
-# 0.15.14: sandbox memory limit 4Gi → 6Gi. The request is unchanged, so the
-# scheduler packs exactly as before; this only raises what one agent loop may
-# burst to. Three prod pods hit the old ceiling on 2026-08-13, one thread twice
-# in 20 minutes. See values.yaml `resources` for the overcommit tradeoff.
 # 0.14.6: opt-in `disruptionProtection.doNotDisrupt` (default off) — annotates
 # sandbox pods with Karpenter's `do-not-disrupt` so voluntary node
 # consolidation/drift never evicts a claimed sandbox mid-session (#5815). A
