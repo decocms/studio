@@ -76,12 +76,17 @@ export async function refreshSession(
     );
   }
 
+  // expires_in is untrusted server input — reject non-finite/non-positive values.
+  const parsedExpiresIn = Number(data.expires_in);
+  const expiresAt =
+    Number.isFinite(parsedExpiresIn) && parsedExpiresIn > 0
+      ? Math.floor(now() / 1000) + parsedExpiresIn
+      : session.expiresAt;
+
   return {
     ...session,
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? session.refreshToken,
-    expiresAt: data.expires_in
-      ? Math.floor(now() / 1000) + data.expires_in
-      : session.expiresAt,
+    expiresAt,
   };
 }
