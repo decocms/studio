@@ -54,10 +54,17 @@ export function useSaveBlock({
           { set: { [blockKey]: data } },
         );
         setDecofileDraft(queryClient, { orgSlug, virtualMcpId, branch }, draft);
-        // The landed commit moved the branch head — refresh the header's
-        // branch meta now. This write is the ONLY in-app head mutation, which
-        // is what lets the status query drop interval polling entirely.
-        void queryClient.invalidateQueries({
+        /**
+         * The landed commit moved the branch head — refresh the header's
+         * branch meta now. This write is the ONLY in-app head mutation, which
+         * is what lets the status query drop interval polling entirely.
+         *
+         * Awaited, not fired and forgotten: observers key "is a save in
+         * flight" off this mutation, and releasing them before the re-read
+         * lands renders the PREVIOUS status as if it were current — a clean
+         * "Up to date" over an edit that already exists.
+         */
+        await queryClient.invalidateQueries({
           queryKey: sandboxGitStatusQueryKey(orgSlug, virtualMcpId, branch),
         });
         return draft;

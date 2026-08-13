@@ -254,7 +254,12 @@ export function selectCmsHeaderButton(
     };
   }
 
-  /** Publishing mid-write would ship whichever half of the edit landed. */
+  /**
+   * Spans the re-read too: the write hooks await their status invalidation, so
+   * this stays true until the fresh branch meta is in hand — otherwise the
+   * previous status renders as if current, a clean "Up to date" over an edit
+   * that already exists. Publishing mid-write would ship half an edit.
+   */
   if (saving) {
     return {
       label: t("thread.headerActions.saving"),

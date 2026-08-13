@@ -46,9 +46,13 @@ export function useDeleteBlock({
           { delete: [blockKey] },
         );
         setDecofileDraft(queryClient, { orgSlug, virtualMcpId, branch }, draft);
-        // Same as use-save-block: the commit moved the head, refresh the
-        // header's branch meta in place of any interval polling.
-        void queryClient.invalidateQueries({
+        /**
+         * Same as use-save-block: the commit moved the head, refresh the
+         * header's branch meta in place of any interval polling — and await
+         * it, so observers of this mutation aren't released onto a status
+         * that is still the pre-delete one.
+         */
+        await queryClient.invalidateQueries({
           queryKey: sandboxGitStatusQueryKey(orgSlug, virtualMcpId, branch),
         });
         return { ok: true as const, existed: true };

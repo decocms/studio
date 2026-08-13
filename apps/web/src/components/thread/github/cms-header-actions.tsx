@@ -252,6 +252,13 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     );
   }
   if (!githubRepo) return null;
+  /**
+   * No task branch yet: the status query is disabled, so its data never
+   * arrives and the state machine would sit on "Loading…" forever. There is
+   * also nothing to publish without a branch — render nothing rather than a
+   * spinner that resolves to nothing.
+   */
+  if (!branch) return null;
 
   /**
    * Only the tail of the publish — the branch switch that follows the merge.

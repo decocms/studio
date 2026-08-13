@@ -716,6 +716,34 @@ describe("in-flight actions", () => {
   });
 });
 
+describe("post-write status refresh", () => {
+  test("a save still in flight never renders the pre-write status", () => {
+    const r = selectCmsHeaderButton(
+      input({
+        branch: ready({ aheadOfBase: 0, workingTreeDirty: false }),
+        saving: true,
+      }),
+    );
+    expect(r.label).toBe(threadEn["thread.headerActions.saving"]);
+    expect(r.loading).toBe(true);
+    expect(r.menu).toEqual([]);
+  });
+
+  test("releases to the real state once the re-read lands", () => {
+    const r = selectCmsHeaderButton(
+      input({
+        branch: ready({ aheadOfBase: 1 }),
+      }),
+    );
+    expect(r.label).toBe(threadEn["thread.cmsActions.reviewAndPublish"]);
+  });
+
+  test("a genuinely clean branch still settles on Up to date", () => {
+    const r = selectCmsHeaderButton(input({ branch: ready() }));
+    expect(r.label).toBe(threadEn["thread.headerActions.upToDate"]);
+  });
+});
+
 describe("saving", () => {
   test("an in-flight block write holds the button", () => {
     const r = selectCmsHeaderButton(
