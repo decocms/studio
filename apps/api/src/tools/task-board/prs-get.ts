@@ -827,9 +827,51 @@ export const prReadyForReview = (
     state: string | null;
     merged: boolean | null;
   }[],
-): boolean =>
-  // A PR is a candidate unless we positively know it's finished with.
-  prs.some((p) => p.state !== "closed" && p.merged !== true);
+): boolean => reviewCandidates(prs).length > 0;
+
+/** The PRs a reviewer would be dispatched at: a PR is a candidate unless we
+ *  positively know it's finished with. One definition, so the readiness gate and
+ *  the preview-freshness gate below can't disagree about which PR is in play. */
+const reviewCandidates = <
+  T extends { state: string | null; merged: boolean | null },
+>(
+  prs: T[],
+): T[] => prs.filter((p) => p.state !== "closed" && p.merged !== true);
+
+/**
+ * Does the deploy preview show the PR's HEAD commit? Pure — unit-tested.
+ *
+ * Only a definite `failing`/`pending` holds QA back. Everything else — no CI
+ * configured, GitHub unreadable, or a field a mid-deploy DBOS replay recorded
+ * before it existed — is trusted, the same way every other read here treats "we
+ * could not ask" as "do not block".
+ *
+ * It matters because a preview URL outlives the build that produced it. The URL
+ * is lifted from a commit status or the deploy bot's PR comment, and the
+ * hostname is per-PR (`pr336-<site>.workers.dev`), not per-commit — so when a
+ * deploy fails, that URL keeps serving the last build that SUCCEEDED, with a
+ * cheerful 200. QA then exercises code the author didn't write, finds the
+ * behaviour absent, and requests changes. The verdict looks exactly like a real
+ * one, and the Super Agent cannot fix it by changing the code.
+ *
+ * That is not hypothetical: a site's Workers build broke account-wide for
+ * everything after 16:30 one afternoon, and six cards were on course to spend a
+ * second five-bounce budget being rejected against the previous night's bytes.
+ *
+ * Checks are the signal because GitHub attaches them to a COMMIT: head's deploy
+ * being green is what makes the preview head's.
+ */
+export function previewMatchesHead(
+  prs: {
+    state: string | null;
+    merged: boolean | null;
+    checksStatus: ChecksStatus;
+  }[],
+): boolean {
+  return reviewCandidates(prs).every(
+    (p) => p.checksStatus !== "failing" && p.checksStatus !== "pending",
+  );
+}
 
 async function fetchPrLiveState(
   ctx: StudioContext,
@@ -965,7 +1007,11 @@ export async function fetchPrCandidateState(
   ctx: StudioContext,
   orgId: string,
   pr: TaskBoardItemPrRef,
-): Promise<{ state: "open" | "closed" | null; merged: boolean | null }> {
+): Promise<{
+  state: "open" | "closed" | null;
+  merged: boolean | null;
+  checksStatus: ChecksStatus;
+}> {
   const obj = await fetchPrGet(ctx, orgId, pr, "candidate");
   return {
     state:
@@ -975,7 +1021,29 @@ export async function fetchPrCandidateState(
           ? "open"
           : null,
     merged: typeof obj?.merged === "boolean" ? obj.merged : null,
+    checksStatus: checksFromMergeableState(obj?.mergeable_state),
   };
+}
+
+/**
+ * GitHub's `mergeable_state`, read as a checks summary. Pure — unit-tested.
+ *
+ * It exists so the SWEEP can tell whether head's checks are green without
+ * paying for the two check reads `fetchPrStatusExtras` makes. `mergeable_state`
+ * rides along on the `get` the sweep already does, and this sweep's GitHub
+ * budget is not notional — a per-card multiplier here is what held the App's
+ * rate limit shut for 17 hours once (see `review-sweeper.ts`).
+ *
+ * Only the two unambiguous values are mapped. `blocked` is deliberately NOT
+ * `pending`: it also covers a missing required review, which says nothing about
+ * CI, and reading it as a red check would hold QA back on a PR whose deploy is
+ * perfectly fine. Everything else — `dirty` (a conflict), `behind`, `unknown`,
+ * absent — says nothing about checks and answers `null`.
+ */
+export function checksFromMergeableState(state: unknown): ChecksStatus {
+  if (state === "clean") return "passing";
+  if (state === "unstable") return "failing";
+  return null;
 }
 
 /**
@@ -1096,7 +1164,9 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
       item.assigneeId === SUPER_AGENT_ASSIGNEE_ID &&
       prReadyForReview(prs)
     ) {
-      await enqueueEnabledReviewers(ctx, item).catch((err) => {
+      await enqueueEnabledReviewers(ctx, item, {
+        previewMatchesHead: previewMatchesHead(prs),
+      }).catch((err) => {
         console.error("[task-board] reviewer auto-handoff failed", err);
       });
     }

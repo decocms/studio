@@ -33,7 +33,7 @@ import type { Kysely } from "kysely";
 import { GITHUB_READS_QUEUE } from "@/dispatch-queue/queue-names";
 import type { Database, TaskBoardItemPrRef } from "@/storage/types";
 import { buildOrgContext } from "./org-context";
-import { fetchPrCandidateState } from "./prs-get";
+import { type ChecksStatus, fetchPrCandidateState } from "./prs-get";
 
 /**
  * Reads started per minute across ALL replicas.
@@ -94,9 +94,16 @@ export function setTaskBoardGithubReadRuntime(
 export type SweptPrState = {
   state: "open" | "closed" | null;
   merged: boolean | null;
+  /** Head's checks, derived from the same `get` (`checksFromMergeableState`) —
+   *  no extra GitHub call. Gates the QA dispatch (`previewMatchesHead`). */
+  checksStatus: ChecksStatus;
 };
 
-const UNKNOWN: SweptPrState = { state: null, merged: null };
+const UNKNOWN: SweptPrState = {
+  state: null,
+  merged: null,
+  checksStatus: null,
+};
 
 async function readPrState(
   organizationId: string,
