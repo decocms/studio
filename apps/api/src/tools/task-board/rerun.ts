@@ -37,7 +37,10 @@ import {
   requireAuth,
   type StudioContext,
 } from "@/core/studio-context";
-import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import {
+  type ReviewCycleActivity,
+  SUPER_AGENT_ASSIGNEE_ID,
+} from "@decocms/shared/task-board";
 import { TERMINAL_THREAD_STATUSES } from "@/storage/task-board";
 import { broadcastRunCancel } from "@/api/routes/decopilot/cancel-registry";
 import { cancelHostedHarness } from "@/dispatch-queue";
@@ -47,6 +50,8 @@ import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
 import { allEnabledReviewersVerifiedApproved } from "./merge-pr";
+import { fetchPrConflict, pickActivePr } from "./prs-get";
+import { conflictResolutionCapReached } from "./conflict-reaction";
 import {
   ensureTaskExecutionAllowed,
   userInitiatedTaskQuotaConfig,
@@ -139,6 +144,42 @@ async function stopSupersededRun(
 }
 
 /**
+ * True when an approved PR cannot merge and nothing automatic will change that:
+ * it definitively conflicts with its base AND the conflict auto-resolution cap
+ * is already spent, so no later poll can produce another attempt.
+ *
+ * `conflict` is GitHub's signal, `null` meaning unknown. Unknown answers false:
+ * the conservative direction protects a merge that might really be pending.
+ * Pure, so both halves of the AND are unit-tested.
+ */
+export function mergeDeadlocked(
+  conflict: boolean | null,
+  activity: ReviewCycleActivity[],
+): boolean {
+  return conflict === true && conflictResolutionCapReached(activity);
+}
+
+/** `mergeDeadlocked` over the card's live PR state. Best-effort at every seam:
+ *  a read that fails answers "not deadlocked" — the guard's prior behavior. */
+async function mergeIsDeadlocked(
+  ctx: StudioContext,
+  item: { id: string; organizationId: string },
+): Promise<boolean> {
+  const orgId = item.organizationId;
+  const prs = await ctx.storage.taskBoard
+    .listPrs(item.id, orgId)
+    .catch(() => []);
+  const pr = await pickActivePr(ctx, orgId, prs).catch(() => undefined);
+  if (!pr) return false;
+  const conflict = await fetchPrConflict(ctx, orgId, pr).catch(() => null);
+  if (conflict !== true) return false;
+  const activity = await ctx.storage.taskBoard
+    .listActivity(item.id, orgId)
+    .catch(() => []);
+  return mergeDeadlocked(conflict, activity);
+}
+
+/**
  * Refuse a re-run of a card whose merge is already queued and will retry.
  *
  * A re-run opens a NEW review cycle, and the auto-merge gate
@@ -151,6 +192,18 @@ async function stopSupersededRun(
  *
  * Narrow on purpose: a card sitting In Review WITHOUT that gate satisfied is
  * exactly the wedge this tool exists to clear, so it still re-runs.
+ *
+ * "Will retry" is the load-bearing half, and it is not implied by "approved".
+ * A PR that conflicts with its base merges only if the conflict auto-resolution
+ * dispatches — and that has an all-time cap of 3. Once the cap is spent on a
+ * conflicting PR the machine is out of moves: every poll re-reads the same
+ * approvals, re-attempts the same merge, and gets the same 405. Refusing there
+ * left three prod cards deadlocked — unmergeable by the machine and un-re-runnable
+ * by the human, which is the exact state this tool exists to break.
+ *
+ * So the refusal now requires that an automatic path to a merge still exists.
+ * An unknown mergeability (`null` — GitHub unreachable) keeps refusing: the
+ * conservative answer is the one that protects a merge that might be real.
  */
 export async function refuseIfMergePending(
   ctx: StudioContext,
@@ -167,6 +220,7 @@ export async function refuseIfMergePending(
     item.id,
   );
   if (!approved) return;
+  if (await mergeIsDeadlocked(ctx, item)) return;
   throw new Error(
     "Every reviewer approved this task and its merge is retrying — re-running " +
       "would throw that away and start a new review cycle. Wait for the merge, " +
