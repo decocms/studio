@@ -394,6 +394,8 @@ func SpawnClone(deps CloneDeps) CloneResult {
 	// fetch so both acquisition paths and both branch cases get submodules.
 	finalize := func(res CloneResult) CloneResult {
 		if res.Code == 0 {
+			// This `.git` is new; the excludes asked for before it existed are not.
+			gitx.ReapplyExcludes(dir)
 			// runStep, NOT runNetworkStep: `--recursive` emits aggregate output, so
 			// one permanently dead submodule host matches `isTransient` ("Could not
 			// resolve host") and buys 4 full recursive passes plus 9s of sleeps —
