@@ -12,6 +12,7 @@ import { approvedButUnverified } from "@decocms/shared/task-board";
 import {
   checksBlockMerge,
   classifyMergeResult,
+  conflictSignal,
   isMergeMethodNotAllowed,
   mayBeConflict,
 } from "./merge-pr";
@@ -208,5 +209,39 @@ describe("approvedButUnverified", () => {
       },
     ];
     expect(approvedButUnverified(activity, [...BOTH])).toBe(false);
+  });
+});
+
+describe("conflictSignal", () => {
+  const refused = (detail: string) =>
+    ({ merged: false, reason: "refused", detail }) as const;
+
+  it("takes the read whenever it has an answer", () => {
+    expect(conflictSignal(true, refused("anything"))).toBe(true);
+    expect(conflictSignal(false, refused("has merge conflicts"))).toBe(false);
+  });
+
+  it("falls back to GitHub's own refusal when the read is unknown", () => {
+    expect(
+      conflictSignal(
+        null,
+        refused(
+          '[{"type":"text","text":"failed to merge pull request: PUT ' +
+            "https://api.github.com/repos/o/r/pulls/336/merge: 405 Pull " +
+            'Request has merge conflicts []"}]',
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("never answers `false` from a refusal — absence is not evidence", () => {
+    expect(
+      conflictSignal(null, refused("405 Merge commits are not allowed")),
+    ).toBeNull();
+    expect(
+      conflictSignal(null, { merged: false, reason: "rate_limited" }),
+    ).toBeNull();
+    expect(conflictSignal(null, { merged: true })).toBeNull();
+    expect(conflictSignal(null, null)).toBeNull();
   });
 });

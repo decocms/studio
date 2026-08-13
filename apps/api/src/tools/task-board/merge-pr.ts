@@ -347,8 +347,36 @@ async function handUnverifiedApprovalToHuman(
  * reason precisely so it lands here: it says nothing about mergeability, and
  * paying another GitHub call into a 429 is the burst that keeps the limit shut.
  */
-export function mayBeConflict(outcome: MergeOutcome): boolean {
+export function mayBeConflict(
+  outcome: MergeOutcome,
+): outcome is { merged: false; reason: MergeFailureReason; detail?: string } {
   return !outcome.merged && outcome.reason === "refused";
+}
+
+/**
+ * Whether the PR conflicts, given the `pull_request_read` answer and the merge
+ * outcome it followed. Pure — unit-tested.
+ *
+ * The read wins when it HAS an answer. When it doesn't — GitHub computes
+ * mergeability asynchronously, so `null` is routine — fall back to what the
+ * refusal said (`405 Pull Request has merge conflicts`). That is the
+ * definitive answer and we already paid for it: the merge just asked GitHub to
+ * do the thing and was told exactly why it couldn't. Without the fallback a
+ * null read silently skips the resolution run, and the card sits approved and
+ * unmergeable.
+ *
+ * Never returns `false` from the refusal alone: the phrase being absent is not
+ * evidence the PR is mergeable, and only an explicit `true` may act.
+ */
+export function conflictSignal(
+  read: boolean | null,
+  outcome: MergeOutcome | null,
+): boolean | null {
+  if (read !== null) return read;
+  if (outcome === null || !mayBeConflict(outcome)) return null;
+  return (outcome.detail ?? "").toLowerCase().includes("merge conflict")
+    ? true
+    : null;
 }
 
 /**
@@ -377,7 +405,7 @@ async function resolveConflictAfterRefusedMerge(
   if (!pr) return;
   await reactToApprovedPrConflict(ctx, orgId, item, {
     pr: { number: pr.number, url: pr.url },
-    conflict: await fetchPrConflict(ctx, orgId, pr),
+    conflict: conflictSignal(await fetchPrConflict(ctx, orgId, pr), outcome),
   }).catch((err) => {
     console.error("[task-board] sweep conflict auto-resolve failed", err);
   });

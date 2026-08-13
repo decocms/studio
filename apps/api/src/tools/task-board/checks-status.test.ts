@@ -77,6 +77,37 @@ describe("conflictFromPrGet", () => {
   it("is null for a missing response", () => {
     expect(conflictFromPrGet(null)).toBeNull();
   });
+
+  it("reads mergeable_state — github-mcp's MinimalPullRequest has no `mergeable`", () => {
+    expect(conflictFromPrGet({ state: "open", mergeable_state: "dirty" })).toBe(
+      true,
+    );
+    expect(conflictFromPrGet({ state: "open", mergeable_state: "clean" })).toBe(
+      false,
+    );
+    expect(
+      conflictFromPrGet({ state: "open", mergeable_state: "blocked" }),
+    ).toBe(false);
+  });
+
+  it("is null when mergeable_state is unknown or empty — still computing", () => {
+    expect(
+      conflictFromPrGet({ state: "open", mergeable_state: "unknown" }),
+    ).toBeNull();
+    expect(
+      conflictFromPrGet({ state: "open", mergeable_state: "" }),
+    ).toBeNull();
+  });
+
+  it("prefers the boolean when a non-minimal response carries both", () => {
+    expect(
+      conflictFromPrGet({
+        state: "open",
+        mergeable: true,
+        mergeable_state: "dirty",
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("extractPreviewUrl", () => {
