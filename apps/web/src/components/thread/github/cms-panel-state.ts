@@ -19,7 +19,8 @@ export type CmsAction =
   | "publish"
   | "request-approval"
   | "get-latest"
-  | "open-pr";
+  | "open-pr"
+  | "retry-status";
 
 /** One entry of the split button's dropdown half. `key` is the React key. */
 export interface CmsMenuItem {
@@ -64,6 +65,8 @@ export interface SelectCmsHeaderButtonInput {
   saving: boolean;
   /** Branch/PR/check data is still being fetched. */
   loading: boolean;
+  /** Why the branch status could not be read, if it could not. */
+  statusError: string | null;
   t: TFunction;
 }
 
@@ -175,6 +178,17 @@ export function selectCmsHeaderButton(
   input: SelectCmsHeaderButtonInput,
 ): CmsHeaderButton {
   const { branch, pr, checks, reviews, publishing, saving, loading, t } = input;
+
+  // A failed status read is not a slow one; spinning on it never resolves.
+  if (branch.kind !== "ready" && input.statusError) {
+    return {
+      label: t("thread.cmsActions.retry"),
+      action: "retry-status",
+      variant: "outline",
+      tooltip: input.statusError,
+      menu: [],
+    };
+  }
 
   // Fetching and "branch metadata not here yet" are one state to the editor.
   if (loading || branch.kind !== "ready") {

@@ -52,6 +52,7 @@ function input(
     publishing: false,
     saving: false,
     loading: false,
+    statusError: null,
     t: mockT,
     ...over,
   };
@@ -593,6 +594,38 @@ describe("selectCmsHeaderButton — Get latest in every menu when behind", () =>
     );
     expect(r.variant).toBe("warning");
     expect(menuKeys(r.menu)).toEqual(["view-on-github", "get-latest"]);
+  });
+});
+
+describe("status read failure", () => {
+  test("a failed status read offers Retry instead of spinning forever", () => {
+    const r = selectCmsHeaderButton(
+      input({
+        branch: { kind: "unknown" },
+        statusError: "repository not initialized",
+      }),
+    );
+    expect(r.label).toBe(threadEn["thread.cmsActions.retry"]);
+    expect(r.action).toBe("retry-status");
+    expect(r.loading).toBeFalsy();
+    expect(r.disabled).toBeFalsy();
+    expect(r.tooltip).toBe("repository not initialized");
+  });
+
+  test("a stale error never overrides branch metadata that did arrive", () => {
+    const r = selectCmsHeaderButton(
+      input({
+        branch: ready({ aheadOfBase: 2 }),
+        statusError: "repository not initialized",
+      }),
+    );
+    expect(r.label).toBe(threadEn["thread.cmsActions.reviewAndPublish"]);
+  });
+
+  test("no error still reads as Loading while the branch is unknown", () => {
+    const r = selectCmsHeaderButton(input({ branch: { kind: "unknown" } }));
+    expect(r.label).toBe(threadEn["thread.headerActions.loading"]);
+    expect(r.loading).toBe(true);
   });
 });
 

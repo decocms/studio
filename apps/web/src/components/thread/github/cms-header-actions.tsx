@@ -70,7 +70,9 @@ function actionIcon(action: CmsAction, key?: string) {
     return <GitHubIcon size={16} />;
   }
   if (action === "publish") return <Rocket02 className="size-4" />;
-  if (action === "get-latest") return <RefreshCw01 className="size-4" />;
+  if (action === "get-latest" || action === "retry-status") {
+    return <RefreshCw01 className="size-4" />;
+  }
   return <GitPullRequest className="size-4" />;
 }
 
@@ -260,6 +262,12 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     reviews: reviewsQuery.data ?? null,
     publishing,
     saving,
+    statusError:
+      statusQuery.error instanceof Error
+        ? statusQuery.error.message
+        : statusQuery.error
+          ? String(statusQuery.error)
+          : null,
     loading: isPrStateActivelyLoading(prQuery),
     t,
   });
@@ -280,6 +288,9 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
       case "get-latest":
         if (!githubHeadBranch || getLatest.isPending) return;
         getLatest.mutate({ branch: githubHeadBranch, base: baseBranch });
+        return;
+      case "retry-status":
+        void statusQuery.refetch();
         return;
       case "open-pr":
         if (pr?.htmlUrl) {
@@ -308,9 +319,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
         disabled={Boolean(button.disabled) || !action}
         loading={Boolean(button.loading)}
         pulse={Boolean(button.pulse)}
-        {...(action === "publish" && !button.loading
-          ? { icon: <Rocket02 className="size-4" /> }
-          : {})}
+        {...(action && !button.loading ? { icon: actionIcon(action) } : {})}
         {...(button.tooltip ? { tooltip: button.tooltip } : {})}
         items={items}
         menuAriaLabel={t("thread.cmsActions.moreActionsAriaLabel")}
