@@ -105,9 +105,37 @@ const REVIEWER_FOCUS: Record<ReviewerKind, string> = {
  * linked thread the board shows on the card, plus a "delegated to <reviewer>"
  * timeline entry. Best-effort per reviewer.
  */
+/**
+ * How long QA waits for the PR's deploy preview to catch up with its head
+ * commit before the card goes to a person.
+ *
+ * A deploy takes minutes, so this is mostly slack; what it really bounds is the
+ * case that has no end (a build broken account-wide, a deploy misconfigured).
+ * Without it, gating QA would swap one silent strand for another: no verdict, no
+ * hand-off, a card that reads as "in review" forever.
+ */
+const STALE_PREVIEW_HANDOFF_GRACE_MS = 30 * 60 * 1000;
+
+/** True once a card has waited out {@link STALE_PREVIEW_HANDOFF_GRACE_MS} for a
+ *  preview that still isn't its head commit's. Measured from the review cycle
+ *  start, so it resets whenever the card comes back for a fresh review — the
+ *  same stateless trick `noPrHandoffDue` uses. Pure — unit-tested. */
+export function stalePreviewHandoffDue(
+  cycleStartMs: number,
+  nowMs: number,
+): boolean {
+  return nowMs - cycleStartMs >= STALE_PREVIEW_HANDOFF_GRACE_MS;
+}
+
 export async function enqueueEnabledReviewers(
   ctx: StudioContext,
   task: TaskBoardItem,
+  opts?: {
+    /** Whether the deploy preview shows the PR's head commit
+     *  (`previewMatchesHead`). `false` holds QA back — see the gate below.
+     *  Omitted means "not checked", which dispatches as it always did. */
+    previewMatchesHead?: boolean;
+  },
 ): Promise<void> {
   const settings = await ctx.storage.organizationSettings.get(
     task.organizationId,
@@ -136,6 +164,19 @@ export async function enqueueEnabledReviewers(
           `${REVIEWER_LABEL[kind]} failed ${MAX_REVIEWER_ATTEMPTS} times on ` +
             `this review — it will not be retried`,
         );
+        return;
+      }
+      // Would be a verdict on the wrong bytes — see `previewMatchesHead`.
+      if (kind === "qa" && opts?.previewMatchesHead === false) {
+        if (stalePreviewHandoffDue(lastInReviewAt, Date.now())) {
+          await handTaskToHuman(
+            ctx,
+            task,
+            "the pull request's deploy preview is not showing its latest " +
+              "commit (its checks never went green), so QA cannot verify this " +
+              "change against what the PR actually does",
+          );
+        }
         return;
       }
       if (reviewerHandledThisCycle(task, kind, lastInReviewAt)) return;

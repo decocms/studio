@@ -5,7 +5,9 @@
  */
 import { describe, expect, it } from "bun:test";
 import {
+  checksFromMergeableState,
   conflictFromPrGet,
+  previewMatchesHead,
   extractPreviewUrl,
   extractPreviewUrlFromDeployment,
   headShaFromPrGet,
@@ -526,5 +528,61 @@ describe("isRateLimitError", () => {
         ),
       ),
     ).toBe(true);
+  });
+});
+
+describe("checksFromMergeableState", () => {
+  it("maps the two unambiguous values", () => {
+    expect(checksFromMergeableState("clean")).toBe("passing");
+    expect(checksFromMergeableState("unstable")).toBe("failing");
+  });
+
+  it("is null for everything that says nothing about checks", () => {
+    // `blocked` is the load-bearing one: it also covers a missing required
+    // review, so reading it as red would hold QA on a healthy deploy.
+    expect(checksFromMergeableState("blocked")).toBeNull();
+    expect(checksFromMergeableState("dirty")).toBeNull();
+    expect(checksFromMergeableState("behind")).toBeNull();
+    expect(checksFromMergeableState("unknown")).toBeNull();
+    expect(checksFromMergeableState(undefined)).toBeNull();
+    expect(checksFromMergeableState(null)).toBeNull();
+  });
+});
+
+describe("previewMatchesHead", () => {
+  const pr = (checksStatus: "passing" | "failing" | "pending" | null) => ({
+    state: "open",
+    merged: false,
+    checksStatus,
+  });
+
+  it("trusts a preview whose head checks are green", () => {
+    expect(previewMatchesHead([pr("passing")])).toBe(true);
+  });
+
+  it("does NOT trust it while head's checks are red or still running", () => {
+    // The incident: the deploy failed, so the per-PR preview URL kept serving
+    // the last build that succeeded — with a 200, and last night's code.
+    expect(previewMatchesHead([pr("failing")])).toBe(false);
+    expect(previewMatchesHead([pr("pending")])).toBe(false);
+  });
+
+  it("trusts an unknown — no CI, or GitHub unreadable, must not freeze QA", () => {
+    expect(previewMatchesHead([pr(null)])).toBe(true);
+  });
+
+  it("ignores PRs no reviewer would be dispatched at", () => {
+    const closed = {
+      state: "closed",
+      merged: false,
+      checksStatus: "failing" as const,
+    };
+    const merged = {
+      state: "open",
+      merged: true,
+      checksStatus: "failing" as const,
+    };
+    expect(previewMatchesHead([closed, merged, pr("passing")])).toBe(true);
+    expect(previewMatchesHead([])).toBe(true);
   });
 });

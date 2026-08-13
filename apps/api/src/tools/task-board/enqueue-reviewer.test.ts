@@ -12,6 +12,7 @@ import {
   reviewerAttemptsExhausted,
   reviewerHandledThisCycle,
   spentAttemptsThisCycle,
+  stalePreviewHandoffDue,
 } from "./enqueue-reviewer";
 import { REVIEW_RUN_TOOL_NAMES } from "./task-run-context";
 
@@ -298,5 +299,31 @@ describe("reviewerAttemptsExhausted", () => {
     expect(
       reviewerAttemptsExhausted(task, "code_review", CYCLE_START, NOW),
     ).toBe(false);
+  });
+});
+
+describe("stalePreviewHandoffDue", () => {
+  const cycle = Date.parse("2026-08-13T17:00:00.000Z");
+  const at = (iso: string) => Date.parse(iso);
+
+  it("waits out the grace — a deploy takes minutes", () => {
+    expect(stalePreviewHandoffDue(cycle, at("2026-08-13T17:20:00.000Z"))).toBe(
+      false,
+    );
+  });
+
+  it("hands over once the preview is clearly never arriving", () => {
+    expect(stalePreviewHandoffDue(cycle, at("2026-08-13T17:30:00.000Z"))).toBe(
+      true,
+    );
+    expect(stalePreviewHandoffDue(cycle, at("2026-08-13T19:00:00.000Z"))).toBe(
+      true,
+    );
+  });
+
+  it("treats a card with no recorded cycle start as infinitely old", () => {
+    expect(stalePreviewHandoffDue(0, at("2026-08-13T17:00:00.000Z"))).toBe(
+      true,
+    );
   });
 });

@@ -81,7 +81,7 @@ import {
 import { TaskQuotaError } from "@/billing/task-quota";
 import { ABANDONED_FAILURE_REASON } from "./stall-recovery";
 import { THREAD_EXPIRY_MS } from "@/tools/thread/helpers";
-import { prReadyForReview } from "./prs-get";
+import { previewMatchesHead, prReadyForReview } from "./prs-get";
 import { readPrStateThrottled } from "./dbos-github-read";
 
 /** How often to LOOK for due cards. A minute is well under the time a human
@@ -524,7 +524,9 @@ export class TaskBoardReviewSweeper {
     }
     if (!prReadyForReview(live)) return false;
 
-    await enqueueEnabledReviewers(ctx, item);
+    await enqueueEnabledReviewers(ctx, item, {
+      previewMatchesHead: previewMatchesHead(live),
+    });
     return true;
   }
 
