@@ -190,10 +190,12 @@ export const TASK_BOARD_ITEM_RERUN = defineTool({
     idempotentHint: false,
     openWorldHint: true,
   },
-  // ponytail: no `feedback` / "what to do differently" input. The only prompt
-  // lead that exists for a re-run is the reviewer's ("A reviewer requested
-  // changes on your previous work"), which would be a lie here. Add one when
-  // there is a caller for it, with its own lead.
+  // ponytail: no `feedback` / "what to do differently" input from the CALLER.
+  // A re-run on an existing PR is not blind, though: the dispatch funnel picks
+  // up the reviewer's outstanding change request by itself
+  // (`outstandingReviewFeedback`), so the run continues from there instead of
+  // restarting. Add a caller-supplied lead when someone needs to say something
+  // the reviewers did not.
   inputSchema: z.object({
     id: z.string().describe("The task board item to re-run."),
   }),

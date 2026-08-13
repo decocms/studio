@@ -7,7 +7,7 @@ import {
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
 import { recordTaskActivity } from "./activity";
-import { emitTaskBoardUpdated } from "./run-reactions";
+import { emitTaskBoardUpdated, parkOnRunsExhausted } from "./run-reactions";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
 
 /**
@@ -110,12 +110,6 @@ export async function reactToApprovedPrConflict(
     item.updatedBy,
   );
   if (!claimed) return false;
-  await recordTaskActivity(ctx, {
-    taskBoardItemId: item.id,
-    action: "merge_conflict_resolution",
-    actorId: null,
-    data: { prNumber: pr.number },
-  });
   emitTaskBoardUpdated(orgId, claimed);
   try {
     await enqueueSuperAgentForTask(ctx, claimed, {
@@ -123,6 +117,10 @@ export async function reactToApprovedPrConflict(
       resolveConflict: true,
     });
   } catch (err) {
+    // The per-task run cap refused it: no run is coming, so say so on the card
+    // instead of leaving it to be retried every poll until the conflict cap
+    // (which now counts only real dispatches) papers over it.
+    await parkOnRunsExhausted(ctx, claimed, err).catch(() => false);
     // Nothing was dispatched. Unlike a fresh delegation, this bounced the
     // task's STATUS to In Progress as the dispatch fence — leaving it there
     // strands the task forever: the guard above only fires on `in_review`,
@@ -138,5 +136,18 @@ export async function reactToApprovedPrConflict(
       );
     throw err;
   }
+  // AFTER the dispatch, not before: this entry is what the cap counts, so
+  // recording it up front let a dispatch that THREW spend a slot. In prod three
+  // `runs_exhausted` throws burned the all-time cap of 3 in fifty-one seconds
+  // without a single resolution run ever being created, and the PR was then
+  // "left for a human" who had no way to see why. Undercounting a dispatch that
+  // really started (if this write fails) is the safe direction: the cap is a
+  // bound on churn, and one extra attempt beats abandoning a mergeable PR.
+  await recordTaskActivity(ctx, {
+    taskBoardItemId: item.id,
+    action: "merge_conflict_resolution",
+    actorId: null,
+    data: { prNumber: pr.number },
+  });
   return true;
 }

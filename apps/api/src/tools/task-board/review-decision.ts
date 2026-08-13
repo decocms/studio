@@ -12,7 +12,11 @@ import {
 } from "@decocms/shared/task-board";
 import { TaskBoardItemStatusSchema } from "./schema";
 import { recordTaskActivity } from "./activity";
-import { emitTaskBoardUpdated, handTaskToHuman } from "./run-reactions";
+import {
+  emitTaskBoardUpdated,
+  handTaskToHuman,
+  parkOnRunsExhausted,
+} from "./run-reactions";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
 import {
   allEnabledReviewersVerifiedApproved,
@@ -276,10 +280,32 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
       await enqueueSuperAgentForTask(ctx, updated, {
         feedback: `${REVIEWER_LABEL[reviewer]}: ${notes}`,
         pr: pr ? { number: pr.number, url: pr.url } : undefined,
-      }).catch((err) => {
-        // A paywall rejection is NOT best-effort — swallowing it would leave
-        // the task bounced-but-never-re-running with only a log line (same
-        // reasoning as reactToSuperAgentDelegation).
+      }).catch(async (err) => {
+        // The per-task run cap refused the re-dispatch. Nothing will run, and
+        // the bounce above already moved the card to In Progress — so put it
+        // back and hand it over, rather than rethrowing (which fails an
+        // otherwise-good reviewer decision and strands the card In Progress
+        // with nothing running).
+        if (await parkOnRunsExhausted(ctx, updated, err)) {
+          await ctx.storage.taskBoard
+            .update(
+              updated.id,
+              organizationId,
+              { status: "in_review" },
+              "system",
+            )
+            .then((reverted) => emitTaskBoardUpdated(organizationId, reverted))
+            .catch((revertErr) =>
+              console.error(
+                "[task-board] runs-exhausted status revert failed",
+                revertErr,
+              ),
+            );
+          return;
+        }
+        // Any other paywall rejection is NOT best-effort — swallowing it would
+        // leave the task bounced-but-never-re-running with only a log line
+        // (same reasoning as reactToSuperAgentDelegation).
         if (err instanceof TaskQuotaError) throw err;
         console.error("[task-board] request_changes re-enqueue failed", err);
       });

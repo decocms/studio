@@ -1,6 +1,9 @@
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
-import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import {
+  outstandingReviewFeedback,
+  SUPER_AGENT_ASSIGNEE_ID,
+} from "@decocms/shared/task-board";
 import {
   claimTaskExecution,
   rollbackTaskExecution,
@@ -173,6 +176,18 @@ async function resolveRerunBranch(
   return fetchPrHeadRef(ctx, task.organizationId, pr).catch(() => null);
 }
 
+/** The reviewer feedback still outstanding on `task`, or null. Best-effort: an
+ *  unreadable activity log costs the prompt its lead, never the dispatch. */
+async function outstandingFeedback(
+  ctx: StudioContext,
+  task: TaskBoardItem,
+): Promise<string | null> {
+  const activity = await ctx.storage.taskBoard
+    .listActivity(task.id, task.organizationId)
+    .catch(() => []);
+  return outstandingReviewFeedback(activity);
+}
+
 /**
  * Whether a PR's live state is trustworthy enough to pin the branch to: it
  * isn't DEFINITIVELY closed. `null` (GitHub unreachable, the throttled queue
@@ -262,8 +277,26 @@ export async function enqueueSuperAgentForTask(
     // The prompt must name the same PR the sandbox booted on. Only widened when
     // the flag is on: naming a PR the run is NOT pinned to is the combination
     // that produced the duplicates.
+    //
+    // Same idea for the feedback: a dispatch that lands on an existing PR is a
+    // CONTINUATION, so it should carry what the last reviewer asked for. Only
+    // the reviewer bounce passed that; a human's Re-run / re-assign passed
+    // nothing and the agent restarted from the title, re-deciding an approach
+    // the reviewer had told it to keep. Scoped to `pr` — with no PR to continue
+    // there is nothing outstanding, and a fresh attempt should stay fresh.
+    // Skipped when the caller already has a lead: a reviewer bounce passes its
+    // own notes, and a conflict re-run's lead outranks feedback anyway.
+    const wantsCarry = !opts?.feedback && !opts?.resolveConflict;
+    const carried =
+      pr && wantsCarry ? await outstandingFeedback(ctx, task) : null;
     const promptOpts: SuperAgentPromptOpts | undefined =
-      pr && pr !== opts?.pr ? { ...opts, pr } : opts;
+      (pr && pr !== opts?.pr) || carried
+        ? {
+            ...opts,
+            ...(pr ? { pr } : {}),
+            ...(carried ? { feedback: carried } : {}),
+          }
+        : opts;
 
     // Sandbox-hosted claude-code takes every task that has a repo it could work
     // in — bound before dispatch when there's exactly one, otherwise chosen
