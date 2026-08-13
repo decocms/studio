@@ -5,9 +5,9 @@ interface SelfToolResult {
 }
 
 function getToolErrorMessage(result: SelfToolResult): string {
+  // Sentinel, translated by the caller's translateSiteError.
   return (
-    result.content?.find((item) => item.text)?.text ??
-    "A configuração do Commerce Discovery falhou."
+    result.content?.find((item) => item.text)?.text ?? "__configurationFailed"
   );
 }
 
