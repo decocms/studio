@@ -22,6 +22,7 @@ import (
 
 const (
 	maxImageBytes    = 5 * 1024 * 1024
+	maxEditFileBytes = 10 * 1024 * 1024
 	maxTransferBytes = 500 * 1024 * 1024
 	transferDeadline = 5 * time.Minute
 )
@@ -417,6 +418,10 @@ func Edit(deps FsDeps) http.HandlerFunc {
 		}
 		if body.OldString == *body.NewString {
 			httpx.Error(w, 400, "old_string and new_string must differ")
+			return
+		}
+		if stat, err := os.Stat(filePath); err == nil && stat.Size() > maxEditFileBytes {
+			httpx.Error(w, 400, fmt.Sprintf("File too large (%d bytes; cap is %d)", stat.Size(), maxEditFileBytes))
 			return
 		}
 		raw, err := os.ReadFile(filePath)
