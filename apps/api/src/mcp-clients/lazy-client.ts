@@ -70,10 +70,21 @@ async function isReadOnlyTool(
 
 /**
  * Cache scope for a connection's read-only results. Defaults to "org" (shared
- * across all members). The per-connection "user" opt-out (key by principal) is
- * a follow-up; the cache already keys by scope, so it's a resolver change only.
+ * across all members). Connections with `auth_mode: "per_user"` are keyed by
+ * the calling principal instead: their downstream results are fetched with
+ * the CALLER's own token (each member may see different data for the same
+ * arguments), so an org-shared cache entry would leak one member's results
+ * to another. An unidentifiable caller gets an isolated bucket rather than
+ * the org-shared one — never widen scope on missing identity.
  */
-function resolveReadCacheScope(): ReadCacheScope {
+function resolveReadCacheScope(
+  connection: ConnectionEntity,
+  ctx: StudioContext,
+): ReadCacheScope {
+  if (connection.auth_mode === "per_user") {
+    const userId = ctx.auth.user?.id ?? ctx.auth.apiKey?.userId;
+    return { kind: "user", userId: userId ?? "unidentified" };
+  }
   return { kind: "org" };
 }
 
@@ -239,7 +250,7 @@ export function createLazyClient(
       const result = await readCache.fetch({
         type: "tools/call",
         connectionId: connection.id,
-        scope: resolveReadCacheScope(),
+        scope: resolveReadCacheScope(connection, ctx),
         params: {
           name: toolName,
           arguments: (params as { arguments?: unknown })?.arguments,
@@ -315,7 +326,7 @@ export function createLazyClient(
     const result = await readCache.fetch({
       type: "prompts/get",
       connectionId: connection.id,
-      scope: resolveReadCacheScope(),
+      scope: resolveReadCacheScope(connection, ctx),
       params,
       fetchLive: async () => {
         const real = await getRealClient();
@@ -341,7 +352,7 @@ export function createLazyClient(
     const result = await readCache.fetch({
       type: "resources/read",
       connectionId: connection.id,
-      scope: resolveReadCacheScope(),
+      scope: resolveReadCacheScope(connection, ctx),
       params,
       fetchLive: async () => {
         const real = await getRealClient();
