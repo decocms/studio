@@ -145,14 +145,56 @@ export function claimWarmPoolName(
  * override resources, so the ceiling can only come from another template.
  *
  * The returned name is also the warm pool's name (the chart names pool after
- * template), so it feeds `claimWarmPoolName` — a claim naming the medium
- * template must not bind a default-template pod, and vice versa.
+ * template), so it feeds `claimWarmPoolName`: naming the pool built from this
+ * template is what lets the claim bind a warm pod at all. It is not what keeps
+ * the ceiling right — operator v0.4.5 matches warm pods by template hash, so a
+ * mismatched pool costs a warm bind (cold pod), never a wrong-size pod.
  */
 export function claimTemplateName(
   purpose: SandboxPurpose | undefined,
   templateName: string,
 ): string {
   return purpose === "harness-run" ? `${templateName}-medium` : templateName;
+}
+
+/** Result of the last `-medium` template lookup, cached for `ttlMs`. */
+export interface MediumTemplateProbe {
+  checkedAt: number;
+  present: boolean;
+}
+
+/**
+ * `claimTemplateName`, degraded to the default template while the `-medium` one
+ * is not on the cluster.
+ *
+ * Studio and the sandbox-env chart deploy independently (the chart is pinned by
+ * targetRevision), so there is a window where Studio names a template the
+ * cluster doesn't have. The operator accepts that claim and parks it at
+ * `Ready=False TemplateNotFound` — every dispatch would burn its full readiness
+ * timeout and fail. Probing instead costs one cached GET and degrades to the
+ * ceiling we had before this feature.
+ *
+ * Both outcomes are cached for `ttlMs`, so the upgrade heals within one TTL and
+ * a chart rollback is survived just as quietly.
+ */
+export async function resolveClaimTemplateName(args: {
+  purpose: SandboxPurpose | undefined;
+  templateName: string;
+  probe: MediumTemplateProbe | null;
+  now: number;
+  ttlMs: number;
+  exists: (name: string) => Promise<boolean>;
+  onAbsent?: (name: string) => void;
+}): Promise<{ name: string; probe: MediumTemplateProbe | null }> {
+  const wanted = claimTemplateName(args.purpose, args.templateName);
+  if (wanted === args.templateName) return { name: wanted, probe: args.probe };
+  const fresh =
+    args.probe !== null && args.now - args.probe.checkedAt < args.ttlMs
+      ? args.probe
+      : { checkedAt: args.now, present: await args.exists(wanted) };
+  if (fresh.present) return { name: wanted, probe: fresh };
+  if (args.probe?.present !== false) args.onAbsent?.(wanted);
+  return { name: args.templateName, probe: fresh };
 }
 
 /**

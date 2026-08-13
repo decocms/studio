@@ -26,11 +26,14 @@ spec:
   sandboxTemplateRef:
     name: {{ include "sandbox-env.sandboxName" . }}
 ---
-# Same pool for the `-medium` template. Size 0 by default and that is not a
-# footgun here: a claim must name a pool that exists, and an empty pool falls
-# back to a cold pod — so this exists to give medium claims a valid name, and
-# prewarming them is a one-value change (warmPool.mediumSize) if dispatch
-# cold-start ever shows up in a latency budget.
+# Same pool for the `-medium` template — a SandboxWarmPool binds exactly one
+# SandboxTemplate, so the second template needs its own pool to be prewarmable
+# (and its own autoscaler; see sandbox-warmpool-hpa.yaml).
+#
+# Size 0 by default, and unlike the generic pool that is not a footgun: verified
+# against operator v0.4.5, a claim whose pool is empty (or absent) is served by
+# a cold pod built from the claim's OWN template, so nothing breaks and nothing
+# idles. Prewarming medium claims is then one value (warmPool.mediumSize).
 apiVersion: extensions.agents.x-k8s.io/v1alpha1
 kind: SandboxWarmPool
 metadata:

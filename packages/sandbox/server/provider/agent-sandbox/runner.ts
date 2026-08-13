@@ -79,6 +79,7 @@ import {
   isPodUnbound,
   listWarmPoolPods,
   readPodTermination,
+  sandboxTemplateExists,
   type WarmPoolPod,
   patchSandboxClaimShutdown,
   waitForClaimAdoptedSandbox,
@@ -95,8 +96,9 @@ import {
 } from "./constants";
 import { watchClaimDeletions, watchClaimLifecycle } from "./lifecycle-watcher";
 import {
-  claimTemplateName,
   claimWarmPoolName,
+  resolveClaimTemplateName,
+  type MediumTemplateProbe,
   poolCloneUrl,
   poolsMatchingPush,
   resolveTenantPool,
@@ -136,6 +138,13 @@ export const PREVIEW_NOT_READY_HEADER = "x-sandbox-preview-not-ready";
 // names (sha256(userId:projectRef)). Per-org namespaces are deferred.
 const DEFAULT_NAMESPACE = "agent-sandbox-system";
 const DEFAULT_TEMPLATE_NAME = "studio-sandbox";
+
+/**
+ * How long a `-medium` SandboxTemplate lookup is trusted, in both directions —
+ * so a chart upgrade (or rollback) is picked up within one TTL without a GET per
+ * claim.
+ */
+const MEDIUM_TEMPLATE_PROBE_TTL_MS = 5 * 60_000;
 
 const DAEMON_CONTAINER_PORT = 9000;
 // In-pod port the daemon's reverse proxy targets. Studio never connects here
@@ -504,6 +513,8 @@ export class AgentSandboxProvider implements SandboxProvider {
     string,
     { lastConfigAt: number; lastFailureAt: number; failures: number }
   >();
+  /** Last `-medium` SandboxTemplate lookup; see `resolveTemplateName`. */
+  private mediumTemplateProbe: MediumTemplateProbe | null = null;
   /** Pool names a GitHub push says are stale; drained by the next tick. */
   private readonly dirtyPools = new Set<string>();
   private closed = false;
@@ -1239,10 +1250,36 @@ export class AgentSandboxProvider implements SandboxProvider {
     };
   }
 
+  /**
+   * SandboxTemplate for this claim, with the `-medium` one probed (cached) so a
+   * deploy whose sandbox-env chart predates it degrades to the default template
+   * instead of parking every dispatch at `TemplateNotFound`.
+   */
+  private async resolveTemplateName(
+    purpose: EnsureOptions["purpose"],
+  ): Promise<string> {
+    const { name, probe } = await resolveClaimTemplateName({
+      purpose,
+      templateName: this.sandboxTemplateName,
+      probe: this.mediumTemplateProbe,
+      now: Date.now(),
+      ttlMs: MEDIUM_TEMPLATE_PROBE_TTL_MS,
+      exists: (template) =>
+        sandboxTemplateExists(this.kubeConfig, this.namespace, template),
+      onAbsent: (template) =>
+        console.warn(
+          `[${LOG_LABEL}] SandboxTemplate ${template} not found (or not readable) — harness-run claims fall back to ${this.sandboxTemplateName}. Upgrade the sandbox-env chart to the version that renders it.`,
+        ),
+    });
+    this.mediumTemplateProbe = probe;
+    return name;
+  }
+
   private buildClaim(
     handle: string,
     opts: EnsureOptions,
     boot: { token: string; daemonBootId: string; workdir: string },
+    templateName: string,
   ): SandboxClaim {
     // Warm-pool mode: the operator rejects claim.spec.env outright when
     // warmpool != "none". Studio delivers the per-claim secret post-bind via
@@ -1257,10 +1294,6 @@ export class AgentSandboxProvider implements SandboxProvider {
       cloneUrl: opts.repo?.cloneUrl,
       purpose: opts.purpose,
     });
-    const templateName = claimTemplateName(
-      opts.purpose,
-      this.sandboxTemplateName,
-    );
     const envEntries = warmPoolMode
       ? []
       : Object.entries(this.buildEnvMap(opts, boot))
@@ -1322,11 +1355,12 @@ export class AgentSandboxProvider implements SandboxProvider {
     const token = this.tokenGenerator();
     const daemonBootId = randomUUID();
     const workdir = DEFAULT_WORKDIR;
-    const claim = this.buildClaim(handle, opts, {
-      token,
-      daemonBootId,
-      workdir,
-    });
+    const claim = this.buildClaim(
+      handle,
+      opts,
+      { token, daemonBootId, workdir },
+      await this.resolveTemplateName(opts.purpose),
+    );
     try {
       await createSandboxClaim(this.kubeConfig, this.namespace, claim);
     } catch (err) {

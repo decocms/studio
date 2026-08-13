@@ -9,6 +9,7 @@ export const K8S_CONSTANTS = {
   CLAIM_API_GROUP: "extensions.agents.x-k8s.io",
   CLAIM_API_VERSION: "v1alpha1",
   CLAIM_PLURAL: "sandboxclaims",
+  TEMPLATE_PLURAL: "sandboxtemplates",
 
   SANDBOX_API_GROUP: "agents.x-k8s.io",
   SANDBOX_API_VERSION: "v1alpha1",

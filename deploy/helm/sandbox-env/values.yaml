@@ -590,8 +590,9 @@ warmPool:
   # the full resources.requests above.
   enabled: false
   size: 0
-  # Replicas for the `-medium` pool (see mediumResources). 0 = medium claims
-  # cold-start, which is today's behavior for the dispatch path anyway.
+  # Replicas for the `-medium` pool (see mediumResources). 0 = harness-run
+  # claims cold-start, same as the dispatch path does today. Their pods are the
+  # expensive ones (3Gi request), so warm only what you measure.
   mediumSize: 0
 
   # Optional: scale `size` dynamically via a HorizontalPodAutoscaler
