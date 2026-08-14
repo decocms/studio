@@ -46,6 +46,20 @@ export const thread = {
   "thread.checksTab.rerun": "Executar novamente",
   "thread.checksTab.success": "Sucesso",
   "thread.checksTab.viewRun": "Ver execução",
+  "thread.cmsActions.checksFailing":
+    "{failed} de {total} verificações não estão passando",
+  "thread.cmsActions.checksRunning": "Verificando {done} de {total} concluídas",
+  "thread.cmsActions.getLatest": "Obter atualizações",
+  "thread.cmsActions.getLatestTooltip":
+    "Trazer as novas alterações da produção",
+  "thread.cmsActions.moreActionsAriaLabel": "Mais ações",
+  "thread.cmsActions.publishing": "Publicando…",
+  "thread.cmsActions.gettingLatest": "Obtendo atualizações…",
+  "thread.cmsActions.retry": "Tentar novamente",
+  "thread.cmsActions.resolveOnGithub": "Resolver no GitHub",
+  "thread.cmsActions.reviewAndPublish": "Revisar e publicar",
+  "thread.cmsActions.viewOnGithub": "Ver no GitHub",
+  "thread.cmsActions.waitingForReview": "Aguardando revisão",
   "thread.gitTab.by": "por @{author}",
   "thread.gitTab.closed": "✗ Fechado",
   "thread.gitTab.couldNotLoadPrState":

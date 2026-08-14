@@ -281,6 +281,8 @@
     infinite;
   --animate-preview-ramp: preview-ramp 20s var(--ease-out-cubic) forwards;
   --animate-card-land: card-land 240ms var(--ease-out-quint) both;
+  --animate-pulse-brightness: pulse-brightness 1.8s var(--ease-in-out-cubic)
+    infinite;
 }
 
 /* Animations */
@@ -306,6 +308,20 @@
   --ease-in-out-quint: cubic-bezier(0.86, 0, 0.07, 1);
   --ease-in-out-expo: cubic-bezier(1, 0, 0, 1);
   --ease-in-out-circ: cubic-bezier(0.785, 0.135, 0.15, 0.86);
+}
+
+/* Draws the eye to a control that is waiting on the user without moving it —
+   only its own brightness breathes. Callers pair it with
+   `motion-reduce:animate-none` plus a static dimmed treatment so the state
+   survives when motion is off. */
+@keyframes pulse-brightness {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.15);
+  }
 }
 
 /* A kanban card settling into the lane it was just dropped in. With live gap
