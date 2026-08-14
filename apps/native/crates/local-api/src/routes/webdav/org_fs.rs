@@ -131,6 +131,18 @@ impl UpstreamOrgFs {
         Ok(send_org_request(method, url, headers, body).await?)
     }
 
+    /// Pass a 2xx response through unchanged, otherwise turn it into an
+    /// [`OrgFsError`] via [`Self::fail`] — the
+    /// `if !response.status().is_success() { return Err(...) }` shape that
+    /// was repeated at every call site below.
+    async fn ensure_success(response: reqwest::Response) -> Result<reqwest::Response, OrgFsError> {
+        if response.status().is_success() {
+            Ok(response)
+        } else {
+            Err(Self::fail(response).await)
+        }
+    }
+
     /// Turn a non-2xx upstream response into an [`OrgFsError`], preferring the
     /// contract's `{"error": "..."}` body over a bare status line.
     async fn fail(response: reqwest::Response) -> OrgFsError {
@@ -188,9 +200,7 @@ impl OrgFs for UpstreamOrgFs {
         let response = self
             .send(Method::GET, &url, json_accept_headers(), Bytes::new())
             .await?;
-        if !response.status().is_success() {
-            return Err(Self::fail(response).await);
-        }
+        let response = Self::ensure_success(response).await?;
         let body: Value = response
             .json()
             .await
@@ -210,9 +220,7 @@ impl OrgFs for UpstreamOrgFs {
         if response.status() == reqwest::StatusCode::NOT_FOUND {
             return Ok(None);
         }
-        if !response.status().is_success() {
-            return Err(Self::fail(response).await);
-        }
+        let response = Self::ensure_success(response).await?;
         let body: Value = response
             .json()
             .await
@@ -225,9 +233,7 @@ impl OrgFs for UpstreamOrgFs {
         let response = self
             .send(Method::GET, &url, HeaderMap::new(), Bytes::new())
             .await?;
-        if !response.status().is_success() {
-            return Err(Self::fail(response).await);
-        }
+        let response = Self::ensure_success(response).await?;
         response
             .bytes()
             .await
@@ -304,9 +310,7 @@ impl OrgFs for UpstreamOrgFs {
             .unwrap_or_else(|| HeaderValue::from_static("application/octet-stream"));
         headers.insert(header::CONTENT_TYPE, content_type);
         let response = self.send(Method::PUT, &url, headers, body).await?;
-        if !response.status().is_success() {
-            return Err(Self::fail(response).await);
-        }
+        Self::ensure_success(response).await?;
         Ok(())
     }
 
@@ -315,9 +319,7 @@ impl OrgFs for UpstreamOrgFs {
         let response = self
             .send(Method::POST, &url, json_accept_headers(), Bytes::new())
             .await?;
-        if !response.status().is_success() {
-            return Err(Self::fail(response).await);
-        }
+        Self::ensure_success(response).await?;
         Ok(())
     }
 
@@ -326,9 +328,7 @@ impl OrgFs for UpstreamOrgFs {
         let response = self
             .send(Method::DELETE, &url, json_accept_headers(), Bytes::new())
             .await?;
-        if !response.status().is_success() {
-            return Err(Self::fail(response).await);
-        }
+        Self::ensure_success(response).await?;
         Ok(())
     }
 
@@ -344,9 +344,7 @@ impl OrgFs for UpstreamOrgFs {
                 .map_err(|e| OrgFsError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
         );
         let response = self.send(Method::POST, &url, headers, body).await?;
-        if !response.status().is_success() {
-            return Err(Self::fail(response).await);
-        }
+        Self::ensure_success(response).await?;
         Ok(())
     }
 }
