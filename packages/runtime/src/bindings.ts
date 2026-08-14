@@ -5,10 +5,7 @@ import { type MCPClientFetchStub, MCPClient, type ToolBinder } from "./mcp.ts";
 import { resolveStudioUrl } from "./studio-context.ts";
 import { z } from "zod";
 
-type ClientContext = Omit<
-  RequestContext,
-  "ensureAuthenticated" | "state" | "fetchIntegrationMetadata"
->;
+type ClientContext = Omit<RequestContext, "ensureAuthenticated" | "state">;
 
 export interface Binding<TType extends string = string> {
   __type: TType;
