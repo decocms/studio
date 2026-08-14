@@ -2,9 +2,9 @@
  * First-class navigation (see `useNavV2`).
  *
  * The sidebar lists DESTINATIONS — Home, Reports, Tasks, Library — instead of
- * chat threads. Each opens as the main panel's active view on the current
- * thread (`?main=<tabId>`), the same mechanism the top tab bar uses, so neither
- * switches agents. Threads moved to the chat panel's own header (see
+ * chat threads. Each opens as the main panel's active view (`?main=<tabId>`),
+ * the same mechanism the top tab bar uses. They are org-level, so they always
+ * resolve on the Super Agent. Threads moved to the chat panel's own header (see
  * `ThreadsMenu`); Home, Automations and Settings left the top tab bar.
  *
  * The org's coding agents (GitHub-backed virtual MCPs) trail the list, one row
@@ -80,12 +80,13 @@ function useNavDestinations({
    * show e.g. the Report while the header still carried that agent's
    * Preview / Publish controls.
    */
+  const onSuperAgent =
+    !search.virtualmcpid || search.virtualmcpid === decopilotId;
+
   const open = (tabId: string) => {
     track("nav_destination_clicked", { destination: tabId });
     onNavigate?.();
-    const onOtherAgent =
-      !!search.virtualmcpid && search.virtualmcpid !== decopilotId;
-    if (!onOtherAgent) {
+    if (onSuperAgent) {
       navigate({
         to: ".",
         search: (prev: Record<string, unknown>) => ({ ...prev, main: tabId }),
@@ -106,13 +107,18 @@ function useNavDestinations({
   };
 
   /**
-   * A cold `/$org` lands with no `main` at all, showing the landing agent's
-   * default view — Overview for the Super Agent, which is the only agent this
-   * navigation exposes. So an absent `main` reads as Home rather than leaving
-   * the whole list unhighlighted.
+   * A cold `/$org` lands with no `main` at all, and the Super Agent's default
+   * view IS Overview — so there, an absent `main` reads as Home rather than
+   * leaving the list unhighlighted. On any other agent an absent `main` means
+   * ITS default view (Preview for a coding agent), which is no destination at
+   * all, so nothing highlights.
    */
   const activeKey =
-    search.main === 0 || !search.main ? "overview" : search.main;
+    search.main === 0 || !search.main
+      ? onSuperAgent
+        ? "overview"
+        : null
+      : search.main;
 
   const destination = (
     key: string,
