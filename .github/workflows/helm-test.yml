@@ -190,7 +190,9 @@ jobs:
 
           # Every studio container (api-0, api-1, worker) must skip migrations:
           # the PreSync Job is the single writer. Three, not two.
-          count=$(grep -c -- '--skip-migrations' /tmp/preview.yaml)
+          # `|| true` — grep exits 1 on zero matches, which under `set -e` would
+          # abort before the explanatory message below.
+          count=$(grep -c -- '--skip-migrations' /tmp/preview.yaml || true)
           [ "$count" -eq 3 ] \
             || fail "expected 3 containers with --skip-migrations, found ${count}"
 
@@ -229,12 +231,14 @@ jobs:
           set -uo pipefail
           expect_fail() {
             desc="$1"; want="$2"; shift 2
-            out=$(helm template studio-pr-42 deploy/helm/studio \
-                    -f deploy/helm/studio/values-preview.yaml \
-                    --set preview.prNumber=42 \
-                    --set database.url=postgresql://ci:ci@pg.example.com:5432/d \
-                    --api-versions gateway.networking.k8s.io/v1 "$@" 2>&1)
-            if [ $? -eq 0 ]; then
+            # `if cmd; then` and not `out=$(cmd); [ $? -eq 0 ]` — the runner's
+            # default shell is `bash -e`, under which a failing assignment aborts
+            # the step. Every render here is SUPPOSED to fail.
+            if out=$(helm template studio-pr-42 deploy/helm/studio \
+                       -f deploy/helm/studio/values-preview.yaml \
+                       --set preview.prNumber=42 \
+                       --set database.url=postgresql://ci:ci@pg.example.com:5432/d \
+                       --api-versions gateway.networking.k8s.io/v1 "$@" 2>&1); then
               echo "::error::${desc}: rendered successfully — the guard is missing"
               exit 1
             fi
