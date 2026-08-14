@@ -325,7 +325,9 @@ function CustomObjectFieldTemplate(props: ObjectFieldTemplateProps) {
             selectedVirtualMcpId={currentValue || undefined}
             onVirtualMcpChange={handleBindingChange}
             variant="bordered"
-            placeholder="Select Agent"
+            placeholder={t("details.mcpConfigurationForm.selectPlaceholder", {
+              title: displayTitle.toLowerCase(),
+            })}
             className="w-[200px] shrink-0"
           />
         </div>
