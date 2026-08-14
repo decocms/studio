@@ -152,9 +152,11 @@ terminationGracePeriodSeconds: 30
 externalSecret:
   enabled: true
   secretPath: preview/studio/application
-  provider:
-    aws:
-      region: us-west-2
+  # A ClusterSecretStore, because previews create namespaces on the fly and a
+  # namespaced SecretStore would need IRSA wired up per namespace.
+  secretStoreName: aws-secrets-manager
+  secretStoreKind: ClusterSecretStore
+  createSecretStore: false
 
 configMap:
   meshConfig:

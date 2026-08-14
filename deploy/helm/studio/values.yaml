@@ -296,6 +296,14 @@ externalSecret:
   enabled: false
   # secretPath: ""  # Required when enabled. SM secret key path.
   secretStoreName: "aws-secrets-manager"
+  # SecretStore (namespaced) or ClusterSecretStore. A namespaced store needs
+  # per-namespace IRSA, so a deploy that creates namespaces on the fly (per-PR
+  # previews) wants a pre-existing ClusterSecretStore instead.
+  secretStoreKind: "SecretStore"
+  # Render the SecretStore above. Set false to reference a store someone else
+  # owns — required when secretStoreKind is ClusterSecretStore, since a cluster
+  # store must not be created once per release.
+  createSecretStore: true
   refreshInterval: "1h"
   provider:
     aws:
