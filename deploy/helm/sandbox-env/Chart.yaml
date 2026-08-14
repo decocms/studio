@@ -9,6 +9,11 @@ description: |
   releases coexist in the shared `agent-sandbox-system` namespace.
   Requires the sandbox-operator chart to already be installed.
 type: application
+# 0.16.2: renewals now land at idleTtlSeconds + `housekeeper.renewSlackSeconds`
+# (default 60) instead of exactly idleTtlSeconds, so the sweep's graceful reap
+# — HTTPRoute deleted before the pod drains — stays ahead of the operator's own
+# ClaimExpired, which skips that ordering. Keep the slack >= your sweep
+# interval.
 # 0.16.0: the housekeeper now RENEWS a claim's shutdownTime (out to
 # idleTtlSeconds) whenever its daemon served traffic within
 # `housekeeper.renewActiveSeconds`. Studio only renews for its own SSE/run
@@ -149,7 +154,7 @@ type: application
 # 0.8.0: org-fs sidecar (orgFs.*) — privileged rclone mounter + main-container
 # mounts. NOTE: the publish workflow skips existing versions, so this MUST
 # stay ahead of the latest published chart (0.7.5 at time of writing).
-version: 0.16.1
+version: 0.16.2
 # appVersion tracks the studio-sandbox image version (image.tag default).
 appVersion: "1.55.1"
 kubeVersion: ">=1.30.0-0"

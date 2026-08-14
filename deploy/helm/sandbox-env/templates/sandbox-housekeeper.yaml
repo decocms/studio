@@ -125,6 +125,8 @@ spec:
                   value: {{ mul .Values.housekeeper.idleTtlSeconds 1000 | quote }}
                 - name: RENEW_ACTIVE_MS
                   value: {{ mul .Values.housekeeper.renewActiveSeconds 1000 | quote }}
+                - name: RENEW_SLACK_SEC
+                  value: {{ .Values.housekeeper.renewSlackSeconds | quote }}
                 - name: PROBE_TIMEOUT_SEC
                   value: {{ .Values.housekeeper.probeTimeoutSeconds | quote }}
                 - name: CLAIM_SELECTOR
