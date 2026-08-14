@@ -211,7 +211,7 @@ export function ArrayField({
     getArrayItemLabel(arrayItemDisplayValue(item), index, itemSchema);
 
   const openItem = (index: number) => {
-    if (suppressClickRef.current) return;
+    if (suppressClickRef.current || index < 0 || index >= items.length) return;
     const labelText = itemLabel(items[index], index);
     setOpenIndex(index);
     onBreadcrumbChange?.(
@@ -297,6 +297,7 @@ export function ArrayField({
   };
 
   const duplicateItem = (index: number) => {
+    if (index < 0 || index >= items.length) return;
     const original = items[index];
     const copy =
       typeof structuredClone === "function"
@@ -312,6 +313,7 @@ export function ArrayField({
   };
 
   const toggleItemHidden = (index: number) => {
+    if (index < 0 || index >= items.length) return;
     const item = items[index];
     const next = [...items];
     next[index] = isArrayItemHidden(item)
@@ -321,11 +323,13 @@ export function ArrayField({
   };
 
   const removeItem = (index: number) => {
+    if (index < 0 || index >= items.length) return;
     onChange(items.filter((_, i) => i !== index));
     setEntries((current) => removeEntryAt(current, index));
   };
 
   const updateItem = (index: number, val: unknown) => {
+    if (index < 0 || index >= items.length) return;
     const next = [...items];
     // Preserve the hidden wrapper when editing a hidden item's inner value.
     next[index] = isArrayItemHidden(items[index]) ? hideArrayItem(val) : val;
