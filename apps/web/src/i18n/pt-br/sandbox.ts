@@ -61,17 +61,17 @@ export const sandbox = {
     "Esta categoria ainda não possui conteúdo. Use ⊕ para adicionar seu primeiro bloco.",
   "sandbox.categoryEditor.pickPostsTooltip":
     "Selecione posts para adicionar nesta categoria",
-  "sandbox.categoryEditor.postsInCategory": "{count} post(ns) nesta categoria",
+  "sandbox.categoryEditor.postsInCategory": "{count} post(s) nesta categoria",
   "sandbox.categoryEditor.previewTooltip":
     "Abra a visualização da categoria em uma nova aba",
   "sandbox.categoryEditor.renameActionButton": "Renomear e atualizar posts",
   "sandbox.categoryEditor.renameDialogDescription":
-    'Alterar o slug de "{oldSlug}" para "{newSlug}" atualizará {count} post(ns) que fazem referência a esta categoria.',
+    'Alterar o slug de "{oldSlug}" para "{newSlug}" atualizará {count} post(s) que fazem referência a esta categoria.',
   "sandbox.categoryEditor.renameDialogTitle": "Renomear slug da categoria?",
   "sandbox.categoryEditor.renameFailed": "Falha ao renomear",
   "sandbox.categoryEditor.renameSuccessNoPosts": "Slug renomeado",
   "sandbox.categoryEditor.renameSuccessWithPosts":
-    "Slug renomeado e {count} post(ns) atualizado(s)",
+    "Slug renomeado e {count} post(s) atualizado(s)",
   "sandbox.categoryEditor.renamingLabel": "Renomeando…",
   "sandbox.categoryEditor.seeCategoryPreview": "Ver visualização da categoria",
   "sandbox.categoryEditor.setSlugTooltip":
@@ -718,7 +718,7 @@ export const sandbox = {
   "sandbox.variantCalendar.dateMatcherInfo":
     "Variantes condicionadas a um critério de data aparecem aqui.",
   "sandbox.variantCalendar.hiddenOngoingVariants":
-    '{count} variante(ns) em andamento oculta(s) — ative "Mostrar em andamento" para visualizar.',
+    '{count} variante(s) em andamento oculta(s) — ative "Mostrar em andamento" para visualizar.',
   "sandbox.variantCalendar.next": "Próximo",
   "sandbox.variantCalendar.noDatedVariants":
     "Nenhuma variante com data à vista.",
