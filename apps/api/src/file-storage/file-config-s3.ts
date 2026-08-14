@@ -71,11 +71,17 @@ export function stsCredentialProvider(
         `sts refresh returned incomplete credentials for file config ${info.id}`,
       );
     }
+    const expiration = data.expiration ? new Date(data.expiration) : undefined;
+    if (expiration && Number.isNaN(expiration.getTime())) {
+      throw new Error(
+        `sts refresh returned an invalid expiration for file config ${info.id}: ${data.expiration}`,
+      );
+    }
     return {
       accessKeyId: data.accessKeyId,
       secretAccessKey: data.secretAccessKey,
       sessionToken: data.sessionToken,
-      expiration: data.expiration ? new Date(data.expiration) : undefined,
+      expiration,
     };
   };
 }

@@ -351,6 +351,24 @@ describe("stsCredentialProvider", () => {
     );
   });
 
+  test("throws when the response's expiration is not a valid date", async () => {
+    globalThis.fetch = mock(
+      async () =>
+        new Response(
+          JSON.stringify({
+            accessKeyId: "AKIA",
+            secretAccessKey: "s",
+            sessionToken: "t",
+            expiration: "not-a-date",
+          }),
+          { status: 200 },
+        ),
+    ) as unknown as typeof fetch;
+    expect(stsCredentialProvider(stsInfo, "k")()).rejects.toThrow(
+      /invalid expiration/,
+    );
+  });
+
   test("throws when refreshUrl is missing", () => {
     expect(() => stsCredentialProvider(info({}), "k")).toThrow(
       /missing a refreshUrl/,
