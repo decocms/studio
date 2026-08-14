@@ -70,6 +70,23 @@ describe("refreshAccessToken", () => {
     expect(result.permanent).toBe(true);
   });
 
+  it("ignores a non-string error/error_description instead of leaking them onto the result", async () => {
+    installFetch(
+      () =>
+        new Response(
+          JSON.stringify({ error: 400, error_description: { code: 400 } }),
+          { status: 400, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+
+    const result = await refreshAccessToken(baseToken);
+
+    expect(result.success).toBe(false);
+    expect(result.permanent).toBe(false);
+    expect(result.errorCode).toBeUndefined();
+    expect(result.error).toBe("Token refresh failed: 400");
+  });
+
   it("flags other 4xx errors as transient (could be config issue, retry-worthy)", async () => {
     installFetch(
       () =>

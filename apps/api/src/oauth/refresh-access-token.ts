@@ -104,9 +104,12 @@ export async function refreshAccessToken(
       let errorCode: string | undefined;
       let errorDescription: string | undefined;
       try {
+        // error/error_description are untrusted server input — narrow with typeof, like access_token below.
         const errorJson = JSON.parse(errorBody);
-        errorCode = errorJson.error;
-        errorDescription = errorJson.error_description;
+        if (typeof errorJson.error === "string") errorCode = errorJson.error;
+        if (typeof errorJson.error_description === "string") {
+          errorDescription = errorJson.error_description;
+        }
       } catch {
         // body wasn't JSON — fall through with undefined codes
       }
