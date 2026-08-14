@@ -22,6 +22,12 @@ const CommerceDiscoveryStatusOutputSchema = z.object({
     .describe(
       "False when the site isn't claimed/upgraded for this org — providers is then empty because the status is unreadable, NOT because nothing is connected. The UI must warn instead of rendering existing bindings as disconnected.",
     ),
+  claim: z
+    .object({ method: z.string().nullable(), verified: z.boolean() })
+    .nullable()
+    .describe(
+      "How this org's claim on the domain was granted. verified=false ⇒ provisional: the org sees its report but should be nudged to verify (connecting GA4/GSC verifies automatically). Null when the org doesn't hold the diagnostic or the worker predates the field.",
+    ),
 });
 
 export const COMMERCE_DISCOVERY_CONNECTION_STATUS = defineTool({

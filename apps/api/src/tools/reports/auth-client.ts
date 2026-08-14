@@ -378,6 +378,14 @@ const ConnectionStatusSchema = z.object({
       resource: z.string().nullable(),
     }),
   ),
+  // How this org's claim on the domain was granted (reports PR #313). Absent
+  // on older worker deploys; null when the asking org doesn't hold the
+  // diagnostic. verified=false ⇒ provisional: the UI nudges the user to
+  // verify (connecting GA4/GSC verifies automatically).
+  claim: z
+    .object({ method: z.string().nullable(), verified: z.boolean() })
+    .nullable()
+    .optional(),
 });
 
 export type CommerceDiscoveryConnectionStatus = z.infer<
@@ -399,6 +407,7 @@ export async function fetchCommerceDiscoveryConnectionStatus(
 ): Promise<{
   providers: CommerceDiscoveryConnectionStatus;
   claimed: boolean;
+  claim: { method: string | null; verified: boolean } | null;
 }> {
   const baseUrl = resolveBaseUrl(options);
   const apiKey = resolveApiKey(options);
@@ -414,7 +423,7 @@ export async function fetchCommerceDiscoveryConnectionStatus(
   });
 
   if (response.status === 404 || response.status === 409) {
-    return { providers: {}, claimed: false };
+    return { providers: {}, claimed: false, claim: null };
   }
   if (!response.ok) {
     throw new Error(await responseErrorMessage(response));
@@ -423,5 +432,6 @@ export async function fetchCommerceDiscoveryConnectionStatus(
   return {
     providers: parsed.success ? parsed.data.providers : {},
     claimed: true,
+    claim: parsed.success ? (parsed.data.claim ?? null) : null,
   };
 }

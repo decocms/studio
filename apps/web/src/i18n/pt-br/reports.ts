@@ -176,4 +176,6 @@ export const reports = {
   "reports.commerceBanner.generatingSubtitle":
     "Analisando {store}. Isso leva alguns minutos.",
   "reports.commerceBanner.readySubtitle": "Veja a análise completa de {store}.",
+  "reports.claimBanner.provisional":
+    "Sua loja ainda não foi verificada — conecte o Google Analytics ou Search Console dela para verificar a propriedade",
 } satisfies Record<keyof typeof reportsEn, string>;

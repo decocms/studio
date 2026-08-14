@@ -517,6 +517,34 @@ describe("fetchCommerceDiscoveryConnectionStatus", () => {
           Response.json({ error: "not_upgraded" }, { status: 409 }),
       },
     );
-    expect(out).toEqual({ providers: {}, claimed: false });
+    expect(out).toEqual({ providers: {}, claimed: false, claim: null });
+  });
+
+  test("passes the claim state through, and tolerates a worker without it", async () => {
+    const withClaim = await fetchCommerceDiscoveryConnectionStatus(
+      { siteUrl: "https://example.com", orgId: "org_123" },
+      {
+        baseUrl: "https://commerce.example.test",
+        apiKey: "master-key",
+        fetchImpl: async () =>
+          Response.json({
+            providers: {},
+            claim: { method: "provisional", verified: false },
+          }),
+      },
+    );
+    expect(withClaim.claim).toEqual({ method: "provisional", verified: false });
+
+    // A worker deployed before the claim field: absent ⇒ null, never a throw.
+    const without = await fetchCommerceDiscoveryConnectionStatus(
+      { siteUrl: "https://example.com", orgId: "org_123" },
+      {
+        baseUrl: "https://commerce.example.test",
+        apiKey: "master-key",
+        fetchImpl: async () => Response.json({ providers: {} }),
+      },
+    );
+    expect(without.claim).toBeNull();
+    expect(without.claimed).toBe(true);
   });
 });

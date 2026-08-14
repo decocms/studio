@@ -20,6 +20,8 @@ import { ContentTab } from "./content-tab";
 import { AutomationTab } from "./automation-tab";
 import { AutomationsListTab } from "./automations-list-tab";
 import { FileTab } from "./file-tab";
+import { COMMERCE_DISCOVERY_REPORT_TOOL_NAME } from "@/sdk";
+import { CommerceClaimBanner } from "./commerce-claim-banner";
 import { ConnectSourcesTab } from "./connect-sources-tab";
 import { DeckTab } from "./deck-tab";
 import { LibraryFileTab } from "./library-file-tab";
@@ -140,7 +142,7 @@ function TabBody({
         t.appId === pinnedView.connectionId &&
         t.toolName === pinnedView.toolName,
     );
-    return (
+    const body = (
       <Suspense fallback={<MainPanelLoading />}>
         <AppViewContent
           key={activeTab}
@@ -150,6 +152,17 @@ function TabBody({
         />
       </Suspense>
     );
+    // The Commerce Discovery report gets a verify-your-store topbar while the
+    // org's claim is provisional (renders nothing otherwise — see the banner).
+    if (pinnedView.toolName === COMMERCE_DISCOVERY_REPORT_TOOL_NAME) {
+      return (
+        <div className="flex h-full min-h-0 flex-col">
+          <CommerceClaimBanner />
+          <div className="min-h-0 flex-1">{body}</div>
+        </div>
+      );
+    }
+    return body;
   }
 
   const agentTab = layoutTabs.find((t) => t.id === activeTab);
