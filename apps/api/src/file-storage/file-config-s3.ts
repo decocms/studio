@@ -99,17 +99,45 @@ export function buildS3Client(ctx: FileConfigContext): S3Client {
   const cached = clientCache.get(cacheKey);
   if (cached) return cached;
 
+  // Validate required configuration fields before passing to AWS SDK
+  if (!ctx.info.region) {
+    throw new Error(`File config ${ctx.info.id} missing or empty region`);
+  }
+  if (!ctx.info.bucket) {
+    throw new Error(`File config ${ctx.info.id} missing or empty bucket`);
+  }
+
   const credentials =
     ctx.credentials.type === "sts-session"
       ? stsCredentialProvider(ctx.info, ctx.credentials.apiKey)
       : ctx.credentials.type === "managed"
-        ? // Mint prefix-scoped STS creds in-process for the config's slug. The
-          // SDK memoizes/refreshes by expiration, same as the sts-session path.
-          () => provisionTenantS3Credentials(ctx.info.siteSlug ?? "")
-        : {
-            accessKeyId: ctx.credentials.accessKeyId,
-            secretAccessKey: ctx.credentials.secretAccessKey,
-          };
+        ? (() => {
+            // Validate siteSlug for managed credentials
+            const slug = ctx.info.siteSlug;
+            if (!slug) {
+              throw new Error(
+                `Managed file config ${ctx.info.id} missing siteSlug`,
+              );
+            }
+            return () => provisionTenantS3Credentials(slug);
+          })()
+        : (() => {
+            // Validate static credentials before passing to AWS SDK
+            if (!ctx.credentials.accessKeyId) {
+              throw new Error(
+                `File config ${ctx.info.id} missing or empty accessKeyId`,
+              );
+            }
+            if (!ctx.credentials.secretAccessKey) {
+              throw new Error(
+                `File config ${ctx.info.id} missing or empty secretAccessKey`,
+              );
+            }
+            return {
+              accessKeyId: ctx.credentials.accessKeyId,
+              secretAccessKey: ctx.credentials.secretAccessKey,
+            };
+          })();
 
   const client = new S3Client({
     region: ctx.info.region,
