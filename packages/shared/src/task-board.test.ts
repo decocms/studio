@@ -13,13 +13,13 @@ import {
 } from "./task-board";
 
 describe("enabledReviewerKinds", () => {
-  it("returns nothing for missing/empty flags", () => {
-    expect(enabledReviewerKinds(null)).toEqual([]);
-    expect(enabledReviewerKinds(undefined)).toEqual([]);
-    expect(enabledReviewerKinds({})).toEqual([]);
+  it("enables both reviewers when flags are missing/empty (default-on)", () => {
+    expect(enabledReviewerKinds(null)).toEqual(["qa", "code_review"]);
+    expect(enabledReviewerKinds(undefined)).toEqual(["qa", "code_review"]);
+    expect(enabledReviewerKinds({})).toEqual(["qa", "code_review"]);
   });
 
-  it("returns only the reviewers whose flag is exactly true", () => {
+  it("drops a reviewer only when its flag is exactly false", () => {
     expect(
       enabledReviewerKinds({
         qa_agent_enabled: true,
@@ -28,12 +28,14 @@ describe("enabledReviewerKinds", () => {
     ).toEqual(["qa"]);
     expect(
       enabledReviewerKinds({
-        qa_agent_enabled: true,
-        code_reviewer_enabled: true,
+        qa_agent_enabled: false,
+        code_reviewer_enabled: false,
       }),
-    ).toEqual(["qa", "code_review"]);
-    // Truthy-but-not-`true` must not enable it (org flags are booleans).
-    expect(enabledReviewerKinds({ qa_agent_enabled: "true" })).toEqual([]);
+    ).toEqual([]);
+    // An unset flag stays on; only an explicit `false` opts out.
+    expect(enabledReviewerKinds({ qa_agent_enabled: false })).toEqual([
+      "code_review",
+    ]);
   });
 });
 

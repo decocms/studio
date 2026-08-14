@@ -1,3 +1,5 @@
+import { orgFlagEnabled } from "./organization/schema";
+
 /**
  * Sentinel `assigneeId` for the org's Super Agent (the well-known Decopilot
  * agent). Not a real member userId — `validate-assignee` skips membership for
@@ -74,11 +76,12 @@ export const REVIEWER_FLAG: Record<
 
 /** The reviewer kinds this org has enabled, per its settings flags. Single
  *  home for a filter repeated at every call site that reads the review gate
- *  (enqueue, auto-merge, conflict resolution, manual ship). */
+ *  (enqueue, auto-merge, conflict resolution, manual ship). Both reviewers are
+ *  default-on via `orgFlagEnabled` — only an explicit `false` drops one. */
 export function enabledReviewerKinds(
   flags: Record<string, unknown> | null | undefined,
 ): ReviewerKind[] {
-  return REVIEWER_KINDS.filter((k) => flags?.[REVIEWER_FLAG[k]] === true);
+  return REVIEWER_KINDS.filter((k) => orgFlagEnabled(flags, REVIEWER_FLAG[k]));
 }
 
 /** True when a thread title belongs to the given reviewer's run. */
