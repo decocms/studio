@@ -148,15 +148,17 @@ describe("housekeeper renew_shutdown", () => {
     );
   });
 
-  it("renews to now + TTL, not to a bad-timestamp no-op", async () => {
+  it("renews past now + TTL, not to a bad-timestamp no-op", async () => {
     const out = await runWithFakeKubectl("renew_shutdown my-claim 1234");
     expect(out).toContain("renew claim=my-claim idle_ms=1234");
     expect(out).not.toContain("renew-skip");
     const stamp = out.match(/shutdown_at=(\S+)/)?.[1];
     expect(stamp).toBeDefined();
     const deltaMs = new Date(stamp as string).getTime() - Date.now();
-    // Renewal is now + TTL; a couple of seconds of slack for process startup.
-    expect(deltaMs).toBeGreaterThan(TTL_MS - 5_000);
-    expect(deltaMs).toBeLessThanOrEqual(TTL_MS);
+    // now + TTL + RENEW_SLACK_SEC (60s), which keeps the housekeeper's own
+    // graceful reap ahead of the operator's ClaimExpired. A few seconds of
+    // tolerance for process startup.
+    expect(deltaMs).toBeGreaterThan(TTL_MS + 55_000);
+    expect(deltaMs).toBeLessThanOrEqual(TTL_MS + 60_000);
   });
 });

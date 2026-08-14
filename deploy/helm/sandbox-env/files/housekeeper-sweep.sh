@@ -2,7 +2,7 @@
 # sandbox-housekeeper sweep — one CronJob run.
 #
 # Env (set by the CronJob spec):
-#   NS, TTL_MS, PROBE_TIMEOUT_SEC, RENEW_ACTIVE_MS,
+#   NS, TTL_MS, PROBE_TIMEOUT_SEC, RENEW_ACTIVE_MS, RENEW_SLACK_SEC,
 #   CLAIM_SELECTOR, POD_SELECTOR, RUN_ID.
 
 set -eu
@@ -194,12 +194,22 @@ iso_from_epoch() {
   }'
 }
 
-# Push a claim's deadline out to now + TTL because its daemon just served
+# Push a claim's deadline out past now + TTL because its daemon just served
 # traffic. Best-effort: a missed renewal costs one reprovision, and the next
 # sweep is a minute away.
+#
+# The slack matters. Renewing to exactly now + TTL puts the claim's own
+# deadline in the same instant this sweep would decide the claim is idle, and
+# whoever wins that race decides how the pod dies: `request_shutdown` deletes
+# the HTTPRoute BEFORE the operator drains the pod, so the daemon's SIGTERM
+# git-sync isn't still taking traffic. An operator-driven ClaimExpired skips
+# that ordering. Keep this >= the sweep interval so the sweep that first sees
+# the claim go idle still lands before the operator's own deadline; the default
+# fits the 1-minute cron prod runs.
+: "${RENEW_SLACK_SEC:=60}"
 renew_shutdown() {
   claim="$1"; idle="$2"
-  ts=$(iso_from_epoch "$(( $(date -u +%s) + TTL_MS / 1000 ))")
+  ts=$(iso_from_epoch "$(( $(date -u +%s) + TTL_MS / 1000 + RENEW_SLACK_SEC ))")
   case "$ts" in
     ????-??-??T??:??:??Z) ;;
     *) log "renew-skip claim=$claim reason=bad-timestamp value=\"$ts\""; return 0 ;;

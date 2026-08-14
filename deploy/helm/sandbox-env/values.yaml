@@ -824,6 +824,13 @@ housekeeper:
   # 0 disables renewal (pre-fix behaviour).
   renewActiveSeconds: 120
 
+  # How far PAST idleTtlSeconds a renewal sets the claim's own deadline. Keeps
+  # the housekeeper's graceful reap (HTTPRoute deleted first, then the operator
+  # drains the pod) ahead of the operator's own ClaimExpired, which skips that
+  # ordering. Keep it >= your `schedule` interval — the default fits a 1-minute
+  # cron.
+  renewSlackSeconds: 60
+
   probeTimeoutSeconds: 2
 
   # 600s ≈ 400 sandboxes/sweep at ~1.5s/claim worst case.
