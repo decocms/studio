@@ -494,6 +494,7 @@ export async function* dispatchWithContinuation(args: {
               .catch(() => null)) ?? null)
           : null;
       if (
+        isRunSuperseded(err) ||
         !(err instanceof SandboxUnreachableError) ||
         stalled >= maxAttempts ||
         attempt >= maxTotalAttempts

@@ -472,6 +472,27 @@ describe("dispatchWithContinuation", () => {
     await expect(collect(run)).rejects.toThrow("a newer dispatch took over");
     expect(attempts).toBe(1);
   });
+
+  test("a deserialized superseded error (after DBOS replay) stops without retrying", async () => {
+    // DBOS serializes errors, losing subclasses; the `superseded` property survives.
+    let attempts = 0;
+    const run = dispatchWithContinuation({
+      runId: "run_1",
+      resume: null,
+      aborted: () => false,
+      dispatchOnce: () => {
+        attempts++;
+        const err = new RunSupersededError("a newer dispatch took over");
+        const deserialized = Object.assign(
+          new Error(err.message),
+          JSON.parse(JSON.stringify({ ...err })),
+        );
+        return dispatch([chunk("start"), chunk("text-delta")], deserialized)();
+      },
+    });
+    await expect(collect(run)).rejects.toThrow("a newer dispatch took over");
+    expect(attempts).toBe(1);
+  });
 });
 
 // Which terminal code continues the turn, which drops it quietly, and which
