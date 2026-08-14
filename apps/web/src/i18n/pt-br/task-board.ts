@@ -16,6 +16,11 @@ export const taskBoard = {
   "taskBoard.taskBoard.assignedToSuperAgentBy":
     "Atribuído ao Super Agent por {name}",
   "taskBoard.taskBoard.autoFix": "Auto-correção",
+  "taskBoard.taskBoard.autoMergeLabel": "Auto-merge",
+  "taskBoard.taskBoard.autoMergeTitle":
+    "Faz o merge do pull request da tarefa e move o card para Concluído assim que todos os revisores ativos aprovarem",
+  "taskBoard.taskBoard.autoMergeUpdateError":
+    "Não foi possível atualizar o auto-merge",
   "taskBoard.taskBoard.rerun": "Executar de novo",
   "taskBoard.taskBoard.blockedBadgeTitle":
     "O agente está aguardando sua entrada",

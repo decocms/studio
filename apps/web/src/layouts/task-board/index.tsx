@@ -38,6 +38,7 @@ import {
   ChevronRight,
   Columns03,
   DotsHorizontal,
+  GitMerge,
   HelpCircle,
   Lightning01,
   List,
@@ -116,6 +117,8 @@ import {
 } from "./config";
 import { useTags } from "@/hooks/use-tags";
 import { usePreferences } from "@/hooks/use-preferences";
+import { Switch } from "@decocms/ui/components/switch.tsx";
+import { useOrgFlag, useSetOrgFlag } from "@/hooks/use-organization-settings";
 import {
   TaskBoardItemDialog,
   threadStatusStyle,
@@ -167,6 +170,38 @@ function formatDueDate(iso: string): { label: string; overdue: boolean } {
  */
 const PILL =
   "inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground";
+
+/**
+ * Board-header switch for the org's `auto_merge` flag: when on, a task's PR is
+ * merged (and the card moved to Done) as soon as every enabled reviewer
+ * approves. Same flag as Settings → Review, surfaced here because it's the
+ * knob you flip while watching In Review cards.
+ */
+function AutoMergeToggle() {
+  const t = useT();
+  const enabled = useOrgFlag("auto_merge");
+  const setFlag = useSetOrgFlag();
+  return (
+    <label
+      className={cn(PILL, "cursor-pointer gap-2 py-1")}
+      title={t("taskBoard.taskBoard.autoMergeTitle")}
+    >
+      <GitMerge size={14} />
+      {t("taskBoard.taskBoard.autoMergeLabel")}
+      <Switch
+        checked={enabled}
+        disabled={setFlag.isPending}
+        aria-label={t("taskBoard.taskBoard.autoMergeLabel")}
+        onCheckedChange={(next) =>
+          setFlag.mutate("auto_merge", next, {
+            onError: () =>
+              toast.error(t("taskBoard.taskBoard.autoMergeUpdateError")),
+          })
+        }
+      />
+    </label>
+  );
+}
 
 /** Card flag for a task whose agent is paused waiting on human input. */
 function BlockedBadge() {
@@ -609,6 +644,7 @@ export function TaskBoardPage() {
           )}
 
           <div className="ml-auto flex items-center gap-2">
+            <AutoMergeToggle />
             <div className="inline-flex rounded-lg bg-muted p-0.5">
               <LayoutToggle
                 active={layout === "list"}
