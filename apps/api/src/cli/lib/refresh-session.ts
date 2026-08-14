@@ -17,6 +17,9 @@ interface TokenResponse {
   token_type?: string;
 }
 
+/** Bound the outbound refresh call — a hanging token endpoint must not hang the CLI. */
+const TOKEN_REFRESH_FETCH_TIMEOUT_MS = 10_000;
+
 /**
  * Exchanges the session's refresh token for a fresh access token.
  *
@@ -49,6 +52,7 @@ export async function refreshSession(
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: body.toString(),
+      signal: AbortSignal.timeout(TOKEN_REFRESH_FETCH_TIMEOUT_MS),
     });
   } catch (err) {
     throw new RefreshFailedError(
