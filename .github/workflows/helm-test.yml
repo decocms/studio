@@ -199,6 +199,23 @@ jobs:
           grep -q 'DATABASE_POOL_MAX: "5"' /tmp/preview.yaml \
             || fail "DATABASE_POOL_MAX is not 5 — N previews would exhaust the shared Postgres"
 
+          # DATABASE_URL must be COMPOSED by ESO, never materialised here: the
+          # rendered manifest is committed to a GitOps repo, so a resolved
+          # password would be a credential in git.
+          grep -q 'DATABASE_URL: postgresql://{{ .PREVIEW_PG_USER }}:{{ .PREVIEW_PG_PASSWORD }}@' /tmp/preview.yaml \
+            || fail "preview DATABASE_URL is not an ESO template — a real password may be rendered into the manifest"
+          grep -q '/pr_42?sslmode=require' /tmp/preview.yaml \
+            || fail "preview DATABASE_URL does not point at this PR's database"
+          grep -q 'mergePolicy: Merge' /tmp/preview.yaml \
+            || fail "ESO template mergePolicy is not Merge — Replace silently drops every dataFrom key"
+          # A namespaced SecretStore needs per-namespace IRSA, which per-PR
+          # namespaces do not have.
+          grep -q 'kind: ClusterSecretStore' /tmp/preview.yaml \
+            || fail "preview ExternalSecret does not reference a ClusterSecretStore"
+          if grep -qE '^kind: SecretStore$' /tmp/preview.yaml; then
+            fail "preview render creates a namespaced SecretStore"
+          fi
+
           # PVC finalizers are the most common cause of a namespace that never
           # finishes deleting.
           if grep -qE '^kind: PersistentVolumeClaim' /tmp/preview.yaml; then

@@ -312,6 +312,31 @@ Per-PR bucket name. Explicit override wins; otherwise derived from the PR number
 {{- end }}
 
 {{/*
+An ESO target-template placeholder for one key of the fetched secret, e.g.
+`{{ .PREVIEW_PG_HOST }}`. Emitted as a literal so ESO — not Helm, and not a
+calling Argo ApplicationSet — is the thing that resolves it.
+*/}}
+{{- define "chart-deco-studio.esoRef" -}}
+{{- printf "%s .%s %s" "{{" . "}}" -}}
+{{- end }}
+
+{{/*
+DATABASE_URL for a preview, composed from secret-store keys plus this release's
+own pr_<n> database name.
+*/}}
+{{- define "chart-deco-studio.previewDatabaseUrl" -}}
+{{- $d := .Values.preview.databaseUrl -}}
+{{- $user := include "chart-deco-studio.esoRef" $d.userKey -}}
+{{- $pass := include "chart-deco-studio.esoRef" $d.passwordKey -}}
+{{- $host := include "chart-deco-studio.esoRef" $d.hostKey -}}
+{{- $port := include "chart-deco-studio.esoRef" $d.portKey -}}
+{{- $db := include "chart-deco-studio.previewDbName" . -}}
+{{- $qs := "" -}}
+{{- with $d.params }}{{- $qs = printf "?%s" . -}}{{- end -}}
+{{- printf "postgresql://%s:%s@%s:%s/%s%s" $user $pass $host $port $db $qs -}}
+{{- end }}
+
+{{/*
 Validates per-PR preview releases. Every failure here is something that would
 otherwise render a healthy-looking object that silently does nothing: an
 HTTPRoute with no hostname matches no traffic, a pod without --skip-migrations

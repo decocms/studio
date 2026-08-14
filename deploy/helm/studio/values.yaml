@@ -102,6 +102,25 @@ preview:
       name: ""
       accessKeyIdKey: access-key-id
       secretAccessKeyKey: secret-access-key
+  # Compose DATABASE_URL for this preview as an ESO target-template entry, from
+  # connection parts that stay in the secret store. Only the database name
+  # (pr_<prNumber>) is release-specific, so nothing that resolves to a password
+  # has to be templated into git.
+  #
+  # The chart builds the ESO placeholders itself rather than accepting them
+  # pre-written, because a caller that is a Go template (an Argo ApplicationSet)
+  # would try to evaluate them and fail. Passing a plain PR number is safe;
+  # passing "{{ .PASSWORD }}" through Argo is not.
+  #
+  # Requires externalSecret.enabled. Ignored otherwise.
+  databaseUrl:
+    enabled: true
+    userKey: PREVIEW_PG_USER
+    passwordKey: PREVIEW_PG_PASSWORD
+    hostKey: PREVIEW_PG_HOST
+    portKey: PREVIEW_PG_PORT
+    params: "sslmode=require"
+
   # Stock images for the hook Jobs — psql for the database, mc for the bucket.
   # Kept as two containers rather than one custom image so there is no extra
   # artifact to build, sign and release just for previews.
