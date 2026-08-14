@@ -84,6 +84,21 @@ export const home = {
   "home.nativeTiles.noConversationsYet":
     "Nenhuma chat ainda. Comece uma e ela aparecer\u00e1 aqui para sua equipe.",
   "home.nativeTiles.noRecentPullRequests": "Nenhum pull request recente.",
+  "home.nativeTiles.fixes": "Corre\u00e7\u00f5es a fazer",
+  "home.nativeTiles.fixesBreakdown":
+    "{bugs} bug(s) \u00b7 {issues} issue(s) \u00b7 {reviews} aguardando revis\u00e3o",
+  "home.nativeTiles.fixKindBug": "Bug",
+  "home.nativeTiles.fixKindIssue": "Issue",
+  "home.nativeTiles.fixKindReview": "Revis\u00e3o",
+  "home.nativeTiles.githubUnavailable":
+    "N\u00e3o foi poss\u00edvel ler o GitHub agora. Verifique as permiss\u00f5es da conex\u00e3o.",
+  "home.nativeTiles.noFixes":
+    "Nada a corrigir \u2014 nenhuma issue ou revis\u00e3o aberta.",
+  "home.nativeTiles.noTeamActivity":
+    "Nenhum commit nas \u00faltimas semanas.",
+  "home.nativeTiles.productivity": "Produtividade do time",
+  "home.nativeTiles.commitsInWeeks":
+    "commits em {weeks} semanas \u00b7 {people} pessoa(s)",
   "home.nativeTiles.orders": "Pedidos",
   "home.nativeTiles.pageviews": "Visualiza\u00e7\u00f5es",
   "home.nativeTiles.recentConversations": "Chats recentes",

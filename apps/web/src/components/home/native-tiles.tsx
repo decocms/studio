@@ -38,6 +38,7 @@ import {
 } from "@decocms/ui/components/chart.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
+  AlertCircle,
   ArrowUpRight,
   BarChart10,
   CheckCircle,
@@ -51,6 +52,15 @@ import { useConnections, useProjectContext } from "@/sdk";
 import { getOrgGithubConnections } from "@decocms/shared/github-repo-scope";
 import { useConnectApp } from "@/hooks/use-connect-app";
 import { useGithubRecentPrs } from "@/hooks/use-github-recent-prs";
+import {
+  useGithubFixes,
+  MAX_FIXES_SHOWN,
+  type FixKind,
+} from "@/hooks/use-github-fixes";
+import {
+  useGithubProductivity,
+  PRODUCTIVITY_WEEKS,
+} from "@/hooks/use-github-productivity";
 import {
   useGithubContributions,
   CONTRIB_WEEKS,
@@ -67,6 +77,8 @@ const SESSIONS_TILE_ID = "sessions";
 const ORDERS_TILE_ID = "orders";
 const CODING_TILE_ID = "coding";
 const REVENUE_TILE_ID = "revenue";
+const FIXES_TILE_ID = "fixes";
+const PRODUCTIVITY_TILE_ID = "productivity";
 const RECENT_CONVERSATIONS_TILE_ID = "recent-conversations";
 
 export interface NativeTileDef {
@@ -112,6 +124,18 @@ export const NATIVE_TILES: NativeTileDef[] = [
     id: CODING_TILE_ID,
     titleKey: "home.nativeTiles.coding",
     defaultSize: { w: 3, h: 3 },
+    minSize: { w: 2, h: 2 },
+  },
+  {
+    id: FIXES_TILE_ID,
+    titleKey: "home.nativeTiles.fixes",
+    defaultSize: { w: 3, h: 4 },
+    minSize: { w: 2, h: 2 },
+  },
+  {
+    id: PRODUCTIVITY_TILE_ID,
+    titleKey: "home.nativeTiles.productivity",
+    defaultSize: { w: 3, h: 4 },
     minSize: { w: 2, h: 2 },
   },
   {
@@ -524,9 +548,236 @@ function CodingConnected({ connectionId }: { connectionId: string }) {
   );
 }
 
-// ---------------------------------------------------------------------------
+/** The org's GitHub connection, or undefined when GitHub isn't connected. */
+function useOrgGithubConnectionId(): string | undefined {
+  return getOrgGithubConnections(useConnections({ slug: "mcp-github" }))[0]?.id;
+}
+
+/** Dimmed preview + the real GitHub connect flow, for GitHub-backed tiles
+ *  rendered before the integration exists. */
+function GithubConnectGate({ children }: { children: React.ReactNode }) {
+  const t = useT();
+  const { connect, isConnecting } = useConnectApp("deco/mcp-github");
+  return (
+    <div className="relative flex h-full flex-col">
+      <div className="min-h-0 flex-1 overflow-hidden opacity-50">
+        {children}
+      </div>
+      <ConnectOverlay
+        label={t("home.nativeTiles.connectGithub")}
+        icon={<GitHubIcon className="size-4" />}
+        onConnect={connect}
+        pending={isConnecting}
+      />
+    </div>
+  );
+}
+
+function TileSkeleton({ rows }: { rows: number }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      {Array.from({ length: rows }, (_, i) => (
+        <div
+          key={`row-${i}`}
+          className="h-5 w-full animate-pulse rounded-md bg-muted/40"
+        />
+      ))}
+    </div>
+  );
+}
+
+const FIX_KIND_STYLE: Record<
+  FixKind,
+  { labelKey: TranslationKey; className: string }
+> = {
+  bug: {
+    labelKey: "home.nativeTiles.fixKindBug",
+    className: "bg-destructive/10 text-destructive",
+  },
+  issue: {
+    labelKey: "home.nativeTiles.fixKindIssue",
+    className: "bg-warning/10 text-warning",
+  },
+  review: {
+    labelKey: "home.nativeTiles.fixKindReview",
+    className: "bg-muted text-muted-foreground",
+  },
+};
+
+/** Fixes to do — open bugs / issues / PRs awaiting review, from GitHub. */
+function FixesTileBody() {
+  const connectionId = useOrgGithubConnectionId();
+  return connectionId ? (
+    <FixesConnected connectionId={connectionId} />
+  ) : (
+    <GithubConnectGate>
+      <TileSkeleton rows={5} />
+    </GithubConnectGate>
+  );
+}
+
+function FixesConnected({ connectionId }: { connectionId: string }) {
+  const t = useT();
+  const { data, isLoading, isError } = useGithubFixes(connectionId);
+
+  if (isLoading) return <TileSkeleton rows={5} />;
+  if (isError || !data) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        {t("home.nativeTiles.githubUnavailable")}
+      </p>
+    );
+  }
+  if (data.fixes.length === 0) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
+        <CheckCircle className="size-6 text-success/60" />
+        <p className="text-xs text-muted-foreground">
+          {t("home.nativeTiles.noFixes")}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-2">
+      <div className="flex shrink-0 items-baseline gap-2">
+        <span className="text-2xl font-medium tabular-nums text-foreground">
+          {data.fixes.length}
+        </span>
+        <span className="text-xs text-muted-foreground">
+          {t("home.nativeTiles.fixesBreakdown", {
+            bugs: data.bugs,
+            issues: data.issues,
+            reviews: data.reviews,
+          })}
+        </span>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
+        {data.fixes.slice(0, MAX_FIXES_SHOWN).map((fix) => {
+          const style = FIX_KIND_STYLE[fix.kind];
+          return (
+            <a
+              key={`${fix.repo}#${fix.number}-${fix.kind}`}
+              href={fix.htmlUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-2 rounded-md px-1.5 py-1.5 text-sm transition-colors hover:bg-accent/60"
+            >
+              {fix.kind === "review" ? (
+                <GitBranch01 className="size-4 shrink-0 text-muted-foreground" />
+              ) : (
+                <AlertCircle className="size-4 shrink-0 text-muted-foreground" />
+              )}
+              <span className="min-w-0 flex-1 truncate text-foreground">
+                {fix.title}
+              </span>
+              <span
+                className={cn(
+                  "shrink-0 rounded-full px-1.5 py-0.5 text-xs font-medium",
+                  style.className,
+                )}
+              >
+                {t(style.labelKey)}
+              </span>
+            </a>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Team productivity — commits per person over the last four weeks. */
+function ProductivityTileBody() {
+  const connectionId = useOrgGithubConnectionId();
+  return connectionId ? (
+    <ProductivityConnected connectionId={connectionId} />
+  ) : (
+    <GithubConnectGate>
+      <TileSkeleton rows={5} />
+    </GithubConnectGate>
+  );
+}
+
+function ProductivityConnected({ connectionId }: { connectionId: string }) {
+  const t = useT();
+  const { data, isLoading, isError } = useGithubProductivity(connectionId);
+
+  if (isLoading) return <TileSkeleton rows={5} />;
+  if (isError || !data) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        {t("home.nativeTiles.githubUnavailable")}
+      </p>
+    );
+  }
+  if (data.totalCommits === 0) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        {t("home.nativeTiles.noTeamActivity")}
+      </p>
+    );
+  }
+
+  const peak = Math.max(...data.contributors.map((c) => c.commits), 1);
+
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-2">
+      <div className="flex shrink-0 items-baseline gap-2">
+        <span className="text-2xl font-medium tabular-nums text-foreground">
+          {data.totalCommits}
+        </span>
+        <span className="text-xs text-muted-foreground">
+          {t("home.nativeTiles.commitsInWeeks", {
+            weeks: PRODUCTIVITY_WEEKS,
+            people: data.contributors.length,
+          })}
+        </span>
+        {data.deltaPercent != null && (
+          <span
+            className={cn(
+              "ml-auto inline-flex shrink-0 items-center gap-1 text-sm font-medium tabular-nums",
+              data.deltaPercent >= 0 ? "text-success" : "text-destructive",
+            )}
+          >
+            <ArrowUpRight
+              className={cn("size-4", data.deltaPercent < 0 && "rotate-90")}
+            />
+            {data.deltaPercent >= 0 ? "+" : ""}
+            {data.deltaPercent}%
+          </span>
+        )}
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto">
+        {data.contributors.slice(0, 6).map((c) => (
+          <div key={c.login} className="flex items-center gap-2">
+            <Avatar
+              shape="circle"
+              size="xs"
+              url={c.avatarUrl}
+              fallback={c.login.slice(0, 2).toUpperCase()}
+            />
+            <span className="w-24 shrink-0 truncate text-xs text-foreground">
+              {c.login}
+            </span>
+            <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-success"
+                style={{ width: `${Math.round((c.commits / peak) * 100)}%` }}
+              />
+            </div>
+            <span className="w-8 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+              {c.commits}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // Recent conversations
-// ---------------------------------------------------------------------------
 
 const STATUS_LABEL: Record<
   string,
@@ -667,6 +918,10 @@ function NativeTileBody({ nativeId }: { nativeId: string }) {
       return <CommerceMetricTile metricKey="revenue" />;
     case CODING_TILE_ID:
       return <CodingTileBody />;
+    case FIXES_TILE_ID:
+      return <FixesTileBody />;
+    case PRODUCTIVITY_TILE_ID:
+      return <ProductivityTileBody />;
     case RECENT_CONVERSATIONS_TILE_ID:
       return (
         <Suspense

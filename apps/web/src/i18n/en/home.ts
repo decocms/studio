@@ -79,6 +79,19 @@ export const home = {
   "home.nativeTiles.noConversationsYet":
     "No conversations yet. Start one and it'll show up here for your team.",
   "home.nativeTiles.noRecentPullRequests": "No recent pull requests.",
+  "home.nativeTiles.fixes": "Fixes to do",
+  "home.nativeTiles.fixesBreakdown":
+    "{bugs} bug(s) · {issues} issue(s) · {reviews} awaiting review",
+  "home.nativeTiles.fixKindBug": "Bug",
+  "home.nativeTiles.fixKindIssue": "Issue",
+  "home.nativeTiles.fixKindReview": "Review",
+  "home.nativeTiles.githubUnavailable":
+    "Couldn't read GitHub right now. Check the connection's permissions.",
+  "home.nativeTiles.noFixes": "Nothing to fix — no open issues or reviews.",
+  "home.nativeTiles.noTeamActivity": "No commits in the last few weeks.",
+  "home.nativeTiles.productivity": "Team productivity",
+  "home.nativeTiles.commitsInWeeks":
+    "commits in {weeks} weeks · {people} contributor(s)",
   "home.nativeTiles.orders": "Orders",
   "home.nativeTiles.pageviews": "Pageviews",
   "home.nativeTiles.recentConversations": "Recent conversations",
