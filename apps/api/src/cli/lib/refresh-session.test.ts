@@ -132,6 +132,23 @@ describe("refreshSession", () => {
     expect(result.refreshToken).toBe("rt_xyz");
   });
 
+  it("throws RefreshFailedError(transient) on a non-JSON 200 body", async () => {
+    const fetchMock = mock(
+      async () =>
+        new Response("<html>not json</html>", {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        }),
+    );
+    const promise = refreshSession(
+      makeSession(),
+      fetchMock as unknown as typeof fetch,
+      () => FIXED_NOW,
+    );
+    await expect(promise).rejects.toBeInstanceOf(RefreshFailedError);
+    await expect(promise).rejects.toMatchObject({ kind: "transient" });
+  });
+
   it("throws RefreshFailedError(invalid_grant) on 400", async () => {
     const fetchMock = mock(
       async () => new Response("invalid_grant", { status: 400 }),

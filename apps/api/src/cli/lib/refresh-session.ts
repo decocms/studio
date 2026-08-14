@@ -68,7 +68,18 @@ export async function refreshSession(
     throw new RefreshFailedError("transient", `HTTP ${res.status} ${text}`);
   }
 
-  const data = (await res.json()) as TokenResponse;
+  let data: TokenResponse;
+  try {
+    data = (await res.json()) as TokenResponse;
+  } catch (err) {
+    throw new RefreshFailedError(
+      "transient",
+      `Token endpoint returned a non-JSON body: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+
   if (typeof data.access_token !== "string" || !data.access_token) {
     throw new RefreshFailedError(
       "transient",
