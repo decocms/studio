@@ -199,12 +199,22 @@ export interface ListObjectsResult {
 }
 
 /**
- * How many month shards page 1 probes concurrently, newest first, alongside
- * the broad lexicographic fallback. Wide enough to surface recent uploads in
- * buckets that were quiet for a few months; results are merged, sorted by
- * lastModified, and truncated to the page size.
+ * How many month shards page 1 walks back, newest first, before the broad
+ * lexicographic fallback. Wide enough to surface recent uploads in buckets
+ * quiet for a few months; each is enumerated in full and the merged set is
+ * sorted by lastModified, then truncated to the page size.
  */
 const MONTH_SHARD_PROBES = 6;
+
+/**
+ * Safety cap on pages (1000 keys each) enumerated per month shard. A month is
+ * listed in full so sorting by lastModified yields a true newest-first order
+ * (a single capped LIST returns UUID-lexicographic order, hiding the freshest
+ * upload behind older ones). This bounds the work if a single month ever holds
+ * a pathological number of objects; realistic image buckets stay well under
+ * one page.
+ */
+const MONTH_SHARD_MAX_PAGES = 5;
 
 /**
  * Month-shard key prefixes to probe, newest first: `<bucketPrefix><yyyy>/<mm>/`
@@ -232,14 +242,50 @@ export function monthShardPrefixes(
   return prefixes;
 }
 
+/** Raw S3 object fields the listing helpers reason about. */
+type RawS3Object = { Key?: string; Size?: number; LastModified?: Date };
+
+/**
+ * Enumerate every object directly under `prefix`, paginating up to `maxPages`
+ * pages of 1000. Listing the shard in full (rather than one capped LIST) is
+ * what lets the caller sort by lastModified into a true newest-first order — a
+ * single page comes back in UUID-lexicographic order, which buries the freshest
+ * upload behind older keys in a busy month.
+ */
+async function listAllUnderPrefix(
+  client: S3Client,
+  bucket: string,
+  prefix: string,
+  maxPages: number,
+): Promise<RawS3Object[]> {
+  const out: RawS3Object[] = [];
+  let token: string | undefined;
+  let pages = 0;
+  do {
+    const res = await client.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: prefix,
+        MaxKeys: 1000,
+        ContinuationToken: token,
+      }),
+    );
+    for (const obj of res.Contents ?? []) out.push(obj);
+    token = res.IsTruncated ? res.NextContinuationToken : undefined;
+    pages += 1;
+  } while (token && pages < maxPages);
+  return out;
+}
+
 /**
  * List a page of bucket objects, newest first. S3 ListObjectsV2 sorts only
- * lexicographically, so page 1 probes the month shards concurrently (see
- * `monthShardPrefixes`) plus a broad-prefix fallback for legacy keys and the
- * continuation token, then merges, de-dupes, sorts by lastModified DESC, and
- * truncates to the page size. Cursor pages walk the broad namespace in S3's
- * lexicographic key order (older objects first, NOT re-sorted by lastModified),
- * skipping the month shards page 1 already returned.
+ * lexicographically, so page 1 enumerates the newest month shard in full (see
+ * `monthShardPrefixes` / `listAllUnderPrefix`), walking back to older months
+ * only if it doesn't fill the page, plus a broad-prefix fallback for legacy
+ * keys and the continuation token; results are merged, de-duped, sorted by
+ * lastModified DESC, and truncated to the page size. Cursor pages walk the
+ * broad namespace in S3's lexicographic key order (older objects first, NOT
+ * re-sorted by lastModified), skipping the month shards page 1 already returned.
  */
 export async function listObjects(params: {
   ctx: FileConfigContext;
@@ -297,24 +343,39 @@ export async function listObjects(params: {
     );
   }
 
-  // Probe month shards concurrently — sequential round trips would each add ~1 RTT to an interactive open.
-  const monthResponses = await Promise.all(
-    monthShardPrefixesList.map((prefix) =>
-      client.send(
-        new ListObjectsV2Command({
-          Bucket: params.ctx.info.bucket,
-          Prefix: prefix,
-          MaxKeys: target,
-        }),
-      ),
-    ),
-  );
   const seen = new Map<string, ListedObject>();
-  for (const res of monthResponses) {
-    for (const obj of res.Contents ?? []) {
+  const absorb = (objs: RawS3Object[]) => {
+    for (const obj of objs) {
       if (!obj.Key || obj.Key.endsWith("/") || seen.has(obj.Key)) continue;
       seen.set(obj.Key, toListedObject(obj, params.ctx));
     }
+  };
+
+  // Newest month first; every key in it outranks any older month, so we only walk back if it doesn't fill the page.
+  const [newestMonth, ...olderMonths] = monthShardPrefixesList;
+  if (newestMonth) {
+    absorb(
+      await listAllUnderPrefix(
+        client,
+        params.ctx.info.bucket,
+        newestMonth,
+        MONTH_SHARD_MAX_PAGES,
+      ),
+    );
+  }
+  if (seen.size < target && olderMonths.length > 0) {
+    // Fan the remaining months out concurrently — we already know we need them.
+    const older = await Promise.all(
+      olderMonths.map((prefix) =>
+        listAllUnderPrefix(
+          client,
+          params.ctx.info.bucket,
+          prefix,
+          MONTH_SHARD_MAX_PAGES,
+        ),
+      ),
+    );
+    for (const objs of older) absorb(objs);
   }
 
   // Runs unconditionally to expose nextCursor and reach legacy/older keys not under the month shards.
@@ -337,7 +398,7 @@ export async function listObjects(params: {
     ? (broadRes.NextContinuationToken ?? null)
     : null;
 
-  // Concurrent probes over-fetch (up to `target` per shard), so keep only the newest page.
+  // Full-month enumeration over-fetches, so sort by recency and keep one page.
   const items = Array.from(seen.values())
     .sort(byLastModifiedDesc)
     .slice(0, target);
@@ -489,7 +550,7 @@ function toListedObject(
   };
 }
 
-function byLastModifiedDesc(a: ListedObject, b: ListedObject): number {
+export function byLastModifiedDesc(a: ListedObject, b: ListedObject): number {
   // Nulls sink to the bottom.
   if (!a.lastModified && !b.lastModified) return 0;
   if (!a.lastModified) return 1;

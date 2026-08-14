@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import {
   buildPublicUrl,
+  byLastModifiedDesc,
   isImageKey,
+  type ListedObject,
   matchScanPage,
   monthShardPrefixes,
   nextScanStep,
@@ -173,6 +175,41 @@ describe("monthShardPrefixes", () => {
     const key = buildObjectKey({ prefix: "uploads/", filename: "photo.png" });
     const [probe] = monthShardPrefixes("uploads/", new Date(), 1);
     expect(key.startsWith(probe!)).toBe(true);
+  });
+});
+
+describe("byLastModifiedDesc", () => {
+  const obj = (key: string, lastModified: string | null): ListedObject => ({
+    key,
+    size: 1,
+    lastModified,
+    publicUrl: `https://cdn/${key}`,
+  });
+
+  test("orders newest first regardless of key order", () => {
+    // A fresh upload with a lexicographically-late UUID must still sort first.
+    const items = [
+      obj("2026/08/aaa.png", "2026-08-01T00:00:00.000Z"),
+      obj("2026/08/eee.png", "2026-08-14T09:53:00.000Z"),
+      obj("2026/08/ccc.png", "2026-08-10T00:00:00.000Z"),
+    ];
+    expect(
+      items
+        .slice()
+        .sort(byLastModifiedDesc)
+        .map((i) => i.key),
+    ).toEqual(["2026/08/eee.png", "2026/08/ccc.png", "2026/08/aaa.png"]);
+  });
+
+  test("sinks null lastModified to the bottom", () => {
+    const items = [
+      obj("a", null),
+      obj("b", "2026-08-14T00:00:00.000Z"),
+      obj("c", null),
+    ];
+    const sorted = items.slice().sort(byLastModifiedDesc);
+    expect(sorted[0]?.key).toBe("b");
+    expect(sorted.slice(1).map((i) => i.lastModified)).toEqual([null, null]);
   });
 });
 
