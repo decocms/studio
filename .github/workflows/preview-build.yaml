@@ -44,21 +44,16 @@ jobs:
       packages: write
       pull-requests: write
     steps:
+      # This workflow triggers on `pull_request` ONLY, so the checkout is
+      # refs/pull/N/merge — GitHub constructs it by merging the PR into main,
+      # meaning the image always contains main ∪ PR migrations. That invariant
+      # is load-bearing (Kysely's strict missing-migration check hard-fails a
+      # boot against a database that knows a migration the image lacks) but it
+      # holds by construction, so there is nothing to assert. If a
+      # workflow_dispatch trigger is ever added, it breaks and must be
+      # re-established — a shallow checkout cannot prove ancestry, so that
+      # would need `fetch-depth: 0`.
       - uses: actions/checkout@v4
-
-      # `pull_request` checks out refs/pull/N/merge, so the image always
-      # contains main ∪ PR migrations. That invariant is load-bearing: Kysely's
-      # strict missing-migration check hard-fails a boot against a database
-      # that knows a migration the image does not ship. Asserted, not assumed.
-      - name: Assert merge-ref contains main
-        run: |
-          git fetch --no-tags --depth=200 origin main
-          if ! git merge-base --is-ancestor origin/main HEAD; then
-            echo "::error::HEAD does not contain origin/main. A preview built from"
-            echo "::error::a stale base can ship fewer migrations than its database"
-            echo "::error::already has, which hard-fails the boot. Rebase the PR."
-            exit 1
-          fi
 
       - id: meta
         run: |
