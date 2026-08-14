@@ -47,6 +47,15 @@ func htmlResponse(w http.ResponseWriter, status int, body string, extra map[stri
 	io.WriteString(w, body)
 }
 
+// A page navigation, as opposed to an asset/XHR fetch. Browsers ask for
+// `text/html` when loading a document or an iframe and `*/*` (or `image/*`,
+// …) for everything a page then pulls in — so this is what decides whether a
+// human is waiting behind the request and should see a page rather than a
+// proxy error.
+func acceptsHTML(r *http.Request) bool {
+	return strings.Contains(strings.ToLower(r.Header.Get("Accept")), "text/html")
+}
+
 func isConnError(err error) bool {
 	msg := err.Error()
 	for _, pat := range []string{
@@ -176,7 +185,11 @@ func (p *Handler) proxyError(w http.ResponseWriter, r *http.Request, port int, e
 	if p.deps.Log != nil {
 		p.deps.Log(fmt.Sprintf("proxy error %s %s port=%d %s", r.Method, r.URL.Path, port, msg))
 	}
-	if r.URL.Path == "/" && isConnError(err) {
+	// Any navigation, not just `/`: a preview URL shared with a deep path
+	// (`/2127?page=1`) is the normal way these links travel, and gating the
+	// starting page on the root path turned the dev server's boot window into a
+	// bare 502 for everyone who opened one.
+	if isConnError(err) && (r.URL.Path == "/" || acceptsHTML(r)) {
 		htmlResponse(w, 503, StartingHTML, map[string]string{"Retry-After": "1"})
 		return
 	}

@@ -9,6 +9,9 @@
  * 15 minutes after Studio warms it, forever.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const SCRIPT = new URL("./housekeeper-sweep.sh", import.meta.url).pathname;
 const TTL_MS = 15 * 60 * 1000;
@@ -107,5 +110,53 @@ describe("housekeeper probe_daemon", () => {
 
   it("reports a 5xx as a server error, not idle", async () => {
     expect(await probe("boom", 500)).toBe("__server_error__");
+  });
+});
+
+/**
+ * Run one of the script's functions with a stub `kubectl` first on PATH — the
+ * developer running this has a live kube context and renew_shutdown patches.
+ */
+async function runWithFakeKubectl(snippet: string): Promise<string> {
+  const bin = await mkdtemp(join(tmpdir(), "housekeeper-bin-"));
+  await Bun.write(`${bin}/kubectl`, '#!/bin/sh\necho "kubectl $*"\n');
+  await Bun.spawn(["chmod", "+x", `${bin}/kubectl`]).exited;
+  const proc = Bun.spawn(["sh", "-c", `. "$1"; ${snippet}`, "sh", SCRIPT], {
+    env: {
+      ...process.env,
+      PATH: `${bin}:${process.env.PATH}`,
+      HOUSEKEEPER_SOURCE_ONLY: "1",
+      NS: "test",
+      TTL_MS: String(TTL_MS),
+      PROBE_TIMEOUT_SEC: "5",
+      CLAIM_SELECTOR: "x=y",
+      POD_SELECTOR: "x=y",
+      RUN_ID: "test",
+    },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  return (await new Response(proc.stdout).text()).trim();
+}
+
+describe("housekeeper renew_shutdown", () => {
+  // `date -u -d @<epoch>` is a GNU extension the sweep's busybox image doesn't
+  // have, so the conversion is hand-rolled — which makes it worth proving.
+  it("converts epoch seconds to a UTC RFC-3339 stamp", async () => {
+    expect(await runWithFakeKubectl("iso_from_epoch 1776175716")).toBe(
+      new Date(1776175716 * 1000).toISOString().replace(/\.\d{3}Z$/, "Z"),
+    );
+  });
+
+  it("renews to now + TTL, not to a bad-timestamp no-op", async () => {
+    const out = await runWithFakeKubectl("renew_shutdown my-claim 1234");
+    expect(out).toContain("renew claim=my-claim idle_ms=1234");
+    expect(out).not.toContain("renew-skip");
+    const stamp = out.match(/shutdown_at=(\S+)/)?.[1];
+    expect(stamp).toBeDefined();
+    const deltaMs = new Date(stamp as string).getTime() - Date.now();
+    // Renewal is now + TTL; a couple of seconds of slack for process startup.
+    expect(deltaMs).toBeGreaterThan(TTL_MS - 5_000);
+    expect(deltaMs).toBeLessThanOrEqual(TTL_MS);
   });
 });

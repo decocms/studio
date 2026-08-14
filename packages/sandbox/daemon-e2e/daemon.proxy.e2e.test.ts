@@ -66,12 +66,24 @@ describe("daemon e2e: reverse proxy", () => {
     expect(await res.text()).toContain("Server is starting");
   });
 
-  it("dev port set but unreachable at a non-root path → 502 JSON", async () => {
+  it("dev port set but unreachable at a non-root asset request → 502 JSON", async () => {
     await startWithDeadPort();
     const res = await fetch(url(d!, "/api/thing"));
     expect(res.status).toBe(502);
     const body = (await res.json()) as { error: string };
     expect(body.error).toContain("proxy error");
+  });
+
+  it("dev port set but unreachable at a non-root navigation → 503 'Server is starting…'", async () => {
+    // Shared preview links carry a deep path. Before this, only `/` got the
+    // starting page and every other URL 502'd through the boot window.
+    await startWithDeadPort();
+    const res = await fetch(url(d!, "/2127?map=productClusterIds"), {
+      headers: { Accept: "text/html,application/xhtml+xml" },
+    });
+    expect(res.status).toBe(503);
+    expect(res.headers.get("retry-after")).toBe("1");
+    expect(await res.text()).toContain("Server is starting");
   });
 
   it("HTML upstream: injects bootstrap + strips XFO/CSP", async () => {

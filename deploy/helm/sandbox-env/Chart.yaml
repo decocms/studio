@@ -9,6 +9,12 @@ description: |
   releases coexist in the shared `agent-sandbox-system` namespace.
   Requires the sandbox-operator chart to already be installed.
 type: application
+# 0.16.0: the housekeeper now RENEWS a claim's shutdownTime (out to
+# idleTtlSeconds) whenever its daemon served traffic within
+# `housekeeper.renewActiveSeconds`. Studio only renews for its own SSE/run
+# clients, so a preview URL opened directly in a browser used to die
+# mid-session and 502 until it was reopened from Studio. Set
+# renewActiveSeconds: 0 for the old behaviour.
 # 0.14.6: opt-in `disruptionProtection.doNotDisrupt` (default off) — annotates
 # sandbox pods with Karpenter's `do-not-disrupt` so voluntary node
 # consolidation/drift never evicts a claimed sandbox mid-session (#5815). A
@@ -143,7 +149,7 @@ type: application
 # 0.8.0: org-fs sidecar (orgFs.*) — privileged rclone mounter + main-container
 # mounts. NOTE: the publish workflow skips existing versions, so this MUST
 # stay ahead of the latest published chart (0.7.5 at time of writing).
-version: 0.15.17
+version: 0.16.0
 # appVersion tracks the studio-sandbox image version (image.tag default).
 appVersion: "1.55.0"
 kubeVersion: ">=1.30.0-0"

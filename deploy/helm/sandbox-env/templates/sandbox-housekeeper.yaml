@@ -123,6 +123,8 @@ spec:
                   value: agent-sandbox-system
                 - name: TTL_MS
                   value: {{ mul .Values.housekeeper.idleTtlSeconds 1000 | quote }}
+                - name: RENEW_ACTIVE_MS
+                  value: {{ mul .Values.housekeeper.renewActiveSeconds 1000 | quote }}
                 - name: PROBE_TIMEOUT_SEC
                   value: {{ .Values.housekeeper.probeTimeoutSeconds | quote }}
                 - name: CLAIM_SELECTOR
