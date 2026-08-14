@@ -8,6 +8,7 @@ import {
   decofileWriteMutationKey,
   patchDecofile,
   setDecofileDraft,
+  throwResponseError,
 } from "./decofile-api";
 import { sandboxGitStatusQueryKey } from "../thread/github/sandbox-git-api";
 
@@ -66,12 +67,7 @@ export function useDeleteBlock({
           body: JSON.stringify({ path }),
         },
       );
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(
-          (body as { error?: string }).error ?? `Delete failed (${res.status})`,
-        );
-      }
+      if (!res.ok) return throwResponseError(res, "Delete");
       return res.json() as Promise<{ ok: true; existed: boolean }>;
     },
     onMutate: async ({ blockKey }) => {
