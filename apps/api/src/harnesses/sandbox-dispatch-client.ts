@@ -595,12 +595,12 @@ export async function pushSandboxEnv(
     );
   }
   if (!res.ok) {
-    // Hard failure, unlike the tool-catalog sync: without the credential the
-    // harness cannot reach a model at all, so proceeding wastes a pod boot and
-    // reports a confusing model error instead of this one.
-    throw new Error(
-      `failed to push model env to the sandbox (${res.status} ${res.statusText})`,
-    );
+    const summary = `failed to push model env to the sandbox (${res.status} ${res.statusText})`;
+    // 404/410/5xx is the pod, not the envelope — retriable, same split as dispatchToDaemon.
+    if (isUnreachableStatus(res.status)) {
+      throw new SandboxUnreachableError(summary);
+    }
+    throw new Error(summary);
   }
 }
 
