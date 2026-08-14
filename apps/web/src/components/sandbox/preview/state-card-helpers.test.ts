@@ -1,11 +1,5 @@
 import { test, expect } from "bun:test";
-import { activePhaseIndex, headlineFor } from "./state-card-helpers";
-
-test("headlineFor maps each kind to its headline", () => {
-  expect(headlineFor("starting")).toBe("Starting your sandbox");
-  expect(headlineFor("suspended")).toBe("Sandbox is paused");
-  expect(headlineFor("errored")).toBe("Couldn't start the sandbox");
-});
+import { activePhaseIndex } from "./state-card-helpers";
 
 test("activePhaseIndex returns the index of the current step", () => {
   expect(activePhaseIndex({ step: "provision", status: "doing" })).toBe(0);

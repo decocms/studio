@@ -644,6 +644,7 @@ export const sandbox = {
     "Escolha uma seção salva para editar, ou uma disponível para personalizar e salvar como global.",
   "sandbox.sectionsRightPane.selectSectionTitle":
     "Selecione uma seção para editar",
+  "sandbox.stateCard.erroredHeadline": "Não foi possível iniciar o sandbox",
   "sandbox.stateCard.githubConnectionMissingMessage":
     "A conexão do GitHub usada neste chat foi removida. Vincule o repositório novamente para iniciar o sandbox.",
   "sandbox.stateCard.linkRepoAgain": "Vincular repositório",
@@ -653,6 +654,7 @@ export const sandbox = {
   "sandbox.stateCard.resume": "Retomar",
   "sandbox.stateCard.resumeToContinue": "Retome para continuar.",
   "sandbox.stateCard.retry": "Tentar Novamente",
+  "sandbox.stateCard.suspendedHeadline": "O sandbox está pausado",
   "sandbox.submoduleCredentialsField.addSubmoduleCredential":
     "Adicionar credencial de submódulo",
   "sandbox.submoduleCredentialsField.cancel": "Cancelar",
