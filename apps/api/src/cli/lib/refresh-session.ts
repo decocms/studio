@@ -80,6 +80,14 @@ export async function refreshSession(
     );
   }
 
+  // Valid JSON (e.g. `null`) can still be a non-object — reject before property access.
+  if (typeof data !== "object" || data === null) {
+    throw new RefreshFailedError(
+      "transient",
+      "Token endpoint returned a non-object JSON body",
+    );
+  }
+
   if (typeof data.access_token !== "string" || !data.access_token) {
     throw new RefreshFailedError(
       "transient",
