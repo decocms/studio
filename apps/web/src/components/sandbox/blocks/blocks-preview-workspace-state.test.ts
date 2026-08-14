@@ -81,6 +81,23 @@ describe("blocksPreviewWorkspaceReducer", () => {
     });
   });
 
+  test("selecting a new target clears a pending SEO-edit intent", () => {
+    const editing = blocksPreviewWorkspaceReducer(
+      INITIAL_BLOCKS_PREVIEW_WORKSPACE,
+      {
+        type: "edit-seo",
+        target: { kind: "page", key: "pages-home", path: "/" },
+      },
+    );
+
+    const next = blocksPreviewWorkspaceReducer(editing, {
+      type: "select",
+      target: { kind: "page", key: "pages-about", path: "/about" },
+    });
+
+    expect(next.editSeoPageKey).toBeNull();
+  });
+
   test("records variant override params for the preview iframe", () => {
     const next = blocksPreviewWorkspaceReducer(
       INITIAL_BLOCKS_PREVIEW_WORKSPACE,

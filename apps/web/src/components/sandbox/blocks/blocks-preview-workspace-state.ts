@@ -35,9 +35,13 @@ export function blocksPreviewWorkspaceReducer(
 ): BlocksPreviewWorkspaceState {
   switch (action.type) {
     case "select":
-      // A new target's variant override is unknown until the editor emits it;
-      // drop the previous target's params so they don't bleed across pages.
-      return { ...state, target: action.target, variantOverride: null };
+      // Selecting away drops the stale variant override and SEO-edit intent.
+      return {
+        ...state,
+        target: action.target,
+        variantOverride: null,
+        editSeoPageKey: null,
+      };
     case "edit-seo":
       return {
         ...state,
