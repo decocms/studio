@@ -26,8 +26,9 @@ const cdConnectionId = (orgId: string) => `${orgId}_commerce-discovery`;
 const REPORT_TOOL = "get_my_diagnostic";
 const SITE_URL = "https://minha-loja.example";
 
-/** Cold-Vite first paint can take tens of seconds on a fresh sandbox. */
-const SHELL_TIMEOUT_MS = 60_000;
+/** Cold-Vite route compiles can take a minute+ on a loaded box; this spec
+ *  crosses three lazy routes (settings, shell, report app). */
+const SHELL_TIMEOUT_MS = 90_000;
 
 /**
  * The sidebar starts collapsed to its icon rail; open it so labels render.
@@ -36,13 +37,16 @@ const SHELL_TIMEOUT_MS = 60_000;
  */
 async function expandSidebar(page: Page, settled: string) {
   const trigger = page.getByRole("button", { name: /toggle sidebar/i }).first();
-  await trigger.waitFor({ state: "visible", timeout: SHELL_TIMEOUT_MS });
   const label = page
     .getByRole("button", { name: settled, exact: true })
     .first();
   // Retry rather than probing once: a single count() races the sidebar's first
-  // paint, and a mistimed click collapses an already-open sidebar.
+  // paint, and a mistimed click collapses an already-open sidebar. Later rounds
+  // reload — ORGANIZATION_SETTINGS_GET degrades to empty flags on a failed
+  // read, which renders the whole flag-off sidebar until the next fetch.
   for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await page.reload();
+    await trigger.waitFor({ state: "visible", timeout: SHELL_TIMEOUT_MS });
     if (await label.isVisible().catch(() => false)) return;
     await trigger.click();
     const shown = await label
@@ -112,7 +116,7 @@ test.describe("first-class navigation", () => {
   /** The expects below wait up to SHELL_TIMEOUT_MS, which is longer than
    *  Playwright's 30s default per-test timeout — without this the test-level
    *  timeout fires first and reports a misleading "element not found". */
-  test.describe.configure({ timeout: 120_000 });
+  test.describe.configure({ timeout: 240_000 });
 
   test("flag off keeps the chat list in the sidebar", async ({
     authedPage: { page, orgSlug },

@@ -28,7 +28,12 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@decocms/ui/components/sidebar.tsx";
-import { COMMERCE_DISCOVERY_REPORT_TOOL_NAME, useVirtualMCPs } from "@/sdk";
+import {
+  COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
+  getWellKnownDecopilotVirtualMCP,
+  useProjectContext,
+  useVirtualMCPs,
+} from "@/sdk";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { getActiveGithubRepo } from "@/lib/github-repo";
 import { useThreads } from "@/components/chat/store/hooks";
@@ -59,16 +64,44 @@ function useNavDestinations({
 } = {}): NavDestination[] {
   const t = useT();
   const navigate = useNavigate();
-  const search = useSearch({ strict: false }) as { main?: string | 0 };
+  const search = useSearch({ strict: false }) as {
+    main?: string | 0;
+    virtualmcpid?: string;
+  };
   const { diagnostic, connectionId } = useCommerceDiagnostic();
+  const { org } = useProjectContext();
+  const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
+  const { threads } = useThreads();
+  const { data: session } = authClient.useSession();
 
+  /**
+   * These destinations are org-level, so they belong to the Super Agent. From a
+   * coding agent's thread we must hand back to it — otherwise the panel would
+   * show e.g. the Report while the header still carried that agent's
+   * Preview / Publish controls.
+   */
   const open = (tabId: string) => {
     track("nav_destination_clicked", { destination: tabId });
     onNavigate?.();
+    const onOtherAgent =
+      !!search.virtualmcpid && search.virtualmcpid !== decopilotId;
+    if (!onOtherAgent) {
+      navigate({
+        to: ".",
+        search: (prev: Record<string, unknown>) => ({ ...prev, main: tabId }),
+        replace: true,
+      });
+      return;
+    }
+    const existing = findReusableNewChat(
+      threads,
+      decopilotId,
+      session?.user?.id,
+    );
     navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => ({ ...prev, main: tabId }),
-      replace: true,
+      to: "/$org/$taskId",
+      params: { org: org.slug, taskId: existing?.id ?? crypto.randomUUID() },
+      search: { virtualmcpid: decopilotId, main: tabId },
     });
   };
 
