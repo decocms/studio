@@ -198,23 +198,46 @@ export interface ListObjectsResult {
 }
 
 /**
- * S3 ListObjectsV2 only returns keys in lexicographic order — there's no
- * "filter / sort by lastModified" server-side. Our upload key format is
- * `<configured-prefix>/<yyyy>/<mm>/<uuid>-<filename>`, so to give the
- * picker a "recent first" feel we:
- *
- *   1. List under `<prefix><currentYear>/` first — every upload from this
- *      year is captured here, no matter what historical UUID-first keys
- *      live alongside.
- *   2. If we still have room in the page, list under `<prefix><prevYear>/`.
- *   3. Finally, list under the broad prefix as a fallback for legacy
- *      objects that don't follow our date sharding.
- *
- * Results are merged, de-duped by key, sorted by lastModified DESC, and
- * truncated to `maxKeys`. Cursor pagination is only used on the broad
- * fallback list — once the user pages past the "recent" buckets we
- * iterate the whole namespace lexicographically (the only thing S3
- * offers).
+ * How many month shards page 1 probes, newest first, before falling back to
+ * the broad lexicographic walk. Active buckets fill the page in the first one
+ * or two; sparse ones do a bounded handful of (usually fast/empty) probes.
+ */
+const MONTH_SHARD_PROBES = 6;
+
+/**
+ * Month-shard key prefixes to probe, newest first: `<bucketPrefix><yyyy>/<mm>/`
+ * for the current month walking back `count` months, crossing year boundaries
+ * (`2026/01/` -> `2025/12/`). Mirrors `buildObjectKey`'s UTC `yyyy/mm` shard
+ * (`upload-policy.ts`) so a fresh upload is fetched by its month's probe instead
+ * of being truncated behind older months in a year-wide lexicographic listing.
+ */
+export function monthShardPrefixes(
+  bucketPrefix: string,
+  now: Date,
+  count: number,
+): string[] {
+  const prefixes: string[] = [];
+  let year = now.getUTCFullYear();
+  let month = now.getUTCMonth() + 1; // 1-12
+  for (let i = 0; i < count; i++) {
+    const mm = String(month).padStart(2, "0");
+    prefixes.push(`${bucketPrefix}${year}/${mm}/`);
+    month -= 1;
+    if (month === 0) {
+      month = 12;
+      year -= 1;
+    }
+  }
+  return prefixes;
+}
+
+/**
+ * List a page of bucket objects, newest first. S3 ListObjectsV2 sorts only
+ * lexicographically, so page 1 probes month shards newest-first (see
+ * `monthShardPrefixes`) then a broad-prefix fallback for legacy keys and the
+ * continuation token; results are merged, de-duped, and sorted by lastModified
+ * DESC. Cursor pages walk the broad namespace lexicographically, still sorting
+ * each page newest-first and skipping the month shards page 1 already returned.
  */
 export async function listObjects(params: {
   ctx: FileConfigContext;
@@ -244,14 +267,11 @@ export async function listObjects(params: {
     });
   }
 
-  const now = new Date();
-  const currentYear = String(now.getUTCFullYear());
-  const prevYear = String(now.getUTCFullYear() - 1);
-
-  const yearShardPrefixes = [
-    `${bucketPrefix}${currentYear}/`,
-    `${bucketPrefix}${prevYear}/`,
-  ];
+  const monthShardPrefixesList = monthShardPrefixes(
+    bucketPrefix,
+    new Date(),
+    MONTH_SHARD_PROBES,
+  );
 
   // Subsequent pages walk the broad namespace via continuation token —
   // skip the date-shard probes (already returned on page 1) and filter
@@ -266,13 +286,17 @@ export async function listObjects(params: {
         ContinuationToken: params.cursor,
       }),
     );
-    return finalize(response, params.ctx, target, false, yearShardPrefixes);
+    return finalize(
+      response,
+      params.ctx,
+      target,
+      false,
+      monthShardPrefixesList,
+    );
   }
 
-  const probes = yearShardPrefixes;
-
   const seen = new Map<string, ListedObject>();
-  for (const prefix of probes) {
+  for (const prefix of monthShardPrefixesList) {
     if (seen.size >= target) break;
     const res = await client.send(
       new ListObjectsV2Command({
@@ -287,11 +311,7 @@ export async function listObjects(params: {
     }
   }
 
-  // Broad-prefix probe runs unconditionally — even when year shards
-  // already filled `target` — so we can capture nextCursor and let the
-  // user page into legacy objects that don't follow the yyyy/mm shard
-  // convention. Without this, an active bucket with ≥ target recent
-  // uploads would have its older objects unreachable from the picker.
+  // Runs unconditionally to expose nextCursor and reach legacy/older keys not under the month shards.
   const broadMaxKeys = Math.max(1, target - seen.size);
   const broadRes = await client.send(
     new ListObjectsV2Command({
@@ -303,9 +323,8 @@ export async function listObjects(params: {
   for (const obj of broadRes.Contents ?? []) {
     if (seen.size >= target) break;
     if (!obj.Key || obj.Key.endsWith("/") || seen.has(obj.Key)) continue;
-    // Year-shard keys were already pulled via dedicated probes; skip
-    // them here so we don't dupe items inside the same page response.
-    if (yearShardPrefixes.some((p) => obj.Key!.startsWith(p))) continue;
+    // Month-shard keys were already pulled via dedicated probes; skip to avoid duping.
+    if (monthShardPrefixesList.some((p) => obj.Key!.startsWith(p))) continue;
     seen.set(obj.Key, toListedObject(obj, params.ctx));
   }
   const nextCursor = broadRes.IsTruncated

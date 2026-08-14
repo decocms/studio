@@ -3,6 +3,7 @@ import {
   buildPublicUrl,
   isImageKey,
   matchScanPage,
+  monthShardPrefixes,
   nextScanStep,
   type ScanCandidate,
   stsCredentialProvider,
@@ -105,6 +106,38 @@ describe("isImageKey", () => {
     for (const key of ["a.pdf", "b.docx", "c.png.txt", "folder/", "noext"]) {
       expect(isImageKey(key)).toBe(false);
     }
+  });
+});
+
+describe("monthShardPrefixes", () => {
+  test("lists months newest-first, crossing the year boundary", () => {
+    // 2026-02 walking back 4 months -> Feb, Jan 2026, Dec, Nov 2025.
+    expect(
+      monthShardPrefixes("uploads/", new Date("2026-02-15T00:00:00Z"), 4),
+    ).toEqual([
+      "uploads/2026/02/",
+      "uploads/2026/01/",
+      "uploads/2025/12/",
+      "uploads/2025/11/",
+    ]);
+  });
+
+  test("zero-pads the month to match buildObjectKey's yyyy/mm shard", () => {
+    expect(monthShardPrefixes("", new Date("2026-08-13T18:44:00Z"), 1)).toEqual(
+      ["2026/08/"],
+    );
+  });
+
+  test("uses UTC (keys are UTC-stamped) to derive the month", () => {
+    expect(monthShardPrefixes("", new Date("2026-09-01T00:30:00Z"), 2)).toEqual(
+      ["2026/09/", "2026/08/"],
+    );
+  });
+
+  test("count of zero yields no probes", () => {
+    expect(
+      monthShardPrefixes("p/", new Date("2026-08-13T00:00:00Z"), 0),
+    ).toEqual([]);
   });
 });
 
