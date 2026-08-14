@@ -486,7 +486,7 @@ export async function* dispatchWithContinuation(args: {
       return;
     } catch (err) {
       if (args.aborted()) throw err;
-      stalled = progressed ? 1 : stalled + 1;
+      stalled = progressed ? 0 : stalled + 1;
       const infra =
         err instanceof SandboxUnreachableError
           ? ((await args

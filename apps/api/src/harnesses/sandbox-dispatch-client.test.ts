@@ -408,6 +408,30 @@ describe("dispatchWithContinuation", () => {
     ]);
   });
 
+  // Progress must reset the consecutive no-progress budget to zero, not one.
+  test("progress grants the full consecutive-failure budget again, not one less", async () => {
+    let attempts = 0;
+    const run = dispatchWithContinuation({
+      runId: "run_1",
+      resume: null,
+      aborted: () => false,
+      maxAttempts: 2,
+      dispatchOnce: () => {
+        attempts++;
+        if (attempts === 1) {
+          return dispatch(
+            [chunk("start"), chunk("text-delta")],
+            new SandboxUnreachableError("pod gone"),
+          )();
+        }
+        return dispatch([], new SandboxUnreachableError("pod gone again"))();
+      },
+    });
+    await expect(collect(run)).rejects.toThrow("pod gone again");
+    // attempt 1 progresses; attempts 2-3 spend the full maxAttempts budget again.
+    expect(attempts).toBe(3);
+  });
+
   test("the total ceiling stops a pod that dies after every chunk", async () => {
     let attempts = 0;
     const run = dispatchWithContinuation({
