@@ -9,6 +9,7 @@ import {
   decofileWriteMutationKey,
   patchDecofile,
   setDecofileDraft,
+  throwResponseError,
 } from "./decofile-api";
 import { sandboxGitStatusQueryKey } from "../thread/github/sandbox-git-api";
 import { KEYS } from "@/lib/query-keys";
@@ -79,12 +80,7 @@ export function useSaveBlock({
           body: JSON.stringify({ path, content }),
         },
       );
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(
-          (body as { error?: string }).error ?? `Write failed (${res.status})`,
-        );
-      }
+      if (!res.ok) return throwResponseError(res, "Write");
       return res.json();
     },
     onMutate: async ({ blockKey, data }) => {
