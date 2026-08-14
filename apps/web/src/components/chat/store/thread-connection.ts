@@ -1621,6 +1621,14 @@ function readTimestamp(m: UIMessage): number {
 
 let current: ThreadConnection | null = null;
 
+// A hot-replaced module instance starts with `current: null`, orphaning the old instance's live SSE reconnect loop — dispose it on HMR teardown.
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    current?.dispose();
+    current = null;
+  });
+}
+
 /** Idempotent: same key → same instance. Different key → dispose + reopen. */
 export function getOrOpenStream(
   orgSlug: string,
