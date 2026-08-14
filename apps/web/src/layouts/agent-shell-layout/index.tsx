@@ -372,6 +372,7 @@ function DesktopTaskWorkspace({
           sidePanel={layout.sidePanel}
           mainOpen={layout.mainOpen}
           toggleSidePanel={layout.toggleSidePanel}
+          toggleMain={layout.toggleMain}
           chatContent={<ActiveTaskBoundary />}
         />
       </Suspense>

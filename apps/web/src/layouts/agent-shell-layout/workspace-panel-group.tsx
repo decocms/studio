@@ -42,8 +42,10 @@ import {
   NewChatCrumb,
 } from "@/components/header/shell-breadcrumb";
 import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
+import { ThreadsMenu } from "@/components/chat/threads-menu";
+import { useNavV2 } from "@/hooks/use-organization-settings";
 import { SidePanel } from "./side-panel";
-import { ChatToggle } from "./toggle-buttons";
+import { ChatToggle, PanelCollapseToggle } from "./toggle-buttons";
 import { MessageCircle01 } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t";
 import {
@@ -127,6 +129,7 @@ export interface WorkspacePanelGroupProps extends WorkspaceVisibility {
   taskId: string;
   entity: VirtualMCPEntity;
   toggleSidePanel: (sidePanel: SidePanelKind) => void;
+  toggleMain: () => void;
   chatContent?: ReactNode;
 }
 
@@ -137,6 +140,7 @@ export function WorkspacePanelGroup({
   sidePanel,
   mainOpen,
   toggleSidePanel,
+  toggleMain,
   chatContent,
 }: WorkspacePanelGroupProps) {
   // Fast Preview projects are sandbox-less: the chat toggle and panel behave
@@ -173,8 +177,13 @@ export function WorkspacePanelGroup({
   // button (left), the new-chat action anchors to the right.
   const { state: sidebarState } = useSidebar();
   const sidebarCollapsed = sidebarState === "collapsed";
-  const agentCrumb = sidebarCollapsed ? <AgentSwitcherCrumb /> : null;
-  const newChatCrumb = sidebarCollapsed ? <NewChatCrumb /> : null;
+  /** The first-class navigation is single-teammate: no agent is named or picked
+   *  in the header. The thread list lives here instead of in the sidebar, so
+   *  the threads menu and new-chat action show whatever the sidebar's state. */
+  const navV2 = useNavV2();
+  const agentCrumb = sidebarCollapsed && !navV2 ? <AgentSwitcherCrumb /> : null;
+  const newChatCrumb = sidebarCollapsed || navV2 ? <NewChatCrumb /> : null;
+  const threadsMenu = navV2 ? <ThreadsMenu /> : null;
 
   const publishActions = <VirtualMcpHeaderInfo virtualMcp={entity} />;
 
@@ -198,12 +207,16 @@ export function WorkspacePanelGroup({
 
   const chatHeader = (
     <PanelHeader>
+      {threadsMenu}
       {agentCrumb}
-      <ChatToggle
-        sidePanel={sidePanel}
-        toggleSidePanel={toggleSidePanel}
-        disableActiveSidePanelToggle={!mainOpen}
-      />
+      {/* The collapse pair below already owns hide/show for both panels. */}
+      {!navV2 && (
+        <ChatToggle
+          sidePanel={sidePanel}
+          toggleSidePanel={toggleSidePanel}
+          disableActiveSidePanelToggle={!mainOpen}
+        />
+      )}
       {mainControlsInChat && (
         <MainControls
           virtualMcpId={virtualMcpId}
@@ -215,6 +228,16 @@ export function WorkspacePanelGroup({
         {mainControlsInChat && branchSelector}
         {mainControlsInChat && publishActions}
         {newChatCrumb}
+        {/* The main panel's own toggle lives in ITS header; it only relocates
+            here once that header is gone. */}
+        {navV2 && !mainOpen && (
+          <PanelCollapseToggle
+            side="right"
+            open={mainOpen}
+            disabled={!chatOpen}
+            onToggle={toggleMain}
+          />
+        )}
       </div>
     </PanelHeader>
   );
@@ -232,8 +255,20 @@ export function WorkspacePanelGroup({
           right actions on the far side are never pushed off-screen. */}
       <div className="flex min-w-0 shrink items-center gap-0.5 overflow-hidden">
         {!chatOpen && agentCrumb}
-        {!chatOpen && (
-          <ChatToggle sidePanel={sidePanel} toggleSidePanel={toggleSidePanel} />
+        {navV2 ? (
+          <PanelCollapseToggle
+            side="left"
+            open={chatOpen}
+            disabled={!mainOpen}
+            onToggle={() => toggleSidePanel("chat")}
+          />
+        ) : (
+          !chatOpen && (
+            <ChatToggle
+              sidePanel={sidePanel}
+              toggleSidePanel={toggleSidePanel}
+            />
+          )
         )}
         <MainControls
           virtualMcpId={virtualMcpId}
@@ -282,6 +317,14 @@ export function WorkspacePanelGroup({
         >
           <MainPanelHeaderEndSlot />
           {publishActions}
+          {navV2 && (
+            <PanelCollapseToggle
+              side="right"
+              open={mainOpen}
+              disabled={!chatOpen}
+              onToggle={toggleMain}
+            />
+          )}
         </div>
       </div>
     </PanelHeader>

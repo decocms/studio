@@ -42,7 +42,7 @@ import {
 } from "@/layouts/shell-controls";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { ShellRouteLoading } from "@/layouts/shell-route-loading";
-import { useReportsOnly } from "@/hooks/use-organization-settings";
+import { useNavV2, useReportsOnly } from "@/hooks/use-organization-settings";
 
 const SIDEBAR_OPEN_STORAGE_KEY = "sidebar.open";
 
@@ -57,6 +57,7 @@ export default function OrgShellLayout() {
   // heavier curation (no Customize / Automations / Settings) lives in the home
   // board and the tab bar, keyed off the same flag.
   const reportsOnly = useReportsOnly();
+  const navV2 = useNavV2();
   // Commerce onboarding hands off here: after site setup it lands on the org
   // home thread with `?connect=1`, which mounts the blocking connections modal
   // over the (blurred) org home until at least one data source is connected.
@@ -90,8 +91,9 @@ export default function OrgShellLayout() {
     <Toolbar.Header className="grid-cols-1 px-1">
       <div className="flex w-full min-w-0 items-center gap-1">
         <SidebarTriggerButton />
-        {/* No agent switcher for commerce (reports-only) orgs. */}
-        {!reportsOnly && (
+        {/* No agent switcher for commerce (reports-only) orgs, nor under the
+            single-teammate first-class navigation. */}
+        {!reportsOnly && !navV2 && (
           <div className="flex min-w-0 flex-1 items-center">
             <AgentSwitcherCrumb />
           </div>

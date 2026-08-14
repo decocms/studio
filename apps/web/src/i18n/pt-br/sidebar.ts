@@ -20,6 +20,10 @@ export const sidebar = {
   "sidebar.agentsSection.seeAllAgents": "Ver todos os agentes",
   "sidebar.agentsSection.selectAnExistingAgent":
     "Selecione um agente existente",
+  "sidebar.navDestinations.home": "Início",
+  "sidebar.navDestinations.library": "Biblioteca",
+  "sidebar.navDestinations.reports": "Relatórios",
+  "sidebar.navDestinations.tasks": "Tarefas",
   "sidebar.navigationMobile.closeSidebar": "Fechar barra lateral",
   "sidebar.showMoreButton.ariaLabel": "Mostrar mais tarefas",
   "sidebar.showMoreButton.loading": "Carregando…",

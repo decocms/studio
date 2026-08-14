@@ -438,6 +438,12 @@ export const settings = {
   "settings.orgBrandContext.thisBrand": "this brand",
   "settings.orgBrandContext.unsetAsDefault": "Unset as default",
   "settings.orgBrandContext.untitledBrand": "Untitled Brand",
+  "settings.navigation.title": "Navigation",
+  "settings.navigation.description":
+    "How this organization gets around Studio.",
+  "settings.navigation.navV2Title": "First-class navigation",
+  "settings.navigation.navV2Description":
+    "The sidebar lists destinations (Reports, Library, Tasks) instead of chats, and the chat list moves to the top of the chat panel. On by default for report organizations.",
   "settings.orgGeneral.organization": "Organization",
   "settings.mainAgent.title": "Main agent",
   "settings.mainAgent.description":
