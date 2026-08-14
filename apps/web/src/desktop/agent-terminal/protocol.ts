@@ -402,12 +402,22 @@ export function parseTerminalBinaryServerFrame(
   }
 }
 
+const FALLBACK_ROWS = 30;
+const FALLBACK_COLS = 100;
+
+function clampDimension(value: number, fallback: number, max: number): number {
+  return Number.isFinite(value)
+    ? Math.min(max, Math.max(2, Math.floor(value)))
+    : fallback;
+}
+
+/** Reject non-finite rows/cols (e.g. a resize fired before layout settles) so a NaN never reaches the wire, where JSON.stringify would silently turn it into `null`. */
 export function normalizeTerminalDimensions(
   dimensions: TerminalDimensions,
 ): TerminalDimensions {
   return {
-    rows: Math.min(500, Math.max(2, Math.floor(dimensions.rows))),
-    cols: Math.min(1_000, Math.max(2, Math.floor(dimensions.cols))),
+    rows: clampDimension(dimensions.rows, FALLBACK_ROWS, 500),
+    cols: clampDimension(dimensions.cols, FALLBACK_COLS, 1_000),
   };
 }
 
