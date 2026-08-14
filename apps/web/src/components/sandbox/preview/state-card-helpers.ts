@@ -1,16 +1,4 @@
 import { PHASE_ORDER, type PhaseProgress } from "./derive-phase-progress";
-import type { StateCardKind } from "./state-card-types";
-
-export function headlineFor(kind: StateCardKind): string {
-  switch (kind) {
-    case "starting":
-      return "Starting your sandbox";
-    case "suspended":
-      return "Sandbox is paused";
-    case "errored":
-      return "Couldn't start the sandbox";
-  }
-}
 
 /** The card index (0..3) the booting visual should show as active. */
 export function activePhaseIndex(progress: PhaseProgress): 0 | 1 | 2 | 3 {
