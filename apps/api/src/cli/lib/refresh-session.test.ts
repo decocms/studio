@@ -69,6 +69,47 @@ describe("refreshSession", () => {
     expect(result.refreshToken).toBe("rt_xyz");
   });
 
+  it("ignores a malformed expires_in and keeps the previous expiresAt", async () => {
+    const fetchMock = mock(
+      async () =>
+        new Response(
+          JSON.stringify({
+            access_token: "new_at",
+            expires_in: "not-a-number",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+
+    const session = makeSession({ expiresAt: 1_234 });
+    const result = await refreshSession(
+      session,
+      fetchMock as unknown as typeof fetch,
+      () => FIXED_NOW,
+    );
+
+    expect(result.expiresAt).toBe(1_234);
+  });
+
+  it("ignores a negative expires_in and keeps the previous expiresAt", async () => {
+    const fetchMock = mock(
+      async () =>
+        new Response(
+          JSON.stringify({ access_token: "new_at", expires_in: -10 }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+
+    const session = makeSession({ expiresAt: 1_234 });
+    const result = await refreshSession(
+      session,
+      fetchMock as unknown as typeof fetch,
+      () => FIXED_NOW,
+    );
+
+    expect(result.expiresAt).toBe(1_234);
+  });
+
   it("throws RefreshFailedError(invalid_grant) on 400", async () => {
     const fetchMock = mock(
       async () => new Response("invalid_grant", { status: 400 }),
