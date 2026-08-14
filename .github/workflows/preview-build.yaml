@@ -196,5 +196,6 @@ jobs:
 
             </details>
 
-            Remove the `preview` label to tear this down now. Previews expire 72h
-            after the last push.
+            Remove the `preview` label to tear this down now. Previews expire
+            **48h after their last deploy** — push, or re-add the label, to
+            reset the clock.

@@ -30,8 +30,13 @@ bun run dev            # migrations + web app + API
 Add the **`preview`** label to a PR and a throwaway Studio is deployed at
 `https://pr-<n>.preview.studio.decocms.com`. A bot comment carries the link and
 updates itself as the build progresses; expect ~10 minutes on a fresh preview.
-The database is empty, so sign up with any email and password. Removing the
-label (or closing the PR) destroys the namespace, the database and the bucket.
+Each preview runs its own Postgres, so the database is empty — sign up with any
+email and password.
+
+Previews are **short-lived on purpose**: they expire 48h after their last
+deploy, and removing the label (or closing the PR) tears one down immediately.
+Pushing to the PR, or re-adding the label, resets the clock. Nothing in a
+preview survives, so never put anything you need in one.
 
 Previews deliberately do **not** cover hosted agent sandboxes, OAuth sign-in,
 billing, monitoring, or multi-pod behaviour — a green preview says nothing

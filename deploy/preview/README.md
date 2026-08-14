@@ -19,8 +19,9 @@ designer, a PM, another engineer — click a link instead of cloning the monorep
 Access is gated at the Gateway on `decocms` GitHub org membership, so the link
 is useless to anyone outside the org.
 
-Remove the label to tear a preview down immediately. Previews also expire 72h
-after the last push.
+Remove the label to tear a preview down immediately. Previews also expire **48h
+after their last deploy** — pushing to the PR, or re-adding the label, resets
+the clock.
 
 ## What does not work, and why
 
@@ -58,6 +59,19 @@ PR labelled `preview`
 
             Deleting the Application deletes the namespace, and the database
             goes with it — there is no teardown step to fail.
+
+`.github/workflows/preview-ttl.yaml` (every 2h) removes the `preview` label from
+PRs whose preview has not been redeployed in 48h, which makes the generator drop
+the Application on its next poll.
+
+It removes the **label**, not the Application: a directly-deleted Application is
+regenerated within ~60s, because the generator's source of truth is the GitHub
+API rather than the cluster. Age is measured from the sticky preview comment,
+which the build workflow rewrites on every successful deploy — the PR's
+`updatedAt` moves on any comment, and the head-commit date would instantly expire
+a months-old PR someone labelled a minute ago to review. A preview whose comment
+is missing is never reaped, on the same never-reap-on-ambiguity rule the image GC
+follows.
 ```
 
 Both halves check the label independently, so neither alone can create an
