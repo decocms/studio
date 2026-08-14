@@ -133,7 +133,7 @@ export const automations = {
   "automations.automationListRow.deleteTitle": "Deletar automação?",
   "automations.automationListRow.nextRun": "Próxima execução {date}",
   "automations.automationListRow.noTriggers": "Nenhum gatilho configurado",
-  "automations.automationListRow.triggers": "{count} gatilho{plural}",
+  "automations.automationListRow.triggers": "{count} gatilho(s)",
   "automations.automationRuns.costHeader": "Custo",
   "automations.automationRuns.costTitle": "Custo",
   "automations.automationRuns.failed": "falhadas",
