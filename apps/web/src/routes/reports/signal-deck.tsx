@@ -931,7 +931,7 @@ export default function SignalDeck({
                   </button>
                   <span
                     className={cn(
-                      "absolute bottom-full left-0 mb-3 w-72 max-w-[calc(100vw-2rem)] rounded-xl p-4 text-sm leading-relaxed shadow-sm transition-opacity duration-200 group-hover:opacity-100",
+                      "absolute bottom-full left-0 mb-3 w-72 max-w-[calc(100vw-2rem)] rounded-xl p-4 text-sm leading-relaxed shadow-sm transition-opacity duration-200",
                       methoOpen
                         ? "opacity-100"
                         : "pointer-events-none opacity-0",
