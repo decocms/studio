@@ -110,6 +110,28 @@ describe("refreshSession", () => {
     expect(result.expiresAt).toBe(1_234);
   });
 
+  it("keeps the previous refresh token when the server returns a non-string one", async () => {
+    const fetchMock = mock(
+      async () =>
+        new Response(
+          JSON.stringify({
+            access_token: "new_at",
+            refresh_token: 12345,
+            expires_in: 3600,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+
+    const result = await refreshSession(
+      makeSession(),
+      fetchMock as unknown as typeof fetch,
+      () => FIXED_NOW,
+    );
+
+    expect(result.refreshToken).toBe("rt_xyz");
+  });
+
   it("throws RefreshFailedError(invalid_grant) on 400", async () => {
     const fetchMock = mock(
       async () => new Response("invalid_grant", { status: 400 }),

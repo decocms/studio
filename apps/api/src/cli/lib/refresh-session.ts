@@ -11,9 +11,9 @@ export class RefreshFailedError extends Error {
 }
 
 interface TokenResponse {
-  access_token: string;
-  refresh_token?: string;
-  expires_in?: number;
+  access_token: unknown;
+  refresh_token?: unknown;
+  expires_in?: unknown;
   token_type?: string;
 }
 
@@ -69,7 +69,7 @@ export async function refreshSession(
   }
 
   const data = (await res.json()) as TokenResponse;
-  if (typeof data.access_token !== "string") {
+  if (typeof data.access_token !== "string" || !data.access_token) {
     throw new RefreshFailedError(
       "transient",
       "Token endpoint returned no access_token",
@@ -83,10 +83,16 @@ export async function refreshSession(
       ? Math.floor(now() / 1000) + parsedExpiresIn
       : session.expiresAt;
 
+  // refresh_token is untrusted server input — reject a non-string value.
+  const refreshToken =
+    typeof data.refresh_token === "string" && data.refresh_token
+      ? data.refresh_token
+      : session.refreshToken;
+
   return {
     ...session,
     accessToken: data.access_token,
-    refreshToken: data.refresh_token ?? session.refreshToken,
+    refreshToken,
     expiresAt,
   };
 }
