@@ -1,0 +1,205 @@
+name: Preview build
+
+# Builds the two images for a per-PR preview environment and posts (or edits)
+# the sticky PR comment carrying the URL.
+#
+# Deliberately a separate workflow rather than a workflow_call refactor of
+# release-studio.yaml: that file is release-consistency logic (npm version
+# probing, GHCR existence checks, provenance, the deco-apps-cd dispatch gate,
+# the docs webhook), and parameterising it would thread ~8 booleans through
+# every `if:` in the PRODUCTION release path. The genuinely shared surface is
+# one command (`bun run build:studio`) and two Dockerfiles, already reusable
+# as-is — so previews cannot destabilise shipping.
+#
+# What deploys the images is Argo CD, in decocms/deco-apps-cd: an ApplicationSet
+# with a GitHub PR generator, also gated on the `preview` label. Nothing here
+# holds a cluster credential.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+concurrency:
+  group: preview-build-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  # Separate GHCR packages from the release ones, so the preview GC can be
+  # aggressive with zero chance of deleting a release tag.
+  IMAGE_NAME: ${{ github.repository }}/studio-preview
+  NGINX_IMAGE_NAME: ${{ github.repository }}/studio-nginx-preview
+  PREVIEW_DOMAIN: preview.studio.decocms.com
+
+jobs:
+  build:
+    name: Build preview images
+    # Opt-in. `labeled` is in the trigger list so adding the label to an
+    # already-open PR starts a build; the ApplicationSet enforces the same
+    # label independently, so neither half alone can create an orphan.
+    if: contains(github.event.pull_request.labels.*.name, 'preview')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # `pull_request` checks out refs/pull/N/merge, so the image always
+      # contains main ∪ PR migrations. That invariant is load-bearing: Kysely's
+      # strict missing-migration check hard-fails a boot against a database
+      # that knows a migration the image does not ship. Asserted, not assumed.
+      - name: Assert merge-ref contains main
+        run: |
+          git fetch --no-tags --depth=200 origin main
+          if ! git merge-base --is-ancestor origin/main HEAD; then
+            echo "::error::HEAD does not contain origin/main. A preview built from"
+            echo "::error::a stale base can ship fewer migrations than its database"
+            echo "::error::already has, which hard-fails the boot. Rebase the PR."
+            exit 1
+          fi
+
+      - id: meta
+        run: |
+          echo "tag=pr-${{ github.event.pull_request.number }}-$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+          echo "host=pr-${{ github.event.pull_request.number }}.${PREVIEW_DOMAIN}" >> "$GITHUB_OUTPUT"
+
+      # The hidden marker is what makes this comment sticky: find it first, then
+      # edit in place. Without the lookup every push would append a new comment.
+      - name: Find existing preview comment
+        id: find-comment
+        uses: peter-evans/find-comment@v3
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: github-actions[bot]
+          body-includes: <!-- studio-preview -->
+
+      # Posted before the build so a reviewer sees "building" at t+15s rather
+      # than nothing for seven minutes. Edited in place when the images land.
+      - name: Comment (building)
+        uses: peter-evans/create-or-update-comment@v4
+        continue-on-error: true
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          edit-mode: replace
+          body: |
+            <!-- studio-preview -->
+            🔨 **Building preview** for `${{ steps.meta.outputs.tag }}`…
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Setup Bun and install dependencies
+        uses: ./.github/actions/setup-bun
+
+      # No sourcemaps (nothing un-minifies preview stacks), no npm publish, no
+      # provenance, no tarball smoke test. Same `build:studio` and same
+      # `bun add /tmp/decocms.tgz` install as a release, so preview packaging
+      # cannot drift from production packaging.
+      - name: Build combined Studio distribution
+        run: bun run build:studio
+        env:
+          BUILD_SOURCEMAPS: "0"
+
+      - name: Strip sourcemaps and pack
+        run: |
+          find apps/web/dist apps/api/dist -name '*.map' -delete 2>/dev/null || true
+          cd apps/api && npm pack
+
+      - name: Stage the tarball for both build contexts
+        run: |
+          mkdir -p docker-context
+          mv apps/api/decocms-*.tgz docker-context/decocms.tgz
+          # apps/web/Dockerfile builds from the repo root because it also COPYs
+          # deploy/helm/studio/files/api-nginx.conf.
+          cp docker-context/decocms.tgz decocms.tgz
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v3
+
+      # amd64 only — the preview cluster is amd64, and the release workflow's
+      # own comments record that emulated arm64 costs ~64s vs ~13s native for
+      # the tarball-install layer. `cache-from` also reads the release scopes so
+      # the apt / useradd / duckdb layers are hits on a cold preview.
+      - name: Build and push API image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./docker-context
+          file: ./apps/api/Dockerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}
+          cache-from: |
+            type=gha,scope=studio-preview-amd64
+            type=gha,scope=studio-api-amd64
+          cache-to: type=gha,mode=max,scope=studio-preview-amd64
+
+      - name: Build and push nginx image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./apps/web/Dockerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: ${{ env.REGISTRY }}/${{ env.NGINX_IMAGE_NAME }}:${{ steps.meta.outputs.tag }}
+          cache-from: |
+            type=gha,scope=studio-preview-web-amd64
+            type=gha,scope=studio-web-amd64
+          cache-to: type=gha,mode=max,scope=studio-preview-web-amd64
+
+      # Re-find: on the first run the "building" step created the comment, so
+      # the id from before the build is empty.
+      - name: Re-find preview comment
+        id: find-comment-ready
+        uses: peter-evans/find-comment@v3
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: github-actions[bot]
+          body-includes: <!-- studio-preview -->
+
+      - name: Comment (ready)
+        uses: peter-evans/create-or-update-comment@v4
+        continue-on-error: true
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-id: ${{ steps.find-comment-ready.outputs.comment-id }}
+          edit-mode: replace
+          body: |
+            <!-- studio-preview -->
+            ### 🔍 Preview: https://${{ steps.meta.outputs.host }}
+
+            Built from `${{ steps.meta.outputs.tag }}`. Argo CD picks the image up
+            within ~60s; the first sync also creates and migrates the database, so
+            allow another minute or two on a brand-new preview.
+
+            **Sign in:** the database is empty and yours — sign up with any email
+            and password. It is thrown away when this PR closes.
+
+            <details><summary>What does <b>not</b> work in a preview</summary>
+
+            - **Agent tool execution against a hosted sandbox** — previews run
+              `STUDIO_SANDBOX_PROVIDER=user-desktop` with no daemon attached, so
+              dispatch returns `409 link_offline`. Sandbox previews and the
+              sandbox lifecycle UI are equally out.
+            - **AI features** until you add your own provider key in org settings.
+              Previews ship no key, so preview LLM spend is zero by construction.
+            - **Google / GitHub sign-in** — OAuth callbacks cannot be registered
+              for a per-PR hostname. The buttons are hidden.
+            - **Monitoring dashboard** (no ClickHouse), **billing** (no Stripe),
+              **outbound email** (no mail provider).
+            - **Multi-pod behaviour** — a preview is one pod. Do not conclude
+              "it worked in preview" about a distributed-systems change; that is
+              what `tests/multi-pod/` is for.
+
+            </details>
+
+            Remove the `preview` label to tear this down now. Previews expire 72h
+            after the last push.

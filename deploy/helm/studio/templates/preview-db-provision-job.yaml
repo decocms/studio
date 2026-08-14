@@ -1,0 +1,90 @@
+{{- if .Values.preview.enabled }}
+{{- /*
+PreSync hook (weight -10): creates the per-PR database and bucket before
+anything else in the sync runs.
+
+An Argo hook rather than an initContainer because an initContainer runs once
+per pod (so it re-races on scale-up) and has no counterpart on delete. The
+PostDelete teardown Job is the other half of this pair.
+
+Both steps are idempotent: a resync of an existing preview is a no-op.
+*/ -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "chart-deco-studio.fullname" . }}-preview-provision
+  labels:
+    {{- include "chart-deco-studio.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        {{- include "chart-deco-studio.podLabels" . | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.preview.objectStorage.manageBucket }}
+      initContainers:
+        - name: create-bucket
+          image: "{{ .Values.preview.mcImage.repository }}:{{ .Values.preview.mcImage.tag }}"
+          imagePullPolicy: {{ .Values.preview.mcImage.pullPolicy }}
+          env:
+            - name: S3_ENDPOINT
+              value: {{ .Values.preview.objectStorage.endpoint | quote }}
+            - name: ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.preview.objectStorage.credentialsSecret.name }}
+                  key: {{ .Values.preview.objectStorage.credentialsSecret.accessKeyIdKey }}
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.preview.objectStorage.credentialsSecret.name }}
+                  key: {{ .Values.preview.objectStorage.credentialsSecret.secretAccessKeyKey }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              mc alias set preview "$S3_ENDPOINT" "$ACCESS_KEY" "$SECRET_KEY"
+              mc mb --ignore-existing "preview/{{ include "chart-deco-studio.previewBucket" . }}"
+          resources:
+            {{- toYaml .Values.preview.jobResources | nindent 12 }}
+      {{- end }}
+      containers:
+        - name: create-database
+          image: "{{ .Values.preview.postgresImage.repository }}:{{ .Values.preview.postgresImage.tag }}"
+          imagePullPolicy: {{ .Values.preview.postgresImage.pullPolicy }}
+          env:
+            - name: ADMIN_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.preview.dbAdminSecret.name }}
+                  key: {{ .Values.preview.dbAdminSecret.key }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              # CREATE DATABASE cannot run inside a transaction or a DO block,
+              # so \gexec is the only idempotent form.
+              psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -t <<'SQL'
+              SELECT 'CREATE DATABASE "{{ include "chart-deco-studio.previewDbName" . }}"'
+                WHERE NOT EXISTS (
+                  SELECT 1 FROM pg_database
+                   WHERE datname = '{{ include "chart-deco-studio.previewDbName" . }}'
+                )\gexec
+              SQL
+              echo "database {{ include "chart-deco-studio.previewDbName" . }} ready"
+          resources:
+            {{- toYaml .Values.preview.jobResources | nindent 12 }}
+{{- end }}

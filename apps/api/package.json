@@ -25,9 +25,11 @@
     "build:server": "bun run scripts/bundle-server-script.ts --dist ./dist/server",
     "generate:tool-contracts": "bun run scripts/generate-tool-contracts.ts",
     "db:migrate": "bun run ./dist/server/migrate.js",
+    "db:migrate:dbos": "bun run ./dist/server/migrate-dbos.js",
     "check": "tsc --noEmit",
     "start": "bun run ./dist/server/server.js",
     "migrate": "bun run src/database/migrate.ts",
+    "migrate:dbos": "bun run src/database/migrate-dbos.ts",
     "test": "bun test src",
     "better-auth:migrate": "bunx --bun @better-auth/cli migrate -y --config src/auth/index.ts",
     "prepublishOnly": "bun run --cwd=../.. build:studio"

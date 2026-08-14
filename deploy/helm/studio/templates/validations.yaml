@@ -8,3 +8,4 @@ This file only runs chart-level validations and renders no resources.
 {{- include "chart-deco-studio.validateDispatchRole" . -}}
 {{- include "chart-deco-studio.validateClickhouse" . -}}
 {{- include "chart-deco-studio.validateIngress" . -}}
+{{- include "chart-deco-studio.validatePreview" . -}}

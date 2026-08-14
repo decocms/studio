@@ -293,6 +293,55 @@ at render time instead.
 {{- end }}
 
 {{/*
+Per-PR database name. Postgres identifier, so the numeric PR number is prefixed
+rather than used bare.
+*/}}
+{{- define "chart-deco-studio.previewDbName" -}}
+{{- printf "pr_%s" (toString .Values.preview.prNumber) -}}
+{{- end }}
+
+{{/*
+Per-PR bucket name. Explicit override wins; otherwise derived from the PR number.
+*/}}
+{{- define "chart-deco-studio.previewBucket" -}}
+{{- if .Values.preview.objectStorage.bucket -}}
+{{- .Values.preview.objectStorage.bucket | trim -}}
+{{- else -}}
+{{- printf "preview-pr-%s" (toString .Values.preview.prNumber) -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Validates per-PR preview releases. Every failure here is something that would
+otherwise render a healthy-looking object that silently does nothing: an
+HTTPRoute with no hostname matches no traffic, a pod without --skip-migrations
+races the PreSync migration Job, and a provisioner Job without admin
+credentials cannot create the database the pods are about to connect to.
+*/}}
+{{- define "chart-deco-studio.validatePreview" -}}
+{{- if .Values.preview.enabled }}
+{{- if not .Values.preview.host }}
+{{- fail "chart-deco-studio: preview.host is required when preview.enabled=true" -}}
+{{- end }}
+{{- if not .Values.preview.prNumber }}
+{{- fail "chart-deco-studio: preview.prNumber is required when preview.enabled=true — it names the per-PR database and bucket" -}}
+{{- end }}
+{{- if .Values.ingress.enabled }}
+{{- fail "chart-deco-studio: preview.enabled and ingress.enabled are mutually exclusive — previews route through Gateway API (HTTPRoute), not Ingress" -}}
+{{- end }}
+{{- if not .Values.preview.gateway.name }}
+{{- fail "chart-deco-studio: preview.gateway.name is required when preview.enabled=true" -}}
+{{- end }}
+{{- if not .Values.preview.dbAdminSecret.name }}
+{{- fail "chart-deco-studio: preview.dbAdminSecret.name is required when preview.enabled=true — the provisioner Job needs admin credentials to CREATE/DROP the per-PR database" -}}
+{{- end }}
+{{- if not (has "--skip-migrations" (.Values.image.command | default list)) }}
+{{- fail "chart-deco-studio: preview.enabled=true requires --skip-migrations in image.command; the PreSync Job is the single migration writer and neither the API nor the worker containers (which share image.command) may race it" -}}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
 Validates public NATS tunnel cluster-creds mount configuration.
 */}}
 {{- define "chart-deco-studio.validateNatsTunnel" -}}

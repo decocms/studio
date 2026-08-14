@@ -25,6 +25,19 @@ bun run dev            # migrations + web app + API
   what changed, how to test it, and any migration notes.
 - Keep PRs focused. Stack dependent PRs rather than bundling unrelated changes.
 
+### Preview environments
+
+Add the **`preview`** label to a PR and a throwaway Studio is deployed at
+`https://pr-<n>.preview.studio.decocms.com`. A bot comment carries the link and
+updates itself as the build progresses; expect ~10 minutes on a fresh preview.
+The database is empty, so sign up with any email and password. Removing the
+label (or closing the PR) destroys the namespace, the database and the bucket.
+
+Previews deliberately do **not** cover hosted agent sandboxes, OAuth sign-in,
+billing, monitoring, or multi-pod behaviour — a green preview says nothing
+about any of those. See [`deploy/preview/README.md`](./deploy/preview/README.md)
+for the full list and for troubleshooting.
+
 ## The rules that bite hardest
 
 ### 1. Tools go through `StudioContext`

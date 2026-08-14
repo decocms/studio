@@ -52,6 +52,74 @@ ingress:
   #      - studio.example.com
   #    secretName: studio-tls
 
+# Per-PR preview releases. Off by default and rendering nothing when disabled,
+# so existing releases are unaffected.
+#
+# A preview is a throwaway environment for one pull request: its own namespace,
+# its own database, its own bucket, all created on sync and destroyed on delete.
+# Enabling this turns on three Argo sync-hook Jobs (provision → migrate →
+# teardown) and an HTTPRoute; it does NOT change the pod topology, which stays
+# identical to production on purpose so previews exercise the same
+# nginx → API serving path.
+#
+# Pods MUST run with --skip-migrations (image.command) when this is on: the
+# PreSync Job is the single migration writer. See templates/_helpers.tpl
+# validatePreview, which fails the render otherwise.
+preview:
+  enabled: false
+  # PR number. Names the database (pr_<n>) and the bucket (preview-pr-<n>).
+  prNumber: ""
+  # Exact public origin, e.g. pr-42.preview.studio.decocms.com. Must match
+  # BASE_URL/BETTER_AUTH_URL: Better Auth's trustedOrigins is a single exact
+  # origin with no wildcard support, so a mismatch breaks login with a
+  # CSRF-shaped error rather than anything legible.
+  host: ""
+  # The shared wildcard Gateway the per-PR HTTPRoute attaches to.
+  # NOTE: the Gateway's allowedRoutes selector matches on NAMESPACE labels, so
+  # whatever creates the namespace must label it (Argo: managedNamespaceMetadata).
+  # Without that the HTTPRoute attaches to nothing, silently.
+  gateway:
+    name: ""
+    namespace: istio-gateways
+    sectionName: https
+  # Admin Postgres credentials for the provision/teardown Jobs. This is NOT the
+  # app's DATABASE_URL — it needs CREATE/DROP DATABASE, so it points at the
+  # shared preview Postgres server (e.g. .../postgres).
+  dbAdminSecret:
+    name: ""
+    key: admin-url
+  # Shared object storage for bucket-per-PR provisioning. Keys are scoped by org
+  # id with no global prefix env, so every preview needs its own bucket rather
+  # than a shared bucket with a prefix.
+  objectStorage:
+    # Set false to skip bucket create/delete (e.g. storage managed elsewhere).
+    manageBucket: true
+    # Bucket name. Empty → preview-pr-<prNumber>.
+    bucket: ""
+    endpoint: ""
+    credentialsSecret:
+      name: ""
+      accessKeyIdKey: access-key-id
+      secretAccessKeyKey: secret-access-key
+  # Stock images for the hook Jobs — psql for the database, mc for the bucket.
+  # Kept as two containers rather than one custom image so there is no extra
+  # artifact to build, sign and release just for previews.
+  postgresImage:
+    repository: postgres
+    tag: "16-alpine"
+    pullPolicy: IfNotPresent
+  mcImage:
+    repository: minio/mc
+    tag: RELEASE.2024-11-21T17-21-54Z
+    pullPolicy: IfNotPresent
+  # Resources for the short-lived hook Jobs.
+  jobResources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      memory: "256Mi"
+
 # ServiceAccount for the API and worker pods. Undocumented until now, though the
 # templates have always honoured it — and the sandbox layer depends on it: the
 # sandbox-env chart grants claim/port-forward RBAC to a NAMED service account,

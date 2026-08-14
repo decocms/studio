@@ -156,3 +156,109 @@ jobs:
             --set database.url=postgresql://ci:ci@postgres.example.com:5432/studio \
             -f deploy/helm/studio/examples/values-clickhouse.yaml \
             > /dev/null
+
+      # values-preview.yaml is consumed by the Argo ApplicationSet in
+      # decocms/deco-apps-cd, so nothing in THIS repo would otherwise render it
+      # and it would rot silently. Assert the properties previews depend on,
+      # not just that it renders.
+      - name: Render (per-PR preview)
+        run: |
+          set -euo pipefail
+          helm template studio-pr-42 deploy/helm/studio \
+            -f deploy/helm/studio/values-preview.yaml \
+            --set preview.prNumber=42 \
+            --set preview.host=pr-42.preview.studio.decocms.com \
+            --set image.tag=pr-42-abc1234 \
+            --set nginx.image.tag=pr-42-abc1234 \
+            --set database.url=postgresql://ci:ci@pg.preview.example.com:5432/pr_42 \
+            --api-versions gateway.networking.k8s.io/v1 \
+            > /tmp/preview.yaml
+
+          fail() { echo "::error::$1"; exit 1; }
+
+          grep -q 'kind: HTTPRoute' /tmp/preview.yaml \
+            || fail "preview render has no HTTPRoute — the preview would be unreachable"
+          grep -q 'pr-42.preview.studio.decocms.com' /tmp/preview.yaml \
+            || fail "preview HTTPRoute is missing its hostname"
+
+          for job in provision migrate teardown; do
+            grep -q "studio-pr-42-preview-${job}" /tmp/preview.yaml \
+              || fail "preview render is missing the ${job} Job"
+          done
+          grep -q 'argocd.argoproj.io/hook: PostDelete' /tmp/preview.yaml \
+            || fail "teardown Job is not a PostDelete hook — databases would leak on PR close"
+
+          # Every studio container (api-0, api-1, worker) must skip migrations:
+          # the PreSync Job is the single writer. Three, not two.
+          count=$(grep -c -- '--skip-migrations' /tmp/preview.yaml)
+          [ "$count" -eq 3 ] \
+            || fail "expected 3 containers with --skip-migrations, found ${count}"
+
+          grep -q 'DATABASE_POOL_MAX: "5"' /tmp/preview.yaml \
+            || fail "DATABASE_POOL_MAX is not 5 — N previews would exhaust the shared Postgres"
+
+          # PVC finalizers are the most common cause of a namespace that never
+          # finishes deleting.
+          if grep -qE '^kind: PersistentVolumeClaim' /tmp/preview.yaml; then
+            fail "preview render contains a PersistentVolumeClaim"
+          fi
+
+          # Shell scripts embedded in the hook Jobs — a bad heredoc indent here
+          # only surfaces at sync time otherwise.
+          python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
+          python3 - <<'PY'
+          import subprocess, sys, yaml
+          bad = 0
+          for d in yaml.safe_load_all(open("/tmp/preview.yaml")):
+              if not d or d.get("kind") != "Job":
+                  continue
+              spec = d["spec"]["template"]["spec"]
+              for c in (spec.get("initContainers") or []) + spec["containers"]:
+                  if not c.get("args"):
+                      continue
+                  p = subprocess.run(["sh", "-n"], input=c["args"][0],
+                                     capture_output=True, text=True)
+                  if p.returncode != 0:
+                      print(f"::error::{d['metadata']['name']}/{c['name']}: {p.stderr.strip()}")
+                      bad += 1
+          sys.exit(1 if bad else 0)
+          PY
+
+      - name: Render (preview validations must fail)
+        run: |
+          set -uo pipefail
+          expect_fail() {
+            desc="$1"; want="$2"; shift 2
+            out=$(helm template studio-pr-42 deploy/helm/studio \
+                    -f deploy/helm/studio/values-preview.yaml \
+                    --set preview.prNumber=42 \
+                    --set database.url=postgresql://ci:ci@pg.example.com:5432/d \
+                    --api-versions gateway.networking.k8s.io/v1 "$@" 2>&1)
+            if [ $? -eq 0 ]; then
+              echo "::error::${desc}: rendered successfully — the guard is missing"
+              exit 1
+            fi
+            if ! echo "$out" | grep -q "$want"; then
+              echo "::error::${desc}: failed for the wrong reason. Wanted '${want}', got:"
+              echo "$out"
+              exit 1
+            fi
+            echo "ok: ${desc}"
+          }
+
+          expect_fail "missing preview.host" "preview.host is required"
+          expect_fail "ingress conflict" "mutually exclusive" \
+            --set preview.host=h.example.com \
+            --set ingress.enabled=true \
+            --set 'ingress.hosts[0].host=h.example.com' \
+            --set 'ingress.hosts[0].paths[0].path=/' \
+            --set 'ingress.hosts[0].paths[0].pathType=Prefix'
+          expect_fail "missing gateway name" "preview.gateway.name is required" \
+            --set preview.host=h.example.com --set preview.gateway.name=
+          expect_fail "missing db admin secret" "preview.dbAdminSecret.name is required" \
+            --set preview.host=h.example.com --set preview.dbAdminSecret.name=
+
+          # image.command is a list, which --set cannot express cleanly.
+          printf 'image:\n  command: ["bun","run","deco"]\n' > /tmp/no-skip.yaml
+          expect_fail "missing --skip-migrations" "requires --skip-migrations" \
+            --set preview.host=h.example.com -f /tmp/no-skip.yaml

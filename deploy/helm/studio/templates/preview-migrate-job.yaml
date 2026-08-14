@@ -1,0 +1,65 @@
+{{- if .Values.preview.enabled }}
+{{- /*
+PreSync hook (weight 0): the single migration writer for a preview.
+
+Runs after the provision Job and before any pod starts, so the Better Auth +
+Kysely migrations and the DBOS system-schema migration each happen exactly
+once. Pods then boot with --skip-migrations (enforced by validatePreview).
+
+Both steps are needed. --skip-migrations only covers studio's own migrations;
+DBOS still migrates its `dbos` schema on launch, and parallel pod boots race on
+inserts into dbos.dbos_migrations — see tests/multi-pod/docker-compose.yml.
+*/ -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "chart-deco-studio.fullname" . }}-preview-migrate
+  labels:
+    {{- include "chart-deco-studio.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        {{- include "chart-deco-studio.podLabels" . | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: {{ include "chart-deco-studio.serviceAccountName" . }}
+      securityContext:
+        {{- include "chart-deco-studio.podSecurityContext" . | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: migrate
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.image.repository }}{{- if and .Values.image.tag (hasPrefix "sha256:" .Values.image.tag) }}@{{ .Values.image.tag }}{{- else }}:{{ .Values.image.tag | default .Chart.AppVersion }}{{- end }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "chart-deco-studio.fullname" . }}-config
+            - secretRef:
+                name: {{ include "chart-deco-studio.secretName" . }}
+          command: ["/bin/sh", "-c"]
+          args:
+            # Absolute bundle paths, not `bun run <script>`: the image installs
+            # the decocms tarball into a bare directory whose package.json
+            # carries none of apps/api's scripts.
+            - |
+              set -eu
+              bun run node_modules/decocms/dist/server/migrate.js
+              bun run node_modules/decocms/dist/server/migrate-dbos.js
+          resources:
+            {{- toYaml .Values.preview.jobResources | nindent 12 }}
+{{- end }}
