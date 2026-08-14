@@ -794,7 +794,8 @@ export default function SignalDeck({
           as a seamless extension of the full-bleed card. Desktop is always light. */}
       <footer
         className={cn(
-          "relative flex shrink-0 items-center gap-2 px-4 py-4 sm:px-6",
+          // z-20: footer popovers open upward over the stage (`relative z-10`).
+          "relative z-20 flex shrink-0 items-center gap-2 px-4 py-4 sm:px-6",
           isCoverSlide && !isCtaSlide && "backdrop-blur-md",
         )}
         style={
