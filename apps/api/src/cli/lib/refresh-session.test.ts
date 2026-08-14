@@ -110,6 +110,25 @@ describe("refreshSession", () => {
     expect(result.expiresAt).toBe(1_234);
   });
 
+  it("ignores an absurdly large expires_in and keeps the previous expiresAt", async () => {
+    const fetchMock = mock(
+      async () =>
+        new Response(
+          JSON.stringify({ access_token: "new_at", expires_in: 1e20 }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+
+    const session = makeSession({ expiresAt: 1_234 });
+    const result = await refreshSession(
+      session,
+      fetchMock as unknown as typeof fetch,
+      () => FIXED_NOW,
+    );
+
+    expect(result.expiresAt).toBe(1_234);
+  });
+
   it("keeps the previous refresh token when the server returns a non-string one", async () => {
     const fetchMock = mock(
       async () =>

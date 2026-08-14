@@ -21,6 +21,17 @@ interface TokenResponse {
 const TOKEN_REFRESH_FETCH_TIMEOUT_MS = 10_000;
 
 /**
+ * Upper bound (seconds) for `expires_in`. Without it, an absurdly large
+ * value (e.g. `1e20`, or a server returning milliseconds instead of
+ * seconds) survives `Number.isFinite`/`> 0` and gets added to `now()`,
+ * producing an `expiresAt` far enough in the future that the session is
+ * treated as valid forever — the CLI never refreshes again, even after the
+ * real upstream token has long expired. 100 years is far past any real
+ * OAuth token TTL.
+ */
+const MAX_EXPIRES_IN_SECONDS = 100 * 365 * 24 * 60 * 60;
+
+/**
  * Exchanges the session's refresh token for a fresh access token.
  *
  * Returns an updated Session object (caller is responsible for persisting it).
@@ -99,10 +110,12 @@ export async function refreshSession(
     );
   }
 
-  // expires_in is untrusted server input — reject non-finite/non-positive values.
+  // expires_in is untrusted server input — reject non-finite/non-positive/out-of-range values.
   const parsedExpiresIn = Number(data.expires_in);
   const expiresAt =
-    Number.isFinite(parsedExpiresIn) && parsedExpiresIn > 0
+    Number.isFinite(parsedExpiresIn) &&
+    parsedExpiresIn > 0 &&
+    parsedExpiresIn <= MAX_EXPIRES_IN_SECONDS
       ? Math.floor(now() / 1000) + parsedExpiresIn
       : session.expiresAt;
 
