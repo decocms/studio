@@ -343,9 +343,18 @@ a new column. Adding one = one line in **`OrgFlagsSchema`**
 its consumer, then `bun run --cwd=apps/api generate:tool-contracts`. Read via
 `useOrgFlag("<flag>")` (web) or `settings?.flags?.<flag>` (api); set via
 `ORGANIZATION_SETTINGS_UPDATE { flags: { <flag>: true } }`. Updates
-shallow-merge (explicit `false` persists, omitted keys survive); unset reads as
-off. Flags are product gating, not access control. Anything non-boolean or ever
-needing an index/constraint gets its own column instead.
+shallow-merge (explicit `false` persists, omitted keys survive). Flags are
+product gating, not access control. Anything non-boolean or ever needing an
+index/constraint gets its own column instead.
+
+Most flags default OFF (unset reads as off). The exceptions are in
+**`DEFAULT_ON_FLAGS`** (`schema.ts`) — currently the automated reviewers
+(`qa_agent_enabled`, `code_reviewer_enabled`) — which default ON: unset reads as
+enabled and only an explicit `false` opts out. Because the default now depends on
+the flag, **read every flag through `orgFlagEnabled(flags, flag)`** (or
+`useOrgFlag`, which wraps it) — a raw `settings?.flags?.<flag>` read is only
+correct for default-off flags and silently disagrees with the gate for default-on
+ones.
 
 ### A/B tests (PostHog experiments)
 

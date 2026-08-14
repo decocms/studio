@@ -278,18 +278,9 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
       );
       const flags = settings?.flags;
       const defaults: Record<string, boolean> = {};
+      // Reviewers are default-on org-wide (DEFAULT_ON_FLAGS); no forcing here.
       if (flags?.reports_only == null) {
         defaults.reports_only = true;
-        // Reports-only orgs hide agent navigation, so the QA Agent / Code
-        // Reviewer that would otherwise run from that UI must be on by
-        // default for the reviewer flow (task-board PR review) to still
-        // function. Only ride along with a fresh reports_only default, not
-        // independently — an org that explicitly turned reports_only off
-        // must not have these forced on.
-        if (flags?.qa_agent_enabled == null) defaults.qa_agent_enabled = true;
-        if (flags?.code_reviewer_enabled == null) {
-          defaults.code_reviewer_enabled = true;
-        }
       }
       if (Object.keys(defaults).length > 0) {
         await ctx.storage.organizationSettings.upsert(organization.id, {

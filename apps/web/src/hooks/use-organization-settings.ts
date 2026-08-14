@@ -13,6 +13,10 @@ import { callStudioTool, useStudioTools } from "@/lib/studio-tools";
 import type { StudioToolInput as ToolInput } from "@decocms/shared/tools/tool-io";
 
 export type { SimpleModeTier } from "@decocms/shared/organization/schema";
+import {
+  DEFAULT_ON_FLAGS,
+  orgFlagEnabled,
+} from "@decocms/shared/organization/schema";
 import type {
   OrgFlags,
   SimpleModeTier,
@@ -241,13 +245,16 @@ export function useReportsOnly(): boolean {
 }
 
 /**
- * Read one org flag from the `flags` bag (see OrgFlagsSchema in
- * @decocms/shared/organization/schema — the single place flags are defined).
- * Unset and NULL both read as `false`. Non-blocking, cosmetic-gating only.
+ * Read one org flag from the `flags` bag via `orgFlagEnabled` (see
+ * OrgFlagsSchema / DEFAULT_ON_FLAGS in @decocms/shared/organization/schema —
+ * the single place flag defaults are defined). The pre-load fallback uses the
+ * same default. Non-blocking, cosmetic-gating only.
  */
 export function useOrgFlag(flag: keyof OrgFlags): boolean {
-  const { data } = useOrganizationSettings((s) => s.flags?.[flag] ?? false);
-  return data ?? false;
+  const { data } = useOrganizationSettings((s) =>
+    orgFlagEnabled(s.flags, flag),
+  );
+  return data ?? DEFAULT_ON_FLAGS.has(flag);
 }
 
 /**

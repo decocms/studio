@@ -166,6 +166,35 @@ export const OrgFlagsSchema = z.object({
 export type OrgFlags = z.infer<typeof OrgFlagsSchema>;
 
 /**
+ * Flags that default ON: an unset (or NULL) value reads as enabled, and only an
+ * explicit `false` disables. Every other flag defaults OFF (unset reads as
+ * off). New orgs get these behaviors without opting in — a team opts OUT by
+ * toggling the flag off, which persists an explicit `false`.
+ *
+ * The automated reviewers live here: the QA Agent and Code Reviewer run on a
+ * task's PR by default; disabling one is the deliberate action.
+ */
+export const DEFAULT_ON_FLAGS: ReadonlySet<keyof OrgFlags> = new Set([
+  "qa_agent_enabled",
+  "code_reviewer_enabled",
+]);
+
+/**
+ * Resolve one org flag to its effective boolean. Honors {@link DEFAULT_ON_FLAGS}
+ * — a default-on flag is enabled unless stored as exactly `false`; every other
+ * flag is enabled only when stored as exactly `true`. The single reader shared
+ * by the server gate (`enabledReviewerKinds`) and the web hook (`useOrgFlag`),
+ * so both agree on what "unset" means.
+ */
+export function orgFlagEnabled(
+  flags: Record<string, unknown> | null | undefined,
+  flag: keyof OrgFlags,
+): boolean {
+  const value = flags?.[flag];
+  return DEFAULT_ON_FLAGS.has(flag) ? value !== false : value === true;
+}
+
+/**
  * Brand context schema - org-scoped company profile
  */
 export const BrandContextSchema = z.object({
