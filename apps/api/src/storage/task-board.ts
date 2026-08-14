@@ -662,6 +662,58 @@ export class TaskBoardStorage {
   }
 
   /**
+   * The merged-tag sweep's work list, across EVERY org: Done cards that have at
+   * least one linked PR and do not already carry the `merged` tag.
+   *
+   * No settle window, unlike `listItemsAwaitingArchive` — the tag is a statement
+   * about the PR, not about the card being finished with, so a card gets it as
+   * soon as its PRs land. Newest first so a fresh Done card is tagged on the
+   * next tick and any pre-existing backlog drains behind it.
+   *
+   * ponytail: a Done card whose PRs never merge stays a candidate forever and
+   * costs one GitHub read per tick. If those ever outnumber the per-tick cap
+   * they starve the backlog behind them — give the table a `merged_checked_at`
+   * stamp then, not before.
+   */
+  async listItemsAwaitingMergedTag(
+    mergedTagName: string,
+    limit: number,
+  ): Promise<{ id: string; organizationId: string }[]> {
+    const rows = await this.db
+      .selectFrom("task_board_items as i")
+      .select(["i.id", "i.organization_id as organizationId"])
+      .where("i.status", "=", "done")
+      .where("i.dismissed_at", "is", null)
+      .where((eb) =>
+        eb.exists(
+          eb
+            .selectFrom("task_board_item_prs as p")
+            .select("p.url")
+            .whereRef("p.task_board_item_id", "=", "i.id"),
+        ),
+      )
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom("task_board_item_tags as t")
+              .innerJoin("organization_tags as g", "g.id", "t.id")
+              .select("t.id")
+              .whereRef("t.task_board_item_id", "=", "i.id")
+              .where(sql<string>`lower(g.name)`, "=", mergedTagName),
+          ),
+        ),
+      )
+      .orderBy("i.updated_at", "desc")
+      .limit(limit)
+      .execute();
+    return rows.map((row) => ({
+      id: row.id,
+      organizationId: row.organizationId,
+    }));
+  }
+
+  /**
    * Claim the card's next sweep interval. Returns true only for the replica that
    * won it; a loser must skip the card entirely. Claimed for every card the
    * sweeper LOOKS at, not only the ones it dispatches a reviewer for — a card
