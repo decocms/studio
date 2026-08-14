@@ -294,6 +294,7 @@ export async function listObjects(params: {
       target,
       false,
       monthShardPrefixesList,
+      params.imageOnly ?? false,
     );
   }
 
@@ -309,10 +310,12 @@ export async function listObjects(params: {
       ),
     ),
   );
+  const imageOnly = params.imageOnly ?? false;
   const seen = new Map<string, ListedObject>();
   for (const res of monthResponses) {
     for (const obj of res.Contents ?? []) {
       if (!obj.Key || obj.Key.endsWith("/") || seen.has(obj.Key)) continue;
+      if (imageOnly && !isImageKey(obj.Key)) continue;
       seen.set(obj.Key, toListedObject(obj, params.ctx));
     }
   }
@@ -331,6 +334,7 @@ export async function listObjects(params: {
     if (!obj.Key || obj.Key.endsWith("/") || seen.has(obj.Key)) continue;
     // Month-shard keys were already pulled via dedicated probes; skip to avoid duping.
     if (monthShardPrefixesList.some((p) => obj.Key!.startsWith(p))) continue;
+    if (imageOnly && !isImageKey(obj.Key)) continue;
     seen.set(obj.Key, toListedObject(obj, params.ctx));
   }
   const nextCursor = broadRes.IsTruncated
@@ -507,13 +511,15 @@ function finalize(
   target: number,
   sort: boolean,
   skipPrefixes: readonly string[] = [],
+  imageOnly = false,
 ): ListObjectsResult {
   const items = (response.Contents ?? [])
     .filter(
       (obj) =>
         obj.Key &&
         !obj.Key.endsWith("/") &&
-        !skipPrefixes.some((p) => obj.Key!.startsWith(p)),
+        !skipPrefixes.some((p) => obj.Key!.startsWith(p)) &&
+        (!imageOnly || isImageKey(obj.Key)),
     )
     .slice(0, target)
     .map((obj) => toListedObject(obj, ctx));
