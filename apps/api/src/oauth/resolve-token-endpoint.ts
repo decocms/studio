@@ -49,9 +49,19 @@ export async function resolveOriginTokenEndpoint(
     const authRes = await fetchAuthorizationServerMetadata(authServerUrl);
     if (authRes.ok) {
       const data = (await authRes.json()) as {
-        token_endpoint?: string;
+        token_endpoint?: unknown;
       };
-      return data.token_endpoint ?? null;
+      // token_endpoint is untrusted input — only hand back a real http(s) URL.
+      if (typeof data.token_endpoint === "string") {
+        try {
+          const parsed = new URL(data.token_endpoint);
+          if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+            return data.token_endpoint;
+          }
+        } catch {
+          // not a valid URL — fall through to null
+        }
+      }
     }
 
     return null;
