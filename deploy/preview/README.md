@@ -51,10 +51,13 @@ PR labelled `preview`
                   ▼
             Argo Application `studio-pr-<n>` → namespace `studio-pr-<n>`
                   │
-                  ├── PreSync  -10  preview-db-provision-job   CREATE DATABASE pr_<n>, mc mb
-                  ├── PreSync    0  preview-migrate-job        migrate.js && migrate-dbos.js
-                  ├── Sync          Deployment + worker + NATS + Service + HTTPRoute
-                  └── PostDelete    preview-db-teardown-job    DROP DATABASE, mc rb
+                  ├── wave -30  ExternalSecret        (BETTER_AUTH_SECRET, ENCRYPTION_KEY, R2)
+                  ├── wave -20  Postgres Deployment   (this preview's own database)
+                  ├── wave -10  migrate Job           (migrate.js && migrate-dbos.js)
+                  └── wave   0  Deployment + worker + NATS + Service + HTTPRoute
+
+            Deleting the Application deletes the namespace, and the database
+            goes with it — there is no teardown step to fail.
 ```
 
 Both halves check the label independently, so neither alone can create an
@@ -82,6 +85,21 @@ parallel boots crash on `dbos.dbos_migrations` unique-constraint violations
 (documented in `tests/multi-pod/docker-compose.yml`). That is what
 `apps/api/src/database/migrate-dbos.ts` exists for, and why the Job runs both.
 
+**A Postgres per preview, not a shared server.** Each preview runs its own
+`postgres:16-alpine` pod on an emptyDir, created and destroyed with the
+namespace.
+
+The alternative — one shared server with per-PR `CREATE DATABASE` /
+`DROP DATABASE` hook Jobs — needs a server provisioned and paid for while idle,
+an admin credential distributed to every preview namespace, a connection budget
+shared across previews, and a sweeper for databases that outlive their PR. A
+pod per namespace has none of those, and it costs ~100m/256Mi.
+
+It also means `DATABASE_URL` is not a credential: it addresses an ephemeral pod
+reachable only from inside its own namespace, so the chart derives it and
+publishes it in the ConfigMap. Bound cross-namespace reach with a NetworkPolicy,
+not with a password.
+
 **Empty database, not a golden template.** Cloning a pre-seeded golden database
 with `CREATE DATABASE … TEMPLATE` is faster and lands the reviewer in a
 populated org, but it needs a nightly rebuild job, a fixed shared
@@ -89,21 +107,21 @@ populated org, but it needs a nightly rebuild job, a fixed shared
 `mcp_connections.connection_url` at write time (`apps/api/src/auth/org.ts`).
 We took the simpler road; the cost is that you sign up first.
 
-**Bucket per PR, not prefix per PR.** Object keys are scoped by org id with no
-global prefix env, so a shared bucket would have every preview writing to
-identical keys.
+**One shared R2 bucket, not one per PR.** Object keys are scoped by org id, and
+an empty-database preview generates fresh org UUIDs, so two previews can never
+collide. (Bucket-per-PR would be mandatory if previews shared a seeded org id.)
 
 **One wildcard certificate, terminated at the NLB.** Per-host certificates
 would mean an issuance per PR and a handshake delay in front of the reviewer's
 first click. An ACM wildcard on the load balancer matches how the sandbox
 preview gateway and the studio NLB already work in this cluster.
 
-**`DATABASE_URL` is composed, never stored.** Each preview needs its own
-`…/pr_<n>`, but writing that into git would commit a database password. Instead
-the ESO `ExternalSecret` templates it from admin credentials that stay in
-Secrets Manager (`externalSecret.template`), and the ApplicationSet injects only
-the database name. That ExternalSecret runs as a PreSync hook at weight -20 so
-the Secret exists before the provision and migrate Jobs read it.
+**Ordering is expressed with sync-waves.** The ExternalSecret (-30) lands
+before anything mounts it, Postgres (-20) before the migrate Job (-10) runs
+against it, and the app Deployments (0) only after that Job completes. Argo
+holds each wave until its resources report healthy — for a Job, that means
+completed. A wrong wave surfaces as a CrashLoopBackOff on first sync rather
+than a render error, so the ordering is asserted in CI.
 
 ## Configuration
 
@@ -126,17 +144,15 @@ on, so the file cannot rot even though nothing in this repo deploys it.
   the sandbox gateway: two Gateways binding the same wildcard hostname conflict
   at the controller level.
 - An oauth2-proxy / Istio `AuthorizationPolicy` on that listener.
-- **A dedicated preview Postgres instance.** Deliberately not the staging RDS:
-  previews run arbitrary un-merged migrations, and a runaway one would lock or
-  bloat staging.
 - One shared **R2** bucket (`deco-studio-storage-preview`) with a lifecycle
-  rule. Not a bucket per PR — see the note in `values-preview.yaml`.
+  rule. Not a bucket per PR — see above.
 - An AWS Secrets Manager entry at `preview/studio/application` holding
-  `BETTER_AUTH_SECRET`, `ENCRYPTION_KEY`, the R2 credentials, and the preview
-  Postgres admin parts (`PREVIEW_PG_ADMIN_URL`, `PREVIEW_PG_*`). The first two
-  must be **stable for the life of the environment**: a rotating
-  `BETTER_AUTH_SECRET` is a login loop, and a rotating `ENCRYPTION_KEY` makes
-  every vaulted credential undecryptable.
+  `BETTER_AUTH_SECRET`, `ENCRYPTION_KEY` and the R2 credentials, reachable via a
+  **ClusterSecretStore** (a namespaced SecretStore would need IRSA wired up per
+  preview namespace). The first two must be **stable for the life of the
+  environment**: a rotating `BETTER_AUTH_SECRET` is a login loop, and a rotating
+  `ENCRYPTION_KEY` makes every vaulted credential undecryptable.
+- No database server. Each preview brings its own.
 
 ## Troubleshooting
 
@@ -166,14 +182,12 @@ DNS. The same trap applies to `NATS_URL` and `S3_ENDPOINT`.
 The PreSync migrate Job did not run, or did not get as far as
 `migrate-dbos.js`. Check `kubectl -n studio-pr-<n> logs job/studio-pr-<n>-preview-migrate`.
 
-**A database outlived its PR.** The `PostDelete` hook is primary, but it cannot
-run if Argo removed the Application before the Job could be scheduled. To drop
-one by hand:
+**A preview's data vanished after a restart.** Expected. The Postgres pod uses
+an emptyDir, so a reschedule starts from an empty database; the migrate Job
+re-runs on the next sync, but anything you created in the UI is gone. Previews
+are throwaway by construction — if you need durability, you want a real
+environment.
 
-```sh
-psql "$ADMIN_URL" -c 'DROP DATABASE IF EXISTS "pr_<n>" WITH (FORCE)'
-```
-
-`WITH (FORCE)` matters — pods' connection pools may not have drained, and a
-plain `DROP` fails on open backends. The hourly orphan sweeper in
-`deco-apps-cd` is the automated version of this.
+**Databases outliving their PR.** Not possible: the database is a pod in the
+namespace Argo deletes. This is the main thing the per-preview Postgres buys
+over a shared server.

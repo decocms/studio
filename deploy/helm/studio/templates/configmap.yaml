@@ -25,6 +25,6 @@ data:
   {{- end }}
   NATS_TUNNEL_PUBLIC_ENABLED: {{ .Values.tunnel.nats.publicEnabled | quote }}
   NATS_TUNNEL_SESSION_TTL_SECONDS: {{ .Values.tunnel.nats.sessionTtlSeconds | quote }}
-  {{- if ne (lower (default "sqlite" .Values.database.engine)) "postgresql" }}
+  {{- if or (ne (lower (default "sqlite" .Values.database.engine)) "postgresql") (eq (include "chart-deco-studio.previewPostgresProvidesUrl" . | trim) "true") }}
   DATABASE_URL: {{ include "chart-deco-studio.databaseUrl" . | trim | quote }}
   {{- end }}

@@ -24,17 +24,17 @@ preview:
     name: studio-preview
     namespace: istio-gateways
     sectionName: https
-  dbAdminSecret:
-    # name empty → the release's own ESO-synced Secret (see externalSecret below).
-    key: PREVIEW_PG_ADMIN_URL
-  objectStorage:
-    # No per-PR bucket. Object keys are scoped by ORG id, and because every
-    # preview starts from an empty database its org ids are freshly generated
-    # UUIDs — so two previews can never collide in one bucket. (Bucket-per-PR
-    # would be mandatory if previews shared a seeded org id.) One shared R2
-    # bucket with a lifecycle rule is simpler and needs no bucket-create
-    # credential in the cluster.
-    manageBucket: false
+  # Each preview runs its own Postgres pod, created and destroyed with the
+  # namespace. DATABASE_URL is derived by the chart, so nothing here (and
+  # nothing in the ApplicationSet) has to name a database server.
+  postgres:
+    enabled: true
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        memory: "1Gi"
 
 replicaCount: 1
 autoscaling:
@@ -85,7 +85,7 @@ worker:
 
 database:
   engine: postgresql
-  # url injected per PR (points at pr_<n> on the shared preview Postgres).
+  # url deliberately unset — the chart derives it from preview.postgres.
 
 # No PVCs anywhere in a preview: PVC finalizers are the most common cause of a
 # namespace that will not finish deleting, and a preview has nothing worth
@@ -137,18 +137,13 @@ metrics:
 
 terminationGracePeriodSeconds: 30
 
-# Every secret comes from one AWS Secrets Manager entry, and DATABASE_URL is
-# COMPOSED from it rather than stored — that is what lets each preview point at
-# its own pr_<n> database without a password ever being templated into git.
+# BETTER_AUTH_SECRET, ENCRYPTION_KEY and the R2 credentials come from one AWS
+# Secrets Manager entry. DATABASE_URL is NOT among them — it addresses this
+# preview's own in-namespace Postgres and is derived by the chart.
 #
-# The SM entry holds BETTER_AUTH_SECRET, ENCRYPTION_KEY, the S3/R2 credentials
-# and the preview Postgres admin parts (PREVIEW_PG_*). BETTER_AUTH_SECRET and
-# ENCRYPTION_KEY must be stable for the life of the environment: a rotating
-# auth secret is a login loop, and a rotating encryption key makes every
-# vaulted credential undecryptable.
-#
-# externalSecret.template.data.DATABASE_URL is injected per PR by the
-# ApplicationSet (it is the only thing that knows the PR number).
+# BETTER_AUTH_SECRET and ENCRYPTION_KEY must be stable for the life of the
+# environment: a rotating auth secret is a login loop, and a rotating
+# encryption key makes every vaulted credential undecryptable.
 externalSecret:
   enabled: true
   secretPath: preview/studio/application

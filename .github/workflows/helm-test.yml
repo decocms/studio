@@ -170,7 +170,6 @@ jobs:
             --set preview.host=pr-42.preview.studio.decocms.com \
             --set image.tag=pr-42-abc1234 \
             --set nginx.image.tag=pr-42-abc1234 \
-            --set database.url=postgresql://ci:ci@pg.preview.example.com:5432/pr_42 \
             --api-versions gateway.networking.k8s.io/v1 \
             > /tmp/preview.yaml
 
@@ -181,12 +180,35 @@ jobs:
           grep -q 'pr-42.preview.studio.decocms.com' /tmp/preview.yaml \
             || fail "preview HTTPRoute is missing its hostname"
 
-          for job in provision migrate teardown; do
-            grep -q "studio-pr-42-preview-${job}" /tmp/preview.yaml \
-              || fail "preview render is missing the ${job} Job"
-          done
-          grep -q 'argocd.argoproj.io/hook: PostDelete' /tmp/preview.yaml \
-            || fail "teardown Job is not a PostDelete hook — databases would leak on PR close"
+          grep -q "studio-pr-42-preview-migrate" /tmp/preview.yaml \
+            || fail "preview render is missing the migration Job"
+          grep -q "studio-pr-42-postgres" /tmp/preview.yaml \
+            || fail "preview render has no Postgres — the DB must live and die with the namespace"
+
+          # Ordering is the whole correctness argument: Postgres must be healthy
+          # before the migration Job runs, and that Job must finish before the
+          # app Deployments start. Argo expresses that with waves, and a wrong
+          # one shows up as a CrashLoopBackOff on first sync, not a render error.
+          python3 - <<'WAVES'
+          import sys, yaml
+          waves = {}
+          for d in yaml.safe_load_all(open("/tmp/preview.yaml")):
+              if not d:
+                  continue
+              name = d["metadata"]["name"]
+              ann = (d["metadata"].get("annotations") or {})
+              w = int(ann.get("argocd.argoproj.io/sync-wave", 0))
+              waves[(d["kind"], name)] = w
+          pg = waves[("Deployment", "studio-pr-42-postgres")]
+          mig = waves[("Job", "studio-pr-42-preview-migrate")]
+          app = waves[("Deployment", "studio-pr-42")]
+          ok = pg < mig < app
+          print(f"postgres={pg} migrate={mig} app={app} ordered={ok}")
+          if not ok:
+              print("::error::preview sync-waves are out of order "
+                    f"(want postgres < migrate < app, got {pg} < {mig} < {app})")
+          sys.exit(0 if ok else 1)
+          WAVES
 
           # Every studio container (api-0, api-1, worker) must skip migrations:
           # the PreSync Job is the single writer. Three, not two.
@@ -199,15 +221,12 @@ jobs:
           grep -q 'DATABASE_POOL_MAX: "5"' /tmp/preview.yaml \
             || fail "DATABASE_POOL_MAX is not 5 — N previews would exhaust the shared Postgres"
 
-          # DATABASE_URL must be COMPOSED by ESO, never materialised here: the
-          # rendered manifest is committed to a GitOps repo, so a resolved
-          # password would be a credential in git.
-          grep -q 'DATABASE_URL: postgresql://{{ .PREVIEW_PG_USER }}:{{ .PREVIEW_PG_PASSWORD }}@' /tmp/preview.yaml \
-            || fail "preview DATABASE_URL is not an ESO template — a real password may be rendered into the manifest"
-          grep -q '/pr_42?sslmode=require' /tmp/preview.yaml \
-            || fail "preview DATABASE_URL does not point at this PR's database"
-          grep -q 'mergePolicy: Merge' /tmp/preview.yaml \
-            || fail "ESO template mergePolicy is not Merge — Replace silently drops every dataFrom key"
+          # DATABASE_URL must address this preview's OWN Postgres. If it ever
+          # points somewhere else, a preview is writing to a database it does
+          # not own.
+          grep -q 'DATABASE_URL: "postgresql://postgres:postgres@studio-pr-42-postgres:5432/postgres"' /tmp/preview.yaml \
+            || fail "preview DATABASE_URL does not point at this preview's own in-namespace Postgres"
+
           # A namespaced SecretStore needs per-namespace IRSA, which per-PR
           # namespaces do not have.
           grep -q 'kind: ClusterSecretStore' /tmp/preview.yaml \
@@ -254,7 +273,6 @@ jobs:
             if out=$(helm template studio-pr-42 deploy/helm/studio \
                        -f deploy/helm/studio/values-preview.yaml \
                        --set preview.prNumber=42 \
-                       --set database.url=postgresql://ci:ci@pg.example.com:5432/d \
                        --api-versions gateway.networking.k8s.io/v1 "$@" 2>&1); then
               echo "::error::${desc}: rendered successfully — the guard is missing"
               exit 1
@@ -276,8 +294,13 @@ jobs:
             --set 'ingress.hosts[0].paths[0].pathType=Prefix'
           expect_fail "missing gateway name" "preview.gateway.name is required" \
             --set preview.host=h.example.com --set preview.gateway.name=
-          expect_fail "missing db admin secret key" "preview.dbAdminSecret.key is required" \
-            --set preview.host=h.example.com --set preview.dbAdminSecret.key=
+          # Turning off the built-in Postgres without supplying a database
+          # elsewhere would render pods pointing at nothing. Caught by the
+          # chart's general database validation, not a preview-specific one.
+          expect_fail "no database at all" "set database.url when database.engine=postgresql" \
+            --set preview.host=h.example.com \
+            --set preview.postgres.enabled=false \
+            --set externalSecret.enabled=false
 
           # image.command is a list, which --set cannot express cleanly.
           printf 'image:\n  command: ["bun","run","deco"]\n' > /tmp/no-skip.yaml

@@ -1,0 +1,119 @@
+{{- if and .Values.preview.enabled .Values.preview.postgres.enabled }}
+{{- /*
+A Postgres that lives and dies with the preview.
+
+This replaces the earlier design of a shared preview server with per-PR
+CREATE/DROP DATABASE hook Jobs. One pod per namespace removes, in one move: the
+server to provision and pay for while idle, the admin credential that had to
+reach every preview namespace, the connection budget shared across previews,
+the blast radius of one preview's runaway migration, and orphaned databases —
+deleting the namespace deletes the database.
+
+Deliberately NOT a subchart. The chart already vendors four, each of which
+earns it; a single-replica throwaway Postgres does not need an upstream chart's
+replication/backup/PDB surface, and adding one would mean a vendored .tgz, a
+Chart.lock entry and another image supply chain to track. Sixty lines against
+the official image is the smaller commitment.
+
+emptyDir, not a PVC: a preview has nothing worth persisting, restarts are
+re-migrated by the migrate Job, and PVC finalizers are the most common cause of
+a namespace that never finishes deleting.
+*/ -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "chart-deco-studio.previewPostgresName" . }}
+  labels:
+    {{- include "chart-deco-studio.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: postgres
+      protocol: TCP
+      name: postgres
+  selector:
+    {{- include "chart-deco-studio.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: preview-postgres
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "chart-deco-studio.previewPostgresName" . }}
+  labels:
+    {{- include "chart-deco-studio.labels" . | nindent 4 }}
+  annotations:
+    # Ahead of the migrate Job (-10) and the app Deployments (default 0). Argo
+    # holds each wave until its resources report healthy, so the migrate Job
+    # cannot start against a Postgres that is not accepting connections yet.
+    argocd.argoproj.io/sync-wave: "-20"
+spec:
+  replicas: 1
+  strategy:
+    # One pod, one emptyDir — never run two against the same ephemeral volume.
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "chart-deco-studio.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: preview-postgres
+  template:
+    metadata:
+      labels:
+        {{- include "chart-deco-studio.podLabels" . | nindent 8 }}
+        app.kubernetes.io/component: preview-postgres
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: postgres
+          image: "{{ .Values.preview.postgres.image.repository }}:{{ .Values.preview.postgres.image.tag }}"
+          imagePullPolicy: {{ .Values.preview.postgres.image.pullPolicy }}
+          ports:
+            - name: postgres
+              containerPort: 5432
+              protocol: TCP
+          env:
+            # Fixed, and deliberately not a secret. This Postgres is reachable
+            # only from inside this preview's namespace, holds no real data, and
+            # is destroyed with the PR. Routing it through Secrets Manager would
+            # imply a confidentiality property it does not have. Restrict
+            # cross-namespace reach with a NetworkPolicy, not with a password.
+            - name: POSTGRES_USER
+              value: {{ .Values.preview.postgres.auth.username | quote }}
+            - name: POSTGRES_PASSWORD
+              value: {{ .Values.preview.postgres.auth.password | quote }}
+            - name: POSTGRES_DB
+              value: {{ .Values.preview.postgres.auth.database | quote }}
+            # The image refuses to initdb into a non-empty mount root, and an
+            # emptyDir is empty, so this is only belt-and-braces for the case
+            # where someone swaps in a PVC.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.preview.postgres.auth.username | quote }}, "-d", {{ .Values.preview.postgres.auth.database | quote }}]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.preview.postgres.auth.username | quote }}, "-d", {{ .Values.preview.postgres.auth.database | quote }}]
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.preview.postgres.resources | nindent 12 }}
+      volumes:
+        - name: data
+          emptyDir:
+            sizeLimit: {{ .Values.preview.postgres.sizeLimit }}
+{{- end }}

@@ -1,10 +1,13 @@
 {{- if .Values.preview.enabled }}
 {{- /*
-PreSync hook (weight 0): the single migration writer for a preview.
+Sync-phase hook at wave -10: the single migration writer for a preview.
 
-Runs after the provision Job and before any pod starts, so the Better Auth +
-Kysely migrations and the DBOS system-schema migration each happen exactly
-once. Pods then boot with --skip-migrations (enforced by validatePreview).
+A Sync hook rather than PreSync because the preview's Postgres (wave -20) is a
+Sync-phase resource — a PreSync Job would run before it exists. Argo holds each
+wave until its resources report healthy, so this starts only once Postgres is
+accepting connections, and the app Deployments (default wave 0) start only once
+this Job has completed. Pods then boot with --skip-migrations (enforced by
+validatePreview).
 
 Both steps are needed. --skip-migrations only covers studio's own migrations;
 DBOS still migrates its `dbos` schema on launch, and parallel pod boots race on
@@ -17,12 +20,12 @@ metadata:
   labels:
     {{- include "chart-deco-studio.labels" . | nindent 4 }}
   annotations:
-    helm.sh/hook: pre-install,pre-upgrade
-    helm.sh/hook-weight: "0"
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "-10"
     helm.sh/hook-delete-policy: before-hook-creation
-    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
-    argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/sync-wave: "-10"
 spec:
   backoffLimit: 3
   template:

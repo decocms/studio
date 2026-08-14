@@ -56,20 +56,19 @@ ingress:
 # so existing releases are unaffected.
 #
 # A preview is a throwaway environment for one pull request: its own namespace,
-# its own database, its own bucket, all created on sync and destroyed on delete.
-# Enabling this turns on three Argo sync-hook Jobs (provision → migrate →
-# teardown) and an HTTPRoute; it does NOT change the pod topology, which stays
-# identical to production on purpose so previews exercise the same
-# nginx → API serving path.
+# its own Postgres, destroyed together when the release is deleted. Enabling
+# this adds an HTTPRoute, a Postgres Deployment + Service, and one migration
+# Job; it does NOT change the pod topology, which stays identical to production
+# on purpose so previews exercise the same nginx → API serving path.
 #
 # Pods MUST run with --skip-migrations (image.command) when this is on: the
-# PreSync Job is the single migration writer. See templates/_helpers.tpl
+# migration Job is the single writer. See templates/_helpers.tpl
 # validatePreview, which fails the render otherwise.
 preview:
   enabled: false
-  # PR number. Names the database (pr_<n>) and the bucket (preview-pr-<n>).
+  # PR number. Only used to label/name things; the database is per-namespace.
   prNumber: ""
-  # Exact public origin, e.g. pr-42.preview.studio.decocms.com. Must match
+  # Exact public origin, e.g. pr-42.pr.studio.decocms.com. Must match
   # BASE_URL/BETTER_AUTH_URL: Better Auth's trustedOrigins is a single exact
   # origin with no wildcard support, so a mismatch breaks login with a
   # CSRF-shaped error rather than anything legible.
@@ -81,64 +80,50 @@ preview:
   gateway:
     name: ""
     namespace: istio-gateways
+    # Must name a real listener on that Gateway. A sectionName matching no
+    # listener attaches the route to nothing, with no error.
     sectionName: https
-  # Admin Postgres credentials for the provision/teardown Jobs. This is NOT the
-  # app's DATABASE_URL — it needs CREATE/DROP DATABASE, so it points at the
-  # preview Postgres server itself (e.g. .../postgres).
-  # name empty → the release's own Secret (externalSecret / secret.secretName).
-  dbAdminSecret:
-    name: ""
-    key: PREVIEW_PG_ADMIN_URL
-  # Shared object storage for bucket-per-PR provisioning. Keys are scoped by org
-  # id with no global prefix env, so every preview needs its own bucket rather
-  # than a shared bucket with a prefix.
-  objectStorage:
-    # Set false to skip bucket create/delete (e.g. storage managed elsewhere).
-    manageBucket: true
-    # Bucket name. Empty → preview-pr-<prNumber>.
-    bucket: ""
-    endpoint: ""
-    credentialsSecret:
-      name: ""
-      accessKeyIdKey: access-key-id
-      secretAccessKeyKey: secret-access-key
-  # Compose DATABASE_URL for this preview as an ESO target-template entry, from
-  # connection parts that stay in the secret store. Only the database name
-  # (pr_<prNumber>) is release-specific, so nothing that resolves to a password
-  # has to be templated into git.
+  # A Postgres that lives and dies with this preview.
   #
-  # The chart builds the ESO placeholders itself rather than accepting them
-  # pre-written, because a caller that is a Go template (an Argo ApplicationSet)
-  # would try to evaluate them and fail. Passing a plain PR number is safe;
-  # passing "{{ .PASSWORD }}" through Argo is not.
+  # The alternative — one shared server with per-PR CREATE/DROP DATABASE hook
+  # Jobs — needs a server provisioned and paid for while idle, an admin
+  # credential distributed to every preview namespace, a connection budget
+  # shared across previews, and a sweeper for the databases that outlive their
+  # PR. A pod per namespace has none of those: deleting the namespace deletes
+  # the database.
   #
-  # Requires externalSecret.enabled. Ignored otherwise.
-  databaseUrl:
+  # When enabled and database.url is unset, the chart derives DATABASE_URL
+  # itself and publishes it via the ConfigMap.
+  postgres:
     enabled: true
-    userKey: PREVIEW_PG_USER
-    passwordKey: PREVIEW_PG_PASSWORD
-    hostKey: PREVIEW_PG_HOST
-    portKey: PREVIEW_PG_PORT
-    params: "sslmode=require"
-
-  # Stock images for the hook Jobs — psql for the database, mc for the bucket.
-  # Kept as two containers rather than one custom image so there is no extra
-  # artifact to build, sign and release just for previews.
-  postgresImage:
-    repository: postgres
-    tag: "16-alpine"
-    pullPolicy: IfNotPresent
-  mcImage:
-    repository: minio/mc
-    tag: RELEASE.2024-11-21T17-21-54Z
-    pullPolicy: IfNotPresent
-  # Resources for the short-lived hook Jobs.
+    image:
+      repository: postgres
+      tag: "16-alpine"
+      pullPolicy: IfNotPresent
+    # Fixed and NOT secret: this Postgres is reachable only from inside the
+    # preview's namespace, holds no real data, and dies with the PR. Use a
+    # NetworkPolicy to bound reach, not a password.
+    auth:
+      username: postgres
+      password: postgres
+      database: postgres
+    # emptyDir, not a PVC — nothing here is worth persisting, and PVC
+    # finalizers are the most common cause of a namespace that will not finish
+    # deleting.
+    sizeLimit: 4Gi
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        memory: "1Gi"
+  # Resources for the short-lived migration Job.
   jobResources:
     requests:
       cpu: "100m"
-      memory: "128Mi"
+      memory: "512Mi"
     limits:
-      memory: "256Mi"
+      memory: "1Gi"
 
 # ServiceAccount for the API and worker pods. Undocumented until now, though the
 # templates have always honoured it — and the sandbox layer depends on it: the
