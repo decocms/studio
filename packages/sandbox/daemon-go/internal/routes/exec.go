@@ -21,6 +21,23 @@ type ExecDeps struct {
 	SetStatus   func(events.DaemonStatus)
 }
 
+// resolveAwaitTimeoutMs bounds an await-mode exec's TimeoutMs. An await
+// caller blocks on TaskManager.Finished, which waits on the task's done
+// channel with no server-side deadline (ReadHeaderTimeout only covers
+// reading the request). A script that never exits — or a caller who forgets
+// timeoutMs — would otherwise hang the handler goroutine and the HTTP
+// connection forever, so mirror bash.go's default+ceiling instead of
+// trusting an unbounded/absent value.
+func resolveAwaitTimeoutMs(timeoutMs int) int {
+	if timeoutMs <= 0 {
+		return bashDefaultTimeoutMs
+	}
+	if timeoutMs > bashAwaitCeilingMs {
+		return bashAwaitCeilingMs
+	}
+	return timeoutMs
+}
+
 func Exec(deps ExecDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// The router unescapes the {name} wildcard for us.
@@ -71,6 +88,9 @@ func Exec(deps ExecDeps) http.HandlerFunc {
 		mode := "background"
 		if body.Mode == "await" {
 			mode = "await"
+		}
+		if mode == "await" {
+			body.TimeoutMs = resolveAwaitTimeoutMs(body.TimeoutMs)
 		}
 
 		overrides := map[string]string{}
