@@ -71,9 +71,11 @@ function SplitButtonMenuEntry({ item }: { item: SplitButtonMenuItem }) {
 
   return (
     <Tooltip>
-      {/* Wrapper is the trigger: a disabled item is pointer-events-none. */}
+      {/* Wrapper is the trigger, tabbable when disabled so it's reachable. */}
       <TooltipTrigger asChild>
-        <span className="block">{entry}</span>
+        <span className="block" tabIndex={item.disabled ? 0 : undefined}>
+          {entry}
+        </span>
       </TooltipTrigger>
       <TooltipContent side="right">{item.tooltip}</TooltipContent>
     </Tooltip>
