@@ -25,15 +25,16 @@ preview:
     namespace: istio-gateways
     sectionName: https
   dbAdminSecret:
-    name: studio-preview-shared
-    key: admin-url
+    # name empty → the release's own ESO-synced Secret (see externalSecret below).
+    key: PREVIEW_PG_ADMIN_URL
   objectStorage:
-    manageBucket: true
-    endpoint: http://minio.preview-shared.svc.cluster.local:9000
-    credentialsSecret:
-      name: studio-preview-shared
-      accessKeyIdKey: s3-access-key-id
-      secretAccessKeyKey: s3-secret-access-key
+    # No per-PR bucket. Object keys are scoped by ORG id, and because every
+    # preview starts from an empty database its org ids are freshly generated
+    # UUIDs — so two previews can never collide in one bucket. (Bucket-per-PR
+    # would be mandatory if previews shared a seeded org id.) One shared R2
+    # bucket with a lifecycle rule is simpler and needs no bucket-create
+    # credential in the cluster.
+    manageBucket: false
 
 replicaCount: 1
 autoscaling:
@@ -136,12 +137,24 @@ metrics:
 
 terminationGracePeriodSeconds: 30
 
-secret:
-  # Fixed BETTER_AUTH_SECRET + ENCRYPTION_KEY shared by every preview. Both
-  # must be stable for the life of an environment: a rotating
-  # BETTER_AUTH_SECRET is a login loop, and a rotating ENCRYPTION_KEY makes
-  # every vaulted credential undecryptable.
-  secretName: studio-preview-shared
+# Every secret comes from one AWS Secrets Manager entry, and DATABASE_URL is
+# COMPOSED from it rather than stored — that is what lets each preview point at
+# its own pr_<n> database without a password ever being templated into git.
+#
+# The SM entry holds BETTER_AUTH_SECRET, ENCRYPTION_KEY, the S3/R2 credentials
+# and the preview Postgres admin parts (PREVIEW_PG_*). BETTER_AUTH_SECRET and
+# ENCRYPTION_KEY must be stable for the life of the environment: a rotating
+# auth secret is a login loop, and a rotating encryption key makes every
+# vaulted credential undecryptable.
+#
+# externalSecret.template.data.DATABASE_URL is injected per PR by the
+# ApplicationSet (it is the only thing that knows the PR number).
+externalSecret:
+  enabled: true
+  secretPath: preview/studio/application
+  provider:
+    aws:
+      region: us-west-2
 
 configMap:
   meshConfig:
@@ -165,9 +178,14 @@ configMap:
     # is deliberately left unset, which is the other half of this gate.
     DECO_AI_GATEWAY_ENABLED: "false"
     RUN_IDLE_TIMEOUT_MS: "120000"
-    S3_ENDPOINT: "http://minio.preview-shared.svc.cluster.local:9000"
-    S3_REGION: "us-east-1"
-    # BASE_URL / BETTER_AUTH_URL / S3_BUCKET injected per PR.
+    # Cloudflare R2, same object store the stg deploy uses. All four S3_* must
+    # be set or the app downloads and runs its own MinIO at boot; the
+    # credentials arrive via the ESO-synced Secret.
+    S3_ENDPOINT: "https://c95fc4cec7fc52453228d9db170c372c.r2.cloudflarestorage.com"
+    S3_BUCKET: "deco-studio-storage-preview"
+    S3_REGION: "auto"
+    S3_FORCE_PATH_STYLE: "true"
+    # BASE_URL / BETTER_AUTH_URL injected per PR.
 
 # Observability and billing are off. All of these are already false by default;
 # stated explicitly so nobody inherits them from a copied production values file.

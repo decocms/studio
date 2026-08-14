@@ -259,8 +259,8 @@ jobs:
             --set 'ingress.hosts[0].paths[0].pathType=Prefix'
           expect_fail "missing gateway name" "preview.gateway.name is required" \
             --set preview.host=h.example.com --set preview.gateway.name=
-          expect_fail "missing db admin secret" "preview.dbAdminSecret.name is required" \
-            --set preview.host=h.example.com --set preview.dbAdminSecret.name=
+          expect_fail "missing db admin secret key" "preview.dbAdminSecret.key is required" \
+            --set preview.host=h.example.com --set preview.dbAdminSecret.key=
 
           # image.command is a list, which --set cannot express cleanly.
           printf 'image:\n  command: ["bun","run","deco"]\n' > /tmp/no-skip.yaml

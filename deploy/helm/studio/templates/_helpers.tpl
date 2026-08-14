@@ -332,8 +332,11 @@ credentials cannot create the database the pods are about to connect to.
 {{- if not .Values.preview.gateway.name }}
 {{- fail "chart-deco-studio: preview.gateway.name is required when preview.enabled=true" -}}
 {{- end }}
-{{- if not .Values.preview.dbAdminSecret.name }}
-{{- fail "chart-deco-studio: preview.dbAdminSecret.name is required when preview.enabled=true — the provisioner Job needs admin credentials to CREATE/DROP the per-PR database" -}}
+{{- if not .Values.preview.dbAdminSecret.key }}
+{{- fail "chart-deco-studio: preview.dbAdminSecret.key is required when preview.enabled=true — the provisioner Job needs admin credentials to CREATE/DROP the per-PR database" -}}
+{{- end }}
+{{- if and (not .Values.preview.dbAdminSecret.name) (not .Values.secret.secretName) (not .Values.externalSecret.enabled) }}
+{{- fail "chart-deco-studio: preview.enabled=true needs admin credentials — set preview.dbAdminSecret.name, or provide them through the release Secret via externalSecret.enabled / secret.secretName" -}}
 {{- end }}
 {{- if not (has "--skip-migrations" (.Values.image.command | default list)) }}
 {{- fail "chart-deco-studio: preview.enabled=true requires --skip-migrations in image.command; the PreSync Job is the single migration writer and neither the API nor the worker containers (which share image.command) may race it" -}}

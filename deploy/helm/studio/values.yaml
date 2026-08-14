@@ -84,10 +84,11 @@ preview:
     sectionName: https
   # Admin Postgres credentials for the provision/teardown Jobs. This is NOT the
   # app's DATABASE_URL — it needs CREATE/DROP DATABASE, so it points at the
-  # shared preview Postgres server (e.g. .../postgres).
+  # preview Postgres server itself (e.g. .../postgres).
+  # name empty → the release's own Secret (externalSecret / secret.secretName).
   dbAdminSecret:
     name: ""
-    key: admin-url
+    key: PREVIEW_PG_ADMIN_URL
   # Shared object storage for bucket-per-PR provisioning. Keys are scoped by org
   # id with no global prefix env, so every preview needs its own bucket rather
   # than a shared bucket with a prefix.
@@ -299,6 +300,22 @@ externalSecret:
   provider:
     aws:
       region: "sa-east-1"
+  # Optional ESO target template — derive extra keys from the fetched secret
+  # instead of storing them. The canonical use is composing a connection string
+  # whose parts live in the secret store but whose database name is per-release
+  # (per-PR previews), so the password never has to be templated into git.
+  #
+  #   template:
+  #     data:
+  #       DATABASE_URL: "postgresql://{{ .PGUSER }}:{{ .PGPASSWORD }}@{{ .PGHOST }}:5432/pr_42?sslmode=require"
+  #
+  # The {{ }} above are ESO's, evaluated against the fetched secret's keys — NOT
+  # Helm's. Values are data, so Helm passes them through untouched; a caller
+  # that is ITSELF a Go template (an Argo ApplicationSet) must escape them.
+  #
+  # mergePolicy defaults to Merge, not ESO's Replace default: with Replace, a
+  # template that adds one key silently discards every key dataFrom pulled in.
+  template: {}
 
 volumes: []
 # - name: foo

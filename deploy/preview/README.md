@@ -93,9 +93,17 @@ We took the simpler road; the cost is that you sign up first.
 global prefix env, so a shared bucket would have every preview writing to
 identical keys.
 
-**One wildcard certificate.** Per-host cert-manager `Certificate`s would mean
-an ACME order per PR — that flirts with Let's Encrypt rate limits and puts a
-10–60s ACME dance in front of the reviewer's first click.
+**One wildcard certificate, terminated at the NLB.** Per-host certificates
+would mean an issuance per PR and a handshake delay in front of the reviewer's
+first click. An ACM wildcard on the load balancer matches how the sandbox
+preview gateway and the studio NLB already work in this cluster.
+
+**`DATABASE_URL` is composed, never stored.** Each preview needs its own
+`…/pr_<n>`, but writing that into git would commit a database password. Instead
+the ESO `ExternalSecret` templates it from admin credentials that stay in
+Secrets Manager (`externalSecret.template`), and the ApplicationSet injects only
+the database name. That ExternalSecret runs as a PreSync hook at weight -20 so
+the Secret exists before the provision and migrate Jobs read it.
 
 ## Configuration
 
@@ -111,19 +119,24 @@ on, so the file cannot rot even though nothing in this repo deploys it.
 
 ### Cluster prerequisites (one-time, in `decocms/deco-apps-cd`)
 
-- Wildcard DNS `*.preview.studio.decocms.com` → the preview Gateway's LB.
-- A `Gateway` named `studio-preview` in `istio-gateways` with a wildcard
-  `Certificate` (DNS-01 — the only solver that validates a wildcard SAN).
-  Model it on `deploy/helm/sandbox-env/templates/sandbox-preview-{gateway,cert}.yaml`,
-  but give it a **different domain**: two Gateways binding the same wildcard
-  hostname conflict at the controller level.
+- A wildcard `Gateway` for the preview domain, TLS terminated **at the NLB with
+  an ACM cert** (not cert-manager) and published by external-dns — the same
+  model as the sandbox preview gateway in `apps/studio-sandbox-stg/values.yaml`,
+  which uses `tlsTermination: loadBalancer`. Give it a **different domain** from
+  the sandbox gateway: two Gateways binding the same wildcard hostname conflict
+  at the controller level.
 - An oauth2-proxy / Istio `AuthorizationPolicy` on that listener.
-- A shared preview Postgres and MinIO.
-- A `studio-preview-shared` Secret holding `admin-url`, `s3-access-key-id`,
-  `s3-secret-access-key`, plus a fixed `BETTER_AUTH_SECRET` and
-  `ENCRYPTION_KEY`. Both must be **stable for the life of the environment**: a
-  rotating `BETTER_AUTH_SECRET` is a login loop, and a rotating
-  `ENCRYPTION_KEY` makes every vaulted credential undecryptable.
+- **A dedicated preview Postgres instance.** Deliberately not the staging RDS:
+  previews run arbitrary un-merged migrations, and a runaway one would lock or
+  bloat staging.
+- One shared **R2** bucket (`deco-studio-storage-preview`) with a lifecycle
+  rule. Not a bucket per PR — see the note in `values-preview.yaml`.
+- An AWS Secrets Manager entry at `preview/studio/application` holding
+  `BETTER_AUTH_SECRET`, `ENCRYPTION_KEY`, the R2 credentials, and the preview
+  Postgres admin parts (`PREVIEW_PG_ADMIN_URL`, `PREVIEW_PG_*`). The first two
+  must be **stable for the life of the environment**: a rotating
+  `BETTER_AUTH_SECRET` is a login loop, and a rotating `ENCRYPTION_KEY` makes
+  every vaulted credential undecryptable.
 
 ## Troubleshooting
 

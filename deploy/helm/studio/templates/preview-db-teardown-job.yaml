@@ -69,7 +69,7 @@ spec:
             - name: ADMIN_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.preview.dbAdminSecret.name }}
+                  name: {{ .Values.preview.dbAdminSecret.name | default (include "chart-deco-studio.secretName" .) }}
                   key: {{ .Values.preview.dbAdminSecret.key }}
           command: ["/bin/sh", "-c"]
           args:
