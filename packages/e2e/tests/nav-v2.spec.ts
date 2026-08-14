@@ -13,7 +13,7 @@
 
 import type { APIRequestContext, Page } from "@playwright/test";
 import { z } from "zod";
-import { callSelfMcpTool } from "../fixtures/mcp-tools";
+import { callSelfMcpTool, createHttpConnection } from "../fixtures/mcp-tools";
 import {
   startTestMcpServer,
   type TestMcpServer,
@@ -25,6 +25,9 @@ import { expect, test } from "../fixtures/test";
 const cdConnectionId = (orgId: string) => `${orgId}_commerce-discovery`;
 const REPORT_TOOL = "get_my_diagnostic";
 const SITE_URL = "https://minha-loja.example";
+
+/** Wire contract: the well-known Decopilot (Super Agent) id, `decopilot_<orgId>`. */
+const decopilotId = (orgId: string) => `decopilot_${orgId}`;
 
 /** Cold-Vite route compiles can take a minute+ on a loaded box; this spec
  *  crosses three lazy routes (settings, shell, report app). */
@@ -237,5 +240,98 @@ test.describe("first-class navigation", () => {
     } finally {
       await mcp.stop();
     }
+  });
+
+  test("a reports-only org inherits the first-class navigation when nav_v2 is unset", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const request = page.context().request;
+    const orgId = await findOrgId(request, orgSlug);
+    await callSelfMcpTool(request, orgSlug, "ORGANIZATION_SETTINGS_UPDATE", {
+      organizationId: orgId,
+      flags: { reports_only: true },
+    });
+
+    await page.goto(`/${orgSlug}`);
+    await expandSidebar(page, "Home");
+
+    await expect(
+      page.getByRole("button", { name: "Home", exact: true }),
+    ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await expect(
+      page.getByRole("button", { name: "Tasks", exact: true }),
+    ).toBeVisible();
+  });
+
+  test("an explicit nav_v2:false overrides reports_only", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const request = page.context().request;
+    const orgId = await findOrgId(request, orgSlug);
+    await callSelfMcpTool(request, orgSlug, "ORGANIZATION_SETTINGS_UPDATE", {
+      organizationId: orgId,
+      flags: { reports_only: true, nav_v2: false },
+    });
+
+    await page.goto(`/${orgSlug}`);
+    await expandSidebar(page, "Filter chats");
+
+    await expect(
+      page.getByRole("button", { name: "Home", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: /filter chats/i }).first(),
+    ).toBeVisible();
+  });
+
+  test("opening a destination from a coding agent's thread returns to the Super Agent", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const request = page.context().request;
+    const orgId = await findOrgId(request, orgSlug);
+
+    const conn = await createHttpConnection(request, orgSlug, {
+      title: "github-placeholder",
+      url: "http://127.0.0.1:3000/",
+    });
+    const agent = await callSelfMcpTool<{ item: { id: string } }>(
+      request,
+      orgSlug,
+      "COLLECTION_VIRTUAL_MCP_CREATE",
+      {
+        data: {
+          title: "coding agent e2e",
+          status: "active",
+          pinned: false,
+          connections: [{ connection_id: conn.id }],
+          metadata: {
+            githubRepo: {
+              url: "https://github.com/example/nav-v2-e2e",
+              owner: "example",
+              name: "nav-v2-e2e",
+              connectionId: conn.id,
+            },
+          },
+        },
+      },
+    );
+    const thread = await callSelfMcpTool<{ item: { id: string } }>(
+      request,
+      orgSlug,
+      "COLLECTION_THREADS_CREATE",
+      { data: { virtual_mcp_id: agent.item.id } },
+    );
+
+    await enableNavV2(page, orgSlug);
+    await page.goto(
+      `/${orgSlug}/${thread.item.id}?virtualmcpid=${agent.item.id}`,
+    );
+    await expandSidebar(page, "Home");
+
+    await page.getByRole("button", { name: "Tasks", exact: true }).click();
+    await expect(page).toHaveURL(
+      new RegExp(`[?&]virtualmcpid=${decopilotId(orgId)}\\b`),
+    );
+    await expect(page).toHaveURL(/[?&]main=board\b/);
   });
 });

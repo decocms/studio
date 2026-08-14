@@ -53,6 +53,12 @@ interface NavDestination {
   onSelect: () => void;
 }
 
+/** The well-known Decopilot (Super Agent) id for the current org. */
+function useDecopilotId(): string {
+  const { org } = useProjectContext();
+  return getWellKnownDecopilotVirtualMCP(org.id).id;
+}
+
 /**
  * The destinations, in display order. Reports only appears once the org
  * actually has a report — the entry opens that report's MCP app.
@@ -69,10 +75,10 @@ function useNavDestinations({
     virtualmcpid?: string;
   };
   const { diagnostic, connectionId } = useCommerceDiagnostic();
-  const { org } = useProjectContext();
-  const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
+  const decopilotId = useDecopilotId();
   const { threads } = useThreads();
   const { data: session } = authClient.useSession();
+  const { setTaskId, createNewTask } = usePanelActions();
 
   /**
    * These destinations are org-level, so they belong to the Super Agent. From a
@@ -94,16 +100,14 @@ function useNavDestinations({
       });
       return;
     }
+    // Reuse-or-create via setTaskId/createNewTask — same path useCodingAgents uses.
     const existing = findReusableNewChat(
       threads,
       decopilotId,
       session?.user?.id,
     );
-    navigate({
-      to: "/$org/$taskId",
-      params: { org: org.slug, taskId: existing?.id ?? crypto.randomUUID() },
-      search: { virtualmcpid: decopilotId, main: tabId },
-    });
+    if (existing) setTaskId(existing.id, decopilotId, { main: tabId });
+    else void createNewTask(decopilotId, undefined, { main: tabId });
   };
 
   /**
@@ -212,10 +216,10 @@ function useCodingAgents({
 }
 
 /**
- * The destination list. New chat lives on the toolbar row above it (see
- * NavSidebarContent) and chat search lives in the chat panel's threads menu, so
- * this renders destinations only. Collapsed, it becomes an icon rail —
- * SidebarMenuButton supplies the tooltips.
+ * The destination list. New chat lives in the panel header (NewChatCrumb) and
+ * chat search lives in the chat panel's threads menu, so this renders
+ * destinations only. Collapsed, it becomes an icon rail — SidebarMenuButton
+ * supplies the tooltips.
  */
 export function NavDestinationsContent({
   onNavigate,

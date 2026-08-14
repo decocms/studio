@@ -26,18 +26,16 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { useOptionalChatTask } from "@/components/chat/context";
-import { MyThreadsSection } from "@/components/sidebar/task-groups/my-threads-section";
 import { ThreadFiltersPopover } from "@/components/sidebar/task-groups/thread-filters-popover";
-import { useThreadsPanel } from "@/components/sidebar/task-groups/use-threads-panel";
-import { GlobalSearchDialog } from "@/layouts/tasks-panel/global-search-dialog";
-import { track } from "@/lib/posthog-client";
+import {
+  ThreadsPanelList,
+  useThreadsPanel,
+} from "@/components/sidebar/task-groups/use-threads-panel";
 import { useT } from "@/i18n/use-t.ts";
 
 export function ThreadsMenu() {
   const t = useT();
   const [open, setOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchEverOpened, setSearchEverOpened] = useState(false);
   const panel = useThreadsPanel({ onNavigate: () => setOpen(false) });
   /** Prefer the live active task (it re-titles as the run names the thread);
    *  fall back to the list row, which the filters may have dropped. */
@@ -48,10 +46,8 @@ export function ThreadsMenu() {
     t("tasksPanel.taskRow.untitledTask");
 
   const openSearch = () => {
-    track("tasks_panel_search_opened");
     setOpen(false);
-    setSearchEverOpened(true);
-    setSearchOpen(true);
+    panel.openSearch();
   };
 
   return (
@@ -110,24 +106,11 @@ export function ThreadsMenu() {
             </div>
           </div>
           <div className="flex max-h-[60vh] min-h-0 flex-col gap-0.5 overflow-y-auto overscroll-contain">
-            <MyThreadsSection
-              threads={panel.threads}
-              groupBy={panel.groupBy}
-              activeTaskId={panel.activeTaskId}
-              onSelectTask={panel.selectTask}
-              onArchiveTask={panel.archiveTask}
-              filters={panel.filters}
-              hasMore={panel.hasMore}
-              isFetchingMore={panel.isFetchingMore}
-              onLoadMore={panel.loadMore}
-              filtersActive={panel.filtersActive}
-            />
+            <ThreadsPanelList panel={panel} />
           </div>
         </PopoverContent>
       </Popover>
-      {searchEverOpened && (
-        <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
-      )}
+      {panel.searchDialog}
       {panel.reclaimDialog}
     </>
   );

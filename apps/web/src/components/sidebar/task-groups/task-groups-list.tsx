@@ -16,14 +16,11 @@ import {
   useSidebar,
 } from "@decocms/ui/components/sidebar.tsx";
 import { useProjectContext } from "@/sdk";
-import { GlobalSearchDialog } from "@/layouts/tasks-panel/global-search-dialog";
-import { track } from "@/lib/posthog-client";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { SidebarTriggerButton } from "@/layouts/shell-controls";
 import { OrgIcon, OrgSwitcherPopover } from "@/components/header/org-switcher";
-import { MyThreadsSection } from "./my-threads-section";
 import { ThreadFiltersPopover } from "./thread-filters-popover";
-import { useThreadsPanel } from "./use-threads-panel";
+import { ThreadsPanelList, useThreadsPanel } from "./use-threads-panel";
 
 /** Toolbar icon button with the shared dark tooltip (matches the collapsed
  * rail's SidebarMenuButton tooltip). `active` gives the pressed/highlighted look.
@@ -74,18 +71,9 @@ export function TaskGroupsList({
   const { org } = useProjectContext();
   const panel = useThreadsPanel({ onNavigate });
 
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchEverOpened, setSearchEverOpened] = useState(false);
-
   const { state: sidebarState, isMobile, toggleSidebar } = useSidebar();
 
   const isCollapsed = sidebarState === "collapsed" && !isMobile;
-
-  const openSearch = () => {
-    track("tasks_panel_search_opened");
-    setSearchEverOpened(true);
-    setSearchOpen(true);
-  };
 
   /**
    * Collapsed rail: the toggle up top, then a search button so threads stay
@@ -133,15 +121,13 @@ export function TaskGroupsList({
             <SidebarMenuButton
               aria-label={t("sidebar.taskGroupsList.searchChats")}
               tooltip={t("sidebar.taskGroupsList.searchChats")}
-              onClick={openSearch}
+              onClick={panel.openSearch}
             >
               <SearchSm size={16} />
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-        {searchEverOpened && (
-          <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
-        )}
+        {panel.searchDialog}
         {panel.reclaimDialog}
       </div>
     );
@@ -166,7 +152,7 @@ export function TaskGroupsList({
         <div className="flex items-center gap-0.5">
           <ToolbarTooltipButton
             label={t("sidebar.taskGroupsList.searchChats")}
-            onClick={openSearch}
+            onClick={panel.openSearch}
           >
             <SearchSm size={16} />
           </ToolbarTooltipButton>
@@ -181,20 +167,7 @@ export function TaskGroupsList({
     </TooltipProvider>
   );
 
-  const list = (
-    <MyThreadsSection
-      threads={panel.threads}
-      groupBy={panel.groupBy}
-      activeTaskId={panel.activeTaskId}
-      onSelectTask={panel.selectTask}
-      onArchiveTask={panel.archiveTask}
-      filters={panel.filters}
-      hasMore={panel.hasMore}
-      isFetchingMore={panel.isFetchingMore}
-      onLoadMore={panel.loadMore}
-      filtersActive={panel.filtersActive}
-    />
-  );
+  const list = <ThreadsPanelList panel={panel} />;
 
   if (isMobile) {
     return (
@@ -206,9 +179,7 @@ export function TaskGroupsList({
         >
           {list}
         </ScrollFade>
-        {searchEverOpened && (
-          <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
-        )}
+        {panel.searchDialog}
         {panel.reclaimDialog}
       </div>
     );
@@ -225,9 +196,7 @@ export function TaskGroupsList({
           {list}
         </ScrollFade>
       </div>
-      {searchEverOpened && (
-        <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
-      )}
+      {panel.searchDialog}
       {panel.reclaimDialog}
     </div>
   );

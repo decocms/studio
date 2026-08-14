@@ -22,9 +22,11 @@ import type { Task } from "@/components/chat/task/types";
 import { forgetThreadLayout } from "@/lib/thread-layout-memory";
 import { useStudioTools } from "@/lib/studio-tools";
 import { isDesktopAppEnvironment } from "@/hooks/use-is-desktop-app";
+import { GlobalSearchDialog } from "@/layouts/tasks-panel/global-search-dialog";
 import { ArchiveWorktreeDialog } from "./archive-worktree-dialog";
 import { findArchiveFallback } from "./archive-fallback";
-import type { SidebarFilters } from "./next-page-offset";
+import { MyThreadsSection } from "./my-threads-section";
+import type { SidebarFilters, SidebarTypeFilter } from "./next-page-offset";
 import {
   archiveConfirmSteps,
   hasOpenSiblingOnBranch,
@@ -32,7 +34,6 @@ import {
   type WorktreeReclaimTarget,
 } from "./worktree-reclaim";
 
-export type ThreadTypeFilter = "all" | "manual" | "automation";
 export type ThreadGroupBy = "flat" | "status";
 
 export interface ThreadsPanel {
@@ -45,8 +46,8 @@ export interface ThreadsPanel {
   loadMore: () => void;
   groupBy: ThreadGroupBy;
   setGroupBy: (value: ThreadGroupBy) => void;
-  typeFilter: ThreadTypeFilter;
-  setTypeFilter: (value: ThreadTypeFilter) => void;
+  typeFilter: SidebarTypeFilter;
+  setTypeFilter: (value: SidebarTypeFilter) => void;
   showAll: boolean;
   setShowAll: (value: boolean) => void;
   /** True when any filter is off its default — drives the filter button's dot. */
@@ -54,11 +55,33 @@ export interface ThreadsPanel {
   selectTask: (task: Task) => void;
   archiveTask: (task: Task) => void;
   newThread: () => void;
+  openSearch: () => void;
   /**
    * The pending worktree-reclaim confirm, or null. Render it in every layout
    * branch so a collapse or viewport change can't silently dismiss it.
    */
   reclaimDialog: React.ReactNode;
+  /** The global search dialog, mounted once `openSearch` has fired at least once. */
+  searchDialog: React.ReactNode;
+}
+
+/** The thread list, wired to a `ThreadsPanel` — shared by every surface that
+ *  renders `MyThreadsSection` off `useThreadsPanel` (sidebar list, threads menu). */
+export function ThreadsPanelList({ panel }: { panel: ThreadsPanel }) {
+  return (
+    <MyThreadsSection
+      threads={panel.threads}
+      groupBy={panel.groupBy}
+      activeTaskId={panel.activeTaskId}
+      onSelectTask={panel.selectTask}
+      onArchiveTask={panel.archiveTask}
+      filters={panel.filters}
+      hasMore={panel.hasMore}
+      isFetchingMore={panel.isFetchingMore}
+      onLoadMore={panel.loadMore}
+      filtersActive={panel.filtersActive}
+    />
+  );
 }
 
 export function useThreadsPanel({
@@ -104,12 +127,19 @@ export function useThreadsPanel({
     (b.updated_at ?? "").localeCompare(a.updated_at ?? ""),
   );
 
-  const [typeFilter, setTypeFilter] = useState<ThreadTypeFilter>("all");
+  const [typeFilter, setTypeFilter] = useState<SidebarTypeFilter>("all");
   const [groupBy, setGroupBy] = useState<ThreadGroupBy>("flat");
   const [showAll, setShowAll] = useLocalStorage<boolean>(
     "sidebar-threads-scope-all",
     false,
   );
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchEverOpened, setSearchEverOpened] = useState(false);
+  const openSearch = () => {
+    track("tasks_panel_search_opened");
+    setSearchEverOpened(true);
+    setSearchOpen(true);
+  };
   /**
    * Desktop only: the pending "archive the last chat on this branch and delete
    * its worktree?" confirm. Non-null ⇒ the dialog is up and the archive has NOT
@@ -299,11 +329,15 @@ export function useThreadsPanel({
     selectTask,
     archiveTask,
     newThread,
+    openSearch,
     reclaimDialog: reclaimPrompt ? (
       <ArchiveWorktreeDialog
         branch={reclaimPrompt.target.branch}
         onOutcome={handleReclaimOutcome}
       />
+    ) : null,
+    searchDialog: searchEverOpened ? (
+      <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
     ) : null,
   };
 }
