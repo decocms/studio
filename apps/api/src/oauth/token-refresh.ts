@@ -90,7 +90,7 @@ export function clearRefreshBackoff(connectionId?: string): void {
 async function refreshAndStoreOnce(
   token: DownstreamToken,
   tokenStorage: DownstreamTokenStorage,
-): Promise<string | null> {
+): Promise<{ accessToken: string | null; permanent: boolean }> {
   const result = await refreshAccessToken(token);
   if (!result.success || !result.accessToken) {
     // Only delete the cached row when the OAuth server told us the
@@ -101,7 +101,7 @@ async function refreshAndStoreOnce(
     if (result.permanent === true) {
       await tokenStorage.delete(token.connectionId);
     }
-    return null;
+    return { accessToken: null, permanent: result.permanent === true };
   }
   await tokenStorage.upsert({
     connectionId: token.connectionId,
@@ -115,7 +115,7 @@ async function refreshAndStoreOnce(
     clientSecret: token.clientSecret,
     tokenEndpoint: token.tokenEndpoint,
   });
-  return result.accessToken;
+  return { accessToken: result.accessToken, permanent: false };
 }
 
 export function refreshAndStore(
@@ -133,8 +133,9 @@ export function refreshAndStore(
   }
 
   const refresh = refreshAndStoreOnce(token, tokenStorage)
-    .then((accessToken) => {
-      if (accessToken) {
+    .then(({ accessToken, permanent }) => {
+      if (accessToken || permanent) {
+        // Permanent failure already deleted the token row — no backoff to arm.
         refreshBackoff.delete(token.connectionId);
       } else {
         const attempt = refreshBackoff.get(token.connectionId)?.attempt ?? 0;
