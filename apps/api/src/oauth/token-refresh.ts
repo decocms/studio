@@ -100,6 +100,8 @@ async function refreshAndStoreOnce(
     // OAuth server into a forced manual reconnect.
     if (result.permanent === true) {
       await tokenStorage.delete(token.connectionId);
+      // Don't let a dead token's backoff throttle a freshly reconnected one.
+      refreshBackoff.delete(token.connectionId);
     }
     return null;
   }

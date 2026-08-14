@@ -269,6 +269,43 @@ describe("refreshAndStore", () => {
     expect(await refreshAndStore(after!, tokenStorage)).toBeNull();
     expect(mockRefreshAccessToken).toHaveBeenCalledTimes(3);
   });
+
+  it("does not let a dead token's backoff throttle a freshly reconnected one", async () => {
+    mockRefreshAccessToken.mockResolvedValueOnce({
+      success: false,
+      permanent: true,
+      status: 400,
+      errorCode: "invalid_grant",
+      error: "refresh token revoked",
+    });
+
+    const token = await tokenStorage.get(connectionId);
+    expect(await refreshAndStore(token!, tokenStorage)).toBeNull();
+    expect(await tokenStorage.get(connectionId)).toBeNull();
+
+    // Manual reconnect stores a brand new token for the same connection.
+    await tokenStorage.upsert({
+      connectionId,
+      accessToken: "reconnected",
+      refreshToken: "rt-new",
+      scope: "repo",
+      expiresAt: new Date(Date.now() - 1000),
+      clientId: "cid",
+      clientSecret: null,
+      tokenEndpoint: "https://example.com/token",
+    });
+
+    mockRefreshAccessToken.mockResolvedValueOnce({
+      success: true,
+      accessToken: "fresh",
+      refreshToken: "rt-new",
+      expiresIn: 3600,
+      scope: "repo",
+    });
+    const reconnected = await tokenStorage.get(connectionId);
+    expect(await refreshAndStore(reconnected!, tokenStorage)).toBe("fresh");
+    expect(mockRefreshAccessToken).toHaveBeenCalledTimes(2);
+  });
 });
 
 const { getValidDownstreamAccessToken } = await import("./token-refresh");
