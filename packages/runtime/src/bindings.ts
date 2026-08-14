@@ -97,7 +97,7 @@ export const BindingOf = <
     : readonly ToolBinder[],
 ) => {
   const schema = z.object({
-    __type: z.literal(name).default(name as any),
+    __type: z.literal(name).default(name),
     value: z.string(),
   });
 
