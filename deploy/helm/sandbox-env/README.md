@@ -286,6 +286,7 @@ See `values.yaml` for the full set. The most-tuned ones:
 | `nodePlaceholder.enabled` / `nodePlaceholder.replicas` | `false` / `2` | node "balloon": warm NODE capacity so warm-pool refill / cold claims skip the Karpenter wait; placement defaults to the sandbox `nodeSelector`/`tolerations` |
 | `previewGateway.enabled` | `false` | wildcard `*.preview.<domain>` Gateway + cert |
 | `housekeeper.enabled` | `false` | idle-claim and orphan cleanup CronJob |
+| `housekeeper.renewActiveSeconds` | `120` | renew a claim's `shutdownTime` while its daemon is still serving traffic (keeps directly-opened preview URLs alive); `0` disables |
 | `mesh.namespace` | `deco-studio` | studio release namespace (this env's) |
 | `mesh.serviceAccountName` | `deco-studio` | Studio ServiceAccount that gets the RoleBinding |
 | `mesh.serviceName` | `deco-studio` | _deprecated, unused since per-claim HTTPRoutes_ |

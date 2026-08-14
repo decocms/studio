@@ -805,8 +805,9 @@ mesh:
     app.kubernetes.io/instance: "deco-studio"
 
 # ── idle-reap housekeeper ──────────────────────────────────────────────
-# CronJob that direct-deletes ReconcilerError claims and gracefully shuts
-# down idle Ready claims. Emits a Kubernetes Event per reap.
+# CronJob that direct-deletes ReconcilerError claims, gracefully shuts down
+# idle Ready claims, and renews the ones still serving traffic. Emits a
+# Kubernetes Event per reap.
 housekeeper:
   enabled: false
 
@@ -814,6 +815,14 @@ housekeeper:
 
   # Should match (or be shorter than) DEFAULT_IDLE_TTL_MS in runner.ts.
   idleTtlSeconds: 900
+
+  # A claim whose daemon served traffic this recently gets its shutdownTime
+  # pushed back out to idleTtlSeconds. This is what keeps a sandbox alive for
+  # someone watching the preview URL directly in a browser — Studio only renews
+  # for its own SSE/run clients. Keep it well under idleTtlSeconds: a claim
+  # Studio released early is idle immediately and must still die on schedule.
+  # 0 disables renewal (pre-fix behaviour).
+  renewActiveSeconds: 120
 
   probeTimeoutSeconds: 2
 

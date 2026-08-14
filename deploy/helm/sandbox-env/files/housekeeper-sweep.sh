@@ -2,7 +2,7 @@
 # sandbox-housekeeper sweep — one CronJob run.
 #
 # Env (set by the CronJob spec):
-#   NS, TTL_MS, PROBE_TIMEOUT_SEC,
+#   NS, TTL_MS, PROBE_TIMEOUT_SEC, RENEW_ACTIVE_MS,
 #   CLAIM_SELECTOR, POD_SELECTOR, RUN_ID.
 
 set -eu
@@ -30,6 +30,20 @@ LEGACY_IDLE_PATH="/_decopilot_vm/idle"
 # its adoption wait (the "did not record an adopted Sandbox within 60s" freeze).
 # Override via the CronJob env if needed.
 : "${RECONCILER_ERROR_GRACE_SEC:=120}"
+
+# A claim's own deadline (`spec.lifecycle.shutdownTime`, 15 min) is pushed
+# forward ONLY by Studio — the preview SSE handler or a streaming run. Someone
+# who opens the preview URL straight in a browser, which is how these links get
+# shared, renews nothing: the pod is deleted under them mid-session and the
+# hostname 502s until they reopen it from Studio. The daemon counts every
+# proxied request as activity, so a small idleMs here is the live-viewer signal
+# Studio cannot see, and this is the only sweep that sees it.
+#
+# Deliberately much shorter than TTL_MS: a claim Studio released early on
+# purpose (`releaseAfter` after a headless run) goes idle the moment the run
+# ends, so it still dies on its grace deadline. Only traffic in the last couple
+# of minutes — a human actually looking at the page — buys more time.
+: "${RENEW_ACTIVE_MS:=120000}"
 RECONCILER_ERROR_SINCE_ANNOTATION="studio.decocms.com/reconciler-error-since"
 
 now_iso()   { date -u +%Y-%m-%dT%H:%M:%SZ; }
@@ -159,6 +173,43 @@ request_shutdown() {
     >/dev/null 2>&1 || true
 }
 
+# Epoch seconds → `YYYY-MM-DDTHH:MM:SSZ`. `date -u -d @<epoch>` would be one
+# line, but it's a GNU extension and this sweep runs on busybox — where the
+# failure would be a silently empty timestamp, i.e. renewals that never happen
+# and nobody notices. awk is on both. (civil-from-days; valid for epoch >= 0.)
+iso_from_epoch() {
+  awk -v t="$1" 'BEGIN {
+    days = int(t / 86400); secs = t % 86400
+    z = days + 719468
+    era = int(z / 146097)
+    doe = z - era * 146097
+    yoe = int((doe - int(doe / 1460) + int(doe / 36524) - int(doe / 146096)) / 365)
+    y = yoe + era * 400
+    doy = doe - (365 * yoe + int(yoe / 4) - int(yoe / 100))
+    mp = int((5 * doy + 2) / 153)
+    d = doy - int((153 * mp + 2) / 5) + 1
+    m = mp + (mp < 10 ? 3 : -9)
+    if (m <= 2) y = y + 1
+    printf "%04d-%02d-%02dT%02d:%02d:%02dZ", y, m, d, int(secs / 3600), int((secs % 3600) / 60), secs % 60
+  }'
+}
+
+# Push a claim's deadline out to now + TTL because its daemon just served
+# traffic. Best-effort: a missed renewal costs one reprovision, and the next
+# sweep is a minute away.
+renew_shutdown() {
+  claim="$1"; idle="$2"
+  ts=$(iso_from_epoch "$(( $(date -u +%s) + TTL_MS / 1000 ))")
+  case "$ts" in
+    ????-??-??T??:??:??Z) ;;
+    *) log "renew-skip claim=$claim reason=bad-timestamp value=\"$ts\""; return 0 ;;
+  esac
+  log "renew claim=$claim idle_ms=$idle shutdown_at=$ts"
+  kubectl patch sandboxclaim "$claim" -n "$NS" --type=merge \
+    -p "{\"spec\":{\"lifecycle\":{\"shutdownPolicy\":\"Delete\",\"shutdownTime\":\"${ts}\"}}}" \
+    >/dev/null 2>&1 || true
+}
+
 # ReconcilerError path: operator has given up, so shutdownTime is unhonored.
 force_delete_claim() {
   claim="$1"; reason="$2"; detail="$3"
@@ -175,7 +226,7 @@ force_delete_claim() {
 [ "${HOUSEKEEPER_SOURCE_ONLY:-}" = "1" ] && return 0
 
 # === main ===
-log "starting (ttl=${TTL_MS}ms probe_timeout=${PROBE_TIMEOUT_SEC}s)"
+log "starting (ttl=${TTL_MS}ms renew_active=${RENEW_ACTIVE_MS}ms probe_timeout=${PROBE_TIMEOUT_SEC}s)"
 
 CLAIMS_FILE=$(mktemp)
 PODS_FILE=$(mktemp)
@@ -208,6 +259,7 @@ kubectl get pods -n "$NS" -l "$POD_SELECTOR" \
 
 total=0
 reaped=0
+renewed=0
 skipped=0
 
 # Redirect (not pipe) so the loop stays in the parent shell — pipe-into-
@@ -276,6 +328,10 @@ while IFS='|' read -r CLAIM READY REASON ERROR_SINCE; do
       IDLE_MS="$RESULT"
       if [ "$IDLE_MS" -lt "$TTL_MS" ]; then
         log "keep claim=$CLAIM idle_ms=$IDLE_MS remaining_ms=$((TTL_MS - IDLE_MS))"
+        if [ "$IDLE_MS" -lt "$RENEW_ACTIVE_MS" ]; then
+          renew_shutdown "$CLAIM" "$IDLE_MS"
+          renewed=$((renewed + 1))
+        fi
         continue
       fi
       # Re-probe right before reap to narrow (not eliminate) the
@@ -291,6 +347,12 @@ while IFS='|' read -r CLAIM READY REASON ERROR_SINCE; do
           if [ "$RESULT2" -lt "$TTL_MS" ]; then
             log "abort-reap claim=$CLAIM reason=activity-during-decide first_idle_ms=$IDLE_MS reprobe_idle_ms=$RESULT2"
             skipped=$((skipped + 1))
+            # Sparing it from the sweep isn't enough: its own deadline is what
+            # was about to fire, and it's now imminent.
+            if [ "$RESULT2" -lt "$RENEW_ACTIVE_MS" ]; then
+              renew_shutdown "$CLAIM" "$RESULT2"
+              renewed=$((renewed + 1))
+            fi
           else
             request_shutdown "$CLAIM" "Idle" "idle_ms=$IDLE_MS reprobe_idle_ms=$RESULT2 ttl_ms=$TTL_MS"
             reaped=$((reaped + 1))
@@ -347,4 +409,4 @@ if [ "$selector_mismatch" -eq 0 ]; then
   done
 fi
 
-log "heartbeat ok claims=$total reaped=$reaped skipped=$skipped orphan_routes=$orphan_routes failed_pods=$failed_pods"
+log "heartbeat ok claims=$total reaped=$reaped renewed=$renewed skipped=$skipped orphan_routes=$orphan_routes failed_pods=$failed_pods"
