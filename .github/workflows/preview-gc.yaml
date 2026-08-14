@@ -46,6 +46,16 @@ jobs:
               echo "Package ${PACKAGE} does not exist yet — nothing to prune."
               exit 0
             fi
+            # The org-level packages API is frequently out of reach for
+            # GITHUB_TOKEN. Warn loudly and exit clean: a janitor that pages
+            # nightly gets muted, and a silent skip would read as "pruned".
+            if grep -q "read:packages scope\|Forbidden\|403" /tmp/api-err; then
+              echo "::warning::Cannot list ${PACKAGE}: GITHUB_TOKEN lacks org package read."
+              echo "::warning::Preview image tags are NOT being pruned. Grant a PAT with"
+              echo "::warning::read:packages + delete:packages as secrets.PREVIEW_GC_TOKEN"
+              echo "::warning::and set GH_TOKEN to it, or prune manually."
+              exit 0
+            fi
             cat /tmp/api-err >&2
             exit 1
           fi
