@@ -149,15 +149,16 @@ export async function refreshAccessToken(
     }
 
     const data = (await response.json()) as {
-      access_token?: string;
-      refresh_token?: string;
+      access_token?: unknown;
+      refresh_token?: unknown;
       expires_in?: unknown;
       token_type?: string;
-      scope?: string;
+      scope?: unknown;
     };
 
-    if (!data.access_token) {
-      // Spec-violating 200 (no access_token) — treat as transient, not silent success.
+    // access_token is untrusted server input — narrow with typeof, not the cast above.
+    if (typeof data.access_token !== "string" || !data.access_token) {
+      // Spec-violating 200 (no/non-string access_token) — treat as transient, not silent success.
       console.warn("[TokenRefresh] 200 response missing access_token", {
         connectionId: token.connectionId,
         tokenEndpoint: token.tokenEndpoint,
@@ -188,9 +189,12 @@ export async function refreshAccessToken(
     return {
       success: true,
       accessToken: data.access_token,
-      refreshToken: data.refresh_token || token.refreshToken,
+      refreshToken:
+        typeof data.refresh_token === "string" && data.refresh_token
+          ? data.refresh_token
+          : token.refreshToken,
       expiresIn,
-      scope: data.scope,
+      scope: typeof data.scope === "string" ? data.scope : undefined,
     };
   } catch (error) {
     // Network/parse errors are transient upstream failures → warn (see above).

@@ -198,4 +198,35 @@ describe("refreshAccessToken", () => {
     expect(result.permanent).toBe(false);
     expect(result.accessToken).toBeUndefined();
   });
+
+  it("treats a non-string access_token as a transient failure, not success", async () => {
+    installFetch(
+      () =>
+        new Response(JSON.stringify({ access_token: 12345 }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+
+    const result = await refreshAccessToken(baseToken);
+
+    expect(result.success).toBe(false);
+    expect(result.permanent).toBe(false);
+    expect(result.accessToken).toBeUndefined();
+  });
+
+  it("falls back to the prior refresh token when the response's refresh_token isn't a string", async () => {
+    installFetch(
+      () =>
+        new Response(
+          JSON.stringify({ access_token: "new", refresh_token: 987 }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+
+    const result = await refreshAccessToken(baseToken);
+
+    expect(result.success).toBe(true);
+    expect(result.refreshToken).toBe("rt");
+  });
 });
