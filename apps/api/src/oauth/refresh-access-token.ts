@@ -25,6 +25,18 @@ const PERMANENT_REFRESH_ERROR_CODES = new Set([
 /** Bound the outbound refresh call — a hanging token endpoint shouldn't hang the caller. */
 const TOKEN_REFRESH_FETCH_TIMEOUT_MS = 10_000;
 
+/**
+ * Upper bound (seconds) for `expires_in`. `Date`'s valid range is ±8.64e15ms,
+ * so a huge-but-finite `expires_in` (e.g. `1e20`, or a server that returns
+ * milliseconds instead of seconds) survives the `Number.isFinite` check but
+ * produces an Invalid Date once multiplied by 1000 downstream
+ * (`token-refresh.ts`'s `expiresAt`). `isExpired()` fails safe on that and
+ * treats the token as permanently expired, so every call re-triggers a
+ * refresh against the token endpoint instead of caching the token for its
+ * real lifetime. 100 years in seconds is far past any real OAuth token TTL.
+ */
+const MAX_EXPIRES_IN_SECONDS = 100 * 365 * 24 * 60 * 60;
+
 export interface TokenRefreshResult {
   success: boolean;
   /**
@@ -178,7 +190,11 @@ export async function refreshAccessToken(
     let expiresIn: number | undefined;
     if (data.expires_in !== undefined) {
       const parsed = Number(data.expires_in);
-      if (Number.isFinite(parsed) && parsed > 0) {
+      if (
+        Number.isFinite(parsed) &&
+        parsed > 0 &&
+        parsed <= MAX_EXPIRES_IN_SECONDS
+      ) {
         expiresIn = parsed;
       } else {
         console.warn("[TokenRefresh] ignoring malformed expires_in", {
