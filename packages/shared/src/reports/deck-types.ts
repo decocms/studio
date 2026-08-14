@@ -335,6 +335,14 @@ export type CtaProps = Omit<CtaTemplate, "template"> &
      *  reports that predate deterministic scores — the count pill hides then. */
     checksProbed?: number;
     checksTotal?: number;
+    /** Every signal the deck's round-up (`list`) slides surfaced — the CTA's
+     *  backlog shows ALL of them (no cap) so the visitor sees the real size of
+     *  what's still queued. Empty on decks without a round-up slide, and the
+     *  illustrative sample is used then. */
+    remainingItems?: {
+      label: string;
+      severity: "error" | "warning" | "notice";
+    }[];
   };
 
 /** A data source credited on a slide (logo + name). Rendered as a pill in the

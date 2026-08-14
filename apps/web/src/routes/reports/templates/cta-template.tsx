@@ -97,12 +97,22 @@ const REPORT_AREAS: ReportArea[] = [
 const SEGMENTS = 14;
 
 // Fixes queued from the findings — the falling backlog on the left.
-type FixTask = {
+type FixTask = { title: string; level: string; color: string };
+type SampleFixTask = {
   titleKey: TranslationKey;
   levelKey: TranslationKey;
   color: string;
 };
-const FIX_TASKS: FixTask[] = [
+/** Severity → the badge shown on a real (engine-supplied) backlog row. */
+const SEVERITY_LEVEL: Record<
+  "error" | "warning" | "notice",
+  { labelKey: TranslationKey; color: string }
+> = {
+  error: { labelKey: "reports.ctaTemplate.level.high", color: "#d43d3d" },
+  warning: { labelKey: "reports.ctaTemplate.level.medium", color: "#f0b613" },
+  notice: { labelKey: "reports.ctaTemplate.level.low", color: "#8a8580" },
+};
+const SAMPLE_FIX_TASKS: SampleFixTask[] = [
   {
     titleKey: "reports.ctaTemplate.fixTask.lcpHome",
     levelKey: "reports.ctaTemplate.level.high",
@@ -289,8 +299,7 @@ function ReportCard({
 
 // ── falling task backlog (left, decorative) ──────────────────────────────────
 
-function TaskCard({ titleKey, levelKey, color }: FixTask) {
-  const t = useT();
+function TaskCard({ title, level, color }: FixTask) {
   return (
     <div
       className="rounded-xl bg-white p-3"
@@ -308,7 +317,7 @@ function TaskCard({ titleKey, levelKey, color }: FixTask) {
           className="text-[12.5px] font-medium leading-snug"
           style={{ color: DECK.ink }}
         >
-          {t(titleKey)}
+          {title}
         </span>
       </div>
       <span
@@ -316,13 +325,13 @@ function TaskCard({ titleKey, levelKey, color }: FixTask) {
         style={{ background: "rgba(40,37,36,0.04)", color: DECK.muted }}
       >
         <span className="size-1.5 rounded-full" style={{ background: color }} />
-        {t(levelKey)}
+        {level}
       </span>
     </div>
   );
 }
 
-function TaskStream() {
+function TaskStream({ tasks }: { tasks: FixTask[] }) {
   return (
     <div
       className="h-[400px] w-[248px] overflow-hidden"
@@ -334,8 +343,8 @@ function TaskStream() {
       }}
     >
       <div className="report-task-track gap-3">
-        {[...FIX_TASKS, ...FIX_TASKS].map((t, i) => (
-          <TaskCard key={`${t.titleKey}-${i}`} {...t} />
+        {[...tasks, ...tasks].map((task, i) => (
+          <TaskCard key={`${task.title}-${i}`} {...task} />
         ))}
       </div>
     </div>
@@ -405,6 +414,7 @@ export default function CtaTemplate({
   initial,
   checksProbed,
   checksTotal,
+  remainingItems,
   active = false,
 }: CtaProps) {
   const t = useT();
@@ -412,6 +422,22 @@ export default function CtaTemplate({
   const ctaHref = useReportCtaHref(domain);
   const hasCoverage =
     typeof checksProbed === "number" && typeof checksTotal === "number";
+  // The real backlog when the deck carried round-up signals; the illustrative
+  // sample otherwise, so the composition never renders empty.
+  const tasks: FixTask[] = remainingItems?.length
+    ? remainingItems.map((item) => {
+        const level = SEVERITY_LEVEL[item.severity] ?? SEVERITY_LEVEL.notice;
+        return {
+          title: item.label,
+          level: t(level.labelKey),
+          color: level.color,
+        };
+      })
+    : SAMPLE_FIX_TASKS.map((task) => ({
+        title: t(task.titleKey),
+        level: t(task.levelKey),
+        color: task.color,
+      }));
   return (
     <div className="h-full w-full sm:px-6 lg:px-10 sm:pb-2">
       <div
@@ -436,10 +462,12 @@ export default function CtaTemplate({
               data-show={show}
               style={{ border: "1px solid rgba(255,255,255,0.25)" }}
             >
-              <span style={{ color: "rgba(255,255,255,0.5)" }}>
-                {checksProbed}/
+              <span style={{ color: "#ffffff" }}>
+                {t("reports.ctaTemplate.coverage", {
+                  probed: checksProbed,
+                  total: checksTotal,
+                })}
               </span>
-              <span style={{ color: "#ffffff" }}>{checksTotal}</span>
             </span>
           ) : null}
 
@@ -520,7 +548,7 @@ export default function CtaTemplate({
             data-show={show}
             style={{ transitionDelay: active ? "460ms" : "0ms" }}
           >
-            <TaskStream />
+            <TaskStream tasks={tasks} />
           </div>
 
           {/* center: the diagnostic report card */}

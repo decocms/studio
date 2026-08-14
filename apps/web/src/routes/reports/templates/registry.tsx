@@ -131,11 +131,16 @@ export default function SlideTemplate({
           domain={deck.meta.domain}
         />
       );
-    case "cta":
+    case "cta": {
+      // Every round-up signal, uncapped — the CTA lists all remaining items.
+      const remainingItems = deck.slides.flatMap((s) =>
+        s.template.template === "list" ? s.template.entries : [],
+      );
       return (
         <CtaTemplate
           {...t}
           {...common}
+          remainingItems={remainingItems}
           faviconUrl={deck.meta.faviconUrl}
           domain={deck.meta.domain}
           brand={deck.meta.brand}
@@ -144,6 +149,7 @@ export default function SlideTemplate({
           checksTotal={deck.meta.scores?.coverage.checks_total}
         />
       );
+    }
     default: {
       const _exhaustive: never = t;
       return _exhaustive;
