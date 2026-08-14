@@ -15,6 +15,7 @@ import type {
 import type { OrgSiteStoragePort } from "../storage/ports";
 import type { FileConfigInfo } from "../storage/types";
 import { provisionTenantS3Credentials } from "./tenant-credentials";
+import { monthShardSegment } from "./upload-policy";
 
 export interface FileConfigContext {
   info: FileConfigInfo;
@@ -198,18 +199,19 @@ export interface ListObjectsResult {
 }
 
 /**
- * How many month shards page 1 probes, newest first, before falling back to
- * the broad lexicographic walk. Active buckets fill the page in the first one
- * or two; sparse ones do a bounded handful of (usually fast/empty) probes.
+ * How many month shards page 1 probes concurrently, newest first, alongside
+ * the broad lexicographic fallback. Wide enough to surface recent uploads in
+ * buckets that were quiet for a few months; results are merged, sorted by
+ * lastModified, and truncated to the page size.
  */
 const MONTH_SHARD_PROBES = 6;
 
 /**
  * Month-shard key prefixes to probe, newest first: `<bucketPrefix><yyyy>/<mm>/`
  * for the current month walking back `count` months, crossing year boundaries
- * (`2026/01/` -> `2025/12/`). Mirrors `buildObjectKey`'s UTC `yyyy/mm` shard
- * (`upload-policy.ts`) so a fresh upload is fetched by its month's probe instead
- * of being truncated behind older months in a year-wide lexicographic listing.
+ * (`2026/01/` -> `2025/12/`). Shares `monthShardSegment` with `buildObjectKey`
+ * so a fresh upload is always fetched by its month's probe instead of being
+ * truncated behind older months in a year-wide lexicographic listing.
  */
 export function monthShardPrefixes(
   bucketPrefix: string,
@@ -220,8 +222,7 @@ export function monthShardPrefixes(
   let year = now.getUTCFullYear();
   let month = now.getUTCMonth() + 1; // 1-12
   for (let i = 0; i < count; i++) {
-    const mm = String(month).padStart(2, "0");
-    prefixes.push(`${bucketPrefix}${year}/${mm}/`);
+    prefixes.push(`${bucketPrefix}${monthShardSegment(year, month)}`);
     month -= 1;
     if (month === 0) {
       month = 12;
@@ -233,11 +234,12 @@ export function monthShardPrefixes(
 
 /**
  * List a page of bucket objects, newest first. S3 ListObjectsV2 sorts only
- * lexicographically, so page 1 probes month shards newest-first (see
- * `monthShardPrefixes`) then a broad-prefix fallback for legacy keys and the
- * continuation token; results are merged, de-duped, and sorted by lastModified
- * DESC. Cursor pages walk the broad namespace lexicographically, still sorting
- * each page newest-first and skipping the month shards page 1 already returned.
+ * lexicographically, so page 1 probes the month shards concurrently (see
+ * `monthShardPrefixes`) plus a broad-prefix fallback for legacy keys and the
+ * continuation token, then merges, de-dupes, sorts by lastModified DESC, and
+ * truncates to the page size. Cursor pages walk the broad namespace in S3's
+ * lexicographic key order (older objects first, NOT re-sorted by lastModified),
+ * skipping the month shards page 1 already returned.
  */
 export async function listObjects(params: {
   ctx: FileConfigContext;
@@ -295,16 +297,20 @@ export async function listObjects(params: {
     );
   }
 
+  // Probe month shards concurrently — sequential round trips would each add ~1 RTT to an interactive open.
+  const monthResponses = await Promise.all(
+    monthShardPrefixesList.map((prefix) =>
+      client.send(
+        new ListObjectsV2Command({
+          Bucket: params.ctx.info.bucket,
+          Prefix: prefix,
+          MaxKeys: target,
+        }),
+      ),
+    ),
+  );
   const seen = new Map<string, ListedObject>();
-  for (const prefix of monthShardPrefixesList) {
-    if (seen.size >= target) break;
-    const res = await client.send(
-      new ListObjectsV2Command({
-        Bucket: params.ctx.info.bucket,
-        Prefix: prefix,
-        MaxKeys: target - seen.size,
-      }),
-    );
+  for (const res of monthResponses) {
     for (const obj of res.Contents ?? []) {
       if (!obj.Key || obj.Key.endsWith("/") || seen.has(obj.Key)) continue;
       seen.set(obj.Key, toListedObject(obj, params.ctx));
@@ -331,7 +337,10 @@ export async function listObjects(params: {
     ? (broadRes.NextContinuationToken ?? null)
     : null;
 
-  const items = Array.from(seen.values()).sort(byLastModifiedDesc);
+  // Concurrent probes over-fetch (up to `target` per shard), so keep only the newest page.
+  const items = Array.from(seen.values())
+    .sort(byLastModifiedDesc)
+    .slice(0, target);
   return { items, nextCursor };
 }
 

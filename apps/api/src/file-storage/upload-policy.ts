@@ -114,6 +114,15 @@ export function sanitizeFilename(input: string): string {
 }
 
 /**
+ * The `<yyyy>/<mm>/` date shard a key lives under (UTC, month zero-padded).
+ * Single source of truth for the shard format: `buildObjectKey` stamps it on
+ * write and `listObjects` probes it on read, so they must never diverge.
+ */
+export function monthShardSegment(year: number, month: number): string {
+  return `${year}/${String(month).padStart(2, "0")}/`;
+}
+
+/**
  * Build the object key: `<prefix?>/<yyyy>/<mm>/<uuid>-<sanitized-filename>`.
  * The prefix (already-normalized to end with `/`) comes from the file
  * config. The uuid prevents collisions; the date shards keep S3 LIST
@@ -124,10 +133,9 @@ export function buildObjectKey(params: {
   filename: string;
 }): string {
   const now = new Date();
-  const yyyy = now.getUTCFullYear().toString();
-  const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const shard = monthShardSegment(now.getUTCFullYear(), now.getUTCMonth() + 1);
   const id = randomUUID();
   const safe = sanitizeFilename(params.filename);
-  const tail = `${yyyy}/${mm}/${id}-${safe}`;
+  const tail = `${shard}${id}-${safe}`;
   return params.prefix ? `${params.prefix}${tail}` : tail;
 }
