@@ -341,8 +341,14 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
 
     organization: {
       create: async (data) => {
+        // Don't pass headers — same reason as apiKey.create below. A Bearer-JWT
+        // caller's Authorization header trips the apiKey plugin's global
+        // before-hook ("Invalid API key") before this handler runs. `data`
+        // already carries `userId` for server-side creation (see
+        // tools/organization/create.ts), and boundAuth resolves the actor once
+        // from the session, so identity is preserved for cookie and JWT callers
+        // alike. Authorization is enforced by ctx.access.check() before the call.
         return auth.api.createOrganization({
-          headers,
           body: data,
         } as unknown as Parameters<typeof auth.api.createOrganization>[0]);
       },
@@ -381,8 +387,11 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
       },
 
       addMember: async (data) => {
+        // Don't pass headers — see organization.create above. `data` carries
+        // userId/organizationId/role; the member-add tool already checks the
+        // caller's real membership + canAssignRole before calling. Matches the
+        // headerless pattern in auth/ensure-user-organization.ts.
         return auth.api.addMember({
-          headers,
           body: data,
         } as unknown as Parameters<typeof auth.api.addMember>[0]);
       },
