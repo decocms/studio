@@ -110,6 +110,25 @@ describe("refreshSession", () => {
     expect(result.expiresAt).toBe(1_234);
   });
 
+  it("ignores an absurdly large expires_in and keeps the previous expiresAt", async () => {
+    const fetchMock = mock(
+      async () =>
+        new Response(
+          JSON.stringify({ access_token: "new_at", expires_in: 1e20 }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+
+    const session = makeSession({ expiresAt: 1_234 });
+    const result = await refreshSession(
+      session,
+      fetchMock as unknown as typeof fetch,
+      () => FIXED_NOW,
+    );
+
+    expect(result.expiresAt).toBe(1_234);
+  });
+
   it("keeps the previous refresh token when the server returns a non-string one", async () => {
     const fetchMock = mock(
       async () =>
@@ -199,6 +218,22 @@ describe("refreshSession", () => {
       () => FIXED_NOW,
     );
     await expect(promise).rejects.toMatchObject({ kind: "transient" });
+  });
+
+  it("bounds the refresh call with an abort signal, so a hanging token endpoint can't hang the CLI", async () => {
+    const fetchMock = mock(async (_url: string, init?: RequestInit) => {
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
+      return new Response(
+        JSON.stringify({ access_token: "new_at", expires_in: 3600 }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    await refreshSession(
+      makeSession(),
+      fetchMock as unknown as typeof fetch,
+      () => FIXED_NOW,
+    );
+    expect(fetchMock).toHaveBeenCalled();
   });
 
   it("throws when session has no refreshToken", async () => {

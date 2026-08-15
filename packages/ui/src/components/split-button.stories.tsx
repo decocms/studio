@@ -65,6 +65,21 @@ export const DisabledPrimaryWithMenu: Story = {
   },
 };
 
+/** A disabled item with a tooltip stays reachable and explainable by keyboard. */
+export const DisabledMenuItemTooltip: Story = {
+  args: {
+    items: [
+      {
+        key: "force",
+        label: "Force publish",
+        disabled: true,
+        tooltip: "Only maintainers can force publish",
+        onSelect: () => {},
+      },
+    ],
+  },
+};
+
 export const Loading: Story = {
   args: { label: "Publishing", loading: true },
 };

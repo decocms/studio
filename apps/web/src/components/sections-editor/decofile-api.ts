@@ -61,7 +61,11 @@ function decofileApiUrl(params: DecofileScopeParams): string {
   return `/api/${params.orgSlug}/decofile/${encodeURIComponent(params.virtualMcpId)}/${encodeURIComponent(params.branch)}`;
 }
 
-async function throwResponseError(res: Response, verb: string): Promise<never> {
+/** Shared check-and-throw for a non-ok sandbox/decofile write response. */
+export async function throwResponseError(
+  res: Response,
+  verb: string,
+): Promise<never> {
   const body = await res.json().catch(() => ({}));
   throw new Error(
     (body as { error?: string }).error ?? `${verb} failed (${res.status})`,

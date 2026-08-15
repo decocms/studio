@@ -117,7 +117,7 @@ describe("getValidSession", () => {
     expect(result).toBeNull();
   });
 
-  it("returns null when refresh fails with invalid_grant", async () => {
+  it("returns null and clears the stale file when refresh fails with invalid_grant", async () => {
     await writeSession(dir, makeSession({ expiresAt: NOW_S - 60 }));
     const fetchMock = mock(
       async () => new Response("invalid_grant", { status: 400 }),
@@ -128,6 +128,7 @@ describe("getValidSession", () => {
       now: () => FIXED_NOW_MS,
     });
     expect(result).toBeNull();
+    expect(await readSession(dir)).toBeNull();
   });
 
   it("rethrows when refresh fails with a transient error", async () => {

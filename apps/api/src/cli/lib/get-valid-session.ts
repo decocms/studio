@@ -1,5 +1,10 @@
 import { RefreshFailedError, refreshSession } from "./refresh-session";
-import { readSession, type Session, writeSession } from "./session";
+import {
+  clearSession,
+  readSession,
+  type Session,
+  writeSession,
+} from "./session";
 
 /** Treat a session as expired this many seconds before its declared expiry, to avoid races. */
 const EXPIRY_SKEW_SECONDS = 60;
@@ -42,6 +47,8 @@ export async function getValidSession(
     return refreshed;
   } catch (err) {
     if (err instanceof RefreshFailedError && err.kind === "invalid_grant") {
+      // Dead refresh token — drop the stale file instead of re-rejecting it forever.
+      await clearSession(opts.dataDir, session.target);
       return null;
     }
     throw err;

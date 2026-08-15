@@ -10,7 +10,6 @@ import { BootingVisual } from "./booting-visual";
 import type { ClaimPhase } from "../hooks/sandbox-events-context";
 import type { PhaseProgress } from "./derive-phase-progress";
 import type { SandboxStartError } from "./preview-state";
-import { headlineFor } from "./state-card-helpers";
 import { useT } from "@/i18n/use-t.ts";
 
 export type SandboxStateCardProps =
@@ -51,7 +50,9 @@ export function SandboxStateCard(props: SandboxStateCardProps) {
       <div className="flex h-full w-full items-center justify-center bg-background p-6">
         <div className="flex w-full max-w-md flex-col items-center gap-4 text-center">
           <AlertTriangle className="size-12 text-destructive" />
-          <h3 className="text-lg font-medium">{headlineFor("errored")}</h3>
+          <h3 className="text-lg font-medium">
+            {t("sandbox.stateCard.erroredHeadline")}
+          </h3>
           <p className="max-w-sm text-sm text-muted-foreground">
             {connectionMissing
               ? t("sandbox.stateCard.githubConnectionMissingMessage")
@@ -85,7 +86,9 @@ export function SandboxStateCard(props: SandboxStateCardProps) {
     <div className="flex h-full w-full items-center justify-center bg-background p-6">
       <div className="flex w-full max-w-md flex-col items-center gap-4 text-center">
         <PauseCircle className="size-12 text-blue-500" />
-        <h3 className="text-lg font-medium">{headlineFor("suspended")}</h3>
+        <h3 className="text-lg font-medium">
+          {t("sandbox.stateCard.suspendedHeadline")}
+        </h3>
         <p className="max-w-sm text-sm text-muted-foreground">
           {t("sandbox.stateCard.resumeToContinue")}
         </p>

@@ -308,6 +308,9 @@ export const sandbox = {
   "sandbox.pathParamPickerChip.useRawValue": 'Use "{rawTerm}" as {paramLabel}',
   "sandbox.plainBlocks.bulletedLabel": "Bulleted",
   "sandbox.plainBlocks.codePlaceholder": "Code",
+  "sandbox.plainBlocks.headingLevel1": "Heading 1",
+  "sandbox.plainBlocks.headingLevel2": "Heading 2",
+  "sandbox.plainBlocks.headingLevel3": "Heading 3",
   "sandbox.plainBlocks.headingPlaceholder": "Heading",
   "sandbox.plainBlocks.languagePlaceholder": "language",
   "sandbox.plainBlocks.listItemPlaceholder": "List item",
@@ -617,6 +620,7 @@ export const sandbox = {
   "sandbox.sectionsRightPane.selectSectionDescription":
     "Pick a saved section to edit it, or an available one to customize and save as global.",
   "sandbox.sectionsRightPane.selectSectionTitle": "Select a section to edit",
+  "sandbox.stateCard.erroredHeadline": "Couldn't start the sandbox",
   "sandbox.stateCard.githubConnectionMissingMessage":
     "The GitHub connection this chat used was removed. Link the repository again to start the sandbox.",
   "sandbox.stateCard.linkRepoAgain": "Link repository",
@@ -624,6 +628,7 @@ export const sandbox = {
     "This agent's GitHub repo isn't authenticated. Reconnect it in Connections, then retry.",
   "sandbox.stateCard.reconnectGithub": "Reconnect GitHub",
   "sandbox.stateCard.resume": "Resume",
+  "sandbox.stateCard.suspendedHeadline": "Sandbox is paused",
   "sandbox.stateCard.resumeToContinue": "Resume to continue.",
   "sandbox.stateCard.retry": "Retry",
   "sandbox.submoduleCredentialsField.addSubmoduleCredential":

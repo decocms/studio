@@ -189,8 +189,6 @@ describe("COMMERCE_DISCOVERY_SETUP", () => {
         data: {
           flags: {
             reports_only: true,
-            qa_agent_enabled: true,
-            code_reviewer_enabled: true,
           },
         },
       },
@@ -217,19 +215,16 @@ describe("COMMERCE_DISCOVERY_SETUP", () => {
         data: {
           flags: {
             reports_only: true,
-            qa_agent_enabled: true,
-            code_reviewer_enabled: true,
           },
         },
       },
     ]);
   });
 
-  test("defaults reports_only on but does not clobber an already-explicit reviewer flag", async () => {
+  test("defaults reports_only on without touching the default-on reviewer flags", async () => {
     const upserts: Array<{ orgId: string; data: Record<string, unknown> }> = [];
     const ctx = makeCtx({
-      // reports_only was never set, but the org already turned code review off
-      // by hand — the reports_only default must not re-enable it.
+      // Org opted code review off by hand; setup only defaults reports_only.
       codeReviewerEnabled: false,
       settingsUpsert: (orgId, data) => upserts.push({ orgId, data }),
     });
@@ -243,7 +238,7 @@ describe("COMMERCE_DISCOVERY_SETUP", () => {
       {
         orgId: ORG_ID,
         data: {
-          flags: { reports_only: true, qa_agent_enabled: true },
+          flags: { reports_only: true },
         },
       },
     ]);

@@ -127,7 +127,7 @@ export const automations = {
   "automations.automationListRow.deleteTitle": "Delete automation?",
   "automations.automationListRow.nextRun": "Next run {date}",
   "automations.automationListRow.noTriggers": "No triggers configured",
-  "automations.automationListRow.triggers": "{count} trigger{plural}",
+  "automations.automationListRow.triggers": "{count} trigger(s)",
   "automations.automationRuns.costHeader": "Cost",
   "automations.automationRuns.costTitle": "Cost",
   "automations.automationRuns.failed": "failed",

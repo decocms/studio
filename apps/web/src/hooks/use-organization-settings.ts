@@ -13,6 +13,10 @@ import { callStudioTool, useStudioTools } from "@/lib/studio-tools";
 import type { StudioToolInput as ToolInput } from "@decocms/shared/tools/tool-io";
 
 export type { SimpleModeTier } from "@decocms/shared/organization/schema";
+import {
+  DEFAULT_ON_FLAGS,
+  orgFlagEnabled,
+} from "@decocms/shared/organization/schema";
 import type {
   OrgFlags,
   SimpleModeTier,
@@ -248,7 +252,9 @@ export function useReportsOnly(): boolean {
  * Defaults ON for reports-only orgs — their sidebar has no agent navigation to
  * lose, so the destination list is strictly what they need. An explicit
  * `nav_v2: false` still wins, which is why this reads the raw tri-state value
- * rather than going through `useOrgFlag` (which collapses unset to `false`).
+ * rather than going through `useOrgFlag`/`DEFAULT_ON_FLAGS`: that mechanism
+ * only expresses a flag defaulting on for every org, not one flag's default
+ * depending on another flag's value.
  */
 export function useNavV2(): boolean {
   const { data } = useOrganizationSettings(
@@ -258,13 +264,16 @@ export function useNavV2(): boolean {
 }
 
 /**
- * Read one org flag from the `flags` bag (see OrgFlagsSchema in
- * @decocms/shared/organization/schema — the single place flags are defined).
- * Unset and NULL both read as `false`. Non-blocking, cosmetic-gating only.
+ * Read one org flag from the `flags` bag via `orgFlagEnabled` (see
+ * OrgFlagsSchema / DEFAULT_ON_FLAGS in @decocms/shared/organization/schema —
+ * the single place flag defaults are defined). The pre-load fallback uses the
+ * same default. Non-blocking, cosmetic-gating only.
  */
 export function useOrgFlag(flag: keyof OrgFlags): boolean {
-  const { data } = useOrganizationSettings((s) => s.flags?.[flag] ?? false);
-  return data ?? false;
+  const { data } = useOrganizationSettings((s) =>
+    orgFlagEnabled(s.flags, flag),
+  );
+  return data ?? DEFAULT_ON_FLAGS.has(flag);
 }
 
 /**

@@ -5,6 +5,12 @@ import { FloatingToolbar, InlineText, ToolbarButton } from "./primitives";
 
 const HEADING_LEVELS = ["1", "2", "3"] as const;
 
+const HEADING_LABEL_KEY = {
+  "1": "sandbox.plainBlocks.headingLevel1",
+  "2": "sandbox.plainBlocks.headingLevel2",
+  "3": "sandbox.plainBlocks.headingLevel3",
+} as const;
+
 const HEADING_CLASS: Record<string, string> = {
   "1": "text-3xl font-bold",
   "2": "text-2xl font-bold",
@@ -35,7 +41,7 @@ export function HeadingBlock({
             <ToolbarButton
               key={l}
               active={lvl === l}
-              label={t(`sandbox.plainBlocks.headingLevel${l}` as any)}
+              label={t(HEADING_LABEL_KEY[l])}
               onClick={() => onChange({ text, level: l })}
             >
               H{l}
