@@ -184,6 +184,22 @@ async function parseClaimErrorCode(
   }
 }
 
+/**
+ * Parse a response body as JSON without throwing — Commerce Discovery is an
+ * external service, and an unparseable body on an otherwise-`ok` response
+ * (empty body, HTML error page, truncated stream, …) must degrade to the
+ * schema's "missing field" error instead of an unhandled `SyntaxError`.
+ */
+async function parseJsonResponse(response: Response): Promise<unknown> {
+  const text = await response.text().catch(() => "");
+  if (!text) return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
 async function responseErrorMessage(response: Response): Promise<string> {
   const fallback = `Commerce Discovery auth failed with status ${response.status}.`;
   const text = await response.text().catch(() => "");
@@ -242,7 +258,9 @@ export async function fetchCommerceDiscoveryAuth(
     });
   }
 
-  const parsed = UpgradeResponseSchema.safeParse(await response.json());
+  const parsed = UpgradeResponseSchema.safeParse(
+    await parseJsonResponse(response),
+  );
   if (!parsed.success) {
     throw new Error(
       "Commerce Discovery auth response did not include a token.",
@@ -298,7 +316,9 @@ export async function bindCommerceDiscoveryResource(
     };
   }
   if (response.status === 422) {
-    const parsed = BindResponseSchema.safeParse(await response.json());
+    const parsed = BindResponseSchema.safeParse(
+      await parseJsonResponse(response),
+    );
     return {
       ok: false,
       reason: parsed.success
@@ -313,7 +333,9 @@ export async function bindCommerceDiscoveryResource(
     throw new Error(await responseErrorMessage(response));
   }
 
-  const parsed = BindResponseSchema.safeParse(await response.json());
+  const parsed = BindResponseSchema.safeParse(
+    await parseJsonResponse(response),
+  );
   if (!parsed.success || !parsed.data.binding) {
     throw new Error(
       "Commerce Discovery bind response did not include a binding.",
@@ -419,7 +441,9 @@ export async function fetchCommerceDiscoveryConnectionStatus(
   if (!response.ok) {
     throw new Error(await responseErrorMessage(response));
   }
-  const parsed = ConnectionStatusSchema.safeParse(await response.json());
+  const parsed = ConnectionStatusSchema.safeParse(
+    await parseJsonResponse(response),
+  );
   return {
     providers: parsed.success ? parsed.data.providers : {},
     claimed: true,
