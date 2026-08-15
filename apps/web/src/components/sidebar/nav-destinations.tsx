@@ -243,9 +243,9 @@ export function NavDestinationsContent({
   );
 
   return (
-    <SidebarMenu className="gap-1.5">
+    <SidebarMenu className="gap-1">
       {destinations.map(row)}
-      {codingAgents.length > 0 && <li aria-hidden className="h-3" />}
+      {codingAgents.length > 0 && <li aria-hidden className="h-2" />}
       {codingAgents.map(row)}
     </SidebarMenu>
   );
