@@ -42,6 +42,7 @@ import {
   NewChatCrumb,
 } from "@/components/header/shell-breadcrumb";
 import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { ThreadsMenu } from "@/components/chat/threads-menu";
 import { useNavV2 } from "@/hooks/use-organization-settings";
 import { SidePanel } from "./side-panel";
@@ -75,23 +76,46 @@ function FastPreviewChatNotice() {
 const SIDE_PANEL_ID = "workspace-side-panel";
 const MAIN_PANEL_ID = "workspace-main-panel";
 
+/**
+ * One panel column: a rounded card, optionally preceded by its header.
+ *
+ * `headerInside` is the first-class navigation's shape — the card runs the full
+ * height of the column and owns its own top bar, so both panels read as one
+ * identical surface. Otherwise the header sits ABOVE the card on the sidebar
+ * background and each column reads as a top bar + a card below it.
+ *
+ * translateZ(0) promotes the card to its own layer so the Preview iframe clips
+ * to the rounded corners (iframes ignore border-radius clipping otherwise,
+ * leaving square corners).
+ */
 function PanelCard({
   children,
   header,
   testId,
-}: PropsWithChildren<{ header?: ReactNode; testId: string }>) {
-  // The header sits ABOVE the card, on the sidebar background — not inside the
-  // rounded card. Each column reads as a top bar + a card below it.
+  headerInside,
+}: PropsWithChildren<{
+  header?: ReactNode;
+  testId: string;
+  headerInside?: boolean;
+}>) {
+  const card =
+    "min-h-0 flex-1 overflow-hidden rounded-[0.75rem] bg-background card-shadow [transform:translateZ(0)]";
+
+  if (headerInside) {
+    return (
+      <div className="flex h-full min-h-0 flex-col p-0.5">
+        <div data-testid={testId} className={cn(card, "flex flex-col")}>
+          {header}
+          <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col p-0.5 pt-0.25">
       {header}
-      <div
-        data-testid={testId}
-        // translateZ(0) promotes the card to its own layer so the Preview
-        // iframe clips to the rounded corners (iframes ignore border-radius
-        // clipping otherwise, leaving square corners).
-        className="min-h-0 flex-1 overflow-hidden rounded-[0.75rem] bg-background card-shadow [transform:translateZ(0)]"
-      >
+      <div data-testid={testId} className={card}>
         {children}
       </div>
     </div>
@@ -362,7 +386,11 @@ export function WorkspacePanelGroup({
           data-workspace-panel-open={sidePanel !== null ? "" : undefined}
           className="min-w-0 overflow-hidden bg-sidebar"
         >
-          <PanelCard testId="side-panel" header={chatOpen ? chatHeader : null}>
+          <PanelCard
+            testId="side-panel"
+            headerInside={navV2}
+            header={chatOpen ? chatHeader : null}
+          >
             {chatOpen &&
               (fastPreviewActive ? (
                 <FastPreviewChatNotice />
@@ -383,7 +411,11 @@ export function WorkspacePanelGroup({
           data-workspace-panel-open={mainOpen ? "" : undefined}
           className="min-w-0 overflow-hidden bg-sidebar"
         >
-          <PanelCard testId="main-panel" header={mainOpen ? mainHeader : null}>
+          <PanelCard
+            testId="main-panel"
+            headerInside={navV2}
+            header={mainOpen ? mainHeader : null}
+          >
             <MainPanelWithDrawer taskId={taskId} virtualMcpId={virtualMcpId} />
           </PanelCard>
         </ResizablePanel>
