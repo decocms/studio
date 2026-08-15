@@ -43,10 +43,12 @@ export function blocksPreviewWorkspaceReducer(
         editSeoPageKey: null,
       };
     case "edit-seo":
+      // Switching target drops a variant override scoped to the prior selection, same as "select".
       return {
         ...state,
         target: action.target,
         editSeoPageKey: action.target.key,
+        variantOverride: null,
       };
     case "consume-edit-seo":
       return { ...state, editSeoPageKey: null };
