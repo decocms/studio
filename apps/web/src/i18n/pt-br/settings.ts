@@ -459,6 +459,8 @@ export const settings = {
   "settings.navigation.title": "Navegação",
   "settings.navigation.description":
     "Como esta organização circula pelo Studio.",
+  "settings.navigation.updateError":
+    "Não foi possível atualizar as configurações de navegação",
   "settings.navigation.navV2Title": "Navegação de primeira classe",
   "settings.navigation.navV2Description":
     "A barra lateral lista destinos (Relatórios, Biblioteca, Tarefas) em vez de chats, e a lista de chats vai para o topo do painel de chat. Ativada por padrão em organizações de relatório.",

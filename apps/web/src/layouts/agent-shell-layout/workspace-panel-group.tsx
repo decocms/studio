@@ -1,12 +1,18 @@
 /**
  * Persistent desktop workspace: SidePanel | MainPanel.
  *
- * Each panel owns a 48px header (see PanelHeader). The buttons follow their
- * panel: the Chat toggle lives in the chat header while chat is open and moves
+ * Each panel owns a 48px header (see PanelHeader).
+ *
+ * Classic layout: the headers sit above the cards and the buttons follow their
+ * panel — the Chat toggle lives in the chat header while chat is open and moves
  * into the main header when chat is closed; the main view tabs + publish live
  * in the main header while it's open and move into the chat header when the
  * main panel is closed. So a control never vanishes just because its home panel
  * is hidden.
+ *
+ * First-class navigation (`useNavV2`): each panel is one full-height card that
+ * owns its header, and a PanelCollapseToggle pair brackets the workspace — so
+ * controls stay with their own panel instead of relocating.
  */
 
 import {

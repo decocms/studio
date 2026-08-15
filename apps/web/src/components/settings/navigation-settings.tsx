@@ -36,7 +36,8 @@ export function NavigationSettings() {
               aria-label={t("settings.navigation.navV2Title")}
               onCheckedChange={(next) =>
                 setFlag.mutate("nav_v2", next, {
-                  onError: () => toast.error(t("settings.review.updateError")),
+                  onError: () =>
+                    toast.error(t("settings.navigation.updateError")),
                 })
               }
             />

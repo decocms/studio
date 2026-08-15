@@ -441,6 +441,7 @@ export const settings = {
   "settings.navigation.title": "Navigation",
   "settings.navigation.description":
     "How this organization gets around Studio.",
+  "settings.navigation.updateError": "Couldn't update navigation settings",
   "settings.navigation.navV2Title": "First-class navigation",
   "settings.navigation.navV2Description":
     "The sidebar lists destinations (Reports, Library, Tasks) instead of chats, and the chat list moves to the top of the chat panel. On by default for report organizations.",
