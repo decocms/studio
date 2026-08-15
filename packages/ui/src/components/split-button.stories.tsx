@@ -65,7 +65,9 @@ export const DisabledPrimaryWithMenu: Story = {
   },
 };
 
-/** A disabled item with a tooltip stays reachable and explainable by keyboard. */
+/** A disabled item with a tooltip stays reachable and explainable by keyboard.
+ *  Test: Tab to the menu button, press Enter/Space to open, then arrow to the disabled item.
+ */
 export const DisabledMenuItemTooltip: Story = {
   args: {
     items: [
@@ -111,6 +113,40 @@ export const Sizes: Story = {
       <SplitButton {...args} size="sm" label="Small" />
       <SplitButton {...args} size="default" label="Default" />
       <SplitButton {...args} size="lg" label="Large" />
+    </div>
+  ),
+};
+
+/** Keyboard navigation test: Tab reaches both button halves, Escape closes menu.
+ *  Primary: Tab focuses → Space/Enter triggers onClick.
+ *  Menu: Tab focuses → Space/Enter opens → Arrows navigate → Enter/Space selects.
+ */
+export const KeyboardNavigation: Story = {
+  render: (args) => (
+    <div className="space-y-4">
+      <div>
+        <p className="mb-2 text-sm text-muted-foreground">
+          Press Tab to focus, Space/Enter to activate
+        </p>
+        <SplitButton
+          {...args}
+          label="Click or open menu"
+          onClick={() => alert("Primary button clicked")}
+        />
+      </div>
+      <div>
+        <p className="mb-2 text-sm text-muted-foreground">
+          Disabled primary with menu: Tab to menu, arrows navigate, disabled
+          items show tooltip
+        </p>
+        <SplitButton
+          {...args}
+          label="Out of date"
+          disabled
+          tooltip="Update required before action"
+          onClick={() => alert("Not clickable")}
+        />
+      </div>
     </div>
   ),
 };
