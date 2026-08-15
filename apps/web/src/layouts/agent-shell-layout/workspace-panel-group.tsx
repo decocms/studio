@@ -361,7 +361,11 @@ export function WorkspacePanelGroup({
         ref={panelGroupRef}
         key={`${virtualMcpId}-${taskId}`}
         orientation="horizontal"
-        className="flex-1 min-h-0 pb-1 pr-1 pl-0 pt-0 [&>[data-workspace-panel-open]]:!min-w-[320px]"
+        className={cn(
+          "flex-1 min-h-0 pb-1 pr-1 pl-0 [&>[data-workspace-panel-open]]:!min-w-[320px]",
+          // Full-height cards need the same room above as below.
+          navV2 ? "pt-1" : "pt-0",
+        )}
         style={{ overflow: "visible" }}
         onLayoutChanged={(layout, { isUserInteraction }) => {
           const percentage = layout[SIDE_PANEL_ID];
