@@ -181,9 +181,6 @@ export function WorkspacePanelGroup({
   const mainSize = 100 - sideSize;
 
   const chatOpen = sidePanel !== null;
-  // When the main panel is hidden but chat is open, its controls (view tabs +
-  // publish) move into the chat header so views are still reachable.
-  const mainControlsInChat = chatOpen && !mainOpen;
 
   // Responsive header: measure the whole header (== panel width) and the right
   // actions cluster. `headerLayout` derives BOTH the tab count and whether the
@@ -208,6 +205,14 @@ export function WorkspacePanelGroup({
   const agentCrumb = sidebarCollapsed && !navV2 ? <AgentSwitcherCrumb /> : null;
   const newChatCrumb = sidebarCollapsed || navV2 ? <NewChatCrumb /> : null;
   const threadsMenu = navV2 ? <ThreadsMenu /> : null;
+
+  /**
+   * The main panel's controls (view tabs + branch + publish) belong to the main
+   * panel. Classically they relocate into the chat header while it is closed,
+   * so the views stay reachable; under the first-class navigation the chat
+   * header's own right-panel toggle reopens it, so they simply go away.
+   */
+  const mainControlsInChat = chatOpen && !mainOpen && !navV2;
 
   const publishActions = <VirtualMcpHeaderInfo virtualMcp={entity} />;
 
