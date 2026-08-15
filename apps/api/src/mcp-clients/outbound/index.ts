@@ -28,6 +28,45 @@ import {
 // Separate from the per-request pool on StudioContext (used by HTTP/SSE).
 const stdioPool = createClientPool();
 
+// Shared by HTTP/Websocket and SSE — only the transport class differs.
+async function buildHttpLikeTransport(
+  connection: ConnectionEntity,
+  ctx: StudioContext,
+  superUser: boolean,
+  virtualMcpId: string | undefined,
+  TransportCtor: new (
+    url: URL,
+    opts: { requestInit: { headers: Record<string, string> } },
+  ) => Transport,
+): Promise<Transport> {
+  if (!connection.connection_url) {
+    throw new Error(`${connection.connection_type} connection missing URL`);
+  }
+
+  const headers = await buildRequestHeaders(connection, ctx, superUser);
+
+  const httpParams = connection.connection_headers;
+  if (httpParams && "headers" in httpParams) {
+    Object.assign(headers, httpParams.headers);
+  }
+
+  const transport: Transport = new TransportCtor(
+    new URL(connection.connection_url),
+    { requestInit: { headers } },
+  );
+
+  return composeTransport(
+    transport,
+    (t) => new AuthTransport(t, { ctx, connection, superUser }),
+    (t) =>
+      new MonitoringTransport(t, {
+        ctx,
+        connectionId: connection.id,
+        virtualMcpId,
+      }),
+  );
+}
+
 /**
  * Create an MCP client for outbound connections (STDIO, HTTP, Websocket, SSE)
  *
@@ -94,66 +133,24 @@ export async function createOutboundClient(
 
     case "HTTP":
     case "Websocket": {
-      if (!connection.connection_url) {
-        throw new Error(`${connection.connection_type} connection missing URL`);
-      }
-
-      const headers = await buildRequestHeaders(connection, ctx, superUser);
-
-      const httpParams = connection.connection_headers;
-      if (httpParams && "headers" in httpParams) {
-        Object.assign(headers, httpParams.headers);
-      }
-
-      let transport: Transport = new StreamableHTTPClientTransport(
-        new URL(connection.connection_url),
-        { requestInit: { headers } },
+      const transport = await buildHttpLikeTransport(
+        connection,
+        ctx,
+        superUser,
+        virtualMcpId,
+        StreamableHTTPClientTransport,
       );
-
-      // Compose with auth and monitoring transports
-      transport = composeTransport(
-        transport,
-        (t) => new AuthTransport(t, { ctx, connection, superUser }),
-        (t) =>
-          new MonitoringTransport(t, {
-            ctx,
-            connectionId,
-            virtualMcpId,
-          }),
-      );
-
       return ctx.getOrCreateClient(transport, connectionId);
     }
 
     case "SSE": {
-      if (!connection.connection_url) {
-        throw new Error("SSE connection missing URL");
-      }
-
-      const headers = await buildRequestHeaders(connection, ctx, superUser);
-
-      const httpParams = connection.connection_headers;
-      if (httpParams && "headers" in httpParams) {
-        Object.assign(headers, httpParams.headers);
-      }
-
-      let transport: Transport = new SSEClientTransport(
-        new URL(connection.connection_url),
-        { requestInit: { headers } },
+      const transport = await buildHttpLikeTransport(
+        connection,
+        ctx,
+        superUser,
+        virtualMcpId,
+        SSEClientTransport,
       );
-
-      // Compose with auth and monitoring transports
-      transport = composeTransport(
-        transport,
-        (t) => new AuthTransport(t, { ctx, connection, superUser }),
-        (t) =>
-          new MonitoringTransport(t, {
-            ctx,
-            connectionId,
-            virtualMcpId,
-          }),
-      );
-
       return ctx.getOrCreateClient(transport, connectionId);
     }
 
