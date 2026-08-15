@@ -27,6 +27,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@decocms/ui/components/sidebar.tsx";
 import {
   COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
@@ -228,13 +229,16 @@ export function NavDestinationsContent({
 }) {
   const destinations = useNavDestinations({ onNavigate });
   const codingAgents = useCodingAgents({ onNavigate });
+  // Expanded, the label is right there — a tooltip repeating it is noise.
+  const { state, isMobile } = useSidebar();
+  const showTooltip = state === "collapsed" && !isMobile;
 
   const row = (item: NavDestination) => (
     <SidebarMenuItem key={item.key}>
       <SidebarMenuButton
         onClick={item.onSelect}
         isActive={item.isActive}
-        tooltip={item.label}
+        tooltip={showTooltip ? item.label : undefined}
       >
         {item.icon}
         <span className="truncate">{item.label}</span>
