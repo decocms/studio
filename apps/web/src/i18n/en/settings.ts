@@ -776,11 +776,19 @@ export const settings = {
     "This organization doesn't own any deco.cx site yet.",
   "settings.infraBilling.siteLabel": "Sites",
   "settings.infraBilling.pickASite": "Select at least one site.",
+  "settings.infraBilling.tooManySites":
+    "Showing the first {count} sites. Select specific sites to see the rest.",
   "settings.infraBilling.multipleTeams":
     "Plan and invoices belong to a single legacy team — narrow the selection to see them.",
+  "settings.infraBilling.noTeam":
+    "These sites aren't linked to a legacy billing team.",
+  "settings.infraBilling.partialTeam":
+    "This site's legacy team also bills sites outside this organization, so its plan and invoices aren't shown here.",
+  "settings.infraBilling.billingUnavailable":
+    "Plan and invoices are temporarily unavailable.",
   "settings.infraBilling.monthLabel": "Month",
   "settings.infraBilling.warehouseUnavailable":
-    "Usage data is unavailable on this deployment.",
+    "Usage data couldn't be read, so the figures below are incomplete.",
   "settings.infraBilling.summaryTitle": "Summary",
   "settings.infraBilling.metricsTitle": "Metrics",
   "settings.infraBilling.invoicesTitle": "Invoices",

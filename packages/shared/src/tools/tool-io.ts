@@ -1123,6 +1123,12 @@ export interface StudioToolIO {
       }[];
       pageviewsAvailable: boolean;
       usageUnavailable: boolean;
+      billingUnavailableReason:
+        | "no_team"
+        | "multiple_teams"
+        | "partial_team"
+        | "unavailable"
+        | null;
       billing: {
         planType: "free" | "pro" | "enterprise";
         nextBillingDate: string | null;
@@ -1140,7 +1146,7 @@ export interface StudioToolIO {
     };
   };
   INFRA_BILLING_PORTAL: {
-    input: { siteSlug: string };
+    input: { siteSlugs: string[] };
     output: { url: string };
   };
   COLLECTION_CONNECTIONS_CREATE: {

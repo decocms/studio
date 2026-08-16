@@ -75,14 +75,45 @@ test.describe("Infra billing site tenancy", () => {
       );
       expect(after.sites).toEqual([{ slug }]);
 
-      // The owner is served (usage may be empty without a warehouse).
-      const billing = await callSelfMcpTool<{ siteSlugs: string[] }>(
+      // Served — and an unconfigured deployment must not pass zeros off as a bill.
+      const billing = await callSelfMcpTool<{
+        siteSlugs: string[];
+        since: string;
+        until: string;
+        usage: { date: string }[];
+        pageviewsAvailable: boolean;
+        usageUnavailable: boolean;
+        billing: unknown;
+        billingUnavailableReason: string | null;
+      }>(ownerCtx, owner.orgSlug, "INFRA_BILLING_GET", { siteSlugs: [slug] });
+      expect(billing.siteSlugs).toEqual([slug]);
+      expect(billing.usageUnavailable).toBe(true);
+      expect(billing.pageviewsAvailable).toBe(false);
+      expect(billing.billing).toBeNull();
+      expect(billing.billingUnavailableReason).toBe("unavailable");
+      // Zero-filled day by day, and never past today.
+      expect(billing.usage.length).toBe(
+        new Date(`${billing.until}T00:00:00Z`).getUTCDate(),
+      );
+      expect(billing.until <= new Date().toISOString().slice(0, 10)).toBe(true);
+      expect(billing.usage[0]?.date).toBe(billing.since);
+
+      // An explicit period selects that month.
+      const july = await callSelfMcpTool<{ since: string; until: string }>(
         ownerCtx,
         owner.orgSlug,
         "INFRA_BILLING_GET",
-        { siteSlugs: [slug] },
+        { siteSlugs: [slug], period: "2026-07-15" },
       );
-      expect(billing.siteSlugs).toEqual([slug]);
+      expect(july.since).toBe("2026-07-01");
+      expect(july.until).toBe("2026-07-31");
+
+      // The owner reaches the team lookup and is refused cleanly, not with a 500.
+      await expect(
+        callSelfMcpTool(ownerCtx, owner.orgSlug, "INFRA_BILLING_PORTAL", {
+          siteSlugs: [slug],
+        }),
+      ).rejects.toThrow(/no Stripe subscription to manage/i);
 
       // The gate inspects EVERY slug, not just the first one.
       await expect(
@@ -102,7 +133,7 @@ test.describe("Infra billing site tenancy", () => {
       // Same gate on the portal — it mints a Stripe session for the site's team.
       await expect(
         callSelfMcpTool(otherCtx, other.orgSlug, "INFRA_BILLING_PORTAL", {
-          siteSlug: slug,
+          siteSlugs: [slug],
         }),
       ).rejects.toThrow(/not found/i);
 
@@ -115,6 +146,8 @@ test.describe("Infra billing site tenancy", () => {
       expect(otherSites.sites).toEqual([]);
     } finally {
       await db.query(`DELETE FROM org_sites WHERE slug = $1`, [slug]);
+      await ownerCtx.dispose();
+      await otherCtx.dispose();
     }
   });
 });

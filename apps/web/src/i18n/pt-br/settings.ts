@@ -822,11 +822,19 @@ export const settings = {
     "Esta organização ainda não é dona de nenhum site deco.cx.",
   "settings.infraBilling.siteLabel": "Sites",
   "settings.infraBilling.pickASite": "Selecione ao menos um site.",
+  "settings.infraBilling.tooManySites":
+    "Mostrando os primeiros {count} sites. Selecione sites específicos para ver os demais.",
   "settings.infraBilling.multipleTeams":
     "Plano e faturas são de um único time legado — filtre a seleção para vê-los.",
+  "settings.infraBilling.noTeam":
+    "Estes sites não estão vinculados a um time de cobrança legado.",
+  "settings.infraBilling.partialTeam":
+    "O time legado deste site também cobra sites fora desta organização, então o plano e as faturas não aparecem aqui.",
+  "settings.infraBilling.billingUnavailable":
+    "Plano e faturas estão temporariamente indisponíveis.",
   "settings.infraBilling.monthLabel": "Mês",
   "settings.infraBilling.warehouseUnavailable":
-    "Os dados de uso não estão disponíveis nesta instalação.",
+    "Não foi possível ler os dados de uso, então os números abaixo estão incompletos.",
   "settings.infraBilling.summaryTitle": "Resumo",
   "settings.infraBilling.metricsTitle": "Métricas",
   "settings.infraBilling.invoicesTitle": "Faturas",

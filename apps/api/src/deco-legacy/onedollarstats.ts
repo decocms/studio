@@ -10,50 +10,27 @@
 import { getSettings } from "../settings";
 
 const API = "https://deco.lilstts.com";
+const REQUEST_TIMEOUT_MS = 10_000;
+/** Hosts queried at once. Each is a separate POST to a third party. */
+const CONCURRENCY = 6;
 
 interface PlausibleResponse {
   results?: { dimensions: string[]; metrics: number[] }[];
 }
 
+export type PageviewRows = { dimensions: string[]; metrics: number[] }[];
+
 /**
- * Daily pageviews summed across `hostnames`, as date ("YYYY-MM-DD") → count.
- * Null when unconfigured or when every host query failed — the caller must
- * distinguish "no data source" from "zero pageviews".
+ * Sum per-host daily rows into date ("YYYY-MM-DD") → pageviews.
+ *
+ * Null if ANY host failed: these feed the requests-per-pageview ratio the page
+ * bills on, and a silently undercounted denominator is worse than "—".
  */
-export async function dailyPageviews(
-  hostnames: string[],
-  startDate: string,
-  endDate: string,
-): Promise<Map<string, number> | null> {
-  const apiKey = getSettings().oneDollarStatsApiKey;
-  if (!apiKey || hostnames.length === 0) return null;
-
-  const results = await Promise.allSettled(
-    hostnames.map(async (hostname) => {
-      const res = await fetch(`${API}/plausible`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          Accept: "application/json",
-        },
-        body: JSON.stringify({
-          site_id: hostname,
-          date_range: [startDate, endDate],
-          metrics: ["pageviews"],
-          dimensions: ["time:day"],
-          pagination: { limit: 10000, offset: 0 },
-        }),
-      });
-      if (!res.ok) {
-        throw new Error(`OneDollarStats ${res.status}`);
-      }
-      return ((await res.json()) as PlausibleResponse).results ?? [];
-    }),
-  );
-
-  if (results.every((r) => r.status === "rejected")) {
-    console.warn("[deco-legacy] every OneDollarStats host query failed");
+export function mergePageviews(
+  results: PromiseSettledResult<PageviewRows>[],
+): Map<string, number> | null {
+  if (results.some((r) => r.status === "rejected")) {
+    console.warn("[deco-legacy] a OneDollarStats host query failed");
     return null;
   }
 
@@ -71,9 +48,60 @@ export async function dailyPageviews(
 }
 
 /**
+ * Daily pageviews summed across `hostnames`, as date ("YYYY-MM-DD") → count.
+ * Null when unconfigured or when any host query failed — the caller must
+ * distinguish "no data source" from "zero pageviews".
+ */
+export async function dailyPageviews(
+  hostnames: string[],
+  startDate: string,
+  endDate: string,
+): Promise<Map<string, number> | null> {
+  const apiKey = getSettings().oneDollarStatsApiKey;
+  // Two warehouse hosts can map to one OneDollarStats site — dedupe or double-count.
+  const hosts = [...new Set(hostnames)];
+  if (!apiKey || hosts.length === 0) return null;
+
+  const queryHost = async (hostname: string): Promise<PageviewRows> => {
+    const res = await fetch(`${API}/plausible`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        site_id: hostname,
+        date_range: [startDate, endDate],
+        metrics: ["pageviews"],
+        dimensions: ["time:day"],
+        pagination: { limit: 10000, offset: 0 },
+      }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      throw new Error(`OneDollarStats ${res.status}`);
+    }
+    return ((await res.json()) as PlausibleResponse).results ?? [];
+  };
+
+  const results: PromiseSettledResult<PageviewRows>[] = [];
+  for (let i = 0; i < hosts.length; i += CONCURRENCY) {
+    results.push(
+      ...(await Promise.allSettled(
+        hosts.slice(i, i + CONCURRENCY).map(queryHost),
+      )),
+    );
+  }
+  return mergePageviews(results);
+}
+
+/**
  * OneDollarStats indexes custom domains by their `www.` hostname while the
- * warehouse stores the bare domain; `.deco.site` subdomains are used as-is.
+ * warehouse stores the bare domain; `.deco.site` subdomains are used as-is,
+ * and a host already carrying `www.` is left alone.
  */
 export function toOneDollarHostname(host: string): string {
-  return host.endsWith(".deco.site") ? host : `www.${host}`;
+  if (host.endsWith(".deco.site") || host.startsWith("www.")) return host;
+  return `www.${host}`;
 }
