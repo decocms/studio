@@ -27,67 +27,11 @@ interface SupabaseSite {
   metadata: Record<string, unknown> | null;
 }
 
-async function supabaseGet<T>(
-  supabaseUrl: string,
-  serviceKey: string,
-  path: string,
-): Promise<T[]> {
-  const res = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
-    headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-      Accept: "application/json",
-    },
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    console.error(`[deco-sites] Supabase error (${res.status}): ${text}`);
-    throw new Error(`External service error (${res.status})`);
-  }
-  return res.json() as Promise<T[]>;
-}
-
-async function supabasePost<T>(
-  supabaseUrl: string,
-  serviceKey: string,
-  table: string,
-  body: Record<string, unknown>,
-): Promise<T> {
-  const res = await fetch(`${supabaseUrl}/rest/v1/${table}`, {
-    method: "POST",
-    headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      Prefer: "return=representation",
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    console.error(`[deco-sites] Supabase POST error (${res.status}): ${text}`);
-    throw new Error(`External service error (${res.status})`);
-  }
-  const rows = (await res.json()) as T[];
-  if (!rows[0]) {
-    throw new Error("Supabase POST returned no rows");
-  }
-  return rows[0];
-}
-
-import { getSettings } from "../../settings";
-
-function getSupabaseConfig(): {
-  supabaseUrl: string;
-  serviceKey: string;
-} | null {
-  const settings = getSettings();
-  const supabaseUrl = settings.decoSupabaseUrl;
-  const serviceKey = settings.decoSupabaseServiceKey;
-  if (!supabaseUrl || !serviceKey) return null;
-  return { supabaseUrl, serviceKey };
-}
+import {
+  getDecoSupabaseConfig as getSupabaseConfig,
+  supabaseGet,
+  supabasePost,
+} from "../../deco-legacy/supabase";
 
 async function resolveProfileId(
   supabaseUrl: string,

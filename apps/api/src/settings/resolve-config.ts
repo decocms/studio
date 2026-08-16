@@ -418,6 +418,11 @@ export function resolveConfig(
     decoSupabaseUrl: envVars.DECO_SUPABASE_URL,
     decoSupabaseServiceKey: envVars.DECO_SUPABASE_SERVICE_KEY,
     firecrawlApiKey: envVars.FIRECRAWL_API_KEY,
+    clickhouseAnalyticsUrl: envVars.CLICKHOUSE_ANALYTICS_ADDRESS,
+    clickhouseAnalyticsUsername:
+      envVars.CLICKHOUSE_ANALYTICS_USERNAME || "admin_monitor",
+    clickhouseAnalyticsPassword: envVars.CLICKHOUSE_ANALYTICS_PASSWORD,
+    oneDollarStatsApiKey: envVars.ONEDOLLAR_BACKEND_API_KEY,
     // New name first, legacy Commerce Discovery envs as fallback — one
     // setting, so prod migrates secrets whenever convenient without a
     // coordinated deploy. Drop the fallback once the CD envs are renamed.

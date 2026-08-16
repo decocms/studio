@@ -775,6 +775,8 @@ export interface OrgSiteStoragePort {
     by: string;
   }): Promise<OrgSite>;
   getBySlug(slug: string): Promise<OrgSite | null>;
+  /** Every slug this org owns, slug-ascending. */
+  listByOrg(organizationId: string): Promise<OrgSite[]>;
   /** Authorization primitive: does this org own this slug? */
   isOwnedBy(slug: string, organizationId: string): Promise<boolean>;
 }

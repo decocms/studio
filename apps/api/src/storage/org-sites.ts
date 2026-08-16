@@ -114,6 +114,16 @@ export class OrgSiteStorage implements OrgSiteStoragePort {
     return row ? toEntity(row as OrgSiteRow) : null;
   }
 
+  async listByOrg(organizationId: string): Promise<OrgSite[]> {
+    const rows = await this.db
+      .selectFrom("org_sites")
+      .selectAll()
+      .where("organization_id", "=", organizationId)
+      .orderBy("slug", "asc")
+      .execute();
+    return rows.map((row) => toEntity(row as OrgSiteRow));
+  }
+
   async isOwnedBy(slug: string, organizationId: string): Promise<boolean> {
     const row = await this.db
       .selectFrom("org_sites")

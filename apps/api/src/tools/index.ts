@@ -28,6 +28,7 @@ import * as AiProvidersTools from "./ai-providers";
 import * as ClaudeSubscriptionTools from "./claude-subscription";
 import * as SecretsTools from "./secrets";
 import * as FileConfigTools from "./file-configs";
+import * as InfraBillingTools from "./infra-billing";
 import { ORG_FS_PUBLIC_SETS_SYNC } from "./org-fs/sync-public-sets";
 import * as OrgRepoSyncTools from "./org-repo-sync";
 import { getPrompts, getResources } from "./guides";
@@ -91,6 +92,11 @@ export const CORE_TOOLS = [
   OrganizationTools.ORGANIZATION_BILLING_CHECKOUT_START,
   OrganizationTools.ORGANIZATION_BILLING_PORTAL,
   OrganizationTools.ORGANIZATION_TASK_QUOTA_GET,
+
+  // Legacy deco.cx infra billing
+  InfraBillingTools.INFRA_BILLING_SITES_LIST,
+  InfraBillingTools.INFRA_BILLING_GET,
+  InfraBillingTools.INFRA_BILLING_PORTAL,
 
   // Connection collection tools
   ConnectionTools.COLLECTION_CONNECTIONS_CREATE,
