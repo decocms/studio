@@ -55,6 +55,7 @@ import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 import { useCapabilities, type CapabilityId } from "@/hooks/use-capability";
 import { usePendingJoinRequests } from "@/hooks/use-join-requests";
+import { useOwnedSites } from "@/hooks/use-infra-billing";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { Suspense } from "react";
 import { useStatusSounds } from "../hooks/use-status-sounds";
@@ -92,6 +93,7 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
   const t = useT();
   const { capabilities, isPrivileged, loading, error } = useCapabilities();
   const joinRequestCount = usePendingJoinRequests().length;
+  const ownsSites = useOwnedSites().sites.length > 0;
 
   const groups: SettingsNavGroup[] = [
     {
@@ -135,6 +137,18 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           // `members:manage` group).
           requires: "members:manage",
         },
+        // Absent for orgs that own no legacy deco.cx site — nothing to bill.
+        ...(ownsSites
+          ? [
+              {
+                key: "infra-billing",
+                label: t("settings.nav.infraBilling"),
+                icon: <BarChart10 size={14} />,
+                to: "/$org/settings/infra-billing",
+                requires: "members:manage" as const,
+              },
+            ]
+          : []),
         {
           key: "secrets",
           label: t("settings.nav.secrets"),

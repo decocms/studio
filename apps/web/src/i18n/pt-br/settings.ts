@@ -10,6 +10,7 @@ export const settings = {
   "settings.nav.secrets": "Segredos",
   "settings.nav.apiKeys": "Chaves de API",
   "settings.nav.billing": "Cobrança",
+  "settings.nav.infraBilling": "Cobrança de infra",
   "settings.nav.buckets": "Buckets",
   "settings.nav.syncedRepos": "Repos sincronizados",
   "settings.syncedRepos.pageDescription":
@@ -815,4 +816,49 @@ export const settings = {
     "Não foi possível iniciar o checkout: {message}",
   "settings.billing.portalError":
     "Não foi possível abrir o portal de cobrança: {message}",
+
+  "settings.infraBilling.pageTitle": "Cobrança de infra",
+  "settings.infraBilling.noSites":
+    "Esta organização ainda não é dona de nenhum site deco.cx.",
+  "settings.infraBilling.siteLabel": "Sites",
+  "settings.infraBilling.pickASite": "Selecione ao menos um site.",
+  "settings.infraBilling.multipleTeams":
+    "Plano e faturas são de um único time legado — filtre a seleção para vê-los.",
+  "settings.infraBilling.monthLabel": "Mês",
+  "settings.infraBilling.warehouseUnavailable":
+    "Os dados de uso não estão disponíveis nesta instalação.",
+  "settings.infraBilling.summaryTitle": "Resumo",
+  "settings.infraBilling.metricsTitle": "Métricas",
+  "settings.infraBilling.invoicesTitle": "Faturas",
+  "settings.infraBilling.detailsTitle": "Detalhes de cobrança",
+  "settings.infraBilling.currentPlan": "Plano atual",
+  "settings.infraBilling.nextBilling": "Próxima cobrança",
+  "settings.infraBilling.manageButton": "Gerenciar",
+  "settings.infraBilling.portalError":
+    "Não foi possível abrir o portal de cobrança: {message}",
+  "settings.infraBilling.requestsPerPageview": "Requisições por pageview",
+  "settings.infraBilling.plan.free": "Free",
+  "settings.infraBilling.plan.pro": "Pro",
+  "settings.infraBilling.plan.enterprise": "Enterprise",
+  "settings.infraBilling.pageviews": "Pageviews",
+  "settings.infraBilling.pageviewsDescription":
+    "Páginas entregues a visitantes neste mês.",
+  "settings.infraBilling.requests": "Requisições",
+  "settings.infraBilling.requestsDescription":
+    "Requisições de CDN e da infraestrutura compartilhada.",
+  "settings.infraBilling.dataTransfer": "Transferência de dados",
+  "settings.infraBilling.dataTransferDescription":
+    "Banda entregue pela edge e pela origem.",
+  "settings.infraBilling.noInvoices": "Nenhuma fatura emitida para este site.",
+  "settings.infraBilling.invoiceReference": "Referência",
+  "settings.infraBilling.invoiceDue": "Vencimento",
+  "settings.infraBilling.invoiceAmount": "Valor",
+  "settings.infraBilling.invoiceStatus": "Status",
+  "settings.infraBilling.invoiceDocuments": "Documentos",
+  "settings.infraBilling.invoiceNf": "Nota fiscal",
+  "settings.infraBilling.invoiceBankSlip": "Boleto",
+  "settings.infraBilling.invoiceBankTransfer": "Transferência",
+  "settings.infraBilling.statusPaid": "Paga",
+  "settings.infraBilling.statusOverdue": "Vencida",
+  "settings.infraBilling.statusPending": "Pendente",
 } satisfies Record<keyof typeof settingsEn, string>;

@@ -1105,6 +1105,44 @@ export interface StudioToolIO {
       currentPeriodEnd: string | null;
     };
   };
+  INFRA_BILLING_SITES_LIST: {
+    input: { [x: string]: never };
+    output: { sites: { slug: string }[] };
+  };
+  INFRA_BILLING_GET: {
+    input: { siteSlugs: string[]; period?: string | undefined };
+    output: {
+      siteSlugs: string[];
+      since: string;
+      until: string;
+      usage: {
+        date: string;
+        requests: number;
+        dataTransferBytes: number;
+        pageviews: number;
+      }[];
+      pageviewsAvailable: boolean;
+      usageUnavailable: boolean;
+      billing: {
+        planType: "free" | "pro" | "enterprise";
+        nextBillingDate: string | null;
+        canManageSubscription: boolean;
+        invoices: {
+          id: string;
+          status: string;
+          dueDate: string | null;
+          value: number;
+          referenceMonth: string | null;
+          nfUrl: string | null;
+          bankSlipUrl: string | null;
+        }[];
+      } | null;
+    };
+  };
+  INFRA_BILLING_PORTAL: {
+    input: { siteSlug: string };
+    output: { url: string };
+  };
   COLLECTION_CONNECTIONS_CREATE: {
     input: {
       data: {

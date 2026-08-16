@@ -8,6 +8,7 @@ export const settings = {
   "settings.nav.secrets": "Secrets",
   "settings.nav.apiKeys": "API Keys",
   "settings.nav.billing": "Billing",
+  "settings.nav.infraBilling": "Infra Billing",
   "settings.nav.buckets": "Buckets",
   "settings.nav.syncedRepos": "Synced repos",
   "settings.nav.build": "Build",
@@ -769,4 +770,49 @@ export const settings = {
   "settings.billing.manageButton": "Manage billing",
   "settings.billing.checkoutError": "Couldn't start checkout: {message}",
   "settings.billing.portalError": "Couldn't open billing portal: {message}",
+
+  "settings.infraBilling.pageTitle": "Infra Billing",
+  "settings.infraBilling.noSites":
+    "This organization doesn't own any deco.cx site yet.",
+  "settings.infraBilling.siteLabel": "Sites",
+  "settings.infraBilling.pickASite": "Select at least one site.",
+  "settings.infraBilling.multipleTeams":
+    "Plan and invoices belong to a single legacy team — narrow the selection to see them.",
+  "settings.infraBilling.monthLabel": "Month",
+  "settings.infraBilling.warehouseUnavailable":
+    "Usage data is unavailable on this deployment.",
+  "settings.infraBilling.summaryTitle": "Summary",
+  "settings.infraBilling.metricsTitle": "Metrics",
+  "settings.infraBilling.invoicesTitle": "Invoices",
+  "settings.infraBilling.detailsTitle": "Billing details",
+  "settings.infraBilling.currentPlan": "Current plan",
+  "settings.infraBilling.nextBilling": "Next billing",
+  "settings.infraBilling.manageButton": "Manage",
+  "settings.infraBilling.portalError":
+    "Couldn't open billing portal: {message}",
+  "settings.infraBilling.requestsPerPageview": "Requests per pageview",
+  "settings.infraBilling.plan.free": "Free",
+  "settings.infraBilling.plan.pro": "Pro",
+  "settings.infraBilling.plan.enterprise": "Enterprise",
+  "settings.infraBilling.pageviews": "Pageviews",
+  "settings.infraBilling.pageviewsDescription":
+    "Pages served to visitors this month.",
+  "settings.infraBilling.requests": "Requests",
+  "settings.infraBilling.requestsDescription":
+    "CDN and shared infrastructure requests.",
+  "settings.infraBilling.dataTransfer": "Data transfer",
+  "settings.infraBilling.dataTransferDescription":
+    "Bandwidth served from the edge and the origin.",
+  "settings.infraBilling.noInvoices": "No invoices issued for this site.",
+  "settings.infraBilling.invoiceReference": "Reference",
+  "settings.infraBilling.invoiceDue": "Due date",
+  "settings.infraBilling.invoiceAmount": "Amount",
+  "settings.infraBilling.invoiceStatus": "Status",
+  "settings.infraBilling.invoiceDocuments": "Documents",
+  "settings.infraBilling.invoiceNf": "Invoice",
+  "settings.infraBilling.invoiceBankSlip": "Bank slip",
+  "settings.infraBilling.invoiceBankTransfer": "Bank transfer",
+  "settings.infraBilling.statusPaid": "Paid",
+  "settings.infraBilling.statusOverdue": "Overdue",
+  "settings.infraBilling.statusPending": "Pending",
 } as const;

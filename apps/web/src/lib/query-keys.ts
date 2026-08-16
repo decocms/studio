@@ -205,6 +205,12 @@ export const KEYS = {
   organizationTaskQuota: (organizationId: string) =>
     ["organization-task-quota", organizationId] as const,
 
+  infraBillingSites: (organizationId: string) =>
+    ["infra-billing-sites", organizationId] as const,
+
+  infraBilling: (organizationId: string, siteSlug: string, period: string) =>
+    ["infra-billing", organizationId, siteSlug, period] as const,
+
   userModelPreferences: (organizationId: string) =>
     ["user-model-preferences", organizationId] as const,
 

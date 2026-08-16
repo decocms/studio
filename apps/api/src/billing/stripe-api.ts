@@ -220,6 +220,23 @@ export async function createBillingPortalSession(input: {
   return { url: session.url };
 }
 
+export interface StripeSubscription {
+  id: string;
+  customer: string;
+  /** Unix seconds. Recent API versions moved this onto the items. */
+  current_period_end?: number;
+  items?: { data?: { current_period_end?: number }[] };
+}
+
+/** Read a subscription by id — used to resolve its customer and period end. */
+export async function retrieveSubscription(
+  subscriptionId: string,
+): Promise<StripeSubscription> {
+  return stripeRequest<StripeSubscription>(
+    `/subscriptions/${encodeURIComponent(subscriptionId)}`,
+  );
+}
+
 /** Cancel a subscription outright. Used for orphans: a checkout that
  *  completed for an org already bound to a different subscription — the
  *  customer paid, the webhook refused the bind, nothing should keep billing. */

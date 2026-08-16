@@ -76,6 +76,10 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_BILLING_CHECKOUT_START",
   "ORGANIZATION_BILLING_PORTAL",
   "ORGANIZATION_TASK_QUOTA_GET",
+  // Legacy deco.cx infra billing
+  "INFRA_BILLING_SITES_LIST",
+  "INFRA_BILLING_GET",
+  "INFRA_BILLING_PORTAL",
   // Connection tools
   "COLLECTION_CONNECTIONS_CREATE",
   "COLLECTION_CONNECTIONS_LIST",
@@ -430,6 +434,22 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "ORGANIZATION_TASK_QUOTA_GET",
     description: "Get the org's auto-task quota usage",
+    category: "Organizations",
+  },
+  // Legacy deco.cx infra billing
+  {
+    name: "INFRA_BILLING_SITES_LIST",
+    description: "List the legacy deco.cx sites the org owns",
+    category: "Organizations",
+  },
+  {
+    name: "INFRA_BILLING_GET",
+    description: "Get infra usage, plan and invoices for an owned site",
+    category: "Organizations",
+  },
+  {
+    name: "INFRA_BILLING_PORTAL",
+    description: "Open the Stripe billing portal for an owned site",
     category: "Organizations",
   },
   // Connection tools
@@ -1327,6 +1347,10 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "ORGANIZATION_BILLING_CHECKOUT_START",
       "ORGANIZATION_BILLING_PORTAL",
       "ORGANIZATION_TASK_QUOTA_GET",
+      // Legacy deco.cx infra usage, invoices and Stripe portal for owned sites.
+      "INFRA_BILLING_SITES_LIST",
+      "INFRA_BILLING_GET",
+      "INFRA_BILLING_PORTAL",
       // Approving/denying join requests adds members, and the UI lives on the
       // members page — keep it under members:manage.
       "ORGANIZATION_JOIN_REQUEST_LIST",

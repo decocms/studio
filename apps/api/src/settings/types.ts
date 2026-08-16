@@ -196,6 +196,16 @@ export interface Settings {
   decoSupabaseUrl: string | undefined;
   decoSupabaseServiceKey: string | undefined;
   firecrawlApiKey: string | undefined;
+  /** Legacy deco.cx analytics warehouse (CDN + shared-infra usage facts) read
+   *  by the Infra Billing settings page. A DIFFERENT ClickHouse from
+   *  `clickhouseUrl`, which is Studio's own monitoring store. Unset = the
+   *  feature reports no usage; see deco-legacy/clickhouse-analytics.ts. */
+  clickhouseAnalyticsUrl: string | undefined;
+  clickhouseAnalyticsUsername: string;
+  clickhouseAnalyticsPassword: string | undefined;
+  /** OneDollarStats backend key — the legacy platform's pageview source
+   *  (pageviews do not live in the warehouse). Unset = pageviews render "—". */
+  oneDollarStatsApiKey: string | undefined;
   /** Reports service internal API (the service historically named "Commerce
    *  Discovery" — REPORTS_INTERNAL_API_URL, with the legacy
    *  COMMERCE_DISCOVERY_INTERNAL_API_URL env still honored as fallback). */
