@@ -5,6 +5,7 @@
  */
 
 import { z } from "zod";
+import { isValidSiteSlug } from "@decocms/shared/site-slug";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { getSiteInfraBilling } from "../../deco-legacy/infra-billing";
@@ -22,7 +23,10 @@ export const INFRA_BILLING_GET = defineTool({
   },
   inputSchema: z.object({
     /** Sites to aggregate. Every one must be owned by the calling org. */
-    siteSlugs: z.array(z.string().min(1).max(60)).min(1).max(50),
+    siteSlugs: z
+      .array(z.string().min(1).max(60).refine(isValidSiteSlug))
+      .min(1)
+      .max(50),
     /** Any date inside the wanted month (ISO). Defaults to the current month. */
     period: z.string().optional(),
   }),
@@ -42,8 +46,12 @@ export const INFRA_BILLING_GET = defineTool({
     pageviewsAvailable: z.boolean(),
     /** True when this deployment has no analytics warehouse configured. */
     usageUnavailable: z.boolean(),
+    /** Why `billing` is null, so the UI names the real cause. */
+    billingUnavailableReason: z
+      .enum(["no_team", "multiple_teams", "partial_team", "unavailable"])
+      .nullable(),
     /** Plan and invoices belong to the legacy team, so they are only reported
-     *  when the whole selection rolls up to exactly one team. */
+     *  when the whole selection rolls up to exactly one team the org fully owns. */
     billing: z
       .object({
         planType: z.enum(["free", "pro", "enterprise"]),
@@ -72,16 +80,21 @@ export const INFRA_BILLING_GET = defineTool({
     const org = requireOrganization(ctx);
 
     const slugs = [...new Set(input.siteSlugs.map((s) => s.toLowerCase()))];
-    const owned = await Promise.all(
-      slugs.map((slug) => ctx.storage.orgSites.isOwnedBy(slug, org.id)),
+    const ownedSlugs = (await ctx.storage.orgSites.listByOrg(org.id)).map(
+      (site) => site.slug,
     );
-    const unowned = slugs.filter((_, i) => !owned[i]);
+    const owned = new Set(ownedSlugs);
+    const unowned = slugs.filter((slug) => !owned.has(slug));
     if (unowned.length > 0) {
       throw new Error(
         `Site not found in organization: ${unowned.sort().join(", ")}`,
       );
     }
 
-    return getSiteInfraBilling({ siteSlugs: slugs, period: input.period });
+    return getSiteInfraBilling({
+      siteSlugs: slugs,
+      ownedSlugs,
+      period: input.period,
+    });
   },
 });

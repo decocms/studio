@@ -5,6 +5,7 @@
  */
 
 import { z } from "zod";
+import { isValidSiteSlug } from "@decocms/shared/site-slug";
 import {
   createBillingPortalSession,
   retrieveSubscription,
@@ -14,7 +15,7 @@ import { defineTool } from "../../core/define-tool";
 import { getPublicUrl } from "../../core/server-constants";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import {
-  resolveTeamId,
+  resolveOwnedTeam,
   teamStripeSubscriptionId,
 } from "../../deco-legacy/infra-billing";
 
@@ -29,7 +30,13 @@ export const INFRA_BILLING_PORTAL = defineTool({
     idempotentHint: false,
     openWorldHint: true,
   },
-  inputSchema: z.object({ siteSlug: z.string().min(1).max(60) }),
+  inputSchema: z.object({
+    /** The same selection the page is showing; they must share one team. */
+    siteSlugs: z
+      .array(z.string().min(1).max(60).refine(isValidSiteSlug))
+      .min(1)
+      .max(50),
+  }),
   outputSchema: z.object({ url: z.string() }),
 
   handler: async (input, ctx) => {
@@ -40,14 +47,29 @@ export const INFRA_BILLING_PORTAL = defineTool({
       throw new Error("Organization context required");
     }
 
-    const slug = input.siteSlug.toLowerCase();
-    if (!(await ctx.storage.orgSites.isOwnedBy(slug, org.id))) {
-      throw new Error(`Site not found in organization: ${slug}`);
+    const slugs = [...new Set(input.siteSlugs.map((s) => s.toLowerCase()))];
+    const ownedSlugs = (await ctx.storage.orgSites.listByOrg(org.id)).map(
+      (site) => site.slug,
+    );
+    const owned = new Set(ownedSlugs);
+    const unowned = slugs.filter((slug) => !owned.has(slug));
+    if (unowned.length > 0) {
+      throw new Error(
+        `Site not found in organization: ${unowned.sort().join(", ")}`,
+      );
     }
 
-    const teamId = await resolveTeamId(slug);
-    const subscriptionId =
-      teamId === null ? null : await teamStripeSubscriptionId(teamId);
+    // Portal sessions can cancel the team's subscription — require the whole team.
+    const scope = await resolveOwnedTeam(slugs, ownedSlugs);
+    if (!scope.ok) {
+      throw new Error(
+        scope.reason === "partial_team"
+          ? "This site's legacy team also bills sites outside this organization. Manage the subscription from the deco.cx admin."
+          : "This site has no Stripe subscription to manage.",
+      );
+    }
+
+    const subscriptionId = await teamStripeSubscriptionId(scope.teamId);
     if (!subscriptionId) {
       throw new Error("This site has no Stripe subscription to manage.");
     }
@@ -60,7 +82,11 @@ export const INFRA_BILLING_PORTAL = defineTool({
         returnUrl: `${getPublicUrl()}/${encodeURIComponent(org.slug)}/settings/infra-billing`,
       });
     } catch (err) {
-      if (err instanceof StripeApiError) throw new Error(err.message);
+      // Stripe's raw message names the subscription id — not the caller's to see.
+      if (err instanceof StripeApiError) {
+        console.error("[infra-billing] portal session failed:", err);
+        throw new Error("Could not open the billing portal. Try again later.");
+      }
       throw err;
     }
   },

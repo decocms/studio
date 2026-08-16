@@ -14,6 +14,10 @@
 
 import { getSettings } from "../settings";
 
+/** Matches `stripe-api.ts`. Without it a *degraded* (not down) Supabase hangs
+ *  the handler forever: nothing rejects, so no caller's `.catch` ever runs. */
+const REQUEST_TIMEOUT_MS = 15_000;
+
 export interface DecoSupabaseConfig {
   supabaseUrl: string;
   serviceKey: string;
@@ -39,6 +43,7 @@ export async function supabaseGet<T>(
       Authorization: `Bearer ${serviceKey}`,
       Accept: "application/json",
     },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
@@ -64,6 +69,7 @@ export async function supabasePost<T>(
       Prefer: "return=representation",
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);

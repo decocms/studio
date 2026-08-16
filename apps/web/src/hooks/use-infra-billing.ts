@@ -6,18 +6,27 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useProjectContext } from "@/sdk";
+import { useCapabilities } from "@/hooks/use-capability";
 import { useStudioTools } from "@/lib/studio-tools";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
 
+/**
+ * Empty unless the caller can manage members — the LIST tool is
+ * members:manage-gated server-side, and this runs on every settings page, so
+ * an ungated call 403s for every regular member.
+ */
 export function useOwnedSites() {
   const { org } = useProjectContext();
   const studio = useStudioTools();
+  const { capabilities, isPrivileged } = useCapabilities();
+  const canManage = isPrivileged || !!capabilities["members:manage"];
 
   const { data, isLoading } = useQuery({
     queryKey: KEYS.infraBillingSites(org.id),
     // Ownership changes only on a site import — no need to refetch per nav.
     staleTime: 5 * 60_000,
+    enabled: !!org.id && canManage,
     queryFn: () => studio.call("INFRA_BILLING_SITES_LIST", {}),
   });
 
@@ -31,8 +40,8 @@ export function useInfraBillingPortal() {
   const t = useT();
 
   return useMutation({
-    mutationFn: (siteSlug: string) =>
-      studio.call("INFRA_BILLING_PORTAL", { siteSlug }),
+    mutationFn: (siteSlugs: string[]) =>
+      studio.call("INFRA_BILLING_PORTAL", { siteSlugs }),
     onSuccess: ({ url }) => window.open(url, "_blank", "noopener,noreferrer"),
     onError: (err: Error) =>
       toast.error(

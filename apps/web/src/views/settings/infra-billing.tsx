@@ -74,6 +74,9 @@ function formatBytes(bytes: number): string {
   return `${value.toFixed(value >= 100 || exponent === 0 ? 0 : 1)} ${BYTE_UNITS[exponent]}`;
 }
 
+/** Mirrors the `siteSlugs` cap on INFRA_BILLING_GET. */
+const MAX_SELECTED_SITES = 50;
+
 /** Bank-transfer instructions, for teams billed by transfer rather than boleto. */
 const BANK_TRANSFER_PDF_URL =
   "https://assets.decocache.com/decocms/45f9e905-046b-4aeb-8420-0377a7d0d041/deco_Transferencia.pdf";
@@ -83,6 +86,14 @@ const CURRENCY_FMT = new Intl.NumberFormat("pt-BR", {
   style: "currency",
   currency: "BRL",
 });
+
+/**
+ * PostgREST emits offset-less timestamps, which JS parses as *local* time — far
+ * enough east and an August invoice renders as July. Pin the calendar day.
+ */
+function utcDay(value: string): Date {
+  return new Date(`${value.slice(0, 10)}T00:00:00Z`);
+}
 
 /** The last 12 months, newest first, as "YYYY-MM-01" values. */
 function monthOptions(): { value: string; label: string }[] {
@@ -197,7 +208,9 @@ function InfraBillingContent() {
   const months = monthOptions();
   const [period, setPeriod] = useState(months[0]!.value);
 
-  const selected = narrowedTo ?? sites;
+  // Unnarrowed, a 51-site org would fail INFRA_BILLING_GET's schema every load.
+  const selected = narrowedTo ?? sites.slice(0, MAX_SELECTED_SITES);
+  const truncated = !narrowedTo && sites.length > MAX_SELECTED_SITES;
   const { data, isLoading } = useInfraBilling(selected, period);
   const portal = useInfraBillingPortal();
 
@@ -214,6 +227,10 @@ function InfraBillingContent() {
 
   const usage = data?.usage ?? [];
   const pageviewsAvailable = data?.pageviewsAvailable ?? false;
+  /** Zeros from an unread warehouse are absence of data, not absence of traffic. */
+  const usageReadable = !!data && !data.usageUnavailable;
+  const usageTotal = (metric: MetricKey, format: (n: number) => string) =>
+    usageReadable ? format(sum(usage, metric)) : "—";
 
   const metrics: {
     key: MetricKey;
@@ -227,23 +244,24 @@ function InfraBillingContent() {
       title: t("settings.infraBilling.pageviews"),
       description: t("settings.infraBilling.pageviewsDescription"),
       colorNum: 1,
-      total: pageviewsAvailable
-        ? NUMBER_FMT.format(sum(usage, "pageviews"))
-        : "—",
+      total:
+        pageviewsAvailable && usageReadable
+          ? NUMBER_FMT.format(sum(usage, "pageviews"))
+          : "—",
     },
     {
       key: "requests",
       title: t("settings.infraBilling.requests"),
       description: t("settings.infraBilling.requestsDescription"),
       colorNum: 2,
-      total: NUMBER_FMT.format(sum(usage, "requests")),
+      total: usageTotal("requests", (n) => NUMBER_FMT.format(n)),
     },
     {
       key: "dataTransferBytes",
       title: t("settings.infraBilling.dataTransfer"),
       description: t("settings.infraBilling.dataTransferDescription"),
       colorNum: 3,
-      total: formatBytes(sum(usage, "dataTransferBytes")),
+      total: usageTotal("dataTransferBytes", formatBytes),
     },
   ];
 
@@ -259,10 +277,20 @@ function InfraBillingContent() {
   );
 
   const totalPageviews = sum(usage, "pageviews");
+  const ratio =
+    totalPageviews > 0 ? sum(usage, "requests") / totalPageviews : 0;
   const requestRatio =
-    pageviewsAvailable && totalPageviews > 0
-      ? (sum(usage, "requests") / totalPageviews).toFixed(0)
+    pageviewsAvailable && usageReadable && totalPageviews > 0
+      ? ratio.toFixed(ratio < 10 ? 1 : 0)
       : "—";
+
+  /** Null billing has four causes; only one of them is the user's to fix. */
+  const billingMessage = {
+    multiple_teams: t("settings.infraBilling.multipleTeams"),
+    no_team: t("settings.infraBilling.noTeam"),
+    partial_team: t("settings.infraBilling.partialTeam"),
+    unavailable: t("settings.infraBilling.billingUnavailable"),
+  }[data?.billingUnavailableReason ?? "multiple_teams"];
 
   return (
     <div className="flex flex-col gap-8">
@@ -298,6 +326,14 @@ function InfraBillingContent() {
         </Card>
       )}
 
+      {truncated && (
+        <Card className="mx-4 p-4 text-sm text-muted-foreground">
+          {t("settings.infraBilling.tooManySites", {
+            count: String(MAX_SELECTED_SITES),
+          })}
+        </Card>
+      )}
+
       {data?.usageUnavailable && (
         <Card className="mx-4 p-4 text-sm text-muted-foreground">
           {t("settings.infraBilling.warehouseUnavailable")}
@@ -319,7 +355,7 @@ function InfraBillingContent() {
                   variant="outline"
                   size="sm"
                   disabled={portal.isPending}
-                  onClick={() => portal.mutate(selected[0]!)}
+                  onClick={() => portal.mutate(selected)}
                 >
                   {t("settings.infraBilling.manageButton")}
                 </Button>
@@ -365,7 +401,7 @@ function InfraBillingContent() {
               ) : (
                 !isLoading && (
                   <p className="text-xs text-muted-foreground">
-                    {t("settings.infraBilling.multipleTeams")}
+                    {billingMessage}
                   </p>
                 )
               )}
@@ -431,11 +467,11 @@ function InfraBillingContent() {
 
       <SettingsSection title={t("settings.infraBilling.invoicesTitle")}>
         <Card className="mx-4 overflow-x-auto">
-          {data && (billing?.invoices.length ?? 0) === 0 ? (
+          {!data ? (
+            <Skeleton className="m-4 h-24" />
+          ) : (billing?.invoices.length ?? 0) === 0 ? (
             <p className="p-4 text-sm text-muted-foreground">
-              {billing
-                ? t("settings.infraBilling.noInvoices")
-                : t("settings.infraBilling.multipleTeams")}
+              {billing ? t("settings.infraBilling.noInvoices") : billingMessage}
             </p>
           ) : (
             <Table>
@@ -461,7 +497,7 @@ function InfraBillingContent() {
                   <TableRow key={invoice.id}>
                     <TableCell>
                       {invoice.referenceMonth
-                        ? new Date(invoice.referenceMonth).toLocaleDateString(
+                        ? utcDay(invoice.referenceMonth).toLocaleDateString(
                             undefined,
                             { month: "long", year: "numeric", timeZone: "UTC" },
                           )
@@ -469,7 +505,7 @@ function InfraBillingContent() {
                     </TableCell>
                     <TableCell>
                       {invoice.dueDate
-                        ? new Date(invoice.dueDate).toLocaleDateString(
+                        ? utcDay(invoice.dueDate).toLocaleDateString(
                             undefined,
                             {
                               day: "numeric",
