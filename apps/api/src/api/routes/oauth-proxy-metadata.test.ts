@@ -11,6 +11,7 @@ import {
   buildPathPrefix,
   isAuthError,
   isAuthServerMetadata,
+  isFigmaRemoteMcpUrl,
   looksLikeOAuthWwwAuthenticate,
   protectedResourceMetadataUrls,
   resourceMetadataChallenge,
@@ -151,6 +152,13 @@ describe("looksLikeOAuthWwwAuthenticate", () => {
   test("false for a bare Bearer/API-key challenge", () => {
     expect(looksLikeOAuthWwwAuthenticate('Bearer realm="api"')).toBe(false);
   });
+  test("true for Figma's remote MCP challenge", () => {
+    expect(
+      looksLikeOAuthWwwAuthenticate(
+        'Bearer resource_metadata="https://mcp.figma.com/.well-known/oauth-protected-resource",scope="mcp:connect"',
+      ),
+    ).toBe(true);
+  });
 });
 
 describe("isAuthError", () => {
@@ -167,6 +175,21 @@ describe("isAuthError", () => {
   test("false for unrelated errors", () => {
     expect(isAuthError({ status: 500, message: "boom" })).toBe(false);
     expect(isAuthError({})).toBe(false);
+  });
+});
+
+describe("isFigmaRemoteMcpUrl", () => {
+  test("matches the official remote MCP and API hosts", () => {
+    expect(isFigmaRemoteMcpUrl("https://mcp.figma.com/mcp")).toBe(true);
+    expect(isFigmaRemoteMcpUrl("https://api.figma.com/v1/oauth/mcp/register")).toBe(
+      true,
+    );
+  });
+  test("rejects other hosts and bad URLs", () => {
+    expect(isFigmaRemoteMcpUrl("https://www.figma.com/design/abc")).toBe(false);
+    expect(isFigmaRemoteMcpUrl("http://127.0.0.1:3845/mcp")).toBe(false);
+    expect(isFigmaRemoteMcpUrl("not-a-url")).toBe(false);
+    expect(isFigmaRemoteMcpUrl(null)).toBe(false);
   });
 });
 

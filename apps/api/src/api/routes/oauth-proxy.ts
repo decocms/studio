@@ -275,12 +275,10 @@ export async function handleAuthError({
   headers,
   orgSlug,
 }: HandleAuthErrorOptions): Promise<Response | null> {
-  if (!isAuthError(error)) {
-    return null;
-  }
-
-  // Check if origin supports OAuth by looking for a *meaningful* WWW-Authenticate challenge.
-  // Some servers require a Bearer token (PAT/API key) and include WWW-Authenticate without being OAuth-capable.
+  // Probe the origin first. Figma (and some other remotes) return 401 with a
+  // valid RFC 9728 WWW-Authenticate, but the MCP SDK surfaces that as a
+  // transport/parse error that `isAuthError` misses — which used to become a
+  // proxy 500 ("Internal server error") instead of the OAuth button.
   const originSupportsOAuth = Boolean(
     await checkOriginSupportsOAuth(connectionUrl, headers),
   );
@@ -296,6 +294,10 @@ export async function handleAuthError({
         }),
       },
     });
+  }
+
+  if (!isAuthError(error)) {
+    return null;
   }
 
   return new Response(

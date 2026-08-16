@@ -35,10 +35,12 @@ export async function authenticateAndPersistOAuth({
     return { ran: false, ok: true, error: null };
   }
 
+  // Do not hardcode "offline_access": Figma and other MCP OAuth servers
+  // advertise their own scopes (e.g. mcp:connect). Passing an OIDC-ism
+  // makes strict DCR reject the registration.
   const { token, tokenInfo, error } = await authenticateMcp({
     connectionId,
     orgSlug,
-    scope: "offline_access",
   });
   if (error || !token) {
     return { ran: true, ok: false, error: error ?? "no token received" };

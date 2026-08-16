@@ -185,7 +185,7 @@ class McpOAuthProvider implements OAuthClientProvider {
       token_endpoint_auth_method: "none",
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
-      client_name: options.clientName ?? "@decocms/studio MCP client",
+      client_name: options.clientName ?? "Deco Studio",
       // Only include scope if explicitly provided - some servers have their own scope requirements
       ...(scopeStr && { scope: scopeStr }),
     };
@@ -627,10 +627,14 @@ export async function authenticateMcp(params: {
     if (oauthAbort.fn) {
       oauthAbort.fn(error instanceof Error ? error : new Error(String(error)));
     }
+    const raw = error instanceof Error ? error.message : String(error);
+    const looksLikeFigmaDcr = /figma|mcp catalog/i.test(raw);
     return {
       token: null,
       tokenInfo: null,
-      error: error instanceof Error ? error.message : String(error),
+      error: looksLikeFigmaDcr
+        ? `${raw} Studio is not on Figma's MCP Catalog yet — a PAT will not work. https://www.figma.com/mcp-catalog/`
+        : raw,
     };
   }
 }
@@ -894,7 +898,7 @@ export async function isConnectionAuthenticated({
           protocolVersion: "2025-06-18",
           capabilities: {},
           clientInfo: {
-            name: "@decocms/studio MCP client",
+            name: "Deco Studio",
             version: "1.0.0",
           },
         },

@@ -30,6 +30,8 @@ export const connections = {
   "connections.createConnectionDialog.npxPackageType": "Pacote NPX",
   "connections.createConnectionDialog.openGitHubPatSettings":
     "Abrir configurações de PAT do GitHub",
+  "connections.createConnectionDialog.openFigmaMcpCatalog":
+    "Lista de espera do Figma MCP Catalog",
   "connections.createConnectionDialog.saving": "Salvando...",
   "connections.createConnectionDialog.sseType": "SSE",
   "connections.createConnectionDialog.title": "Criar Conexão",

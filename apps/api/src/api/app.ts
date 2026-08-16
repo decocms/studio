@@ -100,6 +100,10 @@ import {
   fetchProtectedResourceMetadata,
   protectedResourceMetadataHandler,
 } from "./routes/oauth-proxy";
+import {
+  FIGMA_DCR_REJECTED_DESCRIPTION,
+  isFigmaRemoteMcpUrl,
+} from "./routes/oauth-proxy-metadata";
 import openaiCompatRoutes from "./routes/openai-compat";
 import { createProxyRoutes } from "./routes/proxy";
 import { createTriggerCallbackRoutes } from "./routes/trigger-callback";
@@ -711,6 +715,24 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
     duplex: "half",
     redirect: "manual",
   });
+
+  // Figma's DCR endpoint returns plaintext `403 Forbidden` for any client
+  // not on the MCP Catalog. The MCP SDK then throws "Unexpected token 'F'"
+  // because the body isn't JSON. Rewrite to a proper OAuth error so the
+  // connection UI can show why Connect failed.
+  if (
+    endpoint === "register" &&
+    response.status === 403 &&
+    isFigmaRemoteMcpUrl(connection.connection_url)
+  ) {
+    return Response.json(
+      {
+        error: "unauthorized_client",
+        error_description: FIGMA_DCR_REJECTED_DESCRIPTION,
+      },
+      { status: 403 },
+    );
+  }
 
   // Copy response headers, excluding hop-by-hop and encoding headers
   // Note: Node.js fetch auto-decompresses, so content-encoding/content-length would be wrong

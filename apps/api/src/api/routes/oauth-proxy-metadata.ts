@@ -146,6 +146,26 @@ export function isAuthError(error: {
   );
 }
 
+/** Figma's remote MCP — DCR is catalog-allowlisted, not open RFC 7591. */
+export function isFigmaRemoteMcpUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.hostname === "mcp.figma.com" ||
+      parsed.hostname === "api.figma.com"
+    );
+  } catch {
+    return false;
+  }
+}
+
+export const FIGMA_MCP_CATALOG_URL = "https://www.figma.com/mcp-catalog/";
+
+export const FIGMA_DCR_REJECTED_DESCRIPTION =
+  "Dynamic client registration was rejected (HTTP 403). Figma's remote MCP only registers clients on the Figma MCP Catalog (Cursor, Claude, Codex, …). Studio is not on that catalog yet. A Figma PAT cannot authenticate this endpoint — only OAuth from an allowlisted client works. See " +
+  FIGMA_MCP_CATALOG_URL;
+
 export interface ProxyMetadataUrls {
   /** `…/mcp/:connectionId` on our proxy (the `resource` value). */
   proxyResourceUrl: string;

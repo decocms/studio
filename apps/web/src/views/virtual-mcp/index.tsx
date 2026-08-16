@@ -635,7 +635,6 @@ function VirtualMcpDetailViewWithData({
     const { token, tokenInfo, error } = await authenticateMcp({
       connectionId,
       orgSlug: org.slug,
-      scope: "offline_access",
     });
     if (error || !token) {
       toast.error(

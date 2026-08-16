@@ -8,7 +8,7 @@ import type { RegistryItem } from "@/components/store/types";
 // ---------------------------------------------------------------------------
 
 export type ConnectionProviderHint = {
-  id: "github" | "perplexity" | "registry";
+  id: "github" | "perplexity" | "figma" | "registry";
   title?: string;
   description?: string | null;
   token?: {
@@ -68,8 +68,27 @@ export function inferHardcodedProviderHint(params: {
 }): ConnectionProviderHint | null {
   const { uiType } = params;
 
-  // GitHub Copilot MCP (hardcoded)
   const normalized = normalizeConnectionUrl(params.connectionUrl ?? "");
+
+  // Figma remote MCP — OAuth only, DCR is catalog-allowlisted
+  if (
+    (uiType === "HTTP" || uiType === "SSE" || uiType === "Websocket") &&
+    (normalized === normalizeConnectionUrl("https://mcp.figma.com/mcp") ||
+      normalized.startsWith("https://mcp.figma.com/"))
+  ) {
+    return {
+      id: "figma",
+      title: "Figma",
+      description: "Official Figma MCP (OAuth, catalog clients only)",
+      token: {
+        label: "Token (leave empty)",
+        helperText:
+          "Figma's remote MCP rejects PATs and only registers OAuth clients on the Figma MCP Catalog (Cursor, Claude, Codex). Studio is not on that list yet.",
+      },
+    };
+  }
+
+  // GitHub Copilot MCP (hardcoded)
   if (
     (uiType === "HTTP" || uiType === "SSE" || uiType === "Websocket") &&
     normalized === normalizeConnectionUrl("https://api.githubcopilot.com/mcp/")

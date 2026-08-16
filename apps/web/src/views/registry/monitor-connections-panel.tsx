@@ -241,7 +241,6 @@ function ConnectionRow({
         orgSlug: org.slug,
         clientName: `MCP Test - ${title}`,
         timeout: 180000,
-        scope: "offline_access",
       });
 
       if (authResult.error) {
