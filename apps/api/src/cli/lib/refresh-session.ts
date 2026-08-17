@@ -29,7 +29,7 @@ const TOKEN_REFRESH_FETCH_TIMEOUT_MS = 10_000;
  * real upstream token has long expired. 100 years is far past any real
  * OAuth token TTL.
  */
-const MAX_EXPIRES_IN_SECONDS = 100 * 365 * 24 * 60 * 60;
+export const MAX_EXPIRES_IN_SECONDS = 100 * 365 * 24 * 60 * 60;
 
 /**
  * Exchanges the session's refresh token for a fresh access token.

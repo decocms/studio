@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { startOAuthCallbackServer } from "../../lib/oauth-callback";
 import { generatePkcePair } from "../../lib/pkce";
+import { MAX_EXPIRES_IN_SECONDS } from "../../lib/refresh-session";
 import { type Session, writeSession } from "../../lib/session";
 
 export interface LoginOptions {
@@ -101,9 +102,13 @@ export async function performInteractiveLogin(
       user: { sub: claims.sub, email: claims.email, name: claims.name },
       accessToken: token.access_token,
       refreshToken: token.refresh_token,
-      expiresAt: token.expires_in
-        ? Math.floor(Date.now() / 1000) + token.expires_in
-        : undefined,
+      // expires_in is untrusted server input, same bound as refreshSession.
+      expiresAt:
+        Number.isFinite(token.expires_in) &&
+        token.expires_in! > 0 &&
+        token.expires_in! <= MAX_EXPIRES_IN_SECONDS
+          ? Math.floor(Date.now() / 1000) + token.expires_in!
+          : undefined,
       createdAt: new Date().toISOString(),
     };
   } finally {
