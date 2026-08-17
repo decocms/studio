@@ -152,7 +152,9 @@ export function WorkspacePanelGroup({
   const { state: sidebarState } = useSidebar();
   const sidebarCollapsed = sidebarState === "collapsed";
   const agentCrumb = sidebarCollapsed ? <AgentSwitcherCrumb /> : null;
-  const newChatCrumb = sidebarCollapsed ? <NewChatCrumb /> : null;
+  // No chat to start in CMS mode; the sidebar still offers it when expanded.
+  const newChatCrumb =
+    sidebarCollapsed && !cmsModeActive ? <NewChatCrumb /> : null;
 
   const publishActions = <VirtualMcpHeaderInfo virtualMcp={entity} />;
 
