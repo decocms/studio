@@ -12,6 +12,10 @@ import { getDecopilotId } from "@decocms/shared/sdk";
 import type { HostedHarnessId } from "@/api/routes/decopilot/dispatch-run";
 import { threadBranch } from "@/tools/sandbox/thread-repo";
 import { harnessRunsInSandbox } from "@/harnesses/sandbox-dispatch-client";
+import {
+  MODEL_CLASS_METADATA_KEY,
+  type ClaudeCodeModelClass,
+} from "@/harnesses/claude-code-env";
 import type { TaskRepo } from "./claude-code-task-run";
 
 /**
@@ -53,6 +57,12 @@ export async function enqueueAgentRunForTask(
     pinnedRef?: string | null;
     /** Admission class for this run. See `dispatch-queue/run-priority.ts`. */
     runClass?: RunClass;
+    /**
+     * Model tier for a sandbox-hosted run. `reviewer` puts a verdict-only run
+     * on a cheaper model than the Super Agent — see `claude-code-env.ts`.
+     * Defaults to the builder's model, which is what every run used before.
+     */
+    modelClass?: ClaudeCodeModelClass;
     /**
      * Deterministic thread id + run workflow id, for a caller whose triggers can
      * race (the reviewer enqueues). Both are `INSERT … ON CONFLICT DO NOTHING`
@@ -187,6 +197,9 @@ export async function enqueueAgentRunForTask(
         runMetadata: {
           ...taskRunMetadata(task),
           [RUN_CLASS_METADATA_KEY]: opts.runClass ?? "new_task",
+          ...(opts.modelClass && opts.modelClass !== "default"
+            ? { [MODEL_CLASS_METADATA_KEY]: opts.modelClass }
+            : {}),
         },
       },
     },

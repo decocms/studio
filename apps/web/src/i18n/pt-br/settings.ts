@@ -478,6 +478,10 @@ export const settings = {
   "settings.review.codeReviewerTitle": "Ativar Code Reviewer",
   "settings.review.codeReviewerDescription":
     "Revisa o c\u00f3digo usando as skills de review apropriadas \u00e0 stack do reposit\u00f3rio.",
+  "settings.review.cheapReviewerModelTitle":
+    "Rodar os revisores em um modelo mais barato",
+  "settings.review.cheapReviewerModelDescription":
+    "O QA Agent e o Code Reviewer leem um diff e chegam a um veredito, então rodam em um modelo menor que o Super Agent que escreveu a mudança. Reduz o custo da revisão; pode reduzir a profundidade.",
   "settings.review.autoMergeTitle": "Ativar Auto-merge",
   "settings.review.autoMergeDescription":
     "Quando todos os revisores habilitados aprovam, mescla o pull request automaticamente em vez de esperar por uma pessoa. Se um conflito bloquear o merge, o Super Agent resolve antes.",

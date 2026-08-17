@@ -459,6 +459,9 @@ export const settings = {
   "settings.review.codeReviewerTitle": "Enable Code Reviewer",
   "settings.review.codeReviewerDescription":
     "Reviews the code using the repository's stack-appropriate review skills.",
+  "settings.review.cheapReviewerModelTitle": "Run reviewers on a cheaper model",
+  "settings.review.cheapReviewerModelDescription":
+    "The QA Agent and Code Reviewer read a diff and reach a verdict, so they run on a smaller model than the Super Agent that wrote the change. Cuts review cost; may cut review depth.",
   "settings.review.autoMergeTitle": "Enable Auto-merge",
   "settings.review.autoMergeDescription":
     "When every enabled reviewer approves, merge the pull request automatically instead of waiting for a human. If a conflict blocks the merge, the Super Agent resolves it first.",
