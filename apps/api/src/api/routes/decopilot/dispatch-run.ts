@@ -1671,6 +1671,7 @@ async function prepareRun(
                 type: "FINISH",
                 taskId: mem.thread.id,
                 threadStatus: "failed",
+                errorText: stringifyError(error),
               })
               .catch((e) => {
                 console.error("[decopilot:stream] onError reactor failed", e);
@@ -1700,6 +1701,7 @@ async function prepareRun(
           type: "FINISH",
           taskId,
           threadStatus: "failed",
+          errorText: stringifyError(err),
         })
         .catch((e) => {
           console.error("[decopilot:stream] catch-block reactor failed", e);
