@@ -39,4 +39,22 @@ describe("messageQueueStore eviction", () => {
     // A fresh lookup after eviction starts a clean, empty store.
     expect(messageQueueStore(evictedThreadId).get()).toEqual([]);
   });
+
+  test("a thread touched again mid-session survives eviction over an untouched one", () => {
+    const stillActive = "still-active";
+    const goesIdle = "goes-idle";
+    messageQueueStore(stillActive);
+    markQueueDirty(stillActive);
+    messageQueueStore(goesIdle);
+    markQueueDirty(goesIdle);
+
+    for (let i = 0; i < 250; i++) {
+      messageQueueStore(`mid-filler-${i}`);
+      if (i === 50) messageQueueStore(stillActive); // re-touch halfway through
+    }
+
+    // Re-touched mid-session, so it outlives the never-touched-again thread.
+    expect(isQueueDirty(stillActive)).toBe(true);
+    expect(isQueueDirty(goesIdle)).toBe(false);
+  });
 });
