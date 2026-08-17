@@ -116,7 +116,7 @@ export function ConnectionUiTab({
                   <div className="flex flex-col gap-2 p-4">
                     <div className="flex items-center justify-between gap-2">
                       <h3 className="text-base font-medium text-foreground truncate">
-                        {tool.name}
+                        {tool.annotations?.title ?? tool.name}
                       </h3>
                       <ToolAnnotationBadges
                         annotations={tool.annotations}
