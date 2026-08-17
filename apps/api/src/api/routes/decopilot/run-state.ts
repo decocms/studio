@@ -83,6 +83,9 @@ export type RunCommand =
       type: "FINISH";
       taskId: string;
       threadStatus: "completed" | "failed" | "requires_action";
+      /** The failure's error text, when there is one — classified into a
+       *  `failure_kind` by the reactor. Omitted for a clean finish. */
+      errorText?: string | null;
     }
   | { type: "CANCEL"; taskId: string }
   | {
@@ -164,6 +167,9 @@ export type RunEvent =
       taskId: string;
       orgId: string;
       reason: RunFailedReason;
+      /** Error text for `reason: "error"`, classified by the reactor into a
+       *  `failure_kind` the board and a support query can group by. */
+      errorText?: string | null;
       /**
        * Fence scope for a ghost force-fail (see the FORCE_FAIL command). Only
        * set on the ghost path; when present the reactor's `forceFailIfInProgress`
