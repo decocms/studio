@@ -114,6 +114,44 @@ function defaultForType(
   }
 }
 
+/**
+ * A resolved block-ref value (`{ __resolveType }`) whose schema no longer
+ * carries a picker branch — e.g. deco loader-backed props (`buyTogether:
+ * ProductBuyTogether[]`) whose union collapsed to a bare array/object, so the
+ * `anyOfRefs` block-ref path never fired. Render the referenced block's own
+ * config form (via `resolveSchema` on the value's `__resolveType`) so the field
+ * stays editable instead of vanishing into `ObjectField`'s null path. Returns
+ * `null` when the value isn't a resolvable block ref, so callers fall through.
+ */
+function renderResolvedBlockRefValue(props: FieldProps): ReactNode | null {
+  const { value, meta } = props;
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const resolveType = (value as Record<string, unknown>).__resolveType;
+  if (typeof resolveType !== "string" || !meta) return null;
+  const referencedSchema = resolveSchema(resolveType, meta);
+  if (!referencedSchema) return null;
+  return (
+    <SchemaForm
+      key={props.path}
+      schema={referencedSchema}
+      value={value}
+      onChange={props.onChange}
+      basePath={props.path}
+      breadcrumbPath={props.breadcrumbPath}
+      onBreadcrumbChange={props.onBreadcrumbChange}
+      meta={meta}
+      decofile={props.decofile}
+      onSaveReferencedBlock={props.onSaveReferencedBlock}
+      previewBaseUrl={props.previewBaseUrl}
+      onAddSectionItem={props.onAddSectionItem}
+      onRequestAddSection={props.onRequestAddSection}
+      sandbox={props.sandbox}
+    />
+  );
+}
+
 export function renderField(props: FieldProps) {
   const { schema, value } = props;
 
@@ -284,43 +322,10 @@ export function renderField(props: FieldProps) {
     return <SecretField key={props.path} {...props} />;
   }
 
-  /**
-   * Value is a resolved block ref (`{ __resolveType }`) whose schema collapsed to
-   * a bare array/object with no `anyOfRefs` (deco loader-backed props like
-   * `buyTogether`); render the referenced block's config form so it stays
-   * editable instead of vanishing into `ObjectField`'s null path.
-   */
-  if (
-    value !== null &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    typeof (value as Record<string, unknown>).__resolveType === "string" &&
-    props.meta
-  ) {
-    const referencedSchema = resolveSchema(
-      (value as Record<string, unknown>).__resolveType as string,
-      props.meta,
-    );
-    if (referencedSchema) {
-      return (
-        <SchemaForm
-          key={props.path}
-          schema={referencedSchema}
-          value={value}
-          onChange={props.onChange}
-          basePath={props.path}
-          breadcrumbPath={props.breadcrumbPath}
-          onBreadcrumbChange={props.onBreadcrumbChange}
-          meta={props.meta}
-          decofile={props.decofile}
-          onSaveReferencedBlock={props.onSaveReferencedBlock}
-          previewBaseUrl={props.previewBaseUrl}
-          onAddSectionItem={props.onAddSectionItem}
-          onRequestAddSection={props.onRequestAddSection}
-          sandbox={props.sandbox}
-        />
-      );
-    }
+  // Resolved block-ref value whose schema lost its picker branch — see renderResolvedBlockRefValue. Skip when a format/enum widget owns the field.
+  if (!schema.format && !schema.enum) {
+    const blockRefForm = renderResolvedBlockRefValue(props);
+    if (blockRefForm) return blockRefForm;
   }
 
   // If value is null/undefined, try to produce a typed default from schema
@@ -406,37 +411,8 @@ function renderMultivariateInnerField(
     return renderField({ ...props, schema: variantValueSchema });
   }
 
-  const value = props.value;
-  if (
-    value &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    typeof (value as Record<string, unknown>).__resolveType === "string" &&
-    props.meta
-  ) {
-    const innerSchema = resolveSchema(
-      (value as Record<string, unknown>).__resolveType as string,
-      props.meta,
-    );
-    if (innerSchema) {
-      return (
-        <SchemaForm
-          schema={innerSchema}
-          value={value}
-          onChange={props.onChange}
-          basePath={props.path}
-          breadcrumbPath={props.breadcrumbPath}
-          onBreadcrumbChange={props.onBreadcrumbChange}
-          meta={props.meta}
-          decofile={props.decofile}
-          onSaveReferencedBlock={props.onSaveReferencedBlock}
-          sandbox={props.sandbox}
-          previewBaseUrl={props.previewBaseUrl}
-          onRequestAddSection={props.onRequestAddSection}
-        />
-      );
-    }
-  }
+  const blockRefForm = renderResolvedBlockRefValue(props);
+  if (blockRefForm) return blockRefForm;
 
   return renderField(
     variantValueSchema ? { ...props, schema: variantValueSchema } : props,
