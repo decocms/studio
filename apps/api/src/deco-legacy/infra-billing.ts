@@ -83,6 +83,26 @@ export interface SiteInfraBilling {
   usageUnavailable: boolean;
 }
 
+/**
+ * Normalize a caller-provided site-slug selection and verify every slug is
+ * owned by the org — shared by INFRA_BILLING_GET and INFRA_BILLING_PORTAL,
+ * which both scope on `org_sites` before touching legacy billing data.
+ */
+export function resolveRequestedSlugs(
+  requestedSlugs: string[],
+  ownedSlugs: string[],
+): string[] {
+  const slugs = [...new Set(requestedSlugs.map((s) => s.toLowerCase()))];
+  const owned = new Set(ownedSlugs);
+  const unowned = slugs.filter((slug) => !owned.has(slug));
+  if (unowned.length > 0) {
+    throw new Error(
+      `Site not found in organization: ${unowned.sort().join(", ")}`,
+    );
+  }
+  return slugs;
+}
+
 /** UTC first/last day of the month containing `date`, as "YYYY-MM-DD". */
 export function monthInterval(date: Date): { since: string; until: string } {
   const since = new Date(
