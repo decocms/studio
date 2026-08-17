@@ -71,12 +71,7 @@ function SplitButtonMenuEntry({ item }: { item: SplitButtonMenuItem }) {
 
   return (
     <Tooltip>
-      {/* Wrapper is the trigger, tabbable when disabled so it's reachable. */}
-      <TooltipTrigger asChild>
-        <span className="block" tabIndex={item.disabled ? 0 : undefined}>
-          {entry}
-        </span>
-      </TooltipTrigger>
+      <TooltipTrigger asChild>{entry}</TooltipTrigger>
       <TooltipContent side="right">{item.tooltip}</TooltipContent>
     </Tooltip>
   );
@@ -131,7 +126,8 @@ export function SplitButton({
     >
       {tooltip ? (
         <Tooltip>
-          {/* Wrapper is the trigger: a disabled button swallows hover and focus. */}
+          {/* Wrapper provides layout & focus styling. When primary is disabled, tabIndex=0
+              makes the wrapper focusable so tooltip is reachable via keyboard. */}
           <TooltipTrigger asChild>
             <span
               className={cn(
@@ -139,6 +135,8 @@ export function SplitButton({
                 disabled && "cursor-not-allowed",
               )}
               tabIndex={disabled ? 0 : undefined}
+              role={disabled ? "button" : undefined}
+              aria-disabled={disabled || undefined}
             >
               {primary}
             </span>
