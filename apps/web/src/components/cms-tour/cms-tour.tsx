@@ -21,6 +21,7 @@ import type { Config, Driver, DriveStep } from "driver.js";
 import "driver.js/dist/driver.css";
 import "./cms-tour.css";
 import { authClient } from "@/lib/auth-client";
+import { resolveCmsMode } from "@/sdk/cms-mode";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
 import { useVirtualMCP } from "@/sdk";
@@ -30,13 +31,7 @@ import { useT, type TFunction } from "@/i18n/use-t";
 import { tourAnchorSelector } from "./anchors";
 import { buildSteps } from "./steps";
 
-/**
- * The tour only starts once the preview toolbar is actually on screen. The CMS
- * toggle anchors an early step and only exists when the Preview view is open
- * with its toolbar rendered (dev server up), so gating on it — not merely the
- * Preview root, which can be mounted-but-hidden behind another tab — keeps the
- * tour from launching in a context where its controls are missing.
- */
+/** The tour waits for its lead control — the CMS toggle — to be on screen. */
 const READY_SELECTOR = tourAnchorSelector("edit");
 
 const seenFlag = (userId: string) =>
@@ -184,7 +179,10 @@ export function CmsTour({ virtualMcpId }: { virtualMcpId: string }) {
   const userId = session?.user?.id;
 
   const isCodeAgent = agentHasClonableSource(entity?.metadata);
-  const previewReady = vmEvents.lifecycle.phase === "running";
+  // CMS mode has no dev server to wait for — its surface is up immediately.
+  const previewReady =
+    resolveCmsMode(entity?.metadata).active ||
+    vmEvents.lifecycle.phase === "running";
   const eligible = isCodeAgent && previewReady && !!userId;
 
   const [launched, setLaunched] = useState(false);
