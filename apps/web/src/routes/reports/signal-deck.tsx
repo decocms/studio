@@ -21,6 +21,18 @@ import { captureReport } from "./track";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
+/** True when `target` is a focused form control (the feedback textarea) —
+ *  deck-navigation gestures must not hijack input meant for it. */
+const isTypingTarget = (target: EventTarget | null) => {
+  const el = target as HTMLElement | null;
+  return (
+    !!el &&
+    (el.tagName === "INPUT" ||
+      el.tagName === "TEXTAREA" ||
+      el.isContentEditable)
+  );
+};
+
 /** Backdrop behind the cover slide only — it sits under the whole deck shell,
  *  header and footer included, so the opening reads as a scene the report card
  *  is lying on rather than a panel inside a white page. Remote for now; self-host
@@ -241,16 +253,6 @@ export default function SignalDeck({
     };
     window.addEventListener("popstate", onPopState);
 
-    // Don't hijack keys meant for a focused form control (the feedback textarea).
-    const isTypingTarget = (target: EventTarget | null) => {
-      const el = target as HTMLElement | null;
-      return (
-        !!el &&
-        (el.tagName === "INPUT" ||
-          el.tagName === "TEXTAREA" ||
-          el.isContentEditable)
-      );
-    };
     const onKey = (e: KeyboardEvent) => {
       if (isTypingTarget(e.target)) return;
       if (["ArrowDown", "ArrowRight", "PageDown", " "].includes(e.key)) {
@@ -313,6 +315,8 @@ export default function SignalDeck({
     };
 
     const onWheel = (e: WheelEvent) => {
+      // Don't hijack scroll meant for the feedback textarea.
+      if (isTypingTarget(e.target)) return;
       const vertical = Math.abs(e.deltaY) >= Math.abs(e.deltaX);
       if (vertical && absorbsScroll(e.target, e.deltaY > 0)) return;
       if (!vertical && inHorizontalScroller(e.target)) return;
@@ -347,6 +351,7 @@ export default function SignalDeck({
       if (e.cancelable) e.preventDefault();
     };
     const onTouchEnd = (e: TouchEvent) => {
+      if (isTypingTarget(startTarget)) return;
       const dx = startX - (e.changedTouches[0]?.clientX ?? 0);
       const dy = startY - (e.changedTouches[0]?.clientY ?? 0);
       const d = Math.abs(dy) >= Math.abs(dx) ? dy : dx;
