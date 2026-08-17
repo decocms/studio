@@ -1797,6 +1797,11 @@ export interface TaskBoardItemThreadRef {
    *  went cold is not running, whatever its status says; see
    *  `reviewerHandledThisCycle`. */
   lastActiveAt: string;
+  /** What this run has cost so far, in USD, summed from the usage the harness
+   *  recorded on each assistant message. `null` when nothing is recorded yet
+   *  (a run that has not finished a message, or a harness that reports no
+   *  cost) — which is NOT the same as zero. */
+  costUsd: number | null;
   createdAt: string;
 }
 
