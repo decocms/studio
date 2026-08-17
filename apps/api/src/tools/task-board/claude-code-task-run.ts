@@ -21,6 +21,7 @@
 import type { StudioContext } from "@/core/studio-context";
 import { selectLoadableRepos } from "@/harnesses/decopilot/built-in-tools/load-repo";
 import { isOrgSharedConnection } from "@decocms/shared/github-repo-scope";
+import { SHALLOW_CHECKOUT_NOTE } from "@decocms/shared/task-board";
 import type { SuperAgentPromptOpts } from "./enqueue-super-agent";
 
 /** The repo a claude-code task run works in. */
@@ -191,7 +192,7 @@ export function buildClaudeCodeTaskPrompt(
   lines.push(
     "",
     repo
-      ? `The repository ${repo.owner}/${repo.name} is already cloned at your working directory, on its own branch. \`git\` and \`gh\` are authenticated.`
+      ? `The repository ${repo.owner}/${repo.name} is already cloned at your working directory, on its own branch. \`git\` and \`gh\` are authenticated. ${SHALLOW_CHECKOUT_NOTE}`
       : [
           "Your working directory is EMPTY: this organization has several repositories, so " +
             "nothing has been cloned yet. FIRST call `mcp__studio__TASK_ADD_REPO` with the " +
