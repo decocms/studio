@@ -76,8 +76,19 @@ export class UploadRejected extends Error {
   }
 }
 
+/**
+ * Content-Type header values are case-insensitive per RFC 9110 and may carry
+ * a parameter (e.g. `text/csv; charset=utf-8`). Strip the parameter and
+ * lowercase the media type before matching against the allowlist, so a
+ * client that sends `Text/CSV` or appends a charset isn't wrongly rejected.
+ */
+function normalizeContentType(contentType: string): string {
+  return contentType.split(";")[0]!.trim().toLowerCase();
+}
+
 export function assertAllowed(contentType: string, size: number): void {
-  if (!ALLOWED_CONTENT_TYPES.has(contentType)) {
+  const normalized = normalizeContentType(contentType);
+  if (!ALLOWED_CONTENT_TYPES.has(normalized)) {
     throw new UploadRejected(`Content type "${contentType}" is not allowed.`);
   }
   if (!Number.isFinite(size) || size <= 0) {
