@@ -241,7 +241,18 @@ export default function SignalDeck({
     };
     window.addEventListener("popstate", onPopState);
 
+    // Don't hijack keys meant for a focused form control (the feedback textarea).
+    const isTypingTarget = (target: EventTarget | null) => {
+      const el = target as HTMLElement | null;
+      return (
+        !!el &&
+        (el.tagName === "INPUT" ||
+          el.tagName === "TEXTAREA" ||
+          el.isContentEditable)
+      );
+    };
     const onKey = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target)) return;
       if (["ArrowDown", "ArrowRight", "PageDown", " "].includes(e.key)) {
         e.preventDefault();
         go(index + 1);
