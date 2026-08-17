@@ -149,6 +149,9 @@ export const taskBoard = {
   "taskBoard.taskDialog.shipToProductionButton": "Ship to production",
   "taskBoard.taskDialog.shipSuccess": "Merged and shipped to production",
   "taskBoard.taskDialog.shipError": "Couldn't merge the pull request",
+  "taskBoard.taskDialog.costRunCount": "in {runs} runs",
+  "taskBoard.taskDialog.costTooltip":
+    "Total AI cost of this task, across all {runs} of its runs — the Super Agent plus every reviewer and re-run round.",
   "taskBoard.taskDialog.propertiesLabel": "Properties",
   "taskBoard.taskDialog.reportsContentLocked":
     "Generated from your report — title, description, and priority are managed automatically",

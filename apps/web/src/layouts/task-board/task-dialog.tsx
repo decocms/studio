@@ -27,6 +27,7 @@ import {
   Check,
   CheckCircle,
   ChevronRight,
+  Coins01,
   Copy01,
   DotsHorizontal,
   Edit05,
@@ -133,6 +134,46 @@ const DUE_DATE_FMT = new Intl.DateTimeFormat(undefined, {
  */
 const PROPERTY_BUTTON =
   "inline-flex h-9 items-center justify-start gap-2 rounded-lg border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted sm:border-transparent";
+
+/**
+ * What this task has cost, summed over every run linked to it.
+ *
+ * The task, not the run, is the unit that matters: a card is a Super Agent run
+ * plus however many reviewer and re-run rounds it took, and until now that
+ * total existed nowhere a person could see — one production card reached 105
+ * runs before anyone noticed. Read-only on purpose; it is a fact about the
+ * card, not a setting.
+ *
+ * Hidden entirely when no run recorded usage, so a card that never ran shows
+ * nothing rather than a $0.00 we did not measure.
+ */
+function TaskCost({ threads }: { threads?: TaskBoardItemThread[] }) {
+  const t = useT();
+  const priced = (threads ?? []).filter((thread) => thread.costUsd !== null);
+  if (priced.length === 0) return null;
+  const total = priced.reduce((sum, thread) => sum + (thread.costUsd ?? 0), 0);
+  return (
+    <div
+      className={cn(PROPERTY_BUTTON, "cursor-default hover:bg-transparent")}
+      title={t("taskBoard.taskDialog.costTooltip", {
+        runs: String((threads ?? []).length),
+      })}
+    >
+      <Coins01 size={16} className="shrink-0 text-muted-foreground" />
+      <span className="tabular-nums">
+        {total.toLocaleString(undefined, {
+          style: "currency",
+          currency: "USD",
+        })}
+      </span>
+      <span className="text-muted-foreground">
+        {t("taskBoard.taskDialog.costRunCount", {
+          runs: String((threads ?? []).length),
+        })}
+      </span>
+    </div>
+  );
+}
 
 export function TaskBoardItemDialog({
   open,
@@ -528,6 +569,8 @@ export function TaskBoardItemDialog({
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
+
+              <TaskCost threads={item?.threads} />
 
               <div className="flex flex-col">
                 {/* modal: without it the parent Dialog's scroll-lock

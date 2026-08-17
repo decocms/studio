@@ -10,6 +10,7 @@ const thread = (o: Partial<TaskBoardItemThread>): TaskBoardItemThread => ({
   lastMessage: null,
   hasPreview: false,
   hasMessages: false,
+  costUsd: null,
   createdAt: "",
   ...o,
 });

@@ -93,6 +93,9 @@ export interface TaskBoardItemThreadRef {
   /** False when the thread was created and never used — see
    *  `TaskBoardItemThreadRef` in `apps/api/src/storage/types.ts`. */
   hasMessages: boolean;
+  /** USD this run has cost so far, from the usage its harness recorded. `null`
+   *  when nothing was recorded — not the same as free. */
+  costUsd: number | null;
   createdAt: string;
 }
 
