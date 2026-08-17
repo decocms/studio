@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@ai-sdk/react": "^3.0.210",
-    "@better-auth/sso": "1.4.1",
+    "@better-auth/sso": "1.6.11",
     "@daveyplate/better-auth-ui": "^3.2.7",
     "@decocms/ui": "workspace:*",
     "@decocms/bindings": "workspace:*",
