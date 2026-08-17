@@ -8,6 +8,7 @@ import { useSearch } from "@tanstack/react-router";
 import { useChatTask } from "@/components/chat/chat-context";
 import { useInsetContext } from "@/layouts/agent-shell-layout";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
+import { resolveCmsMode } from "@/sdk/cms-mode";
 import { MainPanelContent } from "@/layouts/main-panel-tabs";
 import { OVERLAY_TABS } from "./tab-id";
 import { PreviewDrawerHost } from "./preview-drawer-host";
@@ -42,9 +43,14 @@ export function MainPanelWithDrawer({
     agentHasClonableSource(activeTask?.metadata);
   const showDrawer =
     hasClonableSource && !(typeof main === "string" && OVERLAY_TABS.has(main));
+  // CMS mode is sandbox-less — there is no daemon for a terminal to attach to.
+  const terminalAvailable = !resolveCmsMode(inset?.entity?.metadata).active;
 
   return (
-    <TerminalVisibilityProvider virtualMcpId={virtualMcpId}>
+    <TerminalVisibilityProvider
+      virtualMcpId={virtualMcpId}
+      available={terminalAvailable}
+    >
       <div className="flex h-full min-h-0 flex-col">
         <div className="flex-1 min-h-0 overflow-hidden">
           <MainPanelContent taskId={taskId} virtualMcpId={virtualMcpId} />

@@ -33,6 +33,13 @@ function writePersisted(id: string, visible: boolean): void {
 }
 
 interface TerminalVisibilityCtx {
+  /**
+   * Whether this project can have a terminal at all. False when there is no
+   * daemon behind it (CMS mode). Consumers gate their CONTROLS on this; they
+   * must not re-derive the condition, or the control and the surface it
+   * toggles can disagree.
+   */
+  available: boolean;
   visible: boolean;
   setVisible: (visible: boolean) => void;
 }
@@ -43,9 +50,12 @@ const TerminalVisibilityContext = createContext<TerminalVisibilityCtx | null>(
 
 export function TerminalVisibilityProvider({
   virtualMcpId,
+  available = true,
   children,
 }: {
   virtualMcpId: string | null;
+  /** False when the project has no daemon to attach to (CMS mode). */
+  available?: boolean;
   children: ReactNode;
 }) {
   const storageKey = virtualMcpId ?? "__no-vmcp__";
@@ -64,6 +74,7 @@ export function TerminalVisibilityProvider({
   }
 
   const setVisible = (next: boolean) => {
+    if (!available) return;
     setOverrideState(next);
     writePersisted(storageKey, next);
   };
@@ -71,7 +82,10 @@ export function TerminalVisibilityProvider({
   return (
     <TerminalVisibilityContext
       value={{
-        visible: override ?? preferences.terminalVisibleByDefault,
+        available,
+        // Overrides and a default-on preference must not resurrect the drawer.
+        visible:
+          available && (override ?? preferences.terminalVisibleByDefault),
         setVisible,
       }}
     >

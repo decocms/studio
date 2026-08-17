@@ -1593,7 +1593,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // up), while copy / SEO items are gated on the preview being live.
   // Fast Preview is sandbox-less — there is no terminal to show, so the
   // toggle is withheld entirely rather than opening an empty drawer.
-  const terminalToggle = cmsModeEnabled ? null : terminal;
+  const terminalToggle = terminal?.available ? terminal : null;
   const moreMenu =
     showPreviewToolbar || terminalToggle ? (
       <div className="flex shrink-0 items-center">
