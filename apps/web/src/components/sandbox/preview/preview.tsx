@@ -358,12 +358,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // persisted) → the original blocking overlay is kept.
   const inset = useInsetContext();
   // Scoped to THIS agent's entity; the shared helper owns the gate itself.
-  const cmsGate =
-    inset?.entity?.id === virtualMcpId
-      ? resolveCmsMode(inset.entity.metadata)
-      : { previewServerUrl: null, active: false };
-  const previewServerUrl = cmsGate.previewServerUrl;
-  const cmsModeEnabled = cmsGate.active;
+  const shellEntity = inset?.entity?.id === virtualMcpId ? inset.entity : null;
+  const isShellEntity = shellEntity !== null;
+  const previewServerUrl = shellEntity
+    ? resolveCmsMode(shellEntity.metadata).previewServerUrl
+    : null;
+  const cmsModeEnabled = isShellEntity && lifecycle.cmsModeActive;
 
   // Decofile pages/global sections for the URL bar dropdown. Not gated on the
   // dev server: when it's down we read the committed `.deco/*.gen.json` snapshot

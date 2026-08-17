@@ -14,7 +14,7 @@ import { useSearch } from "@tanstack/react-router";
 import { useChatTask } from "@/components/chat/chat-context";
 import { useInsetContext } from "@/layouts/agent-shell-layout";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
-import { resolveCmsMode } from "@/sdk/cms-mode";
+import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { MainPanelContent } from "@/layouts/main-panel-tabs";
 import { OVERLAY_TABS } from "./tab-id";
 import { PreviewDrawerHost } from "./preview-drawer-host";
@@ -33,8 +33,9 @@ export function MainPanelWithDrawer({
   const hasClonableSource =
     agentHasClonableSource(inset?.entity?.metadata) ||
     agentHasClonableSource(activeTask?.metadata);
-  // CMS mode is sandbox-less — no daemon for a terminal to attach to.
-  const hasDaemon = !resolveCmsMode(inset?.entity?.metadata).active;
+  const { cmsModeActive } = useSandboxLifecycle();
+  // A sandbox-less branch has no daemon for a terminal to attach to.
+  const hasDaemon = !cmsModeActive;
   const showDrawer =
     hasClonableSource &&
     hasDaemon &&

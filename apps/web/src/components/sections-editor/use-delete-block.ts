@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useVirtualMCP } from "@/sdk";
-import { resolveCmsMode } from "@/sdk/cms-mode";
 import { KEYS } from "@/lib/query-keys";
 import { decoBlockFilePath } from "./deco-block-key";
 import { decoRepoPath } from "./deco-repo-path";
@@ -36,7 +36,7 @@ export function useDeleteBlock({
   const packagePath = vmcp?.metadata?.runtime?.path ?? null;
   // Sandbox-less mode: deletes commit through the decofile API and remove every
   // encoding alias of the key server-side.
-  const cmsModeActive = resolveCmsMode(vmcp?.metadata).active;
+  const cmsModeActive = useSandboxLifecycle().cmsModeActive;
 
   return useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),

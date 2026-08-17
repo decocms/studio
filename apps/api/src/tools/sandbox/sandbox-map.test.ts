@@ -8,6 +8,7 @@ import type { SandboxRecord } from "@decocms/shared/sdk";
 import {
   deleteSandboxMapEntry,
   mergeSandboxMapEntry,
+  hasVmForBranch,
   readSandboxMap,
   resolveVm,
 } from "./sandbox-map";
@@ -266,5 +267,33 @@ describe("setSandboxMapEntry", () => {
       Record<string, Record<string, SandboxRecord>>
     >;
     expect(sm.u?.b?.["agent-sandbox"]).toEqual(newEntry);
+  });
+});
+
+describe("hasVmForBranch", () => {
+  const map = {
+    "user-1": { "branch-a": { "agent-sandbox": ENTRY_A } },
+  };
+
+  test("true for a branch with a recorded sandbox", () => {
+    expect(hasVmForBranch(map, "user-1", "branch-a")).toBe(true);
+  });
+
+  /** Kind-agnostic: a sibling kind still means the branch has a pod. */
+  test("true regardless of which provider kind recorded it", () => {
+    const desktop = { "user-1": { "branch-a": { "user-desktop": ENTRY_B } } };
+    expect(hasVmForBranch(desktop, "user-1", "branch-a")).toBe(true);
+  });
+
+  test("false for an unknown user, branch, or empty map", () => {
+    expect(hasVmForBranch(map, "user-2", "branch-a")).toBe(false);
+    expect(hasVmForBranch(map, "user-1", "branch-b")).toBe(false);
+    expect(hasVmForBranch({}, "user-1", "branch-a")).toBe(false);
+  });
+
+  test("false for a branch cell with no kinds in it", () => {
+    expect(
+      hasVmForBranch({ "user-1": { "branch-a": {} } }, "user-1", "branch-a"),
+    ).toBe(false);
   });
 });

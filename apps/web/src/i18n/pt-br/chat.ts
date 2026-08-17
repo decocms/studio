@@ -244,7 +244,8 @@ export const chat = {
   "chat.input.codingAgentRequiresDesktop":
     "Continue este chat do agente de código no aplicativo Studio para desktop.",
   "chat.input.cmsModeNoChat":
-    "O chat não está disponível no modo CMS — use o painel CMS para editar o conteúdo.",
+    "Este rascunho ainda não tem ambiente de desenvolvimento, então não há nada para o agente editar.",
+  "chat.input.startCoding": "Começar a programar",
   "chat.input.readOnlyOthersChat":
     "Apenas leitura - você está visualizando um chat de outra pessoa",
   "chat.input.readOnlyOthersChatNamed":

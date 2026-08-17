@@ -27,6 +27,24 @@ export function readSandboxMap(
   return raw as SandboxMap;
 }
 
+/**
+ * Whether ANY sandbox is recorded for this (user, branch), regardless of
+ * provider kind — the "does this branch have a dev environment?" question.
+ *
+ * Kind-agnostic on purpose: `resolveVm` answers "which pod serves this branch
+ * under kind X", and a caller deciding whether the branch lives on a daemon at
+ * all must not miss a sibling recorded under a different kind.
+ */
+export function hasVmForBranch(
+  sandboxMap: SandboxMap,
+  userId: string,
+  branch: string,
+): boolean {
+  const raw = sandboxMap[userId]?.[branch];
+  if (!raw) return false;
+  return Object.keys(parseBranchMap(raw)).length > 0;
+}
+
 export function resolveVm(
   sandboxMap: SandboxMap,
   userId: string,

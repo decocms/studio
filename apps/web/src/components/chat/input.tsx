@@ -16,6 +16,7 @@ import {
   useVirtualMCP,
 } from "@/sdk";
 import { resolveCmsMode } from "@/sdk/cms-mode";
+import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowUp,
@@ -90,6 +91,40 @@ function ChatInputDisabledState({
     <div className="flex w-full items-center gap-2 px-3 py-2.5 rounded-xl border border-border bg-muted/40 text-muted-foreground">
       {icon ?? <Lock01 size={14} className="shrink-0" />}
       <span className="text-sm">{message ?? ""}</span>
+    </div>
+  );
+}
+
+/**
+ * The composer on a sandbox-less CMS draft: the agent needs a working tree to
+ * edit, so this offers to provision one instead of locking the input.
+ *
+ * The door between the two editors, and it is not one-way — once the draft has
+ * a dev environment the CMS panel keeps working, writing through that pod
+ * rather than committing to the branch head (see `resolveCmsModeForBranch`).
+ */
+function StartCodingState() {
+  const t = useT();
+  const { start, status } = useSandboxLifecycle();
+  const starting = status !== "idle";
+  return (
+    <div className="flex w-full flex-col gap-2.5 rounded-xl border border-border bg-muted/40 px-3 py-2.5">
+      <div className="flex items-center gap-2 text-muted-foreground">
+        <Lock01 size={14} className="shrink-0" />
+        <span className="text-sm">{t("chat.input.cmsModeNoChat")}</span>
+      </div>
+      <Button
+        size="sm"
+        variant="outline"
+        className="self-start"
+        disabled={starting}
+        onClick={() => {
+          track("cms_start_coding_clicked", {});
+          start();
+        }}
+      >
+        {t("chat.input.startCoding")}
+      </Button>
     </div>
   );
 }
@@ -386,7 +421,8 @@ export function ChatInput({
   const { org, locator } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
   const selectedVm = useVirtualMCP(selectedVirtualMcp?.id);
-  const cmsModeActive = resolveCmsMode(selectedVm?.metadata).active;
+  const cmsCapable = resolveCmsMode(selectedVm?.metadata).active;
+  const { cmsModeActive } = useSandboxLifecycle();
   const playSwitchSound = useSound(question004Sound);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const { unsupportedFile, onUnsupportedFile, clearUnsupportedFile } =
@@ -635,12 +671,11 @@ export function ChatInput({
     );
   }
 
-  // Fast Preview projects are sandbox-less, and a chat run still dispatches to
-  // a sandbox runner — a message would hang against a runner that will never
-  // exist. Hold the composer with an honest notice until the agent learns to
-  // work through the decofile API (or per-thread sandbox fallback lands).
-  if (cmsModeActive) {
-    return <ChatInputDisabledState message={t("chat.input.cmsModeNoChat")} />;
+  // A chat run dispatches to a sandbox runner, so a sandbox-less draft has
+  // nothing to run against. Offer to provision one rather than hold the
+  // composer shut — that is the switch into vibecoding.
+  if (cmsCapable && cmsModeActive) {
+    return <StartCodingState />;
   }
 
   return (

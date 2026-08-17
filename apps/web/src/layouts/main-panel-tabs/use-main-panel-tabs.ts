@@ -43,7 +43,6 @@ import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
 import { hasEditableDecoContent } from "@/components/sections-editor/page-list";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
-import { resolveCmsMode } from "@/sdk/cms-mode";
 import type {
   ThreadExpandedTool,
   ThreadMetadata,
@@ -218,8 +217,7 @@ export function useMainPanelTabs(ctx: {
   // server is up (shared query keys with Preview / Content). Requires
   // SandboxEventsProvider (desktop tabs bar lives inside VmEventsBridge).
   const vmEvents = useSandboxEvents();
-  const { vmEntry, previewUrl } = useSandboxLifecycle();
-  const cmsModeActive = resolveCmsMode(entity?.metadata).active;
+  const { vmEntry, previewUrl, cmsModeActive } = useSandboxLifecycle();
   // CMS mode reads the decofile over HTTP; the lifecycle never leaves "idle".
   const devServerReady =
     cmsModeActive || vmEvents.lifecycle.phase === "running";

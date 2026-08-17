@@ -64,7 +64,6 @@ import { createReferencedBlockSaver } from "@/components/sections-editor/save-re
 import { CollectionsSidebar } from "./collections-sidebar";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
-import { resolveCmsMode } from "@/sdk/cms-mode";
 import { SandboxStateRenderer } from "./sandbox-state-renderer";
 import {
   buildDuplicatePage,
@@ -251,7 +250,6 @@ export function ContentBrowser({ mode = "content" }: ContentBrowserProps) {
   const { org } = useProjectContext();
 
   const virtualMcpId = inset?.entity?.id ?? null;
-  const cmsModeActive = resolveCmsMode(inset?.entity?.metadata).active;
 
   const vmEvents = useSandboxEvents();
   // Resolve the sandbox from the shared lifecycle context — the same source
@@ -260,6 +258,7 @@ export function ContentBrowser({ mode = "content" }: ContentBrowserProps) {
   // that in. Reading `inset.entity.metadata.sandboxMap` directly would miss it
   // and strand Content on "starting" for the ephemeral Decopilot agent.
   const lifecycle = useSandboxLifecycle();
+  const cmsModeActive = lifecycle.cmsModeActive;
   const previewUrl = lifecycle.previewUrl;
   const sandboxState = lifecycle.previewState;
 

@@ -21,7 +21,7 @@ import type { Config, Driver, DriveStep } from "driver.js";
 import "driver.js/dist/driver.css";
 import "./cms-tour.css";
 import { authClient } from "@/lib/auth-client";
-import { resolveCmsMode } from "@/sdk/cms-mode";
+import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
 import { useVirtualMCP } from "@/sdk";
@@ -179,9 +179,9 @@ export function CmsTour({ virtualMcpId }: { virtualMcpId: string }) {
   const userId = session?.user?.id;
 
   const isCodeAgent = agentHasClonableSource(entity?.metadata);
-  // CMS mode has no dev server to wait for — its surface is up immediately.
+  // A sandbox-less branch has no dev server to wait for — it is up immediately.
   const previewReady =
-    resolveCmsMode(entity?.metadata).active ||
+    useSandboxLifecycle().cmsModeActive ||
     vmEvents.lifecycle.phase === "running";
   const eligible = isCodeAgent && previewReady && !!userId;
 

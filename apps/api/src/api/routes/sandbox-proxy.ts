@@ -19,12 +19,21 @@ import { composeSandboxRef } from "@decocms/sandbox/provider";
 import type { SandboxProvider } from "@decocms/sandbox/provider";
 import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
 import { computeClaimHandle } from "../../sandbox/claim-handle";
-import { resolveSandboxUserId } from "../../tools/sandbox/thread-repo";
+import {
+  getThreadSandboxMap,
+  resolveSandboxUserId,
+  threadIdFromBranch,
+} from "../../tools/sandbox/thread-repo";
+import {
+  hasVmForBranch,
+  readSandboxMap,
+} from "../../tools/sandbox/sandbox-map";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
 import {
   getUserId,
   requireAuth,
   requireOrganization,
+  type StudioContext,
 } from "../../core/studio-context";
 import type { Env } from "../hono-env";
 import { patchSandboxOperator } from "../../tools/sandbox/patch-sandbox-operator";
@@ -38,7 +47,10 @@ import {
   suggestCommitMessageWithLlm,
 } from "../../lib/suggest-commit-message";
 import { judgeRequiresReviewWithLlm } from "../../lib/judge-requires-review";
-import { resolveCmsMode } from "@decocms/shared/cms-mode";
+import {
+  resolveCmsMode,
+  resolveCmsModeForBranch,
+} from "@decocms/shared/cms-mode";
 import { gitDataClientForRepo } from "../../decofile/client-for-repo";
 import { GitHubApiError } from "../../decofile/github-git-data";
 import {
@@ -66,7 +78,7 @@ interface VmClaim {
    *  `resolveSandboxUserId`). */
   callerUserId: string;
   /** Null when no sandbox runner is configured on this studio instance — or
-   *  when the project is sandbox-less (`fastPreview` below). */
+   *  when this branch is sandbox-less (`fastPreview` below). */
   runner: SandboxProvider | null;
   virtualMcpId: string;
   branch: string;
@@ -75,10 +87,13 @@ interface VmClaim {
   virtualMcpMetadata: Record<string, unknown> | null;
   connectionIds: string[];
   /**
-   * Sandbox-less Fast Preview project: no runner exists by design. The
+   * Sandbox-less branch of a CMS project: no runner exists by design. The
    * `/git/*` routes answer from the GitHub API (see decofile/git-compat.ts)
    * so the publish dialog and header work with no working tree behind them;
    * every other daemon-backed route stays unavailable.
+   *
+   * Per BRANCH, not per project: provisioning a sandbox for one branch moves
+   * that branch onto the daemon while its siblings stay sandbox-less.
    */
   fastPreview?: boolean;
 }
@@ -135,6 +150,30 @@ function quickFileOpSignal(c: Context<VmEnv>): AbortSignal {
     c.req.raw.signal,
     AbortSignal.timeout(QUICK_FILE_OP_TIMEOUT_MS),
   ]);
+}
+
+/**
+ * Does this branch have a dev environment recorded for it?
+ *
+ * Checks the agent row first, then — for a thread-scoped branch, whose sandbox
+ * records itself on the THREAD (see `setThreadSandboxMapEntry`) — the thread
+ * row. Missing the thread record would hand a branch that already has a pod
+ * back to the head-committing CMS path, giving that branch two writers.
+ *
+ * The record, not a liveness probe: a stopped or evicted pod still owns its
+ * branch and resumes, so the branch must not silently revert to sandbox-less.
+ */
+async function branchHasSandbox(
+  ctx: StudioContext,
+  metadata: Record<string, unknown> | null,
+  userId: string,
+  branch: string,
+): Promise<boolean> {
+  if (hasVmForBranch(readSandboxMap(metadata), userId, branch)) return true;
+  const threadId = threadIdFromBranch(branch);
+  if (!threadId) return false;
+  const threadMap = await getThreadSandboxMap(ctx, threadId);
+  return hasVmForBranch(threadMap, userId, branch);
 }
 
 // ---- Shared middleware ------------------------------------------------------
@@ -209,7 +248,11 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
   // Sandbox-less Fast Preview: there is no runner by design. Claim the route
   // with runner:null + the flag so the `/git/*` handlers serve their
   // GitHub-backed equivalents; daemon-backed routes 503 via requireRunner.
-  if (resolveCmsMode(virtualMcpMetadata).active) {
+  // Skipped unless the project is CMS-capable — nothing else reads the answer.
+  const hasSandbox = resolveCmsMode(virtualMcpMetadata).active
+    ? await branchHasSandbox(ctx, virtualMcpMetadata, sandboxUserId, branch)
+    : false;
+  if (resolveCmsModeForBranch(virtualMcpMetadata, hasSandbox).active) {
     c.set("vmClaim", {
       claimName,
       callerUserId: userId,

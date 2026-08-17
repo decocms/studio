@@ -17,6 +17,7 @@ import {
 } from "react";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { resolveCmsMode } from "@/sdk/cms-mode";
+import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -122,7 +123,8 @@ export function WorkspacePanelGroup({
   chatContent,
 }: WorkspacePanelGroupProps) {
   // Sandbox-less: the side panel hosts the block editor, not an inert chat.
-  const cmsModeActive = resolveCmsMode(entity.metadata).active;
+  const cmsCapable = resolveCmsMode(entity.metadata).active;
+  const { cmsModeActive } = useSandboxLifecycle();
   const [sidePanelWidth, setSidePanelWidth] = useSidePanelWidth();
   const panelGroupRef = useRef<GroupImperativeHandle>(null);
   const visibility = { sidePanel, mainOpen };
@@ -176,22 +178,35 @@ export function WorkspacePanelGroup({
     });
   }, [sideSize, mainSize]);
 
-  const chatHeader = (
-    <PanelHeader>
-      {agentCrumb}
-      {cmsModeActive ? (
+  /**
+   * Which side-panel occupants this branch offers. A CMS project always offers
+   * the block editor; chat needs a sandbox, so a sandbox-less branch withholds
+   * it. Once that branch has a pod BOTH appear — the two editors share the
+   * branch, each writing through whichever substrate the branch is on.
+   */
+  const sidePanelToggles = (disableActiveSidePanelToggle: boolean) => (
+    <>
+      {cmsCapable && (
         <CmsToggle
           sidePanel={sidePanel}
           toggleSidePanel={toggleSidePanel}
-          disableActiveSidePanelToggle={!mainOpen}
+          disableActiveSidePanelToggle={disableActiveSidePanelToggle}
         />
-      ) : (
+      )}
+      {!cmsModeActive && (
         <ChatToggle
           sidePanel={sidePanel}
           toggleSidePanel={toggleSidePanel}
-          disableActiveSidePanelToggle={!mainOpen}
+          disableActiveSidePanelToggle={disableActiveSidePanelToggle}
         />
       )}
+    </>
+  );
+
+  const chatHeader = (
+    <PanelHeader>
+      {agentCrumb}
+      {sidePanelToggles(!mainOpen)}
       {mainControlsInChat && (
         <MainControls
           virtualMcpId={virtualMcpId}
@@ -220,18 +235,7 @@ export function WorkspacePanelGroup({
           right actions on the far side are never pushed off-screen. */}
       <div className="flex min-w-0 shrink items-center gap-0.5 overflow-hidden">
         {!chatOpen && agentCrumb}
-        {!chatOpen &&
-          (cmsModeActive ? (
-            <CmsToggle
-              sidePanel={sidePanel}
-              toggleSidePanel={toggleSidePanel}
-            />
-          ) : (
-            <ChatToggle
-              sidePanel={sidePanel}
-              toggleSidePanel={toggleSidePanel}
-            />
-          ))}
+        {!chatOpen && sidePanelToggles(false)}
         <MainControls
           virtualMcpId={virtualMcpId}
           taskId={taskId}
@@ -318,7 +322,7 @@ export function WorkspacePanelGroup({
         >
           <PanelCard testId="side-panel" header={chatOpen ? chatHeader : null}>
             {chatOpen &&
-              (cmsModeActive ? (
+              (sidePanel === "cms" && cmsCapable ? (
                 <BlocksPanel virtualMcpId={virtualMcpId} />
               ) : (
                 <SidePanel chatContent={chatContent} />

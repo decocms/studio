@@ -40,10 +40,10 @@ export interface ShouldAutoStartArgs {
   userStopped: boolean;
   isPending: boolean;
   attempted: boolean;
-  /** Fast Preview projects are sandbox-less: the CMS reads/writes GitHub
-   *  through the decofile API and the preview renders against production, so
-   *  arriving at a branch must NOT boot a pod. A user-driven `start()` (e.g.
-   *  for the Code tab) still works — only the auto-start is gated. */
+  /** This branch is sandbox-less: the CMS reads/writes GitHub through the
+   *  decofile API and the preview renders against the preview server, so
+   *  arriving at it must NOT boot a pod. A user-driven `start()` (the switch
+   *  into vibecoding) still works — only the auto-start is gated. */
   cmsModeActive: boolean;
 }
 
@@ -361,7 +361,7 @@ import {
   useProjectContext,
   useVirtualMCP,
 } from "@/sdk";
-import { resolveCmsMode } from "@/sdk/cms-mode";
+import { resolveCmsModeForBranch } from "@/sdk/cms-mode";
 import type { SandboxMap } from "@decocms/shared/sdk/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { invalidateVirtualMcpQueries } from "@/lib/query-keys";
@@ -406,6 +406,15 @@ export interface SandboxLifecycleValue {
   branch: string | null;
   previewState: PreviewState;
   status: DrawerStatus;
+  /**
+   * This branch is served sandbox-lessly right now — the CMS reads and writes
+   * the branch head over HTTP and there is no daemon behind it.
+   *
+   * The gate every daemon-backed surface must use. It is NOT the project flag:
+   * a CMS project whose branch has a sandbox is `false` here, because that
+   * branch's reads, writes, preview and tabs all belong to the pod.
+   */
+  cmsModeActive: boolean;
   vmEntry: BranchMapEntryLike | null;
   previewUrl: string | null;
   userStopped: boolean;
@@ -420,6 +429,7 @@ const DEFAULT_VALUE: SandboxLifecycleValue = {
   branch: null,
   previewState: { kind: "starting" },
   status: "idle",
+  cmsModeActive: false,
   vmEntry: null,
   previewUrl: null,
   userStopped: false,
@@ -474,7 +484,6 @@ export function SandboxLifecycleProvider({
   // ShouldAutoStartArgs.cmsModeActive). Self-heal/claim-retry stay ungated —
   // they only ever fire for a sandbox that already exists.
   const vmcp = useVirtualMCP(virtualMcpId ?? undefined);
-  const cmsModeActive = resolveCmsMode(vmcp?.metadata).active;
 
   const mcpClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -540,6 +549,11 @@ export function SandboxLifecycleProvider({
   // matching entry wins; with no entry for that kind (or no kind at all) fall
   // back to whatever is serving the branch. See resolveVmEntry.
   const vmEntry = resolveVmEntry(branchMap, sandboxProviderKind);
+  // Per branch: a recorded sandbox moves THIS branch onto the daemon.
+  const cmsModeActive = resolveCmsModeForBranch(
+    vmcp?.metadata,
+    !!vmEntry,
+  ).active;
   const failedPhase = events.phase?.kind === "failed" ? events.phase : null;
   const previewUrl = resolvePreviewUrl({
     vmEntry,
@@ -814,6 +828,7 @@ export function SandboxLifecycleProvider({
     branch,
     previewState,
     status,
+    cmsModeActive,
     vmEntry,
     previewUrl,
     userStopped,

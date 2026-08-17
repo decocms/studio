@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
+import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useVirtualMCP } from "@/sdk";
-import { resolveCmsMode } from "@/sdk/cms-mode";
 import { toast } from "sonner";
 import { decoBlockFilePath } from "./deco-block-key";
 import { decoRepoPath } from "./deco-repo-path";
@@ -38,7 +38,7 @@ export function useSaveBlock({
   // Sandbox-less mode: writes go through the decofile API (a coalesced commit
   // on the branch) instead of the sandbox working tree. The server owns the
   // key -> file mapping, so no path construction here.
-  const cmsModeActive = resolveCmsMode(vmcp?.metadata).active;
+  const cmsModeActive = useSandboxLifecycle().cmsModeActive;
 
   return useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),

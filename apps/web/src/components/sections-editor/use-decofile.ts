@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useVirtualMCP } from "@/sdk";
-import { resolveCmsMode } from "@/sdk/cms-mode";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { KEYS } from "@/lib/query-keys";
 import { decoRepoPath } from "./deco-repo-path";
@@ -47,7 +47,7 @@ export function useDecofile(
   // branch head on GitHub — no dev server, no working tree. The read also
   // seeds KEYS.decofileDraft ({version, token}) so the preview can build its
   // `?__draft=` pointer before any save happens.
-  const cmsModeActive = resolveCmsMode(vmcp?.metadata).active;
+  const cmsModeActive = useSandboxLifecycle().cmsModeActive;
   const queryClient = useQueryClient();
   return useQuery({
     queryKey: KEYS.decofile(key),

@@ -1,11 +1,11 @@
 import { type Query, useQuery } from "@tanstack/react-query";
+import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useVirtualMCP } from "@/sdk";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { KEYS } from "@/lib/query-keys";
 import { decoRepoPath } from "./deco-repo-path";
 import { readCommittedJson } from "./read-committed-file";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
-import { resolveCmsMode } from "@/sdk/cms-mode";
 import type { LiveMeta } from "./resolve-schema";
 
 interface UseLiveMetaParams {
@@ -68,7 +68,7 @@ export function useLiveMeta(
   const virtualMcp = useVirtualMCP(params?.virtualMcpId);
   const packagePath = virtualMcp?.metadata?.runtime?.path ?? null;
   const productionUrl = resolvePreviewServerUrl(virtualMcp?.metadata);
-  const cmsModeActive = resolveCmsMode(virtualMcp?.metadata).active;
+  const cmsModeActive = useSandboxLifecycle().cmsModeActive;
   return useQuery({
     // productionUrl is appended so a settings edit re-fetches; invalidators key
     // on the (org, vm, branch) prefix, which still matches (variadic key).
