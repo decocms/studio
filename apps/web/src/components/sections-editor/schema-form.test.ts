@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { inferBlockRefArrayItemSchema } from "./block-ref-array-inference";
+import { renderField, SchemaForm } from "./schema-form";
+import { ObjectField } from "./fields/object-field";
+import { AnyOfField } from "./fields/any-of-field";
+import type { LiveMeta } from "./resolve-schema";
 
 describe("inferBlockRefArrayItemSchema", () => {
   test("infers string, number, boolean from first item", () => {
@@ -53,5 +57,68 @@ describe("inferBlockRefArrayItemSchema", () => {
   test("returns undefined when all keys are internal (__prefixed)", () => {
     const items = [{ __resolveType: "X", __id: "123" }];
     expect(inferBlockRefArrayItemSchema(items)).toBeUndefined();
+  });
+});
+
+describe("renderField – collapsed loader-ref value routing", () => {
+  const LOADER = "site/loaders/BuyTogether.ts";
+  const loaderMeta: LiveMeta = {
+    manifest: {
+      blocks: {
+        loaders: { [LOADER]: { $ref: "#/definitions/BuyTogetherProps" } },
+      },
+    },
+    schema: {
+      definitions: {
+        BuyTogetherProps: {
+          type: "object",
+          properties: { rules: { type: "array", items: { type: "string" } } },
+        },
+      },
+    },
+  };
+  const loaderValue = { __resolveType: LOADER, rules: [] as string[] };
+  const baseProps = {
+    onChange: () => {},
+    path: "buyTogether",
+    label: "Buy Together",
+  };
+  const typeOf = (el: unknown) => (el as { type?: unknown } | null)?.type;
+
+  // Regression: collapsed-array schema + loader-ref value used to route to ObjectField (null).
+  test("collapsed loader-ref value renders the referenced block form", () => {
+    const el = renderField({
+      ...baseProps,
+      schema: { type: "array" },
+      value: loaderValue,
+      meta: loaderMeta,
+    });
+    expect(el).not.toBeNull();
+    expect(typeOf(el)).toBe(SchemaForm);
+  });
+
+  // Boundary: unresolvable ref (no meta) must fall through to the old object path.
+  test("falls through to ObjectField when the ref can't be resolved", () => {
+    const el = renderField({
+      ...baseProps,
+      schema: { type: "array" },
+      value: loaderValue,
+    });
+    expect(typeOf(el)).not.toBe(SchemaForm);
+    expect(typeOf(el)).toBe(ObjectField);
+  });
+
+  // Ordering guard: a schema that kept its picker branch must still render AnyOfField.
+  test("block-ref schema with anyOfRefs still renders the picker", () => {
+    const el = renderField({
+      ...baseProps,
+      schema: {
+        type: "block-ref",
+        anyOfRefs: [{ resolveType: LOADER, title: "Buy Together" }],
+      },
+      value: { __resolveType: LOADER },
+      meta: loaderMeta,
+    });
+    expect(typeOf(el)).toBe(AnyOfField);
   });
 });
