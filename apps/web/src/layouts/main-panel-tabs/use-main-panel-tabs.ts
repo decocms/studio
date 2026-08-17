@@ -43,6 +43,7 @@ import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
 import { hasEditableDecoContent } from "@/components/sections-editor/page-list";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
+import { resolveCmsMode } from "@/sdk/cms-mode";
 import type {
   ThreadExpandedTool,
   ThreadMetadata,
@@ -218,7 +219,10 @@ export function useMainPanelTabs(ctx: {
   // SandboxEventsProvider (desktop tabs bar lives inside VmEventsBridge).
   const vmEvents = useSandboxEvents();
   const { vmEntry, previewUrl } = useSandboxLifecycle();
-  const devServerReady = vmEvents.lifecycle.phase === "running";
+  const cmsModeActive = resolveCmsMode(entity?.metadata).active;
+  // CMS mode reads the decofile over HTTP; the lifecycle never leaves "idle".
+  const devServerReady =
+    cmsModeActive || vmEvents.lifecycle.phase === "running";
 
   // A user-desktop sandbox serves its dev server on a loopback previewUrl
   // (`http://<handle>.localhost`), which the cloud proxy cannot reach — so the
@@ -349,7 +353,10 @@ export function useMainPanelTabs(ctx: {
   // have a mirrored `githubRepo`. Clicking from off the Report Agent deep-links
   // into it (see setActiveTab).
   leadingSystemTabs.push(
-    ...getSourceSystemTabs(hasClonableSource || reportsOnly).map((tab) => ({
+    ...getSourceSystemTabs(
+      hasClonableSource || reportsOnly,
+      !cmsModeActive,
+    ).map((tab) => ({
       id: tab.id,
       title:
         tab.id === "preview"

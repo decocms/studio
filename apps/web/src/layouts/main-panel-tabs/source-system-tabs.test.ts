@@ -15,6 +15,16 @@ describe("getSourceSystemTabs", () => {
   test("returns no source tabs without clonable source", () => {
     expect(getSourceSystemTabs(false)).toEqual([]);
   });
+
+  test("drops Code without a sandbox — CMS mode edits via Content", () => {
+    expect(getSourceSystemTabs(true, false)).toEqual([
+      { id: "preview", title: "Preview" },
+    ]);
+  });
+
+  test("a sandbox-less source with no clonable repo still yields nothing", () => {
+    expect(getSourceSystemTabs(false, false)).toEqual([]);
+  });
 });
 
 describe("shouldDeepLinkSourceTab", () => {

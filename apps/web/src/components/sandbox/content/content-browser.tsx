@@ -64,6 +64,7 @@ import { createReferencedBlockSaver } from "@/components/sections-editor/save-re
 import { CollectionsSidebar } from "./collections-sidebar";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
+import { resolveCmsMode } from "@/sdk/cms-mode";
 import { SandboxStateRenderer } from "./sandbox-state-renderer";
 import {
   buildDuplicatePage,
@@ -250,6 +251,7 @@ export function ContentBrowser({ mode = "content" }: ContentBrowserProps) {
   const { org } = useProjectContext();
 
   const virtualMcpId = inset?.entity?.id ?? null;
+  const cmsModeActive = resolveCmsMode(inset?.entity?.metadata).active;
 
   const vmEvents = useSandboxEvents();
   // Resolve the sandbox from the shared lifecycle context — the same source
@@ -261,7 +263,8 @@ export function ContentBrowser({ mode = "content" }: ContentBrowserProps) {
   const previewUrl = lifecycle.previewUrl;
   const sandboxState = lifecycle.previewState;
 
-  if (sandboxState.kind !== "iframe") {
+  // CMS mode has no sandbox to boot, so its state must not gate this view.
+  if (!cmsModeActive && sandboxState.kind !== "iframe") {
     return (
       <SandboxStateRenderer
         state={sandboxState}
@@ -278,11 +281,13 @@ export function ContentBrowser({ mode = "content" }: ContentBrowserProps) {
   }
 
   const phase = vmEvents.lifecycle.phase;
-  const devServerReady = phase === "running";
+  // In CMS mode the decofile API is the source; data readiness alone decides.
+  const devServerReady = cmsModeActive || phase === "running";
   // Terminal daemon phases: no further progress is coming, so the content
   // browser should surface its error rather than spin. Everything else before
   // `running` (cloning, installing, starting) is still warming up.
   const sandboxWarming =
+    !cmsModeActive &&
     !devServerReady &&
     phase !== "clone-failed" &&
     phase !== "install-failed" &&

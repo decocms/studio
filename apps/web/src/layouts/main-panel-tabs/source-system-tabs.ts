@@ -8,10 +8,19 @@ const SOURCE_SYSTEM_TABS: readonly SourceSystemTab[] = [
   { id: "code", title: "Code" },
 ];
 
+/**
+ * Preview is available to any clonable source. Code is not: it browses the
+ * sandbox filesystem, which CMS mode does not have — there the decofile is
+ * read over HTTP and Content is the editing surface instead.
+ */
 export function getSourceSystemTabs(
   hasClonableSource: boolean,
+  hasSandbox = true,
 ): SourceSystemTab[] {
-  return hasClonableSource ? [...SOURCE_SYSTEM_TABS] : [];
+  if (!hasClonableSource) return [];
+  return SOURCE_SYSTEM_TABS.filter(
+    (tab) => hasSandbox || tab.id !== "code",
+  ).map((tab) => ({ ...tab }));
 }
 
 /**
