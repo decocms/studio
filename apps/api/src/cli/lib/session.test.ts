@@ -123,6 +123,24 @@ describe("readSession", () => {
     });
     expect(await readSession(dir)).toBeNull();
   });
+
+  it("returns null when expiresAt is not a number", async () => {
+    await writeFile(
+      sessionPath(dir, sample.target),
+      JSON.stringify({ ...sample, expiresAt: "not-a-number" }),
+      { mode: 0o600 },
+    );
+    expect(await readSession(dir, sample.target)).toBeNull();
+  });
+
+  it("returns null when refreshToken is not a string", async () => {
+    await writeFile(
+      sessionPath(dir, sample.target),
+      JSON.stringify({ ...sample, refreshToken: 12345 }),
+      { mode: 0o600 },
+    );
+    expect(await readSession(dir, sample.target)).toBeNull();
+  });
 });
 
 describe("clearSession", () => {

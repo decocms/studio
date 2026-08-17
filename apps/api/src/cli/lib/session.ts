@@ -139,5 +139,12 @@ function isSession(value: unknown): value is Session {
   if (!v.user || typeof v.user !== "object") return false;
   const u = v.user as Record<string, unknown>;
   if (typeof u.sub !== "string") return false;
+  // A non-numeric expiresAt would make isExpired()'s NaN comparison always false.
+  if (v.refreshToken !== undefined && typeof v.refreshToken !== "string") {
+    return false;
+  }
+  if (v.expiresAt !== undefined && typeof v.expiresAt !== "number") {
+    return false;
+  }
   return true;
 }
