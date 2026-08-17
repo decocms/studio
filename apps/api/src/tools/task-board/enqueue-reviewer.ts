@@ -14,6 +14,8 @@ import { enqueueAgentRunForTask } from "./enqueue-task-run";
 import { resolveTaskRepoChoice } from "./claude-code-task-run";
 import { isThreadRunStale } from "@/tools/thread/helpers";
 import { mintReviewToken } from "./review-token";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
+import type { ClaudeCodeModelClass } from "@/harnesses/claude-code-env";
 
 /** Thread statuses past which a reviewer run is done — a live run has a
  *  non-terminal status. Mirrors the storage-layer set. */
@@ -142,6 +144,12 @@ export async function enqueueEnabledReviewers(
   );
   const enabled = enabledReviewerKinds(settings?.flags);
   if (enabled.length === 0) return;
+  const modelClass: ClaudeCodeModelClass = orgFlagEnabled(
+    settings?.flags,
+    "cheap_reviewer_model",
+  )
+    ? "reviewer"
+    : "default";
 
   // A reviewer belongs to the current cycle if its thread is still live, or was
   // created since the task last entered In Review — either way don't re-enqueue.
@@ -185,9 +193,15 @@ export async function enqueueEnabledReviewers(
       // RETRY and needs a fence of its own — the previous attempt's thread id
       // is taken, and reusing it would collapse the retry onto the corpse.
       const attempt = spentAttemptsThisCycle(task, kind, lastInReviewAt);
-      await enqueueReviewerForTask(ctx, task, kind, cycleAt, attempt).catch(
-        (err) =>
-          console.error(`[task-board] ${kind} reviewer enqueue failed`, err),
+      await enqueueReviewerForTask(
+        ctx,
+        task,
+        kind,
+        cycleAt,
+        attempt,
+        modelClass,
+      ).catch((err) =>
+        console.error(`[task-board] ${kind} reviewer enqueue failed`, err),
       );
     }),
   );
@@ -385,6 +399,7 @@ async function enqueueReviewerForTask(
   kind: ReviewerKind,
   cycleAt: Date,
   attempt: number,
+  modelClass: ClaudeCodeModelClass,
 ): Promise<void> {
   const organizationId = task.organizationId;
   // Proves to TASK_BOARD_REVIEW_DECISION that the caller is this reviewer.
@@ -487,6 +502,7 @@ async function enqueueReviewerForTask(
     ...(sandboxed
       ? {
           harnessId: "claude-code" as const,
+          modelClass,
           agent: {
             instructions,
             disallowedTools: REVIEWER_DISALLOWED_TOOLS[kind],

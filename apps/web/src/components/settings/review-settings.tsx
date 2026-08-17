@@ -1,6 +1,7 @@
 import { toast } from "sonner";
 import { Switch } from "@decocms/ui/components/switch.tsx";
 import {
+  Coins01,
   FileSearch02,
   GitMerge,
   ShieldTick,
@@ -40,6 +41,12 @@ export function ReviewSettings() {
           icon={<FileSearch02 size={16} />}
           titleKey="settings.review.codeReviewerTitle"
           descriptionKey="settings.review.codeReviewerDescription"
+        />
+        <FlagToggle
+          flag="cheap_reviewer_model"
+          icon={<Coins01 size={16} />}
+          titleKey="settings.review.cheapReviewerModelTitle"
+          descriptionKey="settings.review.cheapReviewerModelDescription"
         />
         <FlagToggle
           flag="auto_merge"

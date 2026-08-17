@@ -155,6 +155,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "When every enabled reviewer (QA Agent / Code Reviewer) approves a task's pull request, merge it automatically instead of leaving the merge to a human. If the merge is blocked by a conflict with the base branch, hand the PR back to the Super Agent to resolve the conflict (check out the branch, merge the base, push) so it can then merge.",
     ),
+  cheap_reviewer_model: z
+    .boolean()
+    .optional()
+    .describe(
+      "Run the QA Agent and Code Reviewer on a cheaper model than the Super Agent. A review reads a diff and reaches a verdict; it does not need the model that wrote the code. Off by default — turning it on trades some review depth for cost.",
+    ),
   auto_assign_report_tasks_to_super_agent: z
     .boolean()
     .optional()

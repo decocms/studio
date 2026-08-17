@@ -45,6 +45,8 @@ import { isTransientStreamError } from "@/harnesses/decopilot/built-in-tools/sub
 import type { HarnessId, HarnessStreamInput } from "@/harnesses/lib/types";
 import {
   claudeCodeEnvFromCredential,
+  modelClassFromMetadata,
+  MODEL_CLASS_METADATA_KEY,
   type ClaudeCodeCredential,
 } from "@/harnesses/claude-code-env";
 import type { StudioContext } from "../core/studio-context";
@@ -290,7 +292,12 @@ export class SandboxDispatchClient implements SandboxClient {
     }
     // Fail on an unusable provider BEFORE provisioning a pod: the alternative
     // is a booted sandbox that dies on an opaque model error minutes later.
-    const modelEnv = claudeCodeEnvFromCredential(this.credential);
+    const modelEnv = claudeCodeEnvFromCredential(
+      this.credential,
+      modelClassFromMetadata(
+        this.ctx.metadata?.runMetadata?.[MODEL_CLASS_METADATA_KEY],
+      ),
+    );
     const organization = this.ctx.organization;
     if (!organization) {
       throw new Error(
