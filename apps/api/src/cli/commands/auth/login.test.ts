@@ -187,6 +187,54 @@ describe("loginCommand", () => {
     expect(await readSession(dir)).toBeNull();
   });
 
+  it("ignores an absurdly large expires_in and leaves expiresAt unset", async () => {
+    const target = "https://studio.decocms.com";
+    const fetchMock = mock(async (url: string, init?: RequestInit) => {
+      if (url === `${target}/api/auth/mcp/register`) {
+        return new Response(JSON.stringify({ client_id: "client_x" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url === `${target}/api/auth/mcp/token`) {
+        const body = new URLSearchParams(init?.body as string);
+        expect(body.get("grant_type")).toBe("authorization_code");
+        const idTokenPayload = Buffer.from(
+          JSON.stringify({ sub: "user-123" }),
+        ).toString("base64url");
+        return new Response(
+          JSON.stringify({
+            access_token: "at_1",
+            expires_in: 1e20,
+            id_token: `header.${idTokenPayload}.signature`,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    const openBrowser = mock(async (url: string) => {
+      const parsed = new URL(url);
+      const callback = parsed.searchParams.get("redirect_uri")!;
+      const state = parsed.searchParams.get("state")!;
+      await new Promise((r) => setTimeout(r, 10));
+      await fetch(`${callback}?code=c&state=${state}`, {
+        redirect: "manual",
+      });
+    });
+
+    const code = await loginCommand({
+      dataDir: dir,
+      target,
+      openBrowser,
+      fetch: fetchMock,
+    });
+
+    expect(code).toBe(0);
+    const session = await readSession(dir);
+    expect(session?.expiresAt).toBeUndefined();
+  });
+
   it("returns non-zero when client registration fails", async () => {
     const fetchMock = mock(async (url: string) => {
       if (url.endsWith("/register")) {
