@@ -81,8 +81,8 @@ The set of queues a worker pod listens on is configured by env (`listenQueues`).
 1. A message (`POST /messages`) or an automation fire creates a **run** on a thread.
 2. The **API** enqueues it onto a DBOS queue in Postgres:
    - `THREAD_GATE_QUEUE` — serialized per thread (concurrency 1 per `threadId`).
-   - `AUTOMATIONS_QUEUE` — per-org parallelism.
-3. A **Worker** dequeues it and runs the agent loop: call the model, execute any tool calls, repeat (up to a step limit).
+   - `AUTOMATIONS_QUEUE` — partitioned by org, so a saturated org only blocks its own partition.
+3. A **Worker** dequeues the gate workflow, which starts a child workflow on `HOSTED_HARNESS_QUEUE` (also concurrency 1 per `threadId`) that runs the agent loop: call the model, execute any tool calls, repeat (up to a step limit). The parent gate doesn't wait on the child — it live-tails the same NATS stream the child publishes to and is the one that writes terminal status.
 4. Output chunks are published to NATS and tailed back to the UI over `/stream`.
 5. If the pod crashes, **DBOS journal replay** resumes retriable steps on another pod — recovery is the framework's job, not hand-rolled.
 
