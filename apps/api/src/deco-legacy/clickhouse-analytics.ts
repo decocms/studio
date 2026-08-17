@@ -15,10 +15,14 @@ type ClickHouseClient = import("@clickhouse/client").ClickHouseClient;
 
 let clientPromise: Promise<ClickHouseClient> | null = null;
 
-/** Client-side ceiling. `MAX_EXECUTION_SECONDS` is the server-side one that
- *  actually stops the query; this only bounds how long we wait for it. */
+/**
+ * The only ceiling we can set from here. This user is `readonly`, which makes
+ * ClickHouse reject *any* per-query setting with code 164 — including
+ * `max_execution_time`, so unlike monitoring/query-engine.ts there is no
+ * server-side cap to pair with this. Bound execution on the warehouse's user
+ * profile instead; a timeout here only stops us waiting.
+ */
 const REQUEST_TIMEOUT_MS = 20_000;
-const MAX_EXECUTION_SECONDS = 15;
 
 export function isAnalyticsConfigured(): boolean {
   const s = getSettings();
@@ -62,11 +66,6 @@ export async function analyticsQuery<T>(
     query,
     query_params: params,
     format: "JSONEachRow",
-    // Shared multi-tenant fact tables; same caps as monitoring/query-engine.ts.
-    clickhouse_settings: {
-      max_execution_time: MAX_EXECUTION_SECONDS,
-      max_threads: 1,
-    },
   });
   return result.json<T>();
 }
