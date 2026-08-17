@@ -6,6 +6,7 @@ import {
   isReviewerThreadTitle,
   REVIEWER_LABEL,
   reviewCycleStart,
+  SHALLOW_CHECKOUT_NOTE,
   type ReviewerKind,
 } from "@decocms/shared/task-board";
 import { recordTaskActivity } from "./activity";
@@ -459,7 +460,7 @@ async function enqueueReviewerForTask(
     "How to work:",
     `- Call \`${prsGetTool}\` with the task id below to find the pull request under review.`,
     repo
-      ? `- The repository ${repo.owner}/${repo.name} is already cloned at your working directory and \`git\` and \`gh\` are authenticated — check the PR's branch out there to inspect / exercise the change.`
+      ? `- The repository ${repo.owner}/${repo.name} is already cloned at your working directory and \`git\` and \`gh\` are authenticated — check the PR's branch out there to inspect / exercise the change. ${SHALLOW_CHECKOUT_NOTE}`
       : sandboxed
         ? `- Your working directory is EMPTY. Call \`mcp__studio__TASK_ADD_REPO\` with the connectionId of the PR's repository FIRST; it clones the repository and waits for the checkout, and \`git\` and \`gh\` are authenticated once it returns.`
         : "- Load the PR's repository to inspect / exercise the change.",
