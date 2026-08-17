@@ -41,7 +41,7 @@ export interface BlocksTabStateInput {
   /** Sandbox-less Fast Preview: content comes from the decofile API (GitHub),
    *  not a sandbox — the lifecycle phase stays "idle" forever and must not
    *  gate the panel. Data readiness alone decides. */
-  fastPreviewActive?: boolean;
+  cmsModeActive?: boolean;
 }
 
 export type BlocksTabState =
@@ -89,7 +89,7 @@ function classifyPhase(phase: LifecycleState["phase"]): PhaseClass {
 export function resolveBlocksTabState(
   input: BlocksTabStateInput,
 ): BlocksTabState {
-  if (input.fastPreviewActive) {
+  if (input.cmsModeActive) {
     // No sandbox: a failed decofile/meta read is immediately real (there is
     // no lifecycle transition coming to re-invalidate it).
     const failed =

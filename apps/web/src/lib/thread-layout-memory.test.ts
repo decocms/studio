@@ -16,6 +16,15 @@ describe("sanitizeThreadLayout", () => {
     });
   });
 
+  test("keeps the cms side panel — it must survive a thread round-trip", () => {
+    expect(sanitizeThreadLayout({ main: "preview", sidepanel: "cms" })).toEqual(
+      {
+        main: "preview",
+        sidepanel: "cms",
+      },
+    );
+  });
+
   test("drops absent fields (meaning: use the default)", () => {
     expect(sanitizeThreadLayout({})).toEqual({});
     expect(sanitizeThreadLayout({ main: "git" })).toEqual({ main: "git" });

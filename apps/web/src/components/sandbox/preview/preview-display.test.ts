@@ -25,8 +25,8 @@ function run(overrides: Partial<PreviewDisplayInput>) {
     previewState: STARTING,
     progressStatus: "doing",
     previewServerUrl: PROD,
-    fastPreviewActive: false,
-    fastPreviewReady: false,
+    cmsModeActive: false,
+    cmsModeReady: false,
     ...overrides,
   });
 }
@@ -118,8 +118,8 @@ describe("resolvePreviewDisplay", () => {
         run({
           previewState: IFRAME,
           progressStatus: "doing",
-          fastPreviewActive: true,
-          fastPreviewReady: true,
+          cmsModeActive: true,
+          cmsModeReady: true,
         }),
       ).toEqual({
         mode: "production",
@@ -137,8 +137,8 @@ describe("resolvePreviewDisplay", () => {
         run({
           previewState: STARTING,
           progressStatus: "doing",
-          fastPreviewActive: true,
-          fastPreviewReady: false,
+          cmsModeActive: true,
+          cmsModeReady: false,
         }),
       ).toEqual({
         mode: "production",
@@ -154,8 +154,8 @@ describe("resolvePreviewDisplay", () => {
       const result = run({
         previewState: IFRAME,
         progressStatus: "doing",
-        fastPreviewActive: true,
-        fastPreviewReady: false,
+        cmsModeActive: true,
+        cmsModeReady: false,
       });
       expect(result.mode).toBe("production");
       expect(result.iframeBase).toBe(PROD);
@@ -167,8 +167,8 @@ describe("resolvePreviewDisplay", () => {
         const result = run({
           previewState: IFRAME,
           progressStatus,
-          fastPreviewActive: true,
-          fastPreviewReady: true,
+          cmsModeActive: true,
+          cmsModeReady: true,
         });
         expect(result.mode).toBe("production");
         expect(result.iframeBase).toBe(PROD);
@@ -181,8 +181,8 @@ describe("resolvePreviewDisplay", () => {
       const result = run({
         previewState: IFRAME,
         progressStatus: "done",
-        fastPreviewActive: true,
-        fastPreviewReady: false,
+        cmsModeActive: true,
+        cmsModeReady: false,
       });
       expect(result.mode).toBe("production");
       expect(result.showWakingPill).toBe(true);

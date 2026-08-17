@@ -23,6 +23,72 @@ describe("resolveDefaultPanelState", () => {
     ).toEqual({ sidePanel: "chat", mainOpen: false });
   });
 
+  describe("CMS projects", () => {
+    const cms = { defaultSidePanelKind: "cms" } as const;
+
+    test("a chat default resolves to the CMS panel — there is no chat here", () => {
+      expect(
+        resolveDefaultPanelState({
+          entityMetadata: { defaultMainView: { type: "chat" } },
+          ...absentSearch,
+          ...cms,
+        }),
+      ).toEqual({ sidePanel: "cms", mainOpen: false });
+    });
+
+    test("chatDefaultOpen alongside a non-chat view opens CMS, not chat", () => {
+      expect(
+        resolveDefaultPanelState({
+          entityMetadata: {
+            defaultMainView: { type: "preview" },
+            chatDefaultOpen: true,
+          },
+          ...absentSearch,
+          ...cms,
+        }),
+      ).toEqual({ sidePanel: "cms", mainOpen: true });
+    });
+
+    test("closing everything falls back to CMS, never to an absent chat", () => {
+      expect(
+        resolveDefaultPanelState({
+          entityMetadata: { defaultMainView: { type: "settings" } },
+          mainParamPresent: true,
+          mainParamValue: 0,
+          sidePanelParamPresent: true,
+          sidePanelParamValue: 0,
+          ...cms,
+        }),
+      ).toEqual({ sidePanel: "cms", mainOpen: false });
+    });
+
+    test("?sidepanel=cms is honoured", () => {
+      expect(
+        resolveDefaultPanelState({
+          entityMetadata: null,
+          mainParamPresent: false,
+          sidePanelParamPresent: true,
+          sidePanelParamValue: "cms",
+          ...cms,
+        }),
+      ).toEqual({ sidePanel: "cms", mainOpen: false });
+    });
+
+    test("an unknown ?sidepanel degrades to the project default", () => {
+      expect(
+        resolveDefaultPanelState({
+          entityMetadata: null,
+          mainParamPresent: false,
+          sidePanelParamPresent: true,
+          sidePanelParamValue: "junk" as unknown as Parameters<
+            typeof resolveDefaultPanelState
+          >[0]["sidePanelParamValue"],
+          ...cms,
+        }),
+      ).toEqual({ sidePanel: "cms", mainOpen: false });
+    });
+  });
+
   test("a Chat default opens Chat and closes Main", () => {
     expect(
       resolveDefaultPanelState({

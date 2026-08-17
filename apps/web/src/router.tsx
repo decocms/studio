@@ -295,7 +295,9 @@ const agentShellLayout = createRoute({
 const unifiedChatSearchSchema = z.object({
   virtualmcpid: z.string().optional(),
   tab: z.string().optional(),
-  sidepanel: z.union([z.literal("chat"), z.literal(0)]).optional(),
+  sidepanel: z
+    .union([z.literal("chat"), z.literal("cms"), z.literal(0)])
+    .optional(),
   main: z.union([z.string(), z.literal(0)]).optional(),
   /** Open the Library file-preview overlay over the chat (browse-grammar path
    *  "<volume>/<path…>"). Set by clickable org-file refs in agent messages. */

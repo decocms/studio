@@ -522,11 +522,11 @@ export const sandbox = {
   "sandbox.cmsSettings.preview.title": "Preview",
   "sandbox.cmsSettings.preview.description":
     "See your changes before they go live.",
-  "sandbox.cmsSettings.fastPreview.label": "Fast Preview",
-  "sandbox.cmsSettings.fastPreview.description":
-    "Preview changes on your preview server instead of the sandbox.",
-  "sandbox.cmsSettings.fastPreview.needsPreviewServerUrl":
-    "Set a preview server above to enable Fast Preview.",
+  "sandbox.cmsSettings.cmsMode.label": "CMS mode",
+  "sandbox.cmsSettings.cmsMode.description":
+    "Edit content against your preview server — no dev environment needed.",
+  "sandbox.cmsSettings.cmsMode.needsPreviewServerUrl":
+    "Set a preview server above to enable CMS mode.",
   "sandbox.cmsSettings.editing.title": "Editing",
   "sandbox.cmsSettings.editing.description":
     "Customize the content-editing experience in the blocks form.",

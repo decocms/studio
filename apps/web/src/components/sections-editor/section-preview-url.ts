@@ -46,7 +46,7 @@ export function buildGlobalSectionPreviewUrl(
  * per version, and a new version after a save is what refreshes the frame —
  * no cache-busting nonce needed.
  */
-export function buildFastPreviewDraftUrl(input: {
+export function buildCmsDraftUrl(input: {
   /** Preview server origin — the deployment the draft renders against. */
   previewServerUrl: string;
   /**
@@ -117,9 +117,9 @@ export function buildSectionPreviewUrl(
 export function resolveSectionPreviewBase(input: {
   sandboxUrl: string | null | undefined;
   previewServerUrl: string | null | undefined;
-  fastPreviewActive: boolean;
+  cmsModeActive: boolean;
 }): string | null {
-  if (input.fastPreviewActive && input.previewServerUrl) {
+  if (input.cmsModeActive && input.previewServerUrl) {
     return input.previewServerUrl;
   }
   return input.sandboxUrl ?? null;

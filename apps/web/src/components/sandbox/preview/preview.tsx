@@ -12,7 +12,7 @@ import { useInsetContext } from "@/layouts/agent-shell-layout";
 import { resolvePreviewDisplay } from "./preview-display";
 import { useIframeLoadRecovery } from "./preview-iframe-recovery";
 import { buildPreviewLabel } from "./preview-label";
-import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
+import { resolveCmsMode } from "@/sdk/cms-mode";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
@@ -85,7 +85,7 @@ import {
 import { decoBlockFileViewPath } from "@/components/sections-editor/deco-block-key";
 import { findLivePageResolveType } from "@/components/sections-editor/section-catalog";
 import {
-  buildFastPreviewDraftUrl,
+  buildCmsDraftUrl,
   buildGlobalSectionPreviewUrl,
 } from "@/components/sections-editor/section-preview-url";
 import {
@@ -360,18 +360,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // of a blank overlay. `null` (no field, or a site imported before this was
   // persisted) → the original blocking overlay is kept.
   const inset = useInsetContext();
-  const previewServerUrl =
+  // Scoped to THIS agent's entity; the shared helper owns the gate itself.
+  const cmsGate =
     inset?.entity?.id === virtualMcpId
-      ? resolvePreviewServerUrl(inset.entity.metadata)
-      : null;
-  // Fast Preview (opt-in switch in CMS settings): sandbox-less mode — the
-  // draft is the branch head served by the decofile API, rendered against
-  // `previewServerUrl`. Requires BOTH the switch and a production URL — a bare
-  // flag is inert (nothing to render against), and `previewServerUrl` is non-null
-  // only for this agent's entity, so reading `metadata.fastPreview` off the
-  // same object is safe.
-  const fastPreviewEnabled =
-    !!previewServerUrl && inset?.entity?.metadata?.fastPreview === true;
+      ? resolveCmsMode(inset.entity.metadata)
+      : { previewServerUrl: null, active: false };
+  const previewServerUrl = cmsGate.previewServerUrl;
+  const cmsModeEnabled = cmsGate.active;
 
   // Decofile pages/global sections for the URL bar dropdown. Not gated on the
   // dev server: when it's down we read the committed `.deco/*.gen.json` snapshot
@@ -399,7 +394,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       decofile: toBlocksQueryState(decofileQuery),
       meta: toBlocksQueryState(metaQuery),
       hasEditableContent: hasEditableDecoContent(decofile, meta),
-      fastPreviewActive: fastPreviewEnabled,
+      cmsModeActive: cmsModeEnabled,
     }).kind === "content";
   const createPageParams =
     virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
@@ -551,7 +546,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Computed BEFORE `display`: it is an input to that decision, so it must not
   // depend on `display.mode` in turn.
   const decofileDraft = useDecofileDraft(
-    fastPreviewEnabled && virtualMcpId && branch
+    cmsModeEnabled && virtualMcpId && branch
       ? { orgSlug: org.slug, virtualMcpId, branch }
       : null,
   );
@@ -570,12 +565,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       ),
     }) > 0;
   const draftPreviewUrl =
-    fastPreviewEnabled &&
+    cmsModeEnabled &&
     previewServerUrl &&
     decofileDraft &&
     virtualMcpId &&
     branch
-      ? buildFastPreviewDraftUrl({
+      ? buildCmsDraftUrl({
           previewServerUrl,
           apiHost: decofileDraft.apiHost,
           orgSlug: org.slug,
@@ -597,8 +592,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     previewState,
     progressStatus: progress.status,
     previewServerUrl,
-    fastPreviewActive: fastPreviewEnabled,
-    fastPreviewReady: !!draftPreviewUrl,
+    cmsModeActive: cmsModeEnabled,
+    cmsModeReady: !!draftPreviewUrl,
   });
   const previewSurfaceActive = display.mode !== "none";
 
@@ -862,12 +857,16 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     !appPaused &&
     (claimPhase?.kind === "ready" || lifecyclePhase !== "idle");
 
-  // Visual mode requires the live sandbox iframe — the production fallback is a
-  // different origin we can't inject into. Blocks can stay open while the
-  // sandbox restarts (or wakes) so its loading/error state remains actionable
-  // and the panel keeps reading the committed snapshot.
+  /**
+   * Visual mode requires the live sandbox iframe — the production fallback is a
+   * different origin we can't inject into. Blocks can stay open while the
+   * sandbox restarts (or wakes) so its loading/error state remains actionable
+   * and the panel keeps reading the committed snapshot — except in CMS mode,
+   * where the side panel owns the block editor and this pane would duplicate it.
+   */
   const effectiveEditingMode: PreviewEditingMode =
-    display.mode !== "sandbox" && editingMode === "visual"
+    (display.mode !== "sandbox" && editingMode === "visual") ||
+    (cmsModeEnabled && editingMode === "blocks")
       ? "preview"
       : editingMode;
 
@@ -1241,7 +1240,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // it reads as a distinct action rather than being wedged inside the URL
   // controls. On mobile it anchors the left edge on its own (see below).
   // Filled when the Blocks editor is open; click again for plain preview.
-  const cmsToggle = showPreviewToolbar ? (
+  const showCmsToggle = showPreviewToolbar && !cmsModeEnabled;
+  const cmsToggle = showCmsToggle ? (
     <HeaderTabButton
       title={t("sandbox.preview.cms")}
       tooltip={
@@ -1593,7 +1593,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // up), while copy / SEO items are gated on the preview being live.
   // Fast Preview is sandbox-less — there is no terminal to show, so the
   // toggle is withheld entirely rather than opening an empty drawer.
-  const terminalToggle = fastPreviewEnabled ? null : terminal;
+  const terminalToggle = cmsModeEnabled ? null : terminal;
   const moreMenu =
     showPreviewToolbar || terminalToggle ? (
       <div className="flex shrink-0 items-center">
@@ -1839,23 +1839,25 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             orientation="horizontal"
             disabled={effectiveEditingMode !== "blocks"}
           >
-            <ResizablePanel
-              ref={blocksPanelRef}
-              id="preview-blocks-editor"
-              defaultSize={effectiveEditingMode === "blocks" ? "30%" : "0%"}
-              minSize="20%"
-              collapsible
-              collapsedSize="0%"
-              className="min-w-0 overflow-hidden"
-            >
-              {effectiveEditingMode === "blocks" && (
-                <BlocksPanel
-                  virtualMcpId={virtualMcpId}
-                  externalSelection={cmsSelectedSection}
-                />
-              )}
-            </ResizablePanel>
-            {effectiveEditingMode === "blocks" && (
+            {!cmsModeEnabled && (
+              <ResizablePanel
+                ref={blocksPanelRef}
+                id="preview-blocks-editor"
+                defaultSize={effectiveEditingMode === "blocks" ? "30%" : "0%"}
+                minSize="20%"
+                collapsible
+                collapsedSize="0%"
+                className="min-w-0 overflow-hidden"
+              >
+                {effectiveEditingMode === "blocks" && (
+                  <BlocksPanel
+                    virtualMcpId={virtualMcpId}
+                    externalSelection={cmsSelectedSection}
+                  />
+                )}
+              </ResizablePanel>
+            )}
+            {!cmsModeEnabled && effectiveEditingMode === "blocks" && (
               <ResizableHandle withHandle />
             )}
             <ResizablePanel

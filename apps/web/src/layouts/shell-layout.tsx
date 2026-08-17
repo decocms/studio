@@ -10,6 +10,7 @@ import RequiredAuthLayout from "@/layouts/required-auth-layout";
 import { authClient } from "@/lib/auth-client";
 import { AUTOSEND_QUERY_VALUE } from "@/lib/autosend";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
+import type { SidePanelKind } from "@/hooks/use-layout-state";
 import { readCachedOrg, writeCachedOrg } from "@/lib/query-persist";
 import { PostHogGroupSync } from "@/providers/posthog-group-sync";
 import {
@@ -94,7 +95,7 @@ export function usePanelActions() {
   const search = useSearch({ strict: false }) as {
     virtualmcpid?: string;
     main?: string | 0;
-    sidepanel?: "chat" | 0;
+    sidepanel?: SidePanelKind | 0;
   };
   const orgSlug = params.org ?? "";
   const currentTaskId = params.taskId ?? "";
@@ -116,7 +117,7 @@ export function usePanelActions() {
     replace = true,
   ) => navWith(currentTaskId, searchFn, replace);
 
-  const openSidePanel = (sidePanel: "chat") =>
+  const openSidePanel = (sidePanel: SidePanelKind) =>
     nav((prev) => ({ ...prev, sidepanel: sidePanel }));
 
   const setTaskId = (

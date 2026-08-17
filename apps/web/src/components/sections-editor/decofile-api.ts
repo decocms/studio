@@ -7,7 +7,7 @@
  * Every authenticated read/write response carries `{version, token}` — the
  * head commit sha and a signed grant the production site uses to pull the
  * draft. That pair is stashed under KEYS.decofileDraft and drives the
- * `?__draft=` preview pointer (see buildFastPreviewDraftUrl), replacing the
+ * `?__draft=` preview pointer (see buildCmsDraftUrl), replacing the
  * sandbox SSE `decofile` event.
  */
 

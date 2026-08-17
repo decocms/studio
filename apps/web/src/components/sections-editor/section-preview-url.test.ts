@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
-  buildFastPreviewDraftUrl,
+  buildCmsDraftUrl,
   resolveSectionPreviewBase,
 } from "./section-preview-url";
 
@@ -17,13 +17,11 @@ const SCOPE = {
   version: "8c1d44e0f2a34567890123456789012345678901",
 };
 
-describe("buildFastPreviewDraftUrl", () => {
+describe("buildCmsDraftUrl", () => {
   it("targets the real page on the production origin", () => {
     // Not /live/previews: the site renders its OWN route, so hydration and
     // in-preview navigation work.
-    const url = new URL(
-      buildFastPreviewDraftUrl({ ...SCOPE, path: "/blog/hello" }),
-    );
+    const url = new URL(buildCmsDraftUrl({ ...SCOPE, path: "/blog/hello" }));
     expect(url.origin).toBe(PROD);
     expect(url.pathname).toBe("/blog/hello");
   });
@@ -32,7 +30,7 @@ describe("buildFastPreviewDraftUrl", () => {
     // The runtime validates the authority against its configured preview-API
     // domains and derives the scheme itself; a full URL here would be the
     // SSRF surface the design exists to avoid.
-    const url = new URL(buildFastPreviewDraftUrl({ ...SCOPE, path: "/" }));
+    const url = new URL(buildCmsDraftUrl({ ...SCOPE, path: "/" }));
     expect(url.searchParams.get("__draft")).toBe(
       `studio.decocms.com/api/fila/decofile/vm-1/main?token=tok.abc@${SCOPE.version}`,
     );
@@ -40,7 +38,7 @@ describe("buildFastPreviewDraftUrl", () => {
 
   it("keeps a local dev port in the authority", () => {
     const url = new URL(
-      buildFastPreviewDraftUrl({
+      buildCmsDraftUrl({
         ...SCOPE,
         apiHost: "localhost:4000",
         path: "/",
@@ -53,7 +51,7 @@ describe("buildFastPreviewDraftUrl", () => {
 
   it("percent-encodes branch and virtualMcpId path segments", () => {
     const url = new URL(
-      buildFastPreviewDraftUrl({
+      buildCmsDraftUrl({
         ...SCOPE,
         branch: "feat/hero",
         path: "/",
@@ -66,13 +64,13 @@ describe("buildFastPreviewDraftUrl", () => {
 
   it("changes with the version, so a save re-navigates the frame", () => {
     const at = (version: string) =>
-      buildFastPreviewDraftUrl({ ...SCOPE, version, path: "/" });
+      buildCmsDraftUrl({ ...SCOPE, version, path: "/" });
     expect(at("a".repeat(40))).not.toBe(at("b".repeat(40)));
   });
 
   it("preserves a production origin that carries a trailing slash", () => {
     const url = new URL(
-      buildFastPreviewDraftUrl({
+      buildCmsDraftUrl({
         ...SCOPE,
         previewServerUrl: "https://fila.vtex.app/",
         path: "/institucional/historia",
@@ -84,7 +82,7 @@ describe("buildFastPreviewDraftUrl", () => {
 
   it("keeps path params already filled in", () => {
     const url = new URL(
-      buildFastPreviewDraftUrl({ ...SCOPE, path: "/produto/tenis-123/p" }),
+      buildCmsDraftUrl({ ...SCOPE, path: "/produto/tenis-123/p" }),
     );
     expect(url.pathname).toBe("/produto/tenis-123/p");
   });
@@ -96,7 +94,7 @@ describe("resolveSectionPreviewBase", () => {
       resolveSectionPreviewBase({
         sandboxUrl: SANDBOX,
         previewServerUrl: PROD,
-        fastPreviewActive: false,
+        cmsModeActive: false,
       }),
     ).toBe(SANDBOX);
   });
@@ -108,7 +106,7 @@ describe("resolveSectionPreviewBase", () => {
       resolveSectionPreviewBase({
         sandboxUrl: SANDBOX,
         previewServerUrl: PROD,
-        fastPreviewActive: true,
+        cmsModeActive: true,
       }),
     ).toBe(PROD);
   });
@@ -118,19 +116,19 @@ describe("resolveSectionPreviewBase", () => {
       resolveSectionPreviewBase({
         sandboxUrl: null,
         previewServerUrl: PROD,
-        fastPreviewActive: true,
+        cmsModeActive: true,
       }),
     ).toBe(PROD);
   });
 
   it("falls back to the sandbox when Fast Preview is active but has no production URL", () => {
-    // The `fastPreviewActive` gate already requires a production URL, so this
+    // The `cmsModeActive` gate already requires a production URL, so this
     // is defensive: a truthy flag with no URL must not blank the gallery.
     expect(
       resolveSectionPreviewBase({
         sandboxUrl: SANDBOX,
         previewServerUrl: null,
-        fastPreviewActive: true,
+        cmsModeActive: true,
       }),
     ).toBe(SANDBOX);
   });
@@ -140,7 +138,7 @@ describe("resolveSectionPreviewBase", () => {
       resolveSectionPreviewBase({
         sandboxUrl: null,
         previewServerUrl: null,
-        fastPreviewActive: false,
+        cmsModeActive: false,
       }),
     ).toBeNull();
   });
@@ -152,7 +150,7 @@ describe("resolveSectionPreviewBase", () => {
       resolveSectionPreviewBase({
         sandboxUrl: null,
         previewServerUrl: PROD,
-        fastPreviewActive: false,
+        cmsModeActive: false,
       }),
     ).toBeNull();
   });
@@ -162,7 +160,7 @@ describe("resolveSectionPreviewBase", () => {
       resolveSectionPreviewBase({
         sandboxUrl: undefined,
         previewServerUrl: undefined,
-        fastPreviewActive: false,
+        cmsModeActive: false,
       }),
     ).toBeNull();
   });

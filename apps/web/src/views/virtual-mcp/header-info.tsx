@@ -1,6 +1,6 @@
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { agentShowsGithubHeaderActions } from "@/lib/agent-capabilities";
-import { resolveFastPreview } from "@/sdk/fast-preview";
+import { resolveCmsMode } from "@/sdk/cms-mode";
 import { CmsHeaderActions } from "../../components/thread/github/cms-header-actions.tsx";
 import { HeaderActions } from "../../components/thread/github/header-actions.tsx";
 import { DevAgentControl } from "../../components/dev-agent/dev-agent-control.tsx";
@@ -19,14 +19,14 @@ export function VirtualMcpHeaderInfo({
 }: {
   virtualMcp: VirtualMCPEntity;
 }) {
-  const fastPreviewActive = resolveFastPreview(virtualMcp.metadata).active;
+  const cmsModeActive = resolveCmsMode(virtualMcp.metadata).active;
 
   return (
     <div className="flex items-center gap-2">
       <OpenInBoardButton />
       <DevAgentControl virtualMcp={virtualMcp} />
       {agentShowsGithubHeaderActions(virtualMcp) ? (
-        fastPreviewActive ? (
+        cmsModeActive ? (
           <CmsHeaderActions virtualMcpId={virtualMcp.id} />
         ) : (
           <HeaderActions virtualMcpId={virtualMcp.id} />

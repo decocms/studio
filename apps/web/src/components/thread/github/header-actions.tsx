@@ -1,5 +1,5 @@
 import { useMCPClient, useProjectContext, useVirtualMCP } from "@/sdk";
-import { resolveFastPreview } from "@/sdk/fast-preview";
+import { resolveCmsMode } from "@/sdk/cms-mode";
 import { useIsMutating, useQuery, useQueryClient } from "@tanstack/react-query";
 import { decofileWriteMutationKey } from "@/components/sections-editor/decofile-api";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -130,7 +130,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const queryClient = useQueryClient();
   const { data: session } = authClient.useSession();
   const vm = useVirtualMCP(virtualMcpId);
-  const fastPreviewActive = resolveFastPreview(vm?.metadata).active;
+  const cmsModeActive = resolveCmsMode(vm?.metadata).active;
   const { currentBranch: branch, setCurrentTaskBranch } = useChatTask();
   const chat = useChatStream();
   const { openSidePanel } = usePanelActions();
@@ -171,11 +171,11 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const fpStatusQuery = useQuery({
     queryKey: sandboxGitStatusQueryKey(org.slug, virtualMcpId, branch ?? ""),
     queryFn: () => fetchGitStatus(org.slug, virtualMcpId, branch ?? ""),
-    enabled: fastPreviewActive && !!branch,
+    enabled: cmsModeActive && !!branch,
     staleTime: 15_000,
   });
   const fpStatus = fpStatusQuery.data ?? null;
-  const branchMeta: BranchMeta = fastPreviewActive
+  const branchMeta: BranchMeta = cmsModeActive
     ? fpStatus
       ? {
           kind: "ready",
@@ -192,7 +192,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   // The lifecycle gates the header copy through clone/checkout; sandbox-less
   // has no boot pipeline, so it reads as permanently running (the port /
   // htmlSupport fields are dev-server facts nothing on this surface reads).
-  const lifecycle: LifecycleState = fastPreviewActive
+  const lifecycle: LifecycleState = cmsModeActive
     ? { phase: "running", port: 0, htmlSupport: true }
     : sseLifecycle;
 
@@ -256,7 +256,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   // `{allowed: true, ready: false}`, so the side Publish click falls through to
   // the dialog — which loads the diff once, on open, and gates there.
   const publishGateEnabled =
-    !fastPreviewActive &&
+    !cmsModeActive &&
     effectiveBranchMeta.kind === "ready" &&
     Boolean(sandboxRouteBranch) &&
     (effectiveBranchMeta.workingTreeDirty ||
@@ -387,14 +387,14 @@ export function HeaderActions({ virtualMcpId }: Props) {
   // non-technical user than a branch-favoured merge).
   const showSync =
     (vm?.metadata?.syncButtonEnabled === true ||
-      (fastPreviewActive &&
+      (cmsModeActive &&
         effectiveBranchMeta.kind === "ready" &&
         effectiveBranchMeta.behindBase > 0)) &&
     Boolean(githubRepo) &&
     Boolean(githubHeadBranch);
   const handleSync = () => {
     if (isStreaming || !githubHeadBranch) return;
-    if (!fastPreviewActive) {
+    if (!cmsModeActive) {
       void send(tpl.syncBranch({ branch: githubHeadBranch, base: baseBranch }));
       return;
     }

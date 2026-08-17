@@ -106,7 +106,7 @@ describe("shouldAutoStart", () => {
     userStopped: false,
     isPending: false,
     attempted: false,
-    fastPreviewActive: false,
+    cmsModeActive: false,
   };
 
   test("all conditions met → true", () => {
@@ -114,7 +114,7 @@ describe("shouldAutoStart", () => {
   });
 
   test("fast preview active → false (sandbox-less mode never auto-boots)", () => {
-    expect(shouldAutoStart({ ...base, fastPreviewActive: true })).toBe(false);
+    expect(shouldAutoStart({ ...base, cmsModeActive: true })).toBe(false);
   });
 
   test("disabled execution boundary → false", () => {

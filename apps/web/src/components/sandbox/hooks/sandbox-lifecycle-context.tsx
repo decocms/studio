@@ -44,7 +44,7 @@ export interface ShouldAutoStartArgs {
    *  through the decofile API and the preview renders against production, so
    *  arriving at a branch must NOT boot a pod. A user-driven `start()` (e.g.
    *  for the Code tab) still works — only the auto-start is gated. */
-  fastPreviewActive: boolean;
+  cmsModeActive: boolean;
 }
 
 /**
@@ -63,7 +63,7 @@ export interface ShouldAutoStartArgs {
 export function shouldAutoStart(args: ShouldAutoStartArgs): boolean {
   return (
     args.executionEnabled &&
-    !args.fastPreviewActive &&
+    !args.cmsModeActive &&
     args.hasActiveGithubRepo &&
     !!args.userId &&
     !!args.branch &&
@@ -361,7 +361,7 @@ import {
   useProjectContext,
   useVirtualMCP,
 } from "@/sdk";
-import { resolveFastPreview } from "@/sdk/fast-preview";
+import { resolveCmsMode } from "@/sdk/cms-mode";
 import type { SandboxMap } from "@decocms/shared/sdk/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { invalidateVirtualMcpQueries } from "@/lib/query-keys";
@@ -471,10 +471,10 @@ export function SandboxLifecycleProvider({
   const events = useSandboxEvents();
   const queryClient = useQueryClient();
   // Sandbox-less mode: Fast Preview projects never auto-provision a pod (see
-  // ShouldAutoStartArgs.fastPreviewActive). Self-heal/claim-retry stay ungated —
+  // ShouldAutoStartArgs.cmsModeActive). Self-heal/claim-retry stay ungated —
   // they only ever fire for a sandbox that already exists.
   const vmcp = useVirtualMCP(virtualMcpId ?? undefined);
-  const fastPreviewActive = resolveFastPreview(vmcp?.metadata).active;
+  const cmsModeActive = resolveCmsMode(vmcp?.metadata).active;
 
   const mcpClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -601,7 +601,7 @@ export function SandboxLifecycleProvider({
     userStopped,
     isPending: startVm.isPending,
     attempted,
-    fastPreviewActive,
+    cmsModeActive,
   });
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- bridges external state into a one-shot mutation; no render-time equivalent
   useEffect(() => {

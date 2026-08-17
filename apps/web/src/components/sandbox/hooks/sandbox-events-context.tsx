@@ -31,7 +31,7 @@ import {
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
-import { resolveFastPreview } from "@/sdk/fast-preview";
+import { resolveCmsMode } from "@/sdk/cms-mode";
 import { KEYS, invalidateVirtualMcpQueries } from "@/lib/query-keys";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 
@@ -219,10 +219,10 @@ export function SandboxEventsProvider({
   // from disk, and a refetch could revert an optimistic edit against a committed
   // `blocks.gen.json`.
   const vmcp = useVirtualMCP(virtualMcpId ?? undefined);
-  const fastPreviewActive = resolveFastPreview(vmcp?.metadata).active;
-  const fastPreviewActiveRef = useRef(fastPreviewActive);
+  const cmsModeActive = resolveCmsMode(vmcp?.metadata).active;
+  const cmsModeActiveRef = useRef(cmsModeActive);
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- keep the SSE closure reading the latest value without reconnecting
-  fastPreviewActiveRef.current = fastPreviewActive;
+  cmsModeActiveRef.current = cmsModeActive;
   const [phase, setPhase] = useState<ClaimPhase | null>(null);
   const [lifecycle, setLifecycle] = useState<LifecycleState>({ phase: "idle" });
   const [status, setStatus] = useState<DaemonStatus>({ state: "running" });
@@ -471,7 +471,7 @@ export function SandboxEventsProvider({
               // visibly revert; leave the optimistic cache as the source of
               // truth until the lifecycle→running transition re-invalidates.
               const devServerRunning = prevLifecyclePhase === "running";
-              if (!devServerRunning && !fastPreviewActiveRef.current) return;
+              if (!devServerRunning && !cmsModeActiveRef.current) return;
               // Turn on the preview's loading overlay immediately — before the
               // debounce below — so the pending refresh feels instant instead of
               // only appearing once the reload finally fires.

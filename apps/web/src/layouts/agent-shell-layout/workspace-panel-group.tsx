@@ -16,7 +16,7 @@ import {
   type ReactNode,
 } from "react";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
-import { resolveFastPreview } from "@/sdk/fast-preview";
+import { resolveCmsMode } from "@/sdk/cms-mode";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -43,32 +43,14 @@ import {
 } from "@/components/header/shell-breadcrumb";
 import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
 import { SidePanel } from "./side-panel";
-import { ChatToggle } from "./toggle-buttons";
-import { MessageCircle01 } from "@untitledui/icons";
-import { useT } from "@/i18n/use-t";
+import { ChatToggle, CmsToggle } from "./toggle-buttons";
+import { BlocksPanel } from "@/components/sandbox/blocks/blocks-panel";
 import {
   MainPanelHeaderEndSlot,
   MainPanelHeaderProvider,
   MainPanelHeaderSlot,
   PanelHeader,
 } from "./panel-header";
-
-/**
- * Chat panel body for Fast Preview projects: the surface exists (toggle,
- * panel, layout all behave normally) but sending is not possible yet — a
- * run would dispatch to a sandbox runner this mode never provisions.
- */
-function FastPreviewChatNotice() {
-  const t = useT();
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-      <MessageCircle01 size={28} className="text-muted-foreground" />
-      <p className="max-w-sm text-sm text-muted-foreground">
-        {t("chat.input.fastPreviewComingSoon")}
-      </p>
-    </div>
-  );
-}
 
 const SIDE_PANEL_ID = "workspace-side-panel";
 const MAIN_PANEL_ID = "workspace-main-panel";
@@ -139,12 +121,8 @@ export function WorkspacePanelGroup({
   toggleSidePanel,
   chatContent,
 }: WorkspacePanelGroupProps) {
-  // Fast Preview projects are sandbox-less: the chat toggle and panel behave
-  // normally, but the panel's CONTENT is held behind a notice — a thread run
-  // would dispatch to a sandbox runner that never exists in this mode (in the
-  // native app the panel would greet the user with a broken coding-agent
-  // picker).
-  const fastPreviewActive = resolveFastPreview(entity.metadata).active;
+  // Sandbox-less: the side panel hosts the block editor, not an inert chat.
+  const cmsModeActive = resolveCmsMode(entity.metadata).active;
   const [sidePanelWidth, setSidePanelWidth] = useSidePanelWidth();
   const panelGroupRef = useRef<GroupImperativeHandle>(null);
   const visibility = { sidePanel, mainOpen };
@@ -199,11 +177,19 @@ export function WorkspacePanelGroup({
   const chatHeader = (
     <PanelHeader>
       {agentCrumb}
-      <ChatToggle
-        sidePanel={sidePanel}
-        toggleSidePanel={toggleSidePanel}
-        disableActiveSidePanelToggle={!mainOpen}
-      />
+      {cmsModeActive ? (
+        <CmsToggle
+          sidePanel={sidePanel}
+          toggleSidePanel={toggleSidePanel}
+          disableActiveSidePanelToggle={!mainOpen}
+        />
+      ) : (
+        <ChatToggle
+          sidePanel={sidePanel}
+          toggleSidePanel={toggleSidePanel}
+          disableActiveSidePanelToggle={!mainOpen}
+        />
+      )}
       {mainControlsInChat && (
         <MainControls
           virtualMcpId={virtualMcpId}
@@ -232,9 +218,18 @@ export function WorkspacePanelGroup({
           right actions on the far side are never pushed off-screen. */}
       <div className="flex min-w-0 shrink items-center gap-0.5 overflow-hidden">
         {!chatOpen && agentCrumb}
-        {!chatOpen && (
-          <ChatToggle sidePanel={sidePanel} toggleSidePanel={toggleSidePanel} />
-        )}
+        {!chatOpen &&
+          (cmsModeActive ? (
+            <CmsToggle
+              sidePanel={sidePanel}
+              toggleSidePanel={toggleSidePanel}
+            />
+          ) : (
+            <ChatToggle
+              sidePanel={sidePanel}
+              toggleSidePanel={toggleSidePanel}
+            />
+          ))}
         <MainControls
           virtualMcpId={virtualMcpId}
           taskId={taskId}
@@ -321,8 +316,8 @@ export function WorkspacePanelGroup({
         >
           <PanelCard testId="side-panel" header={chatOpen ? chatHeader : null}>
             {chatOpen &&
-              (fastPreviewActive ? (
-                <FastPreviewChatNotice />
+              (cmsModeActive ? (
+                <BlocksPanel virtualMcpId={virtualMcpId} />
               ) : (
                 <SidePanel chatContent={chatContent} />
               ))}

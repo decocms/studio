@@ -83,7 +83,7 @@ import { RuntimeFields } from "@/components/sandbox/runtime-card/runtime-fields"
 import { PreviewServerUrlField } from "@/components/sandbox/runtime-card/preview-server-url-field";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { FieldDescriptionTooltipsField } from "@/components/sandbox/runtime-card/field-description-tooltips-field";
-import { FastPreviewField } from "@/components/sandbox/runtime-card/fast-preview-field";
+import { CmsModeField } from "@/components/sandbox/runtime-card/cms-mode-field";
 import { PublishPolicyField } from "./publish-policy-field";
 
 type DialogState = {
@@ -1095,7 +1095,7 @@ function VirtualMcpDetailViewWithData({
                     </p>
                   </div>
                   <PreviewServerUrlField control={form.control} />
-                  <FastPreviewField
+                  <CmsModeField
                     control={form.control}
                     previewServerUrl={form.watch("metadata.previewServerUrl")}
                   />

@@ -9,16 +9,14 @@
  *   POST   /api/:org/decofile/:virtualMcpId/:branch/publish   merge into default (session)
  *   GET    /api/:org/decofile/:virtualMcpId/:branch/status    drift vs default (session)
  *
- * The surface is inert unless the virtual MCP has Fast Preview active
- * (metadata.fastPreview + valid previewServerUrl, legacy key productionUrl) —
- * see resolveFastPreview / resolvePreviewServerUrl.
+ * The surface is inert unless `resolveCmsMode` says CMS mode is active.
  *
  * Anonymous access: `resolveOrgFromPath` lets unauthenticated requests through
  * (membership is only enforced for signed-in principals), so the GET handler
  * self-enforces the signed draft token, mirroring automation-webhooks.ts.
  */
 
-import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
+import { resolveCmsMode } from "@decocms/shared/cms-mode";
 import type { GithubRepo } from "@decocms/shared/sdk/types";
 import { assertSafeDecoBlockKey } from "@decocms/shared/decofile";
 import { Hono, type Context } from "hono";
@@ -118,14 +116,9 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
   }
   const metadata = (virtualMcp.metadata as Record<string, unknown>) ?? null;
 
-  // Fast Preview gate — same two-part condition the web derives via
-  // resolveFastPreview: the flag alone is inert without a valid production URL.
-  const previewServerUrl = resolvePreviewServerUrl(metadata);
-  if (!previewServerUrl || metadata?.fastPreview !== true) {
-    return c.json(
-      { error: "Fast Preview is not enabled for this project" },
-      404,
-    );
+  // CMS-mode gate — the shared rule, so web and API cannot drift.
+  if (!resolveCmsMode(metadata).active) {
+    return c.json({ error: "CMS mode is not enabled for this project" }, 404);
   }
 
   const connectionIds =

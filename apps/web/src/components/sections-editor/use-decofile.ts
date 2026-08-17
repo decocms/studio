@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useVirtualMCP } from "@/sdk";
-import { resolveFastPreview } from "@/sdk/fast-preview";
+import { resolveCmsMode } from "@/sdk/cms-mode";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { KEYS } from "@/lib/query-keys";
 import { decoRepoPath } from "./deco-repo-path";
@@ -47,12 +47,12 @@ export function useDecofile(
   // branch head on GitHub — no dev server, no working tree. The read also
   // seeds KEYS.decofileDraft ({version, token}) so the preview can build its
   // `?__draft=` pointer before any save happens.
-  const fastPreviewActive = resolveFastPreview(vmcp?.metadata).active;
+  const cmsModeActive = resolveCmsMode(vmcp?.metadata).active;
   const queryClient = useQueryClient();
   return useQuery({
     queryKey: KEYS.decofile(key),
     queryFn: async () => {
-      if (fastPreviewActive) {
+      if (cmsModeActive) {
         return fetchDecofile(queryClient, params!);
       }
       const readCommitted = () =>
@@ -97,7 +97,7 @@ export function useDecofile(
     // upstream 5xx) to 502 — so a single hiccup would otherwise stick as a
     // terminal error card. Bounded retries with backoff ARE the recovery.
     retry: (failureCount, error) =>
-      fastPreviewActive
+      cmsModeActive
         ? failureCount < 3
         : (error as { status?: number }).status !== 502 && failureCount < 2,
     retryDelay: (attempt) =>

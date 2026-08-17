@@ -15,7 +15,7 @@ import {
   useProjectContext,
   useVirtualMCP,
 } from "@/sdk";
-import { resolveFastPreview } from "@/sdk/fast-preview";
+import { resolveCmsMode } from "@/sdk/cms-mode";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowUp,
@@ -386,7 +386,7 @@ export function ChatInput({
   const { org, locator } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
   const selectedVm = useVirtualMCP(selectedVirtualMcp?.id);
-  const fastPreviewActive = resolveFastPreview(selectedVm?.metadata).active;
+  const cmsModeActive = resolveCmsMode(selectedVm?.metadata).active;
   const playSwitchSound = useSound(question004Sound);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const { unsupportedFile, onUnsupportedFile, clearUnsupportedFile } =
@@ -639,10 +639,8 @@ export function ChatInput({
   // a sandbox runner — a message would hang against a runner that will never
   // exist. Hold the composer with an honest notice until the agent learns to
   // work through the decofile API (or per-thread sandbox fallback lands).
-  if (fastPreviewActive) {
-    return (
-      <ChatInputDisabledState message={t("chat.input.fastPreviewComingSoon")} />
-    );
+  if (cmsModeActive) {
+    return <ChatInputDisabledState message={t("chat.input.cmsModeNoChat")} />;
   }
 
   return (

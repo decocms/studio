@@ -21,7 +21,31 @@ import { useThreadActions, useThreads } from "@/components/chat/store/hooks";
 // Types
 // ---------------------------------------------------------------------------
 
-export type SidePanelKind = "chat";
+/**
+ * Which editor occupies the side panel.
+ *
+ * `"cms"` is the block editor, offered only on projects where CMS mode is
+ * available (a preview server URL is set — see `sdk/cms-mode.ts`), because that
+ * is the only configuration where the decofile is reachable over HTTP rather
+ * than through the sandbox daemon. Everywhere else the side panel is chat.
+ */
+export type SidePanelKind = "chat" | "cms";
+
+const SIDE_PANEL_KINDS: readonly SidePanelKind[] = ["chat", "cms"];
+
+/**
+ * Narrow an untrusted `?sidepanel` value to the union.
+ *
+ * The router validates the param, but layout memory and task-switch carry it
+ * too — and a value that survives one of those paths while failing another is
+ * how a panel silently disappears. Unknown input degrades to `null` (use the
+ * caller's default) rather than throwing.
+ */
+export function parseSidePanelKind(value: unknown): SidePanelKind | null {
+  return SIDE_PANEL_KINDS.includes(value as SidePanelKind)
+    ? (value as SidePanelKind)
+    : null;
+}
 
 export interface EntityLayoutMetadata {
   defaultMainView?: {
@@ -86,11 +110,17 @@ export function canCloseWorkspacePanel(
   return panel === "side" ? visibility.sidePanel !== null : visibility.mainOpen;
 }
 
+/**
+ * `fallbackKind` is the project's side-panel occupant — `"cms"` where CMS mode
+ * is available, `"chat"` otherwise. Closing every panel must not resurrect a
+ * kind the project does not have.
+ */
 function withWorkspaceFallback(
   visibility: WorkspaceVisibility,
+  fallbackKind: SidePanelKind,
 ): WorkspaceVisibility {
   if (visibility.sidePanel !== null || visibility.mainOpen) return visibility;
-  return { ...visibility, sidePanel: "chat" };
+  return { ...visibility, sidePanel: fallbackKind };
 }
 
 export function resolveDefaultPanelState(ctx: {
@@ -99,23 +129,30 @@ export function resolveDefaultPanelState(ctx: {
   mainParamValue?: string | 0;
   sidePanelParamPresent: boolean;
   sidePanelParamValue?: SidePanelKind | 0;
+  /**
+   * Which kind this project's side panel defaults to. Resolved by the caller
+   * through `resolveCmsMode(...)` so the gate stays in one place. A CMS project
+   * has no chat, so a chat default resolves to the CMS panel instead.
+   */
+  defaultSidePanelKind?: SidePanelKind;
 }): WorkspaceVisibility {
   const mainParamValue = ctx.mainParamValue === 0 ? "0" : ctx.mainParamValue;
   const defaultView = ctx.entityMetadata?.defaultMainView ?? null;
   const defaultIsChat = defaultView == null || defaultView.type === "chat";
+  const kind: SidePanelKind = ctx.defaultSidePanelKind ?? "chat";
 
   const mainOpen = ctx.mainParamPresent
     ? mainParamValue !== "0"
     : !defaultIsChat;
   const defaultSidePanel: SidePanelKind | null =
-    defaultIsChat || ctx.entityMetadata?.chatDefaultOpen ? "chat" : null;
+    defaultIsChat || ctx.entityMetadata?.chatDefaultOpen ? kind : null;
   const sidePanel = ctx.sidePanelParamPresent
     ? ctx.sidePanelParamValue === 0
       ? null
-      : (ctx.sidePanelParamValue ?? null)
+      : (parseSidePanelKind(ctx.sidePanelParamValue) ?? defaultSidePanel)
     : defaultSidePanel;
 
-  return withWorkspaceFallback({ sidePanel, mainOpen });
+  return withWorkspaceFallback({ sidePanel, mainOpen }, kind);
 }
 
 export function resolveWorkspacePanelAction(
@@ -172,12 +209,14 @@ export type MobileWorkspaceSurface = SidePanelKind | "main";
 export function resolveMobileSurface(ctx: {
   visibility: WorkspaceVisibility;
   sidePanelParamPresent: boolean;
+  /** The project's side-panel occupant; see `resolveDefaultPanelState`. */
+  defaultSidePanelKind?: SidePanelKind;
 }): MobileWorkspaceSurface {
   const { sidePanel, mainOpen } = ctx.visibility;
   if (sidePanel !== null && (ctx.sidePanelParamPresent || !mainOpen)) {
     return sidePanel;
   }
-  return mainOpen ? "main" : "chat";
+  return mainOpen ? "main" : (ctx.defaultSidePanelKind ?? "chat");
 }
 
 export function mobileSurfaceSearch(
@@ -202,6 +241,11 @@ export interface WorkspaceLayoutStateRouteCtx {
   virtualMcpId: string;
   orgSlug: string;
   isAgentRoute: boolean;
+  /**
+   * The project's side-panel occupant — `"cms"` where CMS mode is available.
+   * Resolved by the caller so the gate is read in one place.
+   */
+  defaultSidePanelKind?: SidePanelKind;
 }
 
 export function useWorkspaceLayoutState(
@@ -217,7 +261,8 @@ export function useWorkspaceLayoutState(
   const { create } = useThreadActions();
   const { threads } = useThreads();
 
-  const { virtualMcpId, orgSlug, isAgentRoute } = routeCtx;
+  const { virtualMcpId, orgSlug, isAgentRoute, defaultSidePanelKind } =
+    routeCtx;
   const mainParam = search.main === 0 ? "0" : search.main;
 
   const { sidePanel, mainOpen } = resolveDefaultPanelState({
@@ -226,6 +271,7 @@ export function useWorkspaceLayoutState(
     mainParamValue: mainParam,
     sidePanelParamPresent: search.sidepanel !== undefined,
     sidePanelParamValue: search.sidepanel,
+    defaultSidePanelKind,
   });
   const visibility = { sidePanel, mainOpen };
 

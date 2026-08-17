@@ -75,6 +75,7 @@ import { ShellRouteLoading } from "@/layouts/shell-route-loading";
 import { OrgFilePreviewMount } from "./org-file-preview";
 import { OrgFileOpenProvider } from "@/components/chat/org-file-open-context";
 import { BlocksPreviewWorkspaceProvider } from "@/components/sandbox/blocks/blocks-preview-workspace-context";
+import { resolveCmsMode } from "@/sdk/cms-mode";
 import { SidePanel } from "./side-panel";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { useAgentRuntimeAdapter } from "@/lib/desktop/agent-runtime-slot";
@@ -505,6 +506,9 @@ function AgentInsetProvider() {
     virtualMcpId,
     orgSlug,
     isAgentRoute: true,
+    defaultSidePanelKind: resolveCmsMode(entity?.metadata).active
+      ? "cms"
+      : "chat",
   });
 
   const onNewTask = useRef<(() => void) | null>(null);

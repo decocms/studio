@@ -20,6 +20,7 @@
 
 import { isPerThreadTab } from "@/layouts/main-panel-tabs/tab-id";
 import type { ThreadLayout } from "@/lib/thread-layout-memory";
+import type { SidePanelKind } from "@/hooks/use-layout-state";
 
 export interface ResolveTaskSwitchInput {
   /** The current (source) thread's search params. */
@@ -57,7 +58,7 @@ export function resolveTaskSwitchSearch(
   // Only pin a side-panel value when the target thread remembered one; leaving
   // it undefined omits `sidepanel` from the URL so the agent-configured default
   // (resolveDefaultPanelState) applies instead of forcing chat open.
-  let sidepanel: "chat" | 0 | undefined;
+  let sidepanel: SidePanelKind | 0 | undefined;
 
   if (opts?.main) {
     // Explicit intent wins outright — ignore saved/carried layout.

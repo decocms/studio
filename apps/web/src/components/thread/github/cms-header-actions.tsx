@@ -43,7 +43,7 @@ import { authClient } from "@/lib/auth-client.ts";
 import { resolveGithubAttachment } from "@/lib/github-repo.ts";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
-import { resolveFastPreview } from "@/sdk/fast-preview";
+import { resolveCmsMode } from "@/sdk/cms-mode";
 import { decofileWriteMutationKey } from "../../sections-editor/decofile-api.ts";
 import { useChatTask } from "../../chat/index";
 import {
@@ -95,7 +95,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     attachment.status === "attached" || attachment.status === "public-clone"
       ? attachment.repo
       : null;
-  const { previewServerUrl } = resolveFastPreview(vm?.metadata);
+  const { previewServerUrl } = resolveCmsMode(vm?.metadata);
 
   /** Poll-free on purpose: every call forwards to GitHub; save hooks invalidate this key. */
   const statusQuery = useQuery({

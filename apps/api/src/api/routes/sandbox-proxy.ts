@@ -38,7 +38,7 @@ import {
   suggestCommitMessageWithLlm,
 } from "../../lib/suggest-commit-message";
 import { judgeRequiresReviewWithLlm } from "../../lib/judge-requires-review";
-import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
+import { resolveCmsMode } from "@decocms/shared/cms-mode";
 import { gitDataClientForRepo } from "../../decofile/client-for-repo";
 import { GitHubApiError } from "../../decofile/github-git-data";
 import {
@@ -209,10 +209,7 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
   // Sandbox-less Fast Preview: there is no runner by design. Claim the route
   // with runner:null + the flag so the `/git/*` handlers serve their
   // GitHub-backed equivalents; daemon-backed routes 503 via requireRunner.
-  if (
-    virtualMcpMetadata?.fastPreview === true &&
-    resolvePreviewServerUrl(virtualMcpMetadata)
-  ) {
+  if (resolveCmsMode(virtualMcpMetadata).active) {
     c.set("vmClaim", {
       claimName,
       callerUserId: userId,

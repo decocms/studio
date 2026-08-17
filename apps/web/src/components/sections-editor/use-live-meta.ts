@@ -5,7 +5,7 @@ import { KEYS } from "@/lib/query-keys";
 import { decoRepoPath } from "./deco-repo-path";
 import { readCommittedJson } from "./read-committed-file";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
-import { resolveFastPreview } from "@/sdk/fast-preview";
+import { resolveCmsMode } from "@/sdk/cms-mode";
 import type { LiveMeta } from "./resolve-schema";
 
 interface UseLiveMetaParams {
@@ -68,7 +68,7 @@ export function useLiveMeta(
   const virtualMcp = useVirtualMCP(params?.virtualMcpId);
   const packagePath = virtualMcp?.metadata?.runtime?.path ?? null;
   const productionUrl = resolvePreviewServerUrl(virtualMcp?.metadata);
-  const fastPreviewActive = resolveFastPreview(virtualMcp?.metadata).active;
+  const cmsModeActive = resolveCmsMode(virtualMcp?.metadata).active;
   return useQuery({
     // productionUrl is appended so a settings edit re-fetches; invalidators key
     // on the (org, vm, branch) prefix, which still matches (variadic key).
@@ -127,7 +127,7 @@ export function useLiveMeta(
     // /live/_meta fetch would stick as a terminal error card, so bounded
     // retries ARE the recovery there.
     retry: (failureCount, error) =>
-      fastPreviewActive
+      cmsModeActive
         ? failureCount < 3
         : (error as { status?: number }).status !== 502 && failureCount < 3,
     retryDelay: (attempt) =>

@@ -55,14 +55,14 @@ export interface PreviewDisplayInput {
    * Preview swaps in the daemon's draft render (ready after the clone) where the
    * normal path waits for the dev server (ready at `running`).
    */
-  fastPreviewActive?: boolean;
+  cmsModeActive?: boolean;
   /**
    * The caller could actually build the draft URL — it has the sandbox handle
-   * and a draft version. Only meaningful with `fastPreviewActive`. False means
+   * and a draft version. Only meaningful with `cmsModeActive`. False means
    * the draft isn't addressable yet, so the published site keeps the canvas
    * (with the waking pill) instead.
    */
-  fastPreviewReady?: boolean;
+  cmsModeReady?: boolean;
 }
 
 const NONE: PreviewDisplay = {
@@ -81,8 +81,8 @@ export function resolvePreviewDisplay(
     previewServerUrl,
     // Optional: a caller that knows nothing about Fast Preview gets exactly
     // the pre-existing behaviour.
-    fastPreviewActive = false,
-    fastPreviewReady = false,
+    cmsModeActive = false,
+    cmsModeReady = false,
   } = input;
 
   // Suspended / errored render their own dedicated card — hand the canvas over
@@ -97,7 +97,7 @@ export function resolvePreviewDisplay(
   // skip. `iframeBase` stays the PUBLISHED url: the caller layers the draft URL
   // over it, so every production-mode base is a page we can actually navigate to
   // (and the URL-bar label doesn't jump between origins mid-boot).
-  if (fastPreviewActive && fastPreviewReady && previewServerUrl) {
+  if (cmsModeActive && cmsModeReady && previewServerUrl) {
     return {
       mode: "production",
       iframeBase: previewServerUrl,
@@ -112,7 +112,7 @@ export function resolvePreviewDisplay(
   // not behind a "waking" pill. Fast Preview skips this branch entirely — its
   // draft render above owns the canvas instead of the dev server.
   if (
-    !fastPreviewActive &&
+    !cmsModeActive &&
     previewState.kind === "iframe" &&
     progressStatus !== "doing"
   ) {

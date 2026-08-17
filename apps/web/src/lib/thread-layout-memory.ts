@@ -15,6 +15,11 @@
  * write is wrapped. A read failure means "no memory", never a crash.
  */
 
+import {
+  parseSidePanelKind,
+  type SidePanelKind,
+} from "@/hooks/use-layout-state";
+
 const STORAGE_KEY = "studio:thread-layout:v1";
 
 /** LRU cap. Bounds growth within a session; oldest threads evict first. */
@@ -23,8 +28,8 @@ const MAX_THREADS = 50;
 export interface ThreadLayout {
   /** `?main` value: a tab id, or `0` for the closed main panel. */
   main?: string | 0;
-  /** `?sidepanel` value: `"chat"` open, or `0` closed. */
-  sidepanel?: "chat" | 0;
+  /** `?sidepanel` value: a {@link SidePanelKind} when open, or `0` closed. */
+  sidepanel?: SidePanelKind | 0;
 }
 
 /** Most-recent entry last, so `.shift()` evicts the least-recently-saved. */
@@ -40,8 +45,11 @@ export function sanitizeThreadLayout(layout: ThreadLayout): ThreadLayout {
   if (layout.main === 0 || typeof layout.main === "string") {
     clean.main = layout.main;
   }
-  if (layout.sidepanel === 0 || layout.sidepanel === "chat") {
-    clean.sidepanel = layout.sidepanel;
+  if (layout.sidepanel === 0) {
+    clean.sidepanel = 0;
+  } else {
+    const kind = parseSidePanelKind(layout.sidepanel);
+    if (kind) clean.sidepanel = kind;
   }
   return clean;
 }

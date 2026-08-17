@@ -262,7 +262,7 @@ test.describe("decofile API", () => {
       const gated = await ctx.get(`/api/${org}/decofile/${bare.item.id}/main`);
       expect(gated.status()).toBe(404);
       expect(await gated.json()).toEqual({
-        error: "Fast Preview is not enabled for this project",
+        error: "CMS mode is not enabled for this project",
       });
 
       // fastPreview flag alone is inert without a valid production URL.
@@ -309,7 +309,31 @@ test.describe("decofile API", () => {
       );
       expect(flagOnlyRes.status()).toBe(404);
       expect(await flagOnlyRes.json()).toEqual({
-        error: "Fast Preview is not enabled for this project",
+        error: "CMS mode is not enabled for this project",
+      });
+
+      // Current `cmsMode` key alone opens the gate; every other case seeds legacy.
+      const newKey = await callSelfMcpTool<{ item: { id: string } }>(
+        ctx,
+        org,
+        "COLLECTION_VIRTUAL_MCP_CREATE",
+        {
+          data: {
+            title: `cms-mode-key ${Date.now()}`,
+            metadata: {
+              cmsMode: true,
+              previewServerUrl: "https://cms-mode.example.com",
+            },
+            connections: [],
+          },
+        },
+      );
+      const newKeyRes = await ctx.get(
+        `/api/${org}/decofile/${newKey.item.id}/main`,
+      );
+      expect(newKeyRes.status()).toBe(404);
+      expect(await newKeyRes.json()).toEqual({
+        error: "Project has no GitHub repository",
       });
     } finally {
       await ctx.dispose();

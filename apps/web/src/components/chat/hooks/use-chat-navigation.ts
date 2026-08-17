@@ -4,6 +4,7 @@ import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useProjectContext } from "@/sdk";
 import { isPerThreadTab } from "@/layouts/main-panel-tabs/tab-id";
 import { AUTOSEND_QUERY_VALUE } from "@/lib/autosend";
+import { parseSidePanelKind } from "@/hooks/use-layout-state";
 
 export interface ChatNavigation {
   /** Resolved vMCP for the current chat — either the URL param or the well-known decopilot. */
@@ -44,8 +45,11 @@ export function useChatNavigation(): ChatNavigation {
           !isPerThreadTab(prevMain)
         )
           next.main = prevMain;
-        if (prev.sidepanel === "chat" || prev.sidepanel === 0) {
-          next.sidepanel = prev.sidepanel;
+        if (prev.sidepanel === 0) {
+          next.sidepanel = 0;
+        } else {
+          const kind = parseSidePanelKind(prev.sidepanel);
+          if (kind) next.sidepanel = kind;
         }
         if (opts?.autosend) next.autosend = AUTOSEND_QUERY_VALUE;
         return next;

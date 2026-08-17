@@ -227,7 +227,7 @@ describe("resolveBlocksTabState", () => {
   });
 });
 
-describe("sandbox-less Fast Preview (fastPreviewActive)", () => {
+describe("sandbox-less Fast Preview (cmsModeActive)", () => {
   test("ignores the lifecycle phase entirely — no sandbox will ever boot", () => {
     // Without the flag, "idle" classifies as booting and spins forever.
     expect(
@@ -235,7 +235,7 @@ describe("sandbox-less Fast Preview (fastPreviewActive)", () => {
         input({
           lifecyclePhase: "idle",
           hasEditableContent: true,
-          fastPreviewActive: true,
+          cmsModeActive: true,
         }),
       ),
     ).toEqual({ kind: "content" });
@@ -245,7 +245,7 @@ describe("sandbox-less Fast Preview (fastPreviewActive)", () => {
         input({
           lifecyclePhase: "clone-failed",
           hasEditableContent: true,
-          fastPreviewActive: true,
+          cmsModeActive: true,
         }),
       ),
     ).toEqual({ kind: "content" });
@@ -257,7 +257,7 @@ describe("sandbox-less Fast Preview (fastPreviewActive)", () => {
         input({
           lifecyclePhase: "idle",
           decofile: { status: "error", hasData: false, errorStatus: 502 },
-          fastPreviewActive: true,
+          cmsModeActive: true,
         }),
       ),
     ).toEqual({ kind: "error", source: "data" });
@@ -269,13 +269,13 @@ describe("sandbox-less Fast Preview (fastPreviewActive)", () => {
         input({
           lifecyclePhase: "idle",
           decofile: { status: "pending", hasData: false },
-          fastPreviewActive: true,
+          cmsModeActive: true,
         }),
       ),
     ).toEqual({ kind: "loading" });
     expect(
       resolveBlocksTabState(
-        input({ lifecyclePhase: "idle", fastPreviewActive: true }),
+        input({ lifecyclePhase: "idle", cmsModeActive: true }),
       ),
     ).toEqual({ kind: "empty" });
   });

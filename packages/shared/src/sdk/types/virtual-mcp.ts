@@ -620,12 +620,12 @@ const publishPolicyMetadataField = PublishPolicySchema.nullable()
  * static single-component render — and it keeps the canvas for as long as
  * Fast Preview is on.
  */
-const fastPreviewMetadataField = z
+const cmsModeMetadataField = z
   .boolean()
   .nullable()
   .optional()
   .describe(
-    "Enable Fast Preview (sandbox-less): render the draft instantly on the preview server's own page via a ?__draft pointer, with reads/writes served by the decofile API against GitHub. Requires previewServerUrl (or legacy productionUrl) to be set to take effect.",
+    "Enable CMS mode (sandbox-less): render the draft instantly on the preview server's own page via a ?__draft pointer, with reads/writes served by the decofile API against GitHub. Requires previewServerUrl (or legacy productionUrl) to be set to take effect.",
   );
 
 /**
@@ -745,7 +745,7 @@ export const VirtualMCPEntitySchema = z.object({
         .describe(
           "Blocks form: opt in to showing a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
         ),
-      fastPreview: fastPreviewMetadataField,
+      fastPreview: cmsModeMetadataField,
       syncButtonEnabled: syncButtonEnabledMetadataField,
     })
     .loose()
@@ -861,7 +861,7 @@ export const VirtualMCPCreateDataSchema = z.object({
         .describe(
           "Blocks form: opt in to showing a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
         ),
-      fastPreview: fastPreviewMetadataField,
+      fastPreview: cmsModeMetadataField,
       syncButtonEnabled: syncButtonEnabledMetadataField,
     })
     .loose()
@@ -958,7 +958,7 @@ export const VirtualMCPUpdateDataSchema = z.object({
         .describe(
           "Blocks form: opt in to showing a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
         ),
-      fastPreview: fastPreviewMetadataField,
+      fastPreview: cmsModeMetadataField,
       syncButtonEnabled: syncButtonEnabledMetadataField,
     })
     .loose()

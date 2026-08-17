@@ -20,6 +20,7 @@ export const agentShellLayout = {
   "agentShellLayout.agentShellLayout.taskUnavailable": "Tarefa indisponível",
   "agentShellLayout.libraryToggle.library": "Biblioteca",
   "agentShellLayout.tasksToggle.tasks": "Tarefas",
+  "agentShellLayout.toggleButtons.cms": "CMS",
   "agentShellLayout.toggleButtons.chat": "Chat",
   "agentShellLayout.toolbar.backToHome": "Voltar para home",
   "agentShellLayout.toolbar.logo": "Logo",
