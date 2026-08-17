@@ -1087,19 +1087,19 @@ function convertRoleToFormData(
   const toolSet: Record<string, string[]> = {};
   for (const [key, tools] of Object.entries(permission)) {
     if (key === "self" || key === "models") continue;
+    // Keep the RAW grant, including a ["*"] "all tools" sentinel. The
+    // connection LIST endpoint omits `tools`, so expanding "*" here yields []
+    // — which renders the connection as unchecked AND destroys the grant on the
+    // next save. ToolSetSelector understands "*" directly, so preserve it.
     if (key === "*") {
+      // Grant applies to every connection.
       for (const conn of connections) {
-        toolSet[conn.id] = tools.includes("*")
-          ? (conn.tools?.map((t) => t.name) ?? [])
-          : tools;
+        toolSet[conn.id] = tools;
       }
     } else {
-      const conn = connections.find((c) => c.id === key);
-      if (conn) {
-        toolSet[key] = tools.includes("*")
-          ? (conn.tools?.map((t) => t.name) ?? [])
-          : tools;
-      }
+      // Preserve unconditionally — even if the connection isn't in the current
+      // (possibly paginated) list, so a re-save round-trips instead of dropping.
+      toolSet[key] = tools;
     }
   }
 
