@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import {
   buildPublicUrl,
+  buildS3Client,
   byLastModifiedDesc,
   isImageKey,
   type ListedObject,
@@ -373,5 +374,68 @@ describe("stsCredentialProvider", () => {
     expect(() => stsCredentialProvider(info({}), "k")).toThrow(
       /missing a refreshUrl/,
     );
+  });
+});
+
+describe("buildS3Client", () => {
+  test("throws when region is empty", () => {
+    expect(() =>
+      buildS3Client({
+        info: info({ region: "" }),
+        credentials: {
+          type: "static",
+          accessKeyId: "AKIA",
+          secretAccessKey: "secret",
+        },
+      }),
+    ).toThrow(/missing or empty region/);
+  });
+
+  test("throws when bucket is empty", () => {
+    expect(() =>
+      buildS3Client({
+        info: info({ bucket: "" }),
+        credentials: {
+          type: "static",
+          accessKeyId: "AKIA",
+          secretAccessKey: "secret",
+        },
+      }),
+    ).toThrow(/missing or empty bucket/);
+  });
+
+  test("throws when static credentials lack accessKeyId", () => {
+    expect(() =>
+      buildS3Client({
+        info: info({}),
+        credentials: {
+          type: "static",
+          accessKeyId: "",
+          secretAccessKey: "secret",
+        },
+      }),
+    ).toThrow(/missing or empty accessKeyId/);
+  });
+
+  test("throws when static credentials lack secretAccessKey", () => {
+    expect(() =>
+      buildS3Client({
+        info: info({}),
+        credentials: {
+          type: "static",
+          accessKeyId: "AKIA",
+          secretAccessKey: "",
+        },
+      }),
+    ).toThrow(/missing or empty secretAccessKey/);
+  });
+
+  test("throws when managed config lacks siteSlug", () => {
+    expect(() =>
+      buildS3Client({
+        info: info({ siteSlug: null }),
+        credentials: { type: "managed" },
+      }),
+    ).toThrow(/missing siteSlug/);
   });
 });
