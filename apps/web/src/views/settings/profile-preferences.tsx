@@ -293,33 +293,6 @@ function PreferencesSection() {
           }
         />
         <SettingsCardItem
-          title={t("settings.preferences.terminalVisible")}
-          description={t("settings.preferences.terminalVisibleDescription")}
-          onClick={() => {
-            track("preferences_terminal_default_toggled", {
-              enabled: !preferences.terminalVisibleByDefault,
-            });
-            setPreferences((prev) => ({
-              ...prev,
-              terminalVisibleByDefault: !prev.terminalVisibleByDefault,
-            }));
-          }}
-          action={
-            <Switch
-              checked={preferences.terminalVisibleByDefault}
-              onCheckedChange={(checked) => {
-                track("preferences_terminal_default_toggled", {
-                  enabled: checked,
-                });
-                setPreferences((prev) => ({
-                  ...prev,
-                  terminalVisibleByDefault: checked,
-                }));
-              }}
-            />
-          }
-        />
-        <SettingsCardItem
           title={t("settings.preferences.toolApproval")}
           description={t("settings.preferences.toolApprovalDescription")}
           action={

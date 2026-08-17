@@ -1,7 +1,13 @@
 /**
  * MainPanelWithDrawer — composes the tab body (with its internal per-tab
- * ErrorBoundary) above the sandbox PreviewDrawer. The drawer is gated on
- * `hasClonableSource` so non-cloneable agents (e.g. decopilot) don't see it.
+ * ErrorBoundary) above the sandbox PreviewDrawer.
+ *
+ * The drawer is mounted whenever the project can have one — a clonable source
+ * and a daemon behind it — and sits collapsed to its toolbar until the user
+ * expands it (PreviewDrawerHost persists that per virtualMcpId). There is no
+ * separate "is the terminal shown" flag: a control that could hide the drawer
+ * while the drawer stayed mounted is how the console ended up un-dismissable
+ * in CMS mode.
  */
 
 import { useSearch } from "@tanstack/react-router";
@@ -12,19 +18,6 @@ import { resolveCmsMode } from "@/sdk/cms-mode";
 import { MainPanelContent } from "@/layouts/main-panel-tabs";
 import { OVERLAY_TABS } from "./tab-id";
 import { PreviewDrawerHost } from "./preview-drawer-host";
-import {
-  TerminalVisibilityProvider,
-  useTerminalVisibility,
-} from "./terminal-visibility";
-
-// Renders the bottom terminal drawer only when the user has toggled it on
-// (via the preview's ⋯ menu). Separate component so it can consume the
-// visibility context that MainPanelWithDrawer provides.
-function TerminalDrawerSlot() {
-  const terminal = useTerminalVisibility();
-  if (!terminal?.visible) return null;
-  return <PreviewDrawerHost />;
-}
 
 export function MainPanelWithDrawer({
   virtualMcpId,
@@ -36,27 +29,23 @@ export function MainPanelWithDrawer({
   const inset = useInsetContext();
   const { activeTask } = useChatTask();
   const { main } = useSearch({ strict: false }) as { main?: string | 0 };
-  // Thread-scoped repo (bound by `load_repo`) also gets the drawer + dev
-  // terminal, not just agents with their own repo.
+  /** Thread-scoped repos (bound by `load_repo`) get the drawer too. */
   const hasClonableSource =
     agentHasClonableSource(inset?.entity?.metadata) ||
     agentHasClonableSource(activeTask?.metadata);
+  // CMS mode is sandbox-less — no daemon for a terminal to attach to.
+  const hasDaemon = !resolveCmsMode(inset?.entity?.metadata).active;
   const showDrawer =
-    hasClonableSource && !(typeof main === "string" && OVERLAY_TABS.has(main));
-  // CMS mode is sandbox-less — there is no daemon for a terminal to attach to.
-  const terminalAvailable = !resolveCmsMode(inset?.entity?.metadata).active;
+    hasClonableSource &&
+    hasDaemon &&
+    !(typeof main === "string" && OVERLAY_TABS.has(main));
 
   return (
-    <TerminalVisibilityProvider
-      virtualMcpId={virtualMcpId}
-      available={terminalAvailable}
-    >
-      <div className="flex h-full min-h-0 flex-col">
-        <div className="flex-1 min-h-0 overflow-hidden">
-          <MainPanelContent taskId={taskId} virtualMcpId={virtualMcpId} />
-        </div>
-        {showDrawer && <TerminalDrawerSlot />}
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <MainPanelContent taskId={taskId} virtualMcpId={virtualMcpId} />
       </div>
-    </TerminalVisibilityProvider>
+      {showDrawer && <PreviewDrawerHost />}
+    </div>
   );
 }
