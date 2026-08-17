@@ -284,6 +284,45 @@ export function renderField(props: FieldProps) {
     return <SecretField key={props.path} {...props} />;
   }
 
+  /**
+   * Value is a resolved block ref (`{ __resolveType }`) whose schema collapsed to
+   * a bare array/object with no `anyOfRefs` (deco loader-backed props like
+   * `buyTogether`); render the referenced block's config form so it stays
+   * editable instead of vanishing into `ObjectField`'s null path.
+   */
+  if (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    typeof (value as Record<string, unknown>).__resolveType === "string" &&
+    props.meta
+  ) {
+    const referencedSchema = resolveSchema(
+      (value as Record<string, unknown>).__resolveType as string,
+      props.meta,
+    );
+    if (referencedSchema) {
+      return (
+        <SchemaForm
+          key={props.path}
+          schema={referencedSchema}
+          value={value}
+          onChange={props.onChange}
+          basePath={props.path}
+          breadcrumbPath={props.breadcrumbPath}
+          onBreadcrumbChange={props.onBreadcrumbChange}
+          meta={props.meta}
+          decofile={props.decofile}
+          onSaveReferencedBlock={props.onSaveReferencedBlock}
+          previewBaseUrl={props.previewBaseUrl}
+          onAddSectionItem={props.onAddSectionItem}
+          onRequestAddSection={props.onRequestAddSection}
+          sandbox={props.sandbox}
+        />
+      );
+    }
+  }
+
   // If value is null/undefined, try to produce a typed default from schema
   const effectiveValue =
     value === null || value === undefined
