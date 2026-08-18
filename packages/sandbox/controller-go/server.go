@@ -48,6 +48,12 @@ func (s *server) authorized(r *http.Request) bool {
 		// RequireAndVerifyClientCert already ran in the handshake.
 		return true
 	}
+	if s.bearer == "" {
+		// Neither configured: run() only reaches here under
+		// SANDBOX_CONTROLLER_INSECURE=1, which means serve anonymously. Without
+		// this the opt-out boots and then 401s every request.
+		return true
+	}
 	header := r.Header.Get("authorization")
 	if !strings.HasPrefix(header, "Bearer ") {
 		return false

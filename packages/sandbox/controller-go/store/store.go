@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/decocms/studio/sandbox-controller/protocol"
@@ -27,6 +28,30 @@ type Record struct {
 }
 
 type Store struct{ pool *pgxpool.Pool }
+
+// queryer is the slice of pgx both *pgxpool.Pool and pgx.Tx implement.
+type queryer interface {
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+type txKey struct{}
+
+// exec routes a query onto WithLock's transaction when one is in the context,
+// and onto the pool otherwise.
+//
+// This is what stops the nested-query pool deadlock: WithLock pins one
+// connection for the whole callback, and provisioning inside it runs for
+// minutes. If the callback's own reads and writes each grabbed a second
+// connection, `MaxConns` concurrent ensures would hold every connection while
+// all of them waited for one more.
+func (s *Store) exec(ctx context.Context) queryer {
+	if tx, ok := ctx.Value(txKey{}).(pgx.Tx); ok {
+		return tx
+	}
+	return s.pool
+}
 
 func New(ctx context.Context, dsn string) (*Store, error) {
 	pool, err := pgxpool.New(ctx, dsn)
@@ -56,7 +81,7 @@ func scan(row pgx.Row) (*Record, error) {
 
 // Get returns the row for this sandbox on this runtime, nil when absent.
 func (s *Store) Get(ctx context.Context, id protocol.SandboxID, runtime string) (*Record, error) {
-	return scan(s.pool.QueryRow(ctx,
+	return scan(s.exec(ctx).QueryRow(ctx,
 		`select `+selectCols+` from sandbox_runner_state
 		 where user_id = $1 and project_ref = $2 and sandbox_provider_kind = $3`,
 		id.UserID, id.ProjectRef, runtime))
@@ -65,7 +90,7 @@ func (s *Store) Get(ctx context.Context, id protocol.SandboxID, runtime string) 
 // GetAnyRuntime finds this sandbox on whichever runtime holds it. Ensure uses
 // it to stay idempotent across a runtime the request did not name.
 func (s *Store) GetAnyRuntime(ctx context.Context, id protocol.SandboxID) (*Record, error) {
-	return scan(s.pool.QueryRow(ctx,
+	return scan(s.exec(ctx).QueryRow(ctx,
 		`select `+selectCols+` from sandbox_runner_state
 		 where user_id = $1 and project_ref = $2 limit 1`,
 		id.UserID, id.ProjectRef))
@@ -73,7 +98,7 @@ func (s *Store) GetAnyRuntime(ctx context.Context, id protocol.SandboxID) (*Reco
 
 // ByHandle answers "which runtime owns this handle" for every post-create call.
 func (s *Store) ByHandle(ctx context.Context, handle string) (*Record, error) {
-	return scan(s.pool.QueryRow(ctx,
+	return scan(s.exec(ctx).QueryRow(ctx,
 		`select `+selectCols+` from sandbox_runner_state where handle = $1`, handle))
 }
 
@@ -82,7 +107,7 @@ func (s *Store) Put(ctx context.Context, id protocol.SandboxID, runtime, handle 
 	if err != nil {
 		return err
 	}
-	_, err = s.pool.Exec(ctx,
+	_, err = s.exec(ctx).Exec(ctx,
 		`insert into sandbox_runner_state
 		   (user_id, project_ref, sandbox_provider_kind, handle, state, updated_at)
 		 values ($1, $2, $3, $4, $5, now())
@@ -93,7 +118,7 @@ func (s *Store) Put(ctx context.Context, id protocol.SandboxID, runtime, handle 
 }
 
 func (s *Store) DeleteByHandle(ctx context.Context, runtime, handle string) error {
-	_, err := s.pool.Exec(ctx,
+	_, err := s.exec(ctx).Exec(ctx,
 		`delete from sandbox_runner_state where sandbox_provider_kind = $1 and handle = $2`,
 		runtime, handle)
 	return err
@@ -101,7 +126,7 @@ func (s *Store) DeleteByHandle(ctx context.Context, runtime, handle string) erro
 
 // ListByRuntime is what the credential refresher walks.
 func (s *Store) ListByRuntime(ctx context.Context, runtime string) ([]Record, error) {
-	rows, err := s.pool.Query(ctx,
+	rows, err := s.exec(ctx).Query(ctx,
 		`select `+selectCols+` from sandbox_runner_state where sandbox_provider_kind = $1`, runtime)
 	if err != nil {
 		return nil, err
@@ -163,7 +188,7 @@ func (s *Store) WithLock(ctx context.Context, id protocol.SandboxID, runtime str
 	if _, err := tx.Exec(ctx, "set local statement_timeout = 0"); err != nil {
 		return err
 	}
-	if err := fn(ctx); err != nil {
+	if err := fn(context.WithValue(ctx, txKey{}, tx)); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

@@ -21,8 +21,6 @@ import (
 	extclient "sigs.k8s.io/agent-sandbox/clients/k8s/extensions/clientset/versioned"
 	exttyped "sigs.k8s.io/agent-sandbox/clients/k8s/extensions/clientset/versioned/typed/api/v1alpha1"
 
-	daemonproto "github.com/decocms/studio/sandbox-daemon/pkg/protocol"
-
 	"github.com/decocms/studio/sandbox-controller/protocol"
 	"github.com/decocms/studio/sandbox-controller/runtime"
 	"github.com/decocms/studio/sandbox-controller/store"
@@ -282,6 +280,12 @@ func (r *Runner) resume(ctx context.Context, handle string, state persisted, opt
 }
 
 func (r *Runner) provision(ctx context.Context, id protocol.SandboxID, handle string, opts *protocol.EnsureOptions) (*runtime.Sandbox, error) {
+	// Whatever pod this handle pointed at is being replaced. Any port-forward
+	// held for it now dials a corpse — and it would be REUSED, because a
+	// rebuilt Sandbox keeps the claim's name, so the cache key still matches.
+	// Dropping it here is the difference between a resurrect that works and
+	// one that burns the full daemon timeout on connection-refused.
+	r.closeForward(handle)
 	boot := bootSecrets{
 		token:        uuid.NewString(),
 		daemonBootID: uuid.NewString(),
@@ -669,4 +673,3 @@ func (r *Runner) refreshCredentials(ctx context.Context) {
 }
 
 var _ runtime.Provider = (*Runner)(nil)
-var _ = daemonproto.Health{}

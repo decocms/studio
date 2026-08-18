@@ -55,6 +55,11 @@ type forwarder struct {
 
 // forward opens (or reuses) a port-forward to the sandbox's pod. Keyed by
 // handle so a re-ensure on the same sandbox does not leak listeners.
+//
+// A cached entry is NOT proof the tunnel still works: client-go keeps the
+// local listener up after the pod behind it dies, so every later dial is a
+// connection-refused. `provision` drops the entry when it replaces the pod,
+// which is the only moment we know for certain the old one is gone.
 func (r *Runner) forward(ctx context.Context, handle, adoptedSandboxName string) (*forwarder, error) {
 	r.mu.Lock()
 	if existing, ok := r.forwards[handle]; ok && existing.sandbox == adoptedSandboxName {
@@ -85,7 +90,13 @@ func (r *Runner) forward(ctx context.Context, handle, adoptedSandboxName string)
 		return nil, err
 	}
 	errc := make(chan error, 1)
-	go func() { errc <- pf.ForwardPorts() }()
+	go func() {
+		err := pf.ForwardPorts()
+		// The stream is dead — the pod went away, or Close was called. Evict
+		// the entry so the next call rebuilds instead of dialling a corpse.
+		r.forgetForward(handle, stop)
+		errc <- err
+	}()
 	select {
 	case <-ready:
 	case err := <-errc:
@@ -105,6 +116,16 @@ func (r *Runner) forward(ctx context.Context, handle, adoptedSandboxName string)
 	r.forwards[handle] = f
 	r.mu.Unlock()
 	return f, nil
+}
+
+// forgetForward drops the cached entry only if it is still the one identified
+// by `stop`; a forwarder replaced since then belongs to a newer pod.
+func (r *Runner) forgetForward(handle string, stop chan struct{}) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if f, ok := r.forwards[handle]; ok && f.stop == stop {
+		delete(r.forwards, handle)
+	}
 }
 
 func (r *Runner) closeForward(handle string) {
