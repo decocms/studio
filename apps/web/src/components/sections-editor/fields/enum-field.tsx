@@ -28,8 +28,8 @@ export function EnumField({
   const t = useT();
   const options = schema.enum ?? [];
   const selectValue = formValueToSelectValue(value, options);
-  // Optional enums offer a "None" entry to clear the selection.
-  const showClearOption = !required;
+  // Suppressed when "" is already an option: that is itself the empty choice.
+  const showClearOption = !required && !options.some((opt) => opt === "");
 
   return (
     <div className="space-y-2">

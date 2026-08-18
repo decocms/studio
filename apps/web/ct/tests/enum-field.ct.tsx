@@ -1,6 +1,10 @@
 import { expect, test } from "@playwright/experimental-ct-react";
 import { SchemaFormHarness } from "../harness/schema-form-harness";
-import { sectionWithProps, TEST_RESOLVE_TYPE } from "../harness/fixtures";
+import {
+  sectionWithProps,
+  sectionWithRequired,
+  TEST_RESOLVE_TYPE,
+} from "../harness/fixtures";
 import { hoverFieldDescription, readFormValue } from "../harness/ct-utils";
 
 test("string enum renders a combobox trigger", async ({ mount }) => {
@@ -175,6 +179,42 @@ test("empty-string enum: selecting the empty option yields an empty string", asy
   await page.getByRole("option").first().click();
 
   await expect.poll(() => readFormValue(component)).toEqual({ size: "" });
+});
+
+test("optional enum: offers a None option that clears the value", async ({
+  mount,
+  page,
+}) => {
+  const meta = sectionWithProps({
+    size: { type: "string", enum: ["sm", "md"] },
+  });
+  const component = await mount(
+    <SchemaFormHarness
+      meta={meta}
+      resolveType={TEST_RESOLVE_TYPE}
+      initialValue={{ size: "md" }}
+    />,
+  );
+
+  await component.getByRole("combobox").click();
+  await expect(page.getByRole("option")).toHaveCount(3);
+  await page.getByRole("option", { name: "None" }).click();
+
+  await expect.poll(() => readFormValue(component)).toEqual({});
+});
+
+test("required enum: no None option is offered", async ({ mount, page }) => {
+  const meta = sectionWithRequired(
+    { size: { type: "string", enum: ["sm", "md"] } },
+    ["size"],
+  );
+  const component = await mount(
+    <SchemaFormHarness meta={meta} resolveType={TEST_RESOLVE_TYPE} />,
+  );
+
+  await component.getByRole("combobox").click();
+  await expect(page.getByRole("option")).toHaveCount(2);
+  await expect(page.getByRole("option", { name: "None" })).toHaveCount(0);
 });
 
 test("enum: description is shown as a help tooltip next to the label", async ({
