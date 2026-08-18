@@ -9,6 +9,7 @@ import { describe, expect, test } from "bun:test";
 import {
   createSubtaskTool,
   isTransientStreamError,
+  settled,
   resolveSubtaskCodingWorkspace,
   SubtaskInputSchema,
   type SubtaskParams,
@@ -62,6 +63,22 @@ const mockWriter = {
   write: () => {},
   merge: () => {},
 } as never;
+
+describe("settled", () => {
+  test("passes a resolved value through", async () => {
+    expect(await settled(Promise.resolve("stop"), "error")).toBe("stop");
+  });
+
+  test("swallows the AI SDK's NoOutputGeneratedError rejection", async () => {
+    // streamText rejects finishReason/steps/usage when no step ever finished.
+    // Throwing that out of the subtask generator replaced the real cause with
+    // the SDK's placeholder text (prod thread 38147122, 2026-08-16).
+    const rejected = Promise.reject(
+      new Error("No output generated. Check the stream for errors."),
+    );
+    expect(await settled(rejected, "error")).toBe("error");
+  });
+});
 
 describe("SubtaskInputSchema", () => {
   describe("valid input", () => {
