@@ -36,6 +36,14 @@ type FsDeps struct {
 	AllowSameHostDev bool
 }
 
+// escapesRoot is the 400 for a path SafePath rejected. It names what IS
+// reachable: an agent that guessed `/tmp` (which its own `bash` tool can write,
+// unlike these routes) otherwise retries the same path instead of correcting it.
+func (d FsDeps) escapesRoot() string {
+	return "Path escapes app root — paths must resolve inside " + d.AppRoot +
+		"; a relative path resolves against " + d.RepoDir
+}
+
 func (d FsDeps) notifyWrite(path string) {
 	if d.OnWorkingTreeWrite != nil {
 		d.OnWorkingTreeWrite(path)
@@ -212,7 +220,7 @@ func Write(deps FsDeps) http.HandlerFunc {
 		}
 		filePath, ok := paths.SafePath(deps.AppRoot, deps.RepoDir, body.Path)
 		if !ok {
-			httpx.Error(w, 400, "Path escapes app root")
+			httpx.Error(w, 400, deps.escapesRoot())
 			return
 		}
 		if jsonErr := decofile.InvalidBlockJSON(body.Path, *body.Content); jsonErr != "" {
@@ -268,7 +276,7 @@ func Unlink(deps FsDeps) http.HandlerFunc {
 		}
 		filePath, ok := paths.SafePath(deps.AppRoot, deps.RepoDir, body.Path)
 		if !ok {
-			httpx.Error(w, 400, "Path escapes app root")
+			httpx.Error(w, 400, deps.escapesRoot())
 			return
 		}
 		existed := true
@@ -324,7 +332,7 @@ func Mkdir(deps FsDeps) http.HandlerFunc {
 		}
 		dirPath, ok := paths.SafePath(deps.AppRoot, deps.RepoDir, body.Path)
 		if !ok {
-			httpx.Error(w, 400, "Path escapes app root")
+			httpx.Error(w, 400, deps.escapesRoot())
 			return
 		}
 		if err := os.MkdirAll(dirPath, 0o755); err != nil {
@@ -363,7 +371,7 @@ func Rename(deps FsDeps) http.HandlerFunc {
 		fromPath, okFrom := paths.SafePath(deps.AppRoot, deps.RepoDir, body.From)
 		toPath, okTo := paths.SafePath(deps.AppRoot, deps.RepoDir, body.To)
 		if !okFrom || !okTo {
-			httpx.Error(w, 400, "Path escapes app root")
+			httpx.Error(w, 400, deps.escapesRoot())
 			return
 		}
 		if _, err := os.Stat(fromPath); err != nil {
@@ -404,7 +412,7 @@ func Edit(deps FsDeps) http.HandlerFunc {
 		}
 		filePath, ok := paths.SafePath(deps.AppRoot, deps.RepoDir, body.Path)
 		if !ok {
-			httpx.Error(w, 400, "Path escapes app root")
+			httpx.Error(w, 400, deps.escapesRoot())
 			return
 		}
 		if body.OldString == "" {
@@ -478,7 +486,7 @@ func Grep(deps FsDeps) http.HandlerFunc {
 		if body.Path != "" {
 			resolved, ok := paths.SafePath(deps.AppRoot, deps.RepoDir, body.Path)
 			if !ok {
-				httpx.Error(w, 400, "Path escapes app root")
+				httpx.Error(w, 400, deps.escapesRoot())
 				return
 			}
 			searchPath = resolved
@@ -671,7 +679,7 @@ func Glob(deps FsDeps) http.HandlerFunc {
 		if body.Path != "" {
 			resolved, ok := paths.SafePath(deps.AppRoot, deps.RepoDir, body.Path)
 			if !ok {
-				httpx.Error(w, 400, "Path escapes app root")
+				httpx.Error(w, 400, deps.escapesRoot())
 				return
 			}
 			searchPath = resolved
@@ -775,7 +783,7 @@ func WriteFromUrl(deps FsDeps) http.HandlerFunc {
 		}
 		filePath, ok := paths.SafePath(deps.AppRoot, deps.RepoDir, body.Path)
 		if !ok {
-			httpx.Error(w, 400, "Path escapes app root")
+			httpx.Error(w, 400, deps.escapesRoot())
 			return
 		}
 		if err := urlallow.Assert(body.URL, deps.AllowedHosts, deps.AllowSameHostDev); err != nil {

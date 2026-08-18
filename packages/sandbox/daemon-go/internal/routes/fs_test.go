@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -73,5 +74,25 @@ func TestReadDecofileFallbackRefusesAbsolute(t *testing.T) {
 	rec := readReq(t, deps, abs)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400 (no merge for absolute path); body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+// The 400 an out-of-root write returns must name the root it wants. A model
+// that guessed `/tmp` (writable from its own bash tool, not from here) has to
+// be able to correct itself from the message alone — prod thread 38147122
+// burned several steps retrying the same rejected path.
+func TestWriteEscapesRootNamesTheRoot(t *testing.T) {
+	deps := seedBlocks(t)
+	body, _ := json.Marshal(map[string]any{"path": "/tmp/toolrun/x.ts", "content": "x"})
+	req := httptest.NewRequest(http.MethodPost, "/write", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	Write(deps)(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body = %s", rec.Code, rec.Body.String())
+	}
+	msg := rec.Body.String()
+	if !strings.Contains(msg, deps.AppRoot) || !strings.Contains(msg, deps.RepoDir) {
+		t.Fatalf("error must name AppRoot %q and RepoDir %q; got %s", deps.AppRoot, deps.RepoDir, msg)
 	}
 }
