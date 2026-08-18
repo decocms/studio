@@ -235,19 +235,41 @@ function isGeneratedArtifactPath(path: string): boolean {
   );
 }
 
-/** Uncommitted work that would actually change the site. */
-export function hasPublishableLocalWork(
-  status: GitStatus | null | undefined,
-): boolean {
-  if (!status) return false;
-  if (status.conflicted.length > 0 || status.renamed.length > 0) return true;
+/**
+ * Paths of uncommitted work that would actually change the site.
+ *
+ * The single list behind both {@link hasPublishableLocalWork} and
+ * {@link countLocalWork}: a predicate and a count derived separately could
+ * disagree, and "3 unsaved changes" next to a banner that shouldn't be showing
+ * is worse than either alone.
+ */
+function localWorkPaths(status: GitStatus | null | undefined): string[] {
+  if (!status) return [];
   return [
     ...status.modified,
     ...status.created,
     ...status.deleted,
     ...status.not_added,
     ...status.staged,
-  ].some((path) => !isGeneratedArtifactPath(path));
+  ].filter((path) => !isGeneratedArtifactPath(path));
+}
+
+/** Uncommitted work that would actually change the site. */
+export function hasPublishableLocalWork(
+  status: GitStatus | null | undefined,
+): boolean {
+  if (!status) return false;
+  if (status.conflicted.length > 0 || status.renamed.length > 0) return true;
+  return localWorkPaths(status).length > 0;
+}
+
+/**
+ * How many distinct files that work touches. Deduped: a path can appear in
+ * several of git's buckets at once (staged AND modified is the common one), and
+ * counting it twice overstates the divergence the user is being warned about.
+ */
+export function countLocalWork(status: GitStatus | null | undefined): number {
+  return new Set(localWorkPaths(status)).size;
 }
 
 /**

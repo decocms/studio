@@ -5,6 +5,7 @@ import {
   DEFAULT_PUBLISH_POLICY,
   hasGitLocalWork,
   hasLocalWorkToPush,
+  countLocalWork,
   hasPublishableLocalWork,
   hasUnpublishedWork,
   isDecoOnlyDiff,
@@ -553,5 +554,48 @@ describe("combinePublishDiffs (full publish payload = committed ∪ working)", (
     );
     expect(gate.allowed).toBe(false);
     expect(gate.reason).toBeNull();
+  });
+});
+
+describe("countLocalWork", () => {
+  const clean: GitStatus = {
+    not_added: [],
+    conflicted: [],
+    created: [],
+    deleted: [],
+    modified: [],
+    renamed: [],
+    files: [],
+    staged: [],
+    ahead: 0,
+    behind: 0,
+    current: "main",
+    tracking: null,
+    detached: false,
+  };
+
+  test("counts nothing for a clean tree or no status", () => {
+    expect(countLocalWork(clean)).toBe(0);
+    expect(countLocalWork(null)).toBe(0);
+  });
+
+  /** A path lands in several git buckets at once; counting it twice would
+   *  overstate the divergence the advisory reports. */
+  test("dedupes a path that is both staged and modified", () => {
+    expect(
+      countLocalWork({ ...clean, staged: ["a.ts"], modified: ["a.ts"] }),
+    ).toBe(1);
+  });
+
+  test("ignores generated artifacts, like the predicate does", () => {
+    const status = { ...clean, modified: [".deco/blocks.gen.json", "a.ts"] };
+    expect(countLocalWork(status)).toBe(1);
+    expect(hasPublishableLocalWork(status)).toBe(true);
+  });
+
+  test("agrees with the predicate on an artifact-only tree", () => {
+    const status = { ...clean, modified: [".deco/blocks.gen.json"] };
+    expect(countLocalWork(status)).toBe(0);
+    expect(hasPublishableLocalWork(status)).toBe(false);
   });
 });

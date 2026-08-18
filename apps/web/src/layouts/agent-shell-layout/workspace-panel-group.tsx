@@ -54,6 +54,8 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { ThreadsMenu } from "@/components/chat/threads-menu";
 import { useNavV2 } from "@/hooks/use-organization-settings";
 import { usePanelActions } from "@/layouts/shell-layout";
+import { useNavigate } from "@tanstack/react-router";
+import type { CmsEditingMode } from "@/sdk/cms-mode";
 import { SidePanel } from "./side-panel";
 import {
   ChatToggle,
@@ -167,6 +169,17 @@ export function WorkspacePanelGroup({
   const cmsCapable = resolveCmsMode(entity.metadata).active;
   const { cmsModeActive, start: startDevEnvironment } = useSandboxLifecycle();
   const { openSidePanel } = usePanelActions();
+  const navigate = useNavigate();
+  /** `?mode=` is workspace state, not panel state: it survives the panel
+   *  closing and a reload. Replaces rather than pushes — switching modes is
+   *  not a navigation the back button should undo one step at a time. */
+  const setEditingMode = (mode: CmsEditingMode) => {
+    void navigate({
+      to: ".",
+      search: (prev: Record<string, unknown>) => ({ ...prev, mode }),
+      replace: true,
+    });
+  };
   /**
    * The panel's occupant while it is CLOSED. `?sidepanel=0` keeps no kind, so
    * without this the split button's body would have nothing to reopen — it has
@@ -261,6 +274,7 @@ export function WorkspacePanelGroup({
           mode={sidePanelMode}
           toggleSidePanel={toggleSidePanel}
           openSidePanel={openSidePanel}
+          setEditingMode={setEditingMode}
           needsDevEnvironment={toggles.startsDevEnvironment}
           onStart={startDevEnvironment}
           disableActiveSidePanelToggle={disableActiveSidePanelToggle}

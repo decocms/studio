@@ -298,6 +298,10 @@ const unifiedChatSearchSchema = z.object({
   sidepanel: z
     .union([z.literal("chat"), z.literal("cms"), z.literal(0)])
     .optional(),
+  /** Which editing mode the draft is in. Governs the whole workspace — preview
+   *  origin, view tabs, console — so it is its own param rather than something
+   *  read off `sidepanel`, which forgets the mode whenever the panel closes. */
+  mode: z.union([z.literal("cms"), z.literal("vibecoding")]).optional(),
   main: z.union([z.string(), z.literal(0)]).optional(),
   /** Open the Library file-preview overlay over the chat (browse-grammar path
    *  "<volume>/<path…>"). Set by clickable org-file refs in agent messages. */

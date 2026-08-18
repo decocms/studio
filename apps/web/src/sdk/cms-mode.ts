@@ -10,6 +10,7 @@
 export {
   resolveCmsMode,
   resolveCmsModeForBranch,
+  type CmsEditingMode,
   type CmsModeGate,
   type CmsModeMetadata,
 } from "@decocms/shared/cms-mode";

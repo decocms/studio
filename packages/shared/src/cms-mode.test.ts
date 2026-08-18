@@ -32,26 +32,41 @@ describe("resolveCmsMode", () => {
 });
 
 describe("resolveCmsModeForBranch", () => {
-  test("a CMS branch with no sandbox is sandbox-less", () => {
-    expect(resolveCmsModeForBranch(CMS_PROJECT, false).active).toBe(true);
+  test("a branch with no sandbox is CMS whichever mode is asked for", () => {
+    expect(resolveCmsModeForBranch(CMS_PROJECT, false, "cms").active).toBe(
+      true,
+    );
+    // Nothing to vibecode against yet, so the mode cannot override the fact.
+    expect(
+      resolveCmsModeForBranch(CMS_PROJECT, false, "vibecoding").active,
+    ).toBe(true);
   });
 
-  /** The project flag stays on; the branch's reads/writes move to the pod. */
-  test("a sandbox takes the branch off the sandbox-less path", () => {
-    expect(resolveCmsMode(CMS_PROJECT).active).toBe(true);
-    expect(resolveCmsModeForBranch(CMS_PROJECT, true).active).toBe(false);
+  test("with a sandbox, the mode decides", () => {
+    expect(resolveCmsModeForBranch(CMS_PROJECT, true, "cms").active).toBe(true);
+    expect(
+      resolveCmsModeForBranch(CMS_PROJECT, true, "vibecoding").active,
+    ).toBe(false);
+  });
+
+  /** Switching back restores the CMS workspace, not just the side panel. */
+  test("picking CMS on a pod-backed branch returns the CMS gate", () => {
+    const vibe = resolveCmsModeForBranch(CMS_PROJECT, true, "vibecoding");
+    const back = resolveCmsModeForBranch(CMS_PROJECT, true, "cms");
+    expect(vibe.active).toBe(false);
+    expect(back.active).toBe(true);
   });
 
   test("a sandbox never turns a non-CMS project into one", () => {
-    expect(resolveCmsModeForBranch({ cmsMode: false }, false).active).toBe(
-      false,
-    );
-    expect(resolveCmsModeForBranch(null, false).active).toBe(false);
+    expect(
+      resolveCmsModeForBranch({ cmsMode: false }, false, "cms").active,
+    ).toBe(false);
+    expect(resolveCmsModeForBranch(null, true, "cms").active).toBe(false);
   });
 
   test("the preview server URL survives the narrowing", () => {
-    expect(resolveCmsModeForBranch(CMS_PROJECT, true).previewServerUrl).toBe(
-      resolveCmsMode(CMS_PROJECT).previewServerUrl,
-    );
+    expect(
+      resolveCmsModeForBranch(CMS_PROJECT, true, "vibecoding").previewServerUrl,
+    ).toBe(resolveCmsMode(CMS_PROJECT).previewServerUrl);
   });
 });

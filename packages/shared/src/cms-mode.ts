@@ -33,33 +33,6 @@ export interface CmsModeGate {
   active: boolean;
 }
 
-/**
- * Whether a *branch* is being served sandbox-lessly right now.
- *
- * `resolveCmsMode` answers a question about the PROJECT ("can this edit content
- * without a pod?"); this answers the one every runtime surface actually needs
- * ("is there a pod serving this branch?"). They differ the moment a sandbox is
- * provisioned: a CMS project keeps its flag, but that branch now has a working
- * tree, a dev server and a daemon, and every read/write must go through them.
- *
- * Routing on the project flag instead would give the branch two writers — the
- * CMS committing to the branch head while the pod edits an uncommitted working
- * tree it can no longer see. Routing on this keeps exactly one writer per
- * branch, whichever layer that branch currently lives in, so the two editing
- * surfaces compose instead of diverging.
- *
- * `hasSandbox` is the branch's recorded sandbox (`sandboxMap[user][branch]`),
- * not a liveness probe: a stopped or evicted pod is still that branch's home
- * and resumes rather than handing the branch back to the head-committing path.
- */
-export function resolveCmsModeForBranch(
-  metadata: CmsModeMetadata | null | undefined,
-  hasSandbox: boolean,
-): CmsModeGate {
-  const gate = resolveCmsMode(metadata);
-  return { ...gate, active: gate.active && !hasSandbox };
-}
-
 /** True when either the current or the legacy flag is set. */
 function readCmsModeFlag(
   metadata: CmsModeMetadata | null | undefined,
@@ -75,4 +48,33 @@ export function resolveCmsMode(
     previewServerUrl,
     active: !!previewServerUrl && readCmsModeFlag(metadata),
   };
+}
+
+/** The editing mode a draft is in. Persisted in the URL as `?mode=`. */
+export type CmsEditingMode = "cms" | "vibecoding";
+
+/**
+ * Whether a *branch* is being served the CMS way right now — decofile over
+ * HTTP against the preview server, rather than through a pod.
+ *
+ * Two inputs, and they are not the same question. `hasSandbox` says what the
+ * branch HAS; `mode` says which way the user is currently editing it. A branch
+ * with no sandbox has no choice and is always CMS. A branch WITH one follows
+ * the mode, so switching back to CMS restores the whole CMS workspace —
+ * preview origin, tabs, console — and not just the side panel.
+ *
+ * The cost of honouring the mode over the substrate: a CMS write then commits
+ * to the branch head while the pod still holds an uncommitted working tree it
+ * cannot see. That divergence is real and deliberate — surfaced to the user by
+ * the staleness advisory rather than prevented — so anything reading this to
+ * decide where a WRITE lands must also be prepared to say so.
+ */
+export function resolveCmsModeForBranch(
+  metadata: CmsModeMetadata | null | undefined,
+  hasSandbox: boolean,
+  mode: CmsEditingMode = "cms",
+): CmsModeGate {
+  const gate = resolveCmsMode(metadata);
+  const cmsSelected = !hasSandbox || mode === "cms";
+  return { ...gate, active: gate.active && cmsSelected };
 }

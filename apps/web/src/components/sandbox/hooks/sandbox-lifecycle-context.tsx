@@ -361,7 +361,8 @@ import {
   useProjectContext,
   useVirtualMCP,
 } from "@/sdk";
-import { resolveCmsModeForBranch } from "@/sdk/cms-mode";
+import { resolveCmsModeForBranch, type CmsEditingMode } from "@/sdk/cms-mode";
+import { useSearch } from "@tanstack/react-router";
 import type { SandboxMap } from "@decocms/shared/sdk/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { invalidateVirtualMcpQueries } from "@/lib/query-keys";
@@ -489,6 +490,10 @@ export function SandboxLifecycleProvider({
   // ShouldAutoStartArgs.cmsModeActive). Self-heal/claim-retry stay ungated —
   // they only ever fire for a sandbox that already exists.
   const vmcp = useVirtualMCP(virtualMcpId ?? undefined);
+  /** `?mode=` — which way the user is editing this draft. Only consulted once
+   *  the branch HAS a sandbox; before that CMS is the only possibility. */
+  const editingMode =
+    (useSearch({ strict: false }) as { mode?: CmsEditingMode }).mode ?? "cms";
 
   const mcpClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -580,6 +585,7 @@ export function SandboxLifecycleProvider({
   const cmsModeActive = resolveCmsModeForBranch(
     vmcp?.metadata,
     !!vmEntry || !!previewUrl || startVm.isPending,
+    editingMode,
   ).active;
   const userStopped =
     !!virtualMcpId &&

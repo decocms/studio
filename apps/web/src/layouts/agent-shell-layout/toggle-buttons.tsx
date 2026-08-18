@@ -14,6 +14,7 @@ import {
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { SplitButton } from "@decocms/ui/components/split-button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import type { CmsEditingMode } from "@/sdk/cms-mode";
 import { HeaderTabButton } from "@/layouts/main-panel-tabs/header-tab-button";
 import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t";
@@ -40,6 +41,10 @@ export interface ModeSplitButtonProps {
   /** Opens without the toggle's close-on-same-kind behaviour: picking the mode
    *  you are already in must not collapse the panel. */
   openSidePanel: (sidePanel: SidePanelKind) => void;
+  /** Records the choice in `?mode=`. The mode governs the whole workspace —
+   *  preview origin, view tabs, console — so picking one has to outlive the
+   *  side panel that revealed it. */
+  setEditingMode: (mode: CmsEditingMode) => void;
   /** The draft has no dev environment yet, so choosing vibecoding provisions it. */
   needsDevEnvironment: boolean;
   /** Provision it. Called before the panel opens; safe to call while pending. */
@@ -100,6 +105,7 @@ export function ModeSplitButton({
   mode,
   toggleSidePanel,
   openSidePanel,
+  setEditingMode,
   needsDevEnvironment,
   onStart,
   disableActiveSidePanelToggle = false,
@@ -112,6 +118,7 @@ export function ModeSplitButton({
     // Provision before opening: the panel it reveals is the agent composer,
     // which stays a "start vibecoding" prompt until the branch has a pod.
     if (kind === "chat" && needsDevEnvironment) onStart();
+    setEditingMode(kind === "cms" ? "cms" : "vibecoding");
     openSidePanel(kind);
   };
 

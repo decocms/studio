@@ -1,8 +1,13 @@
 import { Suspense, lazy } from "react";
-import { Code01, Loading01 } from "@untitledui/icons";
+import { AlertTriangle, Loading01 } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t";
-import { resolveCmsMode } from "@/sdk/cms-mode";
-import { useVirtualMCP } from "@/sdk";
+import { useQuery } from "@tanstack/react-query";
+import {
+  countLocalWork,
+  fetchGitStatus,
+  hasPublishableLocalWork,
+  sandboxGitStatusQueryKey,
+} from "@/components/thread/github/sandbox-git-api";
 import { useProjectContext } from "@/sdk";
 import { useChatTask } from "@/components/chat/context";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
@@ -27,24 +32,29 @@ import {
 import { MainPanelLoading } from "@/layouts/main-panel-tabs/main-panel-loading";
 
 /**
- * Which substrate this draft's content edits land in.
+ * The dev environment holds work this view cannot see.
  *
- * Only shown once the draft HAS a dev environment, because that is the case
- * where the same panel behaves differently than it looks: the write stops
- * being a commit on the branch head and becomes a file in the pod's working
- * tree, next to the agent's uncommitted work. Silence would leave the user to
- * discover that from a publish diff.
+ * Editing content in CMS mode commits to the branch head. When the draft also
+ * has a pod carrying an uncommitted working tree, that head is NOT what the
+ * agent is editing — the two diverge, and the agent's next commit resolves the
+ * conflict one way or the other. The switch permits this on purpose; the least
+ * it owes the user is to say so while it is true.
  *
- * A sandbox-less draft gets nothing — the default needs no announcement, and a
- * banner on every CMS project is a banner nobody reads.
+ * Deliberately silent otherwise. A clean pod, or no pod, means the head is
+ * authoritative and there is nothing to report — and an advisory that shows on
+ * every CMS project is one nobody reads by the second week.
  */
-function DevEnvironmentNotice() {
+function StaleHeadNotice({ count }: { count: number }) {
   const t = useT();
   return (
-    <div className="flex items-start gap-2 border-b border-border bg-muted/40 px-3 py-2 text-muted-foreground">
-      <Code01 size={14} className="mt-0.5 shrink-0" />
-      <span className="text-xs leading-relaxed">
-        {t("sandbox.blocksPanel.devEnvironmentNotice")}
+    <div className="flex items-start gap-2 border-b border-warning/40 bg-warning/10 px-3 py-2">
+      <AlertTriangle
+        size={14}
+        className="mt-0.5 shrink-0 text-warning"
+        aria-hidden
+      />
+      <span className="text-xs leading-relaxed text-foreground">
+        {t("sandbox.blocksPanel.staleHeadNotice", { count: String(count) })}
       </span>
     </div>
   );
@@ -72,10 +82,22 @@ export function BlocksPanel({
   const { currentBranch } = useChatTask();
   const sandboxEvents = useSandboxEvents();
   const lifecycle = useSandboxLifecycle();
-  const vmcp = useVirtualMCP(virtualMcpId);
-  // CMS project whose branch has a pod: the panel now writes through it.
-  const showDevEnvironmentNotice =
-    resolveCmsMode(vmcp?.metadata).active && !lifecycle.cmsModeActive;
+  /**
+   * The pod's REAL working tree. `/git/status` stays daemon-backed whenever a
+   * sandbox exists — the API gates on the substrate, not on `?mode=` — so this
+   * sees the agent's uncommitted work even while the UI is in CMS mode. That
+   * asymmetry is what makes the advisory possible at all.
+   */
+  const podBranch = lifecycle.vmEntry ? (currentBranch ?? "") : "";
+  const podStatus = useQuery({
+    queryKey: sandboxGitStatusQueryKey(org.slug, virtualMcpId, podBranch),
+    queryFn: () => fetchGitStatus(org.slug, virtualMcpId, podBranch),
+    enabled: !!podBranch,
+    staleTime: 15_000,
+  });
+  const staleCount = hasPublishableLocalWork(podStatus.data)
+    ? countLocalWork(podStatus.data)
+    : 0;
   const workspace = useBlocksPreviewWorkspace();
   const devServerReady = sandboxEvents.lifecycle.phase === "running";
   const previewUrl = lifecycle.previewUrl;
@@ -169,7 +191,7 @@ export function BlocksPanel({
       data-testid="blocks-panel"
       className="flex h-full min-h-0 flex-col overflow-hidden"
     >
-      {showDevEnvironmentNotice && <DevEnvironmentNotice />}
+      {staleCount > 0 && <StaleHeadNotice count={staleCount} />}
       <Suspense
         fallback={
           <div className="h-full flex items-center justify-center">
