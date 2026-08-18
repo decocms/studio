@@ -503,14 +503,14 @@ export function resolveSchema(
     // would be silently dropped.
     let type: string | undefined;
     let unionLeaf: RawSchema | undefined;
+    // When set, `resolved.title` is a machine-generated intersection name, not a label.
+    let suppressResolvedTitle = false;
     if (resolved.type) {
       type = Array.isArray(resolved.type)
         ? String(resolved.type.find((t) => t !== "null") ?? resolved.type[0])
         : String(resolved.type);
-    } else if (resolved.anyOf || resolved.allOf || resolved.oneOf) {
-      const arr = (resolved.anyOf ??
-        resolved.allOf ??
-        resolved.oneOf) as RawSchema[];
+    } else if (resolved.anyOf || resolved.oneOf) {
+      const arr = (resolved.anyOf ?? resolved.oneOf) as RawSchema[];
       const nonNull = arr.filter(
         (a) => !(a.type === "null" || a.type === null),
       );
@@ -960,6 +960,19 @@ export function resolveSchema(
 
         type = "object";
       }
+    } else if (resolved.allOf) {
+      /**
+       * `allOf` is a type INTERSECTION (A & B), not a choice union. deco emits
+       * anonymous intersections like `Omit<RichTextWidget, "tag"> & { tag?: … }`
+       * as an allOf of object `$ref`s titled with a machine name
+       * ("omitdGFnRichTextWidget&tl@1767-1787"). Merge the members into one form
+       * (via `collectProps` below), like the legacy admin's `resolveRefs`. It
+       * must NOT reach the choice-union branches above: a pure intersection has
+       * no discriminator, so every branch is dropped and the field collapses to
+       * an empty picker rendered as "[object Object]".
+       */
+      type = "object";
+      suppressResolvedTitle = true;
     } else if (typeof v.$ref === "string") {
       // Last-resort: ref points to a def with no type/union we recognize.
       // Treat as object so nested-property recursion has a chance to fill in.
@@ -1029,7 +1042,7 @@ export function resolveSchema(
       title:
         typeof v.title === "string"
           ? v.title
-          : typeof resolved.title === "string"
+          : !suppressResolvedTitle && typeof resolved.title === "string"
             ? resolved.title
             : fromLeaf<string>("title"),
       description:
