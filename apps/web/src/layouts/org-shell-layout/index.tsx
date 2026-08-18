@@ -75,7 +75,15 @@ export default function OrgShellLayout() {
     SIDEBAR_OPEN_STORAGE_KEY,
     false,
   );
-  const { width, wrapperRef, onStartResize, resetWidth } = useSidebarResize();
+  const {
+    width,
+    minWidth,
+    maxWidth,
+    wrapperRef,
+    onStartResize,
+    resetWidth,
+    adjustWidth,
+  } = useSidebarResize();
 
   // On desktop each panel owns its own 48px header (see WorkspacePanelGroup), so
   // there is no shared top bar spanning the panels — only the mobile layout,
@@ -151,8 +159,13 @@ export default function OrgShellLayout() {
                   <>
                     <StudioSidebar />
                     <SidebarResizeHandle
+                      width={width}
+                      minWidth={minWidth}
+                      maxWidth={maxWidth}
                       onPointerDown={onStartResize}
                       onDoubleClick={resetWidth}
+                      onAdjustWidth={adjustWidth}
+                      onResetWidth={resetWidth}
                     />
                   </>
                 )}

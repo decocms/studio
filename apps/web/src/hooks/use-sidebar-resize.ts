@@ -13,11 +13,16 @@ function clamp(w: number) {
   return Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, w));
 }
 
+const KEYBOARD_STEP = 16;
+
 export interface SidebarResize {
   width: number;
+  minWidth: number;
+  maxWidth: number;
   wrapperRef: RefObject<HTMLDivElement | null>;
   onStartResize: (e: ReactPointerEvent<HTMLDivElement>) => void;
   resetWidth: () => void;
+  adjustWidth: (delta: number) => void;
 }
 
 /**
@@ -84,5 +89,19 @@ export function useSidebarResize(): SidebarResize {
     setWidth(SIDEBAR_MIN_WIDTH);
   };
 
-  return { width: clamp(width), wrapperRef, onStartResize, resetWidth };
+  const adjustWidth = (delta: number) => {
+    setWidth((prev) => clamp(prev + delta));
+  };
+
+  return {
+    width: clamp(width),
+    minWidth: SIDEBAR_MIN_WIDTH,
+    maxWidth: SIDEBAR_MAX_WIDTH,
+    wrapperRef,
+    onStartResize,
+    resetWidth,
+    adjustWidth,
+  };
 }
+
+export { KEYBOARD_STEP as SIDEBAR_RESIZE_KEYBOARD_STEP };
