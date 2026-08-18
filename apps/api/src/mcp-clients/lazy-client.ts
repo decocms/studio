@@ -106,8 +106,16 @@ export function createLazyClient(
 
   // Shared promise for the real client (single-flight)
   let realClientPromise: Promise<Client> | null = null;
+  // True once this wrapper's own close() ran — must not reconnect after that.
+  let closed = false;
 
   function getRealClient(): Promise<Client> {
+    if (closed) {
+      return Promise.reject(
+        new Error(`MCP client for connection ${connection.id} is closed`),
+      );
+    }
+
     // Fast-fail if the circuit breaker is open for this connection
     assertCircuitClosed(connection.id);
 
@@ -369,6 +377,7 @@ export function createLazyClient(
   // Close the real client if it was ever created
   const originalClose = placeholder.close.bind(placeholder);
   placeholder.close = async () => {
+    closed = true;
     if (realClientPromise) {
       const real = await realClientPromise.catch(() => null);
       if (real) await real.close().catch(() => {});
