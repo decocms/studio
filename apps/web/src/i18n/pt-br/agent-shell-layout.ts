@@ -26,7 +26,14 @@ export const agentShellLayout = {
   "agentShellLayout.toggleButtons.showChat": "Mostrar chat",
   "agentShellLayout.toggleButtons.showPanel": "Mostrar painel",
   "agentShellLayout.toggleButtons.chat": "Chat",
-  "agentShellLayout.toggleButtons.code": "Código",
+  "agentShellLayout.toggleButtons.chooseMode": "Escolher modo",
+  "agentShellLayout.toggleButtons.cmsDescription": "Editor de blocos",
+  "agentShellLayout.toggleButtons.startVibecoding": "Começar vibecoding",
+  "agentShellLayout.toggleButtons.startVibecodingDescription":
+    "Cria um ambiente de desenvolvimento · cerca de um minuto",
+  "agentShellLayout.toggleButtons.vibecoding": "Vibecoding",
+  "agentShellLayout.toggleButtons.vibecodingDescription":
+    "Agente e ambiente de desenvolvimento",
   "agentShellLayout.toolbar.backToHome": "Voltar para home",
   "agentShellLayout.toolbar.logo": "Logo",
 } satisfies Record<keyof typeof agentShellLayoutEn, string>;

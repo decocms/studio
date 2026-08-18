@@ -23,7 +23,14 @@ export const agentShellLayout = {
   "agentShellLayout.toggleButtons.showChat": "Show chat",
   "agentShellLayout.toggleButtons.showPanel": "Show panel",
   "agentShellLayout.toggleButtons.chat": "Chat",
-  "agentShellLayout.toggleButtons.code": "Code",
+  "agentShellLayout.toggleButtons.chooseMode": "Choose mode",
+  "agentShellLayout.toggleButtons.cmsDescription": "Block editor",
+  "agentShellLayout.toggleButtons.startVibecoding": "Start vibecoding",
+  "agentShellLayout.toggleButtons.startVibecodingDescription":
+    "Builds a dev environment · about a minute",
+  "agentShellLayout.toggleButtons.vibecoding": "Vibecoding",
+  "agentShellLayout.toggleButtons.vibecodingDescription":
+    "Agent and dev environment",
   "agentShellLayout.toolbar.backToHome": "Back to home",
   "agentShellLayout.toolbar.logo": "Logo",
 } as const;

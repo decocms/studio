@@ -18,6 +18,7 @@
 import {
   useEffect,
   useRef,
+  useState,
   type PropsWithChildren,
   type ReactNode,
 } from "react";
@@ -52,11 +53,11 @@ import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { ThreadsMenu } from "@/components/chat/threads-menu";
 import { useNavV2 } from "@/hooks/use-organization-settings";
+import { usePanelActions } from "@/layouts/shell-layout";
 import { SidePanel } from "./side-panel";
 import {
   ChatToggle,
-  CmsToggle,
-  CodeToggle,
+  ModeSplitButton,
   PanelCollapseToggle,
 } from "./toggle-buttons";
 import { resolveSidePanelToggles } from "./side-panel-toggles";
@@ -165,6 +166,21 @@ export function WorkspacePanelGroup({
   // Sandbox-less: the side panel hosts the block editor, not an inert chat.
   const cmsCapable = resolveCmsMode(entity.metadata).active;
   const { cmsModeActive, start: startDevEnvironment } = useSandboxLifecycle();
+  const { openSidePanel } = usePanelActions();
+  /**
+   * The panel's occupant while it is CLOSED. `?sidepanel=0` keeps no kind, so
+   * without this the split button's body would have nothing to reopen — it has
+   * to return the user to the mode they left. Seeded from the branch, since a
+   * sandbox-less draft can only be CMS. Held here, not in the button, because
+   * the button unmounts and remounts as it relocates between the two headers.
+   */
+  const [rememberedKind, setRememberedKind] = useState<SidePanelKind>(
+    cmsModeActive ? "cms" : "chat",
+  );
+  if (sidePanel !== null && sidePanel !== rememberedKind) {
+    setRememberedKind(sidePanel);
+  }
+  const sidePanelMode = sidePanel ?? rememberedKind;
   const [sidePanelWidth, setSidePanelWidth] = useSidePanelWidth();
   const panelGroupRef = useRef<GroupImperativeHandle>(null);
   const visibility = { sidePanel, mainOpen };
@@ -228,7 +244,7 @@ export function WorkspacePanelGroup({
     });
   }, [sideSize, mainSize]);
 
-  // Both halves, always, on a CMS project — see resolveSidePanelToggles.
+  // One control on a CMS project — see resolveSidePanelToggles.
   const toggles = resolveSidePanelToggles({
     cmsCapable,
     cmsModeActive,
@@ -236,20 +252,15 @@ export function WorkspacePanelGroup({
   });
   const sidePanelToggles = (disableActiveSidePanelToggle: boolean) => (
     <>
-      {toggles.cms && (
-        <CmsToggle
+      {toggles.mode && (
+        <ModeSplitButton
           sidePanel={sidePanel}
+          mode={sidePanelMode}
           toggleSidePanel={toggleSidePanel}
-          disableActiveSidePanelToggle={disableActiveSidePanelToggle}
-        />
-      )}
-      {toggles.code && (
-        <CodeToggle
-          sidePanel={sidePanel}
-          toggleSidePanel={toggleSidePanel}
-          disableActiveSidePanelToggle={disableActiveSidePanelToggle}
+          openSidePanel={openSidePanel}
           needsDevEnvironment={toggles.startsDevEnvironment}
           onStart={startDevEnvironment}
+          disableActiveSidePanelToggle={disableActiveSidePanelToggle}
         />
       )}
       {toggles.chat && (

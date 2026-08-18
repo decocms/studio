@@ -238,7 +238,7 @@ export const chat = {
     "Continue this coding-agent chat in the Studio desktop app.",
   "chat.input.cmsModeNoChat":
     "This draft has no dev environment yet, so there's nothing for the agent to edit.",
-  "chat.input.startCoding": "Start coding",
+  "chat.input.startCoding": "Start vibecoding",
   "chat.input.readOnlyOthersChat":
     "Read only - you're viewing someone else's chat",
   "chat.input.readOnlyOthersChatNamed":

@@ -9,42 +9,27 @@ describe("resolveSidePanelToggles", () => {
         cmsModeActive: false,
         navV2: false,
       }),
-    ).toEqual({
-      cms: false,
-      code: false,
-      chat: true,
-      startsDevEnvironment: false,
-    });
+    ).toEqual({ mode: false, chat: true, startsDevEnvironment: false });
   });
 
-  test("a sandbox-less CMS draft offers both halves, Code provisioning", () => {
+  test("a sandbox-less CMS draft offers the mode control, provisioning", () => {
     expect(
       resolveSidePanelToggles({
         cmsCapable: true,
         cmsModeActive: true,
         navV2: false,
       }),
-    ).toEqual({
-      cms: true,
-      code: true,
-      chat: false,
-      startsDevEnvironment: true,
-    });
+    ).toEqual({ mode: true, chat: false, startsDevEnvironment: true });
   });
 
-  test("a CMS draft with a pod offers both halves, Code just opening", () => {
+  test("a CMS draft with a pod offers the mode control, just opening", () => {
     expect(
       resolveSidePanelToggles({
         cmsCapable: true,
         cmsModeActive: false,
         navV2: false,
       }),
-    ).toEqual({
-      cms: true,
-      code: true,
-      chat: false,
-      startsDevEnvironment: false,
-    });
+    ).toEqual({ mode: true, chat: false, startsDevEnvironment: false });
   });
 
   /**
@@ -52,7 +37,7 @@ describe("resolveSidePanelToggles", () => {
    * the Code toggle on exactly the drafts that needed it, leaving the switch
    * reachable only by hand-editing `?sidepanel=`.
    */
-  test("provisioning a sandbox never adds or removes a toggle", () => {
+  test("provisioning a sandbox never adds or removes a control", () => {
     const before = resolveSidePanelToggles({
       cmsCapable: true,
       cmsModeActive: true,
@@ -63,9 +48,8 @@ describe("resolveSidePanelToggles", () => {
       cmsModeActive: false,
       navV2: false,
     });
-    expect({ cms: after.cms, code: after.code, chat: after.chat }).toEqual({
-      cms: before.cms,
-      code: before.code,
+    expect({ mode: after.mode, chat: after.chat }).toEqual({
+      mode: before.mode,
       chat: before.chat,
     });
   });
@@ -85,13 +69,13 @@ describe("resolveSidePanelToggles under the first-class navigation", () => {
 
   /** Collapse answers WHETHER; the pair answers WHICH. Dropping it would leave
    *  a CMS project unable to choose a surface at all. */
-  test("a CMS project keeps both halves of the mode pair", () => {
+  test("a CMS project keeps the mode control", () => {
     const set = resolveSidePanelToggles({
       cmsCapable: true,
       cmsModeActive: true,
       navV2: true,
     });
-    expect({ cms: set.cms, code: set.code }).toEqual({ cms: true, code: true });
+    expect(set.mode).toBe(true);
     expect(set.startsDevEnvironment).toBe(true);
   });
 });

@@ -12,6 +12,7 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
+import { SplitButton } from "@decocms/ui/components/split-button.tsx";
 import { HeaderTabButton } from "@/layouts/main-panel-tabs/header-tab-button";
 import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t";
@@ -28,11 +29,21 @@ export interface ChatToggleProps {
   disableActiveSidePanelToggle?: boolean;
 }
 
-export interface CodeToggleProps extends ChatToggleProps {
-  /** The draft has no dev environment yet, so opening this one provisions it. */
+export interface ModeSplitButtonProps {
+  /** The panel's occupant, or null while it is closed. */
+  sidePanel: SidePanelKind | null;
+  /** The occupant the body toggles — the live one, or the remembered one while
+   *  the panel is closed (`?sidepanel=0` keeps no kind). */
+  mode: SidePanelKind;
+  toggleSidePanel: (sidePanel: SidePanelKind) => void;
+  /** Opens without the toggle's close-on-same-kind behaviour: picking the mode
+   *  you are already in must not collapse the panel. */
+  openSidePanel: (sidePanel: SidePanelKind) => void;
+  /** The draft has no dev environment yet, so choosing vibecoding provisions it. */
   needsDevEnvironment: boolean;
   /** Provision it. Called before the panel opens; safe to call while pending. */
   onStart: () => void;
+  disableActiveSidePanelToggle?: boolean;
 }
 
 /**
@@ -68,76 +79,90 @@ export function ChatToggle({
 }
 
 /**
- * CMS toggle — the side-panel occupant on projects where CMS mode is available.
- * A sibling of {@link ChatToggle} rather than a branch inside it, so neither
- * surface has to reason about the other's project type.
+ * The mode control — one split button standing in for the CMS/vibecoding pair.
  *
- * It carries `TOUR_ANCHORS.edit`, which the CMS tour uses as its readiness gate
- * — the anchor moved here from the preview toolbar's Edit-content button.
- */
-export function CmsToggle({
-  sidePanel,
-  toggleSidePanel,
-  disableActiveSidePanelToggle = false,
-}: ChatToggleProps) {
-  const t = useT();
-  return (
-    <HeaderTabButton
-      title={t("agentShellLayout.toggleButtons.cms")}
-      icon={{ kind: "component", Component: PuzzlePiece01 }}
-      active={sidePanel === "cms"}
-      disabled={disableActiveSidePanelToggle && sidePanel === "cms"}
-      labelCollapse="sooner"
-      dataTour={TOUR_ANCHORS.edit}
-      className="h-10 md:h-7 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
-      onClick={() => {
-        track("agent_toolbar_toggled", {
-          button: "cms",
-          next_state: sidePanel === "cms" ? "closed" : "open",
-        });
-        toggleSidePanel("cms");
-      }}
-    />
-  );
-}
-
-/**
- * Code toggle — the vibecoding half of the CMS/Code pair, shown only on
- * projects that have both. It is the SWITCH: on a draft with no dev
- * environment, clicking it provisions one and opens the agent chat, so the two
- * modes are one click apart in both directions.
+ *   body  → collapse or reopen the side panel, on the mode it already shows
+ *   caret → choose the mode
  *
- * A plain {@link ChatToggle} can't do this job — it renders as "Chat", which
- * reads as a feature rather than a mode, and a CMS draft has no chat to open
- * until a pod exists. Labelling it "Code" is what makes the pair legible as
- * two modes of the same draft.
+ * That division is deliberate. Collapsing is a many-times-a-session action and
+ * gets the wide target; choosing a mode happens about once per draft and sits
+ * behind a caret, which is the only thing a caret has ever meant. The earlier
+ * arrangement — two tab buttons — read as two features rather than two modes of
+ * one draft, and had nowhere to say that vibecoding must first be provisioned.
+ *
+ * `mode` is passed in rather than read off `sidePanel`, which goes null when the
+ * panel closes: the body has to keep toggling the occupant the user left.
  */
-export function CodeToggle({
+export function ModeSplitButton({
   sidePanel,
+  mode,
   toggleSidePanel,
-  disableActiveSidePanelToggle = false,
+  openSidePanel,
   needsDevEnvironment,
   onStart,
-}: CodeToggleProps) {
+  disableActiveSidePanelToggle = false,
+}: ModeSplitButtonProps) {
   const t = useT();
+  const isCms = mode === "cms";
+  const pick = (kind: SidePanelKind) => {
+    track("agent_toolbar_mode_picked", { mode: kind });
+    // Provision before opening: the panel it reveals is the agent composer,
+    // which stays a "start vibecoding" prompt until the branch has a pod.
+    if (kind === "chat" && needsDevEnvironment) onStart();
+    openSidePanel(kind);
+  };
+
   return (
-    <HeaderTabButton
-      title={t("agentShellLayout.toggleButtons.code")}
-      icon={{ kind: "component", Component: Code01 }}
-      active={sidePanel === "chat"}
-      disabled={disableActiveSidePanelToggle && sidePanel === "chat"}
-      labelCollapse="sooner"
-      className="h-10 md:h-7 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
+    <SplitButton
+      variant="ghost"
+      size="sm"
+      label={t(
+        isCms
+          ? "agentShellLayout.toggleButtons.cms"
+          : "agentShellLayout.toggleButtons.vibecoding",
+      )}
+      icon={
+        isCms ? (
+          <PuzzlePiece01 className="size-3.5" />
+        ) : (
+          <Code01 className="size-3.5" />
+        )
+      }
+      disabled={disableActiveSidePanelToggle && sidePanel === mode}
       onClick={() => {
         track("agent_toolbar_toggled", {
-          button: "code",
-          next_state: sidePanel === "chat" ? "closed" : "open",
+          button: mode === "cms" ? "cms" : "vibecoding",
+          next_state: sidePanel === mode ? "closed" : "open",
         });
-        // Provision first: the panel it opens is the agent composer, which
-        // stays a "Start coding" prompt until the branch has a pod.
-        if (needsDevEnvironment && sidePanel !== "chat") onStart();
-        toggleSidePanel("chat");
+        toggleSidePanel(mode);
       }}
+      menuAriaLabel={t("agentShellLayout.toggleButtons.chooseMode")}
+      dataTour={TOUR_ANCHORS.edit}
+      className="h-10 md:h-7"
+      items={[
+        {
+          key: "cms",
+          label: t("agentShellLayout.toggleButtons.cms"),
+          description: t("agentShellLayout.toggleButtons.cmsDescription"),
+          selected: isCms,
+          onSelect: () => pick("cms"),
+        },
+        {
+          key: "chat",
+          label: t(
+            needsDevEnvironment
+              ? "agentShellLayout.toggleButtons.startVibecoding"
+              : "agentShellLayout.toggleButtons.vibecoding",
+          ),
+          description: t(
+            needsDevEnvironment
+              ? "agentShellLayout.toggleButtons.startVibecodingDescription"
+              : "agentShellLayout.toggleButtons.vibecodingDescription",
+          ),
+          selected: !isCms,
+          onSelect: () => pick("chat"),
+        },
+      ]}
     />
   );
 }

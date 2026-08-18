@@ -1,7 +1,7 @@
 "use client";
 
 import type * as React from "react";
-import { ChevronDown } from "@untitledui/icons";
+import { Check, ChevronDown } from "@untitledui/icons";
 
 import { cn } from "../lib/utils.ts";
 import { Button } from "./button.tsx";
@@ -26,6 +26,13 @@ export interface SplitButtonMenuItem {
   tooltip?: string;
   /** Rendered before the label. */
   icon?: React.ReactNode;
+  /** Secondary line under the label, for items that need a consequence spelled
+   *  out rather than guessed at. Stacks the entry; omit for a plain row. */
+  description?: React.ReactNode;
+  /** Marks the item as the current choice — a check occupies a reserved gutter.
+   *  Set it on EVERY item of a group, not just the active one, so the labels
+   *  stay aligned whichever is selected. */
+  selected?: boolean;
 }
 
 export interface SplitButtonProps {
@@ -50,18 +57,38 @@ export interface SplitButtonProps {
   /** Accessible name for the chevron trigger. Required: this package is i18n-free. */
   menuAriaLabel: string;
   className?: string;
+  /** `data-tour` anchor for product tours, set on the control's outer group so
+   *  a highlight covers both halves. The package owns no tour names. */
+  dataTour?: string;
 }
 
 function SplitButtonMenuEntry({ item }: { item: SplitButtonMenuItem }) {
+  const marksSelection = item.selected !== undefined;
   const entry = (
     <DropdownMenuItem
       disabled={item.disabled}
       onSelect={() => {
         item.onSelect();
       }}
+      className={cn(item.description && "items-start")}
     >
+      {marksSelection ? (
+        <Check
+          className={cn("size-3.5 shrink-0", !item.selected && "opacity-0")}
+          aria-hidden={!item.selected}
+        />
+      ) : null}
       {item.icon}
-      {item.label}
+      {item.description ? (
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span>{item.label}</span>
+          <span className="text-xs text-muted-foreground">
+            {item.description}
+          </span>
+        </span>
+      ) : (
+        item.label
+      )}
     </DropdownMenuItem>
   );
 
@@ -97,6 +124,7 @@ export function SplitButton({
   items,
   menuAriaLabel,
   className,
+  dataTour,
 }: SplitButtonProps) {
   const hasMenu = (items?.length ?? 0) > 0;
 
@@ -118,6 +146,7 @@ export function SplitButton({
 
   return (
     <ButtonGroup
+      data-tour={dataTour}
       className={cn(
         pulse &&
           "animate-pulse-brightness motion-reduce:animate-none motion-reduce:opacity-80",
