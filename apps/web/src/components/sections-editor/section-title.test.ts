@@ -50,6 +50,58 @@ describe("resolveSectionTitleTemplate", () => {
   test("returns undefined for an unknown resolveType", () => {
     expect(resolveSectionTitleTemplate("nope/x.tsx", meta())).toBeUndefined();
   });
+
+  test("a template on the section's own definition wins over Props", () => {
+    const rt = "site/sections/Own.tsx";
+    const m: LiveMeta = {
+      manifest: { blocks: {} },
+      schema: {
+        definitions: {
+          [btoa(rt)]: {
+            title: "Own {{a}}",
+            allOf: [{ $ref: "#/definitions/OwnProps" }],
+          },
+          OwnProps: { title: "Props {{b}}" },
+        },
+      },
+    };
+    expect(resolveSectionTitleTemplate(rt, m)).toBe("Own {{a}}");
+  });
+
+  test("falls through a plain own title to a Props template", () => {
+    const rt = "site/sections/Mixed.tsx";
+    const m: LiveMeta = {
+      manifest: { blocks: {} },
+      schema: {
+        definitions: {
+          [btoa(rt)]: {
+            title: "Plain Own Title",
+            allOf: [{ $ref: "#/definitions/MixedProps" }],
+          },
+          MixedProps: { title: "Props {{b}}" },
+        },
+      },
+    };
+    expect(resolveSectionTitleTemplate(rt, m)).toBe("Props {{b}}");
+  });
+
+  test("reads schema from $defs when definitions is absent", () => {
+    const rt = "site/sections/Defs.tsx";
+    const m: LiveMeta = {
+      manifest: { blocks: {} },
+      schema: { $defs: { [btoa(rt)]: { title: "Defs {{a}}" } } },
+    };
+    expect(resolveSectionTitleTemplate(rt, m)).toBe("Defs {{a}}");
+  });
+
+  test("returns undefined when the schema has no definitions", () => {
+    expect(
+      resolveSectionTitleTemplate(DEPARTMENT_SHOP_RT, {
+        manifest: { blocks: {} },
+        schema: {},
+      }),
+    ).toBeUndefined();
+  });
 });
 
 describe("getSectionDisplayTitle", () => {
@@ -111,5 +163,46 @@ describe("getSectionDisplayTitle", () => {
   test("falls back to undefined for a plain-titled section", () => {
     const raw = { __resolveType: PLAIN_RT };
     expect(getSectionDisplayTitle(raw, meta())).toBeUndefined();
+  });
+
+  test("collapses an object-valued prop to empty instead of [object Object]", () => {
+    const rt = "site/sections/Obj.tsx";
+    const m: LiveMeta = {
+      manifest: { blocks: {} },
+      schema: { definitions: { [btoa(rt)]: { title: "Banner {{img}}" } } },
+    };
+    const raw = {
+      __resolveType: rt,
+      img: { "@type": "ImageObject", url: "x" },
+    };
+    expect(getSectionDisplayTitle(raw, m)).toBe("Banner");
+  });
+
+  test("comma-joins a scalar array prop", () => {
+    const rt = "site/sections/Tags.tsx";
+    const m: LiveMeta = {
+      manifest: { blocks: {} },
+      schema: { definitions: { [btoa(rt)]: { title: "Tags {{tags}}" } } },
+    };
+    const raw = { __resolveType: rt, tags: ["a", "b"] };
+    expect(getSectionDisplayTitle(raw, m)).toBe("Tags a,b");
+  });
+
+  test("returns undefined when the template renders to only whitespace", () => {
+    const rt = "site/sections/Blank.tsx";
+    const m: LiveMeta = {
+      manifest: { blocks: {} },
+      schema: { definitions: { [btoa(rt)]: { title: "{{#a}}{{a}}{{/a}}" } } },
+    };
+    expect(getSectionDisplayTitle({ __resolveType: rt }, m)).toBeUndefined();
+  });
+
+  test("returns undefined when the template is malformed (render throws)", () => {
+    const rt = "site/sections/Bad.tsx";
+    const m: LiveMeta = {
+      manifest: { blocks: {} },
+      schema: { definitions: { [btoa(rt)]: { title: "Bad {{#a}}unclosed" } } },
+    };
+    expect(getSectionDisplayTitle({ __resolveType: rt }, m)).toBeUndefined();
   });
 });
