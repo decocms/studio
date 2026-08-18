@@ -470,6 +470,11 @@ func Edit(deps FsDeps) http.HandlerFunc {
 	}
 }
 
+const (
+	grepDefaultResultLimit = 250
+	grepMaxResultLimit     = 10000
+)
+
 func Grep(deps FsDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
@@ -520,9 +525,12 @@ func Grep(deps FsDeps) http.HandlerFunc {
 		}
 		args = append(args, "--", body.Pattern, searchPath)
 
-		limit := 250
+		limit := grepDefaultResultLimit
 		if body.Limit > 0 {
 			limit = body.Limit
+			if limit > grepMaxResultLimit {
+				limit = grepMaxResultLimit
+			}
 		}
 
 		cmd := exec.Command("rg", args...)
