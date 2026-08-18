@@ -88,7 +88,7 @@ function indexPromptsByName() {
  * no prompts (or an unreachable gateway) still get one fallback card so every
  * configured default home agent shows up on the home row.
  */
-async function defaultHomeAgentNextActions(
+export async function defaultHomeAgentNextActions(
   orgId: string,
   ctx: StudioContext,
   skipAgentIds: Set<string>,
@@ -101,7 +101,10 @@ async function defaultHomeAgentNextActions(
     uniqueIds.map(
       async (id): Promise<{ prompts: PromptEntry[]; tiles: TileEntry[] }> => {
         const virtualMcp = await ctx.storage.virtualMcps.findById(id);
-        if (!virtualMcp) return { prompts: [], tiles: [] };
+        // findById has no org filter — a foreign id must not leak that org's agent.
+        if (!virtualMcp || virtualMcp.organization_id !== orgId) {
+          return { prompts: [], tiles: [] };
+        }
 
         const tiles: TileEntry[] = getHomeTiles(virtualMcp.metadata?.ui)
           .filter((t) => t?.resourceUri && t.connectionId)
