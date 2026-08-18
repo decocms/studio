@@ -36,6 +36,41 @@ const lifecycle = {
   canAutoRestart: false,
 };
 
+describe("claim TTL renewal", () => {
+  test("renews on the first op, then throttles", async () => {
+    const renewed: string[] = [];
+    const provider = {
+      kind: "agent-sandbox",
+      proxyDaemonRequest: async () =>
+        new Response(JSON.stringify({ ok: true, bytesWritten: 1 }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      renewTtl: async (handle: string) => {
+        renewed.push(handle);
+      },
+    } as unknown as SandboxProvider;
+
+    const hooks = createSandboxFsHooks(provider, lifecycle);
+    // Without this a hosted-harness run holds no claim at all and the operator
+    // reaps the pod 15 minutes in, mid-run (prod thread 38147122, 2026-08-16).
+    await hooks.onWrite("/app/a.ts", "a");
+    await hooks.onWrite("/app/b.ts", "b");
+    await hooks.onWrite("/app/c.ts", "c");
+    expect(renewed).toEqual(["handle-1"]);
+  });
+
+  test("is inert for a provider that has no renewTtl", async () => {
+    const captured: { path?: string; body?: unknown } = {};
+    const hooks = createSandboxFsHooks(
+      fakeProvider(captured, { ok: true, bytesWritten: 1 }),
+      lifecycle,
+    );
+    await hooks.onWrite("/app/a.ts", "a");
+    expect(captured.path).toBe("/_sandbox/write");
+  });
+});
+
 describe("createSandboxFsHooks", () => {
   test("onRead proxies /_sandbox/read and returns content", async () => {
     const captured: { path?: string; body?: unknown } = {};

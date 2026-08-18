@@ -146,6 +146,14 @@ const DAEMON_BASH_MAX_TIMEOUT_MS = 120_000; // daemon clamp (daemon/routes/bash.
 const DAEMON_DEFAULT_TIMEOUT_MS = 30_000; // daemon default (daemon/routes/bash.ts)
 const OP_GRACE_MS = 15_000;
 
+/**
+ * Floor on how often sandbox activity re-arms the claim's shutdown deadline.
+ * Same cadence (and reasoning) as the dispatch path's `TTL_RENEW_MS`:
+ * comfortably inside the 15-minute claim TTL, so a missed renewal still leaves
+ * two more chances before the operator reaps the pod.
+ */
+const TTL_RENEW_MS = 5 * 60_000;
+
 export function opDeadlineMs(input: Record<string, unknown>): number {
   const budget =
     typeof input.timeout === "number" && input.timeout > 0
@@ -339,6 +347,32 @@ export function createSandboxFsHooks(
 ): SandboxFsHooks {
   const { ensureHandle, invalidateHandle, canAutoRestart } = lifecycle;
 
+  // Hold the claim open while a HOSTED harness is driving this sandbox.
+  //
+  // A claim dies at `spec.lifecycle.shutdownTime` (now + 15min) unless
+  // something pushes it out. The two things that did were the preview SSE
+  // handler (a browser attached to the sandbox iframe) and `/dispatch`
+  // streaming (a harness running INSIDE the pod). A hosted harness — decopilot
+  // driving the sandbox over these fs/exec routes — is neither, so nothing
+  // renewed it: at minute 15 the operator deleted the claim mid-run and the pod
+  // came back reset, losing the working tree and `.deco/tools/` under a run that
+  // was still going.
+  //
+  // Activity-driven rather than a timer: no interval to leak or dispose, and a
+  // run that stops touching the sandbox correctly stops holding it.
+  let lastRenewAt = 0;
+  const renewTtl = (handle: string): void => {
+    if (!provider.renewTtl) return;
+    const now = Date.now();
+    if (now - lastRenewAt < TTL_RENEW_MS) return;
+    lastRenewAt = now;
+    void provider.renewTtl(handle).catch((err) => {
+      console.warn(
+        `[sandbox-fs-hooks] TTL renew failed for ${handle}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
+  };
+
   const formatUnreachableMessage = (cause: unknown): string => {
     const detail = cause instanceof Error ? cause.message : String(cause);
     return canAutoRestart
@@ -359,6 +393,7 @@ export function createSandboxFsHooks(
         threadId: lifecycle.threadId,
       });
     const firstHandle = await ensureHandle();
+    renewTtl(firstHandle);
     try {
       return await tryOnce(firstHandle);
     } catch (firstErr) {
