@@ -340,220 +340,244 @@ function InfraBillingContent() {
         </Card>
       )}
 
-      <SettingsSection title={t("settings.infraBilling.summaryTitle")}>
-        <div className="flex flex-col lg:flex-row gap-4 px-4">
-          <Card className="flex-1 flex flex-col gap-4 p-4">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <CreditCard01 size={16} className="text-muted-foreground" />
-                <span className="text-sm font-medium">
-                  {t("settings.infraBilling.detailsTitle")}
-                </span>
-              </div>
-              {billing?.canManageSubscription && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={portal.isPending}
-                  onClick={() => portal.mutate(selected)}
-                >
-                  {t("settings.infraBilling.manageButton")}
-                </Button>
-              )}
-            </div>
-            <div className="flex flex-col gap-2 text-sm">
-              {billing ? (
-                <>
-                  <div className="flex justify-between gap-3">
-                    <span className="text-muted-foreground">
-                      {t("settings.infraBilling.currentPlan")}
+      {selected.length > 0 && (
+        <>
+          <SettingsSection title={t("settings.infraBilling.summaryTitle")}>
+            <div className="flex flex-col lg:flex-row gap-4 px-4">
+              <Card className="flex-1 flex flex-col gap-4 p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <CreditCard01 size={16} className="text-muted-foreground" />
+                    <span className="text-sm font-medium">
+                      {t("settings.infraBilling.detailsTitle")}
                     </span>
-                    {isLoading ? (
-                      <Skeleton className="h-5 w-16" />
-                    ) : (
-                      <Badge
-                        variant={
-                          billing.planType === "free" ? "secondary" : "success"
-                        }
-                      >
-                        {t(`settings.infraBilling.plan.${billing.planType}`)}
-                      </Badge>
-                    )}
                   </div>
+                  {billing?.canManageSubscription && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={portal.isPending}
+                      onClick={() => portal.mutate(selected)}
+                    >
+                      {t("settings.infraBilling.manageButton")}
+                    </Button>
+                  )}
+                </div>
+                <div className="flex flex-col gap-2 text-sm">
+                  {billing ? (
+                    <>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-muted-foreground">
+                          {t("settings.infraBilling.currentPlan")}
+                        </span>
+                        {isLoading ? (
+                          <Skeleton className="h-5 w-16" />
+                        ) : (
+                          <Badge
+                            variant={
+                              billing.planType === "free"
+                                ? "secondary"
+                                : "success"
+                            }
+                          >
+                            {t(
+                              `settings.infraBilling.plan.${billing.planType}`,
+                            )}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-muted-foreground">
+                          {t("settings.infraBilling.nextBilling")}
+                        </span>
+                        <span className="font-medium tabular-nums">
+                          {billing.nextBillingDate
+                            ? new Date(
+                                `${billing.nextBillingDate}T00:00:00Z`,
+                              ).toLocaleDateString(undefined, {
+                                day: "numeric",
+                                month: "short",
+                                year: "numeric",
+                                timeZone: "UTC",
+                              })
+                            : "—"}
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    !isLoading && (
+                      <p className="text-xs text-muted-foreground">
+                        {billingMessage}
+                      </p>
+                    )
+                  )}
                   <div className="flex justify-between gap-3">
                     <span className="text-muted-foreground">
-                      {t("settings.infraBilling.nextBilling")}
+                      {t("settings.infraBilling.requestsPerPageview")}
                     </span>
                     <span className="font-medium tabular-nums">
-                      {billing.nextBillingDate
-                        ? new Date(
-                            `${billing.nextBillingDate}T00:00:00Z`,
-                          ).toLocaleDateString(undefined, {
-                            day: "numeric",
-                            month: "short",
-                            year: "numeric",
-                            timeZone: "UTC",
-                          })
-                        : "—"}
+                      {requestRatio}
                     </span>
                   </div>
-                </>
-              ) : (
-                !isLoading && (
-                  <p className="text-xs text-muted-foreground">
-                    {billingMessage}
-                  </p>
-                )
-              )}
-              <div className="flex justify-between gap-3">
-                <span className="text-muted-foreground">
-                  {t("settings.infraBilling.requestsPerPageview")}
-                </span>
-                <span className="font-medium tabular-nums">{requestRatio}</span>
-              </div>
+                </div>
+              </Card>
+
+              {metrics.map((metric) => (
+                <Card
+                  key={metric.key}
+                  className="flex-1 flex flex-col gap-2 p-4"
+                >
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-sm font-medium">{metric.title}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {months.find((m) => m.value === period)?.label}
+                    </span>
+                  </div>
+                  {isLoading ? (
+                    <Skeleton className="h-8 w-24" />
+                  ) : (
+                    <span className="text-2xl font-semibold tabular-nums">
+                      {metric.total}
+                    </span>
+                  )}
+                  <div className="-mx-2">
+                    <UsageChart
+                      usage={usage}
+                      metric={metric.key}
+                      colorNum={metric.colorNum}
+                      formatValue={formatFor(metric.key)}
+                      height={64}
+                    />
+                  </div>
+                </Card>
+              ))}
             </div>
-          </Card>
+          </SettingsSection>
 
-          {metrics.map((metric) => (
-            <Card key={metric.key} className="flex-1 flex flex-col gap-2 p-4">
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="text-sm font-medium">{metric.title}</span>
-                <span className="text-xs text-muted-foreground">
-                  {months.find((m) => m.value === period)?.label}
-                </span>
-              </div>
-              {isLoading ? (
-                <Skeleton className="h-8 w-24" />
+          <SettingsSection title={t("settings.infraBilling.metricsTitle")}>
+            <div className="flex flex-col xl:flex-row gap-4 px-4">
+              {metrics.map((metric) => (
+                <Card
+                  key={metric.key}
+                  className="flex-1 flex flex-col gap-3 p-4"
+                >
+                  <div className="flex flex-col gap-1">
+                    <span className="text-sm font-medium">{metric.title}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {metric.description}
+                    </span>
+                  </div>
+                  <UsageChart
+                    usage={usage}
+                    metric={metric.key}
+                    colorNum={metric.colorNum}
+                    formatValue={formatFor(metric.key)}
+                    height={220}
+                  />
+                </Card>
+              ))}
+            </div>
+          </SettingsSection>
+
+          <SettingsSection title={t("settings.infraBilling.invoicesTitle")}>
+            <Card className="mx-4 overflow-x-auto">
+              {!data ? (
+                <Skeleton className="m-4 h-24" />
+              ) : (billing?.invoices.length ?? 0) === 0 ? (
+                <p className="p-4 text-sm text-muted-foreground">
+                  {billing
+                    ? t("settings.infraBilling.noInvoices")
+                    : billingMessage}
+                </p>
               ) : (
-                <span className="text-2xl font-semibold tabular-nums">
-                  {metric.total}
-                </span>
-              )}
-              <div className="-mx-2">
-                <UsageChart
-                  usage={usage}
-                  metric={metric.key}
-                  colorNum={metric.colorNum}
-                  formatValue={formatFor(metric.key)}
-                  height={64}
-                />
-              </div>
-            </Card>
-          ))}
-        </div>
-      </SettingsSection>
-
-      <SettingsSection title={t("settings.infraBilling.metricsTitle")}>
-        <div className="flex flex-col xl:flex-row gap-4 px-4">
-          {metrics.map((metric) => (
-            <Card key={metric.key} className="flex-1 flex flex-col gap-3 p-4">
-              <div className="flex flex-col gap-1">
-                <span className="text-sm font-medium">{metric.title}</span>
-                <span className="text-xs text-muted-foreground">
-                  {metric.description}
-                </span>
-              </div>
-              <UsageChart
-                usage={usage}
-                metric={metric.key}
-                colorNum={metric.colorNum}
-                formatValue={formatFor(metric.key)}
-                height={220}
-              />
-            </Card>
-          ))}
-        </div>
-      </SettingsSection>
-
-      <SettingsSection title={t("settings.infraBilling.invoicesTitle")}>
-        <Card className="mx-4 overflow-x-auto">
-          {!data ? (
-            <Skeleton className="m-4 h-24" />
-          ) : (billing?.invoices.length ?? 0) === 0 ? (
-            <p className="p-4 text-sm text-muted-foreground">
-              {billing ? t("settings.infraBilling.noInvoices") : billingMessage}
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>
-                    {t("settings.infraBilling.invoiceReference")}
-                  </TableHead>
-                  <TableHead>{t("settings.infraBilling.invoiceDue")}</TableHead>
-                  <TableHead>
-                    {t("settings.infraBilling.invoiceAmount")}
-                  </TableHead>
-                  <TableHead>
-                    {t("settings.infraBilling.invoiceStatus")}
-                  </TableHead>
-                  <TableHead>
-                    {t("settings.infraBilling.invoiceDocuments")}
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(billing?.invoices ?? []).map((invoice) => (
-                  <TableRow key={invoice.id}>
-                    <TableCell>
-                      {invoice.referenceMonth
-                        ? utcDay(invoice.referenceMonth).toLocaleDateString(
-                            undefined,
-                            { month: "long", year: "numeric", timeZone: "UTC" },
-                          )
-                        : "—"}
-                    </TableCell>
-                    <TableCell>
-                      {invoice.dueDate
-                        ? utcDay(invoice.dueDate).toLocaleDateString(
-                            undefined,
-                            {
-                              day: "numeric",
-                              month: "short",
-                              year: "numeric",
-                              timeZone: "UTC",
-                            },
-                          )
-                        : "—"}
-                    </TableCell>
-                    <TableCell className="tabular-nums">
-                      {CURRENCY_FMT.format(invoice.value)}
-                    </TableCell>
-                    <TableCell>
-                      <InvoiceStatus status={invoice.status} />
-                    </TableCell>
-                    <TableCell className="flex gap-2">
-                      {invoice.nfUrl && (
-                        <DocumentLink
-                          href={invoice.nfUrl}
-                          label={t("settings.infraBilling.invoiceNf")}
-                        />
-                      )}
-                      {invoice.bankSlipUrl && (
-                        <DocumentLink
-                          href={invoice.bankSlipUrl}
-                          label={t("settings.infraBilling.invoiceBankSlip")}
-                        />
-                      )}
-                      {!invoice.bankSlipUrl &&
-                        !teamUsesBankSlip &&
-                        invoice.nfUrl && (
-                          <DocumentLink
-                            href={BANK_TRANSFER_PDF_URL}
-                            label={t(
-                              "settings.infraBilling.invoiceBankTransfer",
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>
+                        {t("settings.infraBilling.invoiceReference")}
+                      </TableHead>
+                      <TableHead>
+                        {t("settings.infraBilling.invoiceDue")}
+                      </TableHead>
+                      <TableHead>
+                        {t("settings.infraBilling.invoiceAmount")}
+                      </TableHead>
+                      <TableHead>
+                        {t("settings.infraBilling.invoiceStatus")}
+                      </TableHead>
+                      <TableHead>
+                        {t("settings.infraBilling.invoiceDocuments")}
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(billing?.invoices ?? []).map((invoice) => (
+                      <TableRow key={invoice.id}>
+                        <TableCell>
+                          {invoice.referenceMonth
+                            ? utcDay(invoice.referenceMonth).toLocaleDateString(
+                                undefined,
+                                {
+                                  month: "long",
+                                  year: "numeric",
+                                  timeZone: "UTC",
+                                },
+                              )
+                            : "—"}
+                        </TableCell>
+                        <TableCell>
+                          {invoice.dueDate
+                            ? utcDay(invoice.dueDate).toLocaleDateString(
+                                undefined,
+                                {
+                                  day: "numeric",
+                                  month: "short",
+                                  year: "numeric",
+                                  timeZone: "UTC",
+                                },
+                              )
+                            : "—"}
+                        </TableCell>
+                        <TableCell className="tabular-nums">
+                          {CURRENCY_FMT.format(invoice.value)}
+                        </TableCell>
+                        <TableCell>
+                          <InvoiceStatus status={invoice.status} />
+                        </TableCell>
+                        <TableCell className="flex gap-2">
+                          {invoice.nfUrl && (
+                            <DocumentLink
+                              href={invoice.nfUrl}
+                              label={t("settings.infraBilling.invoiceNf")}
+                            />
+                          )}
+                          {invoice.bankSlipUrl && (
+                            <DocumentLink
+                              href={invoice.bankSlipUrl}
+                              label={t("settings.infraBilling.invoiceBankSlip")}
+                            />
+                          )}
+                          {!invoice.bankSlipUrl &&
+                            !teamUsesBankSlip &&
+                            invoice.nfUrl && (
+                              <DocumentLink
+                                href={BANK_TRANSFER_PDF_URL}
+                                label={t(
+                                  "settings.infraBilling.invoiceBankTransfer",
+                                )}
+                              />
                             )}
-                          />
-                        )}
-                      {!invoice.nfUrl && !invoice.bankSlipUrl && "—"}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </Card>
-      </SettingsSection>
+                          {!invoice.nfUrl && !invoice.bankSlipUrl && "—"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </Card>
+          </SettingsSection>
+        </>
+      )}
     </div>
   );
 }
