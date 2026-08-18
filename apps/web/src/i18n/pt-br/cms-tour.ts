@@ -23,7 +23,7 @@ export const cmsTour = {
   "cmsTour.submit.title": "Enviar para revisão",
   "cmsTour.submit.description":
     "Envie suas mudanças como um pull request para o time revisar antes de irem ao ar.",
-  "cmsTour.publish.title": "Publicar",
+  "cmsTour.publish.title": "Revisar e publicar",
   "cmsTour.publish.description":
     "Publique suas mudanças no site quando estiverem prontas.",
   "cmsTour.next": "Próximo",

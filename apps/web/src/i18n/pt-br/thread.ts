@@ -69,7 +69,7 @@ export const thread = {
   "thread.gitTab.merged": "✓ Mesclado",
   "thread.gitTab.noBranchSelected": "Nenhuma branch selecionada.",
   "thread.gitTab.noPrYet":
-    'Esta branch não tem uma pull request aberta. Clique em "Enviar para revisão" no cabeçalho para abrir uma; o agente rascunhará o título e resumo do estado atual da branch.',
+    'Esta branch não tem uma pull request aberta. Use "Revisar e publicar" no cabeçalho (ou "Enviar para revisão" no menu) para abrir uma; o agente rascunhará o título e resumo do estado atual da branch.',
   "thread.gitTab.notLinkedToGithub":
     "Este virtualmcp não está vinculado a um repositório GitHub.",
   "thread.gitTab.openBranchOnGithub": "Abrir branch no GitHub",
@@ -78,7 +78,6 @@ export const thread = {
     "Escolha uma branch no cabeçalho para ver o status da PR.",
   "thread.gitTab.prNumber": "PR #{number}",
   "thread.headerActions.addressFeedback": "Tratar feedback",
-  "thread.headerActions.awaitingReview": "Aguardando revisão",
   "thread.headerActions.branchInSyncTooltip": "Branch sincronizada com {base}",
   "thread.headerActions.chatIsRunning": "Chat está em execução",
   "thread.headerActions.checkingOutTooltip": "Fazendo checkout de {branch}",
@@ -92,7 +91,7 @@ export const thread = {
   "thread.headerActions.failedToMergePullRequest":
     "Falha ao mesclar a pull request",
   "thread.headerActions.failingChecksTooltip": "Falhando: {checks}",
-  "thread.headerActions.fixTests": "Corrigir testes",
+  "thread.headerActions.fixChecks": "Corrigir checks",
   "thread.headerActions.githubConnectionRemoved":
     "A conexão do GitHub foi removida — revincula o repositório em Configurações para salvar alterações",
   "thread.headerActions.loading": "Carregando…",
@@ -104,39 +103,22 @@ export const thread = {
     "Marcar PR rascunho como pronto para revisão",
   "thread.headerActions.openNewPrTooltip":
     "Abrir um novo PR com os últimos commits",
-  "thread.headerActions.openPrForBranchTooltip":
-    "Abrir um PR para {branch} → {base}",
   "thread.headerActions.prMergedTooltip": "PR #{prNumber} mesclado em {base}",
   "thread.headerActions.publish": "Publicar",
-  "thread.headerActions.publishDirectlySkipReview":
-    "Publicar diretamente, pulando a revisão",
+  "thread.headerActions.publishAnyway": "Publicar mesmo assim",
   "thread.headerActions.publishedPr": "PR #{prNumber} publicado",
-  "thread.headerActions.sync": "Sincronizar",
-  "thread.headerActions.syncTooltip":
-    "Salva suas alterações e atualiza com o trabalho de todos",
-  "thread.headerActions.published": "Publicado",
-  "thread.headerActions.publishNeedsReview":
-    "Esta alteração precisa de revisão antes de publicar.",
   "thread.headerActions.publishToProduction": "Publicar em produção",
-  "thread.headerActions.pushAndOpenPrTooltip":
-    "Enviar e abrir um PR para {branch} → {base}",
-  "thread.headerActions.pushLocalCommitsTooltip":
-    "Enviar commits locais para o PR #{prNumber}",
   "thread.headerActions.reconnectGithub": "Reconectar GitHub",
-  "thread.headerActions.reviewingChanges": "Revisando alterações…",
+  "thread.headerActions.review": "Revisar",
   "thread.headerActions.saving": "Salvando…",
   "thread.headerActions.syncedWithBase": "Sincronizado com {base}",
-  "thread.headerActions.reopen": "Reabrir",
+  "thread.headerActions.reopenPr": "Reabrir PR",
   "thread.headerActions.reopenPrTooltip": "Reabrir PR #{prNumber}",
-  "thread.headerActions.resolveConflictsTooltip":
-    "Resolver conflitos com {base} antes de mesclar",
-  "thread.headerActions.runningTests": "Executando testes…",
   "thread.headerActions.squashMergeTooltip":
     "Squash-merge do PR #{prNumber} em {base}",
-  "thread.headerActions.startingSandbox": "Preparando ambiente…",
+  "thread.headerActions.startingSandbox": "Preparando sandbox…",
   "thread.headerActions.submitForReview": "Enviar para revisão",
   "thread.headerActions.switchingTo": "Mudando para {branch}…",
-  "thread.headerActions.syncWith": "Sincronizar com {base}",
   "thread.headerActions.unresolvedConversationsTooltip":
     "{count} conversa(s) não resolvida(s)",
   "thread.headerActions.upToDate": "Atualizado",
@@ -148,10 +130,6 @@ export const thread = {
     "Preparando seu ambiente — leva só um instante",
   "thread.headerActions.waitingForSandboxBranchTooltip":
     "Preparando seu ambiente — leva só um instante",
-  "thread.headerActions.waitingOnChecksTooltip":
-    "Aguardando {count} verificação(ões) terminar",
-  "thread.mergeSplitButton.moreActionsAriaLabel": "Mais ações",
-  "thread.mergeSplitButton.review": "Revisar",
   "thread.openInBoardButton.openTaskAriaLabel": "Abrir tarefa no quadro",
   "thread.openInBoardButton.openTaskInBoard": "Abrir tarefa no quadro",
   "thread.publishDialog.allChangesDiscarded":

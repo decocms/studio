@@ -21,7 +21,7 @@ export const cmsTour = {
   "cmsTour.submit.title": "Submit for review",
   "cmsTour.submit.description":
     "Send your changes as a pull request for your team to review before they go live.",
-  "cmsTour.publish.title": "Publish",
+  "cmsTour.publish.title": "Review & Publish",
   "cmsTour.publish.description":
     "Publish your changes to the live site once they're ready.",
   "cmsTour.next": "Next",

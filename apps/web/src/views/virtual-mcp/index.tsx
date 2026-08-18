@@ -1157,30 +1157,6 @@ function VirtualMcpDetailViewWithData({
                       />
                     </div>
                   )}
-                  {hasGithubRepo && (
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="space-y-0.5 min-w-0">
-                        <Label className="font-normal text-foreground">
-                          {t("virtualMcp.virtualMcp.teamSync")}
-                        </Label>
-                        <p className="text-xs text-muted-foreground">
-                          {t("virtualMcp.virtualMcp.teamSyncDescription")}
-                        </p>
-                      </div>
-                      <Switch
-                        className="shrink-0"
-                        checked={
-                          form.watch("metadata.syncButtonEnabled") ?? false
-                        }
-                        onCheckedChange={(checked) => {
-                          form.setValue("metadata.syncButtonEnabled", checked, {
-                            shouldDirty: true,
-                          });
-                          flushAndSave();
-                        }}
-                      />
-                    </div>
-                  )}
                   <FieldDescriptionTooltipsField control={form.control} />
                 </CardContent>
               </Card>
