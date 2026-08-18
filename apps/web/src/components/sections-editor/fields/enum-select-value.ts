@@ -22,6 +22,19 @@ export function selectValueToEnumOption(
   return match !== undefined ? match : value;
 }
 
+/**
+ * Maps a Select value to the form value written back. The clear option becomes
+ * `undefined` (unset the field); every other value delegates to
+ * {@link selectValueToEnumOption}.
+ */
+export function selectValueToFormValue(
+  value: string,
+  options: unknown[],
+): unknown {
+  if (value === ENUM_CLEAR_SELECT_VALUE) return undefined;
+  return selectValueToEnumOption(value, options);
+}
+
 export function formValueToSelectValue(
   value: unknown,
   options: unknown[],

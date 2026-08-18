@@ -2059,4 +2059,22 @@ describe("resolveSchema – required propagation", () => {
     expect(nested?.required).toContain("a");
     expect(nested?.required).toContain("b");
   });
+
+  test("does not mark a key required from only one anyOf branch", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      required: ["kind"],
+      properties: { kind: { type: "string", enum: ["x", "y"] } },
+      anyOf: [
+        { required: ["a"], properties: { a: { type: "string" } } },
+        { required: ["b"], properties: { b: { type: "string" } } },
+      ],
+    });
+
+    const resolved = resolveSchema("site/sections/Test.tsx", meta);
+    // The object's own required survives; branch-only requireds do not.
+    expect(resolved?.required).toContain("kind");
+    expect(resolved?.required).not.toContain("a");
+    expect(resolved?.required).not.toContain("b");
+  });
 });

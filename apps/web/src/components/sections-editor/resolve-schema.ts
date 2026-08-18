@@ -144,6 +144,13 @@ function isSectionLoaderArrayBranch(
 // `format` field natively this guard becomes a no-op.
 const VIDEO_WIDGET_REF_KEY = "VideoWidget";
 
+/** Coerce a raw JSON Schema `required`/`__required` value to string names. */
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((k): k is string => typeof k === "string")
+    : [];
+}
+
 /** Base64 encode resolveType keys — browser-safe (btoa), Node fallback in tests. */
 function toBase64(str: string): string {
   if (typeof btoa === "function") return btoa(str);
@@ -410,26 +417,27 @@ export function resolveSchema(
       props = { ...props, ...(s.properties as RawSchema) };
     }
 
-    // Merge required arrays from allOf/anyOf/oneOf members
     if (Array.isArray(s.required)) {
-      const existing = Array.isArray(props.__required)
-        ? (props.__required as string[])
-        : [];
-      props.__required = [...existing, ...(s.required as string[])];
+      props.__required = [
+        ...asStringArray(props.__required),
+        ...asStringArray(s.required),
+      ];
     }
 
     for (const k of ["allOf", "anyOf", "oneOf"] as const) {
       const arr = (s as Record<string, unknown>)[k];
       if (!Array.isArray(arr)) continue;
       for (const part of arr as RawSchema[]) {
+        const carriedRequired = asStringArray(props.__required);
         const partProps = collectProps(part, seenRefs, depth + 1);
-        // Merge required so a later member doesn't overwrite an earlier one's.
-        const mergedRequired = [
-          ...(Array.isArray(props.__required) ? props.__required : []),
-          ...(Array.isArray(partProps.__required) ? partProps.__required : []),
-        ];
         props = { ...props, ...partProps };
-        if (mergedRequired.length > 0) props.__required = mergedRequired;
+        // required is an intersection: only allOf members contribute.
+        const merged =
+          k === "allOf"
+            ? [...carriedRequired, ...asStringArray(partProps.__required)]
+            : carriedRequired;
+        if (merged.length > 0) props.__required = merged;
+        else delete props.__required;
       }
     }
 
@@ -1005,11 +1013,8 @@ export function resolveSchema(
     let requiredKeys: string[] | undefined;
     if (depth < MAX_BUILD_PROPERTY_DEPTH) {
       const nestedRaw = collectProps(resolved);
-      if (Array.isArray(nestedRaw.__required)) {
-        requiredKeys = (nestedRaw.__required as unknown[]).filter(
-          (k): k is string => typeof k === "string",
-        );
-      }
+      const nestedRequired = asStringArray(nestedRaw.__required);
+      if (nestedRequired.length > 0) requiredKeys = nestedRequired;
       const nestedEntries = Object.entries(nestedRaw).filter(
         ([k]) => !k.startsWith("__") && k !== "@type",
       );
@@ -1181,15 +1186,13 @@ export function resolveSchema(
 
   if (Object.keys(properties).length === 0) return null;
 
+  const rootRequired = asStringArray(topRaw.__required);
+
   return {
     type: "object",
     title: typeof schemaRoot.title === "string" ? schemaRoot.title : undefined,
     properties,
-    required: Array.isArray(topRaw.__required)
-      ? (topRaw.__required as unknown[]).filter(
-          (k): k is string => typeof k === "string",
-        )
-      : undefined,
+    required: rootRequired.length > 0 ? rootRequired : undefined,
   };
 }
 

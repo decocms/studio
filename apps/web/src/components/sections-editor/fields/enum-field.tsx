@@ -12,7 +12,7 @@ import {
   enumOptionLabel,
   enumOptionToSelectValue,
   formValueToSelectValue,
-  selectValueToEnumOption,
+  selectValueToFormValue,
 } from "./enum-select-value";
 import { FieldLabel } from "./field-label";
 
@@ -41,13 +41,7 @@ export function EnumField({
       />
       <Select
         value={selectValue}
-        onValueChange={(v) =>
-          onChange(
-            v === ENUM_CLEAR_SELECT_VALUE
-              ? undefined
-              : selectValueToEnumOption(v, options),
-          )
-        }
+        onValueChange={(v) => onChange(selectValueToFormValue(v, options))}
       >
         <SelectTrigger id={path} className="h-10">
           <SelectValue

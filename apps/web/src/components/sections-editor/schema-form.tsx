@@ -531,6 +531,11 @@ export function SchemaForm({
   }
 
   const updateField = (key: string, fieldValue: unknown) => {
+    if (fieldValue === undefined) {
+      const { [key]: _removed, ...rest } = objValue;
+      onChange(rest);
+      return;
+    }
     onChange({ ...objValue, [key]: fieldValue });
   };
 
