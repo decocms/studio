@@ -57,7 +57,10 @@ export class RemoteSandboxProvider implements SandboxProvider {
   private readonly daemons = new Map<string, DaemonAddress>();
 
   constructor(private readonly opts: RemoteSandboxProviderOptions) {
-    this.base = opts.baseUrl.replace(/\/+$/, "");
+    let base = opts.baseUrl;
+    // Linear trim instead of /\/+$/ (CodeQL js/polynomial-redos).
+    while (base.endsWith("/")) base = base.slice(0, -1);
+    this.base = base;
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 

@@ -41,10 +41,15 @@ export function computeHandle(id: SandboxId): string {
 function slugifyBranch(branch: string | null | undefined): string {
   if (!branch) return "";
   const lastSegment = branch.split("/").pop() ?? "";
-  return lastSegment
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, SLUG_MAX)
-    .replace(/-+$/g, "");
+  const collapsed = lastSegment.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  return trimDashes(trimDashes(collapsed).slice(0, SLUG_MAX));
+}
+
+// Linear scan instead of /^-+|-+$/ (CodeQL js/polynomial-redos).
+function trimDashes(s: string): string {
+  let start = 0;
+  let end = s.length;
+  while (start < end && s[start] === "-") start++;
+  while (end > start && s[end - 1] === "-") end--;
+  return s.slice(start, end);
 }
