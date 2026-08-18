@@ -91,7 +91,7 @@
     "@types/react-syntax-highlighter": "^15.5.13",
     "@vercel/nft": "^1.1.1",
     "ai": "^6.0.208",
-    "better-auth": "1.4.22",
+    "better-auth": "1.6.22",
     "croner": "^9.1.0",
     "degit": "^2.8.4",
     "hono": "^4.10.7",
