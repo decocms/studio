@@ -13,6 +13,7 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { SplitButton } from "@decocms/ui/components/split-button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { HeaderTabButton } from "@/layouts/main-panel-tabs/header-tab-button";
 import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t";
@@ -44,6 +45,7 @@ export interface ModeSplitButtonProps {
   /** Provision it. Called before the panel opens; safe to call while pending. */
   onStart: () => void;
   disableActiveSidePanelToggle?: boolean;
+  className?: string;
 }
 
 /**
@@ -101,6 +103,7 @@ export function ModeSplitButton({
   needsDevEnvironment,
   onStart,
   disableActiveSidePanelToggle = false,
+  className,
 }: ModeSplitButtonProps) {
   const t = useT();
   const isCms = mode === "cms";
@@ -138,7 +141,7 @@ export function ModeSplitButton({
       }}
       menuAriaLabel={t("agentShellLayout.toggleButtons.chooseMode")}
       dataTour={TOUR_ANCHORS.edit}
-      className="h-10 md:h-7"
+      className={cn("h-10 md:h-7", className)}
       items={[
         {
           key: "cms",

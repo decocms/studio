@@ -250,7 +250,10 @@ export function WorkspacePanelGroup({
     cmsModeActive,
     navV2,
   });
-  const sidePanelToggles = (disableActiveSidePanelToggle: boolean) => (
+  const sidePanelToggles = (
+    disableActiveSidePanelToggle: boolean,
+    modeClassName?: string,
+  ) => (
     <>
       {toggles.mode && (
         <ModeSplitButton
@@ -261,6 +264,7 @@ export function WorkspacePanelGroup({
           needsDevEnvironment={toggles.startsDevEnvironment}
           onStart={startDevEnvironment}
           disableActiveSidePanelToggle={disableActiveSidePanelToggle}
+          className={modeClassName}
         />
       )}
       {toggles.chat && (
@@ -324,7 +328,7 @@ export function WorkspacePanelGroup({
             onToggle={() => toggleSidePanel("chat")}
           />
         )}
-        {!chatOpen && sidePanelToggles(false)}
+        {!chatOpen && sidePanelToggles(false, "me-1.5")}
         <MainControls
           virtualMcpId={virtualMcpId}
           taskId={taskId}
