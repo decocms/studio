@@ -186,13 +186,13 @@ export async function refreshAccessToken(
       };
     }
 
-    // expires_in is untrusted server input — reject non-finite/non-positive values.
+    // expires_in is untrusted server input — reject non-finite/negative values; 0 is valid (already-expired).
     let expiresIn: number | undefined;
     if (data.expires_in !== undefined) {
       const parsed = Number(data.expires_in);
       if (
         Number.isFinite(parsed) &&
-        parsed > 0 &&
+        parsed >= 0 &&
         parsed <= MAX_EXPIRES_IN_SECONDS
       ) {
         expiresIn = parsed;
