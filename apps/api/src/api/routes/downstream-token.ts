@@ -80,10 +80,18 @@ export const createDownstreamTokenRoutes = () => {
       }
     }
 
-    // Calculate expiry time
-    const expiresAt = body.expiresIn
-      ? new Date(Date.now() + body.expiresIn * 1000)
-      : null;
+    // Calculate expiry time. Check absence explicitly, not falsy — 0 is a valid "already expired" value.
+    if (
+      body.expiresIn !== undefined &&
+      body.expiresIn !== null &&
+      (typeof body.expiresIn !== "number" || !Number.isFinite(body.expiresIn))
+    ) {
+      return c.json({ error: "expiresIn must be a finite number" }, 400);
+    }
+    const expiresAt =
+      body.expiresIn === undefined || body.expiresIn === null
+        ? null
+        : new Date(Date.now() + body.expiresIn * 1000);
 
     // If tokenEndpoint is a proxy URL (goes through /oauth-proxy/), resolve the
     // origin's actual token endpoint so server-side refresh calls origin directly

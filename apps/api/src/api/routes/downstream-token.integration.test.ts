@@ -103,4 +103,36 @@ describe("Downstream Token Routes", () => {
     expect(body.success).toBe(true);
     expect(body.expiresAt).toBeTruthy();
   });
+
+  it("stores expiresIn: 0 as already-expired, not never-expiring", async () => {
+    const res = await app.request("/connections/conn_1/oauth-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        accessToken: "at",
+        expiresIn: 0,
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { success: boolean; expiresAt: string };
+    expect(body.success).toBe(true);
+    expect(body.expiresAt).toBeTruthy();
+    expect(new Date(body.expiresAt).getTime()).toBeLessThanOrEqual(Date.now());
+  });
+
+  it("rejects a non-finite expiresIn", async () => {
+    const res = await app.request("/connections/conn_1/oauth-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        accessToken: "at",
+        expiresIn: "not-a-number",
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("expiresIn must be a finite number");
+  });
 });
