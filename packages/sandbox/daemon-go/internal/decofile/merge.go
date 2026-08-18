@@ -22,30 +22,23 @@ const (
 	BlocksDirname = "blocks"
 )
 
-// decodeUntilStable repeatedly percent-decodes a filename stem until it stops
-// changing. Real repos carry both single- and double-encoded stems
-// (`Compre%20Junto.json`, `Compre%2520Junto.json`); a single decode leaves the
-// double-encoded one keyed `Compre%20Junto`, a key no `__resolveType`
-// reference resolves. Mirrors the frontend's documented decoBlockKeyFromFileStem
-// fallback: an invalid-encoding stem keeps its last successfully decoded form.
-// url.PathUnescape (not QueryUnescape) so a literal `+` in a block name is left
-// alone, matching JS decodeURIComponent. Terminates: PathUnescape only collapses
-// `%XX` triples, so each pass strictly shortens the string until stable or errs.
-func decodeUntilStable(stem string) string {
-	key := stem
-	for {
-		decoded, err := url.PathUnescape(key)
-		if err != nil || decoded == key {
-			return key
-		}
-		key = decoded
+// decodeOnce percent-decodes a stem exactly once — the true inverse of
+// blockKeyToFileStem's single encodeURIComponent (mirrors the frontend's
+// decoBlockKeyFromFileStem), and the form the deco runtime derives block keys
+// by. url.PathUnescape (not QueryUnescape) leaves a literal `+` alone, matching
+// JS decodeURIComponent. An invalid encoding keeps the raw stem.
+func decodeOnce(stem string) string {
+	decoded, err := url.PathUnescape(stem)
+	if err != nil {
+		return stem
 	}
+	return decoded
 }
 
 // generateFromBlocks rebuilds the merged decofile from the sibling
 // `.deco/blocks/*.json` files so the CMS is readable before the dev server is
-// up. Maps each file to `{ [decodeUntilStable(stem)]: <file contents> }`,
-// sorted by filename — byte-for-byte identical to the TS mergeBlocks
+// up. Maps each file to `{ [decodeOnce(stem)]: <file contents> }`, sorted by
+// filename — byte-for-byte identical to the TS mergeBlocks
 // (packages/shared/src/decofile/merge.ts) for well-formed input.
 //
 // Valid blocks are spliced in raw (no unmarshal/marshal round-trip — the
@@ -55,6 +48,11 @@ func decodeUntilStable(stem string) string {
 // Preview. The write/edit/publish handlers still reject invalid blocks up front
 // (see InvalidBlockJSON) — this is the last-resort net for a bad block that
 // arrived some other way (e.g. a direct push).
+//
+// The key is a SINGLE decode: a key that legitimately contains `%20` (a page
+// "Home Page" → `pages-Home%20Page-<id>`) is stored `…%2520….json`, and single-
+// decode gives back `%20` — the form the runtime uses. Decoding until stable
+// would over-decode to a space and the `%20` reference would dangle.
 //
 // Returns ok=false when there's no blocks dir (nothing to merge) so the caller
 // falls through to its normal "file not found" path.
@@ -94,7 +92,7 @@ func generateFromBlocks(blocksDir string) (string, bool) {
 		if !json.Valid(content) {
 			continue
 		}
-		keyJSON, err := json.Marshal(decodeUntilStable(stem))
+		keyJSON, err := json.Marshal(decodeOnce(stem))
 		if err != nil {
 			continue
 		}

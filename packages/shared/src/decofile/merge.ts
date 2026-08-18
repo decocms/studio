@@ -1,4 +1,4 @@
-import { decodeUntilStable } from "./block-key";
+import { decoBlockKeyFromFileStem } from "./block-key";
 
 /**
  * On-disk name of the merged decofile artifact and its sibling source
@@ -42,10 +42,17 @@ export interface MergeResult {
 }
 
 /**
- * Merge block files into `{ [decodeUntilStable(stem)]: <raw contents> }`, sorted
- * by filename — byte-for-byte identical to the Go daemon's merge for valid input.
- * A block that is not valid JSON is dropped (reported in `skipped`) instead of
- * spliced raw, which would make the whole document unparseable.
+ * Merge block files into `{ [decoBlockKeyFromFileStem(stem)]: <raw contents> }`,
+ * sorted by filename — byte-for-byte identical to the Go daemon's merge for valid
+ * input. A block that is not valid JSON is dropped (reported in `skipped`) instead
+ * of spliced raw, which would make the whole document unparseable.
+ *
+ * The key is a SINGLE `decodeURIComponent` — the exact inverse of
+ * `blockKeyToFileStem`'s single `encodeURIComponent`, and the form the deco
+ * runtime derives block keys by. A key that legitimately contains `%20` (a page
+ * "Home Page" → `pages-Home%20Page-<id>`) is stored `…%2520….json`; single-decode
+ * gives back `%20`, matching the runtime, whereas decoding until stable would
+ * over-decode to a literal space and the runtime's `%20` reference would dangle.
  */
 export function mergeBlocks(files: BlockFile[]): MergeResult {
   // Sort by full filename (stem + ".json"), matching the Go daemon; computed once per file, not per comparison.
@@ -65,7 +72,7 @@ export function mergeBlocks(files: BlockFile[]): MergeResult {
       JSON.parse(content);
     } catch (err) {
       skipped.push({
-        key: decodeUntilStable(file.stem),
+        key: decoBlockKeyFromFileStem(file.stem),
         stem: file.stem,
         error: err instanceof Error ? err.message : String(err),
       });
@@ -73,7 +80,7 @@ export function mergeBlocks(files: BlockFile[]): MergeResult {
     }
     if (!first) out += ",";
     first = false;
-    out += `${JSON.stringify(decodeUntilStable(file.stem))}:${content}`;
+    out += `${JSON.stringify(decoBlockKeyFromFileStem(file.stem))}:${content}`;
   }
   return { decofile: `${out}}`, skipped };
 }

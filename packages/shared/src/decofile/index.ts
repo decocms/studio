@@ -3,7 +3,6 @@ export {
   blockKeyToFileStem,
   decoBlockFilePath,
   decoBlockKeyFromFileStem,
-  decodeUntilStable,
 } from "./block-key";
 export {
   BLOCK_PATH_RE,

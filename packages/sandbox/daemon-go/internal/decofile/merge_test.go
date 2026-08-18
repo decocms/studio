@@ -77,17 +77,40 @@ func TestGenerateFromBlocks(t *testing.T) {
 		}
 	})
 
-	t.Run("decodes percent-encoded stems until stable", func(t *testing.T) {
+	t.Run("single-decodes a single-encoded stem (space in the key)", func(t *testing.T) {
 		dir := t.TempDir()
-		// Double-encoded stem: a single decode would key it `Compre%20Junto`,
-		// which no __resolveType reference resolves.
-		writeBlock(t, dir, "Compre%2520Junto.json", `{"x":1}`)
+		writeBlock(t, dir, "Compre%20Junto.json", `{"x":1}`)
 		merged, ok := generateFromBlocks(dir)
 		if !ok {
 			t.Fatal("expected ok=true")
 		}
 		if merged != `{"Compre Junto":{"x":1}}` {
-			t.Fatalf("merged = %q, want key decoded to `Compre Junto`", merged)
+			t.Fatalf("merged = %q, want the space key", merged)
+		}
+	})
+
+	t.Run("single-decodes a double-encoded stem to its %20 key, not a space", func(t *testing.T) {
+		dir := t.TempDir()
+		writeBlock(t, dir, "Compre%2520Junto.json", `{"x":1}`)
+		merged, ok := generateFromBlocks(dir)
+		if !ok {
+			t.Fatal("expected ok=true")
+		}
+		if merged != `{"Compre%20Junto":{"x":1}}` {
+			t.Fatalf("merged = %q, want the single-decoded %%20 key", merged)
+		}
+	})
+
+	t.Run("keys a %20-bearing page the way the runtime resolves it", func(t *testing.T) {
+		dir := t.TempDir()
+		// "Home Page" is keyed `pages-Home%20Page-<id>`, stored `…%2520….json`.
+		writeBlock(t, dir, "pages-Home%2520Page-40404.json", `{"t":1}`)
+		merged, ok := generateFromBlocks(dir)
+		if !ok {
+			t.Fatal("expected ok=true")
+		}
+		if merged != `{"pages-Home%20Page-40404":{"t":1}}` {
+			t.Fatalf("merged = %q, want the runtime's %%20 key", merged)
 		}
 	})
 

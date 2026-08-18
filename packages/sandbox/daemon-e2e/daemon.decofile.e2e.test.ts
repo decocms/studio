@@ -71,17 +71,14 @@ describe("GET /_sandbox/decofile", () => {
     expect(body["pages-home"]).toEqual({ path: "/", sections: [] });
   });
 
-  test("decodes double-encoded filenames to the real block key", async () => {
-    // Real repos carry both encodings: `Compre%20Junto.json` (single) and
-    // `Compre%2520Junto.json` (double). Both must merge under "Compre Junto" —
-    // a single decode leaves the double-encoded one keyed "Compre%20Junto",
-    // which no `__resolveType` reference resolves.
+  test("single-decodes filenames to the runtime's block key", async () => {
+    // Double-encoded stem keeps its `%20`; single-encoded stem decodes to a space.
     await writeBlock(d!, "Compre%2520Junto", { curated: true });
     await writeBlock(d!, "Card%20config", { plain: true });
 
     const res = await fetch(url(d!, "/_sandbox/decofile"));
     const body = (await res.json()) as Record<string, unknown>;
-    expect(Object.keys(body).sort()).toEqual(["Card config", "Compre Junto"]);
+    expect(Object.keys(body).sort()).toEqual(["Card config", "Compre%20Junto"]);
   });
 
   test("is unauthenticated — the fetcher is a site, not the cluster", async () => {
@@ -293,12 +290,12 @@ describe("daemon e2e: decofile /read fallback", () => {
     });
   });
 
-  it("decodes percent-encoded block stems until stable", async () => {
+  it("single-decodes a double-encoded block stem to its %20 key", async () => {
     await writeBlock(d!, "Compre%2520Junto", { x: 1 });
     const res = await readFallback(d!, ".deco/blocks.gen.json");
     expect(res.status).toBe(200);
     const body = (await res.json()) as { content: string };
-    expect(JSON.parse(body.content)).toEqual({ "Compre Junto": { x: 1 } });
+    expect(JSON.parse(body.content)).toEqual({ "Compre%20Junto": { x: 1 } });
   });
 
   it("still 400s for a genuinely absent file with no blocks dir", async () => {
