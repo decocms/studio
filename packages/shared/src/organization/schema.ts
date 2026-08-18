@@ -173,12 +173,6 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "When a report import creates a task board item without an assignee, delegate it to the Super Agent automatically instead of leaving it unassigned.",
     ),
-  fast_preview_publish_popover: z
-    .boolean()
-    .optional()
-    .describe(
-      "Fast Preview publishes through the content-first popover (pages/blocks by name, version note) instead of the git-centric modal. Off = the previous dialog, so rollout is reversible without a deploy.",
-    ),
 });
 
 export type OrgFlags = z.infer<typeof OrgFlagsSchema>;

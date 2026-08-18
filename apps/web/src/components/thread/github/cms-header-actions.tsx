@@ -44,7 +44,6 @@ import { resolveGithubAttachment } from "@/lib/github-repo.ts";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { resolveFastPreview } from "@/sdk/fast-preview";
-import { useOrgFlag } from "@/hooks/use-organization-settings.ts";
 import { decofileWriteMutationKey } from "../../sections-editor/decofile-api.ts";
 import { useFastPreviewDraftUrl } from "../../sections-editor/use-fast-preview-draft-url.ts";
 import { fillPathTemplate } from "../../sections-editor/page-path-utils.ts";
@@ -59,7 +58,7 @@ import {
   selectCmsHeaderButton,
   type CmsAction,
 } from "./cms-panel-state.ts";
-import { PublishDialog, type PublishDialogIntent } from "./publish-dialog.tsx";
+import { PublishDialog } from "./publish-dialog.tsx";
 import {
   fetchGitStatus,
   hasPublishableLocalWork,
@@ -96,9 +95,6 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   const { currentBranch: branch, setCurrentTaskBranch } = useChatTask();
   const [publishOpen, setPublishOpen] = useState(false);
   const [popoverOpen, setPopoverOpen] = useState(false);
-  const [dialogIntent, setDialogIntent] =
-    useState<PublishDialogIntent>("publish-only");
-  const publishPopoverEnabled = useOrgFlag("fast_preview_publish_popover");
 
   const attachment = resolveGithubAttachment(vm);
   const githubRepo =
@@ -320,22 +316,13 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     t,
   });
 
-  const openDialog = (intent: PublishDialogIntent) => {
-    setDialogIntent(intent);
-    setPublishOpen(true);
-  };
-
   const dispatch = (action: CmsAction) => {
     switch (action) {
       case "publish":
-        if (publishPopoverEnabled) {
-          setPopoverOpen(true);
-        } else {
-          openDialog("publish-only");
-        }
+        setPopoverOpen(true);
         return;
       case "request-approval":
-        openDialog("open-pr");
+        setPublishOpen(true);
         return;
       case "get-latest":
         if (!githubHeadBranch || getLatest.isPending) return;
@@ -379,7 +366,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
 
   return (
     <>
-      {publishPopoverEnabled && branch ? (
+      {branch ? (
         <CmsPublishPopover
           open={popoverOpen}
           onOpenChange={setPopoverOpen}
@@ -394,7 +381,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
           publishPolicy={normalizePublishPolicy(vm?.metadata?.publishPolicy)}
           draftPreviewUrl={draftPreview.url}
           destinationHost={draftPreview.host}
-          onRequestApproval={() => openDialog("open-pr")}
+          onRequestApproval={() => setPublishOpen(true)}
           openPullRequest={pr?.state === "open" ? pr : null}
           onPullRequestChanged={refreshPrState}
           onPublished={() => publishCompletion.mutateAsync()}
@@ -418,7 +405,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
           repo={githubRepo.name}
           previewUrl={draftPreview.url ?? previewServerUrl}
           publishPolicy={normalizePublishPolicy(vm?.metadata?.publishPolicy)}
-          dialogIntent={dialogIntent}
+          dialogIntent="open-pr"
           headSha={branchMeta.kind === "ready" ? branchMeta.headSha : null}
           openPullRequest={pr?.state === "open" ? pr : null}
           onPullRequestChanged={refreshPrState}
