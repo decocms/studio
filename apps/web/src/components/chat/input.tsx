@@ -17,6 +17,7 @@ import {
 } from "@/sdk";
 import { resolveFastPreview } from "@/sdk/fast-preview";
 import { useActiveThreadMeta } from "@/hooks/use-active-thread-meta";
+import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowUp,
@@ -392,6 +393,9 @@ export function ChatInput({
     selectedVm?.metadata,
     activeThreadMeta,
   ).active;
+  const codingSessionsEnabled = useOrgFlag(
+    "fast_preview_coding_sessions_enabled",
+  );
   const playSwitchSound = useSound(question004Sound);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const { unsupportedFile, onUnsupportedFile, clearUnsupportedFile } =
@@ -640,15 +644,30 @@ export function ChatInput({
     );
   }
 
-  // Fast Preview projects are sandbox-less, and a chat run still dispatches to
-  // a sandbox runner — a message would hang against a runner that will never
-  // exist. Hold the composer with an honest notice until the agent learns to
-  // work through the decofile API (or per-thread sandbox fallback lands).
+  // Sandbox-less composer slot: offer a coding session, else a plain notice.
   if (fastPreviewActive) {
+    if (!codingSessionsEnabled || !taskCtx) {
+      return (
+        <ChatInputDisabledState
+          message={t("chat.input.fastPreviewUnavailable")}
+        />
+      );
+    }
+    const startCodingSession = () => {
+      const newTaskId = taskCtx.createTask({ runtime: "sandbox" });
+      track("coding_session_started", { thread_id: newTaskId });
+    };
     return (
-      <ChatInputDisabledState
-        message={t("chat.input.fastPreviewUnavailable")}
-      />
+      <div className="flex w-full flex-col gap-3 rounded-2xl border border-border bg-background px-4 py-3.5">
+        <p className="text-sm text-muted-foreground">
+          {t("chat.fastPreview.chatNeedsSession")}
+        </p>
+        <div>
+          <Button size="sm" onClick={startCodingSession}>
+            {t("chat.fastPreview.startCodingSession")}
+          </Button>
+        </div>
+      </div>
     );
   }
 

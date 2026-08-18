@@ -13,7 +13,7 @@ describe("resolveFastPreview", () => {
     expect(resolveFastPreview(FP_PROJECT, {}).active).toBe(true);
   });
 
-  test("inactive when the thread is stamped as a sandbox (vibecoding) session", () => {
+  test("inactive when the thread is stamped as a coding session", () => {
     const r = resolveFastPreview(FP_PROJECT, { runtime: "sandbox" });
     expect(r.active).toBe(false);
     // The URL is a project fact and survives the per-thread opt-out.

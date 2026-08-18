@@ -147,7 +147,7 @@ function quickFileOpSignal(c: Context<VmEnv>): AbortSignal {
  * The session runtime for a branch: the branch's thread is looked up (by the
  * `thread:` prefix, else newest row on the branch) and its `metadata.runtime`
  * stamp consulted via `resolveSessionRuntime`. A "sandbox" stamp opts the
- * branch out of the sandbox-less Fast Preview claim — a vibecoding session on
+ * branch out of the sandbox-less Fast Preview claim — a coding session on
  * a Fast Preview project. Callers gate on `fastPreviewCapability` first so
  * this DB read runs only for fast-preview projects. Lookup failures resolve
  * to the project default (fail toward today's behavior, never a 500).

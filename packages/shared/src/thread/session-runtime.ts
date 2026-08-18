@@ -1,11 +1,11 @@
 /**
  * Session-runtime resolution — the ONE gate for "is this session sandbox-less
- * (Fast Preview / CMS) or sandbox-backed (vibecoding)?".
+ * (Fast Preview / CMS) or sandbox-backed (coding session)?".
  *
  * Two inputs, strict precedence:
  *
  *   1. The thread's own stamp (`thread.metadata.runtime`), written once at
- *      creation by the affordance that created the thread ("Start vibecoding
+ *      creation by the affordance that created the thread ("Start coding
  *      session" stamps `"sandbox"`) and immutable for the thread's life.
  *   2. The project default: the Fast Preview capability gate on the vMCP —
  *      `metadata.fastPreview === true` AND a valid preview server URL

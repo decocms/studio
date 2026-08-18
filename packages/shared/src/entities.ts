@@ -46,7 +46,7 @@ export interface ThreadMetadata {
   read_only?: boolean;
   /**
    * The session's runtime, stamped at creation and immutable: "sandbox" forces
-   * a sandbox-backed session (vibecoding) even on a Fast Preview project.
+   * a sandbox-backed session (coding session) even on a Fast Preview project.
    * Absent ⇒ the project default decides (see `resolveSessionRuntime`).
    */
   runtime?: ThreadRuntime;

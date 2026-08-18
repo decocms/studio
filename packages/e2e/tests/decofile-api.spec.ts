@@ -867,7 +867,7 @@ test.describe("decofile API", () => {
       }>(ctx, org, "COLLECTION_THREADS_CREATE", {
         data: {
           virtual_mcp_id: project.vmcpId,
-          title: "vibecoding session",
+          title: "coding session",
           runtime: "sandbox",
         },
       });

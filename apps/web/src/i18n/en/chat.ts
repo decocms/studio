@@ -239,8 +239,8 @@ export const chat = {
   "chat.input.fastPreviewUnavailable":
     "Chat isn't available on Fast Preview projects. Use the CMS to edit content.",
   "chat.fastPreview.chatNeedsSession":
-    "Chat needs a coding sandbox behind it. Start a vibecoding session to chat with the agent on its own branch — the CMS keeps working as is.",
-  "chat.fastPreview.startVibecoding": "Start vibecoding session",
+    "Chat needs a coding sandbox behind it. Start a coding session to chat with the agent on its own branch — the CMS keeps working as is.",
+  "chat.fastPreview.startCodingSession": "Start coding session",
   "chat.input.readOnlyOthersChat":
     "Read only - you're viewing someone else's chat",
   "chat.input.readOnlyOthersChatNamed":

@@ -150,7 +150,7 @@ export const ThreadCreateDataSchema = z.object({
     .enum(THREAD_RUNTIMES)
     .optional()
     .describe(
-      "Session runtime for the new thread. 'sandbox' starts a sandbox-backed (vibecoding) session even on a Fast Preview project and always mints a fresh branch (any `branch` input is ignored). Omitted ⇒ the project default decides.",
+      "Session runtime for the new thread. 'sandbox' starts a sandbox-backed (coding session) session even on a Fast Preview project and always mints a fresh branch (any `branch` input is ignored). Omitted ⇒ the project default decides.",
     ),
 });
 

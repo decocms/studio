@@ -197,7 +197,7 @@ export interface ChatTaskContextValue {
   taskId: string;
   openTask: (taskId: string) => void;
   /** Creates a thread and navigates to it. `runtime: "sandbox"` starts a
-   *  vibecoding session (fresh branch, sandbox-backed) on any project. */
+   *  coding session (fresh branch, sandbox-backed) on any project. */
   createTask: (opts?: { runtime?: ThreadRuntime }) => string;
   createTaskWithMessage: (params: {
     message: SendMessageParams;
@@ -681,7 +681,7 @@ export function ChatContextProvider({
   // it stays a separate alias so we don't have to touch every reference.
   const currentBranch = lockedBranch;
 
-  // Branch carry-over is a same-runtime affair (vibecoding branches never leak).
+  // Branch carry-over is a same-runtime affair (coding-session branches never leak).
   const carryableBranch =
     activeTask?.metadata?.runtime === "sandbox" ? null : currentBranch;
 
