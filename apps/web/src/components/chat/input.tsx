@@ -663,7 +663,7 @@ export function ChatInput({
       <button
         type="button"
         onClick={startCodingSession}
-        className="group flex min-h-[110px] w-full items-center gap-3 rounded-2xl border border-border bg-background/60 px-4 py-3.5 text-left shadow-sm backdrop-blur-sm transition-colors hover:bg-background/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-[130px]"
+        className="group flex w-full items-center gap-3 rounded-2xl border border-border bg-background/60 px-4 py-3.5 text-left shadow-sm backdrop-blur-sm transition-colors hover:bg-background/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <Code01 size={18} className="shrink-0 text-muted-foreground" />
         <span className="flex min-w-0 flex-1 flex-col">
