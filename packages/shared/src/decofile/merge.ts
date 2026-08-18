@@ -48,19 +48,15 @@ export interface MergeResult {
  * spliced raw, which would make the whole document unparseable.
  */
 export function mergeBlocks(files: BlockFile[]): MergeResult {
-  // Sort by full filename (stem + ".json"), matching the Go implementation's
-  // `sort.Strings(names)` — stem order and filename order can differ around
-  // characters that sort before ".".
-  const sorted = [...files].sort((a, b) => {
-    const an = `${a.stem}.json`;
-    const bn = `${b.stem}.json`;
-    return an < bn ? -1 : an > bn ? 1 : 0;
-  });
+  // Sort by full filename (stem + ".json"), matching the Go daemon; computed once per file, not per comparison.
+  const sorted = files
+    .map((file) => ({ file, name: `${file.stem}.json` }))
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 
   const skipped: SkippedBlock[] = [];
   let out = "{";
   let first = true;
-  for (const file of sorted) {
+  for (const { file } of sorted) {
     const content = file.content.trim();
     // Skip empty files — `"key":` with no value would break the merged JSON.
     if (content.length === 0) continue;
