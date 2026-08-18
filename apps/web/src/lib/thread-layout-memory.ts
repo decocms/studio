@@ -19,6 +19,7 @@ import {
   parseSidePanelKind,
   type SidePanelKind,
 } from "@/hooks/use-layout-state";
+import type { CmsEditingMode } from "@/sdk/cms-mode";
 
 const STORAGE_KEY = "studio:thread-layout:v1";
 
@@ -30,6 +31,10 @@ export interface ThreadLayout {
   main?: string | 0;
   /** `?sidepanel` value: a {@link SidePanelKind} when open, or `0` closed. */
   sidepanel?: SidePanelKind | 0;
+  /** `?mode` value. Remembered per thread because it outranks the panel: it
+   *  decides the preview's origin, the view tabs and the console, so a thread
+   *  returned to in vibecoding must not silently reopen in CMS. */
+  mode?: CmsEditingMode;
 }
 
 /** Most-recent entry last, so `.shift()` evicts the least-recently-saved. */
@@ -50,6 +55,9 @@ export function sanitizeThreadLayout(layout: ThreadLayout): ThreadLayout {
   } else {
     const kind = parseSidePanelKind(layout.sidepanel);
     if (kind) clean.sidepanel = kind;
+  }
+  if (layout.mode === "cms" || layout.mode === "vibecoding") {
+    clean.mode = layout.mode;
   }
   return clean;
 }

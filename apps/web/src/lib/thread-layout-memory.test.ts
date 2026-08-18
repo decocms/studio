@@ -84,3 +84,34 @@ describe("upsertThreadLayoutEntries", () => {
     expect(out.map(([id]) => id)).toEqual(["b", "c"]);
   });
 });
+
+describe("sanitizeThreadLayout — editing mode", () => {
+  test("keeps both modes", () => {
+    expect(sanitizeThreadLayout({ mode: "cms" }).mode).toBe("cms");
+    expect(sanitizeThreadLayout({ mode: "vibecoding" }).mode).toBe(
+      "vibecoding",
+    );
+  });
+
+  /** Storage is tamperable, and an unknown mode must read as "no memory"
+   *  rather than reach the gate that decides the preview's origin. */
+  test("drops anything that is not a known mode", () => {
+    expect(
+      sanitizeThreadLayout({ mode: "nonsense" as never }).mode,
+    ).toBeUndefined();
+    expect(sanitizeThreadLayout({}).mode).toBeUndefined();
+  });
+
+  test("survives a round trip alongside the panel state", () => {
+    const layout = sanitizeThreadLayout({
+      main: "preview",
+      sidepanel: "cms",
+      mode: "vibecoding",
+    });
+    expect(layout).toEqual({
+      main: "preview",
+      sidepanel: "cms",
+      mode: "vibecoding",
+    });
+  });
+});

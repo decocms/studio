@@ -69,6 +69,7 @@ export function resolveTaskSwitchSearch(
     // stale, MainPanelContent falls back to Settings rather than crashing.
     if (savedLayout.main !== undefined) next.main = savedLayout.main;
     if (savedLayout.sidepanel !== undefined) sidepanel = savedLayout.sidepanel;
+    if (savedLayout.mode !== undefined) next.mode = savedLayout.mode;
   } else if (!isAgentSwitch) {
     const prevMain = prev.main;
     if (prevMain && typeof prevMain === "string" && !isPerThreadTab(prevMain)) {

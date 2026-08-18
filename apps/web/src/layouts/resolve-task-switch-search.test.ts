@@ -142,3 +142,27 @@ describe("resolveTaskSwitchSearch — restoring per-thread memory", () => {
     });
   });
 });
+
+describe("resolveTaskSwitchSearch — editing mode", () => {
+  test("restores the remembered mode with the rest of the layout", () => {
+    const next = resolveTaskSwitchSearch({
+      prev: {},
+      decopilotId: "dec_1",
+      savedLayout: { main: "preview", sidepanel: "cms", mode: "vibecoding" },
+      autosendValue: "1",
+    });
+    expect(next.mode).toBe("vibecoding");
+  });
+
+  /** No memory means "use the default", which the gate reads as CMS — not a
+   *  stale mode carried over from whichever thread we came from. */
+  test("omits mode when the target thread has none remembered", () => {
+    const next = resolveTaskSwitchSearch({
+      prev: {},
+      decopilotId: "dec_1",
+      savedLayout: { main: "preview" },
+      autosendValue: "1",
+    });
+    expect(next.mode).toBeUndefined();
+  });
+});

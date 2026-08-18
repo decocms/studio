@@ -1,4 +1,5 @@
 import { Suspense, useEffect, useState } from "react";
+import type { CmsEditingMode } from "@/sdk/cms-mode";
 import { OrgAccessGate } from "@/components/org-access-gate";
 import { SplashScreen } from "@/components/splash-screen";
 import { FloatingReleaseCard } from "@/components/release-channel/floating-release-card";
@@ -96,6 +97,7 @@ export function usePanelActions() {
     virtualmcpid?: string;
     main?: string | 0;
     sidepanel?: SidePanelKind | 0;
+    mode?: CmsEditingMode;
   };
   const orgSlug = params.org ?? "";
   const currentTaskId = params.taskId ?? "";
@@ -132,6 +134,7 @@ export function usePanelActions() {
       saveThreadLayout(currentTaskId, {
         main: search.main,
         sidepanel: search.sidepanel,
+        mode: search.mode,
       });
     }
     // Restore the target thread's own remembered layout (null when unseen this
