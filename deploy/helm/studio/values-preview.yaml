@@ -112,6 +112,19 @@ nats:
     enabled: false
   podDisruptionBudget:
     enabled: false
+  # A subchart inherits nothing from the parent's values, so the pool
+  # selector and toleration have to be restated here. Without them NATS is
+  # the one preview pod that lands on shared nodes.
+  podTemplate:
+    merge:
+      spec:
+        nodeSelector:
+          decocms.com/nodepool: preview
+        tolerations:
+          - key: decocms.com/preview
+            operator: Equal
+            value: "true"
+            effect: NoSchedule
   container:
     merge:
       resources:
@@ -136,6 +149,26 @@ nats:
 # The default value pins `app.kubernetes.io/instance: deco-studio`, which
 # matches nothing in a studio-pr-<n> release — it would silently do nothing.
 topologySpreadConstraints: []
+
+# Dedicated, spot-only node pool (terraform-eks-cluster, eks-setup,
+# karpenter_ec2_preview). Previews run un-merged code, so they get their own
+# nodes instead of sharing capacity with production workloads.
+#
+# BOTH halves are required and both must reach EVERY pod. The toleration alone
+# lets a preview onto the pool but does not keep it there — without the
+# selector it schedules wherever it fits, including production nodes. The
+# selector alone strands it Pending against the taint.
+#
+# Spot is safe here in a way it is nowhere else on this cluster: the database
+# is an emptyDir Postgres that the PreSync Job re-migrates on the next sync,
+# and a preview holds no PVC at all. A reclaim costs a reviewer a restart.
+nodeSelector:
+  decocms.com/nodepool: preview
+tolerations:
+  - key: decocms.com/preview
+    operator: Equal
+    value: "true"
+    effect: NoSchedule
 
 metrics:
   scrape: false

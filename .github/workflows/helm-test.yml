@@ -214,6 +214,30 @@ jobs:
           sys.exit(0 if ok else 1)
           WAVES
 
+          # Previews run un-merged code on a dedicated spot-only node pool. Both
+          # halves must reach EVERY pod: the toleration alone lets a preview onto
+          # the pool without keeping it there, and the selector alone strands it
+          # Pending. A subchart (NATS) inherits neither, so it is the one that
+          # silently lands on shared nodes when this regresses.
+          python3 - <<'POOL'
+          import sys, yaml
+          bad = []
+          for d in yaml.safe_load_all(open("/tmp/preview.yaml")):
+              if not d or d.get("kind") not in ("Deployment", "StatefulSet", "Job"):
+                  continue
+              spec = d["spec"]["template"]["spec"]
+              sel = (spec.get("nodeSelector") or {}).get("decocms.com/nodepool")
+              tol = any(t.get("key") == "decocms.com/preview"
+                        for t in (spec.get("tolerations") or []))
+              if sel != "preview" or not tol:
+                  bad.append(f'{d["kind"]}/{d["metadata"]["name"]} '
+                             f'(selector={sel!r}, toleration={tol})')
+          if bad:
+              print("::error::pods not pinned to the preview node pool: " + "; ".join(bad))
+              sys.exit(1)
+          print("every preview pod is pinned to the preview node pool")
+          POOL
+
           # Every studio container (api-0, api-1, worker) must skip migrations:
           # the PreSync Job is the single writer. Three, not two.
           # `|| true` — grep exits 1 on zero matches, which under `set -e` would
