@@ -210,4 +210,23 @@ describe("lazy-client with circuit breaker", () => {
     const lazy4 = createLazyClient(fakeConnection, fakeCtx, false);
     expect(lazy4.listTools()).rejects.toThrow(CircuitOpenError);
   });
+
+  it("reconnects after the pooled client is closed by someone else", async () => {
+    const first = await createWorkingClient();
+    clientFromConnectionMock.mockResolvedValue(first);
+
+    const lazy = createLazyClient(fakeConnection, fakeCtx, false);
+    expect((await lazy.listTools()).tools).toHaveLength(1);
+
+    // A sibling holder of the SAME pooled client closes it (what a finished
+    // subtask's passthrough does to the parent run's connection).
+    await first.close();
+
+    const second = await createWorkingClient();
+    clientFromConnectionMock.mockResolvedValue(second);
+
+    // Without invalidation this throws "Not connected" forever.
+    expect((await lazy.listTools()).tools).toHaveLength(1);
+    expect(clientFromConnectionMock).toHaveBeenCalledTimes(2);
+  });
 });
