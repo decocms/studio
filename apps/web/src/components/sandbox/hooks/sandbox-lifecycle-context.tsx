@@ -415,6 +415,10 @@ export interface SandboxLifecycleValue {
    * branch's reads, writes, preview and tabs all belong to the pod.
    */
   cmsModeActive: boolean;
+  /** A SANDBOX_START issued from this provider is in flight. NOT derived from
+   *  `status`, which reads "starting" for any branch with no preview URL —
+   *  including a sandbox-less one that was never asked to boot. */
+  isStarting: boolean;
   vmEntry: BranchMapEntryLike | null;
   previewUrl: string | null;
   userStopped: boolean;
@@ -430,6 +434,7 @@ const DEFAULT_VALUE: SandboxLifecycleValue = {
   previewState: { kind: "starting" },
   status: "idle",
   cmsModeActive: false,
+  isStarting: false,
   vmEntry: null,
   previewUrl: null,
   userStopped: false,
@@ -549,11 +554,6 @@ export function SandboxLifecycleProvider({
   // matching entry wins; with no entry for that kind (or no kind at all) fall
   // back to whatever is serving the branch. See resolveVmEntry.
   const vmEntry = resolveVmEntry(branchMap, sandboxProviderKind);
-  // Per branch: a recorded sandbox moves THIS branch onto the daemon.
-  const cmsModeActive = resolveCmsModeForBranch(
-    vmcp?.metadata,
-    !!vmEntry,
-  ).active;
   const failedPhase = events.phase?.kind === "failed" ? events.phase : null;
   const previewUrl = resolvePreviewUrl({
     vmEntry,
@@ -567,6 +567,20 @@ export function SandboxLifecycleProvider({
     seeded: failedPhase ? null : seededPreviewUrl,
     key: sandboxPreviewKey(virtualMcpId, branch),
   });
+  /**
+   * Per branch: a sandbox moves THIS branch onto the daemon.
+   *
+   * `isPending` and the seeded `previewUrl` count alongside the recorded entry
+   * so the branch flips at the CLICK, not when the metadata refetch lands. In
+   * that window the pod is already cloning the branch head, so a CMS write
+   * routed to the head could miss the clone and be silently lost; routed to the
+   * (not yet reachable) sandbox it fails visibly instead, which is the honest
+   * half of the trade.
+   */
+  const cmsModeActive = resolveCmsModeForBranch(
+    vmcp?.metadata,
+    !!vmEntry || !!previewUrl || startVm.isPending,
+  ).active;
   const userStopped =
     !!virtualMcpId &&
     !!branch &&
@@ -829,6 +843,7 @@ export function SandboxLifecycleProvider({
     previewState,
     status,
     cmsModeActive,
+    isStarting: startVm.isPending,
     vmEntry,
     previewUrl,
     userStopped,

@@ -105,19 +105,17 @@ function ChatInputDisabledState({
  */
 function StartCodingState() {
   const t = useT();
-  const { start, status } = useSandboxLifecycle();
-  const starting = status !== "idle";
+  const { start, isStarting } = useSandboxLifecycle();
   return (
     <div className="flex w-full flex-col gap-2.5 rounded-xl border border-border bg-muted/40 px-3 py-2.5">
-      <div className="flex items-center gap-2 text-muted-foreground">
-        <Lock01 size={14} className="shrink-0" />
-        <span className="text-sm">{t("chat.input.cmsModeNoChat")}</span>
-      </div>
+      <span className="text-sm text-muted-foreground">
+        {t("chat.input.cmsModeNoChat")}
+      </span>
       <Button
         size="sm"
         variant="outline"
         className="self-start"
-        disabled={starting}
+        disabled={isStarting}
         onClick={() => {
           track("cms_start_coding_clicked", {});
           start();
