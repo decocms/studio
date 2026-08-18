@@ -54,6 +54,7 @@ import {
 import { canAddSectionVariant } from "./section-variants";
 import { isLazyResolveType } from "./section-lazy";
 import { getSectionPreviewImageSrc } from "./section-preview-image";
+import { getSectionDisplayTitle } from "./section-title";
 import type { LiveMeta } from "./resolve-schema";
 import { GLOBAL_SECTION_ICON_COLOR, type RawSection } from "./section-types";
 import { parseSections, type ParsedSection } from "./parse-sections";
@@ -113,6 +114,11 @@ function SectionRowContent({
   const multivariate = section.isMultivariate === true;
   const imageSrc =
     raw && meta ? getSectionPreviewImageSrc(raw, meta) : undefined;
+  // Saved blocks / multivariate rows carry their own intentional labels.
+  const dynamicTitle =
+    raw && meta && !saved && !multivariate
+      ? getSectionDisplayTitle(raw, meta)
+      : undefined;
 
   return (
     <>
@@ -141,7 +147,7 @@ function SectionRowContent({
           section.isHidden && "line-through opacity-50",
         )}
       >
-        {section.label}
+        {dynamicTitle ?? section.label}
       </span>
     </>
   );

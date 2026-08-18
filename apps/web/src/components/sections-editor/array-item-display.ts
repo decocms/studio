@@ -56,7 +56,7 @@ function getByPath(data: Record<string, unknown>, path: string): unknown {
   }, data);
 }
 
-function formatMustacheValue(value: unknown): string {
+export function formatMustacheValue(value: unknown): string {
   if (value == null) return "";
   if (Array.isArray(value)) {
     return value.map(formatMustacheValue).filter(Boolean).join(",");
