@@ -157,8 +157,11 @@ export const taskBoard = {
   "taskBoard.taskDialog.shipToProductionButton": "Subir para produção",
   "taskBoard.taskDialog.shipSuccess": "Mesclado e enviado para produção",
   "taskBoard.taskDialog.shipError": "Não foi possível mesclar o pull request",
-  "taskBoard.taskDialog.costRunCount": "em {runs} execuções",
-  "taskBoard.taskDialog.costTooltip":
+  "taskBoard.taskDialog.costRunCountSingular": "em {runs} execução",
+  "taskBoard.taskDialog.costRunCountPlural": "em {runs} execuções",
+  "taskBoard.taskDialog.costTooltipSingular":
+    "Custo total de IA desta tarefa, somando sua única execução — o Super Agent mais cada rodada de revisão e reexecução.",
+  "taskBoard.taskDialog.costTooltipPlural":
     "Custo total de IA desta tarefa, somando as {runs} execuções — o Super Agent mais cada rodada de revisão e reexecução.",
   "taskBoard.taskDialog.propertiesLabel": "Propriedades",
   "taskBoard.taskDialog.reportsContentLocked":
