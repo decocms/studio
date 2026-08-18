@@ -355,17 +355,29 @@ jobs:
           # `host=pr-<n>.${PREVIEW_DOMAIN}` in the workflow's meta step.
           BUILD_HOST="pr-42.${BUILD_DOMAIN}"
 
+          # Every value the chart requires, in ONE place. It ships no
+          # deployment-specific defaults by design, so each new guard adds
+          # another mandatory value — keeping the list here means the render
+          # steps stay correct when that happens, instead of failing with a
+          # message about a value the test never meant to exercise.
+          PREVIEWS_VALUES=(
+            --set applicationSet.repo.owner=o
+            --set applicationSet.repo.name=r
+            --set applicationSet.repo.tokenSecret.name=t
+            --set applicationSet.repo.tokenSecret.externalSecret.secretPath=p
+            --set applicationSet.repo.tokenSecret.externalSecret.secretStoreName=s
+            --set studioChart.repoURL=oci://x
+            --set studioChart.version=0.0.0
+            --set studioChart.valuesRepo.url=https://x
+            --set images.api=a
+            --set images.nginx=n
+            --set studioValues.externalSecret.secretPath=s
+            --set studioValues.externalSecret.secretStoreName=s
+          )
+
           helm template p "$CHART" \
             --set domain="$BUILD_DOMAIN" \
-            --set applicationSet.repo.owner=o --set applicationSet.repo.name=r \
-            --set applicationSet.repo.tokenSecret.name=t \
-            --set studioChart.repoURL=oci://x --set studioChart.version=0.0.0 \
-            --set studioChart.valuesRepo.url=https://x \
-            --set images.api=a --set images.nginx=n \
-            --set studioValues.externalSecret.secretPath=s \
-            --set studioValues.externalSecret.secretStoreName=s \
-            --set studioValues.objectStorage.endpoint=e \
-            --set studioValues.objectStorage.bucket=b \
+            "${PREVIEWS_VALUES[@]}" \
             --api-versions gateway.networking.k8s.io/v1 > /tmp/appset.yaml
 
           # The rendered host still carries the generator's own template, so
