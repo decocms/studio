@@ -119,9 +119,9 @@ nats:
     merge:
       spec:
         nodeSelector:
-          decocms.com/nodepool: preview
+          decocms.com/nodepool: studio-preview
         tolerations:
-          - key: decocms.com/preview
+          - key: decocms.com/studio-preview
             operator: Equal
             value: "true"
             effect: NoSchedule
@@ -151,7 +151,9 @@ nats:
 topologySpreadConstraints: []
 
 # Dedicated, spot-only node pool (terraform-eks-cluster, eks-setup,
-# karpenter_ec2_preview). Previews run un-merged code, so they get their own
+# karpenter_ec2_studio_preview). Named studio-preview because the taint key
+# would otherwise collide, in reading if not in effect, with the unrelated
+# `decocms.com/preview` NAMESPACE label the Gateway selects routes by. Previews run un-merged code, so they get their own
 # nodes instead of sharing capacity with production workloads.
 #
 # BOTH halves are required and both must reach EVERY pod. The toleration alone
@@ -163,9 +165,9 @@ topologySpreadConstraints: []
 # is an emptyDir Postgres that the PreSync Job re-migrates on the next sync,
 # and a preview holds no PVC at all. A reclaim costs a reviewer a restart.
 nodeSelector:
-  decocms.com/nodepool: preview
+  decocms.com/nodepool: studio-preview
 tolerations:
-  - key: decocms.com/preview
+  - key: decocms.com/studio-preview
     operator: Equal
     value: "true"
     effect: NoSchedule

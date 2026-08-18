@@ -227,9 +227,9 @@ jobs:
                   continue
               spec = d["spec"]["template"]["spec"]
               sel = (spec.get("nodeSelector") or {}).get("decocms.com/nodepool")
-              tol = any(t.get("key") == "decocms.com/preview"
+              tol = any(t.get("key") == "decocms.com/studio-preview"
                         for t in (spec.get("tolerations") or []))
-              if sel != "preview" or not tol:
+              if sel != "studio-preview" or not tol:
                   bad.append(f'{d["kind"]}/{d["metadata"]["name"]} '
                              f'(selector={sel!r}, toleration={tol})')
           if bad:
