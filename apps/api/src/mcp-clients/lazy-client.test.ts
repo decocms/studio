@@ -211,3 +211,107 @@ describe("lazy-client with circuit breaker", () => {
     expect(lazy4.listTools()).rejects.toThrow(CircuitOpenError);
   });
 });
+
+/**
+ * The MCP SDK's server returns an argument-validation failure as an
+ * `isError: true` result, not a thrown JSON-RPC error, so the proxy's repair
+ * has to read the result. Exercised against a real `McpServer` for that reason.
+ */
+describe("lazy-client argument repair", () => {
+  const toolsCache = {
+    get: async (_type: string, _connectionId: string) => [
+      {
+        name: "edit",
+        inputSchema: {
+          type: "object",
+          required: ["patch", "save"],
+          properties: { patch: { type: "object" }, save: { type: "boolean" } },
+        },
+      },
+    ],
+    set: async () => {},
+    invalidate: async () => {},
+    teardown: () => {},
+  };
+
+  async function createEditClient(): Promise<Client> {
+    const server = new McpServer({ name: "test-downstream", version: "1.0.0" });
+    server.tool(
+      "edit",
+      { patch: z.object({ sections: z.array(z.number()) }), save: z.boolean() },
+      async ({ patch, save }) => ({
+        content: [
+          { type: "text", text: `saved=${save} n=${patch.sections.length}` },
+        ],
+      }),
+    );
+    const { client: clientTransport, server: serverTransport } =
+      createBridgeTransportPair();
+    await server.connect(serverTransport);
+    const client = new Client({ name: "test-client", version: "1.0.0" });
+    await client.connect(clientTransport);
+    return client;
+  }
+
+  beforeEach(() => {
+    resetAll();
+    clientFromConnectionMock.mockReset();
+  });
+
+  it("re-types JSON-string arguments and retries", async () => {
+    clientFromConnectionMock.mockResolvedValue(await createEditClient());
+
+    const lazy = createLazyClient(fakeConnection, fakeCtx, false, toolsCache);
+    const result = (await lazy.callTool({
+      name: "edit",
+      arguments: { patch: '{"sections":[1,2]}', save: "true" },
+    })) as { isError?: boolean; content: Array<{ text: string }> };
+
+    expect(result.isError).toBeUndefined();
+    expect(result.content[0]!.text).toBe("saved=true n=2");
+  });
+
+  it("appends a hint when the arguments cannot be repaired", async () => {
+    clientFromConnectionMock.mockResolvedValue(await createEditClient());
+
+    const lazy = createLazyClient(fakeConnection, fakeCtx, false, toolsCache);
+    const result = (await lazy.callTool({
+      name: "edit",
+      arguments: { patch: "not json", save: "true" },
+    })) as { isError?: boolean; content: Array<{ text: string }> };
+
+    expect(result.isError).toBe(true);
+    // The upstream text is kept; the correction names the one argument that
+    // could not be repaired (`save: "true"` was, and the retry still failed).
+    expect(result.content[0]!.text).toContain("Input validation error");
+    expect(result.content[0]!.text).toContain(
+      'Invalid arguments for "edit". Required: patch (object), save (boolean).',
+    );
+    expect(result.content[0]!.text).toContain(
+      "Wrong type: patch (expected object, got string)",
+    );
+  });
+
+  it("leaves an ordinary tool error untouched", async () => {
+    const server = new McpServer({ name: "test-downstream", version: "1.0.0" });
+    server.tool("edit", { save: z.boolean() }, async () => ({
+      content: [{ type: "text", text: "post not found" }],
+      isError: true,
+    }));
+    const { client: clientTransport, server: serverTransport } =
+      createBridgeTransportPair();
+    await server.connect(serverTransport);
+    const client = new Client({ name: "test-client", version: "1.0.0" });
+    await client.connect(clientTransport);
+    clientFromConnectionMock.mockResolvedValue(client);
+
+    const lazy = createLazyClient(fakeConnection, fakeCtx, false, toolsCache);
+    const result = (await lazy.callTool({
+      name: "edit",
+      arguments: { save: true },
+    })) as { isError?: boolean; content: Array<{ text: string }> };
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toBe("post not found");
+  });
+});

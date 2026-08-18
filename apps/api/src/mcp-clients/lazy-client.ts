@@ -37,7 +37,14 @@ import {
   REVALIDATE_MIN_INTERVAL_MS,
 } from "./mcp-list-cache";
 import { getMcpReadCache, type ReadCacheScope } from "./mcp-read-cache";
-import { enrichInvalidParams, type ToolInputSchema } from "./validation-hint";
+import {
+  appendHintToResult,
+  buildValidationHint,
+  coerceArgsToSchema,
+  enrichInvalidParams,
+  invalidParamsResultText,
+  type ToolInputSchema,
+} from "./validation-hint";
 
 /**
  * A read-only tool is eligible for result caching. We trust the upstream's
@@ -267,36 +274,68 @@ export function createLazyClient(
     return real.callTool(params, resultSchema, options);
   };
 
-  // On a -32602 (InvalidParams) rejection, append a schema-derived correction
-  // so the agent can fix its arguments instead of retrying the same bad shape.
-  // Only the error path pays the cached tool-list lookup.
+  // An upstream rejection for -32602 (InvalidParams) happens while validating
+  // the arguments, before the tool runs, so it is safe to repair and retry:
+  // re-type what the model plainly got wrong and call again, and if it still
+  // fails, append a schema-derived correction. Both the thrown and the
+  // `isError`-result shapes are handled — see validation-hint.ts. Only the
+  // rejection path pays the cached tool-list lookup.
   placeholder.callTool = async (params, resultSchema, options) => {
+    const rawName = (params as { name?: unknown })?.name;
+    const toolName = typeof rawName === "string" ? rawName : null;
+    const args = (params as { arguments?: Record<string, unknown> })?.arguments;
+
+    const inputSchema = async (): Promise<ToolInputSchema | undefined> => {
+      const tools = await cache!.get("tools", connection.id).catch(() => null);
+      return tools?.find(
+        (t): t is { name: string; inputSchema?: ToolInputSchema } =>
+          typeof t === "object" &&
+          t !== null &&
+          (t as { name?: unknown }).name === toolName,
+      )?.inputSchema;
+    };
+
+    const retryCoerced = async (schema: ToolInputSchema | undefined) => {
+      const coerced = coerceArgsToSchema(schema, args);
+      if (!coerced) return null;
+      return await callToolInner(
+        { ...params, arguments: coerced },
+        resultSchema,
+        options,
+      ).catch(() => null);
+    };
+
+    let result: Awaited<ReturnType<Client["callTool"]>>;
     try {
-      return await callToolInner(params, resultSchema, options);
+      result = await callToolInner(params, resultSchema, options);
     } catch (err) {
-      const toolName = (params as { name?: unknown })?.name;
       if (
-        err instanceof McpError &&
-        err.code === ErrorCode.InvalidParams &&
-        typeof toolName === "string" &&
-        cache
+        !toolName ||
+        !cache ||
+        !(err instanceof McpError) ||
+        err.code !== ErrorCode.InvalidParams
       ) {
-        const tools = await cache.get("tools", connection.id).catch(() => null);
-        const tool = tools?.find(
-          (t): t is { name: string; inputSchema?: ToolInputSchema } =>
-            typeof t === "object" &&
-            t !== null &&
-            (t as { name?: unknown }).name === toolName,
-        );
-        throw enrichInvalidParams(
-          err,
-          toolName,
-          tool?.inputSchema,
-          (params as { arguments?: Record<string, unknown> })?.arguments,
-        );
+        throw err;
       }
-      throw err;
+      const schema = await inputSchema();
+      const retried = await retryCoerced(schema);
+      if (retried) return retried;
+      throw enrichInvalidParams(err, toolName, schema, args);
     }
+
+    if (!toolName || !cache || !invalidParamsResultText(result)) return result;
+
+    const schema = await inputSchema();
+    // Accept the retry unless it failed validation again — an ordinary tool
+    // error means the coerced arguments were accepted and the tool itself
+    // failed, which is the truthful result to return.
+    const retried = await retryCoerced(schema);
+    if (retried && !invalidParamsResultText(retried)) return retried;
+
+    return appendHintToResult(
+      result,
+      buildValidationHint(toolName, schema, args),
+    );
   };
 
   placeholder.getPrompt = async (params, options) => {
