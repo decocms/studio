@@ -109,6 +109,8 @@ export function GeneralSeoForm({
                 },
                 path: key,
                 label,
+                // `type` always needs a concrete value — no "None" clear option.
+                required: key === "type",
                 breadcrumbPath: [],
                 onBreadcrumbChange: () => {},
               })}
