@@ -152,6 +152,7 @@ import {
 import {
   shouldAutoOpenCms,
   togglePreviewEditorMode,
+  resolveEffectiveEditingMode,
   type PreviewEditingMode,
   type PreviewEditorMode,
 } from "./editing-mode";
@@ -360,9 +361,18 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Scoped to THIS agent's entity; the shared helper owns the gate itself.
   const shellEntity = inset?.entity?.id === virtualMcpId ? inset.entity : null;
   const isShellEntity = shellEntity !== null;
-  const previewServerUrl = shellEntity
-    ? resolveCmsMode(shellEntity.metadata).previewServerUrl
-    : null;
+  const cmsGate = shellEntity ? resolveCmsMode(shellEntity.metadata) : null;
+  const previewServerUrl = cmsGate?.previewServerUrl ?? null;
+  /**
+   * The PROJECT has a CMS, so its block editor lives in the side panel and this
+   * toolbar's Edit action + nested pane must not exist — they would be a second
+   * copy of the same `BlocksPanel`, carrying its own selection state.
+   *
+   * Project-level, not per-branch: the side panel owns content editing in BOTH
+   * modes, so provisioning a sandbox must not resurrect the inline pane.
+   * Projects with no CMS keep that pane as their only way in.
+   */
+  const cmsCapable = cmsGate?.active ?? false;
   const cmsModeEnabled = isShellEntity && lifecycle.cmsModeActive;
 
   // Decofile pages/global sections for the URL bar dropdown. Not gated on the
@@ -854,18 +864,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     !appPaused &&
     (claimPhase?.kind === "ready" || lifecyclePhase !== "idle");
 
-  /**
-   * Visual mode requires the live sandbox iframe — the production fallback is a
-   * different origin we can't inject into. Blocks can stay open while the
-   * sandbox restarts (or wakes) so its loading/error state remains actionable
-   * and the panel keeps reading the committed snapshot — except in CMS mode,
-   * where the side panel owns the block editor and this pane would duplicate it.
-   */
-  const effectiveEditingMode: PreviewEditingMode =
-    (display.mode !== "sandbox" && editingMode === "visual") ||
-    (cmsModeEnabled && editingMode === "blocks")
-      ? "preview"
-      : editingMode;
+  const effectiveEditingMode: PreviewEditingMode = resolveEffectiveEditingMode({
+    editingMode,
+    sandboxDisplay: display.mode === "sandbox",
+    cmsCapable,
+  });
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — DOM event subscription
   useEffect(() => {
@@ -1237,7 +1240,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // it reads as a distinct action rather than being wedged inside the URL
   // controls. On mobile it anchors the left edge on its own (see below).
   // Filled when the Blocks editor is open; click again for plain preview.
-  const showCmsToggle = showPreviewToolbar && !cmsModeEnabled;
+  const showCmsToggle = showPreviewToolbar && !cmsCapable;
   const cmsToggle = showCmsToggle ? (
     <HeaderTabButton
       title={t("sandbox.preview.cms")}
@@ -1814,7 +1817,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             orientation="horizontal"
             disabled={effectiveEditingMode !== "blocks"}
           >
-            {!cmsModeEnabled && (
+            {!cmsCapable && (
               <ResizablePanel
                 ref={blocksPanelRef}
                 id="preview-blocks-editor"
@@ -1832,7 +1835,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                 )}
               </ResizablePanel>
             )}
-            {!cmsModeEnabled && effectiveEditingMode === "blocks" && (
+            {!cmsCapable && effectiveEditingMode === "blocks" && (
               <ResizableHandle withHandle />
             )}
             <ResizablePanel

@@ -31,3 +31,33 @@ export function shouldAutoOpenCms(input: {
     input.editingMode === "preview"
   );
 }
+
+/**
+ * The editing mode the preview can actually honour right now.
+ *
+ * Two requests get downgraded to plain preview:
+ * - `visual` without the live sandbox iframe — the production fallback is a
+ *   different origin we cannot inject into.
+ * - `blocks` on a CMS project — its block editor lives in the SIDE PANEL, so
+ *   the inline pane would be a second copy of the same editor with its own
+ *   selection state.
+ *
+ * `cmsCapable` is deliberately the project-level gate, not the per-branch one:
+ * the side panel owns content editing in both CMS and vibecoding mode, so
+ * provisioning a sandbox must not resurrect the inline pane. Projects with no
+ * CMS keep it as their only way in.
+ *
+ * `blocks` otherwise survives a sandbox restart, so its loading/error state
+ * stays actionable and the panel keeps reading the committed snapshot.
+ */
+export function resolveEffectiveEditingMode(input: {
+  editingMode: PreviewEditingMode;
+  /** The preview is showing the live sandbox iframe (not a fallback origin). */
+  sandboxDisplay: boolean;
+  /** The project has a CMS, so the side panel owns block editing. */
+  cmsCapable: boolean;
+}): PreviewEditingMode {
+  if (input.editingMode === "visual" && !input.sandboxDisplay) return "preview";
+  if (input.editingMode === "blocks" && input.cmsCapable) return "preview";
+  return input.editingMode;
+}
