@@ -4,11 +4,16 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { AlertCircle } from "@untitledui/icons";
+import { AlertCircle, Code01 } from "@untitledui/icons";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { NativeAgentEmptyState } from "@/components/chat/native-agent-empty-state";
 import { localHarnessBrand } from "@/components/chat/agent-icons";
 import { useChatTask } from "@/components/chat/context";
 import { GridLoader } from "@/components/grid-loader";
+import { useVirtualMCP } from "@/sdk";
+import { resolveFastPreview } from "@/sdk/fast-preview";
+import { useOrgFlag } from "@/hooks/use-organization-settings";
+import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t";
 import { useNativeTerminalRuntime } from "./active-task-provider";
 import {
@@ -556,8 +561,48 @@ function UnsupportedHarnessState() {
   );
 }
 
+/**
+ * Native chat surface for a Fast Preview CMS thread: the terminal panel has
+ * nothing to run (this session is sandbox-less), so it offers to start a
+ * coding session instead — the same affordance as the web composer card,
+ * shaped like the panel's other empty states. Flag off shows the notice only.
+ */
+function FastPreviewStartSession() {
+  const t = useT();
+  const { createTask } = useChatTask();
+  const codingSessionsEnabled = useOrgFlag(
+    "fast_preview_coding_sessions_enabled",
+  );
+  const startSession = () => {
+    const taskId = createTask({ runtime: "sandbox" });
+    track("coding_session_started", { thread_id: taskId });
+  };
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+      <Code01 size={28} className="text-muted-foreground" />
+      <p className="max-w-sm text-sm text-muted-foreground">
+        {t(
+          codingSessionsEnabled
+            ? "chat.fastPreview.chatNeedsSession"
+            : "chat.input.fastPreviewUnavailable",
+        )}
+      </p>
+      {codingSessionsEnabled ? (
+        <Button size="sm" onClick={startSession}>
+          {t("chat.fastPreview.startCodingSession")}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 export function NativeAgentTerminalPanel() {
   const task = useChatTask();
+  const vm = useVirtualMCP(task.virtualMcpId);
+  const fastPreviewActive = resolveFastPreview(
+    vm?.metadata,
+    task.activeTask?.metadata,
+  ).active;
   const { controller, snapshot, isReadOnly } = useNativeTerminalRuntime();
   const surface = nativeTerminalPanelSurface({
     isThreadLocked: task.isThreadLocked,
@@ -568,6 +613,7 @@ export function NativeAgentTerminalPanel() {
 
   if (surface === "unsupported") return <UnsupportedHarnessState />;
   if (isReadOnly) return <Picker />;
+  if (fastPreviewActive) return <FastPreviewStartSession />;
   if (surface === "picker") return <Picker />;
 
   return <NativeXterm key={controller.threadId} readOnly={isReadOnly} />;
