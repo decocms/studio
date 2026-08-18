@@ -65,6 +65,36 @@ export function isTransientStreamError(message: string): boolean {
 }
 
 /**
+ * A `streamText` result promise that rejected (the AI SDK rejects
+ * finishReason/steps/usage with `NoOutputGeneratedError` when no step ever
+ * finished), reduced to a fallback. The real failure is on `handle.error`.
+ *
+ * Exported for its unit test; the drain loop below is the only caller.
+ */
+export async function settled<T>(
+  promise: PromiseLike<T>,
+  fallback: T,
+): Promise<T> {
+  try {
+    return await promise;
+  } catch {
+    return fallback;
+  }
+}
+
+const EMPTY_USAGE: LanguageModelUsage = {
+  inputTokens: undefined,
+  outputTokens: undefined,
+  totalTokens: undefined,
+  inputTokenDetails: {
+    noCacheTokens: undefined,
+    cacheReadTokens: undefined,
+    cacheWriteTokens: undefined,
+  },
+  outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+};
+
+/**
  * How many times a subagent may resume after a transient stream failure.
  *
  * ponytail: fixed at 2 — a third attempt against a provider that dropped twice
@@ -469,11 +499,19 @@ export function createSubtaskTool(
           commitPending();
 
           // 4. Collect this attempt's results from the resolved promises.
+          //
+          // When the subagent produced no step at all (its first model call
+          // errored), the AI SDK REJECTS finishReason/steps/usage with
+          // `NoOutputGeneratedError`. Awaiting them bare threw that out of this
+          // generator, so the parent got the SDK's placeholder "No output
+          // generated. Check the stream for errors." instead of the real cause
+          // `handle.error` already holds — and the resume path below never ran.
+          // Settle them instead; `handle.error` carries the actual failure.
           error = await handle.error;
-          finishReason = await handle.result.finishReason;
-          const attemptSteps = await handle.result.steps;
+          finishReason = await settled(handle.result.finishReason, "error");
+          const attemptSteps = await settled(handle.result.steps, []);
           steps.push(...attemptSteps);
-          const attemptUsage = await handle.result.usage;
+          const attemptUsage = await settled(handle.result.usage, EMPTY_USAGE);
           usage = {
             ...attemptUsage,
             inputTokens:

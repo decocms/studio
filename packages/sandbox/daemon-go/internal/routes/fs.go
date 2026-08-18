@@ -36,16 +36,31 @@ type FsDeps struct {
 	AllowSameHostDev bool
 }
 
+// escapesRoot is the 400 for a path SafePath rejected. It names what IS
+// reachable: an agent that guessed `/tmp` (which its own `bash` tool can write,
+// unlike these routes) otherwise retries the same path instead of correcting it.
+func (d FsDeps) escapesRoot() string {
+	return "Path escapes app root — paths must resolve inside " + d.AppRoot +
+		"; a relative path resolves against " + d.RepoDir
+}
+
 func (d FsDeps) notifyWrite(path string) {
 	if d.OnWorkingTreeWrite != nil {
 		d.OnWorkingTreeWrite(path)
 	}
 }
 
+// decodeBody caps the request body at maxTransferBytes: without a limit, a
+// misbehaving or malicious caller could stream an unbounded body into memory
+// and crash the daemon, tearing down the sandbox pod on the next missed
+// health probe. The cap matches the daemon's other file-transfer bound.
 func decodeBody(r *http.Request, out any) error {
-	raw, err := io.ReadAll(r.Body)
+	raw, err := io.ReadAll(io.LimitReader(r.Body, maxTransferBytes+1))
 	if err != nil {
 		return fmt.Errorf("Failed to parse body: %s", err.Error())
+	}
+	if len(raw) > maxTransferBytes {
+		return fmt.Errorf("Request body exceeded %d bytes", maxTransferBytes)
 	}
 	if err := json.Unmarshal(raw, out); err != nil {
 		return fmt.Errorf("Failed to parse body: %s", err.Error())
@@ -212,7 +227,7 @@ func Write(deps FsDeps) http.HandlerFunc {
 		}
 		filePath, ok := paths.SafePath(deps.AppRoot, deps.RepoDir, body.Path)
 		if !ok {
-			httpx.Error(w, 400, "Path escapes app root")
+			httpx.Error(w, 400, deps.escapesRoot())
 			return
 		}
 		if jsonErr := decofile.InvalidBlockJSON(body.Path, *body.Content); jsonErr != "" {
@@ -268,7 +283,7 @@ func Unlink(deps FsDeps) http.HandlerFunc {
 		}
 		filePath, ok := paths.SafePath(deps.AppRoot, deps.RepoDir, body.Path)
 		if !ok {
-			httpx.Error(w, 400, "Path escapes app root")
+			httpx.Error(w, 400, deps.escapesRoot())
 			return
 		}
 		existed := true
@@ -324,7 +339,7 @@ func Mkdir(deps FsDeps) http.HandlerFunc {
 		}
 		dirPath, ok := paths.SafePath(deps.AppRoot, deps.RepoDir, body.Path)
 		if !ok {
-			httpx.Error(w, 400, "Path escapes app root")
+			httpx.Error(w, 400, deps.escapesRoot())
 			return
 		}
 		if err := os.MkdirAll(dirPath, 0o755); err != nil {
@@ -363,7 +378,7 @@ func Rename(deps FsDeps) http.HandlerFunc {
 		fromPath, okFrom := paths.SafePath(deps.AppRoot, deps.RepoDir, body.From)
 		toPath, okTo := paths.SafePath(deps.AppRoot, deps.RepoDir, body.To)
 		if !okFrom || !okTo {
-			httpx.Error(w, 400, "Path escapes app root")
+			httpx.Error(w, 400, deps.escapesRoot())
 			return
 		}
 		if _, err := os.Stat(fromPath); err != nil {
@@ -404,7 +419,7 @@ func Edit(deps FsDeps) http.HandlerFunc {
 		}
 		filePath, ok := paths.SafePath(deps.AppRoot, deps.RepoDir, body.Path)
 		if !ok {
-			httpx.Error(w, 400, "Path escapes app root")
+			httpx.Error(w, 400, deps.escapesRoot())
 			return
 		}
 		if body.OldString == "" {
@@ -455,6 +470,11 @@ func Edit(deps FsDeps) http.HandlerFunc {
 	}
 }
 
+const (
+	grepDefaultResultLimit = 250
+	grepMaxResultLimit     = 10000
+)
+
 func Grep(deps FsDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
@@ -478,7 +498,7 @@ func Grep(deps FsDeps) http.HandlerFunc {
 		if body.Path != "" {
 			resolved, ok := paths.SafePath(deps.AppRoot, deps.RepoDir, body.Path)
 			if !ok {
-				httpx.Error(w, 400, "Path escapes app root")
+				httpx.Error(w, 400, deps.escapesRoot())
 				return
 			}
 			searchPath = resolved
@@ -505,9 +525,12 @@ func Grep(deps FsDeps) http.HandlerFunc {
 		}
 		args = append(args, "--", body.Pattern, searchPath)
 
-		limit := 250
+		limit := grepDefaultResultLimit
 		if body.Limit > 0 {
 			limit = body.Limit
+			if limit > grepMaxResultLimit {
+				limit = grepMaxResultLimit
+			}
 		}
 
 		cmd := exec.Command("rg", args...)
@@ -671,7 +694,7 @@ func Glob(deps FsDeps) http.HandlerFunc {
 		if body.Path != "" {
 			resolved, ok := paths.SafePath(deps.AppRoot, deps.RepoDir, body.Path)
 			if !ok {
-				httpx.Error(w, 400, "Path escapes app root")
+				httpx.Error(w, 400, deps.escapesRoot())
 				return
 			}
 			searchPath = resolved
@@ -775,7 +798,7 @@ func WriteFromUrl(deps FsDeps) http.HandlerFunc {
 		}
 		filePath, ok := paths.SafePath(deps.AppRoot, deps.RepoDir, body.Path)
 		if !ok {
-			httpx.Error(w, 400, "Path escapes app root")
+			httpx.Error(w, 400, deps.escapesRoot())
 			return
 		}
 		if err := urlallow.Assert(body.URL, deps.AllowedHosts, deps.AllowSameHostDev); err != nil {

@@ -63,3 +63,28 @@ func TestFetchCatalogBoundsPagination(t *testing.T) {
 		t.Fatalf("expected a page-limit error, got: %v", err)
 	}
 }
+
+// TestReadRPCBodyBoundsPlainJSON guards against a misbehaving or malicious
+// endpoint streaming an unbounded plain-JSON response body: without a cap,
+// readRPCBody would buffer it entirely into memory via io.ReadAll.
+func TestReadRPCBodyBoundsPlainJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(make([]byte, maxRPCResponseBytes+1))
+	}))
+	defer srv.Close()
+
+	res, err := http.Get(srv.URL)
+	if err != nil {
+		t.Fatalf("http.Get: %v", err)
+	}
+	defer res.Body.Close()
+
+	_, err = readRPCBody(res)
+	if err == nil {
+		t.Fatal("expected readRPCBody to reject an oversized body, got nil error")
+	}
+	if !strings.Contains(err.Error(), "exceeded") {
+		t.Fatalf("expected a size-limit error, got: %v", err)
+	}
+}

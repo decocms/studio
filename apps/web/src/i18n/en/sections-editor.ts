@@ -41,6 +41,7 @@ export const sectionsEditor = {
   "sectionsEditor.dynamicOptionsField.selectPlaceholder": "Select...",
   "sectionsEditor.dynamicOptionsField.useValue": 'Use "{value}"',
   "sectionsEditor.enumField.selectPlaceholder": "Select...",
+  "sectionsEditor.enumField.clearOption": "None",
   "sectionsEditor.fileField.browseButton": "Browse",
   "sectionsEditor.fileField.dropFileHint": "Drop a file or click to browse",
   "sectionsEditor.fileField.dropToUpload": "Drop to upload",

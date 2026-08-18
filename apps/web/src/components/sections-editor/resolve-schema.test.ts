@@ -1906,3 +1906,175 @@ describe("resolveSchema – block-config-wrapped union (matcher Props)", () => {
     expect(resolved?.inlineUnionBranches).toBeUndefined();
   });
 });
+
+describe("resolveSchema – intersection-typed props (allOf) merge into one form", () => {
+  /**
+   * Reproduces ALS's TabbedShelf `title` prop, typed
+   * `Omit<RichTextWidget, "tag"> & { tag?: HeadingTag }`. deco emits it as an
+   * allOf of two object `$ref`s with a machine-generated title. Before the fix
+   * this fell into the block-ref path, dropped every branch (no discriminator),
+   * and rendered as "[object Object]" labeled with the machine name.
+   */
+  const meta: LiveMeta = {
+    manifest: {
+      blocks: {
+        sections: {
+          "site/sections/TabbedShelf.tsx": {
+            $ref: "#/definitions/TabbedShelfSection",
+          },
+        },
+      },
+    },
+    schema: {
+      definitions: {
+        TabbedShelfSection: {
+          type: "object",
+          properties: {
+            title: { $ref: "#/definitions/TitleIntersection" },
+          },
+        },
+        TitleIntersection: {
+          title: "omitdGFnRichTextWidget&tl@1767-1787",
+          allOf: [
+            { $ref: "#/definitions/RichTextMinusTag" },
+            { $ref: "#/definitions/TagOnly" },
+          ],
+        },
+        RichTextMinusTag: {
+          type: "object",
+          title: "omitdGFnRichTextWidget",
+          properties: {
+            content: { type: "string", title: "Content" },
+            color: { type: "string", format: "color-input", title: "Color" },
+          },
+        },
+        TagOnly: {
+          type: "object",
+          title: "tl@1767-1787",
+          properties: { tag: { type: "string", title: "Tag" } },
+        },
+      },
+    },
+  };
+
+  test("renders an object form with all merged fields, not a picker", () => {
+    const title = resolveSchema("site/sections/TabbedShelf.tsx", meta)
+      ?.properties?.title;
+    expect(title?.type).toBe("object");
+    expect(title?.anyOfRefs).toBeUndefined();
+    expect(title?.properties?.content?.title).toBe("Content");
+    expect(title?.properties?.color?.format).toBe("color-input");
+    expect(title?.properties?.tag?.title).toBe("Tag");
+  });
+
+  test("drops the machine-generated intersection title as the field label", () => {
+    const title = resolveSchema("site/sections/TabbedShelf.tsx", meta)
+      ?.properties?.title;
+    expect(title?.title).toBeUndefined();
+  });
+
+  test("prop-level title wins over the suppressed intersection title", () => {
+    const withPropTitle = structuredClone(meta) as LiveMeta;
+    const section = (
+      withPropTitle.schema.definitions as Record<string, unknown>
+    ).TabbedShelfSection as { properties: { title: Record<string, unknown> } };
+    section.properties.title.title = "Título";
+    const title = resolveSchema("site/sections/TabbedShelf.tsx", withPropTitle)
+      ?.properties?.title;
+    expect(title?.title).toBe("Título");
+    expect(title?.properties?.content?.title).toBe("Content");
+  });
+
+  test("keeps a human-authored title on a named intersection def", () => {
+    const named = structuredClone(meta) as LiveMeta;
+    const defs = named.schema.definitions as Record<
+      string,
+      Record<string, unknown>
+    >;
+    defs.TitleIntersection!.title = "Layout options";
+    const title = resolveSchema("site/sections/TabbedShelf.tsx", named)
+      ?.properties?.title;
+    expect(title?.type).toBe("object");
+    expect(title?.title).toBe("Layout options");
+  });
+});
+
+describe("resolveSchema – required propagation", () => {
+  test("exposes required child names at the root", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      required: ["tag"],
+      properties: {
+        tag: { type: "string", enum: ["Heading 1", "Heading 2"] },
+        subtitle: { type: "string", enum: ["A", "B"] },
+      },
+    });
+
+    const resolved = resolveSchema("site/sections/Test.tsx", meta);
+    expect(resolved?.required).toContain("tag");
+    expect(resolved?.required).not.toContain("subtitle");
+  });
+
+  test("required is undefined when the object declares none", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        tag: { type: "string", enum: ["Heading 1", "Heading 2"] },
+      },
+    });
+
+    expect(resolveSchema("site/sections/Test.tsx", meta)?.required).toBe(
+      undefined,
+    );
+  });
+
+  test("merges required arrays from allOf members on nested objects", () => {
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          sections: {
+            "site/sections/Test.tsx": { $ref: "#/definitions/Root" },
+          },
+        },
+      },
+      schema: {
+        definitions: {
+          Root: {
+            type: "object",
+            properties: { nested: { $ref: "#/definitions/Nested" } },
+          },
+          Nested: {
+            type: "object",
+            allOf: [
+              { required: ["a"], properties: { a: { type: "string" } } },
+              { required: ["b"], properties: { b: { type: "string" } } },
+            ],
+          },
+        },
+      },
+    };
+
+    const nested = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.nested;
+    expect(nested?.required).toContain("a");
+    expect(nested?.required).toContain("b");
+  });
+
+  test("does not mark a key required from only one anyOf branch", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      required: ["kind"],
+      properties: { kind: { type: "string", enum: ["x", "y"] } },
+      anyOf: [
+        { required: ["a"], properties: { a: { type: "string" } } },
+        { required: ["b"], properties: { b: { type: "string" } } },
+      ],
+    });
+
+    const resolved = resolveSchema("site/sections/Test.tsx", meta);
+    // The object's own required survives; branch-only requireds do not.
+    expect(resolved?.required).toContain("kind");
+    expect(resolved?.required).not.toContain("a");
+    expect(resolved?.required).not.toContain("b");
+  });
+});

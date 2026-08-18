@@ -16,6 +16,13 @@ export interface FieldProps {
   onChange: (value: unknown) => void;
   path: string;
   label: string;
+  /**
+   * Whether the parent object marks this field as required. Optional fields
+   * (the default when omitted) let widgets offer a way to clear the value —
+   * e.g. `EnumField` shows a "None" option so an optional select can be left
+   * empty.
+   */
+  required?: boolean;
   breadcrumbPath?: Crumb[];
   onBreadcrumbChange?: (path: Crumb[]) => void;
   /**

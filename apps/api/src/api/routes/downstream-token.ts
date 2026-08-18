@@ -7,6 +7,7 @@
 
 import { Hono } from "hono";
 import type { StudioContext } from "../../core/studio-context";
+import { canRefresh } from "../../oauth/token-refresh";
 import { resolveOriginTokenEndpoint } from "../../oauth/resolve-token-endpoint";
 import {
   DownstreamTokenStorage,
@@ -209,12 +210,11 @@ export const createDownstreamTokenRoutes = () => {
     }
 
     const isExpired = tokenStorage.isExpired(token);
-    const canRefresh = !!token.refreshToken && !!token.tokenEndpoint;
 
     return c.json({
       hasToken: true,
       isExpired,
-      canRefresh,
+      canRefresh: canRefresh(token),
       expiresAt: token.expiresAt,
     });
   });

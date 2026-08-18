@@ -76,6 +76,7 @@ import {
   type TaskBoardItemStatus,
   type TaskBoardItemThread,
 } from "./config";
+import { summarizeTaskCost } from "./task-cost";
 import { toast } from "sonner";
 import { useTaskBoardItemPrs } from "@/hooks/use-task-board-item-prs";
 import {
@@ -149,15 +150,19 @@ const PROPERTY_BUTTON =
  */
 function TaskCost({ threads }: { threads?: TaskBoardItemThread[] }) {
   const t = useT();
-  const priced = (threads ?? []).filter((thread) => thread.costUsd !== null);
-  if (priced.length === 0) return null;
-  const total = priced.reduce((sum, thread) => sum + (thread.costUsd ?? 0), 0);
+  const summary = summarizeTaskCost(threads);
+  if (!summary) return null;
+  const { total, runCount } = summary;
+  const isSingular = runCount === 1;
   return (
     <div
       className={cn(PROPERTY_BUTTON, "cursor-default hover:bg-transparent")}
-      title={t("taskBoard.taskDialog.costTooltip", {
-        runs: String((threads ?? []).length),
-      })}
+      title={t(
+        isSingular
+          ? "taskBoard.taskDialog.costTooltipSingular"
+          : "taskBoard.taskDialog.costTooltipPlural",
+        { runs: String(runCount) },
+      )}
     >
       <Coins01 size={16} className="shrink-0 text-muted-foreground" />
       <span className="tabular-nums">
@@ -167,9 +172,12 @@ function TaskCost({ threads }: { threads?: TaskBoardItemThread[] }) {
         })}
       </span>
       <span className="text-muted-foreground">
-        {t("taskBoard.taskDialog.costRunCount", {
-          runs: String((threads ?? []).length),
-        })}
+        {t(
+          isSingular
+            ? "taskBoard.taskDialog.costRunCountSingular"
+            : "taskBoard.taskDialog.costRunCountPlural",
+          { runs: String(runCount) },
+        )}
       </span>
     </div>
   );

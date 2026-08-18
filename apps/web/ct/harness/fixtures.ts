@@ -27,3 +27,11 @@ export function sectionWithProps(
 ): LiveMeta {
   return metaWithSchema({ type: "object", properties }, defs);
 }
+
+/** Shorthand: a section schema with `properties` and a `required` name list. */
+export function sectionWithRequired(
+  properties: Record<string, unknown>,
+  required: string[],
+): LiveMeta {
+  return metaWithSchema({ type: "object", properties, required });
+}

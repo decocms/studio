@@ -6,6 +6,7 @@
 import { Hono } from "hono";
 import type { StudioContext } from "../../core/studio-context";
 import { getSettings } from "../../settings";
+import { supabaseGet } from "../../deco-legacy/supabase";
 
 type Variables = { studioContext: StudioContext };
 
@@ -27,8 +28,6 @@ export interface DecoAppCatalogItem {
   vendor: { alias: string; url: string };
 }
 
-const SUPABASE_FETCH_TIMEOUT_MS = 10_000;
-
 export function mapSupabaseAppRows(
   rows: SupabaseAppRow[],
 ): DecoAppCatalogItem[] {
@@ -45,31 +44,6 @@ export function mapSupabaseAppRows(
         url: row.vendors!.url,
       },
     }));
-}
-
-async function supabaseGetApps(
-  supabaseUrl: string,
-  serviceKey: string,
-): Promise<SupabaseAppRow[]> {
-  const res = await fetch(
-    `${supabaseUrl}/rest/v1/apps?select=name,title,description,logo,category,vendors(alias,url)`,
-    {
-      headers: {
-        apikey: serviceKey,
-        Authorization: `Bearer ${serviceKey}`,
-        Accept: "application/json",
-      },
-      signal: AbortSignal.timeout(SUPABASE_FETCH_TIMEOUT_MS),
-    },
-  );
-  if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    console.error(
-      `[deco-apps] Supabase error (${res.status}): ${text.slice(0, 200)}`,
-    );
-    throw new Error(`External service error (${res.status})`);
-  }
-  return (await res.json()) as SupabaseAppRow[];
 }
 
 const requireAuth = async (
@@ -98,7 +72,11 @@ export const createDecoAppsRoutes = () => {
     }
 
     try {
-      const rows = await supabaseGetApps(supabaseUrl, serviceKey);
+      const rows = await supabaseGet<SupabaseAppRow>(
+        supabaseUrl,
+        serviceKey,
+        "apps?select=name,title,description,logo,category,vendors(alias,url)",
+      );
       return c.json({ apps: mapSupabaseAppRows(rows) });
     } catch (err) {
       console.error("[deco-apps] GET error:", err);
