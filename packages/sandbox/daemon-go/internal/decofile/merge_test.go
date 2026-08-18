@@ -59,6 +59,24 @@ func TestGenerateFromBlocks(t *testing.T) {
 		}
 	})
 
+	t.Run("drops a block that is not valid JSON", func(t *testing.T) {
+		dir := t.TempDir()
+		writeBlock(t, dir, "good.json", `{"ok":true}`)
+		// A raw `.tsx` source spliced in would make the whole snapshot unparseable.
+		writeBlock(t, dir, "broken.json", `import { H } from './x'`)
+		merged, ok := generateFromBlocks(dir)
+		if !ok {
+			t.Fatal("expected ok=true")
+		}
+		if merged != `{"good":{"ok":true}}` {
+			t.Fatalf("merged = %q, want the broken block dropped", merged)
+		}
+		var v any
+		if err := json.Unmarshal([]byte(merged), &v); err != nil {
+			t.Fatalf("merged blob is not valid JSON: %v", err)
+		}
+	})
+
 	t.Run("decodes percent-encoded stems until stable", func(t *testing.T) {
 		dir := t.TempDir()
 		// Double-encoded stem: a single decode would key it `Compre%20Junto`,

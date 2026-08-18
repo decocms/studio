@@ -45,15 +45,16 @@ func decodeUntilStable(stem string) string {
 // generateFromBlocks rebuilds the merged decofile from the sibling
 // `.deco/blocks/*.json` files so the CMS is readable before the dev server is
 // up. Maps each file to `{ [decodeUntilStable(stem)]: <file contents> }`,
-// sorted by filename for a deterministic, byte-for-byte result.
+// sorted by filename — byte-for-byte identical to the TS mergeBlocks
+// (packages/shared/src/decofile/merge.ts) for well-formed input.
 //
-// The merged text is built by splicing raw file bytes rather than
-// unmarshal/marshal round-tripping through Go values — this payload is
-// routinely multi-MB, and a malformed block isn't caught here; the client's
-// parse fails and falls back to "no snapshot", same as the read/write/edit
-// handlers already gate. The merge is deliberately all-or-nothing: one bad block
-// blanks the whole snapshot rather than silently dropping a block and rendering
-// a partial site.
+// Valid blocks are spliced in raw (no unmarshal/marshal round-trip — the
+// payload is routinely multi-MB). A block that is not valid JSON is DROPPED
+// rather than spliced raw, which would make the whole snapshot unparseable and
+// wedge the CMS; this mirrors the TS side, which dropped it to unwedge Fast
+// Preview. The write/edit/publish handlers still reject invalid blocks up front
+// (see InvalidBlockJSON) — this is the last-resort net for a bad block that
+// arrived some other way (e.g. a direct push).
 //
 // Returns ok=false when there's no blocks dir (nothing to merge) so the caller
 // falls through to its normal "file not found" path.
@@ -86,6 +87,11 @@ func generateFromBlocks(blocksDir string) (string, bool) {
 		content := bytes.TrimSpace(raw)
 		// Skip empty files — `"key":` with no value would break the merged JSON.
 		if len(content) == 0 {
+			continue
+		}
+		// Drop a block that isn't valid JSON — spliced raw it would corrupt the
+		// whole snapshot. json.Valid avoids allocating a discarded value.
+		if !json.Valid(content) {
 			continue
 		}
 		keyJSON, err := json.Marshal(decodeUntilStable(stem))

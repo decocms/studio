@@ -90,6 +90,17 @@ function countColdRead(path: "tarball" | "blobs"): void {
   coldReadsCounter.add(1, { path });
 }
 
+let skippedBlocksCounter: Counter | null = null;
+
+function countSkippedBlocks(n: number): void {
+  skippedBlocksCounter ??= meter.createCounter("decofile_skipped_blocks", {
+    description:
+      "Decofile blocks dropped from a merge for not being valid JSON",
+    unit: "{blocks}",
+  });
+  skippedBlocksCounter.add(n);
+}
+
 export async function mapBounded<T, R>(
   items: T[],
   limit: number,
@@ -179,18 +190,20 @@ export interface DecofileSnapshot {
   decofile: string;
 }
 
+/** Bump when the merge output changes so entries written by an older
+ * `mergeBlocks` miss instead of being served as-is — notably the pre-drop
+ * splice that could cache an INVALID document under a still-current sha. */
+const MERGED_DOC_FORMAT = "2";
+
 /**
- * Disk key for the merged document. The store keys merged entries by a single
- * 40-hex sha; a root project uses the head sha itself, but the merged doc
- * also depends on `packagePath` (two nested projects can share one repo), so
- * nested projects key by a sha1 of (head sha, packagePath) — still
- * deterministic and content-addressed, so restart-warmness is preserved.
- * (Deviation from the spec's `merged/<owner>/<repo>/<headSha>.json` sketch,
- * which ignored packagePath.)
+ * Disk key for the merged document — a sha1 of (format, head sha, packagePath),
+ * so it's deterministic/content-addressed (restart-warm) yet distinct per
+ * nested project (two can share one repo) and per merge-output format.
  */
 function mergedDocSha(sha: string, packagePath: string | null): string {
-  if (!packagePath) return sha;
-  return createHash("sha1").update(`${sha}:${packagePath}`).digest("hex");
+  return createHash("sha1")
+    .update(`${MERGED_DOC_FORMAT}:${sha}:${packagePath ?? ""}`)
+    .digest("hex");
 }
 
 /** Concurrent snapshot reads of the same content share ONE resolution — this
@@ -273,11 +286,12 @@ async function resolveSnapshot(
   );
   const { decofile, skipped } = mergeBlocks(contents);
   if (skipped.length > 0) {
+    countSkippedBlocks(skipped.length);
     console.warn("decofile read: dropped blocks that were not valid JSON", {
       repo: `${owner}/${repo}`,
       sha,
       packagePath,
-      blocks: skipped.map((s) => ({ key: s.key, error: s.error })),
+      blocks: skipped.map((s) => s.key),
     });
   }
   await putMerged(owner, repo, docSha, decofile);

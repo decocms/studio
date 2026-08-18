@@ -181,9 +181,10 @@ async function commitBatch(batch: Batch): Promise<string> {
       const { decofile: genContent, skipped } = mergeBlocks(files);
       if (skipped.length > 0) {
         console.warn("decofile gen: dropped blocks that were not valid JSON", {
+          repo: `${client.owner}/${client.repo}`,
           branch,
           packagePath,
-          blocks: skipped.map((s) => ({ key: s.key, error: s.error })),
+          blocks: skipped.map((s) => s.key),
         });
       }
       const genBlobSha = await client.createBlob(genContent);

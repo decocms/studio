@@ -59,6 +59,27 @@ describe("mergeBlocks", () => {
     expect(skipped[0]?.error).toBeTruthy();
   });
 
+  it("drops a broken block between valid ones without breaking the commas", () => {
+    const { decofile, skipped } = mergeBlocks([
+      { stem: "a", content: '{"n":1}' },
+      { stem: "b", content: "oops not json" },
+      { stem: "c", content: '{"n":3}' },
+    ]);
+    expect(JSON.parse(decofile)).toEqual({ a: { n: 1 }, c: { n: 3 } });
+    expect(skipped.map((s) => s.key)).toEqual(["b"]);
+  });
+
+  it("reports every skipped block in filename order", () => {
+    const { decofile, skipped } = mergeBlocks([
+      { stem: "a", content: "nope" },
+      { stem: "b", content: '{"ok":true}' },
+      { stem: "c", content: "also nope" },
+    ]);
+    expect(JSON.parse(decofile)).toEqual({ b: { ok: true } });
+    expect(skipped).toHaveLength(2);
+    expect(skipped.map((s) => s.key)).toEqual(["a", "c"]);
+  });
+
   it("reports the decoded key for a skipped block with an encoded stem", () => {
     const { decofile, skipped } = mergeBlocks([
       { stem: "Compre%20Junto", content: "not json" },
