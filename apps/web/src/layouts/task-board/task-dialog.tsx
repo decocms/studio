@@ -93,6 +93,7 @@ import { formatTimeAgo } from "@/lib/format-time";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { useConnections } from "@/sdk";
 import { listRepoScopeLabels } from "@decocms/shared/github-repo-scope";
+import { isResolvedRunFailure } from "@decocms/shared/entities";
 import { AssigneePickerContent } from "./assignee-picker";
 import { TagPickerContent } from "./tag-picker";
 import { extractDescriptionLinks } from "./description-links";
@@ -903,9 +904,19 @@ export function TaskBoardItemDialog({
   );
 }
 
-/** Live-status style for a linked thread (agent session). */
+/**
+ * Live-status style for a linked thread (agent session).
+ *
+ * Takes the thread, not just its status: a `failed` run whose failure is settled
+ * history — a newer attempt replaced it, or it died after already delivering —
+ * is not an error the user can act on, and painting it red is what made a card
+ * the reviewers approved look broken.
+ */
 export function threadStatusStyle(
-  status: NonNullable<TaskBoardItemThread["status"]>,
+  thread: {
+    status: NonNullable<TaskBoardItemThread["status"]>;
+    failureKind?: string | null;
+  },
   t: ReturnType<typeof useT>,
 ): {
   label: string;
@@ -913,8 +924,18 @@ export function threadStatusStyle(
   icon: typeof AlertSquare;
   spin?: boolean;
 } {
-  switch (status) {
+  switch (thread.status) {
     case "failed":
+      if (isResolvedRunFailure(thread.failureKind)) {
+        return {
+          label:
+            thread.failureKind === "superseded"
+              ? t("taskBoard.taskDialog.threadStatusSuperseded")
+              : t("taskBoard.taskDialog.threadStatusEndedAfterDelivery"),
+          className: "text-muted-foreground",
+          icon: AlertCircle,
+        };
+      }
       return {
         label: t("taskBoard.taskDialog.threadStatusError"),
         className: "text-destructive",
@@ -946,7 +967,7 @@ export function threadStatusStyle(
         icon: AlertCircle,
       };
     default: {
-      const _exhaustive: never = status;
+      const _exhaustive: never = thread.status;
       return _exhaustive;
     }
   }
@@ -967,7 +988,9 @@ function ThreadActivityItem({
   onOpen?: (thread: TaskBoardItemThread) => void;
 }) {
   const t = useT();
-  const state = thread.status ? threadStatusStyle(thread.status, t) : null;
+  const state = thread.status
+    ? threadStatusStyle({ ...thread, status: thread.status }, t)
+    : null;
   const message = thread.lastMessage;
   // The Super Agent and both reviewers run on the org agent, distinguished only
   // by their thread title prefix — reflect that in the card's glyph/name.
@@ -1766,13 +1789,31 @@ function describeActivity(
   switch (a.action) {
     case "created":
       return t("taskBoard.taskDialog.activityCreated");
-    case "status_changed":
+    case "status_changed": {
+      // Written as In Progress → In Progress, so the move prose said nothing.
+      if (typeof d.retry === "number") {
+        return t("taskBoard.taskDialog.activityRetryScheduled", {
+          attempt: String(d.retry),
+          of: String(d.of ?? d.retry),
+          reason: String(d.reason ?? ""),
+        });
+      }
+      if (typeof d.retriesSpent === "number" && d.retriesSpent > 0) {
+        return interleaveChips(
+          t("taskBoard.taskDialog.activityRetriesExhausted", {
+            to,
+            count: String(d.retriesSpent),
+          }),
+          { to: statusChip(d.to) },
+        );
+      }
       return interleaveChips(
         d.from
           ? t("taskBoard.taskDialog.activityMovedFromTo", { from, to })
           : t("taskBoard.taskDialog.activityMovedTo", { to }),
         { from: statusChip(d.from), to: statusChip(d.to) },
       );
+    }
     case "assignee_changed":
       if (d.to == null) return t("taskBoard.taskDialog.activityUnassigned");
       return interleaveChips(

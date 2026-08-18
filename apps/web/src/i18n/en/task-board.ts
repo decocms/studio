@@ -56,6 +56,10 @@ export const taskBoard = {
   "taskBoard.taskDialog.activityCreated": "created the task",
   "taskBoard.taskDialog.activityMovedFromTo": "moved from {from} to {to}",
   "taskBoard.taskDialog.activityMovedTo": "moved to {to}",
+  "taskBoard.taskDialog.activityRetryScheduled":
+    "scheduled retry {attempt} of {of} — {reason}",
+  "taskBoard.taskDialog.activityRetriesExhausted":
+    "moved to {to} after {count} failed retries",
   "taskBoard.taskDialog.activityAssigned": "assigned to {name}",
   "taskBoard.taskDialog.activityUnassigned": "removed the assignee",
   "taskBoard.taskDialog.activityDelegated": "delegated to {name}",
@@ -168,10 +172,13 @@ export const taskBoard = {
   "taskBoard.taskDialog.superAgentLabel": "Super Agent",
   "taskBoard.taskDialog.taskTitlePlaceholder": "Task title...",
   "taskBoard.taskDialog.threadStatusCompleted": "Completed",
+  "taskBoard.taskDialog.threadStatusEndedAfterDelivery":
+    "Ended after delivering",
   "taskBoard.taskDialog.threadStatusError": "Error",
   "taskBoard.taskDialog.threadStatusExpired": "Expired",
   "taskBoard.taskDialog.threadStatusNeedsInput": "Needs input",
   "taskBoard.taskDialog.threadStatusRunning": "Running",
+  "taskBoard.taskDialog.threadStatusSuperseded": "Retried",
   "taskBoard.taskDialog.unassignedLabel": "Unassigned",
   "taskBoard.taskFilters.assigneeAnyone": "Anyone",
   "taskBoard.taskFilters.assigneeFilterPlaceholder": "Filter by assignee…",

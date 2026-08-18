@@ -126,6 +126,7 @@ import { SubscriptionPaywallDialog } from "./subscription-paywall-dialog";
 import { RerunDialog } from "./rerun-dialog";
 import { subscriptionErrorKind } from "@/components/task-board/is-subscription-error";
 import { isReportsTask, type ReviewerKind } from "@decocms/shared/task-board";
+import { isResolvedRunFailure } from "@decocms/shared/entities";
 import { useFlipLanes } from "./use-flip-lanes";
 import { Calendar as DayPickerCalendar } from "@decocms/ui/components/calendar.tsx";
 import { buildTaskChatContext } from "./build-task-chat-context";
@@ -2050,11 +2051,17 @@ type FooterAgent = {
 
 /** Rank for picking which agent's row the card footer shows — lower wins. A
  *  running/awaiting-input agent is always the most important thing on the
- *  card; once nothing is running, a failure is the most important thing;
- *  otherwise (everything `completed`) the most recently run agent wins. */
-function statusPriority(status: TaskBoardItemThread["status"]): number {
-  if (status === "in_progress" || status === "requires_action") return 0;
-  if (status === "failed") return 1;
+ *  card; once nothing is running, a failure the user can act on is; a clean run
+ *  outranks a settled failure (a superseded attempt, or a run that died after
+ *  delivering — see `isResolvedRunFailure`), which is history and must not paint
+ *  the card red; otherwise the most recently run agent wins. */
+function statusPriority(thread: TaskBoardItemThread): number {
+  if (thread.status === "in_progress" || thread.status === "requires_action") {
+    return 0;
+  }
+  if (thread.status === "failed") {
+    return isResolvedRunFailure(thread.failureKind) ? 3 : 1;
+  }
   return 2;
 }
 
@@ -2092,8 +2099,8 @@ function AgentReviewFooter({
     })),
   ];
   const featuredAgent = agents.reduce((best, agent) => {
-    const rank = statusPriority(agent.thread.status);
-    const bestRank = statusPriority(best.thread.status);
+    const rank = statusPriority(agent.thread);
+    const bestRank = statusPriority(best.thread);
     if (rank !== bestRank) return rank < bestRank ? agent : best;
     return agent.thread.createdAt > best.thread.createdAt ? agent : best;
   });
@@ -2130,7 +2137,9 @@ function AgentGlyph({
  */
 function AgentThreadFooterRow({ kind, name, thread }: FooterAgent) {
   const t = useT();
-  const state = thread.status ? threadStatusStyle(thread.status, t) : null;
+  const state = thread.status
+    ? threadStatusStyle({ ...thread, status: thread.status }, t)
+    : null;
 
   return (
     <div className="flex items-center gap-1.5">

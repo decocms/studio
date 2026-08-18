@@ -354,6 +354,13 @@ export async function enqueueSuperAgentForTask(
     throw err;
   }
 
+  // A fresh attempt owns the card, so the older failures are history, not state.
+  await ctx.storage.taskBoard
+    .supersedeFailedThreads(task.id, task.organizationId)
+    .catch((err) =>
+      console.error("[task-board] superseding failed threads failed", err),
+    );
+
   // The dispatch really happened — the auto-fix leg of the PLG funnel.
   // OUTSIDE the try/catch above: telemetry must never couple into the
   // billing rollback (a throw here after a successful dispatch would refund

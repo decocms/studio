@@ -10,8 +10,8 @@
  * kind, the text of the run's error part. Some kinds are infrastructure by
  * construction: `stall` (the idle reaper found no progress), `liveness` and
  * `projection` (the run's stream died under the projector), `abandoned` (a run
- * that never started at all). `cancelled` and `superseded` are deliberate human
- * acts and are never retried.
+ * that never started at all). `cancelled`, `superseded` and
+ * `ended_after_delivery` are settled by construction and never retried.
  *
  * ponytail: `"error"` is classified by matching the error text against a short
  * list of infrastructure messages, because that kind is written by
@@ -25,6 +25,7 @@
  */
 
 import { SANDBOX_UNREACHABLE_PREFIX } from "@decocms/sandbox/dispatch/error-codes";
+import { RESOLVED_RUN_FAILURE_KINDS } from "@decocms/shared/entities";
 
 /** Failure kinds that are infrastructure whatever the message says. */
 const TRANSIENT_KINDS = new Set([
@@ -34,8 +35,9 @@ const TRANSIENT_KINDS = new Set([
   "abandoned",
 ]);
 
-/** Failure kinds a human caused on purpose — never retried. */
-const DELIBERATE_KINDS = new Set(["cancelled", "superseded"]);
+/** Failure kinds that must never earn a retry: a human cancelled or re-ran the
+ *  card on purpose, or the run had already delivered when it died. */
+const NEVER_RETRY_KINDS = new Set(["cancelled", ...RESOLVED_RUN_FAILURE_KINDS]);
 
 /**
  * Infrastructure messages behind the generic `"error"` kind. Anchored to the
@@ -89,7 +91,7 @@ export function retryBudgetFor(failure: {
   kind: string | null;
   errorText?: string | null;
 }): number {
-  if (DELIBERATE_KINDS.has(failure.kind ?? "")) return 0;
+  if (NEVER_RETRY_KINDS.has(failure.kind ?? "")) return 0;
   return isTransientRunFailure(failure)
     ? TRANSIENT_RETRY_BUDGET
     : UNKNOWN_RETRY_BUDGET;
@@ -101,7 +103,7 @@ export function isTransientRunFailure(failure: {
   errorText?: string | null;
 }): boolean {
   const kind = failure.kind ?? "";
-  if (DELIBERATE_KINDS.has(kind)) return false;
+  if (NEVER_RETRY_KINDS.has(kind)) return false;
   if (TRANSIENT_KINDS.has(kind)) return true;
   const text = failure.errorText ?? "";
   if (!text) return false;

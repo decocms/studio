@@ -275,6 +275,10 @@ export async function advanceTasksToReviewOnThreadFinish(
 const RETRY_BASE_MS = 30_000;
 const RETRY_CAP_MS = 120_000;
 
+/** Recorded on a run that lost its stream after it had already delivered. */
+const DELIVERED_FAILURE_REASON =
+  "Run ended after it had already delivered — the task moved on without it";
+
 /**
  * A task's run failed — decide between a retry and the board.
  *
@@ -306,7 +310,14 @@ export async function reactToFailedTaskRun(
     const budget = retryBudgetFor(failure);
     for (const itemId of await taskBoard.linkedTaskIds(threadId, orgId)) {
       const item = await taskBoard.getById(itemId, orgId);
-      if (!item || item.status !== "in_progress") continue;
+      if (!item) continue;
+      // The run moved the card itself and only THEN lost its stream.
+      if (item.status === "in_review" || item.status === "done") {
+        await taskBoard
+          .relabelDeliveredFailure(threadId, orgId, DELIVERED_FAILURE_REASON)
+          .catch(() => {});
+      }
+      if (item.status !== "in_progress") continue;
       // Another of this card's threads is still working — its outcome decides
       // the card, not this one's.
       if (
