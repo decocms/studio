@@ -18,10 +18,10 @@ export const cmsTour = {
   "cmsTour.branches.title": "Branches",
   "cmsTour.branches.description":
     "Each set of changes lives on its own branch — switch or start a new one here.",
-  "cmsTour.submit.title": "Submit for review",
+  "cmsTour.submit.title": "Open pull request",
   "cmsTour.submit.description":
     "Send your changes as a pull request for your team to review before they go live.",
-  "cmsTour.publish.title": "Publish",
+  "cmsTour.publish.title": "Merge",
   "cmsTour.publish.description":
     "Publish your changes to the live site once they're ready.",
   "cmsTour.next": "Next",

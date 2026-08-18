@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { BranchMeta, LifecycleState } from "@decocms/sandbox/shared";
 import type { ClaimPhase } from "@/components/sandbox/hooks/sandbox-events-context";
-import { selectHeaderButton } from "./panel-state";
+import { selectHeaderButton, type HeaderButton } from "./panel-state";
+import type { PublishGate } from "./sandbox-git-api";
 import type { CheckRun, PrSummary } from "./use-pr-data";
 import type { PrReviewSignals } from "./use-pr-reviews";
 import type { TFunction, TranslationKey } from "@/i18n/use-t.ts";
@@ -47,6 +48,7 @@ interface BaseInput {
   pr: PrSummary | null;
   checks: CheckRun[];
   reviews: PrReviewSignals | null;
+  publishGate?: PublishGate | null;
   loading?: boolean;
   t: TFunction;
 }
@@ -104,13 +106,22 @@ function reviews(over: Partial<PrReviewSignals> = {}): PrReviewSignals {
   };
 }
 
+function menuKeys(button: HeaderButton): string[] {
+  return button.menu.map((item) => item.key);
+}
+
+function menuItem(button: HeaderButton, key: string) {
+  return button.menu.find((item) => item.key === key);
+}
+
 describe("selectHeaderButton", () => {
-  test("loading flag → Loading… (disabled, spinner)", () => {
+  test("loading flag → Loading… (disabled, spinner, empty menu)", () => {
     const r = selectHeaderButton(happyInput({ loading: true }));
     expect(r.label).toBe("Loading…");
     expect(r.disabled).toBe(true);
     expect(r.loading).toBe(true);
     expect(r.variant).toBe("outline");
+    expect(r.menu).toEqual([]);
   });
 
   test("lifecycle.idle → 'Preparing environment…' (disabled, spinner)", () => {
@@ -172,8 +183,7 @@ describe("selectHeaderButton", () => {
   });
 
   test("idle + claimPhase = ready → 'Preparing environment…' (generic)", () => {
-    // ready means the daemon claim handle is up but lifecycle hasn't yet
-    // emitted its first event. Generic copy is correct here.
+    // ready = claim handle up but lifecycle hasn't emitted yet; generic copy.
     const r = selectHeaderButton(
       happyInput({
         lifecycle: { phase: "idle" },
@@ -185,8 +195,7 @@ describe("selectHeaderButton", () => {
   });
 
   test("idle + claimPhase = claiming → 'Preparing environment…' (generic)", () => {
-    // `claiming` is intentionally absent from `idleClaimCopy` — falls through
-    // to the generic label.
+    // `claiming` is absent from `idleClaimCopy` — falls through to generic.
     const r = selectHeaderButton(
       happyInput({
         lifecycle: { phase: "idle" },
@@ -231,20 +240,16 @@ describe("selectHeaderButton", () => {
     expect(r.loading).toBe(true);
   });
 
-  // Post-clone lifecycle phases (installing / starting / install-failed /
-  // start-failed / crashed) intentionally fall through to git/PR logic.
-  // Git operates on the cloned repo independently of dev-server health;
-  // the user can commit fixes or push a hotfix even when the dev server
-  // can't run.
+  // Post-clone phases fall through to git/PR logic: git works even when the dev server can't run.
 
-  test("lifecycle.installing + dirty branch → Submit for review (fall-through)", () => {
+  test("lifecycle.installing + dirty branch → Open pull request (fall-through)", () => {
     const r = selectHeaderButton(
       happyInput({
         lifecycle: { phase: "installing" },
         branch: ready({ workingTreeDirty: true }),
       }),
     );
-    expect(r.label).toBe("Submit for review");
+    expect(r.label).toBe("Open pull request");
   });
 
   test("lifecycle.starting + clean ready branch → Up to date (fall-through)", () => {
@@ -254,39 +259,38 @@ describe("selectHeaderButton", () => {
     expect(r.label).toBe("Up to date");
   });
 
-  test("lifecycle.install-failed + dirty branch → Submit for review (commit fixes)", () => {
+  test("lifecycle.install-failed + dirty branch → Open pull request (commit fixes)", () => {
     const r = selectHeaderButton(
       happyInput({
         lifecycle: { phase: "install-failed", error: "ENOENT package.json" },
         branch: ready({ workingTreeDirty: true }),
       }),
     );
-    expect(r.label).toBe("Submit for review");
+    expect(r.label).toBe("Open pull request");
   });
 
-  test("lifecycle.start-failed + ahead-of-base → Submit for review", () => {
+  test("lifecycle.start-failed + ahead-of-base → Open pull request", () => {
     const r = selectHeaderButton(
       happyInput({
         lifecycle: { phase: "start-failed", error: "exit 1" },
         branch: ready({ aheadOfBase: 3 }),
       }),
     );
-    expect(r.label).toBe("Submit for review");
+    expect(r.label).toBe("Open pull request");
   });
 
-  test("lifecycle.crashed + dirty branch → Submit for review (push hotfix)", () => {
+  test("lifecycle.crashed + dirty branch → Open pull request (push hotfix)", () => {
     const r = selectHeaderButton(
       happyInput({
         lifecycle: { phase: "crashed" },
         branch: ready({ workingTreeDirty: true }),
       }),
     );
-    expect(r.label).toBe("Submit for review");
+    expect(r.label).toBe("Open pull request");
   });
 
   test("post-clone with branch still unknown → Loading branch… (defensive)", () => {
-    // Brief window between checkout completing and the daemon emitting
-    // the `branch` event with git metadata.
+    // Window between checkout completing and the daemon's `branch` event.
     const r = selectHeaderButton(
       happyInput({
         lifecycle: { phase: "installing" },
@@ -297,48 +301,118 @@ describe("selectHeaderButton", () => {
     expect(r.loading).toBe(true);
   });
 
-  test("no diff anywhere → Up to date (disabled, outline)", () => {
+  test("no diff anywhere → Up to date (disabled, outline, empty menu)", () => {
     const r = selectHeaderButton(happyInput());
     expect(r.label).toBe("Up to date");
     expect(r.disabled).toBe(true);
     expect(r.variant).toBe("outline");
+    expect(r.menu).toEqual([]);
   });
 
-  test("dirty working tree → Submit for review + side Publish", () => {
+  test("up to date but behind base → disabled pill with Sync in the menu", () => {
+    const r = selectHeaderButton(
+      happyInput({ branch: ready({ behindBase: 2 }) }),
+    );
+    expect(r.label).toBe("Up to date");
+    expect(r.disabled).toBe(true);
+    expect(menuKeys(r)).toEqual(["sync"]);
+    expect(menuItem(r, "sync")?.label).toBe("Sync with main");
+    expect(menuItem(r, "sync")?.action).toBe("sync");
+  });
+
+  test("dirty working tree → Open pull request with Publish directly in the menu", () => {
     const r = selectHeaderButton(
       happyInput({ branch: ready({ workingTreeDirty: true }) }),
     );
-    expect(r.label).toBe("Submit for review");
+    expect(r.label).toBe("Open pull request");
     expect(r.action).toBe("create-pr");
     expect(r.disabled).toBeFalsy();
-    expect(r.showPublishSide).toBe(true);
+    expect(menuKeys(r)).toEqual(["publish-direct"]);
+    expect(menuItem(r, "publish-direct")?.action).toBe("publish-direct");
   });
 
-  test("unpushed commits ahead of base with no PR → Submit for review", () => {
+  test("dirty + open PR + behind base → menu also offers GitHub link and Sync", () => {
+    const r = selectHeaderButton(
+      happyInput({
+        branch: ready({ workingTreeDirty: true, behindBase: 1 }),
+        pr: pr(),
+      }),
+    );
+    expect(r.label).toBe("Open pull request");
+    expect(menuKeys(r)).toEqual(["publish-direct", "view-on-github", "sync"]);
+  });
+
+  test("publish gate allowed → Publish directly enabled with skip-review tooltip", () => {
+    const r = selectHeaderButton(
+      happyInput({
+        branch: ready({ workingTreeDirty: true }),
+        publishGate: { allowed: true, reason: null },
+      }),
+    );
+    const item = menuItem(r, "publish-direct");
+    expect(item?.disabled).toBe(false);
+    expect(item?.tooltip).toBe("Publish directly, skipping review");
+  });
+
+  test("publish gate pending → Publish directly disabled with reviewing tooltip", () => {
+    const r = selectHeaderButton(
+      happyInput({
+        branch: ready({ workingTreeDirty: true }),
+        publishGate: { allowed: false, reason: null, pending: true },
+      }),
+    );
+    const item = menuItem(r, "publish-direct");
+    expect(item?.disabled).toBe(true);
+    expect(item?.tooltip).toBe("Reviewing changes…");
+  });
+
+  test("publish gate disallowed → Publish directly disabled with the gate's reason", () => {
+    const r = selectHeaderButton(
+      happyInput({
+        branch: ready({ workingTreeDirty: true }),
+        publishGate: { allowed: false, reason: "Code changes need review" },
+      }),
+    );
+    const item = menuItem(r, "publish-direct");
+    expect(item?.disabled).toBe(true);
+    expect(item?.tooltip).toBe("Code changes need review");
+  });
+
+  test("no pre-fetched gate → Publish directly stays enabled (dialog gates on open)", () => {
+    const r = selectHeaderButton(
+      happyInput({
+        branch: ready({ workingTreeDirty: true }),
+        publishGate: null,
+      }),
+    );
+    expect(menuItem(r, "publish-direct")?.disabled).toBe(false);
+  });
+
+  test("unpushed commits ahead of base with no PR → Open pull request", () => {
     const r = selectHeaderButton(
       happyInput({ branch: ready({ unpushed: 2, aheadOfBase: 2 }) }),
     );
-    expect(r.label).toBe("Submit for review");
+    expect(r.label).toBe("Open pull request");
     expect(r.action).toBe("create-pr");
-    expect(r.showPublishSide).toBe(true);
+    expect(menuKeys(r)).toEqual(["publish-direct"]);
   });
 
-  test("unpushed commits without base divergence and no PR → Submit for review", () => {
+  test("unpushed commits without base divergence and no PR → Open pull request", () => {
     const r = selectHeaderButton(
       happyInput({ branch: ready({ unpushed: 2, aheadOfBase: 0 }) }),
     );
-    expect(r.label).toBe("Submit for review");
+    expect(r.label).toBe("Open pull request");
     expect(r.action).toBe("create-pr");
   });
 
-  test("unpushed commits with open PR (different head) → Submit for review", () => {
+  test("unpushed commits with open PR (different head) → Open pull request", () => {
     const r = selectHeaderButton(
       happyInput({
         branch: ready({ unpushed: 2, aheadOfBase: 2, headSha: "local999" }),
         pr: pr({ headSha: "remote888" }),
       }),
     );
-    expect(r.label).toBe("Submit for review");
+    expect(r.label).toBe("Open pull request");
     expect(r.action).toBe("create-pr");
   });
 
@@ -350,8 +424,8 @@ describe("selectHeaderButton", () => {
         reviews: reviews(),
       }),
     );
-    expect(r.label).toBe("Publish to production");
-    expect(r.action).toBe("merge-split");
+    expect(r.label).toBe("Merge to main");
+    expect(r.action).toBe("merge");
     expect(r.variant).toBe("success");
     expect(r.tooltip).toBe("Squash-merge PR #42 into main");
   });
@@ -363,11 +437,12 @@ describe("selectHeaderButton", () => {
         pr: pr({ state: "closed", merged: false }),
       }),
     );
-    expect(r.label).toBe("Reopen");
+    expect(r.label).toBe("Reopen PR");
     expect(r.action).toBe("reopen");
+    expect(menuKeys(r)).toEqual(["view-on-github"]);
   });
 
-  test("merged PR, branch at merge head → Published (disabled, outline)", () => {
+  test("merged PR, branch at merge head → Merged (disabled, outline, GitHub link)", () => {
     const r = selectHeaderButton(
       happyInput({
         branch: ready({ aheadOfBase: 3, headSha: "abc123" }),
@@ -379,9 +454,10 @@ describe("selectHeaderButton", () => {
         }),
       }),
     );
-    expect(r.label).toBe("Published");
+    expect(r.label).toBe("Merged");
     expect(r.disabled).toBe(true);
     expect(r.variant).toBe("outline");
+    expect(menuKeys(r)).toEqual(["view-on-github"]);
   });
 
   test("merged PR, branch advanced past merge head → Continue (special)", () => {
@@ -399,16 +475,18 @@ describe("selectHeaderButton", () => {
     expect(r.label).toBe("Continue");
     expect(r.action).toBe("create-pr");
     expect(r.variant).toBe("special");
+    expect(menuKeys(r)).toEqual(["publish-direct", "view-on-github"]);
   });
 
-  test("ahead of base + no PR → Submit for review", () => {
+  test("ahead of base + no PR → Open pull request", () => {
     const r = selectHeaderButton(
       happyInput({ branch: ready({ aheadOfBase: 3 }) }),
     );
-    expect(r.label).toBe("Submit for review");
+    expect(r.label).toBe("Open pull request");
+    expect(menuKeys(r)).toEqual(["publish-direct"]);
   });
 
-  test("PR open + mergeable_state=dirty → Sync with main", () => {
+  test("PR open + mergeable_state=dirty → Resolve conflicts", () => {
     const r = selectHeaderButton(
       happyInput({
         branch: ready({ aheadOfBase: 3 }),
@@ -416,11 +494,13 @@ describe("selectHeaderButton", () => {
         reviews: reviews({ mergeableState: "dirty" }),
       }),
     );
-    expect(r.label).toBe("Sync with main");
+    expect(r.label).toBe("Resolve conflicts");
     expect(r.action).toBe("rebase");
+    expect(menuKeys(r)).toEqual(["resolve-on-github"]);
+    expect(menuItem(r, "resolve-on-github")?.action).toBe("open-pr-page");
   });
 
-  test("PR open + failed check → Fix tests with failing list", () => {
+  test("PR open + failed check → Fix checks with failing list and Merge anyway", () => {
     const r = selectHeaderButton(
       happyInput({
         branch: ready({ aheadOfBase: 3 }),
@@ -429,12 +509,14 @@ describe("selectHeaderButton", () => {
         reviews: reviews(),
       }),
     );
-    expect(r.label).toBe("Fix tests");
+    expect(r.label).toBe("Fix checks");
     expect(r.action).toBe("fix-checks");
     expect(r.meta?.failingChecks).toEqual(["unit-test"]);
+    expect(menuKeys(r)).toEqual(["merge-anyway", "view-on-github"]);
+    expect(menuItem(r, "merge-anyway")?.action).toBe("merge");
   });
 
-  test("PR open + check in-progress → Running tests…", () => {
+  test("PR open + check in-progress → Running checks…", () => {
     const r = selectHeaderButton(
       happyInput({
         branch: ready({ aheadOfBase: 3 }),
@@ -443,10 +525,11 @@ describe("selectHeaderButton", () => {
         reviews: reviews(),
       }),
     );
-    expect(r.label).toBe("Running tests…");
+    expect(r.label).toBe("Running checks…");
     expect(r.disabled).toBe(true);
     expect(r.loading).toBe(true);
     expect(r.variant).toBe("outline");
+    expect(menuKeys(r)).toEqual(["view-on-github"]);
   });
 
   test("PR open + draft → Mark ready", () => {
@@ -473,7 +556,7 @@ describe("selectHeaderButton", () => {
     expect(r.action).toBe("resolve-comments");
   });
 
-  test("PR open + missing approvals → Awaiting review", () => {
+  test("PR open + missing approvals → Awaiting review opens the PR page", () => {
     const r = selectHeaderButton(
       happyInput({
         branch: ready({ aheadOfBase: 3 }),
@@ -482,10 +565,13 @@ describe("selectHeaderButton", () => {
       }),
     );
     expect(r.label).toBe("Awaiting review");
-    expect(r.disabled).toBe(true);
+    // No longer an inert pill: the primary opens the PR, where reviewers act.
+    expect(r.disabled).toBeFalsy();
+    expect(r.action).toBe("open-pr-page");
+    expect(r.variant).toBe("outline");
   });
 
-  test("PR open + all clear → Publish", () => {
+  test("PR open + all clear → Merge to main with Review and GitHub link", () => {
     const r = selectHeaderButton(
       happyInput({
         branch: ready({ aheadOfBase: 3 }),
@@ -494,14 +580,14 @@ describe("selectHeaderButton", () => {
         reviews: reviews(),
       }),
     );
-    expect(r.label).toBe("Publish to production");
-    expect(r.action).toBe("merge-split");
+    expect(r.label).toBe("Merge to main");
+    expect(r.action).toBe("merge");
     expect(r.variant).toBe("success");
-    // merge-split IS the publish action — no redundant side Publish button.
-    expect(r.showPublishSide).toBeFalsy();
+    expect(menuKeys(r)).toEqual(["review", "view-on-github"]);
+    expect(menuItem(r, "review")?.action).toBe("review");
   });
 
-  test("PR open + reviews still loading → Publish to production (main base)", () => {
+  test("PR open + reviews still loading → Merge to main", () => {
     const r = selectHeaderButton(
       happyInput({
         branch: ready({ aheadOfBase: 3 }),
@@ -510,11 +596,11 @@ describe("selectHeaderButton", () => {
         reviews: null,
       }),
     );
-    expect(r.label).toBe("Publish to production");
-    expect(r.action).toBe("merge-split");
+    expect(r.label).toBe("Merge to main");
+    expect(r.action).toBe("merge");
   });
 
-  test("PR open + all clear + base develop → Publish", () => {
+  test("PR open + all clear + base develop → Merge to develop", () => {
     const r = selectHeaderButton(
       happyInput({
         branch: ready({ aheadOfBase: 3, base: "develop" }),
@@ -523,8 +609,8 @@ describe("selectHeaderButton", () => {
         reviews: reviews(),
       }),
     );
-    expect(r.label).toBe("Publish");
-    expect(r.action).toBe("merge-split");
+    expect(r.label).toBe("Merge to develop");
+    expect(r.action).toBe("merge");
   });
 
   test("priority: dirty beats everything else", () => {
@@ -536,7 +622,7 @@ describe("selectHeaderButton", () => {
         reviews: reviews({ mergeableState: "dirty" }),
       }),
     );
-    expect(r.label).toBe("Submit for review");
+    expect(r.label).toBe("Open pull request");
   });
 
   test("priority inside PR open: conflicts beat failed checks", () => {
@@ -548,7 +634,7 @@ describe("selectHeaderButton", () => {
         reviews: reviews({ mergeableState: "dirty" }),
       }),
     );
-    expect(r.label).toBe("Sync with main");
+    expect(r.label).toBe("Resolve conflicts");
   });
 
   test("priority: failed checks beat in-progress checks", () => {
@@ -563,6 +649,6 @@ describe("selectHeaderButton", () => {
         reviews: reviews(),
       }),
     );
-    expect(r.label).toBe("Fix tests");
+    expect(r.label).toBe("Fix checks");
   });
 });

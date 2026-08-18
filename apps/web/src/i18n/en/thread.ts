@@ -65,7 +65,7 @@ export const thread = {
   "thread.gitTab.merged": "✓ Merged",
   "thread.gitTab.noBranchSelected": "No branch selected.",
   "thread.gitTab.noPrYet":
-    'This branch doesn\'t have an open pull request. Click "Submit for review" in the header to open one; the agent will draft the title and summary from the current state of the branch.',
+    'This branch doesn\'t have an open pull request. Click "Open pull request" in the header to open one; the agent will draft the title and summary from the current state of the branch.',
   "thread.gitTab.notLinkedToGithub":
     "This virtualmcp is not linked to a GitHub repository.",
   "thread.gitTab.openBranchOnGithub": "Open branch on GitHub",
@@ -87,7 +87,7 @@ export const thread = {
   "thread.headerActions.failedToMergePullRequest":
     "Failed to merge pull request",
   "thread.headerActions.failingChecksTooltip": "Failing: {checks}",
-  "thread.headerActions.fixTests": "Fix tests",
+  "thread.headerActions.fixChecks": "Fix checks",
   "thread.headerActions.githubConnectionRemoved":
     "GitHub connection was removed — relink the repository in Settings to save changes",
   "thread.headerActions.loading": "Loading…",
@@ -97,19 +97,23 @@ export const thread = {
   "thread.headerActions.markReady": "Mark ready",
   "thread.headerActions.markDraftReadyTooltip":
     "Mark draft PR ready for review",
+  "thread.headerActions.merged": "Merged",
+  "thread.headerActions.mergeAnyway": "Merge anyway",
+  "thread.headerActions.mergeToBase": "Merge to {base}",
   "thread.headerActions.openNewPrTooltip":
     "Open a new PR with the latest commits",
+  "thread.headerActions.openPr": "Open pull request",
   "thread.headerActions.openPrForBranchTooltip":
     "Open a PR for {branch} → {base}",
   "thread.headerActions.prMergedTooltip": "PR #{prNumber} merged into {base}",
   "thread.headerActions.publish": "Publish",
+  "thread.headerActions.publishDirectly": "Publish directly",
   "thread.headerActions.publishDirectlySkipReview":
     "Publish directly, skipping review",
   "thread.headerActions.publishedPr": "Published PR #{prNumber}",
   "thread.headerActions.sync": "Sync",
   "thread.headerActions.syncTooltip":
     "Save your changes and catch up with everyone else's work",
-  "thread.headerActions.published": "Published",
   "thread.headerActions.publishNeedsReview":
     "This change needs review before publishing.",
   "thread.headerActions.publishToProduction": "Publish to production",
@@ -118,14 +122,16 @@ export const thread = {
   "thread.headerActions.pushLocalCommitsTooltip":
     "Push local commits to PR #{prNumber}",
   "thread.headerActions.reconnectGithub": "Reconnect GitHub",
+  "thread.headerActions.review": "Review",
   "thread.headerActions.reviewingChanges": "Reviewing changes…",
   "thread.headerActions.saving": "Saving…",
   "thread.headerActions.syncedWithBase": "Synced with {base}",
-  "thread.headerActions.reopen": "Reopen",
+  "thread.headerActions.reopenPr": "Reopen PR",
   "thread.headerActions.reopenPrTooltip": "Reopen PR #{prNumber}",
+  "thread.headerActions.resolveConflicts": "Resolve conflicts",
   "thread.headerActions.resolveConflictsTooltip":
     "Resolve conflicts with {base} before merging",
-  "thread.headerActions.runningTests": "Running tests…",
+  "thread.headerActions.runningChecks": "Running checks…",
   "thread.headerActions.squashMergeTooltip":
     "Squash-merge PR #{prNumber} into {base}",
   "thread.headerActions.startingSandbox": "Preparing environment…",
@@ -145,8 +151,6 @@ export const thread = {
     "Getting your environment ready — this only takes a moment",
   "thread.headerActions.waitingOnChecksTooltip":
     "Waiting on {count} check(s) to finish",
-  "thread.mergeSplitButton.moreActionsAriaLabel": "More actions",
-  "thread.mergeSplitButton.review": "Review",
   "thread.openInBoardButton.openTaskAriaLabel": "Open task in board",
   "thread.openInBoardButton.openTaskInBoard": "Open task in board",
   "thread.publishDialog.allChangesDiscarded": "All changes discarded",
