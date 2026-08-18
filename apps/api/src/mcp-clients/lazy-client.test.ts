@@ -132,6 +132,28 @@ describe("lazy-client with circuit breaker", () => {
     expect(lazy4.listTools()).rejects.toThrow(CircuitOpenError);
   });
 
+  it("an already-connected instance keeps working after the circuit trips for its connection ID", async () => {
+    const realClient = await createWorkingClient();
+    clientFromConnectionMock.mockResolvedValueOnce(realClient);
+
+    const lazy1 = createLazyClient(fakeConnection, fakeCtx, false);
+    const first = await lazy1.listTools();
+    expect(first.tools).toHaveLength(1);
+
+    // Trip the circuit via other instances for the same connection ID.
+    clientFromConnectionMock.mockRejectedValue(new Error("timeout"));
+    for (let i = 0; i < 3; i++) {
+      const lazy = createLazyClient(fakeConnection, fakeCtx, false);
+      expect(lazy.listTools()).rejects.toThrow("timeout");
+    }
+    const tripped = createLazyClient(fakeConnection, fakeCtx, false);
+    expect(tripped.listTools()).rejects.toThrow(CircuitOpenError);
+
+    // The already-connected instance must still serve its cached real client.
+    const second = await lazy1.listTools();
+    expect(second.tools).toHaveLength(1);
+  });
+
   it("different connections have independent circuits", async () => {
     clientFromConnectionMock.mockRejectedValue(new Error("timeout"));
 

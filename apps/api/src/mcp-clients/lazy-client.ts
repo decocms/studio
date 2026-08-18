@@ -116,10 +116,10 @@ export function createLazyClient(
       );
     }
 
-    // Fast-fail if the circuit breaker is open for this connection
-    assertCircuitClosed(connection.id);
-
     if (!realClientPromise) {
+      // Fast-fail only gates new connection attempts — an already-live client must survive an unrelated circuit trip.
+      assertCircuitClosed(connection.id);
+
       const pending: Promise<Client> = clientFromConnection(
         connection,
         ctx,
