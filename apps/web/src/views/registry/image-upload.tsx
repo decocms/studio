@@ -205,7 +205,9 @@ export function ImageUpload({
                 placeholder={t("registry.imageUpload.urlPlaceholder")}
                 value={value}
                 className="text-xs h-8"
-                onChange={(event) => onChange(sanitizeImageUrl(event.target.value))}
+                onChange={(event) =>
+                  onChange(sanitizeImageUrl(event.target.value))
+                }
                 onBlur={onBlur}
               />
             </div>
