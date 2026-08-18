@@ -514,7 +514,11 @@ async fn delete(state: &AppState, body: &Bytes) -> Response {
         Ok(value) => value,
         Err(error) => return error.into_response(),
     };
-    let Some(virtual_mcp_id) = input.get("virtualMcpId").and_then(Value::as_str) else {
+    let Some(virtual_mcp_id) = input
+        .get("virtualMcpId")
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())
+    else {
         return ApiError::bad_request("virtualMcpId is required").into_response();
     };
     let Some(branch) = input
@@ -559,7 +563,11 @@ async fn start(state: &AppState, org: &str, body: &Bytes) -> Response {
         Ok(value) => value,
         Err(error) => return error.into_response(),
     };
-    let Some(virtual_mcp_id) = input.get("virtualMcpId").and_then(Value::as_str) else {
+    let Some(virtual_mcp_id) = input
+        .get("virtualMcpId")
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())
+    else {
         return ApiError::bad_request("virtualMcpId is required").into_response();
     };
     let branch = input.get("branch").and_then(Value::as_str);
@@ -897,6 +905,21 @@ mod tests {
             assert_eq!(status, StatusCode::OK);
             assert_eq!(answer, json!({ "success": true }));
         }
+    }
+
+    /// An empty `virtualMcpId` is not a valid id — it must be rejected the
+    /// same way a missing one is, not treated as present. `branch` already got
+    /// this treatment; `virtualMcpId` didn't, which let an empty id flow
+    /// through to `ensure()` while `branch_for_virtual_mcp` (empty id ==
+    /// "no agent") reported a disagreeing `EPHEMERAL_BRANCH` for the sandbox
+    /// that had actually just been started.
+    #[tokio::test]
+    async fn delete_rejects_an_empty_virtual_mcp_id() {
+        let root = tempfile::tempdir().unwrap();
+        let state = super::super::test_state(root.path());
+        let (status, _) =
+            delete_body(&state, json!({ "virtualMcpId": "", "branch": "feature-x" })).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
     }
 
     #[test]
