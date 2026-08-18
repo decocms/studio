@@ -129,6 +129,7 @@ import { isReportsTask, type ReviewerKind } from "@decocms/shared/task-board";
 import { useFlipLanes } from "./use-flip-lanes";
 import { Calendar as DayPickerCalendar } from "@decocms/ui/components/calendar.tsx";
 import { buildTaskChatContext } from "./build-task-chat-context";
+import { track } from "@/lib/posthog-client";
 import { useStudioTools } from "@/lib/studio-tools";
 import {
   EMPTY_FILTERS,
@@ -373,9 +374,16 @@ export function TaskBoardPage() {
     const kind = subscriptionErrorKind(err);
     if (kind) {
       setSubscriptionPaywall(kind);
+      track("task_limit_banner_shown", { organization_id: org.id, kind });
       return;
     }
     toast.error(err.message || t("taskBoard.taskBoard.actionError"));
+  };
+  // Ref, not an effect: fires once per mount, `tracked` guards a re-invoked ref.
+  const trackBoardOpenRef = (element: HTMLDivElement | null) => {
+    if (!element || element.dataset.tracked === "true") return;
+    element.dataset.tracked = "true";
+    track("task_board_opened", { organization_id: org.id });
   };
   // The task awaiting a re-run confirmation, or null. A re-run supersedes the
   // task's live run, so it is confirmed rather than fired on click.
@@ -571,7 +579,10 @@ export function TaskBoardPage() {
     // Full-width so each region's scroll container spans the whole panel — the
     // max-width lives on the *content* inside (header + lanes), so the mouse can
     // sit in the empty margins on wide monitors and still scroll the board.
-    <div className="relative flex min-h-0 flex-1 flex-col">
+    <div
+      ref={trackBoardOpenRef}
+      className="relative flex min-h-0 flex-1 flex-col"
+    >
       {/* Header — capped + centered to the same width as the board content so
           they line up; content-capped, not scroll-capped. */}
       <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-4 px-4 pt-6 sm:px-8 sm:pt-8">
