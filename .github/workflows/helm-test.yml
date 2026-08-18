@@ -157,19 +157,23 @@ jobs:
             -f deploy/helm/studio/examples/values-clickhouse.yaml \
             > /dev/null
 
-      # values-preview.yaml is consumed by the Argo ApplicationSet in
-      # decocms/deco-apps-cd, so nothing in THIS repo would otherwise render it
-      # and it would rot silently. Assert the properties previews depend on,
-      # not just that it renders.
+      # values-preview.yaml is consumed by the studio-previews ApplicationSet,
+      # which supplies the deployment-specific half. Render it here the same way
+      # that chart does, and assert the properties previews depend on — not just
+      # that it renders.
       - name: Render (per-PR preview)
         run: |
           set -euo pipefail
           helm template studio-pr-42 deploy/helm/studio \
             -f deploy/helm/studio/values-preview.yaml \
             --set preview.prNumber=42 \
-            --set preview.host=pr-42.preview.studio.decocms.com \
+            --set preview.host=pr-42.pr.studio.decocms.com \
+            --set image.repository=ghcr.io/decocms/studio/studio-preview \
             --set image.tag=pr-42-abc1234 \
             --set nginx.image.tag=pr-42-abc1234 \
+            --set externalSecret.secretPath=preview/studio/application \
+            --set externalSecret.secretStoreName=aws-secrets-manager \
+            --set externalSecret.secretStoreKind=ClusterSecretStore \
             --api-versions gateway.networking.k8s.io/v1 \
             > /tmp/preview.yaml
 
@@ -177,7 +181,7 @@ jobs:
 
           grep -q 'kind: HTTPRoute' /tmp/preview.yaml \
             || fail "preview render has no HTTPRoute — the preview would be unreachable"
-          grep -q 'pr-42.preview.studio.decocms.com' /tmp/preview.yaml \
+          grep -q 'pr-42.pr.studio.decocms.com' /tmp/preview.yaml \
             || fail "preview HTTPRoute is missing its hostname"
 
           grep -q "studio-pr-42-preview-migrate" /tmp/preview.yaml \
@@ -219,7 +223,20 @@ jobs:
             || fail "expected 3 containers with --skip-migrations, found ${count}"
 
           grep -q 'DATABASE_POOL_MAX: "5"' /tmp/preview.yaml \
-            || fail "DATABASE_POOL_MAX is not 5 — N previews would exhaust the shared Postgres"
+            || fail "DATABASE_POOL_MAX is not 5"
+
+          # This repository is public and the chart is published. Nothing that
+          # names one deployment may live in the shared values file.
+          # `if grep` and not `grep && fail`: under `set -e` a bare grep that
+          # matches nothing exits 1 and aborts the step — which is the passing
+          # case here.
+          for leak in cloudflarestorage.com decocms.com amazonaws.com \
+                      deco-studio-storage aws-secrets-manager; do
+            if grep -q "$leak" deploy/helm/studio/values-preview.yaml; then
+              fail "values-preview.yaml names a specific deployment ('${leak}') — that belongs in the studio-previews values, which are not published"
+            fi
+          done
+          echo "values-preview.yaml carries no deployment-specific identifiers"
 
           # DATABASE_URL must address this preview's OWN Postgres. If it ever
           # points somewhere else, a preview is writing to a database it does
@@ -262,6 +279,58 @@ jobs:
           sys.exit(1 if bad else 0)
           PY
 
+      # The whole reason the ApplicationSet lives in this repository: the tag the
+      # build publishes and the tag the generator asks for are now checkable
+      # against each other. When they were in two repositories, they silently
+      # disagreed — the workflow tagged the ephemeral refs/pull/N/merge commit
+      # while the generator asked for .head_sha, and every preview would have
+      # sat in ImagePullBackOff with both repos' CI green.
+      - name: Preview build and ApplicationSet agree on tag and host
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+
+          BUILD=.github/workflows/preview-build.yaml
+          CHART=deploy/helm/studio-previews
+
+          grep -q 'github.event.pull_request.head.sha' "$BUILD" \
+            || fail "preview-build.yaml must tag from the PR head sha; the ApplicationSet can only name .head_sha"
+          if grep -q 'rev-parse --short=7 HEAD' "$BUILD"; then
+            fail "preview-build.yaml tags from the merge ref — the ApplicationSet has no parameter for that commit"
+          fi
+          grep -q 'head_sha' "$CHART/templates/_helpers.tpl" \
+            || fail "the ApplicationSet image tag must derive from .head_sha"
+
+          # Same domain on both sides, or the bot comment links to a host that
+          # does not exist while the environment serves on another.
+          BUILD_DOMAIN=$(awk -F': ' '/^  PREVIEW_DOMAIN:/{print $2}' "$BUILD")
+          RENDER_DOMAIN=$(helm template p "$CHART" \
+            --set domain=SENTINEL.example \
+            --set applicationSet.repo.owner=o --set applicationSet.repo.name=r \
+            --set applicationSet.repo.tokenSecret.name=t \
+            --set studioChart.repoURL=oci://x --set studioChart.version=0.0.0 \
+            --set studioChart.valuesRepo.url=https://x \
+            --set images.api=a --set images.nginx=n \
+            --set studioValues.externalSecret.secretPath=s \
+            --set studioValues.externalSecret.secretStoreName=s \
+            --set studioValues.objectStorage.endpoint=e \
+            --set studioValues.objectStorage.bucket=b >/dev/null 2>&1 && echo ok)
+          [ "$RENDER_DOMAIN" = "ok" ] || fail "studio-previews chart does not render"
+          echo "build domain: ${BUILD_DOMAIN}"
+          test -n "$BUILD_DOMAIN" || fail "PREVIEW_DOMAIN is unset in preview-build.yaml"
+
+      # The previews chart must refuse to render without the values that name a
+      # deployment — it is published publicly and must carry no defaults.
+      - name: Render (studio-previews requires explicit configuration)
+        run: |
+          set -euo pipefail
+          if helm template p deploy/helm/studio-previews >/tmp/bare.yaml 2>&1; then
+            echo "::error::studio-previews rendered with no values — it must require them"
+            exit 1
+          fi
+          grep -q 'domain is required' /tmp/bare.yaml \
+            || { echo "::error::wrong failure message"; cat /tmp/bare.yaml; exit 1; }
+          echo "studio-previews correctly refuses to render unconfigured"
       - name: Render (preview validations must fail)
         run: |
           set -uo pipefail

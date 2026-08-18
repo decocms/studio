@@ -1,0 +1,33 @@
+{{- $g := .Values.gateway -}}
+{{- if $g.create }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ $g.name }}
+  namespace: {{ $g.namespace }}
+  annotations:
+    # The Gateway outlives any single preview and is shared by all of them;
+    # pruning it would take every open preview offline at once.
+    argocd.argoproj.io/sync-options: Delete=false
+spec:
+  gatewayClassName: {{ $g.gatewayClassName }}
+  {{- with $g.infrastructure }}
+  infrastructure:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  listeners:
+    # Plain HTTP: TLS is terminated at the load balancer, so this listener only
+    # ever sees decrypted traffic from it. A single shared wildcard listener,
+    # rather than a certificate per preview — per-host issuance would mean one
+    # ACME order per PR and a handshake delay before the reviewer's first click.
+    - name: {{ $g.listenerName }}
+      protocol: HTTP
+      port: {{ $g.port }}
+      hostname: "*.{{ .Values.domain }}"
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              {{ $g.namespaceSelectorLabel }}: "true"
+{{- end }}

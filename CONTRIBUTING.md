@@ -28,7 +28,7 @@ bun run dev            # migrations + web app + API
 ### Preview environments
 
 Add the **`preview`** label to a PR and a throwaway Studio is deployed at
-`https://pr-<n>.preview.studio.decocms.com`. A bot comment carries the link and
+`https://pr-<n>.pr.studio.decocms.com`. A bot comment carries the link and
 updates itself as the build progresses; expect ~10 minutes on a fresh preview.
 Each preview runs its own Postgres, so the database is empty — sign up with any
 email and password.

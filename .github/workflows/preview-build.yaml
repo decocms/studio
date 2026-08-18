@@ -29,7 +29,7 @@ env:
   # aggressive with zero chance of deleting a release tag.
   IMAGE_NAME: ${{ github.repository }}/studio-preview
   NGINX_IMAGE_NAME: ${{ github.repository }}/studio-nginx-preview
-  PREVIEW_DOMAIN: preview.studio.decocms.com
+  PREVIEW_DOMAIN: pr.studio.decocms.com
 
 jobs:
   build:
@@ -53,11 +53,22 @@ jobs:
       # workflow_dispatch trigger is ever added, it breaks and must be
       # re-established — a shallow checkout cannot prove ancestry, so that
       # would need `fetch-depth: 0`.
+      #
+      # Note the split between CONTENT and NAME: the image content comes from
+      # the merge ref, but the tag names the PR head sha, because that is the
+      # only commit both this workflow and the Argo pullRequest generator can
+      # refer to.
       - uses: actions/checkout@v4
 
       - id: meta
         run: |
-          echo "tag=pr-${{ github.event.pull_request.number }}-$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+          # The 7-char prefix of the PR HEAD sha, NOT `git rev-parse HEAD`.
+          # The checkout below lands on refs/pull/N/merge, whose HEAD is an
+          # ephemeral merge commit that the Argo pullRequest generator has no
+          # parameter for — it can only name `.head_sha`. Tagging from the merge
+          # commit produces an image the ApplicationSet can never ask for, and
+          # every preview sits in ImagePullBackOff. Asserted in helm-test.yml.
+          echo "tag=pr-${{ github.event.pull_request.number }}-$(echo '${{ github.event.pull_request.head.sha }}' | cut -c1-7)" >> "$GITHUB_OUTPUT"
           echo "host=pr-${{ github.event.pull_request.number }}.${PREVIEW_DOMAIN}" >> "$GITHUB_OUTPUT"
 
       # The hidden marker is what makes this comment sticky: find it first, then

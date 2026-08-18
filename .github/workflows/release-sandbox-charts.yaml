@@ -6,6 +6,7 @@ on:
     paths:
       - "deploy/helm/sandbox-operator/**"
       - "deploy/helm/sandbox-env/**"
+      - "deploy/helm/studio-previews/**"
   workflow_dispatch:
 
 env:
@@ -20,12 +21,14 @@ jobs:
   release:
     name: Package & push ${{ matrix.chart }}
     runs-on: ubuntu-latest
-    # Run sandbox-operator and sandbox-env in parallel — independent OCI
-    # tags, no shared mutable state.
+    # Run every auxiliary chart in parallel — independent OCI tags, no shared
+    # mutable state. These are published here, and NOT by publish-chart.yml,
+    # because that workflow dispatches a chart bump into deco-apps-cd on every
+    # publish: a change to preview policy must not roll the production Studio.
     strategy:
       fail-fast: false
       matrix:
-        chart: [sandbox-operator, sandbox-env]
+        chart: [sandbox-operator, sandbox-env, studio-previews]
     # `[release]:` commits come from the auto-bump bot and don't actually
     # change chart contents — skip them so we don't republish the same
     # version.

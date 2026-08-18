@@ -10,10 +10,15 @@
 # than prod is a preview that can miss exactly the class of bug it exists to
 # catch, and the extra container is ~100m/64Mi.
 #
-# The per-PR half of the configuration — image tags, preview.host, preview.prNumber,
-# BASE_URL/BETTER_AUTH_URL, S3_BUCKET, DATABASE_URL — is injected by the Argo CD
-# ApplicationSet, which is the only thing that knows the PR number. This file
-# holds the half that is the same for every preview.
+# This file holds the half of the configuration that is the same for EVERY
+# preview, of every deployment. Nothing here may name an organisation, a
+# domain, a bucket or a cloud account: this repository is public, and the
+# rendered chart is published. Anything deployment-specific — image
+# repositories and tags, preview.host, preview.prNumber, BASE_URL /
+# BETTER_AUTH_URL, the S3_* endpoint and bucket, the secret store — is injected
+# by the ApplicationSet in deploy/helm/studio-previews, whose own values carry
+# it. DATABASE_URL is derived by the chart from the preview's in-namespace
+# Postgres and is injected by nobody.
 #
 # Rendered in CI (.github/workflows/helm-test.yml) so it cannot rot.
 
@@ -146,20 +151,20 @@ terminationGracePeriodSeconds: 30
 # encryption key makes every vaulted credential undecryptable.
 externalSecret:
   enabled: true
-  secretPath: preview/studio/application
-  # A ClusterSecretStore, because previews create namespaces on the fly and a
-  # namespaced SecretStore would need IRSA wired up per namespace.
-  secretStoreName: aws-secrets-manager
-  secretStoreKind: ClusterSecretStore
+  # secretPath, secretStoreName and secretStoreKind name a specific cloud
+  # account, so they are injected by the studio-previews ApplicationSet rather
+  # than set here. The store is a ClusterSecretStore: previews create
+  # namespaces on the fly, and a namespaced SecretStore would need credentials
+  # wired up per namespace.
   createSecretStore: false
 
 configMap:
   meshConfig:
     NODE_ENV: "production"
-    # 20 (the chart default) x 2 API containers x N previews exhausts the
-    # shared preview Postgres. Do not raise this without also raising
-    # max_connections; PgBouncer is not an option here because DBOS uses
-    # prepared statements and advisory locks.
+    # 20 (the chart default) x 2 API containers against a 100-connection
+    # default is most of the budget of a preview's own small Postgres, for a
+    # single reviewer's traffic. PgBouncer is not an option here because DBOS
+    # uses prepared statements and advisory locks.
     DATABASE_POOL_MAX: "5"
     # OAuth callbacks cannot be pre-registered for a per-PR hostname, so
     # email/password is the only login path. It is already the default; pinned
@@ -175,14 +180,13 @@ configMap:
     # is deliberately left unset, which is the other half of this gate.
     DECO_AI_GATEWAY_ENABLED: "false"
     RUN_IDLE_TIMEOUT_MS: "120000"
-    # Cloudflare R2, same object store the stg deploy uses. All four S3_* must
-    # be set or the app downloads and runs its own MinIO at boot; the
-    # credentials arrive via the ESO-synced Secret.
-    S3_ENDPOINT: "https://c95fc4cec7fc52453228d9db170c372c.r2.cloudflarestorage.com"
-    S3_BUCKET: "deco-studio-storage-preview"
-    S3_REGION: "auto"
-    S3_FORCE_PATH_STYLE: "true"
-    # BASE_URL / BETTER_AUTH_URL injected per PR.
+    # S3_ENDPOINT, S3_BUCKET, S3_REGION and S3_FORCE_PATH_STYLE are injected by
+    # the studio-previews ApplicationSet — they name a specific bucket in a
+    # specific account. All four must arrive together or the application
+    # downloads and runs its own MinIO at boot; the credentials come from the
+    # ESO-synced Secret.
+    #
+    # BASE_URL / BETTER_AUTH_URL are injected per PR for the same reason.
 
 # Observability and billing are off. All of these are already false by default;
 # stated explicitly so nobody inherits them from a copied production values file.

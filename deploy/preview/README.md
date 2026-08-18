@@ -1,7 +1,7 @@
 # Per-PR preview environments
 
 Label a pull request `preview` and you get a throwaway Studio at
-`https://pr-<n>.preview.studio.decocms.com` — its own namespace, its own
+`https://pr-<n>.pr.studio.decocms.com` — its own namespace, its own
 database, its own bucket. Close the PR and all three are destroyed.
 
 Previews exist because staging is a shared, post-merge resource: today the only
@@ -142,14 +142,20 @@ than a render error, so the ordering is asserted in CI.
 `deploy/helm/studio/values-preview.yaml` holds the half of the configuration
 that is identical for every preview. The per-PR half — image tags,
 `preview.host`, `preview.prNumber`, `BASE_URL`, `BETTER_AUTH_URL`, `S3_BUCKET`,
-`DATABASE_URL` — is injected by the ApplicationSet, which is the only thing
-that knows the PR number.
+`S3_ENDPOINT` / `S3_BUCKET` and the secret store — is injected by the
+ApplicationSet in `deploy/helm/studio-previews`, which is the only thing that
+knows the PR number. `DATABASE_URL` is injected by nobody: the chart derives it
+from the preview's own in-namespace Postgres.
 
 CI renders `values-preview.yaml` on every `deploy/helm/**` PR
 (`.github/workflows/helm-test.yml`) and asserts the properties previews depend
 on, so the file cannot rot even though nothing in this repo deploys it.
 
-### Cluster prerequisites (one-time, in `decocms/deco-apps-cd`)
+### Cluster prerequisites (one-time)
+
+The ApplicationSet and the Gateway are `deploy/helm/studio-previews` in this
+repository; `decocms/deco-apps-cd` only installs it and supplies the values that
+name our accounts. What must exist before the first preview:
 
 - A wildcard `Gateway` for the preview domain, TLS terminated **at the NLB with
   an ACM cert** (not cert-manager) and published by external-dns — the same

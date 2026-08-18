@@ -1,0 +1,114 @@
+{{- $as := .Values.applicationSet -}}
+{{- $sc := .Values.studioChart -}}
+{{- $sv := .Values.studioValues -}}
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: {{ .Values.name }}
+  namespace: {{ .Values.argocd.namespace }}
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+
+  generators:
+    # The desired set of previews is DERIVED from the GitHub API rather than
+    # committed anywhere, which is what makes teardown reliable: close a PR (or
+    # drop the label) and the Application disappears on the next poll, taking
+    # its namespace and its database with it. A CI-driven `helm upgrade` would
+    # leak an environment every time its teardown step was cancelled or skipped.
+    - pullRequest:
+        github:
+          owner: {{ $as.repo.owner }}
+          repo: {{ $as.repo.name }}
+          tokenRef:
+            secretName: {{ $as.repo.tokenSecret.name }}
+            key: {{ $as.repo.tokenSecret.key }}
+          # Opt-in. The repository's preview-build workflow gates on the same
+          # label, so neither half alone can create an orphan.
+          labels:
+            - {{ $as.label }}
+        requeueAfterSeconds: {{ $as.requeueAfterSeconds }}
+
+  template:
+    metadata:
+      name: '{{ include "studio-previews.appName" . }}'
+      labels:
+        {{ .Values.gateway.namespaceSelectorLabel }}: "true"
+        decocms.com/pr: '{{ `{{ .number }}` }}'
+    spec:
+      project: {{ $as.project }}
+      sources:
+        # The published application chart. Pinned, never a moving tag.
+        - repoURL: {{ $sc.repoURL }}
+          chart: {{ $sc.name }}
+          targetRevision: {{ $sc.version | quote }}
+          helm:
+            releaseName: '{{ include "studio-previews.appName" . }}'
+            valueFiles:
+              # The half of the configuration that is identical for every
+              # preview lives next to the application chart and is rendered and
+              # asserted by the same CI, so it cannot rot. Read from a fixed
+              # revision on purpose: a PR must not be able to rewrite its own
+              # preview's infrastructure. (Consequence: a PR that edits that
+              # file cannot test the edit in its own preview.)
+              - $values/{{ $sc.valuesRepo.path }}
+            # Everything below is either derived per PR or specific to this
+            # deployment. Nothing here may be hardcoded in the chart.
+            valuesObject:
+              image:
+                repository: {{ .Values.images.api }}
+                tag: '{{ include "studio-previews.imageTag" . }}'
+              nginx:
+                image:
+                  repository: {{ .Values.images.nginx }}
+                  tag: '{{ include "studio-previews.imageTag" . }}'
+              preview:
+                prNumber: '{{ `{{ .number }}` }}'
+                host: '{{ include "studio-previews.host" . }}'
+                gateway:
+                  name: {{ .Values.gateway.name }}
+                  namespace: {{ .Values.gateway.namespace }}
+                  # Must name a listener that exists. A sectionName matching no
+                  # listener attaches the route to nothing, silently.
+                  sectionName: {{ .Values.gateway.listenerName }}
+              externalSecret:
+                secretPath: {{ $sv.externalSecret.secretPath }}
+                secretStoreName: {{ $sv.externalSecret.secretStoreName }}
+                secretStoreKind: {{ $sv.externalSecret.secretStoreKind }}
+              configMap:
+                meshConfig:
+                  # Better Auth resolves a single exact trusted origin with no
+                  # wildcard support, so these must match the host character
+                  # for character or login fails with a CSRF-shaped error.
+                  BASE_URL: 'https://{{ include "studio-previews.host" . }}'
+                  BETTER_AUTH_URL: 'https://{{ include "studio-previews.host" . }}'
+                  # All four must be set together, or the application downloads
+                  # and runs its own object store at boot.
+                  S3_ENDPOINT: {{ $sv.objectStorage.endpoint | quote }}
+                  S3_BUCKET: {{ $sv.objectStorage.bucket | quote }}
+                  S3_REGION: {{ $sv.objectStorage.region | quote }}
+                  S3_FORCE_PATH_STYLE: {{ $sv.objectStorage.forcePathStyle | quote }}
+        - repoURL: {{ $sc.valuesRepo.url }}
+          targetRevision: {{ $sc.valuesRepo.revision }}
+          ref: values
+      destination:
+        server: {{ $as.destination.server }}
+        namespace: '{{ include "studio-previews.appName" . }}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+        # NOT optional. The Gateway selects routes by NAMESPACE label and
+        # CreateNamespace=true labels nothing. Without this every preview's
+        # HTTPRoute attaches to nothing and reports no error at all.
+        managedNamespaceMetadata:
+          labels:
+            {{ .Values.gateway.namespaceSelectorLabel }}: "true"
+        retry:
+          limit: 3
+          backoff:
+            duration: 30s
+            factor: 2
+            maxDuration: 5m
