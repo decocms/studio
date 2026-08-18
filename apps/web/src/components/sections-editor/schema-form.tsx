@@ -520,6 +520,8 @@ export function SchemaForm({
     (k) => !HIDDEN_PROPS.has(k) && properties[k]?.hidden !== true,
   );
 
+  const requiredKeys = new Set(schema.required ?? []);
+
   if (keys.length === 0) {
     return (
       <div className="px-3 py-6 text-center text-xs text-muted-foreground">
@@ -640,6 +642,7 @@ export function SchemaForm({
           onChange: (val) => updateField(key, val),
           path: fieldPath,
           label,
+          required: requiredKeys.has(key),
           breadcrumbPath: fieldBreadcrumbPath,
           onBreadcrumbChange: fieldOnBreadcrumbChangeForKey,
           hasSiblingDrillDownFields,

@@ -8,6 +8,7 @@ import {
 } from "@decocms/ui/components/select.tsx";
 import type { FieldProps } from "./field-props";
 import {
+  ENUM_CLEAR_SELECT_VALUE,
   enumOptionLabel,
   enumOptionToSelectValue,
   formValueToSelectValue,
@@ -21,11 +22,14 @@ export function EnumField({
   onChange,
   path,
   label,
+  required,
   sandbox,
 }: FieldProps) {
   const t = useT();
   const options = schema.enum ?? [];
   const selectValue = formValueToSelectValue(value, options);
+  // Optional enums offer a "None" entry to clear the selection.
+  const showClearOption = !required;
 
   return (
     <div className="space-y-2">
@@ -37,7 +41,13 @@ export function EnumField({
       />
       <Select
         value={selectValue}
-        onValueChange={(v) => onChange(selectValueToEnumOption(v, options))}
+        onValueChange={(v) =>
+          onChange(
+            v === ENUM_CLEAR_SELECT_VALUE
+              ? undefined
+              : selectValueToEnumOption(v, options),
+          )
+        }
       >
         <SelectTrigger id={path} className="h-10">
           <SelectValue
@@ -45,6 +55,14 @@ export function EnumField({
           />
         </SelectTrigger>
         <SelectContent>
+          {showClearOption && (
+            <SelectItem
+              value={ENUM_CLEAR_SELECT_VALUE}
+              className="text-muted-foreground"
+            >
+              {t("sectionsEditor.enumField.clearOption")}
+            </SelectItem>
+          )}
           {options.map((opt) => {
             const itemValue = enumOptionToSelectValue(opt);
             return (

@@ -23,6 +23,13 @@ export interface SchemaProperty {
   enum?: unknown[];
   default?: unknown;
   properties?: Record<string, SchemaProperty>;
+  /**
+   * Names of the required child properties (merged from the JSON Schema
+   * `required` arrays of this object and its allOf/anyOf/oneOf members). A
+   * child key absent from this list is optional — the form offers a "clear"
+   * option so the value can be left empty.
+   */
+  required?: string[];
   items?: SchemaProperty;
   titleBy?: string;
   /** Mustache template for array-item thumbnails (from schema `@image`) */
@@ -415,7 +422,14 @@ export function resolveSchema(
       const arr = (s as Record<string, unknown>)[k];
       if (!Array.isArray(arr)) continue;
       for (const part of arr as RawSchema[]) {
-        props = { ...props, ...collectProps(part, seenRefs, depth + 1) };
+        const partProps = collectProps(part, seenRefs, depth + 1);
+        // Merge required so a later member doesn't overwrite an earlier one's.
+        const mergedRequired = [
+          ...(Array.isArray(props.__required) ? props.__required : []),
+          ...(Array.isArray(partProps.__required) ? partProps.__required : []),
+        ];
+        props = { ...props, ...partProps };
+        if (mergedRequired.length > 0) props.__required = mergedRequired;
       }
     }
 
@@ -988,8 +1002,14 @@ export function resolveSchema(
     // deco sections nest images at depth 4+ (`images[].desktop.src`); the
     // old cap left those leaves un-resolved and stripped their `format`.
     let nestedProperties: Record<string, SchemaProperty> | undefined;
+    let requiredKeys: string[] | undefined;
     if (depth < MAX_BUILD_PROPERTY_DEPTH) {
       const nestedRaw = collectProps(resolved);
+      if (Array.isArray(nestedRaw.__required)) {
+        requiredKeys = (nestedRaw.__required as unknown[]).filter(
+          (k): k is string => typeof k === "string",
+        );
+      }
       const nestedEntries = Object.entries(nestedRaw).filter(
         ([k]) => !k.startsWith("__") && k !== "@type",
       );
@@ -1067,6 +1087,7 @@ export function resolveSchema(
             ? resolved.format
             : fromLeaf<string>("format"),
       properties: nestedProperties,
+      required: requiredKeys,
       items: itemsSchema,
       hidden: isSchemaHidden(resolved) || isSchemaHidden(v) ? true : undefined,
       titleBy:
@@ -1164,6 +1185,11 @@ export function resolveSchema(
     type: "object",
     title: typeof schemaRoot.title === "string" ? schemaRoot.title : undefined,
     properties,
+    required: Array.isArray(topRaw.__required)
+      ? (topRaw.__required as unknown[]).filter(
+          (k): k is string => typeof k === "string",
+        )
+      : undefined,
   };
 }
 
