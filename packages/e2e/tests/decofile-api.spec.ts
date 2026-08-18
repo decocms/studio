@@ -345,7 +345,7 @@ test.describe("decofile API", () => {
               // Pretty-printed block: the merge splices raw contents, so the
               // merged document must still parse.
               ".deco/blocks/Hero.json": blockFileContent(heroBlock),
-              // Double-encoded stem: the key must decode until stable.
+              // Double-encoded stem: single-decode keeps its `%20` in the key.
               ".deco/blocks/Compre%2520Junto.json": JSON.stringify(compreBlock),
               // Non-block file: must not leak into the decofile.
               "README.md": "# hi\n",
@@ -366,9 +366,10 @@ test.describe("decofile API", () => {
       // build a draft pointer that works from the native app too.
       expect(body.apiHost).toMatch(/^[\w.-]+(:\d+)?$/);
       expect(body.decofile["Hero"]).toEqual(heroBlock);
-      expect(body.decofile["Compre Junto"]).toEqual(compreBlock);
+      // Double-encoded stem → single-decode key keeps the `%20` (the runtime's form).
+      expect(body.decofile["Compre%20Junto"]).toEqual(compreBlock);
       expect(Object.keys(body.decofile).sort()).toEqual([
-        "Compre Junto",
+        "Compre%20Junto",
         "Hero",
       ]);
       expect(res.headers()["etag"]).toBe(`"${body.version}"`);
@@ -465,6 +466,45 @@ test.describe("decofile API", () => {
       // The valid block survives; the corrupt one is dropped, not merged.
       expect(body.decofile["Hero"]).toEqual(heroBlock);
       expect(Object.keys(body.decofile)).toEqual(["Hero"]);
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
+  test("GET exposes a %20-bearing key under the form the runtime resolves", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const user = await signUpViaApi(ctx);
+      const org = user.orgSlug;
+      const owner = uniqueOwner();
+      const repo = "site";
+
+      const homePage = { __resolveType: "website/pages/Page.tsx" };
+      await seedStubRepo(ctx, {
+        owner,
+        repo,
+        defaultBranch: "main",
+        branches: {
+          main: {
+            files: {
+              // Key `pages-Home%20Page-40404`, stored double-encoded on disk.
+              ".deco/blocks/pages-Home%2520Page-40404.json":
+                blockFileContent(homePage),
+            },
+          },
+        },
+      });
+
+      const project = await createFastPreviewProject(ctx, org, { owner, repo });
+      const res = await ctx.get(decofileUrl(project, "main"));
+
+      expect(res.status()).toBe(200);
+      const body = (await res.json()) as DecofileGetBody;
+      // Single-decode key = the runtime's form; not over-decoded to a space.
+      expect(Object.keys(body.decofile)).toEqual(["pages-Home%20Page-40404"]);
+      expect(body.decofile["pages-Home%20Page-40404"]).toEqual(homePage);
     } finally {
       await ctx.dispose();
     }
@@ -649,9 +689,9 @@ test.describe("decofile API", () => {
           draft: {
             files: {
               ".deco/blocks/Gone.json": '{"old":true}',
-              // Single- and double-encoded twins of the key "A B".
-              ".deco/blocks/A%20B.json": '{"variant":"single"}',
-              ".deco/blocks/A%2520B.json": '{"variant":"double"}',
+              // Case-varied hex twins that both single-decode to the key "A/B".
+              ".deco/blocks/A%2FB.json": '{"variant":"upper"}',
+              ".deco/blocks/A%2fB.json": '{"variant":"lower"}',
             },
           },
         },
@@ -686,15 +726,15 @@ test.describe("decofile API", () => {
       );
       expect(filesAfterBatch[".deco/blocks/Gone.json"]).toBeUndefined();
 
-      // Deleting "A B" must remove BOTH encoded spellings.
-      const deleteRes = await ctx.patch(url, { data: { delete: ["A B"] } });
+      // Deleting "A/B" must remove BOTH hex spellings that decode to it.
+      const deleteRes = await ctx.patch(url, { data: { delete: ["A/B"] } });
       expect(deleteRes.status()).toBe(200);
 
       inspected = await inspectStubRepo(ctx, owner, repo);
       expect(inspected.commits.length).toBe(commitsBefore + 2);
       const filesAfterDelete = inspected.branches["draft"]?.files ?? {};
-      expect(filesAfterDelete[".deco/blocks/A%20B.json"]).toBeUndefined();
-      expect(filesAfterDelete[".deco/blocks/A%2520B.json"]).toBeUndefined();
+      expect(filesAfterDelete[".deco/blocks/A%2FB.json"]).toBeUndefined();
+      expect(filesAfterDelete[".deco/blocks/A%2fB.json"]).toBeUndefined();
       // The unrelated blocks survive.
       expect(filesAfterDelete[".deco/blocks/Banner.json"]).toBe(
         blockFileContent(banner),

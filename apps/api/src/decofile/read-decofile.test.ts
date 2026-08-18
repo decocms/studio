@@ -45,18 +45,24 @@ describe("blockEntriesInTree", () => {
 });
 
 describe("aliasPathsForKey", () => {
-  it("finds every encoding alias of a key, sorted", () => {
+  it("finds every spelling that single-decodes to the key, sorted", () => {
     const entries = [
+      // A single-decode: %2520 keeps its %20; %20 becomes a space — distinct keys.
       { stem: "Compre%2520Junto", path: ".deco/blocks/Compre%2520Junto.json" },
       { stem: "Compre%20Junto", path: ".deco/blocks/Compre%20Junto.json" },
-      { stem: "Other", path: ".deco/blocks/Other.json" },
+      // Case-varied hex both decode to "A/B" — genuine twins.
+      { stem: "A%2FB", path: ".deco/blocks/A%2FB.json" },
+      { stem: "A%2fB", path: ".deco/blocks/A%2fB.json" },
     ];
     expect(aliasPathsForKey(entries, "Compre Junto")).toEqual([
       ".deco/blocks/Compre%20Junto.json",
+    ]);
+    expect(aliasPathsForKey(entries, "Compre%20Junto")).toEqual([
       ".deco/blocks/Compre%2520Junto.json",
     ]);
-    expect(aliasPathsForKey(entries, "Other")).toEqual([
-      ".deco/blocks/Other.json",
+    expect(aliasPathsForKey(entries, "A/B")).toEqual([
+      ".deco/blocks/A%2FB.json",
+      ".deco/blocks/A%2fB.json",
     ]);
     expect(aliasPathsForKey(entries, "missing")).toEqual([]);
   });

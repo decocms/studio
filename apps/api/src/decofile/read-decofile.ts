@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { decodeUntilStable, mergeBlocks } from "@decocms/shared/decofile";
+import {
+  decoBlockKeyFromFileStem,
+  mergeBlocks,
+} from "@decocms/shared/decofile";
 import type { Counter } from "@opentelemetry/api";
 import { meter } from "../observability";
 import {
@@ -156,17 +159,19 @@ export function blockEntriesInTree(
 }
 
 /**
- * All tree paths whose stem decodes (until stable) to `blockKey` — the alias
- * set. Real repos carry single- and double-encoded twins of the same key; a
- * write must land on the existing spelling (not create a sibling) and a
- * delete must remove every alias or the survivor keeps rendering.
+ * All tree paths whose stem single-decodes to `blockKey` — the alias set. A
+ * key maps to `blockKeyToFileStem(key)` on disk, but a repo can hold more than
+ * one spelling that decodes to the same key (e.g. differing `%2f`/`%2F` case);
+ * a write must land on the existing spelling (not create a sibling) and a
+ * delete must remove every alias or the survivor keeps rendering. Single-decode
+ * (not decode-until-stable) so it matches the key the merge and runtime use.
  */
 export function aliasPathsForKey(
   entries: Array<{ stem: string; path: string }>,
   blockKey: string,
 ): string[] {
   return entries
-    .filter((e) => decodeUntilStable(e.stem) === blockKey)
+    .filter((e) => decoBlockKeyFromFileStem(e.stem) === blockKey)
     .map((e) => e.path)
     .sort();
 }
@@ -193,7 +198,7 @@ export interface DecofileSnapshot {
 /** Bump when the merge output changes so entries written by an older
  * `mergeBlocks` miss instead of being served as-is — notably the pre-drop
  * splice that could cache an INVALID document under a still-current sha. */
-const MERGED_DOC_FORMAT = "2";
+const MERGED_DOC_FORMAT = "3";
 
 /**
  * Disk key for the merged document — a sha1 of (format, head sha, packagePath),

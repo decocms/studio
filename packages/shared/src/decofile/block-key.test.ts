@@ -4,32 +4,7 @@ import {
   blockKeyToFileStem,
   decoBlockFilePath,
   decoBlockKeyFromFileStem,
-  decodeUntilStable,
 } from "./block-key";
-
-describe("decodeUntilStable", () => {
-  it("returns plain stems unchanged", () => {
-    expect(decodeUntilStable("Header")).toBe("Header");
-  });
-
-  it("decodes a single-encoded stem", () => {
-    expect(decodeUntilStable("Compre%20Junto")).toBe("Compre Junto");
-  });
-
-  it("decodes a double-encoded stem to the same key", () => {
-    expect(decodeUntilStable("Compre%2520Junto")).toBe("Compre Junto");
-  });
-
-  it("leaves a literal + alone (matches decodeURIComponent, not query decoding)", () => {
-    expect(decodeUntilStable("a+b")).toBe("a+b");
-  });
-
-  it("keeps the last valid form when decoding hits an invalid sequence", () => {
-    expect(decodeUntilStable("bad%zz")).toBe("bad%zz");
-    // %2525 -> %25 -> % ; a bare "%" fails the next decode and is kept.
-    expect(decodeUntilStable("%2525")).toBe("%");
-  });
-});
 
 describe("blockKeyToFileStem / decoBlockKeyFromFileStem", () => {
   it("round-trips keys with spaces and percent signs", () => {
@@ -41,6 +16,12 @@ describe("blockKeyToFileStem / decoBlockKeyFromFileStem", () => {
     ]) {
       expect(decoBlockKeyFromFileStem(blockKeyToFileStem(key))).toBe(key);
     }
+  });
+
+  it("single-decodes a double-encoded stem to its %20 key (not a space)", () => {
+    expect(decoBlockKeyFromFileStem("pages-Home%2520Page-123")).toBe(
+      "pages-Home%20Page-123",
+    );
   });
 
   it("escapes slashes so keys never create path segments", () => {

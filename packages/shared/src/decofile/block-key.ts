@@ -45,29 +45,6 @@ export function assertSafeDecoBlockKey(blockKey: string): void {
   }
 }
 
-/**
- * Repeatedly percent-decode a filename stem until it stops changing. Real
- * repos carry both single- and double-encoded stems (`Compre%20Junto.json`,
- * `Compre%2520Junto.json`); a single decode leaves the double-encoded one
- * keyed `Compre%20Junto`, a key no `__resolveType` reference resolves. An
- * invalid-encoding stem keeps its last successfully decoded form. Terminates:
- * decoding only collapses `%XX` triples, so each pass strictly shortens the
- * string until stable or throws.
- */
-export function decodeUntilStable(stem: string): string {
-  let key = stem;
-  for (;;) {
-    let decoded: string;
-    try {
-      decoded = decodeURIComponent(key);
-    } catch {
-      return key;
-    }
-    if (decoded === key) return key;
-    key = decoded;
-  }
-}
-
 /** Block key from an on-disk `.deco/blocks/<stem>.json` filename stem. */
 export function decoBlockKeyFromFileStem(stem: string): string {
   try {

@@ -18,11 +18,28 @@ describe("mergeBlocks", () => {
     expect(JSON.parse(decofile)).toEqual({ a: { n: 1 } });
   });
 
-  it("decodes double-encoded stems to a single key", () => {
+  it("single-decodes a single-encoded stem (space in the key)", () => {
+    const { decofile } = mergeBlocks([
+      { stem: "Compre%20Junto", content: '{"v":"single"}' },
+    ]);
+    expect(decofile).toBe('{"Compre Junto":{"v":"single"}}');
+  });
+
+  it("single-decodes a double-encoded stem to its %20 key, not a space", () => {
+    // Decoding the key's own `%20` to a space would dangle the runtime reference.
     const { decofile } = mergeBlocks([
       { stem: "Compre%2520Junto", content: '{"v":"double"}' },
     ]);
-    expect(JSON.parse(decofile)).toEqual({ "Compre Junto": { v: "double" } });
+    expect(decofile).toBe('{"Compre%20Junto":{"v":"double"}}');
+  });
+
+  it("keys a %20-bearing page the way the deco runtime resolves it", () => {
+    // "Home Page" is keyed `pages-Home%20Page-<id>`, stored `…%2520….json`.
+    const page = { __resolveType: "website/pages/Page.tsx" };
+    const { decofile } = mergeBlocks([
+      { stem: "pages-Home%2520Page-40404", content: JSON.stringify(page) },
+    ]);
+    expect(JSON.parse(decofile)).toEqual({ "pages-Home%20Page-40404": page });
   });
 
   it("skips empty and whitespace-only files", () => {
