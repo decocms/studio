@@ -383,9 +383,16 @@ jobs:
             # `if cmd; then` and not `out=$(cmd); [ $? -eq 0 ]` — the runner's
             # default shell is `bash -e`, under which a failing assignment aborts
             # the step. Every render here is SUPPOSED to fail.
+            # secretPath/secretStoreName are supplied by the studio-previews
+            # ApplicationSet, not by values-preview.yaml — they name an account,
+            # and this file is published. Without them here, validateExternalSecret
+            # fires before validatePreview and every case below fails for the
+            # wrong reason.
             if out=$(helm template studio-pr-42 deploy/helm/studio \
                        -f deploy/helm/studio/values-preview.yaml \
                        --set preview.prNumber=42 \
+                       --set externalSecret.secretPath=preview/studio/application \
+                       --set externalSecret.secretStoreName=some-cluster-store \
                        --api-versions gateway.networking.k8s.io/v1 "$@" 2>&1); then
               echo "::error::${desc}: rendered successfully — the guard is missing"
               exit 1
