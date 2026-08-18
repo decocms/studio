@@ -20,9 +20,11 @@ import { useActiveThreadMeta } from "@/hooks/use-active-thread-meta";
 import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { useNavigate } from "@tanstack/react-router";
 import {
+  ArrowRight,
   ArrowUp,
   BookOpen01,
   Check,
+  Code01,
   Globe02,
   Image01,
   Lock01,
@@ -658,16 +660,25 @@ export function ChatInput({
       track("coding_session_started", { thread_id: newTaskId });
     };
     return (
-      <div className="flex w-full flex-col gap-3 rounded-2xl border border-border bg-background px-4 py-3.5">
-        <p className="text-sm text-muted-foreground">
-          {t("chat.fastPreview.chatNeedsSession")}
-        </p>
-        <div>
-          <Button size="sm" onClick={startCodingSession}>
+      <button
+        type="button"
+        onClick={startCodingSession}
+        className="group flex min-h-[110px] w-full items-center gap-3 rounded-2xl border border-border bg-background/60 px-4 py-3.5 text-left shadow-sm backdrop-blur-sm transition-colors hover:bg-background/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-[130px]"
+      >
+        <Code01 size={18} className="shrink-0 text-muted-foreground" />
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="text-sm font-medium text-foreground">
             {t("chat.fastPreview.startCodingSession")}
-          </Button>
-        </div>
-      </div>
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {t("chat.fastPreview.chatNeedsSession")}
+          </span>
+        </span>
+        <ArrowRight
+          size={16}
+          className="shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"
+        />
+      </button>
     );
   }
 
