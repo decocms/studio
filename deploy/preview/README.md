@@ -10,6 +10,8 @@ designer, a PM, another engineer — click a link instead of cloning the monorep
 
 ## Using one
 
+<!-- smoke: first end-to-end validation of the preview pipeline. -->
+
 1. Add the `preview` label to your PR.
 2. Wait ~8–10 minutes for the image build, then ~1–2 more for the first sync
    (which creates and migrates the database). The bot comment updates itself.
