@@ -393,7 +393,8 @@ export class SandboxDispatchClient implements SandboxClient {
             runId,
             signal: input.signal,
           }),
-          modelEnv.CLAUDE_CODE_MODEL,
+          // A continuation's `start` is dropped downstream, so don't re-stamp it.
+          resume ? null : modelEnv.CLAUDE_CODE_MODEL,
           credentialProviderId,
         );
       })();
