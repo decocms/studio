@@ -229,4 +229,21 @@ describe("lazy-client with circuit breaker", () => {
     expect((await lazy.listTools()).tools).toHaveLength(1);
     expect(clientFromConnectionMock).toHaveBeenCalledTimes(2);
   });
+
+  it("does not reconnect after its own close()", async () => {
+    const first = await createWorkingClient();
+    clientFromConnectionMock.mockResolvedValue(first);
+
+    const lazy = createLazyClient(fakeConnection, fakeCtx, false);
+    expect((await lazy.listTools()).tools).toHaveLength(1);
+
+    await lazy.close();
+
+    const second = await createWorkingClient();
+    clientFromConnectionMock.mockResolvedValue(second);
+
+    // A call after explicit close must not silently open a new connection.
+    expect(lazy.listTools()).rejects.toThrow("is closed");
+    expect(clientFromConnectionMock).toHaveBeenCalledTimes(1);
+  });
 });
