@@ -197,7 +197,7 @@ export interface ChatTaskContextValue {
   taskId: string;
   openTask: (taskId: string) => void;
   /** Creates a thread and navigates to it. `runtime: "sandbox"` starts a
-   *  coding session (fresh branch, sandbox-backed) on any project. */
+   *  sandbox-backed coding session continuing the current branch. */
   createTask: (opts?: { runtime?: ThreadRuntime }) => string;
   createTaskWithMessage: (params: {
     message: SendMessageParams;
@@ -681,22 +681,17 @@ export function ChatContextProvider({
   // it stays a separate alias so we don't have to touch every reference.
   const currentBranch = lockedBranch;
 
-  // Branch carry-over is a same-runtime affair (coding-session branches never leak).
-  const carryableBranch =
-    activeTask?.metadata?.runtime === "sandbox" ? null : currentBranch;
-
   // Create task — calls COLLECTION_THREADS_CREATE up-front with the active
   // task's branch so the new thread lands on the same warm sandbox. The
   // route loader's useEnsureTask will see the row already exists on its
   // GET and skip the create-on-404 fallback.
   const createTask = (opts?: { runtime?: ThreadRuntime }): string => {
     const newId = crypto.randomUUID();
-    const branch = opts?.runtime === "sandbox" ? null : carryableBranch;
     void threadActions
       .create({
         id: newId,
         virtual_mcp_id: virtualMcpId,
-        ...(branch ? { branch } : {}),
+        ...(currentBranch ? { branch: currentBranch } : {}),
         ...(opts?.runtime ? { runtime: opts.runtime } : {}),
       })
       .then(() => navigateToTask(newId))
@@ -720,7 +715,7 @@ export function ChatContextProvider({
   }) => {
     const newId = crypto.randomUUID();
     const targetVmcp = params.virtualMcpId ?? virtualMcpId;
-    const carryBranch = targetVmcp === virtualMcpId ? carryableBranch : null;
+    const carryBranch = targetVmcp === virtualMcpId ? currentBranch : null;
     writeStoredAutosend(sessionStorage, locator, newId, params.message);
     void threadActions
       .create({

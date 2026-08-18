@@ -592,10 +592,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // progress), not on `previewUrl` alone. `resolvePreviewDisplay` decides what
   // to paint: the sandbox iframe, the published site + a waking pill, or
   // (no production URL) the blocking booting overlay.
+  // Coding sessions boot visibly: no production fallback → the boot console.
+  const codingSession = activeThreadMeta?.runtime === "sandbox";
   const display = resolvePreviewDisplay({
     previewState,
     progressStatus: progress.status,
-    previewServerUrl,
+    previewServerUrl: codingSession ? null : previewServerUrl,
     fastPreviewActive: fastPreviewEnabled,
     fastPreviewReady: !!draftPreviewUrl,
   });

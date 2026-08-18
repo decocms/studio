@@ -4,10 +4,11 @@
  * Create a new thread for a virtual MCP.
  *
  * Branch resolution (only meaningful when the vMCP has a githubRepo):
- * `data.runtime === "sandbox"` always mints fresh (input branch ignored — a
- * sandbox-runtime branch maps to exactly one thread); otherwise honor
- * `data.branch`, else the most-recently-touched `sandboxMap[userId]` branch
- * (warm sandbox), else `generateBranchName` (`<user-slug>-<timestamp>`).
+ * honor `data.branch`, else the most-recently-touched `sandboxMap[userId]`
+ * branch (warm sandbox), else `generateBranchName` (`<user-slug>-<timestamp>`).
+ * A `runtime: "sandbox"` coding session deliberately shares the caller's
+ * branch — it continues the CMS draft; the sandbox-proxy claim tells the two
+ * runtimes apart by sandbox presence, not by branch.
  *
  * Step 2 only sees sandboxes that finished provisioning — `setSandboxMapEntry`
  * runs after `provider.ensure` returns. So a SANDBOX_START in flight is
@@ -128,11 +129,9 @@ export const COLLECTION_THREADS_CREATE = defineTool({
     let branch: string | null = null;
     if (githubRepo) {
       branch =
-        data.runtime === "sandbox"
-          ? generateBranchName(branchUserLabel(ctx.auth.user))
-          : (data.branch ??
-            pickWarmBranchFromSandboxMap(metadata?.sandboxMap, userId) ??
-            generateBranchName(branchUserLabel(ctx.auth.user)));
+        data.branch ??
+        pickWarmBranchFromSandboxMap(metadata?.sandboxMap, userId) ??
+        generateBranchName(branchUserLabel(ctx.auth.user));
     }
 
     const result = await ctx.storage.threads.create({

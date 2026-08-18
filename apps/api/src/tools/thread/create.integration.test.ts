@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeAll, afterAll, spyOn } from "bun:test";
-import { sleep } from "@decocms/shared/std";
 import { COLLECTION_THREADS_CREATE } from "./create";
 import { buildThreadTestContext, type ThreadTestEnv } from "./test-helpers";
 import { posthog } from "../../posthog";
@@ -168,7 +167,7 @@ describe("COLLECTION_THREADS_CREATE", () => {
     expect(result.item.branch).toBe("deco/new-branch");
   });
 
-  it("runtime 'sandbox' mints a fresh branch, ignoring input branch and warm sandboxMap picks", async () => {
+  it("runtime 'sandbox' shares the given branch (a coding session continues the CMS draft)", async () => {
     const vmcp = await env.ctx.storage.virtualMcps.create(
       env.orgId,
       env.userId,
@@ -185,17 +184,6 @@ describe("COLLECTION_THREADS_CREATE", () => {
             installationId: 1,
             connectionId: "conn_x",
           },
-          sandboxMap: {
-            [env.userId]: {
-              "deco/warm-branch": {
-                "agent-sandbox": {
-                  sandboxHandle: "vm_warm",
-                  previewUrl: null,
-                  createdAt: 3000,
-                },
-              },
-            },
-          },
         },
       },
     );
@@ -205,16 +193,14 @@ describe("COLLECTION_THREADS_CREATE", () => {
         data: {
           virtual_mcp_id: vmcp.id,
           title: "t",
-          branch: "deco/ignored-for-sandbox-runtime",
+          branch: "deco/cms-draft-branch",
           runtime: "sandbox",
         },
       },
       env.ctx,
     );
 
-    expect(result.item.branch).toMatch(/^t-[0-9a-z]+$/);
-    expect(result.item.branch).not.toBe("deco/ignored-for-sandbox-runtime");
-    expect(result.item.branch).not.toBe("deco/warm-branch");
+    expect(result.item.branch).toBe("deco/cms-draft-branch");
     expect(result.item.metadata?.runtime).toBe("sandbox");
   });
 
@@ -250,49 +236,6 @@ describe("COLLECTION_THREADS_CREATE", () => {
 
     const stored = await env.ctx.storage.threads.get(result.item.id);
     expect(stored?.metadata?.runtime).toBeUndefined();
-  });
-
-  it("findByBranch returns the newest thread on a shared branch", async () => {
-    const vmcp = await env.ctx.storage.virtualMcps.create(
-      env.orgId,
-      env.userId,
-      {
-        title: "gh-vmcp-find-by-branch",
-        connections: [],
-        status: "active",
-        pinned: false,
-        metadata: {
-          githubRepo: {
-            owner: "acme",
-            name: "repo",
-            url: "https://github.com/acme/repo",
-            installationId: 1,
-            connectionId: "conn_x",
-          },
-        },
-      },
-    );
-
-    const branch = "deco/shared-branch";
-    await COLLECTION_THREADS_CREATE.handler(
-      { data: { virtual_mcp_id: vmcp.id, title: "older", branch } },
-      env.ctx,
-    );
-    // created_at has ms precision; keep newest-wins deterministic.
-    await sleep(5);
-    const newer = await COLLECTION_THREADS_CREATE.handler(
-      { data: { virtual_mcp_id: vmcp.id, title: "newer", branch } },
-      env.ctx,
-    );
-
-    const found = await env.ctx.storage.threads.findByBranch(vmcp.id, branch);
-    expect(found?.id).toBe(newer.item.id);
-
-    const miss = await env.ctx.storage.threads.findByBranch(
-      vmcp.id,
-      "deco/never-used",
-    );
-    expect(miss).toBeNull();
   });
 
   it("is idempotent: creating with the same id twice returns the same row", async () => {

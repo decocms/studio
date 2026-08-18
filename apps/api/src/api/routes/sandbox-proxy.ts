@@ -19,17 +19,15 @@ import { composeSandboxRef } from "@decocms/sandbox/provider";
 import type { SandboxProvider } from "@decocms/sandbox/provider";
 import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
 import { computeClaimHandle } from "../../sandbox/claim-handle";
-import {
-  resolveSandboxUserId,
-  threadIdFromBranch,
-} from "../../tools/sandbox/thread-repo";
+import { resolveSandboxUserId } from "../../tools/sandbox/thread-repo";
+import { readSandboxMap } from "../../tools/sandbox/sandbox-map";
+import { parseBranchMap } from "@decocms/shared/sdk";
 import { resolveSessionRuntime } from "@decocms/shared/thread/session-runtime";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
 import {
   getUserId,
   requireAuth,
   requireOrganization,
-  type StudioContext,
 } from "../../core/studio-context";
 import type { Env } from "../hono-env";
 import { patchSandboxOperator } from "../../tools/sandbox/patch-sandbox-operator";
@@ -144,27 +142,21 @@ function quickFileOpSignal(c: Context<VmEnv>): AbortSignal {
 // ---- Shared middleware ------------------------------------------------------
 
 /**
- * The session runtime for a branch: the branch's thread is looked up (by the
- * `thread:` prefix, else newest row on the branch) and its `metadata.runtime`
- * stamp consulted via `resolveSessionRuntime`. A "sandbox" stamp opts the
- * branch out of the sandbox-less Fast Preview claim — a coding session on
- * a Fast Preview project. Callers gate on `fastPreviewCapability` first so
- * this DB read runs only for fast-preview projects. Lookup failures resolve
- * to the project default (fail toward today's behavior, never a 500).
+ * Whether a sandbox is (being) provisioned for this user's branch, read from
+ * the vMCP's `sandboxMap`. On Fast Preview projects this is what opts a
+ * branch out of the sandbox-less claim: a coding session SHARES the CMS
+ * draft's branch, so the runtimes can't be told apart by branch — presence
+ * can, and it self-heals (SANDBOX_DELETE and the dead-entry cleanup in
+ * SANDBOX_START remove the cell, flipping the branch back to the GitHub-backed
+ * claim when the session's sandbox is gone).
  */
-async function branchRuntime(
-  ctx: StudioContext,
-  virtualMcpId: string,
-  branch: string,
+function sandboxPresent(
   virtualMcpMetadata: Record<string, unknown> | null,
-): Promise<"cms" | "sandbox"> {
-  const threadId = threadIdFromBranch(branch);
-  const thread = threadId
-    ? await ctx.storage.threads.get(threadId).catch(() => null)
-    : await ctx.storage.threads
-        .findByBranch(virtualMcpId, branch)
-        .catch(() => null);
-  return resolveSessionRuntime(virtualMcpMetadata, thread?.metadata).runtime;
+  userId: string,
+  branch: string,
+): boolean {
+  const cell = readSandboxMap(virtualMcpMetadata)[userId]?.[branch];
+  return !!cell && Object.keys(parseBranchMap(cell)).length > 0;
 }
 
 /**
@@ -239,8 +231,7 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
   // GitHub-backed equivalents; daemon-backed routes 503 via requireRunner.
   if (
     resolveSessionRuntime(virtualMcpMetadata).fastPreviewCapability &&
-    (await branchRuntime(ctx, virtualMcpId, branch, virtualMcpMetadata)) ===
-      "cms"
+    !sandboxPresent(virtualMcpMetadata, sandboxUserId, branch)
   ) {
     c.set("vmClaim", {
       claimName,

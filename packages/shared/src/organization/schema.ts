@@ -177,7 +177,7 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Show the 'Start coding session' button on Fast Preview projects: creates a sandbox-backed thread (fresh branch, chat enabled) without leaving Fast Preview mode for the rest of the project.",
+      "Show the 'Start coding session' button on Fast Preview projects: creates a sandbox-backed thread continuing the current branch, without leaving Fast Preview mode for the rest of the project.",
     ),
 });
 
