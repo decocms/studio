@@ -150,9 +150,17 @@ export class RemoteSandboxProvider implements SandboxProvider {
     }
   }
 
-  private status(handle: string): Promise<StatusResponse | null> {
+  /**
+   * `resurrect` re-provisions an evicted sandbox before answering. Preview
+   * only: every other caller wants an observation, not a side effect.
+   */
+  private status(
+    handle: string,
+    resurrect = false,
+  ): Promise<StatusResponse | null> {
+    const query = resurrect ? "?resurrect=1" : "";
     return this.json<StatusResponse>(
-      `/sandboxes/${encodeURIComponent(handle)}`,
+      `/sandboxes/${encodeURIComponent(handle)}${query}`,
       {},
       [200, 404],
     ).then(({ status, body }) => (status === 404 ? null : body));
@@ -221,13 +229,13 @@ export class RemoteSandboxProvider implements SandboxProvider {
   /** Cached address, refetched on a miss or after a 401. */
   private async daemonAddress(
     handle: string,
-    refresh = false,
+    opts: { refresh?: boolean; resurrect?: boolean } = {},
   ): Promise<DaemonAddress | null> {
-    if (!refresh) {
+    if (!opts.refresh) {
       const cached = this.daemons.get(handle);
       if (cached) return cached;
     }
-    const daemon = (await this.status(handle))?.daemon ?? null;
+    const daemon = (await this.status(handle, opts.resurrect))?.daemon ?? null;
     if (daemon) this.daemons.set(handle, daemon);
     else this.daemons.delete(handle);
     return daemon;
@@ -247,11 +255,12 @@ export class RemoteSandboxProvider implements SandboxProvider {
     if (!daemon) {
       return new Response("sandbox not found", { status: 404 });
     }
+    // A streamed body is consumed by the first attempt; a retry re-sends nothing.
+    const canRetryBody = !(init.body instanceof ReadableStream);
     const first = await fetchDaemon(daemon.url, daemon.token, path, init);
-    if (first.status !== 401) return first;
-    // The token rotated under us (pool rebind, adopt). Re-read and retry once
-    // — but only when the body can be replayed.
-    const rotated = await this.daemonAddress(handle, true);
+    if (first.status !== 401 || !canRetryBody) return first;
+    // The token rotated under us (pool rebind, adopt). Re-read and retry once.
+    const rotated = await this.daemonAddress(handle, { refresh: true });
     if (!rotated || rotated.token === daemon.token) return first;
     return fetchDaemon(rotated.url, rotated.token, path, init);
   }
@@ -262,7 +271,11 @@ export class RemoteSandboxProvider implements SandboxProvider {
    * injects the HMR bootstrap vite needs inside the studio iframe.
    */
   async resolvePreviewUpstreamUrl(handle: string): Promise<string | null> {
-    return (await this.daemonAddress(handle))?.url ?? null;
+    const cached = this.daemons.get(handle);
+    if (cached) return cached.url;
+    // The idle TTL may have reaped the claim under a still-open iframe; ask the
+    // controller to bring it back rather than 404ing a live preview.
+    return (await this.daemonAddress(handle, { resurrect: true }))?.url ?? null;
   }
 
   /** Preview reverse-proxy for deploys with no per-claim gateway route. */

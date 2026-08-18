@@ -107,6 +107,28 @@ jobs:
           DAEMON_E2E_CMD: ${{ github.workspace }}/packages/sandbox/daemon-go/bin/daemon
         run: bun test packages/sandbox/daemon-e2e/daemon*.e2e.test.ts
 
+  # The controller is a separate Go module with no e2e in CI (its suite needs a
+  # live cluster). Vet + unit tests + build are what keep it from rotting.
+  controller-go:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: packages/sandbox/controller-go/go.mod
+          cache-dependency-path: packages/sandbox/controller-go/go.sum
+
+      - name: Go vet, unit tests and build
+        working-directory: packages/sandbox/controller-go
+        run: |
+          go vet ./...
+          go test -race ./...
+          go build ./...
+
   docker-smoke:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'

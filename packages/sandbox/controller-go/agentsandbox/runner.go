@@ -469,6 +469,25 @@ func (r *Runner) Daemon(ctx context.Context, handle string) (*protocol.Daemon, e
 	return &protocol.Daemon{URL: url, Token: state.Token}, nil
 }
 
+// Resurrect re-provisions a sandbox the operator's idle TTL reaped, replaying
+// the persisted EnsureOptions so it returns with its repo rather than empty.
+// False (not an error) when there is nothing to replay, so the caller 404s;
+// a real provisioning failure returns its error rather than a false 404.
+func (r *Runner) Resurrect(ctx context.Context, handle string) (bool, error) {
+	rec, state, err := r.load(ctx, handle)
+	if err != nil || rec == nil || state == nil || state.EnsureOpts == nil {
+		return false, nil
+	}
+	if claim, err := r.getClaim(ctx, handle); err == nil && claim != nil {
+		return true, nil // never died; nothing to do
+	}
+	slog.Info("resurrecting evicted sandbox", "handle", handle)
+	if _, err := r.Ensure(ctx, rec.ID, handle, state.EnsureOpts); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (r *Runner) PreviewURL(ctx context.Context, handle string) (*string, error) {
 	if r.previewURLPattern != "" {
 		u := applyPreviewPattern(r.previewURLPattern, handle)

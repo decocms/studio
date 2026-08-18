@@ -161,14 +161,24 @@ function scopedStore(exec: Executor): RunnerStateStoreOps {
   };
 }
 
-export class KyselySandboxProviderStateStore implements RunnerStateStore {
+export class KyselySandboxProviderStateStore<
+  DB extends SandboxRunnerStateDatabase = SandboxRunnerStateDatabase,
+> implements RunnerStateStore
+{
+  private readonly db: Executor;
+
   /**
-   * Narrowed to the one table this touches so the sandbox controller can use
-   * it without studio's full schema. Studio holds a `Kysely<Database>` and
-   * casts: kysely's DB parameter is invariant, so a wider schema is not
-   * assignable even though every column it needs matches.
+   * Accepts any schema containing `sandbox_runner_state` — studio's full
+   * `Database` or the controller's narrow one — so no caller casts.
+   *
+   * Kysely's builders will not resolve against an unresolved type parameter, so
+   * the internals use the concrete narrow schema. The one widening cast is
+   * sound because `DB extends SandboxRunnerStateDatabase` already proved the
+   * table is there; passing a schema without it fails at the call site.
    */
-  constructor(private db: Kysely<SandboxRunnerStateDatabase>) {}
+  constructor(db: Kysely<DB>) {
+    this.db = db as unknown as Executor;
+  }
 
   get(id: SandboxId, kind: string): Promise<RunnerStateRecord | null> {
     return getRow(this.db, id, kind);

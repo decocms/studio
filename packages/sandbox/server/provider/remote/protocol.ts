@@ -1,7 +1,11 @@
 /**
  * Wire contract between studio and the sandbox controller. Mirrors
- * `packages/sandbox/controller-go/protocol/protocol.go` field for field; a
- * contract test asserts the two agree.
+ * `packages/sandbox/controller-go/protocol/protocol.go` field for field, and
+ * `protocol/contract_test.go` fails the Go build if either side drifts.
+ *
+ * The payload types these envelopes carry — `EnsureOptions`, `Repo`, `Tenant`,
+ * `Workload`, `SandboxId` — are imported from `../types`, not restated here;
+ * the contract test scans that file too, since they are equally the wire shape.
  *
  * The controller is control plane only. It answers WHERE a sandbox's daemon is
  * and WHAT token opens it — no request or response body is relayed through it,

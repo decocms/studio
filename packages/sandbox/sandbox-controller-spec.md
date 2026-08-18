@@ -163,8 +163,8 @@ daemon's config/health structs instead of re-deriving them (see
 hardcodes `GenerateName: "sandbox-claim-"` (`clients/go/sandbox/k8s.go:155`) and
 sets only `WarmPoolRef` — no template, no env, no TTL — and its request surface
 (`Run`/`Read`/`Write` on port 8888) is upstream's own sandbox runtime, not our
-daemon. Our claims are **named** (the handle *is* the claim name, deliberately —
-see `claim-identity-and-cost-spec.md`), templated, env-injected and TTL-patched.
+daemon. Our claims are **named** (the handle *is* the claim name, deliberately),
+templated, env-injected and TTL-patched.
 So: use the **generated clientsets + API types**, read `clients/go/sandbox` as
 reference for the connect strategies, don't build on its `Client`.
 
@@ -631,8 +631,7 @@ Corollaries:
 - **No failover after create.** Fall through to the next runtime only *before*
   anything has been provisioned. A create that fails half-way is deleted and
   surfaced, not retried elsewhere — retrying a partial create is how you get two
-  pods for one handle, which is a bug this codebase has already paid for
-  (`claim-identity-and-cost-spec.md`).
+  pods for one handle, which is a bug this codebase has already paid for.
 
 ### Switching a handle's runtime
 

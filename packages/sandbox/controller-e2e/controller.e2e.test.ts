@@ -53,6 +53,20 @@ suite("sandbox controller", () => {
   it("rejects an unauthenticated call when a token is configured", async () => {
     if (!TOKEN) return;
     expect((await fetch(`${BASE}/runtimes`)).status).toBe(401);
+    // A wrong token is rejected like a missing one, not just an absent header.
+    expect(
+      (
+        await fetch(`${BASE}/runtimes`, {
+          headers: { authorization: `Bearer ${TOKEN}-wrong` },
+        })
+      ).status,
+    ).toBe(401);
+  });
+
+  // Anonymous access means it booted with SANDBOX_CONTROLLER_INSECURE=1.
+  it("is not serving unauthenticated unless explicitly opted in", async () => {
+    if (!TOKEN) return;
+    expect((await fetch(`${BASE}/capacity`)).status).toBe(401);
   });
 
   it("answers the admission gate", async () => {

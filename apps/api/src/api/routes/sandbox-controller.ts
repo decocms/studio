@@ -7,6 +7,7 @@
  * peer on a different auth model gets its own namespace and its own credential.
  */
 
+import { timingSafeEqual } from "node:crypto";
 import { Hono } from "hono";
 import { sql, type Kysely } from "kysely";
 import {
@@ -27,11 +28,20 @@ import type { Database } from "@/storage/types";
 
 export const SANDBOX_CONTROLLER_API_PREFIX = "/api/_sandbox-controller";
 
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
+/**
+ * The bearer this endpoint requires. Unset means the endpoint refuses to serve
+ * — see the route below. `SANDBOX_CONTROLLER_INSECURE=1` opts local dev out.
+ */
+function controllerToken(): string | undefined {
+  return process.env.SANDBOX_CONTROLLER_TOKEN?.trim() || undefined;
+}
+
+function bearerMatches(header: string, expected: string): boolean {
+  if (!header.startsWith("Bearer ")) return false;
+  const presented = Buffer.from(header.slice(7));
+  const want = Buffer.from(expected);
+  // timingSafeEqual throws on a length mismatch, so compare lengths first.
+  return presented.length === want.length && timingSafeEqual(presented, want);
 }
 
 /**
@@ -44,6 +54,11 @@ function timingSafeEqual(a: string, b: string): boolean {
  * GitHub App token for ANY connection in the deployment, across orgs. With it,
  * the endpoint only refreshes credentials the caller could already read off a
  * persisted clone URL.
+ *
+ * The SCOPE check, not the authn one — the bearer above keeps strangers out.
+ *
+ * ponytail: unindexed jsonb seq scan, once per sandbox per ~50min. Add an index
+ * on `(state->'ensureOpts'->'repo'->>'connectionId')` if that stops being cheap.
  */
 async function isRecordedRepo(
   db: Kysely<Database>,
@@ -79,16 +94,17 @@ export function createSandboxControllerRoutes() {
   const app = new Hono();
 
   app.post("/clone-url", async (c) => {
-    // The bearer is the fallback where mTLS is not configured.
-    const expected = process.env.SANDBOX_CONTROLLER_TOKEN?.trim();
-    if (expected) {
-      const header = c.req.header("authorization") ?? "";
-      if (
-        !header.startsWith("Bearer ") ||
-        !timingSafeEqual(header.slice(7), expected)
-      ) {
-        return c.json({ error: "unauthorized" }, 401);
+    // Fails closed: this mints live GitHub App tokens on the public API.
+    const expected = controllerToken();
+    if (!expected) {
+      if (process.env.SANDBOX_CONTROLLER_INSECURE !== "1") {
+        return c.json(
+          { error: "sandbox controller callback not configured" },
+          503,
+        );
       }
+    } else if (!bearerMatches(c.req.header("authorization") ?? "", expected)) {
+      return c.json({ error: "unauthorized" }, 401);
     }
 
     const parsed = cloneUrlRequestSchema.safeParse(await c.req.json());

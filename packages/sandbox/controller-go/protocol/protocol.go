@@ -1,6 +1,7 @@
 // Package protocol is the wire contract between studio and this controller.
-// It mirrors packages/sandbox/server/provider/remote/protocol.ts field for
-// field; a contract test asserts the two agree.
+// It mirrors packages/sandbox/server/provider/remote/protocol.ts — and, for
+// the payload types those envelopes carry, server/provider/types.ts — field
+// for field. contract_test.go fails if either side drifts.
 package protocol
 
 // SandboxID is studio's tenant-scoped identity for a sandbox. The controller

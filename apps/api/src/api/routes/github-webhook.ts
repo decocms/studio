@@ -33,6 +33,21 @@ export function verifyGithubSignature(
 
 export const githubWebhookRoutes = new Hono();
 
+/**
+ * Runners that keep per-tenant warm pools. A predicate, not an `as`-cast, so a
+ * rename breaks the build instead of emptying the pool list forever.
+ */
+interface TenantPoolRefresher {
+  markTenantPoolsDirty(repo: string, ref: string): string[];
+}
+
+function refreshesTenantPools(runner: unknown): runner is TenantPoolRefresher {
+  return (
+    typeof (runner as TenantPoolRefresher | null | undefined)
+      ?.markTenantPoolsDirty === "function"
+  );
+}
+
 githubWebhookRoutes.post(
   "/webhook",
   bodyLimit({
@@ -72,12 +87,10 @@ githubWebhookRoutes.post(
     if (!ref || !repo) return c.json({ ok: true, ignored: "shape" });
 
     const runner = await getOrInitSharedRunner();
-    // Pools live wherever the agent-sandbox runner does; duck-typed so `remote` needs no branch.
-    const dirty = (
-      runner as { markTenantPoolsDirty?: (r: string, f: string) => string[] }
-    )?.markTenantPoolsDirty;
-    // The pool reconciler refreshes on its next tick; nothing here waits on it.
-    const pools = dirty ? dirty.call(runner, repo, ref) : [];
+    // Only the agent-sandbox runner has pools; the reconciler picks these up.
+    const pools = refreshesTenantPools(runner)
+      ? runner.markTenantPoolsDirty(repo, ref)
+      : [];
     return c.json({ ok: true, pools });
   },
 );

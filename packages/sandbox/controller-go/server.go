@@ -21,6 +21,9 @@ type server struct {
 	// bearer is the fallback where mTLS is not configured. With client certs
 	// the handshake has already rejected an unknown peer.
 	bearer string
+	// mTLS is set when the listener verifies client certificates, which makes
+	// the bearer redundant rather than absent.
+	mTLS bool
 	// drainDeadline bounds DELETE. This is a request path: an unbounded wait
 	// turns one stuck claim into a hung studio request and a burnt DBOS step.
 	drainDeadline time.Duration
@@ -38,8 +41,11 @@ func writeErr(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, protocol.ErrorResponse{Error: msg})
 }
 
+// authorized gates every route but /healthz. mTLS is the intended posture and
+// the bearer the fallback; with neither configured run() refuses to start.
 func (s *server) authorized(r *http.Request) bool {
-	if s.bearer == "" {
+	if s.mTLS {
+		// RequireAndVerifyClientCert already ran in the handshake.
 		return true
 	}
 	header := r.Header.Get("authorization")
@@ -179,6 +185,12 @@ func (s *server) handleEnsure(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// resurrector brings an evicted sandbox back from its persisted options.
+// Optional, not part of Provider: no idle reaper means nothing to resurrect.
+type resurrector interface {
+	Resurrect(ctx context.Context, handle string) (bool, error)
+}
+
 func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	handle := r.PathValue("handle")
 	ctx := r.Context()
@@ -191,6 +203,18 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	// `?resurrect=1` is preview traffic, where a fetch is the only sign anyone
+	// is here. Opt-in: every other caller wants an observation, not a side effect.
+	if !alive && r.URL.Query().Get("resurrect") == "1" {
+		if rr, canRevive := rt.Provider.(resurrector); canRevive {
+			revived, err := rr.Resurrect(ctx, handle)
+			if err != nil {
+				writeErr(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			alive = revived
+		}
 	}
 	preview, _ := rt.Provider.PreviewURL(ctx, handle)
 	daemon, _ := rt.Provider.Daemon(ctx, handle)

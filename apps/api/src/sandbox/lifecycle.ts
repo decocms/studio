@@ -16,10 +16,7 @@ import { getDb } from "@/database";
 import type { Kysely } from "kysely";
 import { meter } from "@/observability";
 import type { Database as DatabaseSchema } from "@/storage/types";
-import {
-  KyselySandboxProviderStateStore,
-  type SandboxRunnerStateDatabase,
-} from "@decocms/sandbox/provider/kysely-state-store";
+import { KyselySandboxProviderStateStore } from "@decocms/sandbox/provider/kysely-state-store";
 import { buildCloneInfo } from "@/shared/github-clone-info";
 import { CredentialVault } from "@/encryption/credential-vault";
 import { getSettings } from "@/settings";
@@ -172,9 +169,7 @@ async function instantiate(
   kind: SandboxProviderKind,
   db: Kysely<DatabaseSchema>,
 ): Promise<SandboxProvider> {
-  const stateStore = new KyselySandboxProviderStateStore(
-    db as unknown as Kysely<SandboxRunnerStateDatabase>,
-  );
+  const stateStore = new KyselySandboxProviderStateStore(db);
   const previewUrlPattern = readPreviewUrlPattern();
   switch (kind) {
     case "agent-sandbox": {

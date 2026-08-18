@@ -79,23 +79,40 @@ func run() error {
 	}
 	defer st.Close()
 
-	registry := runtime.NewRegistry(buildRuntimes(st))
+	runtimes, err := buildRuntimes(st)
+	if err != nil {
+		return err
+	}
+	registry := runtime.NewRegistry(runtimes)
 	defer registry.Close()
 	if len(registry.All()) == 0 {
 		slog.Warn("no runtime configured — every ensure will answer 503")
-	}
-
-	srv := &server{
-		registry:      registry,
-		store:         st,
-		bearer:        env("SANDBOX_CONTROLLER_TOKEN"),
-		drainDeadline: envDuration("SANDBOX_CONTROLLER_DRAIN_MS", 60*time.Second),
 	}
 
 	tlsConfig, err := serverTLS()
 	if err != nil {
 		return err
 	}
+	mTLS := tlsConfig != nil && tlsConfig.ClientAuth == tls.RequireAndVerifyClientCert
+	bearer := env("SANDBOX_CONTROLLER_TOKEN")
+	// Fail closed: an unauthenticated listener here is a credential oracle.
+	if !mTLS && bearer == "" {
+		if env("SANDBOX_CONTROLLER_INSECURE") != "1" {
+			return errors.New(
+				"refusing to serve unauthenticated: set SANDBOX_CONTROLLER_TLS_CLIENT_CA (mTLS) " +
+					"or SANDBOX_CONTROLLER_TOKEN, or SANDBOX_CONTROLLER_INSECURE=1 for local dev")
+		}
+		slog.Warn("serving with NO authentication (SANDBOX_CONTROLLER_INSECURE=1)")
+	}
+
+	srv := &server{
+		registry:      registry,
+		store:         st,
+		bearer:        bearer,
+		mTLS:          mTLS,
+		drainDeadline: envDuration("SANDBOX_CONTROLLER_DRAIN_MS", 60*time.Second),
+	}
+
 	httpServer := &http.Server{
 		Addr:      envOr("HOST", "0.0.0.0") + ":" + envOr("PORT", "8787"),
 		Handler:   srv.routes(),
@@ -161,13 +178,13 @@ func serverTLS() (*tls.Config, error) {
 // buildRuntimes registers every runtime this build knows about. The SET of
 // runtime types is compiled in — adding one is new code either way — but which
 // of them are usable is probed, not configured.
-func buildRuntimes(st *store.Store) []*runtime.Runtime {
+func buildRuntimes(st *store.Store) ([]*runtime.Runtime, error) {
 	var out []*runtime.Runtime
 
 	restConfig, err := kubeConfig()
 	if err != nil {
 		slog.Warn("agent-sandbox runtime unavailable", "err", err)
-		return out
+		return out, nil
 	}
 	var gateway *agentsandbox.Gateway
 	gwName, gwNamespace := env("STUDIO_SANDBOX_PREVIEW_GATEWAY_NAME"), env("STUDIO_SANDBOX_PREVIEW_GATEWAY_NAMESPACE")
@@ -175,8 +192,8 @@ func buildRuntimes(st *store.Store) []*runtime.Runtime {
 		if gwName == "" || gwNamespace == "" {
 			// Half-configured would silently write routes that never attach,
 			// and the failure mode is a 404 from the gateway with no log here.
-			slog.Error("STUDIO_SANDBOX_PREVIEW_GATEWAY_NAME and _NAMESPACE must both be set, or both unset")
-			os.Exit(1)
+			return nil, errors.New(
+				"STUDIO_SANDBOX_PREVIEW_GATEWAY_NAME and STUDIO_SANDBOX_PREVIEW_GATEWAY_NAMESPACE must both be set, or both unset")
 		}
 		gateway = &agentsandbox.Gateway{Name: gwName, Namespace: gwNamespace}
 	}
@@ -193,7 +210,7 @@ func buildRuntimes(st *store.Store) []*runtime.Runtime {
 	})
 	if err != nil {
 		slog.Warn("agent-sandbox runtime unavailable", "err", err)
-		return out
+		return out, nil
 	}
 
 	out = append(out, &runtime.Runtime{
@@ -210,7 +227,7 @@ func buildRuntimes(st *store.Store) []*runtime.Runtime {
 		Provider: runner,
 		Probe:    runner.Probe,
 	})
-	return out
+	return out, nil
 }
 
 func kubeConfig() (*rest.Config, error) {
