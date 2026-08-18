@@ -2,9 +2,9 @@ import {
   AlignLeft01,
   AlignRight01,
   Code01,
+  Grid01,
   LayoutRight,
   MessageCircle01,
-  PuzzlePiece01,
 } from "@untitledui/icons";
 import {
   Tooltip,
@@ -123,7 +123,7 @@ export function ModeSplitButton({
       )}
       icon={
         isCms ? (
-          <PuzzlePiece01 className="size-3.5" />
+          <Grid01 className="size-3.5" />
         ) : (
           <Code01 className="size-3.5" />
         )

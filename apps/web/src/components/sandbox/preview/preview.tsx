@@ -22,20 +22,20 @@ import {
   Code01,
   Compass01,
   Copy01,
+  CreditCardSearch,
   CursorClick01,
   Database01,
   DotsHorizontal,
   Globe02,
+  Grid01,
   LayoutAlt01,
   LinkExternal01,
   Loading01,
-  Plus,
-  PuzzlePiece01,
-  SearchLg,
-  CreditCardSearch,
   Monitor04,
   Phone02,
+  Plus,
   RefreshCw01,
+  SearchLg,
   Tablet01,
 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -1253,7 +1253,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       // well before this group hides at 384px, so the group stays narrow
       // through the widths where it is most cramped.
       labelCollapse="sooner"
-      icon={{ kind: "component", Component: PuzzlePiece01 }}
+      icon={{ kind: "component", Component: Grid01 }}
       active={blocksActive}
       onClick={() => toggleEditingMode("blocks")}
       testId="preview-blocks-toggle"
