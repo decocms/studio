@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { UIMessageChunk } from "ai";
 import { harnessRunResultSchema } from "@decocms/sandbox/dispatch/schemas";
+import { withModelMetadata } from "./with-model-metadata";
 import {
   describeTermination,
   dispatchWithContinuation,
@@ -293,6 +294,33 @@ describe("dispatchWithContinuation", () => {
     // The second dispatch is told it is continuing, and why.
     expect(resumes[0]).toBeNull();
     expect(resumes[1]?.reason).toContain("pod gone");
+  });
+
+  test("a continuation does not re-stamp model metadata", async () => {
+    // Mirrors the real `dispatchOnce`, which wraps each attempt in `withModelMetadata`.
+    let attempt = 0;
+    const chunks = await collect(
+      dispatchWithContinuation({
+        runId: "run_1",
+        resume: null,
+        aborted: () => false,
+        dispatchOnce: (resume) => {
+          attempt++;
+          const first = attempt === 1;
+          return withModelMetadata(
+            first
+              ? dispatch(
+                  [chunk("start"), chunk("text-delta")],
+                  new SandboxUnreachableError("pod gone"),
+                )()
+              : dispatch([chunk("start"), chunk("finish")])(),
+            resume ? null : "claude-sonnet-5",
+            "anthropic",
+          );
+        },
+      }),
+    );
+    expect(chunks.filter((c) => c.type === "message-metadata")).toHaveLength(1);
   });
 
   test("an attempt that died before streaming anything lets the continuation open the message", async () => {
