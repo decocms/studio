@@ -1786,6 +1786,10 @@ export interface TaskBoardItemThreadRef {
   /** True when a repo is bound to the thread (`metadata.githubRepo`) — the
    *  card opens the live dev Preview instead of staying on the board. */
   hasPreview: boolean;
+  /** `threads.failure_kind` — null unless `status` is `failed`. Some kinds mean
+   *  the failure is settled history rather than the task's outcome; see
+   *  `isResolvedRunFailure`. */
+  failureKind: string | null;
   /** True when the thread has at least one message in either storage format.
    *  False means it was created and never used — clicking "New chat" persists
    *  the row up-front, and `create` defaults `status` to "completed", so such a

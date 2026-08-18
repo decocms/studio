@@ -163,9 +163,11 @@ describe("retryBudgetFor", () => {
     expect(UNKNOWN_RETRY_BUDGET).toBeGreaterThan(0);
   });
 
-  test("a deliberate cancel gets none", () => {
-    for (const kind of ["cancelled", "superseded"]) {
+  // `ended_after_delivery` joins them because its work is already on the card.
+  test("a settled failure gets none", () => {
+    for (const kind of ["cancelled", "superseded", "ended_after_delivery"]) {
       expect(retryBudgetFor({ kind })).toBe(0);
+      expect(isTransientRunFailure({ kind })).toBe(false);
     }
   });
 

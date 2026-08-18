@@ -21,6 +21,7 @@ import type {
 } from "./types";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import { RESOLVED_RUN_FAILURE_KINDS } from "@decocms/shared/entities";
 
 /** One comment on a task, as the tools return it. `parentId` null = thread root;
  *  `resolved` only means anything on a root. */
@@ -930,6 +931,86 @@ export class TaskBoardStorage {
   }
 
   /**
+   * Relabel a failed run that had already delivered its work when it died.
+   *
+   * A run that posted its comment, pushed its PR and moved the card to In Review
+   * and only then lost its stream is recorded as `failed` with "Run ended with an
+   * error — see the run's messages" — a message pointing at an error part that
+   * does not exist, on work the reviewers went on to approve. The row keeps
+   * `status = 'failed'` (the run really did die), but the kind and the reason say
+   * what happened.
+   *
+   * Never overwrites a kind that already says something specific — a cancel, or a
+   * relabel that already ran.
+   */
+  async relabelDeliveredFailure(
+    threadId: string,
+    organizationId: string,
+    reason: string,
+  ): Promise<boolean> {
+    const updated = await this.db
+      .updateTable("threads")
+      .set({
+        failure_reason: reason,
+        failure_kind: "ended_after_delivery",
+        updated_at: new Date().toISOString(),
+      })
+      .where("id", "=", threadId)
+      .where("organization_id", "=", organizationId)
+      .where("status", "=", "failed")
+      .where((eb) =>
+        eb.or([
+          eb("failure_kind", "is", null),
+          eb("failure_kind", "not in", [
+            "cancelled",
+            ...RESOLVED_RUN_FAILURE_KINDS,
+          ]),
+        ]),
+      )
+      .returning("id")
+      .execute();
+    return updated.length > 0;
+  }
+
+  /**
+   * Stamp a card's failed threads as `superseded` — a fresh attempt has just been
+   * dispatched, so those failures are history, not the card's state. Without it
+   * the dialog shows attempt 1's red "Error" above attempt 2's green row forever.
+   *
+   * Only `failed` rows, so the attempt being dispatched (`in_progress`) is never
+   * touched and no exclusion by id is needed. `cancelled` keeps its kind: a human
+   * did that on purpose and should keep seeing it.
+   */
+  async supersedeFailedThreads(
+    itemId: string,
+    organizationId: string,
+  ): Promise<number> {
+    const updated = await this.db
+      .updateTable("threads")
+      .set({
+        failure_kind: "superseded",
+        updated_at: new Date().toISOString(),
+      })
+      .where("organization_id", "=", organizationId)
+      .where("status", "=", "failed")
+      .where("failure_kind", "is distinct from", "cancelled")
+      .where((eb) =>
+        eb(
+          "id",
+          "in",
+          eb
+            .selectFrom("task_board_item_threads")
+            .select("thread_id")
+            .where("task_board_item_id", "=", itemId)
+            .where("organization_id", "=", organizationId),
+        ),
+      )
+      .returning("id")
+      .execute();
+    return updated.length;
+  }
+
+  /**
    * Super Agent cards stuck In Progress with no live run and no retry armed —
    * the ones whose failure reaction never happened.
    *
@@ -962,6 +1043,13 @@ export class TaskBoardStorage {
       .where("i.dismissed_at", "is", null)
       .where("i.retry_at", "is", null)
       .where("t.status", "=", "failed")
+      // Settled history: reacting would park a card whose retry is mid-dispatch.
+      .where((eb) =>
+        eb.or([
+          eb("t.failure_kind", "is", null),
+          eb("t.failure_kind", "not in", [...RESOLVED_RUN_FAILURE_KINDS]),
+        ]),
+      )
       // Give the in-band reaction time to do its job before stepping in.
       .where("t.updated_at", "<", staleBefore)
       // No other thread on the card is still working.
@@ -1447,6 +1535,7 @@ export class TaskBoardStorage {
         "link.thread_id as threadId",
         "link.created_at as createdAt",
         "t.status as status",
+        "t.failure_kind as failureKind",
         "t.title as title",
         "t.virtual_mcp_id as virtualMcpId",
         "t.metadata as metadata",
@@ -1485,6 +1574,7 @@ export class TaskBoardStorage {
         threadId: row.threadId,
         virtualMcpId: row.virtualMcpId ?? null,
         status: row.status ?? null,
+        failureKind: row.failureKind ?? null,
         title: row.title ?? null,
         lastMessage: extractPartText(row.lastMessagePayload),
         hasPreview: threadHasClonableRepo(row.metadata),

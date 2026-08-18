@@ -61,6 +61,10 @@ export const taskBoard = {
   "taskBoard.taskDialog.activityCreated": "criou a tarefa",
   "taskBoard.taskDialog.activityMovedFromTo": "moveu de {from} para {to}",
   "taskBoard.taskDialog.activityMovedTo": "moveu para {to}",
+  "taskBoard.taskDialog.activityRetryScheduled":
+    "agendou a tentativa {attempt} de {of} — {reason}",
+  "taskBoard.taskDialog.activityRetriesExhausted":
+    "moveu para {to} depois de {count} tentativas sem sucesso",
   "taskBoard.taskDialog.activityAssigned": "atribuiu para {name}",
   "taskBoard.taskDialog.activityUnassigned": "removeu a atribuição",
   "taskBoard.taskDialog.activityDelegated": "delegou a {name}",
@@ -176,10 +180,13 @@ export const taskBoard = {
   "taskBoard.taskDialog.superAgentLabel": "Super Agent",
   "taskBoard.taskDialog.taskTitlePlaceholder": "Título da tarefa...",
   "taskBoard.taskDialog.threadStatusCompleted": "Concluído",
+  "taskBoard.taskDialog.threadStatusEndedAfterDelivery":
+    "Terminou depois de entregar",
   "taskBoard.taskDialog.threadStatusError": "Erro",
   "taskBoard.taskDialog.threadStatusExpired": "Expirado",
   "taskBoard.taskDialog.threadStatusNeedsInput": "Requer entrada",
   "taskBoard.taskDialog.threadStatusRunning": "Em execução",
+  "taskBoard.taskDialog.threadStatusSuperseded": "Nova tentativa feita",
   "taskBoard.taskDialog.unassignedLabel": "Não atribuído",
   "taskBoard.taskFilters.assigneeAnyone": "Qualquer um",
   "taskBoard.taskFilters.assigneeFilterPlaceholder": "Filtrar por responsável…",

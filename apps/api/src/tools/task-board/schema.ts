@@ -29,6 +29,9 @@ const TaskBoardItemThreadSchema = z.object({
   title: z.string().nullable(),
   lastMessage: z.string().nullable(),
   hasPreview: z.boolean(),
+  /** `threads.failure_kind`, so the board can tell an error from a failure that
+   *  is settled history (`superseded`, `ended_after_delivery`). */
+  failureKind: z.string().nullable(),
   /** False when the thread was created and never used — see
    *  `shouldAdvanceToReview` for why status alone can't tell. */
   hasMessages: z.boolean(),

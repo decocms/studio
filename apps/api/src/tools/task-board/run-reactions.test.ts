@@ -4,6 +4,7 @@ import {
   handTaskToHuman,
   isPrCreateBashCommand,
   isPrCreateMcpTool,
+  reactToFailedTaskRun,
   resolveAdvanceTargets,
 } from "./run-reactions";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
@@ -251,5 +252,55 @@ describe("handTaskToHuman", () => {
     const handed = await handTaskToHuman(ctx, makeItem(), "burned retries");
     expect(handed).toBe(false);
     expect(activityCalls).toHaveLength(0);
+  });
+});
+
+/**
+ * A card whose run died AFTER delivering — it moved the card to In Review
+ * itself — must not be recorded as a bare error: that reason ("see the run's
+ * messages") points at an error part that does not exist, on work the reviewers
+ * go on to approve. It also must not be retried, since the work is already on
+ * the card.
+ */
+describe("reactToFailedTaskRun on a card that already moved on", () => {
+  const fakeBoard = (status: string) => {
+    const calls: string[] = [];
+    const taskBoard = {
+      failedRunInfo: async () => ({ kind: "error", errorText: null }),
+      linkedTaskIds: async () => ["item-1"],
+      getById: async () => ({
+        id: "item-1",
+        status,
+        retryAttempts: 0,
+        updatedBy: "u",
+        threads: [],
+      }),
+      relabelDeliveredFailure: async () => {
+        calls.push("relabel");
+        return true;
+      },
+      scheduleRunRetry: async () => {
+        calls.push("retry");
+        return true;
+      },
+      returnToTodoAfterFailure: async () => {
+        calls.push("todo");
+        return null;
+      },
+      recordActivity: async () => {},
+    } as never;
+    return { taskBoard, calls };
+  };
+
+  it("relabels the failure and schedules nothing", async () => {
+    const { taskBoard, calls } = fakeBoard("in_review");
+    await reactToFailedTaskRun(taskBoard, "thr-1", "org-1");
+    expect(calls).toEqual(["relabel"]);
+  });
+
+  it("still retries a card that is genuinely mid-work", async () => {
+    const { taskBoard, calls } = fakeBoard("in_progress");
+    await reactToFailedTaskRun(taskBoard, "thr-1", "org-1");
+    expect(calls).toEqual(["retry"]);
   });
 });

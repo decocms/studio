@@ -9,6 +9,24 @@ export const THREAD_STATUSES = [
 export type ThreadStatus = (typeof THREAD_STATUSES)[number];
 export type ThreadDisplayStatus = ThreadStatus | "expired";
 
+/**
+ * `threads.failure_kind`s where `failed` is not the run's outcome: the run had
+ * already delivered its work when it died (`ended_after_delivery`), or a newer
+ * attempt replaced it (`superseded`). Both are settled history, so they render
+ * muted rather than as an error — 236 of the 307 failed task-board threads in
+ * one month sat on cards that reached In Review or Done.
+ */
+export const RESOLVED_RUN_FAILURE_KINDS = [
+  "ended_after_delivery",
+  "superseded",
+] as const;
+
+export function isResolvedRunFailure(kind: string | null | undefined): boolean {
+  return (
+    !!kind && (RESOLVED_RUN_FAILURE_KINDS as readonly string[]).includes(kind)
+  );
+}
+
 export interface ThreadExpandedTool {
   toolName: string;
   appId: string;
@@ -90,6 +108,9 @@ export interface TaskBoardItemThreadRef {
   title: string | null;
   lastMessage: string | null;
   hasPreview: boolean;
+  /** `threads.failure_kind` — null unless `status` is `failed`. See
+   *  `isResolvedRunFailure` for the kinds that are not an error. */
+  failureKind: string | null;
   /** False when the thread was created and never used — see
    *  `TaskBoardItemThreadRef` in `apps/api/src/storage/types.ts`. */
   hasMessages: boolean;
