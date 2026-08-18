@@ -457,6 +457,14 @@ export const settings = {
   "settings.orgBrandContext.thisBrand": "esta marca",
   "settings.orgBrandContext.unsetAsDefault": "Remover como padr\u00e3o",
   "settings.orgBrandContext.untitledBrand": "Marca Sem T\u00edtulo",
+  "settings.navigation.title": "Navegação",
+  "settings.navigation.description":
+    "Como esta organização circula pelo Studio.",
+  "settings.navigation.updateError":
+    "Não foi possível atualizar as configurações de navegação",
+  "settings.navigation.navV2Title": "Navegação de primeira classe",
+  "settings.navigation.navV2Description":
+    "A barra lateral lista destinos (Relatórios, Biblioteca, Tarefas) em vez de chats, e a lista de chats vai para o topo do painel de chat. Ativada por padrão em organizações de relatório.",
   "settings.orgGeneral.organization": "Organiza\u00e7\u00e3o",
   "settings.mainAgent.title": "Agente principal",
   "settings.mainAgent.description":

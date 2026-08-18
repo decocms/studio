@@ -137,6 +137,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Curated commerce (reports) look: hides agent navigation, the home Customize button, and the Settings/Automations tabs. Defaulted on for orgs created by commerce onboarding.",
     ),
+  nav_v2: z
+    .boolean()
+    .optional()
+    .describe(
+      "First-class navigation: the sidebar lists destinations (Reports, Library, Tasks) instead of chat threads, and the thread list moves into a menu at the top of the chat panel. Always on for reports_only orgs.",
+    ),
   qa_agent_enabled: z
     .boolean()
     .optional()

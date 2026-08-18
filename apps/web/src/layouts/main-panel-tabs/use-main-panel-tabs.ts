@@ -66,7 +66,7 @@ import {
   shouldDeepLinkSourceTab,
 } from "./source-system-tabs";
 import { useCapability } from "@/hooks/use-capability";
-import { useReportsOnly } from "@/hooks/use-organization-settings";
+import { useNavV2, useReportsOnly } from "@/hooks/use-organization-settings";
 import { useT } from "@/i18n/use-t.ts";
 
 export type AgentTabDef = {
@@ -210,6 +210,7 @@ export function useMainPanelTabs(ctx: {
     agentHasClonableSource(metadata);
   const { granted: canManageAgents } = useCapability("agents:manage");
   const reportsOnly = useReportsOnly();
+  const navV2 = useNavV2();
   const connections = useConnections({ includeVirtual: true });
 
   // Show "Content" only when decofile/meta confirm editable pages or sections
@@ -337,7 +338,11 @@ export function useMainPanelTabs(ctx: {
   // only orgs pin it as the first tab on EVERY agent, so the top bar stays a
   // stable Overview · Preview · Code · Report set regardless of which agent the
   // thread happens to be on. Clicking it never switches agents.
-  if (effectiveDefaultMainView?.type === "overview" || reportsOnly) {
+  // Under the first-class navigation Overview is the sidebar's "Home".
+  if (
+    (effectiveDefaultMainView?.type === "overview" || reportsOnly) &&
+    !navV2
+  ) {
     leadingSystemTabs.push({
       id: "overview",
       title: t("common.mainPanelTabs.overview"),
@@ -377,9 +382,9 @@ export function useMainPanelTabs(ctx: {
       title: t("common.mainPanelTabs.reviewChanges"),
     });
   }
-  // Commerce (reports-only) orgs get a curated top bar: no Automations, no
-  // Settings.
-  if (!reportsOnly) {
+  /** Reports-only orgs and the first-class navigation both get a curated top
+   *  bar: no Automations, no Settings — both live in the Settings section. */
+  if (!reportsOnly && !navV2) {
     systemTabs.push({
       id: "automations",
       title: t("common.mainPanelTabs.automations"),
@@ -432,7 +437,8 @@ export function useMainPanelTabs(ctx: {
   // current agent (and no agent switch) is needed. On the Report Agent itself
   // the loop above already added it with its configured label/icon, so this is
   // a no-op there (dedup by tab id).
-  if (reportsOnly) {
+  // Under the first-class navigation the Report is a sidebar destination.
+  if (reportsOnly && !navV2) {
     const reportConnectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id);
     const reportTabId = formatPinnedViewTabId(
       reportConnectionId,

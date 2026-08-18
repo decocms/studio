@@ -450,6 +450,7 @@ export const chat = {
   "chat.tierTrigger.tierFast": "Fast",
   "chat.tierTrigger.tierSmart": "Smart",
   "chat.tierTrigger.tierThinking": "Thinking",
+  "chat.threadsMenu.chats": "Chats",
   "chat.toolsPopover.addFile": "Add file",
   "chat.toolsPopover.approval": "Approval",
   "chat.toolsPopover.connections": "Connections",
