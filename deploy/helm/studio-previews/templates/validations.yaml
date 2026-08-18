@@ -22,6 +22,19 @@ healthy-looking object that silently does nothing.
 {{- end }}
 
 {{- /*
+The token ExternalSecret needs a path and a store, or it renders an object that
+syncs nothing and the generator authenticates with an empty Secret.
+*/ -}}
+{{- if .Values.applicationSet.repo.tokenSecret.externalSecret.enabled }}
+{{- if not .Values.applicationSet.repo.tokenSecret.externalSecret.secretPath }}
+{{- fail "chart-deco-studio-previews: applicationSet.repo.tokenSecret.externalSecret.secretPath is required when the token ExternalSecret is enabled" -}}
+{{- end }}
+{{- if not .Values.applicationSet.repo.tokenSecret.externalSecret.secretStoreName }}
+{{- fail "chart-deco-studio-previews: applicationSet.repo.tokenSecret.externalSecret.secretStoreName is required when the token ExternalSecret is enabled" -}}
+{{- end }}
+{{- end }}
+
+{{- /*
 A moving chart tag would roll every open preview the moment an unrelated chart
 version is published, in the middle of somebody's review.
 */ -}}

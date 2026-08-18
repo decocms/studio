@@ -32,9 +32,21 @@ applicationSet:
     owner: ""
     name: ""
     # Token with `pull_requests: read`. Nothing else is required of it.
+    #
+    # If it expires the generator stops listing PRs, and nothing is torn down —
+    # existing previews keep running because the ApplicationSet can no longer
+    # see that their PRs closed. Prefer a GitHub App, which does not expire.
     tokenSecret:
       name: ""
       key: token
+      # Sync the token from a secret store instead of creating the Secret by
+      # hand. Set enabled=false when something else already provides it.
+      externalSecret:
+        enabled: true
+        secretPath: ""
+        secretStoreName: ""
+        secretStoreKind: ClusterSecretStore
+        refreshInterval: 1h
   destination:
     # Cluster the previews are installed into. The in-cluster default keeps
     # generated Applications local to wherever this chart is deployed.
