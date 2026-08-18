@@ -1972,4 +1972,29 @@ describe("resolveSchema – intersection-typed props (allOf) merge into one form
       ?.properties?.title;
     expect(title?.title).toBeUndefined();
   });
+
+  test("prop-level title wins over the suppressed intersection title", () => {
+    const withPropTitle = structuredClone(meta) as LiveMeta;
+    const section = (
+      withPropTitle.schema.definitions as Record<string, unknown>
+    ).TabbedShelfSection as { properties: { title: Record<string, unknown> } };
+    section.properties.title.title = "Título";
+    const title = resolveSchema("site/sections/TabbedShelf.tsx", withPropTitle)
+      ?.properties?.title;
+    expect(title?.title).toBe("Título");
+    expect(title?.properties?.content?.title).toBe("Content");
+  });
+
+  test("keeps a human-authored title on a named intersection def", () => {
+    const named = structuredClone(meta) as LiveMeta;
+    const defs = named.schema.definitions as Record<
+      string,
+      Record<string, unknown>
+    >;
+    defs.TitleIntersection!.title = "Layout options";
+    const title = resolveSchema("site/sections/TabbedShelf.tsx", named)
+      ?.properties?.title;
+    expect(title?.type).toBe("object");
+    expect(title?.title).toBe("Layout options");
+  });
 });
