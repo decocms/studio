@@ -1,6 +1,8 @@
 import type { sandbox as sandboxEn } from "../en/sandbox.ts";
 
 export const sandbox = {
+  "sandbox.blocksPanel.devEnvironmentNotice":
+    "Este rascunho tem um ambiente de desenvolvimento. O conteúdo editado aqui vai para ele, junto com as alterações do agente, e é publicado em conjunto.",
   "sandbox.appEditor.createdSection": 'Seção "{name}" criada',
   "sandbox.appEditor.editingBreadcrumb": "Trilha de navegação de edição",
   "sandbox.appEditor.failedAddSection": "Não foi possível adicionar a seção",

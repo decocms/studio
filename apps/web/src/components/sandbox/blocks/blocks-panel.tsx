@@ -1,5 +1,8 @@
 import { Suspense, lazy } from "react";
-import { Loading01 } from "@untitledui/icons";
+import { Code01, Loading01 } from "@untitledui/icons";
+import { useT } from "@/i18n/use-t";
+import { resolveCmsMode } from "@/sdk/cms-mode";
+import { useVirtualMCP } from "@/sdk";
 import { useProjectContext } from "@/sdk";
 import { useChatTask } from "@/components/chat/context";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
@@ -23,6 +26,30 @@ import {
 } from "@/layouts/main-panel-tabs/blocks-tab-states";
 import { MainPanelLoading } from "@/layouts/main-panel-tabs/main-panel-loading";
 
+/**
+ * Which substrate this draft's content edits land in.
+ *
+ * Only shown once the draft HAS a dev environment, because that is the case
+ * where the same panel behaves differently than it looks: the write stops
+ * being a commit on the branch head and becomes a file in the pod's working
+ * tree, next to the agent's uncommitted work. Silence would leave the user to
+ * discover that from a publish diff.
+ *
+ * A sandbox-less draft gets nothing — the default needs no announcement, and a
+ * banner on every CMS project is a banner nobody reads.
+ */
+function DevEnvironmentNotice() {
+  const t = useT();
+  return (
+    <div className="flex items-start gap-2 border-b border-border bg-muted/40 px-3 py-2 text-muted-foreground">
+      <Code01 size={14} className="mt-0.5 shrink-0" />
+      <span className="text-xs leading-relaxed">
+        {t("sandbox.blocksPanel.devEnvironmentNotice")}
+      </span>
+    </div>
+  );
+}
+
 const SectionsEditor = lazy(() =>
   import("@/components/sections-editor/sections-editor").then((m) => ({
     default: m.SectionsEditor,
@@ -45,6 +72,10 @@ export function BlocksPanel({
   const { currentBranch } = useChatTask();
   const sandboxEvents = useSandboxEvents();
   const lifecycle = useSandboxLifecycle();
+  const vmcp = useVirtualMCP(virtualMcpId);
+  // CMS project whose branch has a pod: the panel now writes through it.
+  const showDevEnvironmentNotice =
+    resolveCmsMode(vmcp?.metadata).active && !lifecycle.cmsModeActive;
   const workspace = useBlocksPreviewWorkspace();
   const devServerReady = sandboxEvents.lifecycle.phase === "running";
   const previewUrl = lifecycle.previewUrl;
@@ -134,7 +165,11 @@ export function BlocksPanel({
       : `path:${currentPath}`;
 
   return (
-    <div data-testid="blocks-panel" className="h-full min-h-0 overflow-hidden">
+    <div
+      data-testid="blocks-panel"
+      className="flex h-full min-h-0 flex-col overflow-hidden"
+    >
+      {showDevEnvironmentNotice && <DevEnvironmentNotice />}
       <Suspense
         fallback={
           <div className="h-full flex items-center justify-center">

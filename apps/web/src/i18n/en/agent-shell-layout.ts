@@ -19,6 +19,7 @@ export const agentShellLayout = {
   "agentShellLayout.tasksToggle.tasks": "Tasks",
   "agentShellLayout.toggleButtons.cms": "CMS",
   "agentShellLayout.toggleButtons.chat": "Chat",
+  "agentShellLayout.toggleButtons.code": "Code",
   "agentShellLayout.toolbar.backToHome": "Back to home",
   "agentShellLayout.toolbar.logo": "Logo",
 } as const;

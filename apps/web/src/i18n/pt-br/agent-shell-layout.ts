@@ -22,6 +22,7 @@ export const agentShellLayout = {
   "agentShellLayout.tasksToggle.tasks": "Tarefas",
   "agentShellLayout.toggleButtons.cms": "CMS",
   "agentShellLayout.toggleButtons.chat": "Chat",
+  "agentShellLayout.toggleButtons.code": "Código",
   "agentShellLayout.toolbar.backToHome": "Voltar para home",
   "agentShellLayout.toolbar.logo": "Logo",
 } satisfies Record<keyof typeof agentShellLayoutEn, string>;

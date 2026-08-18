@@ -11,7 +11,7 @@ import type { APIRequestContext } from "@playwright/test";
 import { expect } from "./test";
 import { callSelfMcpTool, createHttpConnection } from "./mcp-tools";
 
-export const GITHUB_STUB_ORIGIN = `http://localhost:${process.env.GITHUB_STUB_PORT ?? "4102"}`;
+const GITHUB_STUB_ORIGIN = `http://localhost:${process.env.GITHUB_STUB_PORT ?? "4102"}`;
 
 export interface StubRepoInspection {
   defaultBranch: string;

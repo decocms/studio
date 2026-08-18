@@ -1,4 +1,6 @@
 export const sandbox = {
+  "sandbox.blocksPanel.devEnvironmentNotice":
+    "This draft has a dev environment. Content you edit here goes into it, alongside the agent's changes, and publishes together.",
   "sandbox.appEditor.createdSection": 'Created section "{name}"',
   "sandbox.appEditor.editingBreadcrumb": "Editing breadcrumb",
   "sandbox.appEditor.failedAddSection": "Could not add section",

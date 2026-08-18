@@ -44,7 +44,8 @@ import {
 } from "@/components/header/shell-breadcrumb";
 import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
 import { SidePanel } from "./side-panel";
-import { ChatToggle, CmsToggle } from "./toggle-buttons";
+import { ChatToggle, CmsToggle, CodeToggle } from "./toggle-buttons";
+import { resolveSidePanelToggles } from "./side-panel-toggles";
 import { BlocksPanel } from "@/components/sandbox/blocks/blocks-panel";
 import {
   MainPanelHeaderEndSlot,
@@ -124,7 +125,7 @@ export function WorkspacePanelGroup({
 }: WorkspacePanelGroupProps) {
   // Sandbox-less: the side panel hosts the block editor, not an inert chat.
   const cmsCapable = resolveCmsMode(entity.metadata).active;
-  const { cmsModeActive } = useSandboxLifecycle();
+  const { cmsModeActive, start: startDevEnvironment } = useSandboxLifecycle();
   const [sidePanelWidth, setSidePanelWidth] = useSidePanelWidth();
   const panelGroupRef = useRef<GroupImperativeHandle>(null);
   const visibility = { sidePanel, mainOpen };
@@ -178,22 +179,27 @@ export function WorkspacePanelGroup({
     });
   }, [sideSize, mainSize]);
 
-  /**
-   * Which side-panel occupants this branch offers. A CMS project always offers
-   * the block editor; chat needs a sandbox, so a sandbox-less branch withholds
-   * it. Once that branch has a pod BOTH appear — the two editors share the
-   * branch, each writing through whichever substrate the branch is on.
-   */
+  // Both halves, always, on a CMS project — see resolveSidePanelToggles.
+  const toggles = resolveSidePanelToggles({ cmsCapable, cmsModeActive });
   const sidePanelToggles = (disableActiveSidePanelToggle: boolean) => (
     <>
-      {cmsCapable && (
+      {toggles.cms && (
         <CmsToggle
           sidePanel={sidePanel}
           toggleSidePanel={toggleSidePanel}
           disableActiveSidePanelToggle={disableActiveSidePanelToggle}
         />
       )}
-      {!cmsModeActive && (
+      {toggles.code && (
+        <CodeToggle
+          sidePanel={sidePanel}
+          toggleSidePanel={toggleSidePanel}
+          disableActiveSidePanelToggle={disableActiveSidePanelToggle}
+          needsDevEnvironment={toggles.startsDevEnvironment}
+          onStart={startDevEnvironment}
+        />
+      )}
+      {toggles.chat && (
         <ChatToggle
           sidePanel={sidePanel}
           toggleSidePanel={toggleSidePanel}

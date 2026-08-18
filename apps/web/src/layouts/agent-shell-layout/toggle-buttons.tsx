@@ -1,4 +1,4 @@
-import { MessageCircle01, PuzzlePiece01 } from "@untitledui/icons";
+import { Code01, MessageCircle01, PuzzlePiece01 } from "@untitledui/icons";
 import { HeaderTabButton } from "@/layouts/main-panel-tabs/header-tab-button";
 import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t";
@@ -13,6 +13,13 @@ export interface ChatToggleProps {
    * leave a blank content area (chat is the only open panel).
    */
   disableActiveSidePanelToggle?: boolean;
+}
+
+export interface CodeToggleProps extends ChatToggleProps {
+  /** The draft has no dev environment yet, so opening this one provisions it. */
+  needsDevEnvironment: boolean;
+  /** Provision it. Called before the panel opens; safe to call while pending. */
+  onStart: () => void;
 }
 
 /**
@@ -76,6 +83,47 @@ export function CmsToggle({
           next_state: sidePanel === "cms" ? "closed" : "open",
         });
         toggleSidePanel("cms");
+      }}
+    />
+  );
+}
+
+/**
+ * Code toggle — the vibecoding half of the CMS/Code pair, shown only on
+ * projects that have both. It is the SWITCH: on a draft with no dev
+ * environment, clicking it provisions one and opens the agent chat, so the two
+ * modes are one click apart in both directions.
+ *
+ * A plain {@link ChatToggle} can't do this job — it renders as "Chat", which
+ * reads as a feature rather than a mode, and a CMS draft has no chat to open
+ * until a pod exists. Labelling it "Code" is what makes the pair legible as
+ * two modes of the same draft.
+ */
+export function CodeToggle({
+  sidePanel,
+  toggleSidePanel,
+  disableActiveSidePanelToggle = false,
+  needsDevEnvironment,
+  onStart,
+}: CodeToggleProps) {
+  const t = useT();
+  return (
+    <HeaderTabButton
+      title={t("agentShellLayout.toggleButtons.code")}
+      icon={{ kind: "component", Component: Code01 }}
+      active={sidePanel === "chat"}
+      disabled={disableActiveSidePanelToggle && sidePanel === "chat"}
+      labelCollapse="sooner"
+      className="h-10 md:h-7 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
+      onClick={() => {
+        track("agent_toolbar_toggled", {
+          button: "code",
+          next_state: sidePanel === "chat" ? "closed" : "open",
+        });
+        // Provision first: the panel it opens is the agent composer, which
+        // stays a "Start coding" prompt until the branch has a pod.
+        if (needsDevEnvironment && sidePanel !== "chat") onStart();
+        toggleSidePanel("chat");
       }}
     />
   );
