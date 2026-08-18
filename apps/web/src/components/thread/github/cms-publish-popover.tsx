@@ -113,14 +113,24 @@ export interface CmsPublishPopoverProps {
 
 export function CmsPublishPopover(props: CmsPublishPopoverProps) {
   const narrow = useNarrowViewport();
+  /** Set by the body while the publish flow runs — an outside click or Escape
+   *  must not dismiss the only surface showing that progress. */
+  const publishLockRef = useRef(false);
+
+  const handleOpenChange = (next: boolean) => {
+    if (!next && publishLockRef.current) return;
+    props.onOpenChange(next);
+  };
 
   if (narrow) {
     return (
       <>
         {props.children}
-        <Dialog open={props.open} onOpenChange={props.onOpenChange}>
+        <Dialog open={props.open} onOpenChange={handleOpenChange}>
           <DialogContent className="flex max-h-[85vh] w-[92vw] max-w-[420px] flex-col gap-0 overflow-hidden p-0">
-            {props.open ? <CmsPublishBody {...props} /> : null}
+            {props.open ? (
+              <CmsPublishBody {...props} publishLockRef={publishLockRef} />
+            ) : null}
           </DialogContent>
         </Dialog>
       </>
@@ -128,7 +138,7 @@ export function CmsPublishPopover(props: CmsPublishPopoverProps) {
   }
 
   return (
-    <Popover open={props.open} onOpenChange={props.onOpenChange}>
+    <Popover open={props.open} onOpenChange={handleOpenChange}>
       <PopoverAnchor asChild>
         <span className="inline-flex">{props.children}</span>
       </PopoverAnchor>
@@ -137,7 +147,7 @@ export function CmsPublishPopover(props: CmsPublishPopoverProps) {
         sideOffset={8}
         className="flex max-h-[min(720px,85vh)] w-[420px] flex-col gap-0 overflow-hidden p-0"
       >
-        <CmsPublishBody {...props} />
+        <CmsPublishBody {...props} publishLockRef={publishLockRef} />
       </PopoverContent>
     </Popover>
   );
@@ -200,6 +210,7 @@ function renderFieldValue(value: unknown): string {
 }
 
 function CmsPublishBody({
+  publishLockRef,
   onOpenChange,
   orgSlug,
   orgId,
@@ -216,7 +227,9 @@ function CmsPublishBody({
   openPullRequest = null,
   onPullRequestChanged,
   onPublished,
-}: CmsPublishPopoverProps) {
+}: CmsPublishPopoverProps & {
+  publishLockRef: React.MutableRefObject<boolean>;
+}) {
   const t = useT();
   const githubClient = useMCPClient({
     connectionId: githubConnectionId,
@@ -236,6 +249,7 @@ function CmsPublishBody({
   const [note, setNote] = useState("");
   const [isGeneratingNote, setIsGeneratingNote] = useState(false);
   const [revertConfirmId, setRevertConfirmId] = useState<string | null>(null);
+  const [revertAllConfirm, setRevertAllConfirm] = useState(false);
   const [isReverting, setIsReverting] = useState(false);
   const [drillInId, setDrillInId] = useState<string | null>(null);
   const [showRawJson, setShowRawJson] = useState(false);
@@ -370,6 +384,7 @@ function CmsPublishBody({
   };
 
   const handlePublish = async () => {
+    publishLockRef.current = true;
     setIsPublishing(true);
     setPublishError(undefined);
     let openedPr: CreatedPullRequest | undefined;
@@ -473,6 +488,7 @@ function CmsPublishBody({
           : t("thread.publishDialog.failedPublish"),
       );
     } finally {
+      publishLockRef.current = false;
       setIsPublishing(false);
     }
   };
@@ -483,6 +499,27 @@ function CmsPublishBody({
     try {
       await discardGitFiles(orgSlug, virtualMcpId, branch, change.filepaths);
       toast.success(t("thread.publishPopover.reverted", { name: change.name }));
+      await loadGitState();
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t("thread.publishPopover.failedRevert"),
+      );
+    } finally {
+      setIsReverting(false);
+    }
+  };
+
+  const handleRevertAll = async () => {
+    if (!gitDiff) return;
+    setRevertAllConfirm(false);
+    setIsReverting(true);
+    try {
+      const allFiles = Object.keys(gitDiff.diffs);
+      if (allFiles.length === 0) return;
+      await discardGitFiles(orgSlug, virtualMcpId, branch, allFiles);
+      toast.success(t("thread.publishDialog.allChangesDiscarded"));
       await loadGitState();
     } catch (error) {
       toast.error(
@@ -804,6 +841,39 @@ function CmsPublishBody({
         <div className="flex items-center gap-2 text-sm font-medium">
           <Globe01 className="size-4 shrink-0 text-muted-foreground" />
           <span className="truncate">{headerTitle}</span>
+          {!isLoading && summary.count > 1 ? (
+            revertAllConfirm ? (
+              <span className="ml-auto flex shrink-0 items-center gap-1.5 text-[11px]">
+                <span className="text-destructive">
+                  {t("thread.publishPopover.revertAllConfirm")}
+                </span>
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground"
+                  onClick={() => setRevertAllConfirm(false)}
+                >
+                  {t("thread.publishDialog.cancel")}
+                </button>
+                <button
+                  type="button"
+                  className="font-medium text-destructive disabled:opacity-50"
+                  onClick={handleRevertAll}
+                  disabled={isReverting}
+                >
+                  {t("thread.publishPopover.revert")}
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="ml-auto shrink-0 text-[11px] text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
+                onClick={() => setRevertAllConfirm(true)}
+                disabled={isPublishing || isReverting}
+              >
+                {t("thread.publishPopover.revertAll")}
+              </button>
+            )
+          ) : null}
         </div>
         <div className="pl-6 text-xs text-muted-foreground">
           {[lastPublishLine, isLoading ? null : changesReadyLine]
