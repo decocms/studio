@@ -17,6 +17,7 @@ pnpm-debug.log*
 lerna-debug.log*
 
 package-lock.json
+pnpm-lock.yaml
 deno.lock
 
 node_modules
