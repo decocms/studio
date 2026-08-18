@@ -3,6 +3,7 @@ package routes
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -29,6 +30,32 @@ func seedBlocks(t *testing.T) FsDeps {
 		}
 	}
 	return FsDeps{AppRoot: filepath.Dir(repoDir), RepoDir: repoDir}
+}
+
+// infiniteReader never hits EOF; it lets a test drive decodeBody's cap
+// without pre-allocating the oversized body it's rejecting.
+type infiniteReader struct{}
+
+func (infiniteReader) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = 'a'
+	}
+	return len(p), nil
+}
+
+// Without a cap, decodeBody's io.ReadAll(r.Body) would buffer an unbounded
+// request body into memory and could crash the daemon, tearing down the
+// sandbox pod on the next missed health probe.
+func TestDecodeBodyRejectsOversizedRequest(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/write", io.NopCloser(infiniteReader{}))
+	var out map[string]any
+	err := decodeBody(req, &out)
+	if err == nil {
+		t.Fatal("expected decodeBody to reject an oversized body, got nil error")
+	}
+	if !strings.Contains(err.Error(), "exceeded") {
+		t.Fatalf("expected a size-limit error, got: %v", err)
+	}
 }
 
 func readReq(t *testing.T, deps FsDeps, path string) *httptest.ResponseRecorder {

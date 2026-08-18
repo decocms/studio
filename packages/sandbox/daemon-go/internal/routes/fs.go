@@ -50,10 +50,17 @@ func (d FsDeps) notifyWrite(path string) {
 	}
 }
 
+// decodeBody caps the request body at maxTransferBytes: without a limit, a
+// misbehaving or malicious caller could stream an unbounded body into memory
+// and crash the daemon, tearing down the sandbox pod on the next missed
+// health probe. The cap matches the daemon's other file-transfer bound.
 func decodeBody(r *http.Request, out any) error {
-	raw, err := io.ReadAll(r.Body)
+	raw, err := io.ReadAll(io.LimitReader(r.Body, maxTransferBytes+1))
 	if err != nil {
 		return fmt.Errorf("Failed to parse body: %s", err.Error())
+	}
+	if len(raw) > maxTransferBytes {
+		return fmt.Errorf("Request body exceeded %d bytes", maxTransferBytes)
 	}
 	if err := json.Unmarshal(raw, out); err != nil {
 		return fmt.Errorf("Failed to parse body: %s", err.Error())
