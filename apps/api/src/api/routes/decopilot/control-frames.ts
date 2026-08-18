@@ -9,13 +9,3 @@ const controlFrameSchema = z.discriminatedUnion("type", [
 ]);
 
 export type ControlFrame = z.infer<typeof controlFrameSchema>;
-
-/** Serialize a control frame to a JSON string for tunnel delivery. */
-export function encodeControlFrame(frame: ControlFrame): string {
-  return JSON.stringify(frame);
-}
-
-/** Deserialize and validate a raw JSON string into a ControlFrame. Throws on invalid input. */
-export function decodeControlFrame(raw: string): ControlFrame {
-  return controlFrameSchema.parse(JSON.parse(raw));
-}
