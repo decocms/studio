@@ -173,12 +173,6 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "When a report import creates a task board item without an assignee, delegate it to the Super Agent automatically instead of leaving it unassigned.",
     ),
-  fast_preview_coding_sessions_enabled: z
-    .boolean()
-    .optional()
-    .describe(
-      "Show the 'Start coding session' button on Fast Preview projects: creates a sandbox-backed thread continuing the current branch, without leaving Fast Preview mode for the rest of the project.",
-    ),
 });
 
 export type OrgFlags = z.infer<typeof OrgFlagsSchema>;

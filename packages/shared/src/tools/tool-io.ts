@@ -127,7 +127,6 @@ export interface StudioToolIO {
             auto_merge?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
-            fast_preview_coding_sessions_enabled?: boolean | undefined;
           }
         | null
         | undefined;
@@ -196,7 +195,6 @@ export interface StudioToolIO {
             auto_merge?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
-            fast_preview_coding_sessions_enabled?: boolean | undefined;
           }
         | undefined;
       main_agent_id?: string | null | undefined;
@@ -265,7 +263,6 @@ export interface StudioToolIO {
             auto_merge?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
-            fast_preview_coding_sessions_enabled?: boolean | undefined;
           }
         | null
         | undefined;

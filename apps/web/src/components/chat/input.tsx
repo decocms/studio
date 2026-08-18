@@ -17,7 +17,6 @@ import {
 } from "@/sdk";
 import { resolveFastPreview } from "@/sdk/fast-preview";
 import { useActiveThreadMeta } from "@/hooks/use-active-thread-meta";
-import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowRight,
@@ -395,9 +394,6 @@ export function ChatInput({
     selectedVm?.metadata,
     activeThreadMeta,
   ).active;
-  const codingSessionsEnabled = useOrgFlag(
-    "fast_preview_coding_sessions_enabled",
-  );
   const playSwitchSound = useSound(question004Sound);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const { unsupportedFile, onUnsupportedFile, clearUnsupportedFile } =
@@ -648,7 +644,7 @@ export function ChatInput({
 
   // Sandbox-less composer slot: offer a coding session, else a plain notice.
   if (fastPreviewActive) {
-    if (!codingSessionsEnabled || !taskCtx) {
+    if (!taskCtx) {
       return (
         <ChatInputDisabledState
           message={t("chat.input.fastPreviewUnavailable")}
