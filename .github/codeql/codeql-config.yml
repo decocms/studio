@@ -1,0 +1,20 @@
+# Shared CodeQL configuration for .github/workflows/codeql.yml.
+name: deco studio CodeQL config
+
+# Query selection. The default suite is intentional for this first rollout: it
+# is the low-false-positive set, so the alert list stays actionable across a
+# TypeScript surface this size. To widen coverage later, uncomment
+# `security-extended` (more security queries, more noise) or swap in
+# `security-and-quality` (also adds maintainability queries).
+# queries:
+#   - uses: security-extended
+
+# node_modules and other package-manager directories are already skipped by the
+# JS/TS extractor, so they are not repeated here.
+paths-ignore:
+  # Vendored third-party source — upstream's code, not ours to fix.
+  - packages/sandbox/image/skills/templating/vendor
+  # Build output, if a scan ever runs on a dirty tree.
+  - "**/dist"
+  - "**/build"
+  - "**/*.min.js"
