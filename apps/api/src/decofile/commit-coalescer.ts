@@ -178,7 +178,15 @@ async function commitBatch(batch: Batch): Promise<string> {
           content: b.content ?? (await client.getBlobText(b.sha as string)),
         })),
       );
-      const genBlobSha = await client.createBlob(mergeBlocks(files));
+      const { decofile: genContent, skipped } = mergeBlocks(files);
+      if (skipped.length > 0) {
+        console.warn("decofile gen: dropped blocks that were not valid JSON", {
+          branch,
+          packagePath,
+          blocks: skipped.map((s) => ({ key: s.key, error: s.error })),
+        });
+      }
+      const genBlobSha = await client.createBlob(genContent);
       writes.push({
         path: genPath,
         mode: "100644",

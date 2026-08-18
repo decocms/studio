@@ -11,4 +11,6 @@ export {
   GEN_BASENAME,
   mergeBlocks,
   type BlockFile,
+  type MergeResult,
+  type SkippedBlock,
 } from "./merge";

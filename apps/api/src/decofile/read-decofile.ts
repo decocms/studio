@@ -271,7 +271,15 @@ async function resolveSnapshot(
       return { stem: e.stem, content };
     },
   );
-  const decofile = mergeBlocks(contents);
+  const { decofile, skipped } = mergeBlocks(contents);
+  if (skipped.length > 0) {
+    console.warn("decofile read: dropped blocks that were not valid JSON", {
+      repo: `${owner}/${repo}`,
+      sha,
+      packagePath,
+      blocks: skipped.map((s) => ({ key: s.key, error: s.error })),
+    });
+  }
   await putMerged(owner, repo, docSha, decofile);
   return { sha, decofile };
 }
