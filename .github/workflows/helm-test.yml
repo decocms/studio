@@ -251,13 +251,21 @@ jobs:
 
           # This repository is public and the chart is published. Nothing that
           # names one deployment may live in the shared values file.
+          # Domains are matched only where they are a HOSTNAME — i.e. not
+          # followed by `/`. Kubernetes label and taint keys are domain-prefixed
+          # by convention (decocms.com/nodepool), and those are structure, not
+          # identity: they carry no account, bucket or endpoint.
+          #
           # `if grep` and not `grep && fail`: under `set -e` a bare grep that
           # matches nothing exits 1 and aborts the step — which is the passing
           # case here.
-          for leak in cloudflarestorage.com decocms.com amazonaws.com \
-                      deco-studio-storage aws-secrets-manager; do
-            if grep -q "$leak" deploy/helm/studio/values-preview.yaml; then
-              fail "values-preview.yaml names a specific deployment ('${leak}') — that belongs in the studio-previews values, which are not published"
+          for leak in 'cloudflarestorage\.com([^/]|$)' 'decocms\.com([^/]|$)' \
+                      'deco\.cx([^/]|$)' 'amazonaws\.com([^/]|$)' \
+                      'deco-studio-storage' 'aws-secrets-manager'; do
+            if grep -qE "$leak" deploy/helm/studio/values-preview.yaml; then
+              echo "--- offending lines ---"
+              grep -nE "$leak" deploy/helm/studio/values-preview.yaml
+              fail "values-preview.yaml names a specific deployment (/${leak}/) — that belongs in the studio-previews values, which are not published"
             fi
           done
           echo "values-preview.yaml carries no deployment-specific identifiers"
