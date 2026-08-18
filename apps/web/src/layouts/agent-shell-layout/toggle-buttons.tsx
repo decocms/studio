@@ -114,7 +114,7 @@ export function ModeSplitButton({
 
   return (
     <SplitButton
-      variant="ghost"
+      variant="outline"
       size="sm"
       label={t(
         isCms
