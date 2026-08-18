@@ -21,6 +21,22 @@ interface ImageUploadProps {
   isUploading?: boolean;
 }
 
+const sanitizeImageUrl = (raw: string): string => {
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+
+  try {
+    const parsed = new URL(trimmed, window.location.origin);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return parsed.href;
+    }
+  } catch {
+    // Invalid URL, fall through and reject.
+  }
+
+  return "";
+};
+
 export function ImageUpload({
   value,
   onChange,
@@ -83,7 +99,7 @@ export function ImageUpload({
           <div className="flex items-center gap-3 p-3 h-full">
             <div className="size-20 rounded-lg border border-border bg-muted/20 overflow-hidden shrink-0">
               <img
-                src={value}
+                src={sanitizeImageUrl(value)}
                 alt={t("registry.imageUpload.previewAlt")}
                 className="w-full h-full object-cover"
               />
@@ -189,7 +205,7 @@ export function ImageUpload({
                 placeholder={t("registry.imageUpload.urlPlaceholder")}
                 value={value}
                 className="text-xs h-8"
-                onChange={(event) => onChange(event.target.value)}
+                onChange={(event) => onChange(sanitizeImageUrl(event.target.value))}
                 onBlur={onBlur}
               />
             </div>
