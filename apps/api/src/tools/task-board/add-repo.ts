@@ -15,7 +15,7 @@
  * repo (`pickSoleTaskRepo`) because the checkout was resolved at dispatch;
  * everything else fell back to Decopilot.
  *
- * The sandbox key is whatever the run was DISPATCHED on (`threads.branch`) — see
+ * The sandbox key is whatever the run was DISPATCHED on (NOT `threads.branch`) — see
  * `resolveSandboxBranch`. Deriving it (from the repo like `load_repo`, or as the
  * bare key this tool used to assume) misses the pod the agent loop is in.
  */
@@ -38,11 +38,11 @@ import {
 import { resolveVm } from "@/tools/sandbox/sandbox-map";
 import {
   getThreadSandboxMap,
+  resolveSandboxBranchForThread,
   resolveSandboxUserId,
   syntheticBranchToGitRef,
-  threadBranch,
 } from "@/tools/sandbox/thread-repo";
-import { sleep } from "@decocms/shared/std";
+import { retry, sleep } from "@decocms/shared/std";
 import type { SandboxProvider } from "@decocms/sandbox/provider";
 import { requireTaskRunContext } from "./task-run-context";
 
@@ -57,6 +57,52 @@ import { requireTaskRunContext } from "./task-run-context";
  * re-minted by the next one.
  */
 const CLONE_TOKEN_MIN_TTL_MS = 55 * 60 * 1000;
+
+/**
+ * How long to wait for the run's sandbox record to appear before giving up.
+ *
+ * The record is written when `provisionSandbox` finishes; the harness can call
+ * this tool as its first action, which on 13 production runs beat that write
+ * and threw. The model then re-called the tool blind — three times each — so
+ * the wait already happens, just as whole extra model turns. Bounded and short:
+ * the pod is already up (it is running the caller), so this is a database write
+ * landing, not a boot.
+ */
+const SANDBOX_RECORD_WAIT_ATTEMPTS = 4;
+const SANDBOX_RECORD_WAIT_MIN_MS = 250;
+const SANDBOX_RECORD_WAIT_MAX_MS = 2_000;
+
+/**
+ * The run's sandbox record, waiting out the provisioning write if it has not
+ * landed yet. `null` once the budget is spent — the caller reports that as the
+ * hard failure it is.
+ */
+async function waitForSandboxRecord(
+  ctx: StudioContext,
+  threadId: string,
+  sandboxUserId: string,
+  branch: string,
+  kind: Parameters<typeof resolveVm>[3],
+): Promise<ReturnType<typeof resolveVm>> {
+  return retry(
+    async () => {
+      const record = resolveVm(
+        await getThreadSandboxMap(ctx, threadId),
+        sandboxUserId,
+        branch,
+        kind,
+      );
+      if (!record) throw new Error("sandbox record not written yet");
+      return record;
+    },
+    {
+      maxAttempts: SANDBOX_RECORD_WAIT_ATTEMPTS,
+      minTimeout: SANDBOX_RECORD_WAIT_MIN_MS,
+      maxTimeout: SANDBOX_RECORD_WAIT_MAX_MS,
+      jitter: 0,
+    },
+  ).catch(() => null);
+}
 
 /** Wait at most this long for the checkout before answering anyway. */
 const CLONE_TIMEOUT_MS = 180_000;
@@ -200,16 +246,28 @@ export const TASK_ADD_REPO = defineTool({
     const thread = await ctx.storage.threads.get(threadId);
     if (!thread) throw new Error(`Thread not found: ${threadId}`);
 
-    // The key this run was dispatched on — bare thread branch, or a pinned ref.
-    const branch = thread.branch ?? threadBranch(threadId);
+    /**
+     * The sandbox key, from the one derivation every sandbox consumer shares —
+     * NOT `threads.branch` raw, which this used to read.
+     *
+     * They are different namespaces, and the mismatch was silent and fatal: a
+     * run whose column holds a git ref (`sandbox/thread-<id>` on a
+     * continuation, or a plain PR head like `fix/foo` on a re-run) never
+     * matched the `sandboxMap`, which is keyed by the SYNTHETIC key the
+     * dispatcher provisioned on. 48 production runs died on "No sandbox is
+     * registered" — every one a task that could not clone, so never shipped,
+     * after the model had already been paid for.
+     */
+    const branch = await resolveSandboxBranchForThread(ctx, { threadId });
     const sandboxUserId = await resolveSandboxUserId(ctx, branch, userId);
     const { provider, kind } = await resolveSandboxProvider(ctx, {
       userId: sandboxUserId,
       branch,
       virtualMcpMetadata: null,
     });
-    const record = resolveVm(
-      await getThreadSandboxMap(ctx, threadId),
+    const record = await waitForSandboxRecord(
+      ctx,
+      threadId,
       sandboxUserId,
       branch,
       kind,

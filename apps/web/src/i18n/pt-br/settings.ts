@@ -453,6 +453,14 @@ export const settings = {
   "settings.orgBrandContext.thisBrand": "esta marca",
   "settings.orgBrandContext.unsetAsDefault": "Remover como padr\u00e3o",
   "settings.orgBrandContext.untitledBrand": "Marca Sem T\u00edtulo",
+  "settings.navigation.title": "Navegação",
+  "settings.navigation.description":
+    "Como esta organização circula pelo Studio.",
+  "settings.navigation.updateError":
+    "Não foi possível atualizar as configurações de navegação",
+  "settings.navigation.navV2Title": "Navegação de primeira classe",
+  "settings.navigation.navV2Description":
+    "A barra lateral lista destinos (Relatórios, Biblioteca, Tarefas) em vez de chats, e a lista de chats vai para o topo do painel de chat. Ativada por padrão em organizações de relatório.",
   "settings.orgGeneral.organization": "Organiza\u00e7\u00e3o",
   "settings.mainAgent.title": "Agente principal",
   "settings.mainAgent.description":
@@ -474,6 +482,10 @@ export const settings = {
   "settings.review.codeReviewerTitle": "Ativar Code Reviewer",
   "settings.review.codeReviewerDescription":
     "Revisa o c\u00f3digo usando as skills de review apropriadas \u00e0 stack do reposit\u00f3rio.",
+  "settings.review.cheapReviewerModelTitle":
+    "Rodar os revisores em um modelo mais barato",
+  "settings.review.cheapReviewerModelDescription":
+    "O QA Agent e o Code Reviewer leem um diff e chegam a um veredito, então rodam em um modelo menor que o Super Agent que escreveu a mudança. Reduz o custo da revisão; pode reduzir a profundidade.",
   "settings.review.autoMergeTitle": "Ativar Auto-merge",
   "settings.review.autoMergeDescription":
     "Quando todos os revisores habilitados aprovam, mescla o pull request automaticamente em vez de esperar por uma pessoa. Se um conflito bloquear o merge, o Super Agent resolve antes.",

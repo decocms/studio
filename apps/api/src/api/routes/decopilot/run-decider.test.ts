@@ -155,6 +155,24 @@ describe("FINISH", () => {
       taskId: "t1",
       orgId: "org1",
       reason: "error",
+      errorText: null,
+    });
+  });
+
+  it("forwards the failure's error text so the reactor can classify it", () => {
+    const events = decide(
+      {
+        type: "FINISH",
+        taskId: "t1",
+        threadStatus: "failed",
+        errorText: "Error: API Error: 402 requires more credits",
+      },
+      makeRunningState({ orgId: "org1" }),
+    );
+
+    expect(events[0]).toMatchObject({
+      reason: "error",
+      errorText: "Error: API Error: 402 requires more credits",
     });
   });
 

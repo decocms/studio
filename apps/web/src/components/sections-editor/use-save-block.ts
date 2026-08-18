@@ -89,6 +89,8 @@ export function useSaveBlock({
       await queryClient.cancelQueries({ queryKey });
       const previous =
         queryClient.getQueryData<Record<string, unknown>>(queryKey);
+      const hadKey = !!previous && blockKey in previous;
+      const previousValue = previous?.[blockKey];
       queryClient.setQueryData(
         queryKey,
         (current: Record<string, unknown> | undefined) => ({
@@ -96,12 +98,22 @@ export function useSaveBlock({
           [blockKey]: data,
         }),
       );
-      return { previous, queryKey };
+      return { queryKey, blockKey, hadKey, previousValue };
     },
+    // Restore only this mutation's own key so a concurrent sibling save isn't clobbered.
     onError: (_error, _variables, context) => {
-      if (context?.queryKey) {
-        queryClient.setQueryData(context.queryKey, context.previous);
-      }
+      if (!context) return;
+      queryClient.setQueryData(
+        context.queryKey,
+        (current: Record<string, unknown> | undefined) => {
+          if (!current) return current;
+          if (!context.hadKey) {
+            const { [context.blockKey]: _removed, ...rest } = current;
+            return rest;
+          }
+          return { ...current, [context.blockKey]: context.previousValue };
+        },
+      );
     },
     onSuccess: (_result, { blockKey, data }) => {
       const cacheKey = `${orgSlug}/${virtualMcpId}/${branch}`;

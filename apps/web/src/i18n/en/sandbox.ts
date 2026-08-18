@@ -442,7 +442,7 @@ export const sandbox = {
   "sandbox.productBlocks.changeButton": "Change",
   "sandbox.productBlocks.chooseProductButton": "Choose a product",
   "sandbox.productBlocks.ctaLabelField": "CTA label",
-  "sandbox.productBlocks.ctaLabelPlaceholder": "Ver produto",
+  "sandbox.productBlocks.ctaLabelPlaceholder": "View product",
   "sandbox.productBlocks.dragToReorderLabel": "Drag to reorder",
   "sandbox.productBlocks.headingH1": "H1",
   "sandbox.productBlocks.headingH2": "H2",

@@ -170,6 +170,24 @@ describe("fetchCommerceDiscoveryAuth", () => {
       "Commerce Discovery auth response did not include a token.",
     );
   });
+
+  test("rejects a non-JSON 200 body with the classified error, not a raw SyntaxError", async () => {
+    await expect(
+      fetchCommerceDiscoveryAuth(
+        {
+          siteUrl: "https://example.com",
+          orgId: "org_123",
+        },
+        {
+          baseUrl: "https://commerce.example.test",
+          apiKey: "master-key",
+          fetchImpl: async () => new Response("<html>not json</html>"),
+        },
+      ),
+    ).rejects.toThrow(
+      "Commerce Discovery auth response did not include a token.",
+    );
+  });
 });
 
 describe("commerceDiscoveryClaimMessagePtBr", () => {
@@ -426,6 +444,49 @@ describe("bindCommerceDiscoveryResource", () => {
     }
   });
 
+  test("rejects a non-JSON 200 binding body with the classified error", async () => {
+    await expect(
+      bindCommerceDiscoveryResource(
+        {
+          siteUrl: "https://example.com",
+          orgId: "org_123",
+          provider: "ga4",
+          resourceId: "1",
+        },
+        {
+          baseUrl: "https://commerce.example.test",
+          apiKey: "master-key",
+          fetchImpl: async () => new Response("<html>not json</html>"),
+        },
+      ),
+    ).rejects.toThrow(
+      "Commerce Discovery bind response did not include a binding.",
+    );
+  });
+
+  test("treats a non-JSON 422 body as a generic verification failure, not a throw", async () => {
+    const out = await bindCommerceDiscoveryResource(
+      {
+        siteUrl: "https://example.com",
+        orgId: "org_123",
+        provider: "ga4",
+        resourceId: "1",
+      },
+      {
+        baseUrl: "https://commerce.example.test",
+        apiKey: "master-key",
+        fetchImpl: async () =>
+          new Response("<html>not json</html>", { status: 422 }),
+      },
+    );
+
+    expect(out).toEqual({
+      ok: false,
+      reason: "verification_failed",
+      detail: "Não foi possível verificar o acesso a este recurso.",
+    });
+  });
+
   test("throws on an unexpected status", async () => {
     await expect(
       bindCommerceDiscoveryResource(
@@ -505,6 +566,18 @@ describe("fetchCommerceDiscoveryConnectionStatus", () => {
         url: "https://commerce.example.test/api/v2/internal/diagnostics/example.com/connections/status?org_id=org_123",
       },
     ]);
+  });
+
+  test("degrades a non-JSON 200 status body to empty providers, not a throw", async () => {
+    const out = await fetchCommerceDiscoveryConnectionStatus(
+      { siteUrl: "https://example.com", orgId: "org_123" },
+      {
+        baseUrl: "https://commerce.example.test",
+        apiKey: "master-key",
+        fetchImpl: async () => new Response("<html>not json</html>"),
+      },
+    );
+    expect(out).toEqual({ providers: {}, claimed: true });
   });
 
   test("flags a 409 (not claimed for this org) as claimed:false, not a throw", async () => {

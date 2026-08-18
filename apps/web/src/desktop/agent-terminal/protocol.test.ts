@@ -272,6 +272,10 @@ describe("native terminal protocol", () => {
       rows: 2,
       cols: 1_000,
     });
+    expect(normalizeTerminalDimensions({ rows: NaN, cols: Infinity })).toEqual({
+      rows: 30,
+      cols: 100,
+    });
     expect(
       appendTerminalReplay(
         [

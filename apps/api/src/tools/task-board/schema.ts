@@ -32,6 +32,8 @@ const TaskBoardItemThreadSchema = z.object({
   /** False when the thread was created and never used — see
    *  `shouldAdvanceToReview` for why status alone can't tell. */
   hasMessages: z.boolean(),
+  /** USD this run has cost so far; null when the harness recorded none. */
+  costUsd: z.number().nullable(),
   createdAt: z.string(),
 });
 

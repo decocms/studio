@@ -76,6 +76,8 @@ export function useDeleteBlock({
       await queryClient.cancelQueries({ queryKey });
       const previous =
         queryClient.getQueryData<Record<string, unknown>>(queryKey);
+      const hadKey = !!previous && blockKey in previous;
+      const previousValue = previous?.[blockKey];
       queryClient.setQueryData(
         queryKey,
         (current: Record<string, unknown> | undefined) => {
@@ -84,12 +86,21 @@ export function useDeleteBlock({
           return rest;
         },
       );
-      return { previous, queryKey };
+      return { queryKey, blockKey, hadKey, previousValue };
     },
+    // Restore only this mutation's own key so a concurrent sibling save isn't clobbered.
     onError: (_error, _variables, context) => {
-      if (context?.queryKey) {
-        queryClient.setQueryData(context.queryKey, context.previous);
-      }
+      if (!context) return;
+      queryClient.setQueryData(
+        context.queryKey,
+        (current: Record<string, unknown> | undefined) => {
+          if (!context.hadKey) return current;
+          return {
+            ...(current ?? {}),
+            [context.blockKey]: context.previousValue,
+          };
+        },
+      );
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({

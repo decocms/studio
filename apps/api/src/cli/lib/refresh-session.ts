@@ -29,7 +29,7 @@ const TOKEN_REFRESH_FETCH_TIMEOUT_MS = 10_000;
  * real upstream token has long expired. 100 years is far past any real
  * OAuth token TTL.
  */
-const MAX_EXPIRES_IN_SECONDS = 100 * 365 * 24 * 60 * 60;
+export const MAX_EXPIRES_IN_SECONDS = 100 * 365 * 24 * 60 * 60;
 
 /**
  * Exchanges the session's refresh token for a fresh access token.
@@ -74,7 +74,8 @@ export async function refreshSession(
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    if (res.status >= 400 && res.status < 500) {
+    // 429 is throttling, not a rejected token — never mark it invalid_grant.
+    if (res.status >= 400 && res.status < 500 && res.status !== 429) {
       throw new RefreshFailedError(
         "invalid_grant",
         `HTTP ${res.status} ${text}`,

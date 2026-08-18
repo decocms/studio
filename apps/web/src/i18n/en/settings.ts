@@ -436,6 +436,13 @@ export const settings = {
   "settings.orgBrandContext.thisBrand": "this brand",
   "settings.orgBrandContext.unsetAsDefault": "Unset as default",
   "settings.orgBrandContext.untitledBrand": "Untitled Brand",
+  "settings.navigation.title": "Navigation",
+  "settings.navigation.description":
+    "How this organization gets around Studio.",
+  "settings.navigation.updateError": "Couldn't update navigation settings",
+  "settings.navigation.navV2Title": "First-class navigation",
+  "settings.navigation.navV2Description":
+    "The sidebar lists destinations (Reports, Library, Tasks) instead of chats, and the chat list moves to the top of the chat panel. On by default for report organizations.",
   "settings.orgGeneral.organization": "Organization",
   "settings.mainAgent.title": "Main agent",
   "settings.mainAgent.description":
@@ -456,6 +463,9 @@ export const settings = {
   "settings.review.codeReviewerTitle": "Enable Code Reviewer",
   "settings.review.codeReviewerDescription":
     "Reviews the code using the repository's stack-appropriate review skills.",
+  "settings.review.cheapReviewerModelTitle": "Run reviewers on a cheaper model",
+  "settings.review.cheapReviewerModelDescription":
+    "The QA Agent and Code Reviewer read a diff and reach a verdict, so they run on a smaller model than the Super Agent that wrote the change. Cuts review cost; may cut review depth.",
   "settings.review.autoMergeTitle": "Enable Auto-merge",
   "settings.review.autoMergeDescription":
     "When every enabled reviewer approves, merge the pull request automatically instead of waiting for a human. If a conflict blocks the merge, the Super Agent resolves it first.",

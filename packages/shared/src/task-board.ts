@@ -56,6 +56,26 @@ export function isReportsTask(item: { createdBy: string }): boolean {
  */
 export type ReviewerKind = "qa" | "code_review";
 
+/**
+ * What every sandbox-hosted run has to know about its checkout: it is
+ * `--depth 1`.
+ *
+ * Without being told, agents reach for `git diff main...HEAD` — the three-dot
+ * form needs a merge base, and a depth-1 clone has no common ancestor to find.
+ * `fatal: main...HEAD: no merge base` hit **229 production runs**. Every one
+ * recovered, and that is the cost: each spent model turns rediscovering the
+ * same fact. Deepening the clone instead would put the fix on the boot path,
+ * which is already the slowest part of a run.
+ */
+export const SHALLOW_CHECKOUT_NOTE =
+  "Your checkout is SHALLOW (`git clone --depth 1`), so it has no merge base " +
+  "and `git diff main...HEAD` (three dots) fails with " +
+  '"fatal: main...HEAD: no merge base". To see a branch diff, either use the ' +
+  "two-dot form against the fetched remote ref (`git fetch origin " +
+  "<base> && git diff origin/<base> HEAD`), or deepen first with " +
+  "`git fetch --deepen=100`. Same for `git log main..HEAD` and anything else " +
+  "that needs shared history.";
+
 export const REVIEWER_KINDS: ReviewerKind[] = ["qa", "code_review"];
 
 /** Human label for a reviewer — also the prefix of its run thread's title

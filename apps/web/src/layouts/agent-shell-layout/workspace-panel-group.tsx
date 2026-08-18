@@ -1,12 +1,18 @@
 /**
  * Persistent desktop workspace: SidePanel | MainPanel.
  *
- * Each panel owns a 48px header (see PanelHeader). The buttons follow their
- * panel: the Chat toggle lives in the chat header while chat is open and moves
+ * Each panel owns a 48px header (see PanelHeader).
+ *
+ * Classic layout: the headers sit above the cards and the buttons follow their
+ * panel — the Chat toggle lives in the chat header while chat is open and moves
  * into the main header when chat is closed; the main view tabs + publish live
  * in the main header while it's open and move into the chat header when the
  * main panel is closed. So a control never vanishes just because its home panel
  * is hidden.
+ *
+ * First-class navigation (`useNavV2`): each panel is one full-height card that
+ * owns its header, and a PanelCollapseToggle pair brackets the workspace — so
+ * controls stay with their own panel instead of relocating.
  */
 
 import {
@@ -43,8 +49,16 @@ import {
   NewChatCrumb,
 } from "@/components/header/shell-breadcrumb";
 import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { ThreadsMenu } from "@/components/chat/threads-menu";
+import { useNavV2 } from "@/hooks/use-organization-settings";
 import { SidePanel } from "./side-panel";
-import { ChatToggle, CmsToggle, CodeToggle } from "./toggle-buttons";
+import {
+  ChatToggle,
+  CmsToggle,
+  CodeToggle,
+  PanelCollapseToggle,
+} from "./toggle-buttons";
 import { resolveSidePanelToggles } from "./side-panel-toggles";
 import { BlocksPanel } from "@/components/sandbox/blocks/blocks-panel";
 import {
@@ -57,23 +71,46 @@ import {
 const SIDE_PANEL_ID = "workspace-side-panel";
 const MAIN_PANEL_ID = "workspace-main-panel";
 
+/**
+ * One panel column: a rounded card, optionally preceded by its header.
+ *
+ * `headerInside` is the first-class navigation's shape — the card runs the full
+ * height of the column and owns its own top bar, so both panels read as one
+ * identical surface. Otherwise the header sits ABOVE the card on the sidebar
+ * background and each column reads as a top bar + a card below it.
+ *
+ * translateZ(0) promotes the card to its own layer so the Preview iframe clips
+ * to the rounded corners (iframes ignore border-radius clipping otherwise,
+ * leaving square corners).
+ */
 function PanelCard({
   children,
   header,
   testId,
-}: PropsWithChildren<{ header?: ReactNode; testId: string }>) {
-  // The header sits ABOVE the card, on the sidebar background — not inside the
-  // rounded card. Each column reads as a top bar + a card below it.
+  headerInside,
+}: PropsWithChildren<{
+  header?: ReactNode;
+  testId: string;
+  headerInside?: boolean;
+}>) {
+  const card =
+    "min-h-0 flex-1 overflow-hidden rounded-[0.75rem] bg-background card-shadow [transform:translateZ(0)]";
+
+  if (headerInside) {
+    return (
+      <div className="flex h-full min-h-0 flex-col p-0.5">
+        <div data-testid={testId} className={cn(card, "flex flex-col")}>
+          {header}
+          <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col p-0.5 pt-0.25">
       {header}
-      <div
-        data-testid={testId}
-        // translateZ(0) promotes the card to its own layer so the Preview
-        // iframe clips to the rounded corners (iframes ignore border-radius
-        // clipping otherwise, leaving square corners).
-        className="min-h-0 flex-1 overflow-hidden rounded-[0.75rem] bg-background card-shadow [transform:translateZ(0)]"
-      >
+      <div data-testid={testId} className={card}>
         {children}
       </div>
     </div>
@@ -111,6 +148,7 @@ export interface WorkspacePanelGroupProps extends WorkspaceVisibility {
   taskId: string;
   entity: VirtualMCPEntity;
   toggleSidePanel: (sidePanel: SidePanelKind) => void;
+  toggleMain: () => void;
   chatContent?: ReactNode;
 }
 
@@ -121,6 +159,7 @@ export function WorkspacePanelGroup({
   sidePanel,
   mainOpen,
   toggleSidePanel,
+  toggleMain,
   chatContent,
 }: WorkspacePanelGroupProps) {
   // Sandbox-less: the side panel hosts the block editor, not an inert chat.
@@ -134,9 +173,6 @@ export function WorkspacePanelGroup({
   const mainSize = 100 - sideSize;
 
   const chatOpen = sidePanel !== null;
-  // When the main panel is hidden but chat is open, its controls (view tabs +
-  // publish) move into the chat header so views are still reachable.
-  const mainControlsInChat = chatOpen && !mainOpen;
 
   // Responsive header: measure the whole header (== panel width) and the right
   // actions cluster. `headerLayout` derives BOTH the tab count and whether the
@@ -154,10 +190,23 @@ export function WorkspacePanelGroup({
   // button (left), the new-chat action anchors to the right.
   const { state: sidebarState } = useSidebar();
   const sidebarCollapsed = sidebarState === "collapsed";
-  const agentCrumb = sidebarCollapsed ? <AgentSwitcherCrumb /> : null;
-  // No chat to start in CMS mode; the sidebar still offers it when expanded.
+  /** The first-class navigation is single-teammate: no agent is named or picked
+   *  in the header. The thread list lives here instead of in the sidebar, so
+   *  the threads menu and new-chat action show whatever the sidebar's state. */
+  const navV2 = useNavV2();
+  const agentCrumb = sidebarCollapsed && !navV2 ? <AgentSwitcherCrumb /> : null;
+  // A sandbox-less CMS draft has no chat to start, in either nav.
   const newChatCrumb =
-    sidebarCollapsed && !cmsModeActive ? <NewChatCrumb /> : null;
+    (sidebarCollapsed || navV2) && !cmsModeActive ? <NewChatCrumb /> : null;
+  const threadsMenu = navV2 ? <ThreadsMenu /> : null;
+
+  /**
+   * The main panel's controls (view tabs + branch + publish) belong to the main
+   * panel. Classically they relocate into the chat header while it is closed,
+   * so the views stay reachable; under the first-class navigation the chat
+   * header's own right-panel toggle reopens it, so they simply go away.
+   */
+  const mainControlsInChat = chatOpen && !mainOpen && !navV2;
 
   const publishActions = <VirtualMcpHeaderInfo virtualMcp={entity} />;
 
@@ -180,7 +229,11 @@ export function WorkspacePanelGroup({
   }, [sideSize, mainSize]);
 
   // Both halves, always, on a CMS project — see resolveSidePanelToggles.
-  const toggles = resolveSidePanelToggles({ cmsCapable, cmsModeActive });
+  const toggles = resolveSidePanelToggles({
+    cmsCapable,
+    cmsModeActive,
+    navV2,
+  });
   const sidePanelToggles = (disableActiveSidePanelToggle: boolean) => (
     <>
       {toggles.cms && (
@@ -211,6 +264,7 @@ export function WorkspacePanelGroup({
 
   const chatHeader = (
     <PanelHeader>
+      {threadsMenu}
       {agentCrumb}
       {sidePanelToggles(!mainOpen)}
       {mainControlsInChat && (
@@ -224,6 +278,16 @@ export function WorkspacePanelGroup({
         {mainControlsInChat && branchSelector}
         {mainControlsInChat && publishActions}
         {newChatCrumb}
+        {/* The main panel's own toggle lives in ITS header; it only relocates
+            here once that header is gone. */}
+        {navV2 && !mainOpen && (
+          <PanelCollapseToggle
+            side="right"
+            open={mainOpen}
+            disabled={!chatOpen}
+            onToggle={toggleMain}
+          />
+        )}
       </div>
     </PanelHeader>
   );
@@ -241,6 +305,14 @@ export function WorkspacePanelGroup({
           right actions on the far side are never pushed off-screen. */}
       <div className="flex min-w-0 shrink items-center gap-0.5 overflow-hidden">
         {!chatOpen && agentCrumb}
+        {navV2 && (
+          <PanelCollapseToggle
+            side="left"
+            open={chatOpen}
+            disabled={!mainOpen}
+            onToggle={() => toggleSidePanel("chat")}
+          />
+        )}
         {!chatOpen && sidePanelToggles(false)}
         <MainControls
           virtualMcpId={virtualMcpId}
@@ -289,6 +361,14 @@ export function WorkspacePanelGroup({
         >
           <MainPanelHeaderEndSlot />
           {publishActions}
+          {navV2 && (
+            <PanelCollapseToggle
+              side="right"
+              open={mainOpen}
+              disabled={!chatOpen}
+              onToggle={toggleMain}
+            />
+          )}
         </div>
       </div>
     </PanelHeader>
@@ -301,7 +381,11 @@ export function WorkspacePanelGroup({
         ref={panelGroupRef}
         key={`${virtualMcpId}-${taskId}`}
         orientation="horizontal"
-        className="flex-1 min-h-0 pb-1 pr-1 pl-0 pt-0 [&>[data-workspace-panel-open]]:!min-w-[320px]"
+        className={cn(
+          "flex-1 min-h-0 pb-1 pr-1 pl-0 [&>[data-workspace-panel-open]]:!min-w-[320px]",
+          // Full-height cards need the same room above as below.
+          navV2 ? "pt-1" : "pt-0",
+        )}
         style={{ overflow: "visible" }}
         onLayoutChanged={(layout, { isUserInteraction }) => {
           const percentage = layout[SIDE_PANEL_ID];
@@ -326,7 +410,11 @@ export function WorkspacePanelGroup({
           data-workspace-panel-open={sidePanel !== null ? "" : undefined}
           className="min-w-0 overflow-hidden bg-sidebar"
         >
-          <PanelCard testId="side-panel" header={chatOpen ? chatHeader : null}>
+          <PanelCard
+            testId="side-panel"
+            headerInside={navV2}
+            header={chatOpen ? chatHeader : null}
+          >
             {chatOpen &&
               (sidePanel === "cms" && cmsCapable ? (
                 <BlocksPanel virtualMcpId={virtualMcpId} />
@@ -347,7 +435,11 @@ export function WorkspacePanelGroup({
           data-workspace-panel-open={mainOpen ? "" : undefined}
           className="min-w-0 overflow-hidden bg-sidebar"
         >
-          <PanelCard testId="main-panel" header={mainOpen ? mainHeader : null}>
+          <PanelCard
+            testId="main-panel"
+            headerInside={navV2}
+            header={mainOpen ? mainHeader : null}
+          >
             <MainPanelWithDrawer taskId={taskId} virtualMcpId={virtualMcpId} />
           </PanelCard>
         </ResizablePanel>

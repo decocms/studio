@@ -85,6 +85,7 @@ export function decide(
           taskId: command.taskId,
           orgId: state.orgId,
           reason: "error",
+          errorText: command.errorText ?? null,
         },
       ];
     }

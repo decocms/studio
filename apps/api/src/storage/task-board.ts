@@ -152,6 +152,20 @@ function threadHasClonableRepo(metadata: unknown): boolean {
   return typeof url === "string" && url.length > 0;
 }
 
+/**
+ * A summed `numeric` as a number, or `null` when there is nothing to report.
+ *
+ * `pg` hands `numeric` back as a string to protect precision, and SUM over no
+ * rows is SQL NULL. Both must stay distinguishable from a real 0: "this run
+ * recorded no usage" and "this run was free" are different facts, and rendering
+ * the first as `$0.00` would claim a cost we never measured.
+ */
+function parseCostUsd(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 /** The newer of two nullable timestamps, as ISO. Both are the thread's own
  *  heartbeat columns, so at least `updated_at` is always set. */
 function newestIso(
@@ -1408,7 +1422,27 @@ export class TaskBoardStorage {
             .as("lastmsg"),
         (join) => join.onTrue(),
       )
+      // What the run has cost so far. Only `finish` parts carry usage, and
+      // `idx_tmp_finish_anchor` is a partial index on exactly those, so this is
+      // an index scan of ~2 rows per thread rather than a walk of the parts.
+      .leftJoinLateral(
+        (eb) =>
+          eb
+            .selectFrom("thread_message_parts as up")
+            .select((e) =>
+              e.fn
+                .sum(
+                  sql<string>`coalesce((up.metadata->'usage'->'providerMetadata'->'openrouter'->'usage'->>'cost')::numeric, 0)`,
+                )
+                .as("usd"),
+            )
+            .whereRef("up.thread_id", "=", "link.thread_id")
+            .where("up.kind", "=", "finish")
+            .as("cost"),
+        (join) => join.onTrue(),
+      )
       .select((eb) => [
+        "cost.usd as costUsd",
         "link.task_board_item_id as taskId",
         "link.thread_id as threadId",
         "link.created_at as createdAt",
@@ -1456,6 +1490,7 @@ export class TaskBoardStorage {
         hasPreview: threadHasClonableRepo(row.metadata),
         hasMessages: !!row.hasMessages,
         lastActiveAt: newestIso(row.updatedAt, row.lastProgressAt),
+        costUsd: parseCostUsd(row.costUsd),
         createdAt:
           row.createdAt instanceof Date
             ? row.createdAt.toISOString()

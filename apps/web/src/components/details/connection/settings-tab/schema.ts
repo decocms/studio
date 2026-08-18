@@ -65,6 +65,20 @@ export const connectionFormSchema = z
       return true;
     },
     { message: "URL is required", path: ["connection_url"] },
+  )
+  .refine(
+    (data) => {
+      if (
+        (data.ui_type === "HTTP" ||
+          data.ui_type === "SSE" ||
+          data.ui_type === "Websocket") &&
+        data.connection_url?.trim()
+      ) {
+        return z.string().url().safeParse(data.connection_url.trim()).success;
+      }
+      return true;
+    },
+    { message: "Enter a valid URL", path: ["connection_url"] },
   );
 
 export type ConnectionFormData = z.infer<typeof connectionFormSchema>;

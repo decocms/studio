@@ -45,8 +45,11 @@ import { isTransientStreamError } from "@/harnesses/decopilot/built-in-tools/sub
 import type { HarnessId, HarnessStreamInput } from "@/harnesses/lib/types";
 import {
   claudeCodeEnvFromCredential,
+  modelClassFromMetadata,
+  MODEL_CLASS_METADATA_KEY,
   type ClaudeCodeCredential,
 } from "@/harnesses/claude-code-env";
+import { withModelMetadata } from "@/harnesses/with-model-metadata";
 import type { StudioContext } from "../core/studio-context";
 import { mintMcpEndpoint } from "@/mcp-clients/virtual-mcp/mint-endpoint";
 import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
@@ -290,7 +293,12 @@ export class SandboxDispatchClient implements SandboxClient {
     }
     // Fail on an unusable provider BEFORE provisioning a pod: the alternative
     // is a booted sandbox that dies on an opaque model error minutes later.
-    const modelEnv = claudeCodeEnvFromCredential(this.credential);
+    const modelEnv = claudeCodeEnvFromCredential(
+      this.credential,
+      modelClassFromMetadata(
+        this.ctx.metadata?.runMetadata?.[MODEL_CLASS_METADATA_KEY],
+      ),
+    );
     const organization = this.ctx.organization;
     if (!organization) {
       throw new Error(
@@ -346,6 +354,7 @@ export class SandboxDispatchClient implements SandboxClient {
     // `Registry.claim`).
     const runId = input.threadId;
     const { ctx, harnessId, virtualMcpId, branch } = this;
+    const credentialProviderId = this.credential.providerId;
 
     // Provisioning is re-done per attempt on purpose. On the continuation path
     // the pod is gone, and `ensureSandbox` + `pushSandboxEnv` are what put a
@@ -375,14 +384,18 @@ export class SandboxDispatchClient implements SandboxClient {
         // The daemon deep-merges its config, so re-running on an already-claimed
         // sandbox just rotates the credential.
         await pushSandboxEnv(provider, sandbox.sandboxHandle, modelEnv);
-        yield* dispatchToDaemon({
-          provider,
-          handle: sandbox.sandboxHandle,
-          harnessId,
-          input: resume ? { ...wireInput, resume } : wireInput,
-          runId,
-          signal: input.signal,
-        });
+        yield* withModelMetadata(
+          dispatchToDaemon({
+            provider,
+            handle: sandbox.sandboxHandle,
+            harnessId,
+            input: resume ? { ...wireInput, resume } : wireInput,
+            runId,
+            signal: input.signal,
+          }),
+          modelEnv.CLAUDE_CODE_MODEL,
+          credentialProviderId,
+        );
       })();
 
     try {

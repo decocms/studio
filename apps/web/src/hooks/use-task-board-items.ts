@@ -9,6 +9,7 @@ import type {
 import { useTaskBoardEvents } from "@/hooks/use-task-board-events";
 import { useDecopilotEvents } from "@/hooks/use-decopilot-events";
 import { useT } from "@/i18n/use-t";
+import { track } from "@/lib/posthog-client";
 import { toast } from "sonner";
 
 type TaskBoardItem = ToolOutput<"TASK_BOARD_ITEM_LIST">["items"][number];
@@ -83,7 +84,7 @@ export function useTaskBoardItems() {
 }
 
 export function useTaskBoardItemActions() {
-  const { locator } = useProjectContext();
+  const { org, locator } = useProjectContext();
   const studio = useStudioTools();
   const queryClient = useQueryClient();
   const t = useT();
@@ -109,6 +110,14 @@ export function useTaskBoardItemActions() {
         ),
       );
       return { previous };
+    },
+    // A person marking done, not the agent's run finishing (task_run_completed).
+    onSuccess: (_data, input) => {
+      if (input.status === "done")
+        track("task_marked_done", {
+          organization_id: org.id,
+          task_board_item_id: input.id,
+        });
     },
     onError: (_err, _input, context) => {
       if (context?.previous)

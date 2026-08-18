@@ -13,6 +13,13 @@ describe("assertAllowed", () => {
     expect(() => assertAllowed("image/webp", MAX_UPLOAD_BYTES)).not.toThrow();
   });
 
+  test("accepts an allowed type regardless of casing or a trailing parameter", () => {
+    expect(() => assertAllowed("Text/CSV", 1024)).not.toThrow();
+    expect(() =>
+      assertAllowed("text/plain; charset=utf-8", 1024),
+    ).not.toThrow();
+  });
+
   test("rejects disallowed content types", () => {
     expect(() => assertAllowed("application/x-msdownload", 1024)).toThrow(
       UploadRejected,

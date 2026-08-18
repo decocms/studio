@@ -62,12 +62,16 @@ export function clearQueueDirty(threadId: string): void {
 }
 
 export function messageQueueStore(threadId: string): Store<QueueItemDTO[]> {
-  let store = stores.get(threadId);
-  if (!store) {
-    touchThread(threadId);
-    store = new Store<QueueItemDTO[]>([]);
-    stores.set(threadId, store);
+  const existing = stores.get(threadId);
+  if (existing) {
+    // Re-insert to bump this thread to the map's most-recently-used end.
+    stores.delete(threadId);
+    stores.set(threadId, existing);
+    return existing;
   }
+  touchThread(threadId);
+  const store = new Store<QueueItemDTO[]>([]);
+  stores.set(threadId, store);
   return store;
 }
 

@@ -33,6 +33,16 @@ describe("embedOrgOutputImages", () => {
     expect(out).toContain("path=thrd_abc%2Fqa%2Fa.png");
   });
 
+  it("rewrites both refs in a single before/after table row", () => {
+    const out = embedOrgOutputImages(
+      "| Before | After |\n| --- | --- |\n| ![b](org/output/qa/b.png) | ![a](org/output/qa/a.png) |",
+      THREAD,
+      SLUG,
+    );
+    expect(out).toContain("path=thrd_abc%2Fqa%2Fb.png");
+    expect(out).toContain("path=thrd_abc%2Fqa%2Fa.png");
+  });
+
   it("leaves an external image URL untouched", () => {
     const body = "![x](https://example.com/x.png)";
     expect(embedOrgOutputImages(body, THREAD, SLUG)).toBe(body);

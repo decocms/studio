@@ -17,6 +17,10 @@ import {
   createDecopilotStepEvent,
   createDecopilotThreadStatusEvent,
 } from "@decocms/shared/sdk";
+import {
+  classifyRunFailure,
+  GENERIC_RUN_FAILURE,
+} from "./classify-run-failure";
 import type { RunEvent, RunFailedReason, RunTransition } from "./run-state";
 
 /** Recorded on a run the idle reaper force-fails for lack of progress. */
@@ -44,10 +48,26 @@ const RUN_FAILURE_RECORD: Record<
     failure_kind: "cancelled",
   },
   error: {
-    failure_reason: "Run ended with an error — see the run's messages",
-    failure_kind: "error",
+    failure_reason: GENERIC_RUN_FAILURE.reason,
+    failure_kind: GENERIC_RUN_FAILURE.kind,
   },
 };
+
+/**
+ * The columns to persist for one failure. Identical to
+ * {@link RUN_FAILURE_RECORD} except on the `error` reason, where the run's own
+ * error text is classified into a kind that can be grouped by — `credits`,
+ * `sandbox_unreachable`, `overloaded`, … — instead of the one generic string
+ * every error failure used to share.
+ */
+function failureRecord(
+  reason: Exclude<RunFailedReason, "ghost">,
+  errorText: string | null | undefined,
+): { failure_reason: string; failure_kind: string } {
+  if (reason !== "error") return RUN_FAILURE_RECORD[reason];
+  const { kind, reason: text } = classifyRunFailure(errorText);
+  return { failure_reason: text, failure_kind: kind };
+}
 
 // ============================================================================
 // Errors
@@ -236,7 +256,7 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
         await storage.update(event.taskId, event.orgId, {
           run_config: null,
           run_started_at: null,
-          ...RUN_FAILURE_RECORD[event.reason],
+          ...failureRecord(event.reason, event.errorText),
         });
       }
       // Deliberately NO JetStream purge here. The consume step projects every

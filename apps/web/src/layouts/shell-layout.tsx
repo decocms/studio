@@ -167,9 +167,11 @@ export function usePanelActions() {
   // "open agent X" flow), the server picks the most-recently-touched branch from
   // the user's sandboxMap. The schema only accepts a non-empty branch string, so
   // null/empty is dropped.
+  /** `opts` forwards straight to `setTaskId` (e.g. to pin the new thread's landing tab). */
   const createNewTask = async (
     virtualMcpId?: string,
     branch?: string | null,
+    opts?: { main?: string },
   ) => {
     const newId = crypto.randomUUID();
     const targetVmcp =
@@ -188,7 +190,7 @@ export function usePanelActions() {
       // Toast already fired by useCollectionActions; navigate anyway so the
       // route loader's ensure-fallback can retry.
     }
-    setTaskId(newId, targetVmcp);
+    setTaskId(newId, targetVmcp, opts);
   };
 
   const openTab = (tabId: string) =>

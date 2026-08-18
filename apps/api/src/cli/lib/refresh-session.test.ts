@@ -198,6 +198,19 @@ describe("refreshSession", () => {
     await expect(promise).rejects.toMatchObject({ kind: "invalid_grant" });
   });
 
+  it("throws RefreshFailedError(transient) on 429, not invalid_grant", async () => {
+    const fetchMock = mock(
+      async () => new Response("rate limited", { status: 429 }),
+    );
+    const promise = refreshSession(
+      makeSession(),
+      fetchMock as unknown as typeof fetch,
+      () => FIXED_NOW,
+    );
+    await expect(promise).rejects.toBeInstanceOf(RefreshFailedError);
+    await expect(promise).rejects.toMatchObject({ kind: "transient" });
+  });
+
   it("throws RefreshFailedError(transient) on 500", async () => {
     const fetchMock = mock(async () => new Response("oops", { status: 500 }));
     const promise = refreshSession(

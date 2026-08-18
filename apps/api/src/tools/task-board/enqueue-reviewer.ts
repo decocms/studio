@@ -6,6 +6,7 @@ import {
   isReviewerThreadTitle,
   REVIEWER_LABEL,
   reviewCycleStart,
+  SHALLOW_CHECKOUT_NOTE,
   type ReviewerKind,
 } from "@decocms/shared/task-board";
 import { recordTaskActivity } from "./activity";
@@ -14,6 +15,8 @@ import { enqueueAgentRunForTask } from "./enqueue-task-run";
 import { resolveTaskRepoChoice } from "./claude-code-task-run";
 import { isThreadRunStale } from "@/tools/thread/helpers";
 import { mintReviewToken } from "./review-token";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
+import type { ClaudeCodeModelClass } from "@/harnesses/claude-code-env";
 
 /** Thread statuses past which a reviewer run is done — a live run has a
  *  non-terminal status. Mirrors the storage-layer set. */
@@ -142,6 +145,12 @@ export async function enqueueEnabledReviewers(
   );
   const enabled = enabledReviewerKinds(settings?.flags);
   if (enabled.length === 0) return;
+  const modelClass: ClaudeCodeModelClass = orgFlagEnabled(
+    settings?.flags,
+    "cheap_reviewer_model",
+  )
+    ? "reviewer"
+    : "default";
 
   // A reviewer belongs to the current cycle if its thread is still live, or was
   // created since the task last entered In Review — either way don't re-enqueue.
@@ -185,9 +194,15 @@ export async function enqueueEnabledReviewers(
       // RETRY and needs a fence of its own — the previous attempt's thread id
       // is taken, and reusing it would collapse the retry onto the corpse.
       const attempt = spentAttemptsThisCycle(task, kind, lastInReviewAt);
-      await enqueueReviewerForTask(ctx, task, kind, cycleAt, attempt).catch(
-        (err) =>
-          console.error(`[task-board] ${kind} reviewer enqueue failed`, err),
+      await enqueueReviewerForTask(
+        ctx,
+        task,
+        kind,
+        cycleAt,
+        attempt,
+        modelClass,
+      ).catch((err) =>
+        console.error(`[task-board] ${kind} reviewer enqueue failed`, err),
       );
     }),
   );
@@ -385,6 +400,7 @@ async function enqueueReviewerForTask(
   kind: ReviewerKind,
   cycleAt: Date,
   attempt: number,
+  modelClass: ClaudeCodeModelClass,
 ): Promise<void> {
   const organizationId = task.organizationId;
   // Proves to TASK_BOARD_REVIEW_DECISION that the caller is this reviewer.
@@ -444,7 +460,7 @@ async function enqueueReviewerForTask(
     "How to work:",
     `- Call \`${prsGetTool}\` with the task id below to find the pull request under review.`,
     repo
-      ? `- The repository ${repo.owner}/${repo.name} is already cloned at your working directory and \`git\` and \`gh\` are authenticated — check the PR's branch out there to inspect / exercise the change.`
+      ? `- The repository ${repo.owner}/${repo.name} is already cloned at your working directory and \`git\` and \`gh\` are authenticated — check the PR's branch out there to inspect / exercise the change. ${SHALLOW_CHECKOUT_NOTE}`
       : sandboxed
         ? `- Your working directory is EMPTY. Call \`mcp__studio__TASK_ADD_REPO\` with the connectionId of the PR's repository FIRST; it clones the repository and waits for the checkout, and \`git\` and \`gh\` are authenticated once it returns.`
         : "- Load the PR's repository to inspect / exercise the change.",
@@ -459,7 +475,7 @@ async function enqueueReviewerForTask(
             ? "- For a VISUAL change, capture before/after with `qa-screenshot <url> org/output/qa/<name>.png [--mobile] [--full] [--selector=<css>]` (headless Chromium, baked into the sandbox; also works against your own dev server on localhost). Choose the framing: default is the top viewport, `--full` is the whole page, and `--selector='<css>'` frames just the component you changed (best for a focused before/after). WRITE them under `org/output/` — that's what surfaces them on the task. Then `Read` the files to actually LOOK at them — a screenshot you never opened is not verification. Add `--mobile` too for a responsive change."
             : '- For a VISUAL change, capture before/after with the `take_screenshot` tool (`device: "desktop"` and `device: "mobile"` for responsive changes) and use `inspect_page` for console/runtime errors; the images attach to the thread automatically.',
           sandboxed
-            ? `- Record what you validated with \`${commentTool}\` (scenarios + pass/fail, the exact URL + viewport, and anything you couldn't verify) BEFORE your decision. EMBED the before/after shots inline as markdown images referencing their org/output path, e.g. \`![before desktop](org/output/qa/before-desktop.png)\` — Studio renders those as real images in the comment.`
+            ? `- Record what you validated with \`${commentTool}\` (scenarios + pass/fail, the exact URL + viewport, and anything you couldn't verify) BEFORE your decision. EMBED the before/after shots inline as markdown images referencing their org/output path, and put each before/after PAIR in a two-column table so they render side by side, e.g.:\n\n| Before | After |\n| --- | --- |\n| ![before desktop](org/output/qa/before-desktop.png) | ![after desktop](org/output/qa/after-desktop.png) |\n\nStudio renders those as real images in the comment.`
             : `- Record what you validated with \`${commentTool}\` (scenarios + pass/fail, a before→after pointer to the attached shots, the exact URL + viewport, and anything you couldn't verify) BEFORE your decision.`,
         ]
       : []),
@@ -487,6 +503,7 @@ async function enqueueReviewerForTask(
     ...(sandboxed
       ? {
           harnessId: "claude-code" as const,
+          modelClass,
           agent: {
             instructions,
             disallowedTools: REVIEWER_DISALLOWED_TOOLS[kind],
