@@ -76,6 +76,7 @@ import {
   type TaskBoardItemStatus,
   type TaskBoardItemThread,
 } from "./config";
+import { summarizeTaskCost } from "./task-cost";
 import { toast } from "sonner";
 import { useTaskBoardItemPrs } from "@/hooks/use-task-board-item-prs";
 import {
@@ -149,10 +150,9 @@ const PROPERTY_BUTTON =
  */
 function TaskCost({ threads }: { threads?: TaskBoardItemThread[] }) {
   const t = useT();
-  const priced = (threads ?? []).filter((thread) => thread.costUsd !== null);
-  if (priced.length === 0) return null;
-  const total = priced.reduce((sum, thread) => sum + (thread.costUsd ?? 0), 0);
-  const runCount = (threads ?? []).length;
+  const summary = summarizeTaskCost(threads);
+  if (!summary) return null;
+  const { total, runCount } = summary;
   const isSingular = runCount === 1;
   return (
     <div
