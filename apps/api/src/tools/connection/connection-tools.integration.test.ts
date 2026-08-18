@@ -185,18 +185,21 @@ describe("Connection Tools", () => {
 
   describe("COLLECTION_CONNECTIONS_CREATE", () => {
     it("should create organization-scoped connection", async () => {
+      // This test asserts connection creation, not tool fetching (the UPDATE
+      // test covers that). Stub the best-effort fetch so no DNS/HTTP happens
+      // at all — an unresolvable host still cost seconds in CI and blew the
+      // 5s timeout.
+      vi.spyOn(fetchToolsModule, "fetchToolsFromMCP").mockResolvedValue({
+        tools: null,
+        scopes: null,
+      });
+
       const result = await COLLECTION_CONNECTIONS_CREATE.execute(
         {
           data: {
             title: "Company Slack",
             description: "Organization-wide Slack",
             connection_type: "HTTP",
-            // Use a guaranteed-unresolvable host (RFC 6761 `.invalid` TLD) so
-            // the best-effort tool fetch (create.ts → fetchToolsFromMCP) fails
-            // fast instead of hanging on a live handshake. A real reachable URL
-            // (e.g. slack.com) can stall past the 5s test timeout in CI; this
-            // test only asserts connection creation, not tool fetching (which
-            // the UPDATE test covers with a mock). Mirrors CONNECTION_TEST.
             connection_url: "https://slack.invalid/mcp",
             connection_token: "slack-token",
           },
