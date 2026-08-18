@@ -251,6 +251,46 @@ jobs:
           print("every preview pod is pinned to the preview node pool")
           POOL
 
+          # Ordering between waves is not enough: a resource also has to come
+          # AFTER everything it consumes. The migrate Job takes both the
+          # ConfigMap and the Secret via envFrom, and the ConfigMap had no wave
+          # at all — so it landed at 0, after the Job at -10, and the Job sat in
+          # CreateContainerConfigError while the whole sync stalled waiting on
+          # the hook. Nothing on the object said anything was wrong, and
+          # `helm template` cannot see it because it never sequences.
+          python3 - <<'DEPS'
+          import sys, yaml
+          waves, needs = {}, []
+          for d in yaml.safe_load_all(open("/tmp/preview.yaml")):
+              if not d:
+                  continue
+              kind, name = d["kind"], d["metadata"]["name"]
+              w = int((d["metadata"].get("annotations") or {})
+                      .get("argocd.argoproj.io/sync-wave", 0))
+              waves[name] = w
+              if kind not in ("Job", "Deployment", "StatefulSet"):
+                  continue
+              spec = d["spec"]["template"]["spec"]
+              for c in (spec.get("initContainers") or []) + spec["containers"]:
+                  for ref in (c.get("envFrom") or []):
+                      for key in ("configMapRef", "secretRef"):
+                          if key in ref:
+                              needs.append((kind, name, w, ref[key]["name"]))
+          bad = []
+          for kind, name, w, dep in needs:
+              # Only things this chart renders; anything else is pre-existing.
+              if dep not in waves:
+                  continue
+              if waves[dep] > w:
+                  bad.append(f"{kind}/{name} (wave {w}) consumes {dep} (wave {waves[dep]})")
+          if bad:
+              print("::error::a resource is sequenced before something it mounts: "
+                    + "; ".join(bad))
+              sys.exit(1)
+          print(f"every envFrom source is created no later than its consumer "
+                f"({len(needs)} references checked)")
+          DEPS
+
           # Every studio container (api-0, api-1, worker) must skip migrations:
           # the PreSync Job is the single writer. Three, not two.
           # `|| true` — grep exits 1 on zero matches, which under `set -e` would

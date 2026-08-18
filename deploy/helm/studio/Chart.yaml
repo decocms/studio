@@ -2,6 +2,13 @@ apiVersion: v2
 name: chart-deco-studio
 description: Helm chart for deco Studio — supports inline secrets, external secretName, and AWS Secrets Manager via ExternalSecret
 type: application
+# 0.14.1: the preview ConfigMap had no sync-wave, so it landed at 0 — after the
+# migrate Job at -10 that consumes it via envFrom. The Job sat in
+# CreateContainerConfigError and the sync stalled on the hook with nothing on
+# any object reporting a problem. Found on the first real preview; `helm
+# template` cannot see it, so helm-test now asserts that every envFrom source
+# is created no later than what mounts it.
+#
 # 0.14.0: per-PR preview releases (preview.enabled, default false). Adds an
 # HTTPRoute, an ephemeral in-namespace Postgres and a single PreSync migration
 # Job — the database lives and dies with the namespace, so there is no shared
@@ -19,7 +26,7 @@ type: application
 # when disabled, so existing releases are unaffected.
 # 0.12.4: chart-managed API/worker dispatch roles now use
 # STUDIO_DISPATCH_ROLE; legacy overrides are rejected.
-version: 0.14.0
+version: 0.14.1
 appVersion: "latest"
 
 dependencies:
