@@ -125,7 +125,9 @@ async fn refresh_access_token(
     let status = res.status();
     if !status.is_success() {
         let text = res.text().await.unwrap_or_default();
-        if status.is_client_error() {
+        // 429 is throttling, not a rejected token — never mark it
+        // invalid_grant. Byte-parity with `refresh-session.ts`.
+        if status.is_client_error() && status.as_u16() != 429 {
             return Err(RefreshError::invalid_grant(format!("HTTP {status} {text}")));
         }
         return Err(RefreshError::transient(format!("HTTP {status} {text}")));
@@ -489,6 +491,41 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(err.kind, RefreshErrorKind::InvalidGrant);
+    }
+
+    #[tokio::test]
+    async fn rate_limited_refresh_is_transient_not_invalid_grant() {
+        // A 429 means the token endpoint is throttling us, not that the
+        // refresh token itself was rejected — treating it as invalid_grant
+        // would hard-sign-out a user for asking too fast.
+        let app = Router::new().route(
+            "/api/auth/mcp/token",
+            post(|| async {
+                (
+                    axum::http::StatusCode::TOO_MANY_REQUESTS,
+                    Json(serde_json::json!({"error": "rate_limited"})),
+                )
+            }),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+
+        let store = MemoryTokenStore::new();
+        store
+            .save("host", expired_session(&format!("http://{addr}"), "old"))
+            .await
+            .unwrap();
+
+        let coordinator = RefreshCoordinator::new();
+        let http = reqwest::Client::new();
+        let err = coordinator
+            .ensure_fresh(&http, &store, "host")
+            .await
+            .unwrap_err();
+        assert_eq!(err.kind, RefreshErrorKind::Transient);
     }
 
     #[tokio::test]
