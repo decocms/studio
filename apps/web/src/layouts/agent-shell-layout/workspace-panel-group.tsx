@@ -23,6 +23,7 @@ import {
 } from "react";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { resolveFastPreview } from "@/sdk/fast-preview";
+import { useActiveThreadMeta } from "@/hooks/use-active-thread-meta";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -50,7 +51,10 @@ import {
 import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { ThreadsMenu } from "@/components/chat/threads-menu";
-import { useNavV2 } from "@/hooks/use-organization-settings";
+import { useNavV2, useOrgFlag } from "@/hooks/use-organization-settings";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { useChatTask } from "@/components/chat/chat-context";
+import { track } from "@/lib/posthog-client";
 import { SidePanel } from "./side-panel";
 import { ChatToggle, PanelCollapseToggle } from "./toggle-buttons";
 import { MessageCircle01 } from "@untitledui/icons";
@@ -63,18 +67,33 @@ import {
 } from "./panel-header";
 
 /**
- * Chat panel body for Fast Preview projects: the surface exists (toggle,
- * panel, layout all behave normally) but sending is not possible yet — a
- * run would dispatch to a sandbox runner this mode never provisions.
+ * Chat panel body for Fast Preview projects: offers to start a vibecoding
+ * session (a `runtime: "sandbox"` thread on a fresh branch), gated by the
+ * `fast_preview_vibecoding_enabled` org flag; off shows the notice only.
  */
 function FastPreviewChatNotice() {
   const t = useT();
+  const { createTask } = useChatTask();
+  const vibecodingEnabled = useOrgFlag("fast_preview_vibecoding_enabled");
+  const startSession = () => {
+    const taskId = createTask({ runtime: "sandbox" });
+    track("vibecoding_session_started", { thread_id: taskId });
+  };
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
       <MessageCircle01 size={28} className="text-muted-foreground" />
       <p className="max-w-sm text-sm text-muted-foreground">
-        {t("chat.input.fastPreviewComingSoon")}
+        {t(
+          vibecodingEnabled
+            ? "chat.fastPreview.chatNeedsSession"
+            : "chat.input.fastPreviewUnavailable",
+        )}
       </p>
+      {vibecodingEnabled ? (
+        <Button size="sm" onClick={startSession}>
+          {t("chat.fastPreview.startVibecoding")}
+        </Button>
+      ) : null}
     </div>
   );
 }
@@ -178,7 +197,10 @@ export function WorkspacePanelGroup({
   // would dispatch to a sandbox runner that never exists in this mode (in the
   // native app the panel would greet the user with a broken coding-agent
   // picker).
-  const fastPreviewActive = resolveFastPreview(entity.metadata).active;
+  const fastPreviewActive = resolveFastPreview(
+    entity.metadata,
+    useActiveThreadMeta(),
+  ).active;
   const [sidePanelWidth, setSidePanelWidth] = useSidePanelWidth();
   const panelGroupRef = useRef<GroupImperativeHandle>(null);
   const visibility = { sidePanel, mainOpen };

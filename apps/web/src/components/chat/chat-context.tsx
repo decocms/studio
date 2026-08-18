@@ -26,6 +26,7 @@ import {
 } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
+import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import {
   AUTOSEND_QUERY_VALUE,
   claimStoredAutosend,
@@ -195,7 +196,9 @@ export interface ChatTaskContextValue {
   virtualMcpId: string;
   taskId: string;
   openTask: (taskId: string) => void;
-  createTask: () => string;
+  /** Creates a thread and navigates to it. `runtime: "sandbox"` starts a
+   *  vibecoding session (fresh branch, sandbox-backed) on any project. */
+  createTask: (opts?: { runtime?: ThreadRuntime }) => string;
   createTaskWithMessage: (params: {
     message: SendMessageParams;
     virtualMcpId?: string;
@@ -678,17 +681,23 @@ export function ChatContextProvider({
   // it stays a separate alias so we don't have to touch every reference.
   const currentBranch = lockedBranch;
 
+  // Branch carry-over is a same-runtime affair (vibecoding branches never leak).
+  const carryableBranch =
+    activeTask?.metadata?.runtime === "sandbox" ? null : currentBranch;
+
   // Create task — calls COLLECTION_THREADS_CREATE up-front with the active
   // task's branch so the new thread lands on the same warm sandbox. The
   // route loader's useEnsureTask will see the row already exists on its
   // GET and skip the create-on-404 fallback.
-  const createTask = (): string => {
+  const createTask = (opts?: { runtime?: ThreadRuntime }): string => {
     const newId = crypto.randomUUID();
+    const branch = opts?.runtime === "sandbox" ? null : carryableBranch;
     void threadActions
       .create({
         id: newId,
         virtual_mcp_id: virtualMcpId,
-        ...(currentBranch ? { branch: currentBranch } : {}),
+        ...(branch ? { branch } : {}),
+        ...(opts?.runtime ? { runtime: opts.runtime } : {}),
       })
       .then(() => navigateToTask(newId))
       .catch(() => {
@@ -711,7 +720,7 @@ export function ChatContextProvider({
   }) => {
     const newId = crypto.randomUUID();
     const targetVmcp = params.virtualMcpId ?? virtualMcpId;
-    const carryBranch = targetVmcp === virtualMcpId ? currentBranch : null;
+    const carryBranch = targetVmcp === virtualMcpId ? carryableBranch : null;
     writeStoredAutosend(sessionStorage, locator, newId, params.message);
     void threadActions
       .create({

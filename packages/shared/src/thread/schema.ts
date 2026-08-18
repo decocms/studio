@@ -7,6 +7,7 @@
 import { z } from "zod";
 
 import { THREAD_STATUSES } from "../entities.ts";
+import { THREAD_RUNTIMES } from "./session-runtime.ts";
 
 // ============================================================================
 // Thread Message Schema
@@ -54,6 +55,12 @@ const ThreadMetadataSchema = z
       .optional()
       .describe(
         "The thread takes no further input (an autonomous run the user cannot continue)",
+      ),
+    runtime: z
+      .enum(THREAD_RUNTIMES)
+      .optional()
+      .describe(
+        "Session runtime stamped at creation: 'sandbox' forces a sandbox-backed session even on a Fast Preview project; absent lets the project default decide",
       ),
   })
   .catchall(z.unknown());
@@ -138,6 +145,12 @@ export const ThreadCreateDataSchema = z.object({
     .optional()
     .describe(
       "Preferred branch. Used only when the vMCP has a githubRepo; ignored otherwise. When omitted, the server picks the most-recently-touched branch from the user's sandboxMap, falling back to a freshly generated name.",
+    ),
+  runtime: z
+    .enum(THREAD_RUNTIMES)
+    .optional()
+    .describe(
+      "Session runtime for the new thread. 'sandbox' starts a sandbox-backed (vibecoding) session even on a Fast Preview project and always mints a fresh branch (any `branch` input is ignored). Omitted ⇒ the project default decides.",
     ),
 });
 

@@ -130,8 +130,15 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const queryClient = useQueryClient();
   const { data: session } = authClient.useSession();
   const vm = useVirtualMCP(virtualMcpId);
-  const fastPreviewActive = resolveFastPreview(vm?.metadata).active;
-  const { currentBranch: branch, setCurrentTaskBranch } = useChatTask();
+  const {
+    currentBranch: branch,
+    setCurrentTaskBranch,
+    activeTask,
+  } = useChatTask();
+  const fastPreviewActive = resolveFastPreview(
+    vm?.metadata,
+    activeTask?.metadata,
+  ).active;
   const chat = useChatStream();
   const { openSidePanel } = usePanelActions();
   const [publishOpen, setPublishOpen] = useState(false);

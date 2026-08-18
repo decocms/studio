@@ -127,6 +127,7 @@ export interface StudioToolIO {
             auto_merge?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
+            fast_preview_vibecoding_enabled?: boolean | undefined;
           }
         | null
         | undefined;
@@ -195,6 +196,7 @@ export interface StudioToolIO {
             auto_merge?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
+            fast_preview_vibecoding_enabled?: boolean | undefined;
           }
         | undefined;
       main_agent_id?: string | null | undefined;
@@ -263,6 +265,7 @@ export interface StudioToolIO {
             auto_merge?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
+            fast_preview_vibecoding_enabled?: boolean | undefined;
           }
         | null
         | undefined;
@@ -3655,6 +3658,7 @@ export interface StudioToolIO {
         title?: string | undefined;
         description?: string | null | undefined;
         branch?: string | undefined;
+        runtime?: "cms" | "sandbox" | undefined;
       };
     };
     output: {
@@ -3691,6 +3695,7 @@ export interface StudioToolIO {
                   }[]
                 | undefined;
               read_only?: boolean | undefined;
+              runtime?: "cms" | "sandbox" | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -3758,6 +3763,7 @@ export interface StudioToolIO {
                   }[]
                 | undefined;
               read_only?: boolean | undefined;
+              runtime?: "cms" | "sandbox" | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -3802,6 +3808,7 @@ export interface StudioToolIO {
                   }[]
                 | undefined;
               read_only?: boolean | undefined;
+              runtime?: "cms" | "sandbox" | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -3833,6 +3840,7 @@ export interface StudioToolIO {
                   }[]
                 | undefined;
               read_only?: boolean | undefined;
+              runtime?: "cms" | "sandbox" | undefined;
             }
           | undefined;
         branch?: string | null | undefined;
@@ -3873,6 +3881,7 @@ export interface StudioToolIO {
                   }[]
                 | undefined;
               read_only?: boolean | undefined;
+              runtime?: "cms" | "sandbox" | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -3915,6 +3924,7 @@ export interface StudioToolIO {
                   }[]
                 | undefined;
               read_only?: boolean | undefined;
+              runtime?: "cms" | "sandbox" | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;

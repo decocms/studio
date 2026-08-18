@@ -16,6 +16,7 @@ import {
   useVirtualMCP,
 } from "@/sdk";
 import { resolveFastPreview } from "@/sdk/fast-preview";
+import { useActiveThreadMeta } from "@/hooks/use-active-thread-meta";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowUp,
@@ -386,7 +387,11 @@ export function ChatInput({
   const { org, locator } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
   const selectedVm = useVirtualMCP(selectedVirtualMcp?.id);
-  const fastPreviewActive = resolveFastPreview(selectedVm?.metadata).active;
+  const activeThreadMeta = useActiveThreadMeta();
+  const fastPreviewActive = resolveFastPreview(
+    selectedVm?.metadata,
+    activeThreadMeta,
+  ).active;
   const playSwitchSound = useSound(question004Sound);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const { unsupportedFile, onUnsupportedFile, clearUnsupportedFile } =
@@ -641,7 +646,9 @@ export function ChatInput({
   // work through the decofile API (or per-thread sandbox fallback lands).
   if (fastPreviewActive) {
     return (
-      <ChatInputDisabledState message={t("chat.input.fastPreviewComingSoon")} />
+      <ChatInputDisabledState
+        message={t("chat.input.fastPreviewUnavailable")}
+      />
     );
   }
 

@@ -842,4 +842,76 @@ test.describe("decofile API", () => {
       await ctx.dispose();
     }
   });
+
+  test("a sandbox-runtime thread opts its branch out of the Fast Preview claim", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const user = await signUpViaApi(ctx);
+      const org = user.orgSlug;
+      const owner = uniqueOwner();
+      const project = await createFastPreviewProject(ctx, org, {
+        owner,
+        repo: "site",
+      });
+
+      // One thread per runtime; the sandbox one must mint its own branch.
+      const cmsThread = await callSelfMcpTool<{
+        item: { id: string; branch: string | null };
+      }>(ctx, org, "COLLECTION_THREADS_CREATE", {
+        data: { virtual_mcp_id: project.vmcpId, title: "cms session" },
+      });
+      const sbxThread = await callSelfMcpTool<{
+        item: { id: string; branch: string | null };
+      }>(ctx, org, "COLLECTION_THREADS_CREATE", {
+        data: {
+          virtual_mcp_id: project.vmcpId,
+          title: "vibecoding session",
+          runtime: "sandbox",
+        },
+      });
+      const cmsBranch = cmsThread.item.branch;
+      const sbxBranch = sbxThread.item.branch;
+      expect(cmsBranch).toBeTruthy();
+      expect(sbxBranch).toBeTruthy();
+      expect(sbxBranch).not.toBe(cmsBranch);
+
+      // Seed both branches so only the runtime stamp differs between them.
+      await seedStubRepo(ctx, {
+        owner,
+        repo: "site",
+        defaultBranch: "main",
+        branches: {
+          main: { files: { ".deco/blocks/Hero.json": '{"n":1}\n' } },
+          [cmsBranch as string]: {
+            files: { ".deco/blocks/Hero.json": '{"n":1}\n' },
+          },
+          [sbxBranch as string]: {
+            files: { ".deco/blocks/Hero.json": '{"n":1}\n' },
+          },
+        },
+      });
+
+      const gitStatusUrl = (branch: string): string =>
+        `/api/${org}/sandbox/${project.vmcpId}/${branch}/git/status`;
+
+      // Default (cms) thread: the Fast Preview claim answers from GitHub.
+      const cmsStatus = await ctx.get(gitStatusUrl(cmsBranch as string));
+      expect(cmsStatus.status()).toBe(200);
+      const cmsBody = (await cmsStatus.json()) as { headSha?: string };
+      expect(cmsBody.headSha).toBeTruthy();
+
+      // Sandbox-runtime thread: daemon-backed claim errors (no sandbox in e2e).
+      const sbxStatus = await ctx.get(gitStatusUrl(sbxBranch as string));
+      expect(sbxStatus.status()).toBeGreaterThanOrEqual(400);
+      const sbxBody = (await sbxStatus.json().catch(() => ({}))) as Record<
+        string,
+        unknown
+      >;
+      expect(sbxBody.headSha).toBeUndefined();
+    } finally {
+      await ctx.dispose();
+    }
+  });
 });

@@ -64,6 +64,12 @@ export interface ThreadStoragePort {
    *  create-only side effects (e.g. analytics) on a replayed/idempotent call. */
   create(data: Partial<Thread>): Promise<Thread & { isNew: boolean }>;
   get(id: string, organizationId: string): Promise<Thread | null>;
+  /** Newest thread on (vMCP, branch) — see `SqlThreadStorage.findByBranch`. */
+  findByBranch(
+    virtualMcpId: string,
+    branch: string,
+    organizationId: string,
+  ): Promise<Thread | null>;
   update(
     id: string,
     organizationId: string,

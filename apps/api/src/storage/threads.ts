@@ -89,6 +89,10 @@ export class OrgScopedThreadStorage {
     return this.inner.get(id, this.requireOrg());
   }
 
+  findByBranch(virtualMcpId: string, branch: string): Promise<Thread | null> {
+    return this.inner.findByBranch(virtualMcpId, branch, this.requireOrg());
+  }
+
   update(id: string, data: ThreadUpdateData): Promise<Thread> {
     return this.inner.update(id, this.requireOrg(), data);
   }
@@ -358,6 +362,30 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .selectAll()
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
+      .executeTakeFirst();
+
+    return row ? this.threadFromDbRow(row) : null;
+  }
+
+  /**
+   * Newest thread on (vMCP, branch). CMS threads may legitimately share a
+   * branch (the warm-branch pick), so "the" thread for a branch is the most
+   * recent one; sandbox-runtime threads always mint a fresh branch, so for
+   * them the match is unique by construction.
+   */
+  async findByBranch(
+    virtualMcpId: string,
+    branch: string,
+    organizationId: string,
+  ): Promise<Thread | null> {
+    const row = await this.db
+      .selectFrom("threads")
+      .selectAll()
+      .where("organization_id", "=", organizationId)
+      .where("virtual_mcp_id", "=", virtualMcpId)
+      .where("branch", "=", branch)
+      .orderBy("created_at", "desc")
+      .limit(1)
       .executeTakeFirst();
 
     return row ? this.threadFromDbRow(row) : null;

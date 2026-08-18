@@ -236,8 +236,11 @@ export const chat = {
   "chat.input.planMode": "Plan mode",
   "chat.input.codingAgentRequiresDesktop":
     "Continue this coding-agent chat in the Studio desktop app.",
-  "chat.input.fastPreviewComingSoon":
-    "Chat isn't available on Fast Preview projects yet — coming soon. Use the CMS to edit content.",
+  "chat.input.fastPreviewUnavailable":
+    "Chat isn't available on Fast Preview projects. Use the CMS to edit content.",
+  "chat.fastPreview.chatNeedsSession":
+    "Chat needs a coding sandbox behind it. Start a vibecoding session to chat with the agent on its own branch — the CMS keeps working as is.",
+  "chat.fastPreview.startVibecoding": "Start vibecoding session",
   "chat.input.readOnlyOthersChat":
     "Read only - you're viewing someone else's chat",
   "chat.input.readOnlyOthersChatNamed":

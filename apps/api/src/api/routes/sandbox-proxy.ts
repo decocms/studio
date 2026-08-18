@@ -19,12 +19,17 @@ import { composeSandboxRef } from "@decocms/sandbox/provider";
 import type { SandboxProvider } from "@decocms/sandbox/provider";
 import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
 import { computeClaimHandle } from "../../sandbox/claim-handle";
-import { resolveSandboxUserId } from "../../tools/sandbox/thread-repo";
+import {
+  resolveSandboxUserId,
+  threadIdFromBranch,
+} from "../../tools/sandbox/thread-repo";
+import { resolveSessionRuntime } from "@decocms/shared/thread/session-runtime";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
 import {
   getUserId,
   requireAuth,
   requireOrganization,
+  type StudioContext,
 } from "../../core/studio-context";
 import type { Env } from "../hono-env";
 import { patchSandboxOperator } from "../../tools/sandbox/patch-sandbox-operator";
@@ -38,7 +43,6 @@ import {
   suggestCommitMessageWithLlm,
 } from "../../lib/suggest-commit-message";
 import { judgeRequiresReviewWithLlm } from "../../lib/judge-requires-review";
-import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { gitDataClientForRepo } from "../../decofile/client-for-repo";
 import { GitHubApiError } from "../../decofile/github-git-data";
 import {
@@ -140,6 +144,30 @@ function quickFileOpSignal(c: Context<VmEnv>): AbortSignal {
 // ---- Shared middleware ------------------------------------------------------
 
 /**
+ * The session runtime for a branch: the branch's thread is looked up (by the
+ * `thread:` prefix, else newest row on the branch) and its `metadata.runtime`
+ * stamp consulted via `resolveSessionRuntime`. A "sandbox" stamp opts the
+ * branch out of the sandbox-less Fast Preview claim — a vibecoding session on
+ * a Fast Preview project. Callers gate on `fastPreviewCapability` first so
+ * this DB read runs only for fast-preview projects. Lookup failures resolve
+ * to the project default (fail toward today's behavior, never a 500).
+ */
+async function branchRuntime(
+  ctx: StudioContext,
+  virtualMcpId: string,
+  branch: string,
+  virtualMcpMetadata: Record<string, unknown> | null,
+): Promise<"cms" | "sandbox"> {
+  const threadId = threadIdFromBranch(branch);
+  const thread = threadId
+    ? await ctx.storage.threads.get(threadId).catch(() => null)
+    : await ctx.storage.threads
+        .findByBranch(virtualMcpId, branch)
+        .catch(() => null);
+  return resolveSessionRuntime(virtualMcpMetadata, thread?.metadata).runtime;
+}
+
+/**
  * Resolves auth, org ownership, claim handle, and runner for all VM routes.
  * Runner may be `null` — the events handler streams a `failed` phase SSE in
  * that case; other handlers return 503 JSON via `requireRunner()`.
@@ -210,8 +238,9 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
   // with runner:null + the flag so the `/git/*` handlers serve their
   // GitHub-backed equivalents; daemon-backed routes 503 via requireRunner.
   if (
-    virtualMcpMetadata?.fastPreview === true &&
-    resolvePreviewServerUrl(virtualMcpMetadata)
+    resolveSessionRuntime(virtualMcpMetadata).fastPreviewCapability &&
+    (await branchRuntime(ctx, virtualMcpId, branch, virtualMcpMetadata)) ===
+      "cms"
   ) {
     c.set("vmClaim", {
       claimName,

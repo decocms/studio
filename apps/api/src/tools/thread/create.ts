@@ -4,11 +4,10 @@
  * Create a new thread for a virtual MCP.
  *
  * Branch resolution (only meaningful when the vMCP has a githubRepo):
- *   1. Honor `data.branch` when provided.
- *   2. Otherwise pick the most-recently-touched branch from the user's
- *      `sandboxMap[userId]` so a new task lands on a warm sandbox.
- *   3. Fall back to `generateBranchName` (`<user-slug>-<timestamp>`) when the
- *      user has no sandboxMap entries for this vMCP.
+ * `data.runtime === "sandbox"` always mints fresh (input branch ignored — a
+ * sandbox-runtime branch maps to exactly one thread); otherwise honor
+ * `data.branch`, else the most-recently-touched `sandboxMap[userId]` branch
+ * (warm sandbox), else `generateBranchName` (`<user-slug>-<timestamp>`).
  *
  * Step 2 only sees sandboxes that finished provisioning — `setSandboxMapEntry`
  * runs after `provider.ensure` returns. So a SANDBOX_START in flight is
@@ -129,9 +128,11 @@ export const COLLECTION_THREADS_CREATE = defineTool({
     let branch: string | null = null;
     if (githubRepo) {
       branch =
-        data.branch ??
-        pickWarmBranchFromSandboxMap(metadata?.sandboxMap, userId) ??
-        generateBranchName(branchUserLabel(ctx.auth.user));
+        data.runtime === "sandbox"
+          ? generateBranchName(branchUserLabel(ctx.auth.user))
+          : (data.branch ??
+            pickWarmBranchFromSandboxMap(metadata?.sandboxMap, userId) ??
+            generateBranchName(branchUserLabel(ctx.auth.user)));
     }
 
     const result = await ctx.storage.threads.create({
@@ -142,6 +143,7 @@ export const COLLECTION_THREADS_CREATE = defineTool({
       virtual_mcp_id: data.virtual_mcp_id,
       branch,
       created_by: userId,
+      ...(data.runtime ? { metadata: { runtime: data.runtime } } : {}),
     });
 
     // Skip on a replayed/idempotent call (same id already existed) — the
