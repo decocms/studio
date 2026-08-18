@@ -84,6 +84,25 @@ func TestCoalescerKeysByEndpoint(t *testing.T) {
 	waitFor(t, runs, 2)
 }
 
+func TestCoalescerSurvivesPanicInSync(t *testing.T) {
+	c := NewCoalescer(Opts{}, time.Millisecond)
+	ep := Endpoint{URL: "https://mcp.example/x"}
+	var runs atomic.Int32
+	c.sync = func(Endpoint) error {
+		runs.Add(1)
+		panic("boom")
+	}
+
+	// A panic inside the background sync must not crash the test process, and
+	// must still clear in-flight state so a later sync isn't wedged forever.
+	c.Sync(ep)
+	waitFor(t, &runs, 1)
+
+	time.Sleep(2 * time.Millisecond)
+	c.Sync(ep)
+	waitFor(t, &runs, 2)
+}
+
 func TestCoalescerIgnoresEmptyEndpoint(t *testing.T) {
 	c := NewCoalescer(Opts{}, time.Hour)
 	runs := stub(c, nil)
