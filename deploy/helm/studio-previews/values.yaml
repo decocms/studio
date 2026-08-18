@@ -1,0 +1,117 @@
+# Control plane for per-PR Studio previews.
+#
+# Every value that identifies an organisation, a repository, a domain or a
+# cloud account is intentionally EMPTY here and required at install time. This
+# chart is published publicly; it must describe the capability, never one
+# deployment of it. validations.yaml fails the render on anything missing.
+
+argocd:
+  # Namespace the ApplicationSet controller watches. The ApplicationSet must be
+  # created here — anywhere else it is silently ignored.
+  namespace: argocd
+
+# Name of the generated ApplicationSet and the prefix of every Application it
+# generates (releases and namespaces are <namePrefix>-<prNumber>).
+name: studio-preview
+namePrefix: studio-pr
+# Host prefix, kept separate from namePrefix so the URL stays short:
+# <hostPrefix>-<prNumber>.<domain>.
+hostPrefix: pr
+
+applicationSet:
+  # Argo project the generated Applications belong to.
+  project: default
+  # Pull request label that opts a PR into a preview. The repository's own
+  # image-build workflow must gate on the SAME label, so that neither half can
+  # create an environment the other does not know about.
+  label: preview
+  # GitHub PR generator poll interval. This is the difference between "closed
+  # the PR, it is gone" and "closed the PR, come back later".
+  requeueAfterSeconds: 60
+  repo:
+    owner: ""
+    name: ""
+    # Token with `pull_requests: read`. Nothing else is required of it.
+    #
+    # If it expires the generator stops listing PRs, and nothing is torn down —
+    # existing previews keep running because the ApplicationSet can no longer
+    # see that their PRs closed. Prefer a GitHub App, which does not expire.
+    tokenSecret:
+      name: ""
+      key: token
+      # Sync the token from a secret store instead of creating the Secret by
+      # hand. Set enabled=false when something else already provides it.
+      externalSecret:
+        enabled: true
+        secretPath: ""
+        secretStoreName: ""
+        secretStoreKind: ClusterSecretStore
+        refreshInterval: 1h
+  destination:
+    # Cluster the previews are installed into. The in-cluster default keeps
+    # generated Applications local to wherever this chart is deployed.
+    server: https://kubernetes.default.svc
+
+# Wildcard host for previews: <hostPrefix>-<n>.<domain>
+domain: ""
+
+# The application chart each preview installs.
+studioChart:
+  repoURL: ""
+  name: chart-deco-studio
+  # PINNED, never a moving tag: tracking one would roll every open preview on
+  # an unrelated chart bump. Must be >= 0.14.0 (the release that added preview.*).
+  version: ""
+  # Shared preview values, read from the studio repository by Argo's multi-source
+  # $values ref. Held on a fixed revision on purpose: a PR must not be able to
+  # rewrite the infrastructure values of its own preview.
+  valuesRepo:
+    url: ""
+    revision: main
+    path: deploy/helm/studio/values-preview.yaml
+
+images:
+  # Preview image repositories. Tags are derived per PR as
+  # <prefix>-<pr number>-<7-char head sha> and MUST match what the repository's
+  # preview-build workflow publishes — see the assertion in helm-test.yml.
+  api: ""
+  nginx: ""
+  tagPrefix: pr
+
+# Deployment-specific values passed straight through to the Studio chart of
+# every generated preview. Everything here identifies a specific cloud account
+# and therefore has no default.
+studioValues:
+  externalSecret:
+    # Path of the secret holding BETTER_AUTH_SECRET, ENCRYPTION_KEY and the
+    # object storage credentials. BETTER_AUTH_SECRET and ENCRYPTION_KEY must be
+    # STABLE for the life of the environment: a rotating auth secret is a login
+    # loop, a rotating encryption key makes every vaulted credential
+    # undecryptable.
+    secretPath: ""
+    # A ClusterSecretStore, because previews create namespaces on the fly and a
+    # namespaced store would need credentials wired up per namespace.
+    secretStoreName: ""
+    secretStoreKind: ClusterSecretStore
+  # No object storage configuration: each preview runs its own MinIO inside its
+  # namespace (preview.minio in the studio chart), so there is no bucket to
+  # create, no lifecycle rule to keep and no credential to distribute.
+
+gateway:
+  # Set false when the wildcard Gateway is owned by another release.
+  create: true
+  name: studio-preview
+  namespace: istio-system
+  gatewayClassName: istio
+  # Label the per-PR namespaces carry and the Gateway selects routes by. Argo's
+  # CreateNamespace=true does not label anything, so the generated Applications
+  # set it through managedNamespaceMetadata.
+  namespaceSelectorLabel: decocms.com/preview
+  # TLS terminates at the load balancer, so the listener itself is plain HTTP.
+  # The per-PR HTTPRoute targets this section by name.
+  listenerName: http
+  port: 443
+  # Cloud-specific load balancer configuration, applied verbatim to the
+  # Gateway's generated Service.
+  infrastructure:
+    annotations: {}

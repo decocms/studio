@@ -1,0 +1,13 @@
+# Patterns are matched against the chart directory at `helm package` time.
+.DS_Store
+.git/
+.gitignore
+*.tmproj
+.idea/
+.vscode/
+
+# Preview wiring is consumed from git by the studio-previews ApplicationSet
+# ($values multi-source ref), never from the packaged chart. Keeping it out of
+# the tarball means a self-hosted install never receives a values file written
+# for somebody else's cluster.
+values-preview.yaml

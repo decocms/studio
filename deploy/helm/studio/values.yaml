@@ -52,6 +52,109 @@ ingress:
   #      - studio.example.com
   #    secretName: studio-tls
 
+# Per-PR preview releases. Off by default and rendering nothing when disabled,
+# so existing releases are unaffected.
+#
+# A preview is a throwaway environment for one pull request: its own namespace,
+# its own Postgres, destroyed together when the release is deleted. Enabling
+# this adds an HTTPRoute, a Postgres Deployment + Service, and one migration
+# Job; it does NOT change the pod topology, which stays identical to production
+# on purpose so previews exercise the same nginx → API serving path.
+#
+# Pods MUST run with --skip-migrations (image.command) when this is on: the
+# migration Job is the single writer. See templates/_helpers.tpl
+# validatePreview, which fails the render otherwise.
+preview:
+  enabled: false
+  # PR number. Only used to label/name things; the database is per-namespace.
+  prNumber: ""
+  # Exact public origin, e.g. pr-42.pr.studio.decocms.com. Must match
+  # BASE_URL/BETTER_AUTH_URL: Better Auth's trustedOrigins is a single exact
+  # origin with no wildcard support, so a mismatch breaks login with a
+  # CSRF-shaped error rather than anything legible.
+  host: ""
+  # The shared wildcard Gateway the per-PR HTTPRoute attaches to.
+  # NOTE: the Gateway's allowedRoutes selector matches on NAMESPACE labels, so
+  # whatever creates the namespace must label it (Argo: managedNamespaceMetadata).
+  # Without that the HTTPRoute attaches to nothing, silently.
+  gateway:
+    name: ""
+    namespace: istio-gateways
+    # Must name a real listener on that Gateway. A sectionName matching no
+    # listener attaches the route to nothing, with no error.
+    sectionName: https
+  # A Postgres that lives and dies with this preview.
+  #
+  # The alternative — one shared server with per-PR CREATE/DROP DATABASE hook
+  # Jobs — needs a server provisioned and paid for while idle, an admin
+  # credential distributed to every preview namespace, a connection budget
+  # shared across previews, and a sweeper for the databases that outlive their
+  # PR. A pod per namespace has none of those: deleting the namespace deletes
+  # the database.
+  #
+  # When enabled and database.url is unset, the chart derives DATABASE_URL
+  # itself and publishes it via the ConfigMap.
+  postgres:
+    enabled: true
+    image:
+      repository: postgres
+      tag: "16-alpine"
+      pullPolicy: IfNotPresent
+    # Fixed and NOT secret: this Postgres is reachable only from inside the
+    # preview's namespace, holds no real data, and dies with the PR. Use a
+    # NetworkPolicy to bound reach, not a password.
+    auth:
+      username: postgres
+      password: postgres
+      database: postgres
+    # emptyDir, not a PVC — nothing here is worth persisting, and PVC
+    # finalizers are the most common cause of a namespace that will not finish
+    # deleting.
+    sizeLimit: 4Gi
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        memory: "1Gi"
+  # Object storage that lives and dies with the preview, so a preview needs no
+  # bucket, no lifecycle rule and no credential from outside the namespace.
+  #
+  # This is NOT the application's own auto-provisioned MinIO: Studio downloads a
+  # MinIO binary at boot when S3_* is unset, which re-downloads on every pod
+  # start, puts dl.min.io in the boot path, and assumes a single process — the
+  # preview pod runs two API containers.
+  minio:
+    enabled: true
+    image:
+      repository: minio/minio
+      tag: RELEASE.2025-04-22T22-12-26Z
+      pullPolicy: IfNotPresent
+    bucket: studio
+    # Fixed and NOT secret: reachable only from inside the preview's namespace,
+    # holds nothing real, dies with the PR. Use a NetworkPolicy to bound reach,
+    # not a password.
+    auth:
+      accessKey: minioadmin
+      secretKey: minioadmin
+    # emptyDir. A reviewer uploads next to nothing, and the node disk is shared
+    # with the Postgres and data volumes of every other preview on it.
+    sizeLimit: 2Gi
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "256Mi"
+      limits:
+        memory: "768Mi"
+
+  # Resources for the short-lived migration Job.
+  jobResources:
+    requests:
+      cpu: "100m"
+      memory: "512Mi"
+    limits:
+      memory: "1Gi"
+
 # ServiceAccount for the API and worker pods. Undocumented until now, though the
 # templates have always honoured it — and the sandbox layer depends on it: the
 # sandbox-env chart grants claim/port-forward RBAC to a NAMED service account,
@@ -227,10 +330,34 @@ externalSecret:
   enabled: false
   # secretPath: ""  # Required when enabled. SM secret key path.
   secretStoreName: "aws-secrets-manager"
+  # SecretStore (namespaced) or ClusterSecretStore. A namespaced store needs
+  # per-namespace IRSA, so a deploy that creates namespaces on the fly (per-PR
+  # previews) wants a pre-existing ClusterSecretStore instead.
+  secretStoreKind: "SecretStore"
+  # Render the SecretStore above. Set false to reference a store someone else
+  # owns — required when secretStoreKind is ClusterSecretStore, since a cluster
+  # store must not be created once per release.
+  createSecretStore: true
   refreshInterval: "1h"
   provider:
     aws:
       region: "sa-east-1"
+  # Optional ESO target template — derive extra keys from the fetched secret
+  # instead of storing them. The canonical use is composing a connection string
+  # whose parts live in the secret store but whose database name is per-release
+  # (per-PR previews), so the password never has to be templated into git.
+  #
+  #   template:
+  #     data:
+  #       DATABASE_URL: "postgresql://{{ .PGUSER }}:{{ .PGPASSWORD }}@{{ .PGHOST }}:5432/pr_42?sslmode=require"
+  #
+  # The {{ }} above are ESO's, evaluated against the fetched secret's keys — NOT
+  # Helm's. Values are data, so Helm passes them through untouched; a caller
+  # that is ITSELF a Go template (an Argo ApplicationSet) must escape them.
+  #
+  # mergePolicy defaults to Merge, not ESO's Replace default: with Replace, a
+  # template that adds one key silently discards every key dataFrom pulled in.
+  template: {}
 
 volumes: []
 # - name: foo

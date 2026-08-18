@@ -156,3 +156,298 @@ jobs:
             --set database.url=postgresql://ci:ci@postgres.example.com:5432/studio \
             -f deploy/helm/studio/examples/values-clickhouse.yaml \
             > /dev/null
+
+      # values-preview.yaml is consumed by the studio-previews ApplicationSet,
+      # which supplies the deployment-specific half. Render it here the same way
+      # that chart does, and assert the properties previews depend on — not just
+      # that it renders.
+      - name: Render (per-PR preview)
+        run: |
+          set -euo pipefail
+          helm template studio-pr-42 deploy/helm/studio \
+            -f deploy/helm/studio/values-preview.yaml \
+            --set preview.prNumber=42 \
+            --set preview.host=pr-42.pr.studio.decocms.com \
+            --set image.repository=ghcr.io/decocms/studio/studio-preview \
+            --set image.tag=pr-42-abc1234 \
+            --set nginx.image.tag=pr-42-abc1234 \
+            --set externalSecret.secretPath=preview/studio/application \
+            --set externalSecret.secretStoreName=aws-secrets-manager \
+            --set externalSecret.secretStoreKind=ClusterSecretStore \
+            --api-versions gateway.networking.k8s.io/v1 \
+            > /tmp/preview.yaml
+
+          fail() { echo "::error::$1"; exit 1; }
+
+          grep -q 'kind: HTTPRoute' /tmp/preview.yaml \
+            || fail "preview render has no HTTPRoute — the preview would be unreachable"
+          grep -q 'pr-42.pr.studio.decocms.com' /tmp/preview.yaml \
+            || fail "preview HTTPRoute is missing its hostname"
+
+          grep -q "studio-pr-42-preview-migrate" /tmp/preview.yaml \
+            || fail "preview render is missing the migration Job"
+          grep -q "studio-pr-42-postgres" /tmp/preview.yaml \
+            || fail "preview render has no Postgres — the DB must live and die with the namespace"
+
+          grep -q "studio-pr-42-minio" /tmp/preview.yaml \
+            || fail "preview render has no MinIO — object storage must live and die with the namespace"
+          # All six together, or the application downloads and runs its own
+          # MinIO binary at boot: a fresh ~100MB pull on every pod start, on a
+          # spot pool that consolidates after a minute.
+          for k in S3_ENDPOINT S3_BUCKET S3_REGION S3_FORCE_PATH_STYLE \
+                   S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY; do
+            grep -q "  ${k}:" /tmp/preview.yaml \
+              || fail "preview render is missing ${k} — a partial S3 config makes the app self-provision MinIO"
+          done
+          grep -q 'S3_ENDPOINT: "http://studio-pr-42-minio:9000"' /tmp/preview.yaml \
+            || fail "S3_ENDPOINT does not point at this preview's own MinIO"
+
+          # Ordering is the whole correctness argument: Postgres must be healthy
+          # before the migration Job runs, and that Job must finish before the
+          # app Deployments start. Argo expresses that with waves, and a wrong
+          # one shows up as a CrashLoopBackOff on first sync, not a render error.
+          python3 - <<'WAVES'
+          import sys, yaml
+          waves = {}
+          for d in yaml.safe_load_all(open("/tmp/preview.yaml")):
+              if not d:
+                  continue
+              name = d["metadata"]["name"]
+              ann = (d["metadata"].get("annotations") or {})
+              w = int(ann.get("argocd.argoproj.io/sync-wave", 0))
+              waves[(d["kind"], name)] = w
+          pg = waves[("Deployment", "studio-pr-42-postgres")]
+          mig = waves[("Job", "studio-pr-42-preview-migrate")]
+          app = waves[("Deployment", "studio-pr-42")]
+          ok = pg < mig < app
+          print(f"postgres={pg} migrate={mig} app={app} ordered={ok}")
+          if not ok:
+              print("::error::preview sync-waves are out of order "
+                    f"(want postgres < migrate < app, got {pg} < {mig} < {app})")
+          sys.exit(0 if ok else 1)
+          WAVES
+
+          # Previews run un-merged code on a dedicated spot-only node pool. Both
+          # halves must reach EVERY pod: the toleration alone lets a preview onto
+          # the pool without keeping it there, and the selector alone strands it
+          # Pending. A subchart (NATS) inherits neither, so it is the one that
+          # silently lands on shared nodes when this regresses.
+          python3 - <<'POOL'
+          import sys, yaml
+          bad = []
+          for d in yaml.safe_load_all(open("/tmp/preview.yaml")):
+              if not d or d.get("kind") not in ("Deployment", "StatefulSet", "Job"):
+                  continue
+              spec = d["spec"]["template"]["spec"]
+              sel = (spec.get("nodeSelector") or {}).get("decocms.com/nodepool")
+              tol = any(t.get("key") == "decocms.com/studio-preview"
+                        for t in (spec.get("tolerations") or []))
+              if sel != "studio-preview" or not tol:
+                  bad.append(f'{d["kind"]}/{d["metadata"]["name"]} '
+                             f'(selector={sel!r}, toleration={tol})')
+          if bad:
+              print("::error::pods not pinned to the preview node pool: " + "; ".join(bad))
+              sys.exit(1)
+          print("every preview pod is pinned to the preview node pool")
+          POOL
+
+          # Every studio container (api-0, api-1, worker) must skip migrations:
+          # the PreSync Job is the single writer. Three, not two.
+          # `|| true` — grep exits 1 on zero matches, which under `set -e` would
+          # abort before the explanatory message below.
+          count=$(grep -c -- '--skip-migrations' /tmp/preview.yaml || true)
+          [ "$count" -eq 3 ] \
+            || fail "expected 3 containers with --skip-migrations, found ${count}"
+
+          grep -q 'DATABASE_POOL_MAX: "5"' /tmp/preview.yaml \
+            || fail "DATABASE_POOL_MAX is not 5"
+
+          # This repository is public and the chart is published. Nothing that
+          # names one deployment may live in the shared values file.
+          # Domains are matched only where they are a HOSTNAME — i.e. not
+          # followed by `/`. Kubernetes label and taint keys are domain-prefixed
+          # by convention (decocms.com/nodepool), and those are structure, not
+          # identity: they carry no account, bucket or endpoint.
+          #
+          # `if grep` and not `grep && fail`: under `set -e` a bare grep that
+          # matches nothing exits 1 and aborts the step — which is the passing
+          # case here.
+          for leak in 'cloudflarestorage\.com([^/]|$)' 'decocms\.com([^/]|$)' \
+                      'deco\.cx([^/]|$)' 'amazonaws\.com([^/]|$)' \
+                      'deco-studio-storage' 'aws-secrets-manager'; do
+            if grep -qE "$leak" deploy/helm/studio/values-preview.yaml; then
+              echo "--- offending lines ---"
+              grep -nE "$leak" deploy/helm/studio/values-preview.yaml
+              fail "values-preview.yaml names a specific deployment (/${leak}/) — that belongs in the studio-previews values, which are not published"
+            fi
+          done
+          echo "values-preview.yaml carries no deployment-specific identifiers"
+
+          # DATABASE_URL must address this preview's OWN Postgres. If it ever
+          # points somewhere else, a preview is writing to a database it does
+          # not own.
+          grep -q 'DATABASE_URL: "postgresql://postgres:postgres@studio-pr-42-postgres:5432/postgres"' /tmp/preview.yaml \
+            || fail "preview DATABASE_URL does not point at this preview's own in-namespace Postgres"
+
+          # A namespaced SecretStore needs per-namespace IRSA, which per-PR
+          # namespaces do not have.
+          grep -q 'kind: ClusterSecretStore' /tmp/preview.yaml \
+            || fail "preview ExternalSecret does not reference a ClusterSecretStore"
+          if grep -qE '^kind: SecretStore$' /tmp/preview.yaml; then
+            fail "preview render creates a namespaced SecretStore"
+          fi
+
+          # PVC finalizers are the most common cause of a namespace that never
+          # finishes deleting.
+          if grep -qE '^kind: PersistentVolumeClaim' /tmp/preview.yaml; then
+            fail "preview render contains a PersistentVolumeClaim"
+          fi
+
+          # Shell scripts embedded in the hook Jobs — a bad heredoc indent here
+          # only surfaces at sync time otherwise.
+          python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
+          python3 - <<'PY'
+          import subprocess, sys, yaml
+          bad = 0
+          for d in yaml.safe_load_all(open("/tmp/preview.yaml")):
+              if not d or d.get("kind") != "Job":
+                  continue
+              spec = d["spec"]["template"]["spec"]
+              for c in (spec.get("initContainers") or []) + spec["containers"]:
+                  if not c.get("args"):
+                      continue
+                  p = subprocess.run(["sh", "-n"], input=c["args"][0],
+                                     capture_output=True, text=True)
+                  if p.returncode != 0:
+                      print(f"::error::{d['metadata']['name']}/{c['name']}: {p.stderr.strip()}")
+                      bad += 1
+          sys.exit(1 if bad else 0)
+          PY
+
+      # The whole reason the ApplicationSet lives in this repository: the tag the
+      # build publishes and the tag the generator asks for are now checkable
+      # against each other. When they were in two repositories, they silently
+      # disagreed — the workflow tagged the ephemeral refs/pull/N/merge commit
+      # while the generator asked for .head_sha, and every preview would have
+      # sat in ImagePullBackOff with both repos' CI green.
+      - name: Preview build and ApplicationSet agree on tag and host
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+
+          BUILD=.github/workflows/preview-build.yaml
+          CHART=deploy/helm/studio-previews
+
+          grep -q 'github.event.pull_request.head.sha' "$BUILD" \
+            || fail "preview-build.yaml must tag from the PR head sha; the ApplicationSet can only name .head_sha"
+          if grep -q 'rev-parse --short=7 HEAD' "$BUILD"; then
+            fail "preview-build.yaml tags from the merge ref — the ApplicationSet has no parameter for that commit"
+          fi
+          grep -q 'head_sha' "$CHART/templates/_helpers.tpl" \
+            || fail "the ApplicationSet image tag must derive from .head_sha"
+
+          # Same host on both sides, or the bot comment links somewhere that does
+          # not exist while the environment serves somewhere else. Compare the
+          # host the workflow advertises against the one the chart renders, both
+          # for the same PR number — not just that each is non-empty.
+          BUILD_DOMAIN=$(awk -F': ' '/^  PREVIEW_DOMAIN:/{print $2}' "$BUILD")
+          test -n "$BUILD_DOMAIN" || fail "PREVIEW_DOMAIN is unset in preview-build.yaml"
+          # `host=pr-<n>.${PREVIEW_DOMAIN}` in the workflow's meta step.
+          BUILD_HOST="pr-42.${BUILD_DOMAIN}"
+
+          # Every value the chart requires, in ONE place. It ships no
+          # deployment-specific defaults by design, so each new guard adds
+          # another mandatory value — keeping the list here means the render
+          # steps stay correct when that happens, instead of failing with a
+          # message about a value the test never meant to exercise.
+          PREVIEWS_VALUES=(
+            --set applicationSet.repo.owner=o
+            --set applicationSet.repo.name=r
+            --set applicationSet.repo.tokenSecret.name=t
+            --set applicationSet.repo.tokenSecret.externalSecret.secretPath=p
+            --set applicationSet.repo.tokenSecret.externalSecret.secretStoreName=s
+            --set studioChart.repoURL=oci://x
+            --set studioChart.version=0.0.0
+            --set studioChart.valuesRepo.url=https://x
+            --set images.api=a
+            --set images.nginx=n
+            --set studioValues.externalSecret.secretPath=s
+            --set studioValues.externalSecret.secretStoreName=s
+          )
+
+          helm template p "$CHART" \
+            --set domain="$BUILD_DOMAIN" \
+            "${PREVIEWS_VALUES[@]}" \
+            --api-versions gateway.networking.k8s.io/v1 > /tmp/appset.yaml
+
+          # The rendered host still carries the generator's own template, so
+          # substitute a PR number the way the controller would.
+          RENDER_HOST=$(grep -oE "host: '[^']+'" /tmp/appset.yaml | head -1 \
+            | sed -E "s/host: '(.*)'/\1/; s/\{\{ \.number \}\}/42/")
+          [ "$RENDER_HOST" = "$BUILD_HOST" ] \
+            || fail "host mismatch: preview-build advertises ${BUILD_HOST}, the ApplicationSet serves ${RENDER_HOST}"
+          echo "both halves agree on ${BUILD_HOST}"
+
+      # The previews chart must refuse to render without the values that name a
+      # deployment — it is published publicly and must carry no defaults.
+      - name: Render (studio-previews requires explicit configuration)
+        run: |
+          set -euo pipefail
+          if helm template p deploy/helm/studio-previews >/tmp/bare.yaml 2>&1; then
+            echo "::error::studio-previews rendered with no values — it must require them"
+            exit 1
+          fi
+          grep -q 'domain is required' /tmp/bare.yaml \
+            || { echo "::error::wrong failure message"; cat /tmp/bare.yaml; exit 1; }
+          echo "studio-previews correctly refuses to render unconfigured"
+      - name: Render (preview validations must fail)
+        run: |
+          set -uo pipefail
+          expect_fail() {
+            desc="$1"; want="$2"; shift 2
+            # `if cmd; then` and not `out=$(cmd); [ $? -eq 0 ]` — the runner's
+            # default shell is `bash -e`, under which a failing assignment aborts
+            # the step. Every render here is SUPPOSED to fail.
+            # secretPath/secretStoreName are supplied by the studio-previews
+            # ApplicationSet, not by values-preview.yaml — they name an account,
+            # and this file is published. Without them here, validateExternalSecret
+            # fires before validatePreview and every case below fails for the
+            # wrong reason.
+            if out=$(helm template studio-pr-42 deploy/helm/studio \
+                       -f deploy/helm/studio/values-preview.yaml \
+                       --set preview.prNumber=42 \
+                       --set externalSecret.secretPath=preview/studio/application \
+                       --set externalSecret.secretStoreName=some-cluster-store \
+                       --api-versions gateway.networking.k8s.io/v1 "$@" 2>&1); then
+              echo "::error::${desc}: rendered successfully — the guard is missing"
+              exit 1
+            fi
+            if ! echo "$out" | grep -q "$want"; then
+              echo "::error::${desc}: failed for the wrong reason. Wanted '${want}', got:"
+              echo "$out"
+              exit 1
+            fi
+            echo "ok: ${desc}"
+          }
+
+          expect_fail "missing preview.host" "preview.host is required"
+          expect_fail "ingress conflict" "mutually exclusive" \
+            --set preview.host=h.example.com \
+            --set ingress.enabled=true \
+            --set 'ingress.hosts[0].host=h.example.com' \
+            --set 'ingress.hosts[0].paths[0].path=/' \
+            --set 'ingress.hosts[0].paths[0].pathType=Prefix'
+          expect_fail "missing gateway name" "preview.gateway.name is required" \
+            --set preview.host=h.example.com --set preview.gateway.name=
+          # Turning off the built-in Postgres without supplying a database
+          # elsewhere would render pods pointing at nothing. Caught by the
+          # chart's general database validation, not a preview-specific one.
+          expect_fail "no database at all" "set database.url when database.engine=postgresql" \
+            --set preview.host=h.example.com \
+            --set preview.postgres.enabled=false \
+            --set externalSecret.enabled=false
+
+          # image.command is a list, which --set cannot express cleanly.
+          printf 'image:\n  command: ["bun","run","deco"]\n' > /tmp/no-skip.yaml
+          expect_fail "missing --skip-migrations" "requires --skip-migrations" \
+            --set preview.host=h.example.com -f /tmp/no-skip.yaml

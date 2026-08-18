@@ -25,6 +25,21 @@ data:
   {{- end }}
   NATS_TUNNEL_PUBLIC_ENABLED: {{ .Values.tunnel.nats.publicEnabled | quote }}
   NATS_TUNNEL_SESSION_TTL_SECONDS: {{ .Values.tunnel.nats.sessionTtlSeconds | quote }}
-  {{- if ne (lower (default "sqlite" .Values.database.engine)) "postgresql" }}
+  {{- if or (ne (lower (default "sqlite" .Values.database.engine)) "postgresql") (eq (include "chart-deco-studio.previewPostgresProvidesUrl" . | trim) "true") }}
   DATABASE_URL: {{ include "chart-deco-studio.databaseUrl" . | trim | quote }}
+  {{- end }}
+  {{- /* Derive object storage from the preview's own in-namespace MinIO. All
+  four S3_* plus both credentials must be present together — with any of them
+  missing the application falls back to downloading and running its own MinIO
+  binary, which is the failure this exists to avoid. They are ConfigMap and not
+  Secret for the same reason DATABASE_URL is: they address an ephemeral pod
+  reachable only from this namespace. An explicit meshConfig value wins, so a
+  preview can still be pointed at a real bucket. */}}
+  {{- if and (eq (include "chart-deco-studio.previewMinioProvidesStorage" . | trim) "true") (not (hasKey .Values.configMap.meshConfig "S3_ENDPOINT")) }}
+  S3_ENDPOINT: {{ printf "http://%s:9000" (include "chart-deco-studio.previewMinioName" .) | quote }}
+  S3_BUCKET: {{ .Values.preview.minio.bucket | quote }}
+  S3_REGION: "us-east-1"
+  S3_FORCE_PATH_STYLE: "true"
+  S3_ACCESS_KEY_ID: {{ .Values.preview.minio.auth.accessKey | quote }}
+  S3_SECRET_ACCESS_KEY: {{ .Values.preview.minio.auth.secretKey | quote }}
   {{- end }}

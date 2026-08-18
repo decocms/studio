@@ -439,3 +439,47 @@ helm uninstall deco-studio -n deco-studio
 # Only after every environment has removed sandbox-env:
 helm uninstall sandbox-operator -n agent-sandbox-system
 ```
+
+## Per-PR preview environments
+
+The chart carries an optional `preview` block. It turns a release into a
+short-lived, self-contained environment: an ephemeral Postgres in the same
+namespace, migrations run once by a Job instead of racing across pods, and an
+`HTTPRoute` onto a shared wildcard `Gateway`. It is meant for reviewing a change
+before it merges — one throwaway Studio per pull request.
+
+`preview.enabled` is `false` by default and every preview template is gated on
+it, so a normal install renders exactly what it rendered before. You do not need
+this to self-host Studio, and you should leave it off unless you are building a
+review pipeline.
+
+Turning it on requires an orchestrator to create and destroy an environment per
+pull request. The suggested one is Argo CD, and the `chart-deco-studio-previews`
+chart in this repository ships that half: an `ApplicationSet` whose pullRequest
+generator watches a repository for a label, plus the shared `Gateway`. Point it
+at your own repository, domain and object storage — it has no defaults.
+
+```bash
+helm template studio-previews deploy/helm/studio-previews \
+  --set domain=pr.example.com \
+  --set applicationSet.repo.owner=your-org \
+  --set applicationSet.repo.name=your-fork \
+  --set applicationSet.repo.tokenSecret.name=preview-github-token \
+  --set studioChart.repoURL=oci://ghcr.io/decocms \
+  --set studioChart.version=0.14.0 \
+  --set studioChart.valuesRepo.url=https://github.com/your-org/your-fork.git \
+  --set images.api=ghcr.io/your-org/studio-preview \
+  --set images.nginx=ghcr.io/your-org/studio-nginx-preview \
+  --set studioValues.externalSecret.secretPath=preview/studio \
+  --set studioValues.externalSecret.secretStoreName=your-cluster-store \
+  --set studioValues.objectStorage.endpoint=https://your-endpoint \
+  --set studioValues.objectStorage.bucket=your-preview-bucket
+```
+
+A preview is not a small production. It does not cover hosted agent sandboxes,
+OAuth sign-in, billing, the monitoring dashboard, outbound email, or anything
+that depends on more than one pod. It also authenticates nobody by itself — put
+an authorization policy on the Gateway listener before exposing it, because a
+preview accepts email/password signup and can drive LLM agents.
+
+See `deploy/helm/studio-previews/README.md` for the full contract.

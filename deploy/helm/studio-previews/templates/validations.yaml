@@ -1,0 +1,53 @@
+{{- /*
+Renders no resources. Every check here covers a value whose absence produces a
+healthy-looking object that silently does nothing.
+*/ -}}
+{{- $required := list
+  (list "domain" .Values.domain)
+  (list "applicationSet.repo.owner" .Values.applicationSet.repo.owner)
+  (list "applicationSet.repo.name" .Values.applicationSet.repo.name)
+  (list "applicationSet.repo.tokenSecret.name" .Values.applicationSet.repo.tokenSecret.name)
+  (list "studioChart.repoURL" .Values.studioChart.repoURL)
+  (list "studioChart.version" .Values.studioChart.version)
+  (list "studioChart.valuesRepo.url" .Values.studioChart.valuesRepo.url)
+  (list "images.api" .Values.images.api)
+  (list "images.nginx" .Values.images.nginx)
+  (list "studioValues.externalSecret.secretPath" .Values.studioValues.externalSecret.secretPath)
+  (list "studioValues.externalSecret.secretStoreName" .Values.studioValues.externalSecret.secretStoreName)
+-}}
+{{- range $required }}
+{{- if not (index . 1) }}
+{{- fail (printf "chart-deco-studio-previews: %s is required — this chart ships no deployment-specific defaults" (index . 0)) -}}
+{{- end }}
+{{- end }}
+
+{{- /*
+The token ExternalSecret needs a path and a store, or it renders an object that
+syncs nothing and the generator authenticates with an empty Secret.
+*/ -}}
+{{- if .Values.applicationSet.repo.tokenSecret.externalSecret.enabled }}
+{{- if not .Values.applicationSet.repo.tokenSecret.externalSecret.secretPath }}
+{{- fail "chart-deco-studio-previews: applicationSet.repo.tokenSecret.externalSecret.secretPath is required when the token ExternalSecret is enabled" -}}
+{{- end }}
+{{- if not .Values.applicationSet.repo.tokenSecret.externalSecret.secretStoreName }}
+{{- fail "chart-deco-studio-previews: applicationSet.repo.tokenSecret.externalSecret.secretStoreName is required when the token ExternalSecret is enabled" -}}
+{{- end }}
+{{- end }}
+
+{{- /*
+A moving chart tag would roll every open preview the moment an unrelated chart
+version is published, in the middle of somebody's review.
+*/ -}}
+{{- if has (lower .Values.studioChart.version) (list "latest" "main" "stable") }}
+{{- fail "chart-deco-studio-previews: studioChart.version must be a pinned version, never a moving tag" -}}
+{{- end }}
+
+{{- /*
+The Gateway selects routes by NAMESPACE label and Argo's CreateNamespace=true
+labels nothing, so the generated Applications must apply the same label through
+managedNamespaceMetadata. If these two ever diverge, every preview's HTTPRoute
+attaches to nothing and reports no error anywhere.
+*/ -}}
+{{- if not .Values.gateway.namespaceSelectorLabel }}
+{{- fail "chart-deco-studio-previews: gateway.namespaceSelectorLabel is required — without it the per-PR HTTPRoutes attach to no Gateway and report no error" -}}
+{{- end }}

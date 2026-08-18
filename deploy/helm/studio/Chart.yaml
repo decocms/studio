@@ -2,6 +2,13 @@ apiVersion: v2
 name: chart-deco-studio
 description: Helm chart for deco Studio — supports inline secrets, external secretName, and AWS Secrets Manager via ExternalSecret
 type: application
+# 0.14.0: per-PR preview releases (preview.enabled, default false). Adds an
+# HTTPRoute, an ephemeral in-namespace Postgres and a single PreSync migration
+# Job — the database lives and dies with the namespace, so there is no shared
+# server to provision, no admin credential to distribute and nothing to sweep.
+# Renders nothing when disabled, so the default render is byte-identical and
+# existing releases are unaffected. Pod topology is deliberately unchanged, and
+# helm.sh/chart is kept off pod templates so a version bump rolls no pods.
 # 0.13.2: dedicated emptyDir + FAST_PREVIEW_CACHE_DIR for the sandbox-less
 # Fast Preview disk cache (fastPreviewCache values block).
 # 0.13.1: documents the pre-existing `serviceAccount` values block. The
@@ -12,7 +19,7 @@ type: application
 # when disabled, so existing releases are unaffected.
 # 0.12.4: chart-managed API/worker dispatch roles now use
 # STUDIO_DISPATCH_ROLE; legacy overrides are rejected.
-version: 0.13.2
+version: 0.14.0
 appVersion: "latest"
 
 dependencies:

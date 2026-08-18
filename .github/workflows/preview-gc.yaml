@@ -1,0 +1,113 @@
+name: Preview GC
+
+# GHCR has no TTL, so preview image tags accumulate forever without this.
+# Deletes every `pr-<n>-<sha>` tag whose pull request is closed, then applies a
+# retention floor to whatever survives.
+#
+# Scoped to the *-preview packages only. Release tags live in different
+# packages (studio/studio, studio/studio-nginx) and are never reachable from
+# here, which is the whole reason previews got their own packages.
+
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  pull-requests: read
+
+jobs:
+  gc:
+    name: Prune preview image tags
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [studio/studio-preview, studio/studio-nginx-preview]
+    steps:
+      - name: Delete tags for closed PRs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ORG: ${{ github.repository_owner }}
+          PACKAGE: ${{ matrix.package }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # %2F — the package name contains a slash and must be path-escaped.
+          ENCODED=$(printf '%s' "$PACKAGE" | sed 's#/#%2F#g')
+
+          if ! gh api "orgs/${ORG}/packages/container/${ENCODED}/versions?per_page=100" \
+                 --paginate > /tmp/versions.json 2>/tmp/api-err; then
+            # A package that has never been pushed 404s. That is the expected
+            # state before the first preview, not a failure.
+            if grep -q "Not Found" /tmp/api-err; then
+              echo "Package ${PACKAGE} does not exist yet — nothing to prune."
+              exit 0
+            fi
+            # The org-level packages API is frequently out of reach for
+            # GITHUB_TOKEN. Warn loudly and exit clean: a janitor that pages
+            # nightly gets muted, and a silent skip would read as "pruned".
+            if grep -q "read:packages scope\|Forbidden\|403" /tmp/api-err; then
+              echo "::warning::Cannot list ${PACKAGE}: GITHUB_TOKEN lacks org package read."
+              echo "::warning::Preview image tags are NOT being pruned. Grant a PAT with"
+              echo "::warning::read:packages + delete:packages as secrets.PREVIEW_GC_TOKEN"
+              echo "::warning::and set GH_TOKEN to it, or prune manually."
+              exit 0
+            fi
+            cat /tmp/api-err >&2
+            exit 1
+          fi
+
+          jq -r '.[] | . as $v | ($v.metadata.container.tags // [])[] | "\($v.id) \(.)"' \
+            /tmp/versions.json > /tmp/tags.txt
+
+          # Resolve each PR's state ONCE, not once per tag: a PR routinely has
+          # a dozen tags and the API is rate-limited.
+          awk '{ n = $2; sub(/^pr-/, "", n); sub(/-.*$/, "", n);
+                 if (n ~ /^[0-9]+$/) print n }' /tmp/tags.txt | sort -u > /tmp/prs.txt
+
+          : > /tmp/closed.txt
+          while read -r pr_number; do
+            [ -n "$pr_number" ] || continue
+            state=$(gh pr view "$pr_number" --repo "$REPO" --json state --jq .state 2>/dev/null || echo UNKNOWN)
+            echo "PR #${pr_number}: ${state}"
+            # UNKNOWN (deleted or inaccessible PR) is deliberately kept — this
+            # job must never be the thing that removes an image someone is
+            # still looking at.
+            if [ "$state" = "CLOSED" ] || [ "$state" = "MERGED" ]; then
+              echo "$pr_number" >> /tmp/closed.txt
+            fi
+          done < /tmp/prs.txt
+
+          deleted=0
+          while read -r version_id tag; do
+            [ -n "$tag" ] || continue
+            case "$tag" in pr-*) ;; *) continue ;; esac
+            pr_number="${tag#pr-}"
+            pr_number="${pr_number%%-*}"
+            case "$pr_number" in ''|*[!0-9]*) echo "skip malformed tag: $tag"; continue ;; esac
+
+            if grep -qx "$pr_number" /tmp/closed.txt; then
+              echo "deleting ${PACKAGE}:${tag} (PR #${pr_number})"
+              gh api --method DELETE \
+                "orgs/${ORG}/packages/container/${ENCODED}/versions/${version_id}" || true
+              deleted=$((deleted + 1))
+            fi
+          done < /tmp/tags.txt
+
+          echo "deleted ${deleted} tag(s) from ${PACKAGE}"
+
+      # Backstop for untagged layers orphaned by tag deletion and for tags whose
+      # PR lookup kept failing. The floor is generous on purpose: this job is
+      # about bounding growth, not reclaiming every byte.
+      - name: Retention floor
+        uses: actions/delete-package-versions@v5
+        continue-on-error: true
+        with:
+          owner: ${{ github.repository_owner }}
+          package-name: ${{ matrix.package }}
+          package-type: container
+          min-versions-to-keep: 50
+          delete-only-untagged-versions: true

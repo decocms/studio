@@ -167,6 +167,7 @@ jobs:
           test -f apps/api/dist/client/index.html
           test -f apps/api/dist/server/server.js
           test -f apps/api/dist/server/migrate.js
+          test -f apps/api/dist/server/migrate-dbos.js
           test -f apps/api/dist/server/cli.js
       - name: Pack the npm tarball
         working-directory: apps/api

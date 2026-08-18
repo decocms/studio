@@ -526,6 +526,14 @@ function buildMigrateScript(packagesToExternalize: Set<string>) {
   );
 }
 
+function buildMigrateDbosScript(packagesToExternalize: Set<string>) {
+  return buildScript(
+    join(SCRIPT_DIR, "../src/database/migrate-dbos.ts"),
+    "migrate-dbos.js",
+    packagesToExternalize,
+  );
+}
+
 function buildServerScript(packagesToExternalize: Set<string>) {
   return buildScript(
     join(SCRIPT_DIR, "../src/index.ts"),
@@ -710,7 +718,7 @@ async function verifyBundlesShipExternals() {
   const failures: { pkg: string; from: Set<string> }[] = [];
   const byPkg = new Map<string, Set<string>>();
 
-  const entries = ["cli.js", "server.js", "migrate.js"];
+  const entries = ["cli.js", "server.js", "migrate.js", "migrate-dbos.js"];
   for (const entry of entries) {
     const entryPath = join(OUTPUT_DIR, entry);
     if (!existsSync(entryPath)) continue;
@@ -827,6 +835,7 @@ async function main() {
 
   // Build migrate.js, server.js, and cli.js
   await buildMigrateScript(packagesToExternalize);
+  await buildMigrateDbosScript(packagesToExternalize);
   await buildServerScript(packagesToExternalize);
   await buildCliScript(packagesToExternalize);
 
@@ -846,6 +855,7 @@ async function main() {
   console.log("\n🎉 Build completed successfully!");
   console.log(`📦 Output directory: ${OUTPUT_DIR}`);
   console.log(`   - migrate.js`);
+  console.log(`   - migrate-dbos.js`);
   console.log(`   - server.js`);
   console.log(`   - cli.js`);
   console.log(`   - emscripten-module.wasm`);

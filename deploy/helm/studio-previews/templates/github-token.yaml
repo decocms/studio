@@ -1,0 +1,38 @@
+{{- $t := .Values.applicationSet.repo.tokenSecret -}}
+{{- if $t.externalSecret.enabled }}
+{{- /*
+The token the pullRequest generator authenticates with, synced from a secret
+store rather than created by hand.
+
+It needs exactly one permission — pull_requests: read on the watched repository —
+and nothing else. The generator lists open PRs and their labels; it never writes.
+
+Worth knowing about expiry: if this token lapses, the generator stops listing
+PRs, and that does NOT tear anything down. Existing previews keep running
+because the ApplicationSet cannot see that their PRs closed, so a lapsed token
+turns into a fleet of orphans nobody is watching. A GitHub App (appSecretName on
+the generator) has no expiry and is the better long-term answer.
+*/ -}}
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: {{ $t.name }}
+  namespace: {{ $.Values.argocd.namespace }}
+  labels:
+    {{ $.Values.gateway.namespaceSelectorLabel }}: "true"
+spec:
+  refreshInterval: {{ $t.externalSecret.refreshInterval }}
+  secretStoreRef:
+    name: {{ $t.externalSecret.secretStoreName }}
+    # ClusterSecretStore: this lands in the Argo CD namespace, which is not one
+    # of ours and has no store of its own.
+    kind: {{ $t.externalSecret.secretStoreKind }}
+  target:
+    name: {{ $t.name }}
+    creationPolicy: Owner
+  data:
+    - secretKey: {{ $t.key }}
+      remoteRef:
+        key: {{ $t.externalSecret.secretPath }}
+        property: {{ $t.key }}
+{{- end }}

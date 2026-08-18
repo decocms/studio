@@ -1,0 +1,17 @@
+apiVersion: v2
+name: chart-deco-studio-previews
+description: |
+  Control plane for per-PR preview environments of a Studio repository.
+
+  Deploys no workload of its own. It renders an Argo CD ApplicationSet whose
+  pullRequest generator turns every labelled open PR into an Application that
+  installs chart-deco-studio into its own namespace, plus the shared wildcard
+  Gateway those per-PR HTTPRoutes attach to.
+
+  Requires Argo CD. Deliberately a separate chart from chart-deco-studio:
+  the application chart must never carry an argoproj.io CRD that a plain Helm
+  install cannot resolve, a preview release must never be able to render the
+  ApplicationSet that generates previews, and preview policy must be able to
+  change without bumping — and therefore rolling — the application chart.
+type: application
+version: 0.1.0

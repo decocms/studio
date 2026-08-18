@@ -1,0 +1,246 @@
+# Values for a per-PR preview release.
+#
+# Sized for "one reviewer clicking around", NOT for load. Do not derive a
+# production values file from this one, and do not copy production values on
+# top of it — the prod pod set requests ~4.5 vCPU / ~4.1 GiB plus two 10Gi
+# PVCs, which is $150-250/mo per preview.
+#
+# Pod topology is deliberately identical to production (nginx `-web` front door
+# + two API containers + a worker). A preview that runs a different topology
+# than prod is a preview that can miss exactly the class of bug it exists to
+# catch, and the extra container is ~100m/64Mi.
+#
+# This file holds the half of the configuration that is the same for EVERY
+# preview, of every deployment. Nothing here may name an organisation, a
+# domain, a bucket or a cloud account: this repository is public, and the
+# rendered chart is published. Anything deployment-specific — image
+# repositories and tags, preview.host, preview.prNumber, BASE_URL /
+# BETTER_AUTH_URL, the S3_* endpoint and bucket, the secret store — is injected
+# by the ApplicationSet in deploy/helm/studio-previews, whose own values carry
+# it. DATABASE_URL is derived by the chart from the preview's in-namespace
+# Postgres and is injected by nobody.
+#
+# Rendered in CI (.github/workflows/helm-test.yml) so it cannot rot.
+
+preview:
+  enabled: true
+  # prNumber / host injected per PR by the ApplicationSet.
+  gateway:
+    name: studio-preview
+    namespace: istio-gateways
+    sectionName: https
+  # Each preview runs its own Postgres pod, created and destroyed with the
+  # namespace. DATABASE_URL is derived by the chart, so nothing here (and
+  # nothing in the ApplicationSet) has to name a database server.
+  postgres:
+    enabled: true
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        memory: "1Gi"
+
+replicaCount: 1
+autoscaling:
+  enabled: false
+
+image:
+  repository: ghcr.io/decocms/studio/studio-preview
+  # tag injected per PR by the ApplicationSet.
+  pullPolicy: IfNotPresent
+  # --skip-migrations is REQUIRED and enforced by validatePreview: the PreSync
+  # Job is the single migration writer. Applies to the worker containers too,
+  # which share this value.
+  command: ["bun", "run", "deco", "--no-tui", "--no-local-mode", "--skip-migrations"]
+
+nginx:
+  # repository/tag injected per PR (studio-nginx-preview).
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "64Mi"
+    limits:
+      memory: "192Mi"
+
+# No CPU limit anywhere below: boot is CPU-spiky (DBOS launch, NATS connect,
+# Better Auth init) and throttling turns a 30s start into minutes.
+resources:
+  requests:
+    cpu: "300m"
+    memory: "768Mi"
+  limits:
+    memory: "1536Mi"
+
+worker:
+  # Not optional — validateDispatchRole fails the render without it, and
+  # nothing would dequeue runs.
+  enabled: true
+  replicaCount: 1
+  autoscaling:
+    enabled: false
+  # Let the cluster autoscaler consolidate preview nodes freely.
+  doNotDisrupt: false
+  resources:
+    requests:
+      cpu: "300m"
+      memory: "768Mi"
+    limits:
+      memory: "1536Mi"
+
+database:
+  engine: postgresql
+  # url deliberately unset — the chart derives it from preview.postgres.
+
+# No PVCs anywhere in a preview: PVC finalizers are the most common cause of a
+# namespace that will not finish deleting, and a preview has nothing worth
+# persisting.
+persistence:
+  enabled: false
+  emptyDirSizeLimit: "2Gi"
+
+fastPreviewCache:
+  enabled: true
+  sizeLimit: 1Gi
+
+nats:
+  enabled: true
+  # A debug shell pod and a PDB are both meaningless for a single-replica
+  # throwaway NATS, and the PDB actively blocks node drain during autoscaler
+  # consolidation.
+  natsBox:
+    enabled: false
+  podDisruptionBudget:
+    enabled: false
+  # A subchart inherits nothing from the parent's values, so the pool
+  # selector and toleration have to be restated here. Without them NATS is
+  # the one preview pod that lands on shared nodes.
+  podTemplate:
+    merge:
+      spec:
+        nodeSelector:
+          decocms.com/nodepool: studio-preview
+        tolerations:
+          - key: decocms.com/studio-preview
+            operator: Equal
+            value: "true"
+            effect: NoSchedule
+  container:
+    merge:
+      resources:
+        requests:
+          cpu: "50m"
+          memory: "128Mi"
+        limits:
+          memory: "320Mi"
+  config:
+    jetstream:
+      enabled: true
+      memoryStore:
+        enabled: true
+        maxSize: 256Mi
+      # Memory-only: losing streams on restart is irrelevant for a throwaway
+      # env, and dropping the PVC makes namespace deletion instant.
+      fileStore:
+        enabled: false
+        pvc:
+          enabled: false
+
+# The default value pins `app.kubernetes.io/instance: deco-studio`, which
+# matches nothing in a studio-pr-<n> release — it would silently do nothing.
+topologySpreadConstraints: []
+
+# Dedicated, spot-only node pool (terraform-eks-cluster, eks-setup,
+# karpenter_ec2_studio_preview). Named studio-preview because the taint key
+# would otherwise collide, in reading if not in effect, with the unrelated
+# `decocms.com/preview` NAMESPACE label the Gateway selects routes by. Previews run un-merged code, so they get their own
+# nodes instead of sharing capacity with production workloads.
+#
+# BOTH halves are required and both must reach EVERY pod. The toleration alone
+# lets a preview onto the pool but does not keep it there — without the
+# selector it schedules wherever it fits, including production nodes. The
+# selector alone strands it Pending against the taint.
+#
+# Spot is safe here in a way it is nowhere else on this cluster: the database
+# is an emptyDir Postgres that the PreSync Job re-migrates on the next sync,
+# and a preview holds no PVC at all. A reclaim costs a reviewer a restart.
+nodeSelector:
+  decocms.com/nodepool: studio-preview
+tolerations:
+  - key: decocms.com/studio-preview
+    operator: Equal
+    value: "true"
+    effect: NoSchedule
+
+metrics:
+  scrape: false
+
+terminationGracePeriodSeconds: 30
+
+# BETTER_AUTH_SECRET, ENCRYPTION_KEY and the R2 credentials come from one AWS
+# Secrets Manager entry. DATABASE_URL is NOT among them — it addresses this
+# preview's own in-namespace Postgres and is derived by the chart.
+#
+# BETTER_AUTH_SECRET and ENCRYPTION_KEY must be stable for the life of the
+# environment: a rotating auth secret is a login loop, and a rotating
+# encryption key makes every vaulted credential undecryptable.
+externalSecret:
+  enabled: true
+  # secretPath, secretStoreName and secretStoreKind name a specific cloud
+  # account, so they are injected by the studio-previews ApplicationSet rather
+  # than set here. The store is a ClusterSecretStore: previews create
+  # namespaces on the fly, and a namespaced SecretStore would need credentials
+  # wired up per namespace.
+  createSecretStore: false
+
+configMap:
+  meshConfig:
+    NODE_ENV: "production"
+    # 20 (the chart default) x 2 API containers against a 100-connection
+    # default is most of the budget of a preview's own small Postgres, for a
+    # single reviewer's traffic. PgBouncer is not an option here because DBOS
+    # uses prepared statements and advisory locks.
+    DATABASE_POOL_MAX: "5"
+    # OAuth callbacks cannot be pre-registered for a per-PR hostname, so
+    # email/password is the only login path. It is already the default; pinned
+    # here so a future default flip does not silently lock previews out.
+    AUTH_EMAIL_PASSWORD_ENABLED: "true"
+    # Several reviewers behind one office IP trip the auth limiter otherwise.
+    DISABLE_RATE_LIMIT: "true"
+    # No hosted sandboxes in a preview. Agent dispatch returns 409 link_offline
+    # with no local daemon attached — a documented limitation, not a bug.
+    STUDIO_SANDBOX_PROVIDER: "user-desktop"
+    DISABLE_ORGFS_MOUNTS: "true"
+    # Never let a preview provision real gateway keys. STUDIO_PROVISION_SECRET_KEY
+    # is deliberately left unset, which is the other half of this gate.
+    DECO_AI_GATEWAY_ENABLED: "false"
+    RUN_IDLE_TIMEOUT_MS: "120000"
+    # Object storage is the preview's own in-namespace MinIO, so none of this
+    # names an account and none of it is injected from outside. All four S3_*
+    # must be set together, or the application downloads and runs its own MinIO
+    # binary at boot — see preview.minio in values.yaml for why that is wrong
+    # here. The credentials are in the ConfigMap and not the Secret on purpose:
+    # they address an ephemeral pod, exactly like DATABASE_URL.
+    #
+    # BASE_URL / BETTER_AUTH_URL are still injected per PR — only the
+    # ApplicationSet knows the PR number.
+
+# Observability and billing are off. All of these are already false by default;
+# stated explicitly so nobody inherits them from a copied production values file.
+otel:
+  enabled: false
+  collector:
+    enabled: false
+s3Sync:
+  enabled: false
+dbosConductor:
+  enabled: false
+clickhouse-operator:
+  enabled: false
+clickhouse-cluster:
+  enabled: false
+
+ingress:
+  # Previews route through Gateway API (HTTPRoute). validatePreview rejects
+  # enabling both.
+  enabled: false

@@ -110,7 +110,12 @@ Resolves DATABASE_URL honoring database engine configuration.
 */}}
 {{- define "chart-deco-studio.databaseUrl" -}}
 {{- if eq (lower (default "sqlite" .Values.database.engine)) "postgresql" -}}
+{{- if and .Values.preview.enabled .Values.preview.postgres.enabled (not .Values.database.url) -}}
+{{- $pg := .Values.preview.postgres.auth -}}
+{{- printf "postgresql://%s:%s@%s:5432/%s" $pg.username $pg.password (include "chart-deco-studio.previewPostgresName" .) $pg.database -}}
+{{- else -}}
 {{- required "database.url must be set when database.engine=postgresql" .Values.database.url | trim -}}
+{{- end -}}
 {{- else -}}
 {{/* Historical filename retained so existing PVCs keep their database. */}}
 /app/data/mesh.db
@@ -132,7 +137,8 @@ Global validations to ensure scaling requirements are met.
 {{- if and .Values.autoscaling.enabled (not (or $distributed $usesPostgres)) }}
 {{- fail "chart-deco-studio: autoscaling.enabled=true requires distributed storage (persistence.distributed=true or accessMode=ReadWriteMany) or database.engine=postgresql" -}}
 {{- end }}
-{{- if and $usesPostgres (not .Values.database.url) (not .Values.secret.secretName) (not .Values.externalSecret.enabled) }}
+{{- $previewPg := eq (include "chart-deco-studio.previewPostgresProvidesUrl" . | trim) "true" -}}
+{{- if and $usesPostgres (not $previewPg) (not .Values.database.url) (not .Values.secret.secretName) (not .Values.externalSecret.enabled) }}
 {{- fail "chart-deco-studio: set database.url when database.engine=postgresql, or use secret.secretName to provide DATABASE_URL via Secret" -}}
 {{- end }}
 {{- if and .Values.autoscaling.enabled (gt (int .Values.autoscaling.minReplicas) (int .Values.autoscaling.maxReplicas)) }}
@@ -288,6 +294,76 @@ at render time instead.
 {{- if not .paths }}
 {{- fail (printf "chart-deco-studio: ingress host %s has no paths — add at least { path: /, pathType: Prefix }" .host) -}}
 {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
+True when the preview's own in-namespace Postgres is what supplies DATABASE_URL.
+In that case the URL is NOT a credential — it addresses an ephemeral pod
+reachable only from this namespace — so it belongs in the ConfigMap. Routing it
+through the Secret would break the ESO path, where no chart-managed Secret is
+rendered at all and DATABASE_URL would simply go missing.
+*/}}
+{{- define "chart-deco-studio.previewPostgresProvidesUrl" -}}
+{{- if and .Values.preview.enabled .Values.preview.postgres.enabled (not .Values.database.url) -}}
+true
+{{- else -}}
+false
+{{- end -}}
+{{- end }}
+
+{{/*
+Service/Deployment name for the preview's own Postgres.
+*/}}
+{{- define "chart-deco-studio.previewPostgresName" -}}
+{{- printf "%s-postgres" (include "chart-deco-studio.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end }}
+
+{{/*
+True when the preview's own in-namespace MinIO is what supplies object storage.
+Same reasoning as the Postgres helper: the endpoint and credentials address an
+ephemeral pod reachable only from this namespace, so they are configuration and
+not secrets, and they belong in the ConfigMap rather than the Secret.
+*/}}
+{{- define "chart-deco-studio.previewMinioProvidesStorage" -}}
+{{- if and .Values.preview.enabled .Values.preview.minio.enabled -}}
+true
+{{- else -}}
+false
+{{- end -}}
+{{- end }}
+
+{{/*
+Service/Deployment name for the preview's own MinIO.
+*/}}
+{{- define "chart-deco-studio.previewMinioName" -}}
+{{- printf "%s-minio" (include "chart-deco-studio.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end }}
+
+{{/*
+Validates per-PR preview releases. Every failure here is something that would
+otherwise render a healthy-looking object that silently does nothing: an
+HTTPRoute with no hostname matches no traffic, a pod without --skip-migrations
+races the PreSync migration Job, and a provisioner Job without admin
+credentials cannot create the database the pods are about to connect to.
+*/}}
+{{- define "chart-deco-studio.validatePreview" -}}
+{{- if .Values.preview.enabled }}
+{{- if not .Values.preview.host }}
+{{- fail "chart-deco-studio: preview.host is required when preview.enabled=true" -}}
+{{- end }}
+{{- if not .Values.preview.prNumber }}
+{{- fail "chart-deco-studio: preview.prNumber is required when preview.enabled=true — it names the per-PR database and bucket" -}}
+{{- end }}
+{{- if .Values.ingress.enabled }}
+{{- fail "chart-deco-studio: preview.enabled and ingress.enabled are mutually exclusive — previews route through Gateway API (HTTPRoute), not Ingress" -}}
+{{- end }}
+{{- if not .Values.preview.gateway.name }}
+{{- fail "chart-deco-studio: preview.gateway.name is required when preview.enabled=true" -}}
+{{- end }}
+{{- if not (has "--skip-migrations" (.Values.image.command | default list)) }}
+{{- fail "chart-deco-studio: preview.enabled=true requires --skip-migrations in image.command; the PreSync Job is the single migration writer and neither the API nor the worker containers (which share image.command) may race it" -}}
 {{- end }}
 {{- end }}
 {{- end }}
