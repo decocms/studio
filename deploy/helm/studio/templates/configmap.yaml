@@ -4,6 +4,15 @@ metadata:
   name: {{ include "chart-deco-studio.fullname" . }}-config
   labels:
     {{- include "chart-deco-studio.labels" . | nindent 4 }}
+  {{- if .Values.preview.enabled }}
+  annotations:
+    # Same wave as the ExternalSecret, and for the same reason: the migrate Job
+    # (-10) and the app Deployments (0) both take this via envFrom, and a
+    # missing configMapRef leaves the container in CreateContainerConfigError —
+    # which stalls the whole sync on the hook, with no error on the object
+    # itself. Only a real sync surfaces this; `helm template` cannot.
+    argocd.argoproj.io/sync-wave: "-30"
+  {{- end }}
 data:
   {{- toYaml .Values.configMap.meshConfig | nindent 2 }}
   {{- $autoNatsUrl := "" }}
