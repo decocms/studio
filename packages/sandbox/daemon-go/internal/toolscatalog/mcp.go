@@ -29,6 +29,11 @@ const clientName = "@decocms/sandbox-tools-catalog"
 // hang FetchCatalog indefinitely and grow `out` without bound.
 const maxCatalogPages = 1000
 
+// maxRPCResponseBytes bounds a single JSON-RPC response body: a misbehaving or
+// malicious endpoint could otherwise stream an unbounded body into memory.
+// Matches the SSE branch's per-frame buffer cap below.
+const maxRPCResponseBytes = 8 * 1024 * 1024
+
 type mcpClient struct {
 	http      *http.Client
 	url       string
@@ -198,7 +203,14 @@ func (c *mcpClient) call(ctx context.Context, method string, params any) (json.R
 // first `data:` frame.
 func readRPCBody(res *http.Response) (json.RawMessage, error) {
 	if !strings.Contains(res.Header.Get("Content-Type"), "text/event-stream") {
-		return io.ReadAll(res.Body)
+		body, err := io.ReadAll(io.LimitReader(res.Body, maxRPCResponseBytes+1))
+		if err != nil {
+			return nil, err
+		}
+		if len(body) > maxRPCResponseBytes {
+			return nil, fmt.Errorf("response exceeded %d bytes", maxRPCResponseBytes)
+		}
+		return body, nil
 	}
 	sc := bufio.NewScanner(res.Body)
 	sc.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
