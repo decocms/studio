@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -55,6 +56,44 @@ func TestDecodeBodyRejectsOversizedRequest(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "exceeded") {
 		t.Fatalf("expected a size-limit error, got: %v", err)
+	}
+}
+
+// Without an upper bound, a caller-supplied `limit` let /grep buffer an
+// unbounded number of match lines into memory — the same crash-the-daemon
+// class the request-body cap above closes for the request side.
+func TestGrepCapsCallerSuppliedLimit(t *testing.T) {
+	if _, err := exec.LookPath("rg"); err != nil {
+		t.Skip("ripgrep not installed")
+	}
+	repoDir := t.TempDir()
+	var content strings.Builder
+	for i := 0; i < grepMaxResultLimit+500; i++ {
+		content.WriteString("needle\n")
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "haystack.txt"), []byte(content.String()), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	deps := FsDeps{AppRoot: repoDir, RepoDir: repoDir}
+	body, _ := json.Marshal(map[string]any{
+		"pattern":     "needle",
+		"output_mode": "content",
+		"limit":       grepMaxResultLimit * 10,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/grep", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	Grep(deps)(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		MatchCount int `json:"matchCount"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if out.MatchCount > grepMaxResultLimit {
+		t.Fatalf("expected matchCount capped at %d, got %d", grepMaxResultLimit, out.MatchCount)
 	}
 }
 
