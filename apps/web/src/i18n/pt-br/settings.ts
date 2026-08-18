@@ -812,11 +812,11 @@ export const settings = {
   "settings.billing.title": "Cobrança",
   "settings.billing.autoTasksTitle": "Tarefas automáticas",
   "settings.billing.unlimitedDescription":
-    "As execuções de auto tasks são ilimitadas neste deployment. Tasks criadas por você também nunca têm limite.",
+    "As execuções de tarefas automáticas são ilimitadas neste deployment. Tarefas criadas por você também nunca têm limite.",
   "settings.billing.autoTasksDescriptionTrial":
     "3 execuções grátis vitalícias, depois R$ 250/mês para 10 execuções por ciclo de cobrança.",
   "settings.billing.autoTasksDescriptionSubscribed":
-    "10 execuções de auto tasks por ciclo de cobrança. Tasks criadas por você nunca têm limite.",
+    "10 execuções de tarefas automáticas por ciclo de cobrança. Tarefas criadas por você nunca têm limite.",
   "settings.billing.statusTrial": "Teste grátis",
   "settings.billing.statusActive": "Ativa",
   "settings.billing.statusPastDue": "Problema no pagamento",
