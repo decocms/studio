@@ -362,6 +362,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
           openPullRequest={pr?.state === "open" ? pr : null}
           onPullRequestChanged={refreshPrState}
           onPublished={() => publishCompletion.mutateAsync()}
+          rebaseOnConflict="branch-wins"
         />
       ) : null}
     </>

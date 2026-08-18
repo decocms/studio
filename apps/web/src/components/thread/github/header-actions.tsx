@@ -570,6 +570,9 @@ export function HeaderActions({ virtualMcpId }: Props) {
           openPullRequest={pr?.state === "open" ? pr : null}
           onPullRequestChanged={refreshPrState}
           onPublished={switchToFreshBranch}
+          {...(fastPreviewActive
+            ? { rebaseOnConflict: "branch-wins" as const }
+            : {})}
         />
       )}
     </>
