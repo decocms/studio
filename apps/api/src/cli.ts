@@ -58,12 +58,7 @@ const { values, positionals } = parseArgs({
       type: "boolean",
       default: false,
     },
-    prune: {
-      type: "boolean",
-      default: false,
-    },
     target: { type: "string" },
-    env: { type: "string", short: "e" },
     "dry-run": {
       type: "boolean",
       default: false,
