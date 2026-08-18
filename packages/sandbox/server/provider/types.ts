@@ -184,6 +184,8 @@ export interface ProxyRequestInit {
 export const sandboxProviderKindSchema = z.enum([
   "agent-sandbox",
   "user-desktop",
+  /** Everything infrastructure-facing lives in the sandbox controller. */
+  "remote",
 ]);
 
 export type SandboxProviderKind = z.infer<typeof sandboxProviderKindSchema>;
@@ -336,6 +338,19 @@ export interface SandboxProvider {
     signal?: AbortSignal,
   ): AsyncGenerator<ClaimPhase, void, unknown>;
 }
+
+/**
+ * Preview reverse-proxying, which only providers that can reach a sandbox's
+ * dev server implement. Deliberately not on `SandboxProvider`: the hosted path
+ * takes preview traffic through a per-claim gateway route and never touches
+ * studio at all.
+ */
+export interface PreviewCapableProvider {
+  proxyPreviewRequest(handle: string, request: Request): Promise<Response>;
+  resolvePreviewUpstreamUrl(handle: string): Promise<string | null>;
+}
+
+export type PreviewSandboxProvider = SandboxProvider & PreviewCapableProvider;
 
 export function sandboxIdKey(id: SandboxId): string {
   return `${id.userId}:${id.projectRef}`;

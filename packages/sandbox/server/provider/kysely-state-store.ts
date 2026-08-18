@@ -11,18 +11,35 @@
  */
 
 import { createHash } from "node:crypto";
-import { sql, type Kysely } from "kysely";
+import { sql, type ColumnType, type Kysely } from "kysely";
 import type {
   RunnerStatePut,
   RunnerStateRecord,
   RunnerStateRecordWithId,
   RunnerStateStore,
   RunnerStateStoreOps,
-  SandboxId,
-} from "@decocms/sandbox/provider";
-import type { Database } from "./types";
+} from "./state-store";
+import type { SandboxId } from "./types";
 
-type Executor = Kysely<Database>;
+/**
+ * The one table this store touches. Declared here rather than imported from
+ * studio's full schema so the sandbox controller — which owns the table after
+ * the split — can use the same implementation without pulling in apps/api.
+ */
+export interface SandboxProviderStateTable {
+  user_id: string;
+  project_ref: string;
+  sandbox_provider_kind: string;
+  handle: string;
+  state: ColumnType<Record<string, unknown>, string, string>;
+  updated_at: ColumnType<Date, Date | string, Date | string>;
+}
+
+export interface SandboxRunnerStateDatabase {
+  sandbox_runner_state: SandboxProviderStateTable;
+}
+
+type Executor = Kysely<SandboxRunnerStateDatabase>;
 
 /**
  * Hash `(userId, projectRef, kind)` to a signed int64 for
@@ -145,7 +162,13 @@ function scopedStore(exec: Executor): RunnerStateStoreOps {
 }
 
 export class KyselySandboxProviderStateStore implements RunnerStateStore {
-  constructor(private db: Kysely<Database>) {}
+  /**
+   * Narrowed to the one table this touches so the sandbox controller can use
+   * it without studio's full schema. Studio holds a `Kysely<Database>` and
+   * casts: kysely's DB parameter is invariant, so a wider schema is not
+   * assignable even though every column it needs matches.
+   */
+  constructor(private db: Kysely<SandboxRunnerStateDatabase>) {}
 
   get(id: SandboxId, kind: string): Promise<RunnerStateRecord | null> {
     return getRow(this.db, id, kind);

@@ -2007,6 +2007,7 @@ export interface StudioToolIO {
                       sandboxProviderKind?:
                         | "agent-sandbox"
                         | "user-desktop"
+                        | "remote"
                         | undefined;
                       createdAt?: number | undefined;
                       startedWith?:
@@ -2217,6 +2218,7 @@ export interface StudioToolIO {
                           sandboxProviderKind?:
                             | "agent-sandbox"
                             | "user-desktop"
+                            | "remote"
                             | undefined;
                           createdAt?: number | undefined;
                           startedWith?:
@@ -2396,6 +2398,7 @@ export interface StudioToolIO {
                       sandboxProviderKind?:
                         | "agent-sandbox"
                         | "user-desktop"
+                        | "remote"
                         | undefined;
                       createdAt?: number | undefined;
                       startedWith?:
@@ -2586,6 +2589,7 @@ export interface StudioToolIO {
                       sandboxProviderKind?:
                         | "agent-sandbox"
                         | "user-desktop"
+                        | "remote"
                         | undefined;
                       createdAt?: number | undefined;
                       startedWith?:
@@ -2767,6 +2771,7 @@ export interface StudioToolIO {
                       sandboxProviderKind?:
                         | "agent-sandbox"
                         | "user-desktop"
+                        | "remote"
                         | undefined;
                       createdAt?: number | undefined;
                       startedWith?:
@@ -2942,6 +2947,7 @@ export interface StudioToolIO {
                           sandboxProviderKind?:
                             | "agent-sandbox"
                             | "user-desktop"
+                            | "remote"
                             | undefined;
                           createdAt?: number | undefined;
                           startedWith?:
@@ -3129,6 +3135,7 @@ export interface StudioToolIO {
                       sandboxProviderKind?:
                         | "agent-sandbox"
                         | "user-desktop"
+                        | "remote"
                         | undefined;
                       createdAt?: number | undefined;
                       startedWith?:
@@ -3308,6 +3315,7 @@ export interface StudioToolIO {
                       sandboxProviderKind?:
                         | "agent-sandbox"
                         | "user-desktop"
+                        | "remote"
                         | undefined;
                       createdAt?: number | undefined;
                       startedWith?:
@@ -4342,6 +4350,7 @@ export interface StudioToolIO {
                       sandboxProviderKind?:
                         | "agent-sandbox"
                         | "user-desktop"
+                        | "remote"
                         | undefined;
                       createdAt?: number | undefined;
                       startedWith?:
@@ -6934,7 +6943,7 @@ export interface StudioToolIO {
       sandboxHandle: string;
       branch: string;
       isNewVm: boolean;
-      sandboxProviderKind: "agent-sandbox" | "user-desktop";
+      sandboxProviderKind: "agent-sandbox" | "user-desktop" | "remote";
     };
   };
   SANDBOX_DELETE: {

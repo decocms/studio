@@ -14,6 +14,8 @@ export type {
   EnsureOptions,
   LegacySandboxProviderKind,
   PodTermination,
+  PreviewCapableProvider,
+  PreviewSandboxProvider,
   ProxyRequestInit,
   SandboxProviderKind,
   SandboxPurpose,
@@ -59,7 +61,10 @@ function isSandboxProviderKind(
   kind: string,
 ): kind is LegacySandboxProviderKind {
   return (
-    kind === "agent-sandbox" || kind === "cluster" || kind === "user-desktop"
+    kind === "agent-sandbox" ||
+    kind === "cluster" ||
+    kind === "user-desktop" ||
+    kind === "remote"
   );
 }
 
@@ -79,7 +84,7 @@ export function resolveSandboxProviderKindFromEnv(): SandboxProviderKind {
   const kind = raw && raw.length > 0 ? raw : "user-desktop";
   if (!isSandboxProviderKind(kind)) {
     throw new Error(
-      `Unknown STUDIO_SANDBOX_PROVIDER="${raw}" — expected "agent-sandbox", "cluster", or "user-desktop".`,
+      `Unknown STUDIO_SANDBOX_PROVIDER="${raw}" — expected "agent-sandbox", "remote", "cluster", or "user-desktop".`,
     );
   }
   return normalizeSandboxProviderKind(kind);

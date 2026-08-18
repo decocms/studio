@@ -17,7 +17,11 @@ import {
 import { delay, exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { subscribeLifecycle } from "../../sandbox/lifecycle";
 import type { StudioContext } from "../../core/studio-context";
-import { KyselySandboxProviderStateStore } from "../../storage/sandbox-runner-state";
+import type { Kysely } from "kysely";
+import {
+  KyselySandboxProviderStateStore,
+  type SandboxRunnerStateDatabase,
+} from "@decocms/sandbox/provider/kysely-state-store";
 import {
   readSandboxMap,
   removeSandboxMapEntry,
@@ -355,7 +359,9 @@ async function cleanupStaleEntry(args: {
     );
   }
   try {
-    const stateStore = new KyselySandboxProviderStateStore(ctx.db);
+    const stateStore = new KyselySandboxProviderStateStore(
+      ctx.db as unknown as Kysely<SandboxRunnerStateDatabase>,
+    );
     await stateStore.delete({ userId, projectRef }, sandboxProviderKind);
   } catch (err) {
     console.warn(

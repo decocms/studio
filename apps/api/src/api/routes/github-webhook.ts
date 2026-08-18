@@ -72,8 +72,12 @@ githubWebhookRoutes.post(
     if (!ref || !repo) return c.json({ ok: true, ignored: "shape" });
 
     const runner = await getOrInitSharedRunner();
+    // Pools live wherever the agent-sandbox runner does; duck-typed so `remote` needs no branch.
+    const dirty = (
+      runner as { markTenantPoolsDirty?: (r: string, f: string) => string[] }
+    )?.markTenantPoolsDirty;
     // The pool reconciler refreshes on its next tick; nothing here waits on it.
-    const pools = runner?.markTenantPoolsDirty(repo, ref) ?? [];
+    const pools = dirty ? dirty.call(runner, repo, ref) : [];
     return c.json({ ok: true, pools });
   },
 );

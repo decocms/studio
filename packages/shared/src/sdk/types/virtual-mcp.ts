@@ -347,13 +347,18 @@ const GithubRepoSchema = z.object({
 export type GithubRepo = z.infer<typeof GithubRepoSchema>;
 
 /** The active sandbox provider kinds. */
-export type SandboxProviderKind = "agent-sandbox" | "user-desktop";
+export type SandboxProviderKind = "agent-sandbox" | "user-desktop" | "remote";
 export type LegacySandboxProviderKind = SandboxProviderKind | "cluster";
 
-const sandboxProviderKindSchema = z.enum(["agent-sandbox", "user-desktop"]);
+const sandboxProviderKindSchema = z.enum([
+  "agent-sandbox",
+  "user-desktop",
+  "remote",
+]);
 const legacySandboxProviderKindSchema = z.enum([
   "agent-sandbox",
   "user-desktop",
+  "remote",
   "cluster",
 ]);
 
@@ -371,6 +376,8 @@ export function normalizeSandboxProviderKind(
  *  - agent-sandbox: daemon is reached via the Studio proxy; preview URL is the
  *    per-claim HTTPRoute host (in-cluster) or a local port-forward (kind dev).
  *  - user-desktop: daemon is reached directly via the user's link binary.
+ *  - remote: the sandbox controller owns the infrastructure; studio proxies
+ *    the daemon through it, so the UI treats it exactly like agent-sandbox.
  *
  * `previewUrl` is nullable: blank / tool sandboxes (no `workload`, no dev
  * server) have nothing to render. UI code MUST check before constructing

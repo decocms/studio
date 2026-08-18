@@ -6,7 +6,11 @@ import {
   resetTestPgDatabase,
 } from "../database/test-db-pg";
 import type { StudioDatabase } from "../database";
-import { KyselySandboxProviderStateStore } from "./sandbox-runner-state";
+import {
+  KyselySandboxProviderStateStore,
+  type SandboxRunnerStateDatabase,
+} from "@decocms/sandbox/provider/kysely-state-store";
+import type { Kysely } from "kysely";
 
 describe("KyselySandboxProviderStateStore", () => {
   let database: StudioDatabase;
@@ -15,7 +19,9 @@ describe("KyselySandboxProviderStateStore", () => {
   beforeAll(async () => {
     database = await connectTestPgDatabase();
     await resetTestPgDatabase(database);
-    store = new KyselySandboxProviderStateStore(database.db);
+    store = new KyselySandboxProviderStateStore(
+      database.db as unknown as Kysely<SandboxRunnerStateDatabase>,
+    );
   });
 
   afterAll(async () => {

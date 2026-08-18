@@ -126,7 +126,7 @@ export const SANDBOX_START = defineTool({
     sandboxHandle: z.string(),
     branch: z.string(),
     isNewVm: z.boolean(),
-    sandboxProviderKind: z.enum(["agent-sandbox", "user-desktop"]),
+    sandboxProviderKind: z.enum(["agent-sandbox", "user-desktop", "remote"]),
   }),
 
   handler: async (input, ctx) => {

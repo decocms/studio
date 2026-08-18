@@ -72,6 +72,10 @@ import {
   createAdminRoutes,
   fenceRawAdminSurface,
 } from "./routes/admin";
+import {
+  SANDBOX_CONTROLLER_API_PREFIX,
+  createSandboxControllerRoutes,
+} from "./routes/sandbox-controller";
 import { createSsoRoutes } from "./routes/org-sso";
 import { createDecopilotRoutes } from "./routes/decopilot";
 import { createDownstreamTokenRoutes } from "./routes/downstream-token";
@@ -2183,6 +2187,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   // admin surface. The `_` prefix just keeps well-behaved slugs from ever
   // wanting the name (a bare `admin` is a legal, live slug).
   app.route(ADMIN_API_PREFIX, createAdminRoutes());
+
+  // Sandbox controller's clone-credential callback. Static segment, as above.
+  app.route(SANDBOX_CONTROLLER_API_PREFIX, createSandboxControllerRoutes());
 
   // New canonical org-scoped API surface — all routes that depend on org context
   // live here. Old routes still work (with deprecation logs) until the cleanup

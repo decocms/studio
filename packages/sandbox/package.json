@@ -14,7 +14,11 @@
   "exports": {
     "./shared": "./shared.ts",
     "./provider": "./server/provider/index.ts",
+    "./provider/kysely-state-store": "./server/provider/kysely-state-store.ts",
+    "./provider/remote": "./server/provider/remote/index.ts",
+    "./provider/remote/protocol": "./server/provider/remote/protocol.ts",
     "./provider/agent-sandbox": "./server/provider/agent-sandbox/index.ts",
+    "./provider/agent-sandbox/tenant-pools": "./server/provider/agent-sandbox/tenant-pools.ts",
     "./daemon-client": "./server/daemon-client.ts",
     "./org-fs": "./org-fs.ts",
     "./dispatch": "./dispatch/index.ts",
@@ -24,6 +28,7 @@
   },
   "dependencies": {
     "@decocms/shared": "workspace:*",
+    "kysely": "^0.28.12",
     "@kubernetes/client-node": "^1.4.0",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@opentelemetry/api": "^1.9.0",
@@ -33,6 +38,7 @@
     "@nats-io/jetstream": "3.4.0",
     "@nats-io/nats-core": "3.4.0",
     "@types/bun": "latest",
+    "@types/pg": "^8.23.1",
     "typescript": "^7.0.2"
   }
 }

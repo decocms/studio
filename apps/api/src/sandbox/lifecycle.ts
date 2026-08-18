@@ -10,15 +10,16 @@ import {
   type SandboxProviderKind,
   type SandboxProvider,
 } from "@decocms/sandbox/provider";
-import type {
-  ClaimPhase,
-  AgentSandboxProvider,
-} from "@decocms/sandbox/provider/agent-sandbox";
+import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
+import type { PreviewSandboxProvider } from "@decocms/sandbox/provider";
 import { getDb } from "@/database";
 import type { Kysely } from "kysely";
 import { meter } from "@/observability";
 import type { Database as DatabaseSchema } from "@/storage/types";
-import { KyselySandboxProviderStateStore } from "@/storage/sandbox-runner-state";
+import {
+  KyselySandboxProviderStateStore,
+  type SandboxRunnerStateDatabase,
+} from "@decocms/sandbox/provider/kysely-state-store";
 import { buildCloneInfo } from "@/shared/github-clone-info";
 import { CredentialVault } from "@/encryption/credential-vault";
 import { getSettings } from "@/settings";
@@ -136,11 +137,44 @@ function readPreviewGateway(): { name: string; namespace: string } | undefined {
   return { name, namespace };
 }
 
+function readControllerBaseUrl(): string {
+  const raw = process.env.SANDBOX_CONTROLLER_URL?.trim();
+  if (!raw) {
+    throw new Error(
+      'STUDIO_SANDBOX_PROVIDER="remote" requires SANDBOX_CONTROLLER_URL (the controller\'s ClusterIP address).',
+    );
+  }
+  return raw;
+}
+
+/**
+ * Client half of the studio ↔ controller mTLS pair. Two long-lived peers
+ * installed by the same deploy, so each end is configured with its own key and
+ * the other's trust root — revocation is deleting one entry. Unset (dev) falls
+ * back to the bearer.
+ */
+function readControllerClientTls():
+  | { cert: string; key: string; ca?: string }
+  | undefined {
+  const cert = process.env.SANDBOX_CONTROLLER_CLIENT_CERT?.trim();
+  const key = process.env.SANDBOX_CONTROLLER_CLIENT_KEY?.trim();
+  const ca = process.env.SANDBOX_CONTROLLER_CA?.trim();
+  if (!cert && !key) return undefined;
+  if (!cert || !key) {
+    throw new Error(
+      "SANDBOX_CONTROLLER_CLIENT_CERT and SANDBOX_CONTROLLER_CLIENT_KEY must both be set, or both unset.",
+    );
+  }
+  return { cert, key, ...(ca ? { ca } : {}) };
+}
+
 async function instantiate(
   kind: SandboxProviderKind,
   db: Kysely<DatabaseSchema>,
 ): Promise<SandboxProvider> {
-  const stateStore = new KyselySandboxProviderStateStore(db);
+  const stateStore = new KyselySandboxProviderStateStore(
+    db as unknown as Kysely<SandboxRunnerStateDatabase>,
+  );
   const previewUrlPattern = readPreviewUrlPattern();
   switch (kind) {
     case "agent-sandbox": {
@@ -190,6 +224,18 @@ async function instantiate(
         },
       });
     }
+    case "remote": {
+      // Studio holds no kubeconfig, portforward or CRD verbs under this provider.
+      const { RemoteSandboxProvider } = await import(
+        "@decocms/sandbox/provider/remote"
+      );
+      return new RemoteSandboxProvider({
+        baseUrl: readControllerBaseUrl(),
+        token: process.env.SANDBOX_CONTROLLER_TOKEN?.trim() || undefined,
+        tls: readControllerClientTls(),
+        runtime: process.env.STUDIO_SANDBOX_RUNTIME?.trim() || undefined,
+      });
+    }
     case "user-desktop": {
       // user-desktop is never the ambient hosted default — there is no
       // ambient link claim to bind to here. It is constructed per-run by
@@ -225,12 +271,12 @@ export function getSandboxProviderByKind(
  * StudioContext (the state store only needs a Kysely instance). Returns null
  * when no provider kind is configured.
  *
- * `instantiate()` only ever yields the hosted `AgentSandboxProvider` (the
- * sole env-instantiable provider — `user-desktop` is built per-run and
- * throws here), so the resolved provider is always an `AgentSandboxProvider`.
- * Typing it as such lets the preview proxy skip a redundant kind check + cast.
+ * `instantiate()` only ever yields an env-instantiable provider that can
+ * reverse-proxy preview (`agent-sandbox` or `remote`) — `user-desktop` is
+ * built per-run and throws here — so the cast to `PreviewSandboxProvider` is
+ * sound and lets the preview proxy skip a redundant kind check.
  */
-export async function getOrInitSharedRunner(): Promise<AgentSandboxProvider | null> {
+export async function getOrInitSharedRunner(): Promise<PreviewSandboxProvider | null> {
   let kind: SandboxProviderKind;
   try {
     kind = resolveSandboxProviderKindFromEnv();
@@ -242,7 +288,7 @@ export async function getOrInitSharedRunner(): Promise<AgentSandboxProvider | nu
     return null;
   }
   const runner = await resolveOnce(kind, () => instantiate(kind, getDb().db));
-  return runner as AgentSandboxProvider;
+  return runner as PreviewSandboxProvider;
 }
 
 // ---------------------------------------------------------------------------
