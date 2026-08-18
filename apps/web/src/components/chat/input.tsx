@@ -16,11 +16,14 @@ import {
   useVirtualMCP,
 } from "@/sdk";
 import { resolveFastPreview } from "@/sdk/fast-preview";
+import { useActiveThreadMeta } from "@/hooks/use-active-thread-meta";
 import { useNavigate } from "@tanstack/react-router";
 import {
+  ArrowRight,
   ArrowUp,
   BookOpen01,
   Check,
+  Code01,
   Globe02,
   Image01,
   Lock01,
@@ -386,7 +389,11 @@ export function ChatInput({
   const { org, locator } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
   const selectedVm = useVirtualMCP(selectedVirtualMcp?.id);
-  const fastPreviewActive = resolveFastPreview(selectedVm?.metadata).active;
+  const activeThreadMeta = useActiveThreadMeta();
+  const fastPreviewActive = resolveFastPreview(
+    selectedVm?.metadata,
+    activeThreadMeta,
+  ).active;
   const playSwitchSound = useSound(question004Sound);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const { unsupportedFile, onUnsupportedFile, clearUnsupportedFile } =
@@ -635,13 +642,39 @@ export function ChatInput({
     );
   }
 
-  // Fast Preview projects are sandbox-less, and a chat run still dispatches to
-  // a sandbox runner — a message would hang against a runner that will never
-  // exist. Hold the composer with an honest notice until the agent learns to
-  // work through the decofile API (or per-thread sandbox fallback lands).
+  // Sandbox-less composer slot: offer a coding session, else a plain notice.
   if (fastPreviewActive) {
+    if (!taskCtx) {
+      return (
+        <ChatInputDisabledState
+          message={t("chat.input.fastPreviewUnavailable")}
+        />
+      );
+    }
+    const startCodingSession = () => {
+      const newTaskId = taskCtx.createTask({ runtime: "sandbox" });
+      track("coding_session_started", { thread_id: newTaskId });
+    };
     return (
-      <ChatInputDisabledState message={t("chat.input.fastPreviewComingSoon")} />
+      <button
+        type="button"
+        onClick={startCodingSession}
+        className="group flex w-full items-center gap-3 rounded-2xl border border-border bg-background/60 px-4 py-3.5 text-left shadow-sm backdrop-blur-sm transition-colors hover:bg-background/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <Code01 size={18} className="shrink-0 text-muted-foreground" />
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="text-sm font-medium text-foreground">
+            {t("chat.fastPreview.startCodingSession")}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {t("chat.fastPreview.chatNeedsSession")}
+          </span>
+        </span>
+        <ArrowRight
+          size={16}
+          className="shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"
+        />
+      </button>
     );
   }
 

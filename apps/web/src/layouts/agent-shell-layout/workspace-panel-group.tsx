@@ -22,7 +22,6 @@ import {
   type ReactNode,
 } from "react";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
-import { resolveFastPreview } from "@/sdk/fast-preview";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -53,31 +52,12 @@ import { ThreadsMenu } from "@/components/chat/threads-menu";
 import { useNavV2 } from "@/hooks/use-organization-settings";
 import { SidePanel } from "./side-panel";
 import { ChatToggle, PanelCollapseToggle } from "./toggle-buttons";
-import { MessageCircle01 } from "@untitledui/icons";
-import { useT } from "@/i18n/use-t";
 import {
   MainPanelHeaderEndSlot,
   MainPanelHeaderProvider,
   MainPanelHeaderSlot,
   PanelHeader,
 } from "./panel-header";
-
-/**
- * Chat panel body for Fast Preview projects: the surface exists (toggle,
- * panel, layout all behave normally) but sending is not possible yet — a
- * run would dispatch to a sandbox runner this mode never provisions.
- */
-function FastPreviewChatNotice() {
-  const t = useT();
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-      <MessageCircle01 size={28} className="text-muted-foreground" />
-      <p className="max-w-sm text-sm text-muted-foreground">
-        {t("chat.input.fastPreviewComingSoon")}
-      </p>
-    </div>
-  );
-}
 
 const SIDE_PANEL_ID = "workspace-side-panel";
 const MAIN_PANEL_ID = "workspace-main-panel";
@@ -173,12 +153,6 @@ export function WorkspacePanelGroup({
   toggleMain,
   chatContent,
 }: WorkspacePanelGroupProps) {
-  // Fast Preview projects are sandbox-less: the chat toggle and panel behave
-  // normally, but the panel's CONTENT is held behind a notice — a thread run
-  // would dispatch to a sandbox runner that never exists in this mode (in the
-  // native app the panel would greet the user with a broken coding-agent
-  // picker).
-  const fastPreviewActive = resolveFastPreview(entity.metadata).active;
   const [sidePanelWidth, setSidePanelWidth] = useSidePanelWidth();
   const panelGroupRef = useRef<GroupImperativeHandle>(null);
   const visibility = { sidePanel, mainOpen };
@@ -406,12 +380,7 @@ export function WorkspacePanelGroup({
             headerInside={navV2}
             header={chatOpen ? chatHeader : null}
           >
-            {chatOpen &&
-              (fastPreviewActive ? (
-                <FastPreviewChatNotice />
-              ) : (
-                <SidePanel chatContent={chatContent} />
-              ))}
+            {chatOpen && <SidePanel chatContent={chatContent} />}
           </PanelCard>
         </ResizablePanel>
 

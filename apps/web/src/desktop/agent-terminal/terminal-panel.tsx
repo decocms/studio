@@ -8,7 +8,10 @@ import { AlertCircle } from "@untitledui/icons";
 import { NativeAgentEmptyState } from "@/components/chat/native-agent-empty-state";
 import { localHarnessBrand } from "@/components/chat/agent-icons";
 import { useChatTask } from "@/components/chat/context";
+import { ChatSidePanel } from "@/components/chat/side-panel-chat";
 import { GridLoader } from "@/components/grid-loader";
+import { useVirtualMCP } from "@/sdk";
+import { resolveFastPreview } from "@/sdk/fast-preview";
 import { useT } from "@/i18n/use-t";
 import { useNativeTerminalRuntime } from "./active-task-provider";
 import {
@@ -558,6 +561,11 @@ function UnsupportedHarnessState() {
 
 export function NativeAgentTerminalPanel() {
   const task = useChatTask();
+  const vm = useVirtualMCP(task.virtualMcpId);
+  const fastPreviewActive = resolveFastPreview(
+    vm?.metadata,
+    task.activeTask?.metadata,
+  ).active;
   const { controller, snapshot, isReadOnly } = useNativeTerminalRuntime();
   const surface = nativeTerminalPanelSurface({
     isThreadLocked: task.isThreadLocked,
@@ -568,6 +576,8 @@ export function NativeAgentTerminalPanel() {
 
   if (surface === "unsupported") return <UnsupportedHarnessState />;
   if (isReadOnly) return <Picker />;
+  // Web chat surface (empty state + session card); its stamped thread lands on the picker.
+  if (fastPreviewActive) return <ChatSidePanel />;
   if (surface === "picker") return <Picker />;
 
   return <NativeXterm key={controller.threadId} readOnly={isReadOnly} />;

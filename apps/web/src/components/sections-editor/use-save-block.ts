@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useVirtualMCP } from "@/sdk";
 import { resolveFastPreview } from "@/sdk/fast-preview";
+import { useActiveThreadMeta } from "@/hooks/use-active-thread-meta";
 import { toast } from "sonner";
 import { decoBlockFilePath } from "./deco-block-key";
 import { decoRepoPath } from "./deco-repo-path";
@@ -38,7 +39,10 @@ export function useSaveBlock({
   // Sandbox-less mode: writes go through the decofile API (a coalesced commit
   // on the branch) instead of the sandbox working tree. The server owns the
   // key -> file mapping, so no path construction here.
-  const fastPreviewActive = resolveFastPreview(vmcp?.metadata).active;
+  const fastPreviewActive = resolveFastPreview(
+    vmcp?.metadata,
+    useActiveThreadMeta(),
+  ).active;
 
   return useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),

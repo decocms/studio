@@ -1,14 +1,11 @@
-import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
+import { resolveSessionRuntime } from "@decocms/shared/thread/session-runtime";
 
 /**
- * The Fast Preview gate, in ONE place.
- *
- * Fast Preview is on when the CMS switch (`metadata.fastPreview`) is set AND a
- * valid preview server URL is persisted (`metadata.previewServerUrl`, or the
- * legacy `productionUrl` key) — a bare flag with no URL is inert (there is
- * nothing to render against). Pure so it serves every source of the vmcp
- * metadata (the `useVirtualMCP` query, the ambient inset entity) without a
- * hook, and so the gate can't drift across the surfaces that read it.
+ * The Fast Preview gate, in ONE place — per SESSION, not just per project:
+ * active iff `resolveSessionRuntime` (shared with the API's sandbox-proxy
+ * claim) resolves "cms". Thread-scoped surfaces pass the active thread's
+ * metadata (`useActiveThreadMeta()`) so a `runtime: "sandbox"` stamp opts the
+ * session out; thread-less surfaces omit it and get the project default.
  */
 export function resolveFastPreview(
   metadata:
@@ -19,10 +16,11 @@ export function resolveFastPreview(
       }
     | null
     | undefined,
+  threadMetadata?: { runtime?: unknown } | null,
 ): { previewServerUrl: string | null; active: boolean } {
-  const previewServerUrl = resolvePreviewServerUrl(metadata);
-  return {
-    previewServerUrl,
-    active: !!previewServerUrl && metadata?.fastPreview === true,
-  };
+  const { runtime, previewServerUrl } = resolveSessionRuntime(
+    metadata,
+    threadMetadata,
+  );
+  return { previewServerUrl, active: runtime === "cms" };
 }

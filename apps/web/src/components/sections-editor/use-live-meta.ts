@@ -6,6 +6,7 @@ import { decoRepoPath } from "./deco-repo-path";
 import { readCommittedJson } from "./read-committed-file";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { resolveFastPreview } from "@/sdk/fast-preview";
+import { useActiveThreadMeta } from "@/hooks/use-active-thread-meta";
 import type { LiveMeta } from "./resolve-schema";
 
 interface UseLiveMetaParams {
@@ -68,7 +69,10 @@ export function useLiveMeta(
   const virtualMcp = useVirtualMCP(params?.virtualMcpId);
   const packagePath = virtualMcp?.metadata?.runtime?.path ?? null;
   const productionUrl = resolvePreviewServerUrl(virtualMcp?.metadata);
-  const fastPreviewActive = resolveFastPreview(virtualMcp?.metadata).active;
+  const fastPreviewActive = resolveFastPreview(
+    virtualMcp?.metadata,
+    useActiveThreadMeta(),
+  ).active;
   return useQuery({
     // productionUrl is appended so a settings edit re-fetches; invalidators key
     // on the (org, vm, branch) prefix, which still matches (variadic key).

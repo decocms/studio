@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useVirtualMCP } from "@/sdk";
 import { resolveFastPreview } from "@/sdk/fast-preview";
+import { useActiveThreadMeta } from "@/hooks/use-active-thread-meta";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { KEYS } from "@/lib/query-keys";
 import { decoRepoPath } from "./deco-repo-path";
@@ -47,7 +48,10 @@ export function useDecofile(
   // branch head on GitHub — no dev server, no working tree. The read also
   // seeds KEYS.decofileDraft ({version, token}) so the preview can build its
   // `?__draft=` pointer before any save happens.
-  const fastPreviewActive = resolveFastPreview(vmcp?.metadata).active;
+  const fastPreviewActive = resolveFastPreview(
+    vmcp?.metadata,
+    useActiveThreadMeta(),
+  ).active;
   const queryClient = useQueryClient();
   return useQuery({
     queryKey: KEYS.decofile(key),

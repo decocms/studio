@@ -842,4 +842,95 @@ test.describe("decofile API", () => {
       await ctx.dispose();
     }
   });
+
+  test("a provisioned sandbox opts its branch out of the Fast Preview claim", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const user = await signUpViaApi(ctx);
+      const org = user.orgSlug;
+      const owner = uniqueOwner();
+      const project = await createFastPreviewProject(ctx, org, {
+        owner,
+        repo: "site",
+      });
+
+      // Coding sessions share the CMS branch; presence decides the claim.
+      const cmsThread = await callSelfMcpTool<{
+        item: { id: string; branch: string | null };
+      }>(ctx, org, "COLLECTION_THREADS_CREATE", {
+        data: { virtual_mcp_id: project.vmcpId, title: "cms session" },
+      });
+      const branch = cmsThread.item.branch as string;
+      expect(branch).toBeTruthy();
+
+      const coding = await callSelfMcpTool<{
+        item: {
+          id: string;
+          branch: string | null;
+          metadata?: { runtime?: string };
+        };
+      }>(ctx, org, "COLLECTION_THREADS_CREATE", {
+        data: {
+          virtual_mcp_id: project.vmcpId,
+          title: "coding session",
+          branch,
+          runtime: "sandbox",
+        },
+      });
+      expect(coding.item.branch).toBe(branch);
+      expect(coding.item.metadata?.runtime).toBe("sandbox");
+
+      await seedStubRepo(ctx, {
+        owner,
+        repo: "site",
+        defaultBranch: "main",
+        branches: {
+          main: { files: { ".deco/blocks/Hero.json": '{"n":1}\n' } },
+          [branch]: { files: { ".deco/blocks/Hero.json": '{"n":1}\n' } },
+        },
+      });
+
+      const gitStatusUrl = `/api/${org}/sandbox/${project.vmcpId}/${branch}/git/status`;
+
+      // No sandbox yet: the Fast Preview claim answers from GitHub.
+      const before = await ctx.get(gitStatusUrl);
+      expect(before.status()).toBe(200);
+      expect(
+        ((await before.json()) as { headSha?: string }).headSha,
+      ).toBeTruthy();
+
+      // Record a sandbox for (user, branch) — what SANDBOX_START persists.
+      await callSelfMcpTool(ctx, org, "COLLECTION_VIRTUAL_MCP_UPDATE", {
+        id: project.vmcpId,
+        data: {
+          metadata: {
+            sandboxMap: {
+              [user.userId]: {
+                [branch]: {
+                  "agent-sandbox": {
+                    sandboxHandle: "vm_e2e",
+                    previewUrl: null,
+                    createdAt: 1000,
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      // Sandbox present: daemon claim errors (no runner in e2e), never GitHub.
+      const after = await ctx.get(gitStatusUrl);
+      expect(after.status()).toBeGreaterThanOrEqual(400);
+      const afterBody = (await after.json().catch(() => ({}))) as Record<
+        string,
+        unknown
+      >;
+      expect(afterBody.headSha).toBeUndefined();
+    } finally {
+      await ctx.dispose();
+    }
+  });
 });

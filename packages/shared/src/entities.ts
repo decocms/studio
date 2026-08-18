@@ -1,4 +1,5 @@
 import type { Metadata } from "./chat.ts";
+import type { ThreadRuntime } from "./thread/session-runtime.ts";
 
 export const THREAD_STATUSES = [
   "in_progress",
@@ -43,6 +44,12 @@ export interface ThreadMetadata {
    * nothing will ever deliver it to.
    */
   read_only?: boolean;
+  /**
+   * The session's runtime, stamped at creation and immutable: "sandbox" forces
+   * a sandbox-backed session (coding session) even on a Fast Preview project.
+   * Absent ⇒ the project default decides (see `resolveSessionRuntime`).
+   */
+  runtime?: ThreadRuntime;
   [key: string]: unknown;
 }
 

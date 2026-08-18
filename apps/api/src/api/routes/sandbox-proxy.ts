@@ -20,6 +20,9 @@ import type { SandboxProvider } from "@decocms/sandbox/provider";
 import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
 import { computeClaimHandle } from "../../sandbox/claim-handle";
 import { resolveSandboxUserId } from "../../tools/sandbox/thread-repo";
+import { readSandboxMap } from "../../tools/sandbox/sandbox-map";
+import { parseBranchMap } from "@decocms/shared/sdk";
+import { resolveSessionRuntime } from "@decocms/shared/thread/session-runtime";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
 import {
   getUserId,
@@ -38,7 +41,6 @@ import {
   suggestCommitMessageWithLlm,
 } from "../../lib/suggest-commit-message";
 import { judgeRequiresReviewWithLlm } from "../../lib/judge-requires-review";
-import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { gitDataClientForRepo } from "../../decofile/client-for-repo";
 import { GitHubApiError } from "../../decofile/github-git-data";
 import {
@@ -140,6 +142,24 @@ function quickFileOpSignal(c: Context<VmEnv>): AbortSignal {
 // ---- Shared middleware ------------------------------------------------------
 
 /**
+ * Whether a sandbox is (being) provisioned for this user's branch, read from
+ * the vMCP's `sandboxMap`. On Fast Preview projects this is what opts a
+ * branch out of the sandbox-less claim: a coding session SHARES the CMS
+ * draft's branch, so the runtimes can't be told apart by branch — presence
+ * can, and it self-heals (SANDBOX_DELETE and the dead-entry cleanup in
+ * SANDBOX_START remove the cell, flipping the branch back to the GitHub-backed
+ * claim when the session's sandbox is gone).
+ */
+function sandboxPresent(
+  virtualMcpMetadata: Record<string, unknown> | null,
+  userId: string,
+  branch: string,
+): boolean {
+  const cell = readSandboxMap(virtualMcpMetadata)[userId]?.[branch];
+  return !!cell && Object.keys(parseBranchMap(cell)).length > 0;
+}
+
+/**
  * Resolves auth, org ownership, claim handle, and runner for all VM routes.
  * Runner may be `null` — the events handler streams a `failed` phase SSE in
  * that case; other handlers return 503 JSON via `requireRunner()`.
@@ -210,8 +230,8 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
   // with runner:null + the flag so the `/git/*` handlers serve their
   // GitHub-backed equivalents; daemon-backed routes 503 via requireRunner.
   if (
-    virtualMcpMetadata?.fastPreview === true &&
-    resolvePreviewServerUrl(virtualMcpMetadata)
+    resolveSessionRuntime(virtualMcpMetadata).fastPreviewCapability &&
+    !sandboxPresent(virtualMcpMetadata, sandboxUserId, branch)
   ) {
     c.set("vmClaim", {
       claimName,

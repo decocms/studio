@@ -2,7 +2,7 @@
  * Header actions for **Fast Preview** (CMS) mode — the sandbox-less,
  * content-only editing surface.
  *
- * `HeaderActions` is the vibecoding renderer: it mounts the sandbox event
+ * `HeaderActions` is the coding-session renderer: it mounts the sandbox event
  * stream, the sandbox lifecycle and the publish gate, and five of its states
  * dispatch chat prompts. Fast Preview has none of those — no daemon, no coding
  * agent, no chat — so it renders this component instead, driven by the

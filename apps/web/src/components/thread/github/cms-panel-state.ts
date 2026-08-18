@@ -1,4 +1,4 @@
-/** Fast Preview (CMS) header button state machine; see ./panel-state.ts for vibecoding's. */
+/** Fast Preview (CMS) header button state machine; see ./panel-state.ts for the coding session's. */
 
 import type { BranchMeta } from "@decocms/sandbox/shared";
 import type { TFunction } from "@/i18n/use-t.ts";

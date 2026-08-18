@@ -362,6 +362,7 @@ import {
   useVirtualMCP,
 } from "@/sdk";
 import { resolveFastPreview } from "@/sdk/fast-preview";
+import { useActiveThreadMeta } from "@/hooks/use-active-thread-meta";
 import type { SandboxMap } from "@decocms/shared/sdk/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { invalidateVirtualMcpQueries } from "@/lib/query-keys";
@@ -474,7 +475,10 @@ export function SandboxLifecycleProvider({
   // ShouldAutoStartArgs.fastPreviewActive). Self-heal/claim-retry stay ungated —
   // they only ever fire for a sandbox that already exists.
   const vmcp = useVirtualMCP(virtualMcpId ?? undefined);
-  const fastPreviewActive = resolveFastPreview(vmcp?.metadata).active;
+  const fastPreviewActive = resolveFastPreview(
+    vmcp?.metadata,
+    useActiveThreadMeta(),
+  ).active;
 
   const mcpClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,

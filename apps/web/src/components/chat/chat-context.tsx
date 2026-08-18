@@ -26,6 +26,7 @@ import {
 } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
+import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import {
   AUTOSEND_QUERY_VALUE,
   claimStoredAutosend,
@@ -195,7 +196,9 @@ export interface ChatTaskContextValue {
   virtualMcpId: string;
   taskId: string;
   openTask: (taskId: string) => void;
-  createTask: () => string;
+  /** Creates a thread and navigates to it. `runtime: "sandbox"` starts a
+   *  sandbox-backed coding session continuing the current branch. */
+  createTask: (opts?: { runtime?: ThreadRuntime }) => string;
   createTaskWithMessage: (params: {
     message: SendMessageParams;
     virtualMcpId?: string;
@@ -682,13 +685,14 @@ export function ChatContextProvider({
   // task's branch so the new thread lands on the same warm sandbox. The
   // route loader's useEnsureTask will see the row already exists on its
   // GET and skip the create-on-404 fallback.
-  const createTask = (): string => {
+  const createTask = (opts?: { runtime?: ThreadRuntime }): string => {
     const newId = crypto.randomUUID();
     void threadActions
       .create({
         id: newId,
         virtual_mcp_id: virtualMcpId,
         ...(currentBranch ? { branch: currentBranch } : {}),
+        ...(opts?.runtime ? { runtime: opts.runtime } : {}),
       })
       .then(() => navigateToTask(newId))
       .catch(() => {

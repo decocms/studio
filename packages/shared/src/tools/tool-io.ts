@@ -3655,6 +3655,7 @@ export interface StudioToolIO {
         title?: string | undefined;
         description?: string | null | undefined;
         branch?: string | undefined;
+        runtime?: "cms" | "sandbox" | undefined;
       };
     };
     output: {
@@ -3691,6 +3692,7 @@ export interface StudioToolIO {
                   }[]
                 | undefined;
               read_only?: boolean | undefined;
+              runtime?: "cms" | "sandbox" | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -3758,6 +3760,7 @@ export interface StudioToolIO {
                   }[]
                 | undefined;
               read_only?: boolean | undefined;
+              runtime?: "cms" | "sandbox" | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -3802,6 +3805,7 @@ export interface StudioToolIO {
                   }[]
                 | undefined;
               read_only?: boolean | undefined;
+              runtime?: "cms" | "sandbox" | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -3833,6 +3837,7 @@ export interface StudioToolIO {
                   }[]
                 | undefined;
               read_only?: boolean | undefined;
+              runtime?: "cms" | "sandbox" | undefined;
             }
           | undefined;
         branch?: string | null | undefined;
@@ -3873,6 +3878,7 @@ export interface StudioToolIO {
                   }[]
                 | undefined;
               read_only?: boolean | undefined;
+              runtime?: "cms" | "sandbox" | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -3915,6 +3921,7 @@ export interface StudioToolIO {
                   }[]
                 | undefined;
               read_only?: boolean | undefined;
+              runtime?: "cms" | "sandbox" | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;

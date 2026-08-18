@@ -1,5 +1,6 @@
 import { useVirtualMCP } from "@/sdk";
 import { resolveFastPreview } from "@/sdk/fast-preview";
+import { useActiveThreadMeta } from "@/hooks/use-active-thread-meta";
 import { resolveSectionPreviewBase } from "./section-preview-url";
 
 /**
@@ -18,7 +19,10 @@ export function useSectionPreviewBase(input: {
   sandboxUrl: string | null | undefined;
 }): string | null {
   const vmcp = useVirtualMCP(input.virtualMcpId);
-  const { previewServerUrl, active } = resolveFastPreview(vmcp?.metadata);
+  const { previewServerUrl, active } = resolveFastPreview(
+    vmcp?.metadata,
+    useActiveThreadMeta(),
+  );
   return resolveSectionPreviewBase({
     sandboxUrl: input.sandboxUrl,
     previewServerUrl,

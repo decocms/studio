@@ -13,6 +13,8 @@ import { resolvePreviewDisplay } from "./preview-display";
 import { useIframeLoadRecovery } from "./preview-iframe-recovery";
 import { buildPreviewLabel } from "./preview-label";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
+import { resolveFastPreview } from "@/sdk/fast-preview";
+import { useActiveThreadMeta } from "@/hooks/use-active-thread-meta";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
@@ -364,14 +366,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     inset?.entity?.id === virtualMcpId
       ? resolvePreviewServerUrl(inset.entity.metadata)
       : null;
-  // Fast Preview (opt-in switch in CMS settings): sandbox-less mode — the
-  // draft is the branch head served by the decofile API, rendered against
-  // `previewServerUrl`. Requires BOTH the switch and a production URL — a bare
-  // flag is inert (nothing to render against), and `previewServerUrl` is non-null
-  // only for this agent's entity, so reading `metadata.fastPreview` off the
-  // same object is safe.
+  // The one thread-aware gate, scoped to this agent's entity by the id match.
+  const activeThreadMeta = useActiveThreadMeta();
   const fastPreviewEnabled =
-    !!previewServerUrl && inset?.entity?.metadata?.fastPreview === true;
+    inset?.entity?.id === virtualMcpId &&
+    resolveFastPreview(inset.entity.metadata, activeThreadMeta).active;
 
   // Decofile pages/global sections for the URL bar dropdown. Not gated on the
   // dev server: when it's down we read the committed `.deco/*.gen.json` snapshot
@@ -593,10 +592,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // progress), not on `previewUrl` alone. `resolvePreviewDisplay` decides what
   // to paint: the sandbox iframe, the published site + a waking pill, or
   // (no production URL) the blocking booting overlay.
+  // Coding sessions boot visibly: no production fallback → the boot console.
+  const codingSession = activeThreadMeta?.runtime === "sandbox";
   const display = resolvePreviewDisplay({
     previewState,
     progressStatus: progress.status,
-    previewServerUrl,
+    previewServerUrl: codingSession ? null : previewServerUrl,
     fastPreviewActive: fastPreviewEnabled,
     fastPreviewReady: !!draftPreviewUrl,
   });
