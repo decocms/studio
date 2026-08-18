@@ -215,13 +215,15 @@ configMap:
     # is deliberately left unset, which is the other half of this gate.
     DECO_AI_GATEWAY_ENABLED: "false"
     RUN_IDLE_TIMEOUT_MS: "120000"
-    # S3_ENDPOINT, S3_BUCKET, S3_REGION and S3_FORCE_PATH_STYLE are injected by
-    # the studio-previews ApplicationSet — they name a specific bucket in a
-    # specific account. All four must arrive together or the application
-    # downloads and runs its own MinIO at boot; the credentials come from the
-    # ESO-synced Secret.
+    # Object storage is the preview's own in-namespace MinIO, so none of this
+    # names an account and none of it is injected from outside. All four S3_*
+    # must be set together, or the application downloads and runs its own MinIO
+    # binary at boot — see preview.minio in values.yaml for why that is wrong
+    # here. The credentials are in the ConfigMap and not the Secret on purpose:
+    # they address an ephemeral pod, exactly like DATABASE_URL.
     #
-    # BASE_URL / BETTER_AUTH_URL are injected per PR for the same reason.
+    # BASE_URL / BETTER_AUTH_URL are still injected per PR — only the
+    # ApplicationSet knows the PR number.
 
 # Observability and billing are off. All of these are already false by default;
 # stated explicitly so nobody inherits them from a copied production values file.

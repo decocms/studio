@@ -1,0 +1,136 @@
+{{- if and .Values.preview.enabled .Values.preview.minio.enabled }}
+{{- /*
+Object storage that lives and dies with the preview.
+
+Same argument as the in-namespace Postgres next door: a shared bucket means a
+credential distributed to every preview namespace, a bucket (or prefix) to
+create and destroy per PR, and a sweeper for whatever outlives its PR. A pod per
+namespace has none of those — deleting the namespace deletes the storage.
+
+NOT the application's own auto-provisioned MinIO. Studio downloads a MinIO
+binary at boot when no S3_* is configured, which is a `deco dev` convenience and
+wrong here three times over: it re-downloads on every pod start (this pool is
+spot, with 1m consolidation), it puts dl.min.io in the boot path of every
+preview, and it assumes ONE process — the preview pod runs two API containers
+that would race for the same port and data directory.
+
+emptyDir, not a PVC: nothing here is worth persisting, and PVC finalizers are
+the most common cause of a namespace that never finishes deleting.
+*/ -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "chart-deco-studio.previewMinioName" . }}
+  labels:
+    {{- include "chart-deco-studio.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9000
+      targetPort: api
+      protocol: TCP
+      name: api
+  selector:
+    {{- include "chart-deco-studio.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: preview-minio
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "chart-deco-studio.previewMinioName" . }}
+  labels:
+    {{- include "chart-deco-studio.labels" . | nindent 4 }}
+  annotations:
+    # Same wave as Postgres: both are backing services the migrate Job (-10)
+    # and the app (0) need reachable before they start.
+    argocd.argoproj.io/sync-wave: "-20"
+spec:
+  replicas: 1
+  strategy:
+    # One pod, one emptyDir — never run two against the same ephemeral volume.
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "chart-deco-studio.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: preview-minio
+  template:
+    metadata:
+      labels:
+        {{- include "chart-deco-studio.podLabels" . | nindent 8 }}
+        app.kubernetes.io/component: preview-minio
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        # MinIO in filesystem mode treats each top-level directory under its
+        # data root as a bucket, so creating the directory IS creating the
+        # bucket. Doing it here rather than with a `mc mb` Job avoids a second
+        # image, a second sync hook, and the ordering problem of running a
+        # client before the server is accepting connections.
+        - name: create-bucket
+          image: "{{ .Values.preview.minio.image.repository }}:{{ .Values.preview.minio.image.tag }}"
+          imagePullPolicy: {{ .Values.preview.minio.image.pullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              mkdir -p "/data/{{ .Values.preview.minio.bucket }}"
+              echo "bucket {{ .Values.preview.minio.bucket }} ready"
+          volumeMounts:
+            - name: minio-data
+              mountPath: /data
+          resources:
+            {{- toYaml .Values.preview.minio.resources | nindent 12 }}
+      containers:
+        - name: minio
+          image: "{{ .Values.preview.minio.image.repository }}:{{ .Values.preview.minio.image.tag }}"
+          imagePullPolicy: {{ .Values.preview.minio.image.pullPolicy }}
+          args: ["server", "/data", "--address", ":9000"]
+          ports:
+            - name: api
+              containerPort: 9000
+              protocol: TCP
+          env:
+            # Fixed, and deliberately not secrets. This MinIO is reachable only
+            # from inside this preview's namespace, holds nothing real, and is
+            # destroyed with the PR. Routing these through Secrets Manager would
+            # imply a confidentiality property they do not have. Bound
+            # cross-namespace reach with a NetworkPolicy, not with a password.
+            - name: MINIO_ROOT_USER
+              value: {{ .Values.preview.minio.auth.accessKey | quote }}
+            - name: MINIO_ROOT_PASSWORD
+              value: {{ .Values.preview.minio.auth.secretKey | quote }}
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: api
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: api
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          volumeMounts:
+            - name: minio-data
+              mountPath: /data
+          resources:
+            {{- toYaml .Values.preview.minio.resources | nindent 12 }}
+      volumes:
+        - name: minio-data
+          emptyDir:
+            sizeLimit: {{ .Values.preview.minio.sizeLimit }}
+{{- end }}

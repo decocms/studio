@@ -117,6 +117,36 @@ preview:
         memory: "256Mi"
       limits:
         memory: "1Gi"
+  # Object storage that lives and dies with the preview, so a preview needs no
+  # bucket, no lifecycle rule and no credential from outside the namespace.
+  #
+  # This is NOT the application's own auto-provisioned MinIO: Studio downloads a
+  # MinIO binary at boot when S3_* is unset, which re-downloads on every pod
+  # start, puts dl.min.io in the boot path, and assumes a single process — the
+  # preview pod runs two API containers.
+  minio:
+    enabled: true
+    image:
+      repository: minio/minio
+      tag: RELEASE.2025-04-22T22-12-26Z
+      pullPolicy: IfNotPresent
+    bucket: studio
+    # Fixed and NOT secret: reachable only from inside the preview's namespace,
+    # holds nothing real, dies with the PR. Use a NetworkPolicy to bound reach,
+    # not a password.
+    auth:
+      accessKey: minioadmin
+      secretKey: minioadmin
+    # emptyDir. A reviewer uploads next to nothing, and the node disk is shared
+    # with the Postgres and data volumes of every other preview on it.
+    sizeLimit: 2Gi
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "256Mi"
+      limits:
+        memory: "768Mi"
+
   # Resources for the short-lived migration Job.
   jobResources:
     requests:

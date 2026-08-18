@@ -81,13 +81,9 @@ studioValues:
     # namespaced store would need credentials wired up per namespace.
     secretStoreName: ""
     secretStoreKind: ClusterSecretStore
-  objectStorage:
-    # One shared bucket is safe: object keys are scoped by org id and every
-    # preview starts from an empty database, so org ids are always fresh UUIDs.
-    endpoint: ""
-    bucket: ""
-    region: auto
-    forcePathStyle: "true"
+  # No object storage configuration: each preview runs its own MinIO inside its
+  # namespace (preview.minio in the studio chart), so there is no bucket to
+  # create, no lifecycle rule to keep and no credential to distribute.
 
 gateway:
   # Set false when the wildcard Gateway is owned by another release.

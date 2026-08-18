@@ -189,6 +189,19 @@ jobs:
           grep -q "studio-pr-42-postgres" /tmp/preview.yaml \
             || fail "preview render has no Postgres — the DB must live and die with the namespace"
 
+          grep -q "studio-pr-42-minio" /tmp/preview.yaml \
+            || fail "preview render has no MinIO — object storage must live and die with the namespace"
+          # All six together, or the application downloads and runs its own
+          # MinIO binary at boot: a fresh ~100MB pull on every pod start, on a
+          # spot pool that consolidates after a minute.
+          for k in S3_ENDPOINT S3_BUCKET S3_REGION S3_FORCE_PATH_STYLE \
+                   S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY; do
+            grep -q "  ${k}:" /tmp/preview.yaml \
+              || fail "preview render is missing ${k} — a partial S3 config makes the app self-provision MinIO"
+          done
+          grep -q 'S3_ENDPOINT: "http://studio-pr-42-minio:9000"' /tmp/preview.yaml \
+            || fail "S3_ENDPOINT does not point at this preview's own MinIO"
+
           # Ordering is the whole correctness argument: Postgres must be healthy
           # before the migration Job runs, and that Job must finish before the
           # app Deployments start. Argo expresses that with waves, and a wrong

@@ -14,8 +14,6 @@ healthy-looking object that silently does nothing.
   (list "images.nginx" .Values.images.nginx)
   (list "studioValues.externalSecret.secretPath" .Values.studioValues.externalSecret.secretPath)
   (list "studioValues.externalSecret.secretStoreName" .Values.studioValues.externalSecret.secretStoreName)
-  (list "studioValues.objectStorage.endpoint" .Values.studioValues.objectStorage.endpoint)
-  (list "studioValues.objectStorage.bucket" .Values.studioValues.objectStorage.bucket)
 -}}
 {{- range $required }}
 {{- if not (index . 1) }}

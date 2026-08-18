@@ -321,6 +321,27 @@ Service/Deployment name for the preview's own Postgres.
 {{- end }}
 
 {{/*
+True when the preview's own in-namespace MinIO is what supplies object storage.
+Same reasoning as the Postgres helper: the endpoint and credentials address an
+ephemeral pod reachable only from this namespace, so they are configuration and
+not secrets, and they belong in the ConfigMap rather than the Secret.
+*/}}
+{{- define "chart-deco-studio.previewMinioProvidesStorage" -}}
+{{- if and .Values.preview.enabled .Values.preview.minio.enabled -}}
+true
+{{- else -}}
+false
+{{- end -}}
+{{- end }}
+
+{{/*
+Service/Deployment name for the preview's own MinIO.
+*/}}
+{{- define "chart-deco-studio.previewMinioName" -}}
+{{- printf "%s-minio" (include "chart-deco-studio.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end }}
+
+{{/*
 Validates per-PR preview releases. Every failure here is something that would
 otherwise render a healthy-looking object that silently does nothing: an
 HTTPRoute with no hostname matches no traffic, a pod without --skip-migrations

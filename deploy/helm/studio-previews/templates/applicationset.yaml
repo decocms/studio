@@ -82,12 +82,6 @@ spec:
                   # for character or login fails with a CSRF-shaped error.
                   BASE_URL: 'https://{{ include "studio-previews.host" . }}'
                   BETTER_AUTH_URL: 'https://{{ include "studio-previews.host" . }}'
-                  # All four must be set together, or the application downloads
-                  # and runs its own object store at boot.
-                  S3_ENDPOINT: {{ $sv.objectStorage.endpoint | quote }}
-                  S3_BUCKET: {{ $sv.objectStorage.bucket | quote }}
-                  S3_REGION: {{ $sv.objectStorage.region | quote }}
-                  S3_FORCE_PATH_STYLE: {{ $sv.objectStorage.forcePathStyle | quote }}
         - repoURL: {{ $sc.valuesRepo.url }}
           targetRevision: {{ $sc.valuesRepo.revision }}
           ref: values
