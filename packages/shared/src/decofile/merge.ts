@@ -24,18 +24,30 @@ export interface BlockFile {
   content: string;
 }
 
+/** A block omitted from the merged document because it was not valid JSON. */
+export interface SkippedBlock {
+  /** The decoded key the block would have been emitted under. */
+  key: string;
+  /** Filename stem — NOT decoded (identifies the source file). */
+  stem: string;
+  /** The JSON parse error that disqualified the block. */
+  error: string;
+}
+
+export interface MergeResult {
+  /** The merged decofile document — always valid JSON text. */
+  decofile: string;
+  /** Blocks dropped because their content did not parse as JSON. */
+  skipped: SkippedBlock[];
+}
+
 /**
- * Merge block files into the decofile document:
- * `{ [decodeUntilStable(stem)]: <raw file contents> }`, sorted by filename for
- * a deterministic, byte-for-byte result identical to the Go daemon's merge.
- *
- * The merged text is built by splicing raw contents rather than
- * parse/stringify round-tripping — the payload is routinely multi-MB, and the
- * merge is deliberately all-or-nothing: one malformed block makes the whole
- * document unparseable rather than silently rendering a partial site.
- * Callers that need per-block validity check it at write time instead.
+ * Merge block files into `{ [decodeUntilStable(stem)]: <raw contents> }`, sorted
+ * by filename — byte-for-byte identical to the Go daemon's merge for valid input.
+ * A block that is not valid JSON is dropped (reported in `skipped`) instead of
+ * spliced raw, which would make the whole document unparseable.
  */
-export function mergeBlocks(files: BlockFile[]): string {
+export function mergeBlocks(files: BlockFile[]): MergeResult {
   // Sort by full filename (stem + ".json"), matching the Go implementation's
   // `sort.Strings(names)` — stem order and filename order can differ around
   // characters that sort before ".".
@@ -45,15 +57,27 @@ export function mergeBlocks(files: BlockFile[]): string {
     return an < bn ? -1 : an > bn ? 1 : 0;
   });
 
+  const skipped: SkippedBlock[] = [];
   let out = "{";
   let first = true;
   for (const file of sorted) {
     const content = file.content.trim();
     // Skip empty files — `"key":` with no value would break the merged JSON.
     if (content.length === 0) continue;
+    // Parse only to validate; the raw text (not a re-stringify) is spliced.
+    try {
+      JSON.parse(content);
+    } catch (err) {
+      skipped.push({
+        key: decodeUntilStable(file.stem),
+        stem: file.stem,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      continue;
+    }
     if (!first) out += ",";
     first = false;
     out += `${JSON.stringify(decodeUntilStable(file.stem))}:${content}`;
   }
-  return `${out}}`;
+  return { decofile: `${out}}`, skipped };
 }

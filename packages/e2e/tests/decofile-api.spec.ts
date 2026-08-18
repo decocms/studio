@@ -427,6 +427,49 @@ test.describe("decofile API", () => {
     }
   });
 
+  test("GET drops a block that is not valid JSON instead of returning an unparseable body", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const user = await signUpViaApi(ctx);
+      const org = user.orgSlug;
+      const owner = uniqueOwner();
+      const repo = "site";
+
+      const heroBlock = {
+        __resolveType: "site/sections/Hero.tsx",
+        title: "Welcome",
+      };
+      await seedStubRepo(ctx, {
+        owner,
+        repo,
+        defaultBranch: "main",
+        branches: {
+          main: {
+            files: {
+              ".deco/blocks/Hero.json": blockFileContent(heroBlock),
+              // Raw `.tsx` source spliced in would make the whole body unparseable.
+              ".deco/blocks/Broken.json": "import { H } from './x'",
+            },
+          },
+        },
+      });
+
+      const project = await createFastPreviewProject(ctx, org, { owner, repo });
+      const res = await ctx.get(decofileUrl(project, "main"));
+
+      // 200 with a parseable body — not an unparseable 200 that wedges the editor.
+      expect(res.status()).toBe(200);
+      const body = (await res.json()) as DecofileGetBody;
+      // The valid block survives; the corrupt one is dropped, not merged.
+      expect(body.decofile["Hero"]).toEqual(heroBlock);
+      expect(Object.keys(body.decofile)).toEqual(["Hero"]);
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
   test("legacy repo children (repoScope.sourceConnectionId) read through the mint path", async ({
     playwright,
   }) => {
