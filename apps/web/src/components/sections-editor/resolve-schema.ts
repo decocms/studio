@@ -364,6 +364,19 @@ export function resolveSchema(
   };
 
   /**
+   * deco names anonymous composite defs after their structure — a jsdelivr URL,
+   * pipe-joined branches ("ImageCard|TextCard"), or an intersection
+   * ("omitdGFnRichTextWidget&tl@1767-1787"). Those machine names leak in as
+   * field labels. A human-authored `@title` has spaces or none of these markers,
+   * so it is kept (e.g. "Q&A | Help").
+   */
+  const isMachineGeneratedTitle = (t: unknown): boolean =>
+    typeof t === "string" &&
+    (t.includes("://") ||
+      (!/\s/.test(t) &&
+        (t.includes("|") || t.includes("&") || t.includes("@"))));
+
+  /**
    * Recursively follow $ref / allOf / anyOf / oneOf and merge all
    * `properties` objects found. seenRefs guards against cycles.
    */
@@ -503,14 +516,14 @@ export function resolveSchema(
     // would be silently dropped.
     let type: string | undefined;
     let unionLeaf: RawSchema | undefined;
+    // When set, `resolved.title` is a machine-generated intersection name, not a label.
+    let suppressResolvedTitle = false;
     if (resolved.type) {
       type = Array.isArray(resolved.type)
         ? String(resolved.type.find((t) => t !== "null") ?? resolved.type[0])
         : String(resolved.type);
-    } else if (resolved.anyOf || resolved.allOf || resolved.oneOf) {
-      const arr = (resolved.anyOf ??
-        resolved.allOf ??
-        resolved.oneOf) as RawSchema[];
+    } else if (resolved.anyOf || resolved.oneOf) {
+      const arr = (resolved.anyOf ?? resolved.oneOf) as RawSchema[];
       const nonNull = arr.filter(
         (a) => !(a.type === "null" || a.type === null),
       );
@@ -808,10 +821,8 @@ export function resolveSchema(
           const def = resolveBranchDef(branch);
           return def.type === "object" || Boolean(def.properties);
         };
-        const isChoiceUnion =
-          Array.isArray(resolved.anyOf) || Array.isArray(resolved.oneOf);
+        // allOf is merged as an object earlier, so this block only sees choice unions.
         const isPlainDataUnion =
-          isChoiceUnion &&
           depth < MAX_BUILD_PROPERTY_DEPTH &&
           nonNull.every(branchIsPlainDataObject);
 
@@ -894,12 +905,6 @@ export function resolveSchema(
         // plain "A or B" data union (e.g. Location | Map, or a const-tagged
         // union like StaleWhileRevalidate | MaxAge). Render as a branch selector
         // instead of merging every branch's fields into a single form.
-        //
-        // Only `anyOf`/`oneOf` are choices — `allOf` is an intersection meant to
-        // MERGE all branches, so it must fall through to the object-merge path.
-        // `isPlainDataUnion` (computed above) already requires a choice union of
-        // bare object branches (inline or behind a `$ref`) with no module
-        // identity — exactly the `Location | Map` / const-tagged-union shape.
         if (isPlainDataUnion) {
           const constValue = (
             p: RawSchema,
@@ -960,6 +965,19 @@ export function resolveSchema(
 
         type = "object";
       }
+    } else if (resolved.allOf) {
+      /**
+       * `allOf` is a type INTERSECTION (A & B), not a choice union. deco emits
+       * anonymous intersections like `Omit<RichTextWidget, "tag"> & { tag?: … }`
+       * as an allOf of object `$ref`s titled with a machine name
+       * ("omitdGFnRichTextWidget&tl@1767-1787"). Merge the members into one form
+       * (via `collectProps` below), like the legacy admin's `resolveRefs`. It
+       * must NOT reach the choice-union branches above: a pure intersection has
+       * no discriminator, so every branch is dropped and the field collapses to
+       * an empty picker rendered as "[object Object]".
+       */
+      type = "object";
+      suppressResolvedTitle = isMachineGeneratedTitle(resolved.title);
     } else if (typeof v.$ref === "string") {
       // Last-resort: ref points to a def with no type/union we recognize.
       // Treat as object so nested-property recursion has a chance to fill in.
@@ -1029,7 +1047,7 @@ export function resolveSchema(
       title:
         typeof v.title === "string"
           ? v.title
-          : typeof resolved.title === "string"
+          : !suppressResolvedTitle && typeof resolved.title === "string"
             ? resolved.title
             : fromLeaf<string>("title"),
       description:
@@ -1114,15 +1132,7 @@ export function resolveSchema(
       if (!isChoiceUnion || def.properties) continue;
       const built = buildProperty(def, 0);
       if (built.type === "inline-union" && built.inlineUnionBranches) {
-        // deco names an anonymous union def after its branches
-        // ("A|B|C" / a jsdelivr URL "…@Props"). That machine name leaks in as
-        // the field label — drop it unless the dev gave the type a real @title.
-        // Only treat as machine-generated a URL or pipe-joined identifiers with
-        // no spaces, so a human title like "Q&A | Help" is kept.
-        const t = built.title;
-        const machineTitle =
-          typeof t === "string" &&
-          (t.includes("://") || /^[^\s|]+(\|[^\s|]+)+$/.test(t));
+        const machineTitle = isMachineGeneratedTitle(built.title);
         return {
           ...built,
           title: machineTitle ? undefined : built.title,

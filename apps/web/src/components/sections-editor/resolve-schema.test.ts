@@ -1906,3 +1906,95 @@ describe("resolveSchema – block-config-wrapped union (matcher Props)", () => {
     expect(resolved?.inlineUnionBranches).toBeUndefined();
   });
 });
+
+describe("resolveSchema – intersection-typed props (allOf) merge into one form", () => {
+  /**
+   * Reproduces ALS's TabbedShelf `title` prop, typed
+   * `Omit<RichTextWidget, "tag"> & { tag?: HeadingTag }`. deco emits it as an
+   * allOf of two object `$ref`s with a machine-generated title. Before the fix
+   * this fell into the block-ref path, dropped every branch (no discriminator),
+   * and rendered as "[object Object]" labeled with the machine name.
+   */
+  const meta: LiveMeta = {
+    manifest: {
+      blocks: {
+        sections: {
+          "site/sections/TabbedShelf.tsx": {
+            $ref: "#/definitions/TabbedShelfSection",
+          },
+        },
+      },
+    },
+    schema: {
+      definitions: {
+        TabbedShelfSection: {
+          type: "object",
+          properties: {
+            title: { $ref: "#/definitions/TitleIntersection" },
+          },
+        },
+        TitleIntersection: {
+          title: "omitdGFnRichTextWidget&tl@1767-1787",
+          allOf: [
+            { $ref: "#/definitions/RichTextMinusTag" },
+            { $ref: "#/definitions/TagOnly" },
+          ],
+        },
+        RichTextMinusTag: {
+          type: "object",
+          title: "omitdGFnRichTextWidget",
+          properties: {
+            content: { type: "string", title: "Content" },
+            color: { type: "string", format: "color-input", title: "Color" },
+          },
+        },
+        TagOnly: {
+          type: "object",
+          title: "tl@1767-1787",
+          properties: { tag: { type: "string", title: "Tag" } },
+        },
+      },
+    },
+  };
+
+  test("renders an object form with all merged fields, not a picker", () => {
+    const title = resolveSchema("site/sections/TabbedShelf.tsx", meta)
+      ?.properties?.title;
+    expect(title?.type).toBe("object");
+    expect(title?.anyOfRefs).toBeUndefined();
+    expect(title?.properties?.content?.title).toBe("Content");
+    expect(title?.properties?.color?.format).toBe("color-input");
+    expect(title?.properties?.tag?.title).toBe("Tag");
+  });
+
+  test("drops the machine-generated intersection title as the field label", () => {
+    const title = resolveSchema("site/sections/TabbedShelf.tsx", meta)
+      ?.properties?.title;
+    expect(title?.title).toBeUndefined();
+  });
+
+  test("prop-level title wins over the suppressed intersection title", () => {
+    const withPropTitle = structuredClone(meta) as LiveMeta;
+    const section = (
+      withPropTitle.schema.definitions as Record<string, unknown>
+    ).TabbedShelfSection as { properties: { title: Record<string, unknown> } };
+    section.properties.title.title = "Título";
+    const title = resolveSchema("site/sections/TabbedShelf.tsx", withPropTitle)
+      ?.properties?.title;
+    expect(title?.title).toBe("Título");
+    expect(title?.properties?.content?.title).toBe("Content");
+  });
+
+  test("keeps a human-authored title on a named intersection def", () => {
+    const named = structuredClone(meta) as LiveMeta;
+    const defs = named.schema.definitions as Record<
+      string,
+      Record<string, unknown>
+    >;
+    defs.TitleIntersection!.title = "Layout options";
+    const title = resolveSchema("site/sections/TabbedShelf.tsx", named)
+      ?.properties?.title;
+    expect(title?.type).toBe("object");
+    expect(title?.title).toBe("Layout options");
+  });
+});
