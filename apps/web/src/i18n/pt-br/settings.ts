@@ -810,7 +810,7 @@ export const settings = {
   "settings.aiProviders.decoConnectError":
     "Falha ao conectar o Deco AI Gateway: {error}",
   "settings.billing.title": "Cobrança",
-  "settings.billing.autoTasksTitle": "Auto tasks",
+  "settings.billing.autoTasksTitle": "Tarefas automáticas",
   "settings.billing.unlimitedDescription":
     "As execuções de auto tasks são ilimitadas neste deployment. Tasks criadas por você também nunca têm limite.",
   "settings.billing.autoTasksDescriptionTrial":
