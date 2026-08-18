@@ -20,8 +20,10 @@ Release/namespace name of a generated preview.
 {{- end }}
 
 {{/*
-Public origin of a generated preview.
+Public origin of a generated preview. hostPrefix is deliberately separate from
+namePrefix: the release and namespace are studio-pr-<n> so they read clearly in
+kubectl, while the host stays pr-<n>.<domain> so the URL is short.
 */}}
 {{- define "studio-previews.host" -}}
-{{ .Values.namePrefix }}-{{ `{{ .number }}` }}.{{ .Values.domain }}
+{{ .Values.hostPrefix }}-{{ `{{ .number }}` }}.{{ .Values.domain }}
 {{- end }}

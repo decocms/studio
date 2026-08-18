@@ -301,11 +301,17 @@ jobs:
           grep -q 'head_sha' "$CHART/templates/_helpers.tpl" \
             || fail "the ApplicationSet image tag must derive from .head_sha"
 
-          # Same domain on both sides, or the bot comment links to a host that
-          # does not exist while the environment serves on another.
+          # Same host on both sides, or the bot comment links somewhere that does
+          # not exist while the environment serves somewhere else. Compare the
+          # host the workflow advertises against the one the chart renders, both
+          # for the same PR number — not just that each is non-empty.
           BUILD_DOMAIN=$(awk -F': ' '/^  PREVIEW_DOMAIN:/{print $2}' "$BUILD")
-          RENDER_DOMAIN=$(helm template p "$CHART" \
-            --set domain=SENTINEL.example \
+          test -n "$BUILD_DOMAIN" || fail "PREVIEW_DOMAIN is unset in preview-build.yaml"
+          # `host=pr-<n>.${PREVIEW_DOMAIN}` in the workflow's meta step.
+          BUILD_HOST="pr-42.${BUILD_DOMAIN}"
+
+          helm template p "$CHART" \
+            --set domain="$BUILD_DOMAIN" \
             --set applicationSet.repo.owner=o --set applicationSet.repo.name=r \
             --set applicationSet.repo.tokenSecret.name=t \
             --set studioChart.repoURL=oci://x --set studioChart.version=0.0.0 \
@@ -314,10 +320,16 @@ jobs:
             --set studioValues.externalSecret.secretPath=s \
             --set studioValues.externalSecret.secretStoreName=s \
             --set studioValues.objectStorage.endpoint=e \
-            --set studioValues.objectStorage.bucket=b >/dev/null 2>&1 && echo ok)
-          [ "$RENDER_DOMAIN" = "ok" ] || fail "studio-previews chart does not render"
-          echo "build domain: ${BUILD_DOMAIN}"
-          test -n "$BUILD_DOMAIN" || fail "PREVIEW_DOMAIN is unset in preview-build.yaml"
+            --set studioValues.objectStorage.bucket=b \
+            --api-versions gateway.networking.k8s.io/v1 > /tmp/appset.yaml
+
+          # The rendered host still carries the generator's own template, so
+          # substitute a PR number the way the controller would.
+          RENDER_HOST=$(grep -oE "host: '[^']+'" /tmp/appset.yaml | head -1 \
+            | sed -E "s/host: '(.*)'/\1/; s/\{\{ \.number \}\}/42/")
+          [ "$RENDER_HOST" = "$BUILD_HOST" ] \
+            || fail "host mismatch: preview-build advertises ${BUILD_HOST}, the ApplicationSet serves ${RENDER_HOST}"
+          echo "both halves agree on ${BUILD_HOST}"
 
       # The previews chart must refuse to render without the values that name a
       # deployment — it is published publicly and must carry no defaults.

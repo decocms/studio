@@ -14,6 +14,9 @@ argocd:
 # generates (releases and namespaces are <namePrefix>-<prNumber>).
 name: studio-preview
 namePrefix: studio-pr
+# Host prefix, kept separate from namePrefix so the URL stays short:
+# <hostPrefix>-<prNumber>.<domain>.
+hostPrefix: pr
 
 applicationSet:
   # Argo project the generated Applications belong to.
@@ -37,7 +40,7 @@ applicationSet:
     # generated Applications local to wherever this chart is deployed.
     server: https://kubernetes.default.svc
 
-# Wildcard host for previews: <namePrefix>-<n>.<domain>
+# Wildcard host for previews: <hostPrefix>-<n>.<domain>
 domain: ""
 
 # The application chart each preview installs.
