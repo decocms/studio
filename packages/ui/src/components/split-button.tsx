@@ -72,13 +72,23 @@ function SplitButtonMenuEntry({ item }: { item: SplitButtonMenuItem }) {
       }}
       className={cn(item.description && "items-start")}
     >
+      {/* A description stacks the row, so the leading marks align to its first
+          line rather than to the block's centre. */}
       {marksSelection ? (
         <Check
-          className={cn("size-3.5 shrink-0", !item.selected && "opacity-0")}
+          className={cn(
+            "size-3.5 shrink-0",
+            item.description && "mt-0.5",
+            !item.selected && "opacity-0",
+          )}
           aria-hidden={!item.selected}
         />
       ) : null}
-      {item.icon}
+      {item.icon ? (
+        <span className={cn("flex shrink-0", item.description && "mt-0.5")}>
+          {item.icon}
+        </span>
+      ) : null}
       {item.description ? (
         <span className="flex min-w-0 flex-col gap-0.5">
           <span>{item.label}</span>

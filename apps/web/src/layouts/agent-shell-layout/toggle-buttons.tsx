@@ -142,6 +142,7 @@ export function ModeSplitButton({
       items={[
         {
           key: "cms",
+          icon: <Grid01 className="size-3.5" />,
           label: t("agentShellLayout.toggleButtons.cms"),
           description: t("agentShellLayout.toggleButtons.cmsDescription"),
           selected: isCms,
@@ -149,6 +150,7 @@ export function ModeSplitButton({
         },
         {
           key: "chat",
+          icon: <Code01 className="size-3.5" />,
           label: t(
             needsDevEnvironment
               ? "agentShellLayout.toggleButtons.startVibecoding"
