@@ -112,9 +112,25 @@ export function createLazyClient(
     assertCircuitClosed(connection.id);
 
     if (!realClientPromise) {
-      realClientPromise = clientFromConnection(connection, ctx, superUser)
+      const pending: Promise<Client> = clientFromConnection(
+        connection,
+        ctx,
+        superUser,
+      )
         .then((client) => {
           recordSuccess(connection.id);
+          // The underlying client is POOLED per StudioContext and shared with
+          // every sibling client for the same connection — a subtask's
+          // passthrough closes the very instance the parent run is still using.
+          // Once closed, the SDK throws "Not connected" on every later request,
+          // so a cached closed client breaks the connection for the rest of the
+          // run. Drop it on close; the next call reconnects.
+          // Chain the pool's own handler (it evicts the pool entry).
+          const poolOnClose = client.onclose;
+          client.onclose = () => {
+            if (realClientPromise === pending) realClientPromise = null;
+            poolOnClose?.();
+          };
           return client;
         })
         .catch((err) => {
@@ -124,6 +140,7 @@ export function createLazyClient(
           recordFailure(connection.id);
           throw err;
         });
+      realClientPromise = pending;
     }
     return realClientPromise;
   }
