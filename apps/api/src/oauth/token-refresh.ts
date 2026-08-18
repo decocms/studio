@@ -108,9 +108,10 @@ async function refreshAndStoreOnce(
     accessToken: result.accessToken,
     refreshToken: result.refreshToken ?? token.refreshToken,
     scope: result.scope ?? token.scope,
-    expiresAt: result.expiresIn
-      ? new Date(Date.now() + result.expiresIn * 1000)
-      : null,
+    expiresAt:
+      result.expiresIn === undefined
+        ? null
+        : new Date(Date.now() + result.expiresIn * 1000),
     clientId: token.clientId,
     clientSecret: token.clientSecret,
     tokenEndpoint: token.tokenEndpoint,

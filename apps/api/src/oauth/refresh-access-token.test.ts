@@ -181,6 +181,25 @@ describe("refreshAccessToken", () => {
     expect(result.expiresIn).toBeUndefined();
   });
 
+  it("keeps expires_in: 0 as already-expired, not never-expiring", async () => {
+    installFetch(
+      () =>
+        new Response(
+          JSON.stringify({
+            access_token: "new",
+            token_type: "Bearer",
+            expires_in: 0,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+
+    const result = await refreshAccessToken(baseToken);
+
+    expect(result.success).toBe(true);
+    expect(result.expiresIn).toBe(0);
+  });
+
   it("ignores a negative expires_in", async () => {
     installFetch(
       () =>
