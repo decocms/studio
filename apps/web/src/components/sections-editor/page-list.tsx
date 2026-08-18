@@ -100,23 +100,32 @@ export function hasEditableDecoContent(
   return extractApps(decofile, meta).length > 0;
 }
 
+/** Classify one decofile entry as a page; null for any other block shape. */
+export function pageEntryFromBlock(
+  key: string,
+  val: unknown,
+): PageEntry | null {
+  if (!val || typeof val !== "object" || Array.isArray(val)) return null;
+  const obj = val as Record<string, unknown>;
+  if (
+    typeof obj.__resolveType !== "string" ||
+    !PAGE_RESOLVE_TYPES.has(obj.__resolveType) ||
+    typeof obj.path !== "string"
+  ) {
+    return null;
+  }
+  return {
+    key,
+    name: typeof obj.name === "string" ? obj.name : parsePageName(key),
+    path: obj.path,
+  };
+}
+
 export function extractPages(decofile: Record<string, unknown>): PageEntry[] {
   const pages: PageEntry[] = [];
   for (const [key, val] of Object.entries(decofile)) {
-    if (val && typeof val === "object" && !Array.isArray(val)) {
-      const obj = val as Record<string, unknown>;
-      if (
-        typeof obj.__resolveType === "string" &&
-        PAGE_RESOLVE_TYPES.has(obj.__resolveType) &&
-        typeof obj.path === "string"
-      ) {
-        pages.push({
-          key,
-          name: typeof obj.name === "string" ? obj.name : parsePageName(key),
-          path: obj.path,
-        });
-      }
-    }
+    const page = pageEntryFromBlock(key, val);
+    if (page) pages.push(page);
   }
   return pages;
 }

@@ -151,12 +151,27 @@ export async function fetchSuggestCommitMessage(
   orgSlug: string,
   virtualMcpId: string,
   branch: string,
-  payload?: { status: GitStatus; diff: GitDiffResult },
+  payload?: {
+    status: GitStatus;
+    diff: GitDiffResult;
+    /**
+     * "cms": ask for an editor-language version note (no git vocabulary)
+     * written from `contentSummary` — the content-level change list the
+     * Fast Preview publish popover derives from the diff — instead of a
+     * commit message written from file paths.
+     */
+    mode?: "cms";
+    contentSummary?: string;
+  },
 ): Promise<CommitSuggestion> {
   const body = payload
     ? {
         status: payload.status,
         diff: stripGeneratedFilesFromDiff(payload.diff),
+        ...(payload.mode ? { mode: payload.mode } : {}),
+        ...(payload.contentSummary
+          ? { contentSummary: payload.contentSummary }
+          : {}),
       }
     : {};
   const res = await sandboxFetch(
@@ -226,7 +241,7 @@ function isTailwindCssPath(path: string): boolean {
 }
 
 /** Rewritten as a side effect of any save, and never reverted by an undo. */
-function isGeneratedArtifactPath(path: string): boolean {
+export function isGeneratedArtifactPath(path: string): boolean {
   return (
     isBlocksGenJsonPath(path) ||
     isTailwindCssPath(path) ||
