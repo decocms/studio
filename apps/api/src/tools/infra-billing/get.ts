@@ -9,6 +9,7 @@ import { isValidSiteSlug } from "@decocms/shared/site-slug";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { getSiteInfraBilling } from "../../deco-legacy/infra-billing";
+import { resolveOwnedSlugs } from "./ownership";
 
 export const INFRA_BILLING_GET = defineTool({
   name: "INFRA_BILLING_GET",
@@ -79,17 +80,11 @@ export const INFRA_BILLING_GET = defineTool({
     await ctx.access.check();
     const org = requireOrganization(ctx);
 
-    const slugs = [...new Set(input.siteSlugs.map((s) => s.toLowerCase()))];
-    const ownedSlugs = (await ctx.storage.orgSites.listByOrg(org.id)).map(
-      (site) => site.slug,
+    const { slugs, ownedSlugs } = await resolveOwnedSlugs(
+      ctx,
+      org.id,
+      input.siteSlugs,
     );
-    const owned = new Set(ownedSlugs);
-    const unowned = slugs.filter((slug) => !owned.has(slug));
-    if (unowned.length > 0) {
-      throw new Error(
-        `Site not found in organization: ${unowned.sort().join(", ")}`,
-      );
-    }
 
     return getSiteInfraBilling({
       siteSlugs: slugs,

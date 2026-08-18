@@ -18,6 +18,7 @@ import {
   resolveOwnedTeam,
   teamStripeSubscriptionId,
 } from "../../deco-legacy/infra-billing";
+import { resolveOwnedSlugs } from "./ownership";
 
 export const INFRA_BILLING_PORTAL = defineTool({
   name: "INFRA_BILLING_PORTAL",
@@ -47,17 +48,11 @@ export const INFRA_BILLING_PORTAL = defineTool({
       throw new Error("Organization context required");
     }
 
-    const slugs = [...new Set(input.siteSlugs.map((s) => s.toLowerCase()))];
-    const ownedSlugs = (await ctx.storage.orgSites.listByOrg(org.id)).map(
-      (site) => site.slug,
+    const { slugs, ownedSlugs } = await resolveOwnedSlugs(
+      ctx,
+      org.id,
+      input.siteSlugs,
     );
-    const owned = new Set(ownedSlugs);
-    const unowned = slugs.filter((slug) => !owned.has(slug));
-    if (unowned.length > 0) {
-      throw new Error(
-        `Site not found in organization: ${unowned.sort().join(", ")}`,
-      );
-    }
 
     // Portal sessions can cancel the team's subscription — require the whole team.
     const scope = await resolveOwnedTeam(slugs, ownedSlugs);
