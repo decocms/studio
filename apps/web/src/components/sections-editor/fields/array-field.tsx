@@ -477,6 +477,8 @@ export function ArrayField({
             value: item,
             onChange: (val) => updateItem(selectedIndex, val),
             path: `${path}.${selectedIndex}`,
+            // An array item is never optional; clearing would leave a null hole.
+            required: true,
             // A mustache `title` (e.g. "{{{city}}} {{{regionCode}}}") is an
             // item-label template, not a display label — use the resolved item
             // label so the header reads "SP BR" instead of the raw template.

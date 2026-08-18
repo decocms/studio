@@ -44,6 +44,7 @@ export const sectionsEditor = {
   "sectionsEditor.dynamicOptionsField.selectPlaceholder": "Selecionar...",
   "sectionsEditor.dynamicOptionsField.useValue": 'Usar "{value}"',
   "sectionsEditor.enumField.selectPlaceholder": "Selecionar...",
+  "sectionsEditor.enumField.clearOption": "Nenhum",
   "sectionsEditor.fileField.browseButton": "Procurar",
   "sectionsEditor.fileField.dropFileHint":
     "Solte um arquivo ou clique para procurar",

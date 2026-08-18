@@ -23,6 +23,13 @@ export interface SchemaProperty {
   enum?: unknown[];
   default?: unknown;
   properties?: Record<string, SchemaProperty>;
+  /**
+   * Names of the required child properties (merged from the JSON Schema
+   * `required` arrays of this object and its allOf/anyOf/oneOf members). A
+   * child key absent from this list is optional — the form offers a "clear"
+   * option so the value can be left empty.
+   */
+  required?: string[];
   items?: SchemaProperty;
   titleBy?: string;
   /** Mustache template for array-item thumbnails (from schema `@image`) */
@@ -136,6 +143,13 @@ function isSectionLoaderArrayBranch(
 // VideoField instead of a generic FileField. If the schema ever gains the
 // `format` field natively this guard becomes a no-op.
 const VIDEO_WIDGET_REF_KEY = "VideoWidget";
+
+/** Coerce a raw JSON Schema `required`/`__required` value to string names. */
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((k): k is string => typeof k === "string")
+    : [];
+}
 
 /** Base64 encode resolveType keys — browser-safe (btoa), Node fallback in tests. */
 function toBase64(str: string): string {
@@ -403,19 +417,27 @@ export function resolveSchema(
       props = { ...props, ...(s.properties as RawSchema) };
     }
 
-    // Merge required arrays from allOf/anyOf/oneOf members
     if (Array.isArray(s.required)) {
-      const existing = Array.isArray(props.__required)
-        ? (props.__required as string[])
-        : [];
-      props.__required = [...existing, ...(s.required as string[])];
+      props.__required = [
+        ...asStringArray(props.__required),
+        ...asStringArray(s.required),
+      ];
     }
 
     for (const k of ["allOf", "anyOf", "oneOf"] as const) {
       const arr = (s as Record<string, unknown>)[k];
       if (!Array.isArray(arr)) continue;
       for (const part of arr as RawSchema[]) {
-        props = { ...props, ...collectProps(part, seenRefs, depth + 1) };
+        const carriedRequired = asStringArray(props.__required);
+        const partProps = collectProps(part, seenRefs, depth + 1);
+        props = { ...props, ...partProps };
+        // required is an intersection: only allOf members contribute.
+        const merged =
+          k === "allOf"
+            ? [...carriedRequired, ...asStringArray(partProps.__required)]
+            : carriedRequired;
+        if (merged.length > 0) props.__required = merged;
+        else delete props.__required;
       }
     }
 
@@ -988,8 +1010,11 @@ export function resolveSchema(
     // deco sections nest images at depth 4+ (`images[].desktop.src`); the
     // old cap left those leaves un-resolved and stripped their `format`.
     let nestedProperties: Record<string, SchemaProperty> | undefined;
+    let requiredKeys: string[] | undefined;
     if (depth < MAX_BUILD_PROPERTY_DEPTH) {
       const nestedRaw = collectProps(resolved);
+      const nestedRequired = asStringArray(nestedRaw.__required);
+      if (nestedRequired.length > 0) requiredKeys = nestedRequired;
       const nestedEntries = Object.entries(nestedRaw).filter(
         ([k]) => !k.startsWith("__") && k !== "@type",
       );
@@ -1067,6 +1092,7 @@ export function resolveSchema(
             ? resolved.format
             : fromLeaf<string>("format"),
       properties: nestedProperties,
+      required: requiredKeys,
       items: itemsSchema,
       hidden: isSchemaHidden(resolved) || isSchemaHidden(v) ? true : undefined,
       titleBy:
@@ -1160,10 +1186,13 @@ export function resolveSchema(
 
   if (Object.keys(properties).length === 0) return null;
 
+  const rootRequired = asStringArray(topRaw.__required);
+
   return {
     type: "object",
     title: typeof schemaRoot.title === "string" ? schemaRoot.title : undefined,
     properties,
+    required: rootRequired.length > 0 ? rootRequired : undefined,
   };
 }
 

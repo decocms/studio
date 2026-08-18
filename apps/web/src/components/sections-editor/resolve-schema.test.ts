@@ -1998,3 +1998,83 @@ describe("resolveSchema – intersection-typed props (allOf) merge into one form
     expect(title?.title).toBe("Layout options");
   });
 });
+
+describe("resolveSchema – required propagation", () => {
+  test("exposes required child names at the root", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      required: ["tag"],
+      properties: {
+        tag: { type: "string", enum: ["Heading 1", "Heading 2"] },
+        subtitle: { type: "string", enum: ["A", "B"] },
+      },
+    });
+
+    const resolved = resolveSchema("site/sections/Test.tsx", meta);
+    expect(resolved?.required).toContain("tag");
+    expect(resolved?.required).not.toContain("subtitle");
+  });
+
+  test("required is undefined when the object declares none", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        tag: { type: "string", enum: ["Heading 1", "Heading 2"] },
+      },
+    });
+
+    expect(resolveSchema("site/sections/Test.tsx", meta)?.required).toBe(
+      undefined,
+    );
+  });
+
+  test("merges required arrays from allOf members on nested objects", () => {
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          sections: {
+            "site/sections/Test.tsx": { $ref: "#/definitions/Root" },
+          },
+        },
+      },
+      schema: {
+        definitions: {
+          Root: {
+            type: "object",
+            properties: { nested: { $ref: "#/definitions/Nested" } },
+          },
+          Nested: {
+            type: "object",
+            allOf: [
+              { required: ["a"], properties: { a: { type: "string" } } },
+              { required: ["b"], properties: { b: { type: "string" } } },
+            ],
+          },
+        },
+      },
+    };
+
+    const nested = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.nested;
+    expect(nested?.required).toContain("a");
+    expect(nested?.required).toContain("b");
+  });
+
+  test("does not mark a key required from only one anyOf branch", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      required: ["kind"],
+      properties: { kind: { type: "string", enum: ["x", "y"] } },
+      anyOf: [
+        { required: ["a"], properties: { a: { type: "string" } } },
+        { required: ["b"], properties: { b: { type: "string" } } },
+      ],
+    });
+
+    const resolved = resolveSchema("site/sections/Test.tsx", meta);
+    // The object's own required survives; branch-only requireds do not.
+    expect(resolved?.required).toContain("kind");
+    expect(resolved?.required).not.toContain("a");
+    expect(resolved?.required).not.toContain("b");
+  });
+});
