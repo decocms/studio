@@ -12,7 +12,11 @@ import {
   requireAuth,
   requireOrganization,
 } from "../../core/studio-context";
-import { normalizeThreadForResponse, type GithubRepoMeta } from "./helpers";
+import {
+  normalizeThreadForResponse,
+  requireOwnedVirtualMcp,
+  type GithubRepoMeta,
+} from "./helpers";
 import {
   ThreadEntitySchema,
   ThreadUpdateDataSchema,
@@ -65,17 +69,12 @@ export const COLLECTION_THREADS_UPDATE = defineTool({
     }
 
     if (data.virtual_mcp_id !== undefined) {
-      const targetVmcp = await ctx.storage.virtualMcps.findById(
+      // Guards against re-pointing a thread at another org's agent.
+      await requireOwnedVirtualMcp(
+        ctx.storage.virtualMcps,
         data.virtual_mcp_id,
         organization.id,
       );
-      // `findById`'s organizationId param only resolves well-known synthetic
-      // ids — for a normal row it does NOT filter by org, so existence alone
-      // doesn't prove the vMCP is ours. Without this, re-pointing a thread
-      // (data.virtual_mcp_id) could target another organization's agent.
-      if (!targetVmcp || targetVmcp.organization_id !== organization.id) {
-        throw new Error(`Virtual MCP not found: ${data.virtual_mcp_id}`);
-      }
     }
 
     if (data.branch === null && existing.virtual_mcp_id) {

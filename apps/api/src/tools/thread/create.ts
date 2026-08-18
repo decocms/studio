@@ -28,7 +28,11 @@ import {
   requireAuth,
   requireOrganization,
 } from "../../core/studio-context";
-import { normalizeThreadForResponse, type GithubRepoMeta } from "./helpers";
+import {
+  normalizeThreadForResponse,
+  requireOwnedVirtualMcp,
+  type GithubRepoMeta,
+} from "./helpers";
 import {
   ThreadCreateDataSchema,
   ThreadEntitySchema,
@@ -111,17 +115,11 @@ export const COLLECTION_THREADS_CREATE = defineTool({
     const { data } = input;
     const taskId = data.id ?? generatePrefixedId("thrd");
 
-    const vmcp = await ctx.storage.virtualMcps.findById(
+    const vmcp = await requireOwnedVirtualMcp(
+      ctx.storage.virtualMcps,
       data.virtual_mcp_id,
       organization.id,
     );
-    // `findById`'s organizationId param only resolves well-known synthetic
-    // ids (decopilot, brand-context-setup) — for a normal row it does NOT
-    // filter by org, so existence alone doesn't prove the vMCP is ours. Must
-    // check explicitly, same as COLLECTION_VIRTUAL_MCP_UPDATE does.
-    if (!vmcp || vmcp.organization_id !== organization.id) {
-      throw new Error(`Virtual MCP not found: ${data.virtual_mcp_id}`);
-    }
 
     const metadata = vmcp.metadata as
       | (GithubRepoMeta & SandboxMapMeta)
