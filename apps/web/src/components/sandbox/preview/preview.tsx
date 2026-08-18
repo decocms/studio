@@ -1582,7 +1582,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const urlControls = showPreviewToolbar ? (
     <div className="flex min-w-0 items-center gap-0.5">
       {cmsToggle}
-      <div className="mx-0.5 h-5 w-px shrink-0 bg-border" />
+      {cmsToggle && <div className="mx-0.5 h-5 w-px shrink-0 bg-border" />}
       {urlGroup}
     </div>
   ) : null;
