@@ -6,6 +6,8 @@
  */
 
 import type { Thread, ThreadStatus } from "../../storage/types";
+import type { VirtualMCPStoragePort } from "../../storage/ports";
+import type { VirtualMCPEntity } from "@decocms/shared/sdk/types/virtual-mcp";
 import type { ThreadEntity } from "@decocms/shared/thread/schema";
 
 /** Shape of the `githubRepo` field on a virtual MCP's `metadata` column. */
@@ -16,6 +18,26 @@ export type GithubRepoMeta = {
     connectionId?: string;
   } | null;
 };
+
+/**
+ * Look up a virtual MCP by id and confirm it belongs to `organizationId`.
+ * `findById`'s organizationId param only resolves well-known synthetic ids
+ * (decopilot, brand-context-setup) — for a normal row it does NOT filter by
+ * org, so existence alone doesn't prove the vMCP is ours. Throws (rather than
+ * returning null) so a thread create/update can't silently no-op against a
+ * missing vMCP.
+ */
+export async function requireOwnedVirtualMcp(
+  virtualMcps: VirtualMCPStoragePort,
+  virtualMcpId: string,
+  organizationId: string,
+): Promise<VirtualMCPEntity> {
+  const vmcp = await virtualMcps.findById(virtualMcpId, organizationId);
+  if (!vmcp || vmcp.organization_id !== organizationId) {
+    throw new Error(`Virtual MCP not found: ${virtualMcpId}`);
+  }
+  return vmcp;
+}
 
 /**
  * Threads stuck in "in_progress" longer than this are surfaced as "expired".
