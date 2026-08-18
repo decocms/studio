@@ -216,9 +216,6 @@ Defina passo a passo como o agente deve tratar as solicitações.
   "virtualMcp.virtualMcp.publishPolicyOpen": "Publicar sem revisão",
   "virtualMcp.virtualMcp.publishPolicyOpenDescription":
     "Publica qualquer alteração diretamente, sem revisão.",
-  "virtualMcp.virtualMcp.teamSync": "Sincronização com o time",
-  "virtualMcp.virtualMcp.teamSyncDescription":
-    "Adiciona um botão Sincronizar que salva suas alterações e atualiza com o trabalho mais recente do time.",
   "virtualMcp.virtualMcp.sandbox": "Sandbox",
   "virtualMcp.virtualMcp.settings": "Configurações",
   "virtualMcp.virtualMcp.spaceNotFound": "Espaço não encontrado",

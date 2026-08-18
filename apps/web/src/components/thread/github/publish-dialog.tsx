@@ -787,6 +787,30 @@ function PublishDialogBody({
               {publishError && (
                 <p className="mt-2 text-xs text-destructive">{publishError}</p>
               )}
+              {/* Escape hatch when the policy gate blocks direct publish: the change can still go out for review instead of dead-ending. */}
+              {!canPublish && !publishGate.pending && canSubmitForReview && (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-2 w-full"
+                    onClick={handleSubmitForReview}
+                    disabled={isSubmittingForReview}
+                  >
+                    {isSubmittingForReview ? (
+                      <Loading01 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <GitBranch01 className="h-4 w-4" />
+                    )}
+                    {t("thread.publishDialog.submitForReviewButton")}
+                  </Button>
+                  {submitForReviewError && (
+                    <p className="mt-2 text-xs text-destructive">
+                      {submitForReviewError}
+                    </p>
+                  )}
+                </>
+              )}
             </>
           ) : (
             <>

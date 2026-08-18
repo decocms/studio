@@ -1,6 +1,6 @@
 import { useMCPClient, useProjectContext, useVirtualMCP } from "@/sdk";
 import { resolveFastPreview } from "@/sdk/fast-preview";
-import { useIsMutating, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsMutating, useQuery } from "@tanstack/react-query";
 import { decofileWriteMutationKey } from "@/components/sections-editor/decofile-api";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -16,7 +16,6 @@ import {
 import { useState, useRef } from "react";
 import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client.ts";
-import { KEYS } from "@/lib/query-keys";
 import { coAuthorFromSessionUser } from "@/lib/co-author-identity.ts";
 import { resolveGithubAttachment } from "@/lib/github-repo.ts";
 import {
@@ -27,7 +26,7 @@ import { useChatStream } from "../../chat/chat-context.tsx";
 import { useChatTask } from "../../chat/index";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { squashMergePullRequest } from "./github-pr-api.ts";
-import { PublishDialog } from "./publish-dialog.tsx";
+import { PublishDialog, type PublishDialogIntent } from "./publish-dialog.tsx";
 import {
   isPrStateActivelyLoading,
   selectHeaderButton,
@@ -39,15 +38,14 @@ import { saveChangesDebug } from "./save-changes-debug.ts";
 import { resolveSandboxBranchFromMap } from "./resolve-sandbox-branch.ts";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events.ts";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context.tsx";
-import { usePublishGate } from "@/components/sandbox/hooks/use-publish-gate.ts";
 import { useChecks, usePrByBranch } from "./use-pr-data.ts";
 import { usePrReviews } from "./use-pr-reviews.ts";
 import {
   fetchGitStatus,
   normalizePublishPolicy,
   readGitHeadBranch,
-  rebaseGitBranch,
   sandboxGitStatusQueryKey,
+  type PublishPolicy,
 } from "./sandbox-git-api.ts";
 import type {
   BranchMeta,
@@ -64,7 +62,7 @@ import {
   GitPullRequest,
   MessageCircle01,
   RefreshCw01,
-  Upload01,
+  Rocket02,
 } from "@untitledui/icons";
 
 interface Props {
@@ -74,6 +72,8 @@ interface Props {
 /** Leading icon per action, for the primary half and the dropdown items. */
 function actionIcon(action: HeaderAction): React.ReactNode {
   switch (action) {
+    case "publish":
+      return <Rocket02 className="size-4" />;
     case "create-pr":
     case "reopen":
       return <GitPullRequest className="size-4" />;
@@ -88,8 +88,6 @@ function actionIcon(action: HeaderAction): React.ReactNode {
       return <MessageCircle01 className="size-4" />;
     case "merge":
       return <GitMerge className="size-4" />;
-    case "publish-direct":
-      return <Upload01 className="size-4" />;
     case "review":
       return <Eye className="size-4" />;
     case "open-pr-page":
@@ -108,6 +106,9 @@ const CHAT_ACTIONS = new Set<HeaderAction>([
   "sync",
 ]);
 
+/** Actions that act on the branch head, which an in-flight autosave is about to move. */
+const HEAD_ACTIONS = new Set<HeaderAction>(["publish", "create-pr"]);
+
 /** Sentinel for the branch-not-yet-selected state, translated at render time. */
 function makeBranchLoadingButton(t: TFunction): HeaderButton {
   return {
@@ -121,19 +122,19 @@ function makeBranchLoadingButton(t: TFunction): HeaderButton {
 }
 
 /**
- * One split button for the current branch + PR state — Fast Preview's
- * `CmsHeaderActions` shape with developer vocabulary: the primary half is the
- * next action, the dropdown half the secondary ones. Open-PR and squash-merge
- * call GitHub MCP tools directly (via the publish dialog); other actions send
- * chat prompts. Fast Preview swaps in `CmsHeaderActions` at the mount point
- * (`VirtualMcpHeaderInfo`), but this component keeps its Fast Preview
- * fallbacks for branch metadata since the `/git/*` routes answer from the
- * GitHub API server-side either way.
+ * One split button for the current branch + PR state — the same shape AND
+ * language as Fast Preview's `CmsHeaderActions`: "Review & Publish" is the
+ * primary happy path (publish dialog → PR → squash-merge), with
+ * "Submit for review", "Get latest" and "View on GitHub" in the dropdown.
+ * The sandbox surface adds its agent states ("Fix checks", "Mark ready",
+ * "Address feedback"), which dispatch chat prompts. Fast Preview swaps in
+ * `CmsHeaderActions` at the mount point (`VirtualMcpHeaderInfo`), but this
+ * component keeps its Fast Preview fallbacks for branch metadata since the
+ * `/git/*` routes answer from the GitHub API server-side either way.
  */
 export function HeaderActions({ virtualMcpId }: Props) {
   const t = useT();
   const { org } = useProjectContext();
-  const queryClient = useQueryClient();
   const { data: session } = authClient.useSession();
   const vm = useVirtualMCP(virtualMcpId);
   const {
@@ -148,11 +149,11 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const chat = useChatStream();
   const { openSidePanel } = usePanelActions();
   const [publishOpen, setPublishOpen] = useState(false);
-  const [publishDialogIntent, setPublishDialogIntent] = useState<
-    "open-pr" | "publish-only"
-  >("open-pr");
+  const [publishDialogIntent, setPublishDialogIntent] =
+    useState<PublishDialogIntent>("open-pr");
+  const [publishPolicyOverride, setPublishPolicyOverride] =
+    useState<PublishPolicy | null>(null);
   const [githubActionPending, setGithubActionPending] = useState(false);
-  const [syncPending, setSyncPending] = useState(false);
   const debugKeyRef = useRef("");
 
   const attachment = resolveGithubAttachment(vm);
@@ -246,32 +247,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   /** Git state comes solely from the daemon's `branch` SSE event, which applies the boot-dirty baseline filter a raw /git/status poll would miss. */
   const effectiveBranchMeta = branchMeta;
 
-  /** Pre-fetch the "Publish directly" gate so the item disables with a reason instead of opening a dead dialog — but never in Fast Preview, where its 10s diff polling is all GitHub API traffic (the 429 path); disabled it resolves `{allowed: true}` and the dialog gates on open. */
-  const publishGateBase =
-    effectiveBranchMeta.kind === "ready" ? effectiveBranchMeta.base : "main";
-  const publishGateEnabled =
-    !fastPreviewActive &&
-    effectiveBranchMeta.kind === "ready" &&
-    Boolean(sandboxRouteBranch) &&
-    (effectiveBranchMeta.workingTreeDirty ||
-      effectiveBranchMeta.unpushed > 0 ||
-      effectiveBranchMeta.aheadOfBase > 0);
-  const publishGateSignature =
-    effectiveBranchMeta.kind === "ready"
-      ? `${effectiveBranchMeta.headSha}:${effectiveBranchMeta.workingTreeDirty}:${effectiveBranchMeta.unpushed}:${effectiveBranchMeta.aheadOfBase}`
-      : "unknown";
   const publishPolicy = normalizePublishPolicy(vm?.metadata?.publishPolicy);
-  const { gate: publishGate } = usePublishGate({
-    orgSlug: org.slug,
-    virtualMcpId,
-    branch: sandboxRouteBranch ?? "",
-    base: publishGateBase,
-    headSha:
-      effectiveBranchMeta.kind === "ready" ? effectiveBranchMeta.headSha : null,
-    signature: publishGateSignature,
-    policy: publishPolicy,
-    enabled: publishGateEnabled,
-  });
 
   /** An in-flight autosave means the branch state is mid-change — hold the publish surfaces until the write lands. */
   const decofileSaving =
@@ -306,7 +282,6 @@ export function HeaderActions({ virtualMcpId }: Props) {
         pr,
         checks: checksQuery.data ?? [],
         reviews: reviewsQuery.data ?? null,
-        publishGate,
         loading: isPrStateActivelyLoading(prQuery),
         t,
       })
@@ -362,43 +337,6 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const baseBranch =
     effectiveBranchMeta.kind === "ready" ? effectiveBranchMeta.base : "main";
 
-  const handleSync = () => {
-    if (isStreaming || !githubHeadBranch) return;
-    if (!fastPreviewActive) {
-      void send(tpl.syncBranch({ branch: githubHeadBranch, base: baseBranch }));
-      return;
-    }
-    if (syncPending) return;
-    setSyncPending(true);
-    rebaseGitBranch(org.slug, virtualMcpId, githubHeadBranch, baseBranch, {
-      onConflict: "branch-wins",
-    })
-      .then(() => {
-        toast.success(
-          t("thread.headerActions.syncedWithBase", { base: baseBranch }),
-        );
-        // The merge moved the head: refresh drift AND the editor's content.
-        return Promise.all([
-          queryClient.invalidateQueries({
-            queryKey: sandboxGitStatusQueryKey(
-              org.slug,
-              virtualMcpId,
-              branch ?? githubHeadBranch,
-            ),
-          }),
-          queryClient.invalidateQueries({
-            queryKey: KEYS.decofile(
-              `${org.slug}/${virtualMcpId}/${githubHeadBranch}`,
-            ),
-          }),
-        ]);
-      })
-      .catch((err: unknown) => {
-        toast.error(err instanceof Error ? err.message : String(err));
-      })
-      .finally(() => setSyncPending(false));
-  };
-
   const refreshPrState = async () => {
     await Promise.all([
       prQuery.refetch(),
@@ -439,22 +377,32 @@ export function HeaderActions({ virtualMcpId }: Props) {
     }
   };
 
+  const openDialog = (
+    intent: PublishDialogIntent,
+    policyOverride: PublishPolicy | null,
+  ) => {
+    setPublishDialogIntent(intent);
+    setPublishPolicyOverride(policyOverride);
+    setPublishOpen(true);
+  };
+
   const dispatch = (action: HeaderAction) => {
     if (!githubHeadBranch) return;
     switch (action) {
-      case "create-pr":
-        setPublishDialogIntent("open-pr");
-        setPublishOpen(true);
+      case "publish":
+        openDialog("publish-only", button.meta?.publishPolicyOverride ?? null);
         return;
-      case "publish-direct":
-        setPublishDialogIntent("publish-only");
-        setPublishOpen(true);
+      case "create-pr":
+        openDialog("open-pr", null);
         return;
       case "merge":
         if (pr) void handleSquashMerge(pr.number);
         return;
       case "sync":
-        handleSync();
+        if (isStreaming) return;
+        void send(
+          tpl.syncBranch({ branch: githubHeadBranch, base: baseBranch }),
+        );
         return;
       case "open-pr-page":
         if (pr?.htmlUrl) {
@@ -494,31 +442,18 @@ export function HeaderActions({ virtualMcpId }: Props) {
     }
   };
 
-  const actionBusy = githubActionPending || isStreaming || syncPending;
-
-  /** Standalone Sync button: org opt-in (metadata.syncButtonEnabled) keeps it one click away for business users; the dropdown also offers sync when behind. */
-  const showSync =
-    (vm?.metadata?.syncButtonEnabled === true ||
-      (fastPreviewActive &&
-        effectiveBranchMeta.kind === "ready" &&
-        effectiveBranchMeta.behindBase > 0)) &&
-    Boolean(githubHeadBranch);
+  const actionBusy = githubActionPending || isStreaming;
 
   return (
     <>
-      <div className="flex items-center gap-2">
-        {showSync ? (
-          <SyncButton t={t} busy={actionBusy} onClick={handleSync} />
-        ) : null}
-        <HeaderButtonRenderer
-          t={t}
-          button={button}
-          actionBusy={actionBusy}
-          githubActionPending={githubActionPending}
-          savePending={decofileSaving}
-          onAction={dispatch}
-        />
-      </div>
+      <HeaderButtonRenderer
+        t={t}
+        button={button}
+        actionBusy={actionBusy}
+        githubActionPending={githubActionPending}
+        savePending={decofileSaving}
+        onAction={dispatch}
+      />
       {sandboxRouteBranch && (
         <PublishDialog
           open={publishOpen}
@@ -532,7 +467,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
           owner={githubRepo.owner}
           repo={githubRepo.name}
           previewUrl={previewUrl}
-          publishPolicy={publishPolicy}
+          publishPolicy={publishPolicyOverride ?? publishPolicy}
           dialogIntent={publishDialogIntent}
           headSha={
             effectiveBranchMeta.kind === "ready"
@@ -542,38 +477,9 @@ export function HeaderActions({ virtualMcpId }: Props) {
           openPullRequest={pr?.state === "open" ? pr : null}
           onPullRequestChanged={refreshPrState}
           onPublished={switchToFreshBranch}
-          {...(fastPreviewActive
-            ? { rebaseOnConflict: "branch-wins" as const }
-            : {})}
         />
       )}
     </>
-  );
-}
-
-/** Same visual weight as the primary button — a peer action, not a secondary one. */
-function SyncButton({
-  t,
-  busy,
-  onClick,
-}: {
-  t: TFunction;
-  busy: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <WithTooltip label={t("thread.headerActions.syncTooltip")}>
-      <Button
-        size="sm"
-        variant="default"
-        disabled={busy}
-        onClick={onClick}
-        aria-label={t("thread.headerActions.sync")}
-      >
-        <RefreshCw01 className="size-4" />
-        {t("thread.headerActions.sync")}
-      </Button>
-    </WithTooltip>
   );
 }
 
@@ -592,53 +498,46 @@ function HeaderButtonRenderer(props: {
   const chatBlocksAction =
     actionBusy && action !== undefined && CHAT_ACTIONS.has(action);
   const mergePending = githubActionPending && action === "merge";
-  // "Open pull request" acts on the branch head an in-flight autosave is about to move.
-  const savingBlocksSubmit = savePending && action === "create-pr";
+  const savingBlocksAction =
+    savePending && action !== undefined && HEAD_ACTIONS.has(action);
   const disabled =
     Boolean(button.disabled) ||
     chatBlocksAction ||
     mergePending ||
-    savingBlocksSubmit ||
+    savingBlocksAction ||
     !action;
   const loading = Boolean(button.loading) || mergePending;
   const tooltip = chatBlocksAction
     ? t("thread.headerActions.chatIsRunning")
-    : savingBlocksSubmit
+    : savingBlocksAction
       ? t("thread.headerActions.saving")
       : button.tooltip;
 
   const items: SplitButtonMenuItem[] = button.menu.map((item) => {
     const itemChatBlocked = actionBusy && CHAT_ACTIONS.has(item.action);
-    const itemPublishBlocked =
-      item.action === "publish-direct" && (githubActionPending || savePending);
+    const itemHeadBlocked = savePending && HEAD_ACTIONS.has(item.action);
     const itemMergeBlocked = item.action === "merge" && githubActionPending;
-    const itemTooltip =
-      item.action === "publish-direct" && savePending
-        ? t("thread.headerActions.saving")
-        : itemChatBlocked
-          ? t("thread.headerActions.chatIsRunning")
-          : item.tooltip;
+    const itemTooltip = itemHeadBlocked
+      ? t("thread.headerActions.saving")
+      : itemChatBlocked
+        ? t("thread.headerActions.chatIsRunning")
+        : item.tooltip;
     return {
       key: item.key,
       label: item.label,
       icon: actionIcon(item.action),
-      disabled: Boolean(
-        item.disabled ||
-          itemChatBlocked ||
-          itemPublishBlocked ||
-          itemMergeBlocked,
-      ),
+      disabled: Boolean(itemChatBlocked || itemHeadBlocked || itemMergeBlocked),
       ...(itemTooltip ? { tooltip: itemTooltip } : {}),
       onSelect: () => onAction(item.action),
     };
   });
 
-  /** Tour anchors: submit on create-pr, publish on merge; otherwise off, so the tour skips the step (`skipMissingElement`). */
+  /** Tour anchors: publish on the Review & Publish primary, submit on create-pr; otherwise off, so the tour skips the step (`skipMissingElement`). */
   const tourAnchor =
-    action === "create-pr"
-      ? TOUR_ANCHORS.submit
-      : action === "merge"
-        ? TOUR_ANCHORS.publish
+    action === "publish"
+      ? TOUR_ANCHORS.publish
+      : action === "create-pr"
+        ? TOUR_ANCHORS.submit
         : undefined;
 
   return (

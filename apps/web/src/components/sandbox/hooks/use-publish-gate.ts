@@ -1,11 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
 import {
   canPublishDirectly,
-  combinePublishDiffs,
-  fetchGitDiff,
-  fetchGitStatus,
-  hasGitLocalWork,
-  isSandboxUnreachable,
   needsSmartReviewJudgment,
   smartReviewGate,
   type GitDiffResult,
@@ -15,99 +9,12 @@ import {
 } from "../../thread/github/sandbox-git-api.ts";
 import { useSmartReviewVerdict } from "./use-smart-review-verdict.ts";
 
-function publishGateQueryKey(
-  orgSlug: string,
-  virtualMcpId: string,
-  branch: string,
-  base: string,
-  signature: string,
-) {
-  return [
-    "publish-gate",
-    orgSlug,
-    virtualMcpId,
-    branch,
-    base,
-    signature,
-  ] as const;
-}
-
-/**
- * Fetch the full direct-publish diff (committed base…head unioned with the
- * uncommitted working tree, mirroring the publish dialog's `loadPublishDiff`)
- * and evaluate whether it may be published directly. Lets the header's side
- * "Publish" button gate itself — disabled with a tooltip when the diff contains
- * code — instead of opening a dialog whose Publish button is already dead.
- *
- * `signature` (a fingerprint of the branch's git state from the daemon SSE)
- * feeds the query key so a commit/push/dirty-flip refetches immediately; the
- * poll interval backstops working-tree edits that keep the dirty flag set.
- */
-export function usePublishGate(args: {
-  orgSlug: string;
-  virtualMcpId: string;
-  branch: string;
-  base: string;
-  headSha?: string | null;
-  signature: string;
-  policy: PublishPolicy;
-  enabled?: boolean;
-}): { gate: PublishGate; ready: boolean } {
-  const {
-    orgSlug,
-    virtualMcpId,
-    branch,
-    base,
-    headSha,
-    signature,
-    policy,
-    enabled = true,
-  } = args;
-
-  const query = useQuery<{ status: GitStatus; diff: GitDiffResult }>({
-    queryKey: publishGateQueryKey(
-      orgSlug,
-      virtualMcpId,
-      branch,
-      base,
-      signature,
-    ),
-    queryFn: async () => {
-      const status = await fetchGitStatus(orgSlug, virtualMcpId, branch);
-      const baseDiff =
-        (status.aheadOfBase ?? 0) > 0
-          ? await fetchGitDiff(orgSlug, virtualMcpId, branch, {
-              base,
-              ...(headSha ? { headSha } : {}),
-            })
-          : null;
-      const workingDiff = hasGitLocalWork(status)
-        ? await fetchGitDiff(orgSlug, virtualMcpId, branch)
-        : null;
-      return { status, diff: combinePublishDiffs(baseDiff, workingDiff) };
-    },
-    enabled: enabled && !!branch,
-    refetchInterval: 10_000,
-    staleTime: 5_000,
-    retry: (count, error) => !isSandboxUnreachable(error) && count < 2,
-  });
-
-  return useResolvedPublishGate({
-    orgSlug,
-    virtualMcpId,
-    branch,
-    status: query.data?.status ?? null,
-    diff: query.data?.diff ?? null,
-    policy,
-  });
-}
-
 /**
  * Combine an already-loaded diff + policy (+ the smart AI verdict) into the
  * final publish gate. Single source of truth for the "does this publish need
- * review?" decision, shared by the header's self-fetching `usePublishGate` and
- * the publish dialog (which supplies its own loaded diff). `judgeEnabled` lets
- * the dialog restrict the AI call to its publish-only intent.
+ * review?" decision, used by the publish dialog (which supplies its own
+ * loaded diff). `judgeEnabled` lets the dialog restrict the AI call to its
+ * publish-only intent.
  */
 export function useResolvedPublishGate(args: {
   orgSlug: string;

@@ -3,7 +3,6 @@ import type { ClaimPhase } from "@/components/sandbox/hooks/sandbox-events-conte
 import { CLAIM_PHASE_COPY } from "@/components/sandbox/claim-phase-copy";
 import type { CheckRun, PrSummary } from "./use-pr-data.ts";
 import type { PrReviewSignals } from "./use-pr-reviews.ts";
-import type { PublishGate } from "./sandbox-git-api.ts";
 import { saveChangesDebug } from "./save-changes-debug.ts";
 import type { TFunction } from "@/i18n/use-t.ts";
 
@@ -25,17 +24,19 @@ function idleClaimCopy(kind: ClaimPhase["kind"]): string | undefined {
  * What a click resolves to. The renderer maps these to mutations or chat
  * prompts; the state machine never performs them.
  *
- * - `create-pr` — open the publish dialog in open-PR mode.
- * - `merge` — squash-merge the open PR into its base.
- * - `publish-direct` — open the publish dialog in publish-only mode
- *   (direct publish-to-base for deco-only changes).
- * - `sync` — bring `base` into the working branch.
+ * - `publish` — open the publish dialog in publish-only mode: review the
+ *   diff, then publish (opening a PR and squash-merging in one flow).
+ * - `create-pr` — open the publish dialog in open-PR mode (review first).
+ * - `merge` — squash-merge the open PR directly ("Publish anyway").
+ * - `sync` / `rebase` — bring `base` into the working branch (chat prompts;
+ *   both surface as "Get latest").
  * - `review` — ask the chat agent for a read-only review pass.
  * - `open-pr-page` — open the PR on GitHub in a new tab.
- * - `reopen` / `rebase` / `fix-checks` / `mark-ready` / `resolve-comments` —
- *   chat prompts (see message-templates).
+ * - `reopen` / `fix-checks` / `mark-ready` / `resolve-comments` — chat
+ *   prompts (see message-templates).
  */
 export type HeaderAction =
+  | "publish"
   | "create-pr"
   | "reopen"
   | "rebase"
@@ -43,7 +44,6 @@ export type HeaderAction =
   | "mark-ready"
   | "resolve-comments"
   | "merge"
-  | "publish-direct"
   | "sync"
   | "review"
   | "open-pr-page";
@@ -54,32 +54,38 @@ export interface HeaderMenuItem {
   label: string;
   action: HeaderAction;
   tooltip?: string;
-  disabled?: boolean;
 }
 
 /**
  * Descriptor returned by selectHeaderButton. Mirrors the Fast Preview machine
- * (`cms-panel-state.ts`): one split button whose primary half is the next
- * action and whose dropdown half carries the secondary ones.
+ * (`cms-panel-state.ts`) in shape AND language: one split button whose
+ * primary half is the next action ("Review & Publish", "Get latest",
+ * "Waiting for review", …) and whose dropdown half carries the secondary
+ * ones. The sandbox surface keeps its extra powers — lifecycle pills and
+ * agent-driven states ("Fix checks", "Mark ready", "Address feedback").
  *
- * `disabled: true` means the primary half renders as a status indicator
- * (e.g., "Running checks…", "Merged"), not clickable — the menu half stays
- * operable. `loading: true` adds a spinner; use it for "data is fetching" and
- * for "server-side work in progress" (CI running). `variant` selects the
- * button color: success (green) for the happy-path Merge, special (purple)
- * for post-merge Continue, default for other actionable states, outline for
- * non-actionable status pills.
+ * `disabled: true` means the primary half renders as a status indicator, not
+ * clickable — the menu half stays operable. `loading: true` adds a spinner;
+ * reserve it for a genuine wait. `variant`: brand for the happy-path
+ * Review & Publish, special for post-merge Continue, default for other
+ * actionable states, outline for status pills.
  */
 export type HeaderButton = {
   label: string;
   action?: HeaderAction;
   disabled?: boolean;
   loading?: boolean;
-  variant: "default" | "outline" | "success" | "special";
+  variant: "default" | "outline" | "brand" | "special";
   tooltip?: string;
   menu: HeaderMenuItem[];
   meta?: {
     failingChecks?: string[];
+    /**
+     * Set on the publishable-open-PR state: the PR already cleared every
+     * review gate the header enforces (conflicts, checks, draft, comments,
+     * approvals), so the publish dialog must not re-gate it by diff content.
+     */
+    publishPolicyOverride?: "open";
   };
 };
 
@@ -116,8 +122,6 @@ export interface SelectHeaderButtonInput {
   pr: PrSummary | null;
   checks: CheckRun[];
   reviews: PrReviewSignals | null;
-  /** Gate for "Publish directly"; null = not pre-fetched (item enabled, dialog gates on open). */
-  publishGate?: PublishGate | null;
   loading?: boolean;
   t: TFunction;
 }
@@ -147,8 +151,8 @@ function withPrLink(
   return [...menu, viewOnGithubItem(t)];
 }
 
-/** Appends "Sync with {base}" when the branch is behind, including on the disabled "Up to date" pill. */
-function withSync(
+/** Appends "Get latest" when the branch is behind, including on the disabled "Up to date" pill. */
+function withGetLatest(
   menu: HeaderMenuItem[],
   branch: BranchMeta,
   t: TFunction,
@@ -157,31 +161,42 @@ function withSync(
   return [
     ...menu,
     {
-      key: "sync",
-      label: t("thread.headerActions.syncWith", { base: branch.base }),
+      key: "get-latest",
+      label: t("thread.cmsActions.getLatest"),
       action: "sync",
-      tooltip: t("thread.headerActions.syncTooltip"),
+      tooltip: t("thread.cmsActions.getLatestTooltip"),
     },
   ];
 }
 
-/** "Publish directly" — the old green side Publish button as a gated menu item; with no pre-fetched gate it stays enabled and the publish dialog gates on open. */
-function directPublishItem(
-  gate: PublishGate | null | undefined,
-  t: TFunction,
-): HeaderMenuItem {
-  const pending = gate?.pending ?? false;
-  const allowed = gate?.allowed ?? true;
+/** "Submit for review" — open a PR for teammates without publishing. */
+function submitForReviewItem(t: TFunction): HeaderMenuItem {
   return {
-    key: "publish-direct",
-    label: t("thread.headerActions.publishDirectly"),
-    action: "publish-direct",
-    disabled: pending || !allowed,
-    tooltip: pending
-      ? t("thread.headerActions.reviewingChanges")
-      : allowed
-        ? t("thread.headerActions.publishDirectlySkipReview")
-        : (gate?.reason ?? t("thread.headerActions.publishNeedsReview")),
+    key: "submit-for-review",
+    label: t("thread.headerActions.submitForReview"),
+    action: "create-pr",
+  };
+}
+
+/**
+ * Overlays a "checks still running" tooltip, Fast Preview style: while
+ * anything is queued the failure set isn't final, so the button stays
+ * clickable and the tooltip carries the progress instead of a spinner.
+ */
+function withRunningChecksTooltip(
+  button: HeaderButton,
+  checks: CheckRun[],
+  t: TFunction,
+): HeaderButton {
+  const running = checks.filter(isCheckInProgress).length;
+  if (running === 0) return button;
+  const done = checks.filter((c) => c.status === "completed").length;
+  return {
+    ...button,
+    tooltip: t("thread.cmsActions.checksRunning", {
+      done,
+      total: checks.length,
+    }),
   };
 }
 
@@ -189,8 +204,7 @@ function directPublishItem(
 export function selectHeaderButton(
   input: SelectHeaderButtonInput,
 ): HeaderButton {
-  const { lifecycle, branch, pr, checks, reviews, publishGate, loading, t } =
-    input;
+  const { lifecycle, branch, pr, checks, reviews, loading, t } = input;
 
   if (loading) {
     return {
@@ -266,43 +280,18 @@ export function selectHeaderButton(
   }
   const ready = branch;
 
-  if (ready.workingTreeDirty) {
-    return {
-      label: t("thread.headerActions.openPr"),
-      action: "create-pr",
-      variant: "outline",
-      tooltip: t("thread.headerActions.pushAndOpenPrTooltip", {
-        branch: ready.branch,
-        base: ready.base,
-      }),
-      menu: withSync(
-        withPrLink([directPublishItem(publishGate, t)], pr, t),
-        ready,
-        t,
-      ),
-    };
-  }
-
   // `unpushed` is a false positive when origin/<branch> was never fetched; a PR head SHA matching local HEAD proves the commits are already remote.
   const trulyUnpushed =
     ready.unpushed > 0 &&
     !(pr && ready.headSha && pr.headSha && ready.headSha === pr.headSha);
 
-  if (trulyUnpushed) {
+  if (ready.workingTreeDirty || trulyUnpushed) {
     return {
-      label: t("thread.headerActions.openPr"),
-      action: "create-pr",
-      variant: "outline",
-      tooltip: pr
-        ? t("thread.headerActions.pushLocalCommitsTooltip", {
-            prNumber: String(pr.number),
-          })
-        : t("thread.headerActions.pushAndOpenPrTooltip", {
-            branch: ready.branch,
-            base: ready.base,
-          }),
-      menu: withSync(
-        withPrLink([directPublishItem(publishGate, t)], pr, t),
+      label: t("thread.cmsActions.reviewAndPublish"),
+      action: "publish",
+      variant: "brand",
+      menu: withGetLatest(
+        withPrLink([submitForReviewItem(t)], pr, t),
         ready,
         t,
       ),
@@ -331,22 +320,18 @@ export function selectHeaderButton(
         action: "create-pr",
         variant: "special",
         tooltip: t("thread.headerActions.openNewPrTooltip"),
-        menu: withSync(
-          withPrLink([directPublishItem(publishGate, t)], pr, t),
-          ready,
-          t,
-        ),
+        menu: withGetLatest(withPrLink([], pr, t), ready, t),
       };
     }
     return {
-      label: t("thread.headerActions.merged"),
+      label: t("thread.headerActions.upToDate"),
       disabled: true,
       variant: "outline",
       tooltip: t("thread.headerActions.prMergedTooltip", {
         prNumber: String(pr.number),
         base: pr.base,
       }),
-      menu: withSync(withPrLink([], pr, t), ready, t),
+      menu: withGetLatest(withPrLink([], pr, t), ready, t),
     };
   }
 
@@ -359,33 +344,28 @@ export function selectHeaderButton(
         tooltip: t("thread.headerActions.reopenPrTooltip", {
           prNumber: String(pr.number),
         }),
-        menu: withSync(withPrLink([], pr, t), ready, t),
+        menu: withGetLatest(withPrLink([], pr, t), ready, t),
       };
     }
     if (!pr) {
       return {
-        label: t("thread.headerActions.openPr"),
-        action: "create-pr",
-        variant: "outline",
-        tooltip: t("thread.headerActions.openPrForBranchTooltip", {
-          branch: ready.branch,
-          base: ready.base,
-        }),
-        menu: withSync([directPublishItem(publishGate, t)], ready, t),
+        label: t("thread.cmsActions.reviewAndPublish"),
+        action: "publish",
+        variant: "brand",
+        menu: withGetLatest([submitForReviewItem(t)], ready, t),
       };
     }
 
     // pr.state === "open"
     const mergeableState = reviews?.mergeableState ?? "unknown";
 
+    // Conflicts outrank CI, and "Get latest" is the fix.
     if (mergeableState === "dirty") {
       return {
-        label: t("thread.headerActions.resolveConflicts"),
+        label: t("thread.cmsActions.getLatest"),
         action: "rebase",
         variant: "default",
-        tooltip: t("thread.headerActions.resolveConflictsTooltip", {
-          base: pr.base,
-        }),
+        tooltip: t("thread.cmsActions.getLatestTooltip"),
         menu: [
           {
             key: "resolve-on-github",
@@ -396,9 +376,11 @@ export function selectHeaderButton(
       };
     }
 
+    // Fast Preview rule: while anything is queued the failure set isn't final, so red checks become "Fix checks" only once the run settles.
+    const running = checks.filter(isCheckInProgress).length;
     const failing = checks.filter(isCheckFailed).map((c) => c.name);
-    if (failing.length > 0) {
-      // "Merge anyway" with red checks is the developer's call; branch protection still wins server-side.
+    if (running === 0 && failing.length > 0) {
+      // "Publish anyway" is the developer's call; branch protection still wins server-side.
       return {
         label: t("thread.headerActions.fixChecks"),
         action: "fix-checks",
@@ -407,12 +389,12 @@ export function selectHeaderButton(
           checks: failing.join(", "),
         }),
         meta: { failingChecks: failing },
-        menu: withSync(
+        menu: withGetLatest(
           withPrLink(
             [
               {
-                key: "merge-anyway",
-                label: t("thread.headerActions.mergeAnyway"),
+                key: "publish-anyway",
+                label: t("thread.headerActions.publishAnyway"),
                 action: "merge",
                 tooltip: t("thread.headerActions.squashMergeTooltip", {
                   prNumber: String(pr.number),
@@ -429,78 +411,77 @@ export function selectHeaderButton(
       };
     }
 
-    const inProgress = checks.filter(isCheckInProgress);
-    if (inProgress.length > 0) {
-      return {
-        label: t("thread.headerActions.runningChecks"),
-        disabled: true,
-        loading: true,
-        variant: "outline",
-        tooltip: t("thread.headerActions.waitingOnChecksTooltip", {
-          count: String(inProgress.length),
-        }),
-        menu: withSync(withPrLink([], pr, t), ready, t),
-      };
-    }
-
     if (reviews?.draft) {
-      return {
-        label: t("thread.headerActions.markReady"),
-        action: "mark-ready",
-        variant: "default",
-        tooltip: t("thread.headerActions.markDraftReadyTooltip"),
-        menu: withSync(withPrLink([], pr, t), ready, t),
-      };
+      return withRunningChecksTooltip(
+        {
+          label: t("thread.headerActions.markReady"),
+          action: "mark-ready",
+          variant: "default",
+          tooltip: t("thread.headerActions.markDraftReadyTooltip"),
+          menu: withGetLatest(withPrLink([], pr, t), ready, t),
+        },
+        checks,
+        t,
+      );
     }
 
     const unresolved = reviews?.unresolvedConversations ?? 0;
     if (unresolved > 0) {
-      return {
-        label: t("thread.headerActions.addressFeedback"),
-        action: "resolve-comments",
-        variant: "default",
-        tooltip: t("thread.headerActions.unresolvedConversationsTooltip", {
-          count: String(unresolved),
-        }),
-        menu: withSync(withPrLink([], pr, t), ready, t),
-      };
+      return withRunningChecksTooltip(
+        {
+          label: t("thread.headerActions.addressFeedback"),
+          action: "resolve-comments",
+          variant: "default",
+          tooltip: t("thread.headerActions.unresolvedConversationsTooltip", {
+            count: String(unresolved),
+          }),
+          menu: withGetLatest(withPrLink([], pr, t), ready, t),
+        },
+        checks,
+        t,
+      );
     }
 
     if (reviews?.missingRequiredApprovals) {
       // Blocked on a human; the primary opens the PR, the only place they act.
-      return {
-        label: t("thread.headerActions.awaitingReview"),
-        action: "open-pr-page",
-        variant: "outline",
-        tooltip: t("thread.headerActions.waitingForApprovalsTooltip"),
-        menu: withSync(withPrLink([], pr, t), ready, t),
-      };
+      return withRunningChecksTooltip(
+        {
+          label: t("thread.cmsActions.waitingForReview"),
+          action: "open-pr-page",
+          variant: "outline",
+          tooltip: t("thread.headerActions.waitingForApprovalsTooltip"),
+          menu: withGetLatest(withPrLink([], pr, t), ready, t),
+        },
+        checks,
+        t,
+      );
     }
 
-    return {
-      label: t("thread.headerActions.mergeToBase", { base: pr.base }),
-      action: "merge",
-      variant: "success",
-      tooltip: t("thread.headerActions.squashMergeTooltip", {
-        prNumber: String(pr.number),
-        base: pr.base,
-      }),
-      menu: withSync(
-        withPrLink(
-          [
-            {
-              key: "review",
-              label: t("thread.headerActions.review"),
-              action: "review",
-            },
-          ],
-          pr,
+    return withRunningChecksTooltip(
+      {
+        label: t("thread.cmsActions.reviewAndPublish"),
+        action: "publish",
+        variant: "brand",
+        meta: { publishPolicyOverride: "open" },
+        menu: withGetLatest(
+          withPrLink(
+            [
+              {
+                key: "review",
+                label: t("thread.headerActions.review"),
+                action: "review",
+              },
+            ],
+            pr,
+            t,
+          ),
+          ready,
           t,
         ),
-        ready,
-        t,
-      ),
-    };
+      },
+      checks,
+      t,
+    );
   }
 
   return {
@@ -510,6 +491,6 @@ export function selectHeaderButton(
     tooltip: t("thread.headerActions.branchInSyncTooltip", {
       base: ready.base,
     }),
-    menu: withSync([], ready, t),
+    menu: withGetLatest([], ready, t),
   };
 }
