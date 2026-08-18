@@ -70,6 +70,13 @@ func (c *Coalescer) Sync(ep Endpoint) {
 			c.lastRun[ep.URL] = time.Now()
 			c.mu.Unlock()
 		}()
+		// Fire-and-forget: a panic here (e.g. from a malformed catalog
+		// response) must not take down the whole daemon process.
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("catalog sync panicked", "err", r)
+			}
+		}()
 		if err := c.sync(ep); err != nil {
 			slog.Error("catalog sync failed", "err", err)
 		}
