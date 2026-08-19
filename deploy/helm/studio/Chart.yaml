@@ -2,6 +2,12 @@ apiVersion: v2
 name: chart-deco-studio
 description: Helm chart for deco Studio — supports inline secrets, external secretName, and AWS Secrets Manager via ExternalSecret
 type: application
+# 0.14.4: preview images pull with Always. The preview tag is mutable — the
+# build checks out refs/pull/N/merge, so the same pr-<n>-<sha> is rebuilt
+# against whatever main is at the time — and IfNotPresent let a node that had
+# cached an earlier build keep serving it. The tag cannot be made immutable:
+# the Argo pullRequest generator exposes only .number and .head_sha.
+#
 # 0.14.3: the preview renders its own Namespace (preview.manageNamespace).
 # CreateNamespace=true creates one without adopting it, so a cascading delete
 # removed everything inside and left the namespace behind — one per pull request
@@ -38,7 +44,7 @@ type: application
 # when disabled, so existing releases are unaffected.
 # 0.12.4: chart-managed API/worker dispatch roles now use
 # STUDIO_DISPATCH_ROLE; legacy overrides are rejected.
-version: 0.14.3
+version: 0.14.4
 appVersion: "latest"
 
 dependencies:

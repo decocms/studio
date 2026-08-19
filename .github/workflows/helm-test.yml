@@ -323,6 +323,30 @@ jobs:
           [ "$count" -eq 3 ] \
             || fail "expected 3 containers with --skip-migrations, found ${count}"
 
+          # The preview tag is mutable — same tag, different bits, whenever the
+          # base moves — so a cached image must never win.
+          python3 - <<'PULL'
+          import sys, yaml
+          bad = []
+          for d in yaml.safe_load_all(open("/tmp/preview.yaml")):
+              if not d or d.get("kind") not in ("Deployment", "Job", "StatefulSet"):
+                  continue
+              spec = d["spec"]["template"]["spec"]
+              for c in (spec.get("initContainers") or []) + spec["containers"]:
+                  # Only the studio images carry a mutable tag; postgres, minio
+                  # and nats are pinned upstream releases.
+                  if "-preview:" not in c["image"]:
+                      continue
+                  if c.get("imagePullPolicy") != "Always":
+                      bad.append(f'{d["kind"]}/{d["metadata"]["name"]}/{c["name"]}'
+                                 f' = {c.get("imagePullPolicy")}')
+          if bad:
+              print("::error::preview images must use imagePullPolicy: Always — the "
+                    "tag is mutable, so a cached layer serves stale code: " + "; ".join(bad))
+              sys.exit(1)
+          print("every preview image is pulled fresh")
+          PULL
+
           grep -q 'DATABASE_POOL_MAX: "5"' /tmp/preview.yaml \
             || fail "DATABASE_POOL_MAX is not 5"
 
