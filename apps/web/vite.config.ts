@@ -245,9 +245,18 @@ export default defineConfig({
     // its own cookie jar, and that only keeps the preview iframe first-party if
     // the shell shares its registrable domain. See
     // `apps/native/src-tauri/src/control_origin.rs`.
+    // Sandbox previews arrive via the daemon proxy with the external Host intact.
     ...(isNativeBuild
       ? { allowedHosts: ["localhost", ".local.studio.decocms.com"] }
-      : {}),
+      : process.env.HOST === "0.0.0.0"
+        ? {
+            allowedHosts: [
+              "localhost",
+              ".preview-studio.decocms.com",
+              ".local.studio.decocms.com",
+            ],
+          }
+        : {}),
     // The desktop dev shell is served by Vite, so it — not just local-api —
     // has to speak HTTPS: the webview's origin must be a secure context (Web
     // Crypto) while also being a real domain (per-sandbox cookie jars). The

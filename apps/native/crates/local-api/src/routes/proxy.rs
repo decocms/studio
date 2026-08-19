@@ -633,7 +633,8 @@ async fn build_success_response(upstream: reqwest::Response, is_root: bool) -> R
     // Root document that isn't HTML (or has no Content-Type at all): render
     // the dedicated notice instead of dumping raw JSON/text into the
     // iframe. Sub-paths pass through untouched.
-    if is_root {
+    // An error status is a refusal, not a non-web app: pass it through.
+    if is_root && !status.is_client_error() && !status.is_server_error() {
         // Drain the body so the connection can be reused/closed cleanly —
         // mirrors `upstream.body?.cancel()`.
         let _ = upstream.bytes().await;
