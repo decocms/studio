@@ -123,4 +123,42 @@ describe("COLLECTION_THREADS_UPDATE", () => {
       ),
     ).rejects.toThrow(/Virtual MCP not found/i);
   });
+
+  it("preserves the immutable runtime stamp across an unrelated metadata write", async () => {
+    const vmcp = await env.ctx.storage.virtualMcps.create(
+      env.orgId,
+      env.userId,
+      {
+        title: "sandbox-stamped",
+        connections: [],
+        status: "active",
+        pinned: false,
+        metadata: {
+          previewServerUrl: "https://preview.example.com",
+          fastPreview: true,
+        },
+      },
+    );
+    const created = await COLLECTION_THREADS_CREATE.handler(
+      {
+        data: {
+          virtual_mcp_id: vmcp.id,
+          title: "t",
+          branch: "main",
+          runtime: "sandbox",
+        },
+      },
+      env.ctx,
+    );
+    expect(created.item.metadata?.runtime).toBe("sandbox");
+
+    const updated = await COLLECTION_THREADS_UPDATE.handler(
+      {
+        id: created.item.id,
+        data: { metadata: { expanded_tools: [] } },
+      },
+      env.ctx,
+    );
+    expect(updated.item.metadata?.runtime).toBe("sandbox");
+  });
 });
