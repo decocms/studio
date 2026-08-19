@@ -38,6 +38,13 @@ interface EditorResolveResult {
 export function createEditorResolveRoutes() {
   const app = new Hono<Env>();
 
+  // Per-user result — never let a shared/heuristic cache hold it.
+  app.use("*", async (c, next) => {
+    await next();
+    c.header("Cache-Control", "private, no-store");
+    c.header("Vary", "Cookie");
+  });
+
   app.get("/", async (c) => {
     const ctx = c.get("studioContext");
 
