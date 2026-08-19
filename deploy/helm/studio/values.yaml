@@ -147,6 +147,21 @@ preview:
       limits:
         memory: "768Mi"
 
+  # Render the preview's namespace as part of the release.
+  #
+  # Argo's CreateNamespace=true creates a namespace without adopting it: no
+  # tracking annotation, never in the Application's resource tree, so a
+  # cascading delete leaves it behind. Everything inside is removed correctly,
+  # and an empty namespace accumulates for every PR that ever had a preview.
+  #
+  # Set false when something else owns the namespace.
+  manageNamespace: true
+  # Labels the namespace carries. The Gateway admits routes by namespace label,
+  # so this is what makes the HTTPRoute attach — putting it here means it no
+  # longer depends on the Application being created with the matching
+  # managedNamespaceMetadata, which is the omission that yields a silent 404.
+  namespaceLabels: {}
+
   # Hosted agent sandboxes for a preview. OFF by default, and it should stay off
   # unless someone is actively testing agent behaviour.
   #
