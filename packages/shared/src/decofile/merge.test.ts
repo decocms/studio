@@ -108,6 +108,20 @@ describe("mergeBlocks", () => {
       stem: "Compre%20Junto",
     });
   });
+
+  it("drops a later file whose decoded key collides with an earlier one", () => {
+    // Both stems decode to the same key — splicing both would emit a duplicate JSON key.
+    const { decofile, skipped } = mergeBlocks([
+      { stem: "Compre Junto", content: '{"v":"literal"}' },
+      { stem: "Compre%20Junto", content: '{"v":"encoded"}' },
+    ]);
+    expect(JSON.parse(decofile)).toEqual({ "Compre Junto": { v: "literal" } });
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0]).toMatchObject({
+      key: "Compre Junto",
+      stem: "Compre%20Junto",
+    });
+  });
 });
 
 describe("BLOCK_PATH_RE", () => {

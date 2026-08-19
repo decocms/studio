@@ -61,26 +61,38 @@ export function mergeBlocks(files: BlockFile[]): MergeResult {
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 
   const skipped: SkippedBlock[] = [];
+  const seenKeys = new Set<string>();
   let out = "{";
   let first = true;
   for (const { file } of sorted) {
     const content = file.content.trim();
     // Skip empty files — `"key":` with no value would break the merged JSON.
     if (content.length === 0) continue;
+    const key = decoBlockKeyFromFileStem(file.stem);
+    // Two distinct filenames can decode to the same key; splicing both would silently drop one via JSON.parse's last-key-wins.
+    if (seenKeys.has(key)) {
+      skipped.push({
+        key,
+        stem: file.stem,
+        error: `duplicate block key "${key}" (another file already maps to it)`,
+      });
+      continue;
+    }
     // Parse only to validate; the raw text (not a re-stringify) is spliced.
     try {
       JSON.parse(content);
     } catch (err) {
       skipped.push({
-        key: decoBlockKeyFromFileStem(file.stem),
+        key,
         stem: file.stem,
         error: err instanceof Error ? err.message : String(err),
       });
       continue;
     }
+    seenKeys.add(key);
     if (!first) out += ",";
     first = false;
-    out += `${JSON.stringify(decoBlockKeyFromFileStem(file.stem))}:${content}`;
+    out += `${JSON.stringify(key)}:${content}`;
   }
   return { decofile: `${out}}`, skipped };
 }
