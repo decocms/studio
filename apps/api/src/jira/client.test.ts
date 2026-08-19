@@ -204,4 +204,56 @@ describe("JiraClient", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("does not retry addComment on a transient error — a resubmit would duplicate the comment", async () => {
+    let callCount = 0;
+    const originalFetch = globalThis.fetch;
+    const mockFetch = mock(async () => {
+      callCount++;
+      return new Response(JSON.stringify({ error: "Service Unavailable" }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
+
+    try {
+      const client = new JiraClient(
+        "https://acme.atlassian.net",
+        "user@example.com",
+        "token",
+      );
+      await expect(client.addComment("ISSUE-1", "hi")).rejects.toThrow("503");
+      expect(callCount).toBe(1); // No retry — a write must not be resubmitted
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("does not retry transitionIssue on a transient error — a resubmit could double-transition", async () => {
+    let callCount = 0;
+    const originalFetch = globalThis.fetch;
+    const mockFetch = mock(async () => {
+      callCount++;
+      return new Response(JSON.stringify({ error: "Service Unavailable" }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
+
+    try {
+      const client = new JiraClient(
+        "https://acme.atlassian.net",
+        "user@example.com",
+        "token",
+      );
+      await expect(client.transitionIssue("ISSUE-1", "31")).rejects.toThrow(
+        "503",
+      );
+      expect(callCount).toBe(1); // No retry — a write must not be resubmitted
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

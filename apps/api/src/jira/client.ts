@@ -129,36 +129,45 @@ export class JiraClient {
     this.authHeader = `Basic ${Buffer.from(`${email}:${apiToken}`).toString("base64")}`;
   }
 
-  private async request<T>(path: string, init?: RequestInit): Promise<T> {
-    return retry(
-      async () => {
-        const response = await fetch(`${this.baseUrl}${path}`, {
-          ...init,
-          headers: {
-            Authorization: this.authHeader,
-            Accept: "application/json",
-            ...(init?.body ? { "Content-Type": "application/json" } : {}),
-          },
-          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-        });
-        const body = await response.text().catch(() => "");
-        if (!response.ok) {
-          throw new Error(
-            `Jira ${path} failed (${response.status}): ${body.slice(0, 300)}`,
-          );
-        }
-        // Transition POSTs answer 204 with an empty body.
-        return (body === "" ? undefined : JSON.parse(body)) as T;
-      },
-      {
-        maxAttempts: 3,
-        minTimeout: 100,
-        maxTimeout: 5000,
-        multiplier: 2,
-        jitter: 1,
-        isRetriable: isRetriableError,
-      },
-    );
+  /**
+   * `idempotent: false` skips retrying — a timeout/network error can happen
+   * after Jira already applied the write, so resubmitting a mutation (create
+   * a comment, transition an issue) risks doing it twice. Reads and the
+   * idempotent transition-status GET are safe to retry.
+   */
+  private async request<T>(
+    path: string,
+    init?: RequestInit,
+    { idempotent = true }: { idempotent?: boolean } = {},
+  ): Promise<T> {
+    const attempt = async () => {
+      const response = await fetch(`${this.baseUrl}${path}`, {
+        ...init,
+        headers: {
+          Authorization: this.authHeader,
+          Accept: "application/json",
+          ...(init?.body ? { "Content-Type": "application/json" } : {}),
+        },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+      const body = await response.text().catch(() => "");
+      if (!response.ok) {
+        throw new Error(
+          `Jira ${path} failed (${response.status}): ${body.slice(0, 300)}`,
+        );
+      }
+      // Transition POSTs answer 204 with an empty body.
+      return (body === "" ? undefined : JSON.parse(body)) as T;
+    };
+    if (!idempotent) return attempt();
+    return retry(attempt, {
+      maxAttempts: 3,
+      minTimeout: 100,
+      maxTimeout: 5000,
+      multiplier: 2,
+      jitter: 1,
+      isRetriable: isRetriableError,
+    });
   }
 
   /** Cheapest authenticated call — used to validate credentials on save. */
@@ -286,6 +295,7 @@ export class JiraClient {
         method: "POST",
         body: JSON.stringify({ transition: { id: transitionId } }),
       },
+      { idempotent: false },
     );
   }
 
@@ -312,6 +322,7 @@ export class JiraClient {
     return this.request(
       `/rest/api/3/issue/${encodeURIComponent(issueId)}/comment`,
       { method: "POST", body: JSON.stringify({ body: textToAdf(text) }) },
+      { idempotent: false },
     );
   }
 }
