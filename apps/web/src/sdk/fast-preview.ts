@@ -24,3 +24,20 @@ export function resolveFastPreview(
   );
   return { previewServerUrl, active: runtime === "cms" };
 }
+
+/**
+ * Whether creating a brand-new branch should start a fresh CMS thread instead
+ * of reusing the current session. True only when the project supports Fast
+ * Preview but the active thread is a sandbox coding session: the runtime stamp
+ * is per-thread and immutable, so the only way a new branch lands in CMS is a
+ * new (unstamped) thread. When already in CMS — or without the capability — the
+ * in-place branch switch already yields the right runtime.
+ */
+export function shouldStartBranchAsCms(
+  metadata: Parameters<typeof resolveFastPreview>[0],
+  threadMetadata?: Parameters<typeof resolveFastPreview>[1],
+): boolean {
+  const projectSupportsCms = resolveFastPreview(metadata).active;
+  const sessionIsCms = resolveFastPreview(metadata, threadMetadata).active;
+  return projectSupportsCms && !sessionIsCms;
+}

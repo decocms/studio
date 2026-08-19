@@ -197,8 +197,8 @@ export interface ChatTaskContextValue {
   taskId: string;
   openTask: (taskId: string) => void;
   /** Creates a thread and navigates to it. `runtime: "sandbox"` starts a
-   *  sandbox-backed coding session continuing the current branch. */
-  createTask: (opts?: { runtime?: ThreadRuntime }) => string;
+   *  coding session; `branch` overrides the carried-over current branch. */
+  createTask: (opts?: { runtime?: ThreadRuntime; branch?: string }) => string;
   createTaskWithMessage: (params: {
     message: SendMessageParams;
     virtualMcpId?: string;
@@ -685,13 +685,18 @@ export function ChatContextProvider({
   // task's branch so the new thread lands on the same warm sandbox. The
   // route loader's useEnsureTask will see the row already exists on its
   // GET and skip the create-on-404 fallback.
-  const createTask = (opts?: { runtime?: ThreadRuntime }): string => {
+  const createTask = (opts?: {
+    runtime?: ThreadRuntime;
+    branch?: string;
+  }): string => {
     const newId = crypto.randomUUID();
+    // A caller-supplied branch wins over the active task's branch carry-over.
+    const branch = opts?.branch ?? currentBranch;
     void threadActions
       .create({
         id: newId,
         virtual_mcp_id: virtualMcpId,
-        ...(currentBranch ? { branch: currentBranch } : {}),
+        ...(branch ? { branch } : {}),
         ...(opts?.runtime ? { runtime: opts.runtime } : {}),
       })
       .then(() => navigateToTask(newId))
