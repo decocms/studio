@@ -620,7 +620,7 @@ describe("resolveActiveFieldKey", () => {
     ).toBe("page");
   });
 
-  test("does not spuriously match primitive arrays or href/id fallbacks", () => {
+  test("matches an object item by its href label, never a primitive-array value", () => {
     const properties = {
       loader: {
         title: "Loader",
@@ -628,21 +628,60 @@ describe("resolveActiveFieldKey", () => {
         anyOfRefs: [{ resolveType: "shelf/loader.ts", title: "Shelf" }],
       },
     } satisfies Record<string, SchemaProperty>;
-    // The crumb "Beach Short" appears only as a primitive tag and as an
-    // `href`/`id` — never as a real item name/label/title — so ownership must
-    // NOT be claimed (would otherwise narrow to the wrong field).
-    const objValue = {
-      loader: {
-        __resolveType: "shelf/loader.ts",
-        tags: ["Beach Short"],
-        links: [{ href: "Beach Short", id: "Beach Short" }],
+    // A drillable object item with no name/label/title displays (and is addressed) by its href, so ownership must claim it.
+    expect(
+      resolveActiveFieldKey(
+        Object.keys(properties),
+        properties,
+        {
+          loader: {
+            __resolveType: "shelf/loader.ts",
+            links: [{ href: "Beach Short", id: "x" }],
+          },
+        },
+        ["Beach Short"],
+      ),
+    ).toBe("loader");
+    // The same label present only as a primitive tag can't be drilled into, so it must NOT claim the crumb.
+    expect(
+      resolveActiveFieldKey(
+        Object.keys(properties),
+        properties,
+        { loader: { __resolveType: "shelf/loader.ts", tags: ["Beach Short"] } },
+        ["Beach Short"],
+      ),
+    ).toBeNull();
+  });
+
+  test("narrows to a PLP loader whose selectedFacets[] item is labelled by key", () => {
+    // ALS/montecarlo/farmrio/osklen: selectedFacets items are {key,value} — the "category-1" label comes from `key`.
+    const properties = {
+      page: {
+        title: "Page",
+        type: "block-ref",
+        anyOfRefs: [
+          {
+            resolveType: "vtex/loaders/productListingPage.ts",
+            title: "PLP",
+          },
+        ],
       },
+      startingPage: { title: "Starting Page", type: "number" },
+      showSortBy: { title: "Show Sort By", type: "boolean" },
+    } satisfies Record<string, SchemaProperty>;
+    const objValue = {
+      page: {
+        __resolveType: "vtex/loaders/productListingPage.ts",
+        selectedFacets: [{ key: "category-1", value: "shoes" }],
+      },
+      startingPage: 1,
+      showSortBy: true,
     };
     expect(
       resolveActiveFieldKey(Object.keys(properties), properties, objValue, [
-        "Beach Short",
+        { label: "category-1", itemIndex: 0 },
       ]),
-    ).toBeNull();
+    ).toBe("page");
   });
 
   test("narrows to the loader that actually owns the item, not the first block-ref", () => {

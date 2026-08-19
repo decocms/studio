@@ -1,7 +1,9 @@
-import { getArrayItemDisplayLabels } from "./array-item-display";
+import {
+  getArrayItemDisplayLabels,
+  getArrayItemLabel,
+} from "./array-item-display";
 import { isPageMultivariateSectionArrayField } from "./page-variants";
 import type { SchemaProperty } from "./resolve-schema";
-import { labelFromResolveType } from "./section-types";
 import { unwrapBlockReference } from "./unwrap-section";
 
 /**
@@ -348,28 +350,25 @@ function asObjectRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
-// A drilled item is addressed by its display label, which for the common case
-// comes from one of these high-signal naming fields. We match ownership ONLY
-// against these (not the full getArrayItemLabel fallback chain) so a coincidental
-// `href`/`id`/`key` value — or a plain string in an unrelated primitive array —
-// can't spuriously claim to own the crumb.
-const OWNERSHIP_LABEL_KEYS = ["name", "label", "title", "alt"] as const;
-
-function itemOwnershipLabel(item: unknown): string | undefined {
+/**
+ * The ownership label of an array item — the SAME label {@link getArrayItemLabel}
+ * displays it by, so ownership matches exactly the crumb the user drilled into (a
+ * crumb IS a display label). This covers every data-derived source at once —
+ * name/label/title/alt, text/href/id/key, and `__resolveType` — instead of a
+ * hand-picked subset that silently dropped `selectedFacets`, category navs, etc.
+ *
+ * Only OBJECT items get a label: primitive array items can't be drilled into, so a
+ * plain string in an unrelated array must never claim the crumb. The generic
+ * `Item N` fallback names no field, so it's rejected too. The only residual blind
+ * spot is a `titleBy`/inline-union label, which needs the item schema (absent
+ * here) — those degrade to "all siblings shown", never to a wrong narrow.
+ */
+function itemOwnershipLabel(item: unknown, index: number): string | undefined {
   if (item == null || typeof item !== "object" || Array.isArray(item)) {
     return undefined;
   }
-  const obj = item as Record<string, unknown>;
-  for (const key of OWNERSHIP_LABEL_KEYS) {
-    const value = obj[key];
-    if (typeof value === "string" && value.trim()) return value;
-  }
-  // Loader/section-ref items (e.g. `extensions: ExtensionOf[]`) label by `__resolveType` (see `baseArrayItemLabel`) — match that so ownership can find them.
-  const resolveType = obj.__resolveType;
-  if (typeof resolveType === "string" && resolveType) {
-    return labelFromResolveType(resolveType);
-  }
-  return undefined;
+  const label = getArrayItemLabel(item, index);
+  return label === `Item ${index + 1}` ? undefined : label;
 }
 
 /**
@@ -383,12 +382,12 @@ function itemOwnershipLabel(item: unknown): string | undefined {
  * returns null and the panel keeps showing every sibling prop instead of
  * narrowing to the item.
  *
- * Deliberately conservative — matches only object items via
- * {@link OWNERSHIP_LABEL_KEYS} or their `__resolveType` label (no item schema here). Items labeled
- * via a custom `titleBy`, via `text`/`href`/`id`, or primitive-array items are
- * NOT detected; those degrade to the pre-fix behavior (all siblings shown)
- * rather than risk narrowing to the wrong loader. Bounded by depth and a shared
- * node budget so a large loader config can't stall a render.
+ * Ownership uses {@link itemOwnershipLabel} — the item's real display label — so
+ * every data-derived label (name/label/title/alt, text/href/id/key,
+ * `__resolveType`) matches, not a hand-picked subset. Only `titleBy`/inline-union
+ * labels (schema-only, absent here) and primitive arrays stay undetected; those
+ * degrade to "all siblings shown", never a wrong narrow. Bounded by depth and a
+ * shared node budget so a large loader config can't stall a render.
  */
 function valueOwnsItemCrumb(
   value: unknown,
@@ -409,9 +408,10 @@ function valueOwnsItemCrumb(
   // a direct match suffices. The actual item is still pinned downstream by the
   // index-carrying resolveArrayItemSelection.
   if (Array.isArray(value)) {
-    for (const item of value) {
+    for (let i = 0; i < value.length; i++) {
+      const item = value[i];
       if (--budget.n <= 0) return false;
-      const label = itemOwnershipLabel(item);
+      const label = itemOwnershipLabel(item, i);
       if (label && labelsMatch(label, crumb)) {
         return true;
       }
