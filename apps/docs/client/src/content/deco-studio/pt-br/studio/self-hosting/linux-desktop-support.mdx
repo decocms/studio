@@ -1,0 +1,132 @@
+---
+title: Suporte ao Linux (Desktop)
+description: Arquitetura suportada, pré-requisitos e limitações conhecidas do app desktop no Linux
+icon: Laptop
+---
+
+import Callout from "../../../../../components/ui/Callout.astro";
+
+<Callout type="warning">
+  O suporte ao Linux está em **beta**. Apenas x86_64 é compilado; ARM64 está
+  fora do escopo por enquanto (veja [Escopo adiado](#escopo-adiado)).
+</Callout>
+
+## Arquitetura e pacote suportados
+
+- **Apenas AppImage x86_64.** Ainda não há build `aarch64`.
+- Compilado e testado (boot-smoke) em **Ubuntu 22.04** no CI.
+- O runtime do AppImage empacotado é **estático** — ele não faz link com
+  `libfuse.so.2`, então não precisa de `libfuse2` instalado no disco para se
+  auto-extrair. Ainda assim precisa de uma interface FUSE do **kernel**
+  funcional para se auto-montar (veja abaixo).
+
+## Pré-requisitos de runtime
+
+O app é compilado contra **WebKitGTK 4.1** (`libwebkit2gtk-4.1`) e GTK3. Um
+host sem essas bibliotecas não consegue abrir a janela. Se sua distribuição
+só tiver um WebKitGTK mais antigo (4.0), o AppImage falhará ao iniciar.
+
+## FUSE e o filesystem `org/`
+
+O mount compartilhado do filesystem `org/` (um por organização, compartilhado
+entre os sandboxes dessa organização) usa `rclone mount` sobre FUSE no
+Linux — o equivalente no macOS é `rclone nfsmount`. Isso exige:
+
+- `/dev/fuse` presente no host.
+- Um helper `fusermount3` (fuse3) ou `fusermount` (fuse2) no `PATH`.
+
+Tanto a auto-montagem do próprio AppImage quanto o mount do filesystem `org/`
+degradam de forma controlada quando o FUSE não está disponível:
+
+- O AppImage cai para `--appimage-extract-and-run` (início mais lento, sem
+  auto-montagem, funciona em qualquer lugar).
+- O filesystem `org/` cai para um diretório `org/` **vazio** no sandbox em vez
+  de falhar ao iniciar. Você também pode forçar esse fallback com
+  `DECOCMS_DISABLE_ORG_FS=1` caso um mount FUSE trave.
+
+## Armazenamento de credenciais no desktop
+
+Tokens de acesso e refresh são armazenados através do [D-Bus Secret
+Service](https://specifications.freedesktop.org/secret-service-spec/latest/)
+(via a crate `keyring`) — o mesmo mecanismo que o GNOME Keyring e o KWallet
+implementam. **Não há fallback em texto plano no disco**: se nenhum provedor
+de Secret Service estiver rodando, leituras e escritas de credenciais falham
+diretamente, em vez de degradar silenciosamente.
+
+Provedores testados: **GNOME Keyring** e **KWallet**. Uma sessão headless ou
+com um gerenciador de janelas mínimo, sem nenhum dos dois rodando, não
+conseguirá fazer login.
+
+## Isolamento da origem de preview (limitação conhecida)
+
+Por padrão, a origem de controle local do app desktop no Linux é uma origem
+`http://localhost` simples, não HTTPS — a mesma origem que o harness de
+self-test sempre usou. Uma origem HTTPS opt-in (uma exceção de certificado
+por host no WebKitGTK, sem integração com o armazém de confiança do SO) está
+disponível via `DECOCMS_LINUX_SECURE_ORIGIN=1`, desligada por padrão neste
+primeiro lançamento porque uma falha de confiança no webview deixaria um
+usuário de AppImage sem janela e sem gerenciador de pacotes para reinstalar.
+
+Até que a origem segura isolada seja o padrão no Linux, trate a origem do
+iframe de preview do app desktop no Linux como menos isolada que a do macOS.
+Veja a issue #6282 para o acompanhamento que torna a origem segura o padrão
+no Linux.
+
+## Instalação, verificação, atualização e desinstalação
+
+A instalação usa o mesmo instalador de uma linha do macOS
+(`curl -fsSL https://studio.decocms.com/install.sh | sh`), que detecta o
+Linux e:
+
+1. Lê a versão a partir do manifesto do canal rolante `native-updates` (uma
+   URL fixa, com promoção limitada para só acontecer depois que os artefatos
+   de toda plataforma forem publicados — então pode ficar algumas versões
+   atrás do HEAD, mas nunca aponta para uma versão que não foi lançada para
+   Linux).
+2. Baixa e verifica o AppImage:
+   - **Com `minisign` instalado**: verifica o tarball contra a chave pública
+     minisign embutida no script do instalador — uma âncora de uma origem
+     diferente (`studio.decocms.com`) da CDN do GitHub que serve o release,
+     portanto uma verificação de autenticidade genuína.
+   - **Sem `minisign`**: cai para o `.sha256` publicado, que só detecta um
+     download corrompido ou truncado — o digest e o binário compartilham a
+     mesma origem, então isso não é uma garantia de segurança. Instale o
+     `minisign` para uma verificação real.
+3. Instala em `~/.local/bin/deco-studio`, com uma entrada de launcher em
+   `~/.local/share/applications` e ícone, substituindo qualquer instalação
+   anterior no lugar.
+4. Verifica a disponibilidade do FUSE e cai para
+   `--appimage-extract-and-run` quando indisponível.
+
+**Atualização**: o app instalado consulta o mesmo canal `native-updates` e
+aplica atualizações ao fechar — verificadas por assinatura com a mesma chave
+minisign. **Desinstalação**: remova `~/.local/bin/deco-studio`,
+`~/.local/share/applications/deco-studio.desktop`, seu ícone em
+`~/.local/share/icons/hicolor/256x256/apps/` e `~/.local/share/deco-studio/`
+(o carimbo de verificação). Não há rollback automatizado; reinstale uma
+versão anterior a partir da [lista de
+releases](https://github.com/decocms/studio/releases) se necessário.
+
+## Solução de problemas
+
+- **O app não abre / erro "damaged" ou de mount**: rode o AppImage
+  diretamente com `--appimage-extract-and-run` para descartar um problema de
+  FUSE.
+- **Janela em branco ao iniciar**: confirme que `libwebkit2gtk-4.1` está
+  instalado — distribuições mais antigas podem só ter a 4.0, que é
+  incompatível.
+- **Não consegue fazer login / erros de credencial**: confirme que um
+  provedor de Secret Service (GNOME Keyring ou KWallet) está rodando —
+  `systemctl --user status gnome-keyring-daemon` ou o equivalente do seu
+  ambiente desktop.
+- **Diretório `org/` está vazio**: o FUSE está indisponível ou o mount
+  falhou; esse é o fallback previsto, não uma falha. Verifique `/dev/fuse` e
+  se `fusermount3`/`fusermount` estão no `PATH`.
+- **Logs**: os logs da aplicação e os dados de monitoramento ficam sob o
+  `DATA_DIR` do app — veja a página Self-Hosting → Monitoring neste guia.
+
+## Escopo adiado
+
+Explicitamente fora de escopo neste lançamento: **ARM64** para Linux,
+`.deb`, `.rpm`, AUR/COPR, Flatpak e Snap. Apenas o AppImage x86_64 é
+suportado.

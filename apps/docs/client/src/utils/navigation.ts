@@ -72,6 +72,7 @@ export async function getNavigationLinks(
     "studio/self-hosting/quickstart",
     "studio/self-hosting/authentication",
     "studio/self-hosting/monitoring",
+    "studio/self-hosting/linux-desktop-support",
     "studio/self-hosting/deploy/docker-compose",
     "studio/self-hosting/deploy/kubernetes",
   ];

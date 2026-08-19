@@ -1,0 +1,123 @@
+---
+title: Linux Desktop Support
+description: Supported architecture, prerequisites, and known limitations for the Linux desktop app
+icon: Laptop
+---
+
+import Callout from "../../../../../components/ui/Callout.astro";
+
+<Callout type="warning">
+  Linux support is **beta**. Only x86_64 is built; ARM64 is out of scope for
+  now (see [Deferred scope](#deferred-scope)).
+</Callout>
+
+## Supported architecture and package
+
+- **x86_64 AppImage only.** There is no `aarch64` build yet.
+- Built and boot-smoke-tested on **Ubuntu 22.04** in CI.
+- The bundled AppImage runtime is **static** — it does not link `libfuse.so.2`,
+  so it does not need `libfuse2` on disk to self-extract. It still needs a
+  working FUSE **kernel** interface to self-mount (see below).
+
+## Runtime prerequisites
+
+The app is built against **WebKitGTK 4.1** (`libwebkit2gtk-4.1`) and GTK3. A
+host without those libraries cannot launch the window. If your distribution
+only ships an older WebKitGTK (4.0), the AppImage will fail to start.
+
+## FUSE and the `org/` filesystem
+
+The shared `org/` filesystem mount (one per organization, shared across that
+org's sandboxes) uses `rclone mount` over FUSE on Linux — the macOS
+equivalent is `rclone nfsmount`. This needs:
+
+- `/dev/fuse` present on the host.
+- A `fusermount3` (fuse3) or `fusermount` (fuse2) helper on `PATH`.
+
+Both the AppImage's own self-mount and the org filesystem mount degrade
+gracefully when FUSE is unavailable:
+
+- The AppImage falls back to `--appimage-extract-and-run` (slower start, no
+  self-mount, works everywhere).
+- The org filesystem falls back to an **empty `org/` directory** for the
+  sandbox rather than failing to start. You can also force this fallback with
+  `DECOCMS_DISABLE_ORG_FS=1` if a FUSE mount ever wedges.
+
+## Desktop credential storage
+
+Access and refresh tokens are stored through the [D-Bus Secret
+Service](https://specifications.freedesktop.org/secret-service-spec/latest/)
+(via the `keyring` crate) — the same mechanism GNOME Keyring and KWallet
+implement. **There is no plaintext-on-disk fallback**: if no Secret Service
+provider is running, credential reads and writes fail outright rather than
+degrading silently.
+
+Tested providers: **GNOME Keyring** and **KWallet**. A minimal window manager
+or headless session without either running will not be able to sign in.
+
+## Preview-origin isolation (known limitation)
+
+By default, the desktop app's local control origin on Linux is a plain
+`http://localhost` origin, not HTTPS — the same origin the self-test harness
+has always used. An opt-in HTTPS origin (a per-host WebKitGTK certificate
+exception, no OS-level trust store integration) is available behind
+`DECOCMS_LINUX_SECURE_ORIGIN=1`, off by default for the first release because
+a webview trust failure would leave an AppImage user with no window and no
+package manager to reinstall from.
+
+Until isolated secure origins are the default, treat the Linux desktop app's
+preview iframe origin as less isolated than macOS's. See #6282 for the
+follow-up to make the secure origin the Linux default.
+
+## Install, verify, update, uninstall
+
+Installation is the same one-line installer used for macOS
+(`curl -fsSL https://studio.decocms.com/install.sh | sh`), which detects
+Linux and:
+
+1. Reads the version off the rolling `native-updates` channel manifest
+   (a fixed URL, throttled to promote only once every platform's assets are
+   published — so it can lag head by a few releases, but never names a
+   version that didn't ship for Linux).
+2. Downloads and verifies the AppImage:
+   - **With `minisign` installed**: verifies the tarball against the
+     minisign public key embedded in the installer script — an anchor from a
+     different origin (`studio.decocms.com`) than the GitHub CDN serving the
+     release, so this is genuine authenticity verification.
+   - **Without `minisign`**: falls back to the published `.sha256`, which only
+     detects a corrupted or truncated download — digest and binary share an
+     origin, so this is not a security guarantee. Install `minisign` for a
+     real verification.
+3. Installs to `~/.local/bin/deco-studio`, with a `~/.local/share/applications`
+   launcher entry and icon, replacing any previous install in place.
+4. Probes for FUSE and falls back to `--appimage-extract-and-run` when
+   unavailable.
+
+**Update**: the installed app polls the same `native-updates` channel and
+applies updates on quit — signature-verified with the same minisign key.
+**Uninstall**: remove `~/.local/bin/deco-studio`,
+`~/.local/share/applications/deco-studio.desktop`, its icon under
+`~/.local/share/icons/hicolor/256x256/apps/`, and
+`~/.local/share/deco-studio/` (the verification stamp). There is no automated
+rollback; reinstall a prior version from the [release
+list](https://github.com/decocms/studio/releases) if needed.
+
+## Troubleshooting
+
+- **App won't launch / "damaged" or mount errors**: run the AppImage directly
+  with `--appimage-extract-and-run` to rule out a FUSE problem.
+- **Blank window on startup**: confirm `libwebkit2gtk-4.1` is installed —
+  older distributions may only carry 4.0, which is incompatible.
+- **Can't sign in / credential errors**: confirm a Secret Service provider
+  (GNOME Keyring or KWallet) is running — `systemctl --user status
+  gnome-keyring-daemon` or your desktop environment's equivalent.
+- **`org/` directory is empty**: FUSE is unavailable or the mount failed; this
+  is the designed fallback, not a crash. Check `/dev/fuse` and that
+  `fusermount3`/`fusermount` are on `PATH`.
+- **Logs**: application logs and monitoring data live under the app's
+  `DATA_DIR` — see the Self-Hosting → Monitoring page in this guide.
+
+## Deferred scope
+
+Explicitly out of scope for this release: Linux **ARM64**, `.deb`, `.rpm`,
+AUR/COPR, Flatpak, and Snap packaging. Only the x86_64 AppImage is supported.
