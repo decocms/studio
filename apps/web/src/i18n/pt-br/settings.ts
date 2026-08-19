@@ -220,7 +220,6 @@ export const settings = {
   "settings.buckets.nameLabel": "Nome",
   "settings.buckets.namePlaceholder": "production-uploads",
   "settings.buckets.noBucketsConfigured": "Nenhum bucket configurado",
-  "settings.buckets.pageTitle": "Buckets",
   "settings.buckets.pathStyle": "path-style",
   "settings.buckets.prefix": "prefixo: {prefix}",
   "settings.buckets.prefixHelperText":
@@ -463,44 +462,6 @@ export const settings = {
   "settings.joinRequestsSection.description":
     "Pessoas que solicitaram entrada por um dom\u00ednio em modo de aprova\u00e7\u00e3o.",
   "settings.joinRequestsSection.title": "Solicita\u00e7\u00f5es de entrada",
-  "settings.orgBrandContext.addBrand": "Adicionar Marca",
-  "settings.orgBrandContext.addYourFirstBrand": "Adicionar sua primeira marca",
-  "settings.orgBrandContext.brandContext": "Contexto de Marca",
-  "settings.orgBrandContext.brandContextDescription":
-    "Defina seus perfis de marca. Cada marca est\u00e1 dispon\u00edvel como um prompt MCP para clientes de IA.",
-  "settings.orgBrandContext.brandContextUpdated":
-    "Contexto de marca atualizado com sucesso",
-  "settings.orgBrandContext.brandCreated": "Marca criada",
-  "settings.orgBrandContext.brandDeleted": "Marca exclu\u00edda",
-  "settings.orgBrandContext.brandExtractedSuccessfully":
-    "Marca extra\u00edda com sucesso",
-  "settings.orgBrandContext.cancel": "Cancelar",
-  "settings.orgBrandContext.delete": "Excluir",
-  "settings.orgBrandContext.deleteBrand": "Excluir marca",
-  "settings.orgBrandContext.deleteBrandTitle": "Excluir marca?",
-  "settings.orgBrandContext.deleteConfirmMessage":
-    "Isso excluir\u00e1 permanentemente {name}. Esta a\u00e7\u00e3o n\u00e3o pode ser desfeita.",
-  "settings.orgBrandContext.deleteDefaultBrandWarning":
-    "esta \u00e9 a marca padr\u00e3o da sua organiza\u00e7\u00e3o. Exclu\u00ed-la deixar\u00e1 sua organiza\u00e7\u00e3o sem uma marca padr\u00e3o at\u00e9 que voc\u00ea defina outra.",
-  "settings.orgBrandContext.deleting": "Excluindo...",
-  "settings.orgBrandContext.failedCreateBrand": "Falha ao criar marca",
-  "settings.orgBrandContext.failedDeleteBrand": "Falha ao excluir marca",
-  "settings.orgBrandContext.failedExtractBrand": "Falha ao extrair marca",
-  "settings.orgBrandContext.failedSaveBrandContext":
-    "Falha ao salvar contexto de marca",
-  "settings.orgBrandContext.failedUpdateDefaultBrand":
-    "Falha ao atualizar marca padr\u00e3o",
-  "settings.orgBrandContext.headsUp": "Aten\u00e7\u00e3o",
-  "settings.orgBrandContext.noBrandsConfigured":
-    "Nenhuma marca configurada ainda.",
-  "settings.orgBrandContext.removedAsDefaultBrand":
-    "Removido como marca padr\u00e3o",
-  "settings.orgBrandContext.setAsDefault": "Definir como padr\u00e3o",
-  "settings.orgBrandContext.setAsDefaultBrand":
-    "Definir como marca padr\u00e3o",
-  "settings.orgBrandContext.thisBrand": "esta marca",
-  "settings.orgBrandContext.unsetAsDefault": "Remover como padr\u00e3o",
-  "settings.orgBrandContext.untitledBrand": "Marca Sem T\u00edtulo",
   "settings.navigation.title": "Navegação",
   "settings.navigation.description":
     "Como esta organização circula pelo Studio.",
@@ -853,7 +814,6 @@ export const settings = {
     "Deco AI Gateway conectado com sucesso",
   "settings.aiProviders.decoConnectError":
     "Falha ao conectar o Deco AI Gateway: {error}",
-  "settings.billing.title": "Cobrança",
   "settings.billing.autoTasksTitle": "Tarefas automáticas",
   "settings.billing.unlimitedDescription":
     "As execuções de tarefas automáticas são ilimitadas neste deployment. Tarefas criadas por você também nunca têm limite.",
@@ -873,7 +833,6 @@ export const settings = {
   "settings.billing.portalError":
     "Não foi possível abrir o portal de cobrança: {message}",
 
-  "settings.infraBilling.pageTitle": "Cobrança de infra",
   "settings.infraBilling.noSites":
     "Esta organização ainda não é dona de nenhum site deco.cx.",
   "settings.infraBilling.siteLabel": "Sites",
