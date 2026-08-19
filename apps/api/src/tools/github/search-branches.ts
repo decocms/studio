@@ -196,6 +196,12 @@ export const GITHUB_SEARCH_BRANCHES = defineTool({
 
     // Token revoked/rotated behind our clock: one refresh + retry, then give up.
     if (res.status === 401) {
+      // Drain the discarded 401 body so its connection is released.
+      try {
+        await res.body?.cancel();
+      } catch {
+        /* ignore */
+      }
       const refreshed = await githubConnectionAccessToken(ctx, connection, {
         forceRefresh: true,
       });
