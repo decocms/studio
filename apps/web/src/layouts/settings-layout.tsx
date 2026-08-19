@@ -413,8 +413,8 @@ export function SettingsSidebar() {
           </SidebarGroup>
         ))}
 
-        {/* Sign Out */}
-        <SidebarGroup className="pt-0 pr-0 pb-0 pl-0">
+        {/* Sign Out — pinned to the bottom, away from the Advanced disclosure */}
+        <SidebarGroup className="mt-auto pt-0 pr-0 pb-0 pl-0">
           <div className="mx-2 my-2 border-t border-border/50" />
           <SidebarGroupContent>
             <SidebarMenu className="gap-0.5">
@@ -488,8 +488,8 @@ export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
           </div>
         ))}
 
-        {/* Sign Out */}
-        <div className="flex flex-col gap-0.5">
+        {/* Sign Out — pinned to the bottom, away from the Advanced disclosure */}
+        <div className="mt-auto flex flex-col gap-0.5">
           <div className="h-px bg-border/50 my-2" />
           <button
             type="button"
