@@ -47,6 +47,8 @@ export const settings = {
   "settings.jira.boardDescription":
     "Os cards visíveis do board são espelhados — a aba Backlog, epics e sub-tasks não.",
   "settings.jira.boardPlaceholder": "Selecione um board",
+  "settings.jira.boardSearchPlaceholder": "Buscar boards…",
+  "settings.jira.noBoardsMatch": "Nenhum board corresponde à busca",
   "settings.jira.loadingBoards": "Carregando boards…",
   "settings.jira.mappingLabel": "Mapeamento de colunas",
   "settings.jira.mappingDescription":

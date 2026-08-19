@@ -14,10 +14,17 @@ const REQUEST_TIMEOUT_MS = 15_000;
 
 export interface JiraBoard {
   id: number;
+  /**
+   * The board's own name. For team-managed projects Jira auto-generates this as
+   * "<KEY> board" and never shows it in its own UI, so on its own it is not
+   * what a human recognizes — pair it with `projectName`.
+   */
   name: string;
   type: string;
   /** Project the board lives in, when Jira exposes it. */
   projectKey?: string;
+  /** The project's name — what Jira's own board header shows. */
+  projectName?: string;
 }
 
 export interface JiraBoardColumn {
@@ -185,7 +192,7 @@ export class JiraClient {
           id: number;
           name: string;
           type: string;
-          location?: { projectKey?: string };
+          location?: { projectKey?: string; projectName?: string };
         }>;
         isLast: boolean;
       }>(`/rest/agile/1.0/board?startAt=${startAt}&maxResults=50`);
@@ -195,6 +202,7 @@ export class JiraClient {
           name: board.name,
           type: board.type,
           projectKey: board.location?.projectKey,
+          projectName: board.location?.projectName,
         })),
       );
       if (page.isLast || page.values.length === 0) break;

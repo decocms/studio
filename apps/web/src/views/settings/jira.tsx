@@ -10,6 +10,9 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
+import { Check, ChevronSelectorVertical } from "@untitledui/icons";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { Combobox } from "@decocms/ui/components/combobox.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Switch } from "@decocms/ui/components/switch.tsx";
 import {
@@ -35,6 +38,11 @@ import {
   SettingsPage,
   SettingsSection,
 } from "@/components/settings/settings-section";
+import {
+  boardLabels,
+  boardSearchFilter,
+  boardSearchText,
+} from "./jira-board-labels";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/en";
 import {
@@ -338,6 +346,25 @@ function SyncSettings({ integration }: { integration: JiraIntegration }) {
   const runSync = useRunJiraSync();
   const boards = useJiraBoards(true);
   const hasMapping = Object.keys(integration.statusMapping).length > 0;
+  const boardOptions = (boards.data ?? []).map((board) => {
+    const { primary, secondary } = boardLabels(board);
+    return {
+      value: String(board.id),
+      label: boardSearchText(board),
+      primary,
+      secondary,
+    };
+  });
+  // Prefer the live list so an integration saved before this labeling still
+  // reads correctly, then the stored label while the list loads. Null when no
+  // board is picked — a stored name from a cleared board must not read as a
+  // selection.
+  const selectedBoardLabel = integration.boardId
+    ? (boardOptions.find((option) => option.value === integration.boardId)
+        ?.primary ??
+      integration.boardName ??
+      integration.boardId)
+    : null;
 
   return (
     <SubSection
@@ -354,18 +381,61 @@ function SyncSettings({ integration }: { integration: JiraIntegration }) {
               {t("settings.jira.boardDescription")}
             </p>
           </div>
-          <Select
-            value={integration.boardId ?? undefined}
-            onValueChange={(boardId) =>
+          <Combobox
+            options={boardOptions}
+            value={integration.boardId ?? ""}
+            width="w-72"
+            triggerClassName="shrink-0"
+            placeholder={t("settings.jira.boardPlaceholder")}
+            searchPlaceholder={t("settings.jira.boardSearchPlaceholder")}
+            filter={boardSearchFilter}
+            emptyMessage={
+              boards.isPending
+                ? t("settings.jira.loadingBoards")
+                : t("settings.jira.noBoardsMatch")
+            }
+            renderTrigger={() => (
+              <Button
+                variant="outline"
+                role="combobox"
+                className="w-72 justify-between font-normal"
+              >
+                <span className="truncate">
+                  {selectedBoardLabel ?? t("settings.jira.boardPlaceholder")}
+                </span>
+                <ChevronSelectorVertical className="opacity-50 shrink-0" />
+              </Button>
+            )}
+            renderItem={(option, isSelected) => (
+              <div className="flex items-start gap-2 min-w-0 w-full">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate">{option.primary as string}</p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {option.secondary as string}
+                  </p>
+                </div>
+                <Check
+                  className={cn(
+                    "mt-0.5 shrink-0",
+                    isSelected ? "opacity-100" : "opacity-0",
+                  )}
+                />
+              </div>
+            )}
+            onChange={(boardId) => {
+              if (!boardId || boardId === integration.boardId) return;
               upsert.mutate(
                 // New board = new columns, so the old mapping resets with it —
                 // and the sync goes off with it, because an enabled sync with no
                 // mapping is exactly what the server refuses.
                 {
                   boardId,
+                  // A display cache only (the sync keys off boardId), so store
+                  // the label people recognize rather than Jira's internal
+                  // board name, which is "<KEY> board" for team-managed projects.
                   boardName:
-                    boards.data?.find((b) => String(b.id) === boardId)?.name ??
-                    null,
+                    boardOptions.find((option) => option.value === boardId)
+                      ?.primary ?? null,
                   statusMapping: {},
                   enabled: false,
                 },
@@ -375,28 +445,9 @@ function SyncSettings({ integration }: { integration: JiraIntegration }) {
                       errorMessage(err, t("settings.jira.saveFailed")),
                     ),
                 },
-              )
-            }
-          >
-            <SelectTrigger className="w-64 shrink-0">
-              <SelectValue placeholder={t("settings.jira.boardPlaceholder")}>
-                {integration.boardName ?? integration.boardId ?? undefined}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {boards.isPending && (
-                <SelectItem value="__loading__" disabled>
-                  {t("settings.jira.loadingBoards")}
-                </SelectItem>
-              )}
-              {(boards.data ?? []).map((board) => (
-                <SelectItem key={board.id} value={String(board.id)}>
-                  {board.name}
-                  {board.projectKey ? ` (${board.projectKey})` : ""}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+              );
+            }}
+          />
         </div>
 
         {integration.boardId && (

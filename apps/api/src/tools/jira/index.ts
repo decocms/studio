@@ -250,6 +250,7 @@ export const JIRA_BOARDS_LIST = defineTool({
         name: z.string(),
         type: z.string(),
         projectKey: z.string().optional(),
+        projectName: z.string().optional(),
       }),
     ),
   }),
