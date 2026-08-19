@@ -7,6 +7,7 @@
  * that no JQL over the project can express.
  */
 
+import { retry } from "@decocms/shared/std";
 import { wikiToMarkdown } from "./wiki-markdown";
 
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -52,6 +53,34 @@ export interface JiraComment {
 
 const ISSUE_FIELDS =
   "summary,status,priority,issuetype,updated,description,comment";
+
+/**
+ * Determine if a fetch error should be retried. Transient failures (5xx, timeout,
+ * network error) should retry; permanent failures (4xx, auth) should fail fast.
+ */
+function isRetriableError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  // Retry on timeout (AbortError) or network errors.
+  if (
+    message.includes("AbortError") ||
+    message.includes("fetch") ||
+    message.includes("timeout") ||
+    message.includes("network") ||
+    message.includes("ECONNREFUSED") ||
+    message.includes("ECONNRESET")
+  ) {
+    return true;
+  }
+  // Retry on 5xx server errors; extract from message "Jira {path} failed ({status})".
+  const statusMatch = message.match(/failed \((\d+)\)/);
+  if (statusMatch && statusMatch[1]) {
+    const status = parseInt(statusMatch[1], 10);
+    // Retry 5xx and 429 (rate limit); do NOT retry 4xx (auth, not found, etc.).
+    return status >= 500 || status === 429;
+  }
+  // Unknown error — retry with caution.
+  return true;
+}
 
 /**
  * "acme.atlassian.net" or a pasted URL → "https://acme.atlassian.net".
@@ -101,23 +130,35 @@ export class JiraClient {
   }
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      ...init,
-      headers: {
-        Authorization: this.authHeader,
-        Accept: "application/json",
-        ...(init?.body ? { "Content-Type": "application/json" } : {}),
+    return retry(
+      async () => {
+        const response = await fetch(`${this.baseUrl}${path}`, {
+          ...init,
+          headers: {
+            Authorization: this.authHeader,
+            Accept: "application/json",
+            ...(init?.body ? { "Content-Type": "application/json" } : {}),
+          },
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+        const body = await response.text().catch(() => "");
+        if (!response.ok) {
+          throw new Error(
+            `Jira ${path} failed (${response.status}): ${body.slice(0, 300)}`,
+          );
+        }
+        // Transition POSTs answer 204 with an empty body.
+        return (body === "" ? undefined : JSON.parse(body)) as T;
       },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
-    const body = await response.text().catch(() => "");
-    if (!response.ok) {
-      throw new Error(
-        `Jira ${path} failed (${response.status}): ${body.slice(0, 300)}`,
-      );
-    }
-    // Transition POSTs answer 204 with an empty body.
-    return (body === "" ? undefined : JSON.parse(body)) as T;
+      {
+        maxAttempts: 3,
+        minTimeout: 100,
+        maxTimeout: 5000,
+        multiplier: 2,
+        jitter: 1,
+        isRetriable: isRetriableError,
+      },
+    );
   }
 
   /** Cheapest authenticated call — used to validate credentials on save. */
@@ -239,7 +280,7 @@ export class JiraClient {
   }
 
   async transitionIssue(issueId: string, transitionId: string): Promise<void> {
-    await this.request(
+    await this.request<void>(
       `/rest/api/3/issue/${encodeURIComponent(issueId)}/transitions`,
       {
         method: "POST",
