@@ -496,6 +496,18 @@ jobs:
             --set preview.postgres.enabled=false \
             --set externalSecret.enabled=false
 
+          # Binding sandbox access to the namespace's `default` ServiceAccount
+          # would hand it to every pod in the preview — Postgres and MinIO
+          # included — and the render would look perfectly healthy.
+          expect_fail "sandbox without a named ServiceAccount" "requires serviceAccount.create=true" \
+            --set preview.host=h.example.com \
+            --set preview.sandbox.enabled=true \
+            --set preview.sandbox.roleName=some-role
+          expect_fail "sandbox without a role" "preview.sandbox.roleName is required" \
+            --set preview.host=h.example.com \
+            --set preview.sandbox.enabled=true \
+            --set serviceAccount.create=true
+
           # image.command is a list, which --set cannot express cleanly.
           printf 'image:\n  command: ["bun","run","deco"]\n' > /tmp/no-skip.yaml
           expect_fail "missing --skip-migrations" "requires --skip-migrations" \

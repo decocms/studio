@@ -147,6 +147,23 @@ preview:
       limits:
         memory: "768Mi"
 
+  # Hosted agent sandboxes for a preview. OFF by default, and it should stay off
+  # unless someone is actively testing agent behaviour.
+  #
+  # Enabling binds this release's ServiceAccount to a Role in a namespace shared
+  # with production sandboxes — see templates/preview-sandbox-rbac.yaml for why
+  # that cannot currently be narrowed, and what would remove the need.
+  #
+  # The application also needs the matching STUDIO_SANDBOX_* configuration
+  # (provider, runner, template name, preview gateway) pointed at an existing
+  # environment; enabling this alone grants permission but changes no behaviour.
+  sandbox:
+    enabled: false
+    # Namespace holding the SandboxTemplates, warm pools and claims.
+    namespace: agent-sandbox-system
+    # An existing Role in that namespace, owned by the sandbox-env chart.
+    roleName: ""
+
   # Resources for the short-lived migration Job.
   jobResources:
     requests:

@@ -342,6 +342,21 @@ Service/Deployment name for the preview's own MinIO.
 {{- end }}
 
 {{/*
+Guards the sandbox binding. Both checks stop a render that would look correct
+and grant the wrong thing.
+*/}}
+{{- define "chart-deco-studio.validatePreviewSandbox" -}}
+{{- if and .Values.preview.enabled .Values.preview.sandbox.enabled }}
+{{- if not .Values.serviceAccount.create }}
+{{- fail "chart-deco-studio: preview.sandbox.enabled=true requires serviceAccount.create=true — otherwise the binding lands on the namespace's `default` ServiceAccount, handing sandbox access to every pod in the preview, Postgres and MinIO included" -}}
+{{- end }}
+{{- if not .Values.preview.sandbox.roleName }}
+{{- fail "chart-deco-studio: preview.sandbox.roleName is required when preview.sandbox.enabled=true" -}}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
 Validates per-PR preview releases. Every failure here is something that would
 otherwise render a healthy-looking object that silently does nothing: an
 HTTPRoute with no hostname matches no traffic, a pod without --skip-migrations
