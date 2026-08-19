@@ -2,6 +2,12 @@ apiVersion: v2
 name: chart-deco-studio
 description: Helm chart for deco Studio — supports inline secrets, external secretName, and AWS Secrets Manager via ExternalSecret
 type: application
+# 0.14.5: the ServiceAccount had no sync-wave, so it landed at 0 — after the
+# migration Job at -10 that runs as it. The Job never got a pod at all ("error
+# looking up service account"), sat Running 0/1, and the sync stalled on the
+# hook. Same shape as the ConfigMap at 0.14.1; helm-test now checks every object
+# a pod names, not just envFrom sources.
+#
 # 0.14.4: preview images pull with Always. The preview tag is mutable — the
 # build checks out refs/pull/N/merge, so the same pr-<n>-<sha> is rebuilt
 # against whatever main is at the time — and IfNotPresent let a node that had
@@ -44,7 +50,7 @@ type: application
 # when disabled, so existing releases are unaffected.
 # 0.12.4: chart-managed API/worker dispatch roles now use
 # STUDIO_DISPATCH_ROLE; legacy overrides are rejected.
-version: 0.14.4
+version: 0.14.5
 appVersion: "latest"
 
 dependencies:

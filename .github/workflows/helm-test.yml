@@ -291,27 +291,45 @@ jobs:
               kind, name = d["kind"], d["metadata"]["name"]
               w = int((d["metadata"].get("annotations") or {})
                       .get("argocd.argoproj.io/sync-wave", 0))
-              waves[name] = w
+              waves[(kind, name)] = w
               if kind not in ("Job", "Deployment", "StatefulSet"):
                   continue
               spec = d["spec"]["template"]["spec"]
+              # Everything a pod names and the kubelet must resolve before it
+              # can start. envFrom was the first one to bite (the ConfigMap at
+              # 0.14.1); serviceAccountName was the second, and produced a
+              # stranger failure — the Job never even got a pod, so there were
+              # no logs and no events on anything except the Job itself.
+              if spec.get("serviceAccountName"):
+                  needs.append((kind, name, w, "ServiceAccount", spec["serviceAccountName"]))
               for c in (spec.get("initContainers") or []) + spec["containers"]:
                   for ref in (c.get("envFrom") or []):
-                      for key in ("configMapRef", "secretRef"):
+                      for key, k8s in (("configMapRef", "ConfigMap"), ("secretRef", "Secret")):
                           if key in ref:
-                              needs.append((kind, name, w, ref[key]["name"]))
+                              needs.append((kind, name, w, k8s, ref[key]["name"]))
+              for v in (spec.get("volumes") or []):
+                  for key, k8s in (("configMap", "ConfigMap"), ("secret", "Secret")):
+                      if key in v:
+                          n = v[key].get("name") or v[key].get("secretName")
+                          if n:
+                              needs.append((kind, name, w, k8s, n))
           bad = []
-          for kind, name, w, dep in needs:
-              # Only things this chart renders; anything else is pre-existing.
-              if dep not in waves:
-                  continue
-              if waves[dep] > w:
-                  bad.append(f"{kind}/{name} (wave {w}) consumes {dep} (wave {waves[dep]})")
+          for kind, name, w, dep_kind, dep in needs:
+              # An ExternalSecret produces a Secret of the same name; credit its
+              # wave to the Secret it targets.
+              key = (dep_kind, dep)
+              if key not in waves and dep_kind == "Secret":
+                  key = ("ExternalSecret", dep)
+              if key not in waves:
+                  continue  # not rendered by this chart
+              if waves[key] > w:
+                  bad.append(f"{kind}/{name} (wave {w}) needs "
+                             f"{dep_kind}/{dep} (wave {waves[key]})")
           if bad:
-              print("::error::a resource is sequenced before something it mounts: "
+              print("::error::a resource is sequenced before something it needs: "
                     + "; ".join(bad))
               sys.exit(1)
-          print(f"every envFrom source is created no later than its consumer "
+          print(f"every referenced object is created no later than what needs it "
                 f"({len(needs)} references checked)")
           DEPS
 
