@@ -13,6 +13,7 @@
 
 import type { StudioContext } from "@/core/studio-context";
 import {
+  getValidDownstreamAccessToken,
   GHS_TOKEN_LIFETIME_MS,
   PROACTIVE_REFRESH_BUFFER_MS,
   RECONNECT_ERROR,
@@ -193,4 +194,43 @@ export async function ensureRepoScopedToken(
   );
   inflight.set(connection.id, p);
   return p;
+}
+
+/**
+ * The slug every GitHub flow in the app already filters on. A connection that
+ * fails this never appears in the repo picker, task board or load_repo, so it
+ * cannot legitimately reach a GitHub tool — guard on it before putting a
+ * connection's decrypted token in an `Authorization` header to github.com.
+ */
+export function isGithubConnection(connection: {
+  slug?: string | null;
+}): boolean {
+  return connection.slug === "mcp-github";
+}
+
+/**
+ * GitHub credential for an `mcp-github` connection of any flavour — the entry
+ * point callers should use, since `ensureRepoScopedToken` rejects everything
+ * that is not a legacy repo child. Legacy repo children re-mint their ~1h
+ * `ghs_` token; org connections and current repo children read the refreshable
+ * grant in `downstream_tokens`. Mirrors the fork in the MCP proxy's
+ * `outbound/headers`, which keeps its own copy for proxy-specific logging and
+ * its `connection_token` fallback.
+ */
+export async function githubConnectionAccessToken(
+  ctx: StudioContext,
+  connection: ConnectionEntity,
+  opts?: { forceRefresh?: boolean },
+): Promise<string | null> {
+  if (getRepoScope(connection)?.sourceConnectionId) {
+    return ensureRepoScopedToken(ctx, connection, opts);
+  }
+
+  const tokenResult = await getValidDownstreamAccessToken({
+    connectionId: connection.id,
+    connectionUrl: connection.connection_url,
+    tokenStorage: new DownstreamTokenStorage(ctx.db, ctx.vault),
+    force: opts?.forceRefresh,
+  });
+  return tokenResult.accessToken;
 }

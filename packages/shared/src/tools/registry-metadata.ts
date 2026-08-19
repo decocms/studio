@@ -241,6 +241,7 @@ const ALL_TOOL_NAMES = [
 
   // GitHub tools (app-only)
   "GITHUB_LIST_USER_ORGS",
+  "GITHUB_SEARCH_BRANCHES",
 
   // Search tools
   "GLOBAL_SEARCH",
@@ -1131,6 +1132,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "List GitHub user's personal account and organizations",
     category: "GitHub",
   },
+  {
+    name: "GITHUB_SEARCH_BRANCHES",
+    description: "Search a repository's branches by name substring",
+    category: "GitHub",
+  },
   // Search tools
   {
     name: "GLOBAL_SEARCH",
@@ -1304,9 +1310,10 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       // Library can mark mirror volumes read-only (management stays gated
       // behind file-configs:manage).
       "ORG_REPO_SYNC_LIST",
-      // Sandbox previews
+      // Sandbox previews, and the branch picker that feeds them
       "SANDBOX_START",
       "SANDBOX_DELETE",
+      "GITHUB_SEARCH_BRANCHES",
       // Cross-resource discovery / command palette
       "GLOBAL_SEARCH",
       // App-shell essentials (read-only) — every member hits these on first

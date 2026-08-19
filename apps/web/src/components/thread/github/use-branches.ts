@@ -1,5 +1,7 @@
 import { KEYS, type SandboxMap, useMCPClient } from "@/sdk";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { callStudioTool } from "@/lib/studio-tools";
+import { useDebouncedValue } from "@/hooks/use-debounced-value.ts";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { groupBranches } from "./group-branches";
 
 export interface Branch {
@@ -20,16 +22,18 @@ export interface UseBranchesResult {
   recent: Branch[];
   yours: Branch[];
   others: Branch[];
-  defaultBase: string | null;
   isLoading: boolean;
   isError: boolean;
+  /** True while a server-side search for the current term is in flight. */
+  isSearching: boolean;
+  /**
+   * Matches the server found but did not return (search is capped at
+   * `SEARCH_LIMIT`). 0 when browsing or when every match is shown.
+   */
+  hiddenMatchCount: number;
   hasMore: boolean;
   isFetchingMore: boolean;
   fetchMore: () => void;
-  fetchUntilMatch: (
-    search: string,
-    shouldContinue?: () => boolean,
-  ) => Promise<void>;
 }
 
 interface UseBranchesArgs {
@@ -40,6 +44,11 @@ interface UseBranchesArgs {
   sandboxMap: SandboxMap | undefined;
   owner: string;
   repo: string;
+  /**
+   * Current search term. Non-empty switches the repo list from paged browsing
+   * to a server-side search; sandbox-derived groups always filter locally.
+   */
+  search?: string;
   /**
    * When false the github fetch is skipped (e.g. dialog closed).
    * Your-branches still resolve from the in-memory sandboxMap.
@@ -65,36 +74,35 @@ interface BranchesPage {
   page: number;
 }
 
-const BRANCHES_PER_PAGE = 100;
-
-function pageHasBranchMatch(
-  pages: BranchesPage[] | undefined,
-  search: string,
-  excludedNames: Set<string>,
-): boolean {
-  const normalizedSearch = search.trim().toLowerCase();
-  if (!normalizedSearch) return true;
-
-  return (pages ?? []).some((page) =>
-    page.branches.some(
-      (branch) =>
-        typeof branch.name === "string" &&
-        !excludedNames.has(branch.name) &&
-        branch.name.toLowerCase().includes(normalizedSearch),
-    ),
-  );
+/** Flattens paged `list_branches` results, last page winning on duplicates. */
+export function dedupePagedBranches(
+  pages: { branches: RawBranch[] }[] | undefined,
+): { name: string; author: string | null }[] {
+  const byName = new Map<string, RawBranch>();
+  for (const page of pages ?? []) {
+    for (const branch of page.branches) {
+      if (typeof branch.name === "string") byName.set(branch.name, branch);
+    }
+  }
+  return [...byName.values()].map((b) => ({
+    name: b.name as string,
+    author:
+      typeof b.commit?.author === "string"
+        ? b.commit.author
+        : (b.commit?.author?.login ?? null),
+  }));
 }
 
-function branchNamesHaveMatch(
-  branchNames: Set<string>,
-  search: string,
-): boolean {
-  const normalizedSearch = search.trim().toLowerCase();
-  if (!normalizedSearch) return true;
+const BRANCHES_PER_PAGE = 100;
+/** Enough to fill the picker without paging; the server reports the true total. */
+const SEARCH_LIMIT = 50;
+const SEARCH_DEBOUNCE_MS = 300;
 
-  return [...branchNames].some((branchName) =>
-    branchName.toLowerCase().includes(normalizedSearch),
-  );
+/** Case-insensitive substring — the same predicate GitHub's `refs(query:)` applies. */
+export function matchesBranchSearch(name: string, search: string): boolean {
+  const needle = search.trim().toLowerCase();
+  if (!needle) return true;
+  return name.toLowerCase().includes(needle);
 }
 
 /**
@@ -120,15 +128,7 @@ function extractBranches(r: unknown): RawBranchesResponse {
   return [];
 }
 
-/**
- * Lists branches for the picker.
- *
- * - "yours" are derived from sandboxMap[userId] — no network call.
- * - "others" are from the github-mcp-server's list_branches tool, minus
- *   the yours set. If the fetch fails the picker still shows yours.
- * - defaultBase is the repo's default branch when exposed by the response;
- *   callers fall back to "main" otherwise.
- */
+/** Branches for the picker: sandboxMap for yours/recent, github for the rest. */
 export function useBranches({
   orgId,
   orgSlug,
@@ -137,6 +137,7 @@ export function useBranches({
   sandboxMap,
   owner,
   repo,
+  search = "",
   enabled = true,
 }: UseBranchesArgs): UseBranchesResult {
   const client = useMCPClient({
@@ -144,6 +145,11 @@ export function useBranches({
     orgId,
     orgSlug,
   });
+
+  const trimmedSearch = search.trim();
+  const debouncedSearch = useDebouncedValue(trimmedSearch, SEARCH_DEBOUNCE_MS);
+  const repoReady = !!connectionId && !!owner && !!repo;
+  const isSearchMode = trimmedSearch.length > 0;
 
   const {
     data,
@@ -154,7 +160,7 @@ export function useBranches({
     fetchNextPage,
   } = useInfiniteQuery<BranchesPage>({
     queryKey: KEYS.githubBranches(orgId, orgSlug, connectionId, owner, repo),
-    enabled: enabled && !!connectionId && !!owner && !!repo,
+    enabled: enabled && repoReady && !isSearchMode,
     staleTime: 30_000,
     retry: false,
     initialPageParam: 1,
@@ -188,84 +194,80 @@ export function useBranches({
     },
   });
 
-  const branchesByName = new Map<string, RawBranch>();
-  for (const page of data?.pages ?? []) {
-    for (const branch of page.branches) {
-      if (typeof branch.name === "string") {
-        branchesByName.set(branch.name, branch);
-      }
-    }
-  }
+  const {
+    data: searchData,
+    isLoading: isSearchLoading,
+    isError: isSearchError,
+    isFetching: isSearchFetching,
+  } = useQuery({
+    queryKey: KEYS.githubBranchSearch(
+      orgId,
+      orgSlug,
+      connectionId,
+      owner,
+      repo,
+      debouncedSearch,
+    ),
+    enabled: enabled && repoReady && debouncedSearch.length > 0,
+    staleTime: 30_000,
+    retry: false,
+    queryFn: () =>
+      callStudioTool(orgSlug, "GITHUB_SEARCH_BRANCHES", {
+        connectionId: connectionId as string,
+        owner,
+        repo,
+        query: debouncedSearch,
+        limit: SEARCH_LIMIT,
+      }),
+  });
 
-  const rawBranches = [...branchesByName.values()]
-    .filter(
-      (b): b is RawBranch & { name: string } => typeof b.name === "string",
-    )
-    .map((b) => ({
-      name: b.name,
-      author:
-        typeof b.commit?.author === "string"
-          ? b.commit.author
-          : (b.commit?.author?.login ?? null),
-    }));
+  // Results still describe the pre-debounce term, so count the gap as pending.
+  const isSearching =
+    isSearchMode && (debouncedSearch !== trimmedSearch || isSearchFetching);
 
-  const { recent, yours, others } = groupBranches({
+  // Until the first search settles, the already-paged branches are the only
+  // matches we can show; cmdk narrows them with the same predicate the server
+  // applies, so the list filters instantly instead of blanking for a debounce.
+  const rawBranches = searchData
+    ? searchData.branches
+    : dedupePagedBranches(data?.pages);
+
+  const grouped = groupBranches({
     sandboxMap,
     userId,
     rawBranches,
     now: Date.now(),
   });
 
-  // Branch names we can match locally without paging github — all
-  // sandbox-derived (recent + yours). Used to short-circuit remote search.
-  const localBranchNames = new Set([...recent, ...yours].map((b) => b.name));
+  // Keeps the derived counts honest about what cmdk actually renders.
+  const recent = grouped.recent.filter((b) =>
+    matchesBranchSearch(b.name, trimmedSearch),
+  );
+  const yours = grouped.yours.filter((b) =>
+    matchesBranchSearch(b.name, trimmedSearch),
+  );
+  const others = grouped.others;
 
-  const defaultBase =
-    data?.pages.find((page) => page.default_branch)?.default_branch ?? null;
-  const fetchUntilMatch = async (
-    search: string,
-    shouldContinue = () => true,
-  ) => {
-    if (
-      !shouldContinue() ||
-      branchNamesHaveMatch(localBranchNames, search) ||
-      isFetchingNextPage
-    ) {
-      return;
-    }
-
-    let pages = data?.pages ?? [];
-    while (
-      shouldContinue() &&
-      !pageHasBranchMatch(pages, search, localBranchNames) &&
-      (pages.at(-1)?.branches.length ?? BRANCHES_PER_PAGE) >= BRANCHES_PER_PAGE
-    ) {
-      const result = await fetchNextPage();
-      if (!shouldContinue()) {
-        break;
-      }
-      const nextPages = result.data?.pages ?? pages;
-      if (nextPages.length === pages.length) {
-        break;
-      }
-      pages = nextPages;
-    }
-  };
+  const hiddenMatchCount =
+    searchData && !isSearching
+      ? Math.max(0, searchData.totalCount - searchData.branches.length)
+      : 0;
 
   return {
     recent,
     yours,
     others,
-    defaultBase,
-    isLoading,
-    isError,
-    hasMore: hasNextPage ?? false,
+    isLoading: isSearchMode ? isSearchLoading : isLoading,
+    isError: isSearchMode ? isSearchError : isError,
+    isSearching,
+    hiddenMatchCount,
+    // Paging browses the full repo list; a search is answered in one shot.
+    hasMore: !isSearchMode && (hasNextPage ?? false),
     isFetchingMore: isFetchingNextPage,
     fetchMore: () => {
-      if (hasNextPage && !isFetchingNextPage) {
+      if (!isSearchMode && hasNextPage && !isFetchingNextPage) {
         void fetchNextPage();
       }
     },
-    fetchUntilMatch,
   };
 }

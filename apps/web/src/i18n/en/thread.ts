@@ -12,8 +12,8 @@ export const thread = {
   "thread.branchPicker.loadMoreBranches": "Load more branches",
   "thread.branchPicker.loadingMore": "Loading more…",
   "thread.branchPicker.loadingPullRequests": "Loading pull requests…",
-  "thread.branchPicker.lookingThroughMoreBranches":
-    "Looking through more branches...",
+  "thread.branchPicker.moreMatches":
+    "{count} more match(es) — refine your search",
   "thread.branchPicker.new": "New",
   "thread.branchPicker.noBranchesFound": "No branches found.",
   "thread.branchPicker.noPullRequestsFound":
@@ -22,7 +22,8 @@ export const thread = {
   "thread.branchPicker.openPullRequests": "Open pull requests",
   "thread.branchPicker.otherBranchesInRepo": "Other branches in repo",
   "thread.branchPicker.prsTab": "PRs",
-  "thread.branchPicker.searchLoadedBranches": "Search loaded branches…",
+  "thread.branchPicker.searchBranches": "Search branches…",
+  "thread.branchPicker.searchingBranches": "Searching branches…",
   "thread.branchPicker.searchPullRequests": "Search pull requests…",
   "thread.branchPicker.selectBranch": "Select branch…",
   "thread.branchPicker.yourBranches": "Your branches",

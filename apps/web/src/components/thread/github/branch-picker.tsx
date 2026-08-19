@@ -1,4 +1,4 @@
-import { type UIEvent, useRef, useState } from "react";
+import { type UIEvent, useState } from "react";
 import type { SandboxMap } from "@/sdk";
 import { useMembersQuery } from "@/hooks/use-members";
 import { getInitials } from "@/lib/get-initials";
@@ -33,7 +33,7 @@ import {
 } from "@untitledui/icons";
 import { generateBranchName } from "@decocms/shared/branch-name";
 import { decodeHtmlEntities } from "./decode-html-entities.ts";
-import { useBranches } from "./use-branches";
+import { matchesBranchSearch, useBranches } from "./use-branches";
 import { useT } from "@/i18n/use-t.ts";
 import { useOpenPrs } from "./use-pr-data.ts";
 import { TOUR_ANCHORS } from "@/components/cms-tour/anchors";
@@ -64,10 +64,11 @@ interface Props {
   placement?: "chat" | "header";
 }
 
-/**
- * Grouped branch picker: "Your branches" (from sandboxMap) + "Other branches in
- * repo" (from github-mcp-server.list_branches).
- */
+/** Substring, not cmdk's fuzzy default, so it can't hide a server match. */
+const branchFilter = (value: string, search: string) =>
+  matchesBranchSearch(value, search) ? 1 : 0;
+
+/** Grouped branch picker over {@link useBranches}, plus an open-PRs tab. */
 export function BranchPicker({
   orgId,
   orgSlug,
@@ -96,8 +97,6 @@ export function BranchPicker({
   // current branch so the picker opens focused on the branch in use rather than
   // an unrelated first row. Kept in sync with keyboard/hover navigation.
   const [activeValue, setActiveValue] = useState(value ?? "");
-  const [isSearchingRemote, setIsSearchingRemote] = useState(false);
-  const searchRequestId = useRef(0);
 
   const {
     recent,
@@ -105,10 +104,11 @@ export function BranchPicker({
     others,
     isLoading,
     isError,
+    isSearching,
+    hiddenMatchCount,
     hasMore,
     isFetchingMore,
     fetchMore,
-    fetchUntilMatch,
   } = useBranches({
     orgId,
     orgSlug,
@@ -117,6 +117,7 @@ export function BranchPicker({
     sandboxMap,
     owner,
     repo,
+    search: tab === "branches" ? search : "",
     enabled: open,
   });
 
@@ -165,28 +166,6 @@ export function BranchPicker({
   };
 
   const label = value ?? t("thread.branchPicker.selectBranch");
-  const handleSearchChange = (nextSearch: string) => {
-    setSearch(nextSearch);
-    searchRequestId.current += 1;
-
-    const requestId = searchRequestId.current;
-    const trimmedSearch = nextSearch.trim();
-    // PRs are all loaded up-front, so only branches need remote search paging.
-    if (!trimmedSearch || tab !== "branches") {
-      setIsSearchingRemote(false);
-      return;
-    }
-
-    setIsSearchingRemote(true);
-    void fetchUntilMatch(
-      trimmedSearch,
-      () => requestId === searchRequestId.current,
-    ).finally(() => {
-      if (requestId === searchRequestId.current) {
-        setIsSearchingRemote(false);
-      }
-    });
-  };
 
   const onListScroll = (event: UIEvent<HTMLDivElement>) => {
     const target = event.currentTarget;
@@ -207,7 +186,12 @@ export function BranchPicker({
           : (next) => {
               // Re-seed the highlight on the current branch each time the picker
               // opens, in case the branch changed since it was last closed.
-              if (next) setActiveValue(value ?? "");
+              // A term left over from last time would silently pre-filter the
+              // list, and re-fire its request on open.
+              if (next) {
+                setActiveValue(value ?? "");
+                setSearch("");
+              }
               setOpen(next);
             }
       }
@@ -252,16 +236,20 @@ export function BranchPicker({
         className="w-[min(420px,calc(100vw-2rem))] p-0"
         align="start"
       >
-        <Command value={activeValue} onValueChange={setActiveValue}>
+        <Command
+          value={activeValue}
+          onValueChange={setActiveValue}
+          filter={tab === "branches" ? branchFilter : undefined}
+        >
           <div className="*:data-[slot=command-input-wrapper]:flex-1 *:data-[slot=command-input-wrapper]:border-b-0 flex items-center border-b pr-2">
             <CommandInput
               placeholder={
                 tab === "branches"
-                  ? t("thread.branchPicker.searchLoadedBranches")
+                  ? t("thread.branchPicker.searchBranches")
                   : t("thread.branchPicker.searchPullRequests")
               }
               value={search}
-              onValueChange={handleSearchChange}
+              onValueChange={setSearch}
             />
             {tab === "branches" && (
               <Button
@@ -360,10 +348,10 @@ export function BranchPicker({
                     {t("thread.branchPicker.couldntLoadBranches")}
                   </div>
                 )}
-                {!isError && !isLoading && (
+                {!isError && (isSearching || !isLoading) && (
                   <CommandEmpty>
-                    {hasMore
-                      ? t("thread.branchPicker.lookingThroughMoreBranches")
+                    {isSearching
+                      ? t("thread.branchPicker.searchingBranches")
                       : t("thread.branchPicker.noBranchesFound")}
                   </CommandEmpty>
                 )}
@@ -449,13 +437,20 @@ export function BranchPicker({
                       disabled={isFetchingMore}
                       onClick={fetchMore}
                     >
-                      {isFetchingMore || isSearchingRemote
+                      {isFetchingMore
                         ? t("thread.branchPicker.loadingMore")
                         : t("thread.branchPicker.loadMoreBranches")}
                     </Button>
                   </div>
                 )}
-                {!hasMore && others.length > 0 && (
+                {hiddenMatchCount > 0 && (
+                  <div className="border-t p-2 text-center text-xs text-muted-foreground">
+                    {t("thread.branchPicker.moreMatches", {
+                      count: hiddenMatchCount,
+                    })}
+                  </div>
+                )}
+                {!search.trim() && !hasMore && others.length > 0 && (
                   <div className="border-t p-2 text-center text-xs text-muted-foreground">
                     {t("thread.branchPicker.allLoaded")}
                   </div>
