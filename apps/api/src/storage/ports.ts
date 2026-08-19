@@ -330,7 +330,6 @@ export interface OrganizationSettingsStoragePort {
         | "simple_mode"
         | "default_home_agents"
         | "flags"
-        | "task_board_env"
         | "main_agent_id"
       >
     >,

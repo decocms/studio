@@ -1,62 +1,60 @@
 /**
- * Org-wide env for sandbox-hosted runs.
+ * Org-wide env for task-board runs, read from one vault secret.
  *
- * A task-board run is dispatched by the board, not by a person opening an
- * agent, so it has no virtual MCP whose `metadata.runtime.env` it could inherit
- * — its `virtual_mcp_id` is the synthetic Decopilot id, which has no row. Its
- * pod therefore booted with nothing but the model credential, and an org whose
- * tests or build need `SOME_API_KEY` had no way to hand it over. This is that
- * way: `organization_settings.task_board_env`, resolved per run.
+ * A board run is dispatched by the board, not by a person opening an agent, so
+ * it has no virtual MCP whose `metadata.runtime.env` it could inherit — its
+ * `virtual_mcp_id` is the synthetic Decopilot id, which has no row. Its pod
+ * therefore boots with nothing but the model credential.
+ *
+ * So: an org-scoped secret named `TASK_RUN_ENV` holding a `.env` blob. No new
+ * column, no new tool, no new UI — Settings → Secrets already creates and
+ * rotates it, and the value stays encrypted in the vault instead of riding in
+ * the org-settings payload every member reads on shell load.
  *
  * ⚠️ SECURITY: everything here carries secret VALUES. Never log a resolved map,
  * and never put one in an error message.
  */
 
-import { TaskBoardEnvEntrySchema } from "@decocms/shared/organization/schema";
+import { parseDotenv } from "@decocms/shared/parse-dotenv";
 import type { StudioContext } from "@/core/studio-context";
-import { resolveEnvEntries } from "@/tools/sandbox/resolve-env";
+
+/** The org-scoped secret a run's env is read from. */
+const TASK_RUN_ENV_SECRET = "TASK_RUN_ENV";
 
 /**
- * The org's task-board env, resolved against the credential vault.
+ * The org's task-run env, or `{}` when the secret is absent.
  *
- * Best-effort by design: a settings read that fails, or a secret that no longer
- * resolves, must not fail a run that would otherwise work — the run just doesn't
- * see that key, same as `resolveAndPushEnv` on an agent's own env.
- *
- * The jsonb column is untrusted (older rows, hand-edited settings), so each
- * entry is validated on the way out and a malformed one is dropped rather than
- * poisoning the whole map.
+ * Best-effort: a missing secret is the normal case, and an unparseable one must
+ * not fail a run that would otherwise work — it is logged (key names and the
+ * parse error only) and skipped.
  */
 export async function resolveOrgRunEnv(
   ctx: StudioContext,
-  userId: string,
 ): Promise<Record<string, string>> {
-  const orgId = ctx.organization?.id;
-  if (!orgId) return {};
+  const organizationId = ctx.organization?.id;
+  if (!organizationId) return {};
   try {
-    const settings = await ctx.storage.organizationSettings.get(orgId);
-    const stored = settings?.task_board_env;
-    if (!Array.isArray(stored) || stored.length === 0) return {};
-    const entries = stored.flatMap((entry) => {
-      const parsed = TaskBoardEnvEntrySchema.safeParse(entry);
-      return parsed.success
-        ? [{ ...parsed.data, kind: "secret" as const }]
-        : [];
+    const { value } = await ctx.storage.secrets.resolveByName({
+      organizationId,
+      scope: { kind: "organization" },
+      name: TASK_RUN_ENV_SECRET,
     });
-    if (entries.length === 0) return {};
-    return await resolveEnvEntries({ ctx, orgId, userId, entries });
+    return parseDotenv(value);
   } catch (err) {
-    console.warn(
-      `[org-run-env] skipping the org env for this run: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    // Absent is the default state, so it isn't worth a line in the log.
+    if ((err as { name?: string })?.name !== "SecretNotFoundError") {
+      console.warn(
+        `[org-run-env] ignoring the ${TASK_RUN_ENV_SECRET} secret: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
     return {};
   }
 }
 
 /**
  * The env one run boots with. The model credential WINS over the org's env: a
- * member who can edit org settings must not be able to repoint every board run
- * at their own `ANTHROPIC_BASE_URL` and read the traffic.
+ * member who can write secrets must not be able to repoint every board run at
+ * their own `ANTHROPIC_BASE_URL` and read the traffic.
  *
  * Pure, so the precedence is unit-tested.
  */

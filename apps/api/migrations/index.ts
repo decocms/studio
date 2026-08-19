@@ -169,7 +169,6 @@ import * as migration167taskboardrunretry from "./167-task-board-run-retry.ts";
 import * as migration168orgreposync from "./168-org-repo-sync.ts";
 import * as migration169taskboardmergefailedactivity from "./169-task-board-merge-failed-activity.ts";
 import * as migration170taskboarditemrepo from "./170-task-board-item-repo.ts";
-import * as migration171orgtaskboardenv from "./171-org-task-board-env.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -368,7 +367,6 @@ const migrations: Record<string, Migration> = {
   "169-task-board-merge-failed-activity":
     migration169taskboardmergefailedactivity,
   "170-task-board-item-repo": migration170taskboarditemrepo,
-  "171-org-task-board-env": migration171orgtaskboardenv,
 };
 
 export default migrations;

@@ -48,7 +48,7 @@ import {
 import { useT } from "@/i18n/use-t.ts";
 import { authClient } from "@/lib/auth-client";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { parseDotenv } from "@/components/sandbox/preview/drawer/parse-dotenv";
+import { parseDotenv } from "@decocms/shared/parse-dotenv";
 import {
   SECRET_NAME_RE,
   ScopeIcon,

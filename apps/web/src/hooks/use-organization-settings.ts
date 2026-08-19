@@ -20,7 +20,6 @@ import {
 import type {
   OrgFlags,
   SimpleModeTier,
-  TaskBoardEnvEntry,
 } from "@decocms/shared/organization/schema";
 
 export interface ModelSlot {
@@ -50,7 +49,6 @@ export interface OrganizationSettings {
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
   flags: OrgFlags | null;
-  task_board_env: TaskBoardEnvEntry[] | null;
   main_agent_id: string | null;
   createdAt?: string;
   updatedAt?: string;
@@ -64,7 +62,6 @@ const EMPTY_SETTINGS: OrganizationSettings = {
   simple_mode: null,
   default_home_agents: null,
   flags: null,
-  task_board_env: null,
   main_agent_id: null,
 };
 
@@ -149,7 +146,6 @@ type OrgSettingsUpdateInput = Partial<
     | "simple_mode"
     | "default_home_agents"
     | "flags"
-    | "task_board_env"
     | "main_agent_id"
   >
 >;
@@ -298,27 +294,6 @@ export function useSetOrgFlag() {
       value: boolean,
       options?: OrgSettingsMutateOptions,
     ) => mutation.mutateAsync({ flags: { [flag]: value } }, options),
-  };
-}
-
-/**
- * Env vars injected into every task-board run in the org. Vault references
- * only — the value never travels, just the secret id (see TaskBoardEnvSchema).
- */
-export function useTaskBoardEnv(): TaskBoardEnvEntry[] {
-  const { data } = useOrganizationSettings((s) => s.task_board_env ?? []);
-  return data ?? [];
-}
-
-/** Writer for the whole list — `[]` clears it. */
-export function useSetTaskBoardEnv() {
-  const mutation = useUpdateOrganizationSettings();
-  return {
-    ...mutation,
-    mutateAsync: (
-      entries: TaskBoardEnvEntry[],
-      options?: OrgSettingsMutateOptions,
-    ) => mutation.mutateAsync({ task_board_env: entries }, options),
   };
 }
 

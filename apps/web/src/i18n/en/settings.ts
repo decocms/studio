@@ -477,32 +477,6 @@ export const settings = {
   "settings.review.autoAssignReportTasksDescription":
     "Tasks created from a report are delegated to the Super Agent automatically instead of landing unassigned.",
   "settings.review.updateError": "Couldn't update the setting",
-  "settings.taskEnv.title": "Task run environment",
-  "settings.taskEnv.description":
-    "Env vars every task run in this organization boots with — the Super Agent and the reviewers. Each one points at a secret; the value is read from the vault at dispatch and never shown here.",
-  "settings.taskEnv.add": "Add variable",
-  "settings.taskEnv.emptyTitle": "No env vars",
-  "settings.taskEnv.emptyDescription":
-    "Task runs boot with only their model credential. Add a variable to hand them an API key or token.",
-  "settings.taskEnv.removeAriaLabel": "Remove {key}",
-  "settings.taskEnv.missingSecret":
-    "This secret no longer exists — runs skip this variable.",
-  "settings.taskEnv.addTitle": "Add env var",
-  "settings.taskEnv.addDescription":
-    "The key is the name the run sees; it doesn't have to match the secret's name.",
-  "settings.taskEnv.keyLabel": "Key",
-  "settings.taskEnv.keyPlaceholder": "SOME_API_KEY",
-  "settings.taskEnv.invalidKey":
-    "Must start with a letter or underscore and contain only letters, digits, and underscores.",
-  "settings.taskEnv.duplicateKey": "This key is already set.",
-  "settings.taskEnv.secretLabel": "Secret",
-  "settings.taskEnv.secretPlaceholder": "Pick a secret",
-  "settings.taskEnv.noSecrets":
-    "No secrets yet — create one in Settings → Secrets.",
-  "settings.taskEnv.cancel": "Cancel",
-  "settings.taskEnv.save": "Add",
-  "settings.taskEnv.saving": "Adding…",
-  "settings.taskEnv.updateError": "Couldn't update the task run environment",
   "settings.orgRoleDetail.addMember": "Add Member",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Add members to grant them the configured permissions.",

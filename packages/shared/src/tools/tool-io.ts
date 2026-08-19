@@ -130,7 +130,6 @@ export interface StudioToolIO {
           }
         | null
         | undefined;
-      task_board_env?: { key: string; secretId: string }[] | null | undefined;
       main_agent_id?: string | null | undefined;
       createdAt?: string | undefined;
       updatedAt?: string | undefined;
@@ -198,7 +197,6 @@ export interface StudioToolIO {
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
           }
         | undefined;
-      task_board_env?: { key: string; secretId: string }[] | undefined;
       main_agent_id?: string | null | undefined;
     };
     output: {
@@ -268,7 +266,6 @@ export interface StudioToolIO {
           }
         | null
         | undefined;
-      task_board_env?: { key: string; secretId: string }[] | null | undefined;
       main_agent_id?: string | null | undefined;
     };
   };

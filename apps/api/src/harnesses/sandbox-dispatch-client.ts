@@ -309,10 +309,7 @@ export class SandboxDispatchClient implements SandboxClient {
     }
 
     // Resolved before the pod exists; model credential wins — see `mergeRunEnv`.
-    const runEnv = mergeRunEnv(
-      await resolveOrgRunEnv(this.ctx, input.user.id),
-      modelEnv,
-    );
+    const runEnv = mergeRunEnv(await resolveOrgRunEnv(this.ctx), modelEnv);
 
     const { provider, kind } = await resolveSandboxProvider(this.ctx, {
       userId: input.user.id,

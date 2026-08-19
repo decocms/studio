@@ -7,7 +7,6 @@ import {
   SimpleModeConfigSchema,
   DefaultHomeAgentsConfigSchema,
   OrgFlagsSchema,
-  TaskBoardEnvSchema,
 } from "@decocms/shared/organization/schema";
 
 export const ORGANIZATION_SETTINGS_GET = defineTool({
@@ -31,7 +30,6 @@ export const ORGANIZATION_SETTINGS_GET = defineTool({
     simple_mode: SimpleModeConfigSchema.nullable().optional(),
     default_home_agents: DefaultHomeAgentsConfigSchema.nullable().optional(),
     flags: OrgFlagsSchema.nullable().optional(),
-    task_board_env: TaskBoardEnvSchema.nullable().optional(),
     main_agent_id: z.string().nullable().optional(),
     createdAt: z.string().datetime().optional().describe("ISO 8601 timestamp"),
     updatedAt: z.string().datetime().optional().describe("ISO 8601 timestamp"),

@@ -499,33 +499,6 @@ export const settings = {
     "Tarefas criadas a partir de um relat\u00f3rio s\u00e3o delegadas ao Super Agent automaticamente, em vez de ficarem sem respons\u00e1vel.",
   "settings.review.updateError":
     "N\u00e3o foi poss\u00edvel atualizar a configura\u00e7\u00e3o",
-  "settings.taskEnv.title": "Ambiente das execuções de tarefa",
-  "settings.taskEnv.description":
-    "Variáveis de ambiente que toda execução de tarefa desta organização recebe — o Super Agent e os revisores. Cada uma aponta para um secret; o valor é lido do vault no disparo e nunca aparece aqui.",
-  "settings.taskEnv.add": "Adicionar variável",
-  "settings.taskEnv.emptyTitle": "Nenhuma variável",
-  "settings.taskEnv.emptyDescription":
-    "As execuções sobem apenas com a credencial de modelo. Adicione uma variável para entregar uma API key ou token.",
-  "settings.taskEnv.removeAriaLabel": "Remover {key}",
-  "settings.taskEnv.missingSecret":
-    "Este secret não existe mais — as execuções ignoram esta variável.",
-  "settings.taskEnv.addTitle": "Adicionar variável",
-  "settings.taskEnv.addDescription":
-    "A chave é o nome que a execução vê; não precisa ser igual ao nome do secret.",
-  "settings.taskEnv.keyLabel": "Chave",
-  "settings.taskEnv.keyPlaceholder": "SOME_API_KEY",
-  "settings.taskEnv.invalidKey":
-    "Deve começar com letra ou underscore e conter apenas letras, dígitos e underscores.",
-  "settings.taskEnv.duplicateKey": "Esta chave já está definida.",
-  "settings.taskEnv.secretLabel": "Secret",
-  "settings.taskEnv.secretPlaceholder": "Escolha um secret",
-  "settings.taskEnv.noSecrets":
-    "Nenhum secret ainda — crie um em Configurações → Secrets.",
-  "settings.taskEnv.cancel": "Cancelar",
-  "settings.taskEnv.save": "Adicionar",
-  "settings.taskEnv.saving": "Adicionando…",
-  "settings.taskEnv.updateError":
-    "Não foi possível atualizar o ambiente das execuções",
   "settings.orgRoleDetail.addMember": "Adicionar Membro",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Adicione membros para conceder as permiss\u00f5es configuradas.",
