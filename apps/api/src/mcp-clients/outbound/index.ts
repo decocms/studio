@@ -89,7 +89,7 @@ export async function createOutboundClient(
 
       // STDIO uses a singleton pool — child processes must persist across requests.
       // NOT the per-request pool on ctx (that one is for HTTP/SSE with fresh auth headers).
-      return stdioPool(transport, connectionId);
+      return stdioPool(() => transport, connectionId);
     }
 
     case "HTTP":
@@ -97,64 +97,72 @@ export async function createOutboundClient(
       if (!connection.connection_url) {
         throw new Error(`${connection.connection_type} connection missing URL`);
       }
+      const connectionUrl = connection.connection_url;
 
-      const headers = await buildRequestHeaders(connection, ctx, superUser);
+      // Deferred: only builds headers (DB lookup + JWT issuance) on a cache miss.
+      return ctx.getOrCreateClient(async () => {
+        const headers = await buildRequestHeaders(connection, ctx, superUser);
 
-      const httpParams = connection.connection_headers;
-      if (httpParams && "headers" in httpParams) {
-        Object.assign(headers, httpParams.headers);
-      }
+        const httpParams = connection.connection_headers;
+        if (httpParams && "headers" in httpParams) {
+          Object.assign(headers, httpParams.headers);
+        }
 
-      let transport: Transport = new StreamableHTTPClientTransport(
-        new URL(connection.connection_url),
-        { requestInit: { headers } },
-      );
+        let transport: Transport = new StreamableHTTPClientTransport(
+          new URL(connectionUrl),
+          { requestInit: { headers } },
+        );
 
-      // Compose with auth and monitoring transports
-      transport = composeTransport(
-        transport,
-        (t) => new AuthTransport(t, { ctx, connection, superUser }),
-        (t) =>
-          new MonitoringTransport(t, {
-            ctx,
-            connectionId,
-            virtualMcpId,
-          }),
-      );
+        // Compose with auth and monitoring transports
+        transport = composeTransport(
+          transport,
+          (t) => new AuthTransport(t, { ctx, connection, superUser }),
+          (t) =>
+            new MonitoringTransport(t, {
+              ctx,
+              connectionId,
+              virtualMcpId,
+            }),
+        );
 
-      return ctx.getOrCreateClient(transport, connectionId);
+        return transport;
+      }, connectionId);
     }
 
     case "SSE": {
       if (!connection.connection_url) {
         throw new Error("SSE connection missing URL");
       }
+      const connectionUrl = connection.connection_url;
 
-      const headers = await buildRequestHeaders(connection, ctx, superUser);
+      // Deferred: only builds headers (DB lookup + JWT issuance) on a cache miss.
+      return ctx.getOrCreateClient(async () => {
+        const headers = await buildRequestHeaders(connection, ctx, superUser);
 
-      const httpParams = connection.connection_headers;
-      if (httpParams && "headers" in httpParams) {
-        Object.assign(headers, httpParams.headers);
-      }
+        const httpParams = connection.connection_headers;
+        if (httpParams && "headers" in httpParams) {
+          Object.assign(headers, httpParams.headers);
+        }
 
-      let transport: Transport = new SSEClientTransport(
-        new URL(connection.connection_url),
-        { requestInit: { headers } },
-      );
+        let transport: Transport = new SSEClientTransport(
+          new URL(connectionUrl),
+          { requestInit: { headers } },
+        );
 
-      // Compose with auth and monitoring transports
-      transport = composeTransport(
-        transport,
-        (t) => new AuthTransport(t, { ctx, connection, superUser }),
-        (t) =>
-          new MonitoringTransport(t, {
-            ctx,
-            connectionId,
-            virtualMcpId,
-          }),
-      );
+        // Compose with auth and monitoring transports
+        transport = composeTransport(
+          transport,
+          (t) => new AuthTransport(t, { ctx, connection, superUser }),
+          (t) =>
+            new MonitoringTransport(t, {
+              ctx,
+              connectionId,
+              virtualMcpId,
+            }),
+        );
 
-      return ctx.getOrCreateClient(transport, connectionId);
+        return transport;
+      }, connectionId);
     }
 
     default:

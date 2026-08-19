@@ -429,9 +429,9 @@ export interface StudioContext extends HarnessContext {
     conn: Parameters<typeof createMCPProxy>[0],
   ) => ReturnType<typeof createMCPProxy>;
 
-  // Client pool for STDIO connection reuse (LRU cache)
+  // Client pool for STDIO connection reuse (LRU cache); createTransport runs only on a cache miss
   getOrCreateClient: <T extends Transport>(
-    transport: T,
+    createTransport: () => T | Promise<T>,
     key: string,
   ) => Promise<Client>;
 
