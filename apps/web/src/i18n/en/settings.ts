@@ -209,7 +209,6 @@ export const settings = {
   "settings.buckets.nameLabel": "Name",
   "settings.buckets.namePlaceholder": "production-uploads",
   "settings.buckets.noBucketsConfigured": "No buckets configured",
-  "settings.buckets.pageTitle": "Buckets",
   "settings.buckets.pathStyle": "path-style",
   "settings.buckets.prefix": "prefix: {prefix}",
   "settings.buckets.prefixHelperText":
@@ -446,41 +445,6 @@ export const settings = {
   "settings.joinRequestsSection.description":
     "People who requested to join via a domain in approval mode.",
   "settings.joinRequestsSection.title": "Join requests",
-  "settings.orgBrandContext.addBrand": "Add Brand",
-  "settings.orgBrandContext.addYourFirstBrand": "Add your first brand",
-  "settings.orgBrandContext.brandContext": "Brand Context",
-  "settings.orgBrandContext.brandContextDescription":
-    "Define your brand profiles. Each brand is available as an MCP prompt for AI clients.",
-  "settings.orgBrandContext.brandContextUpdated":
-    "Brand context updated successfully",
-  "settings.orgBrandContext.brandCreated": "Brand created",
-  "settings.orgBrandContext.brandDeleted": "Brand deleted",
-  "settings.orgBrandContext.brandExtractedSuccessfully":
-    "Brand extracted successfully",
-  "settings.orgBrandContext.cancel": "Cancel",
-  "settings.orgBrandContext.delete": "Delete",
-  "settings.orgBrandContext.deleteBrand": "Delete brand",
-  "settings.orgBrandContext.deleteBrandTitle": "Delete brand?",
-  "settings.orgBrandContext.deleteConfirmMessage":
-    "This will permanently delete {name}. This action cannot be undone.",
-  "settings.orgBrandContext.deleteDefaultBrandWarning":
-    "this is your organization's default brand. Deleting it will leave your organization without a default brand until you set another.",
-  "settings.orgBrandContext.deleting": "Deleting...",
-  "settings.orgBrandContext.failedCreateBrand": "Failed to create brand",
-  "settings.orgBrandContext.failedDeleteBrand": "Failed to delete brand",
-  "settings.orgBrandContext.failedExtractBrand": "Failed to extract brand",
-  "settings.orgBrandContext.failedSaveBrandContext":
-    "Failed to save brand context",
-  "settings.orgBrandContext.failedUpdateDefaultBrand":
-    "Failed to update default brand",
-  "settings.orgBrandContext.headsUp": "Heads up",
-  "settings.orgBrandContext.noBrandsConfigured": "No brands configured yet.",
-  "settings.orgBrandContext.removedAsDefaultBrand": "Removed as default brand",
-  "settings.orgBrandContext.setAsDefault": "Set as default",
-  "settings.orgBrandContext.setAsDefaultBrand": "Set as default brand",
-  "settings.orgBrandContext.thisBrand": "this brand",
-  "settings.orgBrandContext.unsetAsDefault": "Unset as default",
-  "settings.orgBrandContext.untitledBrand": "Untitled Brand",
   "settings.navigation.title": "Navigation",
   "settings.navigation.description":
     "How this organization gets around Studio.",
@@ -805,7 +769,6 @@ export const settings = {
     "Deco AI Gateway connected successfully",
   "settings.aiProviders.decoConnectError":
     "Failed to connect Deco AI Gateway: {error}",
-  "settings.billing.title": "Billing",
   "settings.billing.autoTasksTitle": "Auto tasks",
   "settings.billing.unlimitedDescription":
     "Auto-task runs are unlimited on this deployment. Tasks you create yourself are never limited either.",
@@ -823,7 +786,6 @@ export const settings = {
   "settings.billing.checkoutError": "Couldn't start checkout: {message}",
   "settings.billing.portalError": "Couldn't open billing portal: {message}",
 
-  "settings.infraBilling.pageTitle": "Infra Billing",
   "settings.infraBilling.noSites":
     "This organization doesn't own any deco.cx site yet.",
   "settings.infraBilling.siteLabel": "Sites",
