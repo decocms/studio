@@ -147,6 +147,15 @@ preview:
       limits:
         memory: "768Mi"
 
+  # Re-apply the schema on every pod start, not only when Argo syncs.
+  #
+  # The preview's Postgres is an emptyDir, so a spot reclaim, a drain or an OOM
+  # hands the pod an empty volume. The migration Job is a sync hook and does not
+  # re-run — nothing changed in git — so the application comes up against zero
+  # tables while every signal says healthy. Turn off only if something else
+  # guarantees the schema.
+  migrateOnBoot: true
+
   # Render the preview's namespace as part of the release.
   #
   # Argo's CreateNamespace=true creates a namespace without adopting it: no

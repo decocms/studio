@@ -62,6 +62,10 @@ spec:
       serviceAccountName: {{ include "chart-deco-studio.serviceAccountName" . }}
       securityContext:
         {{- include "chart-deco-studio.podSecurityContext" . | nindent 8 }}
+      {{- with (include "chart-deco-studio.previewMigrateInit" . | trim) }}
+      initContainers:
+        {{- . | nindent 8 }}
+      {{- end }}
       containers:
         # The front-door / web tier. Runs the nginx image (serves the SPA +
         # proxies to the API sidecars); named "-web" for the user-facing web

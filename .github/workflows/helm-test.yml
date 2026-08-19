@@ -333,6 +333,34 @@ jobs:
                 f"({len(needs)} references checked)")
           DEPS
 
+          # The preview Postgres is an emptyDir, so any reschedule hands the pod
+          # an empty volume. The Job is a sync hook and will not re-run, so
+          # without an init container the app comes up against zero tables with
+          # every signal reporting healthy. Exactly one pod may migrate — Kysely
+          # locks, DBOS does not.
+          python3 - <<'BOOT'
+          import sys, yaml
+          migrators, waiters = [], []
+          for d in yaml.safe_load_all(open("/tmp/preview.yaml")):
+              if not d or d["kind"] != "Deployment":
+                  continue
+              for c in (d["spec"]["template"]["spec"].get("initContainers") or []):
+                  if c["name"] == "migrate-on-boot":
+                      migrators.append(d["metadata"]["name"])
+                  if c["name"] == "wait-for-schema":
+                      waiters.append(d["metadata"]["name"])
+          if len(migrators) != 1:
+              print(f"::error::exactly one Deployment may migrate on boot, found "
+                    f"{len(migrators)}: {migrators} — DBOS has no lock and parallel "
+                    "launches collide on dbos.dbos_migrations")
+              sys.exit(1)
+          if not waiters:
+              print("::error::the worker has no wait-for-schema init container — it "
+                    "would start against a database the API pod has not migrated yet")
+              sys.exit(1)
+          print(f"schema is re-applied on boot by {migrators[0]}, awaited by {waiters}")
+          BOOT
+
           # Every studio container (api-0, api-1, worker) must skip migrations:
           # the PreSync Job is the single writer. Three, not two.
           # `|| true` — grep exits 1 on zero matches, which under `set -e` would

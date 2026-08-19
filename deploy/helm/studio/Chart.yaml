@@ -2,6 +2,13 @@ apiVersion: v2
 name: chart-deco-studio
 description: Helm chart for deco Studio — supports inline secrets, external secretName, and AWS Secrets Manager via ExternalSecret
 type: application
+# 0.14.6: previews re-apply the schema on every pod start (preview.migrateOnBoot).
+# The preview Postgres is an emptyDir, so a spot reclaim hands the pod an empty
+# volume — and the migration Job is a sync hook that does not re-run, because
+# nothing changed in git. The application then serves against zero tables while
+# pods are Running, the namespace is Active and Argo says Progressing. Observed
+# twice in two days on a spot-only pool.
+#
 # 0.14.5: the ServiceAccount had no sync-wave, so it landed at 0 — after the
 # migration Job at -10 that runs as it. The Job never got a pod at all ("error
 # looking up service account"), sat Running 0/1, and the sync stalled on the
@@ -50,7 +57,7 @@ type: application
 # when disabled, so existing releases are unaffected.
 # 0.12.4: chart-managed API/worker dispatch roles now use
 # STUDIO_DISPATCH_ROLE; legacy overrides are rejected.
-version: 0.14.5
+version: 0.14.6
 appVersion: "latest"
 
 dependencies:
