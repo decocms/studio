@@ -337,6 +337,35 @@ export function extractPreviewUrl(
   );
 }
 
+/** deco's Cloudflare account subdomain — the middle label of every
+ *  `*.workers.dev` preview host these sites deploy to.
+ *  ponytail: hardcoded; make it configurable if sites land in another account. */
+const WORKERS_DEV_SUBDOMAIN = "deco-cx";
+
+export function extractPreviewUrlFromCheckRuns(raw: unknown): string | null {
+  const runs = Array.isArray(raw)
+    ? raw
+    : Array.isArray((raw as { check_runs?: unknown })?.check_runs)
+      ? (raw as { check_runs: unknown[] }).check_runs
+      : [];
+  for (const r of runs) {
+    if (!r || typeof r !== "object") continue;
+    const o = r as { name?: unknown; output?: { summary?: unknown } };
+    const worker =
+      typeof o.name === "string"
+        ? /^Workers Builds:\s*([a-z0-9][a-z0-9-]*)\s*$/i.exec(o.name)?.[1]
+        : null;
+    if (!worker) continue;
+    const summary = o.output?.summary;
+    if (typeof summary !== "string") continue;
+    const version = /Version ID:\s*([0-9a-f]{8})/i.exec(summary)?.[1];
+    if (!version) continue;
+    const url = `https://${version}-${worker}.${WORKERS_DEV_SUBDOMAIN}.workers.dev`;
+    if (isTrustedPreviewHost(url)) return url;
+  }
+  return null;
+}
+
 /**
  * Pull the preview URL out of a PR's comments — where the deploy bot
  * actually posts it. Known shapes: Cloudflare Workers'
@@ -756,9 +785,13 @@ async function fetchPrStatusExtras(
     toChecksStatus(statusObj),
     toCheckRunsStatus(runsRaw),
   );
-  // Preview: a status `target_url` (rare) else the deploy bot's PR comment.
+  // Preview: the Workers Builds version (exact, and present even when
+  // Cloudflare's PR comment omits its Preview URL column), else a status
+  // `target_url` (rare), else the deploy bot's PR comment.
   let previewUrl =
-    extractPreviewUrl(statusObj) ?? extractPreviewUrlFromComments(commentsRaw);
+    extractPreviewUrlFromCheckRuns(runsRaw) ??
+    extractPreviewUrl(statusObj) ??
+    extractPreviewUrlFromComments(commentsRaw);
   // TODO(e2e): cover the miss-path gate + head-sha threading below (only the pure extractors are unit-tested).
   if (!previewUrl) {
     // Last resort: a GitHub Deployment env url (VTEX FastStore posts it only there), scanned only on the miss path once the head sha is known.
