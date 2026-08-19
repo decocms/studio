@@ -58,6 +58,26 @@ describe("buildValidationHint", () => {
     const hint = buildValidationHint("t", { properties: {} }, { a: 1 });
     expect(hint).toBe('Invalid arguments for "t". You sent: a.');
   });
+
+  it("does not flag a nullable union type's matching member as wrong-typed", () => {
+    const hint = buildValidationHint(
+      "t",
+      { properties: { note: { type: ["string", "null"] } } },
+      { note: "hi" },
+    );
+    expect(hint).not.toContain("Wrong type");
+  });
+
+  it("flags a value matching none of a union type's members", () => {
+    const hint = buildValidationHint(
+      "t",
+      { properties: { note: { type: ["string", "null"] } } },
+      { note: 5 },
+    );
+    expect(hint).toContain(
+      "Wrong type: note (expected string|null, got number).",
+    );
+  });
 });
 
 describe("enrichInvalidParams", () => {
@@ -135,6 +155,19 @@ describe("coerceArgsToSchema", () => {
     expect(coerceArgsToSchema(schema, { patch: "[1,2]" })).toBeNull();
     expect(coerceArgsToSchema(schema, { save: "yes" })).toBeNull();
     expect(coerceArgsToSchema(schema, { limit: "1.5" })).toBeNull();
+  });
+
+  it("coerces against a union type, skipping when string is already a member", () => {
+    const unionSchema = {
+      properties: {
+        flag: { type: ["boolean", "null"] },
+        name: { type: ["string", "null"] },
+      },
+    };
+    expect(coerceArgsToSchema(unionSchema, { flag: "true" })).toEqual({
+      flag: true,
+    });
+    expect(coerceArgsToSchema(unionSchema, { name: "hi" })).toBeNull();
   });
 
   it("returns null when nothing changed, and keeps untouched keys", () => {

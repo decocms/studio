@@ -20,7 +20,14 @@ import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 
 export interface ToolInputSchema {
   required?: string[];
-  properties?: Record<string, { type?: string }>;
+  properties?: Record<string, { type?: string | string[] }>;
+}
+
+/** JSON Schema allows `type` to be a single name or a union array (e.g. a
+ * nullable field declared as `["string", "null"]`). Normalize to an array so
+ * every caller checks the same shape. */
+function declaredTypes(declared: string | string[]): string[] {
+  return Array.isArray(declared) ? declared : [declared];
 }
 
 /** The JSON Schema `type` name for a runtime value. */
@@ -35,12 +42,18 @@ function jsonTypeOf(value: unknown): string {
  * "integer" is a whole-number `number`, not a distinct JS runtime type —
  * `jsonTypeOf` alone would call a correctly-sent `5` a type mismatch because
  * `typeof 5 === "number"` never equals the declared string `"integer"`.
+ * `declared` may also be a union array (e.g. a nullable field's
+ * `["string", "null"]`) — matching any member is enough.
  */
-function matchesDeclaredType(value: unknown, declared: string): boolean {
-  if (declared === "integer") {
-    return typeof value === "number" && Number.isInteger(value);
-  }
-  return jsonTypeOf(value) === declared;
+function matchesDeclaredType(
+  value: unknown,
+  declared: string | string[],
+): boolean {
+  return declaredTypes(declared).some((d) => {
+    if (d === "integer")
+      return typeof value === "number" && Number.isInteger(value);
+    return jsonTypeOf(value) === d;
+  });
 }
 
 /**
@@ -95,8 +108,11 @@ export function coerceArgsToSchema(
   for (const [key, value] of Object.entries(args)) {
     if (typeof value !== "string") continue;
     const declared = schema.properties[key]?.type;
-    if (!declared || declared === "string") continue;
-    const coerced = coerceString(value, declared);
+    // "string" already valid means the sent value needs no reinterpreting.
+    if (!declared || declaredTypes(declared).includes("string")) continue;
+    const coerced = declaredTypes(declared)
+      .map((d) => coerceString(value, d))
+      .find((c) => c !== undefined);
     if (coerced === undefined) continue;
     out[key] = coerced;
     changed = true;
@@ -117,9 +133,11 @@ export function buildValidationHint(
   const required = schema?.required ?? [];
   const missing = required.filter((k) => !sent.includes(k));
 
+  const formatType = (type: string | string[]) => declaredTypes(type).join("|");
+
   const describe = (name: string) => {
     const type = schema?.properties?.[name]?.type;
-    return type ? `${name} (${type})` : name;
+    return type ? `${name} (${formatType(type)})` : name;
   };
 
   // A present-but-wrong-typed argument is the common failure when nothing is
@@ -131,7 +149,7 @@ export function buildValidationHint(
     })
     .map(
       (k) =>
-        `${k} (expected ${schema?.properties?.[k]?.type}, got ${jsonTypeOf(args?.[k])})`,
+        `${k} (expected ${formatType(schema!.properties![k]!.type!)}, got ${jsonTypeOf(args?.[k])})`,
     );
 
   const parts = [
