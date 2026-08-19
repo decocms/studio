@@ -423,13 +423,28 @@ function CmsPublishContent({
   const canSubmit =
     !isPublishing && summary.count > 0 && (isReview || gate.allowed);
 
-  const noteTitle = () =>
-    note.trim().split("\n")[0]?.trim() ||
-    t("thread.publishDialog.changesFrom", { branch: githubHeadBranch });
-  const noteBody = () => {
+  /** The note is the commit message and the PR title/body in both modes. */
+  const noteParts = () => {
     const lines = note.trim().split("\n");
-    return lines.slice(1).join("\n").trim() || undefined;
+    const title =
+      lines[0]?.trim() ||
+      t("thread.publishDialog.changesFrom", { branch: githubHeadBranch });
+    const body = lines.slice(1).join("\n").trim() || undefined;
+    return { title, body, message: [title, body].filter(Boolean).join("\n\n") };
   };
+
+  /** One definition of the PR both modes open — or update, when one is open. */
+  const openPr = (title: string, body?: string) =>
+    openPullRequestForBranch(githubClient, {
+      owner,
+      repo,
+      branch: githubHeadBranch,
+      title,
+      body,
+      base: baseBranch,
+      coAuthor,
+      existing: existingOpenPr,
+    });
 
   const handlePublish = async () => {
     publishLockRef.current = true;
@@ -437,9 +452,7 @@ function CmsPublishContent({
     setPublishError(undefined);
     let openedPr: CreatedPullRequest | undefined;
     try {
-      const title = noteTitle();
-      const body = noteBody();
-      const message = [title, body].filter(Boolean).join("\n\n");
+      const { title, body, message } = noteParts();
 
       try {
         await publishGitChanges(orgSlug, virtualMcpId, branch, message);
@@ -462,16 +475,7 @@ function CmsPublishContent({
         );
       }
       try {
-        openedPr = await openPullRequestForBranch(githubClient, {
-          owner,
-          repo,
-          branch: githubHeadBranch,
-          title,
-          body,
-          base: baseBranch,
-          coAuthor,
-          existing: existingOpenPr,
-        });
+        openedPr = await openPr(title, body);
       } catch (error) {
         throw new PublishStepError(
           error instanceof Error
@@ -545,21 +549,10 @@ function CmsPublishContent({
     setIsPublishing(true);
     setPublishError(undefined);
     try {
-      const title = noteTitle();
-      const body = noteBody();
-      const message = [title, body].filter(Boolean).join("\n\n");
+      const { title, body, message } = noteParts();
 
       await publishGitChanges(orgSlug, virtualMcpId, branch, message);
-      const pr = await openPullRequestForBranch(githubClient, {
-        owner,
-        repo,
-        branch: githubHeadBranch,
-        title,
-        body,
-        base: baseBranch,
-        coAuthor,
-        existing: existingOpenPr,
-      });
+      const pr = await openPr(title, body);
 
       toast.success(
         t("thread.publishDialog.submittedForReview", { prNumber: pr.number }),
