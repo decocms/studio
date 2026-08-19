@@ -8,7 +8,7 @@
  *
  * Resolution is relative to the authenticated user: the same storefront can be
  * imported into several orgs, so we scan the orgs the caller is a member of and
- * return every project whose `metadata.siteSlug` matches `site` (lowercased).
+ * return every project whose name (`title`) matches `site` (lowercased).
  * That makes access implicit (orgs the caller isn't in never appear — no leak,
  * no false 403) and lets `/choose-editor` offer a picker when the site lives in
  * more than one of the caller's orgs. Instance-level: no org in the URL path.
@@ -78,7 +78,7 @@ export function createEditorResolveRoutes() {
       if (!org.slug || isOrgArchived(org)) continue;
       const vms = await ctx.storage.virtualMcps.list(org.id);
       for (const vm of vms) {
-        if (vm.metadata?.siteSlug?.toLowerCase() !== slug) continue;
+        if (vm.title.toLowerCase() !== slug) continue;
         matches.push({
           orgSlug: org.slug,
           orgName: org.name ?? org.slug,

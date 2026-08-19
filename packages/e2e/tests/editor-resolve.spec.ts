@@ -53,9 +53,10 @@ async function createProjectForSite(
     "COLLECTION_VIRTUAL_MCP_CREATE",
     {
       data: {
-        title: `Editor resolve e2e ${siteSlug}`,
+        // The project name (`title`) is what editor-resolve matches on.
+        title: siteSlug,
         connections: [],
-        metadata: { instructions: null, siteSlug },
+        metadata: { instructions: null },
       },
     },
   );
