@@ -99,7 +99,7 @@ AUTH_GITHUB_CLIENT_ID=...
 AUTH_GITHUB_CLIENT_SECRET=...
 ```
 
-For richer configuration (SAML/SSO, email providers, magic links), mount an `auth-config.json` into the container at `/app/apps/api/auth-config.json` by adding a volume to the `studio` service, using [`apps/api/auth-config.example.json`](https://github.com/decocms/studio/blob/main/apps/api/auth-config.example.json) as a starting point. See [Authentication](/en/studio/self-hosting/authentication) for the full reference.
+For richer configuration (deployment-wide SSO, email providers, magic links), set the corresponding `AUTH_*` variables in the compose `environment` block — there's no config file to mount. See [Authentication](/en/studio/self-hosting/authentication) for the full reference.
 
 ## Operations
 
@@ -150,4 +150,4 @@ docker compose -f docker-compose.postgres.yml up -d
 
 - Always generate a strong `BETTER_AUTH_SECRET` (`openssl rand -base64 32`) and a real `POSTGRES_PASSWORD`.
 - Don't commit `.env` (`echo ".env" >> .gitignore`; `chmod 600 .env`).
-- Don't commit secrets (client secrets, API keys) into any mounted `auth-config.json`.
+- Don't commit secrets (client secrets, API keys) into `.env` or the compose file.
