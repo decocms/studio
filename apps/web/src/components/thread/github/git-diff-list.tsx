@@ -143,6 +143,12 @@ export function GitDiffList({
                   minimap: { enabled: false },
                   scrollBeyondLastLine: false,
                   fontSize: 12,
+                  lineNumbers: "off",
+                  lineNumbersMinChars: 0,
+                  lineDecorationsWidth: 12,
+                  folding: false,
+                  glyphMargin: false,
+                  renderOverviewRuler: false,
                 }}
               />
             </div>
