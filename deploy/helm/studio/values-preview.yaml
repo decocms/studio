@@ -50,7 +50,22 @@ autoscaling:
 image:
   repository: ghcr.io/decocms/studio/studio-preview
   # tag injected per PR by the ApplicationSet.
-  pullPolicy: IfNotPresent
+  #
+  # Always, not IfNotPresent, because the preview tag is MUTABLE. It is
+  # `pr-<n>-<7 of head_sha>`, and the head sha does not move when the base does
+  # — but the image content does: the build checks out refs/pull/N/merge, so it
+  # is main ∪ PR, rebuilt against whatever main is at the time. Every push to
+  # the PR, and every label event, overwrites the same tag with different bits.
+  #
+  # The tag cannot be made immutable: the Argo pullRequest generator exposes
+  # only .number and .head_sha, so there is nothing to derive a base sha from.
+  # With IfNotPresent a node that cached an earlier build keeps serving it, and
+  # the symptom is "I fixed it on main and the preview did not change" with
+  # nothing to point at.
+  #
+  # Costs one registry round trip per pod start. On a spot pool that recycles
+  # nodes daily, that is the cheap side of the trade.
+  pullPolicy: Always
   # --skip-migrations is REQUIRED and enforced by validatePreview: the PreSync
   # Job is the single migration writer. Applies to the worker containers too,
   # which share this value.
@@ -58,6 +73,9 @@ image:
 
 nginx:
   # repository/tag injected per PR (studio-nginx-preview).
+  # Always for the same reason as the API image above: same mutable tag.
+  image:
+    pullPolicy: Always
   resources:
     requests:
       cpu: "100m"
