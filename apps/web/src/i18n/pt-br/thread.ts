@@ -195,7 +195,7 @@ export const thread = {
   "thread.publishPopover.emptyHint":
     "Suas alterações mais recentes já estão no ar.",
   "thread.publishPopover.everythingLive": "Tudo publicado",
-  "thread.publishPopover.failedRevert": "Falha ao reverter alterações",
+  "thread.publishPopover.failedDiscard": "Falha ao descartar alterações",
   "thread.publishPopover.globalSection": "Seção global",
   "thread.publishPopover.lastPublished": "Última publicação {when}",
   "thread.publishPopover.lastPublishedBy":
@@ -214,13 +214,13 @@ export const thread = {
   "thread.publishPopover.publishedTo": "Publicado em {host}",
   "thread.publishPopover.publishing": "Publicando…",
   "thread.publishPopover.requestApproval": "Pedir aprovação",
-  "thread.publishPopover.reverted": "{name} revertido",
-  "thread.publishPopover.revertedField": "{field} revertido",
-  "thread.publishPopover.revert": "Reverter",
-  "thread.publishPopover.revertAll": "Reverter tudo",
-  "thread.publishPopover.revertAllConfirm":
-    "Reverter todas as alterações? Isso não pode ser desfeito.",
-  "thread.publishPopover.revertConfirm": "Reverter {name}?",
+  "thread.publishPopover.discarded": "{name} descartado",
+  "thread.publishPopover.discardedField": "{field} descartado",
+  "thread.publishPopover.discard": "Descartar",
+  "thread.publishPopover.discardAll": "Descartar tudo",
+  "thread.publishPopover.discardAllConfirm":
+    "Descartar todas as alterações? Isso não pode ser desfeito.",
+  "thread.publishPopover.discardConfirm": "Descartar {name}?",
   "thread.publishPopover.reviewPassed": "Revisão de conteúdo aprovada",
   "thread.publishPopover.reviewing": "Revisando conteúdo…",
   "thread.publishPopover.siteConfiguration": "Configuração do site",

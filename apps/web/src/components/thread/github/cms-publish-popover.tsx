@@ -248,9 +248,9 @@ function CmsPublishBody({
   const [publishError, setPublishError] = useState<string>();
   const [note, setNote] = useState("");
   const [isGeneratingNote, setIsGeneratingNote] = useState(false);
-  const [revertConfirmId, setRevertConfirmId] = useState<string | null>(null);
-  const [revertAllConfirm, setRevertAllConfirm] = useState(false);
-  const [isReverting, setIsReverting] = useState(false);
+  const [discardConfirmId, setDiscardConfirmId] = useState<string | null>(null);
+  const [discardAllConfirm, setDiscardAllConfirm] = useState(false);
+  const [isDiscarding, setIsDiscarding] = useState(false);
   const [drillInId, setDrillInId] = useState<string | null>(null);
   const [showRawJson, setShowRawJson] = useState(false);
 
@@ -493,28 +493,30 @@ function CmsPublishBody({
     }
   };
 
-  const handleRevert = async (change: PublishChange) => {
-    setRevertConfirmId(null);
-    setIsReverting(true);
+  const handleDiscard = async (change: PublishChange) => {
+    setDiscardConfirmId(null);
+    setIsDiscarding(true);
     try {
       await discardGitFiles(orgSlug, virtualMcpId, branch, change.filepaths);
-      toast.success(t("thread.publishPopover.reverted", { name: change.name }));
+      toast.success(
+        t("thread.publishPopover.discarded", { name: change.name }),
+      );
       await loadGitState();
     } catch (error) {
       toast.error(
         error instanceof Error
           ? error.message
-          : t("thread.publishPopover.failedRevert"),
+          : t("thread.publishPopover.failedDiscard"),
       );
     } finally {
-      setIsReverting(false);
+      setIsDiscarding(false);
     }
   };
 
-  const handleRevertAll = async () => {
+  const handleDiscardAll = async () => {
     if (!gitDiff) return;
-    setRevertAllConfirm(false);
-    setIsReverting(true);
+    setDiscardAllConfirm(false);
+    setIsDiscarding(true);
     try {
       const allFiles = Object.keys(gitDiff.diffs);
       if (allFiles.length === 0) return;
@@ -525,14 +527,14 @@ function CmsPublishBody({
       toast.error(
         error instanceof Error
           ? error.message
-          : t("thread.publishPopover.failedRevert"),
+          : t("thread.publishPopover.failedDiscard"),
       );
     } finally {
-      setIsReverting(false);
+      setIsDiscarding(false);
     }
   };
 
-  const handleRevertField = async (
+  const handleDiscardField = async (
     change: PublishChange,
     path: (string | number)[],
     label: string,
@@ -540,18 +542,20 @@ function CmsPublishBody({
     if (!change.blockKey || !change.toJson) return;
     const updated = revertFieldAtPath(change.toJson, change.fromJson, path);
     if (!updated) {
-      toast.error(t("thread.publishPopover.failedRevert"));
+      toast.error(t("thread.publishPopover.failedDiscard"));
       return;
     }
     try {
       await saveBlock.mutateAsync({ blockKey: change.blockKey, data: updated });
-      toast.success(t("thread.publishPopover.revertedField", { field: label }));
+      toast.success(
+        t("thread.publishPopover.discardedField", { field: label }),
+      );
       await loadGitState();
     } catch (error) {
       toast.error(
         error instanceof Error
           ? error.message
-          : t("thread.publishPopover.failedRevert"),
+          : t("thread.publishPopover.failedDiscard"),
       );
     }
   };
@@ -594,7 +598,7 @@ function CmsPublishBody({
 
   const renderCard = (change: PublishChange) => {
     const id = changeId(change);
-    const confirming = revertConfirmId === id;
+    const confirming = discardConfirmId === id;
     const detail =
       change.kind === "page"
         ? change.pagePath
@@ -650,27 +654,27 @@ function CmsPublishBody({
               <button
                 type="button"
                 className="text-xs text-muted-foreground hover:text-foreground"
-                onClick={() => setRevertConfirmId(null)}
+                onClick={() => setDiscardConfirmId(null)}
               >
                 {t("thread.publishDialog.cancel")}
               </button>
               <button
                 type="button"
                 className="text-xs font-medium text-destructive disabled:opacity-50"
-                onClick={() => handleRevert(change)}
-                disabled={isReverting}
+                onClick={() => handleDiscard(change)}
+                disabled={isDiscarding}
               >
-                {t("thread.publishPopover.revert")}
+                {t("thread.publishPopover.discard")}
               </button>
             </div>
           ) : (
             <button
               type="button"
               className="shrink-0 text-xs text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
-              onClick={() => setRevertConfirmId(id)}
-              disabled={isPublishing || isReverting}
+              onClick={() => setDiscardConfirmId(id)}
+              disabled={isPublishing || isDiscarding}
             >
-              {t("thread.publishPopover.revert")}
+              {t("thread.publishPopover.discard")}
             </button>
           )}
           {canDrillIn ? (
@@ -739,7 +743,7 @@ function CmsPublishBody({
         }),
       ),
     };
-    const canRevertFields =
+    const canDiscardFields =
       drillIn.status === "edited" && !!drillIn.blockKey && !!drillIn.toJson;
     return (
       <>
@@ -790,12 +794,12 @@ function CmsPublishBody({
                         <span className="text-xs font-medium text-muted-foreground">
                           {field.label}
                         </span>
-                        {canRevertFields ? (
+                        {canDiscardFields ? (
                           <button
                             type="button"
                             className="text-[11px] text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
                             onClick={() =>
-                              handleRevertField(
+                              handleDiscardField(
                                 drillIn,
                                 field.path,
                                 field.label,
@@ -803,7 +807,7 @@ function CmsPublishBody({
                             }
                             disabled={saveBlock.isPending || isPublishing}
                           >
-                            {t("thread.publishPopover.revert")}
+                            {t("thread.publishPopover.discard")}
                           </button>
                         ) : null}
                       </div>
@@ -842,35 +846,35 @@ function CmsPublishBody({
           <Globe01 className="size-4 shrink-0 text-muted-foreground" />
           <span className="truncate">{headerTitle}</span>
           {!isLoading && summary.count > 1 ? (
-            revertAllConfirm ? (
+            discardAllConfirm ? (
               <span className="ml-auto flex shrink-0 items-center gap-1.5 text-[11px]">
                 <span className="text-destructive">
-                  {t("thread.publishPopover.revertAllConfirm")}
+                  {t("thread.publishPopover.discardAllConfirm")}
                 </span>
                 <button
                   type="button"
                   className="text-muted-foreground hover:text-foreground"
-                  onClick={() => setRevertAllConfirm(false)}
+                  onClick={() => setDiscardAllConfirm(false)}
                 >
                   {t("thread.publishDialog.cancel")}
                 </button>
                 <button
                   type="button"
                   className="font-medium text-destructive disabled:opacity-50"
-                  onClick={handleRevertAll}
-                  disabled={isReverting}
+                  onClick={handleDiscardAll}
+                  disabled={isDiscarding}
                 >
-                  {t("thread.publishPopover.revert")}
+                  {t("thread.publishPopover.discard")}
                 </button>
               </span>
             ) : (
               <button
                 type="button"
                 className="ml-auto shrink-0 text-[11px] text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
-                onClick={() => setRevertAllConfirm(true)}
-                disabled={isPublishing || isReverting}
+                onClick={() => setDiscardAllConfirm(true)}
+                disabled={isPublishing || isDiscarding}
               >
-                {t("thread.publishPopover.revertAll")}
+                {t("thread.publishPopover.discardAll")}
               </button>
             )
           ) : null}
