@@ -202,6 +202,7 @@ export const thread = {
     "Estas alterações precisam da revisão de um colega antes de irem ao ar",
   "thread.publishPopover.newPage": "Página nova",
   "thread.publishPopover.newPageSections": "Página nova com {count} seções",
+  "thread.publishPopover.nothingToSubmit": "Nada para enviar",
   "thread.publishPopover.otherGroup": "Outras alterações",
   "thread.publishPopover.pagesGroup": "Páginas",
   "thread.publishPopover.preview": "Visualizar",
@@ -221,8 +222,19 @@ export const thread = {
   "thread.publishPopover.discardAllConfirm":
     "Descartar todas as alterações? Isso não pode ser desfeito.",
   "thread.publishPopover.discardConfirm": "Descartar {name}?",
+  "thread.publishPopover.reviewNote": "Nota para quem revisa",
+  "thread.publishPopover.reviewNotePlaceholder": "O que mudou e por quê…",
   "thread.publishPopover.reviewing": "Revisando conteúdo…",
   "thread.publishPopover.siteConfiguration": "Configuração do site",
+  "thread.publishPopover.submitCountForReview":
+    "Enviar {count} alterações para revisão",
+  "thread.publishPopover.submitEmptyHint":
+    "Este chat não tem alterações aguardando revisão.",
+  "thread.publishPopover.submitForReview": "Enviar para revisão",
+  "thread.publishPopover.submitOneForReview": "Enviar 1 alteração para revisão",
+  "thread.publishPopover.submitting": "Enviando…",
   "thread.publishPopover.versionNote": "Nota da versão",
+  "thread.publishPopover.updatesPullRequest":
+    "Atualiza o pull request #{number}",
   "thread.publishPopover.versionNotePlaceholder": "Descreva esta atualização…",
 } satisfies Record<keyof typeof threadEn, string>;

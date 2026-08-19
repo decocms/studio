@@ -2,9 +2,9 @@
  * Fast Preview's content-first publish surface: an anchored popover (modal on
  * narrow viewports) that renders the diff as pages and blocks by name, an
  * editable version note, and the review gate as a visible check row — no git
- * vocabulary. The publish flow underneath is the same push → sync → PR →
- * squash-merge sequence as {@link PublishDialog}, which vibecoding mode (and
- * the request-approval intent) keeps unchanged.
+ * vocabulary. `publish` mode runs the push → sync → PR → squash-merge sequence
+ * of {@link PublishDialog}; `review` mode stops at the PR. Only vibecoding mode
+ * still uses {@link PublishDialog}.
  */
 
 import { useMCPClient } from "@/sdk";
@@ -30,6 +30,7 @@ import {
   ChevronRight,
   Eye,
   File06,
+  GitPullRequest,
   Globe01,
   LayoutAlt01,
   Loading01,
@@ -94,9 +95,14 @@ function useNarrowViewport(): boolean {
   );
 }
 
+/** `publish` merges to production; `review` stops at the pull request. */
+export type CmsPublishMode = "publish" | "review";
+
 export interface CmsPublishPopoverProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Defaults to `publish`; see the module doc for what each mode runs. */
+  mode?: CmsPublishMode;
   orgSlug: string;
   orgId: string;
   virtualMcpId: string;
@@ -109,7 +115,7 @@ export interface CmsPublishPopoverProps {
   /** Draft URL + destination host from useFastPreviewDraftUrl. */
   draftPreviewUrl: string | null;
   destinationHost: string | null;
-  /** Blocked gate: route to the existing request-approval (open PR) dialog. */
+  /** Blocked gate: hand this surface over to review mode. */
   onRequestApproval: () => void;
   /** When set, publish updates this open PR instead of opening a new one. */
   openPullRequest?: PrSummary | null;
@@ -249,13 +255,14 @@ function GhostCard({ subline }: { subline?: boolean }) {
   );
 }
 
-function CmsPublishSkeleton() {
+function CmsPublishSkeleton({ mode }: { mode: CmsPublishMode }) {
   const t = useT();
+  const HeaderIcon = mode === "review" ? GitPullRequest : Globe01;
   return (
     <>
       <div className="space-y-1.5 px-4 py-3">
         <div className="flex items-center gap-2">
-          <Globe01 className="size-4 shrink-0 text-muted-foreground" />
+          <HeaderIcon className="size-4 shrink-0 text-muted-foreground" />
           <Ghost className="h-3.5 w-48" />
         </div>
         <Ghost className="ml-6 h-2.5 w-36" />
@@ -278,8 +285,15 @@ function CmsPublishSkeleton() {
           <Eye className="size-4" />
           {t("thread.publishPopover.preview")}
         </Button>
-        <Button type="button" variant="brand" className="flex-1" disabled>
-          {t("thread.publishPopover.publish")}
+        <Button
+          type="button"
+          variant={mode === "review" ? "default" : "brand"}
+          className="flex-1"
+          disabled
+        >
+          {mode === "review"
+            ? t("thread.publishPopover.submitForReview")
+            : t("thread.publishPopover.publish")}
         </Button>
       </div>
     </>
@@ -292,7 +306,7 @@ function CmsPublishBody(
   },
 ) {
   return (
-    <Suspense fallback={<CmsPublishSkeleton />}>
+    <Suspense fallback={<CmsPublishSkeleton mode={props.mode ?? "publish"} />}>
       <CmsPublishContent {...props} />
     </Suspense>
   );
@@ -301,6 +315,7 @@ function CmsPublishBody(
 function CmsPublishContent({
   publishLockRef,
   onOpenChange,
+  mode = "publish",
   orgSlug,
   orgId,
   virtualMcpId,
@@ -383,7 +398,10 @@ function CmsPublishContent({
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const summary = summarizePublishChanges(gitDiff);
+  const isReview = mode === "review";
+  const HeaderIcon = isReview ? GitPullRequest : Globe01;
 
+  // Submitting for review IS the escalation the gate asks for — never judge it.
   const { gate } = useResolvedPublishGate({
     orgSlug,
     virtualMcpId,
@@ -391,7 +409,7 @@ function CmsPublishContent({
     status: gitStatus,
     diff: gitDiff,
     policy: publishPolicy,
-    judgeEnabled: true,
+    judgeEnabled: !isReview,
   });
 
   const commitToOpenPr = openPullRequest?.state === "open";
@@ -400,7 +418,8 @@ function CmsPublishContent({
     : undefined;
   const githubHeadBranch = readGitHeadBranch(gitStatus) ?? branch;
 
-  const canPublish = !isPublishing && summary.count > 0 && gate.allowed;
+  const canSubmit =
+    !isPublishing && summary.count > 0 && (isReview || gate.allowed);
 
   const noteTitle = () =>
     note.trim().split("\n")[0]?.trim() ||
@@ -518,6 +537,52 @@ function CmsPublishContent({
     }
   };
 
+  /** Review mode's flow: push, then open (or update) the PR — no merge. */
+  const handleSubmitForReview = async () => {
+    publishLockRef.current = true;
+    setIsPublishing(true);
+    setPublishError(undefined);
+    try {
+      const title = noteTitle();
+      const body = noteBody();
+      const message = [title, body].filter(Boolean).join("\n\n");
+
+      await publishGitChanges(orgSlug, virtualMcpId, branch, message);
+      const pr = await openPullRequestForBranch(githubClient, {
+        owner,
+        repo,
+        branch: githubHeadBranch,
+        title,
+        body,
+        base: baseBranch,
+        coAuthor,
+        existing: existingOpenPr,
+      });
+
+      toast.success(
+        t("thread.publishDialog.submittedForReview", { prNumber: pr.number }),
+        {
+          action: {
+            label: t("thread.publishDialog.viewOnGithub"),
+            onClick: () =>
+              window.open(pr.htmlUrl, "_blank", "noopener,noreferrer"),
+          },
+        },
+      );
+      onOpenChange(false);
+      await onPullRequestChanged?.();
+    } catch (error) {
+      setPublishError(
+        error instanceof Error
+          ? error.message
+          : t("thread.publishDialog.failedSubmitForReview"),
+      );
+    } finally {
+      publishLockRef.current = false;
+      setIsPublishing(false);
+    }
+  };
+
   const handleDiscard = async (change: PublishChange) => {
     setDiscardConfirmId(null);
     setIsDiscarding(true);
@@ -559,8 +624,15 @@ function CmsPublishContent({
     }
   };
 
-  const headerTitle =
-    summary.count === 0
+  const headerTitle = isReview
+    ? summary.count === 0
+      ? t("thread.publishPopover.submitForReview")
+      : summary.count === 1
+        ? t("thread.publishPopover.submitOneForReview")
+        : t("thread.publishPopover.submitCountForReview", {
+            count: summary.count,
+          })
+    : summary.count === 0
       ? t("thread.publishPopover.publish")
       : summary.count === 1
         ? t("thread.publishPopover.publishOneInProduction")
@@ -568,7 +640,13 @@ function CmsPublishContent({
             count: summary.count,
           });
 
-  const lastPublishLine = (() => {
+  /** Review mode names the PR it will update; publish mode, the last release. */
+  const subLine = (() => {
+    if (isReview && commitToOpenPr) {
+      return t("thread.publishPopover.updatesPullRequest", {
+        number: openPullRequest.number,
+      });
+    }
     const pr = lastPublishedPr;
     if (!pr?.mergedAt) return null;
     const when = formatTimeAgo(new Date(pr.mergedAt));
@@ -578,8 +656,9 @@ function CmsPublishContent({
       : t("thread.publishPopover.lastPublished", { when });
   })();
 
-  const publishLabel =
-    summary.count === 1
+  const primaryLabel = isReview
+    ? t("thread.publishPopover.submitForReview")
+    : summary.count === 1
       ? t("thread.publishPopover.publishOne")
       : summary.count > 1
         ? t("thread.publishPopover.publishCount", { count: summary.count })
@@ -756,7 +835,7 @@ function CmsPublishContent({
   };
 
   const gateRow = (() => {
-    if (summary.count === 0) return null;
+    if (isReview || summary.count === 0) return null;
     if (gate.pending) {
       return (
         <div className="flex items-center gap-2 border-t px-4 py-2.5 text-xs text-muted-foreground">
@@ -781,7 +860,7 @@ function CmsPublishContent({
     <>
       <div className="space-y-0.5 px-4 py-3">
         <div className="flex items-center gap-2 text-sm font-medium">
-          <Globe01 className="size-4 shrink-0 text-muted-foreground" />
+          <HeaderIcon className="size-4 shrink-0 text-muted-foreground" />
           <span className="truncate">{headerTitle}</span>
           {summary.count > 1 ? (
             discardAllConfirm ? (
@@ -817,10 +896,8 @@ function CmsPublishContent({
             )
           ) : null}
         </div>
-        {lastPublishLine ? (
-          <div className="pl-6 text-xs text-muted-foreground">
-            {lastPublishLine}
-          </div>
+        {subLine ? (
+          <div className="pl-6 text-xs text-muted-foreground">{subLine}</div>
         ) : null}
       </div>
       <div className="border-t" />
@@ -832,10 +909,14 @@ function CmsPublishContent({
           <div className="flex flex-col items-center gap-1 py-10 text-center">
             <CheckCircle className="mb-1 size-5 text-success" />
             <p className="text-sm font-medium">
-              {t("thread.publishPopover.everythingLive")}
+              {isReview
+                ? t("thread.publishPopover.nothingToSubmit")
+                : t("thread.publishPopover.everythingLive")}
             </p>
             <p className="text-xs text-muted-foreground">
-              {t("thread.publishPopover.emptyHint")}
+              {isReview
+                ? t("thread.publishPopover.submitEmptyHint")
+                : t("thread.publishPopover.emptyHint")}
             </p>
           </div>
         ) : (
@@ -856,12 +937,18 @@ function CmsPublishContent({
             </div>
             <div className="space-y-1.5 border-t px-4 py-3">
               <span className="text-[13px] font-medium">
-                {t("thread.publishPopover.versionNote")}
+                {isReview
+                  ? t("thread.publishPopover.reviewNote")
+                  : t("thread.publishPopover.versionNote")}
               </span>
               <Textarea
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder={t("thread.publishPopover.versionNotePlaceholder")}
+                placeholder={
+                  isReview
+                    ? t("thread.publishPopover.reviewNotePlaceholder")
+                    : t("thread.publishPopover.versionNotePlaceholder")
+                }
                 rows={2}
                 className="resize-none text-[13px]"
                 disabled={isPublishing}
@@ -885,14 +972,11 @@ function CmsPublishContent({
             <Eye className="size-4" />
             {t("thread.publishPopover.preview")}
           </Button>
-          {summary.count > 0 && !gate.allowed && !gate.pending ? (
+          {!isReview && summary.count > 0 && !gate.allowed && !gate.pending ? (
             <Button
               type="button"
               className="flex-1"
-              onClick={() => {
-                onOpenChange(false);
-                onRequestApproval();
-              }}
+              onClick={onRequestApproval}
               disabled={isPublishing}
             >
               {t("thread.publishPopover.requestApproval")}
@@ -900,17 +984,19 @@ function CmsPublishContent({
           ) : (
             <Button
               type="button"
-              variant="brand"
+              variant={isReview ? "default" : "brand"}
               className="flex-1"
-              onClick={handlePublish}
-              disabled={!canPublish}
+              onClick={isReview ? handleSubmitForReview : handlePublish}
+              disabled={!canSubmit}
             >
               {isPublishing ? (
                 <Loading01 className="size-4 animate-spin" />
               ) : null}
               {isPublishing
-                ? t("thread.publishPopover.publishing")
-                : publishLabel}
+                ? isReview
+                  ? t("thread.publishPopover.submitting")
+                  : t("thread.publishPopover.publishing")
+                : primaryLabel}
             </Button>
           )}
         </div>

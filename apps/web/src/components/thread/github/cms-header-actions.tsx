@@ -52,13 +52,15 @@ import {
   readLastPreviewPage,
 } from "../../sandbox/preview/last-preview-page.ts";
 import { useChatTask } from "../../chat/index";
-import { CmsPublishPopover } from "./cms-publish-popover.tsx";
+import {
+  CmsPublishPopover,
+  type CmsPublishMode,
+} from "./cms-publish-popover.tsx";
 import {
   isCmsStateSettling,
   selectCmsHeaderButton,
   type CmsAction,
 } from "./cms-panel-state.ts";
-import { PublishDialog } from "./publish-dialog.tsx";
 import {
   fetchGitStatus,
   hasPublishableLocalWork,
@@ -93,8 +95,8 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   const { data: session } = authClient.useSession();
   const vm = useVirtualMCP(virtualMcpId);
   const { currentBranch: branch, setCurrentTaskBranch } = useChatTask();
-  const [publishOpen, setPublishOpen] = useState(false);
-  const [popoverOpen, setPopoverOpen] = useState(false);
+  /** Which content surface is open — one popover, two modes. */
+  const [surface, setSurface] = useState<CmsPublishMode | null>(null);
 
   const attachment = resolveGithubAttachment(vm);
   const githubRepo =
@@ -313,10 +315,10 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   const dispatch = (action: CmsAction) => {
     switch (action) {
       case "publish":
-        setPopoverOpen(true);
+        setSurface("publish");
         return;
       case "request-approval":
-        setPublishOpen(true);
+        setSurface("review");
         return;
       case "get-latest":
         if (!githubHeadBranch || getLatest.isPending) return;
@@ -362,8 +364,11 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     <>
       {branch ? (
         <CmsPublishPopover
-          open={popoverOpen}
-          onOpenChange={setPopoverOpen}
+          open={surface !== null}
+          mode={surface ?? "publish"}
+          onOpenChange={(open) => {
+            if (!open) setSurface(null);
+          }}
           orgSlug={org.slug}
           orgId={org.id}
           virtualMcpId={virtualMcpId}
@@ -375,7 +380,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
           publishPolicy={normalizePublishPolicy(vm?.metadata?.publishPolicy)}
           draftPreviewUrl={draftPreview.url}
           destinationHost={draftPreview.host}
-          onRequestApproval={() => setPublishOpen(true)}
+          onRequestApproval={() => setSurface("review")}
           openPullRequest={pr?.state === "open" ? pr : null}
           onPullRequestChanged={refreshPrState}
           onPublished={() => publishCompletion.mutateAsync()}
@@ -385,27 +390,6 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
       ) : (
         splitButton
       )}
-      {branch ? (
-        <PublishDialog
-          open={publishOpen}
-          onOpenChange={setPublishOpen}
-          orgSlug={org.slug}
-          orgId={org.id}
-          virtualMcpId={virtualMcpId}
-          branch={branch}
-          baseBranch={baseBranch}
-          githubConnectionId={githubRepo.connectionId ?? ""}
-          owner={githubRepo.owner}
-          repo={githubRepo.name}
-          previewUrl={draftPreview.url ?? previewServerUrl}
-          publishPolicy={normalizePublishPolicy(vm?.metadata?.publishPolicy)}
-          dialogIntent="open-pr"
-          headSha={branchMeta.kind === "ready" ? branchMeta.headSha : null}
-          openPullRequest={pr?.state === "open" ? pr : null}
-          onPullRequestChanged={refreshPrState}
-          onPublished={() => publishCompletion.mutateAsync()}
-        />
-      ) : null}
     </>
   );
 }
