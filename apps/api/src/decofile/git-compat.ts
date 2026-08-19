@@ -174,6 +174,53 @@ const MERGE_REPLAY_FILE_CAP = 300;
 
 const MERGE_CAS_ATTEMPTS = 3;
 
+/**
+ * Tree write entries for the branch-wins replay, deduped by path. A path can
+ * be BOTH a rename destination for one file and a rename source for another
+ * in the same diff (e.g. `Hero.json`→`Header.json` while `Banner.json`→
+ * `Hero.json`) — GitHub's tree write applies the LAST entry for a duplicate
+ * path, so pushing both a create and a stale-source delete for the same path
+ * let iteration order decide whether the renamed-in content survived. A
+ * destination entry always describes the path's real final content, so it
+ * always wins; a source delete only applies when nothing else claims that
+ * path as its destination.
+ */
+export function buildMergeTreeEntries(
+  files: Array<{
+    filename: string;
+    status: string;
+    sha: string;
+    previousFilename?: string;
+  }>,
+  branchBlobByPath: Map<string, { sha: string }>,
+): TreeWriteEntry[] {
+  const byPath = new Map<string, TreeWriteEntry>();
+  for (const f of files) {
+    const blob = branchBlobByPath.get(f.filename);
+    byPath.set(f.filename, {
+      path: f.filename,
+      mode: "100644",
+      type: "blob",
+      sha: f.status === "removed" || !blob ? null : blob.sha,
+    });
+  }
+  for (const f of files) {
+    if (
+      f.previousFilename &&
+      f.previousFilename !== f.filename &&
+      !byPath.has(f.previousFilename)
+    ) {
+      byPath.set(f.previousFilename, {
+        path: f.previousFilename,
+        mode: "100644",
+        type: "blob",
+        sha: null,
+      });
+    }
+  }
+  return [...byPath.values()];
+}
+
 async function mergeBranchWins(
   client: GitDataClient,
   branch: string,
@@ -203,34 +250,7 @@ async function mergeBranchWins(
       branchTree.filter((e) => e.type === "blob").map((e) => [e.path, e]),
     );
 
-    const entries: TreeWriteEntry[] = [];
-    for (const f of files) {
-      const blob = branchBlobByPath.get(f.filename);
-      if (f.status === "removed" || !blob) {
-        entries.push({
-          path: f.filename,
-          mode: "100644",
-          type: "blob",
-          sha: null,
-        });
-      } else {
-        entries.push({
-          path: f.filename,
-          mode: "100644",
-          type: "blob",
-          sha: blob.sha,
-        });
-      }
-      // A rename on the branch must also delete the old path from base's tree.
-      if (f.previousFilename && f.previousFilename !== f.filename) {
-        entries.push({
-          path: f.previousFilename,
-          mode: "100644",
-          type: "blob",
-          sha: null,
-        });
-      }
-    }
+    const entries = buildMergeTreeEntries(files, branchBlobByPath);
 
     const treeSha = await client.createTree(
       await client.getCommitTreeSha(baseHead),
