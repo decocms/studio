@@ -170,6 +170,35 @@ describe("JiraClient", () => {
     }
   });
 
+  it("does not retry a 400 whose body happens to contain a network-ish word", async () => {
+    let callCount = 0;
+    const originalFetch = globalThis.fetch;
+    const mockFetch = mock(async () => {
+      callCount++;
+      return new Response(
+        JSON.stringify({
+          errorMessages: [
+            "The value 'network' does not exist for the field 'status'.",
+          ],
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      );
+    });
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
+
+    try {
+      const client = new JiraClient(
+        "https://acme.atlassian.net",
+        "user@example.com",
+        "token",
+      );
+      await expect(client.myself()).rejects.toThrow("400");
+      expect(callCount).toBe(1); // The status, not the body text, decides
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("retries on 429 rate limit error", async () => {
     let callCount = 0;
     const originalFetch = globalThis.fetch;
