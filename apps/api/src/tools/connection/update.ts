@@ -59,6 +59,21 @@ export function stripImmutableUpdateFields(
 }
 
 /**
+ * `connection_url` is nullable, so `data.connection_url ?? existing` would
+ * silently keep the old URL when a caller explicitly clears it (e.g.
+ * switching connection_type to STDIO). Only fall back when the field was
+ * omitted, not when it was explicitly set to null.
+ */
+export function resolveFinalConnectionUrl(
+  data: ConnectionUpdateData,
+  existingConnectionUrl: string | null,
+): string | null {
+  return data.connection_url !== undefined
+    ? data.connection_url
+    : existingConnectionUrl;
+}
+
+/**
  * Input schema for updating connections
  */
 const UpdateInputSchema = z.object({
@@ -128,7 +143,10 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
     // Validate VIRTUAL connections if connection_type or connection_url is being updated
     const finalConnectionType =
       data.connection_type ?? existing.connection_type;
-    let finalConnectionUrl = data.connection_url ?? existing.connection_url;
+    let finalConnectionUrl = resolveFinalConnectionUrl(
+      data,
+      existing.connection_url,
+    );
 
     if (finalConnectionType === "VIRTUAL") {
       const virtualMcpId = parseVirtualUrl(finalConnectionUrl);
