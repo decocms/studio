@@ -89,20 +89,46 @@ meter
   })
   .addCallback((r) => r.observe(gate.pending + sandboxGate.pending));
 
+/** One gate's live occupancy. */
+export interface GateStats {
+  active: number;
+  pending: number;
+  max: number;
+}
+
 /**
  * Live gate stats for the `/hosted-run-pending` metrics-api endpoint (KEDA).
  * `pending` is the scale signal: parked runs are DBOS-PENDING (dequeued), so
  * they're invisible to the ENQUEUED-only queue-depth endpoint.
+ *
+ * The top-level triple sums both gates (the KEDA trigger's contract — do not
+ * change its shape), but summing the CAPS makes a saturated pod look idle: 3/3
+ * in-process with 6 parked reported as `active: 3, max: 15`, which reads as 80%
+ * free. `in_process` / `sandboxed` break the same numbers out per gate, since
+ * only a per-gate ratio can show which budget is actually exhausted.
  */
-export const hostedRunStats = (): {
-  active: number;
-  pending: number;
-  max: number;
-} => ({
-  active: gate.active + sandboxGate.active,
-  pending: gate.pending + sandboxGate.pending,
-  max: MAX + SANDBOX_MAX,
-});
+export const hostedRunStats = (): GateStats & {
+  in_process: GateStats;
+  sandboxed: GateStats;
+} => {
+  const inProcess = {
+    active: gate.active,
+    pending: gate.pending,
+    max: MAX,
+  };
+  const sandboxed = {
+    active: sandboxGate.active,
+    pending: sandboxGate.pending,
+    max: SANDBOX_MAX,
+  };
+  return {
+    active: inProcess.active + sandboxed.active,
+    pending: inProcess.pending + sandboxed.pending,
+    max: inProcess.max + sandboxed.max,
+    in_process: inProcess,
+    sandboxed,
+  };
+};
 
 /** The two caps, separately — for diagnostics and for tests that need to
  *  saturate one specific gate. `hostedRunStats` reports the pod's total

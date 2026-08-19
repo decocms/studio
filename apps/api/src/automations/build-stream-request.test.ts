@@ -1,4 +1,9 @@
 import { describe, expect, it } from "bun:test";
+import {
+  RUN_CLASS_METADATA_KEY,
+  RUN_PRIORITY,
+  runPriority,
+} from "@/dispatch-queue/run-priority";
 import type { Automation } from "@/storage/types";
 import {
   buildStreamRequest,
@@ -250,6 +255,56 @@ describe("buildStreamRequest", () => {
       makeResolvedModel(),
     );
     expect(result.maxAgentSteps).toBe(50);
+  });
+
+  it("marks a trigger-fired run so it queues behind a human's chat turn", () => {
+    const result = buildStreamRequest(
+      makeAutomation(),
+      "trig_1",
+      "thrd_1",
+      makeResolvedModel(),
+    );
+    expect(runPriority(result.runMetadata)).toBe(RUN_PRIORITY.new_task);
+    expect(runPriority(result.runMetadata)).toBeGreaterThan(
+      RUN_PRIORITY.interactive,
+    );
+  });
+
+  it("keeps a manual run (no triggerId) interactive", () => {
+    const result = buildStreamRequest(
+      makeAutomation(),
+      null,
+      "thrd_1",
+      makeResolvedModel(),
+    );
+    expect(result.runMetadata).toBeUndefined();
+    expect(runPriority(result.runMetadata)).toBe(RUN_PRIORITY.interactive);
+  });
+
+  it("preserves a webhook's other run_metadata keys alongside the class", () => {
+    const result = buildStreamRequest(
+      makeAutomation(),
+      "trig_1",
+      "thrd_1",
+      makeResolvedModel(),
+      { tenant: "acme", source: "webhook" },
+    );
+    expect(result.runMetadata).toMatchObject({
+      tenant: "acme",
+      source: "webhook",
+    });
+    expect(runPriority(result.runMetadata)).toBe(RUN_PRIORITY.new_task);
+  });
+
+  it("does not let a webhook payload outrank a person at the keyboard", () => {
+    const result = buildStreamRequest(
+      makeAutomation(),
+      "trig_1",
+      "thrd_1",
+      makeResolvedModel(),
+      { [RUN_CLASS_METADATA_KEY]: "interactive" },
+    );
+    expect(runPriority(result.runMetadata)).toBe(RUN_PRIORITY.new_task);
   });
 });
 

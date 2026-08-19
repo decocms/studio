@@ -1351,10 +1351,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // gate-parked runs are already DEQUEUED (PENDING) and pinned to this pod, so
   // queue depth can't see them (see hosted-run-concurrency.ts). Per-pod, so the
   // trigger must aggregate across worker pods.
-  app.get(SYSTEM_PATHS.HOSTED_RUN_PENDING, (c) => {
-    const { active, pending, max } = hostedRunStats();
-    return c.json({ pending, active, max });
-  });
+  app.get(SYSTEM_PATHS.HOSTED_RUN_PENDING, (c) => c.json(hostedRunStats()));
 
   // ============================================================================
   // Public Configuration (no auth required)
