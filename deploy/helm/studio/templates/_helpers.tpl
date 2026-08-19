@@ -414,7 +414,14 @@ introduced to avoid in the first place.
       set -eu
       # to_regclass returns NULL rather than erroring on a missing table, so
       # this polls without a failing exit code muddying the loop.
-      until [ "$(psql "$DATABASE_URL" -tAc "select to_regclass('public.kysely_migration') is not null")" = "t" ]; do
+      #
+      # Both tables must exist: migrate-on-boot runs migrate.js (creates
+      # public.kysely_migration) THEN migrate-dbos.js (creates dbos.dbos_migrations)
+      # as two sequential steps. Gating on kysely_migration alone lets this
+      # container return while migrate-dbos.js is still running, so the worker's
+      # own DBOS.launch() races the API's migrate-dbos.js on dbos.dbos_migrations —
+      # the exact collision this init container exists to prevent.
+      until [ "$(psql "$DATABASE_URL" -tAc "select to_regclass('public.kysely_migration') is not null and to_regclass('dbos.dbos_migrations') is not null")" = "t" ]; do
         echo "waiting for the schema"
         sleep 3
       done
