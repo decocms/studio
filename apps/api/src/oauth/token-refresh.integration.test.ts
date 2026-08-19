@@ -432,4 +432,111 @@ describe("getValidDownstreamAccessToken", () => {
 
     expect(mockResolveOriginTokenEndpoint).not.toHaveBeenCalled();
   });
+  it("force-refreshes a token stored without an expiry", async () => {
+    // A provider that omits `expires_in` leaves `expiresAt` null while keeping
+    // a refresh token, and `isExpired` calls such a row fresh forever. Callers
+    // that learned the token is dead from a 401 must still get a new one.
+    await tokenStorage.delete(connectionId);
+    await tokenStorage.upsert({
+      connectionId,
+      accessToken: "revoked",
+      refreshToken: "rt",
+      scope: "repo",
+      expiresAt: null,
+      clientId: "cid",
+      clientSecret: null,
+      tokenEndpoint: "https://example.com/token",
+    });
+    mockRefreshAccessToken.mockResolvedValueOnce({
+      success: true,
+      accessToken: "fresh",
+      refreshToken: "rt",
+      expiresIn: 3600,
+      scope: "repo",
+    });
+
+    const result = await getValidDownstreamAccessToken({
+      connectionId,
+      tokenStorage,
+      force: true,
+    });
+
+    expect(result).toEqual({ state: "refreshed", accessToken: "fresh" });
+    expect((await tokenStorage.get(connectionId))?.accessToken).toBe("fresh");
+  });
+
+  it("cannot be forced with a large bufferMs — isExpired ignores it", async () => {
+    // Pins why `force` is a flag and not a buffer: `isExpired` short-circuits
+    // on a null expiry before it ever reads the buffer, so the buffer idiom
+    // silently hands back the token the upstream just rejected.
+    await tokenStorage.delete(connectionId);
+    await tokenStorage.upsert({
+      connectionId,
+      accessToken: "revoked",
+      refreshToken: "rt",
+      scope: "repo",
+      expiresAt: null,
+      clientId: "cid",
+      clientSecret: null,
+      tokenEndpoint: "https://example.com/token",
+    });
+
+    const result = await getValidDownstreamAccessToken({
+      connectionId,
+      tokenStorage,
+      bufferMs: Number.MAX_SAFE_INTEGER,
+    });
+
+    expect(result).toEqual({ state: "valid", accessToken: "revoked" });
+    expect(mockRefreshAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("keeps returning the cached token when not forced", async () => {
+    await tokenStorage.delete(connectionId);
+    await tokenStorage.upsert({
+      connectionId,
+      accessToken: "cached",
+      refreshToken: "rt",
+      scope: "repo",
+      expiresAt: null,
+      clientId: "cid",
+      clientSecret: null,
+      tokenEndpoint: "https://example.com/token",
+    });
+
+    const result = await getValidDownstreamAccessToken({
+      connectionId,
+      tokenStorage,
+    });
+
+    expect(result).toEqual({ state: "valid", accessToken: "cached" });
+    expect(mockRefreshAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("does not delete a live token that cannot refresh when forced", async () => {
+    await tokenStorage.delete(connectionId);
+    await tokenStorage.upsert({
+      connectionId,
+      accessToken: "live-but-unrefreshable",
+      refreshToken: null,
+      scope: null,
+      expiresAt: null,
+      clientId: null,
+      clientSecret: null,
+      tokenEndpoint: null,
+    });
+
+    const result = await getValidDownstreamAccessToken({
+      connectionId,
+      tokenStorage,
+      force: true,
+    });
+
+    expect(result).toEqual({
+      state: "expired_without_refresh",
+      accessToken: null,
+    });
+    // Forcing must not cost the user a credential that simply cannot refresh.
+    expect(await tokenStorage.get(connectionId)).not.toBeNull();
+  });
 });

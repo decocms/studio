@@ -237,6 +237,7 @@ export const CORE_TOOLS = [
 
   // GitHub tools (app-only)
   GitHubTools.GITHUB_LIST_USER_ORGS,
+  GitHubTools.GITHUB_SEARCH_BRANCHES,
 
   // Link tools
 

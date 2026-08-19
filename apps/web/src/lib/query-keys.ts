@@ -199,6 +199,24 @@ export const KEYS = {
     repo: string,
   ) => ["github-branches", orgId, orgSlug, connectionId, owner, repo] as const,
 
+  githubBranchSearch: (
+    orgId: string,
+    orgSlug: string,
+    connectionId: string | null | undefined,
+    owner: string,
+    repo: string,
+    query: string,
+  ) =>
+    [
+      "github-branch-search",
+      orgId,
+      orgSlug,
+      connectionId,
+      owner,
+      repo,
+      query,
+    ] as const,
+
   organizationSettings: (organizationId: string) =>
     ["organization-settings", organizationId] as const,
 

@@ -7063,6 +7063,19 @@ export interface StudioToolIO {
       }[];
     };
   };
+  GITHUB_SEARCH_BRANCHES: {
+    input: {
+      connectionId: string;
+      owner: string;
+      repo: string;
+      query: string;
+      limit?: number | undefined;
+    };
+    output: {
+      branches: { name: string; author: string | null }[];
+      totalCount: number;
+    };
+  };
   GLOBAL_SEARCH: {
     input: {
       query: string;

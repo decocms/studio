@@ -168,13 +168,21 @@ export type ValidDownstreamAccessTokenResult =
   | { state: "refresh_failed"; accessToken: null }
   | { state: "expired_without_refresh"; accessToken: null };
 
+/**
+ * `force` skips the freshness check entirely — for callers that learned the
+ * token is dead from the upstream (a 401) rather than from its expiry. It must
+ * not be expressed as a huge `bufferMs`: `isExpired` reports a null-expiry row
+ * as fresh before it ever consults the buffer, so such a row would hand back
+ * the very token the upstream just rejected.
+ */
 export async function getValidDownstreamAccessToken(params: {
   connectionId: string;
   connectionUrl?: string | null;
   tokenStorage: DownstreamTokenStorage;
   bufferMs?: number;
+  force?: boolean;
 }): Promise<ValidDownstreamAccessTokenResult> {
-  const { connectionId, connectionUrl, tokenStorage } = params;
+  const { connectionId, connectionUrl, tokenStorage, force } = params;
   const token = await tokenStorage.get(connectionId);
   if (!token) return { state: "missing", accessToken: null };
 
@@ -182,13 +190,15 @@ export async function getValidDownstreamAccessToken(params: {
   const bufferMs = refreshable
     ? (params.bufferMs ?? PROACTIVE_REFRESH_BUFFER_MS)
     : 0;
+  const expired = tokenStorage.isExpired(token, bufferMs);
 
-  if (!tokenStorage.isExpired(token, bufferMs)) {
+  if (!force && !expired) {
     return { state: "valid", accessToken: token.accessToken };
   }
 
   if (!refreshable) {
-    await tokenStorage.delete(connectionId);
+    // A forced call on a live token must not delete the user's credential.
+    if (expired) await tokenStorage.delete(connectionId);
     return { state: "expired_without_refresh", accessToken: null };
   }
 
