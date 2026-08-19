@@ -87,9 +87,23 @@ export async function createFastPreviewProject(
     owner: string;
     repo: string;
     repoScopeMode?: "refreshable" | "legacy-mint";
+    /**
+     * MCP endpoint the repo child connection advertises. HTTP-only specs never
+     * dial it (the git surfaces go through `metadata.repoScope` + the vault
+     * token), but a BROWSER spec does: the header's PR lookup opens an MCP
+     * client against this connection on mount. Point it at a closed local port
+     * so that handshake fails immediately instead of leaving the suite waiting
+     * on an outbound connection to a real host.
+     */
+    connectionUrl?: string;
   },
 ): Promise<FastPreviewProject> {
-  const { owner, repo, repoScopeMode = "refreshable" } = params;
+  const {
+    owner,
+    repo,
+    repoScopeMode = "refreshable",
+    connectionUrl = "https://example.com/mcp",
+  } = params;
 
   const sourceConnectionId =
     repoScopeMode === "legacy-mint"
@@ -110,7 +124,7 @@ export async function createFastPreviewProject(
         title: `GitHub: ${owner}/${repo}`,
         app_name: "mcp-github",
         connection_type: "HTTP",
-        connection_url: "https://example.com/mcp",
+        connection_url: connectionUrl,
         metadata: {
           repoScope: {
             ...(sourceConnectionId ? { sourceConnectionId } : {}),
