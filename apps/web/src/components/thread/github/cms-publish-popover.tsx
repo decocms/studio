@@ -20,7 +20,6 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   AlertTriangle,
   CheckCircle,
-  ChevronLeft,
   ChevronRight,
   Eye,
   File06,
@@ -162,12 +161,7 @@ class PublishStepError extends Error {
 }
 
 function statusChip(status: PublishChangeStatus, t: ReturnType<typeof useT>) {
-  const label =
-    status === "new"
-      ? t("thread.publishPopover.chipNew")
-      : status === "removed"
-        ? t("thread.publishPopover.chipRemoved")
-        : t("thread.publishPopover.chipEdited");
+  const label = statusLabel(status, t);
   return (
     <span
       className={cn(
@@ -182,14 +176,30 @@ function statusChip(status: PublishChangeStatus, t: ReturnType<typeof useT>) {
   );
 }
 
-function changeIcon(change: PublishChange) {
-  if (change.kind === "page") {
-    return <File06 className="size-4 shrink-0 text-muted-foreground" />;
-  }
-  if (change.kind === "block") {
-    return <LayoutAlt01 className="size-4 shrink-0 text-muted-foreground" />;
-  }
-  return <File06 className="size-4 shrink-0 text-muted-foreground" />;
+function statusLabel(status: PublishChangeStatus, t: ReturnType<typeof useT>) {
+  return status === "new"
+    ? t("thread.publishPopover.chipNew")
+    : status === "removed"
+      ? t("thread.publishPopover.chipRemoved")
+      : t("thread.publishPopover.chipEdited");
+}
+
+/** Status is carried by the icon color (lime = added); the title names it for
+ *  anyone who can't rely on color alone. */
+function changeIcon(change: PublishChange, t: ReturnType<typeof useT>) {
+  const Icon = change.kind === "block" ? LayoutAlt01 : File06;
+  return (
+    <span title={statusLabel(change.status, t)} className="flex shrink-0">
+      <Icon
+        className={cn(
+          "size-4",
+          change.status === "new" && "text-brand",
+          change.status === "edited" && "text-warning",
+          change.status === "removed" && "text-destructive",
+        )}
+      />
+    </span>
+  );
 }
 
 /** Stable identity for a card across summary recomputes. */
@@ -197,13 +207,14 @@ function changeId(change: PublishChange): string {
   return change.blockKey ?? change.filepaths[0] ?? change.name;
 }
 
+/** Hard byte cap only — visual truncation is the renderer's line-clamp. */
 function renderFieldValue(value: unknown): string {
   if (value === undefined || value === null) return "—";
   if (typeof value === "string") {
-    return value.length > 120 ? `${value.slice(0, 120)}…` : value;
+    return value.length > 400 ? `${value.slice(0, 400)}…` : value;
   }
   const raw = JSON.stringify(value);
-  return raw.length > 80 ? `${raw.slice(0, 80)}…` : raw;
+  return raw.length > 240 ? `${raw.slice(0, 240)}…` : raw;
 }
 
 function CmsPublishBody({
@@ -247,8 +258,8 @@ function CmsPublishBody({
   const [discardConfirmId, setDiscardConfirmId] = useState<string | null>(null);
   const [discardAllConfirm, setDiscardAllConfirm] = useState(false);
   const [isDiscarding, setIsDiscarding] = useState(false);
-  const [drillInId, setDrillInId] = useState<string | null>(null);
-  const [showRawJson, setShowRawJson] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [rawJsonId, setRawJsonId] = useState<string | null>(null);
 
   const loadStartedRef = useRef(false);
 
@@ -506,11 +517,6 @@ function CmsPublishBody({
     }
   };
 
-  const allChanges = [...summary.pages, ...summary.blocks, ...summary.other];
-  const drillIn = drillInId
-    ? (allChanges.find((c) => changeId(c) === drillInId) ?? null)
-    : null;
-
   const headerTitle = destinationHost
     ? t("thread.publishPopover.publishTo", { host: destinationHost })
     : t("thread.publishPopover.publish");
@@ -545,6 +551,7 @@ function CmsPublishBody({
   const renderCard = (change: PublishChange) => {
     const id = changeId(change);
     const confirming = discardConfirmId === id;
+    const expanded = expandedId === id;
     const detail =
       change.kind === "page"
         ? change.pagePath
@@ -568,7 +575,21 @@ function CmsPublishBody({
                   .join(", ")}`
               : section.name,
           );
-    const canDrillIn = change.status === "edited" && change.sections.length > 0;
+    const canExpand = change.status === "edited" && change.sections.length > 0;
+    const canDiscardFields =
+      change.status === "edited" && !!change.blockKey && !!change.toJson;
+    const rawDiff: GitDiffResult = {
+      diffs: Object.fromEntries(
+        change.filepaths.flatMap((p) => {
+          const entry = gitDiff?.diffs[p];
+          return entry ? [[p, entry] as const] : [];
+        }),
+      ),
+    };
+    const toggleExpanded = () => {
+      setExpandedId(expanded ? null : id);
+      setRawJsonId(null);
+    };
 
     return (
       <div
@@ -577,15 +598,16 @@ function CmsPublishBody({
         data-change-id={id}
       >
         <div className="flex items-center gap-2.5">
-          {changeIcon(change)}
+          {changeIcon(change, t)}
           <button
             type="button"
             className={cn(
               "flex min-w-0 flex-1 items-center gap-2 text-left",
-              canDrillIn && "cursor-pointer",
+              canExpand && "cursor-pointer",
             )}
-            onClick={canDrillIn ? () => setDrillInId(id) : undefined}
-            disabled={!canDrillIn}
+            onClick={canExpand ? toggleExpanded : undefined}
+            disabled={!canExpand}
+            aria-expanded={canExpand ? expanded : undefined}
           >
             <span className="truncate text-sm font-medium">{change.name}</span>
             {detail ? (
@@ -594,7 +616,6 @@ function CmsPublishBody({
               </span>
             ) : null}
           </button>
-          {statusChip(change.status, t)}
           {confirming ? (
             <div className="flex shrink-0 items-center gap-1.5">
               <button
@@ -623,17 +644,94 @@ function CmsPublishBody({
               {t("thread.publishPopover.discard")}
             </button>
           )}
-          {canDrillIn ? (
-            <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
+          {canExpand ? (
+            <button
+              type="button"
+              className="flex shrink-0 items-center"
+              onClick={toggleExpanded}
+              aria-expanded={expanded}
+            >
+              <ChevronRight
+                className={cn(
+                  "size-3.5 text-muted-foreground transition-transform",
+                  expanded && "rotate-90",
+                )}
+              />
+            </button>
           ) : null}
         </div>
-        {subLines.length > 0 ? (
+        {!expanded && subLines.length > 0 ? (
           <div className="mt-1 space-y-0.5 pl-[26px] text-xs text-muted-foreground">
             {subLines.map((line, lineIndex) => (
               <div key={`${lineIndex}-${line}`} className="truncate">
                 {line}
               </div>
             ))}
+          </div>
+        ) : null}
+        {expanded ? (
+          <div className="mt-2 space-y-3 border-t pt-2.5">
+            {rawJsonId === id ? (
+              <div className="-mx-3 overflow-x-auto">
+                <GitDiffList diff={rawDiff} rowClassName="px-3" />
+              </div>
+            ) : (
+              change.sections.map((section, sectionIndex) => (
+                <div
+                  key={`${sectionIndex}-${section.name}`}
+                  className="space-y-2"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold">
+                      {section.name}
+                    </span>
+                    {section.status !== "edited"
+                      ? statusChip(section.status, t)
+                      : null}
+                  </div>
+                  {section.fields.map((field) => (
+                    <div key={field.path.join(".")} className="space-y-1 pl-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-muted-foreground">
+                          {field.label}
+                        </span>
+                        {canDiscardFields ? (
+                          <button
+                            type="button"
+                            className="text-[11px] text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
+                            onClick={() =>
+                              handleDiscardField(
+                                change,
+                                field.path,
+                                field.label,
+                              )
+                            }
+                            disabled={saveBlock.isPending || isPublishing}
+                          >
+                            {t("thread.publishPopover.discard")}
+                          </button>
+                        ) : null}
+                      </div>
+                      <div className="line-clamp-2 rounded-md bg-destructive/5 px-2 py-1 text-xs break-words whitespace-pre-wrap text-destructive/80 line-through [overflow-wrap:anywhere]">
+                        {renderFieldValue(field.from)}
+                      </div>
+                      <div className="line-clamp-3 rounded-md bg-success/5 px-2 py-1 text-xs break-words whitespace-pre-wrap [overflow-wrap:anywhere]">
+                        {renderFieldValue(field.to)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ))
+            )}
+            <button
+              type="button"
+              className="text-[11px] text-muted-foreground hover:text-foreground"
+              onClick={() => setRawJsonId(rawJsonId === id ? null : id)}
+            >
+              {rawJsonId === id
+                ? t("thread.publishPopover.back")
+                : t("thread.publishPopover.viewRawJson")}
+            </button>
           </div>
         ) : null}
       </div>
@@ -673,111 +771,6 @@ function CmsPublishBody({
       </div>
     );
   })();
-
-  if (drillIn) {
-    const rawDiff: GitDiffResult = {
-      diffs: Object.fromEntries(
-        drillIn.filepaths.flatMap((p) => {
-          const entry = gitDiff?.diffs[p];
-          return entry ? [[p, entry] as const] : [];
-        }),
-      ),
-    };
-    const canDiscardFields =
-      drillIn.status === "edited" && !!drillIn.blockKey && !!drillIn.toJson;
-    return (
-      <>
-        <div className="flex items-center gap-2 px-4 py-3">
-          <button
-            type="button"
-            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-            onClick={() => {
-              setDrillInId(null);
-              setShowRawJson(false);
-            }}
-          >
-            <ChevronLeft className="size-4" />
-            {t("thread.publishPopover.back")}
-          </button>
-          <span className="ml-1 truncate text-sm font-medium">
-            {drillIn.name}
-          </span>
-          {drillIn.pagePath ? (
-            <span className="truncate text-xs text-muted-foreground">
-              {drillIn.pagePath}
-            </span>
-          ) : null}
-          <span className="ml-auto">{statusChip(drillIn.status, t)}</span>
-        </div>
-        <div className="border-t" />
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {showRawJson ? (
-            <GitDiffList diff={rawDiff} rowClassName="px-4" />
-          ) : (
-            <div className="space-y-4 px-4 py-3">
-              {drillIn.sections.map((section, sectionIndex) => (
-                <div
-                  key={`${sectionIndex}-${section.name}`}
-                  className="space-y-2"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-[13px] font-semibold">
-                      {section.name}
-                    </span>
-                    {section.status !== "edited"
-                      ? statusChip(section.status, t)
-                      : null}
-                  </div>
-                  {section.fields.map((field) => (
-                    <div key={field.path.join(".")} className="space-y-1 pl-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-muted-foreground">
-                          {field.label}
-                        </span>
-                        {canDiscardFields ? (
-                          <button
-                            type="button"
-                            className="text-[11px] text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
-                            onClick={() =>
-                              handleDiscardField(
-                                drillIn,
-                                field.path,
-                                field.label,
-                              )
-                            }
-                            disabled={saveBlock.isPending || isPublishing}
-                          >
-                            {t("thread.publishPopover.discard")}
-                          </button>
-                        ) : null}
-                      </div>
-                      <div className="rounded-md bg-destructive/5 px-2.5 py-1.5 text-xs text-destructive/80 line-through">
-                        {renderFieldValue(field.from)}
-                      </div>
-                      <div className="rounded-md bg-success/5 px-2.5 py-1.5 text-xs">
-                        {renderFieldValue(field.to)}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="flex items-center justify-between border-t px-4 py-2.5">
-          <button
-            type="button"
-            className="text-[11px] text-muted-foreground hover:text-foreground"
-            onClick={() => setShowRawJson((v) => !v)}
-          >
-            {showRawJson
-              ? t("thread.publishPopover.back")
-              : t("thread.publishPopover.viewRawJson")}
-          </button>
-        </div>
-      </>
-    );
-  }
 
   return (
     <>
@@ -827,7 +820,7 @@ function CmsPublishBody({
       </div>
       <div className="border-t" />
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="flex min-h-0 flex-1 flex-col">
         {isLoading ? (
           <div className="flex items-center justify-center gap-2 py-10 text-muted-foreground">
             <Loading01 className="size-4 animate-spin" />
@@ -848,15 +841,22 @@ function CmsPublishBody({
             </p>
           </div>
         ) : (
-          <div className="space-y-3 px-4 py-3">
-            {renderGroup(t("thread.publishPopover.pagesGroup"), summary.pages)}
-            {renderGroup(
-              t("thread.publishPopover.blocksGroup"),
-              summary.blocks,
-            )}
-            {renderGroup(t("thread.publishPopover.otherGroup"), summary.other)}
-
-            <div className="space-y-1.5 pt-1">
+          <>
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 pt-3 pb-2 [scrollbar-width:thin]">
+              {renderGroup(
+                t("thread.publishPopover.pagesGroup"),
+                summary.pages,
+              )}
+              {renderGroup(
+                t("thread.publishPopover.blocksGroup"),
+                summary.blocks,
+              )}
+              {renderGroup(
+                t("thread.publishPopover.otherGroup"),
+                summary.other,
+              )}
+            </div>
+            <div className="space-y-1.5 border-t px-4 py-3">
               <span className="text-[13px] font-medium">
                 {t("thread.publishPopover.versionNote")}
               </span>
@@ -869,7 +869,7 @@ function CmsPublishBody({
                 disabled={isPublishing}
               />
             </div>
-          </div>
+          </>
         )}
       </div>
 
