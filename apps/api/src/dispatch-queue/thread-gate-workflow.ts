@@ -39,7 +39,10 @@ import { consumeRunProjection } from "@/api/routes/decopilot/consume-run-project
 export { THREAD_GATE_QUEUE } from "./queue-names";
 import { THREAD_GATE_QUEUE } from "./queue-names";
 import { runPriority } from "./run-priority";
-import { startHostedHarness } from "./hosted-harness-workflow";
+import {
+  heartbeatWhileQueued,
+  startHostedHarness,
+} from "./hosted-harness-workflow";
 
 /**
  * Per-thread concurrent run cap (partition cap on the gate queue).
@@ -394,15 +397,24 @@ export async function runDispatchSteps(
   // silently reverting to the run-wide-max ordering (which only CI e2e catches).
   const requestMessageId =
     "messages" in ctx.request ? undefined : ctx.request.messageId;
-  await DBOS.runStep(
-    () =>
-      consumeRunProjection({
-        runId,
-        fenceToken: dispatchResult.runFenceToken,
-        messageId: requestMessageId,
-      }),
-    { name: "consumeRunProjection" },
+  // A still-queued child is silent, which this step would read as a dead
+  // executor. Not a step itself: transient status chunks only.
+  const stopQueuedHeartbeat = heartbeatWhileQueued(
+    dispatchResult.hostedEnqueue,
   );
+  try {
+    await DBOS.runStep(
+      () =>
+        consumeRunProjection({
+          runId,
+          fenceToken: dispatchResult.runFenceToken,
+          messageId: requestMessageId,
+        }),
+      { name: "consumeRunProjection" },
+    );
+  } finally {
+    stopQueuedHeartbeat();
+  }
 
   return { taskId: ctx.request.taskId ?? ctx.threadId };
 }

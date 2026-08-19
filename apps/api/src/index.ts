@@ -14,6 +14,7 @@ import {
   BACKGROUND_TOOLS_QUEUE,
   GITHUB_READS_QUEUE,
   HOSTED_HARNESS_QUEUE,
+  HOSTED_HARNESS_SANDBOXED_QUEUE,
   THREAD_GATE_QUEUE,
 } from "./dispatch-queue/queue-names";
 import { buildDbosConfig } from "./dbos/config";
@@ -74,6 +75,7 @@ const RUN_QUEUES = [
   AUTOMATIONS_QUEUE,
   THREAD_GATE_QUEUE,
   HOSTED_HARNESS_QUEUE,
+  HOSTED_HARNESS_SANDBOXED_QUEUE,
   // Heavy backgroundable built-ins (generate_image) are worker load, so
   // "worker"-role pods must dequeue them too — otherwise a split deployment
   // enqueues the job but never runs it.
