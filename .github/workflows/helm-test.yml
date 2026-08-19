@@ -499,10 +499,13 @@ jobs:
           # Binding sandbox access to the namespace's `default` ServiceAccount
           # would hand it to every pod in the preview — Postgres and MinIO
           # included — and the render would look perfectly healthy.
+          # values-preview.yaml turns serviceAccount.create on, so this case has
+          # to turn it back off — the point is the guard, not the default.
           expect_fail "sandbox without a named ServiceAccount" "requires serviceAccount.create=true" \
             --set preview.host=h.example.com \
             --set preview.sandbox.enabled=true \
-            --set preview.sandbox.roleName=some-role
+            --set preview.sandbox.roleName=some-role \
+            --set serviceAccount.create=false
           expect_fail "sandbox without a role" "preview.sandbox.roleName is required" \
             --set preview.host=h.example.com \
             --set preview.sandbox.enabled=true \
