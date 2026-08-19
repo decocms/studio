@@ -918,16 +918,10 @@ export const createSandboxRoutes = () => {
         try {
           const body = (await c.req.json().catch(() => ({}))) as {
             base?: string;
-            onConflict?: string;
           };
           const client = await fastPreviewGitClient(c);
           const base = body.base ?? (await client.getDefaultBranch());
-          await githubGitRebase(
-            client,
-            claim.branch,
-            base,
-            body.onConflict === "branch-wins" ? "branch-wins" : "fail",
-          );
+          await githubGitRebase(client, claim.branch, base);
           return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
         } catch (err) {
           return fastPreviewGitError(c, err);

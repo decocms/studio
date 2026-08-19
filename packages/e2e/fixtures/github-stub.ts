@@ -31,7 +31,7 @@
  *   POST  /repos/{o}/{r}/merges                       -> 201 {sha} / 204 / 409 / 405
  *   GET   /repos/{o}/{r}/pulls?state&base&head        -> [ { number, html_url } ]
  *   POST  /repos/{o}/{r}/pulls                        -> { number, html_url }
- *   GET   /repos/{o}/{r}/compare/{base}...{head}      -> { ahead_by, behind_by }
+ *   GET   /repos/{o}/{r}/compare/{base}...{head}      -> { ahead_by, behind_by, merge_base_commit, files, commits }
  *
  * Test-only admin endpoints (no auth):
  *   GET  /health
@@ -48,6 +48,12 @@ import {
   type ServerResponse,
 } from "node:http";
 
+/**
+ * `merge` always succeeds; `blocked` always 405s (protected base). `conflict`
+ * ARMS content-conflict detection — it 409s only when both sides changed the
+ * same path since the merge base, so a merge that is genuinely clean still
+ * goes through.
+ */
 type MergeMode = "merge" | "conflict" | "blocked";
 
 interface CommitRecord {
@@ -175,6 +181,24 @@ function filesAtCommit(
     out[path] = repo.blobs.get(blobSha) ?? "";
   }
   return out;
+}
+
+/**
+ * True when some path was changed on BOTH sides since the merge base, to
+ * different content — i.e. a real content conflict rather than a clean merge.
+ */
+function diverges(
+  targetFiles: Map<string, string>,
+  headFiles: Map<string, string>,
+  baseFiles: Map<string, string>,
+): boolean {
+  for (const path of new Set([...headFiles.keys(), ...targetFiles.keys()])) {
+    const at = baseFiles.get(path);
+    const inHead = headFiles.get(path);
+    const inTarget = targetFiles.get(path);
+    if (inHead !== at && inTarget !== at && inHead !== inTarget) return true;
+  }
+  return false;
 }
 
 /**
@@ -622,7 +646,17 @@ async function handleRepos(
       json(res, 204); // base already contains head
       return;
     }
-    if (repo.mergeMode === "conflict") {
+    const mergeBase = mergeBaseOf(repo, baseSha, headSha);
+    const merged = new Map(treeOfCommit(repo, baseSha));
+    const headFiles = treeOfCommit(repo, headSha);
+    const baseFiles = mergeBase
+      ? treeOfCommit(repo, mergeBase)
+      : new Map<string, string>();
+    // `conflict` ARMS detection rather than forcing it — see `mergeMode`.
+    if (
+      repo.mergeMode === "conflict" &&
+      diverges(merged, headFiles, baseFiles)
+    ) {
       json(res, 409, { message: "Merge conflict" });
       return;
     }
@@ -630,14 +664,6 @@ async function handleRepos(
       json(res, 405, { message: "Base branch is protected" });
       return;
     }
-    // Apply head's diff-since-merge-base onto base (head wins) — enough merge
-    // fidelity for decofile publishes; conflicts are simulated via mergeMode.
-    const mergeBase = mergeBaseOf(repo, baseSha, headSha);
-    const merged = new Map(treeOfCommit(repo, baseSha));
-    const headFiles = treeOfCommit(repo, headSha);
-    const baseFiles = mergeBase
-      ? treeOfCommit(repo, mergeBase)
-      : new Map<string, string>();
     for (const path of new Set([...headFiles.keys(), ...baseFiles.keys()])) {
       const inHead = headFiles.get(path);
       if (inHead === baseFiles.get(path)) continue; // unchanged on head
@@ -714,9 +740,49 @@ async function handleRepos(
     }
     const baseReach = reachableFrom(repo, baseSha);
     const headReach = reachableFrom(repo, headSha);
+    const ahead = [...headReach].filter((sha) => !baseReach.has(sha));
+    const mergeBase = mergeBaseOf(repo, baseSha, headSha);
+    if (!mergeBase) {
+      // Unrelated histories: real GitHub 404s rather than inventing a base.
+      notFound(res);
+      return;
+    }
+    // Three-dot set; the stub never renames, so `previous_filename` is absent.
+    const mergeBaseFiles = treeOfCommit(repo, mergeBase);
+    const headFiles = treeOfCommit(repo, headSha);
+    const files: Array<{ filename: string; status: string; sha: string }> = [];
+    for (const path of new Set([
+      ...mergeBaseFiles.keys(),
+      ...headFiles.keys(),
+    ])) {
+      const before = mergeBaseFiles.get(path);
+      const after = headFiles.get(path);
+      if (before === after) continue;
+      if (after === undefined) {
+        files.push({
+          filename: path,
+          status: "removed",
+          sha: before as string,
+        });
+      } else {
+        files.push({
+          filename: path,
+          status: before === undefined ? "added" : "modified",
+          sha: after,
+        });
+      }
+    }
     json(res, 200, {
-      ahead_by: [...headReach].filter((sha) => !baseReach.has(sha)).length,
+      ahead_by: ahead.length,
       behind_by: [...baseReach].filter((sha) => !headReach.has(sha)).length,
+      merge_base_commit: { sha: mergeBase },
+      files,
+      commits: repo.commitLog
+        .filter((sha) => ahead.includes(sha))
+        .map((sha) => ({
+          sha,
+          commit: { message: repo.commits.get(sha)?.message ?? "" },
+        })),
     });
     return;
   }

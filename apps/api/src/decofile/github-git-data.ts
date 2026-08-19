@@ -106,7 +106,8 @@ export interface TreeEntry {
 /** Tree write entry — `sha: null` deletes the path (Git Data API contract). */
 export interface TreeWriteEntry {
   path: string;
-  mode: "100644";
+  /** Git file mode: "100644" for a new file, else the source entry's own. */
+  mode: string;
   type: "blob";
   sha: string | null;
 }
@@ -141,8 +142,20 @@ export interface GitDataClient {
     /** One parent for a plain commit; two (ours, theirs) for a merge commit. */
     parentShas: string[];
   }): Promise<string>;
-  /** Non-forced ref update; throws GitHubApiError(422) on non-fast-forward. */
-  updateRef(branch: string, sha: string): Promise<void>;
+  /**
+   * Ref update, non-forced by default: a concurrent writer makes it fail
+   * non-fast-forward (GitHubApiError 422) instead of being clobbered, which is
+   * the commit coalescer's multi-replica safety property.
+   *
+   * `force: true` rewrites history and there is NO compare-and-swap available:
+   * GitHub's ref API accepts no `If-Match`, so a forced caller must re-read the
+   * head itself immediately before forcing (see `githubGitRebase`).
+   */
+  updateRef(
+    branch: string,
+    sha: string,
+    opts?: { force?: boolean },
+  ): Promise<void>;
   /** Create `refs/heads/<branch>` at `sha`; GitHubApiError(422) if it exists. */
   createRef(branch: string, sha: string): Promise<void>;
   /** Returns the merge commit sha, or null when base already contains head. */
@@ -178,6 +191,12 @@ export interface GitDataClient {
       sha: string;
       previousFilename?: string;
     }>;
+    /**
+     * Messages of the commits on `head` that `base` lacks — the set a
+     * squash collapses. GitHub caps this list at 250 entries; a longer branch
+     * is truncated, so it feeds attribution, never correctness.
+     */
+    commitMessages: string[];
   }>;
 }
 
@@ -345,13 +364,13 @@ export function createGitDataClient(params: {
       return json.sha;
     },
 
-    async updateRef(branch, sha) {
+    async updateRef(branch, sha, opts) {
       await call(
         "PATCH",
         `${repoBase}/git/refs/heads/${encodeRefPath(branch)}`,
         {
           sha,
-          force: false,
+          force: opts?.force === true,
         },
       );
     },
@@ -411,6 +430,7 @@ export function createGitDataClient(params: {
           sha: string;
           previous_filename?: string;
         }>;
+        commits?: Array<{ commit?: { message?: string } }>;
       }>(
         "GET",
         `${repoBase}/compare/${encodeRefPath(base)}...${encodeRefPath(head)}`,
@@ -427,6 +447,9 @@ export function createGitDataClient(params: {
             ? { previousFilename: f.previous_filename }
             : {}),
         })),
+        commitMessages: (json.commits ?? [])
+          .map((c) => c.commit?.message ?? "")
+          .filter((m) => m.length > 0),
       };
     },
   };

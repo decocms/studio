@@ -431,9 +431,7 @@ function CmsPublishContent({
         );
       }
       try {
-        await rebaseGitBranch(orgSlug, virtualMcpId, branch, baseBranch, {
-          onConflict: "branch-wins",
-        });
+        await rebaseGitBranch(orgSlug, virtualMcpId, branch, baseBranch);
       } catch (error) {
         throw new PublishStepError(
           error instanceof Error

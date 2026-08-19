@@ -97,14 +97,6 @@ export interface PublishDialogProps {
   onPullRequestChanged?: () => void | Promise<void>;
   /** Called after a successful publish (squash-merge to base). */
   onPublished?: () => void | Promise<void>;
-  /**
-   * Conflict strategy for the publish flow's sync-with-base step. Fast Preview
-   * passes "branch-wins" so a conflicting base never 409s the publish — the
-   * server auto-merges with the branch's content winning for every path it
-   * touched (same strategy as the header's "Get latest"). Unset = fail on
-   * conflict, the sandboxed vibecoding default.
-   */
-  rebaseOnConflict?: "branch-wins";
 }
 
 export function PublishDialog(props: PublishDialogProps) {
@@ -145,7 +137,6 @@ function PublishDialogBody({
   openPullRequest = null,
   onPullRequestChanged,
   onPublished,
-  rebaseOnConflict,
 }: PublishDialogProps) {
   const t = useT();
   const githubClient = useMCPClient({
@@ -379,13 +370,7 @@ function PublishDialogBody({
       }
 
       try {
-        await rebaseGitBranch(
-          orgSlug,
-          virtualMcpId,
-          branch,
-          baseBranch,
-          rebaseOnConflict ? { onConflict: rebaseOnConflict } : undefined,
-        );
+        await rebaseGitBranch(orgSlug, virtualMcpId, branch, baseBranch);
       } catch (error) {
         throw new PublishFlowError(
           error instanceof Error
