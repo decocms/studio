@@ -37,6 +37,7 @@ jobs:
     outputs:
       relevant: ${{ steps.filter.outputs.relevant }}
       web: ${{ steps.filter.outputs.web }}
+      runner: ${{ steps.runner.outputs.runner }}
     steps:
       - name: Detect relevant changes
         id: filter
@@ -88,10 +89,41 @@ jobs:
           echo "relevant=$relevant" >> "$GITHUB_OUTPUT"
           echo "web=$web" >> "$GITHUB_OUTPUT"
 
+      # Which runner the check jobs below land on. Resolved once here and read
+      # as `needs.changes.outputs.runner`, so the policy lives in one auditable
+      # place instead of being copy-pasted into five `runs-on:` keys.
+      #
+      # Both variables unset => always ubuntu-latest, so this is inert until
+      # someone opts in:
+      #   gh variable set CI_LOCAL_RUNNER --body <runner-label>
+      #   gh variable set CI_LOCAL_RUNNER_ACTOR --body <github-login>
+      # Unset either one to fall back to hosted on the next run.
+      #
+      # The same-repo condition is a load guard, NOT a security boundary: it
+      # keeps other people's runs off a personal machine. It cannot stop a
+      # malicious fork PR, because `pull_request` evaluates this file from the
+      # merge ref and a fork can rewrite it. The control that holds is the repo
+      # setting "Require approval for all outside collaborators".
+      - name: Select runner
+        id: runner
+        env:
+          LOCAL_RUNNER: ${{ vars.CI_LOCAL_RUNNER }}
+          LOCAL_RUNNER_ACTOR: ${{ vars.CI_LOCAL_RUNNER_ACTOR }}
+          FROM_SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          runner=ubuntu-latest
+          if [ -n "$LOCAL_RUNNER" ] && [ -n "$LOCAL_RUNNER_ACTOR" ] \
+             && [ "$FROM_SAME_REPO" = "true" ] \
+             && [ "$GITHUB_ACTOR" = "$LOCAL_RUNNER_ACTOR" ]; then
+            runner="$LOCAL_RUNNER"
+          fi
+          echo "runner=$runner" >> "$GITHUB_OUTPUT"
+          echo "checks will run on: $runner"
+
   format:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ needs.changes.outputs.runner }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -105,7 +137,7 @@ jobs:
   lint:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ needs.changes.outputs.runner }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -124,7 +156,7 @@ jobs:
   typecheck:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ needs.changes.outputs.runner }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -143,7 +175,7 @@ jobs:
   test:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ needs.changes.outputs.runner }}
     # The suite normally finishes in ~1 min. A single hung file under the
     # parallel runner stalls the whole job silently (per-file output is
     # buffered, so the culprit prints nothing) — without this bound that's
@@ -165,7 +197,7 @@ jobs:
   build:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ needs.changes.outputs.runner }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
