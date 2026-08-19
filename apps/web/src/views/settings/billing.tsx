@@ -25,6 +25,7 @@ import { useStudioTools } from "@/lib/studio-tools";
 import { useOpenBillingUrl } from "@/hooks/use-open-billing-url";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
+import { SettingsSubnav } from "@/components/settings/settings-subnav";
 
 const PERIOD_END_FMT = new Intl.DateTimeFormat(undefined, {
   month: "short",
@@ -193,13 +194,12 @@ function AutoTasksCard() {
 }
 
 export function OrgBillingPage() {
-  const t = useT();
   return (
     <Page>
       <Page.Content>
         <Page.Body>
           <SettingsPage>
-            <Page.Title>{t("settings.billing.title")}</Page.Title>
+            <SettingsSubnav group="billing" />
             <SettingsSection>
               <AutoTasksCard />
             </SettingsSection>

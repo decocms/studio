@@ -33,21 +33,19 @@ import {
 import { PageContentClassNameProvider } from "@/components/page";
 import {
   BarChart10,
-  BookOpen01,
   Building02,
+  ChevronDown,
+  ChevronRight,
   ZapSquare,
-  CpuChip01,
   CreditCard01,
   Loading01,
   Lock01,
   LogOut01,
   PackageCheck,
-  Shield01,
   User01,
   Users03,
   Zap,
   Key01,
-  GitBranch01,
   HardDrive,
   LinkExternal01,
 } from "@untitledui/icons";
@@ -55,9 +53,13 @@ import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 import { useCapabilities, type CapabilityId } from "@/hooks/use-capability";
 import { usePendingJoinRequests } from "@/hooks/use-join-requests";
-import { useOwnedSites } from "@/hooks/use-infra-billing";
+import {
+  groupRoutes,
+  type SettingsGroupKey,
+} from "@/components/settings/settings-tab-groups";
+import { useVisibleSettingsTabs } from "@/components/settings/use-settings-tabs";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import { useStatusSounds } from "../hooks/use-status-sounds";
 import { authClient } from "@/lib/auth-client";
 import { track } from "@/lib/posthog-client";
@@ -73,6 +75,8 @@ interface SettingsNavItem {
   label: string;
   icon: React.ReactNode;
   to: string;
+  /** Tab group this row fans out into. Visible when any of its tabs is. */
+  group?: SettingsGroupKey;
   /** Capability required to see this item. Omitted = visible to every member. */
   requires?: CapabilityId;
   /** Restrict to privileged built-in roles (owner/admin). For screens backed
@@ -85,17 +89,38 @@ interface SettingsNavItem {
 interface SettingsNavGroup {
   /** Stable id for React keys and analytics — never localized. */
   key: string;
+  /** Group heading. Empty for the unlabeled account group at the top. */
   label: string;
+  /** Rendered behind a disclosure, closed unless it holds the open page. */
+  collapsible?: boolean;
   items: SettingsNavItem[];
 }
 
+/**
+ * The settings sidebar: your account, then the three groups of org screens
+ * people work in, then everything rare behind a collapsed "Advanced". Rows that
+ * own sibling routes (Connect ⊃ API Keys, Billing ⊃ AI Providers, …) declare a
+ * `group` and surface those routes as in-page tabs — see `settings-tab-groups.ts`.
+ */
 function useSettingsSidebarGroups(): SettingsNavGroup[] {
   const t = useT();
   const { capabilities, isPrivileged, loading, error } = useCapabilities();
   const joinRequestCount = usePendingJoinRequests().length;
-  const ownsSites = useOwnedSites().sites.length > 0;
+  const visibleTabs = useVisibleSettingsTabs();
 
   const groups: SettingsNavGroup[] = [
+    {
+      key: "account",
+      label: "",
+      items: [
+        {
+          key: "profile",
+          label: t("settings.nav.profile"),
+          icon: <User01 size={14} />,
+          to: "/$org/settings/profile",
+        },
+      ],
+    },
     {
       key: "organization",
       label: t("settings.nav.organization"),
@@ -108,76 +133,18 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           requires: "org:manage",
         },
         {
-          key: "connect",
-          label: t("settings.nav.connect"),
-          icon: <LinkExternal01 size={14} />,
-          to: "/$org/settings/connect",
-        },
-        {
-          key: "brand-context",
-          label: t("settings.nav.brandContext"),
-          icon: <BookOpen01 size={14} />,
-          to: "/$org/settings/brand-context",
-          requires: "org:manage",
-        },
-        {
-          key: "ai-providers",
-          label: t("settings.nav.aiProviders"),
-          icon: <CpuChip01 size={14} />,
-          to: "/$org/settings/ai-providers",
-          requires: "ai-providers:manage",
-        },
-        {
           key: "billing",
           label: t("settings.nav.billing"),
           icon: <CreditCard01 size={14} />,
           to: "/$org/settings/billing",
-          // Same tools + gate as the members page's seat billing (both are
-          // the one org subscription, see registry-metadata.ts's
-          // `members:manage` group).
-          requires: "members:manage",
-        },
-        // Absent for orgs that own no legacy deco.cx site — nothing to bill.
-        ...(ownsSites
-          ? [
-              {
-                key: "infra-billing",
-                label: t("settings.nav.infraBilling"),
-                icon: <BarChart10 size={14} />,
-                to: "/$org/settings/infra-billing",
-                requires: "members:manage" as const,
-              },
-            ]
-          : []),
-        {
-          key: "secrets",
-          label: t("settings.nav.secrets"),
-          icon: <Key01 size={14} />,
-          to: "/$org/settings/secrets",
-          requires: "secrets:manage",
+          group: "billing",
         },
         {
-          key: "api-keys",
-          label: t("settings.nav.apiKeys"),
-          icon: <Key01 size={14} />,
-          to: "/$org/settings/api-keys",
-          requires: "api-keys:manage",
-        },
-        // Files moved to the top-level Library (/$org/files); the old
-        // settings route redirects there.
-        {
-          key: "buckets",
-          label: t("settings.nav.buckets"),
-          icon: <HardDrive size={14} />,
-          to: "/$org/settings/buckets",
-          requires: "file-configs:manage",
-        },
-        {
-          key: "synced-repos",
-          label: t("settings.nav.syncedRepos"),
-          icon: <GitBranch01 size={14} />,
-          to: "/$org/settings/synced-repos",
-          requires: "file-configs:manage",
+          key: "connect",
+          label: t("settings.nav.connect"),
+          icon: <LinkExternal01 size={14} />,
+          to: "/$org/settings/connect",
+          group: "connect",
         },
       ],
     },
@@ -204,13 +171,6 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           to: "/$org/settings/automations",
           requires: "automations:manage",
         },
-        {
-          key: "store",
-          label: t("settings.nav.store"),
-          icon: <PackageCheck size={14} />,
-          to: "/$org/settings/store",
-          requires: "registry:manage",
-        },
       ],
     },
     {
@@ -229,16 +189,36 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           label: t("settings.nav.members"),
           icon: <Users03 size={14} />,
           to: "/$org/settings/members",
-          requires: "members:manage",
+          group: "members",
           badge: joinRequestCount,
         },
+      ],
+    },
+    {
+      key: "advanced",
+      label: t("settings.nav.advanced"),
+      collapsible: true,
+      items: [
         {
-          key: "roles",
-          label: t("settings.nav.roles"),
-          icon: <Shield01 size={14} />,
-          to: "/$org/settings/roles",
-          // Role management uses owner/admin-only Better Auth APIs.
-          privilegedOnly: true,
+          key: "secrets",
+          label: t("settings.nav.secrets"),
+          icon: <Key01 size={14} />,
+          to: "/$org/settings/secrets",
+          requires: "secrets:manage",
+        },
+        {
+          key: "storage",
+          label: t("settings.nav.storage"),
+          icon: <HardDrive size={14} />,
+          to: "/$org/settings/buckets",
+          group: "storage",
+        },
+        {
+          key: "store",
+          label: t("settings.nav.store"),
+          icon: <PackageCheck size={14} />,
+          to: "/$org/settings/store",
+          requires: "registry:manage",
         },
         {
           key: "sso",
@@ -249,18 +229,6 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
         },
       ],
     },
-    {
-      key: "account",
-      label: t("settings.nav.account"),
-      items: [
-        {
-          key: "profile",
-          label: t("settings.nav.profile"),
-          icon: <User01 size={14} />,
-          to: "/$org/settings/profile",
-        },
-      ],
-    },
   ];
 
   // While capabilities load — or if the lookup errored — show every item
@@ -268,13 +236,12 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
   // ensures a transient failure never hides nav from owners/admins. Once
   // resolved, hide items the member's role can't open and drop any group left
   // empty. Items without a `requires` (Profile, plugin items) are always shown.
-  if (loading || error) {
-    return groups;
-  }
   return groups
     .map((group) => ({
       ...group,
       items: group.items.filter((item) => {
+        if (item.group) return visibleTabs[item.group].length > 0;
+        if (loading || error) return true;
         if (item.privilegedOnly) return isPrivileged;
         if (!item.requires) return true;
         return isPrivileged || capabilities[item.requires];
@@ -301,25 +268,92 @@ function SettingsNavIcon({
   );
 }
 
-/** Resolves `$org`-templated `to` paths against the current org/pathname, shared by the desktop and mobile sidebars. */
+/**
+ * Resolves `$org`-templated `to` paths against the current org/pathname, shared
+ * by the desktop and mobile sidebars. Matching is segment-exact, so
+ * `/settings/connect` doesn't also light up on `/settings/connections` while a
+ * nested `/settings/store/registry` still does.
+ */
 function useIsActiveSettingsPath() {
   const { org } = useParams({ from: "/shell/$org" });
   const pathname = useRouterState({
     select: (s) => s.location.pathname,
   });
 
-  const isActive = (to: string) => {
+  const matches = (to: string) => {
     const resolved = to.replace("$org", org);
-    return pathname.startsWith(resolved);
+    return pathname === resolved || pathname.startsWith(`${resolved}/`);
   };
 
+  const isActive = (item: SettingsNavItem) =>
+    (item.group ? groupRoutes(item.group) : [item.to]).some(matches);
+
   return { org, isActive };
+}
+
+/**
+ * Open/closed state for the collapsible groups. A group starts open when it
+ * holds the page you're on, so a deep link into Advanced never lands you in a
+ * closed drawer.
+ */
+function useGroupDisclosure() {
+  const { isActive } = useIsActiveSettingsPath();
+  const [overrides, setOverrides] = useState<Record<string, boolean>>({});
+
+  const isOpen = (group: SettingsNavGroup) =>
+    overrides[group.key] ?? (!group.collapsible || group.items.some(isActive));
+
+  const toggle = (group: SettingsNavGroup) =>
+    setOverrides((prev) => ({ ...prev, [group.key]: !isOpen(group) }));
+
+  return { isOpen, toggle };
+}
+
+/**
+ * A group heading — plain text for the fixed groups, a chevron button for the
+ * collapsible one.
+ */
+function SettingsGroupHeading({
+  group,
+  open,
+  onToggle,
+  className,
+}: {
+  group: SettingsNavGroup;
+  open: boolean;
+  onToggle: () => void;
+  className?: string;
+}) {
+  const style = cn(
+    "text-xs font-medium text-muted-foreground/60 truncate",
+    className,
+  );
+
+  if (!group.collapsible) {
+    return <p className={style}>{group.label}</p>;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      className={cn(
+        "flex w-full items-center gap-1 rounded-md hover:text-muted-foreground",
+        style,
+      )}
+    >
+      {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+      <span className="truncate">{group.label}</span>
+    </button>
+  );
 }
 
 export function SettingsSidebar() {
   const t = useT();
   const groups = useSettingsSidebarGroups();
   const { org, isActive } = useIsActiveSettingsPath();
+  const { isOpen, toggle } = useGroupDisclosure();
 
   return (
     <Sidebar variant="sidebar">
@@ -327,40 +361,43 @@ export function SettingsSidebar() {
         {groups.map((group, i) => (
           <SidebarGroup key={group.key} className="pt-0 pr-0 pb-0 pl-0">
             {group.label && (
-              <p
-                className={cn(
-                  "px-2 pt-1.5 pb-0.5 text-xs font-medium text-muted-foreground/60",
-                  i > 0 && "mt-3",
-                )}
-              >
-                {group.label}
-              </p>
+              <SettingsGroupHeading
+                group={group}
+                open={isOpen(group)}
+                onToggle={() => toggle(group)}
+                className={cn("px-2 pt-1.5 pb-0.5", i > 0 && "mt-3")}
+              />
             )}
-            <SidebarGroupContent>
-              <SidebarMenu className="gap-0.5">
-                {group.items.map((item) => (
-                  <SidebarMenuItem key={item.key}>
-                    <SidebarMenuButton asChild isActive={isActive(item.to)}>
-                      <Link
-                        to={item.to}
-                        params={{ org }}
-                        onClick={() =>
-                          // Track stable keys, not labels — labels are localized.
-                          track("settings_nav_clicked", {
-                            section_key: item.key,
-                            group_key: group.key,
-                          })
-                        }
-                        className="flex items-center gap-2.5 text-sm"
-                      >
-                        <SettingsNavIcon icon={item.icon} badge={item.badge} />
-                        <span className="truncate">{item.label}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
+            {isOpen(group) && (
+              <SidebarGroupContent>
+                <SidebarMenu className="gap-0.5">
+                  {group.items.map((item) => (
+                    <SidebarMenuItem key={item.key}>
+                      <SidebarMenuButton asChild isActive={isActive(item)}>
+                        <Link
+                          to={item.to}
+                          params={{ org }}
+                          onClick={() =>
+                            // Track stable keys, not labels — labels are localized.
+                            track("settings_nav_clicked", {
+                              section_key: item.key,
+                              group_key: group.key,
+                            })
+                          }
+                          className="flex items-center gap-2.5 text-sm"
+                        >
+                          <SettingsNavIcon
+                            icon={item.icon}
+                            badge={item.badge}
+                          />
+                          <span className="truncate">{item.label}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            )}
           </SidebarGroup>
         ))}
 
@@ -403,6 +440,7 @@ export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
   const t = useT();
   const groups = useSettingsSidebarGroups();
   const { org, isActive } = useIsActiveSettingsPath();
+  const { isOpen, toggle } = useGroupDisclosure();
 
   return (
     <div className="flex flex-col h-full bg-sidebar">
@@ -410,32 +448,31 @@ export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
         {groups.map((group, i) => (
           <div key={group.key} className="flex flex-col gap-0.5">
             {group.label && (
-              <p
-                className={cn(
-                  "px-3 pt-1.5 pb-0.5 text-xs font-medium text-muted-foreground/60",
-                  i > 0 && "mt-3",
-                )}
-              >
-                {group.label}
-              </p>
+              <SettingsGroupHeading
+                group={group}
+                open={isOpen(group)}
+                onToggle={() => toggle(group)}
+                className={cn("px-3 pt-1.5 pb-0.5", i > 0 && "mt-3")}
+              />
             )}
-            {group.items.map((item) => (
-              <Link
-                key={item.key}
-                to={item.to}
-                params={{ org }}
-                onClick={onClose}
-                className={cn(
-                  "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-colors text-sm",
-                  isActive(item.to)
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
-                )}
-              >
-                <SettingsNavIcon icon={item.icon} badge={item.badge} />
-                <span className="truncate">{item.label}</span>
-              </Link>
-            ))}
+            {isOpen(group) &&
+              group.items.map((item) => (
+                <Link
+                  key={item.key}
+                  to={item.to}
+                  params={{ org }}
+                  onClick={onClose}
+                  className={cn(
+                    "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-colors text-sm",
+                    isActive(item)
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
+                  )}
+                >
+                  <SettingsNavIcon icon={item.icon} badge={item.badge} />
+                  <span className="truncate">{item.label}</span>
+                </Link>
+              ))}
           </div>
         ))}
 

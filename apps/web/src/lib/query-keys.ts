@@ -570,8 +570,6 @@ export const KEYS = {
   deploymentAdminOrgsList: () => ["deployment-admin", "orgs"] as const,
 
   // Brand context (scoped by organization)
-  brandContext: (organizationId: string) =>
-    ["brand-context", organizationId] as const,
   defaultBrand: (organizationId: string) =>
     ["brand-context", organizationId, "default"] as const,
 

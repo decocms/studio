@@ -32,6 +32,7 @@ import {
   useDeleteApiKey,
 } from "@/hooks/use-api-keys";
 import { useT } from "@/i18n/use-t.ts";
+import { SettingsSubnav } from "@/components/settings/settings-subnav";
 
 const KEY_NAME_PREFIX = "Connect: ";
 
@@ -266,7 +267,7 @@ export function OrgConnectPage() {
       <Page.Content>
         <Page.Body>
           <SettingsPage>
-            <Page.Title>{t("settings.connectClients.pageTitle")}</Page.Title>
+            <SettingsSubnav group="connect" />
 
             <Card className="p-5 gap-3">
               <div className="flex items-start gap-3">

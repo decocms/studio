@@ -42,6 +42,7 @@ import {
   useDeleteFileConfig,
   useFileConfigs,
 } from "@/hooks/use-file-configs";
+import { SettingsSubnav } from "@/components/settings/settings-subnav";
 
 /**
  * MCP tool errors arrive as Error messages like
@@ -644,7 +645,7 @@ export function OrgBucketsPage() {
       <Page.Content>
         <Page.Body>
           <SettingsPage>
-            <Page.Title>{t("settings.buckets.pageTitle")}</Page.Title>
+            <SettingsSubnav group="storage" />
             <ErrorBoundary
               fallback={({ error }) => (
                 <ErrorFallback
