@@ -1,0 +1,100 @@
+name: Run an apt command with Ubuntu mirror fallback
+description: >-
+  Run a command that installs Ubuntu packages, retrying it against a different
+  Ubuntu mirror each time it stalls.
+
+  GitHub's hosted runners point apt at a mirrorlist (`/etc/apt/apt-mirrors.txt`)
+  whose first entry is `azure.archive.ubuntu.com`. When that mirror degrades it
+  does not fail — it crawls (37 kB/s measured on 2026-08-19, so a 21 MB font
+  download could not finish inside 5 minutes), and apt's own mirrorlist fallback
+  only triggers on a hard error, never on a slow transfer. This action gives
+  each mirror a hard wall-clock budget instead: blow the budget, rewrite the
+  mirrorlist to the next mirror, try again.
+
+inputs:
+  run:
+    description: >-
+      Shell command to run. Include `apt-get update` — the mirror changes
+      underneath it between attempts, so its package lists must be refetched.
+    required: true
+  timeout-seconds:
+    description: Wall-clock budget for one mirror's attempt.
+    default: "120"
+  mirrors:
+    description: >-
+      Ubuntu archive mirrors to try, in order, one per line. Every entry must
+      carry the -security pocket as well as the release pocket, because the
+      runner's sources point both at this one mirrorlist.
+    default: |
+      http://azure.archive.ubuntu.com/ubuntu/
+      http://mirrors.edge.kernel.org/ubuntu/
+      http://archive.ubuntu.com/ubuntu/
+
+runs:
+  using: composite
+  steps:
+    - name: Run with Ubuntu mirror fallback
+      shell: bash
+      env:
+        APT_FALLBACK_RUN: ${{ inputs.run }}
+        APT_FALLBACK_TIMEOUT: ${{ inputs.timeout-seconds }}
+        APT_FALLBACK_MIRRORS: ${{ inputs.mirrors }}
+      run: |
+        set -uo pipefail
+
+        # Bound apt's own network waits so a dead connection fails inside the
+        # per-mirror budget instead of consuming all of it.
+        sudo tee /etc/apt/apt.conf.d/99-ci-mirror-fallback >/dev/null <<'APTCONF'
+        Acquire::Retries "2";
+        Acquire::http::Timeout "20";
+        Acquire::https::Timeout "20";
+        APTCONF
+
+        # A timed-out attempt leaves apt-get/dpkg alive holding the dpkg lock,
+        # which would fail the next mirror for the wrong reason. Kill and repair.
+        reset_apt() {
+          sudo pkill -9 -x apt-get 2>/dev/null || true
+          sudo pkill -9 -x dpkg 2>/dev/null || true
+          sudo dpkg --configure -a >/dev/null 2>&1 || true
+        }
+
+        # The mirrorlist is a GitHub-hosted-image thing: on any other runner the
+        # sources do not point at it, so switching mirrors is a no-op and only
+        # the timeout-and-retry half of this action does any work. Say so rather
+        # than claim a fallback we did not get.
+        MIRRORLIST=/etc/apt/apt-mirrors.txt
+        if [ ! -f "$MIRRORLIST" ]; then
+          echo "::warning::${MIRRORLIST} not found — this runner does not use a mirrorlist, so attempts will retry the same mirror"
+        fi
+
+        mirrors=()
+        while IFS= read -r line; do
+          line="${line%$'\r'}"
+          [ -n "${line//[[:space:]]/}" ] || continue
+          mirrors+=("$line")
+        done <<< "$APT_FALLBACK_MIRRORS"
+        if [ "${#mirrors[@]}" -eq 0 ]; then
+          echo "::error::apt-mirror-fallback: no mirrors configured"
+          exit 1
+        fi
+
+        for mirror in "${mirrors[@]}"; do
+          echo "::group::apt via ${mirror}"
+          # One mirror per attempt, deliberately: leaving the others in the file
+          # would let apt silently fall back inside an attempt, which is exactly
+          # the behaviour that fails to trigger on a merely-slow mirror.
+          if [ -f "$MIRRORLIST" ]; then
+            printf '%s\n' "$mirror" | sudo tee "$MIRRORLIST" >/dev/null
+          fi
+          if timeout "$APT_FALLBACK_TIMEOUT" bash -c "$APT_FALLBACK_RUN"; then
+            echo "::endgroup::"
+            echo "apt succeeded via ${mirror}"
+            exit 0
+          fi
+          reset_apt
+          echo "::endgroup::"
+          echo "::warning::Ubuntu mirror ${mirror} failed or exceeded ${APT_FALLBACK_TIMEOUT}s — falling back to the next mirror"
+        done
+
+        echo "::error::every Ubuntu mirror failed: ${mirrors[*]}"
+        exit 1

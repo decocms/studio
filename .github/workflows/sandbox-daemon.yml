@@ -21,6 +21,9 @@ on:
   pull_request:
     branches:
       - main
+  # Both triggers above skip `.github/**`-only changes, so a CI-infrastructure
+  # fix cannot validate itself. Dispatch runs the suite on demand from any branch.
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -87,7 +90,9 @@ jobs:
           cache-dependency-path: packages/sandbox/daemon-go/go.sum
 
       - name: Install ripgrep
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
+        uses: ./.github/actions/apt-mirror-fallback
+        with:
+          run: sudo apt-get update && sudo apt-get install -y ripgrep
 
       - name: Go vet and unit tests
         working-directory: packages/sandbox/daemon-go
