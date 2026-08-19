@@ -380,22 +380,27 @@ export class ConnectionStorage implements ConnectionStoragePort {
     // every update, using presence (not `??`) so an explicit null clears the field
     // it was derived from instead of silently keeping the old slug.
     const slugData: Record<string, unknown> = { ...data };
-    // Skip findById() here — it decrypts secrets we don't need just for a slug merge.
-    const existing = await this.db
-      .selectFrom("connections")
-      .select(["app_name", "connection_url", "title"])
-      .where("id", "=", id)
-      .executeTakeFirst();
-    if (existing) {
-      const merged = <K extends "app_name" | "connection_url" | "title">(
-        key: K,
-      ) => (data[key] === undefined ? existing[key] : data[key]);
-      slugData.slug = getConnectionSlug({
-        app_name: merged("app_name"),
-        connection_url: merged("connection_url"),
-        title: merged("title"),
-        id,
-      });
+    // Skip the slug lookup/recompute entirely for updates that don't touch a slug field (e.g. a status/heartbeat write).
+    const touchesSlugField =
+      "app_name" in data || "connection_url" in data || "title" in data;
+    if (touchesSlugField) {
+      // Skip findById() here — it decrypts secrets we don't need just for a slug merge.
+      const existing = await this.db
+        .selectFrom("connections")
+        .select(["app_name", "connection_url", "title"])
+        .where("id", "=", id)
+        .executeTakeFirst();
+      if (existing) {
+        const merged = <K extends "app_name" | "connection_url" | "title">(
+          key: K,
+        ) => (data[key] === undefined ? existing[key] : data[key]);
+        slugData.slug = getConnectionSlug({
+          app_name: merged("app_name"),
+          connection_url: merged("connection_url"),
+          title: merged("title"),
+          id,
+        });
+      }
     }
 
     const serialized = await this.serializeConnection({
