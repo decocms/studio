@@ -166,6 +166,7 @@ export const thread = {
   "thread.publishDialog.loadingChanges": "Carregando alterações…",
   "thread.publishDialog.mergeFailed":
     "Alterações foram enviadas e PR #{prNumber} está aberto, mas a mesclagem falhou: {message}",
+  "thread.publishDialog.openingComparison": "Abrindo a comparação…",
   "thread.publishDialog.opensPullRequestInto":
     "Abre um pull request para {baseBranch} para revisão.",
   "thread.publishDialog.publishedTo": "Publicado em {baseBranch}",

@@ -229,23 +229,70 @@ function publishStateQueryKey(
   ] as const;
 }
 
+function Ghost({ className }: { className?: string }) {
+  return <div className={cn("animate-pulse rounded bg-muted", className)} />;
+}
+
+/** Ghost card matching the change-card anatomy, so loaded content lands in
+ *  shapes that were already on screen instead of after a layout jump. */
+function GhostCard({ subline }: { subline?: boolean }) {
+  return (
+    <div className="rounded-lg border bg-card px-3 py-2.5">
+      <div className="flex items-center gap-2.5">
+        <Ghost className="size-4 rounded-md" />
+        <Ghost className="h-3 w-24" />
+        <Ghost className="h-2.5 w-16" />
+        <Ghost className="ml-auto size-5 rounded-md" />
+      </div>
+      {subline ? <Ghost className="mt-1.5 ml-[26px] h-2.5 w-56" /> : null}
+    </div>
+  );
+}
+
+function CmsPublishSkeleton() {
+  const t = useT();
+  return (
+    <>
+      <div className="space-y-1.5 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Globe01 className="size-4 shrink-0 text-muted-foreground" />
+          <Ghost className="h-3.5 w-48" />
+        </div>
+        <Ghost className="ml-6 h-2.5 w-36" />
+      </div>
+      <div className="border-t" />
+      <div className="space-y-1.5 px-4 pt-3 pb-2">
+        <Ghost className="h-2 w-12" />
+        <GhostCard subline />
+        <GhostCard />
+        <Ghost className="mt-2 h-2 w-14" />
+        <GhostCard />
+      </div>
+      <div className="space-y-1.5 border-t px-4 py-3">
+        <Ghost className="h-2.5 w-20" />
+        <Ghost className="h-14 w-full rounded-lg" />
+      </div>
+      <div className="border-t" />
+      <div className="flex gap-2 px-4 py-3 opacity-50">
+        <Button type="button" variant="outline" disabled>
+          <Eye className="size-4" />
+          {t("thread.publishPopover.preview")}
+        </Button>
+        <Button type="button" variant="brand" className="flex-1" disabled>
+          {t("thread.publishPopover.publish")}
+        </Button>
+      </div>
+    </>
+  );
+}
+
 function CmsPublishBody(
   props: CmsPublishPopoverProps & {
     publishLockRef: React.MutableRefObject<boolean>;
   },
 ) {
-  const t = useT();
   return (
-    <Suspense
-      fallback={
-        <div className="flex items-center justify-center gap-2 py-16 text-muted-foreground">
-          <Loading01 className="size-4 animate-spin" />
-          <span className="text-sm">
-            {t("thread.publishDialog.loadingChanges")}
-          </span>
-        </div>
-      }
-    >
+    <Suspense fallback={<CmsPublishSkeleton />}>
       <CmsPublishContent {...props} />
     </Suspense>
   );
