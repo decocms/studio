@@ -1,7 +1,11 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
-import type { TaskBoardActivityAction, TaskBoardItem } from "@/storage/types";
+import type {
+  TaskBoardActivityAction,
+  TaskBoardItem,
+  TaskBoardItemStatus,
+} from "@/storage/types";
 import {
   SUPER_AGENT_ASSIGNEE_ID,
   TaskBoardItemPrioritySchema,
@@ -11,6 +15,7 @@ import {
 import { assertValidAssignee } from "./validate-assignee";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 import { recordTaskActivities } from "./activity";
+import { taskRunContextStore } from "./task-run-context";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import {
   ensureTaskExecutionAllowed,
@@ -101,6 +106,18 @@ export function delegatesToSuperAgent(
     : previous.status === "todo";
 }
 
+/** `task-run-context` withholds REVIEW_DECISION and PROMOTE_TO_PRODUCTION for this
+ *  invariant; this tool sets `status` freely, so it needs the same guard. */
+export function closesOwnReview(
+  inputStatus: TaskBoardItemStatus | undefined,
+  previousStatus: TaskBoardItemStatus | undefined,
+  isTaskRun: boolean,
+): boolean {
+  const completesTask = inputStatus === "done";
+  const awaitingReview = previousStatus === "in_review";
+  return isTaskRun && completesTask && awaitingReview;
+}
+
 export const TASK_BOARD_ITEM_UPDATE = defineTool({
   name: "TASK_BOARD_ITEM_UPDATE",
   description:
@@ -188,6 +205,15 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     // longer org-scoped itself (the join table has no organization_id).
     if (hasFieldUpdate && !previous) {
       throw new Error(`Task board item not found: ${input.id}`);
+    }
+
+    const isTaskRun = taskRunContextStore.getStore() !== undefined;
+    if (closesOwnReview(input.status, previous?.status, isTaskRun)) {
+      throw new Error(
+        "This task is In Review — a run can't move it to Done. Leave it in " +
+          "in_review for the reviewer; only a person, or TASK_BOARD_REVIEW_DECISION " +
+          "on a reviewer's own run, completes a task under review.",
+      );
     }
 
     const assigneeChanged =

@@ -1739,6 +1739,31 @@ export class TaskBoardStorage {
     }));
   }
 
+  /** A null actor is a machine path; a `reason` marks a move that meant something
+   *  other than "not done" (Rerun-from-Done stamps `reason: "rerun"`). */
+  async hasHumanRejectedDone(
+    taskBoardItemId: string,
+    organizationId: string,
+  ): Promise<boolean> {
+    const laneLeft = sql<string>`a.data->>'from'`;
+    const moveReason = sql<string>`a.data->>'reason'`;
+    const byMember = "a.actor_id";
+
+    const override = await this.db
+      .selectFrom("task_board_activity as a")
+      .innerJoin("task_board_items as item", "item.id", "a.task_board_item_id")
+      .select("a.id")
+      .where("item.organization_id", "=", organizationId)
+      .where("a.task_board_item_id", "=", taskBoardItemId)
+      .where("a.action", "=", "status_changed")
+      .where(byMember, "is not", null)
+      .where(laneLeft, "=", "done")
+      .where(moveReason, "is", null)
+      .limit(1)
+      .executeTakeFirst();
+    return override !== undefined;
+  }
+
   /** A task's comments, oldest first (thread order). Tenant-scoped through the
    *  task, which is the only thing carrying an org. Flat — the caller nests
    *  roots and replies by `parentId`. */
