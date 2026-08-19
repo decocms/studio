@@ -1,6 +1,7 @@
 import { getArrayItemDisplayLabels } from "./array-item-display";
 import { isPageMultivariateSectionArrayField } from "./page-variants";
 import type { SchemaProperty } from "./resolve-schema";
+import { labelFromResolveType } from "./section-types";
 import { unwrapBlockReference } from "./unwrap-section";
 
 /**
@@ -363,6 +364,11 @@ function itemOwnershipLabel(item: unknown): string | undefined {
     const value = obj[key];
     if (typeof value === "string" && value.trim()) return value;
   }
+  // Loader/section-ref items (e.g. `extensions: ExtensionOf[]`) label by `__resolveType` (see `baseArrayItemLabel`) — match that so ownership can find them.
+  const resolveType = obj.__resolveType;
+  if (typeof resolveType === "string" && resolveType) {
+    return labelFromResolveType(resolveType);
+  }
   return undefined;
 }
 
@@ -378,7 +384,7 @@ function itemOwnershipLabel(item: unknown): string | undefined {
  * narrowing to the item.
  *
  * Deliberately conservative — matches only object items via
- * {@link OWNERSHIP_LABEL_KEYS} (no item schema is available here). Items labeled
+ * {@link OWNERSHIP_LABEL_KEYS} or their `__resolveType` label (no item schema here). Items labeled
  * via a custom `titleBy`, via `text`/`href`/`id`, or primitive-array items are
  * NOT detected; those degrade to the pre-fix behavior (all siblings shown)
  * rather than risk narrowing to the wrong loader. Bounded by depth and a shared

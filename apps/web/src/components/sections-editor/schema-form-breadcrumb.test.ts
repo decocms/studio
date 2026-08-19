@@ -579,6 +579,47 @@ describe("resolveActiveFieldKey", () => {
     ).toBeNull();
   });
 
+  test("narrows to a loader whose extensions[] item is labelled by __resolveType", () => {
+    // ALS /flashsale: the extensions[] item's "DetailsPage" label comes from __resolveType (no name/label/title/alt), so ownership must see it.
+    const properties = {
+      page: {
+        title: "Page",
+        type: "block-ref",
+        anyOfRefs: [
+          {
+            resolveType: "commerce/loaders/product/extensions/detailsPage.ts",
+            title: "Details Page",
+          },
+        ],
+      },
+      defaultSkuFilter: { title: "Default SKU Filter", type: "string" },
+      showColorVariantOutOfStock: {
+        title: "Show Color Variant Out of Stock",
+        type: "boolean",
+      },
+    } satisfies Record<string, SchemaProperty>;
+    const objValue = {
+      page: {
+        __resolveType: "commerce/loaders/product/extensions/detailsPage.ts",
+        data: { __resolveType: "vtex/loaders/legacy/productDetailsPage.ts" },
+        extensions: [
+          {
+            __resolveType: "vtex/loaders/product/extensions/detailsPage.ts",
+            simulate: true,
+            similars: true,
+          },
+        ],
+      },
+      defaultSkuFilter: "only-on-sale",
+      showColorVariantOutOfStock: false,
+    };
+    expect(
+      resolveActiveFieldKey(Object.keys(properties), properties, objValue, [
+        { label: "DetailsPage", itemIndex: 0 },
+      ]),
+    ).toBe("page");
+  });
+
   test("does not spuriously match primitive arrays or href/id fallbacks", () => {
     const properties = {
       loader: {
