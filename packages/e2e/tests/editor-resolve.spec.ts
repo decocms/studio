@@ -1,120 +1,117 @@
 /**
- * `/api/_editor-resolve` is what the storefront "." shortcut lands on: it maps
- * a `(site, domain)` pair to the owning org's project(s) so `/choose-editor`
- * can open the content editor. The resolution is authoritative through
- * `org_sites` (globally-unique, guessable slugs), so the membership gate is the
- * only thing keeping one tenant from discovering another's org/projects. This
- * asserts, over the wire:
+ * `/api/_editor-resolve` is what the storefront "." shortcut lands on: given a
+ * site name it returns every (org, project) — across the orgs the *caller* is a
+ * member of — where that site is imported, so `/choose-editor` can open the
+ * editor or offer a picker. Access is implicit: a site in an org the caller
+ * isn't in simply doesn't appear. This asserts, over the wire:
  *
- *   - the owning member resolves the site to their project;
- *   - a signed-in non-member is refused (403), not served the org;
+ *   - a member gets the project(s) in their own org(s);
+ *   - the same site across two of the caller's orgs yields two matches;
+ *   - a signed-in user who isn't a member sees nothing (empty, not 403);
  *   - an anonymous caller is refused (401);
- *   - an unknown or malformed slug fails cleanly (404 / 400).
+ *   - a malformed slug fails cleanly (400).
  */
 
-import { type Client } from "pg";
-import { connectDevDb } from "../fixtures/db";
+import type { APIRequestContext } from "@playwright/test";
 import { signUpViaApi } from "../fixtures/auth-api";
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import { expect, newApiContext, test } from "../fixtures/test";
 
 interface ResolveResult {
-  orgSlug: string;
-  projects: { id: string; title: string }[];
+  matches: {
+    orgSlug: string;
+    orgName: string;
+    project: { id: string; title: string };
+  }[];
+}
+
+async function createOrg(
+  ctx: APIRequestContext,
+  slug: string,
+): Promise<string> {
+  const res = await ctx.post("/api/auth/organization/create", {
+    data: { name: slug, slug },
+  });
+  if (!res.ok()) {
+    throw new Error(`createOrg ${slug}: HTTP ${res.status()}`);
+  }
+  const body = (await res.json()) as {
+    slug?: string;
+    data?: { slug?: string };
+  };
+  return body.slug ?? body.data?.slug ?? slug;
+}
+
+async function createProjectForSite(
+  ctx: APIRequestContext,
+  orgSlug: string,
+  siteSlug: string,
+): Promise<string> {
+  const created = await callSelfMcpTool<{ item: { id: string } }>(
+    ctx,
+    orgSlug,
+    "COLLECTION_VIRTUAL_MCP_CREATE",
+    {
+      data: {
+        title: `Editor resolve e2e ${siteSlug}`,
+        connections: [],
+        metadata: { instructions: null, siteSlug },
+      },
+    },
+  );
+  return created.item.id;
 }
 
 test.describe("Editor resolve (choose-editor backend)", () => {
-  let db: Client;
-
-  test.beforeAll(async () => {
-    db = await connectDevDb();
-  });
-
-  test.afterAll(async () => {
-    await db?.end();
-  });
-
-  test("resolves a site to the owning org's project and gates by membership", async ({
+  test("resolves a site to the caller's projects across their orgs", async ({
     playwright,
   }) => {
     const ownerCtx = await newApiContext(playwright);
     const owner = await signUpViaApi(ownerCtx);
     const otherCtx = await newApiContext(playwright);
-    const other = await signUpViaApi(otherCtx);
+    await signUpViaApi(otherCtx);
     const anonCtx = await newApiContext(playwright);
 
     const suffix = `${Date.now()}${Math.random().toString(36).slice(2, 8)}`;
     const slug = `e2e-editor-${suffix}`;
 
-    // metadata.siteSlug (== site lowercased) is the resolver's key.
-    const created = await callSelfMcpTool<{ item: { id: string } }>(
-      ownerCtx,
-      owner.orgSlug,
-      "COLLECTION_VIRTUAL_MCP_CREATE",
-      {
-        data: {
-          title: `Editor resolve e2e ${suffix}`,
-          connections: [],
-          metadata: {
-            instructions: null,
-            siteSlug: slug,
-          },
-        },
-      },
-    );
-    const projectId = created.item.id;
-    expect(projectId).toBeTruthy();
+    const project1 = await createProjectForSite(ownerCtx, owner.orgSlug, slug);
 
-    const ownerOrgId = (
-      await db.query<{ id: string }>(
-        `SELECT id FROM "organization" WHERE slug = $1`,
-        [owner.orgSlug],
-      )
-    ).rows[0]!.id;
-
-    await db.query(
-      `INSERT INTO org_sites
-         (slug, organization_id, source, created_by, updated_by)
-       VALUES ($1, $2, 'manual', $3, $3)`,
-      [slug, ownerOrgId, owner.userId],
-    );
+    // A second org the same user owns, with the same site imported.
+    const org2Slug = await createOrg(ownerCtx, `e2e-org2-${suffix}`);
+    const project2 = await createProjectForSite(ownerCtx, org2Slug, slug);
 
     const resolveUrl = (site: string) =>
       `/api/_editor-resolve?site=${encodeURIComponent(site)}`;
 
-    try {
-      // The owning member resolves the site to their project.
-      const ok = await ownerCtx.get(resolveUrl(slug));
-      expect(ok.status()).toBe(200);
-      const body = (await ok.json()) as ResolveResult;
-      expect(body.orgSlug).toBe(owner.orgSlug);
-      expect(body.projects.map((p) => p.id)).toContain(projectId);
+    // The caller sees the site in BOTH of their orgs.
+    const ok = await ownerCtx.get(resolveUrl(slug));
+    expect(ok.status()).toBe(200);
+    const body = (await ok.json()) as ResolveResult;
+    const byProject = new Map(body.matches.map((m) => [m.project.id, m]));
+    expect(byProject.get(project1)?.orgSlug).toBe(owner.orgSlug);
+    expect(byProject.get(project2)?.orgSlug).toBe(org2Slug);
 
-      // A different casing of the site name still resolves (slug is lowercased).
-      const okUpper = await ownerCtx.get(resolveUrl(slug.toUpperCase()));
-      expect(okUpper.status()).toBe(200);
+    // Casing of the site name doesn't matter (slug is lowercased).
+    const okUpper = await ownerCtx.get(resolveUrl(slug.toUpperCase()));
+    expect(okUpper.status()).toBe(200);
+    expect(((await okUpper.json()) as ResolveResult).matches.length).toBe(2);
 
-      // A signed-in non-member must not learn who owns the site.
-      expect(other.orgSlug).not.toBe(owner.orgSlug);
-      const forbidden = await otherCtx.get(resolveUrl(slug));
-      expect(forbidden.status()).toBe(403);
+    // A signed-in non-member sees nothing — empty, not 403 (no leak either).
+    const other = await otherCtx.get(resolveUrl(slug));
+    expect(other.status()).toBe(200);
+    expect(((await other.json()) as ResolveResult).matches).toEqual([]);
 
-      // Anonymous caller: refused before any lookup.
-      const anon = await anonCtx.get(resolveUrl(slug));
-      expect(anon.status()).toBe(401);
+    // Anonymous caller: refused.
+    const anon = await anonCtx.get(resolveUrl(slug));
+    expect(anon.status()).toBe(401);
 
-      // Unknown site → clean 404, not a 500.
-      const missing = await ownerCtx.get(resolveUrl(`${slug}-nope`));
-      expect(missing.status()).toBe(404);
+    // Malformed slug → 400.
+    const bad = await ownerCtx.get(resolveUrl("Not A Slug!"));
+    expect(bad.status()).toBe(400);
 
-      // Malformed slug → 400.
-      const bad = await ownerCtx.get(resolveUrl("Not A Slug!"));
-      expect(bad.status()).toBe(400);
-    } finally {
-      await db.query(`DELETE FROM org_sites WHERE slug = $1`, [slug]);
-      await ownerCtx.dispose();
-      await otherCtx.dispose();
-      await anonCtx.dispose();
-    }
+    await ownerCtx.dispose();
+    await otherCtx.dispose();
+    await anonCtx.dispose();
   });
 });

@@ -3,11 +3,11 @@
  *
  * A live deco storefront redirects here with `?site=&domain=&pageId=&path=&
  * pathTemplate=` (path/pathTemplate arrive URL-encoded once; TanStack decodes
- * them for us — do NOT decode again). We resolve `site` to the project(s) whose
- * content editor should open via `/api/_editor-resolve`, then:
- *   - exactly one project → redirect straight into its editor;
- *   - more than one → let the user pick;
- *   - none / no access / error → a friendly dead-end.
+ * them for us — do NOT decode again). `/api/_editor-resolve` returns every
+ * (org, project) in the caller's own orgs where `site` is imported, then:
+ *   - exactly one → redirect straight into its editor;
+ *   - more than one → let the user pick which org/project;
+ *   - none / error → a friendly dead-end.
  *
  * The page is auth-gated by `RequiredAuthLayout`, so an unauthenticated visitor
  * is sent to `/login?next=/choose-editor?…` and bounced back with params intact.
@@ -22,15 +22,14 @@ import RequiredAuthLayout from "@/layouts/required-auth-layout";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
 
-interface EditorProject {
-  id: string;
-  title: string;
-  icon: string | null;
+interface EditorMatch {
+  orgSlug: string;
+  orgName: string;
+  project: { id: string; title: string; icon: string | null };
 }
 
 interface EditorResolveResult {
-  orgSlug: string;
-  projects: EditorProject[];
+  matches: EditorMatch[];
 }
 
 interface ResolveError extends Error {
@@ -153,19 +152,23 @@ function EditorRedirect({
 }
 
 function EditorChooser({
-  result,
+  matches,
   pageSearch,
 }: {
-  result: EditorResolveResult;
+  matches: EditorMatch[];
   pageSearch: Record<string, string>;
 }) {
   const t = useT();
   const navigate = useNavigate();
-  const openProject = (projectId: string) => {
+  const open = (match: EditorMatch) => {
     navigate({
       to: "/$org/$taskId",
-      params: { org: result.orgSlug, taskId: crypto.randomUUID() },
-      search: { virtualmcpid: projectId, main: "content", ...pageSearch },
+      params: { org: match.orgSlug, taskId: crypto.randomUUID() },
+      search: {
+        virtualmcpid: match.project.id,
+        main: "content",
+        ...pageSearch,
+      },
     });
   };
   return (
@@ -179,19 +182,20 @@ function EditorChooser({
         </p>
       </div>
       <div className="flex w-full flex-col gap-2">
-        {result.projects.map((project) => (
+        {matches.map((match) => (
           <button
-            key={project.id}
+            key={`${match.orgSlug}/${match.project.id}`}
             type="button"
-            onClick={() => openProject(project.id)}
+            onClick={() => open(match)}
             aria-label={t("chooseEditor.chooser.openAriaLabel", {
-              title: project.title,
+              title: match.project.title,
+              org: match.orgName,
             })}
             className="flex w-full items-center gap-3 rounded-lg border border-border bg-card p-3 text-left transition-colors hover:bg-accent"
           >
-            {project.icon ? (
+            {match.project.icon ? (
               <img
-                src={project.icon}
+                src={match.project.icon}
                 alt=""
                 className="size-8 shrink-0 rounded-md object-cover"
               />
@@ -200,7 +204,10 @@ function EditorChooser({
             )}
             <div className="flex min-w-0 flex-col">
               <span className="truncate text-sm font-medium text-foreground">
-                {project.title}
+                {match.project.title}
+              </span>
+              <span className="truncate text-xs text-muted-foreground">
+                {match.orgName}
               </span>
             </div>
           </button>
@@ -251,8 +258,8 @@ function ChooseEditor() {
     return <ResolvingScreen />;
   }
 
-  const { projects } = query.data;
-  if (projects.length === 0) {
+  const { matches } = query.data;
+  if (matches.length === 0) {
     return (
       <DeadEndScreen
         titleKey="chooseEditor.notFound.title"
@@ -260,17 +267,17 @@ function ChooseEditor() {
       />
     );
   }
-  if (projects.length === 1 && projects[0]) {
+  if (matches.length === 1 && matches[0]) {
     return (
       <EditorRedirect
-        orgSlug={query.data.orgSlug}
-        projectId={projects[0].id}
+        orgSlug={matches[0].orgSlug}
+        projectId={matches[0].project.id}
         pageSearch={pageSearch}
       />
     );
   }
 
-  return <EditorChooser result={query.data} pageSearch={pageSearch} />;
+  return <EditorChooser matches={matches} pageSearch={pageSearch} />;
 }
 
 export default function ChooseEditorRoute() {

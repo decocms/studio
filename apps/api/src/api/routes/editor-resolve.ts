@@ -3,36 +3,36 @@
  *
  * Powers the storefront "." shortcut: a live deco storefront redirects to
  * `studio.decocms.com/choose-editor?site=<name>&…`, and the `/choose-editor`
- * page calls this endpoint to map `site` onto the Studio project(s) whose
- * content editor should open.
+ * page calls this endpoint to find where the caller can open that site's
+ * content editor.
  *
- * Resolution is authoritative through `org_sites` (Studio's tenancy source of
- * truth): the storefront `site` name lowercased is the globally-unique site
- * slug, so one indexed read yields the owning org — no scanning the caller's
- * orgs. Membership is then enforced against the `member` table (a site the
- * caller can't access must not leak), and within that org we match Virtual MCPs
- * by `metadata.siteSlug` (== `site` lowercased — the same deterministic key).
- * The storefront `domain` is intentionally NOT used to match: it's the live
- * storefront origin, whereas a project stores `previewServerUrl` (the dev/
- * preview server, often staging or localhost), so the two rarely coincide.
- * Instance-level: the org is discovered here, not taken from the URL path.
+ * Resolution is relative to the authenticated user: the same storefront can be
+ * imported into several orgs, so we scan the orgs the caller is a member of and
+ * return every project whose `metadata.siteSlug` matches `site` (lowercased).
+ * That makes access implicit (orgs the caller isn't in never appear — no leak,
+ * no false 403) and lets `/choose-editor` offer a picker when the site lives in
+ * more than one of the caller's orgs. Instance-level: no org in the URL path.
+ *
+ * NOT used: `org_sites` (its slug is a single global owner — an asset-bucket
+ * tenancy concept, not "who can edit"), nor the storefront `domain` (it's the
+ * live origin, while a project stores `previewServerUrl` — dev/preview server).
  */
 
 import { Hono } from "hono";
 import { isValidSiteSlug } from "@decocms/shared/site-slug";
+import { isOrgArchived } from "@decocms/shared/organization/org-archived";
 import type { Env } from "../hono-env";
 import { getUserId } from "@/core/studio-context";
 
-/** The subset of a Virtual MCP the chooser UI renders. */
-interface EditorProject {
-  id: string;
-  title: string;
-  icon: string | null;
+/** One place the caller can open the site's editor: an (org, project) pair. */
+interface EditorMatch {
+  orgSlug: string;
+  orgName: string;
+  project: { id: string; title: string; icon: string | null };
 }
 
 interface EditorResolveResult {
-  orgSlug: string;
-  projects: EditorProject[];
+  matches: EditorMatch[];
 }
 
 export function createEditorResolveRoutes() {
@@ -53,52 +53,34 @@ export function createEditorResolveRoutes() {
       return c.json({ error: "Invalid site slug" }, 400);
     }
 
-    // Site name → owning org (globally-unique slug, one indexed read).
-    const orgSite = await ctx.storage.orgSites.getBySlug(slug);
-    if (!orgSite) {
-      return c.json({ error: "Site is not linked to any Studio project" }, 404);
-    }
-    const orgId = orgSite.organizationId;
-
-    // Enforce membership so a non-member can't learn which org owns the site.
-    const membership = await ctx.db
+    // The caller's orgs (access is implicit — we never look outside them).
+    const orgs = await ctx.db
       .selectFrom("member")
-      .select(["role"])
-      .where("userId", "=", userId)
-      .where("organizationId", "=", orgId)
-      .executeTakeFirst();
-    if (!membership) {
-      return c.json({ error: "You don't have access to this site" }, 403);
+      .innerJoin("organization", "organization.id", "member.organizationId")
+      .select([
+        "organization.id as id",
+        "organization.slug as slug",
+        "organization.name as name",
+        "organization.metadata as metadata",
+      ])
+      .where("member.userId", "=", userId)
+      .execute();
+
+    const matches: EditorMatch[] = [];
+    for (const org of orgs) {
+      if (!org.slug || isOrgArchived(org)) continue;
+      const vms = await ctx.storage.virtualMcps.list(org.id);
+      for (const vm of vms) {
+        if (vm.metadata?.siteSlug?.toLowerCase() !== slug) continue;
+        matches.push({
+          orgSlug: org.slug,
+          orgName: org.name ?? org.slug,
+          project: { id: vm.id, title: vm.title, icon: vm.icon ?? null },
+        });
+      }
     }
 
-    // org id → slug (the editor URL is keyed by slug).
-    const org = await ctx.db
-      .selectFrom("organization")
-      .select(["id", "slug"])
-      .where("id", "=", orgId)
-      .executeTakeFirst();
-    if (!org?.slug) {
-      return c.json({ error: "Organization not found" }, 404);
-    }
-
-    // Match projects by metadata.siteSlug (== site lowercased).
-    const vms = await ctx.storage.virtualMcps.list(orgId);
-    const matched = vms.filter(
-      (vm) => vm.metadata?.siteSlug?.toLowerCase() === slug,
-    );
-
-    if (matched.length === 0) {
-      return c.json({ error: "No editor found for this site" }, 404);
-    }
-
-    const result: EditorResolveResult = {
-      orgSlug: org.slug,
-      projects: matched.map((vm) => ({
-        id: vm.id,
-        title: vm.title,
-        icon: vm.icon ?? null,
-      })),
-    };
+    const result: EditorResolveResult = { matches };
     return c.json(result);
   });
 
