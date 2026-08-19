@@ -165,7 +165,7 @@ export const STATUS_CONFIG: Record<
   in_progress: {
     labelKey: "taskBoard.config.statusInProgress",
     icon: Loading02,
-    iconClassName: "text-primary animate-spin",
+    iconClassName: "text-primary",
   },
   in_review: {
     labelKey: "taskBoard.config.statusInReview",
