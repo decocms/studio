@@ -446,9 +446,6 @@ export const settings = {
   "settings.navigation.navV2Title": "First-class navigation",
   "settings.navigation.navV2Description":
     "The sidebar lists destinations (Reports, Library, Tasks) instead of chats, and the chat list moves to the top of the chat panel. On by default for report organizations.",
-  "settings.navigation.nativeAssetsTitle": "Native Assets tab",
-  "settings.navigation.nativeAssetsDescription":
-    "Show a native Assets tab that browses the site's associated storage bucket, instead of the external admin view. Appears only on sites that have a bucket configured.",
   "settings.orgGeneral.organization": "Organization",
   "settings.mainAgent.title": "Main agent",
   "settings.mainAgent.description":
