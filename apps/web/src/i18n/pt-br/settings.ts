@@ -465,6 +465,9 @@ export const settings = {
   "settings.navigation.navV2Title": "Navegação de primeira classe",
   "settings.navigation.navV2Description":
     "A barra lateral lista destinos (Relatórios, Biblioteca, Tarefas) em vez de chats, e a lista de chats vai para o topo do painel de chat. Ativada por padrão em organizações de relatório.",
+  "settings.navigation.nativeAssetsTitle": "Aba de Assets nativa",
+  "settings.navigation.nativeAssetsDescription":
+    "Mostra uma aba de Assets nativa que navega o bucket de armazenamento associado ao site, em vez da view externa de admin. Aparece s\u00f3 em sites que t\u00eam um bucket configurado.",
   "settings.orgGeneral.organization": "Organiza\u00e7\u00e3o",
   "settings.mainAgent.title": "Agente principal",
   "settings.mainAgent.description":
