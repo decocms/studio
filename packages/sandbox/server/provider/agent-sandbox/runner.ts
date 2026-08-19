@@ -1119,6 +1119,12 @@ export class AgentSandboxProvider implements SandboxProvider {
           // likely expired. Forward the freshly-minted one so authenticated git
           // keeps working. No-op when unchanged / public clone.
           await this.refreshDaemonGitCredential(rec, opts);
+          // Same staleness risk applies to the org-fs sidecar config on a long-resumed pod.
+          await this.relayOrgFsConfig(
+            rec.daemonUrl,
+            rec.token,
+            opts.orgFsConfigJson,
+          );
           return this.finish(
             rec,
             ops,
@@ -1164,6 +1170,11 @@ export class AgentSandboxProvider implements SandboxProvider {
           // Same as resume: the adopted pod's daemon holds a clone credential
           // from an earlier provision that may have lapsed. Rotate it.
           await this.refreshDaemonGitCredential(adopted, opts);
+          await this.relayOrgFsConfig(
+            adopted.daemonUrl,
+            adopted.token,
+            opts.orgFsConfigJson,
+          );
           return this.finish(
             adopted,
             ops,
