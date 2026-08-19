@@ -127,18 +127,26 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
-      # amd64 only — the preview cluster is amd64, and the release workflow's
-      # own comments record that emulated arm64 costs ~64s vs ~13s native for
-      # the tarball-install layer. `cache-from` also reads the release scopes so
-      # the apt / useradd / duckdb layers are hits on a cold preview.
+      # Multi-arch, matching the release images. The preview node pool accepts
+      # both amd64 and arm64 so Karpenter can take whichever spot capacity is
+      # available — and it does: a reclaim replaced an r8in.large (amd64) with
+      # an r7gd.large (Graviton), and every amd64-only pod died with
+      # `exec format error`.
+      #
+      # QEMU rather than the release workflow's native-runner matrix: that costs
+      # ~64s against ~13s for the tarball-install layer, which is ~9% on a
+      # ~9-minute preview build and does not justify a second job plus digest
+      # artifacts plus a manifest-merge step here. `cache-from` still reads the
+      # release scopes, so the apt / useradd / duckdb layers hit on a cold build.
       - name: Build and push API image
         uses: docker/build-push-action@v5
         with:
           context: ./docker-context
           file: ./apps/api/Dockerfile
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           push: true
           provenance: false
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}
@@ -152,7 +160,7 @@ jobs:
         with:
           context: .
           file: ./apps/web/Dockerfile
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           push: true
           provenance: false
           tags: ${{ env.REGISTRY }}/${{ env.NGINX_IMAGE_NAME }}:${{ steps.meta.outputs.tag }}
