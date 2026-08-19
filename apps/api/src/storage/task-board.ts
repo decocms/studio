@@ -1433,6 +1433,43 @@ export class TaskBoardStorage {
   }
 
   /**
+   * Atomically claim an unassigned To Do card for the Super Agent, returning
+   * the updated item to the single winner and null to everyone else.
+   *
+   * The Jira pull's auto-delegate is the caller, and it has three triggers that
+   * can overlap on the same issue: the 10-minute cron, a webhook wake-up (whose
+   * debounce is per-pod, so replicas don't coordinate), and a manual
+   * `JIRA_SYNC_RUN`. A read-then-write would let two of them each dispatch a
+   * paid Super Agent run on the same card — two threads, two PRs. Same atomic
+   * conditional-UPDATE pattern as `claimInReviewSuperAgentSlot`.
+   */
+  async claimUnassignedForSuperAgent(
+    id: string,
+    organizationId: string,
+    assignedBy: string,
+    by: string,
+  ): Promise<TaskBoardItem | null> {
+    const row = await this.db
+      .updateTable("task_board_items")
+      .set({
+        assignee_id: SUPER_AGENT_ASSIGNEE_ID,
+        assigned_by: assignedBy,
+        updated_by: by,
+        updated_at: new Date().toISOString(),
+      })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .where("status", "=", "todo")
+      .where("assignee_id", "is", null)
+      .returningAll()
+      .executeTakeFirst();
+    if (!row) return null;
+    const item = this.itemFromDbRow(row);
+    await this.attachRefs([item], organizationId);
+    return item;
+  }
+
+  /**
    * Atomically hand a task from the Super Agent to a human: clear
    * `assigneeId` ONLY if it's still the Super Agent, returning the updated
    * item, or null if it already changed. `handTaskToHuman`'s caller re-checks

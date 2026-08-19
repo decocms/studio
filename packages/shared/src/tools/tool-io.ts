@@ -4854,6 +4854,104 @@ export interface StudioToolIO {
         | { id: string; volume: string; error: string };
     };
   };
+  JIRA_INTEGRATION_GET: {
+    input: { [x: string]: never };
+    output: {
+      integration: {
+        id: string;
+        siteUrl: string;
+        email: string;
+        boardId: string | null;
+        boardName: string | null;
+        statusMapping: Record<
+          string,
+          "done" | "triage" | "todo" | "in_progress" | "in_review" | "archived"
+        >;
+        jqlFilter: string | null;
+        autoDelegate: boolean;
+        webhookSecret: string;
+        enabled: boolean;
+        lastSyncedAt: string | null;
+        lastSyncError: string | null;
+        createdAt: string;
+      } | null;
+    };
+  };
+  JIRA_INTEGRATION_UPSERT: {
+    input: {
+      siteUrl?: string | undefined;
+      email?: string | undefined;
+      apiToken?: string | undefined;
+      boardId?: string | null | undefined;
+      boardName?: string | null | undefined;
+      statusMapping?:
+        | Record<
+            string,
+            | "done"
+            | "triage"
+            | "todo"
+            | "in_progress"
+            | "in_review"
+            | "archived"
+          >
+        | undefined;
+      jqlFilter?: string | null | undefined;
+      autoDelegate?: boolean | undefined;
+      enabled?: boolean | undefined;
+    };
+    output: {
+      integration: {
+        id: string;
+        siteUrl: string;
+        email: string;
+        boardId: string | null;
+        boardName: string | null;
+        statusMapping: Record<
+          string,
+          "done" | "triage" | "todo" | "in_progress" | "in_review" | "archived"
+        >;
+        jqlFilter: string | null;
+        autoDelegate: boolean;
+        webhookSecret: string;
+        enabled: boolean;
+        lastSyncedAt: string | null;
+        lastSyncError: string | null;
+        createdAt: string;
+      };
+    };
+  };
+  JIRA_INTEGRATION_DELETE: {
+    input: { [x: string]: never };
+    output: { deleted: boolean };
+  };
+  JIRA_BOARDS_LIST: {
+    input: { [x: string]: never };
+    output: {
+      boards: {
+        id: number;
+        name: string;
+        type: string;
+        projectKey?: string | undefined;
+      }[];
+    };
+  };
+  JIRA_BOARD_COLUMNS_LIST: {
+    input: { boardId: string };
+    output: { columns: { name: string; statuses: string[] }[] };
+  };
+  JIRA_SYNC_RUN: {
+    input: { [x: string]: never };
+    output: {
+      result:
+        | {
+            created: number;
+            updated: number;
+            unchanged: number;
+            skipped: number;
+          }
+        | { error: string };
+    };
+  };
   LIST_OBJECTS: {
     input: {
       prefix?: string | undefined;

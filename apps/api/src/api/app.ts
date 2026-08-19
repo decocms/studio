@@ -22,6 +22,11 @@ import {
   setOrgRepoSyncRuntime,
 } from "@/file-storage/dbos-org-repo-sync";
 import {
+  registerJiraSyncWorkflow,
+  setJiraSyncRuntime,
+} from "@/jira/dbos-jira-sync";
+import { createJiraWebhookRoutes } from "./routes/jira-webhook";
+import {
   registerTaskBoardArchiveSweepWorkflow,
   setTaskBoardArchiveSweepRuntime,
 } from "@/tools/task-board/dbos-archive-sweep";
@@ -187,7 +192,10 @@ import {
   THREAD_GATE_PARTITION_CONCURRENCY,
   THREAD_GATE_QUEUE,
 } from "../dispatch-queue";
-import { GITHUB_READS_QUEUE } from "../dispatch-queue/queue-names";
+import {
+  GITHUB_READS_QUEUE,
+  JIRA_PUSH_QUEUE,
+} from "../dispatch-queue/queue-names";
 import { setProjectorWorkflowRuntime } from "./routes/decopilot/projector-workflow";
 import { synthesizedErrorMessageId } from "./routes/decopilot/message-ids";
 import { backfillStudioPackForAllOrgs } from "../auth/install-studio-pack-workflow";
@@ -1363,6 +1371,13 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Optional — 503 without GITHUB_WEBHOOK_SECRET, and pools refresh on their
   // own schedule regardless.
   app.route("/api/_github", githubWebhookRoutes);
+  app.route(
+    "/api/_jira",
+    createJiraWebhookRoutes({
+      db: database.db,
+      encryptionKey: getSettings().encryptionKey,
+    }),
+  );
 
   // Auth-gated report page + domain-derived metadata. API-only/test apps safely
   // return 404 for the HTML shell when no built client directory is supplied.
@@ -1512,6 +1527,12 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Per-org repo syncs: same DBOS-scheduled shape, work list from the DB.
   setOrgRepoSyncRuntime({ db: database.db });
+
+  // Per-org Jira pull syncs: same shape, credentials decrypted per run.
+  setJiraSyncRuntime({
+    db: database.db,
+    encryptionKey: getSettings().encryptionKey,
+  });
 
   // Hourly auto-archive of settled Done cards, one org leg per candidate org.
   setTaskBoardArchiveSweepRuntime({ db: database.db });
@@ -1785,6 +1806,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerMonitoringRetentionWorkflow();
   registerPublicSetsSyncWorkflow();
   registerOrgRepoSyncWorkflow();
+  registerJiraSyncWorkflow();
   registerTaskBoardArchiveSweepWorkflow();
   registerTaskBoardMergedTagSweepWorkflow();
   registerTaskBoardGithubReadWorkflow();
@@ -2304,6 +2326,11 @@ export async function createApp(options: CreateAppOptions = {}) {
     // enforced in the system DB, so it is a cap on ALL replicas together —
     // the one thing an in-process token bucket could never be.
     await DBOS.registerQueue(GITHUB_READS_QUEUE, GITHUB_READS_QUEUE_PARAMS);
+    // Board→Jira comment pushes: org partitions at concurrency 1 = posting order.
+    await DBOS.registerQueue(JIRA_PUSH_QUEUE, {
+      partitionQueue: true,
+      concurrency: 1,
+    });
     await reconcileAutomationSchedules(automationsStorage);
 
     // One-time cleanup of the retired per-automation/global gate queues.

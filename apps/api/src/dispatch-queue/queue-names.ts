@@ -41,3 +41,5 @@ export const AUTOMATIONS_QUEUE = "automations";
 export const BACKGROUND_TOOLS_QUEUE = "background-tools";
 /** Rate-limited GitHub reads for the task board's review sweep. */
 export const GITHUB_READS_QUEUE = "task-board-github-reads";
+/** Durable board→Jira comment pushes, partitioned by org (concurrency 1 ⇒ per-org ordering). */
+export const JIRA_PUSH_QUEUE = "jira-push";
