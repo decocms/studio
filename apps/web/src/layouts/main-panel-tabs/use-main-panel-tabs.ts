@@ -334,7 +334,9 @@ export function useMainPanelTabs(ctx: {
       ? resolveDefaultTabId(layoutForDefault)
       : rawActiveTab === "content" && !showContentTab
         ? resolveDefaultTabId(layoutForDefault)
-        : rawActiveTab;
+        : rawActiveTab === "assets" && !showAssetsTab
+          ? resolveDefaultTabId(layoutForDefault)
+          : rawActiveTab;
   const mainOpen =
     rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
       ? false
