@@ -445,6 +445,8 @@ export function useMainPanelTabs(ctx: {
     });
   }
   for (const pv of pinnedViews) {
+    // Retired admin-MCP view, now the native Assets tab: drop stale pins.
+    if (pv.toolName === "fetch_assets") continue;
     const id = formatPinnedViewTabId(pv.connectionId, pv.toolName);
     pinnedTabMap.set(id, {
       id,
