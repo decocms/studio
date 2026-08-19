@@ -736,7 +736,7 @@ function CmsPublishContent({
         ) : null}
         {expanded ? (
           <div className="-mx-3 mt-2 border-t pt-1">
-            <div className="max-h-72 overflow-y-auto overscroll-contain [scrollbar-width:thin]">
+            <div className="scroll-fade max-h-72 overflow-y-auto overscroll-contain [scrollbar-width:thin]">
               <GitDiffList diff={rawDiff} hideFileRows editorHeight="220px" />
             </div>
           </div>
@@ -842,7 +842,7 @@ function CmsPublishContent({
           </div>
         ) : (
           <>
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 pt-3 pb-2 [scrollbar-width:thin]">
+            <div className="scroll-fade min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 pt-3 pb-2 [scrollbar-width:thin]">
               {renderGroup(
                 t("thread.publishPopover.pagesGroup"),
                 summary.pages,
