@@ -63,6 +63,23 @@ test.describe("settings tabs", () => {
     await expect(members).toHaveAttribute("data-active", "true");
   });
 
+  test("ai providers is a tab of billing", async ({ authedPage }) => {
+    const { page, orgSlug } = authedPage;
+    await page.goto(`/${orgSlug}/settings/ai-providers`);
+
+    const billing = page
+      .locator(SIDEBAR)
+      .getByRole("link", { name: "Billing" });
+    await expect(billing).toHaveAttribute("data-active", "true");
+
+    await page
+      .locator(SUBNAV)
+      .getByRole("link", { name: "Plan & usage" })
+      .click();
+    await expect(page).toHaveURL(new RegExp(`/${orgSlug}/settings/billing$`));
+    await expect(billing).toHaveAttribute("data-active", "true");
+  });
+
   test("api keys is a tab of connect", async ({ authedPage }) => {
     const { page, orgSlug } = authedPage;
     await page.goto(`/${orgSlug}/settings/connect`);
@@ -72,10 +89,7 @@ test.describe("settings tabs", () => {
       .getByRole("link", { name: "Connect", exact: true });
     await expect(connect).toHaveAttribute("data-active", "true");
 
-    await page
-      .getByRole("navigation")
-      .getByRole("link", { name: "API Keys" })
-      .click();
+    await page.locator(SUBNAV).getByRole("link", { name: "API Keys" }).click();
     await expect(page).toHaveURL(new RegExp(`/${orgSlug}/settings/api-keys$`));
     await expect(connect).toHaveAttribute("data-active", "true");
   });

@@ -87,6 +87,12 @@ export const SETTINGS_TAB_GROUPS: Record<
         requires: "members:manage",
       },
       {
+        key: "ai-providers",
+        labelKey: "settings.nav.aiProviders",
+        to: "/$org/settings/ai-providers",
+        requires: "ai-providers:manage",
+      },
+      {
         key: "infra",
         labelKey: "settings.subnav.infrastructure",
         to: "/$org/settings/infra-billing",

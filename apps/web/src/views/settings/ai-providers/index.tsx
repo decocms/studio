@@ -3,12 +3,12 @@ import { AlertCircle } from "@untitledui/icons";
 import { Page } from "@/components/page";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { SettingsPage } from "@/components/settings/settings-section";
+import { SettingsSubnav } from "@/components/settings/settings-subnav";
 import { ErrorBoundary } from "@/components/error-boundary";
 import {
   useAiProviderKeys,
   useAiProviders,
 } from "@/hooks/collections/use-ai-providers";
-import { useT } from "@/i18n/use-t.ts";
 import { SimpleModeSection } from "./simple-mode-section";
 import { DecoCreditsHero } from "./deco-credits-hero";
 import { DecoNudgeCard } from "./deco-nudge-card";
@@ -81,13 +81,12 @@ function OrgAiProvidersContent() {
 }
 
 export function OrgAiProvidersPage() {
-  const t = useT();
   return (
     <Page>
       <Page.Content>
         <Page.Body>
           <SettingsPage>
-            <Page.Title>{t("settings.nav.aiProviders")}</Page.Title>
+            <SettingsSubnav group="billing" />
             <ErrorBoundary
               fallback={({ error }) => (
                 <ErrorFallback

@@ -10,40 +10,19 @@
 import { Link, useParams, useRouterState } from "@tanstack/react-router";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Page } from "@/components/page";
-import { useCapabilities } from "@/hooks/use-capability";
-import { useOwnedSites } from "@/hooks/use-infra-billing";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
 import {
   SETTINGS_TAB_GROUPS,
   type SettingsGroupKey,
-  type SettingsTabDef,
 } from "./settings-tab-groups";
-
-/**
- * The tabs of `group` the current member may open. Mirrors the sidebar's
- * optimistic-while-loading rule: show everything until capabilities resolve so
- * owners never see the strip flicker.
- */
-function useVisibleTabs(group: SettingsGroupKey): SettingsTabDef[] {
-  const { capabilities, isPrivileged, loading, error } = useCapabilities();
-  const ownsSites = useOwnedSites().sites.length > 0;
-  const { tabs } = SETTINGS_TAB_GROUPS[group];
-
-  return tabs.filter((tab) => {
-    if (tab.requiresOwnedSites && !ownsSites) return false;
-    if (loading || error) return true;
-    if (tab.privilegedOnly) return isPrivileged;
-    if (!tab.requires) return true;
-    return isPrivileged || capabilities[tab.requires];
-  });
-}
+import { useVisibleSettingsTabs } from "./use-settings-tabs";
 
 export function SettingsSubnav({ group }: { group: SettingsGroupKey }) {
   const t = useT();
   const { org } = useParams({ from: "/shell/$org" });
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const tabs = useVisibleTabs(group);
+  const tabs = useVisibleSettingsTabs()[group];
   const { titleKey } = SETTINGS_TAB_GROUPS[group];
 
   return (
