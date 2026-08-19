@@ -125,6 +125,9 @@ export interface TaskBoardItemThreadRef {
    *  when nothing was recorded — not the same as free. */
   costUsd: number | null;
   createdAt: string;
+  /** Newest of the thread's `updated_at` / `last_progress_at` — the stall
+   *  reaper's heartbeat, mirrored from `apps/api/src/storage/types.ts`. */
+  lastActiveAt: string;
 }
 
 /** A tag attached to a task, plus who attached it and when. */
