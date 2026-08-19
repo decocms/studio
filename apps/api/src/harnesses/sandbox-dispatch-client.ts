@@ -49,6 +49,7 @@ import {
   MODEL_CLASS_METADATA_KEY,
   type ClaudeCodeCredential,
 } from "@/harnesses/claude-code-env";
+import { mergeRunEnv, resolveOrgRunEnv } from "@/harnesses/org-run-env";
 import { withModelMetadata } from "@/harnesses/with-model-metadata";
 import type { StudioContext } from "../core/studio-context";
 import { mintMcpEndpoint } from "@/mcp-clients/virtual-mcp/mint-endpoint";
@@ -307,6 +308,12 @@ export class SandboxDispatchClient implements SandboxClient {
       );
     }
 
+    // Resolved before the pod exists; model credential wins — see `mergeRunEnv`.
+    const runEnv = mergeRunEnv(
+      await resolveOrgRunEnv(this.ctx, input.user.id),
+      modelEnv,
+    );
+
     const { provider, kind } = await resolveSandboxProvider(this.ctx, {
       userId: input.user.id,
       branch: this.branch,
@@ -383,7 +390,7 @@ export class SandboxDispatchClient implements SandboxClient {
         lastHandle = sandbox.sandboxHandle;
         // The daemon deep-merges its config, so re-running on an already-claimed
         // sandbox just rotates the credential.
-        await pushSandboxEnv(provider, sandbox.sandboxHandle, modelEnv);
+        await pushSandboxEnv(provider, sandbox.sandboxHandle, runEnv);
         yield* withModelMetadata(
           dispatchToDaemon({
             provider,

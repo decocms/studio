@@ -7,6 +7,8 @@
 
 import { z } from "zod";
 
+import { ENV_VAR_KEY_RE } from "../sdk/types/virtual-mcp";
+
 /**
  * Sidebar item schema - matches SidebarItem interface from storage/types.ts
  */
@@ -205,6 +207,38 @@ export function orgFlagEnabled(
   const value = flags?.[flag];
   return DEFAULT_ON_FLAGS.has(flag) ? value !== false : value === true;
 }
+
+/**
+ * Env vars injected into every task-board run in the org, stored in
+ * `organization_settings.task_board_env`.
+ *
+ * A board run has no agent to inherit `metadata.runtime.env` from (its
+ * `virtual_mcp_id` is the synthetic Decopilot id), so this is where an org says
+ * "every Super Agent / reviewer run needs GITHUB_TOKEN".
+ *
+ * Vault references only — no inline values. `ORGANIZATION_SETTINGS_GET` is read
+ * by every member on shell load, so a literal here would hand the value to every
+ * browser in the org. `key` is the env var name and is independent of the
+ * secret's name, exactly as on a virtual MCP.
+ */
+export const TaskBoardEnvEntrySchema = z.object({
+  key: z
+    .string()
+    .min(1)
+    .regex(ENV_VAR_KEY_RE, {
+      message:
+        "Env var key must start with a letter or underscore and contain only letters, digits, and underscores.",
+    })
+    .describe("Env var name as the run sees it."),
+  secretId: z
+    .string()
+    .min(1)
+    .describe("Vault secret id holding the value, resolved at dispatch."),
+});
+
+export const TaskBoardEnvSchema = z.array(TaskBoardEnvEntrySchema);
+
+export type TaskBoardEnvEntry = z.infer<typeof TaskBoardEnvEntrySchema>;
 
 /**
  * Brand context schema - org-scoped company profile

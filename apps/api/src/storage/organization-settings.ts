@@ -50,6 +50,11 @@ export class OrganizationSettingsStorage
           ? JSON.parse(record.flags)
           : record.flags
         : null,
+      task_board_env: record.task_board_env
+        ? typeof record.task_board_env === "string"
+          ? JSON.parse(record.task_board_env)
+          : record.task_board_env
+        : null,
       main_agent_id: record.main_agent_id ?? null,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
@@ -67,6 +72,7 @@ export class OrganizationSettingsStorage
         | "simple_mode"
         | "default_home_agents"
         | "flags"
+        | "task_board_env"
         | "main_agent_id"
       >
     >,
@@ -88,6 +94,10 @@ export class OrganizationSettingsStorage
       ? JSON.stringify(data.default_home_agents)
       : null;
     const flagsJson = data?.flags ? JSON.stringify(data.flags) : null;
+    // `[]` is truthy, so removing the last entry persists as `"[]"`.
+    const taskBoardEnvJson = data?.task_board_env
+      ? JSON.stringify(data.task_board_env)
+      : null;
     await this.db
       .insertInto("organization_settings")
       .values({
@@ -98,6 +108,7 @@ export class OrganizationSettingsStorage
         simple_mode: simpleModeJson,
         default_home_agents: defaultHomeAgentsJson,
         flags: flagsJson,
+        task_board_env: taskBoardEnvJson,
         main_agent_id: data?.main_agent_id ?? null,
         createdAt: now,
         updatedAt: now,
@@ -117,6 +128,8 @@ export class OrganizationSettingsStorage
           flags: flagsJson
             ? sql<string>`coalesce("organization_settings"."flags", '{}'::jsonb) || ${flagsJson}::jsonb`
             : undefined,
+          // Replaced wholesale, unlike `flags`: the list IS the value.
+          task_board_env: taskBoardEnvJson ? taskBoardEnvJson : undefined,
           // Nullable id: explicit `null` clears the main agent; `undefined`
           // (field absent) skips the column so partial updates don't wipe it.
           main_agent_id: data?.main_agent_id,
@@ -136,6 +149,7 @@ export class OrganizationSettingsStorage
         simple_mode: data?.simple_mode ?? null,
         default_home_agents: data?.default_home_agents ?? null,
         flags: data?.flags ?? null,
+        task_board_env: data?.task_board_env ?? null,
         main_agent_id: data?.main_agent_id ?? null,
         createdAt: now,
         updatedAt: now,

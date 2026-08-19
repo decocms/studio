@@ -7,6 +7,7 @@ import {
   SimpleModeConfigSchema,
   DefaultHomeAgentsConfigSchema,
   OrgFlagsSchema,
+  TaskBoardEnvSchema,
 } from "@decocms/shared/organization/schema";
 
 export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
@@ -35,6 +36,9 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
       .describe(
         "Org boolean toggles. Shallow-merged into the stored flags: keys you pass win (explicit false persists), omitted keys keep their value.",
       ),
+    task_board_env: TaskBoardEnvSchema.optional().describe(
+      "Env vars injected into every task-board run. Vault secret references only — replaces the stored list wholesale; pass [] to clear.",
+    ),
     main_agent_id: z
       .string()
       .nullable()
@@ -52,6 +56,7 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
     simple_mode: SimpleModeConfigSchema.nullable().optional(),
     default_home_agents: DefaultHomeAgentsConfigSchema.nullable().optional(),
     flags: OrgFlagsSchema.nullable().optional(),
+    task_board_env: TaskBoardEnvSchema.nullable().optional(),
     main_agent_id: z.string().nullable().optional(),
     createdAt: z.string().datetime().describe("ISO 8601 timestamp"),
     updatedAt: z.string().datetime().describe("ISO 8601 timestamp"),
@@ -79,6 +84,7 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
         simple_mode: input.simple_mode,
         default_home_agents: input.default_home_agents,
         flags: input.flags,
+        task_board_env: input.task_board_env,
         main_agent_id: input.main_agent_id,
       },
     );
