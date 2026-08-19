@@ -15,7 +15,10 @@
 
 import { useMCPClient, useMCPToolCallQuery } from "@/sdk";
 
-import { extractPullRequestList } from "./github-pr-api.ts";
+import {
+  extractPullRequestList,
+  type GithubMcpClient,
+} from "./github-pr-api.ts";
 import { assertToolOk, extractToolJson } from "./extract-tool-json.ts";
 import type { CheckRunOutput } from "./check-run-output.ts";
 
@@ -153,23 +156,18 @@ export function usePrByBranch(args: RepoArgs & { branch: string | null }) {
 /**
  * The most recent merged PR into `base` — in Fast Preview every publish is a
  * squash-merged PR, so this IS the last publish. Fetched on demand (the
- * publish popover enables it on open), never polled: `list_pull_requests` is
- * rate-limit-heavy (see `openPullRequestForBranch`). `sort: updated` can
- * interleave non-merged closed PRs, hence a small page filtered client-side.
+ * publish popover bundles it into its one suspense load), never polled:
+ * `list_pull_requests` is rate-limit-heavy (see `openPullRequestForBranch`).
+ * `sort: updated` can interleave non-merged closed PRs, hence a small page
+ * filtered client-side.
  */
-export function useLastPublishedPr(
-  args: RepoArgs & { base: string; enabled?: boolean },
-) {
-  const client = useMCPClient({
-    connectionId: args.connectionId,
-    orgId: args.orgId,
-    orgSlug: args.orgSlug,
-  });
-
-  return useMCPToolCallQuery<PrSummary | null>({
-    client,
-    toolName: "list_pull_requests",
-    toolArguments: {
+export async function fetchLastPublishedPr(
+  client: GithubMcpClient,
+  args: { owner: string; repo: string; base: string },
+): Promise<PrSummary | null> {
+  const result = await client.callTool({
+    name: "list_pull_requests",
+    arguments: {
       owner: args.owner,
       repo: args.repo,
       state: "closed",
@@ -178,21 +176,13 @@ export function useLastPublishedPr(
       direction: "desc",
       perPage: 10,
     },
-    enabled:
-      (args.enabled ?? true) &&
-      !!args.connectionId &&
-      !!args.owner &&
-      !!args.repo &&
-      !!args.base,
-    staleTime: STALE,
-    select: (r) => {
-      assertToolOk(r);
-      const merged = extractPullRequestList(r)
-        .map(mapRawPr)
-        .find((p) => p.merged);
-      return merged ?? null;
-    },
   });
+  assertToolOk(result);
+  return (
+    extractPullRequestList(result)
+      .map(mapRawPr)
+      .find((p) => p.merged) ?? null
+  );
 }
 
 /** Max open PRs fetched for the picker; the tail beyond this is not shown. */

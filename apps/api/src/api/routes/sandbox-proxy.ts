@@ -45,6 +45,7 @@ import { gitDataClientForRepo } from "../../decofile/client-for-repo";
 import { GitHubApiError } from "../../decofile/github-git-data";
 import {
   githubGitDiff,
+  githubGitDiscard,
   githubGitRebase,
   githubGitStatus,
 } from "../../decofile/git-compat";
@@ -870,21 +871,40 @@ export const createSandboxRoutes = () => {
     });
   });
   app.post("/:virtualMcpId/:branch/git/discard", async (c) => {
-    const { claimName, fastPreview } = c.get("vmClaim");
-    if (fastPreview) {
-      // No working tree — there is never local work to discard. Unreachable
-      // through the UI (status reports a clean tree), so a hit is a bug or a
-      // stale client; refuse loudly rather than pretending.
-      return c.json(
-        {
-          error:
-            "Nothing to discard: Fast Preview projects have no working tree",
-        },
-        400,
-        SANDBOX_PROXY_CACHE_HEADERS,
-      );
+    const claim = c.get("vmClaim");
+    if (claim.fastPreview) {
+      // No working tree: discarding a COMMITTED change is itself a commit.
+      return withClaimGitLock(claim.claimName, async () => {
+        const body = (await c.req.json().catch(() => ({}))) as {
+          filepaths?: unknown;
+        };
+        const filepaths = Array.isArray(body.filepaths)
+          ? body.filepaths.filter((p): p is string => typeof p === "string")
+          : [];
+        if (filepaths.length === 0) {
+          return c.json(
+            { error: "filepaths is required" },
+            400,
+            SANDBOX_PROXY_CACHE_HEADERS,
+          );
+        }
+        try {
+          const client = await fastPreviewGitClient(c);
+          await githubGitDiscard(client, claim.branch, filepaths);
+          return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
+        } catch (err) {
+          const status =
+            err instanceof GitHubApiError && err.status === 409 ? 409 : 502;
+          const message = err instanceof Error ? err.message : String(err);
+          return c.json(
+            { error: message },
+            status,
+            SANDBOX_PROXY_CACHE_HEADERS,
+          );
+        }
+      });
     }
-    return withClaimGitLock(claimName, () =>
+    return withClaimGitLock(claim.claimName, () =>
       proxyDaemon(c, "/_sandbox/git/discard", {
         forwardJsonBody: true,
         map404to410: true,

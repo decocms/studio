@@ -221,6 +221,77 @@ export function buildMergeTreeEntries(
   return [...byPath.values()];
 }
 
+/**
+ * Discard the branch's changes to `filepaths`: a new commit on the branch that
+ * resets each path to its content at the merge base with the default branch
+ * (or deletes it when it did not exist there). The sandbox-less equivalent of
+ * the daemon's working-tree discard — in Fast Preview every edit is already a
+ * commit, so undoing one is a commit too. CAS-retried like the merge above so
+ * an autosave landing mid-discard is never clobbered.
+ */
+export async function githubGitDiscard(
+  client: GitDataClient,
+  branch: string,
+  filepaths: string[],
+): Promise<void> {
+  if (filepaths.length === 0) return;
+  const base = await client.getDefaultBranch();
+  for (let attempt = 1; ; attempt++) {
+    const branchHead = await client.getHeadSha(branch);
+    const { mergeBaseSha } = await client.compareDetailed(base, branch);
+    const [baseTree, headTree] = await Promise.all([
+      client.getTreeRecursive(await client.getCommitTreeSha(mergeBaseSha)),
+      client.getTreeRecursive(await client.getCommitTreeSha(branchHead)),
+    ]);
+    const baseBlobByPath = new Map(
+      baseTree.filter((e) => e.type === "blob").map((e) => [e.path, e]),
+    );
+    const headBlobByPath = new Map(
+      headTree.filter((e) => e.type === "blob").map((e) => [e.path, e]),
+    );
+
+    const entries: TreeWriteEntry[] = [];
+    for (const path of filepaths) {
+      const baseBlob = baseBlobByPath.get(path);
+      const headBlob = headBlobByPath.get(path);
+      // Already at the base content (or absent on both sides): nothing to do.
+      if (baseBlob?.sha === headBlob?.sha) continue;
+      // Deleting a path the head tree doesn't have is a 422, not a no-op.
+      if (!baseBlob && !headBlob) continue;
+      entries.push({
+        path,
+        mode: "100644",
+        type: "blob",
+        sha: baseBlob?.sha ?? null,
+      });
+    }
+    if (entries.length === 0) return;
+
+    const treeSha = await client.createTree(
+      await client.getCommitTreeSha(branchHead),
+      entries,
+    );
+    const commitSha = await client.createCommit({
+      message: `chore(decofile): discard changes to ${entries.length} file(s)`,
+      treeSha,
+      parentShas: [branchHead],
+    });
+    try {
+      await client.updateRef(branch, commitSha);
+      return;
+    } catch (err) {
+      if (
+        err instanceof GitHubApiError &&
+        err.status === 422 &&
+        attempt < MERGE_CAS_ATTEMPTS
+      ) {
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
 async function mergeBranchWins(
   client: GitDataClient,
   branch: string,

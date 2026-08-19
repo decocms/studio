@@ -8,6 +8,7 @@
  */
 
 import { useMCPClient } from "@/sdk";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Dialog, DialogContent } from "@decocms/ui/components/dialog.tsx";
 import {
@@ -16,6 +17,12 @@ import {
   PopoverContent,
 } from "@decocms/ui/components/popover.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   AlertTriangle,
@@ -26,8 +33,15 @@ import {
   Globe01,
   LayoutAlt01,
   Loading01,
+  Trash01,
 } from "@untitledui/icons";
-import { useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import {
+  Suspense,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
 import { authClient } from "@/lib/auth-client.ts";
@@ -60,7 +74,7 @@ import {
   type GitStatus,
   type PublishPolicy,
 } from "./sandbox-git-api.ts";
-import { useLastPublishedPr, type PrSummary } from "./use-pr-data.ts";
+import { fetchLastPublishedPr, type PrSummary } from "./use-pr-data.ts";
 import { useResolvedPublishGate } from "@/components/sandbox/hooks/use-publish-gate.ts";
 
 const NARROW_VIEWPORT_QUERY = "(max-width: 479px)";
@@ -189,7 +203,55 @@ function changeId(change: PublishChange): string {
   return change.blockKey ?? change.filepaths[0] ?? change.name;
 }
 
-function CmsPublishBody({
+/** One suspense load: git state and last-publish arrive together, so the
+ *  popover goes straight from a single loading state to the final render.
+ *  Failures land in `loadError` / a null `lastPublishedPr` (rendered inline)
+ *  rather than throwing to an error boundary. */
+interface PublishStateData {
+  status: GitStatus | null;
+  diff: GitDiffResult | null;
+  lastPublishedPr: PrSummary | null;
+  loadError: string | null;
+}
+
+function publishStateQueryKey(
+  orgSlug: string,
+  virtualMcpId: string,
+  branch: string,
+  baseBranch: string,
+) {
+  return [
+    "cms-publish-popover-state",
+    orgSlug,
+    virtualMcpId,
+    branch,
+    baseBranch,
+  ] as const;
+}
+
+function CmsPublishBody(
+  props: CmsPublishPopoverProps & {
+    publishLockRef: React.MutableRefObject<boolean>;
+  },
+) {
+  const t = useT();
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center gap-2 py-16 text-muted-foreground">
+          <Loading01 className="size-4 animate-spin" />
+          <span className="text-sm">
+            {t("thread.publishDialog.loadingChanges")}
+          </span>
+        </div>
+      }
+    >
+      <CmsPublishContent {...props} />
+    </Suspense>
+  );
+}
+
+function CmsPublishContent({
   publishLockRef,
   onOpenChange,
   orgSlug,
@@ -219,60 +281,61 @@ function CmsPublishBody({
   const { data: session } = authClient.useSession();
   const coAuthor = coAuthorFromSessionUser(session?.user);
 
-  const [gitStatus, setGitStatus] = useState<GitStatus | null>(null);
-  const [gitDiff, setGitDiff] = useState<GitDiffResult | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string>();
+  const publishState = useSuspenseQuery<PublishStateData>({
+    queryKey: publishStateQueryKey(orgSlug, virtualMcpId, branch, baseBranch),
+    queryFn: async (): Promise<PublishStateData> => {
+      const lastPublishedPromise = fetchLastPublishedPr(githubClient, {
+        owner,
+        repo,
+        base: baseBranch,
+      }).catch(() => null);
+      try {
+        const status = await fetchGitStatus(orgSlug, virtualMcpId, branch);
+        const baseDiff =
+          (status.aheadOfBase ?? 0) > 0
+            ? await fetchGitDiff(orgSlug, virtualMcpId, branch, {
+                base: baseBranch,
+              })
+            : null;
+        const workingDiff = hasGitLocalWork(status)
+          ? await fetchGitDiff(orgSlug, virtualMcpId, branch)
+          : null;
+        return {
+          status,
+          diff: combinePublishDiffs(baseDiff, workingDiff),
+          lastPublishedPr: await lastPublishedPromise,
+          loadError: null,
+        };
+      } catch (error) {
+        return {
+          status: null,
+          diff: null,
+          lastPublishedPr: await lastPublishedPromise,
+          loadError: error instanceof Error ? error.message : String(error),
+        };
+      }
+    },
+    staleTime: 0,
+    gcTime: 0,
+  });
+  const {
+    status: gitStatus,
+    diff: gitDiff,
+    lastPublishedPr,
+    loadError,
+  } = publishState.data;
+
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string>();
-  const [note, setNote] = useState("");
+  const [note, setNote] = useState(() =>
+    gitDiff ? buildAutoNote(summarizePublishChanges(gitDiff)) : "",
+  );
   const [discardConfirmId, setDiscardConfirmId] = useState<string | null>(null);
   const [discardAllConfirm, setDiscardAllConfirm] = useState(false);
   const [isDiscarding, setIsDiscarding] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const loadStartedRef = useRef(false);
-
   const summary = summarizePublishChanges(gitDiff);
-
-  const loadGitState = async () => {
-    const status = await fetchGitStatus(orgSlug, virtualMcpId, branch);
-    const baseDiff =
-      (status.aheadOfBase ?? 0) > 0
-        ? await fetchGitDiff(orgSlug, virtualMcpId, branch, {
-            base: baseBranch,
-          })
-        : null;
-    const workingDiff = hasGitLocalWork(status)
-      ? await fetchGitDiff(orgSlug, virtualMcpId, branch)
-      : null;
-    const diff = combinePublishDiffs(baseDiff, workingDiff);
-    setGitStatus(status);
-    setGitDiff(diff);
-    return { status, diff };
-  };
-
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- one-shot load on open
-  if (!loadStartedRef.current) {
-    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- one-shot load on open
-    loadStartedRef.current = true;
-    void (async () => {
-      setIsLoading(true);
-      setLoadError(undefined);
-      try {
-        const { diff } = await loadGitState();
-        setNote(buildAutoNote(summarizePublishChanges(diff)));
-      } catch (error) {
-        setLoadError(
-          error instanceof Error
-            ? error.message
-            : t("thread.publishDialog.failedLoad"),
-        );
-      } finally {
-        setIsLoading(false);
-      }
-    })();
-  }
 
   const { gate } = useResolvedPublishGate({
     orgSlug,
@@ -284,23 +347,13 @@ function CmsPublishBody({
     judgeEnabled: true,
   });
 
-  const lastPublish = useLastPublishedPr({
-    orgId,
-    orgSlug,
-    connectionId: githubConnectionId,
-    owner,
-    repo,
-    base: baseBranch,
-  });
-
   const commitToOpenPr = openPullRequest?.state === "open";
   const existingOpenPr = commitToOpenPr
     ? { number: openPullRequest.number, htmlUrl: openPullRequest.htmlUrl }
     : undefined;
   const githubHeadBranch = readGitHeadBranch(gitStatus) ?? branch;
 
-  const canPublish =
-    !isLoading && !isPublishing && summary.count > 0 && gate.allowed;
+  const canPublish = !isPublishing && summary.count > 0 && gate.allowed;
 
   const noteTitle = () =>
     note.trim().split("\n")[0]?.trim() ||
@@ -428,7 +481,7 @@ function CmsPublishBody({
       toast.success(
         t("thread.publishPopover.discarded", { name: change.name }),
       );
-      await loadGitState();
+      await publishState.refetch();
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -449,7 +502,7 @@ function CmsPublishBody({
       if (allFiles.length === 0) return;
       await discardGitFiles(orgSlug, virtualMcpId, branch, allFiles);
       toast.success(t("thread.publishDialog.allChangesDiscarded"));
-      await loadGitState();
+      await publishState.refetch();
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -462,7 +515,7 @@ function CmsPublishBody({
   };
 
   const headerTitle =
-    isLoading || summary.count === 0
+    summary.count === 0
       ? t("thread.publishPopover.publish")
       : summary.count === 1
         ? t("thread.publishPopover.publishOneInProduction")
@@ -471,7 +524,7 @@ function CmsPublishBody({
           });
 
   const lastPublishLine = (() => {
-    const pr = lastPublish.data;
+    const pr = lastPublishedPr;
     if (!pr?.mergedAt) return null;
     const when = formatTimeAgo(new Date(pr.mergedAt));
     const name = lastPublishAttribution(pr);
@@ -594,17 +647,27 @@ function CmsPublishBody({
               </button>
             </div>
           ) : (
-            <button
-              type="button"
-              className="shrink-0 text-xs text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
-              onClick={(e) => {
-                e.stopPropagation();
-                setDiscardConfirmId(id);
-              }}
-              disabled={isPublishing || isDiscarding}
-            >
-              {t("thread.publishPopover.discard")}
-            </button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={t("thread.publishPopover.discard")}
+                    className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-destructive disabled:opacity-50"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDiscardConfirmId(id);
+                    }}
+                    disabled={isPublishing || isDiscarding}
+                  >
+                    <Trash01 className="size-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {t("thread.publishPopover.discard")}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
           {canExpand ? (
             <ChevronRight
@@ -648,7 +711,7 @@ function CmsPublishBody({
   };
 
   const gateRow = (() => {
-    if (isLoading || summary.count === 0) return null;
+    if (summary.count === 0) return null;
     if (gate.pending) {
       return (
         <div className="flex items-center gap-2 border-t px-4 py-2.5 text-xs text-muted-foreground">
@@ -675,7 +738,7 @@ function CmsPublishBody({
         <div className="flex items-center gap-2 text-sm font-medium">
           <Globe01 className="size-4 shrink-0 text-muted-foreground" />
           <span className="truncate">{headerTitle}</span>
-          {!isLoading && summary.count > 1 ? (
+          {summary.count > 1 ? (
             discardAllConfirm ? (
               <span className="ml-auto flex shrink-0 items-center gap-1.5 text-[11px]">
                 <span className="text-destructive">
@@ -718,14 +781,7 @@ function CmsPublishBody({
       <div className="border-t" />
 
       <div className="flex min-h-0 flex-1 flex-col">
-        {isLoading ? (
-          <div className="flex items-center justify-center gap-2 py-10 text-muted-foreground">
-            <Loading01 className="size-4 animate-spin" />
-            <span className="text-sm">
-              {t("thread.publishDialog.loadingChanges")}
-            </span>
-          </div>
-        ) : loadError ? (
+        {loadError ? (
           <p className="px-4 py-6 text-xs text-destructive">{loadError}</p>
         ) : summary.count === 0 ? (
           <div className="flex flex-col items-center gap-1 py-10 text-center">
@@ -784,7 +840,7 @@ function CmsPublishBody({
             <Eye className="size-4" />
             {t("thread.publishPopover.preview")}
           </Button>
-          {!isLoading && summary.count > 0 && !gate.allowed && !gate.pending ? (
+          {summary.count > 0 && !gate.allowed && !gate.pending ? (
             <Button
               type="button"
               className="flex-1"

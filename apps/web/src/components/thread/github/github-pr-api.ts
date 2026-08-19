@@ -11,7 +11,7 @@ import {
   type CoAuthorIdentity,
 } from "@decocms/sandbox/shared";
 
-type GithubMcpClient = {
+export type GithubMcpClient = {
   callTool: (req: {
     name: string;
     arguments: Record<string, unknown>;
