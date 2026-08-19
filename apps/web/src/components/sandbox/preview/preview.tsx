@@ -86,7 +86,9 @@ import { decoBlockFileViewPath } from "@/components/sections-editor/deco-block-k
 import { findLivePageResolveType } from "@/components/sections-editor/section-catalog";
 import {
   buildGlobalSectionPreviewUrl,
+  DRAFT_OFF,
   resolveSectionPreviewBase,
+  withDraftPointer,
 } from "@/components/sections-editor/section-preview-url";
 import { useFastPreviewDraftUrl } from "@/components/sections-editor/use-fast-preview-draft-url";
 import { decofileWriteMutationKey } from "@/components/sections-editor/decofile-api";
@@ -625,9 +627,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         ? // Fast Preview's draft route honours the variant matcher override like the sandbox dev server, so append it here too.
           withVariantMatcherOverride(
             withDeviceHint(
-              directPreviewUrl ??
-                draftPreviewUrl ??
-                new URL(resolvedPath, display.iframeBase!).href,
+              // Waking pill up ⇒ no draft is renderable yet, so ask for published.
+              withDraftPointer(
+                directPreviewUrl ??
+                  draftPreviewUrl ??
+                  new URL(resolvedPath, display.iframeBase!).href,
+                display.showWakingPill ? DRAFT_OFF : null,
+              ),
               previewDeviceSize,
             ),
             workspace.state.variantOverride ?? [],

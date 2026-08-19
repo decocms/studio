@@ -65,10 +65,14 @@ export function buildDraftPointer(input: {
   return `${pointer}@${input.version}`;
 }
 
+/** `__draft` value asking for the PUBLISHED render — external contract: the site runtime honours it, Studio never reads it back. */
+export const DRAFT_OFF = "off";
+
 /**
- * Stamp a draft pointer onto an already-built site URL. Callers that compute
- * their own path (blog post/category links) build the URL first and decorate
- * here; a null pointer (Fast Preview off, or no grant yet) leaves it alone.
+ * Stamp a draft pointer — or {@link DRAFT_OFF} — onto an already-built site
+ * URL. Callers that compute their own path (blog post/category links) build the
+ * URL first and decorate here; a null pointer (Fast Preview off, or no grant
+ * yet) leaves it alone.
  */
 export function withDraftPointer(
   url: string,

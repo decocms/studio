@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   buildFastPreviewDraftUrl,
+  DRAFT_OFF,
   resolveSectionPreviewBase,
   withDraftPointer,
 } from "./section-preview-url";
@@ -192,5 +193,28 @@ describe("resolveSectionPreviewBase", () => {
         fastPreviewActive: false,
       }),
     ).toBeNull();
+  });
+});
+
+describe("DRAFT_OFF", () => {
+  const PAGE = "https://www.example.com/blog/news/post";
+
+  it("asks the site for its published render — what the boot fallback stamps", () => {
+    const url = new URL(withDraftPointer(PAGE, DRAFT_OFF));
+    expect(url.pathname).toBe("/blog/news/post");
+    expect(url.searchParams.get("__draft")).toBe("off");
+  });
+
+  it("replaces a pointer already on the url — the trailing draft is what it kills", () => {
+    const url = new URL(
+      withDraftPointer(
+        withDraftPointer(
+          PAGE,
+          "api.deco.cx/api/acme/decofile/vm-1/main?token=t@abc",
+        ),
+        DRAFT_OFF,
+      ),
+    );
+    expect(url.searchParams.getAll("__draft")).toEqual(["off"]);
   });
 });
