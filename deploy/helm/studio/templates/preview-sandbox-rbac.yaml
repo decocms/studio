@@ -1,0 +1,49 @@
+{{- if and .Values.preview.enabled .Values.preview.sandbox.enabled }}
+{{- /*
+Lets a preview drive hosted agent sandboxes.
+
+READ THIS BEFORE ENABLING. The Role bound here lives in the sandbox namespace,
+and that namespace holds the sandboxes of EVERY environment on the cluster —
+production included. Kubernetes RBAC has no label scoping, so this grants reach
+over all of them, not only the ones a preview creates. The housekeeper's
+CLAIM_SELECTOR separates what it sweeps; it does not separate what a
+ServiceAccount can touch.
+
+A preview runs un-merged code from any pull request carrying the preview label.
+Binding it here means a label on a PR is enough to obtain pods/portforward and
+HTTPRoute delete against production sandboxes.
+
+It is written this way because the sandbox namespace is not configurable — it is
+hardcoded in the application and throughout the sandbox-env chart, on the stated
+premise that "multiple envs share agent-sandbox-system". Until that changes, or
+until the application talks to a controller API instead of the Kubernetes API
+(which would replace this with a scoped token), there is no way to give previews
+sandboxes without also giving them this reach.
+
+Off by default. Turn it on deliberately, and for as long as you actually need it.
+*/ -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "chart-deco-studio.fullname" . }}-sandbox
+  namespace: {{ required "preview.sandbox.namespace is required when preview.sandbox.enabled=true" .Values.preview.sandbox.namespace }}
+  labels:
+    {{- include "chart-deco-studio.labels" . | nindent 4 }}
+  annotations:
+    # Ahead of the pods, so the ServiceAccount can already claim by the time
+    # anything tries to.
+    argocd.argoproj.io/sync-wave: "-30"
+    # Deliberately loud: this object is the one place where a preview reaches
+    # outside its own namespace, and into a shared production one.
+    decocms.com/grants-access-to: {{ .Values.preview.sandbox.namespace | quote }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "chart-deco-studio.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: Role
+  # An existing Role, not one this chart defines: the sandbox-env chart owns the
+  # verb set, and a copy here would drift from it silently.
+  name: {{ required "preview.sandbox.roleName is required when preview.sandbox.enabled=true" .Values.preview.sandbox.roleName }}
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

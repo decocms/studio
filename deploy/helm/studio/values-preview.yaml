@@ -164,6 +164,12 @@ topologySpreadConstraints: []
 # Spot is safe here in a way it is nowhere else on this cluster: the database
 # is an emptyDir Postgres that the PreSync Job re-migrates on the next sync,
 # and a preview holds no PVC at all. A reclaim costs a reviewer a restart.
+# A named ServiceAccount rather than the namespace's `default`. Costs nothing
+# when sandboxes are off, and is required when they are on: binding sandbox
+# access to `default` would hand it to every pod here, Postgres and MinIO too.
+serviceAccount:
+  create: true
+
 nodeSelector:
   decocms.com/nodepool: studio-preview
 tolerations:
@@ -207,8 +213,25 @@ configMap:
     AUTH_EMAIL_PASSWORD_ENABLED: "true"
     # Several reviewers behind one office IP trip the auth limiter otherwise.
     DISABLE_RATE_LIMIT: "true"
-    # No hosted sandboxes in a preview. Agent dispatch returns 409 link_offline
+    # No hosted sandboxes by default. Agent dispatch returns 409 link_offline
     # with no local daemon attached — a documented limitation, not a bug.
+    #
+    # To test agent behaviour in a preview, set preview.sandbox.enabled=true
+    # (see values.yaml — it grants reach over a shared production namespace) and
+    # replace this block with the settings below, pointed at an existing
+    # environment whose templates and warm pool the preview borrows:
+    #
+    #   STUDIO_SANDBOX_PROVIDER: "cluster"
+    #   STUDIO_SANDBOX_RUNNER: "agent-sandbox"
+    #   STUDIO_SANDBOX_TEMPLATE_NAME: "<existing template, e.g. studio-sandbox-stg>"
+    #   STUDIO_ENV: "<matching env suffix, e.g. stg>"
+    #   STUDIO_SANDBOX_PREVIEW_GATEWAY_NAME: "<that env's sandbox gateway>"
+    #   STUDIO_SANDBOX_PREVIEW_GATEWAY_NAMESPACE: "agent-sandbox-system"
+    #   STUDIO_SANDBOX_PREVIEW_URL_PATTERN: "https://{handle}.<that env's domain>/"
+    #
+    # Without STUDIO_SANDBOX_SENTINEL_TOKEN the claim takes the cold-start path
+    # instead of the warm pool — slower per sandbox, and it borrows no capacity
+    # from the environment being shared.
     STUDIO_SANDBOX_PROVIDER: "user-desktop"
     DISABLE_ORGFS_MOUNTS: "true"
     # Never let a preview provision real gateway keys. STUDIO_PROVISION_SECRET_KEY

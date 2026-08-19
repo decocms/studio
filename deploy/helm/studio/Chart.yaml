@@ -2,6 +2,12 @@ apiVersion: v2
 name: chart-deco-studio
 description: Helm chart for deco Studio — supports inline secrets, external secretName, and AWS Secrets Manager via ExternalSecret
 type: application
+# 0.14.2: optional hosted sandboxes for previews (preview.sandbox.enabled,
+# default false). Renders one RoleBinding when on, nothing when off. Read the
+# note in templates/preview-sandbox-rbac.yaml before enabling: the namespace it
+# binds into is shared with production sandboxes and RBAC has no label scoping.
+# Previews now also run under a named ServiceAccount rather than `default`.
+#
 # 0.14.1: the preview ConfigMap had no sync-wave, so it landed at 0 — after the
 # migrate Job at -10 that consumes it via envFrom. The Job sat in
 # CreateContainerConfigError and the sync stalled on the hook with nothing on
@@ -26,7 +32,7 @@ type: application
 # when disabled, so existing releases are unaffected.
 # 0.12.4: chart-managed API/worker dispatch roles now use
 # STUDIO_DISPATCH_ROLE; legacy overrides are rejected.
-version: 0.14.1
+version: 0.14.2
 appVersion: "latest"
 
 dependencies:
