@@ -15,6 +15,9 @@ on:
   pull_request:
     branches:
       - main
+  # Both triggers above skip `.github/**`-only changes, so a CI-infrastructure
+  # fix cannot validate itself. Dispatch runs the suite on demand from any branch.
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -171,19 +174,24 @@ jobs:
           restore-keys: |
             playwright-${{ runner.os }}-
 
+      # Browser binary only (Playwright's own CDN, no apt involved) — kept
+      # separate from the system deps below so an Ubuntu mirror outage can
+      # never block the download that actually has to succeed.
       - name: Install Playwright chromium
         if: steps.cache-playwright.outputs.cache-hit != 'true'
         working-directory: packages/e2e
-        # apt's mirror stalls silently — run 32264701513 sat 11 minutes with no
-        # output before the job was cancelled. Fail fast and re-runnable instead.
         timeout-minutes: 5
-        run: npx playwright install chromium --with-deps
+        run: npx playwright install chromium
 
+      # Everything chromium links against is already in the runner image — the
+      # only thing this step downloads is ~21 MB of font packages. So a total
+      # mirror outage costs us glyph coverage, not a red build; if a library
+      # ever really is missing, chromium fails to launch and the suite says so.
       - name: Install Playwright chromium system deps
-        if: steps.cache-playwright.outputs.cache-hit == 'true'
-        working-directory: packages/e2e
-        timeout-minutes: 5
-        run: npx playwright install-deps chromium
+        uses: ./.github/actions/apt-mirror-fallback
+        continue-on-error: true
+        with:
+          run: cd packages/e2e && npx playwright install-deps chromium
 
       - name: Create data directory
         run: mkdir -p data
