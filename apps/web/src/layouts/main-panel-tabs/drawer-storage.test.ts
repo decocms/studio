@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { parseDrawerState, parseTerminalOverride } from "./drawer-storage";
+import { parseDrawerState } from "./drawer-storage";
 
 describe("parseDrawerState", () => {
   it("defaults to closed with no height for a missing value", () => {
@@ -37,32 +37,5 @@ describe("parseDrawerState", () => {
       open: false,
       height: null,
     });
-  });
-});
-
-describe("parseTerminalOverride", () => {
-  it("returns null for a missing value (→ use default preference)", () => {
-    expect(parseTerminalOverride(null)).toBeNull();
-  });
-
-  it("returns an explicit true override", () => {
-    expect(parseTerminalOverride(JSON.stringify({ visible: true }))).toBe(true);
-  });
-
-  it("returns an explicit false override (a per-VM Hide beats the default)", () => {
-    expect(parseTerminalOverride(JSON.stringify({ visible: false }))).toBe(
-      false,
-    );
-  });
-
-  it("returns null when `visible` is absent or non-boolean", () => {
-    expect(parseTerminalOverride(JSON.stringify({}))).toBeNull();
-    expect(
-      parseTerminalOverride(JSON.stringify({ visible: "yes" })),
-    ).toBeNull();
-  });
-
-  it("falls back to null on malformed JSON", () => {
-    expect(parseTerminalOverride("{not json")).toBeNull();
   });
 });
