@@ -111,6 +111,7 @@ export const details = {
   "details.prompt.notFoundTitle": "Prompt not found",
   "details.prompt.title": "Title",
   "details.prompt.titlePlaceholder": "Untitled prompt",
+  "details.settingsTab.authenticate": "Authenticate",
   "details.settingsTab.authenticationRequired": "Authentication Required",
   "details.settingsTab.manualAuthenticationDescription":
     "This server requires an API key or token that must be configured manually. Check the server's documentation for instructions on obtaining credentials.",
