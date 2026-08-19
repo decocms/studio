@@ -67,25 +67,13 @@ const ISSUE_FIELDS =
  */
 function isRetriableError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  // A known status wins over the substring checks below (Jira's own error body can contain words like "network" or "timeout").
   const statusMatch = message.match(/failed \((\d+)\)/);
   if (statusMatch && statusMatch[1]) {
     const status = parseInt(statusMatch[1], 10);
     // Retry 5xx and 429 (rate limit); do NOT retry 4xx (auth, not found, etc.).
     return status >= 500 || status === 429;
   }
-  // No status — a raw fetch/network throw. Retry on timeout (AbortError) or network errors.
-  if (
-    message.includes("AbortError") ||
-    message.includes("fetch") ||
-    message.includes("timeout") ||
-    message.includes("network") ||
-    message.includes("ECONNREFUSED") ||
-    message.includes("ECONNRESET")
-  ) {
-    return true;
-  }
-  // Unknown error — retry with caution.
+  // No status — a raw fetch/network throw. Retry with caution.
   return true;
 }
 
