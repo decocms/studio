@@ -210,13 +210,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
 
   const getLatest = useMutation({
     mutationFn: async (target: { branch: string; base: string }) => {
-      await rebaseGitBranch(
-        org.slug,
-        virtualMcpId,
-        target.branch,
-        target.base,
-        { onConflict: "branch-wins" },
-      );
+      await rebaseGitBranch(org.slug, virtualMcpId, target.branch, target.base);
       return target;
     },
     /** Invalidates drift AND the editor's content: the merge moved the head. */
@@ -410,7 +404,6 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
           openPullRequest={pr?.state === "open" ? pr : null}
           onPullRequestChanged={refreshPrState}
           onPublished={() => publishCompletion.mutateAsync()}
-          rebaseOnConflict="branch-wins"
         />
       ) : null}
     </>
