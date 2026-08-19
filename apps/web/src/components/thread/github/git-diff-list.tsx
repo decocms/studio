@@ -27,8 +27,11 @@ export interface GitDiffListProps {
   emptyMessage?: string;
   rowClassName?: string;
   onDiscardFile?: (filepath: string) => void | Promise<void>;
-  /** File whose editor starts open (embedded single-file usage). */
-  defaultExpandedFile?: string | null;
+  /**
+   * Render only the always-open editors, no per-file header rows — for hosts
+   * that already name the file (the publish popover's change cards).
+   */
+  hideFileRows?: boolean;
   /** Monaco diff height; the default suits the full-size dialog. */
   editorHeight?: string;
 }
@@ -38,12 +41,10 @@ export function GitDiffList({
   emptyMessage = "No file changes in the working tree",
   rowClassName = "px-6",
   onDiscardFile,
-  defaultExpandedFile = null,
+  hideFileRows = false,
   editorHeight = "380px",
 }: GitDiffListProps) {
-  const [expandedDiffFile, setExpandedDiffFile] = useState<string | null>(
-    defaultExpandedFile,
-  );
+  const [expandedDiffFile, setExpandedDiffFile] = useState<string | null>(null);
   const [discardConfirmFile, setDiscardConfirmFile] = useState<string | null>(
     null,
   );
@@ -73,6 +74,27 @@ export function GitDiffList({
           : isDeleted
             ? "bg-destructive"
             : "bg-warning";
+
+        if (hideFileRows) {
+          return (
+            <div key={filepath}>
+              <DiffEditor
+                original={from ?? ""}
+                modified={to ?? ""}
+                language={language}
+                theme={theme}
+                height={editorHeight}
+                options={{
+                  readOnly: true,
+                  renderSideBySide: false,
+                  minimap: { enabled: false },
+                  scrollBeyondLastLine: false,
+                  fontSize: 12,
+                }}
+              />
+            </div>
+          );
+        }
 
         return (
           <div key={filepath}>

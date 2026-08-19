@@ -530,11 +530,16 @@ function CmsPublishBody({
     const canExpand = Object.keys(rawDiff.diffs).length > 0;
     const toggleExpanded = () => setExpandedId(expanded ? null : id);
 
+    // Collapsed card = one big expand target; inner controls stop propagation.
     return (
       <div
         key={id}
-        className="rounded-lg border bg-card px-3 py-2.5"
+        className={cn(
+          "rounded-lg border bg-card px-3 py-2.5",
+          canExpand && !expanded && "cursor-pointer",
+        )}
         data-change-id={id}
+        onClick={canExpand && !expanded ? toggleExpanded : undefined}
       >
         <div className="flex items-center gap-2.5">
           {changeIcon(change, t)}
@@ -544,7 +549,14 @@ function CmsPublishBody({
               "flex min-w-0 flex-1 items-center gap-2 text-left",
               canExpand && "cursor-pointer",
             )}
-            onClick={canExpand ? toggleExpanded : undefined}
+            onClick={
+              canExpand
+                ? (e) => {
+                    e.stopPropagation();
+                    toggleExpanded();
+                  }
+                : undefined
+            }
             disabled={!canExpand}
             aria-expanded={canExpand ? expanded : undefined}
           >
@@ -560,14 +572,20 @@ function CmsPublishBody({
               <button
                 type="button"
                 className="text-xs text-muted-foreground hover:text-foreground"
-                onClick={() => setDiscardConfirmId(null)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDiscardConfirmId(null);
+                }}
               >
                 {t("thread.publishDialog.cancel")}
               </button>
               <button
                 type="button"
                 className="text-xs font-medium text-destructive disabled:opacity-50"
-                onClick={() => handleDiscard(change)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void handleDiscard(change);
+                }}
                 disabled={isDiscarding}
               >
                 {t("thread.publishPopover.discard")}
@@ -577,7 +595,10 @@ function CmsPublishBody({
             <button
               type="button"
               className="shrink-0 text-xs text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
-              onClick={() => setDiscardConfirmId(id)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setDiscardConfirmId(id);
+              }}
               disabled={isPublishing || isDiscarding}
             >
               {t("thread.publishPopover.discard")}
@@ -587,7 +608,10 @@ function CmsPublishBody({
             <button
               type="button"
               className="flex shrink-0 items-center"
-              onClick={toggleExpanded}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleExpanded();
+              }}
               aria-expanded={expanded}
             >
               <ChevronRight
@@ -611,12 +635,7 @@ function CmsPublishBody({
         {expanded ? (
           <div className="-mx-3 mt-2 border-t pt-1">
             <div className="max-h-72 overflow-y-auto overscroll-contain [scrollbar-width:thin]">
-              <GitDiffList
-                diff={rawDiff}
-                rowClassName="px-3"
-                defaultExpandedFile={change.filepaths[0] ?? null}
-                editorHeight="220px"
-              />
+              <GitDiffList diff={rawDiff} hideFileRows editorHeight="220px" />
             </div>
           </div>
         ) : null}
