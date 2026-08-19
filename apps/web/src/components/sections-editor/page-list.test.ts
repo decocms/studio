@@ -6,6 +6,8 @@ import {
   findPageForPath,
   findSiteAppEntry,
   hasEditableDecoContent,
+  resolveDeepLinkPage,
+  type PageEntry,
 } from "./page-list";
 import type { LiveMeta } from "./resolve-schema";
 
@@ -280,5 +282,47 @@ describe("page-list", () => {
       blog: { __resolveType: "site/apps/deco/blog.ts", name: "Blog" },
     };
     expect(hasEditableDecoContent(decofile, meta)).toBe(true);
+  });
+
+  describe("resolveDeepLinkPage", () => {
+    const pages: PageEntry[] = [
+      { key: "pages-Home-abc123456789", name: "Home", path: "/" },
+      { key: "pages-PDP-def456", name: "PDP", path: "/produto/*" },
+      { key: "pages-PLP-ghi789", name: "PLP", path: "/produto/*" },
+      { key: "pages-About-jkl012", name: "About", path: "/sobre" },
+    ];
+
+    it("matches an exact page id (decofile block key)", () => {
+      expect(
+        resolveDeepLinkPage(pages, { pageId: "pages-About-jkl012" })?.key,
+      ).toBe("pages-About-jkl012");
+    });
+
+    it("matches a page id carried as the key's trailing suffix", () => {
+      expect(resolveDeepLinkPage(pages, { pageId: "jkl012" })?.key).toBe(
+        "pages-About-jkl012",
+      );
+    });
+
+    it("falls back to the path template when no id matches", () => {
+      const match = resolveDeepLinkPage(pages, {
+        pageId: "does-not-exist",
+        path: "/produto/tenis-x",
+        pathTemplate: "/produto/*",
+      });
+      // Two pages share the template — pick is deterministic (key-sorted).
+      expect(match?.key).toBe("pages-PDP-def456");
+    });
+
+    it("falls back to the concrete path for static pages", () => {
+      expect(resolveDeepLinkPage(pages, { path: "/sobre" })?.key).toBe(
+        "pages-About-jkl012",
+      );
+    });
+
+    it("returns null when nothing fits", () => {
+      expect(resolveDeepLinkPage(pages, { path: "/nao-existe" })).toBeNull();
+      expect(resolveDeepLinkPage(pages, {})).toBeNull();
+    });
   });
 });

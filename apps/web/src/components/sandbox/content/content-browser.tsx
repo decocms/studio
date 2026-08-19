@@ -46,7 +46,9 @@ import {
   extractPages,
   findSiteAppEntry,
   hasEditableDecoContent,
+  resolveDeepLinkPage,
   type GlobalSectionEntry,
+  type PageDeepLink,
   type PageEntry,
 } from "@/components/sections-editor/page-list";
 import type { AppCatalogEntry } from "./app-catalog";
@@ -221,7 +223,12 @@ type DeleteTarget =
 
 export type PostSort = "date-desc" | "date-asc" | "az" | "za";
 
-export function ContentBrowser() {
+export interface ContentBrowserProps {
+  /** Storefront "." deep-link: preselect this page once the decofile loads. */
+  deepLinkPage?: PageDeepLink;
+}
+
+export function ContentBrowser({ deepLinkPage }: ContentBrowserProps) {
   const inset = useInsetContext();
   const { currentBranch: branch } = useChatTask();
   const { org } = useProjectContext();
@@ -268,6 +275,7 @@ export function ContentBrowser() {
       sitePreviewUrl={
         fastPreviewActive ? previewServerUrl : lifecycle.previewUrl
       }
+      deepLinkPage={deepLinkPage}
       devServerReady={gate.devServerReady}
       sandboxWarming={gate.sandboxWarming}
     />
@@ -298,6 +306,7 @@ function ContentBrowserReady({
   branch,
   previewUrl,
   sitePreviewUrl,
+  deepLinkPage,
   devServerReady,
   sandboxWarming,
 }: {
@@ -316,6 +325,8 @@ function ContentBrowserReady({
    * follows — never a fetch the server makes on the user's behalf.
    */
   sitePreviewUrl: string | null;
+  /** Storefront "." deep-link: preselect this page once the decofile loads. */
+  deepLinkPage?: PageDeepLink;
   devServerReady: boolean;
   sandboxWarming: boolean;
 }) {
@@ -330,6 +341,24 @@ function ContentBrowserReady({
   const [selection, setSelection] = useState<Selection>(null);
   // Page that should open with the inline SEO form in SectionsEditor.
   const [openPageSeoKey, setOpenPageSeoKey] = useState<string | null>(null);
+  // Storefront "." deep-link: open the visited page once the decofile loads. One-shot, so a later manual selection is never clobbered.
+  const hasDeepLink = !!(
+    deepLinkPage?.pageId ||
+    deepLinkPage?.path ||
+    deepLinkPage?.pathTemplate
+  );
+  const [seededDeepLink, setSeededDeepLink] = useState(false);
+  if (hasDeepLink && !seededDeepLink && selection === null && decofile) {
+    setSeededDeepLink(true);
+    const match = resolveDeepLinkPage(
+      extractPages(decofile),
+      deepLinkPage ?? {},
+    );
+    if (match) {
+      setActiveCollection("pages");
+      setSelection({ collection: "pages", key: match.key, path: match.path });
+    }
+  }
   const [searchQuery, setSearchQuery] = useState("");
   // Posts-only filter/sort + bulk selection state.
   const [postCategoryFilter, setPostCategoryFilter] = useState<string | null>(

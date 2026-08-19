@@ -108,6 +108,7 @@ import {
 import openaiCompatRoutes from "./routes/openai-compat";
 import { createProxyRoutes } from "./routes/proxy";
 import { createTriggerCallbackRoutes } from "./routes/trigger-callback";
+import { createEditorResolveRoutes } from "./routes/editor-resolve";
 import publicConfigRoutes from "./routes/public-config";
 import { createReportPagesRoutes } from "./routes/report-pages";
 import reportsRoutes from "./routes/reports";
@@ -2195,6 +2196,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   // admin surface. The `_` prefix just keeps well-behaved slugs from ever
   // wanting the name (a bare `admin` is a legal, live slug).
   app.route(ADMIN_API_PREFIX, createAdminRoutes());
+
+  // Storefront "." shortcut: resolve (site, domain) → editor. Instance-level (org from org_sites), so it must win over `:org` below.
+  app.route("/api/_editor-resolve", createEditorResolveRoutes());
 
   // New canonical org-scoped API surface — all routes that depend on org context
   // live here. Old routes still work (with deprecation logs) until the cleanup

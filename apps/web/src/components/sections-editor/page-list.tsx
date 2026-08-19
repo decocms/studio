@@ -44,6 +44,47 @@ function parsePageName(key: string): string {
   }
 }
 
+/** The storefront "." deep-link: a CMS page id and the URL the user was on. */
+export interface PageDeepLink {
+  pageId?: string;
+  path?: string;
+  pathTemplate?: string;
+}
+
+/**
+ * Resolve the storefront deep-link to a decofile page. The storefront sends a
+ * CMS `pageId`, the concrete `path` the user was on, and that route's
+ * `pathTemplate`. Page blocks are keyed `pages-<name>-<id>` and their `path`
+ * field stores the *template* (e.g. `/produto/*`), so we try, in order: the
+ * page id (exact key, then `-<id>` suffix), the template, then the concrete
+ * path (for static pages where the two coincide). Returns null if nothing fits.
+ */
+export function resolveDeepLinkPage(
+  pages: PageEntry[],
+  link: PageDeepLink,
+): PageEntry | null {
+  const { pageId, path, pathTemplate } = link;
+
+  if (pageId) {
+    const exact = pages.find((p) => p.key === pageId);
+    if (exact) return exact;
+    const suffixed = pages.find((p) => p.key.endsWith(`-${pageId}`));
+    if (suffixed) return suffixed;
+  }
+
+  if (pathTemplate) {
+    const byTemplate = findPageForPath(pages, pathTemplate);
+    if (byTemplate) return byTemplate;
+  }
+
+  if (path) {
+    const byPath = findPageForPath(pages, path);
+    if (byPath) return byPath;
+  }
+
+  return null;
+}
+
 /** Pick the page block for a path; honors an explicit key when paths collide. */
 export function findPageForPath(
   pages: PageEntry[],

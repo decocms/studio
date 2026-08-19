@@ -586,6 +586,9 @@ export const KEYS = {
   decoSites: (email: string | undefined) => ["deco-sites", email] as const,
   decoApps: () => ["deco-apps"] as const,
 
+  // Storefront "." shortcut: resolve a site name → project editor.
+  editorResolve: (site: string) => ["editor-resolve", site] as const,
+
   // Web search blob content (fetched from object storage)
   webSearchBlob: (url: string) => ["web-search-blob", url] as const,
 
