@@ -29,10 +29,13 @@ import { authClient } from "@/lib/auth-client.ts";
 import { coAuthorFromSessionUser } from "@/lib/co-author-identity.ts";
 import { GitDiffList } from "./git-diff-list.tsx";
 import {
-  openPullRequestForBranch,
-  squashMergePullRequest,
-  type CreatedPullRequest,
-} from "./github-pr-api.ts";
+  notifySubmittedForReview,
+  publishMessageParts,
+  reportPublishFailure,
+  runPublishFlow,
+  runSubmitForReviewFlow,
+  type PublishTarget,
+} from "./publish-flow.ts";
 import type { PrSummary } from "./use-pr-data.ts";
 import { useSandboxStart } from "@/components/sandbox/hooks/use-sandbox-start";
 import { publishToBaseLabel } from "./publish-label.ts";
@@ -48,25 +51,12 @@ import {
   hasLocalWorkToPush,
   hasUnpublishedWork,
   isSandboxUnreachable,
-  publishGitChanges,
   readGitHeadBranch,
-  rebaseGitBranch,
   shouldUseBaseDiff,
   type GitDiffResult,
   type GitStatus,
   type PublishPolicy,
 } from "./sandbox-git-api.ts";
-
-class PublishFlowError extends Error {
-  constructor(
-    message: string,
-    readonly step: "push" | "rebase" | "open-pr" | "merge",
-    readonly pr?: CreatedPullRequest,
-  ) {
-    super(message);
-    this.name = "PublishFlowError";
-  }
-}
 
 export type PublishDialogIntent = "open-pr" | "publish-only";
 
@@ -339,8 +329,27 @@ function PublishDialogBody({
     (showSubmitForReviewButton || hasLocalUnpublished) &&
     (diffCount > 0 || hasLocalUnpublished);
 
-  const commitMessage = () =>
-    [publishTitle.trim(), publishBody.trim()].filter(Boolean).join("\n\n");
+  const publishTarget: PublishTarget = {
+    orgSlug,
+    virtualMcpId,
+    branch,
+    baseBranch,
+    githubClient,
+    owner,
+    repo,
+    headBranch: githubHeadBranch,
+    coAuthor,
+    existingOpenPr,
+  };
+
+  const messageParts = () =>
+    publishMessageParts({
+      title: publishTitle,
+      body: publishBody,
+      fallbackTitle: t("thread.publishDialog.changesFrom", {
+        branch: githubHeadBranch,
+      }),
+    });
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (isPublishing || isSubmittingForReview) return;
@@ -350,74 +359,8 @@ function PublishDialogBody({
   const handlePublish = async () => {
     setIsPublishing(true);
     setPublishError(undefined);
-    let openedPr: CreatedPullRequest | undefined;
     try {
-      const prTitle =
-        publishTitle.trim() ||
-        t("thread.publishDialog.changesFrom", { branch: githubHeadBranch });
-      const prBody = publishBody.trim() || undefined;
-      const message = commitMessage() || prTitle;
-
-      try {
-        await publishGitChanges(orgSlug, virtualMcpId, branch, message);
-      } catch (error) {
-        throw new PublishFlowError(
-          error instanceof Error
-            ? error.message
-            : t("thread.publishDialog.failedPushChanges"),
-          "push",
-        );
-      }
-
-      try {
-        await rebaseGitBranch(orgSlug, virtualMcpId, branch, baseBranch);
-      } catch (error) {
-        throw new PublishFlowError(
-          error instanceof Error
-            ? error.message
-            : t("thread.publishDialog.failedRebase"),
-          "rebase",
-        );
-      }
-
-      try {
-        openedPr = await openPullRequestForBranch(githubClient, {
-          owner,
-          repo,
-          branch: githubHeadBranch,
-          title: prTitle,
-          body: prBody,
-          base: baseBranch,
-          coAuthor,
-          existing: existingOpenPr,
-        });
-      } catch (error) {
-        throw new PublishFlowError(
-          error instanceof Error
-            ? error.message
-            : t("thread.publishDialog.failedOpenPullRequest"),
-          "open-pr",
-        );
-      }
-
-      try {
-        await squashMergePullRequest(githubClient, {
-          owner,
-          repo,
-          pullNumber: openedPr.number,
-          commitTitle: prTitle,
-          commitMessage: prBody,
-          coAuthor,
-        });
-      } catch (error) {
-        throw new PublishFlowError(
-          error instanceof Error
-            ? error.message
-            : t("thread.publishDialog.failedMergePullRequest"),
-          "merge",
-          openedPr,
-        );
-      }
+      await runPublishFlow(publishTarget, messageParts(), t);
 
       toast.success(t("thread.publishDialog.publishedTo", { baseBranch }));
       handleOpenChange(false);
@@ -427,31 +370,9 @@ function PublishDialogBody({
       await onPullRequestChanged?.();
       await onPublished?.();
     } catch (error) {
-      if (
-        error instanceof PublishFlowError &&
-        error.step === "merge" &&
-        error.pr
-      ) {
-        const msg = t("thread.publishDialog.mergeFailed", {
-          prNumber: error.pr.number,
-          message: error.message,
-        });
-        setPublishError(msg);
-        toast.error(msg, {
-          action: {
-            label: t("thread.publishDialog.viewPr"),
-            onClick: () =>
-              window.open(error.pr!.htmlUrl, "_blank", "noopener,noreferrer"),
-          },
-        });
-        await onPullRequestChanged?.();
-        return;
-      }
-      setPublishError(
-        error instanceof Error
-          ? error.message
-          : t("thread.publishDialog.failedPublish"),
-      );
+      const failure = reportPublishFailure(error, t);
+      setPublishError(failure.message);
+      if (failure.pullRequestOpened) await onPullRequestChanged?.();
     } finally {
       setIsPublishing(false);
     }
@@ -506,37 +427,9 @@ function PublishDialogBody({
     setIsSubmittingForReview(true);
     setSubmitForReviewError(undefined);
     try {
-      const prTitle =
-        publishTitle.trim() ||
-        t("thread.publishDialog.changesFrom", { branch: githubHeadBranch });
-      const prBody = publishBody.trim() || undefined;
-      const message = commitMessage() || prTitle;
+      const pr = await runSubmitForReviewFlow(publishTarget, messageParts());
 
-      // GitHub requires head on the remote; push even when commits are already
-      // local-only (unpushed can read 0 until origin/<branch> exists).
-      await publishGitChanges(orgSlug, virtualMcpId, branch, message);
-
-      const pr = await openPullRequestForBranch(githubClient, {
-        owner,
-        repo,
-        branch: githubHeadBranch,
-        title: prTitle,
-        body: prBody,
-        base: baseBranch,
-        coAuthor,
-        existing: existingOpenPr,
-      });
-
-      toast.success(
-        t("thread.publishDialog.submittedForReview", { prNumber: pr.number }),
-        {
-          action: {
-            label: t("thread.publishDialog.viewOnGithub"),
-            onClick: () =>
-              window.open(pr.htmlUrl, "_blank", "noopener,noreferrer"),
-          },
-        },
-      );
+      notifySubmittedForReview(pr, t);
       handleOpenChange(false);
       await onPullRequestChanged?.();
     } catch (error) {

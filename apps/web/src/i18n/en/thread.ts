@@ -192,6 +192,7 @@ export const thread = {
     "These changes need a teammate's review before going live",
   "thread.publishPopover.newPage": "New page",
   "thread.publishPopover.newPageSections": "New page with {count} sections",
+  "thread.publishPopover.nothingToSubmit": "Nothing to submit",
   "thread.publishPopover.otherGroup": "Other changes",
   "thread.publishPopover.pagesGroup": "Pages",
   "thread.publishPopover.preview": "Preview",
@@ -211,8 +212,18 @@ export const thread = {
   "thread.publishPopover.discardAllConfirm":
     "Discard every change? This can't be undone.",
   "thread.publishPopover.discardConfirm": "Discard {name}?",
+  "thread.publishPopover.reviewNote": "Note for reviewers",
+  "thread.publishPopover.reviewNotePlaceholder": "What changed and why…",
   "thread.publishPopover.reviewing": "Reviewing content…",
   "thread.publishPopover.siteConfiguration": "Site configuration",
+  "thread.publishPopover.submitCountForReview":
+    "Submit {count} changes for review",
+  "thread.publishPopover.submitEmptyHint":
+    "This chat has no changes waiting for review.",
+  "thread.publishPopover.submitForReview": "Submit for review",
+  "thread.publishPopover.submitOneForReview": "Submit 1 change for review",
+  "thread.publishPopover.submitting": "Submitting…",
   "thread.publishPopover.versionNote": "Version note",
+  "thread.publishPopover.updatesPullRequest": "Updates pull request #{number}",
   "thread.publishPopover.versionNotePlaceholder": "Describe this update…",
 } as const;
