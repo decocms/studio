@@ -1,6 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import type { EnsureOptions } from "../types";
-import { earlierShutdown, laterShutdown, stripEnsureOpts } from "./runner";
+import {
+  earlierShutdown,
+  freshOrgFsConfigJson,
+  laterShutdown,
+  stripEnsureOpts,
+} from "./runner";
 
 describe("stripEnsureOpts", () => {
   it("retains orgFsConfigJson so resurrection replays org-fs mounts", () => {
@@ -121,5 +126,47 @@ describe("laterShutdown", () => {
 
   it("treats an unparseable shutdownTime as no commitment", () => {
     expect(laterShutdown("not-a-date", target)).toBe(target.toISOString());
+  });
+});
+
+describe("freshOrgFsConfigJson", () => {
+  const tenant = { orgId: "org_1", userId: "usr_1", orgSlug: "acme" };
+  const stale: EnsureOptions = {
+    tenant,
+    orgFsConfigJson: '{"token":"expired"}',
+  };
+
+  it("replaces the persisted config with a freshly minted one", async () => {
+    const fresh = await freshOrgFsConfigJson(
+      stale,
+      async () => '{"token":"live"}',
+    );
+    expect(fresh).toBe('{"token":"live"}');
+  });
+
+  // A dead org-fs key 401s every WebDAV call and the agent sees EIO on every
+  // `org/` path, so the fallback must never be "no mounts".
+  it("falls back to the persisted config when the minter declines", async () => {
+    expect(await freshOrgFsConfigJson(stale, async () => null)).toBe(
+      stale.orgFsConfigJson,
+    );
+  });
+
+  it("falls back when the minter throws", async () => {
+    const fresh = await freshOrgFsConfigJson(stale, async () => {
+      throw new Error("mint down");
+    });
+    expect(fresh).toBe(stale.orgFsConfigJson);
+  });
+
+  it("keeps the persisted config when the row has no tenant to scope a key to", async () => {
+    const untenanted: EnsureOptions = { orgFsConfigJson: '{"token":"old"}' };
+    let called = false;
+    const fresh = await freshOrgFsConfigJson(untenanted, async () => {
+      called = true;
+      return '{"token":"live"}';
+    });
+    expect(fresh).toBe('{"token":"old"}');
+    expect(called).toBe(false);
   });
 });
