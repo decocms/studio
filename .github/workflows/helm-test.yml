@@ -472,6 +472,23 @@ jobs:
           BUILD=.github/workflows/preview-build.yaml
           CHART=deploy/helm/studio-previews
 
+          # A job cannot read its own outputs through `needs` — the expression
+          # resolves to empty and the workflow still succeeds. That shipped a
+          # sticky comment reading "Preview: https://" with no host.
+          python3 - <<'SELFREF'
+          import re, sys, yaml
+          wf = yaml.safe_load(open(".github/workflows/preview-build.yaml"))
+          bad = [f"{name}.outputs references needs.{ref}"
+                 for name, job in wf["jobs"].items()
+                 for ref in re.findall(r"needs\.(\w+)\.", str(job.get("outputs", {})))
+                 if ref == name]
+          if bad:
+              print("::error::a job reads its own outputs through needs, which is "
+                    "always empty: " + "; ".join(bad))
+              sys.exit(1)
+          print("no job reads its own outputs through needs")
+          SELFREF
+
           # The node pool accepts both architectures, so the images have to
           # carry both. A spot reclaim once replaced an amd64 node with a
           # Graviton one and every pod died with `exec format error` — nothing

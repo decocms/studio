@@ -45,7 +45,7 @@ jobs:
       pull-requests: write
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
-      host: ${{ needs.package.outputs.host }}
+      host: ${{ steps.meta.outputs.host }}
     steps:
       # This workflow triggers on `pull_request` ONLY, so the checkout is
       # refs/pull/N/merge — GitHub constructs it by merging the PR into main,
