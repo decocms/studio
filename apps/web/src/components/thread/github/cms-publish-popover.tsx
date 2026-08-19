@@ -461,9 +461,14 @@ function CmsPublishBody({
     }
   };
 
-  const headerTitle = destinationHost
-    ? t("thread.publishPopover.publishTo", { host: destinationHost })
-    : t("thread.publishPopover.publish");
+  const headerTitle =
+    isLoading || summary.count === 0
+      ? t("thread.publishPopover.publish")
+      : summary.count === 1
+        ? t("thread.publishPopover.publishOneInProduction")
+        : t("thread.publishPopover.publishCountInProduction", {
+            count: summary.count,
+          });
 
   const lastPublishLine = (() => {
     const pr = lastPublish.data;
@@ -474,11 +479,6 @@ function CmsPublishBody({
       ? t("thread.publishPopover.lastPublishedBy", { when, name })
       : t("thread.publishPopover.lastPublished", { when });
   })();
-
-  const changesReadyLine =
-    summary.count === 1
-      ? t("thread.publishPopover.changeReady")
-      : t("thread.publishPopover.changesReady", { count: summary.count });
 
   const publishLabel =
     summary.count === 1
@@ -717,11 +717,11 @@ function CmsPublishBody({
             )
           ) : null}
         </div>
-        <div className="pl-6 text-xs text-muted-foreground">
-          {[lastPublishLine, isLoading ? null : changesReadyLine]
-            .filter(Boolean)
-            .join(" · ")}
-        </div>
+        {lastPublishLine ? (
+          <div className="pl-6 text-xs text-muted-foreground">
+            {lastPublishLine}
+          </div>
+        ) : null}
       </div>
       <div className="border-t" />
 

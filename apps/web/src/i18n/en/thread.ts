@@ -178,8 +178,6 @@ export const thread = {
   "thread.publishDialog.viewPr": "View PR",
   "thread.publishDialog.visitPreview": "Visit preview",
   "thread.publishPopover.blocksGroup": "Blocks",
-  "thread.publishPopover.changesReady": "{count} changes ready",
-  "thread.publishPopover.changeReady": "1 change ready",
   "thread.publishPopover.chipEdited": "Edited",
   "thread.publishPopover.chipNew": "New",
   "thread.publishPopover.chipRemoved": "Removed",
@@ -198,8 +196,11 @@ export const thread = {
   "thread.publishPopover.preview": "Preview",
   "thread.publishPopover.publish": "Publish",
   "thread.publishPopover.publishCount": "Publish {count} changes",
+  "thread.publishPopover.publishCountInProduction":
+    "Publish {count} changes in production",
+  "thread.publishPopover.publishOneInProduction":
+    "Publish 1 change in production",
   "thread.publishPopover.publishOne": "Publish 1 change",
-  "thread.publishPopover.publishTo": "Publish to {host}",
   "thread.publishPopover.publishedTo": "Published to {host}",
   "thread.publishPopover.publishing": "Publishing…",
   "thread.publishPopover.requestApproval": "Request approval",
