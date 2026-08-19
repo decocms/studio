@@ -32,7 +32,7 @@ env:
   PREVIEW_DOMAIN: pr.studio.decocms.com
 
 jobs:
-  build:
+  package:
     name: Build preview images
     # Opt-in. `labeled` is in the trigger list so adding the label to an
     # already-open PR starts a build; the ApplicationSet enforces the same
@@ -43,6 +43,9 @@ jobs:
       contents: read
       packages: write
       pull-requests: write
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      host: ${{ needs.package.outputs.host }}
     steps:
       # This workflow triggers on `pull_request` ONLY, so the checkout is
       # refs/pull/N/merge — GitHub constructs it by merging the PR into main,
@@ -122,52 +125,140 @@ jobs:
           # deploy/helm/studio/files/api-nginx.conf.
           cp docker-context/decocms.tgz decocms.tgz
 
+      - name: Upload build context
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-context
+          path: docker-context/decocms.tgz
+          retention-days: 1
+
+  # One job per architecture on its OWN runner. The preview node pool schedules
+  # on amd64 and arm64 so Karpenter can take whatever spot capacity exists, and
+  # a reclaim proved it: an r8in.large was replaced by an r7gd.large (Graviton)
+  # and every amd64-only pod died with `exec format error`.
+  #
+  # Native runners, not QEMU. The release workflow measures ~1.0 min for a
+  # native arm64 image against ~0.7 min for amd64; emulating arm64 instead would
+  # add minutes to a build whose whole point is being quick enough that a
+  # reviewer waits for it. GitHub's arm64 runners are free on public repos.
+  docker:
+    name: Build ${{ matrix.arch }} images
+    needs: package
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download build context
+        uses: actions/download-artifact@v4
+        with:
+          name: preview-context
+          path: docker-context
+      - name: Stage the tarball for both build contexts
+        run: cp docker-context/decocms.tgz decocms.tgz
       - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
-      # Multi-arch, matching the release images. The preview node pool accepts
-      # both amd64 and arm64 so Karpenter can take whichever spot capacity is
-      # available — and it does: a reclaim replaced an r8in.large (amd64) with
-      # an r7gd.large (Graviton), and every amd64-only pod died with
-      # `exec format error`.
-      #
-      # QEMU rather than the release workflow's native-runner matrix: that costs
-      # ~64s against ~13s for the tarball-install layer, which is ~9% on a
-      # ~9-minute preview build and does not justify a second job plus digest
-      # artifacts plus a manifest-merge step here. `cache-from` still reads the
-      # release scopes, so the apt / useradd / duckdb layers hit on a cold build.
-      - name: Build and push API image
+      - name: Build and push API by digest
+        id: api
         uses: docker/build-push-action@v5
         with:
           context: ./docker-context
           file: ./apps/api/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
+          platforms: ${{ matrix.platform }}
           provenance: false
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
           cache-from: |
-            type=gha,scope=studio-preview-amd64
-            type=gha,scope=studio-api-amd64
-          cache-to: type=gha,mode=max,scope=studio-preview-amd64
+            type=gha,scope=studio-preview-${{ matrix.arch }}
+            type=gha,scope=studio-api-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=studio-preview-${{ matrix.arch }}
 
-      - name: Build and push nginx image
+      - name: Build and push nginx by digest
+        id: web
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./apps/web/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
+          platforms: ${{ matrix.platform }}
           provenance: false
-          tags: ${{ env.REGISTRY }}/${{ env.NGINX_IMAGE_NAME }}:${{ steps.meta.outputs.tag }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.NGINX_IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
           cache-from: |
-            type=gha,scope=studio-preview-web-amd64
-            type=gha,scope=studio-web-amd64
-          cache-to: type=gha,mode=max,scope=studio-preview-web-amd64
+            type=gha,scope=studio-preview-web-${{ matrix.arch }}
+            type=gha,scope=studio-web-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=studio-preview-web-${{ matrix.arch }}
+
+      - name: Export digests
+        run: |
+          set -euo pipefail
+          mkdir -p "${{ runner.temp }}/digests/api" "${{ runner.temp }}/digests/web"
+          touch "${{ runner.temp }}/digests/api/${API_DIGEST#sha256:}"
+          touch "${{ runner.temp }}/digests/web/${WEB_DIGEST#sha256:}"
+        env:
+          API_DIGEST: ${{ steps.api.outputs.digest }}
+          WEB_DIGEST: ${{ steps.web.outputs.digest }}
+      - name: Upload digests
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-digests-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          retention-days: 1
+
+  # Stitch the per-arch digests into one tagged manifest list, then hand the
+  # reviewer the link. Only after this does `:pr-<n>-<sha>` exist as a tag —
+  # which is what the ApplicationSet asks for.
+  publish:
+    name: Merge manifests and comment
+    needs: [package, docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: write
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v3
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          pattern: preview-digests-*
+          path: digests
+          merge-multiple: true
+      - name: Merge and push manifest lists
+        env:
+          TAG: ${{ needs.package.outputs.tag }}
+        run: |
+          set -euo pipefail
+          merge() {
+            local image="$1" dir="$2" refs=()
+            for d in "$dir"/*; do
+              [ -e "$d" ] || continue
+              refs+=("${image}@sha256:$(basename "$d")")
+            done
+            (( ${#refs[@]} > 0 )) || { echo "::error::no digests for ${image}"; exit 1; }
+            docker buildx imagetools create -t "${image}:${TAG}" "${refs[@]}"
+            docker buildx imagetools inspect "${image}:${TAG}" | grep -E "Platform|Name:" | head -6
+          }
+          merge "${REGISTRY}/${IMAGE_NAME}" digests/api
+          merge "${REGISTRY}/${NGINX_IMAGE_NAME}" digests/web
 
       # Re-find: on the first run the "building" step created the comment, so
       # the id from before the build is empty.
@@ -188,9 +279,9 @@ jobs:
           edit-mode: replace
           body: |
             <!-- studio-preview -->
-            ### 🔍 Preview: https://${{ steps.meta.outputs.host }}
+            ### 🔍 Preview: https://${{ needs.package.outputs.host }}
 
-            Built from `${{ steps.meta.outputs.tag }}`. Argo CD picks the image up
+            Built from `${{ needs.package.outputs.tag }}`. Argo CD picks the image up
             within ~60s; the first sync also creates and migrates the database, so
             allow another minute or two on a brand-new preview.
 
