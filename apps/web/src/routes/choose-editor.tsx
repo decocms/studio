@@ -3,8 +3,8 @@
  *
  * A live deco storefront redirects here with `?site=&domain=&pageId=&path=&
  * pathTemplate=` (path/pathTemplate arrive URL-encoded once; TanStack decodes
- * them for us — do NOT decode again). We resolve `(site, domain)` to the
- * project(s) whose content editor should open via `/api/_editor-resolve`, then:
+ * them for us — do NOT decode again). We resolve `site` to the project(s) whose
+ * content editor should open via `/api/_editor-resolve`, then:
  *   - exactly one project → redirect straight into its editor;
  *   - more than one → let the user pick;
  *   - none / no access / error → a friendly dead-end.
@@ -26,7 +26,6 @@ interface EditorProject {
   id: string;
   title: string;
   icon: string | null;
-  previewServerUrl: string | null;
 }
 
 interface EditorResolveResult {
@@ -38,12 +37,8 @@ interface ResolveError extends Error {
   status?: number;
 }
 
-async function resolveEditor(
-  site: string,
-  domain: string,
-): Promise<EditorResolveResult> {
+async function resolveEditor(site: string): Promise<EditorResolveResult> {
   const params = new URLSearchParams({ site });
-  if (domain) params.set("domain", domain);
   const res = await fetch(`/api/_editor-resolve?${params.toString()}`, {
     headers: { Accept: "application/json" },
   });
@@ -207,11 +202,6 @@ function EditorChooser({
               <span className="truncate text-sm font-medium text-foreground">
                 {project.title}
               </span>
-              {project.previewServerUrl ? (
-                <span className="truncate text-xs text-muted-foreground">
-                  {project.previewServerUrl}
-                </span>
-              ) : null}
             </div>
           </button>
         ))}
@@ -223,12 +213,11 @@ function EditorChooser({
 function ChooseEditor() {
   const search = useSearch({ from: "/choose-editor" }) as ChooseEditorSearch;
   const site = search.site?.trim() ?? "";
-  const domain = search.domain?.trim() ?? "";
   const pageSearch = buildPageSearch(search);
 
   const query = useQuery({
-    queryKey: KEYS.editorResolve(site, domain),
-    queryFn: () => resolveEditor(site, domain),
+    queryKey: KEYS.editorResolve(site),
+    queryFn: () => resolveEditor(site),
     enabled: site.length > 0,
     staleTime: Infinity,
     retry: (count, error) => !isDeadEnd(error) && count < 2,

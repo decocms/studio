@@ -20,7 +20,7 @@ import { expect, newApiContext, test } from "../fixtures/test";
 
 interface ResolveResult {
   orgSlug: string;
-  projects: { id: string; title: string; previewServerUrl: string | null }[];
+  projects: { id: string; title: string }[];
 }
 
 test.describe("Editor resolve (choose-editor backend)", () => {
@@ -45,9 +45,8 @@ test.describe("Editor resolve (choose-editor backend)", () => {
 
     const suffix = `${Date.now()}${Math.random().toString(36).slice(2, 8)}`;
     const slug = `e2e-editor-${suffix}`;
-    const domain = `https://shop-${suffix}.example.com`;
 
-    // metadata.siteSlug is the resolver's primary key; previewServerUrl the fallback.
+    // metadata.siteSlug (== site lowercased) is the resolver's key.
     const created = await callSelfMcpTool<{ item: { id: string } }>(
       ownerCtx,
       owner.orgSlug,
@@ -59,7 +58,6 @@ test.describe("Editor resolve (choose-editor backend)", () => {
           metadata: {
             instructions: null,
             siteSlug: slug,
-            previewServerUrl: domain,
           },
         },
       },
@@ -81,39 +79,36 @@ test.describe("Editor resolve (choose-editor backend)", () => {
       [slug, ownerOrgId, owner.userId],
     );
 
-    const resolveUrl = (site: string, dom?: string) =>
-      `/api/_editor-resolve?site=${encodeURIComponent(site)}` +
-      (dom ? `&domain=${encodeURIComponent(dom)}` : "");
+    const resolveUrl = (site: string) =>
+      `/api/_editor-resolve?site=${encodeURIComponent(site)}`;
 
     try {
       // The owning member resolves the site to their project.
-      const ok = await ownerCtx.get(resolveUrl(slug, domain));
+      const ok = await ownerCtx.get(resolveUrl(slug));
       expect(ok.status()).toBe(200);
       const body = (await ok.json()) as ResolveResult;
       expect(body.orgSlug).toBe(owner.orgSlug);
       expect(body.projects.map((p) => p.id)).toContain(projectId);
 
       // A different casing of the site name still resolves (slug is lowercased).
-      const okUpper = await ownerCtx.get(
-        resolveUrl(slug.toUpperCase(), domain),
-      );
+      const okUpper = await ownerCtx.get(resolveUrl(slug.toUpperCase()));
       expect(okUpper.status()).toBe(200);
 
       // A signed-in non-member must not learn who owns the site.
       expect(other.orgSlug).not.toBe(owner.orgSlug);
-      const forbidden = await otherCtx.get(resolveUrl(slug, domain));
+      const forbidden = await otherCtx.get(resolveUrl(slug));
       expect(forbidden.status()).toBe(403);
 
       // Anonymous caller: refused before any lookup.
-      const anon = await anonCtx.get(resolveUrl(slug, domain));
+      const anon = await anonCtx.get(resolveUrl(slug));
       expect(anon.status()).toBe(401);
 
       // Unknown site → clean 404, not a 500.
-      const missing = await ownerCtx.get(resolveUrl(`${slug}-nope`, domain));
+      const missing = await ownerCtx.get(resolveUrl(`${slug}-nope`));
       expect(missing.status()).toBe(404);
 
       // Malformed slug → 400.
-      const bad = await ownerCtx.get(resolveUrl("Not A Slug!", domain));
+      const bad = await ownerCtx.get(resolveUrl("Not A Slug!"));
       expect(bad.status()).toBe(400);
     } finally {
       await db.query(`DELETE FROM org_sites WHERE slug = $1`, [slug]);
