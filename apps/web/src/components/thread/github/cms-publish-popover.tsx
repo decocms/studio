@@ -33,7 +33,6 @@ import { useT } from "@/i18n/use-t.ts";
 import { authClient } from "@/lib/auth-client.ts";
 import { coAuthorFromSessionUser } from "@/lib/co-author-identity.ts";
 import { formatTimeAgo } from "@/lib/format-time.ts";
-import { useSaveBlock } from "@/components/sections-editor/use-save-block.ts";
 import { GitDiffList } from "./git-diff-list.tsx";
 import {
   openPullRequestForBranch,
@@ -44,7 +43,6 @@ import { lastPublishAttribution } from "./pr-attribution.ts";
 import {
   buildAutoNote,
   countPageSections,
-  revertFieldAtPath,
   summarizePublishChanges,
   type PublishChange,
   type PublishChangeStatus,
@@ -160,22 +158,6 @@ class PublishStepError extends Error {
   }
 }
 
-function statusChip(status: PublishChangeStatus, t: ReturnType<typeof useT>) {
-  const label = statusLabel(status, t);
-  return (
-    <span
-      className={cn(
-        "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium",
-        status === "new" && "bg-success/10 text-success",
-        status === "edited" && "bg-warning/10 text-warning",
-        status === "removed" && "bg-destructive/10 text-destructive",
-      )}
-    >
-      {label}
-    </span>
-  );
-}
-
 function statusLabel(status: PublishChangeStatus, t: ReturnType<typeof useT>) {
   return status === "new"
     ? t("thread.publishPopover.chipNew")
@@ -207,16 +189,6 @@ function changeId(change: PublishChange): string {
   return change.blockKey ?? change.filepaths[0] ?? change.name;
 }
 
-/** Hard byte cap only — visual truncation is the renderer's line-clamp. */
-function renderFieldValue(value: unknown): string {
-  if (value === undefined || value === null) return "—";
-  if (typeof value === "string") {
-    return value.length > 400 ? `${value.slice(0, 400)}…` : value;
-  }
-  const raw = JSON.stringify(value);
-  return raw.length > 240 ? `${raw.slice(0, 240)}…` : raw;
-}
-
 function CmsPublishBody({
   publishLockRef,
   onOpenChange,
@@ -246,7 +218,6 @@ function CmsPublishBody({
   });
   const { data: session } = authClient.useSession();
   const coAuthor = coAuthorFromSessionUser(session?.user);
-  const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
 
   const [gitStatus, setGitStatus] = useState<GitStatus | null>(null);
   const [gitDiff, setGitDiff] = useState<GitDiffResult | null>(null);
@@ -259,7 +230,6 @@ function CmsPublishBody({
   const [discardAllConfirm, setDiscardAllConfirm] = useState(false);
   const [isDiscarding, setIsDiscarding] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [rawJsonId, setRawJsonId] = useState<string | null>(null);
 
   const loadStartedRef = useRef(false);
 
@@ -491,32 +461,6 @@ function CmsPublishBody({
     }
   };
 
-  const handleDiscardField = async (
-    change: PublishChange,
-    path: (string | number)[],
-    label: string,
-  ) => {
-    if (!change.blockKey || !change.toJson) return;
-    const updated = revertFieldAtPath(change.toJson, change.fromJson, path);
-    if (!updated) {
-      toast.error(t("thread.publishPopover.failedDiscard"));
-      return;
-    }
-    try {
-      await saveBlock.mutateAsync({ blockKey: change.blockKey, data: updated });
-      toast.success(
-        t("thread.publishPopover.discardedField", { field: label }),
-      );
-      await loadGitState();
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : t("thread.publishPopover.failedDiscard"),
-      );
-    }
-  };
-
   const headerTitle = destinationHost
     ? t("thread.publishPopover.publishTo", { host: destinationHost })
     : t("thread.publishPopover.publish");
@@ -575,9 +519,6 @@ function CmsPublishBody({
                   .join(", ")}`
               : section.name,
           );
-    const canExpand = change.status === "edited" && change.sections.length > 0;
-    const canDiscardFields =
-      change.status === "edited" && !!change.blockKey && !!change.toJson;
     const rawDiff: GitDiffResult = {
       diffs: Object.fromEntries(
         change.filepaths.flatMap((p) => {
@@ -586,10 +527,8 @@ function CmsPublishBody({
         }),
       ),
     };
-    const toggleExpanded = () => {
-      setExpandedId(expanded ? null : id);
-      setRawJsonId(null);
-    };
+    const canExpand = Object.keys(rawDiff.diffs).length > 0;
+    const toggleExpanded = () => setExpandedId(expanded ? null : id);
 
     return (
       <div
@@ -670,73 +609,15 @@ function CmsPublishBody({
           </div>
         ) : null}
         {expanded ? (
-          <div className="mt-2 space-y-2 border-t pt-2.5">
-            <div className="max-h-56 space-y-3 overflow-y-auto overscroll-contain [scrollbar-width:thin]">
-              {rawJsonId === id ? (
-                <div className="-mx-3 overflow-x-auto">
-                  <GitDiffList diff={rawDiff} rowClassName="px-3" />
-                </div>
-              ) : (
-                change.sections.map((section, sectionIndex) => (
-                  <div
-                    key={`${sectionIndex}-${section.name}`}
-                    className="space-y-2"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold">
-                        {section.name}
-                      </span>
-                      {section.status !== "edited"
-                        ? statusChip(section.status, t)
-                        : null}
-                    </div>
-                    {section.fields.map((field) => (
-                      <div
-                        key={field.path.join(".")}
-                        className="space-y-1 pl-2"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-medium text-muted-foreground">
-                            {field.label}
-                          </span>
-                          {canDiscardFields ? (
-                            <button
-                              type="button"
-                              className="text-[11px] text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
-                              onClick={() =>
-                                handleDiscardField(
-                                  change,
-                                  field.path,
-                                  field.label,
-                                )
-                              }
-                              disabled={saveBlock.isPending || isPublishing}
-                            >
-                              {t("thread.publishPopover.discard")}
-                            </button>
-                          ) : null}
-                        </div>
-                        <div className="line-clamp-2 rounded-md bg-destructive/5 px-2 py-1 text-xs break-words whitespace-pre-wrap text-destructive/80 line-through [overflow-wrap:anywhere]">
-                          {renderFieldValue(field.from)}
-                        </div>
-                        <div className="line-clamp-3 rounded-md bg-success/5 px-2 py-1 text-xs break-words whitespace-pre-wrap [overflow-wrap:anywhere]">
-                          {renderFieldValue(field.to)}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ))
-              )}
+          <div className="-mx-3 mt-2 border-t pt-1">
+            <div className="max-h-72 overflow-y-auto overscroll-contain [scrollbar-width:thin]">
+              <GitDiffList
+                diff={rawDiff}
+                rowClassName="px-3"
+                defaultExpandedFile={change.filepaths[0] ?? null}
+                editorHeight="220px"
+              />
             </div>
-            <button
-              type="button"
-              className="text-[11px] text-muted-foreground hover:text-foreground"
-              onClick={() => setRawJsonId(rawJsonId === id ? null : id)}
-            >
-              {rawJsonId === id
-                ? t("thread.publishPopover.back")
-                : t("thread.publishPopover.viewRawJson")}
-            </button>
           </div>
         ) : null}
       </div>

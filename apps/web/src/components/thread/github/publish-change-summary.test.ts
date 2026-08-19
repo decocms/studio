@@ -3,7 +3,6 @@ import {
   blockKeyFromDiffPath,
   buildAutoNote,
   humanizeFieldName,
-  revertFieldAtPath,
   sectionDisplayName,
   summarizePublishChanges,
 } from "./publish-change-summary";
@@ -205,7 +204,7 @@ describe("summarizePublishChanges", () => {
     expect(new Set(summary.pages.map((p) => p.pagePath)).size).toBe(2);
   });
 
-  it("walks multivariate section paths for per-field revert", () => {
+  it("walks multivariate section paths", () => {
     const variant = (title: string) => ({
       __resolveType: "website/pages/Page.tsx",
       name: "Home",
@@ -294,36 +293,6 @@ describe("buildAutoNote", () => {
     );
     expect(note).toBe("Changed 1 file");
     expect(note.toLowerCase()).not.toContain("commit");
-  });
-});
-
-describe("revertFieldAtPath", () => {
-  const to = {
-    __resolveType: "website/pages/Page.tsx",
-    sections: [{ __resolveType: "site/sections/Hero.tsx", title: "After" }],
-  };
-
-  it("restores a field to its from-side value without mutating the input", () => {
-    const from = {
-      sections: [{ __resolveType: "site/sections/Hero.tsx", title: "Before" }],
-    };
-    const updated = revertFieldAtPath(to, from, ["sections", 0, "title"])!;
-    expect((updated.sections as Record<string, unknown>[])[0]!.title).toBe(
-      "Before",
-    );
-    expect((to.sections as Record<string, unknown>[])[0]!.title).toBe("After");
-  });
-
-  it("deletes a field that did not exist before", () => {
-    const updated = revertFieldAtPath(to, {}, ["sections", 0, "title"])!;
-    expect("title" in (updated.sections as Record<string, unknown>[])[0]!).toBe(
-      false,
-    );
-  });
-
-  it("returns null when the path no longer resolves", () => {
-    expect(revertFieldAtPath(to, null, ["sections", 5, "title"])).toBeNull();
-    expect(revertFieldAtPath(to, null, [])).toBeNull();
   });
 });
 

@@ -177,7 +177,6 @@ export const thread = {
   "thread.publishDialog.viewOnGithub": "View on GitHub",
   "thread.publishDialog.viewPr": "View PR",
   "thread.publishDialog.visitPreview": "Visit preview",
-  "thread.publishPopover.back": "Back",
   "thread.publishPopover.blocksGroup": "Blocks",
   "thread.publishPopover.changesReady": "{count} changes ready",
   "thread.publishPopover.changeReady": "1 change ready",
@@ -205,7 +204,6 @@ export const thread = {
   "thread.publishPopover.publishing": "Publishing…",
   "thread.publishPopover.requestApproval": "Request approval",
   "thread.publishPopover.discarded": "Discarded {name}",
-  "thread.publishPopover.discardedField": "Discarded {field}",
   "thread.publishPopover.discard": "Discard",
   "thread.publishPopover.discardAll": "Discard all",
   "thread.publishPopover.discardAllConfirm":
@@ -215,5 +213,4 @@ export const thread = {
   "thread.publishPopover.siteConfiguration": "Site configuration",
   "thread.publishPopover.versionNote": "Version note",
   "thread.publishPopover.versionNotePlaceholder": "Describe this update…",
-  "thread.publishPopover.viewRawJson": "View raw JSON",
 } as const;

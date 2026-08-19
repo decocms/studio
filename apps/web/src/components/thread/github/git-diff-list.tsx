@@ -27,6 +27,10 @@ export interface GitDiffListProps {
   emptyMessage?: string;
   rowClassName?: string;
   onDiscardFile?: (filepath: string) => void | Promise<void>;
+  /** File whose editor starts open (embedded single-file usage). */
+  defaultExpandedFile?: string | null;
+  /** Monaco diff height; the default suits the full-size dialog. */
+  editorHeight?: string;
 }
 
 export function GitDiffList({
@@ -34,8 +38,12 @@ export function GitDiffList({
   emptyMessage = "No file changes in the working tree",
   rowClassName = "px-6",
   onDiscardFile,
+  defaultExpandedFile = null,
+  editorHeight = "380px",
 }: GitDiffListProps) {
-  const [expandedDiffFile, setExpandedDiffFile] = useState<string | null>(null);
+  const [expandedDiffFile, setExpandedDiffFile] = useState<string | null>(
+    defaultExpandedFile,
+  );
   const [discardConfirmFile, setDiscardConfirmFile] = useState<string | null>(
     null,
   );
@@ -166,7 +174,7 @@ export function GitDiffList({
                   modified={to ?? ""}
                   language={language}
                   theme={theme}
-                  height="380px"
+                  height={editorHeight}
                   options={{
                     readOnly: true,
                     renderSideBySide: false,

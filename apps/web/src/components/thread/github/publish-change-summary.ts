@@ -19,7 +19,7 @@ export type PublishChangeStatus = "new" | "edited" | "removed";
 export interface PublishFieldChange {
   /** Humanized field name ("Background image" for `backgroundImage`). */
   label: string;
-  /** JSON path from the block root to the field, for per-field revert. */
+  /** JSON path from the block root to the field. */
   path: (string | number)[];
   /** `undefined` means the field is absent on that side. */
   from: unknown;
@@ -122,8 +122,7 @@ interface SectionWithPath {
 /**
  * A page's sections live either directly under `sections` (a plain array) or
  * per variant under `sections.variants[i].value` (multivariate pages). Returns
- * each section with the JSON path that reaches it, so field paths stay valid
- * for per-field revert in both shapes.
+ * each section with the JSON path that reaches it, valid in both shapes.
  */
 function sectionsWithPaths(block: Record<string, unknown>): SectionWithPath[] {
   const sections = block.sections;
@@ -419,48 +418,4 @@ export function countPageSections(
   block: Record<string, unknown> | null,
 ): number {
   return block ? sectionsWithPaths(block).length : 0;
-}
-
-function valueAtPath(
-  root: Record<string, unknown> | null,
-  path: (string | number)[],
-): unknown {
-  let current: unknown = root;
-  for (const segment of path) {
-    if (current == null || typeof current !== "object") return undefined;
-    current = (current as Record<string | number, unknown>)[segment];
-  }
-  return current;
-}
-
-/**
- * The block content with one field put back to its pre-change value — the
- * payload a per-field revert saves through the normal block-write path.
- * Returns null when the path no longer resolves inside `toBlock` (the block
- * changed under us); callers surface that as a failed revert, never a write.
- */
-export function revertFieldAtPath(
-  toBlock: Record<string, unknown>,
-  fromBlock: Record<string, unknown> | null,
-  path: (string | number)[],
-): Record<string, unknown> | null {
-  if (path.length === 0) return null;
-  const updated = structuredClone(toBlock);
-  let parent: unknown = updated;
-  for (const segment of path.slice(0, -1)) {
-    if (parent == null || typeof parent !== "object") return null;
-    parent = (parent as Record<string | number, unknown>)[segment];
-  }
-  if (parent == null || typeof parent !== "object") return null;
-
-  const leaf = path[path.length - 1]!;
-  const fromValue = valueAtPath(fromBlock, path);
-  if (fromValue === undefined) {
-    if (Array.isArray(parent)) return null;
-    delete (parent as Record<string | number, unknown>)[leaf];
-  } else {
-    (parent as Record<string | number, unknown>)[leaf] =
-      structuredClone(fromValue);
-  }
-  return updated;
 }

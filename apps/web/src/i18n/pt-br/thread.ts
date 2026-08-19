@@ -185,7 +185,6 @@ export const thread = {
   "thread.publishDialog.viewOnGithub": "Ver no GitHub",
   "thread.publishDialog.viewPr": "Ver PR",
   "thread.publishDialog.visitPreview": "Abrir o Preview",
-  "thread.publishPopover.back": "Voltar",
   "thread.publishPopover.blocksGroup": "Blocos",
   "thread.publishPopover.changesReady": "{count} alterações prontas",
   "thread.publishPopover.changeReady": "1 alteração pronta",
@@ -215,7 +214,6 @@ export const thread = {
   "thread.publishPopover.publishing": "Publicando…",
   "thread.publishPopover.requestApproval": "Pedir aprovação",
   "thread.publishPopover.discarded": "{name} descartado",
-  "thread.publishPopover.discardedField": "{field} descartado",
   "thread.publishPopover.discard": "Descartar",
   "thread.publishPopover.discardAll": "Descartar tudo",
   "thread.publishPopover.discardAllConfirm":
@@ -225,5 +223,4 @@ export const thread = {
   "thread.publishPopover.siteConfiguration": "Configuração do site",
   "thread.publishPopover.versionNote": "Nota da versão",
   "thread.publishPopover.versionNotePlaceholder": "Descreva esta atualização…",
-  "thread.publishPopover.viewRawJson": "Ver JSON bruto",
 } satisfies Record<keyof typeof threadEn, string>;
