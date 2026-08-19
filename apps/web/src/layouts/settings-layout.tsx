@@ -247,12 +247,16 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
   return groups
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => {
-        if (item.group) return visibleTabs[item.group].length > 0;
-        if (loading || error) return true;
-        if (item.privilegedOnly) return isPrivileged;
-        if (!item.requires) return true;
-        return isPrivileged || capabilities[item.requires];
+      items: group.items.flatMap((item) => {
+        if (item.group) {
+          // Route the row at the first tab the member can actually open.
+          const [firstTab] = visibleTabs[item.group];
+          return firstTab ? [{ ...item, to: firstTab.to }] : [];
+        }
+        if (loading || error) return [item];
+        if (item.privilegedOnly) return isPrivileged ? [item] : [];
+        if (!item.requires) return [item];
+        return isPrivileged || capabilities[item.requires] ? [item] : [];
       }),
     }))
     .filter((group) => group.items.length > 0);
