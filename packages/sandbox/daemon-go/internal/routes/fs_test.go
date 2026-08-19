@@ -143,6 +143,39 @@ func TestReadDecofileFallbackRefusesAbsolute(t *testing.T) {
 	}
 }
 
+// Without a cap, /read's text path buffers the whole file into memory via
+// os.ReadFile regardless of size — unlike the image path (maxImageBytes)
+// a few lines above it. A large text file (a log, a generated artifact)
+// could OOM the daemon, tearing down the sandbox pod on the next missed
+// health probe.
+func TestReadRejectsOversizedTextFile(t *testing.T) {
+	repoDir := t.TempDir()
+	big := strings.Repeat("a", maxTextReadBytes+1)
+	if err := os.WriteFile(filepath.Join(repoDir, "big.txt"), []byte(big), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	deps := FsDeps{AppRoot: repoDir, RepoDir: repoDir}
+	rec := readReq(t, deps, "big.txt")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body = %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "too large") {
+		t.Fatalf("body = %s, want a too-large error", rec.Body.String())
+	}
+}
+
+func TestReadAllowsTextFileUnderCap(t *testing.T) {
+	repoDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repoDir, "small.txt"), []byte("hello\nworld"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	deps := FsDeps{AppRoot: repoDir, RepoDir: repoDir}
+	rec := readReq(t, deps, "small.txt")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
+	}
+}
+
 // The 400 an out-of-root write returns must name the root it wants. A model
 // that guessed `/tmp` (writable from its own bash tool, not from here) has to
 // be able to correct itself from the message alone — prod thread 38147122
