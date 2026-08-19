@@ -630,11 +630,13 @@ async fn build_success_response(upstream: reqwest::Response, is_root: bool) -> R
         return build_response(status, resp_headers, Body::from(injected));
     }
 
-    // Root document that isn't HTML (or has no Content-Type at all): render
-    // the dedicated notice instead of dumping raw JSON/text into the
-    // iframe. Sub-paths pass through untouched.
-    // An error status is a refusal, not a non-web app: pass it through.
-    if is_root && !status.is_client_error() && !status.is_server_error() {
+    // Root document that answers `200` with a non-HTML body (or no
+    // Content-Type at all): render the dedicated notice instead of dumping raw
+    // JSON/text into the iframe. Sub-paths pass through untouched.
+    // Any other status carries no body worth judging — a `304` is a cache
+    // revalidation of a page the browser already has, a `3xx` says where the app
+    // lives, a `4xx`/`5xx` is a refusal — so pass those through.
+    if is_root && status == StatusCode::OK {
         // Drain the body so the connection can be reused/closed cleanly —
         // mirrors `upstream.body?.cancel()`.
         let _ = upstream.bytes().await;
@@ -1063,6 +1065,35 @@ mod tests {
         );
         let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
         assert!(String::from_utf8_lossy(&body).contains("No web page at this URL"));
+    }
+
+    #[tokio::test]
+    async fn non_ok_at_root_passes_through_instead_of_the_notice() {
+        // 304 carries no Content-Type by design; 403 is Vite refusing the Host;
+        // 302 says where the app lives. None means "not a web app".
+        for (status, extra_header) in [
+            (StatusCode::NOT_MODIFIED, ("etag", "\"abc\"")),
+            (StatusCode::FOUND, ("location", "/app")),
+            (StatusCode::FORBIDDEN, ("content-type", "text/plain")),
+        ] {
+            let app = axum::Router::new().route(
+                "/",
+                get(move || async move {
+                    Response::builder()
+                        .status(status)
+                        .header(extra_header.0, extra_header.1)
+                        .body(Body::empty())
+                        .unwrap()
+                }),
+            );
+            let port = spawn_upstream(app).await;
+
+            let res = proxy_to_port(port, empty_request("GET", "/")).await;
+            assert_eq!(res.status(), status);
+            assert_eq!(res.headers()[extra_header.0], extra_header.1);
+            let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+            assert!(!String::from_utf8_lossy(&body).contains("No web page at this URL"));
+        }
     }
 
     #[tokio::test]

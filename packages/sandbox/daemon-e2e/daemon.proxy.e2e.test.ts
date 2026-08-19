@@ -129,6 +129,30 @@ describe("daemon e2e: reverse proxy", () => {
     expect(body).not.toContain("No web page at this URL");
   });
 
+  it("304 at / passes through instead of the 'No web page' page", async () => {
+    // A cache revalidation of an HTML page: 304 carries no Content-Type.
+    await startWithUpstream((req) => {
+      expect(req.headers.get("if-none-match")).toBe('"abc"');
+      return new Response(null, { status: 304, headers: { ETag: '"abc"' } });
+    });
+    const res = await fetch(url(d!, "/"), {
+      headers: { "If-None-Match": '"abc"' },
+    });
+    expect(res.status).toBe(304);
+    expect(res.headers.get("etag")).toBe('"abc"');
+    expect(await res.text()).not.toContain("No web page at this URL");
+  });
+
+  it("302 at / passes through with its Location instead of the 'No web page' page", async () => {
+    await startWithUpstream(
+      () => new Response(null, { status: 302, headers: { Location: "/app" } }),
+    );
+    const res = await fetch(url(d!, "/"), { redirect: "manual" });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/app");
+    expect(await res.text()).not.toContain("No web page at this URL");
+  });
+
   it("non-root pass-through strips X-Frame-Options and forwards the body", async () => {
     let receivedBody = "";
     await startWithUpstream(async (req) => {
