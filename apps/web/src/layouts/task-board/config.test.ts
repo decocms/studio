@@ -84,8 +84,8 @@ describe("statusIconClassName", () => {
     threads: [{ status: "requires_action" }],
   } as TaskBoardItem;
 
-  test("an in-progress task spins", () => {
-    expect(statusIconClassName(working)).toContain("animate-spin");
+  test("an in-progress task does not spin", () => {
+    expect(statusIconClassName(working)).not.toContain("animate-spin");
   });
 
   test("one waiting on input pulses in warning instead", () => {

@@ -54,9 +54,9 @@ export function isTaskHandedToHuman(item: TaskBoardItem): boolean {
 }
 
 /**
- * Status-icon classes for a task card/row. An in-progress task's spinner spins,
- * but one waiting on input stops spinning and pulses in `warning` — same token
- * as its "Needs input" badge, so a stalled task doesn't look like it's working.
+ * Status-icon classes for a task card/row. A task waiting on input pulses in
+ * `warning` — same token as its "Needs input" badge, so a stalled task doesn't
+ * look like it's still progressing.
  */
 export function statusIconClassName(item: TaskBoardItem): string {
   return item.status === "in_progress" && isTaskBlocked(item)
@@ -165,7 +165,7 @@ export const STATUS_CONFIG: Record<
   in_progress: {
     labelKey: "taskBoard.config.statusInProgress",
     icon: Loading02,
-    iconClassName: "text-primary animate-spin",
+    iconClassName: "text-primary",
   },
   in_review: {
     labelKey: "taskBoard.config.statusInReview",

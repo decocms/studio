@@ -1462,7 +1462,7 @@ function LinksSection({
 
 /**
  * Activity feed: the task's change timeline (created, moved, (re)assigned), its
- * linked agent sessions and its comment threads, interleaved oldest-first.
+ * linked agent sessions and its comment threads, interleaved most-recent-first.
  * Consecutive timeline events render as one run joined by a rail; a thread or a
  * comment renders as a card. A composer at the bottom starts a new thread.
  */
@@ -1550,7 +1550,7 @@ function ActivitySection({
         comment,
       }),
     ),
-  ].sort((a, b) => a.at - b.at);
+  ].sort((a, b) => b.at - a.at);
 
   // Group consecutive timeline events so their avatars connect with a rail.
   const blocks: (
