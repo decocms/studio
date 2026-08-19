@@ -11,6 +11,7 @@
 import { describe, expect, it, beforeEach, mock } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { createBridgeTransportPair } from "@decocms/mcp-utils";
 import { CircuitOpenError, resetAll } from "./circuit-breaker";
@@ -371,5 +372,34 @@ describe("lazy-client argument repair", () => {
 
     expect(result.isError).toBe(true);
     expect(result.content[0]!.text).toBe("post not found");
+  });
+
+  it("does not return a repaired retry that still fails validation as if it succeeded", async () => {
+    // First rejection thrown, retry rejection returned as an isError result.
+    let callCount = 0;
+    const flakyClient = {
+      callTool: async () => {
+        callCount++;
+        if (callCount === 1) {
+          throw new McpError(ErrorCode.InvalidParams, "save: Required");
+        }
+        return {
+          isError: true,
+          content: [
+            { type: "text", text: "Input validation error: save: Required" },
+          ],
+        };
+      },
+    } as unknown as Client;
+    clientFromConnectionMock.mockResolvedValue(flakyClient);
+
+    const lazy = createLazyClient(fakeConnection, fakeCtx, false, toolsCache);
+
+    await expect(
+      lazy.callTool({
+        name: "edit",
+        arguments: { patch: '{"sections":[1]}' },
+      }),
+    ).rejects.toThrow(/Wrong type/);
   });
 });
