@@ -393,9 +393,8 @@ fn system_ca_bundle() -> Option<String> {
 fn read_store(path: &Path) -> Option<String> {
     let pem = fs::read_to_string(path).ok()?;
     let mut reader = pem.as_bytes();
-    rustls_pemfile::certs(&mut reader)
-        .any(|certificate| certificate.is_ok())
-        .then_some(pem)
+    let has_certificate = rustls_pemfile::certs(&mut reader).any(|certificate| certificate.is_ok());
+    has_certificate.then_some(pem)
 }
 
 /// The bundle's contents, or `None` when there is no system store to be a
