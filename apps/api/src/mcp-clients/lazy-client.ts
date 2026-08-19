@@ -251,7 +251,9 @@ export function createLazyClient(
     options,
   ) => {
     const toolName = (params as { name?: unknown })?.name;
+    // Skip the isReadOnlyTool lookup when readCache is null — both uses below are readCache-gated.
     const readOnly =
+      readCache &&
       cacheReads &&
       typeof toolName === "string" &&
       (await isReadOnlyTool(cache, connection.id, toolName));
