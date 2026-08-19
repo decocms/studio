@@ -203,7 +203,12 @@ export class ConnectionStorage implements ConnectionStoragePort {
     const id = data.id ?? generatePrefixedId("conn");
     const now = new Date().toISOString();
 
-    const existing = await this.findById(id);
+    // Skip findById() here — it decrypts secrets we don't need just for the org check.
+    const existing = await this.db
+      .selectFrom("connections")
+      .select("organization_id")
+      .where("id", "=", id)
+      .executeTakeFirst();
 
     if (existing) {
       // Only allow update if same organization - prevent cross-org hijacking
