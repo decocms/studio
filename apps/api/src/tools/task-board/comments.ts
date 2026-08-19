@@ -9,6 +9,7 @@ import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
 import type { StudioContext } from "@/core/studio-context";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import { enqueueJiraCommentPush } from "@/jira/dbos-jira-sync";
 import { taskRunContextStore } from "./task-run-context";
 
 const TaskBoardCommentSchema = z.object({
@@ -122,6 +123,16 @@ export const TASK_BOARD_COMMENT_CREATE = defineTool({
       body,
     });
     if (!comment) throw new Error("Task board item not found");
+    // Durable enqueue (a DB write): the DBOS queue mirrors it onto the issue.
+    await enqueueJiraCommentPush(ctx, {
+      commentId: comment.id,
+      taskBoardItemId: comment.taskBoardItemId,
+      organizationId,
+      authorLabel: taskRun
+        ? "Super Agent"
+        : (ctx.auth?.user?.name ?? ctx.auth?.user?.email ?? "Studio"),
+      body: comment.body,
+    });
     return { comment };
   },
 });

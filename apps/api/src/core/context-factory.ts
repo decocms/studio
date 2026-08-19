@@ -491,6 +491,7 @@ import { SecretStorage } from "@/storage/secrets";
 import { OrgFileConfigStorage } from "@/storage/org-file-configs";
 import { OrgSiteStorage } from "@/storage/org-sites";
 import { OrgRepoSyncStorage } from "@/storage/org-repo-syncs";
+import { JiraIntegrationStorage } from "@/storage/jira-integrations";
 import { TaskBoardStorage } from "@/storage/task-board";
 import { OrgFsEntryStorage } from "@/storage/org-fs";
 import { OrgFs } from "@/file-storage/org-fs";
@@ -1381,6 +1382,7 @@ export async function createStudioContextFactory(
     orgFileConfigs: new OrgFileConfigStorage(config.db, vault),
     orgSites: new OrgSiteStorage(config.db),
     orgRepoSyncs: new OrgRepoSyncStorage(config.db),
+    jiraIntegrations: new JiraIntegrationStorage(config.db, vault),
     taskBoard: new TaskBoardStorage(config.db),
     orgFsEntries: new OrgFsEntryStorage(config.db),
     oauthPkceStates: new OAuthPkceStateStorage(config.db),

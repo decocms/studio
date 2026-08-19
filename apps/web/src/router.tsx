@@ -514,6 +514,14 @@ const settingsSyncedReposRoute = createRoute({
   ),
 });
 
+const settingsTasksRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: "/tasks",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/tasks.tsx"),
+  ),
+});
+
 const settingsMembersRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/members",
@@ -613,6 +621,7 @@ const settingsWithChildren = settingsLayout.addChildren([
   settingsApiKeysRoute,
   settingsBucketsRoute,
   settingsSyncedReposRoute,
+  settingsTasksRoute,
   settingsMembersRoute,
   settingsRolesRoute,
   settingsSsoRoute,

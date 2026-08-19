@@ -39,7 +39,8 @@ export type ToolCategory =
   | "GitHub"
   | "VM"
   | "Search"
-  | "Task Board";
+  | "Task Board"
+  | "Jira";
 
 /**
  * All tool names - keep in sync with CORE_TOOLS in apps/api/src/tools/index.ts
@@ -185,6 +186,14 @@ const ALL_TOOL_NAMES = [
   "ORG_REPO_SYNC_UPDATE",
   "ORG_REPO_SYNC_DELETE",
   "ORG_REPO_SYNC_RUN",
+
+  // Per-org Jira integration (pull sync into the task board)
+  "JIRA_INTEGRATION_GET",
+  "JIRA_INTEGRATION_UPSERT",
+  "JIRA_INTEGRATION_DELETE",
+  "JIRA_BOARDS_LIST",
+  "JIRA_BOARD_COLUMNS_LIST",
+  "JIRA_SYNC_RUN",
 
   // Object Storage tools
   "LIST_OBJECTS",
@@ -869,6 +878,36 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "File Configs",
   },
   {
+    name: "JIRA_INTEGRATION_GET",
+    description: "Get the org's Jira integration config and last sync status",
+    category: "Jira",
+  },
+  {
+    name: "JIRA_INTEGRATION_UPSERT",
+    description: "Connect or update the org's Jira integration",
+    category: "Jira",
+  },
+  {
+    name: "JIRA_INTEGRATION_DELETE",
+    description: "Disconnect Jira (already-synced cards are kept)",
+    category: "Jira",
+  },
+  {
+    name: "JIRA_BOARDS_LIST",
+    description: "List Jira boards visible to the connected credentials",
+    category: "Jira",
+  },
+  {
+    name: "JIRA_BOARD_COLUMNS_LIST",
+    description: "List a Jira board's columns and statuses for the mapping",
+    category: "Jira",
+  },
+  {
+    name: "JIRA_SYNC_RUN",
+    description: "Pull from Jira into the task board right now",
+    category: "Jira",
+  },
+  {
     name: "FILE_CONFIG_UPDATE",
     description:
       "Update an S3 bucket configuration, optionally rotating credentials",
@@ -1335,6 +1374,12 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "ORGANIZATION_DOMAIN_UPDATE",
       "ORGANIZATION_DOMAIN_VERIFY",
       "ORGANIZATION_DOMAIN_REMOVE",
+      "JIRA_INTEGRATION_GET",
+      "JIRA_INTEGRATION_UPSERT",
+      "JIRA_INTEGRATION_DELETE",
+      "JIRA_BOARDS_LIST",
+      "JIRA_BOARD_COLUMNS_LIST",
+      "JIRA_SYNC_RUN",
     ],
   },
   {
@@ -1760,6 +1805,7 @@ export function getToolsByCategory(): Record<ToolCategory, ToolMetadata[]> {
     VM: [],
     Search: [],
     "Task Board": [],
+    Jira: [],
   };
 
   for (const tool of MANAGEMENT_TOOLS) {

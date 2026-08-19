@@ -15,6 +15,7 @@ import {
   GITHUB_READS_QUEUE,
   HOSTED_HARNESS_QUEUE,
   HOSTED_HARNESS_SANDBOXED_QUEUE,
+  JIRA_PUSH_QUEUE,
   THREAD_GATE_QUEUE,
 } from "./dispatch-queue/queue-names";
 import { buildDbosConfig } from "./dbos/config";
@@ -84,6 +85,8 @@ const RUN_QUEUES = [
   // and awaits its enqueued read, so an "api"-only deployment would block
   // forever if no worker dequeued this.
   GITHUB_READS_QUEUE,
+  // Board→Jira comment pushes are outbound I/O, i.e. worker load.
+  JIRA_PUSH_QUEUE,
 ];
 const listenQueues: string[] | undefined =
   settings.dispatchRole === "worker"

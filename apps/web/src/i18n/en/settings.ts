@@ -17,6 +17,82 @@ export const settings = {
   "settings.subnav.clients": "Clients",
   "settings.subnav.planUsage": "Plan & usage",
   "settings.subnav.infrastructure": "Infrastructure",
+  "settings.nav.tasks": "Tasks",
+  "settings.jira.sectionTitle": "Jira integration",
+  "settings.jira.pageDescription":
+    "Mirror a Jira project onto the task board. Issues in mapped statuses appear as cards and stay in sync every few minutes, and comments flow both ways — card comments show up on the issue and vice versa. Issue fields are never written back.",
+  "settings.jira.connectTitle": "Connect Jira",
+  "settings.jira.connectDescription":
+    "Use a Jira Cloud site and an API token (ideally from a service account). Create one at id.atlassian.com → Security → API tokens.",
+  "settings.jira.sitePlaceholder": "yourcompany.atlassian.net",
+  "settings.jira.emailPlaceholder": "Atlassian account email",
+  "settings.jira.tokenPlaceholder": "API token",
+  "settings.jira.connect": "Connect",
+  "settings.jira.connecting": "Connecting…",
+  "settings.jira.connected": "Jira connected",
+  "settings.jira.connectFailed": "Could not connect to Jira",
+  "settings.jira.connectionTitle": "Connection",
+  "settings.jira.disconnect": "Disconnect",
+  "settings.jira.disconnected": "Jira disconnected",
+  "settings.jira.disconnectTitle": "Disconnect Jira?",
+  "settings.jira.disconnectDescription":
+    "The sync stops and the credentials are deleted. Cards already on the board are kept — they just stop updating.",
+  "settings.jira.cancel": "Cancel",
+  "settings.jira.syncTitle": "Sync",
+  "settings.jira.syncDescription":
+    "Pick the Jira board to mirror and map its columns onto this board's lanes.",
+  "settings.jira.boardLabel": "Jira board",
+  "settings.jira.boardDescription":
+    "The board's visible cards are mirrored — its Backlog tab, epics and sub-tasks are not.",
+  "settings.jira.boardPlaceholder": "Select a board",
+  "settings.jira.loadingBoards": "Loading boards…",
+  "settings.jira.mappingLabel": "Column mapping",
+  "settings.jira.mappingDescription":
+    "Map the board's columns onto this board's lanes. Columns marked “Don't sync” never appear here.",
+  "settings.jira.dontSync": "Don't sync",
+  "settings.jira.jqlLabel": "JQL filter (optional)",
+  "settings.jira.jqlDescription":
+    "Extra JQL to narrow what syncs — useful to match your Jira board's saved filter. Epics and sub-tasks are always excluded.",
+  "settings.jira.jqlPlaceholder":
+    "e.g. labels = storefront AND sprint in openSprints()",
+  "settings.jira.jqlSave": "Save filter",
+  "settings.jira.jqlSaved": "Filter saved — it applies from the next sync",
+  "settings.jira.columnsFailed": "Could not load the board's columns",
+  "settings.jira.autoDelegateLabel": "Auto-delegate to the agent",
+  "settings.jira.autoDelegateDescription":
+    "When an issue lands in a column mapped to To Do, the Super Agent takes the card and starts working. Its progress is mirrored back onto the issue.",
+  "settings.jira.enableLabel": "Sync enabled",
+  "settings.jira.enableRequirements":
+    "Pick a project and map at least one status before enabling the sync",
+  "settings.jira.lastSynced": "Last synced {ago}",
+  "settings.jira.waitingFirstSync": "Waiting for the first sync",
+  "settings.jira.syncNow": "Sync now",
+  "settings.jira.syncing": "Syncing…",
+  "settings.jira.syncDone": "Synced: {created} created, {updated} updated",
+  "settings.jira.syncFailed": "Sync failed",
+  "settings.jira.saveFailed": "Could not save the Jira settings",
+  "settings.jira.connectStep1":
+    "Create an API token on your Atlassian account (ideally a service account that can see the project).",
+  "settings.jira.connectStep2":
+    "Fill in your Jira site, the account's email, and the token, then connect.",
+  "settings.jira.connectStep3":
+    "Pick the Jira board to mirror and map its columns onto this board's lanes.",
+  "settings.jira.createTokenLink": "Create an API token",
+  "settings.jira.webhookTitle": "Instant updates (webhook)",
+  "settings.jira.webhookDescription":
+    "Optional. Without it, changes made in Jira reach the board on the next 10-minute sync; with it, they arrive in seconds.",
+  "settings.jira.webhookCopy": "Copy",
+  "settings.jira.webhookCopied": "Webhook URL copied",
+  "settings.jira.webhookStep1":
+    "In Jira, open Settings (gear icon) → System → Webhooks. This requires a Jira admin.",
+  "settings.jira.webhookStep2":
+    "Click “Create a webhook” and paste the URL above.",
+  "settings.jira.webhookStep3":
+    "Under Events, check Issue: created and Issue: updated.",
+  "settings.jira.webhookStep4":
+    "Optionally scope it with a JQL filter, e.g. project = <your project key>.",
+  "settings.jira.webhookStep5":
+    "Save. Changes made in Jira now show up on the board within seconds.",
   "settings.syncedRepos.pageDescription":
     "GitHub repositories mirrored into read-only library folders and kept in sync every few minutes. Great for a shared skills repo.",
   "settings.syncedRepos.addRepo": "Add repo",
