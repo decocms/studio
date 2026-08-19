@@ -1,0 +1,31 @@
+# Depot CI Migration
+# Source: .github/workflows/auto-label-claude-prs.yml
+#
+# Changes made:
+# - Changed GitHub runs-on labels to their Depot equivalents
+
+name: Auto-label Claude PRs
+# PRs authored by coding agents carry the "🤖 Generated with" signature line
+# (mandated by CLAUDE.md). Label them so downstream automation (comment-cop)
+# and reviewers can key off AI provenance.
+on:
+  pull_request:
+    types: [opened]
+jobs:
+  auto-label:
+    if: "contains(github.event.pull_request.body, '\U0001F916 Generated with')"
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Add claude label
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['claude']
+            });

@@ -1,0 +1,73 @@
+# Depot CI Migration
+# Source: .github/workflows/multi-pod.yml
+#
+# Changes made:
+# - Rewrote .github/ path references to .depot/
+# - Changed GitHub runs-on labels to their Depot equivalents
+
+name: Multi-Pod Tests
+on:
+  push:
+    branches:
+      - main
+    # Skip pushes to main that only touch the version bump, CI/workflow config,
+    # or docs — none need this heavy suite re-run.
+    paths-ignore:
+      - "apps/api/package.json"
+      - ".github/**"
+      - "apps/docs/**"
+      - "**/*.md"
+  pull_request:
+    # Multi-pod tests are slow (~7-10 min cold image build + serialized
+    # boot + scenarios). Only run on PRs that change code the framework
+    # actually exercises — the Studio API, dispatch/automations, storage
+    # schema, or the test infra itself. UI/docs/plugin PRs skip.
+    paths:
+      - "apps/api/src/api/**"
+      - "apps/api/src/auth/**"
+      - "apps/api/src/core/**"
+      - "apps/api/src/storage/**"
+      - "apps/api/src/dispatch-queue/**"
+      - "apps/api/src/event-bus/**"
+      - "apps/api/src/automations/**"
+      - "apps/api/src/database/**"
+      - "apps/api/src/index.ts"
+      - "apps/api/migrations/**"
+      - "packages/runtime/**"
+      - "packages/bindings/**"
+      - "tests/multi-pod/**"
+      - "tests/resilience/Dockerfile.studio"
+      - ".depot/workflows/multi-pod.yml"
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  multi-pod:
+    # Skip the [release]: version-bump commit — it only changes the version
+    # string and would otherwise re-run this heavy suite on every release.
+    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, '[release]:')
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Bun and install dependencies
+        uses: ./.depot/actions/setup-bun
+      # No --wait here: the one-shot `migrate` service exits 0 once schemas
+      # are created and `--wait` mis-classifies that as a failure. The test
+      # suite's beforeAll hook (lib/hooks.ts → cluster.waitReady) polls
+      # /health/live on each Studio test service instead.
+      - name: Start cluster
+        run: docker compose -f tests/multi-pod/docker-compose.yml up -d --build
+      - name: Run multi-pod scenarios
+        run: bun test tests/multi-pod/scenarios/ --serial --timeout 900000
+      - name: Dump Studio logs
+        if: failure()
+        run: docker compose -f tests/multi-pod/docker-compose.yml logs mesh-1 mesh-2 mesh-3
+      - name: Dump infra logs
+        if: failure()
+        run: docker compose -f tests/multi-pod/docker-compose.yml logs postgres nats migrate
+      - name: Tear down cluster
+        if: always()
+        run: docker compose -f tests/multi-pod/docker-compose.yml down -v

@@ -1,0 +1,320 @@
+# Depot CI Migration
+# Source: .github/workflows/release-tagging.yaml
+#
+# Changes made:
+# - Rewrote .github/ path references to .depot/
+# - Changed GitHub runs-on labels to their Depot equivalents
+
+name: Release Tagging
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/api/**"
+      - "apps/web/**"
+      - "apps/native/**"
+      - "package.json"
+      - "scripts/build-studio.ts"
+      - "scripts/release-changes.ts"
+      - "packages/**"
+      - ".depot/workflows/release-tagging.yaml"
+      # Baked into the nginx image at build time (apps/web/Dockerfile), so a change
+      # here must cut a release to rebuild that image — it is not a ConfigMap.
+      - "deploy/helm/studio/files/**"
+# Serialize release-tagging across merges. This job pushes a `[release]:`
+# version-bump commit straight to main; two runs from near-simultaneous
+# merges would otherwise race and one push would be rejected non-fast-forward.
+# cancel-in-progress: false — every merge's bump must run, so queue them
+# rather than cancel. (The push step also rebases-and-retries as a backstop
+# for main advancing via an unrelated merge.)
+concurrency:
+  group: release-tagging-main
+  cancel-in-progress: false
+permissions:
+  contents: write
+  pull-requests: read
+jobs:
+  determine-tag:
+    # Skip release-bump commits so the bot's own push (made with the GitHub App
+    # token, which — unlike GITHUB_TOKEN — re-triggers workflows) does not loop.
+    if: >-
+      github.event_name == 'push' && !startsWith(github.event.head_commit.message, '[release]:')
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    steps:
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+          token: ${{ steps.app-token.outputs.token }}
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - name: Find the merged pull request
+        id: find_pr
+        env:
+          EVENT_SHA: ${{ github.sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          PR_DATA=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" \
+            --jq "map(select(.merged_at != null and .merge_commit_sha == \"${EVENT_SHA}\")) | .[0] // {}")
+
+          PR_NUMBER=$(echo "$PR_DATA" | jq -r '.number // empty')
+          PR_TITLE=$(echo "$PR_DATA" | jq -r '.title // empty')
+
+          if [ -z "$PR_NUMBER" ]; then
+            echo "No merged PR associated with ${{ github.sha }}; skipping release bump."
+            echo "pr_number=" >> "$GITHUB_OUTPUT"
+            echo "pr_title=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Found merged PR #$PR_NUMBER: $PR_TITLE"
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "pr_title=$PR_TITLE" >> "$GITHUB_OUTPUT"
+      - name: Determine bump type from PR title
+        id: bump_type
+        if: steps.find_pr.outputs.pr_number != ''
+        env:
+          PR_TITLE: ${{ steps.find_pr.outputs.pr_title }}
+        run: |
+          set -euo pipefail
+
+          BUMP_TYPE=$(node <<'NODE'
+          const title = process.env.PR_TITLE ?? "";
+          const match = title.match(/^([a-z]+)(\([^)]+\))?(!)?:/);
+
+          if (!match) {
+            console.log("patch");
+          } else if (match[3]) {
+            console.log("major");
+          } else if (match[1] === "feat") {
+            console.log("minor");
+          } else {
+            console.log("patch");
+          }
+          NODE
+          )
+
+          echo "Bump type from PR title: $BUMP_TYPE"
+          echo "bump_type=$BUMP_TYPE" >> "$GITHUB_OUTPUT"
+      - name: Find changed workspace package manifests
+        id: changed_workspaces
+        if: steps.find_pr.outputs.pr_number != ''
+        env:
+          MERGE_SHA: ${{ github.sha }}
+          PR_NUMBER: ${{ steps.find_pr.outputs.pr_number }}
+        run: |
+          set -euo pipefail
+
+          if ! git merge-base --is-ancestor "$MERGE_SHA" origin/main; then
+            echo "::error::Merge commit $MERGE_SHA is not on origin/main"
+            exit 1
+          fi
+
+          DIFF_BASE=$(git rev-parse "${MERGE_SHA}^1")
+          CHANGED_FILES_PATH="$RUNNER_TEMP/release-tagging-${PR_NUMBER}.paths"
+          git diff --no-renames --name-only -z \
+            "$DIFF_BASE" "$MERGE_SHA" -- > "$CHANGED_FILES_PATH"
+
+          RELEASE_CHANGES=$(bun run scripts/release-changes.ts "$CHANGED_FILES_PATH")
+          FILE_COUNT=$(jq -r '.fileCount' <<< "$RELEASE_CHANGES")
+          PACKAGE_MANIFESTS=$(jq -c '.packageManifests' <<< "$RELEASE_CHANGES")
+          SCOPE=$(jq -r '.deployScope' <<< "$RELEASE_CHANGES")
+
+          echo "Changed files: $FILE_COUNT"
+          echo "Workspace manifests to bump: $PACKAGE_MANIFESTS"
+          echo "package_manifests=$PACKAGE_MANIFESTS" >> "$GITHUB_OUTPUT"
+
+          # Deploy scope drives which CD tier rolls (see deco-apps-cd
+          # bump-studio-image): apps/web-only changes roll only the web pods;
+          # apps/api-only changes roll api+worker; mixed or no app changes roll
+          # both (safe default).
+          echo "Deploy scope: $SCOPE"
+          echo "deploy_scope=$SCOPE" >> "$GITHUB_OUTPUT"
+      - name: Update package.json versions
+        id: update_versions
+        if: >-
+          steps.find_pr.outputs.pr_number != '' && steps.changed_workspaces.outputs.package_manifests != '' && steps.changed_workspaces.outputs.package_manifests != '[]'
+        env:
+          BUMP_TYPE: ${{ steps.bump_type.outputs.bump_type }}
+          PACKAGE_MANIFESTS: ${{ steps.changed_workspaces.outputs.package_manifests }}
+          PR_NUMBER: ${{ steps.find_pr.outputs.pr_number }}
+          PR_TITLE: ${{ steps.find_pr.outputs.pr_title }}
+          DEPLOY_SCOPE: ${{ steps.changed_workspaces.outputs.deploy_scope }}
+        run: |
+          set -euo pipefail
+
+          node <<'NODE'
+          const fs = require("fs");
+
+          const bumpType = process.env.BUMP_TYPE;
+          const manifests = JSON.parse(process.env.PACKAGE_MANIFESTS ?? "[]");
+
+          const nextVersion = (version) => {
+            const match = version.match(/^(\d+)\.(\d+)\.(\d+)(?:-([A-Za-z]+)\.(\d+))?$/);
+            if (!match) {
+              throw new Error(`Could not parse version: ${version}`);
+            }
+
+            const major = Number(match[1]);
+            const minor = Number(match[2]);
+            const patch = Number(match[3]);
+
+            switch (bumpType) {
+              case "major":
+                return `${major + 1}.0.0`;
+              case "minor":
+                return `${major}.${minor + 1}.0`;
+              case "patch":
+                return `${major}.${minor}.${patch + 1}`;
+              default:
+                throw new Error(`Unsupported bump type: ${bumpType}`);
+            }
+          };
+
+          const updated = manifests.map((manifest) => {
+            const pkg = JSON.parse(fs.readFileSync(manifest, "utf8"));
+            const currentVersion = pkg.version;
+            const newVersion = nextVersion(currentVersion);
+            pkg.version = newVersion;
+            fs.writeFileSync(manifest, `${JSON.stringify(pkg, null, 2)}\n`);
+            return {
+              manifest,
+              name: pkg.name ?? manifest,
+              currentVersion,
+              newVersion,
+            };
+          });
+
+          // Charts that pin an image tag in lockstep with a workspace package
+          // version. The package.json bump above publishes a new image
+          // (release-studio-sandbox.yaml tags it from package.json); without
+          // this the chart's image.tag / appVersion silently drift behind it
+          // (they had drifted 5 minors — #4870). Sync both to the new version
+          // and patch-bump the chart's own version so release-sandbox-charts
+          // republishes it. All committed in this same [release]: commit, whose
+          // App-token push re-triggers the chart publish workflow.
+          const CHART_IMAGE_LOCKSTEP = {
+            "packages/sandbox/package.json": "deploy/helm/sandbox-env",
+          };
+          const extra = [];
+          for (const { manifest, newVersion } of updated) {
+            const chartDir = CHART_IMAGE_LOCKSTEP[manifest];
+            if (!chartDir) continue;
+
+            const valuesPath = `${chartDir}/values.yaml`;
+            const values = fs.readFileSync(valuesPath, "utf8");
+            const nextValues = values.replace(
+              /(repository: ghcr\.io\/decocms\/studio\/studio-sandbox[\s\S]*?\n\s*tag: )"[^"]*"/,
+              `$1"${newVersion}"`,
+            );
+            if (nextValues === values) {
+              throw new Error(`could not find studio-sandbox image tag in ${valuesPath}`);
+            }
+            fs.writeFileSync(valuesPath, nextValues);
+
+            const chartPath = `${chartDir}/Chart.yaml`;
+            const chart = fs.readFileSync(chartPath, "utf8");
+            let chartVersion;
+            const nextChart = chart
+              .replace(/(\nappVersion: )"[^"]*"/, `$1"${newVersion}"`)
+              .replace(/\nversion: (\d+)\.(\d+)\.(\d+)/, (_m, a, b, c) => {
+                chartVersion = `${a}.${b}.${Number(c) + 1}`;
+                return `\nversion: ${chartVersion}`;
+              });
+            if (!chartVersion) {
+              throw new Error(`could not bump chart version in ${chartPath}`);
+            }
+            fs.writeFileSync(chartPath, nextChart);
+
+            extra.push({
+              name: `${chartDir} (chart ${chartVersion})`,
+              manifest: `${valuesPath} ${chartPath}`,
+              currentVersion: "image.tag/appVersion",
+              newVersion,
+            });
+          }
+
+          const summary = [...updated, ...extra]
+            .map(({ name, manifest, currentVersion, newVersion }) =>
+              `- ${name} (${manifest}): ${currentVersion} -> ${newVersion}`,
+            )
+            .join("\n");
+
+          const commitMessage = [
+            `[release]: bump changed workspace versions`,
+            "",
+            `PR: #${process.env.PR_NUMBER} ${process.env.PR_TITLE}`,
+            `Bump type: ${bumpType}`,
+            "",
+            summary,
+            "",
+            // Read by release-studio's deco-apps-cd dispatch to roll only the
+            // affected CD tier (web / server / both).
+            `Deploy-Scope: ${process.env.DEPLOY_SCOPE || "both"}`,
+          ].join("\n");
+
+          fs.writeFileSync(".release-commit-message", `${commitMessage}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `updated=true\n`);
+          fs.appendFileSync(
+            process.env.GITHUB_OUTPUT,
+            `changed_paths=${[...updated, ...extra].map(({ manifest }) => manifest).join(" ")}\n`,
+          );
+
+          console.log(summary);
+          NODE
+      - name: Commit and push version bump
+        if: steps.update_versions.outputs.updated == 'true'
+        run: |
+          set -euo pipefail
+
+          # Same identity as release-native.yaml's cask bump: both pushes
+          # already authenticate as the release bot App, so main's history
+          # shows ONE bot, not github-actions[bot] + decocms-release[bot].
+          git config user.name "decocms-release[bot]"
+          git config user.email "decocms-release[bot]@users.noreply.github.com"
+          git add ${{ steps.update_versions.outputs.changed_paths }}
+
+          if git diff --cached --quiet; then
+            echo "No version changes to commit."
+            exit 0
+          fi
+
+          git commit -F .release-commit-message
+          # main can advance between our checkout and this push (a sibling
+          # merge). Rebase our bump onto the latest main and retry instead of
+          # failing non-fast-forward — the bump only touches version manifests,
+          # so it rebases cleanly over unrelated merges. (A concurrent bump of
+          # the *same* manifest is serialized away by the `concurrency` guard
+          # above; if one still conflicts, we fail loudly rather than guess.)
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              echo "pushed version bump (attempt ${attempt})"
+              break
+            fi
+            if [ "${attempt}" = "5" ]; then
+              echo "::error::version-bump push rejected after ${attempt} attempts"
+              exit 1
+            fi
+            echo "push rejected; rebasing onto origin/main and retrying"
+            git fetch origin main
+            git rebase origin/main
+          done
+          # No [skip ci], no API dispatch: this push (made with the App token,
+          # which re-triggers workflows) is itself what kicks off release-studio
+          # and the package publish workflows for the package.json files that
+          # changed. The heavy test/multi-pod/resilience suites skip [release]:
+          # commits via guards.

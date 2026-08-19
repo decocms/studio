@@ -1,0 +1,105 @@
+# Depot CI Migration
+# Source: .github/workflows/release-orgfs-sidecar.yaml
+#
+# Changes made:
+# - Rewrote .github/ path references to .depot/
+# - Changed GitHub runs-on labels to their Depot equivalents
+
+name: Release orgfs-sidecar image
+# Tag is read back from deploy/helm/sandbox-env/values.yaml (`orgFs.image.tag`)
+# so the chart and the published image can't drift (netinit pattern).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/sandbox/orgfs/**"
+      - "packages/shared/**"
+      - "deploy/helm/sandbox-env/orgfs-sidecar/**"
+      - "deploy/helm/sandbox-env/values.yaml"
+      - ".depot/workflows/release-orgfs-sidecar.yaml"
+  workflow_dispatch:
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/orgfs-sidecar
+jobs:
+  build-push:
+    name: Build & Push orgfs-sidecar image
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Read image tag from chart values
+        id: version
+        run: |
+          set -euo pipefail
+          VERSION=$(yq -r '.orgFs.image.tag' deploy/helm/sandbox-env/values.yaml)
+          if [ -z "${VERSION}" ] || [ "${VERSION}" = "null" ]; then
+            echo "::error::orgFs.image.tag missing from deploy/helm/sandbox-env/values.yaml"
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ steps.version.outputs.version }}
+            type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=sha,format=short
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          # Repo-root context: the image bundles TS from packages/ + apps/api.
+          context: .
+          file: ./deploy/helm/sandbox-env/orgfs-sidecar/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+      # Catch a Dockerfile regression that would otherwise only surface as a
+      # CrashLoopBackOff sidecar in prod.
+      - name: Smoke-test built image
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          docker pull --platform linux/amd64 "${IMAGE}"
+          docker run --rm --platform linux/amd64 "${IMAGE}" sh -c '
+            rclone version &&
+            grep -q user_allow_other /etc/fuse.conf &&
+            test -s /srv/sidecar.js
+          '
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+      - name: Sign image with cosign
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          for tag in $(echo "${TAGS}" | tr ',' '\n'); do
+            cosign sign --yes "${tag}@${DIGEST}"
+          done
+      - name: Generate SLSA build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true

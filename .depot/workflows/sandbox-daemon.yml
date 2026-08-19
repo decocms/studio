@@ -1,0 +1,156 @@
+# Depot CI Migration
+# Source: .github/workflows/sandbox-daemon.yml
+#
+# Changes made:
+# - Rewrote .github/ path references to .depot/
+# - Changed GitHub runs-on labels to their Depot equivalents
+
+name: Sandbox
+# packages/sandbox/daemon-e2e/ spawns the built daemon binary and exercises real
+# HTTP/SSE endpoints — it's an integration test that runs under `bun test`
+# purely because of the language its assertions are written in.
+# Split into its own workflow so the unit-test job stays infrastructure-free
+# (no daemon build, no per-test process spawning) per TESTING.md.
+on:
+  push:
+    branches:
+      - main
+    # Skip pushes to main that only touch the version bump, CI/workflow config,
+    # or docs — none need the suite re-run (PRs already validated them, and the
+    # [release] bump is owned by release-studio).
+    paths-ignore:
+      - "apps/api/package.json"
+      - ".github/**"
+      - "apps/docs/**"
+      - "**/*.md"
+  pull_request:
+    branches:
+      - main
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  # See test.yml for why this gate exists: skip the (required) check without
+  # leaving it stuck pending. Here the gate is scoped tighter than test.yml's:
+  # the daemon e2e suite only exercises the sandbox daemon bundle, so it runs
+  # only when the packages feeding that build change. Pushes to main always run.
+  changes:
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - name: Detect relevant changes
+        id: filter
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            # Push to main runs everything — except the [release]: version-bump
+            # commit, which only touches the version string. release-studio picks
+            # that commit up on its own push trigger and cuts the release.
+            case "$HEAD_MSG" in
+              '[release]:'*) echo "relevant=false" >> "$GITHUB_OUTPUT" ;;
+              *) echo "relevant=true" >> "$GITHUB_OUTPUT" ;;
+            esac
+            exit 0
+          fi
+          set +e
+          if ! FILES=$(gh api --paginate \
+            "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
+            --jq '.[].filename'); then
+            echo "Could not list PR files — running to be safe."
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Changed files:"; echo "$FILES"
+          relevant=false
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              packages/sandbox/*|packages/typegen/*|packages/shared/*) relevant=true; break ;;
+            esac
+          done <<< "$FILES"
+          echo "relevant=$relevant" >> "$GITHUB_OUTPUT"
+  daemon-e2e:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Bun and install dependencies
+        uses: ./.depot/actions/setup-bun
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: packages/sandbox/daemon-go/go.mod
+          cache-dependency-path: packages/sandbox/daemon-go/go.sum
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+      - name: Go vet and unit tests
+        working-directory: packages/sandbox/daemon-go
+        run: |
+          go vet ./...
+          go test -race ./...
+      - name: Build the daemon
+        run: cd packages/sandbox/daemon-go && go build -o bin/daemon .
+      - name: Run daemon e2e tests
+        # All daemon e2e specs end in `.e2e.test.ts` (core + git + proxy +
+        # dispatch); the helpers file is `.e2e.helpers.ts` and is not matched.
+        # DAEMON_E2E_CMD is what makes the suite implementation-agnostic; the
+        # default it falls back to is this same binary.
+        env:
+          DAEMON_E2E_CMD: ${{ github.workspace }}/packages/sandbox/daemon-go/bin/daemon
+        run: bun test packages/sandbox/daemon-e2e/daemon*.e2e.test.ts
+  docker-smoke:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Bun and install dependencies
+        uses: ./.depot/actions/setup-bun
+      - name: Build typegen package
+        run: bun run --cwd=packages/sandbox build
+      - name: Build the sandbox image
+        run: |
+          docker build \
+            -t studio-sandbox-go:ci \
+            -f packages/sandbox/image/Dockerfile \
+            packages/sandbox
+      # The image must boot the daemon with no env telling it which — the
+      # `impl=` boot line is the assertion, so an image that shipped the wrong
+      # binary fails here rather than in a canary panel.
+      - name: Smoke test
+        run: |
+          smoke() {
+            image="$1"; impl="$2"; port="$3"; name="sandbox-smoke-$impl"
+            docker run -d --name "$name" -p "$port:9000" \
+              -e DAEMON_TOKEN="$(printf 't%.0s' {1..32})" \
+              -e DAEMON_BOOT_ID="ci-smoke-$impl" \
+              -e APP_ROOT=/app \
+              -e PROXY_PORT=9000 \
+              -e DAEMON_NO_AUTOSTART=1 \
+              "$image"
+            for _ in $(seq 1 30); do
+              if curl -fsS "http://localhost:$port/health" \
+                   | grep -q "\"bootId\":\"ci-smoke-$impl\""; then
+                if docker logs "$name" 2>&1 | grep -q "impl=$impl"; then
+                  echo "$impl ok"
+                  return 0
+                fi
+                echo "$image answered /health but did not log impl=$impl"
+                docker logs "$name"
+                return 1
+              fi
+              sleep 1
+            done
+            echo "smoke test failed ($impl) — /health did not report ci-smoke-$impl"
+            docker logs "$name"
+            return 1
+          }
+          smoke studio-sandbox-go:ci go 19998
+      - name: Tear down
+        if: always()
+        run: docker rm -f sandbox-smoke-go || true

@@ -1,0 +1,56 @@
+# Depot CI Migration
+# Source: .github/workflows/codeql.yml
+#
+# Changes made:
+# - Changed GitHub runs-on labels to their Depot equivalents
+
+name: CodeQL
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  # CodeQL query packs ship new rules continuously, so re-scan the default
+  # branch weekly even when nothing lands — a scheduled run is what surfaces
+  # newly-written queries against already-merged code.
+  schedule:
+    - cron: "27 5 * * 1" # Mondays 05:27 UTC
+# A force-push to a PR obsoletes the in-flight scan — cancel it. Pushes to main
+# all run (no cancel) so every merged commit keeps its own set of alerts, and
+# scheduled runs are never cancelled by each other.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+permissions:
+  contents: read
+# All third-party actions are pinned to a full commit SHA, not a tag.
+jobs:
+  # Scoped to JS/TS on purpose. The javascript-typescript extractor covers
+  # .js/.jsx/.ts/.tsx in one pass and needs no build, so this is the whole
+  # apps/ + packages/ TypeScript surface (~3.3k files) and nothing else.
+  # The repo's other languages are deliberately out of scope for now:
+  #   - go     (packages/sandbox/daemon-go) — compiled, needs a build step
+  #   - python (packages/sandbox/image/skills) — 8 script files
+  #   - rust   (apps/native) — src-tauri won't compile on Linux, so it would
+  #             need a macOS runner plus a full cargo build (see native.yml)
+  analyze:
+    name: Analyze (javascript-typescript)
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      security-events: write # upload the SARIF results to code scanning
+      packages: read # CodeQL query packs are pulled from GHCR
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@faaa5d804fc648d0fdb28822a8e36cf7d0a6132c # v4
+        with:
+          languages: javascript-typescript
+          build-mode: none
+          config-file: ./.github/codeql/codeql-config.yml
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@faaa5d804fc648d0fdb28822a8e36cf7d0a6132c # v4
+        with:
+          category: /language:javascript-typescript

@@ -1,0 +1,265 @@
+# Depot CI Migration
+# Source: .github/workflows/preview-build.yaml
+#
+# Changes made:
+# - Rewrote .github/ path references to .depot/
+# - Changed GitHub runs-on labels to their Depot equivalents
+
+name: Preview build
+# Builds the two images for a per-PR preview environment and posts (or edits)
+# the sticky PR comment carrying the URL.
+#
+# Deliberately a separate workflow rather than a workflow_call refactor of
+# release-studio.yaml: that file is release-consistency logic (npm version
+# probing, GHCR existence checks, provenance, the deco-apps-cd dispatch gate,
+# the docs webhook), and parameterising it would thread ~8 booleans through
+# every `if:` in the PRODUCTION release path. The genuinely shared surface is
+# one command (`bun run build:studio`) and two Dockerfiles, already reusable
+# as-is — so previews cannot destabilise shipping.
+#
+# What deploys the images is Argo CD, in decocms/deco-apps-cd: an ApplicationSet
+# with a GitHub PR generator, also gated on the `preview` label. Nothing here
+# holds a cluster credential.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+concurrency:
+  group: preview-build-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+env:
+  REGISTRY: ghcr.io
+  # Separate GHCR packages from the release ones, so the preview GC can be
+  # aggressive with zero chance of deleting a release tag.
+  IMAGE_NAME: ${{ github.repository }}/studio-preview
+  NGINX_IMAGE_NAME: ${{ github.repository }}/studio-nginx-preview
+  PREVIEW_DOMAIN: pr.studio.decocms.com
+jobs:
+  package:
+    name: Build preview images
+    # Opt-in. `labeled` is in the trigger list so adding the label to an
+    # already-open PR starts a build; the ApplicationSet enforces the same
+    # label independently, so neither half alone can create an orphan.
+    if: contains(github.event.pull_request.labels.*.name, 'preview')
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: write
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      host: ${{ steps.meta.outputs.host }}
+    steps:
+      # This workflow triggers on `pull_request` ONLY, so the checkout is
+      # refs/pull/N/merge — GitHub constructs it by merging the PR into main,
+      # meaning the image always contains main ∪ PR migrations. That invariant
+      # is load-bearing (Kysely's strict missing-migration check hard-fails a
+      # boot against a database that knows a migration the image lacks) but it
+      # holds by construction, so there is nothing to assert. If a
+      # workflow_dispatch trigger is ever added, it breaks and must be
+      # re-established — a shallow checkout cannot prove ancestry, so that
+      # would need `fetch-depth: 0`.
+      #
+      # Note the split between CONTENT and NAME: the image content comes from
+      # the merge ref, but the tag names the PR head sha, because that is the
+      # only commit both this workflow and the Argo pullRequest generator can
+      # refer to.
+      - uses: actions/checkout@v4
+      - id: meta
+        run: |
+          # The 7-char prefix of the PR HEAD sha, NOT `git rev-parse HEAD`.
+          # The checkout below lands on refs/pull/N/merge, whose HEAD is an
+          # ephemeral merge commit that the Argo pullRequest generator has no
+          # parameter for — it can only name `.head_sha`. Tagging from the merge
+          # commit produces an image the ApplicationSet can never ask for, and
+          # every preview sits in ImagePullBackOff. Asserted in helm-test.yml.
+          echo "tag=pr-${{ github.event.pull_request.number }}-$(echo '${{ github.event.pull_request.head.sha }}' | cut -c1-7)" >> "$GITHUB_OUTPUT"
+          echo "host=pr-${{ github.event.pull_request.number }}.${PREVIEW_DOMAIN}" >> "$GITHUB_OUTPUT"
+      # The hidden marker is what makes this comment sticky: find it first, then
+      # edit in place. Without the lookup every push would append a new comment.
+      - name: Find existing preview comment
+        id: find-comment
+        uses: peter-evans/find-comment@v3
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: github-actions[bot]
+          body-includes: <!-- studio-preview -->
+      # Posted before the build so a reviewer sees "building" at t+15s rather
+      # than nothing for seven minutes. Edited in place when the images land.
+      - name: Comment (building)
+        uses: peter-evans/create-or-update-comment@v4
+        continue-on-error: true
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          edit-mode: replace
+          body: "<!-- studio-preview -->\n\U0001F528 **Building preview** for `${{ steps.meta.outputs.tag }}`…\n"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Setup Bun and install dependencies
+        uses: ./.depot/actions/setup-bun
+      # No sourcemaps (nothing un-minifies preview stacks), no npm publish, no
+      # provenance, no tarball smoke test. Same `build:studio` and same
+      # `bun add /tmp/decocms.tgz` install as a release, so preview packaging
+      # cannot drift from production packaging.
+      - name: Build combined Studio distribution
+        run: bun run build:studio
+        env:
+          BUILD_SOURCEMAPS: "0"
+      - name: Strip sourcemaps and pack
+        run: |
+          find apps/web/dist apps/api/dist -name '*.map' -delete 2>/dev/null || true
+          cd apps/api && npm pack
+      - name: Stage the tarball for both build contexts
+        run: |
+          mkdir -p docker-context
+          mv apps/api/decocms-*.tgz docker-context/decocms.tgz
+          # apps/web/Dockerfile builds from the repo root because it also COPYs
+          # deploy/helm/studio/files/api-nginx.conf.
+          cp docker-context/decocms.tgz decocms.tgz
+      - name: Upload build context
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-context
+          path: docker-context/decocms.tgz
+          retention-days: 1
+  # One job per architecture on its OWN runner. The preview node pool schedules
+  # on amd64 and arm64 so Karpenter can take whatever spot capacity exists, and
+  # a reclaim proved it: an r8in.large was replaced by an r7gd.large (Graviton)
+  # and every amd64-only pod died with `exec format error`.
+  #
+  # Native runners, not QEMU. The release workflow measures ~1.0 min for a
+  # native arm64 image against ~0.7 min for amd64; emulating arm64 instead would
+  # add minutes to a build whose whole point is being quick enough that a
+  # reviewer waits for it. GitHub's arm64 runners are free on public repos.
+  docker:
+    name: Build ${{ matrix.arch }} images
+    needs: package
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: depot-ubuntu-latest # was: ubuntu-latest. Matrix-supplied runner; mapped to Depot equivalent.
+          - arch: arm64
+            platform: linux/arm64
+            runner: depot-ubuntu-24.04-arm # was: ubuntu-24.04-arm. Matrix-supplied runner; mapped to Depot equivalent.
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download build context
+        uses: actions/download-artifact@v4
+        with:
+          name: preview-context
+          path: docker-context
+      - name: Stage the tarball for both build contexts
+        run: cp docker-context/decocms.tgz decocms.tgz
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and push API by digest
+        id: api
+        uses: docker/build-push-action@v5
+        with:
+          context: ./docker-context
+          file: ./apps/api/Dockerfile
+          platforms: ${{ matrix.platform }}
+          provenance: false
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: |
+            type=gha,scope=studio-preview-${{ matrix.arch }}
+            type=gha,scope=studio-api-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=studio-preview-${{ matrix.arch }}
+      - name: Build and push nginx by digest
+        id: web
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./apps/web/Dockerfile
+          platforms: ${{ matrix.platform }}
+          provenance: false
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.NGINX_IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: |
+            type=gha,scope=studio-preview-web-${{ matrix.arch }}
+            type=gha,scope=studio-web-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=studio-preview-web-${{ matrix.arch }}
+      - name: Export digests
+        run: |
+          set -euo pipefail
+          mkdir -p "${{ runner.temp }}/digests/api" "${{ runner.temp }}/digests/web"
+          touch "${{ runner.temp }}/digests/api/${API_DIGEST#sha256:}"
+          touch "${{ runner.temp }}/digests/web/${WEB_DIGEST#sha256:}"
+        env:
+          API_DIGEST: ${{ steps.api.outputs.digest }}
+          WEB_DIGEST: ${{ steps.web.outputs.digest }}
+      - name: Upload digests
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-digests-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          retention-days: 1
+  # Stitch the per-arch digests into one tagged manifest list, then hand the
+  # reviewer the link. Only after this does `:pr-<n>-<sha>` exist as a tag —
+  # which is what the ApplicationSet asks for.
+  publish:
+    name: Merge manifests and comment
+    needs: [package, docker]
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: write
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v3
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          pattern: preview-digests-*
+          path: digests
+          merge-multiple: true
+      - name: Merge and push manifest lists
+        env:
+          TAG: ${{ needs.package.outputs.tag }}
+        run: |
+          set -euo pipefail
+          merge() {
+            local image="$1" dir="$2" refs=()
+            for d in "$dir"/*; do
+              [ -e "$d" ] || continue
+              refs+=("${image}@sha256:$(basename "$d")")
+            done
+            (( ${#refs[@]} > 0 )) || { echo "::error::no digests for ${image}"; exit 1; }
+            docker buildx imagetools create -t "${image}:${TAG}" "${refs[@]}"
+            docker buildx imagetools inspect "${image}:${TAG}" | grep -E "Platform|Name:" | head -6
+          }
+          merge "${REGISTRY}/${IMAGE_NAME}" digests/api
+          merge "${REGISTRY}/${NGINX_IMAGE_NAME}" digests/web
+      # Re-find: on the first run the "building" step created the comment, so
+      # the id from before the build is empty.
+      - name: Re-find preview comment
+        id: find-comment-ready
+        uses: peter-evans/find-comment@v3
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: github-actions[bot]
+          body-includes: <!-- studio-preview -->
+      - name: Comment (ready)
+        uses: peter-evans/create-or-update-comment@v4
+        continue-on-error: true
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-id: ${{ steps.find-comment-ready.outputs.comment-id }}
+          edit-mode: replace
+          body: "<!-- studio-preview -->\n### \U0001F50D Preview: https://${{ needs.package.outputs.host }}\n\nBuilt from `${{ needs.package.outputs.tag }}`. Argo CD picks the image up\nwithin ~60s; the first sync also creates and migrates the database, so\nallow another minute or two on a brand-new preview.\n\n**Sign in:** the database is empty and yours — sign up with any email\nand password. It is thrown away when this PR closes.\n\n<details><summary>What does <b>not</b> work in a preview</summary>\n\n- **Agent tool execution against a hosted sandbox** — previews run\n  `STUDIO_SANDBOX_PROVIDER=user-desktop` with no daemon attached, so\n  dispatch returns `409 link_offline`. Sandbox previews and the\n  sandbox lifecycle UI are equally out.\n- **AI features** until you add your own provider key in org settings.\n  Previews ship no key, so preview LLM spend is zero by construction.\n- **Google / GitHub sign-in** — OAuth callbacks cannot be registered\n  for a per-PR hostname. The buttons are hidden.\n- **Monitoring dashboard** (no ClickHouse), **billing** (no Stripe),\n  **outbound email** (no mail provider).\n- **Multi-pod behaviour** — a preview is one pod. Do not conclude\n  \"it worked in preview\" about a distributed-systems change; that is\n  what `tests/multi-pod/` is for.\n\n</details>\n\nRemove the `preview` label to tear this down now. Previews expire\n**48h after their last deploy** — push, or re-add the label, to\nreset the clock.\n"

@@ -1,0 +1,50 @@
+# Depot CI Migration
+# Source: .github/workflows/publish-decostudio-npm.yaml
+#
+# Changes made:
+# - Changed GitHub runs-on labels to their Depot equivalents
+
+name: Publish decostudio
+on:
+  push:
+    branches: [main]
+    paths:
+      - "decostudio-alias/**"
+  workflow_dispatch:
+permissions:
+  contents: write
+  id-token: write
+jobs:
+  publish:
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js for npm registry
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+      # No install/build: the package is a 2-line bin that imports decocms
+      # in-process; its `decocms: "*"` dep resolves at the consumer's install
+      # time, so it only republishes when the alias itself changes.
+      - name: Check if version changed
+        id: version-check
+        run: |
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+
+          # Check if this specific version already exists in npm
+          if npm view decostudio@$CURRENT_VERSION version >/dev/null 2>&1; then
+            echo "version-changed=false" >> $GITHUB_OUTPUT
+            echo "⏭️ Version $CURRENT_VERSION already published, skipping publish"
+          else
+            echo "version-changed=true" >> $GITHUB_OUTPUT
+            echo "✅ Version $CURRENT_VERSION not found in npm, will publish"
+          fi
+
+          echo "current-version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+        working-directory: decostudio-alias
+      - name: Publish to npm
+        if: steps.version-check.outputs.version-changed == 'true'
+        run: npm publish --access public --provenance
+        working-directory: decostudio-alias

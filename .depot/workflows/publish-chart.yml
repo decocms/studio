@@ -1,0 +1,68 @@
+# Depot CI Migration
+# Source: .github/workflows/publish-chart.yml
+#
+# Changes made:
+# - Changed GitHub runs-on labels to their Depot equivalents
+
+name: Publish Helm Chart
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'deploy/helm/studio/Chart.yaml'
+jobs:
+  publish:
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      version: ${{ steps.chart.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+      - name: Get chart version
+        id: chart
+        run: echo "version=$(grep '^version:' deploy/helm/studio/Chart.yaml | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+      - name: Login to GHCR
+        run: helm registry login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
+      - name: Package chart
+        run: helm package deploy/helm/studio/ --dependency-update
+      - name: Push chart to GHCR
+        run: helm push chart-deco-studio-${{ steps.chart.outputs.version }}.tgz oci://ghcr.io/decocms
+      - name: Summary
+        run: echo "Published ghcr.io/decocms/chart-deco-studio:${{ steps.chart.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+  # ---------------------------------------------------------------------------
+  # GitOps: tell deco-apps-cd to bump the chart version. Mirrors the image path
+  # in release-studio.yaml — we do NOT write into that repo from here, we fire a
+  # `studio-chart-bump` repository_dispatch and its own bump-studio-chart.yml
+  # self-commits (rewriting Chart.yaml + regenerating Chart.lock + the vendored
+  # tgz). Without this, chart bumps were manual and stranded the lock/tgz,
+  # stalling Argo's `helm dependency build`.
+  # ---------------------------------------------------------------------------
+  bump-deco-apps-cd:
+    name: Trigger deco-apps-cd chart bump
+    needs: publish
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    # Reuses DEPLOY_REPO_TOKEN (decobot PAT, admin on decocms/deco-apps-cd) —
+    # same token/mechanism as the image bump. The bump is a convenience and must
+    # never fail this workflow: no token → the step no-ops and the job passes.
+    env:
+      DISPATCH_TOKEN: ${{ secrets.DEPLOY_REPO_TOKEN }}
+    steps:
+      - name: Skip notice (dispatch token not configured)
+        if: env.DISPATCH_TOKEN == ''
+        run: echo "::notice::DEPLOY_REPO_TOKEN not set — skipping the deco-apps-cd chart bump."
+      - name: Dispatch studio-chart-bump to deco-apps-cd
+        if: env.DISPATCH_TOKEN != ''
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.DEPLOY_REPO_TOKEN }}
+          repository: decocms/deco-apps-cd
+          event-type: studio-chart-bump
+          client-payload: '{"version": "${{ needs.publish.outputs.version }}"}'
+      - name: Summary
+        if: env.DISPATCH_TOKEN != ''
+        run: echo "Dispatched \`studio-chart-bump\` (version ${{ needs.publish.outputs.version }}) to decocms/deco-apps-cd" >> "$GITHUB_STEP_SUMMARY"

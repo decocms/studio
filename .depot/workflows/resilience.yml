@@ -1,0 +1,61 @@
+# Depot CI Migration
+# Source: .github/workflows/resilience.yml
+#
+# Changes made:
+# - Rewrote .github/ path references to .depot/
+# - Changed GitHub runs-on labels to their Depot equivalents
+
+name: Resilience Tests
+on:
+  push:
+    branches:
+      - main
+    # Skip pushes to main that only touch the version bump, CI/workflow config,
+    # or docs — none need this heavy suite re-run.
+    paths-ignore:
+      - "apps/api/package.json"
+      - ".github/**"
+      - "apps/docs/**"
+      - "**/*.md"
+  workflow_dispatch:
+jobs:
+  resilience:
+    # Skip the [release]: version-bump commit — it only changes the version
+    # string and would otherwise re-run this heavy suite on every release.
+    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, '[release]:')
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Bun and install dependencies
+        uses: ./.depot/actions/setup-bun
+      - name: Start infrastructure
+        # `up --build --wait` pulls base images (postgres, nats, toxiproxy) from
+        # Docker Hub, which intermittently times out ("registry-1.docker.io:
+        # context deadline exceeded") and fails the whole job before any test
+        # runs. Retry the startup a few times, tearing down between attempts so
+        # each retry starts clean.
+        run: |
+          for attempt in 1 2 3; do
+            if docker compose -f tests/resilience/docker-compose.yml up -d --build --wait; then
+              echo "Infrastructure started (attempt $attempt)"
+              exit 0
+            fi
+            echo "::warning::Infrastructure startup failed (attempt $attempt); tearing down and retrying in 15s..."
+            docker compose -f tests/resilience/docker-compose.yml down -v || true
+            sleep 15
+          done
+          echo "::error::Infrastructure failed to start after 3 attempts"
+          exit 1
+      - name: Run resilience tests
+        run: bun test tests/resilience/scenarios/ --serial --timeout 900000
+      - name: Dump container logs
+        if: failure()
+        run: docker compose -f tests/resilience/docker-compose.yml logs studio
+      - name: Dump link-daemon logs
+        if: failure()
+        run: docker compose -f tests/resilience/docker-compose.yml --profile link logs link-daemon
+      - name: Tear down infrastructure
+        if: always()
+        run: docker compose -f tests/resilience/docker-compose.yml down -v

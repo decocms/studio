@@ -1,0 +1,212 @@
+# Depot CI Migration
+# Source: .github/workflows/e2e.yml
+#
+# Changes made:
+# - Rewrote .github/ path references to .depot/
+# - Changed GitHub runs-on labels to their Depot equivalents
+
+name: E2E Tests
+on:
+  push:
+    branches:
+      - main
+    # Skip pushes to main that only touch the version bump, CI/workflow config,
+    # or docs — none need the suite re-run (PRs already validated them, and the
+    # [release] bump is owned by release-studio).
+    paths-ignore:
+      - "apps/api/package.json"
+      - ".github/**"
+      - "apps/docs/**"
+      - "**/*.md"
+  pull_request:
+    branches:
+      - main
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  # See test.yml for why this gate exists: skip the (required) check on
+  # workflow/docs/markdown-only PRs without leaving the required check
+  # stuck pending. Pushes to main always run.
+  changes:
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - name: Detect relevant changes
+        id: filter
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            # Push to main runs everything — except the [release]: version-bump
+            # commit, which only touches the version string. release-studio picks
+            # that commit up on its own push trigger and cuts the release.
+            case "$HEAD_MSG" in
+              '[release]:'*) echo "relevant=false" >> "$GITHUB_OUTPUT" ;;
+              *) echo "relevant=true" >> "$GITHUB_OUTPUT" ;;
+            esac
+            exit 0
+          fi
+          set +e
+          if ! FILES=$(gh api --paginate \
+            "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
+            --jq '.[].filename'); then
+            echo "Could not list PR files — running to be safe."
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Changed files:"; echo "$FILES"
+          relevant=false
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              .github/*|apps/docs/*|deploy/*|*.md) ;;
+              *) relevant=true; break ;;
+            esac
+          done <<< "$FILES"
+          echo "relevant=$relevant" >> "$GITHUB_OUTPUT"
+  e2e-shard:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    # Backstop above playwright's own 30min globalTimeout so its report wins.
+    timeout-minutes: 35
+    strategy:
+      # One slow/broken shard shouldn't hide the other's result.
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    defaults:
+      run:
+        working-directory: apps/api
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      NATS_URL: nats://localhost:4222
+      # Better Auth's per-endpoint signup limiter kicks in after a handful of
+      # /sign-up/email POSTs in a short window. Our e2e specs do multiple
+      # signups per run; without this they get 429s and only pass on retry,
+      # which masks real regressions as "flaky".
+      DISABLE_RATE_LIMIT: "true"
+      # MinIO, started below — makes the app resolve OBJECT_STORAGE to the real
+      # S3Service path (not the DevObjectStorage filesystem fallback) so the
+      # object-storage e2e exercises production code end-to-end.
+      S3_ENDPOINT: http://localhost:9000
+      S3_BUCKET: studio-e2e
+      S3_ACCESS_KEY_ID: minioadmin
+      S3_SECRET_ACCESS_KEY: minioadmin
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Bun and install dependencies
+        uses: ./.depot/actions/setup-bun
+      - name: Start NATS with JetStream
+        run: |
+          # Pull explicitly with retry/backoff: the registry mirror occasionally
+          # answers `toomanyrequests: Rate exceeded`, and an inline pull inside
+          # `docker run` has no retry, so a transient 429 fails the whole job.
+          for attempt in 1 2 3 4 5; do
+            docker pull public.ecr.aws/docker/library/nats:2.14.2 && break
+            echo "docker pull public.ecr.aws/docker/library/nats:2.14.2 failed (attempt $attempt); retrying in $((attempt * 5))s"
+            sleep $((attempt * 5))
+          done
+          docker run -d --name nats -p 4222:4222 public.ecr.aws/docker/library/nats:2.14.2 -js
+          for _ in $(seq 1 10); do
+            if nc -z localhost 4222; then
+              break
+            fi
+            sleep 1
+          done
+          nc -z localhost 4222
+      - name: Start MinIO
+        uses: ./.depot/actions/start-minio
+      # Create the bucket the app expects (S3Service never auto-creates it);
+      # reuse the already-installed @aws-sdk/client-s3 so there's no `mc`
+      # version to keep in sync.
+      - name: Create S3 bucket
+        run: |
+          bun -e '
+            import { S3Client, CreateBucketCommand } from "@aws-sdk/client-s3";
+            const c = new S3Client({
+              endpoint: process.env.S3_ENDPOINT,
+              region: "auto",
+              credentials: {
+                accessKeyId: process.env.S3_ACCESS_KEY_ID,
+                secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
+              },
+              forcePathStyle: true,
+            });
+            await c.send(new CreateBucketCommand({ Bucket: process.env.S3_BUCKET }));
+            console.log("created bucket", process.env.S3_BUCKET);
+          '
+      - name: Cache Playwright browsers
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('packages/e2e/package.json') }}
+          # On a key rotation (any packages/e2e dep bump) the fallback restores
+          # the previous browsers and `playwright install` downloads only the
+          # missing version instead of a full cold install.
+          restore-keys: |
+            playwright-${{ runner.os }}-
+      - name: Install Playwright chromium
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
+        working-directory: packages/e2e
+        run: npx playwright install chromium --with-deps
+      - name: Install Playwright chromium system deps
+        if: steps.cache-playwright.outputs.cache-hit == 'true'
+        working-directory: packages/e2e
+        run: npx playwright install-deps chromium
+      - name: Create data directory
+        run: mkdir -p data
+      - name: Run database migrations
+        run: bun run migrate
+      # The e2e web build (~70s) is pure function of these inputs — cache the
+      # dist so each shard serves it instead of rebuilding. Exact-match only
+      # (no restore-keys): a stale dist must never be served, so any input
+      # change falls back to a full build. Key includes apps/api/package.json
+      # because __STUDIO_VERSION__ is baked from its version field.
+      - name: Cache web production build
+        id: cache-web-dist
+        uses: actions/cache@v4
+        with:
+          path: apps/web/dist
+          key: web-dist-e2e-${{ runner.os }}-${{ hashFiles('apps/web/src/**', 'apps/web/index.html', 'apps/web/vite.config.ts', 'apps/web/package.json', 'apps/web/tsconfig.json', 'packages/ui/src/**', 'packages/shared/src/**', 'packages/bindings/src/**', 'apps/api/package.json', 'bun.lock') }}
+      - name: Run e2e tests
+        # The suite lives in packages/e2e; its Playwright config spawns the API
+        # from apps/api and the web app from apps/web via separate webServer
+        # entries. DB/NATS/S3 env are job-level, so both inherit them. Each
+        # shard runs its half of the specs against its own full stack.
+        working-directory: packages/e2e
+        env:
+          E2E_SKIP_WEB_BUILD: ${{ steps.cache-web-dist.outputs.cache-hit == 'true' && '1' || '' }}
+        run: bun run test:e2e --shard=${{ matrix.shard }}/2
+  # Aggregator carrying the required-check name: branch protection requires a
+  # check called "e2e", and matrix jobs report as "e2e-shard (1)"/"(2)" — a
+  # renamed required check would block merges forever. This job is the one
+  # the protection rule sees; skipped shards (docs-only PRs) count as pass,
+  # same as the changes-gate semantics everywhere else.
+  e2e:
+    needs: [changes, e2e-shard]
+    if: always()
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    steps:
+      - name: Verify shard results
+        run: |
+          case "${{ needs.e2e-shard.result }}" in
+            success|skipped) echo "shards: ${{ needs.e2e-shard.result }}"; exit 0 ;;
+            *) echo "shards: ${{ needs.e2e-shard.result }}"; exit 1 ;;
+          esac

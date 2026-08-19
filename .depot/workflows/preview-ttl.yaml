@@ -1,0 +1,44 @@
+# Depot CI Migration
+# Source: .github/workflows/preview-ttl.yaml
+#
+# Changes made:
+# - Changed GitHub runs-on labels to their Depot equivalents
+
+name: Preview TTL
+# Expires previews 48h after their last deploy, by removing the `preview`
+# label. The Argo ApplicationSet in decocms/deco-apps-cd generates Applications
+# from labelled open PRs, so dropping the label makes the preview disappear on
+# the next poll — namespace, Postgres pod and all.
+#
+# Removing the LABEL rather than deleting the Application directly is the whole
+# trick: a directly-deleted Application is regenerated within ~60s, because the
+# generator's source of truth is the GitHub API, not the cluster.
+#
+# Long-lived PRs accumulating forgotten previews is the failure mode this
+# exists for. Pushing to the PR, or re-adding the label, resets the clock.
+on:
+  schedule:
+    # Every 2h. A coarser cadence would make "48h" mean "up to 54h" and the
+    # job costs seconds.
+    - cron: "23 */2 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "List what would expire without removing any labels"
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  expire:
+    name: Expire stale previews
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    steps:
+      - name: Expire previews older than the TTL
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TTL_HOURS: "48"
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+        run: "set -euo pipefail\n\ngh pr list --repo \"$REPO\" --label preview --state open \\\n  --json number --jq '.[].number' > /tmp/prs.txt\n\nif [ ! -s /tmp/prs.txt ]; then\n  echo \"No open PRs carry the preview label.\"\n  exit 0\nfi\n\nnow=$(date -u +%s)\nttl_seconds=$(( TTL_HOURS * 3600 ))\nexpired=0\nkept=0\n\nwhile read -r pr; do\n  [ -n \"$pr\" ] || continue\n\n  # Age is measured from the sticky preview comment, which\n  # preview-build.yaml rewrites on every successful deploy. That is\n  # the only signal that means \"when was this preview last actually\n  # built\": the PR's updatedAt moves on any comment, and the head\n  # commit date would instantly expire a months-old PR that someone\n  # labelled thirty seconds ago to review it.\n  deployed_at=$(gh api \"repos/${REPO}/issues/${pr}/comments\" --paginate \\\n    --jq '[.[] | select(.body | contains(\"<!-- studio-preview -->\")) | .updated_at] | last // empty')\n\n  if [ -z \"$deployed_at\" ]; then\n    # No comment means we cannot date the preview. Never reap on\n    # ambiguity — the same rule the image GC follows for PRs it\n    # cannot resolve.\n    echo \"PR #${pr}: no preview comment, cannot determine age — keeping\"\n    kept=$((kept + 1))\n    continue\n  fi\n\n  deployed_ts=$(date -u -d \"$deployed_at\" +%s)\n  age_h=$(( (now - deployed_ts) / 3600 ))\n\n  if [ \"$(( now - deployed_ts ))\" -lt \"$ttl_seconds\" ]; then\n    echo \"PR #${pr}: deployed ${age_h}h ago — keeping\"\n    kept=$((kept + 1))\n    continue\n  fi\n\n  echo \"PR #${pr}: deployed ${age_h}h ago — EXPIRED (ttl ${TTL_HOURS}h)\"\n  expired=$((expired + 1))\n  if [ \"$DRY_RUN\" = \"true\" ]; then\n    continue\n  fi\n\n  gh pr edit \"$pr\" --repo \"$REPO\" --remove-label preview\n\n  # Rewrite the sticky comment in place. Leaving the old one up would\n  # advertise a URL that now 404s, which is exactly the confusion\n  # this feature is supposed to avoid.\n  comment_id=$(gh api \"repos/${REPO}/issues/${pr}/comments\" --paginate \\\n    --jq '[.[] | select(.body | contains(\"<!-- studio-preview -->\")) | .id] | last // empty')\n  if [ -n \"$comment_id\" ]; then\n    # Heredoc rather than an inline string: the body contains\n    # backticks, which inside a command substitution would be read as\n    # one.\n    cat > /tmp/expired.md <<EOF\n<!-- studio-preview -->\n\U0001F319 **Preview expired** — it had not been redeployed in ${TTL_HOURS}h, so it\nwas torn down to stop idle previews piling up on long-lived PRs.\n\nAdd the \\`preview\\` label again to rebuild it.\nEOF\n    gh api --method PATCH \"repos/${REPO}/issues/comments/${comment_id}\" \\\n      -F body=@/tmp/expired.md > /dev/null\n  fi\ndone < /tmp/prs.txt\n\necho \"---\"\necho \"expired=${expired} kept=${kept} dry_run=${DRY_RUN}\"\nif [ \"$expired\" -gt 0 ] && [ \"$DRY_RUN\" != \"true\" ]; then\n  echo \"::notice::Expired ${expired} preview(s) after ${TTL_HOURS}h.\"\nfi\n"

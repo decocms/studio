@@ -1,0 +1,161 @@
+# Depot CI Migration
+# Source: .github/workflows/release-studio-sandbox.yaml
+#
+# Changes made:
+# - Rewrote .github/ path references to .depot/
+# - Changed GitHub runs-on labels to their Depot equivalents
+
+name: Release Studio Sandbox Image
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/sandbox/**"
+      # The harness runner is packed INTO the image (see image/Dockerfile), so a
+      # fix there ships nothing without a rebuild. The version gate below still
+      # applies: bump packages/sandbox/package.json or the tag is reused.
+      - "packages/harness-runner/**"
+  workflow_dispatch:
+env:
+  REGISTRY: ghcr.io
+  # One image, one daemon (Go). The `studio-sandbox` name is frozen at its last
+  # TS-daemon tag (1.35.2) — kept pullable for rollback, never pushed again.
+  IMAGE_NAME: ${{ github.repository }}/studio-sandbox-go
+jobs:
+  build-push:
+    name: Build & Push studio-sandbox-go image
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      # "true" when the tag was already in GHCR (build skipped) — the bump job
+      # uses this to skip docs/test-only pushes that reuse the existing tag.
+      image-exists: ${{ steps.tag-check.outputs.exists }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Read sandbox version
+        id: version
+        run: |
+          VERSION="$(python3 -c "import json; print(json.load(open('packages/sandbox/package.json'))['version'])")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Fast-fail: skip the entire build if this version is already published.
+      # Keeps docs-only or test-only changes to packages/sandbox from
+      # re-pushing the same image under a tag consumers may already be pinning.
+      - name: Check if version tag already exists
+        id: tag-check
+        run: |
+          STATUS=$(curl -sS -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://${{ env.REGISTRY }}/v2/${{ env.IMAGE_NAME }}/manifests/${{ steps.version.outputs.version }}")
+          if [ "${STATUS}" = "200" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Image ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }} already exists — skipping push. Bump packages/sandbox/package.json to publish."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Setup Bun and install dependencies
+        if: steps.tag-check.outputs.exists != 'true'
+        uses: ./.depot/actions/setup-bun
+      # The Dockerfile copies dist/typegen.tgz into the image.
+      - name: Build typegen package
+        if: steps.tag-check.outputs.exists != 'true'
+        run: bun run --cwd=packages/sandbox build
+      # `:latest` is only emitted on manual workflow_dispatch runs so
+      # pinned consumers know it was a deliberate human action.
+      - name: Extract metadata (tags, labels)
+        id: meta
+        if: steps.tag-check.outputs.exists != 'true'
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ steps.version.outputs.version }}
+            type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=sha,format=short
+      - name: Set up Docker Buildx
+        if: steps.tag-check.outputs.exists != 'true'
+        uses: docker/setup-buildx-action@v3
+      - name: Build and push Docker image
+        id: build
+        if: steps.tag-check.outputs.exists != 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./packages/sandbox
+          file: ./packages/sandbox/image/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Multi-arch to match every sibling image (Studio API, orgfs-sidecar,
+          # sandbox-netinit, s3-sync). Without arm64 the sandbox can't run
+          # natively on Apple Silicon / arm64 nodes. buildx emulates arm64 via
+          # the runner's preinstalled binfmt, same as orgfs-sidecar.
+          platforms: linux/amd64,linux/arm64
+      - name: Install cosign
+        if: steps.tag-check.outputs.exists != 'true'
+        uses: sigstore/cosign-installer@v3
+      - name: Sign image with cosign
+        if: steps.tag-check.outputs.exists != 'true'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          for tag in $(echo "${TAGS}" | tr ',' '\n'); do
+            cosign sign --yes "${tag}@${DIGEST}"
+          done
+      - name: Generate SLSA build provenance
+        if: steps.tag-check.outputs.exists != 'true'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+  # ---------------------------------------------------------------------------
+  # GitOps: tell deco-apps-cd to bump the sandbox image tag. We fire the generic
+  # `image-bump` repository_dispatch (receiver: deco-apps-cd's bump-image.yml,
+  # which surgically rewrites the `tag:` under the matching `repository:` line
+  # and self-commits with its own GITHUB_TOKEN). No cross-repo write credential
+  # lives here — only a token to trigger the dispatch. Bumps both stg and prod
+  # sandbox values; both are ArgoCD auto-sync, but a SandboxTemplate tag bump
+  # only changes what NEW sandbox claims get — it doesn't disturb running pods.
+  # ---------------------------------------------------------------------------
+  bump-deco-apps-cd:
+    name: Trigger deco-apps-cd bump
+    needs: [build-push]
+    # Only when a NEW image was actually pushed (skip docs/test-only changes to
+    # packages/sandbox that reuse the existing tag).
+    if: needs.build-push.result == 'success' && needs.build-push.outputs.image-exists != 'true'
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    # Reuses DEPLOY_REPO_TOKEN — the decobot machine-user PAT (admin on
+    # decocms/deco-apps-cd), same token release-studio uses. The bump is a
+    # convenience and must never red the release: absent token → no-op, job passes.
+    env:
+      DISPATCH_TOKEN: ${{ secrets.DEPLOY_REPO_TOKEN }}
+    steps:
+      - name: Skip notice (dispatch token not configured)
+        if: env.DISPATCH_TOKEN == ''
+        run: echo "::notice::DEPLOY_REPO_TOKEN not set — skipping the deco-apps-cd bump."
+      - name: Dispatch image-bump to deco-apps-cd
+        if: env.DISPATCH_TOKEN != ''
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.DEPLOY_REPO_TOKEN }}
+          repository: decocms/deco-apps-cd
+          event-type: image-bump
+          client-payload: '{"version": "${{ needs.build-push.outputs.version }}", "repository": "decocms/studio/studio-sandbox-go", "files": ["apps/studio-sandbox-stg/values.yaml", "apps/studio-sandbox-prod/values.yaml"]}'
+      - name: Summary
+        if: env.DISPATCH_TOKEN != ''
+        run: echo "Dispatched \`image-bump\` (studio-sandbox-go ${{ needs.build-push.outputs.version }}) to decocms/deco-apps-cd" >> "$GITHUB_STEP_SUMMARY"

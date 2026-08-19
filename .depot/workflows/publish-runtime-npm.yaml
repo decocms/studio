@@ -1,0 +1,58 @@
+# Depot CI Migration
+# Source: .github/workflows/publish-runtime-npm.yaml
+#
+# Changes made:
+# - Rewrote .github/ path references to .depot/
+# - Changed GitHub runs-on labels to their Depot equivalents
+
+name: Publish @decocms/runtime
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/runtime/**"
+  workflow_dispatch:
+permissions:
+  contents: write
+  id-token: write
+jobs:
+  publish:
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Node.js for npm registry
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+      - name: Setup Bun and install dependencies
+        uses: ./.depot/actions/setup-bun
+      - name: Generate JSON schema
+        run: bun run scripts/generate-json-schema.ts
+        working-directory: packages/runtime
+      - name: Check if version changed
+        id: version-check
+        run: "# Get the current version from package.json\nCURRENT_VERSION=$(node -e \"console.log(require('./package.json').version)\")\n\n# Check if this specific version already exists in npm\n# This works for both stable and prerelease versions (unlike checking 'latest' tag)\nif npm view @decocms/runtime@$CURRENT_VERSION version >/dev/null 2>&1; then\n  echo \"version-changed=false\" >> $GITHUB_OUTPUT\n  echo \"⏭️ Version $CURRENT_VERSION already published, skipping publish\"\nelse\n  echo \"version-changed=true\" >> $GITHUB_OUTPUT\n  echo \"✅ Version $CURRENT_VERSION not found in npm, will publish\"\nfi\n\necho \"current-version=$CURRENT_VERSION\" >> $GITHUB_OUTPUT\n\n# Check if this is a prerelease version (contains a hyphen)\nif [[ \"$CURRENT_VERSION\" == *-* ]]; then\n  echo \"npm-tag=next\" >> $GITHUB_OUTPUT\n  echo \"\U0001F4E6 Prerelease version detected, will publish with tag 'next'\"\nelse\n  echo \"npm-tag=latest\" >> $GITHUB_OUTPUT\n  echo \"\U0001F4E6 Stable version detected, will publish with tag 'latest'\"\nfi\n"
+        working-directory: packages/runtime
+      - name: Publish to npm
+        if: steps.version-check.outputs.version-changed == 'true'
+        run: npm publish --access public --tag ${{ steps.version-check.outputs.npm-tag }} --provenance
+        working-directory: packages/runtime
+      - name: Create Release
+        if: steps.version-check.outputs.version-changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "runtime-v${{ steps.version-check.outputs.current-version }}" \
+            --title "@decocms/runtime v${{ steps.version-check.outputs.current-version }}" \
+            --notes "## Changes
+
+          Automated release of @decocms/runtime package.
+
+          ### Installation
+          \`\`\`bash
+          npm install @decocms/runtime
+          \`\`\`"

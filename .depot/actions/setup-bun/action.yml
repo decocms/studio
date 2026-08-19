@@ -1,0 +1,25 @@
+name: Setup Bun and install dependencies
+description: >-
+  Install Bun (pinned version) and run `bun install`. Shared by every workflow
+  that installs workspace dependencies so the pinned Bun version lives in
+  exactly one place. Deliberately NOT cached: measured on real runs, restoring
+  the ~570MB actions/cache entry (~18s) is slower than a cold `bun install`
+  from npm (~18s cold, and GH runners pull npm at ~70MB/s), while pressuring
+  the repo's 10GB cache quota that buildkit layers share.
+
+inputs:
+  bun-version:
+    description: Bun version to install — single source of truth for CI.
+    default: "1.3.14"
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: ${{ inputs.bun-version }}
+
+    - name: Install dependencies
+      shell: bash
+      run: bun install

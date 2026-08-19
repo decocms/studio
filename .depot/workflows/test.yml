@@ -1,0 +1,209 @@
+# Depot CI Migration
+# Source: .github/workflows/test.yml
+#
+# Changes made:
+# - Rewrote .github/ path references to .depot/
+# - Changed GitHub runs-on labels to their Depot equivalents
+
+name: Checks & Unit Tests
+on:
+  push:
+    branches:
+      - main
+    # Skip pushes to main that only touch the version bump, CI/workflow config,
+    # or docs — none need the suite re-run (PRs already validated them, and the
+    # [release] bump is owned by release-studio).
+    paths-ignore:
+      - "apps/api/package.json"
+      - ".github/**"
+      - "apps/docs/**"
+      - "**/*.md"
+  pull_request:
+    branches:
+      - main
+# A force-push to a PR obsoletes the in-flight run — cancel it instead of
+# letting 6 jobs run to completion. Pushes to main all run (no cancel) so
+# every merged commit keeps its own result.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  # Gate: skip the (required) check jobs when a PR only touches workflow YAML,
+  # docs, or markdown. Required checks can't be skipped via workflow-level
+  # `paths` filters — a never-scheduled required check blocks the merge forever.
+  # A job skipped via `if`, by contrast, reports as passed. So we keep the
+  # trigger broad and skip at the job level. Pushes to main always run.
+  changes:
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - name: Detect relevant changes
+        id: filter
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            # Push to main runs everything — except the [release]: version-bump
+            # commit, which only touches the version string. release-studio picks
+            # that commit up on its own push trigger and cuts the release.
+            case "$HEAD_MSG" in
+              '[release]:'*)
+                echo "relevant=false" >> "$GITHUB_OUTPUT"
+                echo "web=false" >> "$GITHUB_OUTPUT"
+                ;;
+              *)
+                echo "relevant=true" >> "$GITHUB_OUTPUT"
+                echo "web=true" >> "$GITHUB_OUTPUT"
+                ;;
+            esac
+            exit 0
+          fi
+          set +e
+          if ! FILES=$(gh api --paginate \
+            "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
+            --jq '.[].filename'); then
+            echo "Could not list PR files — running to be safe."
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            echo "web=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Changed files:"; echo "$FILES"
+          # relevant: run unless every changed file is workflow/docs/markdown.
+          # web: gate for web-component-tests (browser tests only when web
+          # code can be affected).
+          relevant=false
+          web=false
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              .github/*|apps/docs/*|deploy/*|*.md) ;;
+              *) relevant=true ;;
+            esac
+            case "$f" in
+              apps/web/*|packages/ui/*) web=true ;;
+            esac
+          done <<< "$FILES"
+          echo "relevant=$relevant" >> "$GITHUB_OUTPUT"
+          echo "web=$web" >> "$GITHUB_OUTPUT"
+  format:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Bun and install dependencies
+        uses: ./.depot/actions/setup-bun
+      - name: Run format check
+        run: bun run fmt:check
+  lint:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Bun and install dependencies
+        uses: ./.depot/actions/setup-bun
+      - name: Run lint
+        run: bun run lint
+      # knip only reads source (knip.jsonc references no dist/ paths), so it
+      # lives here instead of serializing after the builds in the build job.
+      - name: Run knip
+        run: bun run knip
+  typecheck:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Setup Bun and install dependencies
+        uses: ./.depot/actions/setup-bun
+      - name: Run typecheck
+        run: bun run check:ci
+  test:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    # The suite normally finishes in ~1 min. A single hung file under the
+    # parallel runner stalls the whole job silently (per-file output is
+    # buffered, so the culprit prints nothing) — without this bound that's
+    # GitHub's 6h default; it already cost one 50-minute zombie job.
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Bun and install dependencies
+        uses: ./.depot/actions/setup-bun
+      - name: Run tests
+        # The root command discovers the same filename-based unit tier and runs
+        # each file in an isolated Bun process. Integration, daemon E2E, and
+        # Playwright suites remain owned by their dedicated workflows.
+        run: bun run test
+  build:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Bun and install dependencies
+        uses: ./.depot/actions/setup-bun
+      - name: Build server bundle
+        run: bun run --cwd=apps/api build:server
+      - name: Verify bundle outputs
+        run: |
+          test -f apps/api/dist/server/server.js
+          test -f apps/api/dist/server/migrate.js
+          test -f apps/api/dist/server/cli.js
+      # `build:web` rather than `build` so VITE_TAURI_APP=0 is stated, not
+      # inherited from the variable happening to be unset — the desktop-free
+      # assertion below is only meaningful against a known browser build.
+      - name: Build web app
+        run: bun run --cwd=apps/web build:web
+      - name: Verify web output
+        run: test -f apps/web/dist/index.html
+      - name: Assert no Tauri desktop code in the browser bundle
+        run: bun run check:web-bundle
+  # Playwright component tests for the sections-editor field widgets
+  # (apps/web/ct). Self-contained — real chromium, no server/DB — so it lives
+  # here rather than e2e.yml, gated to web changes only.
+  web-component-tests:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: depot-ubuntu-latest # was: ubuntu-latest. Mapped standard GitHub runner to Depot equivalent.
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Bun and install dependencies
+        uses: ./.depot/actions/setup-bun
+      - name: Cache Playwright browsers
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-ct-${{ runner.os }}-${{ hashFiles('apps/web/package.json') }}
+          # On a key rotation (playwright version bump) the fallback restores
+          # the previous browsers and `playwright install` downloads only the
+          # missing version instead of everything.
+          restore-keys: |
+            playwright-ct-${{ runner.os }}-
+      - name: Install Playwright chromium
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
+        working-directory: apps/web
+        run: npx playwright install chromium --with-deps
+      - name: Install Playwright chromium system deps
+        if: steps.cache-playwright.outputs.cache-hit == 'true'
+        working-directory: apps/web
+        run: npx playwright install-deps chromium
+      - name: Run component tests
+        run: bun run --cwd=apps/web test:ct
