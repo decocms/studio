@@ -380,10 +380,16 @@ export class ConnectionStorage implements ConnectionStoragePort {
     // every update, using presence (not `??`) so an explicit null clears the field
     // it was derived from instead of silently keeping the old slug.
     const slugData: Record<string, unknown> = { ...data };
-    const existing = await this.findById(id);
+    // Skip findById() here — it decrypts secrets we don't need just for a slug merge.
+    const existing = await this.db
+      .selectFrom("connections")
+      .select(["app_name", "connection_url", "title"])
+      .where("id", "=", id)
+      .executeTakeFirst();
     if (existing) {
-      const merged = <K extends keyof ConnectionEntity>(key: K) =>
-        data[key] === undefined ? existing[key] : data[key];
+      const merged = <K extends "app_name" | "connection_url" | "title">(
+        key: K,
+      ) => (data[key] === undefined ? existing[key] : data[key]);
       slugData.slug = getConnectionSlug({
         app_name: merged("app_name"),
         connection_url: merged("connection_url"),
