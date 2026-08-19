@@ -357,6 +357,74 @@ and grant the wrong thing.
 {{- end }}
 
 {{/*
+Re-applies the schema every time a pod starts, not only when Argo syncs.
+
+The preview's Postgres is an emptyDir: a spot reclaim, a drain or an OOM gives
+the pod a brand-new empty volume. The migration Job is a sync hook, so it does
+not re-run — nothing changed in git — and the application comes up against a
+database with zero tables. Everything reports healthy: pods Running, namespace
+Active, Argo Progressing. Only the product is broken, with nothing pointing at
+why. Seen twice in two days.
+
+Kysely serialises concurrent runs through kysely_migration_lock, so this is safe
+to race with the Job. DBOS does not — parallel launches collide on
+dbos.dbos_migrations — which is why only ONE pod migrates and the worker waits.
+*/}}
+{{- define "chart-deco-studio.previewMigrateInit" -}}
+{{- if and .Values.preview.enabled .Values.preview.migrateOnBoot }}
+- name: migrate-on-boot
+  image: "{{ .Values.image.repository }}{{- if and .Values.image.tag (hasPrefix "sha256:" .Values.image.tag) }}@{{ .Values.image.tag }}{{- else }}:{{ .Values.image.tag | default .Chart.AppVersion }}{{- end }}"
+  imagePullPolicy: {{ .Values.image.pullPolicy }}
+  envFrom:
+    - configMapRef:
+        name: {{ include "chart-deco-studio.fullname" . }}-config
+    - secretRef:
+        name: {{ include "chart-deco-studio.secretName" . }}
+  command: ["/bin/sh", "-c"]
+  args:
+    - |
+      set -eu
+      bun run node_modules/decocms/dist/server/migrate.js
+      bun run node_modules/decocms/dist/server/migrate-dbos.js
+  resources:
+    {{- toYaml .Values.preview.jobResources | nindent 4 }}
+{{- end }}
+{{- end }}
+
+{{/*
+Blocks the worker until the schema exists, rather than migrating it.
+
+The API pod is the single writer — see previewMigrateInit. Having the worker
+migrate too would race DBOS, which is the collision the migration Job was
+introduced to avoid in the first place.
+*/}}
+{{- define "chart-deco-studio.previewWaitForSchema" -}}
+{{- if and .Values.preview.enabled .Values.preview.migrateOnBoot }}
+- name: wait-for-schema
+  image: "{{ .Values.preview.postgres.image.repository }}:{{ .Values.preview.postgres.image.tag }}"
+  imagePullPolicy: {{ .Values.preview.postgres.image.pullPolicy }}
+  envFrom:
+    - configMapRef:
+        name: {{ include "chart-deco-studio.fullname" . }}-config
+    - secretRef:
+        name: {{ include "chart-deco-studio.secretName" . }}
+  command: ["/bin/sh", "-c"]
+  args:
+    - |
+      set -eu
+      # to_regclass returns NULL rather than erroring on a missing table, so
+      # this polls without a failing exit code muddying the loop.
+      until [ "$(psql "$DATABASE_URL" -tAc "select to_regclass('public.kysely_migration') is not null")" = "t" ]; do
+        echo "waiting for the schema"
+        sleep 3
+      done
+      echo "schema present"
+  resources:
+    {{- toYaml .Values.preview.jobResources | nindent 4 }}
+{{- end }}
+{{- end }}
+
+{{/*
 Validates per-PR preview releases. Every failure here is something that would
 otherwise render a healthy-looking object that silently does nothing: an
 HTTPRoute with no hostname matches no traffic, a pod without --skip-migrations

@@ -81,6 +81,10 @@ spec:
       serviceAccountName: {{ include "chart-deco-studio.serviceAccountName" . }}
       securityContext:
         {{- include "chart-deco-studio.podSecurityContext" . | nindent 8 }}
+      {{- with (include "chart-deco-studio.previewWaitForSchema" . | trim) }}
+      initContainers:
+        {{- . | nindent 8 }}
+      {{- end }}
       containers:
         - name: {{ .Chart.Name }}-worker
           {{- with .Values.securityContext }}
