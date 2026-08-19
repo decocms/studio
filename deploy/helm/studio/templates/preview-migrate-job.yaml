@@ -28,6 +28,22 @@ metadata:
     argocd.argoproj.io/sync-wave: "-10"
 spec:
   backoffLimit: 3
+  # A deadline, because backoffLimit does not cover the ways this Job hangs
+  # rather than fails. Twice now it sat Running 0/1 indefinitely — once with the
+  # pod stuck in CreateContainerConfigError on a missing ConfigMap, once with no
+  # pod at all because the ServiceAccount did not exist yet. Neither counts as a
+  # failed attempt, so backoffLimit never trips.
+  #
+  # That matters beyond this Job. It is a sync hook, so Argo blocks the whole
+  # operation waiting for it — and a blocked operation cannot be superseded,
+  # which means the ApplicationSet cannot delete the Application either. A
+  # preview in that state ignores its label being removed and outlives the 48h
+  # TTL, which is the one thing the TTL exists to prevent.
+  #
+  # Failing frees the operation: Argo reports a failed sync, retry applies, and
+  # removing the label works again. 15 minutes is well past a cold migration
+  # (measured ~3 min, nearly all of it waiting for the image to publish).
+  activeDeadlineSeconds: {{ .Values.preview.migrateDeadlineSeconds }}
   template:
     metadata:
       labels:
