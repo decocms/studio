@@ -461,6 +461,7 @@ func (o *Orchestrator) stepInstallInner() bool {
 		o.mu.Lock()
 		o.pendingGolden = nil // restored an existing golden — nothing to publish
 		o.mu.Unlock()
+		o.relinkAfterGolden(cfg, RestoreL1)
 		EmitDepsRestore(RestoreL1, cloneUrl, elapsedMs(), bootId, pkgCache)
 		o.markInstallSucceeded(cfg)
 		return true
@@ -478,6 +479,7 @@ func (o *Orchestrator) stepInstallInner() bool {
 		o.mu.Lock()
 		o.pendingGolden = &golden
 		o.mu.Unlock()
+		o.relinkAfterGolden(cfg, RestoreL2)
 		EmitDepsRestore(RestoreL2, cloneUrl, elapsedMs(), bootId, pkgCache)
 		o.markInstallSucceeded(cfg)
 		return true
@@ -534,6 +536,42 @@ func (o *Orchestrator) stepInstallInner() bool {
 		Branch:         cfg.Branch(),
 	})
 	return true
+}
+
+// relinkAfterGolden runs the package manager's install on top of a tree the
+// golden cache just restored. The golden is keyed and scoped to exactly one
+// directory — <InstallRoot>/node_modules — so under Bun's isolated linker
+// (the default for workspaces) only the shared .bun store travels with it.
+// Every workspace's own node_modules, a directory of symlinks pointing back
+// into that store, is missing, and an import from apps/* fails with
+// "Cannot find package" even though the bytes are on disk. Installing here
+// recreates them; the store is already warm, so it is a relink pass measured
+// in tens of milliseconds, not a second install. Doing it unconditionally
+// also keeps the fast path correct for hoisted and any future linker layout.
+//
+// Best-effort: a restored golden is still a usable tree, so a failure here is
+// no worse than the skip-install behaviour it replaces — it is logged and the
+// boot continues rather than being marked failed.
+func (o *Orchestrator) relinkAfterGolden(cfg *config.Enriched, tier RestoreSource) {
+	o.chunk(fmt.Sprintf("[orchestrator] relinking workspaces after %s golden restore\r\n", tier))
+	code, ran := SpawnInstall(cfg, o.deps.RepoDir, cfg.Env, func(data string) { o.rawChunk(data) })
+	if !ran {
+		return
+	}
+	if code != 0 {
+		o.chunk(fmt.Sprintf(
+			"\r\n[orchestrator] warning: relink after %s golden restore failed (exit %d) — continuing with the restored tree\r\n",
+			tier, code))
+		return
+	}
+	// The relink can run install scripts (postinstall/prepare — lefthook,
+	// husky), which overwrite .git/hooks/pre-push; reinstall so branch
+	// protection survives, same as the full-install path.
+	if o.deps.RepoDir != "" {
+		if err := gitx.InstallProtectedBranchHook(o.deps.RepoDir); err != nil {
+			o.chunk(fmt.Sprintf("\r\n[orchestrator] warning: could not reinstall protected-branch hook: %s\r\n", err.Error()))
+		}
+	}
 }
 
 func (o *Orchestrator) stepStartInner() startOutcome {
