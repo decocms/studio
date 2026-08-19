@@ -35,6 +35,7 @@ import { admin } from "./admin.ts";
 import { sandbox } from "./sandbox.ts";
 import { settings } from "./settings.ts";
 import { announcements } from "./announcements.ts";
+import { assets } from "./assets.ts";
 import type { TranslationKey } from "../en/index.ts";
 
 export const ptBR = {
@@ -75,4 +76,5 @@ export const ptBR = {
   ...sandbox,
   ...settings,
   ...announcements,
+  ...assets,
 } satisfies Record<TranslationKey, string>;

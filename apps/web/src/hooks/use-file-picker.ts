@@ -9,7 +9,11 @@
  */
 
 import { useProjectContext } from "@/sdk";
-import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useStudioTools } from "@/lib/studio-tools";
 import { KEYS } from "../lib/query-keys";
 
@@ -118,6 +122,28 @@ export function useFilePickerUpload() {
       }
 
       return (await response.json()) as UploadResult;
+    },
+  });
+}
+
+/**
+ * Delete an object from a configured bucket via the FILE_OBJECT_DELETE tool,
+ * then invalidate every listing variant (search / imageOnly) for that config
+ * so the grid drops the removed file. Used by the Assets browser only — the
+ * selection-oriented picker dialog stays read-only.
+ */
+export function useFilePickerDelete() {
+  const { org } = useProjectContext();
+  const studio = useStudioTools();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { configId: string; key: string }) =>
+      studio.call("FILE_OBJECT_DELETE", input),
+    onSuccess: (_result, input) => {
+      queryClient.invalidateQueries({
+        queryKey: KEYS.filePickerObjectsByConfig(org.id, input.configId),
+      });
     },
   });
 }

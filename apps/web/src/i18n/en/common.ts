@@ -287,6 +287,7 @@ export const common = {
   "common.mainPanelTabs.preview": "Preview",
   "common.mainPanelTabs.code": "Code",
   "common.mainPanelTabs.content": "Content",
+  "common.mainPanelTabs.assets": "Assets",
   "common.mainPanelTabs.reviewChanges": "Review changes",
   "common.mainPanelTabs.automations": "Automations",
   "common.mainPanelTabs.settings": "Settings",

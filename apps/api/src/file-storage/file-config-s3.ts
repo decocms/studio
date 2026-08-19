@@ -7,7 +7,11 @@
  * across requests.
  */
 
-import { ListObjectsV2Command, S3Client } from "@aws-sdk/client-s3";
+import {
+  DeleteObjectCommand,
+  ListObjectsV2Command,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import type {
   FileConfigCredentials,
   OrgFileConfigStorage,
@@ -218,6 +222,24 @@ export async function resolveFileConfig(
     }
   }
   return ctx;
+}
+
+/**
+ * Delete a single object from a configured bucket. The `key` is the raw S3
+ * key (not URL-encoded) as returned by {@link listObjects}. Deleting a
+ * non-existent key is a no-op on S3 (returns 204), so this is idempotent.
+ */
+export async function deleteObject(params: {
+  ctx: FileConfigContext;
+  key: string;
+}): Promise<void> {
+  const client = buildS3Client(params.ctx);
+  await client.send(
+    new DeleteObjectCommand({
+      Bucket: params.ctx.info.bucket,
+      Key: params.key,
+    }),
+  );
 }
 
 export interface ListedObject {

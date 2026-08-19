@@ -127,6 +127,7 @@ export interface StudioToolIO {
             auto_merge?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
+            native_assets_tab?: boolean | undefined;
           }
         | null
         | undefined;
@@ -195,6 +196,7 @@ export interface StudioToolIO {
             auto_merge?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
+            native_assets_tab?: boolean | undefined;
           }
         | undefined;
       main_agent_id?: string | null | undefined;
@@ -263,6 +265,7 @@ export interface StudioToolIO {
             auto_merge?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
+            native_assets_tab?: boolean | undefined;
           }
         | null
         | undefined;
@@ -4761,6 +4764,10 @@ export interface StudioToolIO {
       }[];
       nextCursor: string | null;
     };
+  };
+  FILE_OBJECT_DELETE: {
+    input: { configId: string; key: string };
+    output: { success: true };
   };
   ORG_FS_PUBLIC_SETS_SYNC: {
     input: { [x: string]: never };

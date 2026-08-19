@@ -199,6 +199,7 @@ export const CORE_TOOLS = [
   FileConfigTools.FILE_CONFIG_UPDATE,
   FileConfigTools.FILE_CONFIG_DELETE,
   FileConfigTools.FILE_OBJECTS_LIST,
+  FileConfigTools.FILE_OBJECT_DELETE,
 
   // Org filesystem (shared public skill sets)
   ORG_FS_PUBLIC_SETS_SYNC,
