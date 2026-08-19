@@ -448,6 +448,13 @@ function valueOwnsItemCrumb(
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
     if (k.startsWith("__")) continue;
     if (--budget.n <= 0) return false;
+    // The crumb may name a nested container FIELD (a global loader ref's drilled `selectedFacets` array writes a "Selected Facets" field crumb), not an item.
+    if (
+      (Array.isArray(v) || (v != null && typeof v === "object")) &&
+      (labelsMatchLoose(humanize(k), crumb) || labelsMatchLoose(k, crumb))
+    ) {
+      return true;
+    }
     if (valueOwnsItemCrumb(v, crumb, budget, depth + 1)) return true;
   }
   return false;

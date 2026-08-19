@@ -724,6 +724,53 @@ describe("resolveActiveFieldKey", () => {
     ).toBe("page");
   });
 
+  test("narrows to a GLOBAL-ref loader when the crumb names its nested array field", () => {
+    // Real ALS Backcountry: `page` is a bare ref to a saved loader; the drilled trail carries the "Selected Facets" FIELD label, not an item label.
+    const properties = {
+      page: {
+        title: "Page",
+        type: "block-ref",
+        anyOfRefs: [
+          {
+            resolveType: "vtex/loaders/intelligentSearch/productListingPage.ts",
+            title: "PLP",
+          },
+        ],
+      },
+      isFallback: { title: "Is Fallback", type: "boolean" },
+      cardLayout: {
+        title: "Card Layout",
+        type: "block-ref",
+        anyOfRefs: [
+          { resolveType: "site/loaders/ProductCardLayout.tsx", title: "Card" },
+        ],
+      },
+    } satisfies Record<string, SchemaProperty>;
+    const objValue = {
+      page: { __resolveType: "PLP Loader - Backcountry Skiing" },
+      isFallback: false,
+      cardLayout: { __resolveType: "PDP - Product Card" },
+    };
+    const decofile = {
+      "PLP Loader - Backcountry Skiing": {
+        __resolveType: "vtex/loaders/intelligentSearch/productListingPage.ts",
+        selectedFacets: [{ key: "productClusterIds", value: "1211" }],
+      },
+    };
+    expect(
+      resolveActiveFieldKey(
+        Object.keys(properties),
+        properties,
+        objValue,
+        [
+          "Selected Facets",
+          { label: "productClusterIds > 1211", itemIndex: 0 },
+        ],
+        decofile,
+      ),
+    ).toBe("page");
+  });
+
   test("two loaders carrying the same facet: bare crumb is ambiguous, ancestor crumb pins it", () => {
     // Real montecarlo SearchResult: `page` + `RangePriceProps` both carry a selectedFacets item labelled "category-1".
     const properties = {
