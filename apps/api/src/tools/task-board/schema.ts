@@ -103,6 +103,14 @@ export const TaskBoardItemSchema = z.object({
   dueDate: z.string().datetime().nullable(),
   // Manual drag-to-reorder position within a lane, ascending.
   sortOrder: z.number(),
+  // Infrastructure retries already spent on this card's runs — the budget
+  // `reactToFailedTaskRun` spends against `MAX_RUN_RETRIES`. Present on every
+  // `TaskBoardItem` (see storage/types.ts), so it must be modeled here too:
+  // omitting it from this closed object made MCP clients that re-validate
+  // `structuredContent` with Ajv (e.g. the studio proxy's `client.callTool`)
+  // reject every response with `-32602: Structured content does not match
+  // the tool's output schema` the moment a row carried a non-zero value.
+  retryAttempts: z.number(),
   // Agent threads linked to this task (many-to-many), most-recent first.
   threads: z.array(TaskBoardItemThreadSchema),
   // Org tags attached to this task, name ascending.

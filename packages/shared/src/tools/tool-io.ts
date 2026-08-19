@@ -306,6 +306,7 @@ export interface StudioToolIO {
         repo: string | null;
         dueDate: string | null;
         sortOrder: number;
+        retryAttempts: number;
         threads: {
           threadId: string;
           virtualMcpId: string | null;
@@ -359,6 +360,7 @@ export interface StudioToolIO {
         repo: string | null;
         dueDate: string | null;
         sortOrder: number;
+        retryAttempts: number;
         threads: {
           threadId: string;
           virtualMcpId: string | null;
@@ -431,6 +433,7 @@ export interface StudioToolIO {
         repo: string | null;
         dueDate: string | null;
         sortOrder: number;
+        retryAttempts: number;
         threads: {
           threadId: string;
           virtualMcpId: string | null;
