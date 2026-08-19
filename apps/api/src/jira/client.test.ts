@@ -1,9 +1,10 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, mock } from "bun:test";
 import {
   jiraBodyToText,
   assertBoardId,
   normalizeSiteUrl,
   textToAdf,
+  JiraClient,
 } from "./client";
 
 describe("normalizeSiteUrl", () => {
@@ -103,5 +104,104 @@ describe("textToAdf", () => {
       version: 1,
       content: [{ type: "paragraph", content: [] }],
     });
+  });
+});
+
+describe("JiraClient", () => {
+  it("retries on 503 server error and succeeds on second attempt", async () => {
+    let callCount = 0;
+    const originalFetch = globalThis.fetch;
+    const mockFetch = mock(async () => {
+      callCount++;
+      if (callCount === 1) {
+        // First call: 503 Service Unavailable
+        return new Response(JSON.stringify({ error: "Service Unavailable" }), {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      // Second call: success
+      return new Response(
+        JSON.stringify({ accountId: "test", displayName: "Test User" }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    });
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
+
+    try {
+      const client = new JiraClient(
+        "https://acme.atlassian.net",
+        "user@example.com",
+        "token",
+      );
+      const result = await client.myself();
+      expect(result).toEqual({ accountId: "test", displayName: "Test User" });
+      expect(callCount).toBe(2); // Retry happened
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("does not retry on 401 Unauthorized", async () => {
+    let callCount = 0;
+    const originalFetch = globalThis.fetch;
+    const mockFetch = mock(async () => {
+      callCount++;
+      return new Response(JSON.stringify({ error: "Invalid credentials" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
+
+    try {
+      const client = new JiraClient(
+        "https://acme.atlassian.net",
+        "user@example.com",
+        "token",
+      );
+      await expect(client.myself()).rejects.toThrow("401");
+      expect(callCount).toBe(1); // No retry on 4xx
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("retries on 429 rate limit error", async () => {
+    let callCount = 0;
+    const originalFetch = globalThis.fetch;
+    const mockFetch = mock(async () => {
+      callCount++;
+      if (callCount === 1) {
+        return new Response(JSON.stringify({ error: "Too Many Requests" }), {
+          status: 429,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(
+        JSON.stringify({ accountId: "test", displayName: "Test User" }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    });
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
+
+    try {
+      const client = new JiraClient(
+        "https://acme.atlassian.net",
+        "user@example.com",
+        "token",
+      );
+      const result = await client.myself();
+      expect(result).toEqual({ accountId: "test", displayName: "Test User" });
+      expect(callCount).toBe(2); // Retry happened
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
