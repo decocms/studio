@@ -3,12 +3,19 @@ import { useChatTask } from "@/components/chat/chat-context";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { useVirtualMCP } from "@/sdk";
 import { AlertCircle } from "@untitledui/icons";
+import { useSearch } from "@tanstack/react-router";
 import { useT } from "@/i18n/use-t.ts";
 
 export function ContentTab({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
   const entity = useVirtualMCP(virtualMcpId);
   const { activeTask } = useChatTask();
+  // Storefront "." deep-link (see /choose-editor): preselect the visited page.
+  const search = useSearch({ strict: false }) as {
+    contentPageId?: string;
+    contentPath?: string;
+    contentPathTemplate?: string;
+  };
   // A thread-scoped repo (bound by `load_repo`) is editable even when the agent
   // itself has no clonable source (e.g. the ephemeral Decopilot agent) — mirror
   // PreviewTab so Content and Preview agree on what's available.
@@ -28,5 +35,13 @@ export function ContentTab({ virtualMcpId }: { virtualMcpId: string }) {
     );
   }
 
-  return <ContentBrowser />;
+  return (
+    <ContentBrowser
+      deepLinkPage={{
+        pageId: search.contentPageId,
+        path: search.contentPath,
+        pathTemplate: search.contentPathTemplate,
+      }}
+    />
+  );
 }

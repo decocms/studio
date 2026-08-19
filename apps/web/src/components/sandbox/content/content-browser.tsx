@@ -47,7 +47,9 @@ import {
   extractPages,
   findSiteAppEntry,
   hasEditableDecoContent,
+  resolveDeepLinkPage,
   type GlobalSectionEntry,
+  type PageDeepLink,
   type PageEntry,
 } from "@/components/sections-editor/page-list";
 import type { AppCatalogEntry } from "./app-catalog";
@@ -242,9 +244,14 @@ export type PostSort = "date-desc" | "date-asc" | "az" | "za";
 
 export interface ContentBrowserProps {
   mode?: "content" | "blocks";
+  /** Storefront "." deep-link: preselect this page once the decofile loads. */
+  deepLinkPage?: PageDeepLink;
 }
 
-export function ContentBrowser({ mode = "content" }: ContentBrowserProps) {
+export function ContentBrowser({
+  mode = "content",
+  deepLinkPage,
+}: ContentBrowserProps) {
   const inset = useInsetContext();
   const { currentBranch: branch } = useChatTask();
   const { org } = useProjectContext();
@@ -296,6 +303,7 @@ export function ContentBrowser({ mode = "content" }: ContentBrowserProps) {
       branch={branch}
       previewUrl={previewUrl}
       mode={mode}
+      deepLinkPage={deepLinkPage}
       devServerReady={devServerReady}
       sandboxWarming={sandboxWarming}
     />
@@ -326,6 +334,7 @@ function ContentBrowserReady({
   branch,
   previewUrl,
   mode,
+  deepLinkPage,
   devServerReady,
   sandboxWarming,
 }: {
@@ -334,6 +343,7 @@ function ContentBrowserReady({
   branch: string;
   previewUrl: string | null;
   mode: "content" | "blocks";
+  deepLinkPage?: PageDeepLink;
   devServerReady: boolean;
   sandboxWarming: boolean;
 }) {
@@ -386,6 +396,30 @@ function ContentBrowserReady({
         setSelection(selectionFromBlocksTarget(target));
         setOpenPageSeoKey(target.key);
       }
+    }
+  }
+  // Storefront "." deep-link (content mode): open the visited page once the decofile loads. One-shot, so a later manual selection is never clobbered.
+  const hasDeepLink = !!(
+    deepLinkPage?.pageId ||
+    deepLinkPage?.path ||
+    deepLinkPage?.pathTemplate
+  );
+  const [seededDeepLink, setSeededDeepLink] = useState(false);
+  if (
+    mode === "content" &&
+    hasDeepLink &&
+    !seededDeepLink &&
+    selection === null &&
+    decofile
+  ) {
+    setSeededDeepLink(true);
+    const match = resolveDeepLinkPage(
+      extractPages(decofile),
+      deepLinkPage ?? {},
+    );
+    if (match) {
+      setActiveCollection("pages");
+      setSelection({ collection: "pages", key: match.key, path: match.path });
     }
   }
   const [searchQuery, setSearchQuery] = useState("");

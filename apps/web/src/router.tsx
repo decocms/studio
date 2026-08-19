@@ -229,6 +229,23 @@ const commerceOnboardingRoute = createRoute({
   ),
 });
 
+// Storefront "." shortcut: resolve (site, domain) → the project's content editor. Root route so login can bounce back with params intact.
+const chooseEditorRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/choose-editor",
+  component: lazyRouteComponent(() => import("./routes/choose-editor.tsx")),
+  validateSearch: z.lazy(() =>
+    z.object({
+      site: z.string().optional(),
+      domain: z.string().optional(),
+      pageId: z.string().optional(),
+      // path/pathTemplate arrive URL-encoded once; TanStack decodes them here.
+      path: z.string().optional(),
+      pathTemplate: z.string().optional(),
+    }),
+  ),
+});
+
 // Auth-gated commerce report for a scanned domain. The route itself stays
 // outside the org shell so login can happen inline over its locked preview.
 const reportRoute = createRoute({
@@ -320,6 +337,13 @@ const unifiedChatSearchSchema = z.object({
    *  carried in the URL (same context as `/commerce-onboarding?siteUrl=…`) so the
    *  modal is self-describing. Falls back to the connection's stored metadata. */
   siteUrl: z.string().optional(),
+  /** Storefront "." deep-link: preselect a page in the content editor. Set by
+   *  `/choose-editor`; consumed by ContentBrowser. `contentPageId` is the CMS
+   *  page id; `contentPath`/`contentPathTemplate` are the concrete URL and its
+   *  route template (page.path in the decofile stores the template). */
+  contentPageId: z.string().optional(),
+  contentPath: z.string().optional(),
+  contentPathTemplate: z.string().optional(),
 });
 
 const unifiedChatRoute = createRoute({
@@ -653,6 +677,7 @@ const routeTree = rootRoute.addChildren([
   adminLayoutWithChildren,
   onboardingRoute,
   commerceOnboardingRoute,
+  chooseEditorRoute,
   reportRoute,
   loginRoute,
   cliAuthSuccessRoute,

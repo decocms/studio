@@ -28,6 +28,7 @@ import { common } from "./common.ts";
 import { commerceOnboarding } from "./commerce-onboarding.ts";
 import { collections } from "./collections.ts";
 import { cmsTour } from "./cms-tour.ts";
+import { chooseEditor } from "./choose-editor.ts";
 import { chat } from "./chat.ts";
 import { automations } from "./automations.ts";
 import { agentShellLayout } from "./agent-shell-layout.ts";
@@ -71,6 +72,7 @@ export const en = {
   ...commerceOnboarding,
   ...collections,
   ...cmsTour,
+  ...chooseEditor,
   ...chat,
   ...automations,
   ...agentShellLayout,
