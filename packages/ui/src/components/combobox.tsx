@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, ChevronSelectorVertical } from "@untitledui/icons";
-import { ReactNode, useState } from "react";
+import { ComponentProps, ReactNode, useState } from "react";
 
 import { cn } from "../lib/utils.ts";
 import { Button } from "./button.tsx";
@@ -33,6 +33,10 @@ export interface ComboboxProps {
   renderItem?: (option: ComboboxOption, isSelected: boolean) => ReactNode;
   emptyMessage?: string;
   searchPlaceholder?: string;
+  /** Override how the search matches. Omitted keeps cmdk's fuzzy default, which
+   *  scores subsequences — fine for short lists, noisy once there are dozens of
+   *  similarly-worded options. */
+  filter?: ComponentProps<typeof Command>["filter"];
 }
 
 export function Combobox({
@@ -47,6 +51,7 @@ export function Combobox({
   renderItem,
   emptyMessage = "No results found.",
   searchPlaceholder = "Search...",
+  filter,
 }: ComboboxProps) {
   const selectedOption = options.find((option) => option.value === value);
   const [open, setOpen] = useState(false);
@@ -73,7 +78,7 @@ export function Combobox({
         className={cn("p-0", contentClassName)}
         style={{ width: "var(--radix-popover-trigger-width)" }}
       >
-        <Command>
+        <Command filter={filter}>
           <CommandInput placeholder={searchPlaceholder} className="h-9" />
           <CommandList>
             <CommandEmpty>{emptyMessage}</CommandEmpty>

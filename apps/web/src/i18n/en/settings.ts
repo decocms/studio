@@ -45,6 +45,8 @@ export const settings = {
   "settings.jira.boardDescription":
     "The board's visible cards are mirrored — its Backlog tab, epics and sub-tasks are not.",
   "settings.jira.boardPlaceholder": "Select a board",
+  "settings.jira.boardSearchPlaceholder": "Search boards…",
+  "settings.jira.noBoardsMatch": "No board matches that search",
   "settings.jira.loadingBoards": "Loading boards…",
   "settings.jira.mappingLabel": "Column mapping",
   "settings.jira.mappingDescription":

@@ -4935,6 +4935,7 @@ export interface StudioToolIO {
         name: string;
         type: string;
         projectKey?: string | undefined;
+        projectName?: string | undefined;
       }[];
     };
   };
