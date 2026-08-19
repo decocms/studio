@@ -40,6 +40,20 @@ describe("buildValidationHint", () => {
     );
   });
 
+  it("does not flag a correctly-sent integer as wrong-typed", () => {
+    // `typeof 5` is "number", never "integer" — must not read as a mismatch.
+    const hint = buildValidationHint(
+      "t",
+      {
+        required: ["limit", "name"],
+        properties: { limit: { type: "integer" }, name: { type: "string" } },
+      },
+      { limit: 5 },
+    );
+    expect(hint).not.toContain("Wrong type");
+    expect(hint).toContain("Missing required: name.");
+  });
+
   it("omits missing/required clauses when schema has no required fields", () => {
     const hint = buildValidationHint("t", { properties: {} }, { a: 1 });
     expect(hint).toBe('Invalid arguments for "t". You sent: a.');

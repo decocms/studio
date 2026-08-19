@@ -31,6 +31,19 @@ function jsonTypeOf(value: unknown): string {
 }
 
 /**
+ * Whether `value` satisfies a declared JSON Schema `type`. JSON Schema's
+ * "integer" is a whole-number `number`, not a distinct JS runtime type —
+ * `jsonTypeOf` alone would call a correctly-sent `5` a type mismatch because
+ * `typeof 5 === "number"` never equals the declared string `"integer"`.
+ */
+function matchesDeclaredType(value: unknown, declared: string): boolean {
+  if (declared === "integer") {
+    return typeof value === "number" && Number.isInteger(value);
+  }
+  return jsonTypeOf(value) === declared;
+}
+
+/**
  * Re-type a single string argument to the type its schema declares. Returns
  * `undefined` when the string can't be read as that type, so the caller leaves
  * the original value alone and the upstream rejection stands.
@@ -114,7 +127,7 @@ export function buildValidationHint(
   const mistyped = sent
     .filter((k) => {
       const declared = schema?.properties?.[k]?.type;
-      return declared != null && jsonTypeOf(args?.[k]) !== declared;
+      return declared != null && !matchesDeclaredType(args?.[k], declared);
     })
     .map(
       (k) =>
