@@ -222,17 +222,17 @@ export class ConnectionStorage implements ConnectionStoragePort {
       created_at: now,
       updated_at: now,
     });
-    await this.db
+    // returningAll() avoids a second round trip to re-fetch the inserted row.
+    const row = await this.db
       .insertInto("connections")
       .values(serialized as Insertable<Database["connections"]>)
-      .execute();
-
-    const connection = await this.findById(id);
-    if (!connection) {
+      .returningAll()
+      .executeTakeFirst();
+    if (!row) {
       throw new Error(`Failed to create connection with id: ${id}`);
     }
 
-    return connection;
+    return this.deserializeConnection(row as RawConnectionRow);
   }
 
   async createNew(data: Partial<ConnectionEntity>): Promise<ConnectionEntity> {
@@ -248,11 +248,13 @@ export class ConnectionStorage implements ConnectionStoragePort {
       updated_at: now,
     });
 
+    let row: RawConnectionRow | undefined;
     try {
-      await this.db
+      row = (await this.db
         .insertInto("connections")
         .values(serialized as Insertable<Database["connections"]>)
-        .execute();
+        .returningAll()
+        .executeTakeFirst()) as RawConnectionRow | undefined;
     } catch (error) {
       if (
         error instanceof Error &&
@@ -264,12 +266,11 @@ export class ConnectionStorage implements ConnectionStoragePort {
       throw error;
     }
 
-    const connection = await this.findById(id);
-    if (!connection) {
+    if (!row) {
       throw new Error(`Failed to create connection with id: ${id}`);
     }
 
-    return connection;
+    return this.deserializeConnection(row);
   }
 
   async findById(
@@ -396,18 +397,17 @@ export class ConnectionStorage implements ConnectionStoragePort {
       updated_at: new Date().toISOString(),
     });
 
-    await this.db
+    const row = await this.db
       .updateTable("connections")
       .set(serialized)
       .where("id", "=", id)
-      .execute();
-
-    const connection = await this.findById(id);
-    if (!connection) {
+      .returningAll()
+      .executeTakeFirst();
+    if (!row) {
       throw new Error("Connection not found after update");
     }
 
-    return connection;
+    return this.deserializeConnection(row as RawConnectionRow);
   }
 
   /**
