@@ -156,7 +156,7 @@ export function buildLatestJson({ version, signatures, repo, pubDate }) {
 
   const expected = Object.keys(PLATFORM_ASSETS);
   const unknown = Object.keys(signatures).filter(
-    (key) => !(key in PLATFORM_ASSETS),
+    (key) => !Object.hasOwn(PLATFORM_ASSETS, key),
   );
   if (unknown.length > 0) {
     throw new Error(

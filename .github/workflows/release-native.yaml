@@ -503,6 +503,7 @@ jobs:
         env:
           VERSION: ${{ needs.plan.outputs.version }}
         run: |
+          set -euo pipefail
           ZIP="deco-$VERSION-aarch64.zip"
           DMG_OUT="deco-$VERSION-aarch64.dmg"
           TARGZ="deco-$VERSION-aarch64.app.tar.gz"

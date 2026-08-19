@@ -68,6 +68,7 @@ plist = "1"
 # pkg-config webkit floor webkit2gtk-sys derives is 2.40 either way. Asking for
 # only what is used keeps that fact tauri's to own rather than ours.
 [target.'cfg(target_os = "linux")'.dependencies]
+rustls-pemfile = "2"
 webkit2gtk = { version = "=2.0.2", features = ["v2_6"] }
 
 [dev-dependencies]

@@ -392,7 +392,10 @@ fn system_ca_bundle() -> Option<String> {
 #[cfg(target_os = "linux")]
 fn read_store(path: &Path) -> Option<String> {
     let pem = fs::read_to_string(path).ok()?;
-    (!pem.trim().is_empty()).then_some(pem)
+    let mut reader = pem.as_bytes();
+    rustls_pemfile::certs(&mut reader)
+        .any(|certificate| certificate.is_ok())
+        .then_some(pem)
 }
 
 /// The bundle's contents, or `None` when there is no system store to be a
@@ -531,6 +534,20 @@ mod tests {
 
     const SYSTEM_PEM: &str = "-----BEGIN CERTIFICATE-----\npublic\n-----END CERTIFICATE-----\n";
     const LOCAL_PEM: &str = "-----BEGIN CERTIFICATE-----\nlocal\n-----END CERTIFICATE-----\n";
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn system_store_candidates_must_contain_a_parseable_certificate() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("ca-bundle.pem");
+        fs::write(&path, "-----BEGIN CERTIFICATE-----\ntruncated").expect("write malformed");
+        assert_eq!(read_store(&path), None);
+
+        let certified =
+            rcgen::generate_simple_self_signed(vec!["example.test".to_string()]).expect("cert");
+        fs::write(&path, certified.cert.pem()).expect("write certificate");
+        assert!(read_store(&path).is_some());
+    }
 
     /// The refusal is the point. `SSL_CERT_FILE` REPLACES the child's root
     /// store, so a bundle built without a system store would hold our CA

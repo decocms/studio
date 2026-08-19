@@ -370,7 +370,7 @@ pub async fn run(app: &tauri::AppHandle) -> Result<(), SetupError> {
     if control.secure {
         let app = app.clone();
         embedded.preview_host_observer = Some(Arc::new(move |host: &str| {
-            crate::webview_trust::allow_preview_host(&app, host);
+            crate::webview_trust::allow_preview_host(&app, host)
         }));
     }
     // Built BEFORE StartOptions so the staged-version channel and restart

@@ -101,15 +101,29 @@ pub(crate) fn preview_host_base() -> &'static str {
 /// Per-handle rather than one shared origin: cookies ignore the port, so a
 /// single host put every sandbox in one jar. `None` before the listener binds.
 fn preview_url(handle: &str) -> Option<String> {
-    preview_url_for(
-        preview_host_base(),
-        preview_scheme(),
-        PREVIEW_PORT.load(Ordering::Relaxed),
-        handle,
-        PREVIEW_HOST_OBSERVER
-            .get()
-            .map(|observer| observer.as_ref() as &dyn Fn(&str)),
-    )
+    preview_url_with_registration(handle).0
+}
+
+fn preview_url_with_registration(
+    handle: &str,
+) -> (Option<String>, Option<crate::PreviewHostRegistration>) {
+    let registration = std::cell::RefCell::new(None);
+    let observer = PREVIEW_HOST_OBSERVER.get();
+    let url = {
+        let observe = |host: &str| {
+            if let Some(observer) = observer {
+                registration.replace(Some(observer(host)));
+            }
+        };
+        preview_url_for(
+            preview_host_base(),
+            preview_scheme(),
+            PREVIEW_PORT.load(Ordering::Relaxed),
+            handle,
+            observer.map(|_| &observe as &dyn Fn(&str)),
+        )
+    };
+    (url, registration.into_inner())
 }
 
 /// The pure core of [`preview_url`]: everything the three process globals feed
@@ -139,8 +153,8 @@ fn preview_url_for(
         // and would turn the host into `github.com` with the rest as a path.
         let label = crate::sandbox::preview_label(handle);
         let host = format!("{label}.{base}");
-        // Before the URL escapes: whoever gets it may load it immediately, and
-        // on Linux the host must already be trusted by then.
+        // Announce the host before the URL escapes. Async callers can wait for
+        // the observer's registration acknowledgement before returning it.
         if let Some(observe) = observe {
             observe(&host);
         }
@@ -666,8 +680,24 @@ async fn start(state: &AppState, org: &str, body: &Bytes) -> Response {
     // ask for.
     let reported_branch = branch_for_virtual_mcp(state, virtual_mcp_id);
 
+    let (preview_url, preview_registration) = preview_url_with_registration(&handle);
+    if let Some(registration) = preview_registration {
+        let trust =
+            match tokio::time::timeout(std::time::Duration::from_secs(2), registration).await {
+                Ok(Ok(result)) => result,
+                Ok(Err(error)) => Err(format!("registration channel closed: {error}")),
+                Err(_) => Err("registration timed out after 2 seconds".to_string()),
+            };
+        if let Err(error) = trust {
+            return ApiError::internal(format!(
+                "could not trust the sandbox preview host before returning its URL: {error}"
+            ))
+            .into_response();
+        }
+    }
+
     Json(json!({
-        "previewUrl": preview_url(&handle),
+        "previewUrl": preview_url,
         "sandboxHandle": handle,
         "branch": reported_branch,
         "isNewVm": !existed,

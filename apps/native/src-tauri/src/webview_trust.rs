@@ -30,7 +30,7 @@
 //! has to be allowed before the URL reaches the page. That is what
 //! [`allow_preview_host`] and `local-api`'s `preview_host_observer` exist for.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
@@ -56,10 +56,12 @@ static STATE: OnceLock<Mutex<State>> = OnceLock::new();
 
 #[derive(Default)]
 struct State {
-    /// Every host handed to the exception API, or queued to be. Also the
-    /// dedup: the observer fires once per preview URL handed out, which is
-    /// several times per sandbox.
+    /// Every host whose exception has been installed successfully.
     granted: HashSet<String>,
+    /// Every caller waiting for the first registration attempt for a host.
+    /// This deduplicates concurrent URL requests without acknowledging any of
+    /// them before the GTK callback has completed.
+    waiting: HashMap<String, Vec<tokio::sync::oneshot::Sender<Result<(), String>>>>,
     /// Preview hosts observed before the webview existed. Drained by
     /// [`install`] under this same lock, so a host can never be queued into a
     /// list nobody will read again.
@@ -106,38 +108,82 @@ pub fn install(
 ///
 /// Called from `local-api`'s request path (any thread) via the
 /// `preview_host_observer` hook, once per preview URL handed out.
-pub fn allow_preview_host(app: &tauri::AppHandle, host: &str) {
+pub fn allow_preview_host(
+    app: &tauri::AppHandle,
+    host: &str,
+) -> tokio::sync::oneshot::Receiver<Result<(), String>> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let host = host.to_string();
     {
         let mut state = state();
-        if !state.granted.insert(host.to_string()) {
-            return;
+        if state.granted.contains(&host) {
+            let _ = tx.send(Ok(()));
+            return rx;
         }
-        if state.granted.len() > ACCUMULATION_WARN_THRESHOLD {
+        if let Some(waiters) = state.waiting.get_mut(&host) {
+            waiters.push(tx);
+            return rx;
+        }
+        state.waiting.insert(host.clone(), vec![tx]);
+        let host_count = state.granted.len() + state.waiting.len();
+        if host_count > ACCUMULATION_WARN_THRESHOLD {
             tracing::warn!(
-                hosts = state.granted.len(),
+                hosts = host_count,
                 "webview TLS exceptions keep accumulating; WebKitGTK cannot revoke one, \
                  so they clear only when the app restarts"
             );
         }
         if !state.webview_ready {
-            state.pending.push(host.to_string());
-            return;
+            state.pending.push(host);
+            return rx;
         }
     }
+    dispatch_preview_host(app, host);
+    rx
+}
+
+fn dispatch_preview_host(app: &tauri::AppHandle, host: String) {
     let Some(leaf_cert) = LEAF_CERT.get().cloned() else {
+        complete_preview_host(
+            &host,
+            Err("the local leaf certificate is not initialized".to_string()),
+        );
         return;
     };
     let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) else {
+        complete_preview_host(&host, Err("the main webview does not exist".to_string()));
         return;
     };
-    let host = host.to_string();
+    let callback_host = host.clone();
     let dispatch = window.with_webview(move |platform| {
-        if let Err(error) = allow_host(&platform.inner(), &leaf_cert, &host) {
-            tracing::warn!(%error, host = %host, "could not trust a sandbox preview host");
+        let outcome = allow_host(&platform.inner(), &leaf_cert, &callback_host);
+        if let Err(error) = &outcome {
+            tracing::warn!(%error, host = %callback_host, "could not trust a sandbox preview host");
         }
+        complete_preview_host(&callback_host, outcome);
     });
     if let Err(error) = dispatch {
         tracing::warn!(%error, "could not reach the webview to trust a sandbox preview host");
+        complete_preview_host(
+            &host,
+            Err(format!(
+                "could not reach the webview to trust the preview host: {error}"
+            )),
+        );
+    }
+}
+
+fn complete_preview_host(host: &str, outcome: Result<(), String>) {
+    let waiters = {
+        let mut state = state();
+        let waiters = state.waiting.remove(host).unwrap_or_default();
+        if outcome.is_ok() {
+            state.granted.insert(host.to_string());
+        }
+        waiters
+    };
+    for waiter in waiters {
+        let _ = waiter.send(outcome.clone());
     }
 }
 
@@ -190,6 +236,7 @@ fn register_control_origin(
     };
     for host in pending {
         context.allow_tls_certificate_for_host(&leaf, &host);
+        complete_preview_host(&host, Ok(()));
     }
 
     // Only now: every exception this launch knows about is registered, so the

@@ -133,8 +133,11 @@ pub struct TlsFiles {
     pub child_ca_bundle: Option<PathBuf>,
 }
 
+/// Completion signal returned by [`PreviewHostObserver`].
+pub type PreviewHostRegistration = tokio::sync::oneshot::Receiver<Result<(), String>>;
+
 /// See [`EmbeddedOptions::preview_host_observer`].
-pub type PreviewHostObserver = Arc<dyn Fn(&str) + Send + Sync>;
+pub type PreviewHostObserver = Arc<dyn Fn(&str) -> PreviewHostRegistration + Send + Sync>;
 
 /// Browser-facing authentication and optional bundled-UI configuration for an
 /// in-process Tauri server. `expected_host` and `control_origin` are explicit

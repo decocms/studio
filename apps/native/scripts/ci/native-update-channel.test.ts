@@ -190,6 +190,12 @@ describe("buildLatestJson", () => {
     expect(() =>
       buildLatestJson({
         ...base,
+        signatures: { ...bothSigs, toString: "c2ln" },
+      }),
+    ).toThrow(/unknown platform key\(s\) toString/);
+    expect(() =>
+      buildLatestJson({
+        ...base,
         signatures: "c2ln" as unknown as Record<string, string>,
       }),
     ).toThrow(/must be an object/);
