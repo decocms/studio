@@ -11,8 +11,8 @@ export {
 } from "./thread-gate-workflow";
 export {
   cancelHostedHarness,
-  HOSTED_HARNESS_PARTITION_CONCURRENCY,
   HOSTED_HARNESS_QUEUE,
+  HOSTED_HARNESS_SANDBOXED_QUEUE,
   setHostedHarnessRuntime,
   type HostedHarnessInput,
   type HostedHarnessRuntime,

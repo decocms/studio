@@ -11,11 +11,8 @@ import {
   RunSupersededError,
 } from "@/harnesses/sandbox-dispatch-client";
 import {
-  acquireHostedRunSlot,
-  HOSTED_RUN_CAPS,
-} from "./hosted-run-concurrency";
-import {
   buildTerminalErrorChunks,
+  heartbeatWhileQueued,
   hostedChildWorkflowId,
   type HostedHarnessInput,
   type HostedHarnessRuntime,
@@ -383,69 +380,78 @@ describe("half-terminal invariant (T9 proof obligation 1): done is never publish
   });
 });
 
-// Regression: a run parked at the per-pod concurrency cap published NOTHING
-// while it waited. The parent gate is already live-tailing the run's subject
-// with a RUN_IDLE_TIMEOUT_MS silence window, so a queue longer than that window
-// failed the turn as a liveness breach before the loop had started — and the
-// child then ran anyway under a fence nobody was projecting. The parked run now
-// publishes `waiting-capacity` (which both resets that window and is the only
-// feedback a queued run gives the UI).
-describe("a run queued at the concurrency cap", () => {
+// Regression (inverted): a run that waits out RUN_IDLE_TIMEOUT_MS in silence is
+// failed for liveness before it starts. The child used to wait, and beat, for
+// itself; now it waits in the queue and only the gate is awake to speak for it.
+describe("heartbeatWhileQueued", () => {
   const input: HostedHarnessInput = {
-    runId: "run-parked",
-    fenceToken: "fence-parked",
-    threadId: "thread-parked",
+    runId: "run-queued",
+    fenceToken: "fence-queued",
+    threadId: "thread-queued",
     request: {
       organizationId: "org-1",
       userId: "user-1",
     } as SerializableDispatchRunInput,
   };
 
-  test("publishes waiting-capacity while parked, and starts the loop only once a slot frees", async () => {
-    // Saturate the real gate by holding every slot it has, so the run under
-    // test genuinely parks (no env/module games — the cap is read once at
-    // import time). The IN-PROCESS gate specifically: the fixture carries no
-    // `harnessId`, so the run under test is not sandboxed and spends that
-    // budget. `hostedRunStats().max` is the pod total across both gates and
-    // would over-acquire here.
-    const held = await Promise.all(
-      Array.from({ length: HOSTED_RUN_CAPS.inProcess }, () =>
-        acquireHostedRunSlot({ harnessId: "decopilot" }),
-      ),
-    );
+  const withStreamBuffer = () => {
+    const streamBuffer = {
+      publishRawChunk: mock(() => Promise.resolve(true)),
+      publishDone: mock(() => Promise.resolve(true)),
+    } as unknown as NonNullable<HostedHarnessRuntime["deps"]["streamBuffer"]>;
+    setHostedHarnessRuntime({
+      dispatchRunFn: mock(() => Promise.resolve({ taskId: "t" })),
+      studioContextFactory: async () => null,
+      deps: {
+        runRegistry: {} as HostedHarnessRuntime["deps"]["runRegistry"],
+        cancelBroadcast: {} as HostedHarnessRuntime["deps"]["cancelBroadcast"],
+        streamBuffer,
+      },
+    });
+    return streamBuffer;
+  };
+
+  test("publishes waiting-capacity on every beat while the child is ENQUEUED", async () => {
+    const streamBuffer = withStreamBuffer();
+    const stop = heartbeatWhileQueued(input, {
+      isQueued: async () => true,
+      intervalMs: 1,
+    });
     try {
-      const dispatchRunFn = mock(() => Promise.resolve({ taskId: "t" }));
-      const streamBuffer = {
-        publishRawChunk: mock(() => Promise.resolve(true)),
-        publishDone: mock(() => Promise.resolve(true)),
-      } as unknown as NonNullable<HostedHarnessRuntime["deps"]["streamBuffer"]>;
-      setHostedHarnessRuntime({
-        dispatchRunFn,
-        studioContextFactory: async () => null,
-        deps: {
-          runRegistry: {} as HostedHarnessRuntime["deps"]["runRegistry"],
-          cancelBroadcast:
-            {} as HostedHarnessRuntime["deps"]["cancelBroadcast"],
-          streamBuffer,
-        },
-      });
-
-      const run = runHostedHarness(input, {} as StudioContext);
-      // Let the park's publish settle (it is fire-and-forget by design — the
-      // status must never delay the run).
-      await sleep(0);
-
+      await sleep(20);
       expect(streamBuffer.publishRawChunk).toHaveBeenCalledWith(
         input.runId,
         buildRunStatusChunk("waiting-capacity"),
       );
-      expect(dispatchRunFn).not.toHaveBeenCalled();
-
-      held[0]?.();
-      await run;
-      expect(dispatchRunFn).toHaveBeenCalledTimes(1);
+      expect(
+        (streamBuffer.publishRawChunk as ReturnType<typeof mock>).mock.calls
+          .length,
+      ).toBeGreaterThan(1);
     } finally {
-      for (const release of held) release();
+      stop();
+    }
+  });
+
+  test("stops itself once the child is dequeued — the run's own chunks take over", async () => {
+    const streamBuffer = withStreamBuffer();
+    let queued = true;
+    const stop = heartbeatWhileQueued(input, {
+      isQueued: async () => queued,
+      intervalMs: 1,
+    });
+    try {
+      await sleep(10);
+      queued = false;
+      await sleep(10);
+      const after = (streamBuffer.publishRawChunk as ReturnType<typeof mock>)
+        .mock.calls.length;
+      await sleep(20);
+      expect(
+        (streamBuffer.publishRawChunk as ReturnType<typeof mock>).mock.calls
+          .length,
+      ).toBe(after);
+    } finally {
+      stop();
     }
   });
 });

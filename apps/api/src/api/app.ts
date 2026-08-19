@@ -180,15 +180,14 @@ import {
   setAutomationRuntime,
 } from "../automations";
 import {
-  HOSTED_HARNESS_PARTITION_CONCURRENCY,
   HOSTED_HARNESS_QUEUE,
+  HOSTED_HARNESS_SANDBOXED_QUEUE,
   setHostedHarnessRuntime,
   setThreadGateRuntime,
   THREAD_GATE_PARTITION_CONCURRENCY,
   THREAD_GATE_QUEUE,
 } from "../dispatch-queue";
 import { GITHUB_READS_QUEUE } from "../dispatch-queue/queue-names";
-import { hostedRunStats } from "../dispatch-queue/hosted-run-concurrency";
 import { setProjectorWorkflowRuntime } from "./routes/decopilot/projector-workflow";
 import { synthesizedErrorMessageId } from "./routes/decopilot/message-ids";
 import { backfillStudioPackForAllOrgs } from "../auth/install-studio-pack-workflow";
@@ -917,6 +916,7 @@ const DBOS_QUEUE_NAMES = new Set([
   AUTOMATIONS_QUEUE,
   THREAD_GATE_QUEUE,
   HOSTED_HARNESS_QUEUE,
+  HOSTED_HARNESS_SANDBOXED_QUEUE,
   BACKGROUND_TOOLS_QUEUE,
   GITHUB_READS_QUEUE,
 ]);
@@ -1345,13 +1345,6 @@ export async function createApp(options: CreateAppOptions = {}) {
     });
     return c.json({ queue_length: queued.length });
   });
-
-  // Hosted-run gate backlog on THIS pod, for a KEDA metrics-api trigger:
-  // `{ "pending": <n> }`. Distinct from /dbos-queue-depth (ENQUEUED count) —
-  // gate-parked runs are already DEQUEUED (PENDING) and pinned to this pod, so
-  // queue depth can't see them (see hosted-run-concurrency.ts). Per-pod, so the
-  // trigger must aggregate across worker pods.
-  app.get(SYSTEM_PATHS.HOSTED_RUN_PENDING, (c) => c.json(hostedRunStats()));
 
   // ============================================================================
   // Public Configuration (no auth required)
@@ -2289,17 +2282,16 @@ export async function createApp(options: CreateAppOptions = {}) {
       // — see dispatch-queue/run-priority.ts). Scoped honestly: partitions are
       // per-thread with concurrency 1, so this orders MESSAGES QUEUED ON THE
       // SAME THREAD, not one thread against another. Cross-run ordering is the
-      // pod's admission gate (hosted-run-concurrency.ts), because DBOS has no
-      // global cap on a partitioned queue to order against.
+      // hosted-harness queues below, unpartitioned, order threads against each other.
       priorityEnabled: true,
     });
-    // Hosted-harness child workflow queue. Partition key = threadId, concurrency 1
-    // (mirrors THREAD_GATE_QUEUE: one active run per thread, different threads
-    // progress in parallel). Worker pods dequeue this alongside the parent gate.
+    // Unpartitioned + per-pod cap at dequeue — see the queue-name doc comments.
     await DBOS.registerQueue(HOSTED_HARNESS_QUEUE, {
-      partitionQueue: true,
-      concurrency: HOSTED_HARNESS_PARTITION_CONCURRENCY,
-      // Same scope caveat as the gate queue above.
+      workerConcurrency: getSettings().decopilotMaxConcurrentHostedRuns,
+      priorityEnabled: true,
+    });
+    await DBOS.registerQueue(HOSTED_HARNESS_SANDBOXED_QUEUE, {
+      workerConcurrency: getSettings().sandboxMaxConcurrentHostedRuns,
       priorityEnabled: true,
     });
     // Slow backgroundable built-ins (generate_image) run here, partitioned by
