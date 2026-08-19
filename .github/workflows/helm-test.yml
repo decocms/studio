@@ -378,6 +378,15 @@ jobs:
           BUILD=.github/workflows/preview-build.yaml
           CHART=deploy/helm/studio-previews
 
+          # The node pool accepts both architectures, so the images have to
+          # carry both. A spot reclaim once replaced an amd64 node with a
+          # Graviton one and every pod died with `exec format error` — nothing
+          # in a render can see this, so assert it against the build workflow.
+          grep -q 'ubuntu-24.04-arm' "$BUILD" \
+            || fail "preview images must be built for arm64: the studio-preview node pool schedules on amd64 and arm64"
+          grep -q 'imagetools create' "$BUILD" \
+            || fail "per-arch digests must be merged into a manifest list, or the tag resolves to one architecture"
+
           grep -q 'github.event.pull_request.head.sha' "$BUILD" \
             || fail "preview-build.yaml must tag from the PR head sha; the ApplicationSet can only name .head_sha"
           if grep -q 'rev-parse --short=7 HEAD' "$BUILD"; then
