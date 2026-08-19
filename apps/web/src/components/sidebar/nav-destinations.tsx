@@ -16,13 +16,7 @@
 
 import type { ReactNode } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import {
-  BarChartSquare02,
-  Columns03,
-  Folder,
-  Globe01,
-  Home02,
-} from "@untitledui/icons";
+import { BarChartSquare02, Columns03, Folder, Home02 } from "@untitledui/icons";
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -35,6 +29,7 @@ import {
   useProjectContext,
   useVirtualMCPs,
 } from "@/sdk";
+import { AgentAvatar } from "@/components/agent-icon";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { getActiveGithubRepo } from "@/lib/github-repo";
 import { useThreads } from "@/components/chat/store/hooks";
@@ -199,7 +194,14 @@ function useCodingAgents({
       return {
         key: agent.id,
         label: repo?.name || agent.title,
-        icon: <Globe01 size={16} />,
+        icon: (
+          <AgentAvatar
+            icon={agent.icon}
+            name={agent.title}
+            size="2xs"
+            className="shrink-0"
+          />
+        ),
         isActive: search.virtualmcpid === agent.id,
         onSelect: () => {
           track("nav_destination_clicked", { destination: "coding_agent" });
