@@ -1,7 +1,6 @@
 package routes
 
 import (
-	"io"
 	"log/slog"
 	"net/http"
 
@@ -59,7 +58,7 @@ type OrgFsDeps struct {
 
 func OrgFsConfig(deps OrgFsDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		raw, err := io.ReadAll(r.Body)
+		raw, err := readLimitedBody(r, maxConfigBytes)
 		if err != nil {
 			httpx.Error(w, 400, "invalid org-fs config")
 			return

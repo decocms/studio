@@ -2,7 +2,6 @@ package routes
 
 import (
 	"encoding/json"
-	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -99,7 +98,7 @@ func ConfigRead(deps ConfigDeps) http.HandlerFunc {
 
 func ConfigUpdate(deps ConfigDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		raw, err := io.ReadAll(r.Body)
+		raw, err := readLimitedBody(r, maxConfigBytes)
 		if err != nil {
 			httpx.Error(w, 400, "bad body: "+err.Error())
 			return
