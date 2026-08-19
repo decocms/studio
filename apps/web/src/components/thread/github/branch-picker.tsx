@@ -52,6 +52,11 @@ interface Props {
   sandboxMap: SandboxMap | undefined;
   value: string | null | undefined;
   onChange: (branch: string) => void;
+  /** Called instead of `onChange` when the user creates a brand-new branch via
+   *  the "New" button, letting callers treat branch *creation* differently from
+   *  switching to an existing branch (Fast Preview projects start a fresh CMS
+   *  thread on it). Falls back to `onChange` when omitted. */
+  onCreateBranch?: (branch: string) => void;
   /** When true, the trigger is disabled — the user can't open the
    *  picker. The tooltip still surfaces the current branch on hover. */
   disabled?: boolean;
@@ -78,6 +83,7 @@ export function BranchPicker({
   sandboxMap,
   value,
   onChange,
+  onCreateBranch,
   disabled = false,
   placement = "chat",
 }: Props) {
@@ -149,6 +155,12 @@ export function BranchPicker({
 
   const pick = (name: string) => {
     onChange(name);
+    setOpen(false);
+  };
+
+  // Creating a branch is a distinct intent from switching to an existing one.
+  const create = (name: string) => {
+    (onCreateBranch ?? onChange)(name);
     setOpen(false);
   };
 
@@ -257,7 +269,7 @@ export function BranchPicker({
                 size="sm"
                 className="h-7 shrink-0"
                 onClick={() =>
-                  pick(search.trim() || generateBranchName(userLabel))
+                  create(search.trim() || generateBranchName(userLabel))
                 }
               >
                 {search.trim()
