@@ -9,18 +9,61 @@
 # the manifest rather than the bump-commit message keeps it idempotent: the
 # tag-exists guard below makes re-runs and manual dispatches safe.
 #
+# ## Job graph
+#
+#   plan ──▶ build (matrix: macos-latest/darwin-aarch64,
+#     │              ubuntu-22.04/linux-x86_64)
+#     │        │
+#     │        ▼
+#     └──▶ publish ──▶ promote        alert (always, on any failure)
+#
+# `plan` is deliberately SECRETLESS (no `environment:`) — it only reads the
+# version and decides whether to ship, so the updater-signing assert lives in
+# `build`, the job that actually holds the key, instead of widening the
+# `native-release` environment to a second job.
+#
+# The split exists so ONE platform's build failure cannot freeze the other's
+# distribution. `publish` ships whatever legs produced (a red Linux leg still
+# releases macOS and bumps the Homebrew cask — the documented break-glass
+# channel for updater key loss). Only `promote` — the updater manifest — is
+# held back until every leg is green, because a manifest missing a platform
+# key bricks self-update for the clients that need it.
+#
 # Signing/notarization are fork-safe dormant scaffolding, same pattern as
 # native.yml documents: every Apple step is gated on the secrets being
 # non-empty, so an unconfigured repo ships an unsigned build (Gatekeeper
 # "Open Anyway" friction, but installable) instead of failing. The day the
 # six APPLE_* secrets land, the same workflow signs, notarizes and staples
-# with no further edits.
+# with no further edits. The Linux leg maps no APPLE_* secret at all.
 #
 # The Homebrew cask (Casks/deco-studio.rb — this repo doubles as the
 # tap) is bumped by this workflow after the release assets exist, committed
 # straight to main with the same App token release-tagging uses. That commit
 # touches only Casks/**, which no other workflow's paths match, so it
 # triggers nothing.
+#
+# ## Release assets are WRITE-ONCE
+#
+# A `native-v*` asset is uploaded only when the tag does not already carry
+# that name — never `--clobber`ed. Builds are not reproducible, so a repair
+# dispatch for an already-released version would otherwise replace
+# `deco-$V-aarch64.app.tar.gz` with different bytes while the channel keeps
+# serving the OLD signature (shouldPromote declines to re-promote an equal
+# version), breaking self-update for every client — and invalidating the
+# cask's pinned sha256 the same way. `gh release upload --clobber` survives
+# in exactly one place: the rolling `native-updates` manifest, which is
+# meant to move.
+#
+# Write-once's corollary: it also prevents SELF-HEALING, so a half-uploaded
+# set is permanent until a human deletes assets. `gh` does not roll back, so
+# a `publish` that dies mid-upload can leave a tarball on the tag without its
+# `.sig`; the next run would then keep the OLD tarball and add the NEW
+# signature. `publish` therefore treats each build LEG as atomic — a leg that
+# is present-but-incomplete on the tag is reported, never topped up — and
+# `promote` re-verifies every published tarball against its published `.sig`
+# before building a manifest from them. Neither is a substitute for the
+# other: the first stops the split, the second refuses to publish one that
+# already happened (or that arrived via a corrupted artifact hop).
 #
 # ## Updater channel (Tauri self-update)
 #
@@ -31,9 +74,15 @@
 # Promotion is throttled to ~daily and decided by the unit-tested
 # apps/native/scripts/ci/native-update-channel.mjs (fail-open-to-promote on
 # any ambiguous manifest state; a workflow_dispatch bypasses the throttle for
-# urgent fixes and for healing a half-failed promotion). The manifest is
-# uploaded strictly AFTER the .app.tar.gz + .sig land on the immutable
-# release, so it can never reference missing assets.
+# urgent fixes and for healing a half-failed promotion). The manifest covers
+# EVERY platform the channel serves (darwin-aarch64 + linux-x86_64) and is
+# uploaded strictly AFTER all of their updater artifacts land on the
+# immutable release, so it can never reference missing assets. Its signatures
+# are read back off the release rather than from this run's build output, so
+# manifest↔asset pairing holds under throttle, force and repair alike — and
+# that pairing is VERIFIED with minisign against the pubkey pinned in
+# apps/native/src-tauri/tauri.conf.json5 before the manifest is built, not
+# inferred from the two files sharing a version.
 #
 # Caveats: enabling GitHub's opt-in "immutable releases" repo setting would
 # break the latest.json clobber — revisit this design before turning that
@@ -43,11 +92,13 @@
 # ## Updater signing runbook
 #
 # The minisign keypair (TAURI_SIGNING_PRIVATE_KEY/_PASSWORD, in the
-# `native-release` environment) signs updater artifacts; its PUBLIC key is
-# pinned in apps/native/src-tauri/tauri.conf.json5. Consequences:
+# `native-release` environment) signs updater artifacts for BOTH platforms;
+# its PUBLIC key is pinned in apps/native/src-tauri/tauri.conf.json5.
+# Consequences:
 # - KEY LOSS: no future update verifies — the cask is the break-glass
 #   channel (`brew upgrade --greedy --cask deco-studio`); keep the cask
-#   bump below working forever.
+#   bump below working forever. Linux has no cask: its break-glass is
+#   re-downloading the AppImage from the releases page.
 # - KEY LEAK: there is no revocation; rotation = new keypair + cask-forced
 #   fleet reinstall. Audit escrow access.
 # - BAD RELEASE: the updater never downgrades — ship a NEWER fixed release
@@ -79,41 +130,57 @@ concurrency:
 
 permissions:
   contents: write
-  # The failure-alert step files/updates a GitHub issue.
+  # The failure-alert job files/updates a GitHub issue.
   issues: write
+  # …and lists THIS run's jobs, so it can name the failing matrix LEG
+  # ("Linux red, macOS frozen") instead of the aggregate `build` result.
+  # Read-only, and the only scope beyond the two above.
+  actions: read
+
+env:
+  BUN_VERSION: "1.3.14"
 
 jobs:
-  release:
-    runs-on: macos-latest
-    timeout-minutes: 60
-    # Updater signing secrets live here (deployment branch policy: main).
-    # Environments cannot restrict by workflow FILE — any main-branch
-    # workflow declaring this environment could read them — but that still
-    # beats repo-wide secrets, which every workflow (including the seven
-    # npm-publish ones) can read. Referencing a not-yet-created environment
-    # is safe: GitHub auto-creates it unprotected on first run; tighten it
-    # in repo settings.
-    environment: native-release
-    env:
-      BUN_VERSION: "1.3.14"
+  # -------------------------------------------------------------------
+  # 1. plan — what version, and should we ship it at all. Secretless and
+  #    cheap on purpose: no environment, no matrix, no toolchain.
+  # -------------------------------------------------------------------
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      release: ${{ steps.guard.outputs.release }}
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
-      # persist-credentials: false — checkout would otherwise store the
-      # default GITHUB_TOKEN as an http.extraheader Authorization header,
-      # which git keeps sending even on a push to an explicit
-      # x-access-token URL; the header wins, so the cask-bump push below
-      # authenticated as github-actions[bot] (not a ruleset bypass actor)
-      # and main's protection rejected it. Nothing else in this job needs
-      # persisted creds: the repo is public (fetches work anonymously) and
-      # every gh/push step supplies its own token.
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           persist-credentials: false
 
+      # The shape is validated HERE, in the one job that holds no secrets,
+      # because `version` is interpolated straight into later `run:` blocks —
+      # including the two `tauri build` steps that have TAURI_SIGNING_* in
+      # scope. A malformed apps/native/package.json version (hand-edited, a
+      # merge artifact, an injected quote) must be stopped by a job that could
+      # not leak a key even if it were exploited, not discovered downstream.
+      # Deliberately stricter than semver's grammar and looser than
+      # release-changes.ts's plain triple: prerelease/build metadata parses
+      # here and is rejected later by native-update-channel.mjs's parseSemver
+      # with a clearer message than a regex would give.
       - name: Read app version
         id: version
         run: |
+          set -euo pipefail
           VERSION=$(node -p "require('./apps/native/package.json').version")
+          # `[[ =~ ]]`, not `grep -E`: grep anchors per LINE, so a version
+          # carrying an embedded newline would match on its first line and
+          # smuggle the rest through. bash matches the whole string.
+          SEMVER_RE='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?(\+[0-9A-Za-z.]+)?$'
+          if [[ ! "$VERSION" =~ $SEMVER_RE ]]; then
+            echo "::error::apps/native/package.json version is not semver-shaped — refusing to interpolate it into the signing build. Got: $VERSION"
+            exit 1
+          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=native-v$VERSION" >> "$GITHUB_OUTPUT"
 
@@ -156,48 +223,93 @@ jobs:
             exit 1
           fi
 
+  # -------------------------------------------------------------------
+  # 2. build — one leg per shipping target. Each leg uploads its assets as
+  #    a workflow ARTIFACT, never to the GitHub release: `publish` owns the
+  #    release so the write-once rule is enforced in one place, and so a
+  #    half-built matrix never leaves a partially populated tag behind.
+  #    The cask's checksum travels as a FILE inside the macOS artifact
+  #    rather than as a job output — matrix job outputs are last-writer-
+  #    wins, so a Linux leg finishing second would blank it.
+  # -------------------------------------------------------------------
+  build:
+    needs: plan
+    if: needs.plan.outputs.release == 'true'
+    strategy:
+      # LOAD-BEARING: a failing Linux leg must not cancel the macOS leg.
+      # A cancelled leg uploads nothing, which would turn a Linux-only
+      # failure into a total distribution outage — the exact coupling this
+      # job graph exists to prevent.
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: darwin-aarch64
+          - os: ubuntu-22.04
+            target: linux-x86_64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    # Updater signing secrets live here (deployment branch policy: main).
+    # Environments cannot restrict by workflow FILE — any main-branch
+    # workflow declaring this environment could read them — but that still
+    # beats repo-wide secrets, which every workflow (including the seven
+    # npm-publish ones) can read. Referencing a not-yet-created environment
+    # is safe: GitHub auto-creates it unprotected on first run; tighten it
+    # in repo settings.
+    environment: native-release
+    steps:
       # Inverts the fork-safe silence for this ONE secret: the build below
       # requests updater artifacts (createUpdaterArtifacts), which REQUIRE
       # the minisign key — a missing secret must fail here with a clear
       # name, not inside `tauri build`. The secret value never enters a
       # shell (the `env:` mapping is only compared for emptiness).
       - name: Assert updater signing secret
-        if: steps.guard.outputs.release == 'true' && env.HAVE_SIGNING_KEY != 'true'
+        if: env.HAVE_SIGNING_KEY != 'true'
         env:
           HAVE_SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' && 'true' || 'false' }}
         run: |
           echo "::error::TAURI_SIGNING_PRIVATE_KEY is not set (native-release environment). Generate/escrow per apps/native/docs/native-updater-plan.md Phase 0, then set TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD."
           exit 1
 
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
       - name: Setup Rust toolchain
-        if: steps.guard.outputs.release == 'true'
         uses: dtolnay/rust-toolchain@stable
 
+      # src-tauri's window/webview stack is GTK + WebKitGTK on Linux; the
+      # macOS leg gets the equivalent from the system frameworks. Same
+      # surface as native.yml's rust-checks/tauri-build legs minus xvfb —
+      # nothing here launches the app.
+      - name: Install Linux system deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils
+
       - name: Cache cargo registry + target dir
-        if: steps.guard.outputs.release == 'true'
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/native
 
       - name: Setup Bun
-        if: steps.guard.outputs.release == 'true'
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install dependencies
-        if: steps.guard.outputs.release == 'true'
         run: bun install
 
       - name: Cache bundled rclone
-        if: steps.guard.outputs.release == 'true'
         uses: actions/cache@v4
         with:
           path: apps/native/src-tauri/binaries
           key: rclone-${{ runner.os }}-${{ hashFiles('apps/native/scripts/fetch-rclone.sh') }}
 
       - name: Fetch bundled rclone
-        if: steps.guard.outputs.release == 'true'
         working-directory: apps/native
         run: ./scripts/fetch-rclone.sh
 
@@ -205,7 +317,7 @@ jobs:
       # own step (not left to the Tauri CLI env-sniffing) so a broken cert
       # fails HERE with a clear name, not inside `tauri build`.
       - name: Import signing certificate
-        if: steps.guard.outputs.release == 'true' && env.HAVE_CERT == 'true'
+        if: runner.os == 'macOS' && env.HAVE_CERT == 'true'
         env:
           HAVE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' && 'true' || 'false' }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -235,7 +347,7 @@ jobs:
       # makes it visible to every later step (third-party CLI code, the cask
       # python, gh). It is step-scoped onto `tauri build` below instead.
       - name: Export signing env
-        if: steps.guard.outputs.release == 'true'
+        if: runner.os == 'macOS'
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -253,34 +365,145 @@ jobs:
             fi
           done
 
+      # WHY THIS RUNS BEFORE THE SIGNING KEY IS IN SCOPE: the AppImage bundler
+      # shells out to linuxdeploy and its plugins, which INHERIT the
+      # environment of `tauri build` — the one step below holding
+      # TAURI_SIGNING_PRIVATE_KEY. Left to itself the bundler downloads all
+      # five tools at build time from `continuous`/`master` refs, i.e. it
+      # would execute unpinned third-party bytes next to the private key, an
+      # exposure the macOS leg does not have. Seeding the cache with
+      # content-verified copies means `prepare_tools` finds every file already
+      # present and makes no network request at all. This step must stay
+      # ABOVE both `tauri build` steps for that reason.
+      #
+      # The pins themselves live in scripts/fetch-appimage-tools.sh, NOT here:
+      # native.yml's ubuntu `tauri-build` leg seeds from the exact same file,
+      # so the AppImage that PR CI boot-smokes and asserts static is produced
+      # by the toolchain that builds the shipped one. A stale or wrong pin
+      # goes red on the PR that introduces it instead of on release day, on a
+      # half-published version. Bump instructions are in that file's header.
+      - name: Seed the pinned AppImage tooling
+        if: runner.os == 'Linux'
+        working-directory: apps/native
+        run: ./scripts/fetch-appimage-tools.sh
+
       - name: tauri build
-        if: steps.guard.outputs.release == 'true'
+        if: runner.os == 'macOS'
         working-directory: apps/native
         # Apple signing env (when configured) comes from "Export signing env"
         # above; the updater minisign key is step-scoped HERE only. The CLI is
         # pinned (never @latest): the signer/bundler executing with the key in
         # scope must not change under us, and env-var-supplied key PASSWORDS
         # have a version-sensitive history (tauri#13485) — verify signing
-        # still works when bumping this pin.
+        # still works when bumping this pin. A bump must ALSO re-verify the
+        # AppImage member name `<product>_<version>_<arch>.AppImage` that the
+        # Linux updater's version-pairing check parses (see
+        # src-tauri/src/updater.rs), the pinned tool set below, and
+        # native.yml's matching pin.
         # The binary's version comes from apps/native/package.json — the one
         # release-tagging bumps — overriding Cargo.toml's static workspace
         # version, so the DMG, the About panel, and the cask all agree.
         # createUpdaterArtifacts lives in this overlay, NOT in the committed
         # tauri.conf.json5 — committed, it would fail every secretless
         # (fork/PR) build with a signing error.
+        # The version arrives as an `env:` var rather than a `${{ }}`
+        # interpolation: this step holds the private key, so nothing from a
+        # file on disk gets to become shell text here. `plan` already proved
+        # its shape.
         env:
+          VERSION: ${{ needs.plan.outputs.version }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           bunx @tauri-apps/cli@2.11.4 build \
-            --config "{\"version\": \"${{ steps.version.outputs.version }}\", \"bundle\": {\"createUpdaterArtifacts\": true}}"
+            --config "{\"version\": \"$VERSION\", \"bundle\": {\"createUpdaterArtifacts\": true}}"
+
+      - name: tauri build
+        if: runner.os == 'Linux'
+        working-directory: apps/native
+        # Same pin, same step-scoped key as the macOS build above. The overlay
+        # is deliberately MINIMAL — bundle targets and icons come from
+        # src-tauri/tauri.linux.conf.json5, so only the two keys that cannot
+        # be committed are set here, keeping the untested
+        # overlay × platform-file merge surface as small as possible.
+        #
+        # "v1Compatible", not `true`: it wraps the AppImage in a tar.gz whose
+        # single member name IS covered by the minisign signature, which is
+        # what gives Linux a structural twin of the macOS Info.plist
+        # version-pairing check.
+        # `VERSION` via `env:` for the same reason as the macOS step above.
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          bunx @tauri-apps/cli@2.11.4 build \
+            --config "{\"version\": \"$VERSION\", \"bundle\": {\"createUpdaterArtifacts\": \"v1Compatible\"}}"
+
+      # Two tripwires on the artifact users actually run, both fatal:
+      #  - the exact `deco_<version>_amd64.AppImage` name the updater's
+      #    version-pairing check parses out of the signed tarball;
+      #  - an AppImage runtime that does not REQUIRE libfuse2. A stale
+      #    linuxdeploy-plugin-appimage emits a type-2 runtime dynamically
+      #    linked against libfuse.so.2, which cannot even self-extract on a
+      #    host without libfuse2. `ldd` exits non-zero on a static binary —
+      #    that is the passing case, hence `|| true` around both probes.
+      #    Note the scope precisely: this greps for libfuse.so.2, it does NOT
+      #    prove the runtime is statically linked. Measured on a static-PIE
+      #    binary, the dynamic section has 22 entries and ZERO DT_NEEDED — so
+      #    "reject every DT_NEEDED entry" would PASS it, not false-fail it.
+      #    The rule that WOULD false-fail it is "require no dynamic section at
+      #    all", which only a fully static non-PIE satisfies. Not requiring
+      #    libfuse2 is the property that matters, so that is what is gated.
+      #
+      # Because both probes are `|| true`, "no output at all" (tool missing,
+      # wrong path, non-ELF input) would make the `grep -q` below find no
+      # match and PASS — a tripwire that reports green precisely when it
+      # learned nothing. So the combined output must first be shown to
+      # contain a recognizable linkage verdict; only then is "no libfuse"
+      # evidence rather than absence of evidence.
+      # A download can only ADD a name to that cache, so an exact set
+      # comparison after the build proves `tauri build` fetched nothing —
+      # closing the drift a CLI bump would otherwise open silently (the pin
+      # table is not keyed to the CLI version).
+      - name: Assert the build fetched no unpinned tooling
+        if: runner.os == 'Linux'
+        working-directory: apps/native
+        run: ./scripts/fetch-appimage-tools.sh --verify-only
+
+      - name: Assert the AppImage name and runtime
+        if: runner.os == 'Linux'
+        working-directory: apps/native
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          set -euo pipefail
+          APPIMAGE="target/release/bundle/appimage/deco_${VERSION}_amd64.AppImage"
+          if [ ! -f "$APPIMAGE" ]; then
+            echo "::error::expected $APPIMAGE — the bundler's AppImage naming changed under the pinned CLI, and src-tauri/src/updater.rs parses <product>_<version>_<arch>.AppImage out of the signed tarball to pair a manifest with its artifact."
+            ls -la target/release/bundle/appimage || true
+            exit 1
+          fi
+          PROBE="$RUNNER_TEMP/appimage-runtime.txt"
+          { ldd "$APPIMAGE" || true; readelf -d "$APPIMAGE" || true; } \
+            > "$PROBE" 2>&1
+          cat "$PROBE"
+          if ! grep -Eq 'statically linked|not a dynamic executable|Dynamic section|no dynamic section|NEEDED' "$PROBE"; then
+            echo "::error::neither ldd nor readelf reported a linkage verdict for $APPIMAGE (output above) — the libfuse.so.2 check would pass vacuously, so failing instead. Check that binutils is installed on this runner and that the path is the AppImage itself."
+            exit 1
+          fi
+          if grep -q 'libfuse\.so\.2' "$PROBE"; then
+            echo "::error::$APPIMAGE links libfuse.so.2 — the AppImage runtime is not static, so it cannot run or self-extract without libfuse2 installed. The pinned linuxdeploy-plugin-appimage is stale; re-pin it in apps/native/scripts/fetch-appimage-tools.sh."
+            exit 1
+          fi
 
       - name: Package release assets
-        if: steps.guard.outputs.release == 'true'
-        id: assets
+        if: runner.os == 'macOS'
         working-directory: apps/native/target/release/bundle
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
+          set -euo pipefail
           ZIP="deco-$VERSION-aarch64.zip"
           DMG_OUT="deco-$VERSION-aarch64.dmg"
           TARGZ="deco-$VERSION-aarch64.app.tar.gz"
@@ -295,98 +518,330 @@ jobs:
           cp "macos/deco.app.tar.gz" "$TARGZ"
           cp "macos/deco.app.tar.gz.sig" "$TARGZ.sig"
           shasum -a 256 "$ZIP" | cut -d' ' -f1 > zip.sha256
-          {
-            echo "zip=apps/native/target/release/bundle/$ZIP"
-            echo "dmg=apps/native/target/release/bundle/$DMG_OUT"
-            echo "targz=apps/native/target/release/bundle/$TARGZ"
-            echo "sig=apps/native/target/release/bundle/$TARGZ.sig"
-            echo "sha256=$(cat zip.sha256)"
-          } >> "$GITHUB_OUTPUT"
+          # zip.sha256 rides along for the cask bump. It is NOT a release
+          # asset: the upload list in `publish` is an explicit name list, not
+          # a glob over this directory.
+          STAGE="$RUNNER_TEMP/release-assets"
+          mkdir -p "$STAGE"
+          mv "$ZIP" "$DMG_OUT" "$TARGZ" "$TARGZ.sig" zip.sha256 "$STAGE/"
 
-      # Create-or-update: on a repair dispatch the tag already exists, so
-      # re-uploading the assets (--clobber) heals a run that died here or
-      # later, rather than erroring on the existing release.
+      - name: Package release assets
+        if: runner.os == 'Linux'
+        working-directory: apps/native/target/release/bundle
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          set -euo pipefail
+          APPIMAGE="deco-$VERSION-linux-x86_64.AppImage"
+          TARGZ="deco-$VERSION-linux-x86_64.AppImage.tar.gz"
+          SRC="appimage/deco_${VERSION}_amd64.AppImage"
+          STAGE="$RUNNER_TEMP/release-assets"
+          mkdir -p "$STAGE"
+          # Renamed on the way out: the release/download vocabulary is the
+          # updater's (`x86_64`), the bundler's is dpkg's (`amd64`). The
+          # tarball keeps the bundler's name INSIDE it — that member name is
+          # what the signature covers and what the pairing check reads.
+          cp "$SRC" "$STAGE/$APPIMAGE"
+          cp "$SRC.tar.gz" "$STAGE/$TARGZ"
+          cp "$SRC.tar.gz.sig" "$STAGE/$TARGZ.sig"
+          # The AppImage is the only asset a human downloads and EXECUTES, and
+          # apps/web/public/install.sh puts it straight into ~/.local/bin over
+          # `curl | sh` — so it ships with a published digest and that
+          # installer refuses to run without one.
+          #
+          # What that digest is worth, stated precisely: it detects a CORRUPT
+          # OR TRUNCATED download and nothing else. It sits on the same
+          # release, behind the same origin and the same TLS session, as the
+          # AppImage it describes — anyone able to alter the binary can alter
+          # the digest beside it. It is not an authenticity anchor.
+          #
+          # Authenticity comes from the updater pair published right above:
+          # $TARGZ is a gzipped tar of this same AppImage (`tar xzf` opens it)
+          # and $TARGZ.sig is its minisign signature, verifiable against the
+          # pubkey pinned in src-tauri/tauri.conf.json5 — exactly the check the
+          # promote job runs below. install.sh embeds that same public key and
+          # prefers this path whenever minisign is installed, unpacking the
+          # AppImage out of the verified tarball; the digest is its fallback,
+          # announced as such. Because install.sh is served from
+          # studio.decocms.com, its embedded key is a genuinely out-of-band
+          # anchor rather than another file on this release.
+          #
+          # The asymmetry is worth naming: macOS gets authenticity from the
+          # cask's pinned sha256, which git records but no human approves
+          # (the release bot pushes it to main). The Linux install path has no
+          # equivalent out-of-band anchor of its own — without minisign on the
+          # user's machine there is none at all.
+          #
+          # Written from inside $STAGE so the recorded name is the asset name
+          # with no path, which is what makes `sha256sum -c` work for anyone
+          # who downloads the pair side by side.
+          ( cd "$STAGE" && sha256sum "$APPIMAGE" > "$APPIMAGE.sha256" )
+
+      - name: Upload release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-${{ matrix.target }}
+          path: ${{ runner.temp }}/release-assets
+          if-no-files-found: error
+          retention-days: 7
+          # Everything here is already compressed (zip/dmg/tar.gz/AppImage);
+          # re-deflating ~200 MB buys nothing but minutes.
+          compression-level: 0
+
+  # -------------------------------------------------------------------
+  # 3. publish — the immutable release and the Homebrew cask. Runs on
+  #    whatever the matrix produced, INCLUDING a partial set: holding
+  #    macOS distribution hostage to a Linux build failure would freeze
+  #    the sole macOS acquisition path (apps/web/public/install.sh is a
+  #    pure cask wrapper) and the documented key-loss break-glass channel.
+  # -------------------------------------------------------------------
+  publish:
+    needs: [plan, build]
+    if: ${{ !cancelled() && needs.plan.outputs.release == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # persist-credentials: false — checkout would otherwise store the
+      # default GITHUB_TOKEN as an http.extraheader Authorization header,
+      # which git keeps sending even on a push to an explicit
+      # x-access-token URL; the header wins, so the cask-bump push below
+      # authenticated as github-actions[bot] (not a ruleset bypass actor)
+      # and main's protection rejected it. Nothing else in this job needs
+      # persisted creds: the repo is public (fetches work anonymously) and
+      # every gh/push step supplies its own token.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # A pattern that matches nothing is not an error (download-artifact@v4
+      # only throws for an explicit `name:`), so a total build failure lands
+      # here as an empty directory and the step below no-ops instead of
+      # masking the build failure with a second red job.
+      - name: Download built release assets
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-assets-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/release-assets
+
+      # Assets are grouped by LEG (= the build job that produces them
+      # atomically), and a leg is all-or-nothing here for one reason: builds
+      # are not reproducible, so mixing this run's bytes with an earlier run's
+      # under one version is how a (tar.gz, .sig) pair silently splits across
+      # runs. `gh` does not roll back a partial upload — a job that dies at
+      # 90% leaves the tarball on the tag and not its signature — and
+      # write-once then keeps the OLD tarball while uploading the NEW
+      # signature, i.e. it prevents self-healing. Every client would download
+      # ~110 MB and fail minisign verification, with nothing red in CI.
+      #
+      # So: a leg whose published set is present-but-INCOMPLETE is never
+      # topped up, only reported, and a leg this run built only partially is
+      # never uploaded at all. `promote` verifies signature↔bytes
+      # independently, so this is defence in depth, not the only gate.
       - name: Create or update GitHub release
-        if: steps.guard.outputs.release == 'true'
+        id: release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.version.outputs.tag }}
-          VERSION: ${{ steps.version.outputs.version }}
-          ZIP: ${{ steps.assets.outputs.zip }}
-          DMG: ${{ steps.assets.outputs.dmg }}
-          TARGZ: ${{ steps.assets.outputs.targz }}
-          SIG: ${{ steps.assets.outputs.sig }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          VERSION: ${{ needs.plan.outputs.version }}
         run: |
           set -euo pipefail
-          NOTES="macOS (Apple Silicon) desktop app. Install via Homebrew: \`brew tap decocms/studio https://github.com/decocms/studio && brew install --cask deco-studio\` — or download the DMG below."
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" \
-              --title "deco $VERSION" --notes "$NOTES"
-            gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
-              "$ZIP" "$DMG" "$TARGZ" "$SIG"
-          else
-            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
-              --target "$GITHUB_SHA" --title "deco $VERSION" --notes "$NOTES" \
-              "$ZIP" "$DMG" "$TARGZ" "$SIG"
-          fi
+          STAGE="$RUNNER_TEMP/release-assets"
+          MAC_ASSETS=(
+            "deco-$VERSION-aarch64.zip"
+            "deco-$VERSION-aarch64.dmg"
+            "deco-$VERSION-aarch64.app.tar.gz"
+            "deco-$VERSION-aarch64.app.tar.gz.sig"
+          )
+          # The .sha256 belongs INSIDE the leg, not beside it: it describes one
+          # specific build's bytes, so topping it up from a later (never
+          # reproducible) build would publish a digest that does not match the
+          # AppImage the tag serves — and install.sh would then refuse to
+          # install at all. Atomic-per-leg is the correct treatment for it,
+          # exactly as for the (tar.gz, .sig) pair.
+          LINUX_ASSETS=(
+            "deco-$VERSION-linux-x86_64.AppImage"
+            "deco-$VERSION-linux-x86_64.AppImage.sha256"
+            "deco-$VERSION-linux-x86_64.AppImage.tar.gz"
+            "deco-$VERSION-linux-x86_64.AppImage.tar.gz.sig"
+          )
+          MAC_ZIP="deco-$VERSION-aarch64.zip"
 
-      # Runs strictly AFTER the immutable release holds the .app.tar.gz +
-      # .sig, so a manifest can never reference missing assets. Promotion is
-      # decided by the unit-tested script (throttle, never-regress, fail-open
-      # semantics — see its header); the decision is surfaced as a ::notice::
-      # so silent-skip streaks are greppable. Manifest generation happens in
-      # $RUNNER_TEMP: the cask step below hard-resets the worktree.
-      - name: Promote updater channel
-        if: steps.guard.outputs.release == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
-          SIG: ${{ steps.assets.outputs.sig }}
-          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force_promote && 'true' || 'false' }}
-        run: |
-          set -euo pipefail
-          CHANNEL_TAG="native-updates"
-          CURRENT="$RUNNER_TEMP/current-latest.json"
-          MANIFEST="$RUNNER_TEMP/latest.json"
-          DECISION="$RUNNER_TEMP/decision.json"
-
-          # First-ever promotion: the channel release (or its asset) doesn't
-          # exist yet — the script treats an unreadable file as "no manifest"
-          # and promotes.
-          gh release download "$CHANNEL_TAG" --repo "$GITHUB_REPOSITORY" \
-            -p latest.json -O "$CURRENT" || rm -f "$CURRENT"
-
-          FORCE_FLAG=""
-          [ "$FORCE" = "true" ] && FORCE_FLAG="--force"
-          node apps/native/scripts/ci/native-update-channel.mjs should-promote \
-            --candidate "$VERSION" --current-file "$CURRENT" $FORCE_FLAG > "$DECISION"
-          PROMOTE=$(node -p "require('$DECISION').promote")
-          REASON=$(node -p "require('$DECISION').reason")
-          echo "::notice::updater channel decision: promote=$PROMOTE ($REASON)"
-          if [ "$PROMOTE" != "true" ]; then
+          LOCAL_COUNT=0
+          for N in "${MAC_ASSETS[@]}" "${LINUX_ASSETS[@]}"; do
+            if [ -f "$STAGE/$N" ]; then LOCAL_COUNT=$((LOCAL_COUNT + 1)); fi
+          done
+          if [ "$LOCAL_COUNT" -eq 0 ]; then
+            echo "::warning::no build leg produced release assets — leaving $TAG uncreated so a later repair dispatch still has a clean slate"
+            {
+              echo "mac_zip=false"
+              echo "uploaded_mac_zip=false"
+              echo "broken=false"
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          node apps/native/scripts/ci/native-update-channel.mjs build \
-            --version "$VERSION" --sig-file "$SIG" \
-            --repo "$GITHUB_REPOSITORY" > "$MANIFEST"
+          NOTES=$(printf '%s\n' \
+            "macOS (Apple Silicon): install via Homebrew — \`brew tap decocms/studio https://github.com/decocms/studio && brew install --cask deco-studio\` — or download the DMG below." \
+            "" \
+            "Linux (x86_64): download the AppImage below, \`chmod +x\` it and run it.")
 
-          gh release view "$CHANNEL_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 || \
-            gh release create "$CHANNEL_TAG" --repo "$GITHUB_REPOSITORY" \
-              --prerelease --title "deco update channel" \
-              --notes "Rolling updater manifest polled by the desktop app. Do not install from here — use the latest native-v release or Homebrew."
-          gh release upload "$CHANNEL_TAG" --repo "$GITHUB_REPOSITORY" \
-            --clobber "$MANIFEST"
-          echo "::notice::updater channel promoted to $VERSION"
+          EXISTING="$RUNNER_TEMP/existing-assets.txt"
+          : > "$EXISTING"
+          RELEASE_EXISTS=false
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            RELEASE_EXISTS=true
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --title "deco $VERSION" --notes "$NOTES"
+            gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --json assets --jq '.assets[].name' > "$EXISTING"
+          fi
+          published() { grep -qxF "$1" "$EXISTING"; }
+
+          BROKEN=false
+
+          # The orphan check proper: an updater pair is (tarball, signature),
+          # and exactly one of them on the tag is unrepairable under
+          # write-once — name it and the remedy explicitly, because the
+          # on-call fix is a deliberate delete, not a re-run.
+          for T in "deco-$VERSION-aarch64.app.tar.gz" \
+                   "deco-$VERSION-linux-x86_64.AppImage.tar.gz"; do
+            ORPHAN=""
+            if published "$T" && ! published "$T.sig"; then ORPHAN="$T (signature missing)"; fi
+            if published "$T.sig" && ! published "$T"; then ORPHAN="$T.sig (tarball missing)"; fi
+            if [ -n "$ORPHAN" ]; then
+              echo "::error::orphaned updater asset on $TAG: $ORPHAN. Write-once cannot heal this — a rebuild produces different bytes, so the surviving half would be paired with a signature that does not describe it. Remedy: gh release delete-asset $TAG $T --yes; gh release delete-asset $TAG $T.sig --yes (plus that leg's other assets), then re-run this workflow via workflow_dispatch."
+              BROKEN=true
+            fi
+          done
+
+          # Per-leg decision. Sets UPLOAD to the assets that may be published.
+          UPLOAD=()
+          consider_leg() {
+            local leg="$1"
+            shift
+            local n want=0 present=0 have=0
+            for n in "$@"; do
+              want=$((want + 1))
+              if published "$n"; then present=$((present + 1)); fi
+              if [ -f "$STAGE/$n" ]; then have=$((have + 1)); fi
+            done
+            if [ "$present" -gt 0 ] && [ "$present" -lt "$want" ]; then
+              echo "::error::the $leg asset set on $TAG is present-but-incomplete ($present/$want published) — refusing to publish this run's $leg assets alongside bytes from a different build. Delete that leg's published assets (gh release delete-asset $TAG <name> --yes) and re-run via workflow_dispatch to republish the leg as a unit."
+              BROKEN=true
+              return 0
+            fi
+            if [ "$present" -eq "$want" ]; then
+              echo "::notice::every $leg asset is already on $TAG — keeping the published bytes (write-once)"
+              return 0
+            fi
+            if [ "$have" -eq 0 ]; then
+              echo "::notice::this run produced no $leg assets — nothing to publish for that leg"
+              return 0
+            fi
+            if [ "$have" -lt "$want" ]; then
+              echo "::error::this run produced only $have/$want $leg assets — refusing to upload a partial leg, which is exactly how a tarball lands on $TAG without its signature. Fix the $leg build leg and re-run via workflow_dispatch."
+              BROKEN=true
+              return 0
+            fi
+            for n in "$@"; do UPLOAD+=("$STAGE/$n"); done
+          }
+          consider_leg macOS "${MAC_ASSETS[@]}"
+          consider_leg Linux "${LINUX_ASSETS[@]}"
+
+          UPLOADED_MAC_ZIP=false
+          if [ "${#UPLOAD[@]}" -gt 0 ]; then
+            for P in "${UPLOAD[@]}"; do
+              if [ "$(basename "$P")" = "$MAC_ZIP" ]; then UPLOADED_MAC_ZIP=true; fi
+            done
+            if [ "$RELEASE_EXISTS" = "true" ]; then
+              gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" "${UPLOAD[@]}"
+            else
+              gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+                --target "$GITHUB_SHA" --title "deco $VERSION" --notes "$NOTES" \
+                "${UPLOAD[@]}"
+              RELEASE_EXISTS=true
+            fi
+          elif [ "$RELEASE_EXISTS" != "true" ]; then
+            echo "::warning::nothing publishable this run — leaving $TAG uncreated so a later repair dispatch still has a clean slate"
+          fi
+
+          PUBLISHED="$RUNNER_TEMP/published-assets.txt"
+          : > "$PUBLISHED"
+          if [ "$RELEASE_EXISTS" = "true" ]; then
+            gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --json assets --jq '.assets[].name' > "$PUBLISHED"
+          fi
+          if grep -qxF "$MAC_ZIP" "$PUBLISHED"; then
+            echo "mac_zip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "mac_zip=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "uploaded_mac_zip=$UPLOADED_MAC_ZIP" >> "$GITHUB_OUTPUT"
+          echo "broken=$BROKEN" >> "$GITHUB_OUTPUT"
+
+      # The cask pins the sha256 of the zip AT ITS URL, so the checksum must
+      # describe the bytes the tag actually serves. Under write-once those are
+      # this run's bytes only when this run uploaded them; on a repair
+      # dispatch the published zip predates this build, and pinning the local
+      # (differing) checksum would break `brew install --cask` fleet-wide.
+      - name: Resolve the cask checksum
+        id: cask
+        if: steps.release.outputs.mac_zip == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          UPLOADED: ${{ steps.release.outputs.uploaded_mac_zip }}
+        run: |
+          set -euo pipefail
+          ZIP="deco-$VERSION-aarch64.zip"
+          if [ "$UPLOADED" = "true" ]; then
+            SHA=$(cat "$RUNNER_TEMP/release-assets/zip.sha256")
+          else
+            D="$RUNNER_TEMP/published-zip"
+            mkdir -p "$D"
+            gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+              -p "$ZIP" -D "$D" --clobber
+            SHA=$(sha256sum "$D/$ZIP" | cut -d' ' -f1)
+            echo "::notice::$ZIP was already published; pinning the cask to the published bytes ($SHA)"
+          fi
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+
+      # UNCONFIGURED and MISCONFIGURED are different states and must sound
+      # different. A fork (no App id, no key) legitimately has no cask to bump
+      # and skips in silence — that is what keeps secretless runs green. But
+      # an id set with an empty/expired key is a BROKEN release-bot: skipping
+      # it silently freezes the Homebrew cask, which is the documented
+      # break-glass channel for updater key loss, with no red run and no alert
+      # issue — the channel would rot until someone noticed by hand. Fail
+      # loudly instead (this restores the pre-`HAVE_BOT_KEY` behaviour for
+      # exactly this case, without giving it back the opaque key-parse error
+      # inside the action). Both comparisons are emptiness checks on an
+      # `env:`/`vars.` mapping — no secret value ever reaches this shell.
+      - name: Assert the cask-bump credentials are complete
+        if: ${{ steps.cask.outputs.sha256 != '' && vars.RELEASE_BOT_APP_ID != '' && env.HAVE_BOT_KEY != 'true' }}
+        env:
+          HAVE_BOT_KEY: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY != '' && 'true' || 'false' }}
+        run: |
+          echo "::error::RELEASE_BOT_APP_ID is configured but RELEASE_BOT_APP_PRIVATE_KEY is empty or unset, so the Homebrew cask cannot be bumped. The cask is the documented break-glass channel (brew upgrade --greedy --cask deco-studio) and must never freeze silently — set/rotate the release bot's private key, then re-run via workflow_dispatch (the release itself is already published; the cask bump is idempotent)."
+          exit 1
 
       # Gated on the App credentials EXISTING: a fork without them still
       # builds and publishes the (unsigned) release above — this only skips
       # the cask bump, which needs a push token, rather than failing the run
-      # after the release was created. The bot's push touches only Casks/**,
-      # which no workflow's paths match — no retrigger loop.
+      # after the release was created. The private key is checked for
+      # emptiness too so the action is never handed an empty key (opaque
+      # parse error AFTER publication, which reads as a broken release rather
+      # than an unconfigured one) — the assert above is what makes that state
+      # visible. The bot's push touches only Casks/**, which no workflow's
+      # paths match — no retrigger loop.
       - name: Generate app token
-        if: steps.guard.outputs.release == 'true' && vars.RELEASE_BOT_APP_ID != ''
+        if: steps.cask.outputs.sha256 != '' && vars.RELEASE_BOT_APP_ID != '' && env.HAVE_BOT_KEY == 'true'
         id: app-token
+        env:
+          HAVE_BOT_KEY: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY != '' && 'true' || 'false' }}
         uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ vars.RELEASE_BOT_APP_ID }}
@@ -396,8 +851,8 @@ jobs:
         if: steps.app-token.outputs.token != ''
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          VERSION: ${{ steps.version.outputs.version }}
-          SHA: ${{ steps.assets.outputs.sha256 }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          SHA: ${{ steps.cask.outputs.sha256 }}
         run: |
           set -euo pipefail
           git config user.name "decocms-release[bot]"
@@ -452,21 +907,272 @@ jobs:
           echo "::error::cask bump push failed after retries"
           exit 1
 
-      # A failed release means unbounded, INVISIBLE staleness: the shell
-      # suppresses version drift by design, so nothing nags users and the
-      # update channel silently stops moving. Surface the failure as a
-      # GitHub issue (created once, then commented) — the || true guards
-      # keep a broken alert from masking the real failure.
-      - name: Alert on failure
-        if: failure()
+      # Deliberately LAST and `always()`: an incomplete asset set must turn
+      # this job red (so `alert` files an issue and a human deletes the
+      # orphans), but it must NOT pre-empt the cask bump above. The cask pins
+      # whatever bytes the tag actually serves — it stays correct, and it is
+      # the break-glass channel, so freezing it to report a Linux orphan would
+      # trade one outage for a worse one. `promote` refuses the manifest on
+      # its own signature check regardless of this job's result.
+      - name: Fail on an incomplete asset set
+        if: ${{ always() && steps.release.outputs.broken == 'true' }}
+        env:
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          echo "::error::$TAG carries an incomplete or mixed-provenance asset set — see the ::error:: lines from \"Create or update GitHub release\" above for the exact assets and the delete-asset remedy. The updater manifest is intentionally NOT promoted from this state."
+          exit 1
+
+  # -------------------------------------------------------------------
+  # 4. promote — the ONLY thing a single failing build leg holds back. The
+  #    updater validates the whole manifest before reading `version`, so a
+  #    document missing one platform's key bricks self-update for those
+  #    clients while looking perfectly healthy to everyone else.
+  #
+  #    Gated on `build`, not on `publish`: a cask-bump failure must not
+  #    strand the channel, and a publish failure that DID skip an upload is
+  #    caught precisely by the presence + signature checks below rather than
+  #    by proxy. Those checks are why this job may safely run after a red
+  #    `publish`: it re-derives everything it needs from the tag itself and
+  #    refuses anything it cannot verify.
+  # -------------------------------------------------------------------
+  promote:
+    needs: [plan, build, publish]
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # The manifest's core claim is "this signature describes the bytes at
+      # this URL". Until now that pairing was INFERRED from both files sharing
+      # a version and both being on the tag — which is false exactly when it
+      # matters: `gh` does not roll back a partial upload, so a `publish` that
+      # dies mid-upload can leave `X.tar.gz` from run A next to `X.tar.gz.sig`
+      # from run B (builds are not reproducible), and write-once then prevents
+      # self-healing. Every client downloads ~110 MB, logs
+      # `self-update: SIGNATURE VERIFICATION FAILED`, and stays stuck until a
+      # NEWER version promotes — with nothing red in CI. Verifying here makes
+      # the pairing an ASSERTED property, and it also catches a corrupted hop
+      # anywhere upstream (download-artifact only `core.warning`s a
+      # digestMismatch).
+      #
+      # The pubkey is read out of src-tauri/tauri.conf.json5 — the SAME pin
+      # the shipped app verifies against, not a copy that could drift. The
+      # runbook's rotation story stays one-file.
+      #
+      # This runs BEFORE the throttle decision, on the same reasoning as the
+      # presence check it absorbs: a mispaired artifact on the tag is a real
+      # defect worth failing on even when this run wouldn't have promoted
+      # anyway, and finding it a day late is the whole hazard. The cost is
+      # ~210 MB of downloads per promote run.
+      #
+      # The presence check reads the asset list from a FILE rather than piping
+      # `gh` into `grep -q` — under `set -o pipefail` that pipeline can exit
+      # 141 (SIGPIPE) on a SUCCESSFUL match, i.e. refuse to promote precisely
+      # when everything is fine.
+      - name: Verify the tag's updater artifacts against the pinned pubkey
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y minisign
+
+          ASSETS="$RUNNER_TEMP/release-assets.txt"
+          # Also read by "Promote updater channel" below — the manifest is
+          # built from these exact, verified .sig files.
+          SIGS="$RUNNER_TEMP/sigs"
+          mkdir -p "$SIGS"
+
+          MAC_TARGZ="deco-$VERSION-aarch64.app.tar.gz"
+          LINUX_TARGZ="deco-$VERSION-linux-x86_64.AppImage.tar.gz"
+          LINUX_APPIMAGE="deco-$VERSION-linux-x86_64.AppImage"
+
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json assets --jq '.assets[].name' > "$ASSETS"
+          # The .sha256 is in this list because apps/web/public/install.sh
+          # hard-requires it: promoting a version whose installer would then
+          # refuse to run is exactly the silent half-published state the rest
+          # of this loop exists to prevent.
+          for A in "$MAC_TARGZ" "$MAC_TARGZ.sig" "$LINUX_TARGZ" "$LINUX_TARGZ.sig" \
+                   "$LINUX_APPIMAGE.sha256"; do
+            if ! grep -qxF "$A" "$ASSETS"; then
+              echo "::error::$A is missing from $TAG — refusing to promote. The manifest would reference assets that are not there, or the installer would demand a checksum the release never published."
+              exit 1
+            fi
+          done
+
+          # Tauri stores both the updater pubkey and each .sig base64-wrapped;
+          # decoding yields ordinary minisign files.
+          PUBKEY_B64=$(sed -n 's/^[[:space:]]*"\{0,1\}pubkey"\{0,1\}:[[:space:]]*"\([^"]*\)".*/\1/p' \
+            apps/native/src-tauri/tauri.conf.json5 | head -1)
+          if [ -z "$PUBKEY_B64" ]; then
+            echo "::error::could not read plugins.updater.pubkey out of apps/native/src-tauri/tauri.conf.json5 — that pin is what the shipped app verifies against, so promoting without checking it would publish an unverified manifest."
+            exit 1
+          fi
+          PUB="$SIGS/updater.pub"
+          printf '%s' "$PUBKEY_B64" | base64 -d > "$PUB"
+          if ! grep -q '^RW' "$PUB"; then
+            echo "::error::the decoded updater pubkey is not a minisign public key (no RW... line). Re-check plugins.updater.pubkey in apps/native/src-tauri/tauri.conf.json5."
+            exit 1
+          fi
+
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            -p "$MAC_TARGZ" -p "$MAC_TARGZ.sig" \
+            -p "$LINUX_TARGZ" -p "$LINUX_TARGZ.sig" -D "$SIGS" --clobber
+
+          for T in "$MAC_TARGZ" "$LINUX_TARGZ"; do
+            tr -d '\r\n' < "$SIGS/$T.sig" | base64 -d > "$SIGS/$T.minisig"
+            if ! minisign -V -p "$PUB" -x "$SIGS/$T.minisig" -m "$SIGS/$T"; then
+              echo "::error::$T on $TAG does not verify against its published $T.sig. The pair is split across builds (a partial upload that write-once cannot heal) or the bytes are corrupt — promoting would ship a manifest every client rejects. Remedy: gh release delete-asset $TAG $T --yes; gh release delete-asset $TAG $T.sig --yes (plus that leg's other assets), then re-run this workflow via workflow_dispatch."
+              exit 1
+            fi
+            echo "::notice::$T verifies against the pinned updater pubkey"
+          done
+
+      # Promotion is decided by the unit-tested script (throttle,
+      # never-regress, fail-open semantics — see its header); the decision is
+      # surfaced as a ::notice:: so silent-skip streaks are greppable.
+      #
+      # Signatures come from the RELEASE, not from this run's build output,
+      # so the manifest is paired with the bytes clients will actually
+      # download — the two differ on any repair dispatch, where write-once
+      # keeps the previously published artifacts. They are also the exact
+      # files the step above verified, so the manifest cannot name a
+      # signature that was never checked.
+      - name: Promote updater channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force_promote && 'true' || 'false' }}
+        run: |
+          set -euo pipefail
+          CHANNEL_TAG="native-updates"
+          CURRENT="$RUNNER_TEMP/current-latest.json"
+          MANIFEST="$RUNNER_TEMP/latest.json"
+          DECISION="$RUNNER_TEMP/decision.json"
+          SIGS="$RUNNER_TEMP/sigs"
+
+          MAC_SIG="deco-$VERSION-aarch64.app.tar.gz.sig"
+          LINUX_SIG="deco-$VERSION-linux-x86_64.AppImage.tar.gz.sig"
+
+          # First-ever promotion: the channel release (or its asset) doesn't
+          # exist yet — the script treats an unreadable file as "no manifest"
+          # and promotes.
+          gh release download "$CHANNEL_TAG" --repo "$GITHUB_REPOSITORY" \
+            -p latest.json -O "$CURRENT" || rm -f "$CURRENT"
+
+          FORCE_FLAG=""
+          [ "$FORCE" = "true" ] && FORCE_FLAG="--force"
+          node apps/native/scripts/ci/native-update-channel.mjs should-promote \
+            --candidate "$VERSION" --current-file "$CURRENT" $FORCE_FLAG > "$DECISION"
+          PROMOTE=$(node -p "require('$DECISION').promote")
+          REASON=$(node -p "require('$DECISION').reason")
+          echo "::notice::updater channel decision: promote=$PROMOTE ($REASON)"
+          if [ "$PROMOTE" != "true" ]; then
+            exit 0
+          fi
+
+          node apps/native/scripts/ci/native-update-channel.mjs build \
+            --version "$VERSION" --repo "$GITHUB_REPOSITORY" \
+            --sig-file "darwin-aarch64=$SIGS/$MAC_SIG" \
+            --sig-file "linux-x86_64=$SIGS/$LINUX_SIG" > "$MANIFEST"
+
+          # shouldPromote compares only `version`, so a dispatch from a ref
+          # predating a platform key could legitimately decide to promote a
+          # narrower manifest over a wider one and strand those clients on
+          # "no update" forever, with nothing red anywhere.
+          node apps/native/scripts/ci/native-update-channel.mjs check-coverage \
+            --next-file "$MANIFEST" --current-file "$CURRENT"
+
+          gh release view "$CHANNEL_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 || \
+            gh release create "$CHANNEL_TAG" --repo "$GITHUB_REPOSITORY" \
+              --prerelease --title "deco update channel" \
+              --notes "Rolling updater manifest polled by the desktop app. Do not install from here — use the latest native-v release or Homebrew."
+          gh release upload "$CHANNEL_TAG" --repo "$GITHUB_REPOSITORY" \
+            --clobber "$MANIFEST"
+          echo "::notice::updater channel promoted to $VERSION"
+
+  # -------------------------------------------------------------------
+  # 5. alert — a failed release means unbounded, INVISIBLE staleness: the
+  #    shell suppresses version drift by design, so nothing nags users and
+  #    the update channel silently stops moving. Surface it as a GitHub
+  #    issue (created once, then commented) — the || true guards keep a
+  #    broken alert from masking the real failure.
+  #
+  #    It is its own JOB, not a `if: failure()` step: a step-level
+  #    condition inside a job that upstream failure SKIPPED never
+  #    evaluates, `always()` included — so the likeliest new failure mode
+  #    (one build leg red while the rest of the graph skips) would go
+  #    entirely unreported, which is the exact hazard this exists for.
+  # -------------------------------------------------------------------
+  alert:
+    needs: [plan, build, publish, promote]
+    if: >-
+      always() && (contains(needs.*.result, 'failure') ||
+      contains(needs.*.result, 'cancelled'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: File or update the failure issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          PLAN_RESULT: ${{ needs.plan.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          PUBLISH_RESULT: ${{ needs.publish.result }}
+          PROMOTE_RESULT: ${{ needs.promote.result }}
         run: |
           RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          TAG="${{ steps.version.outputs.tag }}"
-          BODY="Release run for \`${TAG:-unknown}\` failed: $RUN_URL
+          FAILED=""
+          note() {
+            case "$2" in
+              failure|cancelled) FAILED="${FAILED:+$FAILED, }$1 ($2)" ;;
+            esac
+          }
+          note plan "$PLAN_RESULT"
+          note build "$BUILD_RESULT"
+          note publish "$PUBLISH_RESULT"
+          note promote "$PROMOTE_RESULT"
 
-          A failed native release stalls the desktop updater channel invisibly (drift is suppressed in the shell by design). Repair: fix the cause, then re-run via workflow_dispatch (idempotent; pass force_promote to bypass the channel throttle if needed)."
+          # `needs.build.result` is the AGGREGATE of the matrix: it says
+          # "failure" whether macOS or Linux went red, and the two have
+          # opposite triage. Ask the API which JOBS failed so the issue can
+          # say "Linux red, macOS frozen" without anyone opening the run.
+          # Matrix legs are named `build (<os>, <target>)`, so the target
+          # substring identifies the platform. Guarded like every other call
+          # here — a broken alert must not mask the real failure.
+          JOBS=$(gh api --paginate \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs" \
+            --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled") | "- \(.name) (\(.conclusion))"' \
+            2>/dev/null || true)
+          if [ -z "$JOBS" ]; then
+            LEGS="build legs: could not list this run's jobs — aggregate \`build\` result was \`$BUILD_RESULT\`"
+            JOBS="- (could not list this run's jobs; open the run)"
+          else
+            MAC_LEG="green"
+            LINUX_LEG="green"
+            case "$JOBS" in *"darwin-aarch64"*) MAC_LEG="RED" ;; esac
+            case "$JOBS" in *"linux-x86_64"*) LINUX_LEG="RED" ;; esac
+            LEGS="build legs: macOS (darwin-aarch64) $MAC_LEG, Linux (linux-x86_64) $LINUX_LEG"
+          fi
+
+          BODY="Release run for \`${TAG:-unknown}\` failed in: ${FAILED:-unknown}. $RUN_URL
+
+          $LEGS
+
+          Failed jobs:
+          $JOBS
+
+          A failed native release stalls the desktop updater channel invisibly (drift is suppressed in the shell by design). A red \`build\` leg holds back ONLY the updater manifest — the release and the Homebrew cask still ship for whichever platform built, so clients stay on the last promoted version until this is fixed.
+
+          Repair: fix the cause, then re-run via workflow_dispatch (idempotent; \`native-v*\` assets are write-once, so an already-published asset keeps its bytes; pass force_promote to bypass the channel throttle if needed). If \`publish\` or \`promote\` reported an orphaned/mispaired updater asset, delete that leg's published assets first (\`gh release delete-asset\`) — write-once cannot heal a split (tar.gz, .sig) pair."
           EXISTING=$(gh issue list --repo "$GITHUB_REPOSITORY" \
             --search "\"release-native failed\" in:title" --state open \
             --json number --jq '.[0].number // empty' 2>/dev/null || true)

@@ -78,6 +78,17 @@ pub(crate) fn preview_scheme() -> &'static str {
     PREVIEW_SCHEME.get().copied().unwrap_or("http")
 }
 
+/// Notified with each per-handle preview host before its URL is returned.
+///
+/// Published like [`PREVIEW_HOST`] and for the same reason. Set only by the
+/// embedded Tauri shell — see `EmbeddedOptions::preview_host_observer` for why
+/// a Linux webview cannot load a preview iframe without it.
+static PREVIEW_HOST_OBSERVER: OnceLock<crate::PreviewHostObserver> = OnceLock::new();
+
+pub(crate) fn set_preview_host_observer(observer: crate::PreviewHostObserver) {
+    let _ = PREVIEW_HOST_OBSERVER.set(observer);
+}
+
 pub(crate) fn preview_host_base() -> &'static str {
     PREVIEW_HOST
         .get()
@@ -90,11 +101,47 @@ pub(crate) fn preview_host_base() -> &'static str {
 /// Per-handle rather than one shared origin: cookies ignore the port, so a
 /// single host put every sandbox in one jar. `None` before the listener binds.
 fn preview_url(handle: &str) -> Option<String> {
-    let port = match PREVIEW_PORT.load(Ordering::Relaxed) {
-        0 => return None,
-        port => port,
+    preview_url_with_registration(handle).0
+}
+
+fn preview_url_with_registration(
+    handle: &str,
+) -> (Option<String>, Option<crate::PreviewHostRegistration>) {
+    let registration = std::cell::RefCell::new(None);
+    let observer = PREVIEW_HOST_OBSERVER.get();
+    let url = {
+        let observe = |host: &str| {
+            if let Some(observer) = observer {
+                registration.replace(Some(observer(host)));
+            }
+        };
+        preview_url_for(
+            preview_host_base(),
+            preview_scheme(),
+            PREVIEW_PORT.load(Ordering::Relaxed),
+            handle,
+            observer.map(|_| &observe as &dyn Fn(&str)),
+        )
     };
-    let base = preview_host_base();
+    (url, registration.into_inner())
+}
+
+/// The pure core of [`preview_url`]: everything the three process globals feed
+/// it, as arguments.
+///
+/// Separate because those globals are `OnceLock`s written only by production
+/// startup — a test that set one would poison every other test in the process
+/// with no way back.
+fn preview_url_for(
+    base: &str,
+    scheme: &str,
+    port: u16,
+    handle: &str,
+    observe: Option<&dyn Fn(&str)>,
+) -> Option<String> {
+    if port == 0 {
+        return None;
+    }
     // Per-handle hosts ONLY under a real registrable domain. Under a
     // single-label host (`localhost`) every `<handle>.localhost` is its own
     // SITE, which makes the preview iframe third-party and — measured in
@@ -105,9 +152,17 @@ fn preview_url(handle: &str) -> Option<String> {
         // ONE label, derived from the handle — a handle itself contains `/`
         // and would turn the host into `github.com` with the rest as a path.
         let label = crate::sandbox::preview_label(handle);
-        Some(format!("{}://{label}.{base}:{port}/", preview_scheme()))
+        let host = format!("{label}.{base}");
+        // Announce the host before the URL escapes. Async callers can wait for
+        // the observer's registration acknowledgement before returning it.
+        if let Some(observe) = observe {
+            observe(&host);
+        }
+        Some(format!("{scheme}://{host}:{port}/"))
     } else {
-        Some(format!("{}://{base}:{port}/", preview_scheme()))
+        // Single-origin mode has no per-handle host to announce, and the
+        // control origin's own exception already covers it.
+        Some(format!("{scheme}://{base}:{port}/"))
     }
 }
 
@@ -625,8 +680,24 @@ async fn start(state: &AppState, org: &str, body: &Bytes) -> Response {
     // ask for.
     let reported_branch = branch_for_virtual_mcp(state, virtual_mcp_id);
 
+    let (preview_url, preview_registration) = preview_url_with_registration(&handle);
+    if let Some(registration) = preview_registration {
+        let trust =
+            match tokio::time::timeout(std::time::Duration::from_secs(2), registration).await {
+                Ok(Ok(result)) => result,
+                Ok(Err(error)) => Err(format!("registration channel closed: {error}")),
+                Err(_) => Err("registration timed out after 2 seconds".to_string()),
+            };
+        if let Err(error) = trust {
+            return ApiError::internal(format!(
+                "could not trust the sandbox preview host before returning its URL: {error}"
+            ))
+            .into_response();
+        }
+    }
+
     Json(json!({
-        "previewUrl": preview_url(&handle),
+        "previewUrl": preview_url,
         "sandboxHandle": handle,
         "branch": reported_branch,
         "isNewVm": !existed,
@@ -920,6 +991,76 @@ mod tests {
         let (status, _) =
             delete_body(&state, json!({ "virtualMcpId": "", "branch": "feature-x" })).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    /// The pure core, exercised WITHOUT touching the process globals — the
+    /// `OnceLock`s the wrapper reads can never be reset once written.
+    #[test]
+    fn preview_url_for_is_per_handle_only_under_a_real_domain() {
+        assert_eq!(
+            preview_url_for("localhost", "http", 51_234, "alpha", None).as_deref(),
+            Some("http://localhost:51234/")
+        );
+        assert_eq!(
+            preview_url_for("localhost", "http", 51_234, "alpha", None),
+            preview_url_for("localhost", "http", 51_234, "beta", None)
+        );
+
+        let alpha = preview_url_for("local.studio.decocms.com", "https", 51_234, "alpha", None)
+            .expect("a bound listener reports a URL");
+        let beta = preview_url_for("local.studio.decocms.com", "https", 51_234, "beta", None)
+            .expect("a bound listener reports a URL");
+        assert_ne!(alpha, beta, "each handle gets its own host");
+        assert!(alpha.starts_with("https://"), "{alpha}");
+        assert!(
+            alpha.ends_with(".local.studio.decocms.com:51234/"),
+            "{alpha}"
+        );
+    }
+
+    #[test]
+    fn preview_url_for_reports_nothing_before_the_listener_binds() {
+        // An unbound listener must report no preview URL rather than a bogus
+        // `:0`, which the shell would try to load. The observer must not fire
+        // either — there is no origin to trust yet.
+        let seen = std::cell::RefCell::new(Vec::new());
+        let observe = |host: &str| seen.borrow_mut().push(host.to_string());
+        assert_eq!(
+            preview_url_for("local.studio.decocms.com", "https", 0, "h1", Some(&observe)),
+            None
+        );
+        assert!(seen.borrow().is_empty(), "{:?}", seen.borrow());
+    }
+
+    #[test]
+    fn preview_url_for_announces_the_host_only_in_per_handle_mode() {
+        let seen = std::cell::RefCell::new(Vec::new());
+        let observe = |host: &str| seen.borrow_mut().push(host.to_string());
+
+        let url = preview_url_for(
+            "local.studio.decocms.com",
+            "https",
+            51_234,
+            "h1",
+            Some(&observe),
+        )
+        .expect("a bound listener reports a URL");
+        let announced = seen.borrow().first().cloned().expect("one host announced");
+        // Exactly the host inside the URL — the exception API takes no port,
+        // no scheme and no wildcard.
+        assert_eq!(url, format!("https://{announced}:51234/"));
+        assert_eq!(
+            announced,
+            format!(
+                "{}.local.studio.decocms.com",
+                crate::sandbox::preview_label("h1")
+            )
+        );
+
+        // Single-origin mode has no per-handle host to announce.
+        seen.borrow_mut().clear();
+        preview_url_for("localhost", "http", 51_234, "h1", Some(&observe));
+        assert!(seen.borrow().is_empty(), "{:?}", seen.borrow());
     }
 
     #[test]

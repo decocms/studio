@@ -4,16 +4,18 @@
  *
  * End-to-end boot smoke for the Tauri shell (`apps/native/src-tauri/`):
  *
- *   1. By default, ensures the release `.app` bundle exists
- *      (`bunx @tauri-apps/cli build`) and is newer than its inputs — the same
- *      profile the shipped app uses, so the smoke gates what ships. Pass
- *      `--rebuild` to force a fresh build after touching Rust or frontend
- *      source. CI, which already built the exact artifact it needs to test,
- *      passes `--require-existing-bundle` to fail when that `.app` is absent
- *      and never rebuild it.
- *   2. Launches `Contents/MacOS/<bin>` DIRECTLY (not `open -a`, which
- *      detaches from this process's stdio/exit-code and complicates
- *      cleanup) with `DESKTOP_SELFTEST=1`,
+ *   1. By default, ensures the release bundle exists
+ *      (`bunx @tauri-apps/cli build`) — the `.app` on macOS, the AppImage on
+ *      Linux — and is newer than its inputs, on the same profile the shipped
+ *      app uses, so the smoke gates what ships. Pass `--rebuild` to force a
+ *      fresh build after touching Rust or frontend source. CI, which already
+ *      built the exact artifact it needs to test, passes
+ *      `--require-existing-bundle` to fail when that bundle is absent and
+ *      never rebuild it.
+ *   2. Launches it DIRECTLY (not `open -a`, which detaches from this
+ *      process's stdio/exit-code and complicates cleanup) — the launch
+ *      entry point per platform, see `boot-smoke-target.ts` — with
+ *      `DESKTOP_SELFTEST=1`,
  *      `DESKTOP_SELFTEST_APP_DATA_DIR=<unique tmp root>/app-data`, and
  *      `DESKTOP_SELFTEST_OUT=<unique tmp report>` — see
  *      `src-tauri/src/selftest.rs` for what that mode does.
@@ -44,7 +46,7 @@ import {
   statSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { sleep } from "@decocms/shared/std";
@@ -58,14 +60,14 @@ import {
   parseBootSmokeOptions,
   resolveBootSmokeBundleAction,
 } from "./boot-smoke-options";
+import {
+  APP_BINARY_NAME,
+  resolveSmokeTarget,
+  TAURI_CLI_VERSION,
+} from "./boot-smoke-target";
 
 const DESKTOP_DIR = fileURLToPath(new URL("..", import.meta.url));
-const APP_BINARY_NAME = "deco";
-const APP_BUNDLE = join(
-  DESKTOP_DIR,
-  `target/release/bundle/macos/${APP_BINARY_NAME}.app`,
-);
-const TAURI_CLI_VERSION = "2.11.4";
+const TARGET = resolveSmokeTarget(process.platform, DESKTOP_DIR);
 const SELFTEST_DEADLINE_MS = 60_000;
 const ORPHAN_CHECK_SETTLE_MS = 1000;
 
@@ -107,23 +109,92 @@ function run(
   });
 }
 
-function binaryPath(): string {
-  const macosDir = join(APP_BUNDLE, "Contents/MacOS");
-  if (!existsSync(macosDir)) {
-    fail(`bundle exists but ${macosDir} is missing — build may have failed`);
+/** The shipped artifact in `TARGET.bundleDir`, or null when it isn't built. */
+function findBundleArtifact(): string | null {
+  if (!existsSync(TARGET.bundleDir)) return null;
+  const matches = readdirSync(TARGET.bundleDir).filter((name) =>
+    TARGET.isBundleArtifact(name),
+  );
+  if (matches.length > 1) {
+    fail(
+      `${TARGET.bundleDir} holds ${matches.length} bundle artifacts (${matches.join(", ")}) — remove the stale ones and rebuild`,
+    );
+  }
+  const [artifact] = matches;
+  return artifact ? join(TARGET.bundleDir, artifact) : null;
+}
+
+/** Resolves the app binary under a launch root, asserting it and every
+ *  required sidecar were staged there. */
+function stagedBinary(launchRoot: string): string {
+  const bin = join(launchRoot, TARGET.launchedBinaryRelPath);
+  const binDir = dirname(bin);
+  if (!existsSync(binDir)) {
+    fail(`bundle exists but ${binDir} is missing — build may have failed`);
   }
   // The app binary is no longer alone in here: Tauri copies every
   // `externalBin` sidecar (currently `rclone`, which serves the organization
   // filesystem) into this same directory, with its target triple stripped.
   // Select the app by name rather than asserting the directory's size, so
   // adding a sidecar does not break the smoke test.
-  const entries = readdirSync(macosDir);
+  const entries = readdirSync(binDir);
   if (!entries.includes(APP_BINARY_NAME)) {
     fail(
-      `${APP_BINARY_NAME} is missing from ${macosDir}, found: ${entries.join(", ")}`,
+      `${APP_BINARY_NAME} is missing from ${binDir}, found: ${entries.join(", ")}`,
     );
   }
-  return join(macosDir, APP_BINARY_NAME);
+  for (const sidecar of TARGET.requiredSidecars) {
+    if (!entries.includes(sidecar)) {
+      fail(
+        `externalBin sidecar ${sidecar} is missing from ${binDir}, found: ${entries.join(", ")}`,
+      );
+    }
+  }
+  const entry = join(launchRoot, TARGET.launchEntryRelPath);
+  if (!existsSync(entry)) {
+    fail(`launch entry point ${entry} is missing`);
+  }
+  return entry;
+}
+
+/** Freshness stamp of an already-built artifact. The `.app` is a directory
+ *  whose own mtime does not move when the binary inside is relinked, so it is
+ *  stamped from that binary; the AppImage is a single file that always does. */
+function bundleStampMs(artifact: string): number {
+  return TARGET.platform === "darwin"
+    ? statSync(stagedBinary(artifact)).mtimeMs
+    : statSync(artifact).mtimeMs;
+}
+
+/** Unpacks the AppImage into the run's own validated temp root, so
+ *  `cleanupSmokeDir` reclaims it and no FUSE mount is required. */
+async function extractAppImage(
+  artifact: string,
+  smokePaths: BootSmokePaths,
+): Promise<string> {
+  const { root } = resolveBootSmokePaths(smokePaths.root, tmpdir());
+  for (const rel of [TARGET.launchedBinaryRelPath, TARGET.launchEntryRelPath]) {
+    if (!join(root, rel).startsWith(root + sep)) {
+      fail(`refusing to launch outside ${root}`);
+    }
+  }
+  log(`extracting ${artifact} into ${root}`);
+  const code = await run(artifact, ["--appimage-extract"], { cwd: root });
+  if (code !== 0) {
+    fail(`--appimage-extract exited ${code}`);
+  }
+  return root;
+}
+
+async function binaryPath(
+  artifact: string,
+  smokePaths: BootSmokePaths,
+): Promise<string> {
+  return stagedBinary(
+    TARGET.platform === "linux"
+      ? await extractAppImage(artifact, smokePaths)
+      : artifact,
+  );
 }
 
 /** Newest file mtime under `dir` (recursive, sync — this is a dev script,
@@ -142,21 +213,19 @@ function newestMtimeUnder(dir: string): number {
 }
 
 async function ensureBuilt(bundleMode: BootSmokeBundleMode): Promise<void> {
-  const action = resolveBootSmokeBundleAction(
-    bundleMode,
-    existsSync(APP_BUNDLE),
-  );
+  const existing = findBundleArtifact();
+  const action = resolveBootSmokeBundleAction(bundleMode, existing !== null);
   if (action === "reject-missing") {
     fail(
-      `--require-existing-bundle was passed but ${APP_BUNDLE} does not exist`,
+      `--require-existing-bundle was passed but no bundle artifact exists under ${TARGET.bundleDir}`,
     );
   }
-  if (action === "use-existing") {
-    log(`using required existing bundle at ${APP_BUNDLE}`);
+  if (existing && action === "use-existing") {
+    log(`using required existing bundle at ${existing}`);
     return;
   }
 
-  if (action === "check-freshness") {
+  if (existing && action === "check-freshness") {
     // Staleness guard: the bundle bakes the frontend + Rust in at build
     // time, so an existing .app can silently predate both. A stale bundle
     // is exactly how a fixed frontend kept shipping a blank window on
@@ -170,11 +239,28 @@ async function ensureBuilt(bundleMode: BootSmokeBundleMode): Promise<void> {
     // would re-open the same stale-bundle false-green this guard exists to
     // prevent. When source IS newer, the rebuild's own beforeBuildCommand
     // (`build:native`) regenerates dist/native before bundling.
-    const bundleBin = statSync(binaryPath()).mtimeMs;
+    const bundleBin = bundleStampMs(existing);
     const webDir = join(DESKTOP_DIR, "..", "web");
     const inputs = [
       join(DESKTOP_DIR, "target", "release", "deco"),
       join(DESKTOP_DIR, "src-tauri", "tauri.conf.json5"),
+      // The Tauri CLI merge-patches the platform overlay over the config
+      // above, so `bundle.targets`/`category`/`icon` edits change the artifact
+      // without touching anything else listed here. Per-platform (see
+      // `SmokeTarget.configOverlayPath`) — it is committed everywhere.
+      ...(TARGET.configOverlayPath ? [TARGET.configOverlayPath] : []),
+      // `beforeBuildCommand` runs this, and `externalBin` bundles what it
+      // fetches, on BOTH platforms — so a re-pinned RCLONE_VERSION changes the
+      // bundle while leaving every other input untouched.
+      join(DESKTOP_DIR, "scripts", "fetch-rclone.sh"),
+      // The selftest script itself, `include_str!`-ed into the shell by
+      // `src-tauri/src/selftest.rs` — and the thing this smoke reads its
+      // verdict from. It lives in `src-tauri/selftest/`, which no walk below
+      // covers (`src-tauri/src` does not reach it), so without this line
+      // editing a check and re-running smokes the PREVIOUSLY embedded
+      // selftest and reports "found fresh bundle": the exact stale-bundle
+      // false-green this guard exists to prevent.
+      join(DESKTOP_DIR, "src-tauri", "selftest", "bundle.js"),
       join(webDir, "index.native.html"),
       join(webDir, "vite.config.ts"),
       join(webDir, "package.json"),
@@ -187,24 +273,25 @@ async function ensureBuilt(bundleMode: BootSmokeBundleMode): Promise<void> {
       newestMtimeUnder(join(webDir, "public")),
     );
     if (newest <= bundleBin) {
-      log(`found fresh bundle at ${APP_BUNDLE} (pass --rebuild to force)`);
+      log(`found fresh bundle at ${existing} (pass --rebuild to force)`);
       return;
     }
     log("existing bundle is older than its inputs — rebuilding");
   }
+  const cli = `@tauri-apps/cli@${TAURI_CLI_VERSION}`;
   log(
-    `building release app bundle: bunx @tauri-apps/cli@${TAURI_CLI_VERSION} build --bundles app`,
+    `building release app bundle: bunx ${cli} build ${TARGET.bundlesArg.join(" ")}`,
   );
-  const code = await run(
-    "bunx",
-    [`@tauri-apps/cli@${TAURI_CLI_VERSION}`, "build", "--bundles", "app"],
-    { cwd: DESKTOP_DIR },
-  );
+  const code = await run("bunx", [cli, "build", ...TARGET.bundlesArg], {
+    cwd: DESKTOP_DIR,
+  });
   if (code !== 0) {
     fail(`tauri build exited ${code}`);
   }
-  if (!existsSync(APP_BUNDLE)) {
-    fail(`build reported success but ${APP_BUNDLE} does not exist`);
+  if (!findBundleArtifact()) {
+    fail(
+      `build reported success but no bundle artifact exists under ${TARGET.bundleDir}`,
+    );
   }
 }
 
@@ -236,20 +323,9 @@ function livingChildPids(pid: number): number[] {
  *  child), which `pgrep -P` alone would miss. */
 /** All PIDs matching the desktop binaries, for the pre/post orphan diff. */
 function sweepForBinaries(): number[] {
-  // Each pattern ends the binary name at a word boundary (whitespace before
-  // args, or end of the command line). Without it, the bare `deco` prefix
-  // also matches sibling target binaries — `decocms-keychain-helper`, a
-  // dev-run `deco`-prefixed build — and a process spawning during the smoke
-  // window gets misreported as a leaked orphan.
-  return [
-    ...livingProcessesMatching("target/(debug|release)/deco([[:space:]]|$)"),
-    ...livingProcessesMatching(
-      "target/(debug|release)/bundle/macos/deco\\.app/Contents/MacOS/deco([[:space:]]|$)",
-    ),
-    ...livingProcessesMatching(
-      "target/(debug|release)/local-api([[:space:]]|$)",
-    ),
-  ];
+  return TARGET.sweepPatterns.flatMap((pattern) =>
+    livingProcessesMatching(pattern),
+  );
 }
 
 function livingProcessesMatching(pattern: string): number[] {
@@ -289,8 +365,11 @@ async function main(): Promise<void> {
   const options = parseBootSmokeOptions(process.argv.slice(2));
 
   await ensureBuilt(options.bundleMode);
-  const bin = binaryPath();
-  log(`binary: ${bin}`);
+  const artifact =
+    findBundleArtifact() ??
+    fail(
+      `no bundle artifact under ${TARGET.bundleDir} — build may have failed`,
+    );
 
   const outDir = mkdtempSync(join(tmpdir(), BOOT_SMOKE_TEMP_PREFIX));
   const smokePaths = resolveBootSmokePaths(outDir, tmpdir());
@@ -304,6 +383,8 @@ async function main(): Promise<void> {
   let pid: number | undefined;
 
   try {
+    const bin = await binaryPath(artifact, smokePaths);
+    log(`binary: ${bin}`);
     log(`isolated app data: ${smokePaths.appDataDir}`);
     log("launching with DESKTOP_SELFTEST=1 …");
     const proc = spawn(bin, [], {
@@ -342,35 +423,44 @@ async function main(): Promise<void> {
       stderr += c.toString();
     });
 
-    const exitCode = await new Promise<number>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        log(
-          `deadline (${SELFTEST_DEADLINE_MS}ms) exceeded — killing pid ${pid}`,
-        );
-        proc.kill("SIGKILL");
-      }, SELFTEST_DEADLINE_MS);
-      proc.once("error", (err) => {
-        clearTimeout(timer);
-        reject(err);
-      });
-      proc.once("exit", (code, signal) => {
-        clearTimeout(timer);
-        if (code === null) {
-          reject(
-            new Error(
-              `process was killed by signal ${signal} before self-test completed`,
-            ),
-          );
-          return;
-        }
-        resolve(code);
-      });
-    });
+    // `finally`: a signal death rejects, and its cause only ever reaches
+    // stderr — a trailing call would report a bare signal name.
+    const dumpChildOutput = () => {
+      console.log("--- app stdout/stderr ---");
+      console.log(stdout);
+      console.error(stderr);
+      console.log("-------------------------");
+    };
 
-    console.log("--- app stdout/stderr ---");
-    console.log(stdout);
-    console.error(stderr);
-    console.log("-------------------------");
+    let exitCode: number;
+    try {
+      exitCode = await new Promise<number>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          log(
+            `deadline (${SELFTEST_DEADLINE_MS}ms) exceeded — killing pid ${pid}`,
+          );
+          proc.kill("SIGKILL");
+        }, SELFTEST_DEADLINE_MS);
+        proc.once("error", (err) => {
+          clearTimeout(timer);
+          reject(err);
+        });
+        proc.once("exit", (code, signal) => {
+          clearTimeout(timer);
+          if (code === null) {
+            reject(
+              new Error(
+                `process was killed by signal ${signal} before self-test completed`,
+              ),
+            );
+            return;
+          }
+          resolve(code);
+        });
+      });
+    } finally {
+      dumpChildOutput();
+    }
 
     if (exitCode !== 0) {
       fail(`app exited ${exitCode} (expected 0) — see stdout/stderr above`);
@@ -392,12 +482,11 @@ async function main(): Promise<void> {
       "protectedRoute200WithCookie",
       "credentiallessMutationRejected",
       "eventSourceStatusEvent",
-      "controlCookieIsolation",
+      "controlCookieHttpOnly",
       "authStatusInvoke",
       "domMountedEarly",
-      "remoteImageLoads",
       "previewIframeLoads",
-      "previewFetchReachable",
+      "previewCookieRoundTrip",
       "noCspViolations",
     ]);
     for (const [name, check] of Object.entries(report.results)) {
@@ -428,7 +517,7 @@ async function main(): Promise<void> {
     log("orphan check: no leftover children");
 
     log("SUMMARY: boot smoke PASSED");
-    log(`  bundle:        ${APP_BUNDLE}`);
+    log(`  bundle:        ${artifact}`);
     log(`  binary:        ${bin}`);
     log(`  exit code:     ${exitCode}`);
     log(`  allPass:       ${report.allPass}`);

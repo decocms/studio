@@ -23,6 +23,14 @@
 //! and because BOTH the card's restart and a plain quit funnel through
 //! `ExitRequested`, install-on-quit still holds.
 //!
+//! That ordering is macOS-driven but correct on Linux too, so there is no
+//! per-OS install path: `install_appimage` renames the running image aside
+//! as a backup and writes the new bytes at `$APPIMAGE`, the kernel keeps
+//! the already-mounted image alive for the live process, and the relaunch
+//! resolves the binary through `current_binary()` — which returns
+//! `env.appimage`, i.e. the path just rewritten. Nothing there needs the
+//! swap to be late, and nothing there is harmed by it being late.
+//!
 //! The task never runs outside a real shipped build — three independent
 //! gates, because `cfg!(debug_assertions)` alone is NOT enough: CI's
 //! `tauri-build` job and `boot-smoke.ts` build the RELEASE profile at the
@@ -191,6 +199,16 @@ fn enabled(app: &tauri::AppHandle) -> bool {
         );
         return false;
     }
+    // Linux: the plugin swaps the file $APPIMAGE points at, in place. Run from a
+    // raw binary (dev checkout, extracted AppDir, future deb/rpm) it would
+    // overwrite current_exe() itself — never spawn there. The plugin has no such
+    // guard: tauri-plugin-updater 2.10.1 wires executable_path from env.appimage
+    // and install_appimage rewrites it with no "not an AppImage" error.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("APPIMAGE").is_none() {
+        tracing::info!("self-update disabled: not running from an AppImage");
+        return false;
+    }
     true
 }
 
@@ -336,9 +354,23 @@ async fn download_verify_stage(
     // the manifest lives on a mutable release asset writable by every
     // workflow token with contents:write. Without this, a lying manifest
     // could pair a high `version` with an old validly-signed artifact and
-    // silently roll the fleet back. The bundle's own Info.plist version IS
-    // signature-covered, so requiring it to match closes the pairing attack.
-    let embedded = bundle_short_version(&bytes)
+    // silently roll the fleet back.
+    //
+    // Every platform's archive carries its own version marker INSIDE the
+    // signed bytes, so requiring it to match closes the pairing attack the
+    // same way on each:
+    //   macOS — `CFBundleShortVersionString` in the `.app`'s Info.plist;
+    //   Linux — the tar member NAME `deco_<version>_amd64.AppImage`, which
+    //     exists only because the Linux release leg builds with
+    //     `createUpdaterArtifacts: "v1Compatible"` (the tarball then holds
+    //     exactly one member, and tar stores names in the signed bytes).
+    // Both extractors are always compiled (see the note above them); only
+    // this dispatch is per-OS.
+    #[cfg(target_os = "linux")]
+    let embedded = appimage_member_version(&bytes);
+    #[cfg(not(target_os = "linux"))]
+    let embedded = bundle_short_version(&bytes);
+    let embedded = embedded
         .map_err(|error| InstallError::new(format!("bundle inspection failed: {error}")))?;
     if embedded != expected_version {
         return Err(InstallError::new(format!(
@@ -347,8 +379,10 @@ async fn download_verify_stage(
     }
 
     // Stage to disk instead of installing NOW: swapping the bundle under the
-    // running process breaks macOS Keychain access (see the module doc).
-    // Sync fs on a blocking thread — ~80-100 MB write.
+    // running process breaks macOS Keychain access; on Linux the swap is
+    // survivable but the exit path is still where it belongs, so one ordering
+    // serves both (see the module doc). Sync fs on a blocking thread —
+    // ~80-100 MB write.
     let dir = updates_dir.to_path_buf();
     let version = expected_version.to_string();
     tauri::async_runtime::spawn_blocking(move || stage_archive(&dir, &version, &bytes))
@@ -357,20 +391,36 @@ async fn download_verify_stage(
         .map_err(|error| InstallError::new(format!("staging failed: {error}")))
 }
 
+/// Purely cosmetic: nothing ever parses this name — [`stage_archive`] hands
+/// the exact `PathBuf` to the apply path and clears the directory wholesale
+/// — but a support bundle listing `<app_root>/updates/` should name the
+/// platform's real artifact rather than a macOS bundle archive.
+#[cfg(target_os = "linux")]
+const PENDING_ARCHIVE_SUFFIX: &str = "AppImage.tar.gz";
+#[cfg(not(target_os = "linux"))]
+const PENDING_ARCHIVE_SUFFIX: &str = "app.tar.gz";
+
 /// Clear-then-write: at most ONE pending archive ever exists, so a
 /// superseding version can never leave the old one behind and the apply
 /// path never has to disambiguate.
 fn stage_archive(dir: &Path, version: &str, bytes: &[u8]) -> std::io::Result<PathBuf> {
     let _ = std::fs::remove_dir_all(dir);
     std::fs::create_dir_all(dir)?;
-    let path = dir.join(format!("pending-{version}.app.tar.gz"));
+    let path = dir.join(format!("pending-{version}.{PENDING_ARCHIVE_SUFFIX}"));
     std::fs::write(&path, bytes)?;
     Ok(path)
 }
 
+// Both version-marker extractors below are compiled on EVERY OS — only the
+// call site in `download_verify_stage` is cfg-dispatched — so macOS CI runs
+// the Linux parser's tests and vice versa. flate2/tar/plist are portable, so
+// the only cost is the `dead_code` allow on whichever one this target does
+// not call.
+
 /// `CFBundleShortVersionString` of the top-level `.app` inside the updater
 /// tar.gz (`<name>.app/Contents/Info.plist` — exactly depth 3, so a nested
 /// framework's plist can never shadow the bundle's own).
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 fn bundle_short_version(targz: &[u8]) -> Result<String, String> {
     let decoder = flate2::read::GzDecoder::new(targz);
     let mut archive = tar::Archive::new(decoder);
@@ -407,6 +457,53 @@ fn bundle_short_version(targz: &[u8]) -> Result<String, String> {
             .ok_or_else(|| "Info.plist has no CFBundleShortVersionString".to_string());
     }
     Err("no <name>.app/Contents/Info.plist in archive".to_string())
+}
+
+/// The `<version>` of the sole top-level `*.AppImage` member of a
+/// `v1Compatible` updater tarball — the Linux twin of
+/// [`bundle_short_version`]. Usable as a pairing marker only because tar
+/// stores member NAMES in the bytes minisign signs; depth 1 is pinned for
+/// the same reason the macOS side pins depth 3, so no nested member can
+/// stand in for the real one. The `<product>_<version>_<arch>` shape is
+/// tauri-bundler's, frozen by the pinned CLI version (a bump must
+/// re-verify it — see the pin comment in `.github/workflows/release-native.yaml`).
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn appimage_member_version(targz: &[u8]) -> Result<String, String> {
+    let decoder = flate2::read::GzDecoder::new(targz);
+    let mut archive = tar::Archive::new(decoder);
+    let entries = archive
+        .entries()
+        .map_err(|error| format!("unreadable archive: {error}"))?;
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("unreadable archive entry: {error}"))?;
+        let path = entry
+            .path()
+            .map_err(|error| format!("unreadable entry path: {error}"))?;
+        let components: Vec<String> = path
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned())
+            .collect();
+        let [name] = components.as_slice() else {
+            continue;
+        };
+        let Some(stem) = name.strip_suffix(".AppImage") else {
+            continue;
+        };
+        // Fail closed rather than skip on: an unexpected shape on the one
+        // member we ship means the bundler moved under us, not that some
+        // other member is the right one.
+        let segments: Vec<&str> = stem.split('_').collect();
+        let [_product, version, _arch] = segments.as_slice() else {
+            return Err(format!(
+                "unexpected AppImage member name {name}, want <product>_<version>_<arch>.AppImage"
+            ));
+        };
+        if version.is_empty() {
+            return Err(format!("AppImage member name {name} has an empty version"));
+        }
+        return Ok((*version).to_string());
+    }
+    Err("no top-level *.AppImage member in archive".to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -571,5 +668,48 @@ mod tests {
 
         assert_eq!(bundle_short_version(&targz).unwrap(), "4.151.0");
         assert!(bundle_short_version(b"not a tarball").is_err());
+    }
+
+    /// A gzipped tar holding one empty file per path — the AppImage marker
+    /// lives entirely in the member NAME, so contents are irrelevant.
+    fn targz_of(paths: &[&str]) -> Vec<u8> {
+        let mut builder = tar::Builder::new(Vec::new());
+        for path in paths {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(0);
+            header.set_mode(0o755);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, path, std::io::empty())
+                .unwrap();
+        }
+        let tar_bytes = builder.into_inner().unwrap();
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        std::io::Write::write_all(&mut encoder, &tar_bytes).unwrap();
+        encoder.finish().unwrap()
+    }
+
+    #[test]
+    fn appimage_member_version_reads_the_v1_compatible_member_name() {
+        let targz = targz_of(&["deco_4.151.0_amd64.AppImage"]);
+        assert_eq!(appimage_member_version(&targz).unwrap(), "4.151.0");
+    }
+
+    #[test]
+    fn appimage_member_version_rejects_anything_but_the_bundler_shape() {
+        // Depth 2: a nested member must never stand in for the real one.
+        assert!(
+            appimage_member_version(&targz_of(&["nested/deco_4.151.0_amd64.AppImage"])).is_err()
+        );
+        // Not exactly <product>_<version>_<arch>.
+        assert!(appimage_member_version(&targz_of(&["deco_4.151.0.AppImage"])).is_err());
+        assert!(appimage_member_version(&targz_of(&["deco_4.151.0_amd64_x.AppImage"])).is_err());
+        assert!(appimage_member_version(&targz_of(&["deco.AppImage"])).is_err());
+        assert!(appimage_member_version(&targz_of(&["deco__amd64.AppImage"])).is_err());
+        // No AppImage member at all (e.g. a macOS artifact served by a
+        // manifest whose platform keys were crossed).
+        assert!(appimage_member_version(&targz_of(&["deco.app/Contents/Info.plist"])).is_err());
+        // Not gzip.
+        assert!(appimage_member_version(b"not a tarball").is_err());
     }
 }

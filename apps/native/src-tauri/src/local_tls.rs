@@ -38,13 +38,27 @@
 //! remain unrestricted for BoringSSL compatibility, as detailed below, so a
 //! leaked key still could sign trusted leaves for arbitrary IP addresses.
 //!
-//! The user is asked to trust the ROOT once. Only the root persists; the leaf
-//! is re-minted on every launch (Apple rejects TLS leaves valid for more than
-//! 398 days, and minting costs milliseconds), so the app can never serve an
-//! expired certificate to its own webview and never prompts twice.
+//! Only the root persists; the leaf is re-minted on every launch (Apple
+//! rejects TLS leaves valid for more than 398 days, and minting costs
+//! milliseconds), so the app can never serve an expired certificate to its own
+//! webview.
+//!
+//! ## Trust has two arms, and only one of them is an OS-level change
+//!
+//! **macOS**: the root is installed into the user's login keychain
+//! ([`ensure_trusted`]), which asks once and then covers the webview and every
+//! child that verifies against the keychain. Because the root persists, the
+//! prompt never repeats.
+//!
+//! **Linux**: nothing is installed and the user is never prompted. An AppImage
+//! has no install hook to add a system anchor from, so the webview instead
+//! gets a per-host exception registered in-process before its first
+//! navigation, and children get [`ensure_child_ca_bundle`]'s superset store.
+//! Neither outlives the process.
 
 use std::fs;
 use std::path::{Path, PathBuf};
+#[cfg(target_os = "macos")]
 use std::process::Command;
 
 use rcgen::{
@@ -91,6 +105,26 @@ pub struct LocalTls {
     pub ca_cert: PathBuf,
     pub leaf_cert: PathBuf,
     pub leaf_key: PathBuf,
+    /// The PEM of the root that ACTUALLY signed this launch's leaf.
+    ///
+    /// Not the same thing as reading [`Self::ca_cert`] back: the reuse path
+    /// below existence-checks that file and never opens it, re-deriving the
+    /// issuer from `ca-key.pem` instead. A truncated `ca-cert.pem`, or the
+    /// cert/key skew a crash between the two writes leaves behind, would make
+    /// the file name a root that signed nothing.
+    ///
+    /// Scope, precisely: this covers [`ensure_child_ca_bundle`] and nothing
+    /// else. It does NOT make the on-disk file unused — `setup.rs` still puts
+    /// [`Self::ca_cert`], the PATH, in `local_api::TlsFiles::ca`, which
+    /// becomes `MountCredentials::ca_cert` and is exported to children as
+    /// `NODE_EXTRA_CA_CERTS` (`local-api`'s `terminal::launch_context`). That
+    /// is the claude CLI's only trust path for the local origin, and it reads
+    /// the file. So a skewed `ca-cert.pem` still breaks that consumer; what
+    /// this field buys is that the REPLACEMENT store handed to `SSL_CERT_FILE`
+    /// consumers can no longer be silently built without the real issuer.
+    /// Writing a per-boot `ca-current.pem` for the path-taking consumers too
+    /// is the fix for the rest, and is deliberately not attempted here.
+    pub ca_pem: String,
 }
 
 /// Ensure a usable CA + leaf exist under `app_root`: the CA is reused across
@@ -103,10 +137,11 @@ pub fn ensure(app_root: &Path) -> Result<LocalTls, TlsError> {
         source,
     })?;
 
-    let paths = LocalTls {
+    let mut paths = LocalTls {
         ca_cert: dir.join("ca-cert.pem"),
         leaf_cert: dir.join("leaf-cert.pem"),
         leaf_key: dir.join("leaf-key.pem"),
+        ca_pem: String::new(),
     };
     let ca_key = dir.join("ca-key.pem");
 
@@ -127,7 +162,9 @@ pub fn ensure(app_root: &Path) -> Result<LocalTls, TlsError> {
         // Retire the outgoing root's trust before overwriting its file —
         // after the overwrite there is nothing left to name it by. Best
         // effort: a failure leaves a stale trusted cert, which the new
-        // prompt supersedes for every name this app uses.
+        // prompt supersedes for every name this app uses. Nothing to retire
+        // where trust was never installed into the OS at all.
+        #[cfg(target_os = "macos")]
         if paths.ca_cert.exists() {
             let _ = Command::new("security")
                 .arg("remove-trusted-cert")
@@ -143,6 +180,7 @@ pub fn ensure(app_root: &Path) -> Result<LocalTls, TlsError> {
         (ca_params()?, keypair)
     };
     let ca_cert = ca_params.self_signed(&ca_keypair)?;
+    paths.ca_pem = ca_cert.pem();
 
     // Minted fresh on every launch rather than cached with a renewal window:
     // it costs milliseconds, and it removes an entire class of "the app served
@@ -225,6 +263,7 @@ fn leaf_params() -> Result<CertificateParams, rcgen::Error> {
 /// for this user and it needs only their own password or Touch ID, where the
 /// system keychain would demand an administrator. Idempotent — an
 /// already-trusted CA returns without prompting.
+#[cfg(target_os = "macos")]
 pub fn ensure_trusted(ca_cert: &Path) -> Result<(), TlsError> {
     if is_trusted(ca_cert) {
         return Ok(());
@@ -253,6 +292,7 @@ pub fn ensure_trusted(ca_cert: &Path) -> Result<(), TlsError> {
 }
 
 /// Whether the CA already verifies as an SSL root for this user.
+#[cfg(target_os = "macos")]
 fn is_trusted(ca_cert: &Path) -> bool {
     Command::new("security")
         .arg("verify-cert")
@@ -265,11 +305,123 @@ fn is_trusted(ca_cert: &Path) -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(target_os = "macos")]
 fn login_keychain_path() -> PathBuf {
     std::env::var_os("HOME")
         .map(PathBuf::from)
         .unwrap_or_default()
         .join("Library/Keychains/login.keychain-db")
+}
+
+/// Where a system root store is looked for, in order. First match wins.
+///
+/// An admin-set `$SSL_CERT_FILE` is preferred over all of these — see
+/// [`ensure_child_ca_bundle`].
+#[cfg(target_os = "linux")]
+const SYSTEM_CA_BUNDLES: &[&str] = &[
+    // Debian / Ubuntu / Arch
+    "/etc/ssl/certs/ca-certificates.crt",
+    // Fedora / RHEL (extracted)
+    "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",
+    // Fedora / RHEL (compat)
+    "/etc/pki/tls/certs/ca-bundle.crt",
+    // openSUSE
+    "/etc/ssl/ca-bundle.pem",
+    // Alpine
+    "/etc/ssl/cert.pem",
+];
+
+/// Build the SUPERSET store spawned CLIs are pointed at with
+/// `SSL_CERT_FILE` — every public root the host trusts, plus the local CA —
+/// returning its path, or `None` when there is nothing to build it from.
+///
+/// FAILS CLOSED, and that is the whole design: `SSL_CERT_FILE` REPLACES a
+/// Go or rustls-native-certs consumer's root store rather than extending it
+/// (see `crates/local-api/src/terminal/launch_context.rs`'s
+/// `SSL_CERT_FILE_ENV`). Writing a file holding only
+/// the local CA would therefore trade "the child cannot reach the LOCAL MCP
+/// origin" for "the child cannot reach the public internet" — strictly worse,
+/// and silently so. When no system store is found the caller exports nothing.
+///
+/// Rewritten on every boot rather than cached, so a rotated local CA and a
+/// distro's `update-ca-certificates` both land without any invalidation
+/// story. Plain (not `0600`) write: the contents are public certificates.
+///
+/// Takes [`LocalTls::ca_pem`], NOT the `ca-cert.pem` path: `ensure` never
+/// reads that file back on its reuse path, so a truncated or key-skewed one
+/// would produce a bundle of public roots WITHOUT the root that signed this
+/// launch's leaf — and both this function and `ensure` would still return
+/// `Ok`, so the `SSL_CERT_FILE` consumers would fail to verify the local
+/// origin with no error at boot. Scoped to those consumers only: the ones
+/// pointed at `NODE_EXTRA_CA_CERTS` still read `ca-cert.pem` itself, so this
+/// does not harden them — see [`LocalTls::ca_pem`].
+#[cfg(target_os = "linux")]
+pub fn ensure_child_ca_bundle(app_root: &Path, ca_pem: &str) -> Result<Option<PathBuf>, TlsError> {
+    let Some(body) = child_ca_bundle_body(system_ca_bundle().as_deref(), ca_pem) else {
+        return Ok(None);
+    };
+    let dir = app_root.join("tls");
+    fs::create_dir_all(&dir).map_err(|source| TlsError::CreateDir {
+        path: dir.clone(),
+        source,
+    })?;
+    let path = dir.join("ca-bundle.pem");
+    write(&path, body.as_bytes())?;
+    Ok(Some(path))
+}
+
+/// The host's own root store, read: an explicitly configured one first, then
+/// the distro defaults. A candidate that cannot be read, or that holds
+/// nothing, is skipped rather than failing — the next one may work, and no
+/// store at all is an outcome this design handles.
+#[cfg(target_os = "linux")]
+fn system_ca_bundle() -> Option<String> {
+    let configured =
+        std::env::var_os("SSL_CERT_FILE").and_then(|path| read_store(Path::new(&path)));
+    if configured.is_some() {
+        return configured;
+    }
+    for candidate in SYSTEM_CA_BUNDLES {
+        if let Some(pem) = read_store(Path::new(candidate)) {
+            return Some(pem);
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "linux")]
+fn read_store(path: &Path) -> Option<String> {
+    let pem = fs::read_to_string(path).ok()?;
+    let mut reader = pem.as_bytes();
+    let has_certificate = rustls_pemfile::certs(&mut reader).any(|certificate| certificate.is_ok());
+    has_certificate.then_some(pem)
+}
+
+/// The bundle's contents, or `None` when there is no system store to be a
+/// superset OF. Pure, and compiled on every OS, so the refusal is pinned by a
+/// test wherever this crate is built.
+#[cfg(any(test, target_os = "linux"))]
+fn child_ca_bundle_body(system_pem: Option<&str>, local_pem: &str) -> Option<String> {
+    let system_pem = system_pem?;
+    // A store that exists but is empty is the same hazard as no store: what
+    // would be written is our CA alone.
+    if system_pem.trim().is_empty() {
+        return None;
+    }
+    Some(concat_pem(system_pem, local_pem))
+}
+
+/// Joins two PEM documents, normalizing the seam: a store whose first
+/// certificate's `-----END-----` shares a line with the next one's
+/// `-----BEGIN-----` parses as neither.
+#[cfg(any(test, target_os = "linux"))]
+fn concat_pem(first: &str, second: &str) -> String {
+    let mut joined = String::with_capacity(first.len() + second.len() + 2);
+    joined.push_str(first.trim_end());
+    joined.push('\n');
+    joined.push_str(second.trim_end());
+    joined.push('\n');
+    joined
 }
 
 fn read(path: &Path) -> Result<String, TlsError> {
@@ -377,6 +529,51 @@ mod tests {
         // Exactly the leaf's DNS names, nothing else: a new SAN on the leaf
         // must consciously widen the constraint too.
         assert_eq!(constraints.permitted_subtrees.len(), 2, "{rendered}");
+    }
+
+    const SYSTEM_PEM: &str = "-----BEGIN CERTIFICATE-----\npublic\n-----END CERTIFICATE-----\n";
+    const LOCAL_PEM: &str = "-----BEGIN CERTIFICATE-----\nlocal\n-----END CERTIFICATE-----\n";
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn system_store_candidates_must_contain_a_parseable_certificate() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("ca-bundle.pem");
+        fs::write(&path, "-----BEGIN CERTIFICATE-----\ntruncated").expect("write malformed");
+        assert_eq!(read_store(&path), None);
+
+        let certified =
+            rcgen::generate_simple_self_signed(vec!["example.test".to_string()]).expect("cert");
+        fs::write(&path, certified.cert.pem()).expect("write certificate");
+        assert!(read_store(&path).is_some());
+    }
+
+    /// The refusal is the point. `SSL_CERT_FILE` REPLACES the child's root
+    /// store, so a bundle built without a system store would hold our CA
+    /// ALONE — trading the local MCP origin for the entire public internet,
+    /// silently. No system store must mean no file and no variable.
+    #[test]
+    fn no_system_store_means_no_bundle_rather_than_a_local_ca_only_one() {
+        assert_eq!(child_ca_bundle_body(None, LOCAL_PEM), None);
+        // A store that exists but holds nothing is the same hazard wearing a
+        // different shape.
+        assert_eq!(child_ca_bundle_body(Some(""), LOCAL_PEM), None);
+        assert_eq!(child_ca_bundle_body(Some(" \n\t "), LOCAL_PEM), None);
+    }
+
+    /// A superset, in that order, with a seam the parser can survive: an
+    /// `-----END-----` sharing its line with the next `-----BEGIN-----`
+    /// parses as neither certificate.
+    #[test]
+    fn the_bundle_is_every_public_root_plus_ours() {
+        let bundle = child_ca_bundle_body(Some(SYSTEM_PEM), LOCAL_PEM).expect("a bundle");
+        assert_eq!(bundle, format!("{SYSTEM_PEM}{LOCAL_PEM}"));
+
+        // Whatever the inputs' trailing whitespace, exactly one newline joins
+        // them and exactly one terminates the file.
+        let ragged = concat_pem("-----END A-----\n\n\n", "-----BEGIN B-----");
+        assert_eq!(ragged, "-----END A-----\n-----BEGIN B-----\n");
+        assert_eq!(concat_pem("a", "b"), "a\nb\n");
     }
 
     /// A CA that could mint further CAs would turn one stolen laptop key into

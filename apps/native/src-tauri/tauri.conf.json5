@@ -134,6 +134,10 @@
     // The bundler signs every externalBin before the app itself, with
     // `--options runtime` under hardened runtime, so the shipped ad-hoc
     // signature is replaced automatically. Fetched by `beforeBuildCommand`.
+    // The AppImage bundler reuses debian's `generate_data`, copying externalBin
+    // into the AppDir's `usr/bin` with the same `-<target-triple>` suffix
+    // stripped, so the identical `current_exe()?.parent()?.join("rclone")`
+    // lookup resolves inside the mounted squashfs.
     externalBin: ["binaries/rclone"],
     icon: [
       "icons/32x32.png",

@@ -1,19 +1,27 @@
-//! Access + refresh token storage. Production storage is the macOS
-//! Keychain via the `keyring` crate (see the native implementation contract
-//! section 3 for the crate choice) — service `"com.decocms.studio"` in
-//! release builds and `"com.decocms.studio.dev"` in debug builds, with ONE
-//! account per upstream host. Release/non-macOS processes call `keyring`
-//! directly. A macOS debug build delegates to the fixed helper installed by
-//! `bun run --cwd=apps/native dev:signing:setup`, because the app executable's
-//! CDHash changes on every rebuild while that helper's does not. The secret
-//! protocol uses JSON stdin/stdout, never argv or logs. Keeping dev and release
-//! in different Keychain namespaces prevents their different signing
-//! identities from competing for the same item ACL. The secret payload is a
-//! single JSON blob
-//! (this module's [`StoredSession`]) written via `Entry::set_password` —
-//! there is no plaintext-on-disk fallback anywhere in this crate; a
-//! Keychain failure surfaces as [`TokenStoreError`], never a degraded
-//! on-disk write.
+//! Access + refresh token storage. Production storage is the OS credential
+//! store via the `keyring` crate (see the native implementation contract
+//! section 3 for the crate choice): the macOS Keychain, and on Linux the D-Bus
+//! Secret Service. One account per upstream host.
+//!
+//! Two INDEPENDENT axes, deliberately kept apart:
+//!
+//! - **Which backend** ([`keychain_access_kind`]) — only a macOS debug build
+//!   delegates to the fixed helper installed by
+//!   `bun run --cwd=apps/native dev:signing:setup`, because the app
+//!   executable's CDHash changes on every rebuild while that helper's does
+//!   not. Every other build (macOS release, and Linux either way) calls
+//!   `keyring` directly. The helper's secret protocol uses JSON stdin/stdout,
+//!   never argv or logs.
+//! - **Which namespace** ([`keychain_service_for`]) — `"com.decocms.studio"`
+//!   in release builds and `"com.decocms.studio.dev"` in debug builds, on
+//!   EVERY OS. A debug build must never touch the release namespace: on macOS
+//!   the two signing identities would compete for the same item ACL, and on
+//!   any OS a dev run would otherwise clobber the installed app's session.
+//!
+//! The secret payload is a single JSON blob (this module's [`StoredSession`])
+//! written via `Entry::set_password` — there is no plaintext-on-disk fallback
+//! anywhere in this crate; a credential-store failure surfaces as
+//! [`TokenStoreError`], never a degraded on-disk write.
 //!
 //! ## iCloud-sync verification (spike follow-up)
 //!
@@ -59,19 +67,15 @@ use crate::keychain_helper::{
     KEYCHAIN_HELPER_APP_DIRECTORY, KEYCHAIN_HELPER_FILENAME, KEYCHAIN_HELPER_PROTOCOL_VERSION,
 };
 
-/// The production Keychain service. Never change this after release: doing so
-/// would strand every installed app's stored session.
+/// The production credential-store service. Never change this after release:
+/// doing so would strand every installed app's stored session.
 pub const KEYCHAIN_SERVICE: &str = "com.decocms.studio";
 
-/// Debug builds use a separate Keychain namespace. This remains an OS-backed
-/// Keychain credential — it is not a file or in-memory fallback.
+/// Debug builds use a separate namespace, on every OS. This remains an
+/// OS-backed credential — it is not a file or in-memory fallback.
 pub const DEV_KEYCHAIN_SERVICE: &str = "com.decocms.studio.dev";
 
-#[cfg(debug_assertions)]
-const DEFAULT_KEYCHAIN_SERVICE: &str = DEV_KEYCHAIN_SERVICE;
-
-#[cfg(not(debug_assertions))]
-const DEFAULT_KEYCHAIN_SERVICE: &str = KEYCHAIN_SERVICE;
+const DEFAULT_KEYCHAIN_SERVICE: &str = keychain_service_for(cfg!(debug_assertions));
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct UserInfo {
@@ -546,12 +550,35 @@ enum KeychainAccessKind {
     StableDevHelper,
 }
 
+/// WHICH BACKEND performs the credential-store call — orthogonal to
+/// [`keychain_service_for`]'s choice of namespace. Only a macOS debug build
+/// needs the fixed helper (a rebuild changes the app's CDHash, invalidating
+/// the item ACL); a Linux debug build's Secret Service has no such
+/// per-executable identity, so it talks to `keyring` directly like release.
 const fn keychain_access_kind(debug_build: bool, macos: bool) -> KeychainAccessKind {
     if debug_build && macos {
         KeychainAccessKind::StableDevHelper
     } else {
         KeychainAccessKind::Direct
     }
+}
+
+/// WHICH NAMESPACE the build stores sessions under — a function of the build
+/// profile alone, identical on every OS.
+const fn keychain_service_for(debug_build: bool) -> &'static str {
+    if debug_build {
+        DEV_KEYCHAIN_SERVICE
+    } else {
+        KEYCHAIN_SERVICE
+    }
+}
+
+/// Whether `LOCAL_API_KEYRING_SERVICE` may redirect the namespace. The
+/// installed dev helper is hardcoded to [`DEV_KEYCHAIN_SERVICE`] and refuses
+/// any other service (see [`ensure_dev_helper_service`]), so a macOS debug
+/// build cannot honor the override; every direct-`keyring` build does.
+const fn honors_service_override(access_kind: KeychainAccessKind) -> bool {
+    matches!(access_kind, KeychainAccessKind::Direct)
 }
 
 fn keychain_operation_gate() -> Arc<tokio::sync::Mutex<()>> {
@@ -653,18 +680,20 @@ fn keychain_timeout(operation: &'static str, timeout: std::time::Duration) -> To
     }
 }
 
-/// `LOCAL_API_KEYRING_SERVICE` overrides the direct Keychain service name so
-/// release/non-macOS harnesses can isolate credentials. macOS debug builds
-/// deliberately ignore it: their installed helper is hardcoded to
-/// [`DEV_KEYCHAIN_SERVICE`], and tests must use `LOCAL_API_TOKEN_STORE=memory`
-/// instead of weakening that boundary.
+/// The namespace this process uses: [`keychain_service_for`] the build
+/// profile, unless a harness redirects it with `LOCAL_API_KEYRING_SERVICE` to
+/// isolate credentials. macOS debug builds deliberately ignore that override
+/// (their helper is hardcoded to [`DEV_KEYCHAIN_SERVICE`]) and must use
+/// `LOCAL_API_TOKEN_STORE=memory` instead of weakening that boundary; a Linux
+/// debug build honors it, because there the same direct-`keyring` path serves
+/// debug and release and an ignored override would silently share one
+/// namespace between concurrent harnesses.
 fn keyring_service() -> &'static str {
     static SERVICE: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
     SERVICE.get_or_init(|| {
-        if keychain_access_kind(cfg!(debug_assertions), cfg!(target_os = "macos"))
-            == KeychainAccessKind::StableDevHelper
-        {
-            return DEV_KEYCHAIN_SERVICE;
+        let access_kind = keychain_access_kind(cfg!(debug_assertions), cfg!(target_os = "macos"));
+        if !honors_service_override(access_kind) {
+            return DEFAULT_KEYCHAIN_SERVICE;
         }
         match std::env::var("LOCAL_API_KEYRING_SERVICE") {
             Ok(s) if !s.trim().is_empty() => Box::leak(s.into_boxed_str()),
@@ -1061,6 +1090,75 @@ mod tests {
             keychain_access_kind(false, false),
             KeychainAccessKind::Direct
         );
+    }
+
+    /// The backend and the namespace are separate decisions: the helper is a
+    /// macOS-debug-only detour, while the dev namespace covers every debug
+    /// build on every OS. A Linux debug build must never write into the
+    /// release namespace.
+    #[test]
+    fn backend_and_namespace_are_pinned_for_every_os_and_profile() {
+        struct Quadrant {
+            macos: bool,
+            debug_build: bool,
+            access_kind: KeychainAccessKind,
+            service: &'static str,
+            honors_override: bool,
+        }
+
+        let matrix = [
+            Quadrant {
+                macos: true,
+                debug_build: true,
+                access_kind: KeychainAccessKind::StableDevHelper,
+                service: DEV_KEYCHAIN_SERVICE,
+                honors_override: false,
+            },
+            Quadrant {
+                macos: true,
+                debug_build: false,
+                access_kind: KeychainAccessKind::Direct,
+                service: KEYCHAIN_SERVICE,
+                honors_override: true,
+            },
+            Quadrant {
+                macos: false,
+                debug_build: true,
+                access_kind: KeychainAccessKind::Direct,
+                service: DEV_KEYCHAIN_SERVICE,
+                honors_override: true,
+            },
+            Quadrant {
+                macos: false,
+                debug_build: false,
+                access_kind: KeychainAccessKind::Direct,
+                service: KEYCHAIN_SERVICE,
+                honors_override: true,
+            },
+        ];
+
+        for quadrant in matrix {
+            let access_kind = keychain_access_kind(quadrant.debug_build, quadrant.macos);
+            assert_eq!(
+                access_kind, quadrant.access_kind,
+                "backend for macos={} debug={}",
+                quadrant.macos, quadrant.debug_build
+            );
+            assert_eq!(
+                keychain_service_for(quadrant.debug_build),
+                quadrant.service,
+                "namespace for macos={} debug={}",
+                quadrant.macos,
+                quadrant.debug_build
+            );
+            assert_eq!(
+                honors_service_override(access_kind),
+                quadrant.honors_override,
+                "override handling for macos={} debug={}",
+                quadrant.macos,
+                quadrant.debug_build
+            );
+        }
     }
 
     #[test]

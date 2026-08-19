@@ -6,15 +6,25 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@decocms/ui/components/dialog.tsx";
-import { Check, Copy01 } from "@untitledui/icons";
+import { Check, Copy01, Download01 } from "@untitledui/icons";
 import { useState } from "react";
 import { useT } from "@/i18n/use-t.ts";
+
+const RELEASES_URL = "https://github.com/decocms/studio/releases";
 
 // The install script is served by this same deployment
 // (apps/web/public/install.sh), so the command stays correct on any host —
 // studio.decocms.com or a self-hosted instance.
 function installCommand(): string {
   return `curl -fsSL ${window.location.origin}/install.sh | sh`;
+}
+
+// Pinned to the immutable `native-v<version>` release rather than
+// `releases/latest/download`: other workflows publish releases in this repo, so
+// "latest" is not guaranteed to be a native tag. The asset name is a contract
+// shared with the release workflow and the updater manifest's PLATFORM_ASSETS.
+export function appImageDownloadUrl(version: string): string {
+  return `https://github.com/decocms/studio/releases/download/native-v${version}/deco-${version}-linux-x86_64.AppImage`;
 }
 
 // Deliberately narrower than keyboard-shortcuts' isMac, which also matches
@@ -24,6 +34,19 @@ export function isMacDesktopBrowser(): boolean {
   return (
     typeof navigator !== "undefined" &&
     /Mac/.test(navigator.platform) &&
+    !("ontouchend" in document)
+  );
+}
+
+// Android reports a "Linux …" platform, so it has to be excluded explicitly;
+// the touch exclusion mirrors the mac gate so the two age together. ChromeOS
+// also matches and is offered an AppImage (Crostini can run it) — accepted
+// for v1.
+export function isLinuxDesktopBrowser(): boolean {
+  return (
+    typeof navigator !== "undefined" &&
+    /Linux/.test(navigator.platform) &&
+    !/Android/.test(navigator.userAgent) &&
     !("ontouchend" in document)
   );
 }
@@ -50,46 +73,113 @@ export async function copyToClipboard(
   }
 }
 
+// Both platforms install by pasting the same one-liner, so the block is shared:
+// only the confirmation copy differs (one names the Mac's Terminal app, the
+// other any terminal emulator).
+function InstallCommand({ copiedLabel }: { copiedLabel: string }) {
+  const t = useT();
+  const [copied, setCopied] = useState(false);
+  const command = installCommand();
+
+  return (
+    <div className="flex flex-col gap-3">
+      <code className="block rounded-md border bg-muted px-3 py-2.5 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap select-all">
+        {command}
+      </code>
+      <Button
+        type="button"
+        className="w-full gap-2"
+        onClick={() => {
+          copyToClipboard(navigator.clipboard, command).then((ok) => {
+            if (!ok) return;
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          });
+        }}
+      >
+        {copied ? <Check size={16} /> : <Copy01 size={16} />}
+        {copied ? copiedLabel : t("downloadApp.copyLabel")}
+      </Button>
+    </div>
+  );
+}
+
+function MacInstall() {
+  const t = useT();
+
+  return (
+    <>
+      <InstallCommand copiedLabel={t("downloadApp.copiedLabel")} />
+
+      <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+        <p>{t("downloadApp.terminalHint")}</p>
+        <p>{t("downloadApp.appleSiliconNote")}</p>
+      </div>
+    </>
+  );
+}
+
+// Linux leads with the installer, not the raw AppImage: the script is what
+// verifies the download (minisign signature where available, the published
+// sha256 otherwise), installs into ~/.local/bin and writes the launcher entry.
+// Handing over a bare .AppImage link skips all three. It stays available below
+// as the escape hatch for anyone who wants the file itself.
+function LinuxInstall() {
+  const t = useT();
+
+  return (
+    <>
+      <InstallCommand copiedLabel={t("downloadApp.copiedLabelLinux")} />
+
+      <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+        <p>{t("downloadApp.linuxInstallerHint")}</p>
+        <p>{t("downloadApp.linuxArchNote")}</p>
+      </div>
+
+      <div className="flex flex-col items-start gap-2 border-t pt-4 text-xs text-muted-foreground">
+        <p>{t("downloadApp.linuxDirectDownloadHint")}</p>
+        <Button asChild variant="outline" size="sm" className="gap-2">
+          <a href={appImageDownloadUrl(__STUDIO_VERSION__)} rel="noreferrer">
+            <Download01 size={14} />
+            {t("downloadApp.downloadAppImage")}
+          </a>
+        </Button>
+        <p>{t("downloadApp.linuxChmodHint")}</p>
+        <a
+          href={RELEASES_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="underline-offset-2 hover:text-foreground hover:underline"
+        >
+          {t("downloadApp.allReleases")}
+        </a>
+      </div>
+    </>
+  );
+}
+
 export function DownloadAppDialog({
   open,
   onOpenChange,
 }: DownloadAppDialogProps) {
   const t = useT();
-  const [copied, setCopied] = useState(false);
-  const command = installCommand();
+  // The whole dialog branches, not just its body: the shared description names
+  // the Mac's Terminal, which must never appear above an AppImage download.
+  const linux = isLinuxDesktopBrowser();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{t("downloadApp.title")}</DialogTitle>
-          <DialogDescription>{t("downloadApp.description")}</DialogDescription>
+          <DialogDescription>
+            {linux
+              ? t("downloadApp.linuxDescription")
+              : t("downloadApp.description")}
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-3">
-          <code className="block rounded-md border bg-muted px-3 py-2.5 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap select-all">
-            {command}
-          </code>
-          <Button
-            type="button"
-            className="w-full gap-2"
-            onClick={() => {
-              copyToClipboard(navigator.clipboard, command).then((ok) => {
-                if (!ok) return;
-                setCopied(true);
-                setTimeout(() => setCopied(false), 2000);
-              });
-            }}
-          >
-            {copied ? <Check size={16} /> : <Copy01 size={16} />}
-            {copied ? t("downloadApp.copiedLabel") : t("downloadApp.copyLabel")}
-          </Button>
-        </div>
-
-        <div className="flex flex-col gap-1 text-xs text-muted-foreground">
-          <p>{t("downloadApp.terminalHint")}</p>
-          <p>{t("downloadApp.appleSiliconNote")}</p>
-        </div>
+        {linux ? <LinuxInstall /> : <MacInstall />}
       </DialogContent>
     </Dialog>
   );

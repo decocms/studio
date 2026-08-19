@@ -64,12 +64,23 @@ fn quick_policy() -> TerminationPolicy {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn pty_is_interactive_and_supports_input_ansi_and_resize() {
     let directory = TempDir::new().expect("temp directory");
+    // The read loop must survive the SIGWINCH this test raises, and "survive a
+    // signal" is where shells diverge. POSIX lets a trapped signal make a
+    // blocking `read` return NONZERO once the handler has run: dash does
+    // exactly that, so the plain `while IFS= read -r line` this fixture used to
+    // spell ended the loop the moment we resized, and the script exited 0
+    // before it could ever echo. bash restarts the `read` instead, and macOS
+    // `/bin/sh` is bash-3.2, which is why only Linux ever saw it. Distinguish
+    // the two endings explicitly: a bare `read` failure after a WINCH means
+    // "interrupted, keep going", and only a genuine EOF breaks the loop.
     let script = write_fixture(
         &directory,
         "interactive.sh",
         r#"
 stty -echo
+winched=0
 on_winch() {
+  winched=1
   dimensions=$(stty size)
   printf 'SIZE:%s\n' "$dimensions"
 }
@@ -79,11 +90,17 @@ if [ -t 0 ] && [ -t 1 ] && [ -t 2 ]; then
 else
   printf 'READY:NOT_TTY\n'
 fi
-while IFS= read -r line; do
-  if [ "$line" = "quit" ]; then
-    exit 7
+while :; do
+  if IFS= read -r line; then
+    if [ "$line" = "quit" ]; then
+      exit 7
+    fi
+    printf '\033[31mECHO:%s\033[0m\n' "$line"
+  elif [ "$winched" = 1 ]; then
+    winched=0
+  else
+    break
   fi
-  printf '\033[31mECHO:%s\033[0m\n' "$line"
 done
 "#,
     );
@@ -107,6 +124,15 @@ done
         .resize(TerminalSize::new(40, 100))
         .await
         .expect("resize must reach PTY");
+    // Waiting for SIZE before writing anything assumes the shell runs the WINCH
+    // trap as soon as the signal lands. dash and bash-3.2 — the shells behind
+    // `/bin/sh` on this CI's Linux and macOS legs — do. bash-5 and zsh instead
+    // defer the trap until the pending `read` returns, so on a distro whose
+    // `/bin/sh` is bash-5 (Fedora/RHEL) this line would block for its 5s
+    // timeout. If that ever needs supporting, write the input line FIRST and
+    // assert SIZE and ECHO out of a SINGLE `collect_until` buffer — note
+    // `collect_until` starts a fresh buffer per call, so two sequential calls
+    // deadlock when both needles arrive in one chunk.
     collect_until(&mut subscription, b"SIZE:40 100").await;
 
     session

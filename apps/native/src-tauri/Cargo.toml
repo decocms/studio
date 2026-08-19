@@ -54,5 +54,22 @@ flate2 = "1"
 tar = "0.4"
 plist = "1"
 
+# `PlatformWebview::inner()` hands back a `webkit2gtk::WebView`, so this crate
+# and tauri's must resolve to the SAME webkit2gtk or the types stop unifying.
+# `=2.0.2` matches wry 0.55.1's own exact pin (tauri itself asks for a loose
+# "2"), which is what pins the graph today — stating it here makes a tauri
+# upgrade that moves it a build error instead of a type mismatch, and adds no
+# new transitive version to Cargo.lock.
+#
+# `v2_6` is the exact gate on the two APIs src/webview_trust.rs calls
+# (web_context.rs:217 `allow_tls_certificate_for_host`, web_view.rs:2352
+# `connect_load_failed_with_tls_errors`). It changes nothing about the build:
+# tauri already enables `webkit2gtk/v2_40`, and features unify, so the
+# pkg-config webkit floor webkit2gtk-sys derives is 2.40 either way. Asking for
+# only what is used keeps that fact tauri's to own rather than ours.
+[target.'cfg(target_os = "linux")'.dependencies]
+rustls-pemfile = "2"
+webkit2gtk = { version = "=2.0.2", features = ["v2_6"] }
+
 [dev-dependencies]
 tempfile = { workspace = true }

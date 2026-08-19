@@ -89,7 +89,7 @@ pub(crate) fn emit_tasks_event(tasks: &TaskRegistry, broadcaster: &Broadcaster) 
 }
 
 /// Signals the whole process group `pid` leads via an external
-/// `kill -SIG -<pgid>` (`taskkill /T` off-Unix) — this crate has no
+/// `kill -SIG -- -<pgid>` (`taskkill /T` off-Unix) — this crate has no
 /// `libc`/`nix` dependency, so no raw `kill(2)` syscall. Reaches the group's
 /// descendants too, matching `task-manager.ts`'s `process.kill(-pgid,
 /// signal)`. For anchored groups prefer [`ProcessGroupChild::signal`], which
@@ -98,14 +98,41 @@ pub(crate) fn emit_tasks_event(tasks: &TaskRegistry, broadcaster: &Broadcaster) 
 #[cfg(unix)]
 pub(crate) async fn kill_group(pid: u32, signal: KillSignal) {
     let _ = tokio::process::Command::new("kill")
-        .arg(signal.flag())
-        .arg(format!("-{pid}"))
+        .args(group_signal_argv(pid, signal))
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .kill_on_drop(true)
         .status()
         .await;
+}
+
+/// The `--` is load-bearing, not hygiene. `kill(1)` from procps-ng reads any
+/// leading-`-` token as a signal spec wherever it appears, so a bare `-<pgid>`
+/// target leaves it holding an EMPTY pid list — whereupon it signals the
+/// CALLER's own process group instead of the group asked for. Measured on
+/// procps-ng 3.3.17 AND 4.0.4, with the target in its own group and a canary
+/// in the caller's — identical on both:
+///
+/// - `kill -KILL -<pgid>` — target survives, CALLER'S GROUP IS SIGKILLED.
+/// - `kill -KILL -- -<pgid>` — rc 0, target killed, caller untouched.
+///
+/// 3.3.17 is Ubuntu 22.04 / Debian 11 / RHEL 8-9; 4.0.4 is Ubuntu 24.04. Do
+/// not assume 4.x is safe — it is not. The failure mode varies by build:
+/// Debian trixie's 2:4.0.4-9 signals the target but exits 1, while Ubuntu's
+/// 2:4.0.4-4ubuntu3.2 hits the caller's group as above. So without the `--`
+/// the target may or may not be signalled AND the caller's own group may be,
+/// which is why neither outcome can be relied on. Concretely: reaping a stale
+/// dev server killed Studio's own process group and left the server running.
+/// BSD `kill(1)` accepts the negative form, which is why macOS never showed
+/// any of this.
+#[cfg(unix)]
+fn group_signal_argv(pid: u32, signal: KillSignal) -> [String; 3] {
+    [
+        signal.flag().to_string(),
+        "--".to_string(),
+        format!("-{pid}"),
+    ]
 }
 
 #[cfg(not(unix))]
@@ -272,6 +299,22 @@ mod tests {
 
     use super::*;
     use crate::tasks::{now_ms, TaskEntry, TaskSummary};
+
+    /// The `--` is the whole point: without it, `kill(1)` from procps-ng reads
+    /// `-KILL -1234` as two option clusters, ends up with an empty pid list,
+    /// and signals the CALLER's own process group instead of the target.
+    #[cfg(unix)]
+    #[test]
+    fn group_signal_argv_separates_the_negative_pid_from_the_options() {
+        assert_eq!(
+            group_signal_argv(1234, KillSignal::Kill),
+            ["-KILL", "--", "-1234"]
+        );
+        assert_eq!(
+            group_signal_argv(1234, KillSignal::Term),
+            ["-TERM", "--", "-1234"]
+        );
+    }
 
     #[test]
     fn classify_status_matches_task_manager_finalize() {

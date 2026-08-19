@@ -969,6 +969,7 @@ dependencies = [
  "plist",
  "rand 0.8.7",
  "rcgen",
+ "rustls-pemfile",
  "serde",
  "serde_json",
  "tar",
@@ -986,6 +987,7 @@ dependencies = [
  "upstream",
  "urlencoding",
  "uuid",
+ "webkit2gtk",
 ]
 
 [[package]]

@@ -2178,6 +2178,17 @@ mod tests {
 
         let pid = wait_for_pid_file(&pid_file).await;
         let child_pid = wait_for_pid_file(&child_pid_file).await;
+        // NOT `pid`: `ProcessGroupChild::spawn` anchors the workload into the
+        // watchdog's group (`command.process_group(anchor_pid)`), so the git
+        // script's pid is never a process-group id. Asserting on it made the
+        // group tripwire vacuous — `pgrep -g <git pid>` exits 1 on the first
+        // probe, so the sweep's group was never observed at all. Read it while
+        // the script is still parked in `wait`.
+        let pgid = process_group_of(pid);
+        assert_ne!(
+            pgid, pid,
+            "the workload must be anchored in the watchdog's group, not lead its own"
+        );
         let sweep = state
             .tasks
             .kill_all_and_wait(Duration::from_millis(40), Duration::from_secs(2))
@@ -2195,7 +2206,7 @@ mod tests {
         assert!(error.body["error"]
             .as_str()
             .is_some_and(|message| message.contains("cancelled")));
-        assert_process_group_gone(pid).await;
+        assert_process_group_gone(pgid).await;
         assert_process_gone(child_pid).await;
     }
 
@@ -2215,22 +2226,85 @@ mod tests {
         .expect("fake git wrote its pid file")
     }
 
+    /// The process-group id `pid` belongs to. The workload is anchored into
+    /// the watchdog's group, so this is the only way the test can name the
+    /// group the sweep is supposed to clear.
+    #[cfg(unix)]
+    fn process_group_of(pid: u32) -> u32 {
+        let output = Command::new("ps")
+            .args(["-o", "pgid=", "-p", &pid.to_string()])
+            .stdin(std::process::Stdio::null())
+            .output()
+            .expect("ps is available to read the workload's process group");
+        assert!(
+            output.status.success(),
+            "ps could not read the process group of {pid} — it must still be parked in `wait` here"
+        );
+        String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .parse()
+            .expect("ps printed a numeric process group")
+    }
+
+    /// Any process still in the group led by `pgid`. `pgrep` exits 1 for "no
+    /// match", which is the empty-group answer on both platforms.
+    ///
+    /// An indeterminate result is NOT "empty": `pgrep` exits 2 on a syntax
+    /// error and 3 on a fatal one, and a spawn failure (no `pgrep` on this
+    /// image) is not an answer either. Collapsing those into `false` would
+    /// let the assertion pass while the group is fully alive, which is the
+    /// opposite of what the production path does — `PARENT_LIVENESS_WATCHDOG`
+    /// parks forever rather than assume an unreadable probe means "gone".
+    #[cfg(unix)]
+    fn process_group_exists(pgid: u32) -> bool {
+        let status = Command::new("pgrep")
+            .args(["-g", &pgid.to_string(), "."])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .expect("pgrep is available to probe group liveness");
+        match status.code() {
+            Some(0) => true,
+            Some(1) => false,
+            other => panic!("pgrep -g {pgid} returned an indeterminate status: {other:?}"),
+        }
+    }
+
     #[cfg(unix)]
     fn process_exists(pid_arg: String) -> bool {
+        // Same rule as above: a probe that could not run is not evidence of
+        // death, so a spawn failure panics rather than reporting "gone".
         Command::new("kill")
             .args(["-0", &pid_arg])
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status()
-            .is_ok_and(|status| status.success())
+            .expect("kill is available to probe process liveness")
+            .success()
     }
 
+    /// The budget has to clear the anchor's own escalation, not just "a
+    /// moment": it runs up to 20 TERM rounds at 50ms — a full second — before
+    /// it starts KILL rounds at all. A 1s deadline was therefore exactly the
+    /// escalation time, which macOS won and Linux lost.
+    /// Group liveness goes through `pgrep -g`, NOT `kill -0 -<pgid>`.
+    /// procps-ng `kill(1)` issues the right syscall for a negative pid and
+    /// then reports the opposite answer: verified under strace, a live group
+    /// gives `kill(-N, 0) = 0` then `exit(1)`, and a dead one gives `ESRCH`
+    /// then `exit(0)`. Reading its status therefore inverts the test on Linux
+    /// — it waits forever on a group that is already gone. BSD `kill` reports
+    /// it correctly, which is why only Linux ever saw this.
     #[cfg(unix)]
-    async fn assert_process_group_gone(pid: u32) {
-        tokio::time::timeout(Duration::from_secs(1), async {
-            while process_exists(format!("-{pid}")) {
-                tokio::task::yield_now().await;
+    async fn assert_process_group_gone(pgid: u32) {
+        tokio::time::timeout(Duration::from_secs(15), async {
+            while process_group_exists(pgid) {
+                // Paced, not `yield_now`: the probe is a BLOCKING fork+exec on
+                // a runtime thread, so an unpaced loop spends the whole 15s
+                // budget forking `pgrep` as fast as the box allows — degrading
+                // the very run that is trying to produce the diagnostic.
+                tokio::time::sleep(Duration::from_millis(25)).await;
             }
         })
         .await
@@ -2239,9 +2313,10 @@ mod tests {
 
     #[cfg(unix)]
     async fn assert_process_gone(pid: u32) {
-        tokio::time::timeout(Duration::from_secs(1), async {
+        tokio::time::timeout(Duration::from_secs(15), async {
             while process_exists(pid.to_string()) {
-                tokio::task::yield_now().await;
+                // Paced for the same reason as `assert_process_group_gone`.
+                tokio::time::sleep(Duration::from_millis(25)).await;
             }
         })
         .await

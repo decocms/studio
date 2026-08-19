@@ -27,7 +27,11 @@
 //       json5` + `src/csp.rs`): loads a real remote `https:` `<img>` (the
 //       exact Google login-icon URL) and asserts it loads, PLUS asserts
 //       `__BOOT_ERRORS` recorded zero `securitypolicyviolation` events
-//       across the whole boot (`setup.rs`'s captor script) — both gating.
+//       across the whole boot (`setup.rs`'s captor script). The remote image
+//       load is REPORTED but NOT gating — it is network-dependent, so a
+//       runner without egress fails it for reasons unrelated to the app. The
+//       CSP property it protects is gated by `noCspViolations` instead: a CSP
+//       block raises a `securitypolicyviolation`, an unreachable CDN does not.
 //   (f) Port-router split (`local_api::ServerHandle`'s main/preview
 //       listeners): `local_api_info()` returns a `previewPort` alongside
 //       `port`, and a real `<iframe>` pointed at
@@ -581,7 +585,13 @@
     results.controlCookieHttpOnly,
     results.authStatusInvoke,
     results.domMountedEarly,
-    results.remoteImageLoads,
+    // remoteImageLoads is deliberately NOT gating: it fetches a real asset
+    // over the public internet, so a runner with no egress fails it for
+    // reasons that say nothing about this app. The property it exists to
+    // protect — that the packaged CSP does not block remote images — is
+    // still gated, by noCspViolations below: a CSP block raises a
+    // securitypolicyviolation, whereas an unreachable CDN does not. Its
+    // result is still reported, so a real regression is visible.
     results.previewIframeLoads,
     results.previewCookieRoundTrip,
     results.noCspViolations,

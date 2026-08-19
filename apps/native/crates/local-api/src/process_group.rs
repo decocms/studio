@@ -698,8 +698,34 @@ mod tests {
         assert!(control.signal(KillSignal::Term).await);
         assert!(IGNORED_SIGNALS.load(Ordering::SeqCst) >= 2);
 
+        // `kill -KILL -- -<id>` means "the process group with that id".
+        // `process_group(0)` is applied by `posix_spawn` in the child, so there
+        // is a window after `spawn()` returns in which `pid` leads no group
+        // yet; addressing `-pid` inside it would signal whatever group already
+        // owns that id. Only address the group once the fixture is provably its
+        // own leader, and otherwise fall back to the pid.
+        //
+        // The `--` is what stops this test SIGKILLing the test binary. Without
+        // it, procps-ng reads `-KILL -<pgid>` as options only, finds no pid,
+        // and signals the CALLER's group — which, because `setsid --wait`
+        // execs in place rather than forking, is cargo plus this test binary.
+        // That, not the kernel's view of where an orphan pgid belongs, is why
+        // this test used to reap its own runner (exit 137, no logs). It is not
+        // limited to old procps: reproduced on 3.3.17 and 4.0.4 alike. See
+        // `process_util::group_signal_argv`.
+        let leads_own_group = std::process::Command::new("ps")
+            .args(["-o", "pgid=", "-p", &pid.to_string()])
+            .output()
+            .ok()
+            .and_then(|out| String::from_utf8(out.stdout).ok())
+            .is_some_and(|out| out.trim().parse::<u32>() == Ok(pid));
+        let target = if leads_own_group {
+            format!("-{pid}")
+        } else {
+            pid.to_string()
+        };
         let _ = std::process::Command::new("kill")
-            .args(["-KILL", &format!("-{pid}")])
+            .args(["-KILL", "--", &target])
             .status();
         tokio::time::timeout(Duration::from_secs(2), cleanup)
             .await

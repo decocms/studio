@@ -16,6 +16,8 @@ import { fileURLToPath } from "node:url";
 
 // Exercise the real shell scripts through their process boundary. The fake
 // platform CLIs keep the suite deterministic and guarantee no Keychain access.
+// macOS-only: the scripts drive `security`, `codesign` and BSD `stat`.
+const describeMacOnly = describe.skipIf(process.platform !== "darwin");
 const IDENTITY_HASH = "0123456789ABCDEF0123456789ABCDEF01234567";
 const IDENTITY_NAME = "decocms-dev";
 const APP_IDENTIFIER = "com.decocms.studio";
@@ -454,7 +456,7 @@ afterEach(() => {
   }
 });
 
-describe("native dev signing runner", () => {
+describeMacOnly("native dev signing runner", () => {
   test("passes non-app Cargo binaries through without touching codesign", () => {
     const fixture = createFixture();
     const result = run(fixture, fixture.otherBinary, {
@@ -563,7 +565,7 @@ ${DESIGNATED_REQUIREMENT}
   });
 });
 
-describe("native dev signing setup", () => {
+describeMacOnly("native dev signing setup", () => {
   test("reuses the exact existing identity without creating or importing it", () => {
     const fixture = createFixture();
     rmSync(fixture.configPath);

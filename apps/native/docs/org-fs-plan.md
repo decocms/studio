@@ -38,7 +38,7 @@ told to read a path that does not exist. Prompt work must therefore come
 | 5 | **Absolute paths in the prompt**, no `repo/org` symlink | Nothing enters the worktree at all, so no `.git/info/exclude` entry is needed — a simplification over `link`. |
 | 6 | **No per-thread symlink repointing** | Narrowing moves off the filesystem into the prompt, which is built per dispatch and names `…/uploads/<threadId>/` directly. No repointing, no race between concurrent runs. Thread subdirs still exist because that layout is a cluster contract (see Constraints). |
 | 7 | **Lazy mount on first sandbox ensure** | Users who never open a repo-backed agent never start rclone. |
-| 8 | **macOS only** | `rust-checks` and every desktop build/sign job run on `macos-latest`; the only `ubuntu-latest` job is the nightly TS stub-seam. Other platforms would be untested weight. |
+| 8 | **macOS and Linux** | `rust-checks`, `contract-suite` and `tauri-build` each run a `macos-latest` and an `ubuntu-22.04` leg, so both mount stacks are gated. Windows stays out — see Non-goals. |
 | 9 | **Bundle rclone** (not download-on-first-use) | Avoids a network dependency and macOS quarantine handling at runtime. |
 | 10 | **Mount down ⇒ agent sees an empty `org/`** | The view always exists; a failed mount reads as empty rather than a missing path. |
 
@@ -325,12 +325,40 @@ Checks 6 and 7 are the ones that matter most — 6 caught a real bug already
 (the agent wrote to the shared `<appRoot>/repo` instead of the worktree), and 7
 is the entire point of choosing mount over materialize.
 
+## Linux
+
+The volumes, layout, claim/settle state machine and readiness path are shared;
+only the mount stack differs, and each difference is a runtime seam
+(`LINUX_MOUNT_STACK`, `mount_args(linux, …)`, `detach_commands(linux, …)`) so
+both dialects compile and unit-test on either host.
+
+- **Mount** — `rclone mount` over its own FUSE support rather than
+  `rclone nfsmount`; the shared flag tail is identical. No `--allow-other`: the
+  desktop mounts and reads as one uid, and omitting it removes the
+  `user_allow_other` requirement in `/etc/fuse.conf` entirely. `--file-perms`
+  covers a remote that carries no mode bits, which the read-only `public`
+  volume needs for executable helper scripts.
+- **Mount table** — `/proc/self/mounts` read directly, with octal unescaping,
+  instead of spawning BSD `mount`. `wait_until_mounted` polls it per volume, so
+  avoiding a subprocess there matters.
+- **Attachment vs sweep** — "is our path attached?" ignores the filesystem
+  type; only the stale-mount sweep filters on it, where a miss is safe. Gating
+  attachment on the type made an unrecognized one kill a working rclone and
+  loop forever.
+- **Detach** — `fusermount3 -uz`, then `fusermount -uz`, then `umount -l`, each
+  bounded by a timeout: lazy bounds the kernel's half of the detach, not
+  libfuse's pre-flight `stat`, which a wedged server blocks forever.
+- **Host requirement** — `fuse3` (Debian 12+, Ubuntu 22.04+, Fedora and Arch
+  ship it). The bundled rclone references both `fusermount3` and the fuse2-era
+  `fusermount`; the detach chain tries both names either way.
+
 ## Non-goals
 
 - **Idle reaper** — explicitly out of scope.
-- **Linux / Windows mounting** — Windows additionally needs WinFsp, a
-  third-party kernel driver, which reintroduces exactly the dependency macOS
-  `nfsmount` avoids.
+- **Windows mounting** — Windows needs WinFsp, a third-party kernel driver,
+  which reintroduces exactly the dependency macOS `nfsmount` avoids. Linux is
+  no longer a non-goal: it mounts through rclone's own FUSE support, which
+  needs no driver install beyond `fuse3`, and is described below.
 - **`offload-fetch` / `messagesRef`** — messages are sent inline on desktop.
 - **The link-daemon transport layer** (tunnel, outbox, NATS control plane,
   local ingress, machine-id) — architecturally obsolete: the webview talks to

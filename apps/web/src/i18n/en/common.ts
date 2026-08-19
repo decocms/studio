@@ -42,6 +42,8 @@ export const common = {
   "common.authEntry.tryRestartingServer": "Try restarting the server.",
   "common.desktopKeychainUnavailable.description":
     "deco studio could not access macOS Keychain. Dismiss any pending Keychain dialogs, then try again.",
+  "common.desktopKeychainUnavailable.descriptionLinux":
+    "deco studio could not access your system keyring. Make sure a secret service such as GNOME Keyring or KWallet is running and unlocked, then try again.",
   "common.desktopKeychainUnavailable.retry": "Try again",
   "common.desktopKeychainUnavailable.retrying": "Trying again…",
   "common.desktopKeychainUnavailable.title":

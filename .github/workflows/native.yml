@@ -121,7 +121,11 @@ jobs:
             # file and runs the full set on main, so a workflow change is
             # verified the moment it merges.
             case "$f" in
-              apps/native/crates/*|apps/native/src-tauri/*|apps/native/Cargo.toml|apps/native/Cargo.lock|apps/native/rustfmt.toml|apps/native/scripts/fetch-rclone.sh)
+              # fetch-appimage-tools.sh is in the `rust` bucket because
+              # `tauri-build`'s ubuntu leg is the ONLY thing that validates
+              # those pins — a bump must run the job that would go red on a
+              # bad one, not just the bun-side jobs.
+              apps/native/crates/*|apps/native/src-tauri/*|apps/native/Cargo.toml|apps/native/Cargo.lock|apps/native/rustfmt.toml|apps/native/scripts/fetch-rclone.sh|apps/native/scripts/fetch-appimage-tools.sh)
                 rust=true ;;
               packages/sandbox/daemon-e2e/*|apps/native/scripts/ci/*) suite=true ;;
               apps/native/e2e/*) contract=true ;;
@@ -140,19 +144,56 @@ jobs:
   # ---------------------------------------------------------------------
   # 1. rust-checks — fmt / clippy / cargo test across the whole cargo
   #    workspace (crates/local-api, crates/harness, crates/upstream,
-  #    src-tauri). macOS-only (matches the other jobs and the app's actual
-  #    v1 target — the desktop migration contract's "v1 is macOS-only"); no ubuntu leg because
-  #    src-tauri's deps (tao/wry/muda/objc2/...) are macOS-framework-linked
-  #    and won't compile on Linux without a large extra apt-get surface
-  #    this phase doesn't need to carry.
+  #    src-tauri), on BOTH shipping targets. The macos leg gates the v1
+  #    desktop target; the ubuntu leg gates the Linux port — src-tauri's
+  #    window/webview stack is
+  #    GTK + WebKitGTK there rather than the macOS system frameworks, so
+  #    that leg carries an apt surface the macOS leg gets for free:
+  #    libwebkit2gtk-4.1-dev (webview + webkit2gtk-sys pkg-config),
+  #    libxdo-dev, libayatana-appindicator3-dev, librsvg2-dev, patchelf,
+  #    libssl-dev, xdg-utils, plus the usual build-essential/curl/wget/file.
+  #    ubuntu-22.04 is PINNED, not ubuntu-latest: the AppImage this port
+  #    ships inherits the build host's glibc floor, so raising the runner
+  #    raises the floor for every Linux user — a deliberate decision, never
+  #    a drive-by bump.
   # ---------------------------------------------------------------------
-  rust-checks:
+  rust-checks-os:
     needs: changes
     if: >-
       needs.changes.outputs.rust == 'true' &&
       github.event_name != 'schedule'
-    runs-on: macos-latest
-    timeout-minutes: 30
+    strategy:
+      # Both legs always report: a red Linux leg must not hide the macOS
+      # result (or vice versa) on a PR where both are required checks.
+      fail-fast: false
+      matrix:
+        # macOS does the lot in ~3 min. Linux gets one runner per half: five
+        # attempts at running both on one runner died in `cargo test` at an
+        # invariant ~49-50 min with the step incomplete, NO logs uploaded, and
+        # conclusion `failure` rather than the `cancelled` a timeout gives —
+        # i.e. the runner was killed. Capping debug info, freeing 20 GiB and
+        # capping link parallelism each changed nothing, and that invariance is
+        # the tell: the surviving variable is that one runner carried clippy's
+        # dev-profile build of the whole GTK/WebKit tree AND the test profile's.
+        # Two runners halve the peak — which also breaks the spiral where a job
+        # that never finishes never warms a cache. rust-cache keys on
+        # GITHUB_JOB, not on matrix values, so the `key:` input below is what
+        # actually gives each leg its own entry; without it both ubuntu legs
+        # compute the same key, the second restores the first's on a full match
+        # and saves nothing, and the test profile's target dir is never kept.
+        include:
+          - os: macos-latest
+            task: all
+          - os: ubuntu-22.04
+            task: lint
+          - os: ubuntu-22.04
+            task: test
+    runs-on: ${{ matrix.os }}
+    # The ubuntu leg builds the GTK/WebKit stack (webkit2gtk-sys, gtk-sys,
+    # glib, soup) from source, once for clippy's dev profile and again for
+    # test's — where macOS links system frameworks and finishes in ~3 min.
+    # A cold cache ran 25-35 min and was killed mid-`cargo test` at 30.
+    timeout-minutes: 60
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -162,12 +203,60 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Install Linux system deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils
+
+      # This job is the only one that builds the workspace TWICE — clippy's dev
+      # profile, then test's — and on Linux each of those also carries the
+      # GTK/WebKit dependency tree that macOS gets from system frameworks. With
+      # full debug info that target dir measured 13.5 GiB locally, against a
+      # runner that has ~14 GiB free: the job died at 49 min mid-`cargo test`
+      # with no retained logs, which is what disk exhaustion looks like here.
+      # Debug info is the bulk of it and nothing in this job reads a backtrace,
+      # so drop it rather than buy a bigger runner. macOS is left alone: it
+      # finishes in three minutes and its artifacts are a fraction of the size.
+      - name: Make room for the Linux target dir
+        if: runner.os == 'Linux'
+        run: |
+          # Two compounding problems, both invisible in the logs because the
+          # runner dies before they upload. (1) This is the only job that
+          # builds the workspace twice — clippy's dev profile, then test's —
+          # and on Linux each carries the GTK/WebKit tree macOS gets from
+          # system frameworks; with full debug info that target dir measured
+          # 13.5 GiB against ~14 GiB free. (2) rust-cache saves in a post
+          # step, so a job that never finishes never warms the cache, and
+          # every run starts cold — which is why the failure reproduced at a
+          # near-identical 49 min rather than varying with load.
+          #
+          # Dropping debug info removes the bulk of the artifacts (nothing
+          # here reads a backtrace) and evicting the preinstalled SDKs this
+          # repo never uses frees ~20 GiB more. macOS is untouched: it
+          # finishes in three minutes.
+          {
+            echo "CARGO_PROFILE_DEV_DEBUG=0"
+            echo "CARGO_PROFILE_TEST_DEBUG=0"
+          } >> "$GITHUB_ENV"
+          echo "before:"; df -h / | tail -1
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+            /usr/local/share/boost /opt/hostedtoolcache/CodeQL || true
+          echo "after:"; df -h / | tail -1
+
       - name: Cache cargo registry + target dir
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/native
+          # rust-cache's default key covers GITHUB_JOB, the runner, the
+          # toolchain and the lockfiles — but NOT matrix values. Both ubuntu
+          # legs are the same job, so they would otherwise share one entry and
+          # only the first to finish would ever save.
+          key: ${{ matrix.task }}
 
       - name: cargo fmt --check
+        if: matrix.task != 'test'
         working-directory: apps/native
         run: cargo fmt --all -- --check
 
@@ -196,12 +285,81 @@ jobs:
         run: ./scripts/fetch-rclone.sh
 
       - name: cargo clippy -D warnings
+        if: matrix.task != 'test'
         working-directory: apps/native
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: cargo test --workspace
+        if: runner.os != 'Linux' && matrix.task != 'lint'
         working-directory: apps/native
         run: cargo test --workspace
+
+      # Same tests, one crate at a time, and with the build parallelism capped.
+      # Three runs died here at a near-identical ~50 min with the step
+      # incomplete and NO logs uploaded at all — and the job conclusion was
+      # `failure`, not the `cancelled` a timeout produces, so the runner itself
+      # was being killed rather than the job timed out. Dropping debug info and
+      # freeing 20 GiB of preinstalled SDKs changed nothing, which rules out
+      # disk and leaves memory: `cargo test` links a test binary per target,
+      # and linking these crates four-up (local-api alone carries ~850 tests
+      # plus the GTK/WebKit tree) is what exhausts a 16 GiB runner.
+      #
+      # Per crate so a future failure names the crate instead of the step, and
+      # so each link peak stands alone.
+      # Linux runs single-threaded and per crate. Two tests here write or kill
+      # things the platform treats differently from BSD: `upstream` writes a
+      # helper script and execs it (a concurrent fork inherits the write
+      # descriptor and the exec fails ETXTBSY), and `local-api`'s process-group
+      # suite manipulates process groups, so it runs under `setsid`.
+      #
+      # Be exact about what `setsid` buys, because the earlier claim here
+      # ("keeps a stray group signal inside its own session rather than the
+      # runner's") overstated it. `setsid --wait` does NOT fork when its caller
+      # is not already a process-group leader — it `setsid()`s in place and
+      # execs — so cargo itself becomes the chunk's session and group leader.
+      # That bounds a stray group signal to one chunk instead of this step's
+      # shell, and nothing more: pgids are global, so it cannot protect a chunk
+      # from a test that signals its OWN group. Three tests did exactly that;
+      # the fix is at the source, in `process_util::group_signal_argv`.
+      - name: cargo test (Linux)
+        if: runner.os == 'Linux' && matrix.task != 'lint'
+        working-directory: apps/native
+        timeout-minutes: 25
+        env:
+          CARGO_BUILD_JOBS: "2"
+        run: |
+          cargo test -p harness -- --test-threads=1
+          # terminal-session drives real PTYs and signals foreground process
+          # groups, so it is exactly the crate a BSD-vs-Linux divergence hides
+          # in — and no other leg ran it on Linux, which is why a Ctrl-C that
+          # never reached the foreground job shipped unnoticed. 11 tests, ~3 s:
+          # small enough to need neither chunking nor `setsid`.
+          cargo test -p terminal-session -- --test-threads=1
+          cargo test -p upstream -- --test-threads=1
+          # local-api's ~850 tests are chunked into separate processes. Note
+          # the original justification for this — "the kill point moved
+          # steadily later as suspects were excluded, so it is accumulation,
+          # not one bad test" — did NOT hold up. There were three self-killing
+          # tests, and excluding them one at a time produces precisely that
+          # moving kill point. All three are fixed and re-enabled; run as ONE
+          # process the crate finishes 817 tests in 49 s at ~250 MB and 14
+          # processes, so there is no resource wall here to chunk around —
+          # note that measures execution, not the link peak the step's own
+          # comments blame. Chunking stays because it is nearly free
+          # and makes a failure name its chunk, not because the suite cannot
+          # survive a single process. `setsid` bounds a stray group signal to
+          # one chunk (see the note above the step).
+          for chunk in routes:: sandbox::; do
+            setsid --wait cargo test -p local-api "$chunk" -- --test-threads=1
+          done
+          # Cargo test filters are substring matches, and `routes::setup` is a
+          # real module — so a bare `setup::` chunk would re-run the whole
+          # `routes::setup::` subtree the `routes::` chunk just ran.
+          setsid --wait cargo test -p local-api setup:: -- --test-threads=1 \
+            --skip routes::setup::
+          setsid --wait cargo test -p local-api -- --test-threads=1 \
+            --skip routes:: --skip sandbox:: --skip setup::
+          cargo test -p deco -- --test-threads=1
 
   # ---------------------------------------------------------------------
   # 2. daemon-e2e-vs-rust — the parity oracle: build the release local-api
@@ -247,6 +405,11 @@ jobs:
   #    WS proxy" exclusion section for the full rationale and this crate's
   #    own substitute oracle coverage (`apps/native/e2e/git-sandbox.e2e.test.ts`,
   #    `real-ui-passthrough.e2e.test.ts`).
+  #
+  #    Stays macOS-only while its neighbours grew an ubuntu leg: the gate is
+  #    an EXACT pinned fail-set, and the daemon's own suite diverges per OS,
+  #    so a Linux leg needs a second allowlist to be meaningful rather than
+  #    a copy of this one. Deferred with the rest of the Linux port.
   # ---------------------------------------------------------------------
   daemon-e2e-vs-rust:
     needs: changes
@@ -331,14 +494,24 @@ jobs:
   #    parity oracle above, this suite is OWNED by this implementation
   #    (the native local-API contract is the spec it pins), so
   #    the bar is simply "all green" — no allowlist needed.
+  #
+  #    Runs on both shipping targets. The suite drives the local-api BINARY
+  #    over the wire (`LOCAL_API_E2E_CMD`), and that binary needs no system
+  #    libraries on Linux — rusqlite is `bundled`, reqwest is rustls-only —
+  #    so the ubuntu leg deliberately carries no apt step. Only src-tauri
+  #    (the `rust-checks` / `tauri-build` jobs) pulls in the GTK surface.
   # ---------------------------------------------------------------------
-  contract-suite:
+  contract-suite-os:
     needs: changes
     if: >-
       (needs.changes.outputs.rust == 'true' ||
        needs.changes.outputs.contract == 'true') &&
       github.event_name != 'schedule'
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
       - name: Checkout repository
@@ -372,20 +545,35 @@ jobs:
           bun test e2e
 
   # ---------------------------------------------------------------------
-  # 4. tauri-build — bundles the RELEASE .app (the same profile
-  #    release-native.yaml ships; a debug bundle used to be built here but
-  #    gated nothing the release profile doesn't, while leaving the shipped
-  #    profile untested until release day), boot-smokes it, and uploads the
-  #    exact tested bundle as an artifact. Unsigned always — signing and
-  #    notarization live in release-native.yaml, the secret-gated release job.
+  # 4. tauri-build — bundles the RELEASE artifact for each shipping target
+  #    (the same profile release-native.yaml ships; a debug bundle used to
+  #    be built here but gated nothing the release profile doesn't, while
+  #    leaving the shipped profile untested until release day), boot-smokes
+  #    it, and uploads the exact tested bundle as an artifact. macOS
+  #    produces `deco.app`; Linux produces an AppImage, with `--bundles`
+  #    left off so the target list comes from
+  #    src-tauri/tauri.linux.conf.json5 exactly as it does on release day.
+  #    Unsigned always — signing and notarization live in
+  #    release-native.yaml, the secret-gated release job.
+  #
+  #    LOAD-BEARING: the Linux legs of this workflow must NEVER declare an
+  #    `environment:` nor map any secret. That is precisely what makes this
+  #    job the `createUpdaterArtifacts` canary — tauri.linux.conf.json5
+  #    documents that the key belongs only in release-native.yaml's
+  #    --config overlay, and a secretless build is what goes red the moment
+  #    someone commits it into the platform config instead.
   # ---------------------------------------------------------------------
-  tauri-build:
+  tauri-build-os:
     needs: changes
     if: >-
       (needs.changes.outputs.rust == 'true' ||
        needs.changes.outputs.frontend == 'true') &&
       github.event_name != 'schedule'
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     # (No job-level env: both signing families below are deliberately unwired
     # in this non-shipping job.)
@@ -427,6 +615,17 @@ jobs:
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      # Same surface as `rust-checks` plus xvfb: the boot smoke launches a
+      # real GTK/WebKitGTK process, and Linux runners are headless (macOS
+      # runners are logged-in GUI VMs, which is why that leg needs nothing).
+      - name: Install Linux system deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils \
+            xvfb
+
       - name: Cache cargo registry + target dir
         uses: Swatinem/rust-cache@v2
         with:
@@ -456,24 +655,112 @@ jobs:
         working-directory: apps/native
         run: ./scripts/fetch-rclone.sh
 
+      # The AppImage's outer runtime is supplied by whichever
+      # `linuxdeploy-plugin-appimage` the CLI finds in its tools cache; a
+      # stale one emits a type-2 runtime dynamically linked against
+      # libfuse.so.2, which cannot even self-extract on a runner that has no
+      # libfuse2.
+      #
+      # Seeded from apps/native/scripts/fetch-appimage-tools.sh — the SAME
+      # pinned, checksum-verified set release-native.yaml uses (it wipes the
+      # cache first, so no stale tool survives). Letting the CLI fetch rolling
+      # `continuous` builds here instead would mean the AppImage this job
+      # boot-smokes, extracts and asserts static is NOT produced by the
+      # toolchain that builds the shipped one: a stale or wrong pin could then
+      # only fail on release day, on a half-published version, with no way to
+      # go red on the PR that introduced it. That is precisely the canary
+      # framing this job claims below.
+      #
+      # No secret and no `environment:` is involved — the createUpdaterArtifacts
+      # canary property is untouched.
+      - name: Seed the pinned AppImage tooling
+        if: runner.os == 'Linux'
+        working-directory: apps/native
+        run: ./scripts/fetch-appimage-tools.sh
+
       # These verification builds are NEVER signed, whether or not the
       # secrets exist. Boot-smoke runs the binary directly and a Developer ID
       # buys it nothing, while attempting the import couples this job to the
       # health of six repo secrets. Signing belongs to release-native.yaml,
       # the secret-gated release job.
       #
-      # PRs build only the artifact this job smokes and uploads. Pushes to
-      # main and manual runs retain DMG bundler coverage without adding that
-      # packaging cost to every review cycle.
+      # Pinned to the version release-native.yaml ships with: the bundler
+      # decides the AppImage member name (`deco_<version>_amd64.AppImage`)
+      # that the updater's version-pairing check parses, so CI must not
+      # validate an artifact produced by a different bundler than release.
+      #
+      # macOS PRs build only the artifact this job smokes and uploads; pushes
+      # to main and manual runs retain DMG bundler coverage without adding
+      # that packaging cost to every review cycle. Linux never passes
+      # `--bundles`, so its target list comes from the
+      # tauri.linux.conf.json5 overlay exactly as it does on release day.
       - name: tauri build (.app only)
-        if: github.event_name == 'pull_request'
+        if: runner.os == 'macOS' && github.event_name == 'pull_request'
         working-directory: apps/native
         run: bunx @tauri-apps/cli@2.11.4 build --bundles app
 
       - name: tauri build (.app + DMG)
-        if: github.event_name != 'pull_request'
+        if: runner.os == 'macOS' && github.event_name != 'pull_request'
         working-directory: apps/native
         run: bunx @tauri-apps/cli@2.11.4 build
+
+      - name: tauri build (AppImage)
+        if: runner.os == 'Linux'
+        working-directory: apps/native
+        run: bunx @tauri-apps/cli@2.11.4 build
+
+      # Runs BEFORE anything extracts the AppImage (the boot smoke does,
+      # via --appimage-extract). Asserting after extraction would be
+      # self-defeating: a libfuse2-linked runtime cannot perform the extract
+      # at all, so the smoke would fail first and mask the real diagnosis.
+      # `ldd` exits non-zero on a static binary — that is the passing case
+      # here, hence the `|| true` around both probes.
+      #
+      # Which is also why "no output at all" (missing binutils, wrong path,
+      # non-ELF input) must NOT be read as success: `grep -q` would find no
+      # match and the tripwire would report green having learned nothing. So
+      # the probe output has to carry a recognizable linkage verdict before
+      # "no libfuse" counts as evidence.
+      # A download can only ADD a name to that cache, so an exact set
+      # comparison after the build proves `tauri build` fetched nothing —
+      # closing the drift a CLI bump would otherwise open silently (the pin
+      # table is not keyed to the CLI version).
+      - name: Assert the build fetched no unpinned tooling
+        if: runner.os == 'Linux'
+        working-directory: apps/native
+        run: ./scripts/fetch-appimage-tools.sh --verify-only
+
+      # Named for what it actually gates: the check greps for libfuse.so.2, it
+      # does not prove static linkage. Nor is a stricter rule available for
+      # free — measured on a static-PIE binary, the dynamic section has 22
+      # entries and ZERO DT_NEEDED, so "reject any DT_NEEDED" would pass it
+      # rather than false-fail it, and only "require no dynamic section at
+      # all" (which just a fully static non-PIE satisfies) would reject it.
+      # Not requiring libfuse2 is the property that actually matters to a user
+      # whose host lacks it, so that is what this step gates.
+      - name: Assert the AppImage runtime does not require libfuse2
+        if: runner.os == 'Linux'
+        working-directory: apps/native
+        run: |
+          set -euo pipefail
+          APPIMAGE=$(find target/release/bundle/appimage -maxdepth 1 -name '*.AppImage' -print -quit)
+          if [ -z "$APPIMAGE" ]; then
+            echo "::error::no .AppImage produced under target/release/bundle/appimage"
+            exit 1
+          fi
+          echo "Inspecting $APPIMAGE"
+          PROBE="$RUNNER_TEMP/appimage-runtime.txt"
+          { ldd "$APPIMAGE" || true; readelf -d "$APPIMAGE" || true; } \
+            > "$PROBE" 2>&1
+          cat "$PROBE"
+          if ! grep -Eq 'statically linked|not a dynamic executable|Dynamic section|no dynamic section|NEEDED' "$PROBE"; then
+            echo "::error::neither ldd nor readelf reported a linkage verdict for $APPIMAGE (output above) — the libfuse.so.2 check would pass vacuously, so failing instead. Check that binutils is installed on this runner and that the path is the AppImage itself."
+            exit 1
+          fi
+          if grep -q 'libfuse\.so\.2' "$PROBE"; then
+            echo "::error::$APPIMAGE links libfuse.so.2 — the AppImage runtime is not static, so it cannot run or self-extract without libfuse2 installed. The pinned linuxdeploy-plugin-appimage in apps/native/scripts/fetch-appimage-tools.sh is stale; re-pin it there (both this workflow and release-native.yaml read that file)."
+            exit 1
+          fi
 
       # GitHub's macOS runners provide a GUI session, so no headless display
       # shim is needed. Self-test uses an isolated app-data directory and an
@@ -481,6 +768,7 @@ jobs:
       # orphaned child processes. Its window is briefly visible by default to
       # avoid macOS App Nap stalling the runtime probes.
       - name: Boot smoke (DESKTOP_SELFTEST=1)
+        if: runner.os == 'macOS'
         # DECOCMS_DISABLE_AUTO_UPDATE: this job builds the RELEASE profile at
         # the committed version 0.1.0 — without the kill-switch, a
         # plugin-registered updater would see the prod channel as "newer" and
@@ -494,10 +782,34 @@ jobs:
         run: bun run --cwd apps/native smoke:boot --require-existing-bundle
 
       - name: Upload smoked .app artifact
+        if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
           name: deco-app
           path: apps/native/target/release/bundle/macos/deco.app
+          if-no-files-found: error
+          retention-days: 14
+
+      # Same smoke, same kill-switch reasoning as the macOS step above; the
+      # only difference is the display. Linux runners are headless, so the
+      # webview needs an X server — `xvfb-run -a` picks a free display
+      # number. The smoke extracts the AppImage it just asserted on (no FUSE
+      # required) and launches the extracted `AppRun` — not the inner binary:
+      # only `AppRun` exports the WebKit exec path and bundled library path
+      # the inner binary needs, and without them it dies spawning
+      # WebKitNetworkProcess. See scripts/boot-smoke-target.ts.
+      - name: Boot smoke under Xvfb (DESKTOP_SELFTEST=1, hidden window)
+        if: runner.os == 'Linux'
+        env:
+          DECOCMS_DISABLE_AUTO_UPDATE: "1"
+        run: xvfb-run -a bun run --cwd apps/native smoke:boot --require-existing-bundle
+
+      - name: Upload smoked AppImage artifact
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: deco-appimage
+          path: apps/native/target/release/bundle/appimage/*.AppImage
           if-no-files-found: error
           retention-days: 14
 
@@ -557,3 +869,72 @@ jobs:
           path: ${{ runner.temp }}/stub-seam.xml
           if-no-files-found: warn
           retention-days: 7
+
+  # Aggregator carrying the required-check name: the ruleset requires a check
+  # called "rust-checks", and matrix jobs report as "rust-checks (macos-latest)"/"(ubuntu-22.04)"
+  # — a renamed required check would block merges forever. This job is the one
+  # the rule sees; a skipped matrix (irrelevant-paths PRs) counts as pass, same
+  # as the changes-gate semantics everywhere else.
+  rust-checks:
+    needs: [changes, rust-checks-os]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify rust-checks legs
+        run: |
+          # `skipped` counts as pass ONLY when the gate itself decided to skip.
+          # These legs `needs: changes` without `always()`, so a failed or
+          # cancelled gate also leaves them `skipped` — and this job runs
+          # `if: always()`, so without this guard that would report the
+          # required check green with no leg having run.
+          if [ "${{ needs.changes.result }}" != "success" ]; then
+            echo "changes gate: ${{ needs.changes.result }}"; exit 1
+          fi
+          case "${{ needs.rust-checks-os.result }}" in
+            success|skipped) echo "rust-checks: ${{ needs.rust-checks-os.result }}"; exit 0 ;;
+            *) echo "rust-checks: ${{ needs.rust-checks-os.result }}"; exit 1 ;;
+          esac
+
+  # Aggregator carrying the required-check name: the ruleset requires a check
+  # called "contract-suite", and matrix jobs report as "contract-suite (macos-latest)"/"(ubuntu-22.04)"
+  # — a renamed required check would block merges forever. This job is the one
+  # the rule sees; a skipped matrix (irrelevant-paths PRs) counts as pass, same
+  # as the changes-gate semantics everywhere else.
+  contract-suite:
+    needs: [changes, contract-suite-os]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify contract-suite legs
+        run: |
+          # See the note in `rust-checks`: a non-success gate also leaves the
+          # legs `skipped`, which must not read as pass.
+          if [ "${{ needs.changes.result }}" != "success" ]; then
+            echo "changes gate: ${{ needs.changes.result }}"; exit 1
+          fi
+          case "${{ needs.contract-suite-os.result }}" in
+            success|skipped) echo "contract-suite: ${{ needs.contract-suite-os.result }}"; exit 0 ;;
+            *) echo "contract-suite: ${{ needs.contract-suite-os.result }}"; exit 1 ;;
+          esac
+
+  # Aggregator carrying the required-check name: the ruleset requires a check
+  # called "tauri-build", and matrix jobs report as "tauri-build (macos-latest)"/"(ubuntu-22.04)"
+  # — a renamed required check would block merges forever. This job is the one
+  # the rule sees; a skipped matrix (irrelevant-paths PRs) counts as pass, same
+  # as the changes-gate semantics everywhere else.
+  tauri-build:
+    needs: [changes, tauri-build-os]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify tauri-build legs
+        run: |
+          # See the note in `rust-checks`: a non-success gate also leaves the
+          # legs `skipped`, which must not read as pass.
+          if [ "${{ needs.changes.result }}" != "success" ]; then
+            echo "changes gate: ${{ needs.changes.result }}"; exit 1
+          fi
+          case "${{ needs.tauri-build-os.result }}" in
+            success|skipped) echo "tauri-build: ${{ needs.tauri-build-os.result }}"; exit 0 ;;
+            *) echo "tauri-build: ${{ needs.tauri-build-os.result }}"; exit 1 ;;
+          esac

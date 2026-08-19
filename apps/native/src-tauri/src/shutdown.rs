@@ -28,10 +28,13 @@ pub fn run_blocking(app: &AppHandle) {
     };
     tracing::info!("app exit requested: shutting down local-api");
     tauri::async_runtime::block_on(handle.shutdown());
-    // Apply a staged self-update ONLY here, after local-api has drained:
-    // swapping the bundle under a live process breaks macOS Keychain access
-    // (code identity is validated against the binary on disk), so the swap
-    // must happen when no Keychain writer is left. Covers both the restart
+    // Apply a staged self-update ONLY here, after local-api has drained.
+    // What FORCES that ordering is macOS-specific: swapping the bundle under
+    // a live process breaks Keychain access there (code identity is
+    // validated against the binary on disk), so the swap must happen when no
+    // Keychain writer is left. The ordering itself is cross-platform — the
+    // Linux AppImage swap is survivable live, so nothing wants an earlier
+    // apply and there is one install site, not two. Covers both the restart
     // button and a plain quit — this is what makes install-on-quit true.
     // Inside the take-once guard above, so a duplicate ExitRequested cannot
     // double-apply.
