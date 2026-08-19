@@ -541,22 +541,24 @@ function CmsPublishBody({
         data-change-id={id}
         onClick={canExpand && !expanded ? toggleExpanded : undefined}
       >
-        <div className="flex items-center gap-2.5">
+        <div
+          className={cn(
+            "flex items-center gap-2.5",
+            canExpand && "cursor-pointer",
+          )}
+          onClick={
+            canExpand
+              ? (e) => {
+                  e.stopPropagation();
+                  toggleExpanded();
+                }
+              : undefined
+          }
+        >
           {changeIcon(change, t)}
           <button
             type="button"
-            className={cn(
-              "flex min-w-0 flex-1 items-center gap-2 text-left",
-              canExpand && "cursor-pointer",
-            )}
-            onClick={
-              canExpand
-                ? (e) => {
-                    e.stopPropagation();
-                    toggleExpanded();
-                  }
-                : undefined
-            }
+            className="flex min-w-0 flex-1 items-center gap-2 text-left"
             disabled={!canExpand}
             aria-expanded={canExpand ? expanded : undefined}
           >
@@ -605,22 +607,12 @@ function CmsPublishBody({
             </button>
           )}
           {canExpand ? (
-            <button
-              type="button"
-              className="flex shrink-0 items-center"
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleExpanded();
-              }}
-              aria-expanded={expanded}
-            >
-              <ChevronRight
-                className={cn(
-                  "size-3.5 text-muted-foreground transition-transform",
-                  expanded && "rotate-90",
-                )}
-              />
-            </button>
+            <ChevronRight
+              className={cn(
+                "size-3.5 shrink-0 text-muted-foreground transition-transform",
+                expanded && "rotate-90",
+              )}
+            />
           ) : null}
         </div>
         {!expanded && subLines.length > 0 ? (
