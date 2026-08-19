@@ -1675,34 +1675,37 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   ) : null;
 
   const canVisualEdit = display.mode === "sandbox";
-  const floatingPreviewControls = canVisualEdit ? (
+  // Device toggle works on any live iframe; visual-editor toggle is sandbox-only.
+  const floatingPreviewControls = previewSurfaceActive ? (
     <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 scale-125">
       <div className="flex items-center gap-0.5 rounded-full border bg-background/60 p-1 shadow-lg backdrop-blur-md">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <ToolbarIconButton
-              onClick={() => toggleEditingMode("visual")}
-              aria-pressed={editingMode === "visual"}
-              aria-label={t("sandbox.preview.visualEditor")}
-              active={editingMode === "visual"}
-              disabled={!canVisualEdit}
-              className="rounded-full"
-              data-tour={TOUR_ANCHORS.visualEditor}
-            >
-              <CursorClick01 size={16} />
-            </ToolbarIconButton>
-          </TooltipTrigger>
-          <TooltipContent side="top">
-            {t("sandbox.preview.visualEditor")}
-          </TooltipContent>
-        </Tooltip>
-        <div className="mx-0.5 h-5 w-px bg-border" />
+        {canVisualEdit && (
+          <>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <ToolbarIconButton
+                  onClick={() => toggleEditingMode("visual")}
+                  aria-pressed={editingMode === "visual"}
+                  aria-label={t("sandbox.preview.visualEditor")}
+                  active={editingMode === "visual"}
+                  className="rounded-full"
+                  data-tour={TOUR_ANCHORS.visualEditor}
+                >
+                  <CursorClick01 size={16} />
+                </ToolbarIconButton>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {t("sandbox.preview.visualEditor")}
+              </TooltipContent>
+            </Tooltip>
+            <div className="mx-0.5 h-5 w-px bg-border" />
+          </>
+        )}
         <Tooltip>
           <TooltipTrigger asChild>
             <ToolbarIconButton
               onClick={handleDeviceToggle}
               aria-label={t(DEVICE_LABEL_KEYS[previewDeviceSize])}
-              disabled={!canVisualEdit}
               className="rounded-full"
               data-tour={TOUR_ANCHORS.device}
             >
