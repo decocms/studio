@@ -159,6 +159,8 @@ export function CmsPublishPopover(props: CmsPublishPopoverProps) {
       <PopoverContent
         align="end"
         sideOffset={8}
+        // The menu that opened this returns focus to its trigger as it closes.
+        onFocusOutside={(event) => event.preventDefault()}
         className="flex max-h-[min(720px,85vh)] w-[420px] flex-col gap-0 overflow-hidden p-0"
       >
         <CmsPublishBody {...props} publishLockRef={publishLockRef} />

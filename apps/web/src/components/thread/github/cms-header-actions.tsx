@@ -95,8 +95,14 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   const { data: session } = authClient.useSession();
   const vm = useVirtualMCP(virtualMcpId);
   const { currentBranch: branch, setCurrentTaskBranch } = useChatTask();
-  /** Which content surface is open — one popover, two modes. */
-  const [surface, setSurface] = useState<CmsPublishMode | null>(null);
+  /** One popover, two modes. `mode` outlives `open` so the closing animation
+   *  doesn't flash the other mode's labels on its way out. */
+  const [surface, setSurface] = useState<{
+    open: boolean;
+    mode: CmsPublishMode;
+  }>({ open: false, mode: "publish" });
+  const openSurface = (mode: CmsPublishMode) =>
+    setSurface({ open: true, mode });
 
   const attachment = resolveGithubAttachment(vm);
   const githubRepo =
@@ -315,10 +321,10 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   const dispatch = (action: CmsAction) => {
     switch (action) {
       case "publish":
-        setSurface("publish");
+        openSurface("publish");
         return;
       case "request-approval":
-        setSurface("review");
+        openSurface("review");
         return;
       case "get-latest":
         if (!githubHeadBranch || getLatest.isPending) return;
@@ -364,10 +370,10 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     <>
       {branch ? (
         <CmsPublishPopover
-          open={surface !== null}
-          mode={surface ?? "publish"}
+          open={surface.open}
+          mode={surface.mode}
           onOpenChange={(open) => {
-            if (!open) setSurface(null);
+            if (!open) setSurface((current) => ({ ...current, open: false }));
           }}
           orgSlug={org.slug}
           orgId={org.id}
@@ -380,7 +386,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
           publishPolicy={normalizePublishPolicy(vm?.metadata?.publishPolicy)}
           draftPreviewUrl={draftPreview.url}
           destinationHost={draftPreview.host}
-          onRequestApproval={() => setSurface("review")}
+          onRequestApproval={() => openSurface("review")}
           openPullRequest={pr?.state === "open" ? pr : null}
           onPullRequestChanged={refreshPrState}
           onPublished={() => publishCompletion.mutateAsync()}
