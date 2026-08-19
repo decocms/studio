@@ -41,6 +41,7 @@ import { InProcessSandboxClient } from "@/harnesses/in-process-sandbox-client";
 import { CLAUDE_SUBSCRIPTION_PROVIDER_ID } from "@/harnesses/claude-code-env";
 import {
   harnessRunsInSandbox,
+  isRunSuperseded,
   SandboxDispatchClient,
 } from "@/harnesses/sandbox-dispatch-client";
 import { resolveSandboxBranchForThread } from "@/tools/sandbox/thread-repo";
@@ -1654,6 +1655,13 @@ async function prepareRun(
                   is_resume: input.isResume ?? false,
                 },
               });
+              return;
+            }
+            // A takeover is the successor's terminal to write, not ours.
+            if (isRunSuperseded(error)) {
+              console.log(
+                `[decopilot] attempt superseded by a newer dispatch; leaving the terminal to it thread=${mem.thread.id}`,
+              );
               return;
             }
             console.error("[decopilot] stream error:", stringifyError(error));

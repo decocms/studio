@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { UIMessageChunk } from "ai";
+import {
+  isRunSuperseded,
+  RunSupersededError,
+} from "@/harnesses/sandbox-dispatch-client";
 import {
   assertHostedDispatchHarness,
   assertSinglePersistedRequestMessage,
@@ -335,5 +341,34 @@ describe("buildAgentSandboxUiStream resume", () => {
     expect(rec.done).toEqual([11]);
     // And the floor keeps advancing, so a THIRD attempt would pick up from 11.
     expect(acked).toEqual([6, 7, 8, 9, 10, 11]);
+  });
+});
+
+describe("stream onError takeover guard", () => {
+  test("checks for a takeover before settling the thread as failed", () => {
+    // Source-text assertion, same technique as
+    // hosted-harness-workflow.test.ts: the real `onError` closure can't run
+    // without a live stream, so this proves the guard sits BEFORE the
+    // failed-FINISH (after it, a takeover would still settle a live run).
+    const src = readFileSync(join(import.meta.dir, "dispatch-run.ts"), "utf8");
+    const hook = src.indexOf("onError: (error) => {");
+    expect(hook).toBeGreaterThan(-1);
+    const body = src.slice(hook);
+    const guard = body.indexOf("isRunSuperseded(error)");
+    const settle = body.indexOf('threadStatus: "failed"');
+    expect(guard).toBeGreaterThan(-1);
+    expect(settle).toBeGreaterThan(guard);
+  });
+
+  test("a takeover error survives the DBOS journal round trip", () => {
+    // The guard reads an own-enumerable marker, not `instanceof`, because DBOS
+    // reconstructs a plain Error on replay. A structured clone stands in.
+    const takeover = new RunSupersededError("a newer dispatch took over");
+    const replayed = Object.assign(new Error(takeover.message), {
+      superseded: (takeover as unknown as { superseded: boolean }).superseded,
+    });
+    expect(isRunSuperseded(takeover)).toBe(true);
+    expect(isRunSuperseded(replayed)).toBe(true);
+    expect(isRunSuperseded(new Error("boom"))).toBe(false);
   });
 });
