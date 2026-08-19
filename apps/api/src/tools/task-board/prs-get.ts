@@ -342,25 +342,6 @@ export function extractPreviewUrl(
  *  ponytail: hardcoded; make it configurable if sites land in another account. */
 const WORKERS_DEV_SUBDOMAIN = "deco-cx";
 
-/** Pull the preview URL out of a `get_check_runs` result, derived from
- *  Cloudflare Workers Builds' uploaded version.
- *
- *  Why this is its OWN source: on some Workers the
- *  `cloudflare-workers-and-pages[bot]` PR comment renders with NO "Preview URL"
- *  column at all (deco-sites/demo-storefront does this; deco-sites/decocms-tanstack
- *  does not — same account, same `preview_urls: true`). The version is uploaded
- *  and reachable either way, and its id is always in the check run's summary:
- *
- *      Build ID:   85b63568-6bf1-45d6-9d3b-57a558dee041
- *      Version ID: 1fe1ee18-b8d0-46ea-bdf1-45cef0cd6e4d
- *
- *  → `https://1fe1ee18-demo-storefront.deco-cx.workers.dev`.
- *
- *  Tried FIRST, ahead of the comment scan: it comes from the build that
- *  actually ran for this commit, so it cannot lose to another provider's stale
- *  or dead comment link — demo-storefront's board card pointed at a decobot
- *  `*.decocdn.com` url that times out. `null` when no Workers Builds run has
- *  uploaded a version yet. Exported for the pure-logic unit test. */
 export function extractPreviewUrlFromCheckRuns(raw: unknown): string | null {
   const runs = Array.isArray(raw)
     ? raw
