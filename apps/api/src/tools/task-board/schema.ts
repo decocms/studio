@@ -38,6 +38,9 @@ const TaskBoardItemThreadSchema = z.object({
   /** USD this run has cost so far; null when the harness recorded none. */
   costUsd: z.number().nullable(),
   createdAt: z.string(),
+  /** Newest of the thread's `updated_at` / `last_progress_at` — the stall
+   *  reaper's heartbeat, present on every `TaskBoardItemThreadRef`. */
+  lastActiveAt: z.string(),
 });
 
 /** A tag attached to a task, plus who attached it and when. */

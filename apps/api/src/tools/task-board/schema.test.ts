@@ -100,4 +100,36 @@ describe("TaskBoardItemSchema – proxy round-trip validation", () => {
         .retryAttempts,
     ).toBe(2);
   });
+
+  // Same bug class, a different field: threads always carry lastActiveAt.
+  it("accepts a linked thread with lastActiveAt (previously rejected)", async () => {
+    const result = await roundTrip({
+      item: {
+        ...baseItem,
+        threads: [
+          {
+            threadId: "thread_1",
+            virtualMcpId: null,
+            status: "in_progress",
+            title: "Fix the thing",
+            lastMessage: null,
+            hasPreview: false,
+            failureKind: null,
+            hasMessages: true,
+            costUsd: null,
+            createdAt: "2024-01-01T00:00:00.000Z",
+            lastActiveAt: "2024-01-01T00:05:00.000Z",
+          },
+        ],
+      },
+    });
+    expect(result.isError).toBeFalsy();
+    expect(
+      (
+        result.structuredContent as {
+          item: { threads: { lastActiveAt: string }[] };
+        }
+      ).item.threads[0]?.lastActiveAt,
+    ).toBe("2024-01-01T00:05:00.000Z");
+  });
 });

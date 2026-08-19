@@ -324,6 +324,7 @@ export interface StudioToolIO {
           hasMessages: boolean;
           costUsd: number | null;
           createdAt: string;
+          lastActiveAt: string;
         }[];
         tags: {
           id: string;
@@ -378,6 +379,7 @@ export interface StudioToolIO {
           hasMessages: boolean;
           costUsd: number | null;
           createdAt: string;
+          lastActiveAt: string;
         }[];
         tags: {
           id: string;
@@ -451,6 +453,7 @@ export interface StudioToolIO {
           hasMessages: boolean;
           costUsd: number | null;
           createdAt: string;
+          lastActiveAt: string;
         }[];
         tags: {
           id: string;
