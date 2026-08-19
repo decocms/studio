@@ -15,7 +15,10 @@
 
 import { useMCPClient, useMCPToolCallQuery } from "@/sdk";
 
-import { extractPullRequestList } from "./github-pr-api.ts";
+import {
+  extractPullRequestList,
+  type GithubMcpClient,
+} from "./github-pr-api.ts";
 import { assertToolOk, extractToolJson } from "./extract-tool-json.ts";
 import type { CheckRunOutput } from "./check-run-output.ts";
 
@@ -148,6 +151,38 @@ export function usePrByBranch(args: RepoArgs & { branch: string | null }) {
       return mapRawPr(arr[0]!);
     },
   });
+}
+
+/**
+ * The most recent merged PR into `base` — in Fast Preview every publish is a
+ * squash-merged PR, so this IS the last publish. Fetched on demand (the
+ * publish popover bundles it into its one suspense load), never polled:
+ * `list_pull_requests` is rate-limit-heavy (see `openPullRequestForBranch`).
+ * `sort: updated` can interleave non-merged closed PRs, hence a small page
+ * filtered client-side.
+ */
+export async function fetchLastPublishedPr(
+  client: GithubMcpClient,
+  args: { owner: string; repo: string; base: string },
+): Promise<PrSummary | null> {
+  const result = await client.callTool({
+    name: "list_pull_requests",
+    arguments: {
+      owner: args.owner,
+      repo: args.repo,
+      state: "closed",
+      base: args.base,
+      sort: "updated",
+      direction: "desc",
+      perPage: 10,
+    },
+  });
+  assertToolOk(result);
+  return (
+    extractPullRequestList(result)
+      .map(mapRawPr)
+      .find((p) => p.merged) ?? null
+  );
 }
 
 /** Max open PRs fetched for the picker; the tail beyond this is not shown. */

@@ -86,14 +86,9 @@ import {
 } from "@/components/sections-editor/page-path-utils";
 import { decoBlockFileViewPath } from "@/components/sections-editor/deco-block-key";
 import { findLivePageResolveType } from "@/components/sections-editor/section-catalog";
-import {
-  buildFastPreviewDraftUrl,
-  buildGlobalSectionPreviewUrl,
-} from "@/components/sections-editor/section-preview-url";
-import {
-  decofileWriteMutationKey,
-  useDecofileDraft,
-} from "@/components/sections-editor/decofile-api";
+import { buildGlobalSectionPreviewUrl } from "@/components/sections-editor/section-preview-url";
+import { useFastPreviewDraftUrl } from "@/components/sections-editor/use-fast-preview-draft-url";
+import { decofileWriteMutationKey } from "@/components/sections-editor/decofile-api";
 import { useCreatePage } from "@/components/sections-editor/use-create-page";
 import { CreatePageModal } from "@/components/sections-editor/create-page-modal";
 import { toast } from "sonner";
@@ -547,13 +542,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // bumped by every save). No sandbox, no SSE — a new version after a save is
   // still what re-navigates the frame.
   //
-  // Computed BEFORE `display`: it is an input to that decision, so it must not
-  // depend on `display.mode` in turn.
-  const decofileDraft = useDecofileDraft(
-    fastPreviewEnabled && virtualMcpId && branch
-      ? { orgSlug: org.slug, virtualMcpId, branch }
-      : null,
-  );
   // Autosave indicator: an in-flight block write shows the same thin top bar
   // as navigation. In sandbox mode the daemon's `.deco/` change SSE drives the
   // bar; sandbox-less has no daemon, so the mutation itself is the signal. The
@@ -568,23 +556,19 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         branch ?? "",
       ),
     }) > 0;
-  const draftPreviewUrl =
-    fastPreviewEnabled &&
-    previewServerUrl &&
-    decofileDraft &&
-    virtualMcpId &&
-    branch
-      ? buildFastPreviewDraftUrl({
-          previewServerUrl,
-          apiHost: decofileDraft.apiHost,
+  // Computed BEFORE `display`: it is an input to that decision, so it must not
+  // depend on `display.mode` in turn.
+  const { url: draftPreviewUrl } = useFastPreviewDraftUrl(
+    fastPreviewEnabled && virtualMcpId && branch
+      ? {
           orgSlug: org.slug,
           virtualMcpId,
           branch,
-          token: decofileDraft.token,
-          version: decofileDraft.version,
+          previewServerUrl: previewServerUrl ?? null,
           path: resolvedPath,
-        })
-      : null;
+        }
+      : null,
+  );
 
   // The recorded previewUrl flips previewState to "iframe" as soon as the
   // sandbox handle exists — well before the public preview proxy is routable —

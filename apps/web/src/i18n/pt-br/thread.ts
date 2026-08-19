@@ -166,6 +166,7 @@ export const thread = {
   "thread.publishDialog.loadingChanges": "Carregando alterações…",
   "thread.publishDialog.mergeFailed":
     "Alterações foram enviadas e PR #{prNumber} está aberto, mas a mesclagem falhou: {message}",
+  "thread.publishDialog.openingComparison": "Abrindo a comparação…",
   "thread.publishDialog.opensPullRequestInto":
     "Abre um pull request para {baseBranch} para revisão.",
   "thread.publishDialog.publishedTo": "Publicado em {baseBranch}",
@@ -185,4 +186,43 @@ export const thread = {
   "thread.publishDialog.viewOnGithub": "Ver no GitHub",
   "thread.publishDialog.viewPr": "Ver PR",
   "thread.publishDialog.visitPreview": "Abrir o Preview",
+  "thread.publishPopover.blocksGroup": "Blocos",
+  "thread.publishPopover.chipEdited": "Editado",
+  "thread.publishPopover.chipNew": "Novo",
+  "thread.publishPopover.chipRemoved": "Removido",
+  "thread.publishPopover.emptyHint":
+    "Suas alterações mais recentes já estão no ar.",
+  "thread.publishPopover.everythingLive": "Tudo publicado",
+  "thread.publishPopover.failedDiscard": "Falha ao descartar alterações",
+  "thread.publishPopover.globalSection": "Seção global",
+  "thread.publishPopover.lastPublished": "Última publicação {when}",
+  "thread.publishPopover.lastPublishedBy":
+    "Última publicação {when} por {name}",
+  "thread.publishPopover.needsReviewGeneric":
+    "Estas alterações precisam da revisão de um colega antes de irem ao ar",
+  "thread.publishPopover.newPage": "Página nova",
+  "thread.publishPopover.newPageSections": "Página nova com {count} seções",
+  "thread.publishPopover.otherGroup": "Outras alterações",
+  "thread.publishPopover.pagesGroup": "Páginas",
+  "thread.publishPopover.preview": "Visualizar",
+  "thread.publishPopover.publish": "Publicar",
+  "thread.publishPopover.publishCount": "Publicar {count} alterações",
+  "thread.publishPopover.publishCountInProduction":
+    "Publicar {count} alterações em produção",
+  "thread.publishPopover.publishOneInProduction":
+    "Publicar 1 alteração em produção",
+  "thread.publishPopover.publishOne": "Publicar 1 alteração",
+  "thread.publishPopover.publishedTo": "Publicado em {host}",
+  "thread.publishPopover.publishing": "Publicando…",
+  "thread.publishPopover.requestApproval": "Pedir aprovação",
+  "thread.publishPopover.discarded": "{name} descartado",
+  "thread.publishPopover.discard": "Descartar",
+  "thread.publishPopover.discardAll": "Descartar tudo",
+  "thread.publishPopover.discardAllConfirm":
+    "Descartar todas as alterações? Isso não pode ser desfeito.",
+  "thread.publishPopover.discardConfirm": "Descartar {name}?",
+  "thread.publishPopover.reviewing": "Revisando conteúdo…",
+  "thread.publishPopover.siteConfiguration": "Configuração do site",
+  "thread.publishPopover.versionNote": "Nota da versão",
+  "thread.publishPopover.versionNotePlaceholder": "Descreva esta atualização…",
 } satisfies Record<keyof typeof threadEn, string>;

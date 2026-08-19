@@ -45,13 +45,20 @@ import { KEYS } from "@/lib/query-keys";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { resolveFastPreview } from "@/sdk/fast-preview";
 import { decofileWriteMutationKey } from "../../sections-editor/decofile-api.ts";
+import { useFastPreviewDraftUrl } from "../../sections-editor/use-fast-preview-draft-url.ts";
+import { fillPathTemplate } from "../../sections-editor/page-path-utils.ts";
+import {
+  lastPreviewPageKey,
+  readLastPreviewPage,
+} from "../../sandbox/preview/last-preview-page.ts";
 import { useChatTask } from "../../chat/index";
+import { CmsPublishPopover } from "./cms-publish-popover.tsx";
 import {
   isCmsStateSettling,
   selectCmsHeaderButton,
   type CmsAction,
 } from "./cms-panel-state.ts";
-import { PublishDialog, type PublishDialogIntent } from "./publish-dialog.tsx";
+import { PublishDialog } from "./publish-dialog.tsx";
 import {
   fetchGitStatus,
   hasPublishableLocalWork,
@@ -87,8 +94,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   const vm = useVirtualMCP(virtualMcpId);
   const { currentBranch: branch, setCurrentTaskBranch } = useChatTask();
   const [publishOpen, setPublishOpen] = useState(false);
-  const [dialogIntent, setDialogIntent] =
-    useState<PublishDialogIntent>("publish-only");
+  const [popoverOpen, setPopoverOpen] = useState(false);
 
   const attachment = resolveGithubAttachment(vm);
   const githubRepo =
@@ -96,6 +102,25 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
       ? attachment.repo
       : null;
   const { previewServerUrl } = resolveFastPreview(vm?.metadata);
+
+  const lastPage = branch
+    ? readLastPreviewPage(lastPreviewPageKey(org.slug, virtualMcpId, branch))
+    : null;
+  const draftPath = lastPage
+    ? fillPathTemplate(lastPage.path, lastPage.params)
+    : "/";
+  // Same draft URL the iframe's "Open in new tab" hands out (see the hook doc).
+  const draftPreview = useFastPreviewDraftUrl(
+    branch
+      ? {
+          orgSlug: org.slug,
+          virtualMcpId,
+          branch,
+          previewServerUrl,
+          path: draftPath,
+        }
+      : null,
+  );
 
   /** Poll-free on purpose: every call forwards to GitHub; save hooks invalidate this key. */
   const statusQuery = useQuery({
@@ -291,18 +316,13 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     t,
   });
 
-  const openDialog = (intent: PublishDialogIntent) => {
-    setDialogIntent(intent);
-    setPublishOpen(true);
-  };
-
   const dispatch = (action: CmsAction) => {
     switch (action) {
       case "publish":
-        openDialog("publish-only");
+        setPopoverOpen(true);
         return;
       case "request-approval":
-        openDialog("open-pr");
+        setPublishOpen(true);
         return;
       case "get-latest":
         if (!githubHeadBranch || getLatest.isPending) return;
@@ -329,20 +349,48 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
 
   const action = button.action;
 
+  const splitButton = (
+    <SplitButton
+      size="sm"
+      label={button.label}
+      variant={button.variant}
+      disabled={Boolean(button.disabled) || !action}
+      loading={Boolean(button.loading)}
+      {...(action && !button.loading ? { icon: actionIcon(action) } : {})}
+      {...(button.tooltip ? { tooltip: button.tooltip } : {})}
+      items={items}
+      menuAriaLabel={t("thread.cmsActions.moreActionsAriaLabel")}
+      onClick={action ? () => dispatch(action) : undefined}
+    />
+  );
+
   return (
     <>
-      <SplitButton
-        size="sm"
-        label={button.label}
-        variant={button.variant}
-        disabled={Boolean(button.disabled) || !action}
-        loading={Boolean(button.loading)}
-        {...(action && !button.loading ? { icon: actionIcon(action) } : {})}
-        {...(button.tooltip ? { tooltip: button.tooltip } : {})}
-        items={items}
-        menuAriaLabel={t("thread.cmsActions.moreActionsAriaLabel")}
-        onClick={action ? () => dispatch(action) : undefined}
-      />
+      {branch ? (
+        <CmsPublishPopover
+          open={popoverOpen}
+          onOpenChange={setPopoverOpen}
+          orgSlug={org.slug}
+          orgId={org.id}
+          virtualMcpId={virtualMcpId}
+          branch={branch}
+          baseBranch={baseBranch}
+          githubConnectionId={githubRepo.connectionId ?? ""}
+          owner={githubRepo.owner}
+          repo={githubRepo.name}
+          publishPolicy={normalizePublishPolicy(vm?.metadata?.publishPolicy)}
+          draftPreviewUrl={draftPreview.url}
+          destinationHost={draftPreview.host}
+          onRequestApproval={() => setPublishOpen(true)}
+          openPullRequest={pr?.state === "open" ? pr : null}
+          onPullRequestChanged={refreshPrState}
+          onPublished={() => publishCompletion.mutateAsync()}
+        >
+          {splitButton}
+        </CmsPublishPopover>
+      ) : (
+        splitButton
+      )}
       {branch ? (
         <PublishDialog
           open={publishOpen}
@@ -355,9 +403,9 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
           githubConnectionId={githubRepo.connectionId ?? ""}
           owner={githubRepo.owner}
           repo={githubRepo.name}
-          previewUrl={previewServerUrl}
+          previewUrl={draftPreview.url ?? previewServerUrl}
           publishPolicy={normalizePublishPolicy(vm?.metadata?.publishPolicy)}
-          dialogIntent={dialogIntent}
+          dialogIntent="open-pr"
           headSha={branchMeta.kind === "ready" ? branchMeta.headSha : null}
           openPullRequest={pr?.state === "open" ? pr : null}
           onPullRequestChanged={refreshPrState}

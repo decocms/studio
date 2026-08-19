@@ -226,7 +226,7 @@ function isTailwindCssPath(path: string): boolean {
 }
 
 /** Rewritten as a side effect of any save, and never reverted by an undo. */
-function isGeneratedArtifactPath(path: string): boolean {
+export function isGeneratedArtifactPath(path: string): boolean {
   return (
     isBlocksGenJsonPath(path) ||
     isTailwindCssPath(path) ||

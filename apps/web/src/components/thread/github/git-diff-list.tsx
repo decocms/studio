@@ -9,6 +9,7 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { ChevronRight, DotsHorizontal, File06 } from "@untitledui/icons";
 import { useState } from "react";
+import { useT } from "@/i18n/use-t.ts";
 import { getLanguageFromPath } from "../../sandbox/preview/file-explorer/utils.ts";
 import type { GitDiffResult } from "./sandbox-git-api.ts";
 
@@ -22,11 +23,69 @@ function editorTheme(): "vs" | "vs-dark" {
   return document.documentElement.classList.contains("dark") ? "vs-dark" : "vs";
 }
 
+const GHOST_DIFF_ROWS = [
+  { width: "w-3/4", tone: "ctx" },
+  { width: "w-1/2", tone: "del" },
+  { width: "w-3/5", tone: "add" },
+  { width: "w-2/5", tone: "ctx" },
+  { width: "w-4/5", tone: "add" },
+  { width: "w-1/2", tone: "ctx" },
+] as const;
+
+/** Skeleton shown while the Monaco bundle loads — shaped like a diff so the
+ *  editor fades into rows that were already there instead of a blank flash. */
+function DiffLoadingGhost({ height }: { height: string }) {
+  const t = useT();
+  return (
+    <div
+      style={{ height }}
+      className="flex w-full flex-col gap-1.5 overflow-hidden px-3 py-2"
+    >
+      {GHOST_DIFF_ROWS.map((row, i) => (
+        <div
+          key={i}
+          className={cn(
+            "flex items-center gap-2 rounded px-1 py-0.5",
+            row.tone === "del" && "bg-destructive/5",
+            row.tone === "add" && "bg-success/5",
+          )}
+        >
+          <div
+            className={cn(
+              "h-2 w-4 shrink-0 animate-pulse rounded-sm bg-muted",
+              row.tone === "del" && "bg-destructive/20",
+              row.tone === "add" && "bg-success/25",
+            )}
+          />
+          <div
+            className={cn(
+              "h-2 animate-pulse rounded-sm bg-muted",
+              row.width,
+              row.tone === "del" && "bg-destructive/20",
+              row.tone === "add" && "bg-success/25",
+            )}
+          />
+        </div>
+      ))}
+      <div className="flex items-center justify-center pt-1 text-[11px] text-muted-foreground">
+        {t("thread.publishDialog.openingComparison")}
+      </div>
+    </div>
+  );
+}
+
 export interface GitDiffListProps {
   diff: GitDiffResult | null | undefined;
   emptyMessage?: string;
   rowClassName?: string;
   onDiscardFile?: (filepath: string) => void | Promise<void>;
+  /**
+   * Render only the always-open editors, no per-file header rows — for hosts
+   * that already name the file (the publish popover's change cards).
+   */
+  hideFileRows?: boolean;
+  /** Monaco diff height; the default suits the full-size dialog. */
+  editorHeight?: string;
 }
 
 export function GitDiffList({
@@ -34,6 +93,8 @@ export function GitDiffList({
   emptyMessage = "No file changes in the working tree",
   rowClassName = "px-6",
   onDiscardFile,
+  hideFileRows = false,
+  editorHeight = "380px",
 }: GitDiffListProps) {
   const [expandedDiffFile, setExpandedDiffFile] = useState<string | null>(null);
   const [discardConfirmFile, setDiscardConfirmFile] = useState<string | null>(
@@ -65,6 +126,34 @@ export function GitDiffList({
           : isDeleted
             ? "bg-destructive"
             : "bg-warning";
+
+        if (hideFileRows) {
+          return (
+            <div key={filepath}>
+              <DiffEditor
+                original={from ?? ""}
+                modified={to ?? ""}
+                language={language}
+                theme={theme}
+                height={editorHeight}
+                loading={<DiffLoadingGhost height={editorHeight} />}
+                options={{
+                  readOnly: true,
+                  renderSideBySide: false,
+                  minimap: { enabled: false },
+                  scrollBeyondLastLine: false,
+                  fontSize: 12,
+                  lineNumbers: "off",
+                  lineNumbersMinChars: 0,
+                  lineDecorationsWidth: 12,
+                  folding: false,
+                  glyphMargin: false,
+                  renderOverviewRuler: false,
+                }}
+              />
+            </div>
+          );
+        }
 
         return (
           <div key={filepath}>
@@ -166,7 +255,8 @@ export function GitDiffList({
                   modified={to ?? ""}
                   language={language}
                   theme={theme}
-                  height="380px"
+                  height={editorHeight}
+                  loading={<DiffLoadingGhost height={editorHeight} />}
                   options={{
                     readOnly: true,
                     renderSideBySide: false,
