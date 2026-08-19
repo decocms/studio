@@ -21,6 +21,7 @@ import {
   ThreadEntitySchema,
   ThreadUpdateDataSchema,
 } from "@decocms/shared/thread/schema";
+import { parseThreadRuntime } from "@decocms/shared/thread/session-runtime";
 
 /**
  * Input schema for updating threads
@@ -103,7 +104,13 @@ export const COLLECTION_THREADS_UPDATE = defineTool({
     }
 
     if (data.metadata !== undefined) {
-      updateData.metadata = data.metadata;
+      // `runtime` is stamped once at creation and immutable (session-runtime.ts); preserve it across this full-replacement write.
+      const existingRuntime = parseThreadRuntime(
+        (existing.metadata as { runtime?: unknown } | null)?.runtime,
+      );
+      updateData.metadata = existingRuntime
+        ? { ...data.metadata, runtime: existingRuntime }
+        : data.metadata;
     }
 
     if (data.branch !== undefined) {
