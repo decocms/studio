@@ -57,82 +57,52 @@ export class DownstreamTokenStorage {
     const encryptedClientSecret = data.clientSecret
       ? await this.vault.encrypt(data.clientSecret)
       : null;
+    const expiresAt = data.expiresAt?.toISOString() ?? null;
 
-    // Use transaction to prevent race conditions during upsert
-    return await this.db.transaction().execute(async (trx) => {
-      // Check for existing token within transaction
-      const existing = await trx
-        .selectFrom("downstream_tokens")
-        .select(["id", "createdAt"])
-        .where("connectionId", "=", data.connectionId)
-        .executeTakeFirst();
-
-      if (existing) {
-        // Update existing token
-        await trx
-          .updateTable("downstream_tokens")
-          .set({
-            accessToken: encryptedAccessToken,
-            refreshToken: encryptedRefreshToken,
-            scope: data.scope,
-            expiresAt: data.expiresAt?.toISOString() ?? null,
-            clientId: data.clientId,
-            clientSecret: encryptedClientSecret,
-            tokenEndpoint: data.tokenEndpoint,
-            updatedAt: now,
-          })
-          .where("id", "=", existing.id)
-          .execute();
-
-        return {
-          id: existing.id,
-          connectionId: data.connectionId,
-          accessToken: data.accessToken,
-          refreshToken: data.refreshToken,
-          scope: data.scope,
-          expiresAt: data.expiresAt,
-          createdAt: existing.createdAt as unknown as string,
-          updatedAt: now,
-          clientId: data.clientId,
-          clientSecret: data.clientSecret,
-          tokenEndpoint: data.tokenEndpoint,
-        };
-      }
-
-      // Create new token
-      const id = generatePrefixedId("dtok");
-
-      await trx
-        .insertInto("downstream_tokens")
-        .values({
-          id,
-          connectionId: data.connectionId,
+    // Atomic upsert on the connectionId unique index — race-free under concurrent calls.
+    const row = await this.db
+      .insertInto("downstream_tokens")
+      .values({
+        id: generatePrefixedId("dtok"),
+        connectionId: data.connectionId,
+        accessToken: encryptedAccessToken,
+        refreshToken: encryptedRefreshToken,
+        scope: data.scope,
+        expiresAt,
+        clientId: data.clientId,
+        clientSecret: encryptedClientSecret,
+        tokenEndpoint: data.tokenEndpoint,
+        createdAt: now as unknown as string,
+        updatedAt: now as unknown as string,
+      })
+      .onConflict((oc) =>
+        oc.column("connectionId").doUpdateSet({
           accessToken: encryptedAccessToken,
           refreshToken: encryptedRefreshToken,
           scope: data.scope,
-          expiresAt: data.expiresAt?.toISOString() ?? null,
+          expiresAt,
           clientId: data.clientId,
           clientSecret: encryptedClientSecret,
           tokenEndpoint: data.tokenEndpoint,
-          createdAt: now as unknown as string,
-          updatedAt: now as unknown as string,
-        })
-        .execute();
+          updatedAt: now,
+        }),
+      )
+      .returning(["id", "createdAt"])
+      .executeTakeFirstOrThrow();
 
-      return {
-        id,
-        connectionId: data.connectionId,
-        accessToken: data.accessToken,
-        refreshToken: data.refreshToken,
-        scope: data.scope,
-        expiresAt: data.expiresAt,
-        createdAt: now as unknown as string,
-        updatedAt: now as unknown as string,
-        clientId: data.clientId,
-        clientSecret: data.clientSecret,
-        tokenEndpoint: data.tokenEndpoint,
-      };
-    });
+    return {
+      id: row.id,
+      connectionId: data.connectionId,
+      accessToken: data.accessToken,
+      refreshToken: data.refreshToken,
+      scope: data.scope,
+      expiresAt: data.expiresAt,
+      createdAt: row.createdAt as unknown as string,
+      updatedAt: now,
+      clientId: data.clientId,
+      clientSecret: data.clientSecret,
+      tokenEndpoint: data.tokenEndpoint,
+    };
   }
 
   async delete(connectionId: string): Promise<void> {

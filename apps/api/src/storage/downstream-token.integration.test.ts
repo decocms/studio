@@ -113,4 +113,30 @@ describe("DownstreamTokenStorage", () => {
       .executeTakeFirst();
     expect(Number(count?.c)).toBe(1);
   });
+
+  it("should not throw on concurrent upserts for the same connection", async () => {
+    const base: DownstreamTokenData = {
+      connectionId: "conn_atomic",
+      accessToken: "access_a",
+      refreshToken: "refresh_a",
+      scope: "scope_a",
+      expiresAt: new Date(Date.now() + 3600000),
+      clientId: "client_a",
+      clientSecret: "secret_a",
+      tokenEndpoint: "https://example.com/token",
+    };
+
+    // Racing refreshes must not trip the unique index on connectionId.
+    await Promise.all([
+      storage.upsert(base),
+      storage.upsert({ ...base, accessToken: "access_b" }),
+    ]);
+
+    const count = await database.db
+      .selectFrom("downstream_tokens")
+      .select(database.db.fn.count("id").as("c"))
+      .where("connectionId", "=", "conn_atomic")
+      .executeTakeFirst();
+    expect(Number(count?.c)).toBe(1);
+  });
 });
