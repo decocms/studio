@@ -86,7 +86,10 @@ import {
 } from "@/components/sections-editor/page-path-utils";
 import { decoBlockFileViewPath } from "@/components/sections-editor/deco-block-key";
 import { findLivePageResolveType } from "@/components/sections-editor/section-catalog";
-import { buildGlobalSectionPreviewUrl } from "@/components/sections-editor/section-preview-url";
+import {
+  buildGlobalSectionPreviewUrl,
+  resolveSectionPreviewBase,
+} from "@/components/sections-editor/section-preview-url";
 import { useFastPreviewDraftUrl } from "@/components/sections-editor/use-fast-preview-draft-url";
 import { decofileWriteMutationKey } from "@/components/sections-editor/decofile-api";
 import { useCreatePage } from "@/components/sections-editor/use-create-page";
@@ -367,6 +370,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     inset?.entity?.id === virtualMcpId &&
     resolveFastPreview(inset.entity.metadata, activeThreadMeta).active;
 
+  // Base for the `/live/previews` global-section render: production under Fast Preview (no dev server), else the sandbox dev server.
+  const sectionPreviewBase = resolveSectionPreviewBase({
+    sandboxUrl: previewUrl,
+    previewServerUrl,
+    fastPreviewActive: fastPreviewEnabled,
+  });
+
   // Decofile pages/global sections for the URL bar dropdown. Not gated on the
   // dev server: when it's down we read the committed `.deco/*.gen.json` snapshot
   // so the dropdown still lists pages; the live routes take over once it's up.
@@ -619,7 +629,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         ? // Fast Preview's draft route honours the variant matcher override like the sandbox dev server, so append it here too.
           withVariantMatcherOverride(
             withDeviceHint(
-              draftPreviewUrl ??
+              directPreviewUrl ??
+                draftPreviewUrl ??
                 new URL(resolvedPath, display.iframeBase!).href,
               previewDeviceSize,
             ),
@@ -706,7 +717,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const sharedTarget = workspace.state.target;
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- synchronizes the independent Blocks selection with the mounted Preview iframe
   useEffect(() => {
-    if (!sharedTarget || !previewUrl || !meta) return;
+    if (!sharedTarget || !sectionPreviewBase || !meta) return;
     if (sharedTarget.kind === "page") {
       const params = pathParamsByPage[sharedTarget.key] ?? {};
       intendedPathRef.current = fillPathTemplate(sharedTarget.path, params);
@@ -735,12 +746,16 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         setActiveLoaderKey(null);
         setActiveGlobalSection(section);
         setDirectPreviewUrl(
-          buildGlobalSectionPreviewUrl(previewUrl, livePageRt, section.key),
+          buildGlobalSectionPreviewUrl(
+            sectionPreviewBase,
+            livePageRt,
+            section.key,
+          ),
         );
       }
     }
     // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- derived helpers must not retrigger selection synchronization every render
-  }, [sharedTarget, previewUrl, meta, pathParamsByPage]);
+  }, [sharedTarget, sectionPreviewBase, meta, pathParamsByPage]);
 
   // Publish the page Preview is showing to the shared workspace so the Blocks
   // panel follows it — Blocks has no page navigator, it edits whatever page
@@ -1122,7 +1137,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   };
 
   const navigatePreviewToGlobalSection = (section: GlobalSectionEntry) => {
-    if (!previewUrl || !meta) {
+    if (!sectionPreviewBase || !meta) {
       toast.error(t("sandbox.preview.previewMetadataNotReady"));
       return;
     }
@@ -1130,7 +1145,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     intendedPathRef.current = null;
     const livePageRt = findLivePageResolveType(meta);
     const url = buildGlobalSectionPreviewUrl(
-      previewUrl,
+      sectionPreviewBase,
       livePageRt,
       section.key,
     );
