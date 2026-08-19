@@ -1,7 +1,6 @@
 /**
  * MainPanelWithDrawer — composes the tab body (with its internal per-tab
- * ErrorBoundary) above the sandbox PreviewDrawer. The drawer is gated on
- * `hasClonableSource` so non-cloneable agents (e.g. decopilot) don't see it.
+ * ErrorBoundary) above the sandbox PreviewDrawer, which `shouldShowTerminalDrawer` gates.
  */
 
 import { useSearch } from "@tanstack/react-router";
@@ -9,21 +8,9 @@ import { useChatTask } from "@/components/chat/chat-context";
 import { useInsetContext } from "@/layouts/agent-shell-layout";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { MainPanelContent } from "@/layouts/main-panel-tabs";
-import { OVERLAY_TABS } from "./tab-id";
+import { resolveFastPreview } from "@/sdk/fast-preview";
+import { shouldShowTerminalDrawer } from "./terminal-drawer-gate";
 import { PreviewDrawerHost } from "./preview-drawer-host";
-import {
-  TerminalVisibilityProvider,
-  useTerminalVisibility,
-} from "./terminal-visibility";
-
-// Renders the bottom terminal drawer only when the user has toggled it on
-// (via the preview's ⋯ menu). Separate component so it can consume the
-// visibility context that MainPanelWithDrawer provides.
-function TerminalDrawerSlot() {
-  const terminal = useTerminalVisibility();
-  if (!terminal?.visible) return null;
-  return <PreviewDrawerHost />;
-}
 
 export function MainPanelWithDrawer({
   virtualMcpId,
@@ -40,17 +27,22 @@ export function MainPanelWithDrawer({
   const hasClonableSource =
     agentHasClonableSource(inset?.entity?.metadata) ||
     agentHasClonableSource(activeTask?.metadata);
-  const showDrawer =
-    hasClonableSource && !(typeof main === "string" && OVERLAY_TABS.has(main));
+  // The one thread-aware gate, scoped to this agent's entity by the id match.
+  const fastPreviewActive =
+    inset?.entity?.id === virtualMcpId &&
+    resolveFastPreview(inset.entity.metadata, activeTask?.metadata).active;
+  const showDrawer = shouldShowTerminalDrawer({
+    hasClonableSource,
+    fastPreviewActive,
+    mainTab: typeof main === "string" ? main : null,
+  });
 
   return (
-    <TerminalVisibilityProvider virtualMcpId={virtualMcpId}>
-      <div className="flex h-full min-h-0 flex-col">
-        <div className="flex-1 min-h-0 overflow-hidden">
-          <MainPanelContent taskId={taskId} virtualMcpId={virtualMcpId} />
-        </div>
-        {showDrawer && <TerminalDrawerSlot />}
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <MainPanelContent taskId={taskId} virtualMcpId={virtualMcpId} />
       </div>
-    </TerminalVisibilityProvider>
+      {showDrawer && <PreviewDrawerHost />}
+    </div>
   );
 }

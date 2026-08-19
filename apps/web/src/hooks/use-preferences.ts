@@ -12,12 +12,6 @@ interface Preferences {
   theme: ThemeMode;
   language: Locale;
   /**
-   * Default visibility of the sandbox preview terminal on surfaces that have
-   * one. `false` keeps the historical opt-in behavior; `true` shows it by
-   * default. A per-VM Show/Hide choice still overrides this default.
-   */
-  terminalVisibleByDefault: boolean;
-  /**
    * Task-board lanes hidden by default (`HIDDEN_STATUSES`) that this person has
    * pulled back onto the board. Statuses, not lane indexes, so a reordered or
    * renamed lane can't resurrect the wrong column.
@@ -31,7 +25,6 @@ const DEFAULT_PREFERENCES: Preferences = {
   enableSounds: false,
   theme: "system",
   language: detectLocale(),
-  terminalVisibleByDefault: false,
   shownTaskBoardLanes: [],
 };
 

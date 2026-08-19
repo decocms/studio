@@ -755,11 +755,6 @@ test.describe("hosted runtime boundary", () => {
         [thread.item.id, user.userId],
       );
 
-      await page.addInitScript(
-        (key) => localStorage.setItem(key, JSON.stringify({ visible: true })),
-        `preview-terminal-visible:${agent.item.id}`,
-      );
-
       const workspaceMutationRequests: string[] = [];
       page.on("request", (request) => {
         if (request.method() === "GET") return;
