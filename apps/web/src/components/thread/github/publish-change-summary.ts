@@ -414,34 +414,6 @@ export function buildAutoNote(summary: PublishChangeSummary): string {
   return note.charAt(0).toUpperCase() + note.slice(1);
 }
 
-function describeChange(change: PublishChange): string {
-  const kind =
-    change.kind === "page"
-      ? `Page "${change.name}" (${change.pagePath ?? "/"})`
-      : change.kind === "block"
-        ? `Block "${change.name}"`
-        : `File ${change.name}`;
-  const sections = change.sections
-    .map((s) =>
-      s.fields.length > 0
-        ? `${s.name} (${s.fields.map((f) => f.label).join(", ")})`
-        : s.name,
-    )
-    .join("; ");
-  return sections
-    ? `${kind} ${change.status} — ${sections}`
-    : `${kind} ${change.status}`;
-}
-
-/** Compact content-level context for the CMS-flavored note suggestion. */
-export function buildContentSummaryForLlm(
-  summary: PublishChangeSummary,
-): string {
-  return [...summary.pages, ...summary.blocks, ...summary.other]
-    .map(describeChange)
-    .join("\n");
-}
-
 /** Section count of a parsed page block, across both section shapes. */
 export function countPageSections(
   block: Record<string, unknown> | null,

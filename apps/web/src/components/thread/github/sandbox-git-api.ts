@@ -151,27 +151,12 @@ export async function fetchSuggestCommitMessage(
   orgSlug: string,
   virtualMcpId: string,
   branch: string,
-  payload?: {
-    status: GitStatus;
-    diff: GitDiffResult;
-    /**
-     * "cms": ask for an editor-language version note (no git vocabulary)
-     * written from `contentSummary` — the content-level change list the
-     * Fast Preview publish popover derives from the diff — instead of a
-     * commit message written from file paths.
-     */
-    mode?: "cms";
-    contentSummary?: string;
-  },
+  payload?: { status: GitStatus; diff: GitDiffResult },
 ): Promise<CommitSuggestion> {
   const body = payload
     ? {
         status: payload.status,
         diff: stripGeneratedFilesFromDiff(payload.diff),
-        ...(payload.mode ? { mode: payload.mode } : {}),
-        ...(payload.contentSummary
-          ? { contentSummary: payload.contentSummary }
-          : {}),
       }
     : {};
   const res = await sandboxFetch(

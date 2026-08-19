@@ -2,7 +2,6 @@ import { describe, expect, it } from "bun:test";
 import {
   blockKeyFromDiffPath,
   buildAutoNote,
-  buildContentSummaryForLlm,
   humanizeFieldName,
   revertFieldAtPath,
   sectionDisplayName,
@@ -295,28 +294,6 @@ describe("buildAutoNote", () => {
     );
     expect(note).toBe("Changed 1 file");
     expect(note.toLowerCase()).not.toContain("commit");
-  });
-});
-
-describe("buildContentSummaryForLlm", () => {
-  it("names pages, sections and fields instead of file paths", () => {
-    const summary = summarizePublishChanges(
-      diffOf({
-        [HOME_PATH]: {
-          from: pageJson(),
-          to: pageJson({
-            sections: [
-              { __resolveType: "site/sections/Hero.tsx", title: "New" },
-              { __resolveType: "site/sections/Footer.tsx", links: ["a", "b"] },
-            ],
-          }),
-        },
-      }),
-    );
-    const text = buildContentSummaryForLlm(summary);
-    expect(text).toContain('Page "Home" (/) edited');
-    expect(text).toContain("Hero (Title, Background image)");
-    expect(text).not.toContain(".deco/blocks");
   });
 });
 

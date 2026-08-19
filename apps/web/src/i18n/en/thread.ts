@@ -211,7 +211,6 @@ export const thread = {
   "thread.publishPopover.discardAllConfirm":
     "Discard every change? This can't be undone.",
   "thread.publishPopover.discardConfirm": "Discard {name}?",
-  "thread.publishPopover.reviewPassed": "Content review passed",
   "thread.publishPopover.reviewing": "Reviewing content…",
   "thread.publishPopover.siteConfiguration": "Site configuration",
   "thread.publishPopover.versionNote": "Version note",

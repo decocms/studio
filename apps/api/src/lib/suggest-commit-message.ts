@@ -38,19 +38,6 @@ Return ONLY valid JSON with this shape:
 
 Use sentence case for the title. No markdown fences.`;
 
-const CMS_NOTE_SYSTEM = `You write short version notes for website content updates made by editors in a CMS.
-Return ONLY valid JSON with this shape:
-{"title":"One plain sentence describing the update (max 72 chars)","body":"Optional 1-2 sentence elaboration, or empty string"}
-
-Name pages and sections the way the input names them. Never use developer vocabulary: no "commit", "branch", "merge", "PR", "diff", or file paths. Use sentence case. No markdown fences.`;
-
-export interface SuggestCommitOptions {
-  /** "cms": editor-language version note written from `contentSummary`. */
-  mode?: "cms";
-  /** Content-level change list (pages/sections by name) the client derived. */
-  contentSummary?: string;
-}
-
 function isGeneratedNoise(path: string): boolean {
   return /^static\/.*\.css$/.test(path);
 }
@@ -286,7 +273,6 @@ export async function suggestCommitMessageWithLlm(
   ctx: StudioContext,
   status: GitStatusLike,
   diff: GitDiffLike,
-  options?: SuggestCommitOptions,
 ): Promise<CommitSuggestion> {
   const paths = changedPaths(status, diff);
   if (paths.length === 0) {
@@ -296,18 +282,15 @@ export async function suggestCommitMessageWithLlm(
   const orgId = ctx.organization?.id;
   if (!orgId) return fallbackCommitSuggestion(status, diff);
 
-  const cmsSummary =
-    options?.mode === "cms" ? options.contentSummary?.trim() : undefined;
-
   try {
     const tier = await resolveTier(ctx, "fast");
     const provider = await ctx.aiProviders.activate(tier.credentialId, orgId);
     const model = provider.aiSdk.languageModel(tier.modelId);
-    const summary = cmsSummary ?? buildCommitContextSummary(status, diff);
+    const summary = buildCommitContextSummary(status, diff);
 
     const result = await generateText({
       model,
-      system: cmsSummary ? CMS_NOTE_SYSTEM : COMMIT_SUGGESTION_SYSTEM,
+      system: COMMIT_SUGGESTION_SYSTEM,
       prompt: summary,
       maxOutputTokens: 400,
       temperature: 0.2,

@@ -27,7 +27,6 @@ import {
   Globe01,
   LayoutAlt01,
   Loading01,
-  Stars01,
 } from "@untitledui/icons";
 import { useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { toast } from "sonner";
@@ -45,7 +44,6 @@ import {
 import { lastPublishAttribution } from "./pr-attribution.ts";
 import {
   buildAutoNote,
-  buildContentSummaryForLlm,
   countPageSections,
   revertFieldAtPath,
   summarizePublishChanges,
@@ -57,7 +55,6 @@ import {
   discardGitFiles,
   fetchGitDiff,
   fetchGitStatus,
-  fetchSuggestCommitMessage,
   hasGitLocalWork,
   publishGitChanges,
   readGitHeadBranch,
@@ -247,7 +244,6 @@ function CmsPublishBody({
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string>();
   const [note, setNote] = useState("");
-  const [isGeneratingNote, setIsGeneratingNote] = useState(false);
   const [discardConfirmId, setDiscardConfirmId] = useState<string | null>(null);
   const [discardAllConfirm, setDiscardAllConfirm] = useState(false);
   const [isDiscarding, setIsDiscarding] = useState(false);
@@ -255,48 +251,8 @@ function CmsPublishBody({
   const [showRawJson, setShowRawJson] = useState(false);
 
   const loadStartedRef = useRef(false);
-  /** Live mirror of `note` — async suggestion callbacks must not read a stale
-   *  closure, or an in-flight suggestion would overwrite what the user typed. */
-  const noteRef = useRef("");
-  /** Last machine-written note; user edits are detected by divergence. */
-  const lastAutoNoteRef = useRef("");
 
   const summary = summarizePublishChanges(gitDiff);
-
-  const writeNote = (value: string) => {
-    noteRef.current = value;
-    setNote(value);
-  };
-  const setMachineNote = (value: string) => {
-    lastAutoNoteRef.current = value;
-    writeNote(value);
-  };
-  const userEditedNote = () => noteRef.current !== lastAutoNoteRef.current;
-
-  const fetchNoteSuggestion = (
-    status: GitStatus,
-    diff: GitDiffResult,
-    contentSummary: string,
-  ) => {
-    setIsGeneratingNote(true);
-    fetchSuggestCommitMessage(orgSlug, virtualMcpId, branch, {
-      status,
-      diff,
-      mode: "cms",
-      contentSummary,
-    })
-      .then((suggestion) => {
-        if (userEditedNote()) return;
-        const text = [suggestion.title, suggestion.body]
-          .filter(Boolean)
-          .join("\n\n");
-        if (text.trim()) setMachineNote(text);
-      })
-      .catch(() => {
-        /* best-effort — the deterministic auto note already stands */
-      })
-      .finally(() => setIsGeneratingNote(false));
-  };
 
   const loadGitState = async () => {
     const status = await fetchGitStatus(orgSlug, virtualMcpId, branch);
@@ -323,12 +279,8 @@ function CmsPublishBody({
       setIsLoading(true);
       setLoadError(undefined);
       try {
-        const { status, diff } = await loadGitState();
-        const loaded = summarizePublishChanges(diff);
-        if (!userEditedNote()) setMachineNote(buildAutoNote(loaded));
-        if (loaded.count > 0) {
-          fetchNoteSuggestion(status, diff, buildContentSummaryForLlm(loaded));
-        }
+        const { diff } = await loadGitState();
+        setNote(buildAutoNote(summarizePublishChanges(diff)));
       } catch (error) {
         setLoadError(
           error instanceof Error
@@ -340,12 +292,6 @@ function CmsPublishBody({
       }
     })();
   }
-
-  const regenerateNote = () => {
-    if (!gitStatus || !gitDiff || summary.count === 0) return;
-    lastAutoNoteRef.current = noteRef.current;
-    fetchNoteSuggestion(gitStatus, gitDiff, buildContentSummaryForLlm(summary));
-  };
 
   const { gate } = useResolvedPublishGate({
     orgSlug,
@@ -716,14 +662,8 @@ function CmsPublishBody({
         </div>
       );
     }
-    if (gate.allowed) {
-      return (
-        <div className="flex items-center gap-2 border-t px-4 py-2.5 text-xs text-success">
-          <CheckCircle className="size-3.5" />
-          {t("thread.publishPopover.reviewPassed")}
-        </div>
-      );
-    }
+    // Allowed → no row: content-only diffs never ran the judge, so stay silent.
+    if (gate.allowed) return null;
     return (
       <div className="flex items-start gap-2 border-t px-4 py-2.5 text-xs text-warning">
         <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
@@ -917,29 +857,12 @@ function CmsPublishBody({
             {renderGroup(t("thread.publishPopover.otherGroup"), summary.other)}
 
             <div className="space-y-1.5 pt-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[13px] font-medium">
-                  {t("thread.publishPopover.versionNote")}
-                </span>
-                <button
-                  type="button"
-                  className="flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
-                  onClick={regenerateNote}
-                  disabled={isGeneratingNote || isPublishing}
-                >
-                  {isGeneratingNote ? (
-                    <Loading01 className="size-3 animate-spin" />
-                  ) : (
-                    <Stars01 className="size-3" />
-                  )}
-                  {isGeneratingNote
-                    ? t("thread.publishDialog.generating")
-                    : t("thread.publishDialog.regenerate")}
-                </button>
-              </div>
+              <span className="text-[13px] font-medium">
+                {t("thread.publishPopover.versionNote")}
+              </span>
               <Textarea
                 value={note}
-                onChange={(e) => writeNote(e.target.value)}
+                onChange={(e) => setNote(e.target.value)}
                 placeholder={t("thread.publishPopover.versionNotePlaceholder")}
                 rows={2}
                 className="resize-none text-[13px]"

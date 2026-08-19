@@ -963,19 +963,10 @@ export const createSandboxRoutes = () => {
         const body = (await c.req.json().catch(() => ({}))) as {
           status?: GitStatusLike;
           diff?: GitDiffLike;
-          mode?: unknown;
-          contentSummary?: unknown;
         };
 
         const clientStatus = body.status;
         const clientDiff = body.diff;
-        const suggestOptions =
-          body.mode === "cms" && typeof body.contentSummary === "string"
-            ? {
-                mode: "cms" as const,
-                contentSummary: body.contentSummary.slice(0, 8000),
-              }
-            : undefined;
         const hasClientDiff =
           clientDiff != null &&
           typeof clientDiff.diffs === "object" &&
@@ -1010,12 +1001,7 @@ export const createSandboxRoutes = () => {
                     githubGitDiff(client, claim.branch),
                   ]);
                 })();
-        const suggestion = await suggestCommitMessageWithLlm(
-          ctx,
-          status,
-          diff,
-          suggestOptions,
-        );
+        const suggestion = await suggestCommitMessageWithLlm(ctx, status, diff);
         return c.json(suggestion, 200, SANDBOX_PROXY_CACHE_HEADERS);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
