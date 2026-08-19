@@ -14,4 +14,9 @@ description: |
   ApplicationSet that generates previews, and preview policy must be able to
   change without bumping — and therefore rolling — the application chart.
 type: application
-version: 0.1.0
+# 0.1.1: pass namespaceLabels through to the studio chart, which renders the
+# preview's Namespace itself as of chart-deco-studio 0.14.3. Without this the
+# namespace is created with no gateway selector label and the HTTPRoute
+# attaches to nothing.
+
+version: 0.1.1
