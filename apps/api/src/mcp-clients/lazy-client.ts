@@ -345,8 +345,9 @@ export function createLazyClient(
         throw err;
       }
       const schema = await inputSchema();
+      // A retry that still reports invalid params must not be returned as a success.
       const retried = await retryCoerced(schema);
-      if (retried) return retried;
+      if (retried && !invalidParamsResultText(retried)) return retried;
       throw enrichInvalidParams(err, toolName, schema, args);
     }
 
