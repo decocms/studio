@@ -316,32 +316,58 @@ function schemaHasNestedArrayField(schema: SchemaProperty, depth = 0): boolean {
 }
 
 /**
- * The object field keys in this scope that need their own label stamped onto the
+ * Whether a field VALUE contains — at any nesting level — a drill-down array (an
+ * array with ≥1 object item). The value-based counterpart to
+ * {@link schemaHasNestedArrayField}, needed for block-ref (loader) fields whose
+ * nested arrays live in the resolved value, not the field's own schema.
+ */
+function valueHasNestedDrillArray(value: unknown, depth = 0): boolean {
+  if (depth > 6 || value == null || typeof value !== "object") return false;
+  if (Array.isArray(value)) {
+    return value.some(
+      (item) =>
+        item != null && typeof item === "object" && !Array.isArray(item),
+    );
+  }
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (k.startsWith("__")) continue;
+    if (valueHasNestedDrillArray(v, depth + 1)) return true;
+  }
+  return false;
+}
+
+/**
+ * The sibling field keys in this scope that need their own label stamped onto the
  * breadcrumb trail when drilling into a nested array item, to stay unambiguous.
  *
- * A key qualifies when it's an object holding a nested drill-down array AND at
- * least one sibling is also such an object: a bare `[…, itemLabel]` trail then
- * matches the nested array in BOTH (e.g. `shelfProps` / `shelfPropsOffer`, each
- * with `cardLayout.productTags`), so {@link resolveActiveFieldKey} can't tell
- * them apart and the panel falls back to showing every sibling. Stamping the
- * disambiguated label makes the trail name the right one — the resolver's
- * strong-match path (the `labelsMatch(head, label)` branch of the object loop)
- * then pins it.
+ * A key qualifies when it holds a nested drill-down array AND at least one sibling
+ * also does: a bare `[…, itemLabel]` trail then matches the nested array in BOTH,
+ * so {@link resolveActiveFieldKey} can't tell them apart and the panel falls back
+ * to showing every sibling. Stamping the disambiguated label makes the trail name
+ * the right one — the resolver's strong-match path then pins it. Two shapes hit
+ * this: object siblings (`shelfProps` / `shelfPropsOffer`, each with
+ * `cardLayout.productTags`) and block-ref loaders (a PLP `page` + a
+ * `RangePriceProps`, both carrying `selectedFacets`).
  *
- * Complements the same-display-label collision check in `schema-form.tsx`:
- * distinct-titled siblings like these don't collide by label, so that check
- * alone misses them. Computed in a single pass over `keys` (one schema walk per
- * object sibling) so callers don't re-walk every sibling per rendered field.
+ * Object siblings are detected by SCHEMA ({@link schemaHasNestedArrayField});
+ * block-ref/loader siblings by their resolved VALUE
+ * ({@link valueHasNestedDrillArray}), since their arrays aren't in the field
+ * schema. Computed once per scope so callers don't re-walk per rendered field.
  */
-export function objectSiblingsNeedingAncestorCrumb(
+export function siblingsNeedingAncestorCrumb(
   keys: string[],
   properties: Record<string, SchemaProperty>,
+  objValue: Record<string, unknown> = {},
 ): Set<string> {
-  const withNestedArray = keys.filter((key) => {
+  const holders = keys.filter((key) => {
     const schema = properties[key];
-    return schema?.type === "object" && schemaHasNestedArrayField(schema);
+    if (!schema) return false;
+    if (schema.type === "object" && schemaHasNestedArrayField(schema)) {
+      return true;
+    }
+    return valueHasNestedDrillArray(objValue[key]);
   });
-  return withNestedArray.length > 1 ? new Set(withNestedArray) : new Set();
+  return holders.length > 1 ? new Set(holders) : new Set();
 }
 
 function asObjectRecord(value: unknown): Record<string, unknown> {
@@ -594,6 +620,7 @@ function resolveActiveFieldKeyInScope(
   // breadcrumb crumb.  The one whose data actually owns the nested field
   // wins; the rest are kept as a fallback.
   let blockRefFallback: string | null = null;
+  const valueOwners: string[] = [];
   for (const key of keys) {
     const schema = properties[key];
     if (schema?.type !== "block-ref") continue;
@@ -610,7 +637,8 @@ function resolveActiveFieldKeyInScope(
       // decofile before scanning.
       const rawVal = objValue[key];
       const saved = decofile ? unwrapBlockReference(rawVal, decofile) : null;
-      if (valueOwnsItemCrumb(saved?.data ?? rawVal, head)) return key;
+      if (valueOwnsItemCrumb(saved?.data ?? rawVal, head))
+        valueOwners.push(key);
       continue;
     }
 
@@ -630,7 +658,11 @@ function resolveActiveFieldKeyInScope(
 
     if (!blockRefFallback) blockRefFallback = key;
   }
+  // A field the crumb NAMES (head === its label) beats a value-ownership guess.
   if (blockRefFallback) return blockRefFallback;
+  // One owner → narrow to it; two or more → ambiguous, so keep every sibling shown.
+  if (valueOwners.length === 1) return valueOwners[0]!;
+  if (valueOwners.length > 1) return null;
 
   return null;
 }

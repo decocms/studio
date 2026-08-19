@@ -11,8 +11,8 @@ import {
   fieldDisplayLabel,
   isArrayDrillDownField,
   normalizeBreadcrumbLabel,
-  objectSiblingsNeedingAncestorCrumb,
   prependCrumbIfAbsent,
+  siblingsNeedingAncestorCrumb,
   resolveActiveFieldKey,
   resolveArrayItemSelection,
   siblingFieldLabel,
@@ -300,13 +300,13 @@ describe("resolveActiveFieldKey — distinct-titled siblings with an array crumb
     ).toBe("shelfPropsOffer");
   });
 
-  test("objectSiblingsNeedingAncestorCrumb flags both confusable containers", () => {
-    const needing = objectSiblingsNeedingAncestorCrumb(keys, properties);
+  test("siblingsNeedingAncestorCrumb flags both confusable containers", () => {
+    const needing = siblingsNeedingAncestorCrumb(keys, properties);
     expect(needing.has("shelfProps")).toBe(true);
     expect(needing.has("shelfPropsOffer")).toBe(true);
   });
 
-  test("objectSiblingsNeedingAncestorCrumb is empty without a confusable sibling", () => {
+  test("siblingsNeedingAncestorCrumb is empty without a confusable sibling", () => {
     const lone = {
       shelfProps: {
         type: "object",
@@ -315,9 +315,49 @@ describe("resolveActiveFieldKey — distinct-titled siblings with an array crumb
       },
       title: { type: "string", title: "Title" },
     } satisfies Record<string, SchemaProperty>;
-    expect(
-      objectSiblingsNeedingAncestorCrumb(Object.keys(lone), lone).size,
-    ).toBe(0);
+    expect(siblingsNeedingAncestorCrumb(Object.keys(lone), lone).size).toBe(0);
+  });
+
+  test("siblingsNeedingAncestorCrumb flags block-ref loaders that both carry a nested array (by value)", () => {
+    // page + RangePriceProps have no nested-array SCHEMA, only nested-array VALUES.
+    const properties = {
+      page: {
+        type: "block-ref",
+        title: "Page",
+        anyOfRefs: [
+          { resolveType: "vtex/loaders/productListingPage.ts", title: "PLP" },
+        ],
+      },
+      RangePriceProps: {
+        type: "block-ref",
+        title: "Range Price Props",
+        anyOfRefs: [
+          {
+            resolveType: "site/loaders/RangePriceData.ts",
+            title: "Range Price",
+          },
+        ],
+      },
+    } satisfies Record<string, SchemaProperty>;
+    const objValue = {
+      page: {
+        __resolveType: "vtex/loaders/productListingPage.ts",
+        selectedFacets: [{ key: "category-1", value: "joias" }],
+      },
+      RangePriceProps: {
+        __resolveType: "site/loaders/RangePriceData.ts",
+        ProductListingPage: {
+          selectedFacets: [{ key: "category-1", value: "joias" }],
+        },
+      },
+    };
+    const needing = siblingsNeedingAncestorCrumb(
+      Object.keys(properties),
+      properties,
+      objValue,
+    );
+    expect(needing.has("page")).toBe(true);
+    expect(needing.has("RangePriceProps")).toBe(true);
   });
 });
 
@@ -682,6 +722,61 @@ describe("resolveActiveFieldKey", () => {
         { label: "category-1", itemIndex: 0 },
       ]),
     ).toBe("page");
+  });
+
+  test("two loaders carrying the same facet: bare crumb is ambiguous, ancestor crumb pins it", () => {
+    // Real montecarlo SearchResult: `page` + `RangePriceProps` both carry a selectedFacets item labelled "category-1".
+    const properties = {
+      page: {
+        title: "Page",
+        type: "block-ref",
+        anyOfRefs: [
+          { resolveType: "vtex/loaders/productListingPage.ts", title: "PLP" },
+        ],
+      },
+      RangePriceProps: {
+        title: "Range Price Props",
+        type: "block-ref",
+        anyOfRefs: [
+          {
+            resolveType: "site/loaders/RangePriceData.ts",
+            title: "Range Price",
+          },
+        ],
+      },
+    } satisfies Record<string, SchemaProperty>;
+    const objValue = {
+      page: {
+        __resolveType: "vtex/loaders/productListingPage.ts",
+        selectedFacets: [{ key: "category-1", value: "joias" }],
+      },
+      RangePriceProps: {
+        __resolveType: "site/loaders/RangePriceData.ts",
+        ProductListingPage: {
+          selectedFacets: [{ key: "category-1", value: "joias" }],
+        },
+      },
+    };
+    const keys = Object.keys(properties);
+    // Bare crumb → both own it → ambiguous → keep both siblings visible.
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, [
+        { label: "category-1", itemIndex: 0 },
+      ]),
+    ).toBeNull();
+    // The ancestor crumb (stamped by siblingsNeedingAncestorCrumb) pins the owner.
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, [
+        "Page",
+        { label: "category-1", itemIndex: 0 },
+      ]),
+    ).toBe("page");
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, [
+        "Range Price Props",
+        { label: "category-1", itemIndex: 0 },
+      ]),
+    ).toBe("RangePriceProps");
   });
 
   test("narrows to the loader that actually owns the item, not the first block-ref", () => {
