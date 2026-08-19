@@ -2,6 +2,13 @@ apiVersion: v2
 name: chart-deco-studio
 description: Helm chart for deco Studio — supports inline secrets, external secretName, and AWS Secrets Manager via ExternalSecret
 type: application
+# 0.14.8: the migration Job gets activeDeadlineSeconds. backoffLimit only counts
+# failed pods, so the two ways this Job actually broke — no pod at all, and a pod
+# stuck on a missing ConfigMap — left it Running indefinitely. Because it is a
+# sync hook, that blocked the whole operation, and a blocked operation cannot be
+# superseded: the ApplicationSet could not delete the Application, so the preview
+# ignored its label being removed and outlived the 48h TTL.
+#
 # 0.14.7: wait-for-schema now gates the worker on BOTH public.kysely_migration
 # and dbos.dbos_migrations. 0.14.6's migrate-on-boot init container runs
 # migrate.js then migrate-dbos.js as two sequential steps; gating on the
@@ -65,7 +72,7 @@ type: application
 # when disabled, so existing releases are unaffected.
 # 0.12.4: chart-managed API/worker dispatch roles now use
 # STUDIO_DISPATCH_ROLE; legacy overrides are rejected.
-version: 0.14.7
+version: 0.14.8
 appVersion: "latest"
 
 dependencies:

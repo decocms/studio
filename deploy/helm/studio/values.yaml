@@ -188,6 +188,13 @@ preview:
     # An existing Role in that namespace, owned by the sandbox-env chart.
     roleName: ""
 
+  # Hard deadline for the migration Job. backoffLimit only counts failed pods;
+  # a Job that hangs without producing one — missing ConfigMap, missing
+  # ServiceAccount — never trips it and blocks the sync operation forever, which
+  # in turn blocks teardown and the TTL. Generous: a cold migration measures
+  # around 3 minutes, nearly all of it waiting for the image.
+  migrateDeadlineSeconds: 900
+
   # Resources for the short-lived migration Job.
   jobResources:
     requests:

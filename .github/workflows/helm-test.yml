@@ -210,6 +210,29 @@ jobs:
 
           grep -q "studio-pr-42-preview-migrate" /tmp/preview.yaml \
             || fail "preview render is missing the migration Job"
+          # A hook Job that hangs blocks the sync operation, and a blocked
+          # operation cannot be superseded — so the ApplicationSet cannot delete
+          # the Application, and the preview outlives its TTL. backoffLimit does
+          # not help: a Job with no pod, or a pod stuck pulling, never counts a
+          # failed attempt.
+          python3 - <<'DEADLINE'
+          import sys, yaml
+          bad = []
+          for d in yaml.safe_load_all(open("/tmp/preview.yaml")):
+              if not d or d["kind"] != "Job":
+                  continue
+              ann = d["metadata"].get("annotations") or {}
+              if "argocd.argoproj.io/hook" not in ann:
+                  continue
+              if not d["spec"].get("activeDeadlineSeconds"):
+                  bad.append(d["metadata"]["name"])
+          if bad:
+              print("::error::hook Jobs need activeDeadlineSeconds or a hang blocks "
+                    "teardown and the TTL: " + ", ".join(bad))
+              sys.exit(1)
+          print("every hook Job has a deadline")
+          DEADLINE
+
           grep -q "studio-pr-42-postgres" /tmp/preview.yaml \
             || fail "preview render has no Postgres — the DB must live and die with the namespace"
 
