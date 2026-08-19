@@ -106,6 +106,14 @@ export function delegatesToSuperAgent(
     : previous.status === "todo";
 }
 
+/** Forward-only terminal lanes (see the activity comment above): once a card
+ *  lands here it's out of the review loop, same as "done" — `archived` skips
+ *  review just as effectively as completing it does. */
+const REVIEW_CLOSING_STATUSES = new Set<TaskBoardItemStatus>([
+  "done",
+  "archived",
+]);
+
 /** `task-run-context` withholds REVIEW_DECISION and PROMOTE_TO_PRODUCTION for this
  *  invariant; this tool sets `status` freely, so it needs the same guard. */
 export function closesOwnReview(
@@ -113,7 +121,8 @@ export function closesOwnReview(
   previousStatus: TaskBoardItemStatus | undefined,
   isTaskRun: boolean,
 ): boolean {
-  const completesTask = inputStatus === "done";
+  const completesTask =
+    inputStatus !== undefined && REVIEW_CLOSING_STATUSES.has(inputStatus);
   const awaitingReview = previousStatus === "in_review";
   return isTaskRun && completesTask && awaitingReview;
 }
@@ -210,9 +219,10 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     const isTaskRun = taskRunContextStore.getStore() !== undefined;
     if (closesOwnReview(input.status, previous?.status, isTaskRun)) {
       throw new Error(
-        "This task is In Review — a run can't move it to Done. Leave it in " +
-          "in_review for the reviewer; only a person, or TASK_BOARD_REVIEW_DECISION " +
-          "on a reviewer's own run, completes a task under review.",
+        "This task is In Review — a run can't move it to Done or Archived. " +
+          "Leave it in in_review for the reviewer; only a person, or " +
+          "TASK_BOARD_REVIEW_DECISION on a reviewer's own run, closes out a " +
+          "task under review.",
       );
     }
 

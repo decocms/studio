@@ -147,11 +147,15 @@ describe("closesOwnReview", () => {
     expect(closesOwnReview("done", "in_review", true)).toBe(true);
   });
 
+  it("catches a run archiving a task under review — archiving skips review just like completing", () => {
+    expect(closesOwnReview("archived", "in_review", true)).toBe(true);
+  });
+
   it("allows a run to complete a task that needed no code change", () => {
     expect(closesOwnReview("done", "in_progress", true)).toBe(false);
   });
 
-  it("allows a run to move a task under review anywhere but Done", () => {
+  it("allows a run to move a task under review anywhere but Done/Archived", () => {
     expect(closesOwnReview("in_progress", "in_review", true)).toBe(false);
     expect(closesOwnReview(undefined, "in_review", true)).toBe(false);
   });
