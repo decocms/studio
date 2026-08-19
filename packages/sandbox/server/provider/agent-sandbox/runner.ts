@@ -781,6 +781,12 @@ export class AgentSandboxProvider implements SandboxProvider {
           (await this.getRecord(handle).catch(() => null)) ??
           (await this.resurrectByHandle(handle).catch(() => null));
         if (fresh) {
+          // Drain the discarded 401 response so its connection is released.
+          try {
+            await resp.body?.cancel();
+          } catch {
+            /* ignore */
+          }
           activeRec = fresh;
           resp = await proxyDaemonRequest(
             fresh.daemonUrl,
