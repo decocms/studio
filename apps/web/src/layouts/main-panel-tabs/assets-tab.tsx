@@ -1,6 +1,6 @@
 /**
  * Assets tab — a native, per-site browser over the S3 bucket associated with
- * this site's `metadata.siteSlug` (matched via `matchSiteSlugConfig`). Replaces
+ * this project's name (matched via `matchSiteSlugConfig`). Replaces
  * the deco.cx admin-MCP `fetch_assets` iframe view: it lists, uploads, and
  * deletes objects directly against the configured bucket using the same
  * FILE_* tools the CMS file picker uses. The tab only appears when a bucket is
@@ -63,10 +63,8 @@ import {
 export function AssetsTab({ virtualMcpId }: { virtualMcpId: string }) {
   const entity = useVirtualMCP(virtualMcpId);
   const configs = useFileConfigs();
-  const siteSlug =
-    (entity?.metadata as { siteSlug?: string | null } | undefined)?.siteSlug ??
-    null;
-  const config = matchSiteSlugConfig(configs, siteSlug);
+  const siteName = entity?.title ?? null;
+  const config = matchSiteSlugConfig(configs, siteName);
 
   if (!config) {
     return <NoBucketState />;
