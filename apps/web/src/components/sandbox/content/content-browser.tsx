@@ -304,9 +304,17 @@ function ContentBrowserReady({
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
-  /** Sandbox daemon origin — `null` without a pod. Reads only. */
+  /**
+   * Sandbox dev-server origin — `null` without a pod, so anything that
+   * executes against it (loaders, actions, `@options` fields) stays disabled
+   * in a sandbox-less session, exactly as before.
+   */
   previewUrl: string | null;
-  /** Where this session's site pages are served from, sandbox or not. */
+  /**
+   * Origin for LINKS to the site's own pages, which a sandbox-less session
+   * points at its preview server. Read-only navigation targets the browser
+   * follows — never a fetch the server makes on the user's behalf.
+   */
   sitePreviewUrl: string | null;
   devServerReady: boolean;
   sandboxWarming: boolean;
@@ -1053,7 +1061,7 @@ function ContentBrowserReady({
             orgSlug={orgSlug}
             virtualMcpId={virtualMcpId}
             branch={branch}
-            previewUrl={sitePreviewUrl}
+            previewUrl={previewUrl}
             meta={meta}
             decofile={decofile}
             kind={activeCollection}
@@ -1087,7 +1095,7 @@ function ContentBrowserReady({
                   schemaPending={isAppSchemaLoading(siteApp.resolveType, [
                     "seo",
                   ])}
-                  previewBaseUrl={sitePreviewUrl}
+                  previewBaseUrl={previewUrl}
                 />
               ) : (
                 <EmptyMessage
@@ -1116,7 +1124,7 @@ function ContentBrowserReady({
                 orgSlug={orgSlug}
                 virtualMcpId={virtualMcpId}
                 branch={branch}
-                previewUrl={sitePreviewUrl}
+                previewUrl={previewUrl}
                 meta={meta}
                 decofile={decofile}
                 isCreating={saveBlock.isPending}
@@ -1150,7 +1158,7 @@ function ContentBrowserReady({
                   block={decofile[selection.key] as Record<string, unknown>}
                   decofile={decofile}
                   meta={meta}
-                  previewBaseUrl={sitePreviewUrl}
+                  previewBaseUrl={previewUrl}
                   schemaPending={isAppSchemaLoading(
                     typeof (decofile[selection.key] as Record<string, unknown>)
                       ?.__resolveType === "string"
@@ -1222,7 +1230,7 @@ function ContentBrowserReady({
                   virtualMcpId={virtualMcpId}
                   branch={branch}
                   previewReady
-                  previewUrl={sitePreviewUrl ?? undefined}
+                  previewUrl={previewUrl ?? undefined}
                   currentPath={
                     selection.collection === "pages" ? selection.path : "/"
                   }

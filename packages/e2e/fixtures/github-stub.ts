@@ -33,12 +33,6 @@
  *   POST  /repos/{o}/{r}/pulls                        -> { number, html_url }
  *   GET   /repos/{o}/{r}/compare/{base}...{head}      -> { ahead_by, behind_by, merge_base_commit, files, commits }
  *
- * Preview-server stand-in (a deco runtime's public surface), so a sandbox-less
- * Fast Preview session's `preview-invoke` / `preview-fetch` proxying has a real
- * origin to reach — point `metadata.previewServerUrl` at this stub:
- *   POST /deco/invoke/{resolveType...}                -> echoes { resolveType, props }
- *   GET  /__preview-page                              -> a tiny HTML page
- *
  * Test-only admin endpoints (no auth):
  *   GET  /health
  *   POST /__admin/repos                    seed a repo (see SeedRepoBody)
@@ -304,32 +298,6 @@ function segmentsOf(pathname: string): string[] {
     .split("/")
     .filter((s) => s.length > 0)
     .map((s) => decodeURIComponent(s));
-}
-
-/**
- * The deco-runtime routes a preview server exposes, enough for the sandbox
- * proxy's `preview-invoke` / `preview-fetch` to have somewhere real to go. The
- * invoke echo lets a test assert the resolveType and props actually arrived.
- */
-async function handlePreviewServer(
-  req: IncomingMessage,
-  res: ServerResponse,
-  url: URL,
-): Promise<void> {
-  if (req.method === "POST" && url.pathname.startsWith("/deco/invoke/")) {
-    const resolveType = url.pathname.slice("/deco/invoke/".length);
-    const { __resolveType: _ignored, ...props } = JSON.parse(
-      (await readBody(req)) || "{}",
-    ) as Record<string, unknown>;
-    json(res, 200, { resolveType, props });
-    return;
-  }
-  if (req.method === "GET" && url.pathname === "/__preview-page") {
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-    res.end('<html><body><a href="/granado/cremes">Cremes</a></body></html>');
-    return;
-  }
-  notFound(res);
 }
 
 async function handleAdmin(
@@ -838,7 +806,7 @@ export function createGithubStubServer(): Server {
         await handleRepos(req, res, url);
         return;
       }
-      await handlePreviewServer(req, res, url);
+      notFound(res);
     };
     dispatch().catch((error) => {
       json(res, 500, {
