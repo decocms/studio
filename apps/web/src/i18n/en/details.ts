@@ -111,7 +111,10 @@ export const details = {
   "details.prompt.notFoundTitle": "Prompt not found",
   "details.prompt.title": "Title",
   "details.prompt.titlePlaceholder": "Untitled prompt",
+  "details.settingsTab.authenticate": "Authenticate",
   "details.settingsTab.authenticationRequired": "Authentication Required",
+  "details.settingsTab.connectAccountCta": "Connect {title}",
+  "details.settingsTab.connectYourAccount": "Connect your account",
   "details.settingsTab.manualAuthenticationDescription":
     "This server requires an API key or token that must be configured manually. Check the server's documentation for instructions on obtaining credentials.",
   "details.settingsTab.manualAuthenticationRequired":
@@ -120,11 +123,17 @@ export const details = {
     "No additional configuration is needed. Everything is ready to go.",
   "details.settingsTab.oauthAuthenticationDescription":
     "This connection requires OAuth authentication to access resources.",
+  "details.settingsTab.perUserAuthDescription":
+    "When enabled, each member of your org authorises this connection with their own account. Audit logs at the provider show the real person acting. Disable to share a single org-wide token.",
+  "details.settingsTab.perUserAuthTitle": "Per-user authentication",
+  "details.settingsTab.perUserOauthDescription":
+    "This connection runs each tool call as the member who triggered it. Authorise with your own {title} account to start using these tools — your activity will show up in the provider's audit log under your name.",
   "details.settingsTab.serverAllSet": "This server is all set!",
   "details.settingsTab.serverError": "Server Error",
   "details.settingsTab.serverErrorDescription":
     "The MCP server is currently experiencing issues. Please try again later or check the server's status.",
   "details.settingsTab.viewReadme": "View README",
+  "details.settingsTab.yourAccount": "your account",
   "details.tool.cancel": "Cancel",
   "details.tool.connectionNotFound": "Connection not found",
   "details.tool.connectionNotFoundMessage":

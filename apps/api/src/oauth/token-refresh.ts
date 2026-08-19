@@ -99,12 +99,13 @@ async function refreshAndStoreOnce(
     // must not nuke the user's auth — that turns every blip in the upstream
     // OAuth server into a forced manual reconnect.
     if (result.permanent === true) {
-      await tokenStorage.delete(token.connectionId);
+      await tokenStorage.delete(token.connectionId, token.userId);
     }
     return { accessToken: null, permanent: result.permanent === true };
   }
   await tokenStorage.upsert({
     connectionId: token.connectionId,
+    userId: token.userId,
     accessToken: result.accessToken,
     refreshToken: result.refreshToken ?? token.refreshToken,
     scope: result.scope ?? token.scope,
@@ -173,9 +174,14 @@ export async function getValidDownstreamAccessToken(params: {
   connectionUrl?: string | null;
   tokenStorage: DownstreamTokenStorage;
   bufferMs?: number;
+  /**
+   * Identity of the token to fetch. `null` (default) selects the shared
+   * connection-scoped token; a user id selects that member's per-user token.
+   */
+  userId?: string | null;
 }): Promise<ValidDownstreamAccessTokenResult> {
-  const { connectionId, connectionUrl, tokenStorage } = params;
-  const token = await tokenStorage.get(connectionId);
+  const { connectionId, connectionUrl, tokenStorage, userId = null } = params;
+  const token = await tokenStorage.get(connectionId, userId);
   if (!token) return { state: "missing", accessToken: null };
 
   const refreshable = canRefresh(token);
@@ -188,7 +194,7 @@ export async function getValidDownstreamAccessToken(params: {
   }
 
   if (!refreshable) {
-    await tokenStorage.delete(connectionId);
+    await tokenStorage.delete(connectionId, userId);
     return { state: "expired_without_refresh", accessToken: null };
   }
 

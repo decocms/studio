@@ -88,6 +88,7 @@ const mockTokenGet = mock(
   async (_connectionId: string): Promise<DownstreamToken | null> => ({
     id: "dtok_1",
     connectionId: "conn_github_1",
+    userId: null,
     accessToken: "ghu_test_token_123",
     refreshToken: null,
     scope: null,
@@ -117,6 +118,7 @@ mock.module("../../storage/downstream-token", () => ({
         return {
           id: "dtok_1",
           connectionId: data.connectionId,
+          userId: data.userId ?? null,
           accessToken: data.accessToken,
           refreshToken: data.refreshToken,
           scope: data.scope,
@@ -331,6 +333,7 @@ describe("SANDBOX_START", () => {
     mockTokenGet.mockImplementation(async () => ({
       id: "dtok_1",
       connectionId: "conn_github_1",
+      userId: null,
       accessToken: "ghu_test_token_123",
       refreshToken: null,
       scope: null,
@@ -724,6 +727,7 @@ describe("SANDBOX_START", () => {
     mockTokenGet.mockImplementation(async () => ({
       id: "dtok_1",
       connectionId: "conn_github_1",
+      userId: null,
       accessToken: "ghu_stale_token",
       refreshToken: "ghr_refresh_123",
       scope: "repo",
@@ -963,6 +967,7 @@ describe("SANDBOX_START", () => {
     mockTokenGet.mockImplementation(async () => ({
       id: "dtok_1",
       connectionId: "conn_github_1",
+      userId: null,
       accessToken: "ghu_stale_token",
       refreshToken: "ghr_refresh_123",
       scope: "repo",

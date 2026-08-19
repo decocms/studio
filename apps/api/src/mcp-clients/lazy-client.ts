@@ -30,6 +30,7 @@ import {
   recordSuccess,
 } from "./circuit-breaker";
 import { clientFromConnection } from "./client";
+import { isPerUserAuthorizationRequiredError } from "./outbound/errors";
 import { invalidateConnectionCaches } from "./mcp-cache-invalidation";
 import {
   fetchWithCache,
@@ -76,10 +77,21 @@ async function isReadOnlyTool(
 
 /**
  * Cache scope for a connection's read-only results. Defaults to "org" (shared
- * across all members). The per-connection "user" opt-out (key by principal) is
- * a follow-up; the cache already keys by scope, so it's a resolver change only.
+ * across all members). Connections with `auth_mode: "per_user"` are keyed by
+ * the calling principal instead: their downstream results are fetched with
+ * the CALLER's own token (each member may see different data for the same
+ * arguments), so an org-shared cache entry would leak one member's results
+ * to another. An unidentifiable caller gets an isolated bucket rather than
+ * the org-shared one — never widen scope on missing identity.
  */
-function resolveReadCacheScope(): ReadCacheScope {
+function resolveReadCacheScope(
+  connection: ConnectionEntity,
+  ctx: StudioContext,
+): ReadCacheScope {
+  if (connection.auth_mode === "per_user") {
+    const userId = ctx.auth.user?.id ?? ctx.auth.apiKey?.userId;
+    return { kind: "user", userId: userId ?? "unidentified" };
+  }
   return { kind: "org" };
 }
 
@@ -152,7 +164,14 @@ export function createLazyClient(
           // Clear cached promise so transient failures don't permanently
           // break the client — next call will retry the connection.
           realClientPromise = null;
-          recordFailure(connection.id);
+          // A per-user authorization prompt is an expected state for
+          // `auth_mode: "per_user"` connections without a token for the caller,
+          // NOT a downstream outage. Counting it as a failure trips the circuit
+          // breaker, which then 503s the connection — hiding the "Connect your
+          // account" UI and blocking the very OAuth the error is asking for.
+          if (!isPerUserAuthorizationRequiredError(err)) {
+            recordFailure(connection.id);
+          }
           throw err;
         });
       realClientPromise = pending;
@@ -265,7 +284,7 @@ export function createLazyClient(
       const result = await readCache.fetch({
         type: "tools/call",
         connectionId: connection.id,
-        scope: resolveReadCacheScope(),
+        scope: resolveReadCacheScope(connection, ctx),
         params: {
           name: toolName,
           arguments: (params as { arguments?: unknown })?.arguments,
@@ -374,7 +393,7 @@ export function createLazyClient(
     const result = await readCache.fetch({
       type: "prompts/get",
       connectionId: connection.id,
-      scope: resolveReadCacheScope(),
+      scope: resolveReadCacheScope(connection, ctx),
       params,
       fetchLive: async () => {
         const real = await getRealClient();
@@ -400,7 +419,7 @@ export function createLazyClient(
     const result = await readCache.fetch({
       type: "resources/read",
       connectionId: connection.id,
-      scope: resolveReadCacheScope(),
+      scope: resolveReadCacheScope(connection, ctx),
       params,
       fetchLive: async () => {
         const real = await getRealClient();

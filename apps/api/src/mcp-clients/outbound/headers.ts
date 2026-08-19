@@ -15,6 +15,23 @@ import { ensureRepoScopedToken } from "@/oauth/github-mint";
 import { getRepoScope } from "@decocms/shared/github-repo-scope";
 import type { ConnectionEntity } from "@/tools/connection/schema";
 import { writeStudioHeader } from "@/core/studio-headers";
+import { PerUserAuthorizationRequiredError } from "./errors";
+
+/**
+ * Build the in-Studio URL a member must open to authorise their own account
+ * against a per-user OAuth connection. The OAuth proxy is mounted at
+ * `/api/:org/oauth-proxy/:connectionId/*` (see
+ * `apps/api/src/api/routes/oauth-proxy.ts`).
+ */
+function buildAuthorizeUrl(ctx: StudioContext, connectionId: string): string {
+  const orgSlug = ctx.organization?.slug;
+  const base = ctx.baseUrl.replace(/\/+$/, "");
+  if (!orgSlug) {
+    // Unscoped fallback — still functional via the legacy unscoped mount.
+    return `${base}/oauth-proxy/${connectionId}/authorize`;
+  }
+  return `${base}/api/${orgSlug}/oauth-proxy/${connectionId}/authorize`;
+}
 
 /**
  * Strip `__binding` from configuration state values before embedding in JWTs.
@@ -162,6 +179,18 @@ async function _buildRequestHeaders(
   // This supports OAuth token refresh for connections that use OAuth
   let accessToken: string | null = null;
 
+  // Pick the downstream token identity by auth_mode:
+  //   - shared:   one row per connection (`userId = null`).
+  //   - per_user: one row per (connection, real caller). The superuser
+  //               fallback used for JWT minting is intentionally NOT applied
+  //               here — we don't want a background process to silently act
+  //               on behalf of the connection creator when each member is
+  //               supposed to bring their own identity.
+  const isPerUser = connection.auth_mode === "per_user";
+  const oauthUserId = isPerUser
+    ? (ctxUser?.id ?? ctx.auth.apiKey?.userId ?? null)
+    : null;
+
   const repoScope = getRepoScope(connection);
   const useLegacyRepoMint = !!repoScope?.sourceConnectionId;
 
@@ -180,6 +209,7 @@ async function _buildRequestHeaders(
       connectionId,
       connectionUrl: connection.connection_url,
       tokenStorage,
+      userId: oauthUserId,
     });
 
     if (tokenResult.accessToken) {
@@ -194,7 +224,19 @@ async function _buildRequestHeaders(
     // connection token below, so no second log here.
   }
 
-  // Fall back to connection token if no cached token
+  // Per-user mode is strict: if the caller has no token of their own at this
+  // point, surface an actionable error pointing to the authorize URL. We must
+  // do this BEFORE the shared `connection_token` fallback so a stale admin
+  // token never leaks an identity to a member that hasn't connected yet.
+  if (isPerUser && !accessToken) {
+    throw new PerUserAuthorizationRequiredError({
+      connectionId,
+      connectionTitle: connection.title,
+      authorizeUrl: buildAuthorizeUrl(ctx, connectionId),
+    });
+  }
+
+  // Fall back to connection token if no cached token (shared mode only).
   if (!accessToken && connection.connection_token) {
     accessToken = connection.connection_token;
   }

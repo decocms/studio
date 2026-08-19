@@ -470,12 +470,20 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
       : undefined;
   const resourceIndicator = resourceOverride ?? connection.connection_url;
 
+  // Scopes advertised by the downstream resource (RFC 9728). Used as the
+  // authorize-leg scope fallback for pre-registered-client providers (e.g.
+  // Google) that reject authorization requests without an explicit scope.
+  let resourceScopes: string[] | undefined;
   if (resourceRes.ok) {
     // Origin has Protected Resource Metadata - use authorization_servers from it
     const resourceData = (await resourceRes.json()) as {
       authorization_servers?: string[];
+      scopes_supported?: string[];
     };
     originAuthServer = resourceData.authorization_servers?.[0];
+    if (Array.isArray(resourceData.scopes_supported)) {
+      resourceScopes = resourceData.scopes_supported;
+    }
   }
 
   // Fall back to origin root if:
@@ -498,6 +506,17 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
     registration_endpoint?: string;
   };
 
+  // Pre-registered OAuth client for providers WITHOUT Dynamic Client
+  // Registration (e.g. accounts.google.com). Operators store the client in
+  // `connection.oauth_config`; the proxy then (a) synthesizes the DCR
+  // response, (b) pins the authorize client_id, and (c) injects the client
+  // secret on the token leg — the secret never reaches the browser.
+  const preRegisteredClient =
+    connection.oauth_config?.clientId &&
+    connection.oauth_config.grantType !== "client_credentials"
+      ? connection.oauth_config
+      : undefined;
+
   // Map endpoint name to URL
   let originEndpointUrl: string | undefined;
   if (endpoint === "authorize") {
@@ -506,6 +525,31 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
     originEndpointUrl = endpoints.token_endpoint;
   } else if (endpoint === "register") {
     originEndpointUrl = endpoints.registration_endpoint;
+    // No downstream DCR but an operator-supplied client exists: answer the
+    // registration ourselves so the standard MCP SDK flow proceeds. The
+    // response advertises `token_endpoint_auth_method: "none"` — the SDK
+    // must NOT try to authenticate the client itself; the proxy's token leg
+    // injects the real secret server-side.
+    if (!originEndpointUrl && preRegisteredClient) {
+      let redirectUris: string[] = [];
+      try {
+        const body = (await c.req.json()) as { redirect_uris?: string[] };
+        if (Array.isArray(body.redirect_uris))
+          redirectUris = body.redirect_uris;
+      } catch {
+        // No/invalid body — fine, redirect_uris stays empty.
+      }
+      return c.json(
+        {
+          client_id: preRegisteredClient.clientId,
+          redirect_uris: redirectUris,
+          token_endpoint_auth_method: "none",
+          grant_types: ["authorization_code", "refresh_token"],
+          response_types: ["code"],
+        },
+        201,
+      );
+    }
   }
 
   if (!originEndpointUrl) {
@@ -557,6 +601,32 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
     // not our proxy. We keep the proxy URL for redirect_uri since that's where we handle the callback.
     if (targetUrl.searchParams.has("resource")) {
       targetUrl.searchParams.set("resource", resourceIndicator);
+    }
+
+    // Pre-registered client (no-DCR providers): pin the client_id and make
+    // sure a scope is present — Google rejects authorization requests with
+    // no scope. Prefer the operator's `oauth_config.scopes`, falling back to
+    // the resource's advertised `scopes_supported`.
+    if (preRegisteredClient) {
+      targetUrl.searchParams.set("client_id", preRegisteredClient.clientId);
+      if (!targetUrl.searchParams.get("scope")) {
+        const scopes = preRegisteredClient.scopes?.length
+          ? preRegisteredClient.scopes
+          : (resourceScopes ?? []);
+        if (scopes.length) {
+          targetUrl.searchParams.set("scope", scopes.join(" "));
+        }
+      }
+      // Google only issues a refresh_token with explicit offline consent.
+      // Harmless no-ops for other providers, so gate on the Google AS.
+      if (targetUrl.hostname.endsWith("google.com")) {
+        if (!targetUrl.searchParams.has("access_type")) {
+          targetUrl.searchParams.set("access_type", "offline");
+        }
+        if (!targetUrl.searchParams.has("prompt")) {
+          targetUrl.searchParams.set("prompt", "consent");
+        }
+      }
     }
 
     // Add smart OAuth params for deco-hosted MCPs to skip org/project selection
@@ -630,6 +700,22 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
       const formData = await c.req.formData();
       if (formData.has("resource")) {
         formData.set("resource", resourceIndicator);
+      }
+      // Pre-registered client (no-DCR providers): the browser flow runs with
+      // `token_endpoint_auth_method: "none"`, so the exchange arrives without
+      // credentials. Inject them here — server-side only — so providers that
+      // require a confidential client (Google) accept the exchange.
+      if (preRegisteredClient) {
+        if (!formData.get("client_id")) {
+          formData.set("client_id", preRegisteredClient.clientId);
+        }
+        if (
+          preRegisteredClient.clientSecret &&
+          !formData.get("client_secret") &&
+          formData.get("client_id") === preRegisteredClient.clientId
+        ) {
+          formData.set("client_secret", preRegisteredClient.clientSecret);
+        }
       }
       const cidRaw = formData.get("client_id");
       const csRaw = formData.get("client_secret");

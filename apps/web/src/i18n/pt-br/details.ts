@@ -115,7 +115,10 @@ export const details = {
   "details.prompt.notFoundTitle": "Prompt não encontrado",
   "details.prompt.title": "Título",
   "details.prompt.titlePlaceholder": "Prompt sem título",
+  "details.settingsTab.authenticate": "Autenticar",
   "details.settingsTab.authenticationRequired": "Autenticação Obrigatória",
+  "details.settingsTab.connectAccountCta": "Conectar {title}",
+  "details.settingsTab.connectYourAccount": "Conecte sua conta",
   "details.settingsTab.manualAuthenticationDescription":
     "Este servidor requer uma chave de API ou token que deve ser configurado manualmente. Verifique a documentação do servidor para instruções sobre como obter credenciais.",
   "details.settingsTab.manualAuthenticationRequired":
@@ -124,11 +127,17 @@ export const details = {
     "Nenhuma configuração adicional é necessária. Tudo está pronto para começar.",
   "details.settingsTab.oauthAuthenticationDescription":
     "Esta conexão requer autenticação OAuth para acessar recursos.",
+  "details.settingsTab.perUserAuthDescription":
+    "Quando ativado, cada membro da organização autoriza esta conexão com a própria conta. Os logs de auditoria do provedor mostram a pessoa real agindo. Desative para compartilhar um único token da organização.",
+  "details.settingsTab.perUserAuthTitle": "Autenticação por usuário",
+  "details.settingsTab.perUserOauthDescription":
+    "Esta conexão executa cada chamada de ferramenta como o membro que a acionou. Autorize com a sua própria conta {title} para começar a usar estas ferramentas — sua atividade aparecerá no log de auditoria do provedor em seu nome.",
   "details.settingsTab.serverAllSet": "Este servidor está pronto!",
   "details.settingsTab.serverError": "Erro no Servidor",
   "details.settingsTab.serverErrorDescription":
     "O servidor MCP está enfrentando problemas no momento. Tente novamente mais tarde ou verifique o status do servidor.",
   "details.settingsTab.viewReadme": "Ver README",
+  "details.settingsTab.yourAccount": "sua conta",
   "details.tool.cancel": "Cancelar",
   "details.tool.connectionNotFound": "Conexão não encontrada",
   "details.tool.connectionNotFoundMessage":

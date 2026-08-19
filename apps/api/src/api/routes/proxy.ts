@@ -30,6 +30,10 @@ import {
   recordFailure,
   recordSuccess,
 } from "@/mcp-clients/circuit-breaker";
+import {
+  isPerUserAuthorizationRequiredError,
+  renderPerUserAuthorizationRequired,
+} from "@/mcp-clients/outbound/errors";
 import { getConnectionCircuitStore } from "@/mcp-clients/connection-circuit-store";
 import { CONNECTION_ERROR_REPROBE_COOLDOWN_MS } from "@/core/constants";
 import { peekRpcMethod, probeDecision } from "./proxy-handshake";
@@ -412,6 +416,15 @@ export const createProxyRoutes = () => {
       } catch (error) {
         if (error instanceof CircuitOpenError) {
           throw error;
+        }
+        // Per-user authorization required is an EXPECTED state for
+        // `auth_mode: "per_user"` connections when the caller has no token yet
+        // — not a downstream outage. Return the 401 challenge (with authorize
+        // URL) WITHOUT tripping the breaker or auto-disabling the connection.
+        // Handled before recordFailure below, which would otherwise open the
+        // circuit and 503 the connection (hiding the OAuth the error asks for).
+        if (isPerUserAuthorizationRequiredError(error)) {
+          return renderPerUserAuthorizationRequired(error);
         }
         // Check if this is an auth error - if so, return appropriate 401
         // Note: This only applies to HTTP connections
