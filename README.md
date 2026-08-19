@@ -1,5 +1,6 @@
 <h1 align="center">deco Studio</h1>
 
+
 <p align="center">
 <em>Open-source · TypeScript-first · Deploy anywhere</em><br/><br/>
 <b>Open-source private AI workspace for organizations.</b>
