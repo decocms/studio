@@ -724,8 +724,8 @@ describe("resolveActiveFieldKey", () => {
     ).toBe("page");
   });
 
-  test("narrows to a GLOBAL-ref loader when the crumb names its nested array field", () => {
-    // Real ALS Backcountry: `page` is a bare ref to a saved loader; the drilled trail carries the "Selected Facets" FIELD label, not an item label.
+  test("narrows to a GLOBAL-ref loader via the folded array label on the item crumb", () => {
+    // Real ALS Backcountry: `page` is a bare ref to a saved loader; the item's label is titleBy-only so the array name rides FOLDED on the crumb (no visible step).
     const properties = {
       page: {
         title: "Page",
@@ -763,8 +763,11 @@ describe("resolveActiveFieldKey", () => {
         properties,
         objValue,
         [
-          "Selected Facets",
-          { label: "productClusterIds > 1211", itemIndex: 0 },
+          {
+            label: "productClusterIds > 1211",
+            itemIndex: 0,
+            arrayLabel: "Selected Facets",
+          },
         ],
         decofile,
       ),
@@ -1159,6 +1162,19 @@ describe("buildArrayDrillDownBreadcrumb", () => {
     });
     expect(trail).toHaveLength(1);
     expect(trail.map(crumbLabel)).not.toContain("ProductTags");
+  });
+
+  test("folds the array label when the item label is schema-only (titleBy)", () => {
+    // titleBy labels can't be recomputed by a parent resolver, so the array label stays folded (invisible) as the disambiguator, even when it's the only array.
+    expect(
+      buildArrayDrillDownBreadcrumb([], "Selected Facets", "cat > 1", 0, {
+        arrayKey: "selectedFacets",
+        hasSiblingDrillDownFields: false,
+        itemLabelFromSchema: true,
+      }),
+    ).toEqual([
+      { label: "cat > 1", itemIndex: 0, arrayLabel: "Selected Facets" },
+    ]);
   });
 
   test("does not duplicate crumbs already in trail", () => {

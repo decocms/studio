@@ -118,10 +118,16 @@ function labelsMatchLoose(a: string, b: string): boolean {
 function arrayCrumbNeededForDisambiguation(
   arrayLabel: string,
   itemLabel: string,
-  opts?: { arrayKey?: string; hasSiblingDrillDownFields?: boolean },
+  opts?: {
+    arrayKey?: string;
+    hasSiblingDrillDownFields?: boolean;
+    itemLabelFromSchema?: boolean;
+  },
 ): boolean {
   return (
     (opts?.hasSiblingDrillDownFields ?? false) ||
+    // Schema-only (titleBy/inline-union) labels can't be recomputed by a parent loader's resolver, so fold the array label as an invisible disambiguator.
+    (opts?.itemLabelFromSchema ?? false) ||
     labelsMatch(itemLabel, arrayLabel) ||
     (opts?.arrayKey != null && labelsMatch(itemLabel, opts.arrayKey))
   );
@@ -150,7 +156,11 @@ export function buildArrayDrillDownBreadcrumb(
   arrayLabel: string,
   itemLabel: string,
   itemIndex: number,
-  opts?: { arrayKey?: string; hasSiblingDrillDownFields?: boolean },
+  opts?: {
+    arrayKey?: string;
+    hasSiblingDrillDownFields?: boolean;
+    itemLabelFromSchema?: boolean;
+  },
 ): Crumb[] {
   const normalizedItem = normalizeBreadcrumbLabel(itemLabel);
   if (
@@ -365,7 +375,12 @@ export function siblingsNeedingAncestorCrumb(
     if (schema.type === "object" && schemaHasNestedArrayField(schema)) {
       return true;
     }
-    return valueHasNestedDrillArray(objValue[key]);
+    // Only CONTAINER fields (a loader/block-ref whose value is a non-array object) get a standalone ancestor crumb; a direct array disambiguates via its folded arrayLabel.
+    const v = objValue[key];
+    if (v != null && typeof v === "object" && !Array.isArray(v)) {
+      return valueHasNestedDrillArray(v);
+    }
+    return false;
   });
   return holders.length > 1 ? new Set(holders) : new Set();
 }
@@ -628,6 +643,10 @@ function resolveActiveFieldKeyInScope(
   // wins; the rest are kept as a fallback.
   let blockRefFallback: string | null = null;
   const valueOwners: string[] = [];
+  // Folded array labels on the trail's item crumbs — match the array's name against a loader's field keys when its item label is schema-only (titleBy).
+  const foldedArrayLabels = breadcrumbPath
+    .map(crumbArrayLabel)
+    .filter((l): l is string => l != null);
   for (const key of keys) {
     const schema = properties[key];
     if (schema?.type !== "block-ref") continue;
@@ -644,8 +663,13 @@ function resolveActiveFieldKeyInScope(
       // decofile before scanning.
       const rawVal = objValue[key];
       const saved = decofile ? unwrapBlockReference(rawVal, decofile) : null;
-      if (valueOwnsItemCrumb(saved?.data ?? rawVal, head))
+      const data = saved?.data ?? rawVal;
+      if (
+        valueOwnsItemCrumb(data, head) ||
+        foldedArrayLabels.some((al) => valueOwnsItemCrumb(data, al))
+      ) {
         valueOwners.push(key);
+      }
       continue;
     }
 
