@@ -731,13 +731,10 @@ export function resolveSchema(
           const nonLoaderBranches = nonNull.filter(
             (a) => !loaderBranches.includes(a),
           );
+          // Built directly (not eagerBranchSchema) so its depth cap can't null this leaf and demote the field to a block-ref picker at deep nesting.
           const plainSchema =
-            nonLoaderBranches.length === 1
-              ? eagerBranchSchema(
-                  nonLoaderBranches[0]!,
-                  depth + 1,
-                  nonNull.length,
-                )
+            nonLoaderBranches.length === 1 && !cyclicUnion
+              ? buildProperty(nonLoaderBranches[0]!, depth + 1, unionSeen)
               : undefined;
 
           return {
