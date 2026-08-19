@@ -29,15 +29,14 @@ export function buildGlobalSectionPreviewUrl(
   return url.toString();
 }
 
+/** Query param carrying the Fast Preview draft pointer. */
+const DRAFT_PARAM = "__draft";
+
 /**
- * Fast Preview URL — the site's own page, rendered against the draft.
- *
- * Points at the REAL page on `previewServerUrl` and carries a `?__draft=` pointer
- * the site's framework resolves by fetching the merged decofile from Studio's
- * decofile API (`/api/:org/decofile/:virtualMcpId/:branch?token=…`) and
- * rendering its own routes against it. Rendering the site's normal route means
- * hydration and in-preview navigation work, instead of a single
- * statically-rendered component.
+ * The `?__draft=` pointer a site's framework resolves to render unpublished
+ * content: it fetches the merged decofile from Studio's decofile API
+ * (`/api/:org/decofile/:virtualMcpId/:branch?token=…`) and renders its own
+ * routes against it, so hydration and in-preview navigation keep working.
  *
  * The pointer is `<authority><path>?token=…@<version>` — never a full URL. The
  * runtime splits on the LAST `@`, validates only the authority against its
@@ -46,9 +45,7 @@ export function buildGlobalSectionPreviewUrl(
  * per version, and a new version after a save is what refreshes the frame —
  * no cache-busting nonce needed.
  */
-export function buildFastPreviewDraftUrl(input: {
-  /** Preview server origin — the deployment the draft renders against. */
-  previewServerUrl: string;
+export function buildDraftPointer(input: {
   /**
    * Studio API authority (host[:port]) serving /api — reported by the
    * decofile API itself (DecofileDraft.apiHost). Not window.location.host:
@@ -63,12 +60,40 @@ export function buildFastPreviewDraftUrl(input: {
   token: string;
   /** Branch head commit sha. */
   version: string;
-  /** Path to render, with any `:param` values already filled in. */
-  path: string;
 }): string {
-  const url = new URL(input.path, input.previewServerUrl);
   const pointer = `${input.apiHost}/api/${input.orgSlug}/decofile/${encodeURIComponent(input.virtualMcpId)}/${encodeURIComponent(input.branch)}?token=${input.token}`;
-  url.searchParams.set("__draft", `${pointer}@${input.version}`);
+  return `${pointer}@${input.version}`;
+}
+
+/**
+ * Stamp a draft pointer onto an already-built site URL. Callers that compute
+ * their own path (blog post/category links) build the URL first and decorate
+ * here; a null pointer (Fast Preview off, or no grant yet) leaves it alone.
+ */
+export function withDraftPointer(
+  url: string,
+  draftPointer: string | null | undefined,
+): string {
+  if (!draftPointer) return url;
+  const next = new URL(url);
+  next.searchParams.set(DRAFT_PARAM, draftPointer);
+  return next.toString();
+}
+
+/**
+ * Fast Preview URL — the site's own page on `previewServerUrl`, carrying the
+ * {@link buildDraftPointer} grant so it renders the unpublished draft.
+ */
+export function buildFastPreviewDraftUrl(
+  input: Parameters<typeof buildDraftPointer>[0] & {
+    /** Preview server origin — the deployment the draft renders against. */
+    previewServerUrl: string;
+    /** Path to render, with any `:param` values already filled in. */
+    path: string;
+  },
+): string {
+  const url = new URL(input.path, input.previewServerUrl);
+  url.searchParams.set(DRAFT_PARAM, buildDraftPointer(input));
   return url.toString();
 }
 

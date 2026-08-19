@@ -3,7 +3,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
-import type { RunBlockSandboxRef } from "@/components/sandbox/content/use-run-block";
+import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
 import { useT } from "@/i18n/use-t.ts";
 import { BlockEditor, type RawBlock } from "./block-registry";
 
@@ -32,7 +32,7 @@ export function BlockRow({
   onChange: (next: RawBlock) => void;
   onDelete: () => void;
   onDuplicate: () => void;
-  sandboxRef?: RunBlockSandboxRef | null;
+  sandboxRef?: PreviewProxyRef | null;
 }) {
   const t = useT();
   const {

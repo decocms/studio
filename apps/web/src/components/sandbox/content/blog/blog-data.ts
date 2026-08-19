@@ -7,8 +7,9 @@
  *
  * On-disk, block files are URL-encoded: the block id
  * `collections/blog/posts/abc` lives at
- * `.deco/blocks/collections%2Fblog%2Fposts%2Fabc.json`. So writes must
- * encode the key into the filename — see `blogBlockFilePath`.
+ * `.deco/blocks/collections%2Fblog%2Fposts%2Fabc.json`. Writes go through the
+ * shared `useSaveBlock`/`useDeleteBlock`, whose `decoBlockFilePath` already
+ * reproduces that encoding.
  */
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { resolveBlockSchemaMetadata } from "@/components/sections-editor/resolve-schema";
@@ -182,15 +183,6 @@ export function buildBlogBlock(
     __resolveType: RESOLVE_TYPE_FOR_KIND[kind],
     [WRAPPER_KEY[kind]]: payload,
   };
-}
-
-/**
- * On-disk block filename. Deco encodes the block id, so slashes become
- * `%2F`. `encodeURIComponent` reproduces deco's exact scheme (verified
- * against existing `collections%2Fblog%2F…` files).
- */
-export function blogBlockFilePath(key: string): string {
-  return `.deco/blocks/${encodeURIComponent(key)}.json`;
 }
 
 // ------------------ Post relations (authors/categories picker) ------------------

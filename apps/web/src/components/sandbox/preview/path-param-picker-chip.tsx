@@ -24,8 +24,8 @@ import { useT } from "@/i18n/use-t.ts";
 import {
   buildPreviewFetchPath,
   buildPreviewInvokePath,
-  type RunBlockSandboxRef,
-} from "@/components/sandbox/content/use-run-block";
+  type PreviewProxyRef,
+} from "@/components/sections-editor/preview-fetch-url";
 import {
   filterPickerOptions,
   mergePickerOptions,
@@ -60,7 +60,7 @@ function kindLabels(
  * `Access-Control-Allow-Origin` for `/deco/invoke`.
  */
 async function invokeLoader(
-  ref: RunBlockSandboxRef,
+  ref: PreviewProxyRef,
   { resolveType, props }: PickerLoaderRequest,
 ): Promise<unknown> {
   const res = await fetch(buildPreviewInvokePath(ref), {
@@ -81,7 +81,7 @@ async function invokeLoader(
  * the homepage-links fallback source to discover real category/product URLs.
  */
 async function fetchPreviewPage(
-  ref: RunBlockSandboxRef,
+  ref: PreviewProxyRef,
   path: string,
 ): Promise<string> {
   const res = await fetch(buildPreviewFetchPath(ref, path), {
@@ -100,7 +100,7 @@ async function fetchPreviewPage(
  * merge. Two fetches at most; a failed drill-in still returns the categories.
  */
 async function fetchSiteLinkOptions(
-  ref: RunBlockSandboxRef,
+  ref: PreviewProxyRef,
   source: OptionSource,
   ctx: OptionPayloadContext,
 ): Promise<PathParamOption[]> {
@@ -132,7 +132,7 @@ async function fetchSiteLinkOptions(
  * query and preview.tsx's auto-fill query use this, sharing one cache entry.
  */
 function pickerInvokeKey(
-  ref: RunBlockSandboxRef,
+  ref: PreviewProxyRef,
   source: OptionSource,
   term: string,
 ) {
@@ -149,7 +149,7 @@ function pickerInvokeKey(
  * long as one call succeeds.
  */
 async function fetchOptions(
-  ref: RunBlockSandboxRef,
+  ref: PreviewProxyRef,
   source: OptionSource,
   term: string,
   ctx: OptionPayloadContext,
@@ -180,7 +180,7 @@ async function fetchOptions(
 
 /** query options shared by the chip's modal and the headless auto-fill. */
 function pickerQuery(
-  ref: RunBlockSandboxRef,
+  ref: PreviewProxyRef,
   source: OptionSource,
   term: string,
   ctx: OptionPayloadContext,
@@ -273,7 +273,7 @@ export function PathParamPickerChip({
   template: string;
   paramName: string;
   value: string;
-  sandboxRef: RunBlockSandboxRef;
+  sandboxRef: PreviewProxyRef;
   onCommit: (value: string) => void;
 }) {
   const t = useT();
@@ -592,7 +592,7 @@ export function PathParamAutoFill({
   sources: OptionSource[];
   template: string;
   paramName: string;
-  sandboxRef: RunBlockSandboxRef;
+  sandboxRef: PreviewProxyRef;
   onFill: (value: string) => void;
 }) {
   const ctx: OptionPayloadContext = { template, paramName };

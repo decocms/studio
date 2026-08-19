@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useVirtualMCP } from "@/sdk";
-import { resolveFastPreview } from "@/sdk/fast-preview";
-import { useActiveThreadMeta } from "@/hooks/use-active-thread-meta";
+import { useFastPreview } from "@/hooks/use-fast-preview";
+import { usePackagePath } from "./use-package-path";
 import { KEYS } from "@/lib/query-keys";
 import { decoBlockFilePath } from "./deco-block-key";
 import { decoRepoPath } from "./deco-repo-path";
@@ -31,16 +30,11 @@ export function useDeleteBlock({
   branch,
 }: UseDeleteBlockParams) {
   const queryClient = useQueryClient();
-  const vmcp = useVirtualMCP(virtualMcpId);
-  // Under the project's package path (`metadata.runtime.path`) when the project
-  // isn't at the repo root — the daemon resolves against the repo root.
-  const packagePath = vmcp?.metadata?.runtime?.path ?? null;
+  // Prefixes the daemon path: the daemon resolves against the repo root.
+  const packagePath = usePackagePath(virtualMcpId);
   // Sandbox-less mode: deletes commit through the decofile API and remove every
   // encoding alias of the key server-side.
-  const fastPreviewActive = resolveFastPreview(
-    vmcp?.metadata,
-    useActiveThreadMeta(),
-  ).active;
+  const fastPreviewActive = useFastPreview(virtualMcpId).active;
 
   return useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),

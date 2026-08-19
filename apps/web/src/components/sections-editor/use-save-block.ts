@@ -1,8 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useVirtualMCP } from "@/sdk";
-import { resolveFastPreview } from "@/sdk/fast-preview";
-import { useActiveThreadMeta } from "@/hooks/use-active-thread-meta";
+import { useFastPreview } from "@/hooks/use-fast-preview";
+import { usePackagePath } from "./use-package-path";
 import { toast } from "sonner";
 import { decoBlockFilePath } from "./deco-block-key";
 import { decoRepoPath } from "./deco-repo-path";
@@ -30,19 +29,12 @@ export function useSaveBlock({
   branch,
 }: UseSaveBlockParams) {
   const queryClient = useQueryClient();
-  const vmcp = useVirtualMCP(virtualMcpId);
-  // Block writes target `.deco/blocks/<key>.json` under the project's package
-  // path (`metadata.runtime.path`) — the daemon resolves against the repo root,
-  // so a subdir project needs the prefix or the dev server (watching its own
-  // `.deco/`) never regenerates and the committed read won't see the write.
-  const packagePath = vmcp?.metadata?.runtime?.path ?? null;
+  // Prefixes the daemon path: the daemon resolves against the repo root.
+  const packagePath = usePackagePath(virtualMcpId);
   // Sandbox-less mode: writes go through the decofile API (a coalesced commit
   // on the branch) instead of the sandbox working tree. The server owns the
   // key -> file mapping, so no path construction here.
-  const fastPreviewActive = resolveFastPreview(
-    vmcp?.metadata,
-    useActiveThreadMeta(),
-  ).active;
+  const fastPreviewActive = useFastPreview(virtualMcpId).active;
 
   return useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),

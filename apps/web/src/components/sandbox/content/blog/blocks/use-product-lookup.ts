@@ -2,8 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { KEYS } from "@/lib/query-keys";
 import {
   buildPreviewInvokePath,
-  type RunBlockSandboxRef,
-} from "@/components/sandbox/content/use-run-block";
+  type PreviewProxyRef,
+} from "@/components/sections-editor/preview-fetch-url";
 import {
   buildProductsByIdsRequest,
   type PickerLoaderRequest,
@@ -19,7 +19,7 @@ const FETCH_TIMEOUT_MS = 10_000;
  * the preview origin directly would fail CORS on `/deco/invoke`.
  */
 export async function invokeLoader(
-  ref: RunBlockSandboxRef,
+  ref: PreviewProxyRef,
   { resolveType, props }: PickerLoaderRequest,
 ): Promise<unknown> {
   const res = await fetch(buildPreviewInvokePath(ref), {
@@ -46,7 +46,7 @@ export interface ProductLookup {
  * no running sandbox or no ids.
  */
 export function useProductsByIds(
-  sandboxRef: RunBlockSandboxRef | null | undefined,
+  sandboxRef: PreviewProxyRef | null | undefined,
   ids: string[],
 ): ProductLookup {
   const clean = [...new Set(ids.filter(Boolean))];

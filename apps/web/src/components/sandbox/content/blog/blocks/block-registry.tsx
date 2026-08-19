@@ -4,7 +4,7 @@ import {
   resolveSchema,
   type LiveMeta,
 } from "@/components/sections-editor/resolve-schema";
-import type { RunBlockSandboxRef } from "@/components/sandbox/content/use-run-block";
+import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
 import { RichTextBlock } from "./rich-text-block";
 import { CodeBlock, HeadingBlock, ListBlock, QuoteBlock } from "./plain-blocks";
 import {
@@ -45,7 +45,7 @@ export function BlockEditor({
   meta: LiveMeta;
   onChange: (next: RawBlock) => void;
   /** Running sandbox coords — enables the VTEX product picker when present. */
-  sandboxRef?: RunBlockSandboxRef | null;
+  sandboxRef?: PreviewProxyRef | null;
 }) {
   const t = useT();
   const resolveType = block.__resolveType ?? "";

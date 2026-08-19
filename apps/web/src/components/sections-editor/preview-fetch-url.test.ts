@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { buildDecofileFetchUrl } from "./preview-fetch-url";
+import {
+  buildDecofileFetchUrl,
+  buildPreviewFetchPath,
+  buildPreviewInvokePath,
+} from "./preview-fetch-url";
 
 const sandbox = {
   orgSlug: "acme",
@@ -45,6 +49,32 @@ describe("buildDecofileFetchUrl", () => {
       }),
     ).toBe(
       "/api/acme/sandbox/vm%2Fone/feature%2Flocal-preview/preview-fetch?path=%2F.decofile",
+    );
+  });
+});
+
+describe("buildPreviewInvokePath", () => {
+  test("builds the org-scoped studio proxy path", () => {
+    expect(
+      buildPreviewInvokePath({
+        orgSlug: "acme",
+        virtualMcpId: "vm-1",
+        branch: "main",
+      }),
+    ).toBe("/api/acme/sandbox/vm-1/main/preview-invoke");
+  });
+
+  test("encodes slashes in virtualMcpId and branch", () => {
+    expect(buildPreviewInvokePath(sandbox)).toBe(
+      "/api/acme/sandbox/vm%2Fone/feature%2Flocal-preview/preview-invoke",
+    );
+  });
+});
+
+describe("buildPreviewFetchPath", () => {
+  test("encodes the path as a query param", () => {
+    expect(buildPreviewFetchPath(sandbox, "/granado/cremes")).toBe(
+      "/api/acme/sandbox/vm%2Fone/feature%2Flocal-preview/preview-fetch?path=%2Fgranado%2Fcremes",
     );
   });
 });
