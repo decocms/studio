@@ -9,7 +9,26 @@
  */
 
 import type { DispatchRunInput } from "@/api/routes/decopilot/dispatch-run";
+import {
+  RUN_CLASS_METADATA_KEY,
+  type RunClass,
+} from "@/dispatch-queue/run-priority";
 import type { Automation } from "@/storage/types";
+
+/**
+ * The admission class of a trigger-fired automation run.
+ *
+ * Nobody is watching a cron/webhook/event fire's stream, so it must not compete
+ * for a pod's in-process slot at `interactive` — which is exactly what an
+ * unmarked run defaults to (see `run-priority.ts`). Typed as `RunClass` so
+ * renaming a class is a compile error here, not a silent priority regression.
+ *
+ * Applied only when a `triggerId` is present: `triggerId === null` is the manual
+ * AUTOMATION_RUN path, where a person clicked Run and is watching that stream.
+ * It also overrides the key from a webhook's `run_metadata` — that payload is
+ * trusted as tool context, never as a way to outrank a person at the keyboard.
+ */
+const TRIGGERED_RUN_CLASS: RunClass = "new_task";
 
 type ModelShape = {
   id: string;
@@ -88,6 +107,10 @@ export function buildStreamRequest(
     }),
   );
 
+  const resolvedRunMetadata = triggerId
+    ? { ...runMetadata, [RUN_CLASS_METADATA_KEY]: TRIGGERED_RUN_CLASS }
+    : runMetadata;
+
   const request: DispatchRunInput = {
     messages,
     models: {
@@ -115,7 +138,7 @@ export function buildStreamRequest(
     harnessId: "decopilot",
     sandboxProviderKind: "agent-sandbox",
     triggerId: triggerId ?? undefined,
-    ...(runMetadata ? { runMetadata } : {}),
+    ...(resolvedRunMetadata ? { runMetadata: resolvedRunMetadata } : {}),
     taskId,
   };
 
