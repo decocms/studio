@@ -670,59 +670,64 @@ function CmsPublishBody({
           </div>
         ) : null}
         {expanded ? (
-          <div className="mt-2 space-y-3 border-t pt-2.5">
-            {rawJsonId === id ? (
-              <div className="-mx-3 overflow-x-auto">
-                <GitDiffList diff={rawDiff} rowClassName="px-3" />
-              </div>
-            ) : (
-              change.sections.map((section, sectionIndex) => (
-                <div
-                  key={`${sectionIndex}-${section.name}`}
-                  className="space-y-2"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold">
-                      {section.name}
-                    </span>
-                    {section.status !== "edited"
-                      ? statusChip(section.status, t)
-                      : null}
-                  </div>
-                  {section.fields.map((field) => (
-                    <div key={field.path.join(".")} className="space-y-1 pl-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-muted-foreground">
-                          {field.label}
-                        </span>
-                        {canDiscardFields ? (
-                          <button
-                            type="button"
-                            className="text-[11px] text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
-                            onClick={() =>
-                              handleDiscardField(
-                                change,
-                                field.path,
-                                field.label,
-                              )
-                            }
-                            disabled={saveBlock.isPending || isPublishing}
-                          >
-                            {t("thread.publishPopover.discard")}
-                          </button>
-                        ) : null}
-                      </div>
-                      <div className="line-clamp-2 rounded-md bg-destructive/5 px-2 py-1 text-xs break-words whitespace-pre-wrap text-destructive/80 line-through [overflow-wrap:anywhere]">
-                        {renderFieldValue(field.from)}
-                      </div>
-                      <div className="line-clamp-3 rounded-md bg-success/5 px-2 py-1 text-xs break-words whitespace-pre-wrap [overflow-wrap:anywhere]">
-                        {renderFieldValue(field.to)}
-                      </div>
-                    </div>
-                  ))}
+          <div className="mt-2 space-y-2 border-t pt-2.5">
+            <div className="max-h-56 space-y-3 overflow-y-auto overscroll-contain [scrollbar-width:thin]">
+              {rawJsonId === id ? (
+                <div className="-mx-3 overflow-x-auto">
+                  <GitDiffList diff={rawDiff} rowClassName="px-3" />
                 </div>
-              ))
-            )}
+              ) : (
+                change.sections.map((section, sectionIndex) => (
+                  <div
+                    key={`${sectionIndex}-${section.name}`}
+                    className="space-y-2"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold">
+                        {section.name}
+                      </span>
+                      {section.status !== "edited"
+                        ? statusChip(section.status, t)
+                        : null}
+                    </div>
+                    {section.fields.map((field) => (
+                      <div
+                        key={field.path.join(".")}
+                        className="space-y-1 pl-2"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-muted-foreground">
+                            {field.label}
+                          </span>
+                          {canDiscardFields ? (
+                            <button
+                              type="button"
+                              className="text-[11px] text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
+                              onClick={() =>
+                                handleDiscardField(
+                                  change,
+                                  field.path,
+                                  field.label,
+                                )
+                              }
+                              disabled={saveBlock.isPending || isPublishing}
+                            >
+                              {t("thread.publishPopover.discard")}
+                            </button>
+                          ) : null}
+                        </div>
+                        <div className="line-clamp-2 rounded-md bg-destructive/5 px-2 py-1 text-xs break-words whitespace-pre-wrap text-destructive/80 line-through [overflow-wrap:anywhere]">
+                          {renderFieldValue(field.from)}
+                        </div>
+                        <div className="line-clamp-3 rounded-md bg-success/5 px-2 py-1 text-xs break-words whitespace-pre-wrap [overflow-wrap:anywhere]">
+                          {renderFieldValue(field.to)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ))
+              )}
+            </div>
             <button
               type="button"
               className="text-[11px] text-muted-foreground hover:text-foreground"
