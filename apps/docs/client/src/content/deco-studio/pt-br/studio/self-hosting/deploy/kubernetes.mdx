@@ -250,7 +250,7 @@ O Studio usa o Better Auth. No Kubernetes, configure por variáveis de ambiente 
 Veja [Autenticação](/pt-br/studio/self-hosting/authentication) para a referência completa.
 
 <Callout type="note">
-  O arquivo `auth-config.json` citado na referência de autenticação é uma conveniência do Docker Compose — o caminho de Kubernetes não precisa dele. Se você quiser usá-lo mesmo assim (para SAML, ou para manter um único artefato de configuração), monte-o em `/app/apps/api/auth-config.json` a partir de um ConfigMap usando os values `volumes` e `volumeMounts` do chart, que valem para os Deployments de API e worker. Mantenha os secrets dos provedores no Secret, não nesse arquivo.
+  Não existe arquivo `auth-config.json` — a autenticação é configurada inteiramente pelas variáveis de ambiente `AUTH_*` acima. Mantenha os secrets dos provedores no Secret, não em um ConfigMap.
 </Callout>
 
 ## Configuração de sandbox

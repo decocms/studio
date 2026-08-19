@@ -17,7 +17,7 @@ deco Studio uses Better Auth and supports:
 
 ## Configure auth (self-hosting)
 
-Self-hosted deployments load an `auth-config.json` file at startup (see your deployment guides for mounting details).
+Self-hosted deployments configure auth entirely through `AUTH_*` environment variables — there's no config file to mount. See the variables below.
 
 <Callout type="warning">
   Keep provider secrets out of Git. In production, use Secrets management (Kubernetes Secrets, External Secrets Operator, etc.).
@@ -89,8 +89,7 @@ so only users from your domain can sign in.
 ### Social login vs. SSO
 
 These env vars wire up **OIDC SSO** (the `@better-auth/sso` plugin). They are
-separate from the **social login** buttons configured via `auth-config.json`
-(`socialProviders.google`, `socialProviders.github`) or via
+separate from the **social login** buttons configured via
 `AUTH_GOOGLE_CLIENT_ID` / `AUTH_GITHUB_CLIENT_ID`. Social login lets users
 authenticate with their personal account; deployment-wide SSO routes everyone
 matching `AUTH_SSO_DOMAIN` through the corporate IdP.
