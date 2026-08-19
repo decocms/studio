@@ -1239,7 +1239,15 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
     // failure must never break the read. Forward-only: never un-does Done or Archived.
     if (prs.some((p) => p.merged)) {
       try {
-        if (item && item.status !== "done" && item.status !== "archived") {
+        if (
+          item &&
+          item.status !== "done" &&
+          item.status !== "archived" &&
+          !(await ctx.storage.taskBoard.hasHumanRejectedDone(
+            taskBoardItemId,
+            organizationId,
+          ))
+        ) {
           const updated = await ctx.storage.taskBoard.update(
             taskBoardItemId,
             organizationId,

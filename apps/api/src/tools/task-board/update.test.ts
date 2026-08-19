@@ -8,7 +8,11 @@
 import { describe, expect, it } from "bun:test";
 import type { TaskBoardItem } from "@/storage/types";
 import { SUPER_AGENT_ASSIGNEE_ID } from "./schema";
-import { delegatesToSuperAgent, diffTaskActivityEntries } from "./update";
+import {
+  closesOwnReview,
+  delegatesToSuperAgent,
+  diffTaskActivityEntries,
+} from "./update";
 
 function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
   return {
@@ -135,5 +139,24 @@ describe("delegatesToSuperAgent", () => {
 
   it("does not delegate without a pre-update item", () => {
     expect(delegatesToSuperAgent(SUPER_AGENT_ASSIGNEE_ID, null)).toBe(false);
+  });
+});
+
+describe("closesOwnReview", () => {
+  it("catches a run completing a task under review", () => {
+    expect(closesOwnReview("done", "in_review", true)).toBe(true);
+  });
+
+  it("allows a run to complete a task that needed no code change", () => {
+    expect(closesOwnReview("done", "in_progress", true)).toBe(false);
+  });
+
+  it("allows a run to move a task under review anywhere but Done", () => {
+    expect(closesOwnReview("in_progress", "in_review", true)).toBe(false);
+    expect(closesOwnReview(undefined, "in_review", true)).toBe(false);
+  });
+
+  it("never catches a person", () => {
+    expect(closesOwnReview("done", "in_review", false)).toBe(false);
   });
 });

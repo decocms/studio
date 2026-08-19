@@ -338,7 +338,12 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
     }
 
     const settings = await ctx.storage.organizationSettings.get(organizationId);
-    const autoMerge = settings?.flags?.auto_merge === true;
+    const autoMergeEnabled = settings?.flags?.auto_merge === true;
+    const humanRejectedDone = await ctx.storage.taskBoard.hasHumanRejectedDone(
+      taskBoardItemId,
+      organizationId,
+    );
+    const autoMerge = autoMergeEnabled && !humanRejectedDone;
     const outcome = autoMerge
       ? await mergeLinkedPr(ctx, organizationId, taskBoardItemId)
       : null;
