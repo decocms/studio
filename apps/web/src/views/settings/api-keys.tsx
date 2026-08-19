@@ -34,6 +34,7 @@ import {
   useCreateApiKey,
   useDeleteApiKey,
 } from "@/hooks/use-api-keys";
+import { SettingsSubnav } from "@/components/settings/settings-subnav";
 
 function ErrorFallback({ error }: { error: Error }) {
   const t = useT();
@@ -354,13 +355,12 @@ function ApiKeysContent() {
 }
 
 export function OrgApiKeysPage() {
-  const t = useT();
   return (
     <Page>
       <Page.Content>
         <Page.Body>
           <SettingsPage>
-            <Page.Title>{t("settings.nav.apiKeys")}</Page.Title>
+            <SettingsSubnav group="connect" />
             <ErrorBoundary
               fallback={({ error }) => (
                 <ErrorFallback
