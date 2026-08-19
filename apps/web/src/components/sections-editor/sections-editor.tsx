@@ -2709,61 +2709,64 @@ export function SectionsEditor({
           viewportRef={fieldScrollRef}
           className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block"
         >
-          {isEditingMultivariateSection && sectionFlagVariants.length > 0 && (
-            <>
-              <SectionVariantList
-                listKey={`${activePageKey ?? ""}:${selectedSectionIndex ?? ""}`}
-                variants={sectionFlagVariants.map((variant, index) => ({
-                  index,
-                  label: variant.label,
-                }))}
-                selectedIndex={safeSectionVariantIndex}
-                onSelect={handleSelectSectionVariant}
-                onRename={setRenameSectionVariantIndex}
-                onDuplicate={handleDuplicateSectionVariant}
-                onDelete={handleDeleteSectionVariant}
-                onRemoveAll={handleRemoveAllSectionVariants}
-                onReorder={handleReorderSectionVariant}
-                onAdd={() => handleAddSectionVariant()}
-              />
-              {isEditingMultivariateSection && (
-                <div className="px-3 py-3 border-b space-y-2">
-                  <span className="text-xs font-medium text-muted-foreground">
-                    {t("sectionsEditor.sectionsEditor.variantRule")}
-                  </span>
-                  <VariantRuleEditor
-                    currentRt={sectionRuleResolveType ?? ""}
-                    currentLabel={resolveVariantRuleLabel(
-                      activeSectionFlagVariant?.rule,
-                      decofile ?? {},
-                      formatMatcher,
-                      meta ?? undefined,
-                    )}
-                    currentGlobalKey={
-                      getSavedMatcherBlockKey(
+          {/* Variant switcher + rule stay at the variant's top level only; drilling into a nested field hides them so the focused form owns the panel. */}
+          {isEditingMultivariateSection &&
+            sectionFlagVariants.length > 0 &&
+            fieldBreadcrumbs.length === 0 && (
+              <>
+                <SectionVariantList
+                  listKey={`${activePageKey ?? ""}:${selectedSectionIndex ?? ""}`}
+                  variants={sectionFlagVariants.map((variant, index) => ({
+                    index,
+                    label: variant.label,
+                  }))}
+                  selectedIndex={safeSectionVariantIndex}
+                  onSelect={handleSelectSectionVariant}
+                  onRename={setRenameSectionVariantIndex}
+                  onDuplicate={handleDuplicateSectionVariant}
+                  onDelete={handleDeleteSectionVariant}
+                  onRemoveAll={handleRemoveAllSectionVariants}
+                  onReorder={handleReorderSectionVariant}
+                  onAdd={() => handleAddSectionVariant()}
+                />
+                {isEditingMultivariateSection && (
+                  <div className="px-3 py-3 border-b space-y-2">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {t("sectionsEditor.sectionsEditor.variantRule")}
+                    </span>
+                    <VariantRuleEditor
+                      currentRt={sectionRuleResolveType ?? ""}
+                      currentLabel={resolveVariantRuleLabel(
                         activeSectionFlagVariant?.rule,
                         decofile ?? {},
+                        formatMatcher,
                         meta ?? undefined,
-                      ) ?? undefined
-                    }
-                    matchers={availableMatchers}
-                    globals={availableMatcherGlobals}
-                    onSelect={handleSectionMatcherTypeChange}
-                    onSelectGlobal={handleSectionVariantSelectGlobal}
-                    schema={sectionRuleSchema}
-                    formValue={sectionRuleFormValue}
-                    onChange={handleSectionRuleFormChange}
-                    formKey={`${selectedSectionIndex ?? "none"}:${safeSectionVariantIndex}:${sectionRuleResolveType ?? ""}`}
-                    formWrapperClassName="pt-1"
-                    meta={meta ?? undefined}
-                    decofile={decofile}
-                    onSaveReferencedBlock={saveReferencedBlock}
-                    sandbox={sandbox}
-                  />
-                </div>
-              )}
-            </>
-          )}
+                      )}
+                      currentGlobalKey={
+                        getSavedMatcherBlockKey(
+                          activeSectionFlagVariant?.rule,
+                          decofile ?? {},
+                          meta ?? undefined,
+                        ) ?? undefined
+                      }
+                      matchers={availableMatchers}
+                      globals={availableMatcherGlobals}
+                      onSelect={handleSectionMatcherTypeChange}
+                      onSelectGlobal={handleSectionVariantSelectGlobal}
+                      schema={sectionRuleSchema}
+                      formValue={sectionRuleFormValue}
+                      onChange={handleSectionRuleFormChange}
+                      formKey={`${selectedSectionIndex ?? "none"}:${safeSectionVariantIndex}:${sectionRuleResolveType ?? ""}`}
+                      formWrapperClassName="pt-1"
+                      meta={meta ?? undefined}
+                      decofile={decofile}
+                      onSaveReferencedBlock={saveReferencedBlock}
+                      sandbox={sandbox}
+                    />
+                  </div>
+                )}
+              </>
+            )}
           <SchemaFormPanel
             activeSchema={activeSchema}
             formValue={formValue}
