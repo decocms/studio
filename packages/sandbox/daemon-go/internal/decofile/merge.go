@@ -75,6 +75,7 @@ func generateFromBlocks(blocksDir string) (string, bool) {
 	var b strings.Builder
 	b.WriteByte('{')
 	first := true
+	seenKeys := make(map[string]bool, len(names))
 	for _, name := range names {
 		stem := name[:len(name)-len(".json")]
 		raw, err := os.ReadFile(filepath.Join(blocksDir, name))
@@ -92,7 +93,15 @@ func generateFromBlocks(blocksDir string) (string, bool) {
 		if !json.Valid(content) {
 			continue
 		}
-		keyJSON, err := json.Marshal(decodeOnce(stem))
+		key := decodeOnce(stem)
+		// Two distinct filenames can decode to the same key (mirrors the TS
+		// mergeBlocks fix): splicing both would silently drop one via the
+		// consumer's last-key-wins JSON parse. Keep the first (sorted) file.
+		if seenKeys[key] {
+			continue
+		}
+		seenKeys[key] = true
+		keyJSON, err := json.Marshal(key)
 		if err != nil {
 			continue
 		}

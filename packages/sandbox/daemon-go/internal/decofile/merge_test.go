@@ -77,6 +77,26 @@ func TestGenerateFromBlocks(t *testing.T) {
 		}
 	})
 
+	t.Run("drops a block whose decoded key collides with another file's", func(t *testing.T) {
+		dir := t.TempDir()
+		// "100%" (invalid escape, kept literal) and "100%25" (decodes to "100%")
+		// both map to the key "100%" — splicing both would produce a duplicate
+		// JSON key that the consumer's parser resolves last-key-wins.
+		writeBlock(t, dir, "100%.json", `{"n":1}`)
+		writeBlock(t, dir, "100%25.json", `{"n":2}`)
+		merged, ok := generateFromBlocks(dir)
+		if !ok {
+			t.Fatal("expected ok=true")
+		}
+		if merged != `{"100%":{"n":1}}` {
+			t.Fatalf("merged = %q, want only the first (sorted) file's block kept", merged)
+		}
+		var v any
+		if err := json.Unmarshal([]byte(merged), &v); err != nil {
+			t.Fatalf("merged blob is not valid JSON: %v", err)
+		}
+	})
+
 	t.Run("single-decodes a single-encoded stem (space in the key)", func(t *testing.T) {
 		dir := t.TempDir()
 		writeBlock(t, dir, "Compre%20Junto.json", `{"x":1}`)
