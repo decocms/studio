@@ -457,6 +457,20 @@ export interface AgentSandboxProviderOptions {
     repo: NonNullable<EnsureOptions["repo"]>,
     opts?: { bufferMs?: number },
   ) => Promise<string | null>;
+  /**
+   * Re-mint a fresh `orgFsConfigJson` for a tenant. Same lifetime problem as
+   * `mintCloneUrl`: the config persisted in `ensureOpts` embeds an fs-scoped
+   * API key from first provision, and Better Auth deletes that key once it
+   * expires — so replaying the persisted config on recovery mounts org-fs with
+   * a credential that no longer exists. Every WebDAV call then 401s and the
+   * agent sees `Input/output error` on every `org/` path, silently, for the
+   * life of the sandbox. Returns null when it can't mint (no org slug, mint
+   * error); the runner then falls back to the persisted config. Must never
+   * throw.
+   */
+  mintOrgFsConfig?: (
+    tenant: NonNullable<EnsureOptions["tenant"]>,
+  ) => Promise<string | null>;
 }
 
 export class AgentSandboxProvider implements SandboxProvider {
@@ -501,6 +515,8 @@ export class AgentSandboxProvider implements SandboxProvider {
   private readonly sentinelToken: string | null;
   /** See {@link AgentSandboxProviderOptions.mintCloneUrl}. */
   private readonly mintCloneUrl: AgentSandboxProviderOptions["mintCloneUrl"];
+  /** See {@link AgentSandboxProviderOptions.mintOrgFsConfig}. */
+  private readonly mintOrgFsConfig: AgentSandboxProviderOptions["mintOrgFsConfig"];
   /** See {@link AgentSandboxProviderOptions.tenantPools}. */
   private readonly tenantPools: readonly TenantPool[];
   private readonly tenantPoolRefreshMs: number;
@@ -545,6 +561,7 @@ export class AgentSandboxProvider implements SandboxProvider {
     const trimmedSentinel = opts.sentinelToken?.trim() ?? "";
     this.sentinelToken = trimmedSentinel.length > 0 ? trimmedSentinel : null;
     this.mintCloneUrl = opts.mintCloneUrl;
+    this.mintOrgFsConfig = opts.mintOrgFsConfig;
     this.tenantPools =
       this.sentinelToken !== null ? (opts.tenantPools ?? []) : [];
     if (this.sentinelToken === null && (opts.tenantPools?.length ?? 0) > 0) {
@@ -1102,6 +1119,12 @@ export class AgentSandboxProvider implements SandboxProvider {
           // likely expired. Forward the freshly-minted one so authenticated git
           // keeps working. No-op when unchanged / public clone.
           await this.refreshDaemonGitCredential(rec, opts);
+          // Same staleness risk applies to the org-fs sidecar config on a long-resumed pod.
+          await this.relayOrgFsConfig(
+            rec.daemonUrl,
+            rec.token,
+            opts.orgFsConfigJson,
+          );
           return this.finish(
             rec,
             ops,
@@ -1147,6 +1170,11 @@ export class AgentSandboxProvider implements SandboxProvider {
           // Same as resume: the adopted pod's daemon holds a clone credential
           // from an earlier provision that may have lapsed. Rotate it.
           await this.refreshDaemonGitCredential(adopted, opts);
+          await this.relayOrgFsConfig(
+            adopted.daemonUrl,
+            adopted.token,
+            opts.orgFsConfigJson,
+          );
           return this.finish(
             adopted,
             ops,
@@ -1598,6 +1626,32 @@ export class AgentSandboxProvider implements SandboxProvider {
       );
       return repo;
     }
+  }
+
+  /**
+   * Return persisted `EnsureOptions` with both embedded credentials re-minted:
+   * the git cloneUrl (~55min GitHub App token) and the org-fs config (an
+   * fs-scoped API key Better Auth deletes at expiry). Both are baked in at
+   * first provision, so every path that replays a persisted blob — pod
+   * recreated under a live claim, resurrection after operator eviction — must
+   * go through here or it hands the sandbox a dead credential. Best-effort:
+   * each re-mint falls back to the persisted value.
+   */
+  private async withFreshCredentials(
+    opts: EnsureOptions,
+  ): Promise<EnsureOptions> {
+    return {
+      ...opts,
+      ...(opts.repo ? { repo: await this.withFreshCloneUrl(opts.repo) } : {}),
+      ...(opts.orgFsConfigJson
+        ? {
+            orgFsConfigJson: await freshOrgFsConfigJson(
+              opts,
+              this.mintOrgFsConfig,
+            ),
+          }
+        : {}),
+    };
   }
 
   /**
@@ -2142,14 +2196,10 @@ export class AgentSandboxProvider implements SandboxProvider {
     // so a bootId change there is informational only.
     if (state.daemonBootId && state.daemonBootId !== live.bootId) {
       if (this.sentinelToken !== null) {
-        // Re-clone with a live credential — the persisted cloneUrl's token has
-        // usually lapsed by the time a pool pod is recreated under the claim.
-        const rebootstrapOpts: EnsureOptions | null = state.ensureOpts?.repo
-          ? {
-              ...state.ensureOpts,
-              repo: await this.withFreshCloneUrl(state.ensureOpts.repo),
-            }
-          : (state.ensureOpts ?? null);
+        // Persisted credentials have usually lapsed by pod recreation.
+        const rebootstrapOpts: EnsureOptions | null = state.ensureOpts
+          ? await this.withFreshCredentials(state.ensureOpts)
+          : null;
         const ok = await this.rebootstrapDaemon(
           live.daemonUrl,
           state.token,
@@ -2340,15 +2390,8 @@ export class AgentSandboxProvider implements SandboxProvider {
     if (!row) return null;
     const persistedOpts = (row.state as Partial<PersistedK8sState>).ensureOpts;
     if (!persistedOpts) return null;
-    // The persisted cloneUrl carries the first-provision token, long expired by
-    // now. Re-mint so the reprovision (and the downstream credential rotation)
-    // uses a live credential instead of the dead one.
-    const opts: EnsureOptions = persistedOpts.repo
-      ? {
-          ...persistedOpts,
-          repo: await this.withFreshCloneUrl(persistedOpts.repo),
-        }
-      : persistedOpts;
+    // Persisted credentials carry first-provision tokens, long expired by now.
+    const opts = await this.withFreshCredentials(persistedOpts);
     // The row must resolve back to the handle we were asked to resurrect.
     // Structurally guaranteed now that both derive from `id.projectRef`, which
     // is the point of asserting it: if a future ref encoding breaks the
@@ -3045,6 +3088,30 @@ function tenantAttrs(tenant: RunnerTenant | null): {
     user_id: tenant?.userId ?? "",
     runner_kind: RUNNER_KIND,
   };
+}
+
+/**
+ * Re-mint the org-fs config for a set of persisted `EnsureOptions`, falling
+ * back to the persisted one whenever the minter is absent, declines, or throws
+ * — org-fs mounts are additive, so a mint failure must degrade to the old
+ * behaviour rather than strip the mounts. Needs `opts.tenant` (the org the key
+ * is scoped to); rows persisted without it keep the stale config.
+ */
+export async function freshOrgFsConfigJson(
+  opts: EnsureOptions,
+  mint: AgentSandboxProviderOptions["mintOrgFsConfig"],
+): Promise<string | undefined> {
+  if (!mint || !opts.tenant) return opts.orgFsConfigJson;
+  try {
+    return (await mint(opts.tenant)) ?? opts.orgFsConfigJson;
+  } catch (err) {
+    console.warn(
+      `[${LOG_LABEL}] org-fs credential re-mint failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    return opts.orgFsConfigJson;
+  }
 }
 
 /**

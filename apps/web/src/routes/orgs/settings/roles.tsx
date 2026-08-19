@@ -50,6 +50,7 @@ import {
   type RoleEditorTarget,
 } from "@/views/settings/org-role-detail.tsx";
 import { RequirePrivileged } from "@/components/require-privileged";
+import { SettingsSubnav } from "@/components/settings/settings-subnav";
 
 const BUILTIN_ROLE_KEYS = [
   { role: "owner", labelKey: "settings.roles.roleOwner" },
@@ -321,7 +322,7 @@ function RolesPageContent() {
       <Page.Content>
         <Page.Body>
           <div className="flex flex-col gap-6">
-            <Page.Title>{t("settings.roles.pageTitle")}</Page.Title>
+            <SettingsSubnav group="members" />
             <div className="flex flex-wrap items-center justify-between gap-3">
               <SearchInput
                 value={search}

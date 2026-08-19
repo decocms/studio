@@ -7,6 +7,7 @@ describe("DBOS queue names", () => {
       AUTOMATIONS_QUEUE: "automations",
       THREAD_GATE_QUEUE: "thread-gate",
       HOSTED_HARNESS_QUEUE: "decopilot-hosted-harness",
+      HOSTED_HARNESS_SANDBOXED_QUEUE: "decopilot-hosted-harness-sandboxed",
       BACKGROUND_TOOLS_QUEUE: "background-tools",
       GITHUB_READS_QUEUE: "task-board-github-reads",
     });

@@ -15,7 +15,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
-import type { RunBlockSandboxRef } from "@/components/sandbox/content/use-run-block";
+import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
 import { discoverBlogBlockTypes } from "./blog-data";
 import { InsertBlockDivider } from "./block-picker";
 import { BlockRow } from "./blocks/block-row";
@@ -44,7 +44,7 @@ export function BlockDocument({
   onChange: (next: RawBlock[]) => void;
   meta: LiveMeta;
   /** Running sandbox coords — enables the VTEX product picker in blocks. */
-  sandboxRef?: RunBlockSandboxRef | null;
+  sandboxRef?: PreviewProxyRef | null;
   emptyMessage?: string;
 }) {
   const blockTypes = discoverBlogBlockTypes(meta);

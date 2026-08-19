@@ -71,7 +71,10 @@
 
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import type { UIMessageChunk } from "ai";
-import { HeartbeatEmitter } from "@/harnesses/lib/liveness-heartbeat";
+import {
+  HeartbeatEmitter,
+  type HeartbeatSleepFn,
+} from "@/harnesses/lib/liveness-heartbeat";
 import { publishRunStatusStage } from "@/api/routes/decopilot/run-status-stage";
 import type {
   DispatchRunDeps,
@@ -80,13 +83,23 @@ import type {
   DurableDispatchRunInput,
 } from "@/api/routes/decopilot/dispatch-run";
 import { synthesizedErrorMessageId } from "@/api/routes/decopilot/message-ids";
-import { isRunSuperseded } from "@/harnesses/sandbox-dispatch-client";
+import {
+  harnessRunsInSandbox,
+  isRunSuperseded,
+} from "@/harnesses/sandbox-dispatch-client";
 import type { WithLastAckSeq } from "@/api/routes/decopilot/ingest-run";
 import type { StudioContext } from "@/core/studio-context";
+import { meter } from "@/observability";
+import type { UpDownCounter } from "@opentelemetry/api";
 
-export { HOSTED_HARNESS_QUEUE } from "./queue-names";
-import { HOSTED_HARNESS_QUEUE } from "./queue-names";
-import { acquireHostedRunSlot } from "./hosted-run-concurrency";
+export {
+  HOSTED_HARNESS_QUEUE,
+  HOSTED_HARNESS_SANDBOXED_QUEUE,
+} from "./queue-names";
+import {
+  HOSTED_HARNESS_QUEUE,
+  HOSTED_HARNESS_SANDBOXED_QUEUE,
+} from "./queue-names";
 import { runPriority } from "./run-priority";
 import {
   advanceTaskBoardForRun,
@@ -116,12 +129,6 @@ export type StudioContextFactory = (
   orgId: string,
   userId: string,
 ) => Promise<StudioContext | null>;
-
-/**
- * Per-thread concurrent hosted-run cap (partition cap on the hosted-harness
- * queue). One active hosted run per threadId, mirroring the thread gate.
- */
-export const HOSTED_HARNESS_PARTITION_CONCURRENCY = 1;
 
 /**
  * Serializable input to a hosted harness run. Everything needed to (re)run the
@@ -217,53 +224,11 @@ export async function runHostedHarness(
   // explicit cancellation and the reaper's force-fail.
   const abortController = new AbortController();
 
-  // Cap concurrent agent loops per pod (see hosted-run-concurrency.ts). The
-  // slot is held only for the loop itself, not the ctx resolution above; excess
-  // runs park here until a slot frees.
-  //
-  // A parked run must keep publishing or it dies for being quiet: the parent
-  // gate already tails this run's subject under a RUN_IDLE_TIMEOUT_MS silence
-  // window (consume-run-projection.ts), so a longer park failed the turn as a
-  // liveness breach before the loop started — and the child then ran anyway,
-  // streaming under a fence nobody projected. `waiting-capacity`, re-published
-  // on the heartbeat interval, resets that window (any message does — see
-  // nats-chunk-source.ts) and is the only feedback a queued run gives the UI.
-  let parked = false;
-  const parkedStatus = new HeartbeatEmitter({
-    emit: () => publishWaitingCapacity(rt, input),
-  });
-  const releaseSlot = await acquireHostedRunSlot(
-    // Finish before you start: a reviewer or a retry outranks a brand-new task
-    // for the next slot (see run-priority.ts). Ordering only — a run already
-    // holding a slot is never preempted.
-    {
-      harnessId: request.harnessId,
-      priority: runPriority(request.runMetadata),
-    },
-    () => {
-      parked = true;
-      void publishWaitingCapacity(rt, input);
-      parkedStatus.arm();
-    },
-  ).finally(() => parkedStatus.stop());
+  // Dequeued at all means `workerConcurrency` already reserved a slot here.
+  runsOnThisPod().add(1);
 
+  // Fire-and-forget: moving the card must not delay the loop.
   try {
-    // Stop, pressed while this run was still queued, cancels this child
-    // workflow — but DBOS cannot interrupt a step that already started, and a
-    // parked step has no registered run for the in-memory abort to reach
-    // either (see `cancelActiveThreadRun` in routes.ts). Without this check a
-    // cancelled run starts its agent loop here, minutes after the user stopped
-    // it. Only a run that actually parked can have been cancelled in that
-    // window, so the healthy path pays nothing.
-    if (parked && (await hostedRunWasCancelled(input))) {
-      throw new Error("run cancelled while queued for a free runner");
-    }
-
-    // A Super Agent task run is starting to execute — move its card to In
-    // Progress. Fire-and-forget: the transition is best-effort and must not
-    // delay the loop. Deliberately AFTER the slot acquire: a parked run has
-    // not started, and flipping the card on enqueue made the board show every
-    // queued task as In Progress while the pod was only running its cap.
     void advanceTaskBoardForRun(studioCtx, "in_progress", input.threadId);
 
     // If the user re-engaged a task that had moved to In Review, pull it back to
@@ -287,9 +252,24 @@ export async function runHostedHarness(
       rt.deps,
     );
   } finally {
-    releaseSlot();
+    runsOnThisPod().add(-1);
   }
 }
+
+/**
+ * Hosted runs executing on this pod. Not a cap — `workerConcurrency` on the two
+ * hosted queues is the cap, and DBOS enforces it before the dequeue. This is
+ * only how we see the spread across pods, which is the thing a per-pod cap
+ * enforced after the dequeue got wrong.
+ */
+let runsOnThisPodInstrument: UpDownCounter | undefined;
+const runsOnThisPod = (): UpDownCounter =>
+  // Lazy: `meter` is a NoopMeter until initObservability(), which runs after
+  // this import (run-registry.ts's lazyInstrument, same reason).
+  (runsOnThisPodInstrument ??= meter.createUpDownCounter("hosted_runs.active", {
+    description: "Hosted agent-loop runs executing on this pod",
+    unit: "{runs}",
+  }));
 
 /** The stage a run publishes while it waits for a free slot. */
 const publishWaitingCapacity = (
@@ -299,27 +279,58 @@ const publishWaitingCapacity = (
   publishRunStatusStage(rt.deps.streamBuffer, input.runId, "waiting-capacity");
 
 /**
- * Was THIS attempt's child workflow cancelled while it sat parked? Reads DBOS's
- * own status for the child id, which `cancelHostedHarness` flips — so the check
- * is per-attempt, unlike the thread-level `cancel_requested_at` flag, which a
- * previous turn's Stop leaves set and would make a healthy queued turn skip
- * itself. A read failure reports "not cancelled": losing a cancel is better
- * than refusing to run a live turn.
+ * Keep publishing `waiting-capacity` for as long as the child sits ENQUEUED.
+ *
+ * A queued run publishes nothing on its own, and the gate's consume step reads
+ * silence on the run's subject as a dead executor after `RUN_IDLE_TIMEOUT_MS` —
+ * so a run that waits out that window would be failed for liveness before it
+ * ever started. Any message resets the window (see `nats-chunk-source.ts`), and
+ * this is also the only feedback a queued run gives the UI. Waiting used to
+ * happen inside the child itself, which could heartbeat for itself; it now
+ * happens in the queue, where only the parent gate is awake to speak for it.
+ *
+ * Self-stopping: the first beat that finds the child dequeued hands over to the
+ * run's own chunks. A status read that throws is treated as "still queued" — an
+ * extra heartbeat is harmless, a missed one fails a live run.
  */
-async function hostedRunWasCancelled(
+export function heartbeatWhileQueued(
   input: HostedHarnessInput,
-): Promise<boolean> {
+  /** Injected for tests, mirroring `HeartbeatEmitter`'s own `sleepFn`. */
+  opts?: {
+    isQueued?: (input: HostedHarnessInput) => Promise<boolean>;
+    intervalMs?: number;
+    sleepFn?: HeartbeatSleepFn;
+  },
+): () => void {
+  const rt = requireRuntime();
+  const isQueued = opts?.isQueued ?? hostedRunIsQueued;
+  const beat: HeartbeatEmitter = new HeartbeatEmitter({
+    intervalMs: opts?.intervalMs,
+    sleepFn: opts?.sleepFn,
+    emit: async () => {
+      if (await isQueued(input)) {
+        await publishWaitingCapacity(rt, input);
+        return;
+      }
+      beat.stop();
+    },
+  });
+  beat.arm();
+  return () => beat.stop();
+}
+
+async function hostedRunIsQueued(input: HostedHarnessInput): Promise<boolean> {
   try {
     const status = await DBOS.getWorkflowStatus(
       hostedChildWorkflowId(input.runId, input.fenceToken),
     );
-    return status?.status === "CANCELLED";
+    return status?.status === "ENQUEUED";
   } catch (err) {
     console.error(
       `[hostedHarness] could not read child status for run=${input.runId} fence=${input.fenceToken}`,
       err,
     );
-    return false;
+    return true;
   }
 }
 
@@ -596,8 +607,11 @@ export async function startHostedHarness(
 ): Promise<{ workflowID: string }> {
   const handle = await DBOS.startWorkflow(hostedHarnessWorkflow, {
     workflowID: hostedChildWorkflowId(input.runId, input.fenceToken),
-    queueName: HOSTED_HARNESS_QUEUE,
-    enqueueOptions: { queuePartitionKey: input.threadId },
+    queueName: harnessRunsInSandbox(input.request.harnessId)
+      ? HOSTED_HARNESS_SANDBOXED_QUEUE
+      : HOSTED_HARNESS_QUEUE,
+    // Finish before you start — ordering only, see run-priority.ts.
+    enqueueOptions: { priority: runPriority(input.request.runMetadata) },
   })(input);
   return { workflowID: handle.workflowID };
 }

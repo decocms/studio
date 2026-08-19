@@ -211,26 +211,41 @@ jobs:
       - name: Setup Bun and install dependencies
         uses: ./.github/actions/setup-bun
 
+      # Key on the RESOLVED Playwright version, not a hash of the manifest: the
+      # manifest carries a caret range, so its hash does not change when the
+      # lockfile resolves a new version — and the cache would then serve
+      # browsers built for a different Playwright than the tests run against.
+      - name: Resolve Playwright version
+        id: playwright-version
+        working-directory: apps/web
+        run: |
+          version=$(node -p "require('@playwright/test/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Cache Playwright browsers
         id: cache-playwright
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-ct-${{ runner.os }}-${{ hashFiles('apps/web/package.json') }}
-          # On a key rotation (playwright version bump) the fallback restores
-          # the previous browsers and `playwright install` downloads only the
+          key: playwright-ct-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+          # On a key rotation (a Playwright bump) the fallback restores the
+          # previous browsers and `playwright install` downloads only the
           # missing version instead of everything.
           restore-keys: |
             playwright-ct-${{ runner.os }}-
 
       # Browser binary only (Playwright's own CDN, no apt involved) — kept
       # separate from the system deps below so an Ubuntu mirror outage can
-      # never block the download that actually has to succeed.
+      # never block the download that actually has to succeed. Invoked via
+      # ./node_modules/.bin/playwright, never `npx playwright`: npx ignores the
+      # lockfile and resolves from the registry, so a cache miss would install
+      # browsers for the LATEST release while the tests run against the pinned
+      # one — a mismatch a warm cache hides.
       - name: Install Playwright chromium
         if: steps.cache-playwright.outputs.cache-hit != 'true'
         working-directory: apps/web
         timeout-minutes: 5
-        run: npx playwright install chromium
+        run: ./node_modules/.bin/playwright install chromium
 
       # Everything chromium links against is already in the runner image — the
       # only thing this step downloads is ~21 MB of font packages. So a total
@@ -240,7 +255,7 @@ jobs:
         uses: ./.github/actions/apt-mirror-fallback
         continue-on-error: true
         with:
-          run: cd apps/web && npx playwright install-deps chromium
+          run: cd apps/web && ./node_modules/.bin/playwright install-deps chromium
 
       - name: Run component tests
         run: bun run --cwd=apps/web test:ct

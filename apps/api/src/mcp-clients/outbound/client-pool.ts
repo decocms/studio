@@ -20,7 +20,7 @@ import { sharedJsonSchemaValidator } from "@decocms/mcp-utils";
  * @returns Function to get or create a client connection from the pool
  */
 export function createClientPool(): (<T extends Transport>(
-  transport: T,
+  createTransport: () => T | Promise<T>,
   key: string,
 ) => Promise<Client>) & {
   [Symbol.asyncDispose]: () => Promise<void>;
@@ -32,12 +32,18 @@ export function createClientPool(): (<T extends Transport>(
    * Get or create a client connection from the pool
    * Implements single-flight pattern: concurrent requests for the same key share the same connection promise
    *
-   * @param transport - The transport to use for the connection
+   * `createTransport` is called lazily — only on a cache miss. On a cache hit
+   * (the common case for a virtual MCP calling multiple tools on the same
+   * downstream connection within one request) it never runs, so callers that
+   * build headers via a DB lookup + JWT issuance (see `buildRequestHeaders`)
+   * don't pay that cost for a client they're about to reuse anyway.
+   *
+   * @param createTransport - Builds the transport for the connection; only invoked on a cache miss
    * @param key - Unique key for the cache (typically connectionId)
    * @returns The connected client
    */
   function getOrCreateClientImpl<T extends Transport>(
-    transport: T,
+    createTransport: () => T | Promise<T>,
     key: string,
   ): Promise<Client> {
     // Check cache for existing promise (single-flight pattern)
@@ -48,35 +54,36 @@ export function createClientPool(): (<T extends Transport>(
 
     // Create the connection promise immediately and store it
     // This ensures concurrent requests for the same key get the same promise
-    const client = new Client(
-      {
-        name: `outbound-client-${key}`,
-        version: "1.0.0",
-      },
-      {
-        capabilities: {
-          tasks: {
-            list: {},
-            cancel: {},
-            requests: { tool: { call: {} } },
-          },
+    const clientPromise = (async () => {
+      const transport = await createTransport();
+      const client = new Client(
+        {
+          name: `outbound-client-${key}`,
+          version: "1.0.0",
         },
-        jsonSchemaValidator: sharedJsonSchemaValidator,
-      },
-    );
+        {
+          capabilities: {
+            tasks: {
+              list: {},
+              cancel: {},
+              requests: { tool: { call: {} } },
+            },
+          },
+          jsonSchemaValidator: sharedJsonSchemaValidator,
+        },
+      );
 
-    // Set up cleanup handler BEFORE connecting - remove from cache when connection closes
-    client.onclose = () => {
-      clientMap.delete(key);
-    };
-
-    const clientPromise = client
-      .connect(transport)
-      .then(() => client)
-      .catch((e) => {
+      // Set up cleanup handler BEFORE connecting - remove from cache when connection closes
+      client.onclose = () => {
         clientMap.delete(key);
-        throw e;
-      });
+      };
+
+      await client.connect(transport);
+      return client;
+    })().catch((e) => {
+      clientMap.delete(key);
+      throw e;
+    });
 
     clientMap.set(key, clientPromise);
 
@@ -96,7 +103,7 @@ export function createClientPool(): (<T extends Transport>(
       clientMap.clear();
     },
   }) as (<T extends Transport>(
-    transport: T,
+    createTransport: () => T | Promise<T>,
     key: string,
   ) => Promise<Client>) & {
     [Symbol.asyncDispose]: () => Promise<void>;

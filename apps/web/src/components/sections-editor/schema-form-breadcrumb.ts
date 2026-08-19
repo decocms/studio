@@ -1,7 +1,9 @@
-import { getArrayItemDisplayLabels } from "./array-item-display";
+import {
+  getArrayItemDisplayLabels,
+  getArrayItemLabel,
+} from "./array-item-display";
 import { isPageMultivariateSectionArrayField } from "./page-variants";
 import type { SchemaProperty } from "./resolve-schema";
-import { labelFromResolveType } from "./section-types";
 import { unwrapBlockReference } from "./unwrap-section";
 
 /**
@@ -116,10 +118,16 @@ function labelsMatchLoose(a: string, b: string): boolean {
 function arrayCrumbNeededForDisambiguation(
   arrayLabel: string,
   itemLabel: string,
-  opts?: { arrayKey?: string; hasSiblingDrillDownFields?: boolean },
+  opts?: {
+    arrayKey?: string;
+    hasSiblingDrillDownFields?: boolean;
+    itemLabelFromSchema?: boolean;
+  },
 ): boolean {
   return (
     (opts?.hasSiblingDrillDownFields ?? false) ||
+    // Schema-only (titleBy/inline-union) labels can't be recomputed by a parent loader's resolver, so fold the array label as an invisible disambiguator.
+    (opts?.itemLabelFromSchema ?? false) ||
     labelsMatch(itemLabel, arrayLabel) ||
     (opts?.arrayKey != null && labelsMatch(itemLabel, opts.arrayKey))
   );
@@ -148,7 +156,11 @@ export function buildArrayDrillDownBreadcrumb(
   arrayLabel: string,
   itemLabel: string,
   itemIndex: number,
-  opts?: { arrayKey?: string; hasSiblingDrillDownFields?: boolean },
+  opts?: {
+    arrayKey?: string;
+    hasSiblingDrillDownFields?: boolean;
+    itemLabelFromSchema?: boolean;
+  },
 ): Crumb[] {
   const normalizedItem = normalizeBreadcrumbLabel(itemLabel);
   if (
@@ -314,32 +326,63 @@ function schemaHasNestedArrayField(schema: SchemaProperty, depth = 0): boolean {
 }
 
 /**
- * The object field keys in this scope that need their own label stamped onto the
+ * Whether a field VALUE contains — at any nesting level — a drill-down array (an
+ * array with ≥1 object item). The value-based counterpart to
+ * {@link schemaHasNestedArrayField}, needed for block-ref (loader) fields whose
+ * nested arrays live in the resolved value, not the field's own schema.
+ */
+function valueHasNestedDrillArray(value: unknown, depth = 0): boolean {
+  if (depth > 6 || value == null || typeof value !== "object") return false;
+  if (Array.isArray(value)) {
+    return value.some(
+      (item) =>
+        item != null && typeof item === "object" && !Array.isArray(item),
+    );
+  }
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (k.startsWith("__")) continue;
+    if (valueHasNestedDrillArray(v, depth + 1)) return true;
+  }
+  return false;
+}
+
+/**
+ * The sibling field keys in this scope that need their own label stamped onto the
  * breadcrumb trail when drilling into a nested array item, to stay unambiguous.
  *
- * A key qualifies when it's an object holding a nested drill-down array AND at
- * least one sibling is also such an object: a bare `[…, itemLabel]` trail then
- * matches the nested array in BOTH (e.g. `shelfProps` / `shelfPropsOffer`, each
- * with `cardLayout.productTags`), so {@link resolveActiveFieldKey} can't tell
- * them apart and the panel falls back to showing every sibling. Stamping the
- * disambiguated label makes the trail name the right one — the resolver's
- * strong-match path (the `labelsMatch(head, label)` branch of the object loop)
- * then pins it.
+ * A key qualifies when it holds a nested drill-down array AND at least one sibling
+ * also does: a bare `[…, itemLabel]` trail then matches the nested array in BOTH,
+ * so {@link resolveActiveFieldKey} can't tell them apart and the panel falls back
+ * to showing every sibling. Stamping the disambiguated label makes the trail name
+ * the right one — the resolver's strong-match path then pins it. Two shapes hit
+ * this: object siblings (`shelfProps` / `shelfPropsOffer`, each with
+ * `cardLayout.productTags`) and block-ref loaders (a PLP `page` + a
+ * `RangePriceProps`, both carrying `selectedFacets`).
  *
- * Complements the same-display-label collision check in `schema-form.tsx`:
- * distinct-titled siblings like these don't collide by label, so that check
- * alone misses them. Computed in a single pass over `keys` (one schema walk per
- * object sibling) so callers don't re-walk every sibling per rendered field.
+ * Object siblings are detected by SCHEMA ({@link schemaHasNestedArrayField});
+ * block-ref/loader siblings by their resolved VALUE
+ * ({@link valueHasNestedDrillArray}), since their arrays aren't in the field
+ * schema. Computed once per scope so callers don't re-walk per rendered field.
  */
-export function objectSiblingsNeedingAncestorCrumb(
+export function siblingsNeedingAncestorCrumb(
   keys: string[],
   properties: Record<string, SchemaProperty>,
+  objValue: Record<string, unknown> = {},
 ): Set<string> {
-  const withNestedArray = keys.filter((key) => {
+  const holders = keys.filter((key) => {
     const schema = properties[key];
-    return schema?.type === "object" && schemaHasNestedArrayField(schema);
+    if (!schema) return false;
+    if (schema.type === "object" && schemaHasNestedArrayField(schema)) {
+      return true;
+    }
+    // Only CONTAINER fields (a loader/block-ref whose value is a non-array object) get a standalone ancestor crumb; a direct array disambiguates via its folded arrayLabel.
+    const v = objValue[key];
+    if (v != null && typeof v === "object" && !Array.isArray(v)) {
+      return valueHasNestedDrillArray(v);
+    }
+    return false;
   });
-  return withNestedArray.length > 1 ? new Set(withNestedArray) : new Set();
+  return holders.length > 1 ? new Set(holders) : new Set();
 }
 
 function asObjectRecord(value: unknown): Record<string, unknown> {
@@ -348,28 +391,25 @@ function asObjectRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
-// A drilled item is addressed by its display label, which for the common case
-// comes from one of these high-signal naming fields. We match ownership ONLY
-// against these (not the full getArrayItemLabel fallback chain) so a coincidental
-// `href`/`id`/`key` value — or a plain string in an unrelated primitive array —
-// can't spuriously claim to own the crumb.
-const OWNERSHIP_LABEL_KEYS = ["name", "label", "title", "alt"] as const;
-
-function itemOwnershipLabel(item: unknown): string | undefined {
+/**
+ * The ownership label of an array item — the SAME label {@link getArrayItemLabel}
+ * displays it by, so ownership matches exactly the crumb the user drilled into (a
+ * crumb IS a display label). This covers every data-derived source at once —
+ * name/label/title/alt, text/href/id/key, and `__resolveType` — instead of a
+ * hand-picked subset that silently dropped `selectedFacets`, category navs, etc.
+ *
+ * Only OBJECT items get a label: primitive array items can't be drilled into, so a
+ * plain string in an unrelated array must never claim the crumb. The generic
+ * `Item N` fallback names no field, so it's rejected too. The only residual blind
+ * spot is a `titleBy`/inline-union label, which needs the item schema (absent
+ * here) — those degrade to "all siblings shown", never to a wrong narrow.
+ */
+function itemOwnershipLabel(item: unknown, index: number): string | undefined {
   if (item == null || typeof item !== "object" || Array.isArray(item)) {
     return undefined;
   }
-  const obj = item as Record<string, unknown>;
-  for (const key of OWNERSHIP_LABEL_KEYS) {
-    const value = obj[key];
-    if (typeof value === "string" && value.trim()) return value;
-  }
-  // Loader/section-ref items (e.g. `extensions: ExtensionOf[]`) label by `__resolveType` (see `baseArrayItemLabel`) — match that so ownership can find them.
-  const resolveType = obj.__resolveType;
-  if (typeof resolveType === "string" && resolveType) {
-    return labelFromResolveType(resolveType);
-  }
-  return undefined;
+  const label = getArrayItemLabel(item, index);
+  return label === `Item ${index + 1}` ? undefined : label;
 }
 
 /**
@@ -383,12 +423,12 @@ function itemOwnershipLabel(item: unknown): string | undefined {
  * returns null and the panel keeps showing every sibling prop instead of
  * narrowing to the item.
  *
- * Deliberately conservative — matches only object items via
- * {@link OWNERSHIP_LABEL_KEYS} or their `__resolveType` label (no item schema here). Items labeled
- * via a custom `titleBy`, via `text`/`href`/`id`, or primitive-array items are
- * NOT detected; those degrade to the pre-fix behavior (all siblings shown)
- * rather than risk narrowing to the wrong loader. Bounded by depth and a shared
- * node budget so a large loader config can't stall a render.
+ * Ownership uses {@link itemOwnershipLabel} — the item's real display label — so
+ * every data-derived label (name/label/title/alt, text/href/id/key,
+ * `__resolveType`) matches, not a hand-picked subset. Only `titleBy`/inline-union
+ * labels (schema-only, absent here) and primitive arrays stay undetected; those
+ * degrade to "all siblings shown", never a wrong narrow. Bounded by depth and a
+ * shared node budget so a large loader config can't stall a render.
  */
 function valueOwnsItemCrumb(
   value: unknown,
@@ -409,9 +449,10 @@ function valueOwnsItemCrumb(
   // a direct match suffices. The actual item is still pinned downstream by the
   // index-carrying resolveArrayItemSelection.
   if (Array.isArray(value)) {
-    for (const item of value) {
+    for (let i = 0; i < value.length; i++) {
+      const item = value[i];
       if (--budget.n <= 0) return false;
-      const label = itemOwnershipLabel(item);
+      const label = itemOwnershipLabel(item, i);
       if (label && labelsMatch(label, crumb)) {
         return true;
       }
@@ -422,6 +463,13 @@ function valueOwnsItemCrumb(
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
     if (k.startsWith("__")) continue;
     if (--budget.n <= 0) return false;
+    // The crumb may name a nested container FIELD (a global loader ref's drilled `selectedFacets` array writes a "Selected Facets" field crumb), not an item.
+    if (
+      (Array.isArray(v) || (v != null && typeof v === "object")) &&
+      (labelsMatchLoose(humanize(k), crumb) || labelsMatchLoose(k, crumb))
+    ) {
+      return true;
+    }
     if (valueOwnsItemCrumb(v, crumb, budget, depth + 1)) return true;
   }
   return false;
@@ -594,6 +642,11 @@ function resolveActiveFieldKeyInScope(
   // breadcrumb crumb.  The one whose data actually owns the nested field
   // wins; the rest are kept as a fallback.
   let blockRefFallback: string | null = null;
+  const valueOwners: string[] = [];
+  // Folded array labels on the trail's item crumbs — match the array's name against a loader's field keys when its item label is schema-only (titleBy).
+  const foldedArrayLabels = breadcrumbPath
+    .map(crumbArrayLabel)
+    .filter((l): l is string => l != null);
   for (const key of keys) {
     const schema = properties[key];
     if (schema?.type !== "block-ref") continue;
@@ -610,7 +663,13 @@ function resolveActiveFieldKeyInScope(
       // decofile before scanning.
       const rawVal = objValue[key];
       const saved = decofile ? unwrapBlockReference(rawVal, decofile) : null;
-      if (valueOwnsItemCrumb(saved?.data ?? rawVal, head)) return key;
+      const data = saved?.data ?? rawVal;
+      if (
+        valueOwnsItemCrumb(data, head) ||
+        foldedArrayLabels.some((al) => valueOwnsItemCrumb(data, al))
+      ) {
+        valueOwners.push(key);
+      }
       continue;
     }
 
@@ -630,7 +689,11 @@ function resolveActiveFieldKeyInScope(
 
     if (!blockRefFallback) blockRefFallback = key;
   }
+  // A field the crumb NAMES (head === its label) beats a value-ownership guess.
   if (blockRefFallback) return blockRefFallback;
+  // One owner → narrow to it; two or more → ambiguous, so keep every sibling shown.
+  if (valueOwners.length === 1) return valueOwners[0]!;
+  if (valueOwners.length > 1) return null;
 
   return null;
 }

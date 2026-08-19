@@ -3,16 +3,102 @@ import type { settings as settingsEn } from "../en/settings.ts";
 export const settings = {
   "settings.title": "Perfil e preferências",
   "settings.nav.organization": "Organização",
+  "settings.nav.build": "Construir",
+  "settings.nav.manage": "Gerenciar",
   "settings.nav.general": "Geral",
-  "settings.nav.connect": "Conectar a clientes",
-  "settings.nav.brandContext": "Contexto da marca",
+  "settings.nav.connect": "Conectar",
   "settings.nav.aiProviders": "Provedores de IA",
   "settings.nav.secrets": "Segredos",
   "settings.nav.apiKeys": "Chaves de API",
-  "settings.nav.billing": "Cobrança",
-  "settings.nav.infraBilling": "Cobrança de infra",
+  "settings.nav.billing": "Cobrança e IA",
   "settings.nav.buckets": "Buckets",
   "settings.nav.syncedRepos": "Repos sincronizados",
+  "settings.nav.storage": "Armazenamento",
+  "settings.nav.advanced": "Avançado",
+  "settings.subnav.ariaLabel": "Seções de configurações",
+  "settings.subnav.clients": "Clientes",
+  "settings.subnav.planUsage": "Plano e uso",
+  "settings.subnav.infrastructure": "Infraestrutura",
+  "settings.nav.tasks": "Tarefas",
+  "settings.jira.sectionTitle": "Integração com o Jira",
+  "settings.jira.pageDescription":
+    "Espelhe um projeto do Jira no quadro de tarefas. Issues em status mapeados aparecem como cards e ficam em sincronia a cada poucos minutos, e comentários fluem nos dois sentidos — comentários do card aparecem na issue e vice-versa. Campos da issue nunca são escritos de volta.",
+  "settings.jira.connectTitle": "Conectar Jira",
+  "settings.jira.connectDescription":
+    "Use um site do Jira Cloud e um API token (de preferência de uma conta de serviço). Crie um em id.atlassian.com → Security → API tokens.",
+  "settings.jira.sitePlaceholder": "suaempresa.atlassian.net",
+  "settings.jira.emailPlaceholder": "E-mail da conta Atlassian",
+  "settings.jira.tokenPlaceholder": "API token",
+  "settings.jira.connect": "Conectar",
+  "settings.jira.connecting": "Conectando…",
+  "settings.jira.connected": "Jira conectado",
+  "settings.jira.connectFailed": "Não foi possível conectar ao Jira",
+  "settings.jira.connectionTitle": "Conexão",
+  "settings.jira.disconnect": "Desconectar",
+  "settings.jira.disconnected": "Jira desconectado",
+  "settings.jira.disconnectTitle": "Desconectar o Jira?",
+  "settings.jira.disconnectDescription":
+    "A sincronização para e as credenciais são apagadas. Os cards que já estão no quadro são mantidos — só deixam de atualizar.",
+  "settings.jira.cancel": "Cancelar",
+  "settings.jira.syncTitle": "Sincronização",
+  "settings.jira.syncDescription":
+    "Escolha o board do Jira a espelhar e mapeie as colunas dele pras lanes deste quadro.",
+  "settings.jira.boardLabel": "Board do Jira",
+  "settings.jira.boardDescription":
+    "Os cards visíveis do board são espelhados — a aba Backlog, epics e sub-tasks não.",
+  "settings.jira.boardPlaceholder": "Selecione um board",
+  "settings.jira.loadingBoards": "Carregando boards…",
+  "settings.jira.mappingLabel": "Mapeamento de colunas",
+  "settings.jira.mappingDescription":
+    "Mapeie as colunas do board pras lanes deste quadro. Colunas marcadas como “Não sincronizar” nunca aparecem aqui.",
+  "settings.jira.dontSync": "Não sincronizar",
+  "settings.jira.jqlLabel": "Filtro JQL (opcional)",
+  "settings.jira.jqlDescription":
+    "JQL extra pra restringir o que sincroniza — útil pra casar com o filtro salvo do seu board no Jira. Epics e sub-tasks são sempre excluídos.",
+  "settings.jira.jqlPlaceholder":
+    "ex.: labels = storefront AND sprint in openSprints()",
+  "settings.jira.jqlSave": "Salvar filtro",
+  "settings.jira.jqlSaved":
+    "Filtro salvo — vale a partir da próxima sincronização",
+  "settings.jira.columnsFailed":
+    "Não foi possível carregar as colunas do board",
+  "settings.jira.autoDelegateLabel": "Delegar automaticamente pro agente",
+  "settings.jira.autoDelegateDescription":
+    "Quando uma issue entra numa coluna mapeada pra To Do, o Super Agent assume o card e começa a trabalhar. O progresso dele é espelhado de volta na issue.",
+  "settings.jira.enableLabel": "Sincronização ativa",
+  "settings.jira.enableRequirements":
+    "Escolha um projeto e mapeie pelo menos um status antes de ativar a sincronização",
+  "settings.jira.lastSynced": "Última sincronização {ago}",
+  "settings.jira.waitingFirstSync": "Aguardando a primeira sincronização",
+  "settings.jira.syncNow": "Sincronizar agora",
+  "settings.jira.syncing": "Sincronizando…",
+  "settings.jira.syncDone":
+    "Sincronizado: {created} criados, {updated} atualizados",
+  "settings.jira.syncFailed": "Falha na sincronização",
+  "settings.jira.saveFailed":
+    "Não foi possível salvar as configurações do Jira",
+  "settings.jira.connectStep1":
+    "Crie um API token na sua conta Atlassian (de preferência uma conta de serviço com acesso ao projeto).",
+  "settings.jira.connectStep2":
+    "Preencha o site do Jira, o e-mail da conta e o token, e conecte.",
+  "settings.jira.connectStep3":
+    "Escolha o board do Jira a espelhar e mapeie as colunas dele pras lanes deste quadro.",
+  "settings.jira.createTokenLink": "Criar um API token",
+  "settings.jira.webhookTitle": "Atualizações instantâneas (webhook)",
+  "settings.jira.webhookDescription":
+    "Opcional. Sem ele, mudanças feitas no Jira chegam ao quadro na próxima sincronização de 10 minutos; com ele, chegam em segundos.",
+  "settings.jira.webhookCopy": "Copiar",
+  "settings.jira.webhookCopied": "URL do webhook copiada",
+  "settings.jira.webhookStep1":
+    "No Jira, abra Settings (ícone de engrenagem) → System → Webhooks. Requer um admin do Jira.",
+  "settings.jira.webhookStep2":
+    "Clique em “Create a webhook” e cole a URL acima.",
+  "settings.jira.webhookStep3":
+    "Em Events, marque Issue: created e Issue: updated.",
+  "settings.jira.webhookStep4":
+    "Opcionalmente restrinja com um filtro JQL, ex.: project = <chave do projeto>.",
+  "settings.jira.webhookStep5":
+    "Salve. Mudanças feitas no Jira passam a aparecer no quadro em segundos.",
   "settings.syncedRepos.pageDescription":
     "Repositórios do GitHub espelhados em pastas somente leitura da biblioteca, sincronizados a cada poucos minutos. Ótimo para um repo de skills compartilhado.",
   "settings.syncedRepos.addRepo": "Adicionar repo",
@@ -36,17 +122,13 @@ export const settings = {
   "settings.syncedRepos.removeTitle": 'Parar de sincronizar "{volume}"?',
   "settings.syncedRepos.removed": "Sincronização removida",
   "settings.syncedRepos.rowSubtitle": "Pasta da biblioteca: {volume}",
-  "settings.nav.build": "Criação",
   "settings.nav.connections": "Conexões",
   "settings.nav.agents": "Agentes",
   "settings.nav.automations": "Automações",
   "settings.nav.store": "Loja",
-  "settings.nav.manage": "Gerenciar",
   "settings.nav.monitor": "Monitoramento",
   "settings.nav.members": "Membros",
-  "settings.nav.roles": "Cargos",
   "settings.nav.security": "Segurança",
-  "settings.nav.account": "Conta",
   "settings.nav.profile": "Perfil e preferências",
   "settings.nav.signOut": "Sair",
   "settings.profile.avatar": "Avatar",
@@ -72,10 +154,6 @@ export const settings = {
   "settings.preferences.soundsDescription":
     "Reproduza sons para ações de agentes e notificações.",
   "settings.preferences.soundsPreview": "Ouvir som de notificação",
-  "settings.preferences.terminalVisible":
-    "Mostrar terminal do preview por padrão",
-  "settings.preferences.terminalVisibleDescription":
-    "Abrir o terminal do preview automaticamente em vez de mantê-lo oculto até você exibi-lo.",
   "settings.preferences.toolApproval": "Aprovação de ferramentas",
   "settings.preferences.toolApprovalDescription":
     "Controle como as ferramentas são aprovadas antes da execução.",
@@ -97,42 +175,6 @@ export const settings = {
     "Nenhuma automa\u00e7\u00e3o encontrada",
   "settings.automations.pageTitle": "Automa\u00e7\u00f5es",
   "settings.automations.searchPlaceholder": "Pesquisar automa\u00e7\u00f5es...",
-  "settings.brandFormSections.autoExtractDescription":
-    "Digite o URL do seu site e extrairemos automaticamente as cores, fontes, logos e vis\u00e3o geral da sua marca.",
-  "settings.brandFormSections.autoExtractTitle":
-    "Auto-extrair contexto da marca",
-  "settings.brandFormSections.colorPlaceholder": "#000000",
-  "settings.brandFormSections.colorRoleAccent": "Destaque",
-  "settings.brandFormSections.colorRoleBackground": "Fundo",
-  "settings.brandFormSections.colorRoleForeground": "Primeiro Plano",
-  "settings.brandFormSections.colorRolePrimary": "Prim\u00e1ria",
-  "settings.brandFormSections.colorRoleSecondary": "Secund\u00e1ria",
-  "settings.brandFormSections.colorsTitle": "Cores",
-  "settings.brandFormSections.companyNameLabel": "Nome da empresa",
-  "settings.brandFormSections.companyNamePlaceholder": "Acme Corp",
-  "settings.brandFormSections.companyOverviewTitle":
-    "Vis\u00e3o Geral da Empresa",
-  "settings.brandFormSections.domainInputPlaceholder": "acme.com",
-  "settings.brandFormSections.domainLabel": "Dom\u00ednio",
-  "settings.brandFormSections.domainPlaceholder": "acme.com",
-  "settings.brandFormSections.extract": "Extrair",
-  "settings.brandFormSections.extracting": "Extraindo...",
-  "settings.brandFormSections.faviconLabel": "Favicon",
-  "settings.brandFormSections.fontFamilyPlaceholder":
-    "Fam\u00edlia de fonte para {role}",
-  "settings.brandFormSections.fontRoleBody": "Corpo",
-  "settings.brandFormSections.fontRoleCode": "C\u00f3digo",
-  "settings.brandFormSections.fontRoleHeading": "T\u00edtulos",
-  "settings.brandFormSections.fontsTitle": "Fontes",
-  "settings.brandFormSections.logoLabel": "Logo",
-  "settings.brandFormSections.logosImagesTitle": "Logos e Imagens",
-  "settings.brandFormSections.noImageLabel": "Sem {label}",
-  "settings.brandFormSections.ogImageLabel": "Imagem SEO / OG",
-  "settings.brandFormSections.openLink": "abrir",
-  "settings.brandFormSections.overviewLabel": "Vis\u00e3o Geral",
-  "settings.brandFormSections.overviewPlaceholder":
-    "Breve descri\u00e7\u00e3o do que a empresa faz...",
-  "settings.brandFormSections.urlPlaceholder": "https://...",
   "settings.buckets.accessKeyIdLabel": "ID de chave de acesso",
   "settings.buckets.addBucket": "Adicionar bucket",
   "settings.buckets.addBucketButton": "Adicionar bucket",
@@ -465,9 +507,6 @@ export const settings = {
   "settings.navigation.navV2Title": "Navegação de primeira classe",
   "settings.navigation.navV2Description":
     "A barra lateral lista destinos (Relatórios, Biblioteca, Tarefas) em vez de chats, e a lista de chats vai para o topo do painel de chat. Ativada por padrão em organizações de relatório.",
-  "settings.navigation.nativeAssetsTitle": "Aba de Assets nativa",
-  "settings.navigation.nativeAssetsDescription":
-    "Mostra uma aba de Assets nativa que navega o bucket de armazenamento associado ao site, em vez da view externa de admin. Aparece s\u00f3 em sites que t\u00eam um bucket configurado.",
   "settings.orgGeneral.organization": "Organiza\u00e7\u00e3o",
   "settings.mainAgent.title": "Agente principal",
   "settings.mainAgent.description":

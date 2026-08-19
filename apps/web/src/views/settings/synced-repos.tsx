@@ -47,6 +47,7 @@ import {
   useOrgRepoSyncs,
 } from "@/hooks/use-org-repo-syncs";
 import { timeAgo } from "@/layouts/library/cards";
+import { SettingsSubnav } from "@/components/settings/settings-subnav";
 
 /** Suggest a volume name from the repo name (server re-validates). */
 function volumeNameFor(repoName: string): string {
@@ -314,13 +315,12 @@ function SyncedReposContent() {
 }
 
 export function OrgSyncedReposPage() {
-  const t = useT();
   return (
     <Page>
       <Page.Content>
         <Page.Body>
           <SettingsPage>
-            <Page.Title>{t("settings.nav.syncedRepos")}</Page.Title>
+            <SettingsSubnav group="storage" />
             <SyncedReposContent />
           </SettingsPage>
         </Page.Body>

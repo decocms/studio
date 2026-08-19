@@ -1,49 +1,16 @@
 import { useMutation } from "@tanstack/react-query";
+import {
+  buildPreviewInvokePath,
+  type PreviewProxyRef,
+} from "@/components/sections-editor/preview-fetch-url";
 
 interface RunBlockInput {
   resolveType: string;
   props: Record<string, unknown>;
 }
 
-/** Sandbox coordinates the studio preview-invoke proxy route is keyed by. */
-export interface RunBlockSandboxRef {
-  orgSlug: string;
-  virtualMcpId: string;
-  branch: string;
-}
-
 /** Cap on a single run — mirrors the proxy's upstream invoke timeout. */
 const RUN_TIMEOUT_MS = 30_000;
-
-/**
- * Studio proxy path for a preview invoke:
- * `POST /api/:org/sandbox/:virtualMcpId/:branch/preview-invoke` with a
- * block-ref body (`{ __resolveType, ...props }`). The proxy re-issues it as
- * `POST <preview>/deco/invoke/<resolveType>` with the props as JSON body.
- *
- * Going through the studio (same-origin) instead of fetching the preview
- * directly keeps the browser out of CORS territory — previews don't send
- * `Access-Control-Allow-Origin` for `/deco/invoke`.
- */
-export function buildPreviewInvokePath(ref: RunBlockSandboxRef): string {
-  return `/api/${ref.orgSlug}/sandbox/${encodeURIComponent(ref.virtualMcpId)}/${encodeURIComponent(ref.branch)}/preview-invoke`;
-}
-
-/**
- * Studio proxy path for a preview GET fetch:
- * `GET /api/:org/sandbox/:virtualMcpId/:branch/preview-fetch?path=<path>`.
- * The proxy fetches `<preview><path>` server-side so the browser stays out of
- * CORS. `path` may be any same-origin path that can't escape the origin (the
- * proxy rejects protocol-relative / traversal); used to read the site's
- * homepage and listing HTML for link-based entity discovery.
- */
-export function buildPreviewFetchPath(
-  ref: RunBlockSandboxRef,
-  path: string,
-): string {
-  const base = `/api/${ref.orgSlug}/sandbox/${encodeURIComponent(ref.virtualMcpId)}/${encodeURIComponent(ref.branch)}/preview-fetch`;
-  return `${base}?path=${encodeURIComponent(path)}`;
-}
 
 /**
  * Build the invoke URL for "Open result in new tab": a top-level GET
@@ -80,7 +47,7 @@ export function buildInvokeRunUrl(
 }
 
 async function invokeBlock(
-  ref: RunBlockSandboxRef,
+  ref: PreviewProxyRef,
   { resolveType, props }: RunBlockInput,
 ): Promise<unknown> {
   let res: Response;
@@ -126,10 +93,10 @@ async function invokeBlock(
 }
 
 /**
- * Invoke a loader/action against the running sandbox preview (via the studio
+ * Invoke a loader/action against this session's site (via the studio
  * preview-invoke proxy) and return its structured result.
  */
-export function useRunBlock(ref: RunBlockSandboxRef) {
+export function useRunBlock(ref: PreviewProxyRef) {
   return useMutation<unknown, Error, RunBlockInput>({
     mutationFn: (input) => invokeBlock(ref, input),
   });

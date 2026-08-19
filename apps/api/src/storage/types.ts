@@ -1923,6 +1923,98 @@ export interface BrandContext {
   updatedAt: Date | string;
 }
 
+/** Per-org Jira Cloud integration config (pull sync into the task board). */
+export interface OrgJiraIntegrationTable {
+  id: ColumnType<string, string | undefined, never>;
+  organization_id: string;
+  site_url: string;
+  email: string;
+  /** Vault-encrypted Jira API token (Basic auth pairs it with `email`). */
+  api_token: string;
+  /** Agile board the sync mirrors (its columns minus its Backlog tab). */
+  board_id: string | null;
+  board_name: string | null;
+  /** { "<jira status name>": "<board status>" } — the per-tenant mapping.
+   *  Issues whose Jira status is not a key here are skipped by the sync. */
+  status_mapping: ColumnType<
+    Record<string, TaskBoardItemStatus>,
+    string | undefined,
+    string
+  >;
+  /** Optional extra JQL ANDed into the pull (labels, sprints, …) — the
+   *  tenant's way to match their board's saved filter. */
+  jql_filter: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  /** Issue lands in a To Do-mapped column → assign the Super Agent. */
+  auto_delegate: ColumnType<boolean, boolean | undefined, boolean>;
+  /** Capability URL segment for `/api/_jira/webhook/<secret>` — DB-generated,
+   *  never updated. */
+  webhook_secret: ColumnType<string, string | undefined, never>;
+  enabled: ColumnType<boolean, boolean | undefined, boolean>;
+  /** Incremental-sync watermark: the max issue `updated` fully processed —
+   *  not "when the cron last ran". A truncated run advances it only as far
+   *  as it got, so the next run resumes instead of skipping. */
+  last_synced_at: ColumnType<Date | null, never, Date | string | null>;
+  last_sync_error: ColumnType<string | null, never, string | null>;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+export interface OrgJiraIntegration {
+  id: string;
+  organizationId: string;
+  siteUrl: string;
+  email: string;
+  /** Decrypted — never include in tool outputs. */
+  apiToken: string;
+  boardId: string | null;
+  boardName: string | null;
+  statusMapping: Record<string, TaskBoardItemStatus>;
+  jqlFilter: string | null;
+  autoDelegate: boolean;
+  webhookSecret: string;
+  enabled: boolean;
+  lastSyncedAt: string | null;
+  lastSyncError: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Board card ↔ Jira issue link. `jira_updated_at` is the issue's `updated`
+ *  as of our last pull — an event or page with an older-or-equal `updated`
+ *  is a no-op, which dedupes the sync's watermark overlap. */
+export interface TaskBoardItemJiraLinkTable {
+  item_id: string;
+  organization_id: string;
+  jira_issue_id: string;
+  jira_issue_key: string;
+  jira_updated_at: ColumnType<Date, Date | string, Date | string>;
+  /** Last status name SEEN OR SET on the Jira side — the pull applies status
+   *  only when this changed, and the status push records its target here so
+   *  the resulting echo is a no-op. */
+  jira_status: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
+/** Board comment ↔ Jira comment link — the echo/idempotency cut for comment
+ *  sync: a Jira comment id with a link row is known (either we pushed it or
+ *  already pulled it), never re-imported. */
+export interface TaskBoardCommentJiraLinkTable {
+  comment_id: string;
+  organization_id: string;
+  jira_comment_id: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
 /**
  * Complete database schema
  * All tables exist within the organization scope (database boundary)
@@ -2027,6 +2119,11 @@ export interface Database extends PrivateRegistryDatabase {
   task_board_comments: TaskBoardCommentTable;
   task_board_item_tags: TaskBoardItemTagTable;
   task_board_import_runs: TaskBoardImportRunTable;
+
+  // Jira integration (per-org pull sync into the task board)
+  org_jira_integrations: OrgJiraIntegrationTable;
+  task_board_item_jira_links: TaskBoardItemJiraLinkTable;
+  task_board_comment_jira_links: TaskBoardCommentJiraLinkTable;
 
   sandbox_runner_state: SandboxProviderStateTable;
 }

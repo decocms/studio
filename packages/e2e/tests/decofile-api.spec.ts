@@ -24,12 +24,16 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { APIRequestContext } from "@playwright/test";
 import { signUpViaApi } from "../fixtures/auth-api";
-import { callSelfMcpTool, createHttpConnection } from "../fixtures/mcp-tools";
+import { callSelfMcpTool } from "../fixtures/mcp-tools";
+import {
+  createFastPreviewProject,
+  type FastPreviewProject,
+  inspectStubRepo,
+  seedStubRepo,
+  uniqueOwner,
+} from "../fixtures/fast-preview";
 import { expect, newApiContext, test } from "../fixtures/test";
-
-const GITHUB_STUB_ORIGIN = `http://localhost:${process.env.GITHUB_STUB_PORT ?? "4102"}`;
 
 /** Serialization the decofile writer uses for a block file. */
 const blockFileContent = (value: unknown): string =>
@@ -41,145 +45,6 @@ interface DecofileGetBody {
   apiHost?: string;
   decofile: Record<string, unknown>;
 }
-
-interface StubRepoInspection {
-  defaultBranch: string;
-  mergeMode: string;
-  refs: Record<string, string>;
-  commits: Array<{ sha: string; message: string; parents: string[] }>;
-  branches: Record<string, { headSha: string; files: Record<string, string> }>;
-}
-
-async function seedStubRepo(
-  ctx: APIRequestContext,
-  params: {
-    owner: string;
-    repo: string;
-    defaultBranch?: string;
-    branches?: Record<string, { files?: Record<string, string> } | null>;
-    mergeMode?: "merge" | "conflict" | "blocked";
-  },
-): Promise<void> {
-  const res = await ctx.post(`${GITHUB_STUB_ORIGIN}/__admin/repos`, {
-    data: params,
-  });
-  expect(res.ok()).toBe(true);
-}
-
-async function inspectStubRepo(
-  ctx: APIRequestContext,
-  owner: string,
-  repo: string,
-): Promise<StubRepoInspection> {
-  const res = await ctx.get(
-    `${GITHUB_STUB_ORIGIN}/__admin/repos/${owner}/${repo}`,
-  );
-  expect(res.ok()).toBe(true);
-  return (await res.json()) as StubRepoInspection;
-}
-
-interface FastPreviewProject {
-  org: string;
-  owner: string;
-  repo: string;
-  vmcpId: string;
-  childConnectionId: string;
-}
-
-/**
- * Full Fast Preview project wiring: repo-scoped GitHub child + unexpired
- * downstream token + a virtual MCP carrying the Fast Preview gate.
- * `repoScopeMode` picks which real repo-child shape to seed; the two resolve
- * credentials down different paths (see `client-for-repo`), and the default is
- * the one every repo imported since refreshable grants landed actually has.
- */
-async function createFastPreviewProject(
-  ctx: APIRequestContext,
-  org: string,
-  params: {
-    owner: string;
-    repo: string;
-    repoScopeMode?: "refreshable" | "legacy-mint";
-  },
-): Promise<FastPreviewProject> {
-  const { owner, repo, repoScopeMode = "refreshable" } = params;
-
-  const sourceConnectionId =
-    repoScopeMode === "legacy-mint"
-      ? (
-          await createHttpConnection(ctx, org, {
-            title: `Org GitHub ${Date.now()}`,
-            url: "https://example.com/mcp",
-          })
-        ).id
-      : undefined;
-
-  const child = await callSelfMcpTool<{ item: { id: string } }>(
-    ctx,
-    org,
-    "COLLECTION_CONNECTIONS_CREATE",
-    {
-      data: {
-        title: `GitHub: ${owner}/${repo}`,
-        app_name: "mcp-github",
-        connection_type: "HTTP",
-        connection_url: "https://example.com/mcp",
-        metadata: {
-          repoScope: {
-            ...(sourceConnectionId ? { sourceConnectionId } : {}),
-            installationId: 1,
-            repositoryId: 99,
-            owner,
-            repo,
-            permissions: { contents: "write" },
-          },
-        },
-      },
-    },
-  );
-  const childConnectionId = child.item.id;
-  expect(childConnectionId).toBeTruthy();
-
-  // Unexpired token: read back directly, or short-circuits the legacy mint.
-  const tokenRes = await ctx.post(
-    `/api/${org}/connections/${childConnectionId}/oauth-token`,
-    {
-      data: { accessToken: "ghs_e2e_dummy", expiresIn: 3600 },
-      headers: { "Content-Type": "application/json" },
-    },
-  );
-  expect(tokenRes.ok()).toBe(true);
-
-  const vmcp = await callSelfMcpTool<{ item: { id: string } }>(
-    ctx,
-    org,
-    "COLLECTION_VIRTUAL_MCP_CREATE",
-    {
-      data: {
-        title: `${repo} ${Date.now()}`,
-        metadata: {
-          fastPreview: true,
-          previewServerUrl: `https://${repo}.example.com`,
-          githubRepo: {
-            owner,
-            name: repo,
-            url: `https://github.com/${owner}/${repo}`,
-            installationId: 1,
-            connectionId: childConnectionId,
-          },
-        },
-        connections: [{ connection_id: childConnectionId }],
-      },
-    },
-  );
-  const vmcpId = vmcp.item.id;
-  expect(vmcpId).toBeTruthy();
-
-  return { org, owner, repo, vmcpId, childConnectionId };
-}
-
-/** Unique owner per test run keeps the stub's repo namespace parallel-safe. */
-const uniqueOwner = (): string => `e2e-${randomUUID().slice(0, 12)}`;
 
 const decofileUrl = (p: FastPreviewProject, branch: string): string =>
   `/api/${p.org}/decofile/${p.vmcpId}/${branch}`;
@@ -851,7 +716,9 @@ test.describe("decofile API", () => {
     }
   });
 
-  test("publish surfaces a merge conflict as 409", async ({ playwright }) => {
+  test("publish resolves a conflict branch-wins instead of refusing", async ({
+    playwright,
+  }) => {
     const ctx = await newApiContext(playwright);
     try {
       const user = await signUpViaApi(ctx);
@@ -865,19 +732,36 @@ test.describe("decofile API", () => {
         defaultBranch: "main",
         mergeMode: "conflict",
         branches: {
-          main: { files: { ".deco/blocks/Hero.json": '{"title":"live"}' } },
-          draft: {
-            files: { ".deco/blocks/Hero.json": '{"title":"draft"}' },
-          },
+          main: { files: { ".deco/blocks/Hero.json": '{"title":"seed"}' } },
+          draft: { files: { ".deco/blocks/Hero.json": '{"title":"seed"}' } },
         },
       });
       const project = await createFastPreviewProject(ctx, org, { owner, repo });
 
+      // Both sides move the SAME block, so the publish merge genuinely
+      // conflicts and the route has to sync the branch before it can land.
+      const writeBlock = async (branch: string, title: string) => {
+        const res = await ctx.patch(decofileUrl(project, branch), {
+          data: { set: { Hero: { title } } },
+          headers: { "Content-Type": "application/json" },
+        });
+        expect(res.ok()).toBe(true);
+      };
+      await writeBlock("draft", "editor");
+      await writeBlock("main", "live");
+
       const publishRes = await ctx.post(
         `${decofileUrl(project, "draft")}/publish`,
       );
-      expect(publishRes.status()).toBe(409);
-      expect(await publishRes.json()).toEqual({ error: "merge-conflict" });
+      expect(publishRes.status()).toBe(200);
+      expect((await publishRes.json()).result).toBe("merged");
+
+      // The editor's block is what went live.
+      const admin = await inspectStubRepo(ctx, owner, repo);
+      const live = admin.branches["main"]?.files ?? {};
+      expect(JSON.parse(live[".deco/blocks/Hero.json"] as string)).toEqual({
+        title: "editor",
+      });
     } finally {
       await ctx.dispose();
     }

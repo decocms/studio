@@ -3,6 +3,7 @@ import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { useOptionalChatStream, useOptionalChatTask } from "../context";
 import { BranchPill } from "./branch-pill";
 import { getActiveGithubRepo } from "@/lib/github-repo";
+import { shouldStartBranchAsCms } from "@/sdk/fast-preview";
 import { useProjectContext } from "@/sdk";
 import { authClient } from "@/lib/auth-client";
 import { branchUserLabel } from "@decocms/shared/branch-name";
@@ -45,6 +46,11 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
   const locked =
     (stream?.messages ?? []).length > 0 || (taskCtx?.isThreadLocked ?? false);
   const setCurrentTaskBranch = taskCtx?.setCurrentTaskBranch;
+  const createTask = taskCtx?.createTask;
+  const createBranchAsCms = shouldStartBranchAsCms(
+    virtualMcp?.metadata,
+    taskCtx?.activeTask?.metadata,
+  );
 
   const githubRepo = getActiveGithubRepo(virtualMcp);
   const connectionId = githubRepo?.connectionId;
@@ -72,6 +78,13 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
         value={currentBranch}
         onChange={(next) => {
           if (setCurrentTaskBranch) void setCurrentTaskBranch(next);
+        }}
+        onCreateBranch={(next) => {
+          if (createBranchAsCms && createTask) {
+            createTask({ branch: next });
+          } else if (setCurrentTaskBranch) {
+            void setCurrentTaskBranch(next);
+          }
         }}
         locked={locked}
         placement="chat"

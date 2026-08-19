@@ -32,6 +32,7 @@ import {
   type DecofilePatch,
 } from "@/decofile/commit-coalescer";
 import { signDraftToken, verifyDraftToken } from "@/decofile/draft-token";
+import { githubGitRebase } from "@/decofile/git-compat";
 import { GitHubApiError, type GitDataClient } from "@/decofile/github-git-data";
 import { readDecofileSnapshot } from "@/decofile/read-decofile";
 import type { Env } from "../hono-env";
@@ -309,12 +310,17 @@ export function createDecofileRoutes() {
       if (baseBranch === scope.branch) {
         return c.json({ error: "Branch is already the default branch" }, 400);
       }
+      const message = `chore(decofile): publish ${scope.branch}`;
       try {
-        const sha = await client.mergeBranch(
-          baseBranch,
-          scope.branch,
-          `chore(decofile): publish ${scope.branch}`,
-        );
+        let sha: string | null;
+        try {
+          sha = await client.mergeBranch(baseBranch, scope.branch, message);
+        } catch (err) {
+          if (!(err instanceof GitHubApiError && err.status === 409)) throw err;
+          // Sync branch-wins first; the branch then sits on base and this FFs.
+          await githubGitRebase(client, scope.branch, baseBranch);
+          sha = await client.mergeBranch(baseBranch, scope.branch, message);
+        }
         return sha
           ? c.json({ result: "merged", sha })
           : c.json({ result: "up-to-date" });

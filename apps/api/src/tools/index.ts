@@ -31,6 +31,7 @@ import * as FileConfigTools from "./file-configs";
 import * as InfraBillingTools from "./infra-billing";
 import { ORG_FS_PUBLIC_SETS_SYNC } from "./org-fs/sync-public-sets";
 import * as OrgRepoSyncTools from "./org-repo-sync";
+import * as JiraTools from "./jira";
 import { getPrompts, getResources } from "./guides";
 import {
   getToolRegistration,
@@ -210,6 +211,14 @@ export const CORE_TOOLS = [
   OrgRepoSyncTools.ORG_REPO_SYNC_UPDATE,
   OrgRepoSyncTools.ORG_REPO_SYNC_DELETE,
   OrgRepoSyncTools.ORG_REPO_SYNC_RUN,
+
+  // Per-org Jira integration (pull sync into the task board)
+  JiraTools.JIRA_INTEGRATION_GET,
+  JiraTools.JIRA_INTEGRATION_UPSERT,
+  JiraTools.JIRA_INTEGRATION_DELETE,
+  JiraTools.JIRA_BOARDS_LIST,
+  JiraTools.JIRA_BOARD_COLUMNS_LIST,
+  JiraTools.JIRA_SYNC_RUN,
 
   // Object Storage tools
   ObjectStorageTools.LIST_OBJECTS,

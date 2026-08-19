@@ -23,6 +23,10 @@ import { buildCloneInfo } from "@/shared/github-clone-info";
 import { CredentialVault } from "@/encryption/credential-vault";
 import { getSettings } from "@/settings";
 import { parseGithubOwnerRepo } from "@/sandbox/parse-github-clone-url";
+import { mintOrgFsConfigJson } from "@/file-storage/mount/provisioning";
+import { OrgRepoSyncStorage } from "@/storage/org-repo-syncs";
+import { auth } from "@/auth";
+import { getPublicUrl } from "@/core/server-constants";
 
 // Stashed on globalThis so they survive Bun's `--hot` reload. The preview
 // reverse-proxy registered at the top of `apps/api/src/index.ts` is wired
@@ -187,6 +191,29 @@ async function instantiate(
             { bufferMs: mintOpts?.bufferMs },
           );
           return cloneUrl;
+        },
+        // Same lifetime problem as mintCloneUrl; see mintOrgFsConfig's docs.
+        mintOrgFsConfig: async (tenant) => {
+          if (!tenant.orgSlug) return null;
+          const json = await mintOrgFsConfigJson(
+            {
+              boundAuth: {
+                apiKey: {
+                  create: (data) =>
+                    auth.api.createApiKey({
+                      body: { ...data, userId: tenant.userId },
+                    }),
+                },
+              },
+              storage: { orgRepoSyncs: new OrgRepoSyncStorage(db) },
+            },
+            {
+              orgSlug: tenant.orgSlug,
+              orgId: tenant.orgId,
+              baseUrl: getPublicUrl(),
+            },
+          );
+          return json ?? null;
         },
       });
     }

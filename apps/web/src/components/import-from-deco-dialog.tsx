@@ -314,12 +314,6 @@ export function ImportFromDecoDialog({
                   pinnedViews: [
                     {
                       connectionId: connId,
-                      toolName: "fetch_assets",
-                      label: "Assets",
-                      icon: null,
-                    },
-                    {
-                      connectionId: connId,
                       toolName: "get_monitor_data",
                       label: "Monitor",
                       icon: null,

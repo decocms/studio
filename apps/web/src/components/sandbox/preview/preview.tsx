@@ -39,7 +39,6 @@ import {
   Phone02,
   RefreshCw01,
   Tablet01,
-  Terminal,
 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -55,7 +54,6 @@ import {
   MainPanelHeaderPortal,
   useMainPanelHeaderSlot,
 } from "@/layouts/agent-shell-layout/panel-header";
-import { useTerminalVisibility } from "@/layouts/main-panel-tabs/terminal-visibility";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -86,7 +84,10 @@ import {
 } from "@/components/sections-editor/page-path-utils";
 import { decoBlockFileViewPath } from "@/components/sections-editor/deco-block-key";
 import { findLivePageResolveType } from "@/components/sections-editor/section-catalog";
-import { buildGlobalSectionPreviewUrl } from "@/components/sections-editor/section-preview-url";
+import {
+  buildGlobalSectionPreviewUrl,
+  resolveSectionPreviewBase,
+} from "@/components/sections-editor/section-preview-url";
 import { useFastPreviewDraftUrl } from "@/components/sections-editor/use-fast-preview-draft-url";
 import { decofileWriteMutationKey } from "@/components/sections-editor/decofile-api";
 import { useCreatePage } from "@/components/sections-editor/use-create-page";
@@ -240,8 +241,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const navigate = useNavigate();
   const { currentBranch: branch } = useChatTask();
   const workspace = useBlocksPreviewWorkspace();
-  // Toggles the bottom terminal drawer (null on surfaces without the provider).
-  const terminal = useTerminalVisibility();
 
   const goToTab = (main: string) => {
     navigate({
@@ -366,6 +365,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const fastPreviewEnabled =
     inset?.entity?.id === virtualMcpId &&
     resolveFastPreview(inset.entity.metadata, activeThreadMeta).active;
+
+  // Base for the `/live/previews` global-section render: production under Fast Preview (no dev server), else the sandbox dev server.
+  const sectionPreviewBase = resolveSectionPreviewBase({
+    sandboxUrl: previewUrl,
+    previewServerUrl,
+    fastPreviewActive: fastPreviewEnabled,
+  });
 
   // Decofile pages/global sections for the URL bar dropdown. Not gated on the
   // dev server: when it's down we read the committed `.deco/*.gen.json` snapshot
@@ -619,7 +625,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         ? // Fast Preview's draft route honours the variant matcher override like the sandbox dev server, so append it here too.
           withVariantMatcherOverride(
             withDeviceHint(
-              draftPreviewUrl ??
+              directPreviewUrl ??
+                draftPreviewUrl ??
                 new URL(resolvedPath, display.iframeBase!).href,
               previewDeviceSize,
             ),
@@ -706,7 +713,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const sharedTarget = workspace.state.target;
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- synchronizes the independent Blocks selection with the mounted Preview iframe
   useEffect(() => {
-    if (!sharedTarget || !previewUrl || !meta) return;
+    if (!sharedTarget || !sectionPreviewBase || !meta) return;
     if (sharedTarget.kind === "page") {
       const params = pathParamsByPage[sharedTarget.key] ?? {};
       intendedPathRef.current = fillPathTemplate(sharedTarget.path, params);
@@ -735,12 +742,16 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         setActiveLoaderKey(null);
         setActiveGlobalSection(section);
         setDirectPreviewUrl(
-          buildGlobalSectionPreviewUrl(previewUrl, livePageRt, section.key),
+          buildGlobalSectionPreviewUrl(
+            sectionPreviewBase,
+            livePageRt,
+            section.key,
+          ),
         );
       }
     }
     // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- derived helpers must not retrigger selection synchronization every render
-  }, [sharedTarget, previewUrl, meta, pathParamsByPage]);
+  }, [sharedTarget, sectionPreviewBase, meta, pathParamsByPage]);
 
   // Publish the page Preview is showing to the shared workspace so the Blocks
   // panel follows it — Blocks has no page navigator, it edits whatever page
@@ -1122,7 +1133,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   };
 
   const navigatePreviewToGlobalSection = (section: GlobalSectionEntry) => {
-    if (!previewUrl || !meta) {
+    if (!sectionPreviewBase || !meta) {
       toast.error(t("sandbox.preview.previewMetadataNotReady"));
       return;
     }
@@ -1130,7 +1141,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     intendedPathRef.current = null;
     const livePageRt = findLivePageResolveType(meta);
     const url = buildGlobalSectionPreviewUrl(
-      previewUrl,
+      sectionPreviewBase,
       livePageRt,
       section.key,
     );
@@ -1572,122 +1583,96 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     </div>
   ) : null;
 
-  // Overflow menu (⋯) — sits on the right, beside the publish actions. Renders
-  // whenever there's at least one available action: the Terminal toggle is
-  // always available (so it stays reachable during boot, before the iframe is
-  // up), while copy / SEO items are gated on the preview being live.
-  // Fast Preview is sandbox-less — there is no terminal to show, so the
-  // toggle is withheld entirely rather than opening an empty drawer.
-  const terminalToggle = fastPreviewEnabled ? null : terminal;
-  const moreMenu =
-    showPreviewToolbar || terminalToggle ? (
-      <div className="flex shrink-0 items-center">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={t("sandbox.preview.moreOptions")}
-            >
-              <DotsHorizontal size={14} />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            {terminalToggle && (
+  // Overflow menu (⋯) — sits right of the publish actions; live-preview only.
+  const moreMenu = showPreviewToolbar ? (
+    <div className="flex shrink-0 items-center">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={t("sandbox.preview.moreOptions")}
+          >
+            <DotsHorizontal size={14} />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-44">
+          <DropdownMenuItem onClick={handleCopyUrl}>
+            <Copy01 size={14} />
+            {t("sandbox.preview.copyCurrentUrl")}
+          </DropdownMenuItem>
+          {decofile && meta && (
+            <>
+              <DropdownMenuSeparator />
+              {currentPageKey && (
+                <DropdownMenuItem
+                  onClick={() => {
+                    workspace.editSeo({
+                      kind: "page",
+                      key: currentPageKey,
+                      path: currentPath,
+                    });
+                    activateEditingMode("blocks");
+                  }}
+                >
+                  <CreditCardSearch size={14} />
+                  {t("sandbox.preview.editSeo")}
+                </DropdownMenuItem>
+              )}
+              {currentPageKey && (
+                <DropdownMenuItem
+                  onClick={() => {
+                    try {
+                      goToTab(
+                        formatCodeTabId(decoBlockFileViewPath(currentPageKey)),
+                      );
+                    } catch {
+                      toast.error(t("sandbox.preview.invalidPageBlockKey"));
+                    }
+                  }}
+                >
+                  <Code01 size={14} />
+                  {t("sandbox.preview.viewJson")}
+                </DropdownMenuItem>
+              )}
+            </>
+          )}
+          {repoDir && (
+            <>
+              <DropdownMenuSeparator />
               <DropdownMenuItem
-                onClick={() =>
-                  terminalToggle.setVisible(!terminalToggle.visible)
-                }
+                onClick={() => window.open(ideDeepLink("vscode", repoDir))}
               >
-                <Terminal size={14} />
-                {terminalToggle.visible
-                  ? t("sandbox.preview.hideTerminal")
-                  : t("sandbox.preview.showTerminal")}
+                <img
+                  src={VSCODE_ICON_URL}
+                  alt="VSCode"
+                  width={14}
+                  height={14}
+                />
+                {t("sandbox.preview.openInVscode")}
               </DropdownMenuItem>
-            )}
-            {showPreviewToolbar && (
-              <>
-                {terminalToggle && <DropdownMenuSeparator />}
-                <DropdownMenuItem onClick={handleCopyUrl}>
-                  <Copy01 size={14} />
-                  {t("sandbox.preview.copyCurrentUrl")}
-                </DropdownMenuItem>
-              </>
-            )}
-            {decofile && meta && (
-              <>
-                <DropdownMenuSeparator />
-                {currentPageKey && (
-                  <DropdownMenuItem
-                    onClick={() => {
-                      workspace.editSeo({
-                        kind: "page",
-                        key: currentPageKey,
-                        path: currentPath,
-                      });
-                      activateEditingMode("blocks");
-                    }}
-                  >
-                    <CreditCardSearch size={14} />
-                    {t("sandbox.preview.editSeo")}
-                  </DropdownMenuItem>
-                )}
-                {currentPageKey && (
-                  <DropdownMenuItem
-                    onClick={() => {
-                      try {
-                        goToTab(
-                          formatCodeTabId(
-                            decoBlockFileViewPath(currentPageKey),
-                          ),
-                        );
-                      } catch {
-                        toast.error(t("sandbox.preview.invalidPageBlockKey"));
-                      }
-                    }}
-                  >
-                    <Code01 size={14} />
-                    {t("sandbox.preview.viewJson")}
-                  </DropdownMenuItem>
-                )}
-              </>
-            )}
-            {repoDir && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => window.open(ideDeepLink("vscode", repoDir))}
-                >
-                  <img
-                    src={VSCODE_ICON_URL}
-                    alt="VSCode"
-                    width={14}
-                    height={14}
-                  />
-                  {t("sandbox.preview.openInVscode")}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => window.open(ideDeepLink("cursor", repoDir))}
-                >
-                  <img
-                    src={CURSOR_ICON_URL}
-                    alt="Cursor"
-                    width={14}
-                    height={14}
-                  />
-                  {t("sandbox.preview.openInCursor")}
-                </DropdownMenuItem>
-              </>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => startCmsTour(t)}>
-              <Compass01 size={14} />
-              {t("cmsTour.menuItem")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    ) : null;
+              <DropdownMenuItem
+                onClick={() => window.open(ideDeepLink("cursor", repoDir))}
+              >
+                <img
+                  src={CURSOR_ICON_URL}
+                  alt="Cursor"
+                  width={14}
+                  height={14}
+                />
+                {t("sandbox.preview.openInCursor")}
+              </DropdownMenuItem>
+            </>
+          )}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => startCmsTour(t)}>
+            <Compass01 size={14} />
+            {t("cmsTour.menuItem")}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  ) : null;
 
   const canVisualEdit = display.mode === "sandbox";
   const floatingPreviewControls = canVisualEdit ? (
@@ -1769,9 +1754,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           {showPreviewToolbar && (
             <MainPanelHeaderPortal>{urlControls}</MainPanelHeaderPortal>
           )}
-          {/* End slot renders even during boot (showPreviewToolbar false): the
-              ⋯ menu is present so its Terminal toggle stays reachable, and the
-              preview-only items join once the iframe is live. */}
           <MainPanelHeaderEndPortal>{moreMenu}</MainPanelHeaderEndPortal>
         </>
       ) : (

@@ -1,3 +1,5 @@
+import { withDraftPointer } from "@/components/sections-editor/section-preview-url";
+
 const str = (value: unknown): string =>
   typeof value === "string" ? value : "";
 
@@ -97,10 +99,13 @@ export function buildBlogCategoryPreviewUrl({
   decofile,
   category,
   previewBaseUrl,
+  draftPointer,
 }: {
   decofile: Record<string, unknown>;
   category: Record<string, unknown>;
   previewBaseUrl: string | null | undefined;
+  /** Fast Preview grant, so the link opens the unpublished draft. */
+  draftPointer?: string | null;
 }): string | null {
   if (!previewBaseUrl) return null;
   const template = findBlogCategorySlug(decofile);
@@ -110,7 +115,7 @@ export function buildBlogCategoryPreviewUrl({
   if (!path) return null;
 
   try {
-    return new URL(path, previewBaseUrl).href;
+    return withDraftPointer(new URL(path, previewBaseUrl).href, draftPointer);
   } catch {
     return null;
   }
@@ -124,10 +129,13 @@ export function buildBlogPostPreviewUrl({
   decofile,
   post,
   previewBaseUrl,
+  draftPointer,
 }: {
   decofile: Record<string, unknown>;
   post: Record<string, unknown>;
   previewBaseUrl: string | null | undefined;
+  /** Fast Preview grant, so the link opens the unpublished draft. */
+  draftPointer?: string | null;
 }): string | null {
   if (!previewBaseUrl) return null;
   const template = findBlogPageSlug(decofile);
@@ -140,7 +148,7 @@ export function buildBlogPostPreviewUrl({
   if (!path) return null;
 
   try {
-    return new URL(path, previewBaseUrl).href;
+    return withDraftPointer(new URL(path, previewBaseUrl).href, draftPointer);
   } catch {
     return null;
   }

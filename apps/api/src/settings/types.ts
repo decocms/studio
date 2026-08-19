@@ -124,9 +124,10 @@ export interface Settings {
    *  (DECOPILOT_MAX_CONCURRENT_SUBAGENTS). Excess calls queue and start as
    *  slots free — see `subagent-concurrency.ts`. */
   decopilotMaxConcurrentSubagents: number;
-  /** Process-wide cap on concurrent top-level hosted agent-loop runs per pod
-   *  (DECOPILOT_MAX_CONCURRENT_HOSTED_RUNS). Excess runs park and start as
-   *  slots free — see `hosted-run-concurrency.ts`. */
+  /** Per-pod cap on concurrent in-process hosted agent-loop runs
+   *  (DECOPILOT_MAX_CONCURRENT_HOSTED_RUNS). Applied as `workerConcurrency` on
+   *  HOSTED_HARNESS_QUEUE, so DBOS enforces it BEFORE the dequeue and excess
+   *  work stays ENQUEUED for another pod — see `queue-names.ts`. */
   decopilotMaxConcurrentHostedRuns: number;
   /** Kill switch for the boot-time task-board review sweeper
    *  (TASK_BOARD_REVIEW_SWEEPER_ENABLED, default on). It dispatches billable
@@ -134,8 +135,9 @@ export interface Settings {
    *  doesn't require a code change — see `tools/task-board/review-sweeper.ts`. */
   taskBoardReviewSweeperEnabled: boolean;
   /** Same, for a run whose agent loop executes in its own SANDBOX pod
-   *  (SANDBOX_MAX_CONCURRENT_HOSTED_RUNS). Much higher than the in-process cap
-   *  because this pod only proxies the stream — see `hosted-run-concurrency.ts`. */
+   *  (SANDBOX_MAX_CONCURRENT_HOSTED_RUNS) — `workerConcurrency` on
+   *  HOSTED_HARNESS_SANDBOXED_QUEUE. Much higher than the in-process cap
+   *  because this pod only proxies the stream. */
   sandboxMaxConcurrentHostedRuns: number;
   // Object Storage (S3-compatible)
   s3Endpoint: string | undefined;

@@ -1344,6 +1344,7 @@ impl ThreadsDb {
         virtual_mcp_id: &str,
         branch: Option<&str>,
         created_by: &str,
+        metadata: Option<&Value>,
     ) -> DbResult<RtThread> {
         self.adopt_legacy_account_rows(scope, organization_id)?;
         let account_scope = scope.storage_key();
@@ -1385,12 +1386,13 @@ impl ThreadsDb {
             });
         }
 
+        let metadata_str = metadata.map(|value| value.to_string());
         let inserted = tx.execute(
             "INSERT OR IGNORE INTO native_scoped_threads \
              (id, organization_id, title, description, hidden, status, created_by, updated_by, \
               updated_by_explicit, virtual_mcp_id, trigger_id, branch, sandbox_provider_kind, \
               harness_id, metadata, run_config, created_at, updated_at, generation, account_scope) \
-             VALUES (?1, ?2, ?3, ?4, 0, 'completed', ?5, ?5, 0, ?6, NULL, ?7, NULL, NULL, NULL, NULL, ?8, ?8, ?9, ?10)",
+             VALUES (?1, ?2, ?3, ?4, 0, 'completed', ?5, ?5, 0, ?6, NULL, ?7, NULL, NULL, ?8, NULL, ?9, ?9, ?10, ?11)",
             params![
                 id,
                 organization_id,
@@ -1399,6 +1401,7 @@ impl ThreadsDb {
                 created_by,
                 virtual_mcp_id,
                 branch,
+                metadata_str,
                 ts,
                 generation,
                 account_scope,
@@ -1440,6 +1443,7 @@ impl ThreadsDb {
             virtual_mcp_id,
             branch,
             created_by,
+            None,
         )
     }
 
@@ -4157,6 +4161,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
             "vmcp",
             None,
             "v4-user",
+            None,
         );
         assert!(matches!(
             recreate,
@@ -4218,6 +4223,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
                 "vmcp",
                 None,
                 "v5-user",
+                None,
             ),
             Err(DbError::RetiredThreadId { .. })
         ));
@@ -4588,6 +4594,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
                 "current-vmcp",
                 None,
                 "scoped-user",
+                None,
             )
             .unwrap();
         assert_eq!(current.title, "current scoped row");
@@ -5094,6 +5101,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
                 "vmcp",
                 None,
                 "alice",
+                None,
             )
             .unwrap();
         let fence = db
@@ -5118,6 +5126,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
                 "different-vmcp",
                 Some("ignored-branch"),
                 "alice",
+                None,
             )
             .unwrap();
         assert_eq!(duplicate.id, first.id);
@@ -5147,6 +5156,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
             "vmcp",
             None,
             "alice",
+            None,
         )
         .unwrap();
         let alice_org_a = db
@@ -5167,6 +5177,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
             "vmcp",
             None,
             "alice",
+            None,
         )
         .unwrap();
         let alice_org_b = db
@@ -5187,6 +5198,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
             "vmcp",
             None,
             "bob",
+            None,
         )
         .unwrap();
         let bob_org_a = db
@@ -5207,6 +5219,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
                 "vmcp",
                 None,
                 "alice",
+                None,
             ),
             Err(DbError::RetiredThreadId {
                 ref organization_id,
@@ -5464,6 +5477,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
                 "vmcp",
                 None,
                 "alice",
+                None,
             )
             .unwrap();
         assert_eq!(thread.organization_id, "shared-org");
@@ -5509,8 +5523,18 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
         let db = ThreadsDb::open_in_memory().unwrap();
         let scope = RtAccountScope::new("studio.decocms.com", "alice").unwrap();
         for (id, creator) in [("mine", "alice"), ("teammate", "bob")] {
-            db.rt_create_thread_scoped(&scope, Some(id), "org", id, None, "vmcp", None, creator)
-                .unwrap();
+            db.rt_create_thread_scoped(
+                &scope,
+                Some(id),
+                "org",
+                id,
+                None,
+                "vmcp",
+                None,
+                creator,
+                None,
+            )
+            .unwrap();
         }
         let (mine, total) = db
             .rt_list_threads_scoped(
@@ -5554,6 +5578,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
                 virtual_mcp_id,
                 None,
                 creator,
+                None,
             )
             .unwrap();
         }
@@ -5703,6 +5728,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
             "vmcp",
             None,
             "alice",
+            None,
         )
         .unwrap();
         db.lock()

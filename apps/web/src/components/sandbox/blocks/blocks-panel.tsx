@@ -1,8 +1,7 @@
 import { Suspense, lazy } from "react";
 import { Loading01 } from "@untitledui/icons";
-import { useProjectContext, useVirtualMCP } from "@/sdk";
-import { resolveFastPreview } from "@/sdk/fast-preview";
-import { useActiveThreadMeta } from "@/hooks/use-active-thread-meta";
+import { useProjectContext } from "@/sdk";
+import { useFastPreview } from "@/hooks/use-fast-preview";
 import { useChatTask } from "@/components/chat/context";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
@@ -63,14 +62,12 @@ export function BlocksPanel({
     : null;
   const decofile = useDecofile(fetchParams, { fetchEnabled: devServerReady });
   const meta = useLiveMeta(fetchParams, { fetchEnabled: devServerReady });
-  const vmcp = useVirtualMCP(virtualMcpId);
   const state = resolveBlocksTabState({
     lifecyclePhase: sandboxEvents.lifecycle.phase,
     decofile: toBlocksQueryState(decofile),
     meta: toBlocksQueryState(meta),
     hasEditableContent: hasEditableDecoContent(decofile.data, meta.data),
-    fastPreviewActive: resolveFastPreview(vmcp?.metadata, useActiveThreadMeta())
-      .active,
+    fastPreviewActive: useFastPreview(virtualMcpId).active,
   });
 
   if (state.kind === "loading") return <MainPanelLoading />;

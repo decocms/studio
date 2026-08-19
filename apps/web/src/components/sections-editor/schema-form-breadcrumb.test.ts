@@ -11,8 +11,8 @@ import {
   fieldDisplayLabel,
   isArrayDrillDownField,
   normalizeBreadcrumbLabel,
-  objectSiblingsNeedingAncestorCrumb,
   prependCrumbIfAbsent,
+  siblingsNeedingAncestorCrumb,
   resolveActiveFieldKey,
   resolveArrayItemSelection,
   siblingFieldLabel,
@@ -300,13 +300,13 @@ describe("resolveActiveFieldKey — distinct-titled siblings with an array crumb
     ).toBe("shelfPropsOffer");
   });
 
-  test("objectSiblingsNeedingAncestorCrumb flags both confusable containers", () => {
-    const needing = objectSiblingsNeedingAncestorCrumb(keys, properties);
+  test("siblingsNeedingAncestorCrumb flags both confusable containers", () => {
+    const needing = siblingsNeedingAncestorCrumb(keys, properties);
     expect(needing.has("shelfProps")).toBe(true);
     expect(needing.has("shelfPropsOffer")).toBe(true);
   });
 
-  test("objectSiblingsNeedingAncestorCrumb is empty without a confusable sibling", () => {
+  test("siblingsNeedingAncestorCrumb is empty without a confusable sibling", () => {
     const lone = {
       shelfProps: {
         type: "object",
@@ -315,9 +315,49 @@ describe("resolveActiveFieldKey — distinct-titled siblings with an array crumb
       },
       title: { type: "string", title: "Title" },
     } satisfies Record<string, SchemaProperty>;
-    expect(
-      objectSiblingsNeedingAncestorCrumb(Object.keys(lone), lone).size,
-    ).toBe(0);
+    expect(siblingsNeedingAncestorCrumb(Object.keys(lone), lone).size).toBe(0);
+  });
+
+  test("siblingsNeedingAncestorCrumb flags block-ref loaders that both carry a nested array (by value)", () => {
+    // page + RangePriceProps have no nested-array SCHEMA, only nested-array VALUES.
+    const properties = {
+      page: {
+        type: "block-ref",
+        title: "Page",
+        anyOfRefs: [
+          { resolveType: "vtex/loaders/productListingPage.ts", title: "PLP" },
+        ],
+      },
+      RangePriceProps: {
+        type: "block-ref",
+        title: "Range Price Props",
+        anyOfRefs: [
+          {
+            resolveType: "site/loaders/RangePriceData.ts",
+            title: "Range Price",
+          },
+        ],
+      },
+    } satisfies Record<string, SchemaProperty>;
+    const objValue = {
+      page: {
+        __resolveType: "vtex/loaders/productListingPage.ts",
+        selectedFacets: [{ key: "category-1", value: "joias" }],
+      },
+      RangePriceProps: {
+        __resolveType: "site/loaders/RangePriceData.ts",
+        ProductListingPage: {
+          selectedFacets: [{ key: "category-1", value: "joias" }],
+        },
+      },
+    };
+    const needing = siblingsNeedingAncestorCrumb(
+      Object.keys(properties),
+      properties,
+      objValue,
+    );
+    expect(needing.has("page")).toBe(true);
+    expect(needing.has("RangePriceProps")).toBe(true);
   });
 });
 
@@ -620,7 +660,7 @@ describe("resolveActiveFieldKey", () => {
     ).toBe("page");
   });
 
-  test("does not spuriously match primitive arrays or href/id fallbacks", () => {
+  test("matches an object item by its href label, never a primitive-array value", () => {
     const properties = {
       loader: {
         title: "Loader",
@@ -628,21 +668,165 @@ describe("resolveActiveFieldKey", () => {
         anyOfRefs: [{ resolveType: "shelf/loader.ts", title: "Shelf" }],
       },
     } satisfies Record<string, SchemaProperty>;
-    // The crumb "Beach Short" appears only as a primitive tag and as an
-    // `href`/`id` — never as a real item name/label/title — so ownership must
-    // NOT be claimed (would otherwise narrow to the wrong field).
-    const objValue = {
-      loader: {
-        __resolveType: "shelf/loader.ts",
-        tags: ["Beach Short"],
-        links: [{ href: "Beach Short", id: "Beach Short" }],
+    // A drillable object item with no name/label/title displays (and is addressed) by its href, so ownership must claim it.
+    expect(
+      resolveActiveFieldKey(
+        Object.keys(properties),
+        properties,
+        {
+          loader: {
+            __resolveType: "shelf/loader.ts",
+            links: [{ href: "Beach Short", id: "x" }],
+          },
+        },
+        ["Beach Short"],
+      ),
+    ).toBe("loader");
+    // The same label present only as a primitive tag can't be drilled into, so it must NOT claim the crumb.
+    expect(
+      resolveActiveFieldKey(
+        Object.keys(properties),
+        properties,
+        { loader: { __resolveType: "shelf/loader.ts", tags: ["Beach Short"] } },
+        ["Beach Short"],
+      ),
+    ).toBeNull();
+  });
+
+  test("narrows to a PLP loader whose selectedFacets[] item is labelled by key", () => {
+    // ALS/montecarlo/farmrio/osklen: selectedFacets items are {key,value} — the "category-1" label comes from `key`.
+    const properties = {
+      page: {
+        title: "Page",
+        type: "block-ref",
+        anyOfRefs: [
+          {
+            resolveType: "vtex/loaders/productListingPage.ts",
+            title: "PLP",
+          },
+        ],
       },
+      startingPage: { title: "Starting Page", type: "number" },
+      showSortBy: { title: "Show Sort By", type: "boolean" },
+    } satisfies Record<string, SchemaProperty>;
+    const objValue = {
+      page: {
+        __resolveType: "vtex/loaders/productListingPage.ts",
+        selectedFacets: [{ key: "category-1", value: "shoes" }],
+      },
+      startingPage: 1,
+      showSortBy: true,
     };
     expect(
       resolveActiveFieldKey(Object.keys(properties), properties, objValue, [
-        "Beach Short",
+        { label: "category-1", itemIndex: 0 },
+      ]),
+    ).toBe("page");
+  });
+
+  test("narrows to a GLOBAL-ref loader via the folded array label on the item crumb", () => {
+    // Real ALS Backcountry: `page` is a bare ref to a saved loader; the item's label is titleBy-only so the array name rides FOLDED on the crumb (no visible step).
+    const properties = {
+      page: {
+        title: "Page",
+        type: "block-ref",
+        anyOfRefs: [
+          {
+            resolveType: "vtex/loaders/intelligentSearch/productListingPage.ts",
+            title: "PLP",
+          },
+        ],
+      },
+      isFallback: { title: "Is Fallback", type: "boolean" },
+      cardLayout: {
+        title: "Card Layout",
+        type: "block-ref",
+        anyOfRefs: [
+          { resolveType: "site/loaders/ProductCardLayout.tsx", title: "Card" },
+        ],
+      },
+    } satisfies Record<string, SchemaProperty>;
+    const objValue = {
+      page: { __resolveType: "PLP Loader - Backcountry Skiing" },
+      isFallback: false,
+      cardLayout: { __resolveType: "PDP - Product Card" },
+    };
+    const decofile = {
+      "PLP Loader - Backcountry Skiing": {
+        __resolveType: "vtex/loaders/intelligentSearch/productListingPage.ts",
+        selectedFacets: [{ key: "productClusterIds", value: "1211" }],
+      },
+    };
+    expect(
+      resolveActiveFieldKey(
+        Object.keys(properties),
+        properties,
+        objValue,
+        [
+          {
+            label: "productClusterIds > 1211",
+            itemIndex: 0,
+            arrayLabel: "Selected Facets",
+          },
+        ],
+        decofile,
+      ),
+    ).toBe("page");
+  });
+
+  test("two loaders carrying the same facet: bare crumb is ambiguous, ancestor crumb pins it", () => {
+    // Real montecarlo SearchResult: `page` + `RangePriceProps` both carry a selectedFacets item labelled "category-1".
+    const properties = {
+      page: {
+        title: "Page",
+        type: "block-ref",
+        anyOfRefs: [
+          { resolveType: "vtex/loaders/productListingPage.ts", title: "PLP" },
+        ],
+      },
+      RangePriceProps: {
+        title: "Range Price Props",
+        type: "block-ref",
+        anyOfRefs: [
+          {
+            resolveType: "site/loaders/RangePriceData.ts",
+            title: "Range Price",
+          },
+        ],
+      },
+    } satisfies Record<string, SchemaProperty>;
+    const objValue = {
+      page: {
+        __resolveType: "vtex/loaders/productListingPage.ts",
+        selectedFacets: [{ key: "category-1", value: "joias" }],
+      },
+      RangePriceProps: {
+        __resolveType: "site/loaders/RangePriceData.ts",
+        ProductListingPage: {
+          selectedFacets: [{ key: "category-1", value: "joias" }],
+        },
+      },
+    };
+    const keys = Object.keys(properties);
+    // Bare crumb → both own it → ambiguous → keep both siblings visible.
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, [
+        { label: "category-1", itemIndex: 0 },
       ]),
     ).toBeNull();
+    // The ancestor crumb (stamped by siblingsNeedingAncestorCrumb) pins the owner.
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, [
+        "Page",
+        { label: "category-1", itemIndex: 0 },
+      ]),
+    ).toBe("page");
+    expect(
+      resolveActiveFieldKey(keys, properties, objValue, [
+        "Range Price Props",
+        { label: "category-1", itemIndex: 0 },
+      ]),
+    ).toBe("RangePriceProps");
   });
 
   test("narrows to the loader that actually owns the item, not the first block-ref", () => {
@@ -978,6 +1162,19 @@ describe("buildArrayDrillDownBreadcrumb", () => {
     });
     expect(trail).toHaveLength(1);
     expect(trail.map(crumbLabel)).not.toContain("ProductTags");
+  });
+
+  test("folds the array label when the item label is schema-only (titleBy)", () => {
+    // titleBy labels can't be recomputed by a parent resolver, so the array label stays folded (invisible) as the disambiguator, even when it's the only array.
+    expect(
+      buildArrayDrillDownBreadcrumb([], "Selected Facets", "cat > 1", 0, {
+        arrayKey: "selectedFacets",
+        hasSiblingDrillDownFields: false,
+        itemLabelFromSchema: true,
+      }),
+    ).toEqual([
+      { label: "cat > 1", itemIndex: 0, arrayLabel: "Selected Facets" },
+    ]);
   });
 
   test("does not duplicate crumbs already in trail", () => {

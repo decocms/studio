@@ -4,6 +4,7 @@ import {
   isFreeformPropsSchema,
   resolveSchema,
   type LiveMeta,
+  type SchemaProperty,
 } from "./resolve-schema";
 
 function metaWithSchema(blockSchema: Record<string, unknown>): LiveMeta {
@@ -712,6 +713,52 @@ describe("resolveSchema – plainSchema on block-ref", () => {
     expect(image?.type).toBe("block-ref");
     expect(image?.plainSchema).toBeDefined();
     expect(image?.plainSchema?.type).toBe("string");
+    expect(image?.plainSchema?.format).toBe("image-uri");
+  });
+
+  test("populates plainSchema for a multivariate flag nested past the eager depth cap", () => {
+    // Real farmrio MediaKits: the ImageWidget anyOf sits ~7 objects deep (loader → mediaKits[] → content → desktop → media union → image). eagerBranchSchema's depth cap used to null the plain image-uri branch there, demoting the field to a block-ref "Image Variants" picker instead of an image widget with variants.
+    const imageWidgetAnyOf = {
+      title: "Imagem",
+      anyOf: [
+        { type: "string", format: "image-uri", title: "ImageWidget" },
+        {
+          title: "Image Variants",
+          type: "object",
+          required: ["__resolveType"],
+          properties: {
+            __resolveType: {
+              type: "string",
+              enum: ["website/flags/multivariate/image.ts"],
+              default: "website/flags/multivariate/image.ts",
+            },
+            variants: { type: "array", items: { type: "object" } },
+          },
+        },
+      ],
+    };
+    let nested: Record<string, unknown> = {
+      type: "object",
+      properties: { image: imageWidgetAnyOf },
+    };
+    for (let i = 0; i < 7; i++) {
+      nested = { type: "object", properties: { child: nested } };
+    }
+    const meta = metaWithSchema(nested);
+
+    let node: SchemaProperty | null | undefined = resolveSchema(
+      "site/sections/Test.tsx",
+      meta,
+    );
+    for (let i = 0; i < 7; i++) {
+      node = node?.properties?.child;
+    }
+    const image = node?.properties?.image;
+    expect(image?.type).toBe("block-ref");
+    expect(image?.anyOfRefs?.[0]?.resolveType).toBe(
+      "website/flags/multivariate/image.ts",
+    );
+    expect(image?.plainSchema).toBeDefined();
     expect(image?.plainSchema?.format).toBe("image-uri");
   });
 

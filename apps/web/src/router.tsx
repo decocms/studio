@@ -482,14 +482,6 @@ const settingsConnectRoute = createRoute({
   ),
 });
 
-const settingsBrandContextRoute = createRoute({
-  getParentRoute: () => settingsLayout,
-  path: "/brand-context",
-  component: lazyRouteComponent(
-    () => import("./routes/orgs/settings/brand-context.tsx"),
-  ),
-});
-
 const settingsAiProvidersRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/ai-providers",
@@ -543,6 +535,14 @@ const settingsSyncedReposRoute = createRoute({
   path: "/synced-repos",
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/synced-repos.tsx"),
+  ),
+});
+
+const settingsTasksRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: "/tasks",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/tasks.tsx"),
   ),
 });
 
@@ -638,7 +638,6 @@ const settingsWithChildren = settingsLayout.addChildren([
   monitoringRoute,
   settingsGeneralRoute,
   settingsConnectRoute,
-  settingsBrandContextRoute,
   settingsAiProvidersRoute,
   settingsBillingRoute,
   settingsInfraBillingRoute,
@@ -646,6 +645,7 @@ const settingsWithChildren = settingsLayout.addChildren([
   settingsApiKeysRoute,
   settingsBucketsRoute,
   settingsSyncedReposRoute,
+  settingsTasksRoute,
   settingsMembersRoute,
   settingsRolesRoute,
   settingsSsoRoute,

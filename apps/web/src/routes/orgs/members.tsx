@@ -69,6 +69,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Suspense, useState } from "react";
 import { toast } from "sonner";
 import { TagMultiSelect } from "@/components/tag-multi-select";
+import { SettingsSubnav } from "@/components/settings/settings-subnav";
 
 const BUILTIN_ROLES = ["owner", "admin", "user"];
 
@@ -836,7 +837,7 @@ function OrgMembersContent() {
         <Page.Body>
           <div className="flex flex-col gap-6">
             <JoinRequestsSection />
-            <Page.Title>{t("orgs.members.title")}</Page.Title>
+            <SettingsSubnav group="members" />
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <SearchInput

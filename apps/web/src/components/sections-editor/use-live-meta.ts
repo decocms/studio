@@ -1,12 +1,10 @@
 import { type Query, useQuery } from "@tanstack/react-query";
-import { useVirtualMCP } from "@/sdk";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { KEYS } from "@/lib/query-keys";
 import { decoRepoPath } from "./deco-repo-path";
 import { readCommittedJson } from "./read-committed-file";
-import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
-import { resolveFastPreview } from "@/sdk/fast-preview";
-import { useActiveThreadMeta } from "@/hooks/use-active-thread-meta";
+import { useFastPreview } from "@/hooks/use-fast-preview";
+import { usePackagePath } from "./use-package-path";
 import type { LiveMeta } from "./resolve-schema";
 
 interface UseLiveMetaParams {
@@ -34,17 +32,24 @@ export type MetaSource =
  * schema, whereas production reflects whatever is deployed. Production is the
  * last resort — it only matters for sites with no committed `meta.gen.json`
  * (e.g. Fresh/Deco sites), unblocking the CMS before the runtime boots.
+ *
+ * Sandbox-less Fast Preview drops both sandbox-backed sources: there is no dev
+ * server, and no daemon to read the working tree through, so production is the
+ * only source that can answer.
  */
 export function metaSourceOrder(input: {
   fetchEnabled: boolean;
   previewUrl: string | null | undefined;
   productionUrl: string | null;
+  fastPreviewActive: boolean;
 }): MetaSource[] {
   const sources: MetaSource[] = [];
-  if (input.fetchEnabled && input.previewUrl) {
-    sources.push({ kind: "live", baseUrl: input.previewUrl });
+  if (!input.fastPreviewActive) {
+    if (input.fetchEnabled && input.previewUrl) {
+      sources.push({ kind: "live", baseUrl: input.previewUrl });
+    }
+    sources.push({ kind: "committed" });
   }
-  sources.push({ kind: "committed" });
   if (input.productionUrl) {
     sources.push({ kind: "production", baseUrl: input.productionUrl });
   }
@@ -66,13 +71,9 @@ export function useLiveMeta(
   // Committed snapshot lives under the project's package path
   // (`metadata.runtime.path`) when the project isn't at the repo root; the live
   // `/live/_meta` route already resolves relative to the dev-server cwd.
-  const virtualMcp = useVirtualMCP(params?.virtualMcpId);
-  const packagePath = virtualMcp?.metadata?.runtime?.path ?? null;
-  const productionUrl = resolvePreviewServerUrl(virtualMcp?.metadata);
-  const fastPreviewActive = resolveFastPreview(
-    virtualMcp?.metadata,
-    useActiveThreadMeta(),
-  ).active;
+  const packagePath = usePackagePath(params?.virtualMcpId);
+  const { previewServerUrl: productionUrl, active: fastPreviewActive } =
+    useFastPreview(params?.virtualMcpId);
   return useQuery({
     // productionUrl is appended so a settings edit re-fetches; invalidators key
     // on the (org, vm, branch) prefix, which still matches (variadic key).
@@ -106,6 +107,7 @@ export function useLiveMeta(
         fetchEnabled,
         previewUrl,
         productionUrl,
+        fastPreviewActive,
       });
       for (const source of sources) {
         const meta =

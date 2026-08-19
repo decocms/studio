@@ -120,56 +120,104 @@ export async function githubGitDiff(
   };
 }
 
-/** What to do when merging base into the branch hits a git-level conflict. */
-export type RebaseConflictStrategy = "fail" | "branch-wins";
-
 /**
- * "Rebase" equivalent: bring the branch up to date with `base` by merging
- * base INTO the branch server-side (GitHub /merges). A true rebase needs a
- * working tree; a merge commit achieves the same "branch contains latest
- * base" postcondition the dialog's flow wants before publishing.
+ * Bring the branch up to date with `base`, leaving it as ONE commit whose only
+ * parent is the base head — a squash-rebase, not a merge, because a merge's
+ * resolution lives only in its tree and `git rebase` drops merge commits. Clean
+ * merges take GitHub's 3-way tree; conflicts always take
+ * {@link buildBranchWinsTree} and the cost documented there.
  *
- * `onConflict: "branch-wins"` is the non-technical-user path: on a git-level
- * conflict, build the merge commit ourselves — base's tree with every path
- * the branch touched since the merge base replayed on top, so the branch's
- * content wins for its own edits while everything else catches up to base.
- * Deliberately branch-favoured: the person syncing is the person editing,
- * and silently losing THEIR block edit is the one outcome a CMS must never
- * pick. Both parents are recorded, so nothing from base is lost from
- * history.
+ * The forced ref update has no compare-and-swap (GitHub takes no `If-Match` on
+ * refs); re-reading the head right before it is the closest available lease.
  */
 export async function githubGitRebase(
   client: GitDataClient,
   branch: string,
   base: string,
-  onConflict: RebaseConflictStrategy = "fail",
 ): Promise<void> {
-  try {
-    await client.mergeBranch(
-      branch,
-      base,
-      `chore(decofile): merge ${base} into ${branch}`,
-    );
-    return;
-  } catch (err) {
-    if (!(err instanceof GitHubApiError && err.status === 409)) throw err;
-    if (onConflict !== "branch-wins") {
-      throw new GitHubApiError(
-        409,
-        "POST",
-        "merges",
-        `Merge conflict updating ${branch} from ${base} — resolve on GitHub`,
+  for (let attempt = 1; ; attempt++) {
+    // Read first: the pre-force check re-reads it, catching any later autosave.
+    const branchHead = await client.getHeadSha(branch);
+    const compared = await client.compareDetailed(base, branch);
+
+    // Already one commit on base: nothing to bring in, nothing to flatten.
+    if (compared.behindBy === 0 && compared.aheadBy <= 1) return;
+
+    const baseHead = await client.getHeadSha(base);
+
+    // No commits of its own: a fast-forward, which needs no force.
+    if (compared.aheadBy === 0) {
+      try {
+        await client.updateRef(branch, baseHead);
+        return;
+      } catch (err) {
+        // 422 = an autosave landed since the compare; rebuild on the new head.
+        if (!(err instanceof GitHubApiError && err.status === 422)) throw err;
+        if (attempt >= MERGE_CAS_ATTEMPTS) throw err;
+        continue;
+      }
+    }
+
+    let treeSha: string;
+    let branchWon = false;
+    // `mergeBranch` moves the ref onto the merge commit it creates.
+    let mergedSha: string | null = null;
+    try {
+      const mergeSha = await client.mergeBranch(
+        branch,
+        base,
+        `chore(decofile): merge ${base} into ${branch}`,
       );
+      if (mergeSha === null) {
+        // Branch already contains base but is >1 commit ahead: flatten as-is.
+        treeSha = await client.getCommitTreeSha(branchHead);
+      } else {
+        treeSha = await client.getCommitTreeSha(mergeSha);
+        mergedSha = mergeSha;
+      }
+    } catch (err) {
+      if (!(err instanceof GitHubApiError && err.status === 409)) throw err;
+      treeSha = await buildBranchWinsTree(
+        client,
+        compared.files,
+        branchHead,
+        baseHead,
+      );
+      branchWon = true;
+    }
+
+    const expectedHead = mergedSha ?? branchHead;
+    try {
+      const commitSha = await client.createCommit({
+        message: squashMessage(
+          branch,
+          base,
+          branchWon,
+          compared.commitMessages,
+        ),
+        treeSha,
+        parentShas: [baseHead],
+      });
+
+      if ((await client.getHeadSha(branch)) !== expectedHead) {
+        // An autosave landed mid-sync: rebuild on the new head, never force over it.
+        if (attempt < MERGE_CAS_ATTEMPTS) continue;
+        throw new GitHubApiError(
+          409,
+          "PATCH",
+          `git/refs/heads/${branch}`,
+          `${branch} kept changing while syncing with ${base}; try again`,
+        );
+      }
+      await client.updateRef(branch, commitSha, { force: true });
+      return;
+    } catch (err) {
+      await undoAbandonedMerge(client, branch, mergedSha, branchHead);
+      throw err;
     }
   }
-  await mergeBranchWins(client, branch, base);
 }
 
-/**
- * GitHub's compare endpoint returns at most 300 files; beyond that the
- * change-set is silently truncated, and replaying a truncated set would
- * DROP the branch's remaining edits from the merge. Fail loudly instead.
- */
 const MERGE_REPLAY_FILE_CAP = 300;
 
 const MERGE_CAS_ATTEMPTS = 3;
@@ -192,14 +240,14 @@ export function buildMergeTreeEntries(
     sha: string;
     previousFilename?: string;
   }>,
-  branchBlobByPath: Map<string, { sha: string }>,
+  branchBlobByPath: Map<string, { sha: string; mode?: string }>,
 ): TreeWriteEntry[] {
   const byPath = new Map<string, TreeWriteEntry>();
   for (const f of files) {
     const blob = branchBlobByPath.get(f.filename);
     byPath.set(f.filename, {
       path: f.filename,
-      mode: "100644",
+      mode: blob?.mode ?? "100644",
       type: "blob",
       sha: f.status === "removed" || !blob ? null : blob.sha,
     });
@@ -292,60 +340,91 @@ export async function githubGitDiscard(
   }
 }
 
-async function mergeBranchWins(
+type ComparedFile = Awaited<
+  ReturnType<GitDataClient["compareDetailed"]>
+>["files"][number];
+
+/**
+ * The branch-wins tree: base's tree with every path the branch changed since
+ * the merge base (the three-dot compare set) replaced by the branch's version,
+ * whole file. The same resolution the merge commit used to carry — only where
+ * it lands has changed.
+ */
+async function buildBranchWinsTree(
+  client: GitDataClient,
+  files: ComparedFile[],
+  branchHead: string,
+  baseHead: string,
+): Promise<string> {
+  if (files.length >= MERGE_REPLAY_FILE_CAP) {
+    throw new GitHubApiError(
+      409,
+      "POST",
+      "merges",
+      `Too many changed files on the branch to auto-merge (${files.length}); resolve on GitHub`,
+    );
+  }
+
+  // Blob shas AND modes come from the branch tree — compare carries no modes.
+  const branchTree = await client.getTreeRecursive(
+    await client.getCommitTreeSha(branchHead),
+  );
+  const branchBlobByPath = new Map(
+    branchTree.filter((e) => e.type === "blob").map((e) => [e.path, e]),
+  );
+
+  return client.createTree(
+    await client.getCommitTreeSha(baseHead),
+    buildMergeTreeEntries(files, branchBlobByPath),
+  );
+}
+
+/**
+ * `mergeBranch` advances the branch ref before the squash can replace it. When
+ * the squash then fails, roll the ref back so a sync that reported failure
+ * leaves no merge commit behind — but only while nothing else has landed on it,
+ * since a rollback is itself a force.
+ */
+async function undoAbandonedMerge(
   client: GitDataClient,
   branch: string,
-  base: string,
+  mergedSha: string | null,
+  branchHead: string,
 ): Promise<void> {
-  for (let attempt = 1; ; attempt++) {
-    const branchHead = await client.getHeadSha(branch);
-    const baseHead = await client.getHeadSha(base);
-    // Three-dot compare: every path the branch changed since the merge base —
-    // exactly the set where the branch's version must win.
-    const { files } = await client.compareDetailed(base, branch);
-    if (files.length >= MERGE_REPLAY_FILE_CAP) {
-      throw new GitHubApiError(
-        409,
-        "POST",
-        "merges",
-        `Too many changed files on ${branch} to auto-merge (${files.length}); resolve on GitHub`,
-      );
-    }
+  if (mergedSha === null) return;
+  try {
+    if ((await client.getHeadSha(branch)) !== mergedSha) return;
+    await client.updateRef(branch, branchHead, { force: true });
+  } catch {
+    // Best effort: the caller needs to see the original failure, not this one.
+  }
+}
 
-    // Real blob shas + modes come from the branch tree, not the compare
-    // entries — compare doesn't carry file modes.
-    const branchTree = await client.getTreeRecursive(
-      await client.getCommitTreeSha(branchHead),
-    );
-    const branchBlobByPath = new Map(
-      branchTree.filter((e) => e.type === "blob").map((e) => [e.path, e]),
-    );
+/**
+ * Collapsing N commits into one would drop the `Co-authored-by:` trailers the
+ * coalescer stamps per editor, and those trailers are how GitHub attributes the
+ * work. Re-emit the distinct ones on the squash.
+ */
+function squashMessage(
+  branch: string,
+  base: string,
+  branchWon: boolean,
+  collapsed: string[],
+): string {
+  const subject = branchWon
+    ? `chore(decofile): sync ${branch} with ${base} (branch content wins)`
+    : `chore(decofile): sync ${branch} with ${base}`;
+  const trailers = collectCoAuthorTrailers(collapsed);
+  return trailers.length > 0 ? `${subject}\n\n${trailers.join("\n")}` : subject;
+}
 
-    const entries = buildMergeTreeEntries(files, branchBlobByPath);
-
-    const treeSha = await client.createTree(
-      await client.getCommitTreeSha(baseHead),
-      entries,
-    );
-    const commitSha = await client.createCommit({
-      message: `chore(decofile): merge ${base} into ${branch} (branch content wins)`,
-      treeSha,
-      parentShas: [branchHead, baseHead],
-    });
-    try {
-      await client.updateRef(branch, commitSha);
-      return;
-    } catch (err) {
-      // Non-fast-forward: an autosave landed mid-merge. Rebuild from the new
-      // head so the fresh edit is part of the replay instead of clobbered.
-      if (
-        err instanceof GitHubApiError &&
-        err.status === 422 &&
-        attempt < MERGE_CAS_ATTEMPTS
-      ) {
-        continue;
-      }
-      throw err;
+function collectCoAuthorTrailers(messages: string[]): string[] {
+  const seen = new Set<string>();
+  for (const message of messages) {
+    for (const line of message.split("\n")) {
+      const trimmed = line.trim();
+      if (/^Co-authored-by:\s/i.test(trimmed)) seen.add(trimmed);
     }
   }
+  return [...seen];
 }

@@ -1,5 +1,32 @@
-import { buildFastPreviewDraftUrl } from "./section-preview-url";
+import { buildDraftPointer, withDraftPointer } from "./section-preview-url";
 import { useDecofileDraft } from "./decofile-api";
+import { useFastPreview } from "@/hooks/use-fast-preview";
+
+interface DraftParams {
+  orgSlug: string;
+  virtualMcpId: string;
+  branch: string;
+}
+
+/**
+ * This session's `?__draft=` pointer, or `null` when Fast Preview is off or no
+ * decofile read/write has stashed a grant yet (KEYS.decofileDraft).
+ *
+ * The Fast Preview gate is load-bearing: a coding session shares the CMS
+ * draft's branch, and the grant cache never expires, so without it a
+ * `runtime: "sandbox"` thread would stamp the CMS thread's grant onto
+ * dev-server links.
+ *
+ * Pair with {@link withDraftPointer} when building your own page path; use
+ * {@link useFastPreviewDraftUrl} for one known path.
+ */
+export function useDraftPointer(params: DraftParams | null): string | null {
+  const fastPreviewActive = useFastPreview(params?.virtualMcpId).active;
+  const draft = useDecofileDraft(params);
+  return params && draft && fastPreviewActive
+    ? buildDraftPointer({ ...params, ...draft })
+    : null;
+}
 
 export interface FastPreviewDraftUrl {
   /**
@@ -36,7 +63,7 @@ export function useFastPreviewDraftUrl(
     path: string;
   } | null,
 ): FastPreviewDraftUrl {
-  const draft = useDecofileDraft(
+  const draftPointer = useDraftPointer(
     params
       ? {
           orgSlug: params.orgSlug,
@@ -57,17 +84,11 @@ export function useFastPreviewDraftUrl(
   }
 
   const url =
-    params && previewServerUrl && draft
-      ? buildFastPreviewDraftUrl({
-          previewServerUrl,
-          apiHost: draft.apiHost,
-          orgSlug: params.orgSlug,
-          virtualMcpId: params.virtualMcpId,
-          branch: params.branch,
-          token: draft.token,
-          version: draft.version,
-          path: params.path,
-        })
+    params && previewServerUrl && draftPointer
+      ? withDraftPointer(
+          new URL(params.path, previewServerUrl).toString(),
+          draftPointer,
+        )
       : null;
 
   return { url, host };

@@ -37,7 +37,6 @@ import { useInsetContext } from "@/layouts/agent-shell-layout";
 import { useChatTask } from "@/components/chat/context";
 import { useDecofile } from "@/components/sections-editor/use-decofile";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
-import { usePackagePath } from "@/components/sections-editor/use-package-path";
 import { hasEditableAppEditorSchema } from "./app-editor-schema";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
@@ -67,6 +66,8 @@ import { CollectionsSidebar } from "./collections-sidebar";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { SandboxStateRenderer } from "./sandbox-state-renderer";
+import { resolveContentSandboxGate } from "./content-sandbox-gate";
+import { useFastPreview } from "@/hooks/use-fast-preview";
 import {
   buildDuplicatePage,
   buildEmptyPage,
@@ -103,10 +104,6 @@ import {
   scanBlogEntries,
   stampPostModified,
 } from "./blog/blog-data";
-import {
-  useDeleteBlogBlock,
-  useSaveBlogBlock,
-} from "./blog/use-blog-mutations";
 import { PageJsonDialog } from "@/components/sections-editor/page-json-dialog";
 import { RunnableBlocksBrowser } from "./runnable-blocks-browser";
 import { countAvailableRunnables } from "./runnable-catalog";
@@ -119,8 +116,6 @@ import {
   GroupHeader,
   groupSavedSectionsByResolveType,
 } from "./section-group-header";
-import { useBlocksPreviewWorkspace } from "@/components/sandbox/blocks/blocks-preview-workspace-context";
-import type { BlocksTarget } from "@/components/sandbox/blocks/blocks-preview-workspace-state";
 
 const AppEditor = lazy(() =>
   import("./app-editor").then((m) => ({ default: m.AppEditor })),
@@ -204,20 +199,6 @@ type Selection =
   | { collection: BlogKind; key: string }
   | null;
 
-function selectionFromBlocksTarget(target: BlocksTarget | null): Selection {
-  if (!target) return null;
-  return target.kind === "page"
-    ? { collection: "pages", key: target.key, path: target.path }
-    : { collection: "sections", key: target.key };
-}
-
-function blocksTargetKey(target: BlocksTarget | null): string | null {
-  if (!target) return null;
-  return target.kind === "page"
-    ? `page:${target.key}:${target.path}`
-    : `section:${target.key}`;
-}
-
 /** A raw manifest section the user can customize and save as a global block. */
 export interface AvailableSectionEntry {
   resolveType: string;
@@ -243,15 +224,11 @@ type DeleteTarget =
 export type PostSort = "date-desc" | "date-asc" | "az" | "za";
 
 export interface ContentBrowserProps {
-  mode?: "content" | "blocks";
   /** Storefront "." deep-link: preselect this page once the decofile loads. */
   deepLinkPage?: PageDeepLink;
 }
 
-export function ContentBrowser({
-  mode = "content",
-  deepLinkPage,
-}: ContentBrowserProps) {
+export function ContentBrowser({ deepLinkPage }: ContentBrowserProps) {
   const inset = useInsetContext();
   const { currentBranch: branch } = useChatTask();
   const { org } = useProjectContext();
@@ -265,13 +242,18 @@ export function ContentBrowser({
   // that in. Reading `inset.entity.metadata.sandboxMap` directly would miss it
   // and strand Content on "starting" for the ephemeral Decopilot agent.
   const lifecycle = useSandboxLifecycle();
-  const previewUrl = lifecycle.previewUrl;
-  const sandboxState = lifecycle.previewState;
+  const { active: fastPreviewActive, previewServerUrl } =
+    useFastPreview(virtualMcpId);
+  const gate = resolveContentSandboxGate({
+    fastPreviewActive,
+    previewState: lifecycle.previewState,
+    lifecyclePhase: vmEvents.lifecycle.phase,
+  });
 
-  if (sandboxState.kind !== "iframe") {
+  if (gate.kind === "sandbox-card") {
     return (
       <SandboxStateRenderer
-        state={sandboxState}
+        state={gate.state}
         claimPhase={vmEvents.phase}
         lifecycle={vmEvents.lifecycle}
         onStart={lifecycle.start}
@@ -284,28 +266,18 @@ export function ContentBrowser({
     return <EmptyMessage title="Waiting for sandbox context…" />;
   }
 
-  const phase = vmEvents.lifecycle.phase;
-  const devServerReady = phase === "running";
-  // Terminal daemon phases: no further progress is coming, so the content
-  // browser should surface its error rather than spin. Everything else before
-  // `running` (cloning, installing, starting) is still warming up.
-  const sandboxWarming =
-    !devServerReady &&
-    phase !== "clone-failed" &&
-    phase !== "install-failed" &&
-    phase !== "start-failed" &&
-    phase !== "crashed";
-
   return (
     <ContentBrowserReady
       orgSlug={org.slug}
       virtualMcpId={virtualMcpId}
       branch={branch}
-      previewUrl={previewUrl}
-      mode={mode}
+      previewUrl={lifecycle.previewUrl}
+      sitePreviewUrl={
+        fastPreviewActive ? previewServerUrl : lifecycle.previewUrl
+      }
       deepLinkPage={deepLinkPage}
-      devServerReady={devServerReady}
-      sandboxWarming={sandboxWarming}
+      devServerReady={gate.devServerReady}
+      sandboxWarming={gate.sandboxWarming}
     />
   );
 }
@@ -333,7 +305,7 @@ function ContentBrowserReady({
   virtualMcpId,
   branch,
   previewUrl,
-  mode,
+  sitePreviewUrl,
   deepLinkPage,
   devServerReady,
   sandboxWarming,
@@ -341,15 +313,24 @@ function ContentBrowserReady({
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
+  /**
+   * Sandbox dev-server origin — `null` without a pod, so anything that
+   * executes against it (loaders, actions, `@options` fields) stays disabled
+   * in a sandbox-less session, exactly as before.
+   */
   previewUrl: string | null;
-  mode: "content" | "blocks";
+  /**
+   * Origin for LINKS to the site's own pages, which a sandbox-less session
+   * points at its preview server. Read-only navigation targets the browser
+   * follows — never a fetch the server makes on the user's behalf.
+   */
+  sitePreviewUrl: string | null;
+  /** Storefront "." deep-link: preselect this page once the decofile loads. */
   deepLinkPage?: PageDeepLink;
   devServerReady: boolean;
   sandboxWarming: boolean;
 }) {
-  const workspace = useBlocksPreviewWorkspace();
   const fetchParams = { orgSlug, virtualMcpId, branch, previewUrl };
-  const packagePath = usePackagePath(virtualMcpId);
   const { data: decofile, isLoading: decofileLoading } = useDecofile(
     fetchParams,
     { fetchEnabled: devServerReady },
@@ -357,61 +338,17 @@ function ContentBrowserReady({
 
   const [activeCollection, setActiveCollection] =
     useState<CollectionId>("pages");
-  const [selection, setSelection] = useState<Selection>(() =>
-    mode === "blocks"
-      ? selectionFromBlocksTarget(workspace.state.target)
-      : null,
-  );
+  const [selection, setSelection] = useState<Selection>(null);
   // Page that should open with the inline SEO form in SectionsEditor.
-  const [openPageSeoKey, setOpenPageSeoKey] = useState<string | null>(() =>
-    mode === "blocks" ? workspace.state.editSeoPageKey : null,
-  );
-  const currentWorkspaceTargetKey = blocksTargetKey(workspace.state.target);
-  const [handledWorkspaceTargetKey, setHandledWorkspaceTargetKey] = useState(
-    currentWorkspaceTargetKey,
-  );
-  if (
-    mode === "blocks" &&
-    handledWorkspaceTargetKey !== currentWorkspaceTargetKey
-  ) {
-    setHandledWorkspaceTargetKey(currentWorkspaceTargetKey);
-    const next = selectionFromBlocksTarget(workspace.state.target);
-    setSelection(next);
-    if (next?.collection === "pages" || next?.collection === "sections") {
-      setActiveCollection(next.collection);
-    }
-  }
-  const [handledSeoPageKey, setHandledSeoPageKey] = useState(
-    workspace.state.editSeoPageKey,
-  );
-  if (
-    mode === "blocks" &&
-    handledSeoPageKey !== workspace.state.editSeoPageKey
-  ) {
-    setHandledSeoPageKey(workspace.state.editSeoPageKey);
-    if (workspace.state.editSeoPageKey) {
-      const target = workspace.state.target;
-      if (target?.kind === "page") {
-        setActiveCollection("pages");
-        setSelection(selectionFromBlocksTarget(target));
-        setOpenPageSeoKey(target.key);
-      }
-    }
-  }
-  // Storefront "." deep-link (content mode): open the visited page once the decofile loads. One-shot, so a later manual selection is never clobbered.
+  const [openPageSeoKey, setOpenPageSeoKey] = useState<string | null>(null);
+  // Storefront "." deep-link: open the visited page once the decofile loads. One-shot, so a later manual selection is never clobbered.
   const hasDeepLink = !!(
     deepLinkPage?.pageId ||
     deepLinkPage?.path ||
     deepLinkPage?.pathTemplate
   );
   const [seededDeepLink, setSeededDeepLink] = useState(false);
-  if (
-    mode === "content" &&
-    hasDeepLink &&
-    !seededDeepLink &&
-    selection === null &&
-    decofile
-  ) {
+  if (hasDeepLink && !seededDeepLink && selection === null && decofile) {
     setSeededDeepLink(true);
     const match = resolveDeepLinkPage(
       extractPages(decofile),
@@ -446,16 +383,6 @@ function ContentBrowserReady({
   const selectItem = (next: Selection) => {
     setSelection(next);
     setOpenPageSeoKey(null);
-    if (mode !== "blocks" || !next) return;
-    if (next.collection === "pages") {
-      workspace.selectTarget({
-        kind: "page",
-        key: next.key,
-        path: next.path,
-      });
-    } else if (next.collection === "sections") {
-      workspace.selectTarget({ kind: "section", key: next.key });
-    }
   };
   // Reset search + post filters/selection when switching collections
   // (derived-state sync pattern).
@@ -529,8 +456,6 @@ function ContentBrowserReady({
 
   const saveBlock = useSaveBlock(fetchParams);
   const deleteBlock = useDeleteBlock(fetchParams);
-  const saveBlogBlock = useSaveBlogBlock({ ...fetchParams, packagePath });
-  const deleteBlogBlock = useDeleteBlogBlock({ ...fetchParams, packagePath });
 
   // Dialog state
   const [pageDialog, setPageDialog] = useState<PageDialogState>(null);
@@ -866,7 +791,7 @@ function ContentBrowserReady({
     const key = generateBlogKey(decofile, kind);
     const data = buildBlogBlock(key, kind, emptyBlogPayload(kind));
     try {
-      await saveBlogBlock.mutateAsync({ blockKey: key, data });
+      await saveBlock.mutateAsync({ blockKey: key, data });
       toast.success(`Created ${BLOG_SINGULAR[kind]}`);
       setSelection({ collection: kind, key });
     } catch (err) {
@@ -887,7 +812,7 @@ function ContentBrowserReady({
       [labelKey]: `${entry.label} (copy)`,
     };
     try {
-      await saveBlogBlock.mutateAsync({
+      await saveBlock.mutateAsync({
         blockKey: key,
         data: buildBlogBlock(key, entry.kind, payload),
       });
@@ -948,7 +873,7 @@ function ContentBrowserReady({
           ? addCategoryToPost(payload, category)
           : replaceCategoryOnPost(payload, category);
       if (next === payload) continue;
-      await saveBlogBlock.mutateAsync({
+      await saveBlock.mutateAsync({
         blockKey: key,
         data: buildBlogBlock(key, "posts", stampPostModified(next)),
       });
@@ -984,7 +909,7 @@ function ContentBrowserReady({
     try {
       if (deleteTarget.kind === "blog-bulk") {
         for (const key of deleteTarget.keys) {
-          await deleteBlogBlock.mutateAsync({ blockKey: key });
+          await deleteBlock.mutateAsync({ blockKey: key });
         }
         toast.success(
           `Deleted ${deleteTarget.count} ${
@@ -1021,14 +946,14 @@ function ContentBrowserReady({
             )) {
               const next = removeCategoryFromPost(payload, slug);
               if (next === payload) continue;
-              await saveBlogBlock.mutateAsync({
+              await saveBlock.mutateAsync({
                 blockKey: postKey,
                 data: buildBlogBlock(postKey, "posts", stampPostModified(next)),
               });
             }
           }
         }
-        await deleteBlogBlock.mutateAsync({ blockKey: key });
+        await deleteBlock.mutateAsync({ blockKey: key });
       } else {
         await deleteBlock.mutateAsync({ blockKey: key });
       }
@@ -1047,14 +972,8 @@ function ContentBrowserReady({
   };
 
   // ------------------ Render ------------------
-  // `saveBlogBlock.isPending` covers the category-delete cascade (posts are
-  // rewritten via saveBlogBlock BEFORE the category block is unlinked), so the
-  // confirm dialog stays locked for the whole operation instead of only its
-  // final unlink — otherwise it could be re-clicked or dismissed mid-cascade.
-  const isDeleting =
-    deleteBlock.isPending ||
-    deleteBlogBlock.isPending ||
-    saveBlogBlock.isPending;
+  // `saveBlock` too: a category delete rewrites its posts before unlinking it.
+  const isDeleting = deleteBlock.isPending || saveBlock.isPending;
   const deleteNoun =
     deleteTarget?.kind === "blog"
       ? BLOG_SINGULAR[deleteTarget.blogKind]
@@ -1063,25 +982,22 @@ function ContentBrowserReady({
         : (deleteTarget?.kind ?? "item");
   return (
     <div className="flex h-full w-full">
-      {mode === "content" && (
-        <CollectionsSidebar
-          active={activeCollection}
-          counts={counts}
-          showBlog={showBlog}
-          onSelect={(id) => {
-            setActiveCollection(id);
-            setSelection(null);
-            setOpenPageSeoKey(null);
-          }}
-        />
-      )}
+      <CollectionsSidebar
+        active={activeCollection}
+        counts={counts}
+        showBlog={showBlog}
+        onSelect={(id) => {
+          setActiveCollection(id);
+          setSelection(null);
+          setOpenPageSeoKey(null);
+        }}
+      />
       {activeCollection !== "seo" &&
         activeCollection !== "site" &&
         activeCollection !== "calendar" &&
         activeCollection !== "loaders" &&
         activeCollection !== "actions" && (
           <ItemList
-            blocksMode={mode === "blocks"}
             activeCollection={activeCollection}
             pages={pages}
             redirects={redirects}
@@ -1120,11 +1036,6 @@ function ContentBrowserReady({
             }
             selection={selection}
             onSelect={selectItem}
-            onCollectionSelect={(collection) => {
-              setActiveCollection(collection);
-              setSelection(null);
-              setOpenPageSeoKey(null);
-            }}
             onCreate={() => {
               if (activeCollection === "pages") {
                 openCreatePage();
@@ -1148,13 +1059,6 @@ function ContentBrowserReady({
               } as const;
               setSelection(target);
               setOpenPageSeoKey(page.key);
-              if (mode === "blocks") {
-                workspace.editSeo({
-                  kind: "page",
-                  key: page.key,
-                  path: page.path,
-                });
-              }
             }}
             onViewPageJson={(page) => setJsonPageKey(page.key)}
             onDuplicateSection={handleDuplicateSection}
@@ -1236,7 +1140,7 @@ function ContentBrowserReady({
                 decofile={decofile}
                 meta={meta}
                 target={{ kind: "site" }}
-                previewBaseUrl={previewUrl}
+                previewBaseUrl={sitePreviewUrl}
               />
             ) : activeCollection === "sections" ? (
               <SectionsRightPane
@@ -1266,7 +1170,7 @@ function ContentBrowserReady({
                 posts={selectedPostsMeta}
                 categories={bulkCategoryChoices}
                 initialSlug={bulkCategorySeed}
-                isPending={saveBlogBlock.isPending}
+                isPending={saveBlock.isPending}
                 onApply={(mode, category) =>
                   void runBulkCategoryUpdate(mode, category)
                 }
@@ -1304,7 +1208,7 @@ function ContentBrowserReady({
                   block={decofile[selection.key] as Record<string, unknown>}
                   decofile={decofile}
                   meta={meta}
-                  previewBaseUrl={previewUrl}
+                  previewBaseUrl={sitePreviewUrl}
                 />
               ) : selection.collection === "categories" ? (
                 <CategoryEditor
@@ -1323,7 +1227,7 @@ function ContentBrowserReady({
                     setSelection({ collection: "posts", key });
                     setOpenPageSeoKey(null);
                   }}
-                  previewBaseUrl={previewUrl}
+                  previewBaseUrl={sitePreviewUrl}
                 />
               ) : selection.collection === "authors" ? (
                 <RecordEditor
@@ -1369,10 +1273,7 @@ function ContentBrowserReady({
                     selection.collection === "pages" &&
                     openPageSeoKey === selection.key
                   }
-                  onExitSeo={() => {
-                    setOpenPageSeoKey(null);
-                    if (mode === "blocks") workspace.consumeEditSeo();
-                  }}
+                  onExitSeo={() => setOpenPageSeoKey(null)}
                 />
               )
             ) : (
@@ -1501,7 +1402,6 @@ function ContentBrowserReady({
 }
 
 function ItemList({
-  blocksMode,
   activeCollection,
   pages,
   redirects,
@@ -1528,7 +1428,6 @@ function ItemList({
   onBulkDeletePosts,
   selection,
   onSelect,
-  onCollectionSelect,
   onCreate,
   onDuplicatePage,
   onRenamePage,
@@ -1543,7 +1442,6 @@ function ItemList({
   onDuplicateBlog,
   onDeleteBlog,
 }: {
-  blocksMode: boolean;
   activeCollection: CollectionId;
   pages: PageEntry[];
   redirects: RedirectEntry[];
@@ -1573,7 +1471,6 @@ function ItemList({
   onBulkDeletePosts: () => void;
   selection: Selection;
   onSelect: (next: Selection) => void;
-  onCollectionSelect: (collection: "pages" | "sections") => void;
   onCreate: () => void;
   onDuplicatePage: (page: PageEntry) => void;
   onRenamePage: (page: PageEntry) => void;
@@ -1722,34 +1619,7 @@ function ItemList({
     activeCollection !== "apps" && activeCollection !== "sections";
 
   return (
-    <div
-      className={cn(
-        "shrink-0 border-r flex flex-col min-h-0",
-        blocksMode ? "w-[240px]" : "w-[300px]",
-      )}
-    >
-      {blocksMode && (
-        <div className="flex h-10 shrink-0 items-center gap-1 border-b px-2">
-          <Button
-            variant={activeCollection === "pages" ? "secondary" : "ghost"}
-            size="sm"
-            className="h-7 flex-1"
-            onClick={() => onCollectionSelect("pages")}
-          >
-            <LayoutAlt01 size={14} />
-            Pages
-          </Button>
-          <Button
-            variant={activeCollection === "sections" ? "secondary" : "ghost"}
-            size="sm"
-            className="h-7 flex-1"
-            onClick={() => onCollectionSelect("sections")}
-          >
-            <Globe02 size={14} />
-            Sections
-          </Button>
-        </div>
-      )}
+    <div className="shrink-0 border-r flex flex-col min-h-0 w-[300px]">
       <div className="px-2 h-12 flex items-center gap-1 border-b shrink-0">
         <div className="flex flex-1 items-center gap-2 pl-1">
           <SearchLg

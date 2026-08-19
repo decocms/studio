@@ -14,6 +14,8 @@ import {
   BACKGROUND_TOOLS_QUEUE,
   GITHUB_READS_QUEUE,
   HOSTED_HARNESS_QUEUE,
+  HOSTED_HARNESS_SANDBOXED_QUEUE,
+  JIRA_PUSH_QUEUE,
   THREAD_GATE_QUEUE,
 } from "./dispatch-queue/queue-names";
 import { buildDbosConfig } from "./dbos/config";
@@ -74,6 +76,7 @@ const RUN_QUEUES = [
   AUTOMATIONS_QUEUE,
   THREAD_GATE_QUEUE,
   HOSTED_HARNESS_QUEUE,
+  HOSTED_HARNESS_SANDBOXED_QUEUE,
   // Heavy backgroundable built-ins (generate_image) are worker load, so
   // "worker"-role pods must dequeue them too — otherwise a split deployment
   // enqueues the job but never runs it.
@@ -82,6 +85,8 @@ const RUN_QUEUES = [
   // and awaits its enqueued read, so an "api"-only deployment would block
   // forever if no worker dequeued this.
   GITHUB_READS_QUEUE,
+  // Board→Jira comment pushes are outbound I/O, i.e. worker load.
+  JIRA_PUSH_QUEUE,
 ];
 const listenQueues: string[] | undefined =
   settings.dispatchRole === "worker"

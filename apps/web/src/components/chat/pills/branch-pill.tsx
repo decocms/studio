@@ -21,6 +21,7 @@ interface Props {
   sandboxMap: SandboxMap | undefined;
   value: string | null | undefined;
   onChange: (branch: string) => void;
+  onCreateBranch?: (branch: string) => void;
   locked: boolean;
   placement?: "chat" | "header";
 }

@@ -4,8 +4,7 @@ import type { StreamBuffer } from "./stream-buffer";
 const RUN_STATUS_STAGES = [
   "waiting-runner",
   "starting-run",
-  // Queued behind this pod's concurrent-run cap (hosted-run-concurrency.ts),
-  // re-published on the heartbeat interval for as long as the wait lasts.
+  // Queued behind the hosted-harness queue's per-pod cap (see queue-names.ts).
   "waiting-capacity",
   "gathering-context",
   "preparing-tools",

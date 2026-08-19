@@ -22,6 +22,11 @@ import {
   setOrgRepoSyncRuntime,
 } from "@/file-storage/dbos-org-repo-sync";
 import {
+  registerJiraSyncWorkflow,
+  setJiraSyncRuntime,
+} from "@/jira/dbos-jira-sync";
+import { createJiraWebhookRoutes } from "./routes/jira-webhook";
+import {
   registerTaskBoardArchiveSweepWorkflow,
   setTaskBoardArchiveSweepRuntime,
 } from "@/tools/task-board/dbos-archive-sweep";
@@ -181,15 +186,17 @@ import {
   setAutomationRuntime,
 } from "../automations";
 import {
-  HOSTED_HARNESS_PARTITION_CONCURRENCY,
   HOSTED_HARNESS_QUEUE,
+  HOSTED_HARNESS_SANDBOXED_QUEUE,
   setHostedHarnessRuntime,
   setThreadGateRuntime,
   THREAD_GATE_PARTITION_CONCURRENCY,
   THREAD_GATE_QUEUE,
 } from "../dispatch-queue";
-import { GITHUB_READS_QUEUE } from "../dispatch-queue/queue-names";
-import { hostedRunStats } from "../dispatch-queue/hosted-run-concurrency";
+import {
+  GITHUB_READS_QUEUE,
+  JIRA_PUSH_QUEUE,
+} from "../dispatch-queue/queue-names";
 import { setProjectorWorkflowRuntime } from "./routes/decopilot/projector-workflow";
 import { synthesizedErrorMessageId } from "./routes/decopilot/message-ids";
 import { backfillStudioPackForAllOrgs } from "../auth/install-studio-pack-workflow";
@@ -918,6 +925,7 @@ const DBOS_QUEUE_NAMES = new Set([
   AUTOMATIONS_QUEUE,
   THREAD_GATE_QUEUE,
   HOSTED_HARNESS_QUEUE,
+  HOSTED_HARNESS_SANDBOXED_QUEUE,
   BACKGROUND_TOOLS_QUEUE,
   GITHUB_READS_QUEUE,
 ]);
@@ -1347,13 +1355,6 @@ export async function createApp(options: CreateAppOptions = {}) {
     return c.json({ queue_length: queued.length });
   });
 
-  // Hosted-run gate backlog on THIS pod, for a KEDA metrics-api trigger:
-  // `{ "pending": <n> }`. Distinct from /dbos-queue-depth (ENQUEUED count) —
-  // gate-parked runs are already DEQUEUED (PENDING) and pinned to this pod, so
-  // queue depth can't see them (see hosted-run-concurrency.ts). Per-pod, so the
-  // trigger must aggregate across worker pods.
-  app.get(SYSTEM_PATHS.HOSTED_RUN_PENDING, (c) => c.json(hostedRunStats()));
-
   // ============================================================================
   // Public Configuration (no auth required)
   // ============================================================================
@@ -1371,6 +1372,13 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Optional — 503 without GITHUB_WEBHOOK_SECRET, and pools refresh on their
   // own schedule regardless.
   app.route("/api/_github", githubWebhookRoutes);
+  app.route(
+    "/api/_jira",
+    createJiraWebhookRoutes({
+      db: database.db,
+      encryptionKey: getSettings().encryptionKey,
+    }),
+  );
 
   // Auth-gated report page + domain-derived metadata. API-only/test apps safely
   // return 404 for the HTML shell when no built client directory is supplied.
@@ -1520,6 +1528,12 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Per-org repo syncs: same DBOS-scheduled shape, work list from the DB.
   setOrgRepoSyncRuntime({ db: database.db });
+
+  // Per-org Jira pull syncs: same shape, credentials decrypted per run.
+  setJiraSyncRuntime({
+    db: database.db,
+    encryptionKey: getSettings().encryptionKey,
+  });
 
   // Hourly auto-archive of settled Done cards, one org leg per candidate org.
   setTaskBoardArchiveSweepRuntime({ db: database.db });
@@ -1793,6 +1807,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerMonitoringRetentionWorkflow();
   registerPublicSetsSyncWorkflow();
   registerOrgRepoSyncWorkflow();
+  registerJiraSyncWorkflow();
   registerTaskBoardArchiveSweepWorkflow();
   registerTaskBoardMergedTagSweepWorkflow();
   registerTaskBoardGithubReadWorkflow();
@@ -2293,17 +2308,16 @@ export async function createApp(options: CreateAppOptions = {}) {
       // — see dispatch-queue/run-priority.ts). Scoped honestly: partitions are
       // per-thread with concurrency 1, so this orders MESSAGES QUEUED ON THE
       // SAME THREAD, not one thread against another. Cross-run ordering is the
-      // pod's admission gate (hosted-run-concurrency.ts), because DBOS has no
-      // global cap on a partitioned queue to order against.
+      // hosted-harness queues below, unpartitioned, order threads against each other.
       priorityEnabled: true,
     });
-    // Hosted-harness child workflow queue. Partition key = threadId, concurrency 1
-    // (mirrors THREAD_GATE_QUEUE: one active run per thread, different threads
-    // progress in parallel). Worker pods dequeue this alongside the parent gate.
+    // Unpartitioned + per-pod cap at dequeue — see the queue-name doc comments.
     await DBOS.registerQueue(HOSTED_HARNESS_QUEUE, {
-      partitionQueue: true,
-      concurrency: HOSTED_HARNESS_PARTITION_CONCURRENCY,
-      // Same scope caveat as the gate queue above.
+      workerConcurrency: getSettings().decopilotMaxConcurrentHostedRuns,
+      priorityEnabled: true,
+    });
+    await DBOS.registerQueue(HOSTED_HARNESS_SANDBOXED_QUEUE, {
+      workerConcurrency: getSettings().sandboxMaxConcurrentHostedRuns,
       priorityEnabled: true,
     });
     // Slow backgroundable built-ins (generate_image) run here, partitioned by
@@ -2316,6 +2330,11 @@ export async function createApp(options: CreateAppOptions = {}) {
     // enforced in the system DB, so it is a cap on ALL replicas together —
     // the one thing an in-process token bucket could never be.
     await DBOS.registerQueue(GITHUB_READS_QUEUE, GITHUB_READS_QUEUE_PARAMS);
+    // Board→Jira comment pushes: org partitions at concurrency 1 = posting order.
+    await DBOS.registerQueue(JIRA_PUSH_QUEUE, {
+      partitionQueue: true,
+      concurrency: 1,
+    });
     await reconcileAutomationSchedules(automationsStorage);
 
     // One-time cleanup of the retired per-automation/global gate queues.

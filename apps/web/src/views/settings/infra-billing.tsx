@@ -47,6 +47,7 @@ import {
   useInfraBillingPortal,
   useOwnedSites,
 } from "@/hooks/use-infra-billing";
+import { SettingsSubnav } from "@/components/settings/settings-subnav";
 
 type UsageRow = {
   date: string;
@@ -622,13 +623,12 @@ function InvoiceStatus({ status }: { status: string }) {
 }
 
 export function OrgInfraBillingPage() {
-  const t = useT();
   return (
     <Page>
       <Page.Content>
         <Page.Body>
           <SettingsPage>
-            <Page.Title>{t("settings.infraBilling.pageTitle")}</Page.Title>
+            <SettingsSubnav group="billing" />
             <InfraBillingContent />
           </SettingsPage>
         </Page.Body>

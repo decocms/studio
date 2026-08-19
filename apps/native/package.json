@@ -1,6 +1,6 @@
 {
   "name": "@decocms/native",
-  "version": "4.234.0",
+  "version": "4.239.1",
   "private": true,
   "type": "module",
   "description": "Native Studio desktop app: Tauri shell, Rust local API, and black-box contract suites.",

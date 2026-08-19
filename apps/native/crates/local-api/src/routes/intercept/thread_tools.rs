@@ -233,6 +233,25 @@ fn validate_datetime(value: &str, path: &str) -> Result<(), ApiError> {
     }
 }
 
+/// The session runtime a coding session stamps at creation. Mirrors
+/// `THREAD_RUNTIMES` in `packages/shared/src/thread/schema.ts`; the stamp
+/// becomes `metadata.runtime`, which `resolveSessionRuntime` reads to keep a
+/// sandbox-backed session out of a Fast Preview project's CMS default.
+const THREAD_RUNTIMES: [&str; 2] = ["cms", "sandbox"];
+
+fn optional_runtime<'a>(
+    object: &'a Map<String, Value>,
+    path: &str,
+) -> Result<Option<&'a str>, ApiError> {
+    let Some(value) = optional_string(object, "runtime", path)? else {
+        return Ok(None);
+    };
+    if !THREAD_RUNTIMES.contains(&value) {
+        return Err(ApiError::bad_request(format!("{path}.runtime is invalid")));
+    }
+    Ok(Some(value))
+}
+
 fn validate_thread_metadata(value: &Value) -> Result<(), ApiError> {
     let metadata = expect_object(value, "data.metadata")?;
     let Some(expanded_tools) = metadata.get("expanded_tools") else {
@@ -625,6 +644,11 @@ async fn create(state: &AppState, scope: &RtAccountScope, org: &str, body: &Byte
         Ok(value) => value,
         Err(error) => return error.into_response(),
     };
+    // Absent `runtime` leaves metadata NULL so the project default decides.
+    let metadata = match optional_runtime(data, "data") {
+        Ok(value) => value.map(|runtime| json!({ "runtime": runtime })),
+        Err(error) => return error.into_response(),
+    };
     let db = match db(state) {
         Ok(d) => d,
         Err(r) => return r.into_response(),
@@ -640,6 +664,7 @@ async fn create(state: &AppState, scope: &RtAccountScope, org: &str, body: &Byte
         virtual_mcp_id,
         branch,
         user,
+        metadata.as_ref(),
     ) {
         Ok(item) => Json(json!({ "item": item })).into_response(),
         // An explicit id already owned by another account or organization is
@@ -954,6 +979,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_persists_the_runtime_stamp_and_round_trips_it() {
+        let state = persistent_test_state();
+        let create_body = Bytes::from(
+            json!({"data": {"virtual_mcp_id": "vmcp-1", "runtime": "sandbox"}}).to_string(),
+        );
+        let res = dispatch(&state, "acme", "COLLECTION_THREADS_CREATE", &create_body)
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let created = body_json(res).await;
+        let id = created["item"]["id"].as_str().unwrap().to_string();
+        assert_eq!(created["item"]["metadata"], json!({"runtime": "sandbox"}));
+
+        let res = dispatch(
+            &state,
+            "acme",
+            "COLLECTION_THREADS_GET",
+            &Bytes::from(json!({"id": id}).to_string()),
+        )
+        .await
+        .unwrap();
+        let fetched = body_json(res).await;
+        assert_eq!(fetched["item"]["metadata"], json!({"runtime": "sandbox"}));
+    }
+
+    #[tokio::test]
+    async fn create_rejects_a_runtime_outside_the_vocabulary() {
+        let state = persistent_test_state();
+        for runtime in [json!("desktop"), json!(""), json!(7)] {
+            let body = Bytes::from(
+                json!({"data": {"virtual_mcp_id": "v", "runtime": runtime}}).to_string(),
+            );
+            let res = dispatch(&state, "acme", "COLLECTION_THREADS_CREATE", &body)
+                .await
+                .unwrap();
+            assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+        }
+    }
+
+    #[tokio::test]
     async fn create_requires_virtual_mcp_id() {
         let state = persistent_test_state();
         let body = Bytes::from(json!({"data": {"title": "x"}}).to_string());
@@ -1121,6 +1186,7 @@ mod tests {
                 "v",
                 None,
                 &scope.user_id,
+                None,
             )
             .unwrap();
         let fence = database
