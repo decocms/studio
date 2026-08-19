@@ -136,6 +136,10 @@ export function ArrayField({
   const drillDownOpts = {
     arrayKey: arrayFieldKey,
     hasSiblingDrillDownFields,
+    // Schema-only item labels (titleBy / inline-union) can't be recomputed by a parent loader's resolver, so keep the array label folded as the disambiguator.
+    itemLabelFromSchema: Boolean(
+      itemSchema?.titleBy || itemSchema?.inlineUnionBranches?.length,
+    ),
   };
   const usesSectionPicker = isSectionArrayField(schema, arrayFieldKey);
   // Only plain object arrays (banners, links, …) get the hide toggle. Section
