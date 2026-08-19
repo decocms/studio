@@ -120,7 +120,14 @@ func (p *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ct := strings.ToLower(upstream.Header.Get("Content-Type"))
-	if !strings.Contains(ct, "text/html") && r.URL.Path == "/" {
+	// Only a *successful* non-HTML root response means "this dev server isn't a
+	// web app" (an API-only server answering `/` with JSON). An error status is
+	// the opposite: the server does serve pages, it just refused this one — most
+	// often Vite's own 403 "Blocked request. This host is not allowed." when the
+	// preview hostname isn't in `server.allowedHosts`. Masking that as a 200
+	// placeholder hid the real status from the browser and from anyone reading
+	// the gateway logs, so pass error responses through untouched.
+	if r.URL.Path == "/" && upstream.StatusCode < 400 && !strings.Contains(ct, "text/html") {
 		htmlResponse(w, 200, NoWebPageHTML, nil)
 		return
 	}

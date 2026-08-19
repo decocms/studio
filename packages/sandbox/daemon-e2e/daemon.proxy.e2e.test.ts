@@ -113,6 +113,22 @@ describe("daemon e2e: reverse proxy", () => {
     expect(await res.text()).toContain("No web page at this URL");
   });
 
+  it("error status at / passes through instead of the 'No web page' page", async () => {
+    // Vite's 403 for an unknown Host is a refusal, not "this isn't a web app".
+    await startWithUpstream(
+      () =>
+        new Response("Blocked request. This host is not allowed.", {
+          status: 403,
+          headers: { "Content-Type": "text/plain" },
+        }),
+    );
+    const res = await fetch(url(d!, "/"));
+    expect(res.status).toBe(403);
+    const body = await res.text();
+    expect(body).toContain("Blocked request");
+    expect(body).not.toContain("No web page at this URL");
+  });
+
   it("non-root pass-through strips X-Frame-Options and forwards the body", async () => {
     let receivedBody = "";
     await startWithUpstream(async (req) => {
