@@ -43,54 +43,60 @@ test.describe("settings sidebar", () => {
   });
 });
 
+/**
+ * One signed-up user for the whole group: Better Auth rate-limits
+ * /sign-up/email, and a user per assertion made this file the noisiest
+ * signer-upper in the suite.
+ */
 test.describe("settings tabs", () => {
-  test("roles is a tab of members, and keeps members highlighted", async ({
+  test("a merged row stays highlighted while its tabs navigate", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
-    await page.goto(`/${orgSlug}/settings/roles`);
 
-    const members = page
-      .locator(SIDEBAR)
-      .getByRole("link", { name: "Members" });
-    await expect(members).toHaveAttribute("data-active", "true");
+    const cases = [
+      {
+        row: "Members",
+        deepLink: "roles",
+        otherTab: "Roles",
+        clickTab: "Members",
+        lands: "members",
+      },
+      {
+        row: "Billing & AI",
+        deepLink: "ai-providers",
+        otherTab: "AI Providers",
+        clickTab: "Plan & usage",
+        lands: "billing",
+      },
+      {
+        row: "Connect",
+        deepLink: "connect",
+        otherTab: "Clients",
+        clickTab: "API Keys",
+        lands: "api-keys",
+      },
+    ];
 
-    const tabs = page.locator(SUBNAV);
-    await expect(tabs.getByRole("link", { name: "Roles" })).toBeVisible();
+    for (const c of cases) {
+      await page.goto(`/${orgSlug}/settings/${c.deepLink}`);
 
-    await tabs.getByRole("link", { name: "Members" }).click();
-    await expect(page).toHaveURL(new RegExp(`/${orgSlug}/settings/members$`));
-    await expect(members).toHaveAttribute("data-active", "true");
-  });
+      const row = page
+        .locator(SIDEBAR)
+        .getByRole("link", { name: c.row, exact: true });
+      await expect(row, `${c.deepLink} lights up ${c.row}`).toHaveAttribute(
+        "data-active",
+        "true",
+      );
 
-  test("ai providers is a tab of billing", async ({ authedPage }) => {
-    const { page, orgSlug } = authedPage;
-    await page.goto(`/${orgSlug}/settings/ai-providers`);
+      const tabs = page.locator(SUBNAV);
+      await expect(tabs.getByRole("link", { name: c.otherTab })).toBeVisible();
 
-    const billing = page
-      .locator(SIDEBAR)
-      .getByRole("link", { name: "Billing" });
-    await expect(billing).toHaveAttribute("data-active", "true");
-
-    await page
-      .locator(SUBNAV)
-      .getByRole("link", { name: "Plan & usage" })
-      .click();
-    await expect(page).toHaveURL(new RegExp(`/${orgSlug}/settings/billing$`));
-    await expect(billing).toHaveAttribute("data-active", "true");
-  });
-
-  test("api keys is a tab of connect", async ({ authedPage }) => {
-    const { page, orgSlug } = authedPage;
-    await page.goto(`/${orgSlug}/settings/connect`);
-
-    const connect = page
-      .locator(SIDEBAR)
-      .getByRole("link", { name: "Connect", exact: true });
-    await expect(connect).toHaveAttribute("data-active", "true");
-
-    await page.locator(SUBNAV).getByRole("link", { name: "API Keys" }).click();
-    await expect(page).toHaveURL(new RegExp(`/${orgSlug}/settings/api-keys$`));
-    await expect(connect).toHaveAttribute("data-active", "true");
+      await tabs.getByRole("link", { name: c.clickTab }).click();
+      await expect(page).toHaveURL(
+        new RegExp(`/${orgSlug}/settings/${c.lands}$`),
+      );
+      await expect(row).toHaveAttribute("data-active", "true");
+    }
   });
 });

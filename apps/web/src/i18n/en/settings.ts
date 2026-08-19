@@ -8,7 +8,7 @@ export const settings = {
   "settings.nav.aiProviders": "AI Providers",
   "settings.nav.secrets": "Secrets",
   "settings.nav.apiKeys": "API Keys",
-  "settings.nav.billing": "Billing",
+  "settings.nav.billing": "Billing & AI",
   "settings.nav.buckets": "Buckets",
   "settings.nav.syncedRepos": "Synced repos",
   "settings.nav.storage": "Storage",

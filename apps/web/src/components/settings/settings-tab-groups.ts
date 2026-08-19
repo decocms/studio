@@ -78,7 +78,7 @@ export const SETTINGS_TAB_GROUPS: Record<
   },
   billing: {
     key: "billing",
-    titleKey: "settings.billing.title",
+    titleKey: "settings.nav.billing",
     tabs: [
       {
         key: "plan",

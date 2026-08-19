@@ -10,7 +10,7 @@ export const settings = {
   "settings.nav.aiProviders": "Provedores de IA",
   "settings.nav.secrets": "Segredos",
   "settings.nav.apiKeys": "Chaves de API",
-  "settings.nav.billing": "Cobrança",
+  "settings.nav.billing": "Cobrança e IA",
   "settings.nav.buckets": "Buckets",
   "settings.nav.syncedRepos": "Repos sincronizados",
   "settings.nav.storage": "Armazenamento",
