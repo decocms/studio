@@ -20,7 +20,11 @@ import { Input } from "@decocms/ui/components/input.tsx";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
 import type { FieldProps } from "./field-props";
-import { buildPreviewFetchUrl } from "../preview-fetch-url";
+import {
+  buildPreviewFetchUrl,
+  buildPreviewInvokePath,
+  type PreviewProxyRef,
+} from "../preview-fetch-url";
 import { FieldLabel } from "./field-label";
 import { fetchSpriteIcons } from "./icon-sprite";
 
@@ -197,21 +201,24 @@ function optionPreviewSrc(
   return undefined;
 }
 
+/**
+ * Resolve an `@options` loader through the same-origin preview-invoke proxy —
+ * not a direct cross-origin POST. The proxy derives the site server-side, so
+ * this works against a sandbox dev server and a Fast Preview session's preview
+ * server alike, and neither has to send CORS headers for `/deco/invoke`.
+ */
 async function fetchDynamicOptions(
-  previewUrl: string,
+  ref: PreviewProxyRef,
   loaderPath: string,
   term?: string,
 ): Promise<DynamicOption[]> {
-  const payload: Record<string, unknown> = {};
-  if (term) {
-    payload.term = term;
-  }
-  const base = previewUrl.replace(/\/+$/, "");
-  const url = `${base}/deco/invoke/${loaderPath}`;
-  const res = await fetch(url, {
+  const res = await fetch(buildPreviewInvokePath(ref), {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      __resolveType: loaderPath,
+      ...(term ? { term } : {}),
+    }),
   });
   if (!res.ok) {
     throw new Error(`Failed to fetch dynamic options: ${res.status}`);
@@ -288,14 +295,9 @@ export function DynamicOptionsField({
       `dynamic-options:${loaderPath ?? ""}:${debouncedSearch}`,
     ),
     queryFn: () =>
-      fetchDynamicOptions(
-        previewUrl!,
-        loaderPath!,
-        debouncedSearch || undefined,
-      ),
-    // Fetch eagerly when a value is already selected so its preview (icon /
-    // swatch / label) shows on the closed trigger, not only after opening.
-    enabled: !!previewUrl && !!loaderPath && (open || !!currentValue),
+      fetchDynamicOptions(sandbox!, loaderPath!, debouncedSearch || undefined),
+    // Eager on an existing value so its preview shows on the closed trigger.
+    enabled: !!sandbox && !!loaderPath && (open || !!currentValue),
     staleTime: 60_000,
     retry: 1,
   });

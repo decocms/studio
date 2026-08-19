@@ -290,6 +290,27 @@ function requireRunner(c: Context<VmEnv>): SandboxProvider | Response {
   return runner;
 }
 
+/**
+ * Origin serving this session's site — what `preview-fetch` and
+ * `preview-invoke` proxy to. Sandbox sessions get the pod's dev server;
+ * sandbox-less Fast Preview gets the configured preview server, which runs the
+ * same deco runtime and answers the same `/deco/invoke` and page routes. Never
+ * a client-supplied value, so both routes stay SSRF-safe either way.
+ */
+async function resolveSiteOrigin(c: Context<VmEnv>): Promise<string | null> {
+  const { runner, claimName, fastPreview, virtualMcpMetadata } =
+    c.get("vmClaim");
+  if (fastPreview) {
+    return resolveSessionRuntime(virtualMcpMetadata).previewServerUrl;
+  }
+  if (!runner) return null;
+  try {
+    return await runner.getPreviewUrl(claimName);
+  } catch {
+    return null;
+  }
+}
+
 // ---- Sandbox-less Fast Preview `/git/*` compat ------------------------------
 // The publish dialog and header speak the daemon's git JSON shapes; for
 // fastPreview claims these routes answer from the GitHub API instead (see
@@ -1142,10 +1163,6 @@ export const createSandboxRoutes = () => {
   // constrained to same-origin: it must start with `/` and cannot escape the
   // origin (protocol-relative `//`, traversal `..`, or backslash).
   app.get("/:virtualMcpId/:branch/preview-fetch", async (c) => {
-    const runner = requireRunner(c);
-    if (runner instanceof Response) return runner;
-
-    const { claimName } = c.get("vmClaim");
     const path = c.req.query("path");
     if (
       !path ||
@@ -1157,12 +1174,7 @@ export const createSandboxRoutes = () => {
       return c.json({ error: "Path not allowed" }, 403);
     }
 
-    let previewUrl: string | null;
-    try {
-      previewUrl = await runner.getPreviewUrl(claimName);
-    } catch {
-      return c.json({ error: "Preview not available" }, 502);
-    }
+    const previewUrl = await resolveSiteOrigin(c);
     if (!previewUrl) {
       return c.json({ error: "Preview not available" }, 502);
     }
@@ -1201,16 +1213,7 @@ export const createSandboxRoutes = () => {
       onError: (c) => c.json({ error: "Payload too large" }, 413),
     }),
     async (c) => {
-      const runner = requireRunner(c);
-      if (runner instanceof Response) return runner;
-
-      const { claimName } = c.get("vmClaim");
-      let previewUrl: string | null;
-      try {
-        previewUrl = await runner.getPreviewUrl(claimName);
-      } catch {
-        return c.json({ error: "Preview not available" }, 502);
-      }
+      const previewUrl = await resolveSiteOrigin(c);
       if (!previewUrl) {
         return c.json({ error: "Preview not available" }, 502);
       }

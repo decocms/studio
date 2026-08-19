@@ -9,6 +9,8 @@ import {
   firstCategorySlug,
 } from "./blog-preview-url";
 
+const DRAFT_POINTER = "api.deco.cx/api/acme/decofile/vm-1/main?token=t@abc123";
+
 describe("findBlogPageSlug", () => {
   it("reads pageSlug from the blog app block", () => {
     const decofile = {
@@ -141,6 +143,19 @@ describe("buildBlogCategoryPreviewUrl", () => {
       }),
     ).toBeNull();
   });
+
+  it("carries the fast-preview draft pointer so the link shows unpublished edits", () => {
+    const url = new URL(
+      buildBlogCategoryPreviewUrl({
+        decofile,
+        category: { slug: "news" },
+        previewBaseUrl: "https://abc.preview.example.com",
+        draftPointer: DRAFT_POINTER,
+      })!,
+    );
+    expect(url.pathname).toBe("/blog/news");
+    expect(url.searchParams.get("__draft")).toBe(DRAFT_POINTER);
+  });
 });
 
 describe("firstCategorySlug", () => {
@@ -249,5 +264,29 @@ describe("buildBlogPostPreviewUrl", () => {
         previewBaseUrl: "https://abc.preview.example.com",
       }),
     ).toBeNull();
+  });
+
+  it("carries the fast-preview draft pointer so the link shows unpublished edits", () => {
+    const url = new URL(
+      buildBlogPostPreviewUrl({
+        decofile,
+        post: { slug: "my-post", categories: [{ slug: "news" }] },
+        previewBaseUrl: "https://abc.preview.example.com",
+        draftPointer: DRAFT_POINTER,
+      })!,
+    );
+    expect(url.pathname).toBe("/blogteste/news/my-post");
+    expect(url.searchParams.get("__draft")).toBe(DRAFT_POINTER);
+  });
+
+  it("leaves the url alone when there is no draft grant (sandbox session)", () => {
+    expect(
+      buildBlogPostPreviewUrl({
+        decofile,
+        post: { slug: "my-post", categories: [{ slug: "news" }] },
+        previewBaseUrl: "https://abc.preview.example.com",
+        draftPointer: null,
+      }),
+    ).toBe("https://abc.preview.example.com/blogteste/news/my-post");
   });
 });

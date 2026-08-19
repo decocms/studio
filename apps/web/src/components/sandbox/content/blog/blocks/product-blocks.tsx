@@ -28,7 +28,7 @@ import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/en/index.ts";
-import type { RunBlockSandboxRef } from "@/components/sandbox/content/use-run-block";
+import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
 import {
   readProductListIds,
   writeProductListIds,
@@ -347,7 +347,7 @@ export function ProductShelfBlock({
 }: {
   block: Record<string, unknown>;
   onChange: (next: Record<string, unknown>) => void;
-  sandboxRef?: RunBlockSandboxRef | null;
+  sandboxRef?: PreviewProxyRef | null;
 }) {
   const t = useT();
   const rawIds = readProductListIds(block.products);
@@ -461,7 +461,7 @@ export function ProductCardBlock({
 }: {
   block: Record<string, unknown>;
   onChange: (next: Record<string, unknown>) => void;
-  sandboxRef?: RunBlockSandboxRef | null;
+  sandboxRef?: PreviewProxyRef | null;
 }) {
   const t = useT();
   const productId = readProductListIds(block.product).filter(Boolean)[0] ?? "";

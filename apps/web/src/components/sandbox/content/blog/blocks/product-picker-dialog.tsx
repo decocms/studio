@@ -12,7 +12,7 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { KEYS } from "@/lib/query-keys";
-import { type RunBlockSandboxRef } from "@/components/sandbox/content/use-run-block";
+import { type PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
 import {
   buildCategoryTreeRequest,
   buildProductRequests,
@@ -41,7 +41,7 @@ const MODES = [
  * call succeeds.
  */
 async function fetchProducts(
-  ref: RunBlockSandboxRef,
+  ref: PreviewProxyRef,
   requests: PickerLoaderRequest[],
 ): Promise<ProductPickerOption[]> {
   if (requests.length === 0) return [];
@@ -175,7 +175,7 @@ function StatusLine({
   );
 }
 
-function sandboxKey(ref: RunBlockSandboxRef): string {
+function sandboxKey(ref: PreviewProxyRef): string {
   return `${ref.orgSlug}/${ref.virtualMcpId}/${ref.branch}`;
 }
 
@@ -186,7 +186,7 @@ function CategoryPane({
   selected,
   onSelect,
 }: {
-  sandboxRef: RunBlockSandboxRef;
+  sandboxRef: PreviewProxyRef;
   open: boolean;
   selected: CategoryOption | null;
   onSelect: (category: CategoryOption | null) => void;
@@ -276,7 +276,7 @@ export function ProductPickerDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  sandboxRef: RunBlockSandboxRef;
+  sandboxRef: PreviewProxyRef;
   selectedIds: string[];
   onChange: (ids: string[]) => void;
   /** Product card selects a single product; shelf selects many. */

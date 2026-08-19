@@ -1,13 +1,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useVirtualMCP } from "@/sdk";
-import { resolveFastPreview } from "@/sdk/fast-preview";
-import { useActiveThreadMeta } from "@/hooks/use-active-thread-meta";
+import { useFastPreview } from "@/hooks/use-fast-preview";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { KEYS } from "@/lib/query-keys";
 import { decoRepoPath } from "./deco-repo-path";
 import { fetchDecofile } from "./decofile-api";
 import { buildDecofileFetchUrl } from "./preview-fetch-url";
 import { readCommittedJson } from "./read-committed-file";
+import { usePackagePath } from "./use-package-path";
 
 interface UseDecofileParams {
   orgSlug: string;
@@ -42,16 +41,12 @@ export function useDecofile(
   // (`metadata.runtime.path`) when the project isn't at the repo root — the
   // daemon reads resolve against the repo root, so prefix it. The live
   // `/.decofile` route already resolves relative to the dev-server cwd.
-  const vmcp = useVirtualMCP(params?.virtualMcpId);
-  const packagePath = vmcp?.metadata?.runtime?.path ?? null;
+  const packagePath = usePackagePath(params?.virtualMcpId);
   // Sandbox-less mode: the decofile API merges `.deco/blocks/*.json` at the
   // branch head on GitHub — no dev server, no working tree. The read also
   // seeds KEYS.decofileDraft ({version, token}) so the preview can build its
   // `?__draft=` pointer before any save happens.
-  const fastPreviewActive = resolveFastPreview(
-    vmcp?.metadata,
-    useActiveThreadMeta(),
-  ).active;
+  const fastPreviewActive = useFastPreview(params?.virtualMcpId).active;
   const queryClient = useQueryClient();
   return useQuery({
     queryKey: KEYS.decofile(key),

@@ -31,8 +31,8 @@ import {
   stampPostModified,
 } from "./blog-data";
 import { buildBlogCategoryPreviewUrl } from "./blog-preview-url";
-import { usePackagePath } from "@/components/sections-editor/use-package-path";
-import { useSaveBlogBlock } from "./use-blog-mutations";
+import { useSaveBlock } from "@/components/sections-editor/use-save-block";
+import { useDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 import { asBlocks, BlockDocument } from "./block-document";
@@ -81,12 +81,8 @@ export function CategoryEditor({
   previewBaseUrl?: string | null;
 }) {
   const t = useT();
-  const save = useSaveBlogBlock({
-    orgSlug,
-    virtualMcpId,
-    branch,
-    packagePath: usePackagePath(virtualMcpId),
-  });
+  const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  const draftPointer = useDraftPointer({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, "categories");
 
   const [category, setCategory, syncCategory] = useAutosave(initial, (next) => {
@@ -105,6 +101,7 @@ export function CategoryEditor({
     decofile,
     category,
     previewBaseUrl,
+    draftPointer,
   });
 
   // The slug input is a free-text draft, committed only on blur — its
