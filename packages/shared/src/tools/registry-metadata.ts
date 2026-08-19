@@ -174,6 +174,7 @@ const ALL_TOOL_NAMES = [
   "FILE_CONFIG_UPDATE",
   "FILE_CONFIG_DELETE",
   "FILE_OBJECTS_LIST",
+  "FILE_OBJECT_DELETE",
 
   // Org filesystem (shared public skill sets)
   "ORG_FS_PUBLIC_SETS_SYNC",
@@ -883,6 +884,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "List existing objects in a configured bucket",
     category: "File Configs",
   },
+  {
+    name: "FILE_OBJECT_DELETE",
+    description: "Delete an object from a configured bucket",
+    category: "File Configs",
+  },
 
   // Object Storage tools
   {
@@ -1442,6 +1448,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "FILE_CONFIG_UPDATE",
       "FILE_CONFIG_DELETE",
       "FILE_OBJECTS_LIST",
+      "FILE_OBJECT_DELETE",
       "ORG_REPO_SYNC_CREATE",
       "ORG_REPO_SYNC_LIST",
       "ORG_REPO_SYNC_UPDATE",

@@ -43,6 +43,7 @@ import {
   useFilePickerObjects,
   useFilePickerUpload,
 } from "@/hooks/use-file-picker";
+import { basename, extensionTag, formatSize, isImageKey } from "./asset-utils";
 
 export type FilePickerMode = "image" | "any";
 
@@ -432,16 +433,6 @@ function NoSearchResults({ query }: { query: string }) {
   );
 }
 
-function isImageKey(key: string): boolean {
-  return /\.(png|jpe?g|gif|webp|svg|avif|bmp)$/i.test(key);
-}
-
-function extensionTag(key: string): string {
-  const dot = key.lastIndexOf(".");
-  if (dot < 0 || dot === key.length - 1) return "file";
-  return key.slice(dot + 1).toLowerCase();
-}
-
 function ImageGrid({
   items,
   onSelect,
@@ -616,15 +607,4 @@ function AssetCardMenu({
       </DropdownMenuContent>
     </DropdownMenu>
   );
-}
-
-function basename(key: string): string {
-  const parts = key.split("/");
-  return parts[parts.length - 1] ?? key;
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

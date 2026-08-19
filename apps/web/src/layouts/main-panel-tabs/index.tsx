@@ -17,6 +17,7 @@ import { GitTab } from "@/components/thread/github/git-tab";
 import { PreviewTab } from "./preview-tab";
 import { CodeTab } from "./code-tab";
 import { ContentTab } from "./content-tab";
+import { AssetsTab } from "./assets-tab";
 import { AutomationTab } from "./automation-tab";
 import { AutomationsListTab } from "./automations-list-tab";
 import { FileTab } from "./file-tab";
@@ -103,6 +104,9 @@ function TabBody({
   }
   if (activeTab === "content") {
     return <ContentTab virtualMcpId={virtualMcpId} />;
+  }
+  if (activeTab === "assets") {
+    return <AssetsTab virtualMcpId={virtualMcpId} />;
   }
   if (activeTab === "files") {
     return <LibraryTab />;

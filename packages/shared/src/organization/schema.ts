@@ -173,6 +173,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "When a report import creates a task board item without an assignee, delegate it to the Super Agent automatically instead of leaving it unassigned.",
     ),
+  native_assets_tab: z
+    .boolean()
+    .optional()
+    .describe(
+      "Show the native Assets tab (a browser over the site's associated S3 bucket) instead of relying on the external admin-MCP fetch_assets view. Off by default while in development.",
+    ),
 });
 
 export type OrgFlags = z.infer<typeof OrgFlagsSchema>;

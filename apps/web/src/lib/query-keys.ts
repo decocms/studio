@@ -530,6 +530,10 @@ export const KEYS = {
       search ?? "",
       imageOnly ?? false,
     ] as const,
+  /** Prefix of every filePickerObjects variant for one config — used to
+   *  invalidate all search/imageOnly listings after an upload or delete. */
+  filePickerObjectsByConfig: (orgId: string, configId: string) =>
+    ["file-picker-objects", orgId, configId] as const,
 
   // AI provider credits balance (scoped by org + keyId)
   aiProviderCredits: (orgId: string, keyId: string) =>

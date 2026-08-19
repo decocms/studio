@@ -66,7 +66,13 @@ import {
   shouldDeepLinkSourceTab,
 } from "./source-system-tabs";
 import { useCapability } from "@/hooks/use-capability";
-import { useNavV2, useReportsOnly } from "@/hooks/use-organization-settings";
+import { useFileConfigsQuery } from "@/hooks/use-file-configs";
+import { matchSiteSlugConfig } from "@/components/file-picker/match-site-slug-config";
+import {
+  useNavV2,
+  useOrgFlag,
+  useReportsOnly,
+} from "@/hooks/use-organization-settings";
 import { useT } from "@/i18n/use-t.ts";
 
 export type AgentTabDef = {
@@ -286,6 +292,21 @@ export function useMainPanelTabs(ctx: {
   });
   const showContentTab = hasEditableDecoContent(decofile, meta);
 
+  /**
+   * Assets is a per-site tab behind the `native_assets_tab` org flag: it shows
+   * only when the flag is on AND an S3 bucket is associated to this site's slug
+   * (managed `deco-assets-<slug>` or a BYOB bucket). Uses the non-suspense
+   * configs query so the bar never blocks on the bucket list.
+   */
+  const nativeAssetsTabEnabled = useOrgFlag("native_assets_tab");
+  const siteSlug =
+    (entity?.metadata as { siteSlug?: string | null } | undefined)?.siteSlug ??
+    null;
+  const fileConfigsQuery = useFileConfigsQuery();
+  const showAssetsTab =
+    nativeAssetsTabEnabled &&
+    !!matchSiteSlugConfig(fileConfigsQuery.data?.configs ?? [], siteSlug);
+
   const { activeTab: rawActiveTab, mainOpen: rawMainOpen } =
     resolveActiveTabAndOpen({
       mainParam: search.main,
@@ -313,7 +334,9 @@ export function useMainPanelTabs(ctx: {
       ? resolveDefaultTabId(layoutForDefault)
       : rawActiveTab === "content" && !showContentTab
         ? resolveDefaultTabId(layoutForDefault)
-        : rawActiveTab;
+        : rawActiveTab === "assets" && !showAssetsTab
+          ? resolveDefaultTabId(layoutForDefault)
+          : rawActiveTab;
   const mainOpen =
     rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
       ? false
@@ -374,6 +397,12 @@ export function useMainPanelTabs(ctx: {
     systemTabs.push({
       id: "content",
       title: t("common.mainPanelTabs.content"),
+    });
+  }
+  if (showAssetsTab) {
+    systemTabs.push({
+      id: "assets",
+      title: t("common.mainPanelTabs.assets"),
     });
   }
   if (gitTabVisible) {
