@@ -258,7 +258,16 @@ export const TASK_ADD_REPO = defineTool({
      * registered" — every one a task that could not clone, so never shipped,
      * after the model had already been paid for.
      */
-    const branch = await resolveSandboxBranchForThread(ctx, { threadId });
+    const branch = await resolveSandboxBranchForThread(ctx, {
+      threadId,
+      // The branch the run was DISPATCHED on. Passing it is what makes the
+      // shared derivation keep a bare `thread:<id>` key (its `runBranch`
+      // pinning rule) — omitted, a repo-less run fell through to `"ephemeral"`
+      // and missed the pod it is executing in. Safe to pass raw: a real git ref
+      // in this column does not match the bare key, so it falls through to the
+      // same derivation as before.
+      runBranch: thread.branch,
+    });
     const sandboxUserId = await resolveSandboxUserId(ctx, branch, userId);
     const { provider, kind } = await resolveSandboxProvider(ctx, {
       userId: sandboxUserId,
