@@ -124,12 +124,8 @@ export function sanitizeFilename(input: string): string {
   return base.slice(0, 80);
 }
 
-/**
- * The `<yyyy>/<mm>/` date shard a key lives under (UTC, month zero-padded).
- * Single source of truth for the shard format: `buildObjectKey` stamps it on
- * write and `listObjects` probes it on read, so they must never diverge.
- */
-export function monthShardSegment(year: number, month: number): string {
+/** The `<yyyy>/<mm>/` date shard a key lives under (UTC, month zero-padded); stamped on write by `buildObjectKey`. */
+function monthShardSegment(year: number, month: number): string {
   return `${year}/${String(month).padStart(2, "0")}/`;
 }
 

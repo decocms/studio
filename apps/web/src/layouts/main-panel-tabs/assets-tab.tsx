@@ -44,6 +44,7 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { useVirtualMCP } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { useElementWidth } from "@/hooks/use-element-width";
 import { type FileConfigInfo, useFileConfigs } from "@/hooks/use-file-configs";
 import {
   type PickerObject,
@@ -91,6 +92,32 @@ function NoBucketState() {
       </div>
     </div>
   );
+}
+
+/**
+ * Column count for the masonry grid, keyed off the measured container width
+ * (thresholds mirror the old Tailwind sm/md/lg breakpoints). `-1` means "not
+ * measured yet" — it re-renders with the real width before paint, so the
+ * fallback is only a momentary default and never a visible layout.
+ */
+function assetColumnCount(width: number): number {
+  if (width < 0 || width < 640) return 2;
+  if (width < 768) return 3;
+  if (width < 1024) return 4;
+  return 5;
+}
+
+/**
+ * Distributes items round-robin across `count` columns so reading order stays
+ * left-to-right, top-to-bottom (item 0,1,2… fill the first visual row). Cards
+ * keep their natural height within each column — a mosaic with no fixed row
+ * height and no leftover space — while preserving the source order, which a
+ * pure CSS `columns` layout would scramble into column-major order.
+ */
+function distributeIntoColumns<T>(items: T[], count: number): T[][] {
+  const columns: T[][] = Array.from({ length: count }, () => []);
+  items.forEach((item, i) => columns[i % count]!.push(item));
+  return columns;
 }
 
 function AssetsBrowser({ config }: { config: FileConfigInfo }) {
@@ -151,8 +178,10 @@ function AssetsBrowser({ config }: { config: FileConfigInfo }) {
     handleFiles(e.dataTransfer.files);
   }
 
+  const [gridWidth, gridRef] = useElementWidth();
   const pages = objectsQuery.data?.pages ?? [];
   const items = pages.flatMap((p) => p.items);
+  const columns = distributeIntoColumns(items, assetColumnCount(gridWidth));
   const activeSearch = debouncedSearch.trim();
   const isSearching =
     search !== debouncedSearch ||
@@ -243,13 +272,21 @@ function AssetsBrowser({ config }: { config: FileConfigInfo }) {
             />
           )
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-            {items.map((item) => (
-              <AssetCard
-                key={item.key}
-                item={item}
-                onDelete={() => setPendingDelete(item)}
-              />
+          <div ref={gridRef} className="flex items-start gap-3">
+            {columns.map((column, columnIndex) => (
+              <div
+                // Column buckets are positional, so the index is the identity.
+                key={columnIndex}
+                className="flex min-w-0 flex-1 flex-col gap-3"
+              >
+                {column.map((item) => (
+                  <AssetCard
+                    key={item.key}
+                    item={item}
+                    onDelete={() => setPendingDelete(item)}
+                  />
+                ))}
+              </div>
             ))}
           </div>
         )}
@@ -319,20 +356,22 @@ function AssetCard({
         target="_blank"
         rel="noreferrer"
         title={item.key}
-        className="flex aspect-square items-center justify-center transition hover:ring-2 hover:ring-primary"
+        className="block transition hover:ring-2 hover:ring-inset hover:ring-primary"
       >
         {isImage ? (
           <img
             src={item.publicUrl}
             alt={item.key}
             loading="lazy"
-            className="h-full w-full object-cover"
+            className="block h-auto w-full"
             onError={(e) => {
               (e.target as HTMLImageElement).style.display = "none";
             }}
           />
         ) : (
-          <File02 size={28} className="text-muted-foreground" />
+          <div className="flex aspect-square items-center justify-center">
+            <File02 size={28} className="text-muted-foreground" />
+          </div>
         )}
       </a>
       <div className="flex items-center gap-1 border-t border-border/60 bg-background px-2 py-1.5">
