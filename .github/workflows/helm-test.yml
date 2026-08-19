@@ -179,6 +179,29 @@ jobs:
 
           fail() { echo "::error::$1"; exit 1; }
 
+          # Without a Namespace in the render, Argo's CreateNamespace=true creates
+          # one it never adopts: everything inside is deleted correctly and the
+          # namespace itself is left behind, one per PR, forever.
+          grep -q '^kind: Namespace' /tmp/preview.yaml \
+            || fail "preview render has no Namespace — it would outlive the PR"
+          python3 - <<'NS'
+          import sys, yaml
+          ns = [d for d in yaml.safe_load_all(open("/tmp/preview.yaml"))
+                if d and d["kind"] == "Namespace"]
+          if len(ns) != 1:
+              print(f"::error::expected exactly one Namespace, found {len(ns)}"); sys.exit(1)
+          m = ns[0]["metadata"]
+          w = int((m.get("annotations") or {}).get("argocd.argoproj.io/sync-wave", 0))
+          if w >= -30:
+              print(f"::error::Namespace is at wave {w}, but everything lives inside it "
+                    "— it must come before the ExternalSecret at -30"); sys.exit(1)
+          if not any(k.endswith("/preview") for k in (m.get("labels") or {})):
+              print("::error::Namespace carries no preview label — the Gateway admits "
+                    "routes by namespace label, so the HTTPRoute would attach to nothing")
+              sys.exit(1)
+          print(f"namespace rendered at wave {w} with the gateway selector label")
+          NS
+
           grep -q 'kind: HTTPRoute' /tmp/preview.yaml \
             || fail "preview render has no HTTPRoute — the preview would be unreachable"
           grep -q 'pr-42.pr.studio.decocms.com' /tmp/preview.yaml \

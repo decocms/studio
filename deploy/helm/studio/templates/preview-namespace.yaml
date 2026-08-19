@@ -1,0 +1,31 @@
+{{- if and .Values.preview.enabled .Values.preview.manageNamespace }}
+{{- /*
+The preview's own namespace, rendered by the chart rather than conjured by
+Argo's CreateNamespace=true.
+
+CreateNamespace=true creates a namespace but does not adopt it: the object gets
+no tracking annotation and never joins the Application's resource tree, so a
+cascading delete leaves it behind. Everything inside is removed correctly — pods,
+Services, HTTPRoute, ConfigMaps, the Postgres and MinIO that hold the data — and
+an empty namespace stays for every pull request that ever had a preview.
+
+Rendering it here puts it under the same ownership as everything else, so it is
+deleted with them. It also carries its own labels, which means the Gateway's
+namespace selector no longer depends on managedNamespaceMetadata being set
+correctly by whatever creates the Application — the failure that produces a
+silent 404 with a green Argo.
+
+Wave -40: before the ExternalSecret at -30, since everything else is inside it.
+*/ -}}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Release.Namespace }}
+  labels:
+    {{- include "chart-deco-studio.labels" . | nindent 4 }}
+    {{- with .Values.preview.namespaceLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-40"
+{{- end }}

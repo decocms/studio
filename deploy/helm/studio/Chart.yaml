@@ -2,6 +2,12 @@ apiVersion: v2
 name: chart-deco-studio
 description: Helm chart for deco Studio — supports inline secrets, external secretName, and AWS Secrets Manager via ExternalSecret
 type: application
+# 0.14.3: the preview renders its own Namespace (preview.manageNamespace).
+# CreateNamespace=true creates one without adopting it, so a cascading delete
+# removed everything inside and left the namespace behind — one per pull request
+# that ever had a preview. It also carries the Gateway's selector label now, so
+# route attachment no longer depends on managedNamespaceMetadata.
+#
 # 0.14.2: optional hosted sandboxes for previews (preview.sandbox.enabled,
 # default false). Renders one RoleBinding when on, nothing when off. Read the
 # note in templates/preview-sandbox-rbac.yaml before enabling: the namespace it
@@ -32,7 +38,7 @@ type: application
 # when disabled, so existing releases are unaffected.
 # 0.12.4: chart-managed API/worker dispatch roles now use
 # STUDIO_DISPATCH_ROLE; legacy overrides are rejected.
-version: 0.14.2
+version: 0.14.3
 appVersion: "latest"
 
 dependencies:

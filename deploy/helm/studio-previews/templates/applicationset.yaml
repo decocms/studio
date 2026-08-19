@@ -64,6 +64,13 @@ spec:
                   tag: '{{ include "studio-previews.imageTag" . }}'
               preview:
                 prNumber: '{{ `{{ .number }}` }}'
+                # The chart renders the namespace itself, so the label the
+                # Gateway selects on travels with the manifest instead of
+                # depending on managedNamespaceMetadata below. Both are set:
+                # the metadata still labels the namespace on the first sync,
+                # before the chart's own object is applied.
+                namespaceLabels:
+                  {{ .Values.gateway.namespaceSelectorLabel }}: "true"
                 host: '{{ include "studio-previews.host" . }}'
                 gateway:
                   name: {{ .Values.gateway.name }}

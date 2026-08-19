@@ -24,6 +24,8 @@
 
 preview:
   enabled: true
+  # namespaceLabels is injected by the studio-previews ApplicationSet — it is
+  # the one that knows which label the Gateway selects on.
   # prNumber / host injected per PR by the ApplicationSet.
   gateway:
     name: studio-preview
