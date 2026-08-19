@@ -13,6 +13,7 @@ import {
   headShaFromPrGet,
   headShaFromStatus,
   isRateLimitError,
+  extractPreviewUrlFromCheckRuns,
   extractPreviewUrlFromComments,
   isTrustedPreviewHost,
   mergeChecksStatus,
@@ -303,6 +304,59 @@ describe("isTrustedPreviewHost", () => {
     expect(isTrustedPreviewHost("https://decocdn.com.evil.com/")).toBe(false);
     expect(isTrustedPreviewHost("https://not-deco.site.evil.com/")).toBe(false);
     expect(isTrustedPreviewHost("not a url")).toBe(false);
+  });
+});
+
+describe("extractPreviewUrlFromCheckRuns", () => {
+  // Real Workers Builds check-run shape (deco-sites/demo-storefront#93) — the
+  // bot's PR comment for this Worker carries NO preview link, only this does.
+  const workersRun = {
+    name: "Workers Builds: demo-storefront",
+    output: {
+      title: "Workers Builds: demo-storefront",
+      summary:
+        "\nBuild ID: [85b63568-6bf1-45d6-9d3b-57a558dee041](https://dash.cloudflare.com/x)\n" +
+        "Script: [demo-storefront](https://dash.cloudflare.com/y)\n" +
+        "Version ID: 1fe1ee18-b8d0-46ea-bdf1-45cef0cd6e4d\n",
+    },
+  };
+
+  it("derives the version preview url from the Workers Builds summary", () => {
+    expect(extractPreviewUrlFromCheckRuns({ check_runs: [workersRun] })).toBe(
+      "https://1fe1ee18-demo-storefront.deco-cx.workers.dev",
+    );
+    expect(extractPreviewUrlFromCheckRuns([workersRun])).toBe(
+      "https://1fe1ee18-demo-storefront.deco-cx.workers.dev",
+    );
+  });
+
+  it("ignores runs that are not Workers Builds, or have no version yet", () => {
+    expect(
+      extractPreviewUrlFromCheckRuns([
+        {
+          name: "cubic · AI code reviewer",
+          output: { summary: "Version ID: deadbeef-1" },
+        },
+        {
+          name: "Workers Builds: demo-storefront",
+          output: { summary: "Build queued" },
+        },
+        { name: "Workers Builds: demo-storefront" },
+      ]),
+    ).toBeNull();
+    expect(extractPreviewUrlFromCheckRuns(null)).toBeNull();
+    expect(extractPreviewUrlFromCheckRuns({})).toBeNull();
+  });
+
+  it("rejects a worker name that would forge a host outside workers.dev", () => {
+    expect(
+      extractPreviewUrlFromCheckRuns([
+        {
+          name: "Workers Builds: evil.example.com/x",
+          output: { summary: "Version ID: 1fe1ee18-b8d0" },
+        },
+      ]),
+    ).toBeNull();
   });
 });
 
