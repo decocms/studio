@@ -19,7 +19,6 @@ import type {
 import type { OrgSiteStoragePort } from "../storage/ports";
 import type { FileConfigInfo } from "../storage/types";
 import { provisionTenantS3Credentials } from "./tenant-credentials";
-import { monthShardSegment } from "./upload-policy";
 
 export interface FileConfigContext {
   info: FileConfigInfo;
@@ -254,60 +253,20 @@ export interface ListObjectsResult {
   nextCursor: string | null;
 }
 
-/**
- * How many month shards page 1 walks back, newest first, before the broad
- * lexicographic fallback. Wide enough to surface recent uploads in buckets
- * quiet for a few months; each is enumerated in full and the merged set is
- * sorted by lastModified, then truncated to the page size.
- */
-const MONTH_SHARD_PROBES = 6;
-
-/**
- * Safety cap on pages (1000 keys each) enumerated per month shard. A month is
- * listed in full so sorting by lastModified yields a true newest-first order
- * (a single capped LIST returns UUID-lexicographic order, hiding the freshest
- * upload behind older ones). This bounds the work if a single month ever holds
- * a pathological number of objects; realistic image buckets stay well under
- * one page.
- */
-const MONTH_SHARD_MAX_PAGES = 5;
-
-/**
- * Month-shard key prefixes to probe, newest first: `<bucketPrefix><yyyy>/<mm>/`
- * for the current month walking back `count` months, crossing year boundaries
- * (`2026/01/` -> `2025/12/`). Shares `monthShardSegment` with `buildObjectKey`
- * so a fresh upload is always fetched by its month's probe instead of being
- * truncated behind older months in a year-wide lexicographic listing.
- */
-export function monthShardPrefixes(
-  bucketPrefix: string,
-  now: Date,
-  count: number,
-): string[] {
-  const prefixes: string[] = [];
-  let year = now.getUTCFullYear();
-  let month = now.getUTCMonth() + 1; // 1-12
-  for (let i = 0; i < count; i++) {
-    prefixes.push(`${bucketPrefix}${monthShardSegment(year, month)}`);
-    month -= 1;
-    if (month === 0) {
-      month = 12;
-      year -= 1;
-    }
-  }
-  return prefixes;
-}
+/** Page cap (1000 keys each) for the full-prefix enumerate-then-sort listing; bounds work on huge buckets at ~50k keys. */
+const LIST_MAX_PAGES = 50;
 
 /** Raw S3 object fields the listing helpers reason about. */
 type RawS3Object = { Key?: string; Size?: number; LastModified?: Date };
 
-/**
- * Enumerate every object directly under `prefix`, paginating up to `maxPages`
- * pages of 1000. Listing the shard in full (rather than one capped LIST) is
- * what lets the caller sort by lastModified into a true newest-first order — a
- * single page comes back in UUID-lexicographic order, which buries the freshest
- * upload behind older keys in a busy month.
- */
+/** Pure: parse the pagination cursor into a zero-based offset into the recency-sorted set; unparseable/non-positive → 0. */
+export function parseOffsetCursor(cursor?: string | null): number {
+  if (!cursor) return 0;
+  const n = Number.parseInt(cursor, 10);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/** Enumerate every object under `prefix` (empty = whole bucket), up to `maxPages` pages of 1000, so the caller can sort by lastModified. */
 async function listAllUnderPrefix(
   client: S3Client,
   bucket: string,
@@ -321,7 +280,7 @@ async function listAllUnderPrefix(
     const res = await client.send(
       new ListObjectsV2Command({
         Bucket: bucket,
-        Prefix: prefix,
+        Prefix: prefix || undefined,
         MaxKeys: 1000,
         ContinuationToken: token,
       }),
@@ -334,14 +293,10 @@ async function listAllUnderPrefix(
 }
 
 /**
- * List a page of bucket objects, newest first. S3 ListObjectsV2 sorts only
- * lexicographically, so page 1 enumerates the newest month shard in full (see
- * `monthShardPrefixes` / `listAllUnderPrefix`), walking back to older months
- * only if it doesn't fill the page, plus a broad-prefix fallback for legacy
- * keys and the continuation token; results are merged, de-duped, sorted by
- * lastModified DESC, and truncated to the page size. Cursor pages walk the
- * broad namespace in S3's lexicographic key order (older objects first, NOT
- * re-sorted by lastModified), skipping the month shards page 1 already returned.
+ * List a page of bucket objects, newest first. S3 sorts only lexicographically
+ * (never by upload recency, for any key layout), so we enumerate the whole
+ * prefix (bounded by `LIST_MAX_PAGES`), sort by lastModified DESC, and paginate
+ * in memory via an offset cursor (`parseOffsetCursor`), not an S3 token.
  */
 export async function listObjects(params: {
   ctx: FileConfigContext;
@@ -371,93 +326,21 @@ export async function listObjects(params: {
     });
   }
 
-  const monthShardPrefixesList = monthShardPrefixes(
+  const raw = await listAllUnderPrefix(
+    client,
+    params.ctx.info.bucket,
     bucketPrefix,
-    new Date(),
-    MONTH_SHARD_PROBES,
+    LIST_MAX_PAGES,
   );
+  const sorted = raw
+    .filter((obj) => obj.Key && !obj.Key.endsWith("/"))
+    .map((obj) => toListedObject(obj, params.ctx))
+    .sort(byLastModifiedDesc);
 
-  // Subsequent pages walk the broad namespace via continuation token —
-  // skip the date-shard probes (already returned on page 1) and filter
-  // any keys under those prefixes out of the response so we don't
-  // duplicate what page 1 already showed.
-  if (params.cursor) {
-    const response = await client.send(
-      new ListObjectsV2Command({
-        Bucket: params.ctx.info.bucket,
-        Prefix: bucketPrefix || undefined,
-        MaxKeys: target,
-        ContinuationToken: params.cursor,
-      }),
-    );
-    return finalize(
-      response,
-      params.ctx,
-      target,
-      false,
-      monthShardPrefixesList,
-    );
-  }
-
-  const seen = new Map<string, ListedObject>();
-  const absorb = (objs: RawS3Object[]) => {
-    for (const obj of objs) {
-      if (!obj.Key || obj.Key.endsWith("/") || seen.has(obj.Key)) continue;
-      seen.set(obj.Key, toListedObject(obj, params.ctx));
-    }
-  };
-
-  // Newest month first; every key in it outranks any older month, so we only walk back if it doesn't fill the page.
-  const [newestMonth, ...olderMonths] = monthShardPrefixesList;
-  if (newestMonth) {
-    absorb(
-      await listAllUnderPrefix(
-        client,
-        params.ctx.info.bucket,
-        newestMonth,
-        MONTH_SHARD_MAX_PAGES,
-      ),
-    );
-  }
-  if (seen.size < target && olderMonths.length > 0) {
-    // Fan the remaining months out concurrently — we already know we need them.
-    const older = await Promise.all(
-      olderMonths.map((prefix) =>
-        listAllUnderPrefix(
-          client,
-          params.ctx.info.bucket,
-          prefix,
-          MONTH_SHARD_MAX_PAGES,
-        ),
-      ),
-    );
-    for (const objs of older) absorb(objs);
-  }
-
-  // Runs unconditionally to expose nextCursor and reach legacy/older keys not under the month shards.
-  const broadMaxKeys = Math.max(1, target - seen.size);
-  const broadRes = await client.send(
-    new ListObjectsV2Command({
-      Bucket: params.ctx.info.bucket,
-      Prefix: bucketPrefix || undefined,
-      MaxKeys: broadMaxKeys,
-    }),
-  );
-  for (const obj of broadRes.Contents ?? []) {
-    if (seen.size >= target) break;
-    if (!obj.Key || obj.Key.endsWith("/") || seen.has(obj.Key)) continue;
-    // Month-shard keys were already pulled via dedicated probes; skip to avoid duping.
-    if (monthShardPrefixesList.some((p) => obj.Key!.startsWith(p))) continue;
-    seen.set(obj.Key, toListedObject(obj, params.ctx));
-  }
-  const nextCursor = broadRes.IsTruncated
-    ? (broadRes.NextContinuationToken ?? null)
-    : null;
-
-  // Full-month enumeration over-fetches, so sort by recency and keep one page.
-  const items = Array.from(seen.values())
-    .sort(byLastModifiedDesc)
-    .slice(0, target);
+  const offset = parseOffsetCursor(params.cursor);
+  const items = sorted.slice(offset, offset + target);
+  const nextOffset = offset + items.length;
+  const nextCursor = nextOffset < sorted.length ? String(nextOffset) : null;
   return { items, nextCursor };
 }
 
@@ -612,33 +495,4 @@ export function byLastModifiedDesc(a: ListedObject, b: ListedObject): number {
   if (!a.lastModified) return 1;
   if (!b.lastModified) return -1;
   return b.lastModified.localeCompare(a.lastModified);
-}
-
-function finalize(
-  response: {
-    Contents?: Array<{ Key?: string; Size?: number; LastModified?: Date }>;
-    IsTruncated?: boolean;
-    NextContinuationToken?: string;
-  },
-  ctx: FileConfigContext,
-  target: number,
-  sort: boolean,
-  skipPrefixes: readonly string[] = [],
-): ListObjectsResult {
-  const items = (response.Contents ?? [])
-    .filter(
-      (obj) =>
-        obj.Key &&
-        !obj.Key.endsWith("/") &&
-        !skipPrefixes.some((p) => obj.Key!.startsWith(p)),
-    )
-    .slice(0, target)
-    .map((obj) => toListedObject(obj, ctx));
-  if (sort) items.sort(byLastModifiedDesc);
-  return {
-    items,
-    nextCursor: response.IsTruncated
-      ? (response.NextContinuationToken ?? null)
-      : null,
-  };
 }

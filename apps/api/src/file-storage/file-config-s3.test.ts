@@ -6,13 +6,12 @@ import {
   isImageKey,
   type ListedObject,
   matchScanPage,
-  monthShardPrefixes,
   nextScanStep,
+  parseOffsetCursor,
   type ScanCandidate,
   stsCredentialProvider,
 } from "./file-config-s3";
 import type { FileConfigInfo } from "../storage/types";
-import { buildObjectKey } from "./upload-policy";
 
 function info(overrides: Partial<FileConfigInfo>): FileConfigInfo {
   return {
@@ -113,69 +112,23 @@ describe("isImageKey", () => {
   });
 });
 
-describe("monthShardPrefixes", () => {
-  test("lists months newest-first, crossing the year boundary", () => {
-    // 2026-02 walking back 4 months -> Feb, Jan 2026, Dec, Nov 2025.
-    expect(
-      monthShardPrefixes("uploads/", new Date("2026-02-15T00:00:00Z"), 4),
-    ).toEqual([
-      "uploads/2026/02/",
-      "uploads/2026/01/",
-      "uploads/2025/12/",
-      "uploads/2025/11/",
-    ]);
+describe("parseOffsetCursor", () => {
+  test("null/undefined/empty cursor is the first page (offset 0)", () => {
+    expect(parseOffsetCursor(null)).toBe(0);
+    expect(parseOffsetCursor(undefined)).toBe(0);
+    expect(parseOffsetCursor("")).toBe(0);
   });
 
-  test("zero-pads the month to match buildObjectKey's yyyy/mm shard", () => {
-    expect(monthShardPrefixes("", new Date("2026-08-13T18:44:00Z"), 1)).toEqual(
-      ["2026/08/"],
-    );
+  test("parses a positive integer offset", () => {
+    expect(parseOffsetCursor("50")).toBe(50);
+    expect(parseOffsetCursor("200")).toBe(200);
   });
 
-  test("uses UTC (keys are UTC-stamped) to derive the month", () => {
-    expect(monthShardPrefixes("", new Date("2026-09-01T00:30:00Z"), 2)).toEqual(
-      ["2026/09/", "2026/08/"],
-    );
-  });
-
-  test("count of zero yields no probes", () => {
-    expect(
-      monthShardPrefixes("p/", new Date("2026-08-13T00:00:00Z"), 0),
-    ).toEqual([]);
-  });
-
-  test("January is followed by the previous December (immediate wrap)", () => {
-    expect(
-      monthShardPrefixes("p/", new Date("2026-01-01T00:00:00Z"), 2),
-    ).toEqual(["p/2026/01/", "p/2025/12/"]);
-  });
-
-  test("walks back across multiple years for large counts", () => {
-    // Guards the year-decrement wrap when count exceeds 12 months.
-    expect(
-      monthShardPrefixes("", new Date("2026-01-15T00:00:00Z"), 14),
-    ).toEqual([
-      "2026/01/",
-      "2025/12/",
-      "2025/11/",
-      "2025/10/",
-      "2025/09/",
-      "2025/08/",
-      "2025/07/",
-      "2025/06/",
-      "2025/05/",
-      "2025/04/",
-      "2025/03/",
-      "2025/02/",
-      "2025/01/",
-      "2024/12/",
-    ]);
-  });
-
-  test("a fresh key's shard matches its month's probe (no drift vs buildObjectKey)", () => {
-    const key = buildObjectKey({ prefix: "uploads/", filename: "photo.png" });
-    const [probe] = monthShardPrefixes("uploads/", new Date(), 1);
-    expect(key.startsWith(probe!)).toBe(true);
+  test("unparseable or non-positive cursors fall back to offset 0", () => {
+    // Stale old-format (S3 continuation-token) cursors must restart, not throw.
+    for (const bad of ["abc", "-5", "0", "NaN"]) {
+      expect(parseOffsetCursor(bad)).toBe(0);
+    }
   });
 });
 
