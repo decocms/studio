@@ -419,6 +419,49 @@ describe("SqlThreadMessagePartStorage", () => {
     expect(total).toBeGreaterThanOrEqual(2);
   });
 
+  // A backgrounded subtask persists its own transcript onto the parent thread
+  // (raw MCP tool outputs and all). Replaying it into the parent's prompt blew
+  // a real thread past 1M tokens, so the prompt read must drop it while the
+  // display read keeps it.
+  it("excludeSubtasks drops subtask-tagged messages from the window and total", async () => {
+    await parts.appendParts([
+      mk({ id: "r_sub:m_sub:0", seq: 0, run_id: "r_sub", message_id: "m_sub" }),
+      mk({
+        id: "r_sub:m_sub:1",
+        seq: 1,
+        run_id: "r_sub",
+        message_id: "m_sub",
+        kind: "finish",
+        payload: {},
+        metadata: { finishReason: "stop", subtaskJobId: "bgtool:t:job" },
+      }),
+      mk({ id: "r_sub:m_own:0", seq: 0, run_id: "r_sub", message_id: "m_own" }),
+      mk({
+        id: "r_sub:m_own:1",
+        seq: 1,
+        run_id: "r_sub",
+        message_id: "m_own",
+        kind: "finish",
+        payload: {},
+        metadata: { finishReason: "stop" },
+      }),
+    ]);
+
+    const shown = await parts.loadWindow(threadId, { limit: 500 });
+    expect(shown.messages.map((m) => m.id)).toContain("m_sub");
+
+    const prompt = await parts.loadWindow(threadId, {
+      limit: 500,
+      excludeSubtasks: true,
+    });
+    expect(prompt.messages.map((m) => m.id)).not.toContain("m_sub");
+    expect(prompt.messages.map((m) => m.id)).toContain("m_own");
+    expect(prompt.total).toBe(shown.total - 1);
+
+    await parts.deleteMessageParts(threadId, "m_sub");
+    await parts.deleteMessageParts(threadId, "m_own");
+  });
+
   it("R18: backfill converges (re-running yields identical rows)", async () => {
     const v1msgs = [
       {

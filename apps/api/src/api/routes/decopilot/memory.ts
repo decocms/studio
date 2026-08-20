@@ -124,13 +124,19 @@ class Memory {
    * so we adapt each `FoldedMessage` to the `ThreadMessage` shape the rest of
    * the pipeline expects. `isWindowed` mirrors the v1 semantics: more completed
    * messages exist than the window returned.
+   *
+   * Backgrounded-subtask messages are excluded: they live on this thread for
+   * display but are another agent's transcript, and replaying it here both
+   * blows the context window (its raw MCP tool outputs are stored un-truncated)
+   * and evicts the parent's own turns from the window. The parent reads the
+   * subtask's outcome from its `subtask` tool result and the completion nudge.
    */
   private async loadWindowedFromParts(
     limit: number,
   ): Promise<{ chronological: ThreadMessage[]; isWindowed: boolean }> {
     const { messages, total } = await this.storage
       .messageParts()
-      .loadWindow(this.thread.id, { limit });
+      .loadWindow(this.thread.id, { limit, excludeSubtasks: true });
     const chronological: ThreadMessage[] = messages.map((m) => ({
       id: m.id,
       thread_id: this.thread.id,
