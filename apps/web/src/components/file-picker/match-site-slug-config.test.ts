@@ -71,4 +71,13 @@ describe("matchSiteSlugConfig", () => {
     const second = config("second", { bucket: "storefront" });
     expect(matchSiteSlugConfig([first, second], "storefront")).toBe(first);
   });
+
+  test("slugifies a free-form project title before matching (#6296)", () => {
+    const matching = config("assets", { bucket: "deco-assets-deco-cms" });
+    expect(matchSiteSlugConfig([matching], "Deco CMS")).toBe(matching);
+  });
+
+  test("returns null when a slugified title is empty", () => {
+    expect(matchSiteSlugConfig([config("one", {})], "!!!")).toBeNull();
+  });
 });
