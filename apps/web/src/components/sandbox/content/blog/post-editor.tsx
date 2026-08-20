@@ -224,6 +224,16 @@ function PostSettings({
 }) {
   const t = useT();
   const isPublished = isPostPublished(post);
+  const missing = missingPostFields(post);
+  const hasErrors = missing.length > 0;
+  const missingLabel =
+    missing.length === 1
+      ? t("sandbox.postEditor.missingFieldSingular", {
+          fields: missing.join(", "),
+        })
+      : t("sandbox.postEditor.missingFieldPlural", {
+          fields: missing.join(", "),
+        });
 
   return (
     <div className="space-y-5">
@@ -231,14 +241,24 @@ function PostSettings({
         <Label htmlFor="post-published">
           {t("sandbox.postEditor.publishedLabel")}
         </Label>
-        <Switch
-          id="post-published"
-          className="data-[state=checked]:bg-success"
-          checked={isPublished}
-          onCheckedChange={(checked) =>
-            onChange("status", checked ? "published" : "draft")
-          }
-        />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span>
+              <Switch
+                id="post-published"
+                className="data-[state=checked]:bg-success"
+                checked={isPublished}
+                disabled={hasErrors}
+                onCheckedChange={(checked) =>
+                  onChange("status", checked ? "published" : "draft")
+                }
+              />
+            </span>
+          </TooltipTrigger>
+          {hasErrors && (
+            <TooltipContent side="bottom">{missingLabel}</TooltipContent>
+          )}
+        </Tooltip>
       </div>
       <div className="space-y-2">
         <Label htmlFor="post-excerpt">
