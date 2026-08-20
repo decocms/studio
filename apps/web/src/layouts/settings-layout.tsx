@@ -494,6 +494,7 @@ export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
           <button
             type="button"
             onClick={() => {
+              track("signed_out", { source: "settings_sidebar" });
               clearPersistedQueryCache();
               authClient.signOut();
             }}
