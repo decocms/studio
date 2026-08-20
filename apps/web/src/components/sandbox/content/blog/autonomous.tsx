@@ -18,9 +18,8 @@ import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import { useStudioTools } from "@/lib/studio-tools";
 import { MarkdownEditor } from "@/components/markdown-editor";
-import { usePackagePath } from "@/components/sections-editor/use-package-path";
+import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { extractPages } from "@/components/sections-editor/page-list";
-import { useSaveBlogBlock } from "./use-blog-mutations";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 import { EmptyMessage } from "../empty-message";
@@ -154,12 +153,7 @@ function LibraryScreen({
     | undefined;
   const t = useT();
   const studio = useStudioTools();
-  const save = useSaveBlogBlock({
-    orgSlug,
-    virtualMcpId,
-    branch,
-    packagePath: usePackagePath(virtualMcpId),
-  });
+  const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
 
   const [brand, setBrand] = useAutosave(block ?? EMPTY_BRAND, (next) => {
     save.mutate({ blockKey: BRAND_BLOCK_KEY, data: next });
