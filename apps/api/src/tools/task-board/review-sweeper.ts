@@ -72,6 +72,7 @@ import {
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
 import { retryAutoMergeIfApproved } from "./merge-pr";
+import { advanceToDoneIfMerged } from "./reconcile-merged";
 import {
   emitTaskBoardUpdated,
   handTaskToHuman,
@@ -495,6 +496,9 @@ export class TaskBoardReviewSweeper {
     // back out of In Review for these, and it's why the sweep must keep visiting
     // a card that has no reviewer left to enqueue. Gated on verified approval +
     // auto-merge inside, so it can't ship anything the reviewers didn't.
+    // A PR merged outside Studio moves no card — see `reconcile-merged.ts`.
+    if (await advanceToDoneIfMerged(ctx, item, prs)) return true;
+
     if (await retryAutoMergeIfApproved(ctx, item)) return true;
     if (!owned) return false;
 
