@@ -73,6 +73,8 @@ function isRetriableError(error: unknown): boolean {
     // Retry 5xx and 429 (rate limit); do NOT retry 4xx (auth, not found, etc.).
     return status >= 500 || status === 429;
   }
+  // Malformed JSON is deterministic, not transient — don't retry it.
+  if (/returned invalid JSON/.test(message)) return false;
   // No status — a raw fetch/network throw. Retry with caution.
   return true;
 }
@@ -152,7 +154,15 @@ export class JiraClient {
         );
       }
       // Transition POSTs answer 204 with an empty body.
-      return (body === "" ? undefined : JSON.parse(body)) as T;
+      if (body === "") return undefined as T;
+      try {
+        return JSON.parse(body) as T;
+      } catch (cause) {
+        throw new Error(
+          `Jira ${path} returned invalid JSON: ${body.slice(0, 300)}`,
+          { cause },
+        );
+      }
     };
     if (!idempotent) return attempt();
     return retry(attempt, {
