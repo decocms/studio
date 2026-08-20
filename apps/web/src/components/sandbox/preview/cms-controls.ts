@@ -17,7 +17,10 @@
  * dropdown) remains reachable for a site that has no pages yet. A data error
  * doesn't revoke the capability either: it means the reads never resolved, so
  * absence is unproven, and the toolbar degrades to its pre-existing behaviour
- * rather than dropping controls out from under a working site (a proven-absent repo never reaches it: `framework-missing` is sticky).
+ * rather than dropping controls out from under a working site. A repo that has
+ * already proven absence never reaches that branch: `framework-missing` is
+ * sticky per repo+branch, so its later transient read failures stay
+ * `framework-missing` instead of flipping to `error`.
  *
  * `loading` hides, so the controls never flash in for a repo that turns out not
  * to be a deco site.
