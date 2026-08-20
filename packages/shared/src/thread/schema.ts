@@ -60,7 +60,7 @@ const ThreadMetadataSchema = z
       .enum(THREAD_RUNTIMES)
       .optional()
       .describe(
-        "Session runtime stamped at creation: 'sandbox' forces a sandbox-backed session even on a Fast Preview project; absent lets the project default decide",
+        "Session runtime, stamped once at creation and immutable afterwards: 'cms' is a sandbox-less content session, 'sandbox' a coding session with a pod. Absent only on threads created before the stamp existed.",
       ),
   })
   .catchall(z.unknown());
@@ -150,7 +150,7 @@ export const ThreadCreateDataSchema = z.object({
     .enum(THREAD_RUNTIMES)
     .optional()
     .describe(
-      "Session runtime for the new thread. 'sandbox' starts a sandbox-backed coding session even on a Fast Preview project, sharing the given branch (a coding session continues the CMS draft). Omitted ⇒ the project default decides.",
+      "Session runtime for the new thread, honored verbatim and immutable for the thread's life. 'sandbox' starts a coding session even on a Fast Preview project, sharing the given branch (it continues the CMS draft). Omitted ⇒ stamped with the project's default (Fast Preview capable ⇒ 'cms', else 'sandbox').",
     ),
 });
 

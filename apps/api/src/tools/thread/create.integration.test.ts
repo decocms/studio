@@ -222,7 +222,7 @@ describe("COLLECTION_THREADS_CREATE", () => {
     expect(stored?.metadata?.runtime).toBe("sandbox");
   });
 
-  it("leaves metadata unset when no runtime is given", async () => {
+  it("always stamps a runtime: a project with no capability defaults to sandbox", async () => {
     const vmcp = await env.ctx.storage.virtualMcps.create(
       env.orgId,
       env.userId,
@@ -235,7 +235,48 @@ describe("COLLECTION_THREADS_CREATE", () => {
     );
 
     const stored = await env.ctx.storage.threads.get(result.item.id);
-    expect(stored?.metadata?.runtime).toBeUndefined();
+    expect(stored?.metadata?.runtime).toBe("sandbox");
+  });
+
+  it("always stamps a runtime: a fast-preview-capable project defaults to cms", async () => {
+    const vmcp = await env.ctx.storage.virtualMcps.create(
+      env.orgId,
+      env.userId,
+      {
+        title: "capable",
+        connections: [],
+        status: "active",
+        pinned: false,
+        metadata: {
+          fastPreview: true,
+          previewServerUrl: "https://acme.example.com",
+        },
+      },
+    );
+
+    const result = await COLLECTION_THREADS_CREATE.handler(
+      { data: { virtual_mcp_id: vmcp.id, title: "t" } },
+      env.ctx,
+    );
+
+    const stored = await env.ctx.storage.threads.get(result.item.id);
+    expect(stored?.metadata?.runtime).toBe("cms");
+  });
+
+  it("honors an explicit cms stamp verbatim, even with no preview server", async () => {
+    const vmcp = await env.ctx.storage.virtualMcps.create(
+      env.orgId,
+      env.userId,
+      { title: "bare", connections: [], status: "active", pinned: false },
+    );
+
+    const result = await COLLECTION_THREADS_CREATE.handler(
+      { data: { virtual_mcp_id: vmcp.id, title: "t", runtime: "cms" } },
+      env.ctx,
+    );
+
+    const stored = await env.ctx.storage.threads.get(result.item.id);
+    expect(stored?.metadata?.runtime).toBe("cms");
   });
 
   it("is idempotent: creating with the same id twice returns the same row", async () => {

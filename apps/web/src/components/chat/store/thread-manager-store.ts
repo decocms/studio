@@ -47,6 +47,8 @@ function applyPatch(list: Task[], patch: RowPatch): Task[] {
       ...patch,
       title: patch.title ?? "New chat",
       branch: patch.branch ?? null,
+      // A patch carries no `metadata` — see `Task.partial`.
+      partial: true,
     };
     return [synthetic, ...list];
   }
@@ -76,7 +78,8 @@ function upsertFullRow(list: Task[], row: Task): Task[] {
   const idx = list.findIndex((t) => t.id === row.id);
   if (idx === -1) return [row, ...list];
   const next = [...list];
-  next[idx] = { ...next[idx]!, ...row };
+  // An authoritative row clears the partial flag a synthetic may have set.
+  next[idx] = { ...next[idx]!, ...row, partial: undefined };
   return next;
 }
 

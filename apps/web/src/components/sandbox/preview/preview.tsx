@@ -425,6 +425,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const fastPreviewEnabled =
     inset?.entity?.id === virtualMcpId &&
     resolveFastPreview(inset.entity.metadata, activeThreadMeta).active;
+  /** This project defaults to CMS — the question `fastPreviewEnabled` answers for the SESSION. */
+  const projectDefaultsToCms =
+    inset?.entity?.id === virtualMcpId &&
+    resolveFastPreview(inset.entity.metadata).active;
 
   // Base for the `/live/previews` global-section render: production under Fast Preview (no dev server), else the sandbox dev server.
   const sectionPreviewBase = resolveSectionPreviewBase({
@@ -659,13 +663,15 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // to paint: the sandbox iframe, the published site + a waking pill, or
   // (no production URL) the blocking booting overlay.
   // Coding sessions boot visibly: no production fallback → the boot console.
-  const codingSession = activeThreadMeta?.runtime === "sandbox";
+  const codingSession =
+    projectDefaultsToCms && activeThreadMeta?.runtime === "sandbox";
   const display = resolvePreviewDisplay({
     previewState,
     progressStatus: progress.status,
-    previewServerUrl: codingSession ? null : previewServerUrl,
+    previewServerUrl,
     fastPreviewActive: fastPreviewEnabled,
     fastPreviewReady: !!draftPreviewUrl,
+    codingSession,
   });
   const previewSurfaceActive = display.mode !== "none";
 

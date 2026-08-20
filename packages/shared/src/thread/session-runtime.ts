@@ -54,16 +54,43 @@ export interface SessionRuntime {
   previewServerUrl: string | null;
 }
 
+/**
+ * The project's Fast Preview capability: the switch is on AND there is a
+ * preview server to render against. A bare flag with no URL is inert.
+ *
+ * This is the ONE capability predicate. It answers a PROJECT question, never a
+ * session one — `defaultThreadRuntime` turns it into the runtime a NEW thread
+ * is stamped with, and nothing else may re-derive a session's runtime from it.
+ */
+export function fastPreviewCapability(
+  vmcpMetadata: VmcpRuntimeMetadata | null | undefined,
+): boolean {
+  return (
+    !!resolvePreviewServerUrl(vmcpMetadata) &&
+    vmcpMetadata?.fastPreview === true
+  );
+}
+
+/**
+ * The runtime a NEW thread on this project is stamped with. The project flag is
+ * a default, not a gate: once stamped, a thread keeps that runtime for life
+ * even if the project's capability later changes.
+ */
+export function defaultThreadRuntime(
+  vmcpMetadata: VmcpRuntimeMetadata | null | undefined,
+): ThreadRuntime {
+  return fastPreviewCapability(vmcpMetadata) ? "cms" : "sandbox";
+}
+
 export function resolveSessionRuntime(
   vmcpMetadata: VmcpRuntimeMetadata | null | undefined,
   threadMetadata?: { runtime?: unknown } | null,
 ): SessionRuntime {
   const previewServerUrl = resolvePreviewServerUrl(vmcpMetadata);
-  const fastPreviewCapability =
-    !!previewServerUrl && vmcpMetadata?.fastPreview === true;
+  const capability = fastPreviewCapability(vmcpMetadata);
   // A "cms" stamp without the capability collapses into the default branch.
   const stamp = parseThreadRuntime(threadMetadata?.runtime);
   const runtime: ThreadRuntime =
-    stamp === "sandbox" ? "sandbox" : fastPreviewCapability ? "cms" : "sandbox";
-  return { runtime, fastPreviewCapability, previewServerUrl };
+    stamp === "sandbox" ? "sandbox" : defaultThreadRuntime(vmcpMetadata);
+  return { runtime, fastPreviewCapability: capability, previewServerUrl };
 }

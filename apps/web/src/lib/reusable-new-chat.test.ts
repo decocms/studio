@@ -65,4 +65,44 @@ describe("findReusableNewChat", () => {
       "fresh",
     );
   });
+
+  // Reusing a chat stamped with the other runtime drops the user into the wrong kind of session.
+  describe("runtime", () => {
+    const cms = task({ id: "cms", metadata: { runtime: "cms" } });
+    const sandbox = task({ id: "sandbox", metadata: { runtime: "sandbox" } });
+    const unstamped = task({ id: "legacy" });
+
+    it("skips a sandbox-stamped empty chat when a new chat would be cms", () => {
+      expect(
+        findReusableNewChat([sandbox], "agent-1", USER, "cms"),
+      ).toBeUndefined();
+    });
+
+    it("skips a cms-stamped empty chat when a new chat would be sandbox", () => {
+      expect(
+        findReusableNewChat([cms], "agent-1", USER, "sandbox"),
+      ).toBeUndefined();
+    });
+
+    it("reuses the matching stamp", () => {
+      expect(
+        findReusableNewChat([sandbox, cms], "agent-1", USER, "cms")?.id,
+      ).toBe("cms");
+    });
+
+    it("reuses an unstamped row for either runtime", () => {
+      expect(findReusableNewChat([unstamped], "agent-1", USER, "cms")?.id).toBe(
+        "legacy",
+      );
+      expect(
+        findReusableNewChat([unstamped], "agent-1", USER, "sandbox")?.id,
+      ).toBe("legacy");
+    });
+
+    it("an unresolved project keeps the pre-existing unfiltered behavior", () => {
+      expect(findReusableNewChat([sandbox], "agent-1", USER)?.id).toBe(
+        "sandbox",
+      );
+    });
+  });
 });

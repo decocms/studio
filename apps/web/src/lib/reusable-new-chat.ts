@@ -1,4 +1,6 @@
 import type { Task } from "@/components/chat/task/types";
+import { parseThreadRuntime } from "@decocms/shared/thread/session-runtime";
+import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
 
 /**
  * The current user's existing empty "New chat" thread for this agent, or
@@ -25,6 +27,7 @@ export function findReusableNewChat(
   threads: Task[],
   agentId: string,
   userId: string | undefined,
+  expectedRuntime?: ThreadRuntime,
 ): Task | undefined {
   return threads.find(
     (t) =>
@@ -32,6 +35,22 @@ export function findReusableNewChat(
       t.virtual_mcp_id === agentId &&
       t.created_by === userId &&
       t.title === "New chat" &&
-      !t.harness_id,
+      !t.harness_id &&
+      runtimeMatches(t, expectedRuntime),
   );
+}
+
+/**
+ * A thread's runtime is immutable, so an empty chat stamped with the OTHER
+ * runtime is not reusable — focusing it would silently drop the user into a
+ * coding session (or a CMS one) they didn't ask for.
+ *
+ * An unstamped row always matches: it predates the stamp and resolves to the
+ * project default by definition. `undefined` — the caller couldn't resolve the
+ * project — keeps the pre-existing unfiltered behavior rather than guessing.
+ */
+function runtimeMatches(thread: Task, expected: ThreadRuntime | undefined) {
+  if (!expected) return true;
+  const stamp = parseThreadRuntime(thread.metadata?.runtime);
+  return stamp === null || stamp === expected;
 }

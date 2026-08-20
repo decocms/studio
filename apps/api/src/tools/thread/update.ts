@@ -104,10 +104,22 @@ export const COLLECTION_THREADS_UPDATE = defineTool({
     }
 
     if (data.metadata !== undefined) {
-      // `runtime` is stamped once at creation and immutable (session-runtime.ts); preserve it across this full-replacement write.
+      // `runtime` is stamped once at creation and immutable; `metadata` is a full-replacement write, so preserve it.
       const existingRuntime = parseThreadRuntime(
         (existing.metadata as { runtime?: unknown } | null)?.runtime,
       );
+      const incomingRuntime = parseThreadRuntime(
+        (data.metadata as { runtime?: unknown })?.runtime,
+      );
+      if (
+        existingRuntime &&
+        incomingRuntime &&
+        incomingRuntime !== existingRuntime
+      ) {
+        throw new Error(
+          `Cannot change a thread's runtime (${existingRuntime} → ${incomingRuntime}); it is stamped once at creation. Start a new chat instead.`,
+        );
+      }
       updateData.metadata = existingRuntime
         ? { ...data.metadata, runtime: existingRuntime }
         : data.metadata;

@@ -15,6 +15,7 @@ import { useBumpSidebarOrderRevision } from "@/components/sidebar/sidebar-agent-
 import { useOptionalThreadManager } from "@/components/chat/store/hooks";
 import type { Task } from "@/components/chat/task/types";
 import { findReusableNewChat } from "@/lib/reusable-new-chat";
+import { defaultThreadRuntime } from "@decocms/shared/thread/session-runtime";
 
 const NO_THREADS: Task[] = [];
 const noopSubscribe = () => () => {};
@@ -57,9 +58,14 @@ export function useNavigateToAgent() {
     bumpOrderRevision();
     // Focus the agent's existing empty chat if it has one; otherwise a fresh id
     // (the route loader's ensure-fallback creates the thread on landing).
+    const target = (allAgents ?? []).find((a) => a.id === virtualMcpId);
     const taskId =
-      findReusableNewChat(threads, virtualMcpId, session?.user?.id)?.id ??
-      crypto.randomUUID();
+      findReusableNewChat(
+        threads,
+        virtualMcpId,
+        session?.user?.id,
+        target ? defaultThreadRuntime(target.metadata) : undefined,
+      )?.id ?? crypto.randomUUID();
     navigate({
       to: "/$org/$taskId",
       params: { org: org.slug, taskId },

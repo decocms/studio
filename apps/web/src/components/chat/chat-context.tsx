@@ -33,6 +33,7 @@ import {
   clearStoredAutosend,
   writeStoredAutosend,
 } from "@/lib/autosend";
+import { writeThreadIntent } from "@/lib/thread-intent";
 import {
   getOrOpenStream,
   type ConnStatus,
@@ -692,6 +693,11 @@ export function ChatContextProvider({
     const newId = crypto.randomUUID();
     // A caller-supplied branch wins over the active task's branch carry-over.
     const branch = opts?.branch ?? currentBranch;
+    // Parked for the route loader's create-on-404 fallback — see thread-intent.
+    writeThreadIntent(sessionStorage, locator, newId, {
+      ...(opts?.runtime ? { runtime: opts.runtime } : {}),
+      ...(branch ? { branch } : {}),
+    });
     void threadActions
       .create({
         id: newId,
@@ -722,6 +728,11 @@ export function ChatContextProvider({
     const targetVmcp = params.virtualMcpId ?? virtualMcpId;
     const carryBranch = targetVmcp === virtualMcpId ? currentBranch : null;
     writeStoredAutosend(sessionStorage, locator, newId, params.message);
+    if (carryBranch) {
+      writeThreadIntent(sessionStorage, locator, newId, {
+        branch: carryBranch,
+      });
+    }
     void threadActions
       .create({
         id: newId,

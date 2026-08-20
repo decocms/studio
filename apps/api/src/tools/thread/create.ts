@@ -3,12 +3,17 @@
  *
  * Create a new thread for a virtual MCP.
  *
+ * Runtime: ALWAYS stamped here, once. `data.runtime` wins when given and is
+ * honored verbatim (never validated against project state); otherwise the
+ * project's Fast Preview capability picks the default. Immutable afterwards —
+ * see `update.ts`.
+ *
  * Branch resolution (only meaningful when the vMCP has a githubRepo):
  * honor `data.branch`, else the most-recently-touched `sandboxMap[userId]`
  * branch (warm sandbox), else `generateBranchName` (`<user-slug>-<timestamp>`).
  * A `runtime: "sandbox"` coding session deliberately shares the caller's
- * branch — it continues the CMS draft; the sandbox-proxy claim tells the two
- * runtimes apart by sandbox presence, not by branch.
+ * branch — it continues the CMS draft; the two runtimes are told apart by the
+ * thread's own stamp, never by the branch.
  *
  * Step 2 only sees sandboxes that finished provisioning — `setSandboxMapEntry`
  * runs after `provider.ensure` returns. So a SANDBOX_START in flight is
@@ -37,6 +42,10 @@ import {
   ThreadCreateDataSchema,
   ThreadEntitySchema,
 } from "@decocms/shared/thread/schema";
+import {
+  defaultThreadRuntime,
+  type VmcpRuntimeMetadata,
+} from "@decocms/shared/thread/session-runtime";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import {
   branchUserLabel,
@@ -122,7 +131,7 @@ export const COLLECTION_THREADS_CREATE = defineTool({
     );
 
     const metadata = vmcp.metadata as
-      | (GithubRepoMeta & SandboxMapMeta)
+      | (GithubRepoMeta & SandboxMapMeta & VmcpRuntimeMetadata)
       | null
       | undefined;
     const githubRepo = metadata?.githubRepo;
@@ -142,7 +151,7 @@ export const COLLECTION_THREADS_CREATE = defineTool({
       virtual_mcp_id: data.virtual_mcp_id,
       branch,
       created_by: userId,
-      ...(data.runtime ? { metadata: { runtime: data.runtime } } : {}),
+      metadata: { runtime: data.runtime ?? defaultThreadRuntime(metadata) },
     });
 
     // Skip on a replayed/idempotent call (same id already existed) — the

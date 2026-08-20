@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
+  defaultThreadRuntime,
+  fastPreviewCapability,
   parseThreadRuntime,
   resolveSessionRuntime,
 } from "./session-runtime.ts";
@@ -81,6 +83,66 @@ describe("resolveSessionRuntime", () => {
     expect(r.runtime).toBe("sandbox");
     expect(r.fastPreviewCapability).toBe(false);
     expect(r.previewServerUrl).toBeNull();
+  });
+});
+
+describe("fastPreviewCapability", () => {
+  test("needs both the flag and a URL", () => {
+    expect(fastPreviewCapability(FP_PROJECT)).toBe(true);
+    expect(fastPreviewCapability({ fastPreview: true })).toBe(false);
+    expect(
+      fastPreviewCapability({ previewServerUrl: "https://acme.com" }),
+    ).toBe(false);
+  });
+
+  test("honors the legacy productionUrl key", () => {
+    expect(
+      fastPreviewCapability({
+        fastPreview: true,
+        productionUrl: "https://legacy.acme.com",
+      }),
+    ).toBe(true);
+  });
+
+  test("no other project metadata enters the predicate", () => {
+    const withRepo = { ...FP_PROJECT, githubRepo: { owner: "acme" } };
+    const withoutRepo = { ...FP_PROJECT };
+    expect(fastPreviewCapability(withRepo)).toBe(true);
+    expect(fastPreviewCapability(withoutRepo)).toBe(true);
+  });
+
+  test("null / undefined metadata is not capable", () => {
+    expect(fastPreviewCapability(null)).toBe(false);
+    expect(fastPreviewCapability(undefined)).toBe(false);
+  });
+});
+
+describe("defaultThreadRuntime", () => {
+  test("capable project defaults new threads to cms", () => {
+    expect(defaultThreadRuntime(FP_PROJECT)).toBe("cms");
+  });
+
+  test("everything else defaults to sandbox", () => {
+    expect(defaultThreadRuntime({ fastPreview: true })).toBe("sandbox");
+    expect(defaultThreadRuntime({ previewServerUrl: "https://acme.com" })).toBe(
+      "sandbox",
+    );
+    expect(defaultThreadRuntime({})).toBe("sandbox");
+    expect(defaultThreadRuntime(null)).toBe("sandbox");
+  });
+
+  test("is the same gate resolveSessionRuntime reads", () => {
+    for (const meta of [
+      FP_PROJECT,
+      { fastPreview: true },
+      { previewServerUrl: "https://acme.com" },
+      {},
+      null,
+    ]) {
+      expect(resolveSessionRuntime(meta).runtime).toBe(
+        defaultThreadRuntime(meta),
+      );
+    }
   });
 });
 

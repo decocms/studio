@@ -90,6 +90,8 @@ export async function enqueueAgentRunForTask(
     harness_id: harnessId,
     sandbox_provider_kind: "agent-sandbox",
     created_by: userId,
+    // Provably the computed default too: `agentId` is the synthetic Super Agent vMCP, which has no `fastPreview`.
+    metadata: { runtime: "sandbox" },
   });
   // Another trigger already created this run — it owns the dispatch.
   if (!thread.isNew) return { threadId: thread.id, isNew: false };
