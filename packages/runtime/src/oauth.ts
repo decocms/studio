@@ -1,4 +1,5 @@
 import {
+  isLoopbackHost,
   redirectUriMatchesRegistered,
   satisfiesAllowedRedirectHosts,
 } from "./redirect-uri.ts";
@@ -46,9 +47,8 @@ function isValidRedirectUri(uri: string): boolean {
     const url = new URL(uri);
     return (
       url.protocol === "https:" ||
-      url.hostname === "localhost" ||
-      url.hostname.endsWith(".localhost") ||
-      url.hostname === "127.0.0.1" ||
+      // RFC 8252 §7.3: a native client's loopback redirect is exempt from https.
+      isLoopbackHost(url.hostname) ||
       // Allow custom schemes for native apps (e.g., cursor://, vscode://)
       !url.protocol.startsWith("http")
     );
