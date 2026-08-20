@@ -198,7 +198,155 @@ const sharedProxy = {
  */
 const emitSourcemaps = process.env.BUILD_SOURCEMAPS === "1" && !isNativeBuild;
 
+/**
+ * Cold-start reload storm fix. Vite's esbuild dep crawler only scans the html
+ * entry's STATIC import graph up front; anything reached through a lazily
+ * executed code path (auth flow, org switcher, home widgets, decopilot tools,
+ * route-level lazy panels) is discovered later, at request time, in the
+ * browser. Every such discovery re-runs the optimizer and forces a FULL page
+ * reload so the module graph stays consistent — on an app this size that is
+ * dozens of hard reloads in a row on the first boot of a fresh sandbox /
+ * coding-agent Preview, one per newly-found dependency, until
+ * `node_modules/.vite` has absorbed them all.
+ *
+ * Listing them here makes the optimizer pre-bundle everything in ONE pass
+ * before the first request is served, so the browser loads once. Nothing in
+ * the repo deletes `node_modules/.vite` (the dev command in
+ * `apps/api/src/cli/commands/dev.ts` never passes `--force` and never clears
+ * it), so on a warm sandbox this is a no-op — it only matters when the cache
+ * is genuinely cold.
+ *
+ * Entries prefixed `@decocms/ui > ` are third-party deps reached THROUGH the
+ * linked workspace package: `@decocms/ui` is source, not a pre-bundled dep, so
+ * its own imports are crawled as source and their bare specifiers have to be
+ * named this way to resolve from that package rather than from `apps/web`.
+ * `vite build` ignores `optimizeDeps` entirely, so this is dev-server-only and
+ * cannot affect a production bundle.
+ */
+const optimizeDepsInclude = [
+  // Core runtime, statically reachable — listed so a cold rebuild is one pass.
+  "react",
+  "react/jsx-runtime",
+  "react-dom",
+  "react-dom/client",
+  "@tanstack/react-query",
+  "@tanstack/react-router",
+  "@tanstack/react-virtual",
+  "zod",
+  "clsx",
+  "tailwind-merge",
+  "class-variance-authority",
+  "sonner",
+  "date-fns",
+  "@untitledui/icons",
+
+  // Auth — only executes once the user hits the sign-in / SSO path.
+  "better-auth/react",
+  "better-auth/client/plugins",
+  "@better-auth/sso/client",
+  "@daveyplate/better-auth-ui",
+
+  // Forms — mounted by dialogs and settings panes, not by the shell.
+  "react-hook-form",
+  "@hookform/resolvers/zod",
+
+  // Chat / decopilot.
+  "ai",
+  "@ai-sdk/react",
+  "use-stick-to-bottom",
+  "marked",
+  "mustache",
+  "react-markdown",
+  "remark-gfm",
+  "rehype-raw",
+
+  // MCP client + app host.
+  "@modelcontextprotocol/sdk/client/index.js",
+  "@modelcontextprotocol/sdk/types.js",
+  "@modelcontextprotocol/ext-apps",
+
+  // Heavy lazy panels: editor, terminal, charts, JSON forms, DnD.
+  "@monaco-editor/react",
+  "@xterm/xterm",
+  "@xterm/addon-fit",
+  "@xterm/addon-web-links",
+  "@xterm/addon-webgl",
+  "echarts",
+  "recharts",
+  "react-syntax-highlighter",
+  "react-syntax-highlighter/dist/esm/styles/prism/index.js",
+  "prettier",
+  "@rjsf/shadcn",
+  "@rjsf/utils",
+  "@rjsf/validator-ajv8",
+  "@dnd-kit/core",
+  "@dnd-kit/sortable",
+  "@dnd-kit/utilities",
+  "@floating-ui/react",
+  "@radix-ui/react-dialog",
+  "react-resizable-panels",
+  "driver.js",
+  "posthog-js",
+
+  // Rich-text editor — the single biggest lazy cluster.
+  "@tiptap/core",
+  "@tiptap/react",
+  "@tiptap/react/menus",
+  "@tiptap/starter-kit",
+  "@tiptap/suggestion",
+  "@tiptap/markdown",
+  "@tiptap/pm/state",
+  "@tiptap/pm/view",
+  "@tiptap/extension-bubble-menu",
+  "@tiptap/extension-image",
+  "@tiptap/extension-link",
+  "@tiptap/extension-placeholder",
+  "@tiptap/extension-text-align",
+  "@tiptap/extension-text-style",
+
+  // Reached only through @decocms/ui's own components.
+  "@decocms/ui > @radix-ui/react-accordion",
+  "@decocms/ui > @radix-ui/react-alert-dialog",
+  "@decocms/ui > @radix-ui/react-aspect-ratio",
+  "@decocms/ui > @radix-ui/react-avatar",
+  "@decocms/ui > @radix-ui/react-checkbox",
+  "@decocms/ui > @radix-ui/react-collapsible",
+  "@decocms/ui > @radix-ui/react-context-menu",
+  "@decocms/ui > @radix-ui/react-dialog",
+  "@decocms/ui > @radix-ui/react-dropdown-menu",
+  "@decocms/ui > @radix-ui/react-hover-card",
+  "@decocms/ui > @radix-ui/react-label",
+  "@decocms/ui > @radix-ui/react-menubar",
+  "@decocms/ui > @radix-ui/react-navigation-menu",
+  "@decocms/ui > @radix-ui/react-popover",
+  "@decocms/ui > @radix-ui/react-progress",
+  "@decocms/ui > @radix-ui/react-radio-group",
+  "@decocms/ui > @radix-ui/react-scroll-area",
+  "@decocms/ui > @radix-ui/react-select",
+  "@decocms/ui > @radix-ui/react-separator",
+  "@decocms/ui > @radix-ui/react-slider",
+  "@decocms/ui > @radix-ui/react-slot",
+  "@decocms/ui > @radix-ui/react-switch",
+  "@decocms/ui > @radix-ui/react-tabs",
+  "@decocms/ui > @radix-ui/react-toggle",
+  "@decocms/ui > @radix-ui/react-toggle-group",
+  "@decocms/ui > @radix-ui/react-tooltip",
+  "@decocms/ui > @radix-ui/react-use-controllable-state",
+  "@decocms/ui > cmdk",
+  "@decocms/ui > embla-carousel-react",
+  "@decocms/ui > next-themes",
+  "@decocms/ui > react-day-picker",
+  "@decocms/ui > vaul",
+  "@decocms/ui > input-otp",
+  "@decocms/ui > recharts",
+  "@decocms/ui > react-markdown",
+  "@decocms/ui > remark-gfm",
+];
+
 export default defineConfig({
+  optimizeDeps: {
+    include: optimizeDepsInclude,
+  },
   define: {
     // What `v{__STUDIO_VERSION__}` renders (account popover, settings
     // footer) and what busts the persisted query cache. Read from the
