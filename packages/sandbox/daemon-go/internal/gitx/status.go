@@ -98,9 +98,24 @@ func ComputeStatus(repoDir string) (StatusResult, error) {
 	if err != nil {
 		return StatusResult{}, err
 	}
-	divergence := ComputeBranchDivergence(repoDir, func(args []string) (string, bool) {
-		return tryReadGit(repoDir, args)
-	})
+	read := func(args []string) (string, bool) { return tryReadGit(repoDir, args) }
+	divergence := ComputeBranchDivergence(repoDir, read)
+	// In a `--depth 1` clone base and branch can share no ancestor, and
+	// ComputeBranchDivergence answers 0 rather than a fabricated count. This
+	// route's consumers need the real number (the publish dialog gates its
+	// base…HEAD diff on `aheadOfBase`), and unlike the SSE branch monitor's 3s
+	// loop it can afford the network — so deepen the way the diff path does and
+	// ask again.
+	branch, _ := read([]string{"rev-parse", "--abbrev-ref", "HEAD"})
+	upstream := "origin/" + divergence.Base
+	if branch != "" && branch != "HEAD" {
+		if _, ok := read([]string{"rev-parse", "--verify", "--quiet", upstream}); ok {
+			if !hasCommonAncestor(read, upstream, "HEAD") {
+				runReadGit(repoDir, []string{"fetch", "--depth", "100", "origin", divergence.Base, branch})
+				divergence = ComputeBranchDivergence(repoDir, read)
+			}
+		}
+	}
 	return StatusResult{WorkingTreeStatus: working, BranchDivergence: divergence}, nil
 }
 
