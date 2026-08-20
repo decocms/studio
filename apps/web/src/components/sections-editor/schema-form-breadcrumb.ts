@@ -3,7 +3,11 @@ import {
   getArrayItemLabel,
 } from "./array-item-display";
 import { isPageMultivariateSectionArrayField } from "./page-variants";
-import type { SchemaProperty } from "./resolve-schema";
+import {
+  resolveSchema,
+  type LiveMeta,
+  type SchemaProperty,
+} from "./resolve-schema";
 import { unwrapBlockReference } from "./unwrap-section";
 
 /**
@@ -475,6 +479,58 @@ function valueOwnsItemCrumb(
   return false;
 }
 
+/**
+ * Whether a block-ref field's target SCHEMA declares a drill-down array whose
+ * display title (or key) matches `arrayLabel`.
+ *
+ * A drilled array item carries its array's SCHEMA `@title` as the crumb's
+ * `arrayLabel` (e.g. "Cupons da PDP" for `pdpCupons: CupomPDPProps[]`). The
+ * value-only owner scan ({@link valueOwnsItemCrumb}) can't see that title — it
+ * humanizes the KEY (`pdpCupons` → "Pdp Cupons") — and can't recompute a
+ * `@titleBy` item label (`couponCode`) without the item schema, so a section whose
+ * array is titled and whose items are `@titleBy`-labelled goes unclaimed and
+ * resolution drifts to a sibling block-ref (the "drilling a coupon opens the
+ * fallback's categories" bug). Resolving the target schema restores the match by
+ * the array's real title, mirroring the top-level `arrayLabel` disambiguation in
+ * {@link resolveActiveFieldKeyInScope}. Depth-bounded for nested config objects.
+ */
+function blockRefSchemaOwnsArrayLabel(
+  data: unknown,
+  arrayLabel: string,
+  meta: LiveMeta | undefined,
+  depth = 0,
+): boolean {
+  if (!meta || depth > 4 || data == null || typeof data !== "object") {
+    return false;
+  }
+  const resolveType = (data as Record<string, unknown>).__resolveType;
+  if (typeof resolveType !== "string" || !resolveType) return false;
+  const props = resolveSchema(resolveType, meta)?.properties;
+  if (!props) return false;
+  const keys = Object.keys(props);
+  for (const key of keys) {
+    const child = props[key];
+    if (!child) continue;
+    if (isArrayDrillDownField(child)) {
+      const title = siblingFieldLabel(key, keys, props);
+      if (labelsMatch(title, arrayLabel) || labelsMatch(key, arrayLabel)) {
+        return true;
+      }
+    }
+    // Follow inner block refs so a Lazy-wrapped section's array is still found.
+    const childValue = (data as Record<string, unknown>)[key];
+    if (
+      childValue != null &&
+      typeof childValue === "object" &&
+      !Array.isArray(childValue) &&
+      blockRefSchemaOwnsArrayLabel(childValue, arrayLabel, meta, depth + 1)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /** Resolve which property at this level should be shown for the breadcrumb trail. */
 function resolveActiveFieldKeyInScope(
   keys: string[],
@@ -482,6 +538,7 @@ function resolveActiveFieldKeyInScope(
   objValue: Record<string, unknown>,
   breadcrumbPath: Crumb[],
   decofile?: Record<string, unknown>,
+  meta?: LiveMeta,
 ): string | null {
   if (breadcrumbPath.length === 0) return null;
   const head = crumbLabel(breadcrumbPath[0]!);
@@ -561,6 +618,7 @@ function resolveActiveFieldKeyInScope(
           childObj,
           breadcrumbPath.slice(1),
           decofile,
+          meta,
         ) != null;
       if (matchedStrong) {
         if (strongMatch === null) strongMatch = key;
@@ -576,6 +634,7 @@ function resolveActiveFieldKeyInScope(
         childObj,
         breadcrumbPath,
         decofile,
+        meta,
       ) != null;
     if (matchedLoose) {
       if (looseMatch === null) looseMatch = key;
@@ -614,6 +673,7 @@ function resolveActiveFieldKeyInScope(
         childObj,
         breadcrumbPath,
         decofile,
+        meta,
       );
       if (direct) return key;
 
@@ -624,6 +684,7 @@ function resolveActiveFieldKeyInScope(
           childObj,
           breadcrumbPath.slice(1),
           decofile,
+          meta,
         );
         if (viaLabel) return key;
       }
@@ -666,7 +727,11 @@ function resolveActiveFieldKeyInScope(
       const data = saved?.data ?? rawVal;
       if (
         valueOwnsItemCrumb(data, head) ||
-        foldedArrayLabels.some((al) => valueOwnsItemCrumb(data, al))
+        foldedArrayLabels.some(
+          (al) =>
+            valueOwnsItemCrumb(data, al) ||
+            blockRefSchemaOwnsArrayLabel(data, al, meta),
+        )
       ) {
         valueOwners.push(key);
       }
@@ -705,6 +770,7 @@ export function resolveActiveFieldKey(
   objValue: Record<string, unknown>,
   breadcrumbPath: Crumb[],
   decofile?: Record<string, unknown>,
+  meta?: LiveMeta,
 ): string | null {
   return resolveActiveFieldKeyInScope(
     keys,
@@ -712,6 +778,7 @@ export function resolveActiveFieldKey(
     objValue,
     breadcrumbPath,
     decofile,
+    meta,
   );
 }
 
@@ -723,6 +790,7 @@ export function isBreadcrumbInsideObject(
   objValue: Record<string, unknown>,
   breadcrumbPath: Crumb[],
   decofile?: Record<string, unknown>,
+  meta?: LiveMeta,
 ): boolean {
   if (breadcrumbPath.length === 0 || !schema.properties) return false;
 
@@ -734,6 +802,7 @@ export function isBreadcrumbInsideObject(
       objValue,
       breadcrumbPath,
       decofile,
+      meta,
     )
   ) {
     return true;
@@ -750,6 +819,7 @@ export function isBreadcrumbInsideObject(
       objValue,
       breadcrumbPath.slice(1),
       decofile,
+      meta,
     ) !== null
   );
 }

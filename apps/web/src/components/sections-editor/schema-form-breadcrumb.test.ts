@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { SchemaProperty } from "./resolve-schema";
+import type { LiveMeta, SchemaProperty } from "./resolve-schema";
 import {
   breadcrumbPathForActiveField,
   breadcrumbsForHeaderClick,
@@ -691,6 +691,112 @@ describe("resolveActiveFieldKey", () => {
         ["Beach Short"],
       ),
     ).toBeNull();
+  });
+
+  test("narrows to the sibling section whose SCHEMA owns a @titleBy-labelled array item", () => {
+    // casaevideo NotFoundChallenge: drilling a URL-labelled coupon in `children` (MountedPDP.pdpCupons, @titleBy couponCode) must not drift to `fallback` (NotFound.categories) — the value scan can't see the title/titleBy, so ownership falls back to the target schema.
+    const mountedPdpSchema: Record<string, unknown> = {
+      type: "object",
+      properties: {
+        pdpCupons: {
+          type: "array",
+          title: "Cupons da PDP",
+          items: {
+            type: "object",
+            titleBy: "couponCode",
+            properties: {
+              couponCode: { type: "string" },
+              discountTitle: { type: "string" },
+            },
+          },
+        },
+      },
+    };
+    const notFoundSchema: Record<string, unknown> = {
+      type: "object",
+      properties: {
+        categories: {
+          type: "array",
+          title: "Categories",
+          items: {
+            type: "object",
+            properties: {
+              label: { type: "string" },
+              link: { type: "string" },
+            },
+          },
+        },
+      },
+    };
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          sections: {
+            "site/sections/Product/MountedPDP.tsx": mountedPdpSchema,
+            "site/sections/Product/NotFound.tsx": notFoundSchema,
+          },
+        },
+      },
+      schema: {},
+    };
+    const properties = {
+      children: {
+        title: "On Product Found",
+        type: "block-ref",
+        anyOfRefs: [
+          {
+            resolveType: "site/sections/Product/MountedPDP.tsx",
+            title: "MountedPDP",
+          },
+        ],
+      },
+      fallback: {
+        title: "On Product Not Found",
+        type: "block-ref",
+        anyOfRefs: [
+          {
+            resolveType: "site/sections/Product/NotFound.tsx",
+            title: "NotFound",
+          },
+        ],
+      },
+    } satisfies Record<string, SchemaProperty>;
+    const couponUrl =
+      "https://www.casaevideo.com.br/3393?map=productClusterIds&order=OrderByTopSaleDESC";
+    const objValue = {
+      children: {
+        __resolveType: "site/sections/Product/MountedPDP.tsx",
+        pdpCupons: [{ couponCode: couponUrl, discountTitle: "10% OFF" }],
+      },
+      fallback: {
+        __resolveType: "site/sections/Product/NotFound.tsx",
+        categories: [
+          { label: "Telefones e Celulares", link: "/telefones-e-celulares" },
+          { label: "Ar e ventilação", link: "/" },
+        ],
+      },
+    };
+    const crumb: Crumb = {
+      label: couponUrl,
+      itemIndex: 0,
+      arrayLabel: "Cupons da PDP",
+    };
+    expect(
+      resolveActiveFieldKey(
+        Object.keys(properties),
+        properties,
+        objValue,
+        [crumb],
+        undefined,
+        meta,
+      ),
+    ).toBe("children");
+    // Without the schema (no meta) it can't disambiguate, but must NOT wrongly pick `fallback`.
+    expect(
+      resolveActiveFieldKey(Object.keys(properties), properties, objValue, [
+        crumb,
+      ]),
+    ).not.toBe("fallback");
   });
 
   test("narrows to a PLP loader whose selectedFacets[] item is labelled by key", () => {
