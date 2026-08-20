@@ -242,6 +242,8 @@ const ALL_TOOL_NAMES = [
   // GitHub tools (app-only)
   "GITHUB_LIST_USER_ORGS",
   "GITHUB_SEARCH_BRANCHES",
+  "GITHUB_PR_STATE",
+  "GITHUB_LAST_PUBLISHED_PR",
 
   // Search tools
   "GLOBAL_SEARCH",
@@ -1137,6 +1139,18 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Search a repository's branches by name substring",
     category: "GitHub",
   },
+  {
+    name: "GITHUB_PR_STATE",
+    description:
+      "Read a branch's pull request with its checks, review state and comments",
+    category: "GitHub",
+  },
+  {
+    name: "GITHUB_LAST_PUBLISHED_PR",
+    description:
+      "Read the most recently merged pull request into a base branch",
+    category: "GitHub",
+  },
   // Search tools
   {
     name: "GLOBAL_SEARCH",
@@ -1314,6 +1328,9 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "SANDBOX_START",
       "SANDBOX_DELETE",
       "GITHUB_SEARCH_BRANCHES",
+      // The PR panel's whole read side, for anyone who can open a preview
+      "GITHUB_PR_STATE",
+      "GITHUB_LAST_PUBLISHED_PR",
       // Cross-resource discovery / command palette
       "GLOBAL_SEARCH",
       // App-shell essentials (read-only) — every member hits these on first

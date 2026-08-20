@@ -1,10 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { isGithubConnection } from "@/oauth/github-mint";
-import {
-  branchSearchErrorMessage,
-  parseBranchSearchResponse,
-  parseJsonBody,
-} from "./search-branches";
+import { parseBranchSearchResponse } from "./search-branches";
 
 const REPO = "acme/site";
 
@@ -12,21 +8,19 @@ describe("parseBranchSearchResponse", () => {
   it("maps refs to branches with their author", () => {
     const result = parseBranchSearchResponse(
       {
-        data: {
-          repository: {
-            refs: {
-              totalCount: 2,
-              nodes: [
-                {
-                  name: "feat/search",
-                  target: { author: { user: { login: "gimenes" } } },
-                },
-                {
-                  name: "main",
-                  target: { author: { user: { login: "octocat" } } },
-                },
-              ],
-            },
+        repository: {
+          refs: {
+            totalCount: 2,
+            nodes: [
+              {
+                name: "feat/search",
+                target: { author: { user: { login: "gimenes" } } },
+              },
+              {
+                name: "main",
+                target: { author: { user: { login: "octocat" } } },
+              },
+            ],
           },
         },
       },
@@ -45,12 +39,10 @@ describe("parseBranchSearchResponse", () => {
   it("nulls the author when the committer has no linked GitHub account", () => {
     const result = parseBranchSearchResponse(
       {
-        data: {
-          repository: {
-            refs: {
-              totalCount: 1,
-              nodes: [{ name: "fix-workspace-wallet", target: { author: {} } }],
-            },
+        repository: {
+          refs: {
+            totalCount: 1,
+            nodes: [{ name: "fix-workspace-wallet", target: { author: {} } }],
           },
         },
       },
@@ -64,11 +56,7 @@ describe("parseBranchSearchResponse", () => {
 
   it("nulls the author when the ref target is not a Commit", () => {
     const result = parseBranchSearchResponse(
-      {
-        data: {
-          repository: { refs: { totalCount: 1, nodes: [{ name: "odd" }] } },
-        },
-      },
+      { repository: { refs: { totalCount: 1, nodes: [{ name: "odd" }] } } },
       REPO,
     );
 
@@ -78,11 +66,7 @@ describe("parseBranchSearchResponse", () => {
   it("keeps totalCount above the returned page so callers can report the rest", () => {
     const result = parseBranchSearchResponse(
       {
-        data: {
-          repository: {
-            refs: { totalCount: 195, nodes: [{ name: "fix-ui" }] },
-          },
-        },
+        repository: { refs: { totalCount: 195, nodes: [{ name: "fix-ui" }] } },
       },
       REPO,
     );
@@ -93,26 +77,17 @@ describe("parseBranchSearchResponse", () => {
 
   it("returns an empty result when nothing matched", () => {
     const result = parseBranchSearchResponse(
-      { data: { repository: { refs: { totalCount: 0, nodes: [] } } } },
+      { repository: { refs: { totalCount: 0, nodes: [] } } },
       REPO,
     );
 
     expect(result).toEqual({ branches: [], totalCount: 0 });
   });
 
-  it("throws on a GraphQL error rather than reporting zero matches", () => {
-    expect(() =>
-      parseBranchSearchResponse(
-        { errors: [{ message: "Resource not accessible by integration" }] },
-        REPO,
-      ),
-    ).toThrow(/Resource not accessible by integration/);
-  });
-
   it("throws when the repository is hidden, naming the repo", () => {
-    expect(() =>
-      parseBranchSearchResponse({ data: { repository: null } }, REPO),
-    ).toThrow(/acme\/site not found or not accessible/);
+    expect(() => parseBranchSearchResponse({ repository: null }, REPO)).toThrow(
+      /acme\/site not found or not accessible/,
+    );
   });
 });
 
@@ -134,46 +109,5 @@ describe("isGithubConnection", () => {
   it("rejects a connection with no slug", () => {
     expect(isGithubConnection({})).toBe(false);
     expect(isGithubConnection({ slug: null })).toBe(false);
-  });
-});
-
-describe("branchSearchErrorMessage", () => {
-  it("surfaces retry-after guidance on a 403 rate limit", () => {
-    expect(branchSearchErrorMessage(403, "42")).toBe(
-      "GitHub GraphQL branch search rate-limited, retry after 42s",
-    );
-  });
-
-  it("surfaces retry-after guidance on a 429", () => {
-    expect(branchSearchErrorMessage(429, "5")).toBe(
-      "GitHub GraphQL branch search rate-limited, retry after 5s",
-    );
-  });
-
-  it("falls back to a generic status message without a retry-after header", () => {
-    expect(branchSearchErrorMessage(403, null)).toBe(
-      "GitHub GraphQL branch search failed: 403",
-    );
-  });
-
-  it("falls back to a generic status message for an unrelated failure", () => {
-    expect(branchSearchErrorMessage(500, null)).toBe(
-      "GitHub GraphQL branch search failed: 500",
-    );
-  });
-});
-
-describe("parseJsonBody", () => {
-  it("parses a well-formed JSON body", async () => {
-    const body = { data: { repository: null } };
-    const res = new Response(JSON.stringify(body));
-    expect(await parseJsonBody(res, REPO)).toEqual(body);
-  });
-
-  it("throws a named error instead of a raw SyntaxError on a malformed 2xx body", async () => {
-    const res = new Response("<html>upstream error</html>");
-    await expect(parseJsonBody(res, REPO)).rejects.toThrow(
-      /acme\/site returned invalid JSON: <html>upstream error<\/html>/,
-    );
   });
 });

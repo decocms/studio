@@ -1,14 +1,6 @@
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
-import {
-  githubConnectionAccessToken,
-  isGithubConnection,
-} from "@/oauth/github-mint";
-import { RECONNECT_ERROR } from "@/oauth/token-refresh";
-
-const GITHUB_GRAPHQL = "https://api.github.com/graphql";
-/** Matches the Git Data client's per-attempt timeout in `decofile/github-git-data.ts`. */
-const GITHUB_TIMEOUT_MS = 15_000;
+import { githubGraphql } from "./graphql";
 
 /**
  * Server-side branch search.
@@ -65,78 +57,31 @@ const branchSearchOutput = z.object({
 
 export type BranchSearchResult = z.infer<typeof branchSearchOutput>;
 
-/**
- * A 2xx response body isn't guaranteed to be JSON (a proxy/outage page can
- * still answer 200), and `res.json()` throwing a raw `SyntaxError` on that
- * would surface as an opaque "Unexpected token" instead of naming what
- * failed. Same gap the Jira client closed for its own 2xx-but-malformed
- * case (#6308).
- */
-export async function parseJsonBody(
-  res: Response,
-  repoLabel: string,
-): Promise<BranchSearchResponse> {
-  const text = await res.text();
-  try {
-    return JSON.parse(text) as BranchSearchResponse;
-  } catch (cause) {
-    throw new Error(
-      `GitHub GraphQL branch search for ${repoLabel} returned invalid JSON: ${text.slice(0, 300)}`,
-      { cause },
-    );
-  }
-}
-
-/**
- * A secondary-rate-limit or abuse-detection response (403/429 + `Retry-After`)
- * looks identical to a real permissions/server failure once reduced to a bare
- * status code, so callers can't tell "wait and retry" from "this is broken".
- */
-export function branchSearchErrorMessage(
-  status: number,
-  retryAfterHeader: string | null,
-): string {
-  if ((status === 403 || status === 429) && retryAfterHeader) {
-    return `GitHub GraphQL branch search rate-limited, retry after ${retryAfterHeader}s`;
-  }
-  return `GitHub GraphQL branch search failed: ${status}`;
-}
-
-interface BranchSearchResponse {
-  data?: {
-    repository?: {
-      refs?: {
-        totalCount?: number;
-        nodes?: Array<{
-          name?: string | null;
-          target?: {
-            author?: { user?: { login?: string | null } | null } | null;
-          } | null;
-        } | null> | null;
-      } | null;
+export interface BranchSearchData {
+  repository?: {
+    refs?: {
+      totalCount?: number;
+      nodes?: Array<{
+        name?: string | null;
+        target?: {
+          author?: { user?: { login?: string | null } | null } | null;
+        } | null;
+      } | null> | null;
     } | null;
-  };
-  errors?: Array<{ message?: string }>;
+  } | null;
 }
 
 /**
- * Narrow the GraphQL payload to the tool's output.
- *
- * Every level is optional in the schema: a commit authored by an address with
- * no GitHub account has `author.user === null`, as does a ref whose target the
- * union does not resolve to a Commit. Throws rather than returning a plausible
- * empty result when GitHub reported an error or hid the repository, so "no
- * matches" never masks "not allowed to look".
+ * Narrow the GraphQL payload to the tool's output. Every level is optional: a
+ * commit authored by an address with no GitHub account has `author.user ===
+ * null`, as does a ref whose target does not resolve to a Commit. A hidden
+ * repository throws, so "no matches" never masks "not allowed to look".
  */
 export function parseBranchSearchResponse(
-  payload: BranchSearchResponse,
+  payload: BranchSearchData,
   repoLabel: string,
 ): BranchSearchResult {
-  const error = payload.errors?.[0]?.message;
-  if (error) {
-    throw new Error(`GitHub GraphQL branch search failed: ${error}`);
-  }
-  const repository = payload.data?.repository;
+  const repository = payload.repository;
   if (!repository) {
     throw new Error(
       `Repository ${repoLabel} not found or not accessible by this connection`,
@@ -186,82 +131,21 @@ export const GITHUB_SEARCH_BRANCHES = defineTool({
   handler: async (input, ctx) => {
     await ctx.access.check();
 
-    // Ownership guard (as in GITHUB_LIST_USER_ORGS): no cross-org token reads.
-    const organizationId = ctx.organization?.id;
-    if (!organizationId) {
-      throw new Error("Organization context required");
-    }
-    const connection = await ctx.storage.connections.findById(
-      input.connectionId,
-      organizationId,
-    );
-    if (!connection) {
-      throw new Error("Connection not found");
-    }
-    if (!isGithubConnection(connection)) {
-      throw new Error("Connection is not a GitHub connection");
-    }
-
-    const accessToken = await githubConnectionAccessToken(ctx, connection);
-    if (!accessToken) {
-      throw new Error(RECONNECT_ERROR);
-    }
-
-    const search = input.query.trim();
-    const post = (token: string) =>
-      fetch(GITHUB_GRAPHQL, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/vnd.github+json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          query: BRANCH_SEARCH_QUERY,
-          variables: {
-            owner: input.owner,
-            repo: input.repo,
-            // null is GraphQL's "no filter".
-            query: search === "" ? null : search,
-            limit: input.limit,
-          },
-        }),
-        signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
-      });
-
-    let res = await post(accessToken);
-
-    // Token revoked/rotated behind our clock: one refresh + retry, then give up.
-    if (res.status === 401) {
-      // Drain the discarded 401 body so its connection is released.
-      try {
-        await res.body?.cancel();
-      } catch {
-        /* ignore */
-      }
-      const refreshed = await githubConnectionAccessToken(ctx, connection, {
-        forceRefresh: true,
-      });
-      if (!refreshed) {
-        throw new Error(RECONNECT_ERROR);
-      }
-      res = await post(refreshed);
-      if (res.status === 401) {
-        throw new Error(RECONNECT_ERROR);
-      }
-    }
-
-    if (!res.ok) {
-      throw new Error(
-        branchSearchErrorMessage(res.status, res.headers.get("retry-after")),
-      );
-    }
-
-    // GraphQL reports failures as 200 + `errors`, so an ok status isn't enough.
     const repoLabel = `${input.owner}/${input.repo}`;
-    return parseBranchSearchResponse(
-      await parseJsonBody(res, repoLabel),
-      repoLabel,
-    );
+    const search = input.query.trim();
+    const data = await githubGraphql<BranchSearchData>(ctx, {
+      connectionId: input.connectionId,
+      query: BRANCH_SEARCH_QUERY,
+      variables: {
+        owner: input.owner,
+        repo: input.repo,
+        // null is GraphQL's "no filter".
+        query: search === "" ? null : search,
+        limit: input.limit,
+      },
+      label: `branch search for ${repoLabel}`,
+    });
+
+    return parseBranchSearchResponse(data, repoLabel);
   },
 });

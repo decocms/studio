@@ -395,6 +395,7 @@ export interface StudioToolIO {
         updatedBy: string;
         updatedAt: string;
       }[];
+      repos: string[];
     };
   };
   TASK_BOARD_ITEM_UPDATE: {
@@ -7081,6 +7082,74 @@ export interface StudioToolIO {
     output: {
       branches: { name: string; author: string | null }[];
       totalCount: number;
+    };
+  };
+  GITHUB_PR_STATE: {
+    input: {
+      connectionId: string;
+      owner: string;
+      repo: string;
+      branch: string;
+    };
+    output: {
+      pullRequest: {
+        number: number;
+        title: string;
+        body: string;
+        state: "open" | "closed";
+        merged: boolean;
+        mergedAt: string | null;
+        base: string;
+        head: string;
+        headSha: string;
+        headRepoFullName: string | null;
+        htmlUrl: string;
+        author: string;
+        draft: boolean;
+        mergeableState: "unknown" | "clean" | "dirty" | "blocked";
+        unresolvedConversations: number;
+        missingRequiredApprovals: boolean;
+        changedFiles: number;
+        checks: {
+          id: string;
+          name: string;
+          status: "in_progress" | "completed" | "queued";
+          conclusion:
+            | "success"
+            | "skipped"
+            | "cancelled"
+            | "failure"
+            | "neutral"
+            | "timed_out"
+            | "action_required"
+            | null;
+          htmlUrl: string;
+          durationMs: number | null;
+        }[];
+        comments: {
+          id: number;
+          author: string;
+          body: string;
+          createdAt: string;
+          htmlUrl: string;
+        }[];
+      } | null;
+    };
+  };
+  GITHUB_LAST_PUBLISHED_PR: {
+    input: { connectionId: string; owner: string; repo: string; base: string };
+    output: {
+      pullRequest: {
+        number: number;
+        title: string;
+        body: string;
+        mergedAt: string | null;
+        base: string;
+        head: string;
+        headSha: string;
+        htmlUrl: string;
+        author: string;
+      } | null;
     };
   };
   GLOBAL_SEARCH: {

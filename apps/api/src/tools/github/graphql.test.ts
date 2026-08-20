@@ -1,0 +1,55 @@
+import { describe, expect, it } from "bun:test";
+import { parseGraphqlBody, unwrapGraphqlData } from "./graphql";
+
+const LABEL = "branch search for acme/site";
+
+describe("parseGraphqlBody", () => {
+  it("parses a well-formed JSON body", () => {
+    expect(parseGraphqlBody('{"data":{"repository":null}}', LABEL)).toEqual({
+      data: { repository: null },
+    });
+  });
+
+  it("throws a named error instead of a raw SyntaxError on a malformed 2xx body", () => {
+    expect(() =>
+      parseGraphqlBody("<html>upstream error</html>", LABEL),
+    ).toThrow(/acme\/site returned invalid JSON: <html>upstream error<\/html>/);
+  });
+
+  it("truncates a huge body so the message stays readable", () => {
+    expect(() => parseGraphqlBody("x".repeat(5000), LABEL)).toThrow(
+      /invalid JSON: x{300}$/,
+    );
+  });
+});
+
+describe("unwrapGraphqlData", () => {
+  it("returns data when GitHub reported no errors", () => {
+    expect(
+      unwrapGraphqlData({ data: { repository: { id: 1 } } }, LABEL),
+    ).toEqual({ repository: { id: 1 } });
+  });
+
+  /** A 200 carrying `errors` is the shape `res.ok` cannot catch. */
+  it("throws on a GraphQL error rather than reporting an empty result", () => {
+    expect(() =>
+      unwrapGraphqlData(
+        { errors: [{ message: "Resource not accessible by integration" }] },
+        LABEL,
+      ),
+    ).toThrow(/Resource not accessible by integration/);
+  });
+
+  it("prefers the reported error over the missing-data message", () => {
+    expect(() =>
+      unwrapGraphqlData(
+        { data: null, errors: [{ message: "Bad credentials" }] },
+        LABEL,
+      ),
+    ).toThrow(/Bad credentials/);
+  });
+
+  it("throws when a 200 carried neither data nor errors", () => {
+    expect(() => unwrapGraphqlData({}, LABEL)).toThrow(/returned no data/);
+  });
+});
