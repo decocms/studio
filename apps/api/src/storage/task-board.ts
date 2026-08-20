@@ -1554,13 +1554,19 @@ export class TaskBoardStorage {
         (eb) =>
           eb
             .selectFrom("thread_message_parts as up")
-            .select((e) =>
+            .select((e) => [
               e.fn
                 .sum(
                   sql<string>`coalesce((up.metadata->'usage'->'providerMetadata'->'openrouter'->'usage'->>'cost')::numeric, 0)`,
                 )
                 .as("usd"),
-            )
+              // Null unless every priced step agrees — a mixed thread is unknown, not a guess.
+              sql<string | null>`
+                case
+                  when count(distinct up.metadata->'models'->'thinking'->>'provider') = 1
+                  then max(up.metadata->'models'->'thinking'->>'provider')
+                end`.as("provider"),
+            ])
             .whereRef("up.thread_id", "=", "link.thread_id")
             .where("up.kind", "=", "finish")
             .as("cost"),
@@ -1568,6 +1574,7 @@ export class TaskBoardStorage {
       )
       .select((eb) => [
         "cost.usd as costUsd",
+        "cost.provider as costProvider",
         "link.task_board_item_id as taskId",
         "link.thread_id as threadId",
         "link.created_at as createdAt",
@@ -1618,6 +1625,7 @@ export class TaskBoardStorage {
         hasMessages: !!row.hasMessages,
         lastActiveAt: newestIso(row.updatedAt, row.lastProgressAt),
         costUsd: parseCostUsd(row.costUsd),
+        costProvider: row.costProvider ?? null,
         createdAt:
           row.createdAt instanceof Date
             ? row.createdAt.toISOString()

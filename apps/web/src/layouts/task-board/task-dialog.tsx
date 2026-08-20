@@ -138,7 +138,10 @@ const PROPERTY_BUTTON =
   "inline-flex h-9 items-center justify-start gap-2 rounded-lg border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted sm:border-transparent";
 
 /**
- * What this task has cost, summed over every run linked to it.
+ * What this task has cost, summed over every run linked to it. A bare dollar
+ * sign next to a task reads as an invoice, so the chip says on its face that
+ * the figure is the provider's list-price estimate, and — on a linked Claude
+ * plan — that nobody is billed it at all.
  *
  * The task, not the run, is the unit that matters: a card is a Super Agent run
  * plus however many reviewer and re-run rounds it took, and until now that
@@ -153,23 +156,27 @@ function TaskCost({ threads }: { threads?: TaskBoardItemThread[] }) {
   const t = useT();
   const summary = summarizeTaskCost(threads);
   if (!summary) return null;
-  const { total, runCount } = summary;
+  const { total, runCount, onSubscription } = summary;
   const isSingular = runCount === 1;
+  const tooltipKey = onSubscription
+    ? isSingular
+      ? "taskBoard.taskDialog.costTooltipSubscriptionSingular"
+      : "taskBoard.taskDialog.costTooltipSubscriptionPlural"
+    : isSingular
+      ? "taskBoard.taskDialog.costTooltipSingular"
+      : "taskBoard.taskDialog.costTooltipPlural";
   return (
     <div
       className={cn(PROPERTY_BUTTON, "cursor-default hover:bg-transparent")}
-      title={t(
-        isSingular
-          ? "taskBoard.taskDialog.costTooltipSingular"
-          : "taskBoard.taskDialog.costTooltipPlural",
-        { runs: String(runCount) },
-      )}
+      title={t(tooltipKey, { runs: String(runCount) })}
     >
       <Coins01 size={16} className="shrink-0 text-muted-foreground" />
       <span className="tabular-nums">
-        {total.toLocaleString(undefined, {
-          style: "currency",
-          currency: "USD",
+        {t("taskBoard.taskDialog.costEstimatePrefix", {
+          amount: total.toLocaleString(undefined, {
+            style: "currency",
+            currency: "USD",
+          }),
         })}
       </span>
       <span className="text-muted-foreground">
@@ -180,6 +187,11 @@ function TaskCost({ threads }: { threads?: TaskBoardItemThread[] }) {
           { runs: String(runCount) },
         )}
       </span>
+      {onSubscription ? (
+        <span className="text-muted-foreground">
+          {t("taskBoard.taskDialog.costOnSubscription")}
+        </span>
+      ) : null}
     </div>
   );
 }

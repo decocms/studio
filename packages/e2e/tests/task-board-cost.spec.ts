@@ -15,6 +15,7 @@ import { expect, test } from "../fixtures/test";
 interface TaskBoardItemThread {
   threadId: string;
   costUsd: number | null;
+  costProvider: string | null;
 }
 interface TaskBoardItem {
   id: string;
@@ -22,7 +23,7 @@ interface TaskBoardItem {
 }
 
 /** A finished assistant message carrying the usage a harness recorded. */
-function usageMetadata(costUsd: number | null): string {
+function usageMetadata(costUsd: number | null, provider?: string): string {
   return JSON.stringify({
     usage: {
       totalTokens: 100,
@@ -30,6 +31,9 @@ function usageMetadata(costUsd: number | null): string {
         ? {}
         : { providerMetadata: { openrouter: { usage: { cost: costUsd } } } }),
     },
+    ...(provider
+      ? { models: { thinking: { id: "m", title: "m", provider } } }
+      : {}),
   });
 }
 
@@ -82,7 +86,7 @@ test.describe("task cost rollup", () => {
             orgId,
             threadId,
             `msg_${threadId}`,
-            usageMetadata(cost),
+            usageMetadata(cost, "claude-subscription"),
             new Date().toISOString(),
           ],
         );
@@ -108,6 +112,80 @@ test.describe("task cost rollup", () => {
         0,
       );
       expect(total).toBeCloseTo(2.0, 6);
+
+      // Every step of every run agreed on one provider, so the board can say
+      // whose money paid for it.
+      for (const thread of card?.threads ?? []) {
+        expect(thread.costProvider).toBe("claude-subscription");
+      }
+    } finally {
+      await db.end();
+    }
+  });
+
+  test("a run that switched providers reports no provider at all", async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug, user } = authedPage;
+    const request = page.context().request;
+    const call = <T>(name: string, args: unknown) =>
+      callSelfMcpTool<T>(request, orgSlug, name, args);
+
+    const { item } = await call<{ item: { id: string } }>(
+      "TASK_BOARD_ITEM_CREATE",
+      { title: "Mixed provider task" },
+    );
+
+    const db = await connectDevDb();
+    try {
+      const { rows: orgRows } = await db.query<{ organization_id: string }>(
+        `SELECT organization_id FROM task_board_items WHERE id = $1`,
+        [item.id],
+      );
+      const orgId = orgRows[0]?.organization_id;
+      const threadId = `thrd_e2e_mixed_${item.id}`;
+
+      await db.query(
+        `INSERT INTO threads (id, organization_id, title, status, message_storage_version, created_by)
+         VALUES ($1, $2, $3, 'completed', 2, $4)`,
+        [threadId, orgId, "Mixed run", user.userId],
+      );
+      await db.query(
+        `INSERT INTO task_board_item_threads (task_board_item_id, thread_id, organization_id)
+         VALUES ($1, $2, $3)`,
+        [item.id, threadId, orgId],
+      );
+      // Two priced steps, two providers: whose money paid is not answerable.
+      const steps: Array<[number, string]> = [
+        [1, "claude-subscription"],
+        [2, "openrouter"],
+      ];
+      for (const [seq, provider] of steps) {
+        await db.query(
+          `INSERT INTO thread_message_parts
+             (id, seq, org_id, thread_id, run_id, message_id, role, kind, payload, metadata, created_at)
+           VALUES ($1, $2, $3, $4, $4, $5, 'assistant', 'finish', '{}'::jsonb, $6::jsonb, $7)`,
+          [
+            `part_${threadId}_${seq}`,
+            seq,
+            orgId,
+            threadId,
+            `msg_${threadId}_${seq}`,
+            usageMetadata(0.5, provider),
+            new Date().toISOString(),
+          ],
+        );
+      }
+
+      const { items } = await call<{ items: TaskBoardItem[] }>(
+        "TASK_BOARD_ITEM_LIST",
+        {},
+      );
+      const thread = items
+        .find((i) => i.id === item.id)
+        ?.threads.find((t) => t.threadId === threadId);
+      expect(thread?.costUsd).toBeCloseTo(1.0, 6);
+      expect(thread?.costProvider).toBeNull();
     } finally {
       await db.end();
     }

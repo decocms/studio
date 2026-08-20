@@ -155,10 +155,16 @@ export const taskBoard = {
   "taskBoard.taskDialog.shipError": "Couldn't merge the pull request",
   "taskBoard.taskDialog.costRunCountSingular": "in {runs} run",
   "taskBoard.taskDialog.costRunCountPlural": "in {runs} runs",
+  "taskBoard.taskDialog.costEstimatePrefix": "~{amount}",
+  "taskBoard.taskDialog.costOnSubscription": "· on your Claude plan",
   "taskBoard.taskDialog.costTooltipSingular":
-    "Total AI cost of this task, across its only run — the Super Agent plus every reviewer and re-run round.",
+    "Estimated AI cost of this task, across its only run — the Super Agent plus every reviewer and re-run round. Calculated from the model provider's list prices; it is not a billed amount and your actual invoice may differ.",
   "taskBoard.taskDialog.costTooltipPlural":
-    "Total AI cost of this task, across all {runs} of its runs — the Super Agent plus every reviewer and re-run round.",
+    "Estimated AI cost of this task, across all {runs} of its runs — the Super Agent plus every reviewer and re-run round. Calculated from the model provider's list prices; it is not a billed amount and your actual invoice may differ.",
+  "taskBoard.taskDialog.costTooltipSubscriptionSingular":
+    "Estimated AI cost of this task, across its only run — the Super Agent plus every reviewer and re-run round. This run used your linked Claude plan, so you were not charged this: it counts against your plan's usage limits. The figure is what the same tokens would list for on the metered API.",
+  "taskBoard.taskDialog.costTooltipSubscriptionPlural":
+    "Estimated AI cost of this task, across all {runs} of its runs — the Super Agent plus every reviewer and re-run round. These runs used your linked Claude plan, so you were not charged this: it counts against your plan's usage limits. The figure is what the same tokens would list for on the metered API.",
   "taskBoard.taskDialog.propertiesLabel": "Properties",
   "taskBoard.taskDialog.reportsContentLocked":
     "Generated from your report — title, description, and priority are managed automatically",

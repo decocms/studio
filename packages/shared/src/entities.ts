@@ -122,8 +122,13 @@ export interface TaskBoardItemThreadRef {
    *  `TaskBoardItemThreadRef` in `apps/api/src/storage/types.ts`. */
   hasMessages: boolean;
   /** USD this run has cost so far, from the usage its harness recorded. `null`
-   *  when nothing was recorded — not the same as free. */
+   *  when nothing was recorded — not the same as free. An estimate the
+   *  provider reported, never a billed amount. */
   costUsd: number | null;
+  /** Which provider `costUsd` was spent against (`claude-subscription`,
+   *  `openrouter`, …); `null` when unrecorded or when the run mixed providers.
+   *  See `apps/api/src/storage/types.ts`. */
+  costProvider: string | null;
   createdAt: string;
   /** Newest of the thread's `updated_at` / `last_progress_at` — the stall
    *  reaper's heartbeat, mirrored from `apps/api/src/storage/types.ts`. */
