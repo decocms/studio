@@ -25,6 +25,7 @@ import {
   capturePrForRun,
   isPrCreateMcpTool,
 } from "@/tools/task-board/run-reactions";
+import { reactToPrOpenedForBoard } from "@/tools/task-board/pr-open-board-reaction";
 
 export interface ClusterMcpToolHooks {
   resolveArgs: (
@@ -81,6 +82,8 @@ export function buildClusterMcpToolHooks(
       // the source connection so the modal can fetch it back live. Separate
       // from the In Review advance above (which rides onToolCalled).
       void capturePrForRun(ctx, event.result, event.connectionId, threadId);
+      // Ad-hoc code agent with no linked card: decide + record it on the board (no-ops if a card already exists).
+      void reactToPrOpenedForBoard(ctx, event.result, threadId);
     },
   };
 }

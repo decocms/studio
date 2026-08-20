@@ -17,6 +17,7 @@ import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 import { recordTaskActivities } from "./activity";
 import { taskRunContextStore } from "./task-run-context";
 import { emitTaskBoardUpdated } from "./run-reactions";
+import { extractPrFromText } from "./pr-extract";
 import {
   ensureTaskExecutionAllowed,
   isReportsTask,
@@ -153,6 +154,15 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     tagIds: z.array(z.string()).optional(),
     /** Link an existing chat thread to this task (many-to-many, idempotent). */
     linkThreadId: z.string().optional(),
+    prUrl: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        "GitHub pull request URL to link to this task, e.g. " +
+          "https://github.com/owner/repo/pull/123. Pass this with " +
+          '`status: "in_review"` after opening a PR for an existing card.',
+      ),
   }),
   outputSchema: z.object({ item: TaskBoardItemSchema }),
   handler: async (input, ctx) => {
@@ -163,6 +173,15 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     if (!organizationId) {
       throw new Error(
         "Organization ID required (no active organization in context)",
+      );
+    }
+
+    // Parse the PR link before any write, so a bad URL fails without a partial edit.
+    const pr = input.prUrl ? extractPrFromText(input.prUrl) : null;
+    if (input.prUrl && !pr) {
+      throw new Error(
+        `Not a GitHub pull request URL: ${input.prUrl} (expected ` +
+          "https://github.com/<owner>/<repo>/pull/<number>)",
       );
     }
 
@@ -313,6 +332,18 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       item = fetched;
     }
 
+    if (pr) {
+      await ctx.storage.taskBoard.linkPr({
+        taskBoardItemId: item.id,
+        organizationId,
+        url: pr.url,
+        prNumber: pr.number,
+        repoOwner: pr.owner,
+        repoName: pr.repo,
+        connectionId: null,
+      });
+    }
+
     // Log every changed field to the activity timeline in one batched write
     // instead of one sequential DB round-trip per changed field. Best-effort.
     if (previous) {
@@ -335,7 +366,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     // this tool over MCP — e.g. moving its task to In Review — has no client
     // mutation to invalidate, so without this the card only moves on refresh.
     // Same for a teammate's board.
-    if (hasFieldUpdate || input.linkThreadId) {
+    if (hasFieldUpdate || input.linkThreadId || pr) {
       emitTaskBoardUpdated(organizationId, item);
     }
     if (becameSuperAgent) {
