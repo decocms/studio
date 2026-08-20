@@ -1,10 +1,12 @@
 import { describe, expect, it, mock } from "bun:test";
 import {
+  collectMentionAccountIds,
   jiraBodyToText,
   assertBoardId,
   normalizeSiteUrl,
   textToAdf,
   JiraClient,
+  JiraUserDirectory,
 } from "./client";
 
 describe("normalizeSiteUrl", () => {
@@ -88,6 +90,174 @@ describe("jiraBodyToText", () => {
   it("returns empty on null and non-body values", () => {
     expect(jiraBodyToText(null)).toBe("");
     expect(jiraBodyToText(42)).toBe("");
+  });
+});
+
+describe("jiraBodyToText mentions", () => {
+  const mention = (attrs: Record<string, unknown>) => ({
+    type: "doc",
+    content: [{ type: "paragraph", content: [{ type: "mention", attrs }] }],
+  });
+
+  it("uses the name ADF already carries, stripping its @", () => {
+    expect(
+      jiraBodyToText(mention({ id: "557058:abc-123", text: "@Ana Souza" })),
+    ).toBe("@Ana Souza");
+  });
+
+  it("falls back to the resolved name when ADF carries none", () => {
+    expect(
+      jiraBodyToText(
+        mention({ id: "557058:abc-123" }),
+        new Map([["557058:abc-123", "Ana Souza"]]),
+      ),
+    ).toBe("@Ana Souza");
+  });
+
+  it("renders an unresolvable mention as @unknown", () => {
+    expect(jiraBodyToText(mention({ id: "557058:abc-123" }))).toBe("@unknown");
+    expect(jiraBodyToText(mention({ text: "  @  " }))).toBe("@unknown");
+  });
+
+  it("collects only the account ids that need a lookup", () => {
+    expect(
+      collectMentionAccountIds({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "mention", attrs: { id: "a", text: "@Ana" } },
+              { type: "text", text: " e " },
+              { type: "mention", attrs: { id: "b" } },
+              { type: "mention", attrs: { id: "b" } },
+            ],
+          },
+        ],
+      }),
+    ).toEqual(["b"]);
+  });
+
+  it("collects account ids from wiki-markup bodies too", () => {
+    expect(
+      collectMentionAccountIds("cc [~accountid:557058:abc-123] e [~jsmith]"),
+    ).toEqual(["557058:abc-123"]);
+  });
+
+  it("collects nothing from bodies without mentions", () => {
+    expect(collectMentionAccountIds(null)).toEqual([]);
+    expect(collectMentionAccountIds("plain text")).toEqual([]);
+  });
+});
+
+describe("JiraUserDirectory", () => {
+  const client = () =>
+    new JiraClient("https://acme.atlassian.net", "e@acme.com", "tok");
+
+  async function withFetch<T>(
+    handler: (url: string) => Response,
+    body: (calls: string[]) => Promise<T>,
+  ): Promise<T> {
+    const originalFetch = globalThis.fetch;
+    const calls: string[] = [];
+    globalThis.fetch = mock(async (input: unknown) => {
+      calls.push(String(input));
+      return handler(String(input));
+    }) as unknown as typeof fetch;
+    try {
+      return await body(calls);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  const json = (value: unknown) =>
+    new Response(JSON.stringify(value), { status: 200 });
+
+  it("costs no request when nothing needs resolving", async () => {
+    await withFetch(
+      () => json({}),
+      async (calls) => {
+        const names = await new JiraUserDirectory(client()).resolve([]);
+        expect(calls).toHaveLength(0);
+        expect(names.size).toBe(0);
+      },
+    );
+  });
+
+  it("resolves repeated ids from cache — one request per run", async () => {
+    await withFetch(
+      () =>
+        json({
+          values: [
+            { accountId: "a", displayName: "Ana Souza" },
+            { accountId: "b", displayName: "Bruno Lima" },
+          ],
+        }),
+      async (calls) => {
+        const directory = new JiraUserDirectory(client());
+        for (let i = 0; i < 50; i++) await directory.resolve(["a", "b"]);
+        expect(calls).toHaveLength(1);
+        expect(await directory.resolve(["a"])).toEqual(
+          new Map([["a", "Ana Souza"]]),
+        );
+      },
+    );
+  });
+
+  it("latches off after a 403 so a missing permission costs one request", async () => {
+    await withFetch(
+      () => new Response("Forbidden", { status: 403 }),
+      async (calls) => {
+        const directory = new JiraUserDirectory(client());
+        for (let i = 0; i < 20; i++) {
+          expect((await directory.resolve([`user-${i}`])).size).toBe(0);
+        }
+        expect(calls).toHaveLength(1);
+      },
+    );
+  });
+
+  it("keeps ids Jira declines to disclose out of the map", async () => {
+    await withFetch(
+      () =>
+        json({ values: [{ accountId: "a", displayName: "Ana" }], total: 1 }),
+      async (calls) => {
+        const names = await new JiraUserDirectory(client()).resolve([
+          "a",
+          "b",
+          "c",
+        ]);
+        expect(names).toEqual(new Map([["a", "Ana"]]));
+        expect(calls).toHaveLength(1);
+      },
+    );
+  });
+
+  it("pages until a page comes back empty, not on `isLast`", async () => {
+    let served = 0;
+    await withFetch(
+      () =>
+        json(
+          served < 3
+            ? {
+                values: [
+                  { accountId: `u${served}`, displayName: `U${served++}` },
+                ],
+              }
+            : { values: [] },
+        ),
+      async (calls) => {
+        const names = await new JiraUserDirectory(client()).resolve([
+          "u0",
+          "u1",
+          "u2",
+          "u3",
+        ]);
+        expect(names.size).toBe(3);
+        expect(calls).toHaveLength(4);
+      },
+    );
   });
 });
 

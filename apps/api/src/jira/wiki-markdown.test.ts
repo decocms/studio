@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { wikiToMarkdown } from "./wiki-markdown";
+import { collectWikiMentionAccountIds, wikiToMarkdown } from "./wiki-markdown";
 
 describe("wikiToMarkdown", () => {
   it("converts bold and strips color, keeping literal brackets", () => {
@@ -51,6 +51,78 @@ describe("wikiToMarkdown", () => {
   it("converts tables with inline marks in cells", () => {
     expect(wikiToMarkdown("||Nome||*Nota*||\n|a|b|")).toBe(
       "| Nome | **Nota** |\n| --- | --- |\n| a | b |",
+    );
+  });
+
+  it("resolves accountid mentions to display names", () => {
+    expect(
+      wikiToMarkdown(
+        "[~accountid:557058:abc-123] revisa com [~accountid:712020:def-456]",
+        new Map([
+          ["557058:abc-123", "Ana Souza"],
+          ["712020:def-456", "Bruno Lima"],
+        ]),
+      ),
+    ).toBe("@Ana Souza revisa com @Bruno Lima");
+  });
+
+  it("renders unknown account ids as @unknown, never the raw id", () => {
+    expect(wikiToMarkdown("cc [~accountid:557058:abc-123]")).toBe(
+      "cc @unknown",
+    );
+  });
+
+  it("leaves non-accountid bracket-tilde text alone", () => {
+    expect(wikiToMarkdown("lookup[~key], arr[~1], [~], regex [^a-z]")).toBe(
+      "lookup[~key], arr[~1], [~], regex [^a-z]",
+    );
+  });
+
+  it("leaves mentions inside code blocks byte-exact", () => {
+    expect(
+      wikiToMarkdown(
+        "{code}\n[~accountid:557058:abc-123]\n{code}",
+        new Map([["557058:abc-123", "Ana Souza"]]),
+      ),
+    ).toBe("```\n[~accountid:557058:abc-123]\n```");
+  });
+
+  it("does not mistake a link for a mention", () => {
+    expect(wikiToMarkdown("[~x|https://example.com/a]")).toBe(
+      "[~x](https://example.com/a)",
+    );
+  });
+
+  it("neutralizes wiki and markdown markup inside a display name", () => {
+    expect(
+      wikiToMarkdown(
+        "cc [~accountid:a] ok",
+        new Map([["a", "Ana _Nick_ Souza"]]),
+      ),
+    ).toBe("cc @Ana \\_Nick\\_ Souza ok");
+    expect(
+      wikiToMarkdown("cc [~accountid:a]", new Map([["a", "Ana *Nick*"]])),
+    ).toBe("cc @Ana \\*Nick\\*");
+  });
+
+  it("keeps a pipe in a display name from splitting a table cell", () => {
+    expect(
+      wikiToMarkdown("|[~accountid:c]|done|", new Map([["c", "Cid | Team"]])),
+    ).toBe("| @Cid \\| Team | done |");
+  });
+
+  it("does not collect account ids it will never render", () => {
+    expect(
+      collectWikiMentionAccountIds(
+        "{code}\n[~accountid:X:1]\n{code}\ncc [~accountid:Y:2]",
+      ),
+    ).toEqual(["Y:2"]);
+  });
+
+  it("strips a source sentinel so it cannot forge a mention reference", () => {
+    const nul = String.fromCharCode(0);
+    expect(wikiToMarkdown(`a${nul}0${nul}b [~accountid:x]`)).toBe(
+      "a0b @unknown",
     );
   });
 

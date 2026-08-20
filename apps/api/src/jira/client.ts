@@ -8,9 +8,18 @@
  */
 
 import { retry } from "@decocms/shared/std";
-import { wikiToMarkdown } from "./wiki-markdown";
+import {
+  collectWikiMentionAccountIds,
+  escapeMentionName,
+  UNKNOWN_MENTION,
+  wikiToMarkdown,
+} from "./wiki-markdown";
 
 const REQUEST_TIMEOUT_MS = 15_000;
+
+/** Account ids per `/user/bulk` request. Jira caps the repeated `accountId`
+ *  param at 200; stay well under and let the chunker loop. */
+const USER_LOOKUP_CHUNK = 100;
 
 export interface JiraBoard {
   id: number;
@@ -188,6 +197,42 @@ export class JiraClient {
     return this.request("/rest/api/3/myself");
   }
 
+  /**
+   * Display names for up to `USER_LOOKUP_CHUNK` account ids per query — the
+   * mention resolver. `/user/bulk` needs the "Browse users and groups" global
+   * permission and answers 403 without it; it also omits ids it won't disclose
+   * rather than erroring, so the result can be shorter than the input. Paged
+   * because Jira clamps `maxResults` to its own ceiling, silently.
+   */
+  async listUsersByAccountId(
+    accountIds: string[],
+  ): Promise<Array<{ accountId: string; displayName: string }>> {
+    if (accountIds.length === 0) return [];
+    const users: Array<{ accountId: string; displayName: string }> = [];
+    let startAt = 0;
+    for (;;) {
+      const query = new URLSearchParams({
+        startAt: String(startAt),
+        maxResults: String(accountIds.length),
+      });
+      for (const accountId of accountIds) query.append("accountId", accountId);
+      const page = await this.request<{
+        values?: Array<{ accountId: string; displayName: string }>;
+        total?: number;
+      }>(`/rest/api/3/user/bulk?${query}`);
+      const values = page.values ?? [];
+      users.push(...values);
+      // `total` is the disclosed count, which is <= the ids asked for; an empty
+      // page is the fallback signal if Jira omits it. `isLast` is not used —
+      // it is optional in the response and absent means "stop" if trusted.
+      const total =
+        typeof page.total === "number" ? page.total : accountIds.length;
+      if (values.length === 0 || users.length >= total) break;
+      startAt += values.length;
+    }
+    return users;
+  }
+
   /** Boards visible to the credentials — the sync-target picker. */
   async listBoards(): Promise<JiraBoard[]> {
     const boards: JiraBoard[] = [];
@@ -358,22 +403,134 @@ export function textToAdf(text: string): unknown {
   };
 }
 
+interface MentionAttrs {
+  id?: unknown;
+  text?: unknown;
+}
+
+/** The display name ADF usually ships inside the mention itself (`"@Jane Doe"`),
+ *  normalized without its `@`. Absent on mentions written through the API, and
+ *  on some older bodies — those need the account-id lookup. */
+function mentionLabel(attrs: MentionAttrs | undefined): string | null {
+  const text = typeof attrs?.text === "string" ? attrs.text.trim() : "";
+  const label = text.startsWith("@") ? text.slice(1).trim() : text;
+  return label === "" ? null : label;
+}
+
+function mentionText(
+  attrs: MentionAttrs | undefined,
+  names: ReadonlyMap<string, string>,
+): string {
+  const label = mentionLabel(attrs);
+  if (label) return `@${escapeMentionName(label)}`;
+  const id = typeof attrs?.id === "string" ? attrs.id : "";
+  const name = id ? names.get(id) : undefined;
+  return name ? `@${escapeMentionName(name)}` : UNKNOWN_MENTION;
+}
+
+/** Account ids in a body that a name lookup has to resolve, so a run can batch
+ *  them into one request instead of rendering opaque ids. Mentions that already
+ *  carry their name (the common ADF case) contribute nothing. */
+export function collectMentionAccountIds(body: unknown): string[] {
+  const ids = new Set<string>();
+  collectMentions(body, ids);
+  return [...ids];
+}
+
+function collectMentions(body: unknown, ids: Set<string>): void {
+  if (typeof body === "string") {
+    for (const id of collectWikiMentionAccountIds(body)) ids.add(id);
+    return;
+  }
+  if (!body || typeof body !== "object") return;
+  const node = body as {
+    type?: string;
+    attrs?: MentionAttrs;
+    content?: unknown[];
+  };
+  if (node.type === "mention") {
+    const id = typeof node.attrs?.id === "string" ? node.attrs.id : "";
+    if (id && !mentionLabel(node.attrs)) ids.add(id);
+    return;
+  }
+  for (const child of Array.isArray(node.content) ? node.content : []) {
+    collectMentions(child, ids);
+  }
+}
+
 /** Jira rich body → text the cards can render. The Agile API returns
  *  v2-style STRING bodies (wiki markup — converted to markdown); REST v3
  *  returns an ADF tree, which is flattened: text nodes concatenated,
  *  doc-level blocks separated by blank lines. ADF marks, tables, and media
  *  are dropped — the card links back to the issue for full fidelity. */
-export function jiraBodyToText(adf: unknown): string {
-  if (typeof adf === "string") return wikiToMarkdown(adf);
+export function jiraBodyToText(
+  adf: unknown,
+  names: ReadonlyMap<string, string> = new Map(),
+): string {
+  if (typeof adf === "string") return wikiToMarkdown(adf, names);
   if (!adf || typeof adf !== "object") return "";
-  const node = adf as { type?: string; text?: string; content?: unknown[] };
+  const node = adf as {
+    type?: string;
+    text?: string;
+    attrs?: MentionAttrs;
+    content?: unknown[];
+  };
   if (node.type === "text") return node.text ?? "";
   if (node.type === "hardBreak") return "\n";
-  const inner = (Array.isArray(node.content) ? node.content : []).map(
-    jiraBodyToText,
+  if (node.type === "mention") return mentionText(node.attrs, names);
+  const inner = (Array.isArray(node.content) ? node.content : []).map((child) =>
+    jiraBodyToText(child, names),
   );
   if (node.type === "doc") {
     return inner.filter((text) => text.trim() !== "").join("\n\n");
   }
   return inner.join("");
+}
+
+/**
+ * Account id → display name, resolved once per sync run.
+ *
+ * Unresolved ids are cached as such: a deleted account, or a credential
+ * without the "Browse users and groups" global permission, must not re-cost a
+ * request for every issue that mentions it. A lookup failure degrades the text
+ * to `@unknown` — it never fails the sync, which would strand every other
+ * field over a cosmetic detail.
+ */
+export class JiraUserDirectory {
+  private readonly names = new Map<string, string | null>();
+  private lookupsDisabled = false;
+
+  constructor(private readonly client: JiraClient) {}
+
+  async resolve(accountIds: string[]): Promise<ReadonlyMap<string, string>> {
+    const missing = this.lookupsDisabled
+      ? []
+      : [...new Set(accountIds.filter((id) => !this.names.has(id)))];
+    for (let at = 0; at < missing.length; at += USER_LOOKUP_CHUNK) {
+      const chunk = missing.slice(at, at + USER_LOOKUP_CHUNK);
+      // Seeded before the call so ids Jira silently omits aren't re-requested.
+      for (const id of chunk) this.names.set(id, null);
+      try {
+        for (const user of await this.client.listUsersByAccountId(chunk)) {
+          if (user.displayName)
+            this.names.set(user.accountId, user.displayName);
+        }
+      } catch (err) {
+        // Latched, not retried per id: a credential without the permission
+        // would otherwise cost one failing round-trip per mentioned account.
+        this.lookupsDisabled = true;
+        console.warn(
+          "[jira] user lookup failed, mentions render as @unknown for this run:",
+          err instanceof Error ? err.message : err,
+        );
+        break;
+      }
+    }
+    const resolved = new Map<string, string>();
+    for (const id of accountIds) {
+      const name = this.names.get(id);
+      if (name) resolved.set(id, name);
+    }
+    return resolved;
+  }
 }

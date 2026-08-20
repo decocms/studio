@@ -21,7 +21,13 @@ import type {
 } from "@/storage/types";
 import { reactToSuperAgentDelegation } from "@/tools/task-board/enqueue-super-agent";
 import { emitTaskBoardUpdated } from "@/tools/task-board/run-reactions";
-import { jiraBodyToText, JiraClient, type JiraIssue } from "./client";
+import {
+  collectMentionAccountIds,
+  jiraBodyToText,
+  JiraClient,
+  JiraUserDirectory,
+  type JiraIssue,
+} from "./client";
 
 /** `created_by`/`updated_by` on synced cards. Deliberately NOT "system" —
  *  that marks reports-owned cards and locks their title/description. */
@@ -101,8 +107,14 @@ function isCardIssue(issue: JiraIssue): boolean {
   return typeof level !== "number" || level === 0;
 }
 
-function cardDescription(siteUrl: string, issue: JiraIssue): string {
-  const text = jiraBodyToText(issue.fields.description);
+async function cardDescription(
+  siteUrl: string,
+  issue: JiraIssue,
+  users: JiraUserDirectory,
+): Promise<string> {
+  const body = issue.fields.description;
+  const names = await users.resolve(collectMentionAccountIds(body));
+  const text = jiraBodyToText(body, names);
   return `${siteUrl}/browse/${issue.key}\n\n${text}`
     .trim()
     .slice(0, MAX_DESCRIPTION_CHARS);
@@ -169,6 +181,7 @@ async function pullComments(
   issue: JiraIssue,
   itemId: string,
   integrationAccountId: string,
+  users: JiraUserDirectory,
 ): Promise<void> {
   const orgId = integration.organizationId;
   const embedded = issue.fields.comment;
@@ -181,10 +194,21 @@ async function pullComments(
     orgId,
     comments.map((comment) => comment.id),
   );
-  for (const comment of comments) {
-    if (known.has(comment.id)) continue;
-    if (comment.author?.accountId === integrationAccountId) continue;
-    const text = jiraBodyToText(comment.body).slice(0, MAX_DESCRIPTION_CHARS);
+  const pending = comments.filter(
+    (comment) =>
+      !known.has(comment.id) &&
+      comment.author?.accountId !== integrationAccountId,
+  );
+  if (pending.length === 0) return;
+  // One lookup for the whole batch, not one per comment.
+  const names = await users.resolve(
+    pending.flatMap((comment) => collectMentionAccountIds(comment.body)),
+  );
+  for (const comment of pending) {
+    const text = jiraBodyToText(comment.body, names).slice(
+      0,
+      MAX_DESCRIPTION_CHARS,
+    );
     const created = await ctx.storage.taskBoard.createComment({
       taskBoardItemId: itemId,
       organizationId: orgId,
@@ -236,6 +260,7 @@ async function runSync(
   );
   // The integration account's own comments are echoes of our pushes.
   const { accountId: integrationAccountId } = await client.myself();
+  const users = new JiraUserDirectory(client);
   // Backlog-tab issues have normal statuses but are not visible board cards.
   const backlogIds = await client.listBacklogIssueIds(boardId);
   const jql = buildJql(integration);
@@ -258,6 +283,16 @@ async function runSync(
     const links = await ctx.storage.jiraIntegrations.getLinksByIssueIds(
       orgId,
       page.issues.map((issue) => issue.id),
+    );
+    // One name lookup for the page, so the per-issue resolves below are cache
+    // hits rather than up to MAX_ISSUES_PER_RUN sequential single-id requests.
+    await users.resolve(
+      page.issues.flatMap((issue) => [
+        ...collectMentionAccountIds(issue.fields.description),
+        ...(issue.fields.comment?.comments ?? []).flatMap((comment) =>
+          collectMentionAccountIds(comment.body),
+        ),
+      ]),
     );
 
     for (const issue of page.issues) {
@@ -286,7 +321,7 @@ async function runSync(
       const jiraStatusName = issue.fields.status.name;
       const fields = {
         title: issue.fields.summary,
-        description: cardDescription(integration.siteUrl, issue),
+        description: await cardDescription(integration.siteUrl, issue, users),
         priority: mapPriority(issue),
       };
 
@@ -321,6 +356,7 @@ async function runSync(
           issue,
           link.itemId,
           integrationAccountId,
+          users,
         );
         // Last, because this is what marks the issue "fully processed": moving
         // it before `pullComments` means a failed comment fetch is never
@@ -371,6 +407,7 @@ async function runSync(
           issue,
           item.id,
           integrationAccountId,
+          users,
         );
         await ctx.storage.jiraIntegrations.touchLink(item.id, {
           jiraUpdatedAt: issueUpdated,
