@@ -10,21 +10,27 @@
  * showing a stray `*`.
  */
 
-export function wikiToMarkdown(wiki: string): string {
-  return splitBlocks(wiki)
+export function wikiToMarkdown(
+  wiki: string,
+  names: ReadonlyMap<string, string> = new Map(),
+): string {
+  const resolved: string[] = [];
+  const stash = (text: string) => stashMentions(text, names, resolved);
+  const converted = splitBlocks(wiki)
     .map((block) => {
       if (block.type === "code") {
         return `\`\`\`${block.lang}\n${trimEdgeNewlines(block.content)}\n\`\`\``;
       }
       if (block.type === "quote") {
-        return convertLines(trimEdgeNewlines(block.content))
+        return convertLines(stash(trimEdgeNewlines(block.content)))
           .split("\n")
           .map((line) => `> ${line}`)
           .join("\n");
       }
-      return convertLines(block.content);
+      return convertLines(stash(block.content));
     })
     .join("");
+  return restoreMentions(converted, resolved);
 }
 
 type Block =
@@ -259,4 +265,68 @@ function emphasis(
     };
   }
   return null;
+}
+
+/** What a mention renders as when the account id can't be resolved to a name:
+ *  a deleted account, or a credential without "Browse users and groups". Still
+ *  better than leaking the raw opaque id into a card. */
+export const UNKNOWN_MENTION = "@unknown";
+
+/** A Cloud mention: `[~accountid:557058:1a2b…]`. The `accountid:` prefix is
+ *  load-bearing — matching bare `[~token]` too would rewrite prose describing
+ *  code (`lookup[~key]`, `arr[~1]`), and Cloud has no other mention form. */
+const WIKI_MENTION = /\[~accountid:([^\]\s|]+)\]/g;
+
+/** Markdown metacharacters in a DISPLAY NAME, which is tenant-controlled text:
+ *  an unescaped `Ana _Nick_ Souza` renders as italics, and a `|` splits a table
+ *  cell. Escaped for the markdown the card renders; the wiki parser never sees
+ *  the name at all (see `stashMentions`). */
+export function escapeMentionName(name: string): string {
+  return name.replace(/([\\`*_[\]|~])/g, "\\$1");
+}
+
+/** Account ids referenced by wiki mentions outside code blocks — what a name
+ *  lookup needs. Skips `{code}`/`{noformat}` so it can't request a name the
+ *  renderer will then discard. */
+export function collectWikiMentionAccountIds(wiki: string): string[] {
+  const ids: string[] = [];
+  for (const block of splitBlocks(wiki)) {
+    if (block.type === "code") continue;
+    for (const [, id] of block.content.matchAll(WIKI_MENTION)) {
+      if (id) ids.push(id);
+    }
+  }
+  return ids;
+}
+
+/** NUL can't occur in Jira text (Postgres can't even store it) and carries no
+ *  markup, so it survives the parser as inert content. */
+const SENTINEL = "\u0000";
+const SENTINEL_REF = new RegExp(`${SENTINEL}(\\d+)${SENTINEL}`, "g");
+
+/** Swap each mention for an inert sentinel BEFORE parsing, per non-code block:
+ *  the resolved name never reaches the inline scanner, so a name can't open
+ *  emphasis or split a table cell, and code stays byte-exact. */
+function stashMentions(
+  wiki: string,
+  names: ReadonlyMap<string, string>,
+  resolved: string[],
+): string {
+  // Dropped first so the sentinel namespace is ours alone and source text
+  // can't forge a reference. Postgres rejects NUL, so this text is unstorable.
+  return wiki
+    .replaceAll(SENTINEL, "")
+    .replace(WIKI_MENTION, (_whole, id: string) => {
+      const name = names.get(id);
+      const index = resolved.length;
+      resolved.push(name ? `@${escapeMentionName(name)}` : UNKNOWN_MENTION);
+      return `${SENTINEL}${index}${SENTINEL}`;
+    });
+}
+
+function restoreMentions(markdown: string, resolved: string[]): string {
+  return markdown.replace(
+    SENTINEL_REF,
+    (_whole, index: string) => resolved[Number(index)] ?? UNKNOWN_MENTION,
+  );
 }
