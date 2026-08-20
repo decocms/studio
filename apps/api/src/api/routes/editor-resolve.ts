@@ -8,7 +8,7 @@
  *
  * Resolution is relative to the authenticated user: the same storefront can be
  * imported into several orgs, so we scan the orgs the caller is a member of and
- * return every project whose name (`title`) matches `site` (lowercased).
+ * return every code agent (repo-backed) whose name (`title`) matches `site`.
  * That makes access implicit (orgs the caller isn't in never appear — no leak,
  * no false 403) and lets `/choose-editor` offer a picker when the site lives in
  * more than one of the caller's orgs. Instance-level: no org in the URL path.
@@ -33,6 +33,19 @@ interface EditorMatch {
 
 interface EditorResolveResult {
   matches: EditorMatch[];
+}
+
+/**
+ * True when the agent is a code agent — it has a checked-out GitHub source
+ * (`metadata.githubRepo.url`). Mirrors `agentHasClonableSource` in
+ * `apps/web/src/lib/agent-capabilities.ts`; the metadata bag isn't centrally
+ * schematized, so this stays loosely typed.
+ */
+function hasClonableSource(metadata: unknown): boolean {
+  if (typeof metadata !== "object" || metadata === null) return false;
+  const meta = metadata as { githubRepo?: { url?: unknown } | null };
+  const url = meta.githubRepo?.url;
+  return typeof url === "string" && url.length > 0;
 }
 
 export function createEditorResolveRoutes() {
@@ -79,6 +92,8 @@ export function createEditorResolveRoutes() {
       const vms = await ctx.storage.virtualMcps.list(org.id);
       for (const vm of vms) {
         if (vm.title.toLowerCase() !== slug) continue;
+        // Match by name, but only code agents (repo-backed); skip Decopilot-only.
+        if (!hasClonableSource(vm.metadata)) continue;
         matches.push({
           orgSlug: org.slug,
           orgName: org.name ?? org.slug,

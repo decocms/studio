@@ -42,11 +42,19 @@ async function createOrg(
   return body.slug ?? body.data?.slug ?? slug;
 }
 
+/**
+ * Create a project named `siteSlug`. By default it's a code agent (repo-backed
+ * via `metadata.githubRepo`), which is what editor-resolve returns. Pass
+ * `{ codeAgent: false }` for a Decopilot-only agent (no source) that must be
+ * excluded even when the name collides.
+ */
 async function createProjectForSite(
   ctx: APIRequestContext,
   orgSlug: string,
   siteSlug: string,
+  opts: { codeAgent?: boolean } = {},
 ): Promise<string> {
+  const codeAgent = opts.codeAgent ?? true;
   const created = await callSelfMcpTool<{ item: { id: string } }>(
     ctx,
     orgSlug,
@@ -56,7 +64,16 @@ async function createProjectForSite(
         // The project name (`title`) is what editor-resolve matches on.
         title: siteSlug,
         connections: [],
-        metadata: { instructions: null },
+        metadata: {
+          instructions: null,
+          githubRepo: codeAgent
+            ? {
+                url: `https://github.com/e2e/${siteSlug}`,
+                owner: "e2e",
+                name: siteSlug,
+              }
+            : undefined,
+        },
       },
     },
   );
@@ -82,6 +99,14 @@ test.describe("Editor resolve (choose-editor backend)", () => {
     const org2Slug = await createOrg(ownerCtx, `e2e-org2-${suffix}`);
     const project2 = await createProjectForSite(ownerCtx, org2Slug, slug);
 
+    // A Decopilot-only agent (no source) with the SAME name must be excluded.
+    const decopilotOnly = await createProjectForSite(
+      ownerCtx,
+      owner.orgSlug,
+      slug,
+      { codeAgent: false },
+    );
+
     const resolveUrl = (site: string) =>
       `/api/_editor-resolve?site=${encodeURIComponent(site)}`;
 
@@ -92,6 +117,9 @@ test.describe("Editor resolve (choose-editor backend)", () => {
     const byProject = new Map(body.matches.map((m) => [m.project.id, m]));
     expect(byProject.get(project1)?.orgSlug).toBe(owner.orgSlug);
     expect(byProject.get(project2)?.orgSlug).toBe(org2Slug);
+    // Only code agents — the Decopilot-only namesake is not a match.
+    expect(byProject.has(decopilotOnly)).toBe(false);
+    expect(body.matches.length).toBe(2);
 
     // Casing of the site name doesn't matter (slug is lowercased).
     const okUpper = await ownerCtx.get(resolveUrl(slug.toUpperCase()));
