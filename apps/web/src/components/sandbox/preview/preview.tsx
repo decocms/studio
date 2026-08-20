@@ -396,13 +396,23 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Same readiness classification the CMS panel itself uses. We only auto-open
   // the CMS once this resolves to "content" (metadata loaded AND there is
   // editable content) so the panel never opens onto a loading/empty/error card.
+  // Sticky per repo+branch; see `frameworkKnownMissing`.
+  const frameworkMissingKey = `${virtualMcpId ?? ""}:${branch ?? ""}`;
+  const frameworkMissingSeen = useRef<string | null>(null);
   const blocksState = resolveBlocksTabState({
     lifecyclePhase,
     decofile: toBlocksQueryState(decofileQuery),
     meta: toBlocksQueryState(metaQuery),
     hasEditableContent: hasEditableDecoContent(decofile, meta),
     fastPreviewActive: fastPreviewEnabled,
+    frameworkKnownMissing: frameworkMissingSeen.current === frameworkMissingKey,
   });
+  if (
+    blocksState.kind === "empty" &&
+    blocksState.reason === "framework-missing"
+  ) {
+    frameworkMissingSeen.current = frameworkMissingKey;
+  }
   const blocksReady = blocksState.kind === "content";
   const createPageParams =
     virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;

@@ -42,6 +42,19 @@ export interface BlocksTabStateInput {
    *  not a sandbox — the lifecycle phase stays "idle" forever and must not
    *  gate the panel. Data readiness alone decides. */
   fastPreviewActive?: boolean;
+  /**
+   * The decofile/meta pair already resolved as `framework-missing` (a real 404)
+   * earlier in this session, for this same repo+branch. "This repo uses the deco
+   * framework" cannot go false→true→false within one checkout, so once proven
+   * absent the classification is sticky: a later *transient* failure of the same
+   * reads (network blip, sandbox-proxy hiccup, dev-server restart caught
+   * mid-cycle, non-404 non-2xx) must not be reclassified as a generic data
+   * error. Without this, every failed refetch flipped the state to `error`,
+   * which `showCmsControls` treats as "capability unproven → keep controls",
+   * flashing the CMS toggle in and out on each retry cycle. Only a remount or a
+   * repo/branch change resets it.
+   */
+  frameworkKnownMissing?: boolean;
 }
 
 export type BlocksTabState =
@@ -95,6 +108,18 @@ function classifyPhase(phase: LifecycleState["phase"]): PhaseClass {
   }
 }
 
+/**
+ * A failed decofile/meta read, once it's real. Sticks to `framework-missing`
+ * when this repo+branch already proved the 404 (see `frameworkKnownMissing`),
+ * so a transient failure of the same reads can't reclassify a non-deco repo
+ * back into the generic-error bucket.
+ */
+function failedState(input: BlocksTabStateInput): BlocksTabState {
+  return input.frameworkKnownMissing
+    ? { kind: "empty", reason: "framework-missing" }
+    : { kind: "error", source: "data" };
+}
+
 export function resolveBlocksTabState(
   input: BlocksTabStateInput,
 ): BlocksTabState {
@@ -104,7 +129,7 @@ export function resolveBlocksTabState(
     const failed =
       (input.decofile.status === "error" && !input.decofile.hasData) ||
       (input.meta.status === "error" && !input.meta.hasData);
-    if (failed) return { kind: "error", source: "data" };
+    if (failed) return failedState(input);
     if (!input.decofile.hasData || !input.meta.hasData) {
       return { kind: "loading" };
     }
@@ -139,7 +164,7 @@ export function resolveBlocksTabState(
     // server has settled (running/crashed), where the failure is real.
     const devSettled =
       input.lifecyclePhase === "running" || input.lifecyclePhase === "crashed";
-    return devSettled ? { kind: "error", source: "data" } : { kind: "loading" };
+    return devSettled ? failedState(input) : { kind: "loading" };
   }
 
   if (!input.decofile.hasData || !input.meta.hasData) {
