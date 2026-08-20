@@ -4,7 +4,6 @@ import {
   Pilcrow01,
   Settings01,
 } from "@untitledui/icons";
-import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
@@ -224,28 +223,21 @@ function PostSettings({
 }) {
   const t = useT();
   // Unset status ⇒ published, so posts written before the field stay live.
-  const status = str(post.status) || "published";
-  const isPublished = status === "published";
+  const isPublished = (str(post.status) || "published") === "published";
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3 border-b pb-4">
-        <div className="flex items-center gap-2">
-          <Label>{t("sandbox.postEditor.statusLabel")}</Label>
-          <PostStatusBadge status={status} />
-        </div>
-        <Button
-          type="button"
-          variant={isPublished ? "outline" : "default"}
-          size="sm"
-          onClick={() =>
-            onChange("status", isPublished ? "draft" : "published")
+        <Label htmlFor="post-published">
+          {t("sandbox.postEditor.publishedLabel")}
+        </Label>
+        <Switch
+          id="post-published"
+          checked={isPublished}
+          onCheckedChange={(checked) =>
+            onChange("status", checked ? "published" : "draft")
           }
-        >
-          {isPublished
-            ? t("sandbox.postEditor.unpublishAction")
-            : t("sandbox.postEditor.publishAction")}
-        </Button>
+        />
       </div>
       <div className="space-y-2">
         <Label htmlFor="post-excerpt">
@@ -339,26 +331,6 @@ function PostSettings({
       <SeoFields value={post.seo} onChange={(v) => onChange("seo", v)} />
     </div>
   );
-}
-
-/**
- * The post's publication state. Only `published` and `draft` are editable here;
- * any other value the blog app writes (`generating`, `awaiting_review`, …) is
- * shown verbatim so the editor never misreports it.
- */
-function PostStatusBadge({ status }: { status: string }) {
-  const t = useT();
-  if (status === "published") {
-    return (
-      <Badge variant="success">{t("sandbox.postEditor.statusPublished")}</Badge>
-    );
-  }
-  if (status === "draft") {
-    return (
-      <Badge variant="secondary">{t("sandbox.postEditor.statusDraft")}</Badge>
-    );
-  }
-  return <Badge variant="outline">{status}</Badge>;
 }
 
 /**
