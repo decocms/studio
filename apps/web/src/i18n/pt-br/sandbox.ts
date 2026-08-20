@@ -399,6 +399,9 @@ export const sandbox = {
   "sandbox.postToolbar.sortTitleAZ": "Título A–Z",
   "sandbox.postToolbar.sortTitleZA": "Título Z–A",
   "sandbox.postToolbar.sortZA": "Z–A",
+  "sandbox.postToolbar.statusDraft": "Rascunho",
+  "sandbox.postToolbar.statusLabel": "Status",
+  "sandbox.postToolbar.statusPublished": "Publicado",
   "sandbox.preview.catchAllParamLabel": "caminho",
   "sandbox.preview.choosePage": "Escolher página",
   "sandbox.preview.clickElementToAsk":

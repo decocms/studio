@@ -22,6 +22,7 @@ import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import {
   buildBlogBlock,
   getBlogPayload,
+  isPostPublished,
   listBlogPayloads,
   missingPostFields,
   relationPickerState,
@@ -222,8 +223,7 @@ function PostSettings({
   onChange: (key: string, value: unknown) => void;
 }) {
   const t = useT();
-  // Unset status ⇒ published, so posts written before the field stay live.
-  const isPublished = (str(post.status) || "published") === "published";
+  const isPublished = isPostPublished(post);
 
   return (
     <div className="space-y-5">
@@ -233,6 +233,7 @@ function PostSettings({
         </Label>
         <Switch
           id="post-published"
+          className="data-[state=checked]:bg-success"
           checked={isPublished}
           onCheckedChange={(checked) =>
             onChange("status", checked ? "published" : "draft")

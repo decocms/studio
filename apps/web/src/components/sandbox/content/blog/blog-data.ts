@@ -292,6 +292,20 @@ export interface PostMeta {
   authorEmails: string[];
   /** Required fields the post is missing (empty when valid). */
   missing: string[];
+  /** Whether the post reads as published — see `isPostPublished`. */
+  published: boolean;
+}
+
+/**
+ * Whether a post reads as published. `status` is optional and newer than the
+ * posts that predate it, so an unset status means published — otherwise adding
+ * the field would retroactively unpublish every existing post. Every other
+ * value (`draft`, and the states the CMS doesn't edit such as `generating` or
+ * `awaiting_review`) reads as not published.
+ */
+export function isPostPublished(payload: Record<string, unknown>): boolean {
+  const status = str(payload.status);
+  return status === "" || status === "published";
 }
 
 function toArray(value: unknown): unknown[] {
@@ -352,6 +366,7 @@ export function listPostsWithMeta(
       .filter(Boolean),
     authorEmails: toArray(payload.authors).map(authorEmailOf).filter(Boolean),
     missing: missingPostFields(payload),
+    published: isPostPublished(payload),
   }));
 }
 

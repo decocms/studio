@@ -24,7 +24,7 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
-import type { PostSort } from "./content-browser";
+import type { PostSort, PostStatusFilter } from "./content-browser";
 
 // Sentinel for the "no filter" radio option (Radix forbids empty values).
 const ALL_FILTER = "__all__";
@@ -44,8 +44,14 @@ const POST_SORT_SHORT_KEYS: Record<PostSort, TranslationKey> = {
   za: "sandbox.postToolbar.sortZA",
 };
 
+const POST_STATUS_LABEL_KEYS: Record<PostStatusFilter, TranslationKey> = {
+  published: "sandbox.postToolbar.statusPublished",
+  draft: "sandbox.postToolbar.statusDraft",
+};
+
 type CategoryOption = { slug: string; name: string; count: number };
 type AuthorOption = { email: string; name: string; count: number };
+type StatusCounts = Record<PostStatusFilter, number>;
 
 /**
  * Compact, icon-led filter trigger: just the icon when no filter is applied,
@@ -94,47 +100,64 @@ function OptionCount({ count }: { count: number }) {
 export function PostFilterBar({
   categories,
   authors,
+  statusCounts,
   categoryFilter,
   authorFilter,
+  statusFilter,
   sort,
   onCategoryFilterChange,
   onAuthorFilterChange,
+  onStatusFilterChange,
   onSortChange,
 }: {
   categories: CategoryOption[];
   authors: AuthorOption[];
+  statusCounts: StatusCounts;
   categoryFilter: string | null;
   authorFilter: string | null;
+  statusFilter: PostStatusFilter | null;
   sort: PostSort;
   onCategoryFilterChange: (slug: string | null) => void;
   onAuthorFilterChange: (email: string | null) => void;
+  onStatusFilterChange: (status: PostStatusFilter | null) => void;
   onSortChange: (sort: PostSort) => void;
 }) {
   const t = useT();
   const activeCategory = categories.find((c) => c.slug === categoryFilter);
   const activeAuthor = authors.find((a) => a.email === authorFilter);
-  const hasFilter = !!(categoryFilter || authorFilter);
+  const hasFilter = !!(categoryFilter || authorFilter || statusFilter);
   const activeLabel =
     activeCategory?.name ??
     activeAuthor?.name ??
-    t("sandbox.postToolbar.filterLabel");
-  // One filter at a time: encode both dimensions into a single radio value.
+    (statusFilter
+      ? t(POST_STATUS_LABEL_KEYS[statusFilter])
+      : t("sandbox.postToolbar.filterLabel"));
+  // One filter at a time: encode every dimension into a single radio value.
   const activeValue = categoryFilter
     ? `cat:${categoryFilter}`
     : authorFilter
       ? `author:${authorFilter}`
-      : ALL_FILTER;
+      : statusFilter
+        ? `status:${statusFilter}`
+        : ALL_FILTER;
   const clearFilter = () => {
     onCategoryFilterChange(null);
     onAuthorFilterChange(null);
+    onStatusFilterChange(null);
   };
   const handleFilterChange = (v: string) => {
     if (v.startsWith("cat:")) {
       onAuthorFilterChange(null);
+      onStatusFilterChange(null);
       onCategoryFilterChange(v.slice(4));
     } else if (v.startsWith("author:")) {
       onCategoryFilterChange(null);
+      onStatusFilterChange(null);
       onAuthorFilterChange(v.slice(7));
+    } else if (v === "status:published" || v === "status:draft") {
+      onCategoryFilterChange(null);
+      onAuthorFilterChange(null);
+      onStatusFilterChange(v === "status:published" ? "published" : "draft");
     } else {
       clearFilter();
     }
@@ -165,6 +188,22 @@ export function PostFilterBar({
             <DropdownMenuRadioItem value={ALL_FILTER}>
               {t("sandbox.postToolbar.allPosts")}
             </DropdownMenuRadioItem>
+            <DropdownMenuLabel className="text-muted-foreground/70">
+              {t("sandbox.postToolbar.statusLabel")}
+            </DropdownMenuLabel>
+            {(Object.keys(POST_STATUS_LABEL_KEYS) as PostStatusFilter[]).map(
+              (status) => (
+                <DropdownMenuRadioItem
+                  key={`status:${status}`}
+                  value={`status:${status}`}
+                >
+                  <span className="min-w-0 flex-1 truncate">
+                    {t(POST_STATUS_LABEL_KEYS[status])}
+                  </span>
+                  <OptionCount count={statusCounts[status]} />
+                </DropdownMenuRadioItem>
+              ),
+            )}
             {categories.length > 0 && (
               <DropdownMenuLabel className="text-muted-foreground/70">
                 {t("sandbox.postToolbar.categoryLabel")}
