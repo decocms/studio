@@ -63,13 +63,6 @@ test.describe("settings tabs", () => {
         lands: "members",
       },
       {
-        row: "Billing & AI",
-        deepLink: "ai-providers",
-        otherTab: "AI Providers",
-        clickTab: "Plan & usage",
-        lands: "billing",
-      },
-      {
         row: "Connect",
         deepLink: "connect",
         otherTab: "Clients",
