@@ -10,6 +10,8 @@ import { getRepoScope } from "@decocms/shared/github-repo-scope";
 import { DownstreamTokenStorage } from "../../storage/downstream-token";
 
 const GITHUB_API = "https://api.github.com";
+/** Matches the Git Data client's per-attempt timeout in `decofile/github-git-data.ts`. */
+const GITHUB_TIMEOUT_MS = 15_000;
 
 export const GITHUB_LIST_USER_ORGS = defineTool({
   name: "GITHUB_LIST_USER_ORGS",
@@ -103,6 +105,7 @@ export const GITHUB_LIST_USER_ORGS = defineTool({
             Accept: "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
           },
+          signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
         },
       );
 
