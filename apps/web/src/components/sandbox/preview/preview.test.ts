@@ -2,7 +2,7 @@ import { setupComponentTest } from "../../../../test/setup";
 setupComponentTest();
 
 import { describe, expect, it } from "bun:test";
-import { withDecoFBT, withDeviceHint } from "./preview";
+import { resolvePreviewUrl, withDecoFBT, withDeviceHint } from "./preview";
 
 describe("withDeviceHint", () => {
   it("sets deviceHint on a well-formed URL", () => {
@@ -29,5 +29,17 @@ describe("withDecoFBT", () => {
 
   it("falls back to the original string instead of throwing on a malformed URL", () => {
     expect(withDecoFBT("http://[::1")).toBe("http://[::1");
+  });
+});
+
+describe("resolvePreviewUrl", () => {
+  it("resolves path against base", () => {
+    expect(resolvePreviewUrl("/foo", "https://example.com")).toBe(
+      "https://example.com/foo",
+    );
+  });
+
+  it("returns null instead of throwing when base is malformed", () => {
+    expect(resolvePreviewUrl("/foo", "http://[::1")).toBe(null);
   });
 });
