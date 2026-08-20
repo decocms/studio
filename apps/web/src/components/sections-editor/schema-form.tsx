@@ -570,6 +570,7 @@ export function SchemaForm({
           objValue,
           breadcrumbPath,
           decofile,
+          meta,
         )
       : null;
   const activeSchema = activeKey ? properties[activeKey] : null;
