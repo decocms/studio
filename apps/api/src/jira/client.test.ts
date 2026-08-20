@@ -310,4 +310,35 @@ describe("JiraClient", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("does not coerce a body-read failure on a 200 into an empty success", async () => {
+    let callCount = 0;
+    const originalFetch = globalThis.fetch;
+    const mockFetch = mock(async () => {
+      callCount++;
+      const response = new Response("", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+      response.text = () => Promise.reject(new Error("stream reset"));
+      return response;
+    });
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
+
+    try {
+      const client = new JiraClient(
+        "https://acme.atlassian.net",
+        "user@example.com",
+        "token",
+      );
+      await expect(client.myself()).rejects.toMatchObject({
+        cause: {
+          message: expect.stringContaining("failed to read response body"),
+        },
+      });
+      expect(callCount).toBeGreaterThan(1); // Retried as a network failure, not returned as undefined
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
