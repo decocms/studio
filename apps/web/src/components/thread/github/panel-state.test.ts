@@ -238,23 +238,29 @@ describe("selectHeaderButton", () => {
     expect(r.loading).toBe(true);
   });
 
-  // Post-clone phases fall through to git/PR logic: git works even when the dev server can't run.
+  // Setup phases hold the header; failure phases fall through to git/PR logic: git works even when the dev server can't run.
 
-  test("lifecycle.installing + dirty branch → Review & Publish (fall-through)", () => {
+  test("lifecycle.installing + dirty branch → Installing packages… (not publishable yet)", () => {
     const r = selectHeaderButton(
       happyInput({
         lifecycle: { phase: "installing" },
         branch: ready({ workingTreeDirty: true }),
       }),
     );
-    expect(r.label).toBe("Review & Publish");
+    expect(r.label).toBe("Installing packages…");
+    expect(r.disabled).toBe(true);
+    expect(r.loading).toBe(true);
+    expect(r.action).toBeUndefined();
+    expect(r.menu).toEqual([]);
   });
 
-  test("lifecycle.starting + clean ready branch → Up to date (fall-through)", () => {
+  test("lifecycle.starting + clean ready branch → Starting app…", () => {
     const r = selectHeaderButton(
       happyInput({ lifecycle: { phase: "starting" } }),
     );
-    expect(r.label).toBe("Up to date");
+    expect(r.label).toBe("Starting app…");
+    expect(r.disabled).toBe(true);
+    expect(r.loading).toBe(true);
   });
 
   test("lifecycle.install-failed + dirty branch → Review & Publish (commit fixes)", () => {
@@ -287,11 +293,11 @@ describe("selectHeaderButton", () => {
     expect(r.label).toBe("Review & Publish");
   });
 
-  test("post-clone with branch still unknown → Loading branch… (defensive)", () => {
-    // Window between checkout completing and the daemon's `branch` event.
+  test("running with branch still unknown → Loading branch… (defensive)", () => {
+    // Window between the app coming up and the daemon's `branch` event.
     const r = selectHeaderButton(
       happyInput({
-        lifecycle: { phase: "installing" },
+        lifecycle: { phase: "running", port: 3000, htmlSupport: true },
         branch: { kind: "unknown" },
       }),
     );
