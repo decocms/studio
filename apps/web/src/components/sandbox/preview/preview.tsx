@@ -243,6 +243,20 @@ function previewOrigin(previewUrl: string | null): string | null {
 }
 
 /**
+ * Resolves `path` against `base` (both come from the sandbox daemon /
+ * production preview server, so treat as untrusted), or `null` on a
+ * malformed value instead of throwing mid-render — same defensive shape as
+ * `previewOrigin` above.
+ */
+export function resolvePreviewUrl(path: string, base: string): string | null {
+  try {
+    return new URL(path, base).href;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Renders nothing; fires `onOpen` exactly once when mounted to auto-open the
  * CMS. Headless run-once helper mirroring `PathParamAutoFill`: the parent
  * mounts it only while the auto-open should happen (see `shouldAutoOpenCms`)
@@ -662,7 +676,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // mode, or once no `iframeBase` is available yet.
   const productionOrigin =
     display.mode === "production" && display.iframeBase
-      ? new URL(display.iframeBase).origin
+      ? previewOrigin(display.iframeBase)
       : null;
   // In the desktop app, an external production origin must be registered
   // with the native shell's navigation policy BEFORE the iframe below is
@@ -684,7 +698,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     display.mode === "sandbox"
       ? withVariantMatcherOverride(
           withDeviceHint(
-            directPreviewUrl ?? new URL(resolvedPath, display.iframeBase!).href,
+            directPreviewUrl ??
+              resolvePreviewUrl(resolvedPath, display.iframeBase!) ??
+              display.iframeBase!,
             previewDeviceSize,
           ),
           workspace.state.variantOverride ?? [],
@@ -697,7 +713,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               withDraftPointer(
                 directPreviewUrl ??
                   draftPreviewUrl ??
-                  new URL(resolvedPath, display.iframeBase!).href,
+                  resolvePreviewUrl(resolvedPath, display.iframeBase!) ??
+                  display.iframeBase!,
                 display.showWakingPill ? DRAFT_OFF : null,
               ),
               previewDeviceSize,
@@ -748,7 +765,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const productionOpenTabBase =
     draftPreviewUrl ??
     (display.iframeBase
-      ? new URL(resolvedPath, display.iframeBase).href
+      ? resolvePreviewUrl(resolvedPath, display.iframeBase)
       : null);
   const openInNewTabUrl =
     display.mode === "production"
