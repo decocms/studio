@@ -62,6 +62,7 @@ import {
 import { useCapability } from "@/hooks/use-capability";
 import { useFileConfigsQuery } from "@/hooks/use-file-configs";
 import { matchSiteSlugConfig } from "@/components/file-picker/match-site-slug-config";
+import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { useNavV2, useReportsOnly } from "@/hooks/use-organization-settings";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -260,14 +261,16 @@ export function useMainPanelTabs(ctx: {
 
   /**
    * Assets is a per-site tab: it shows whenever an S3 bucket is associated to
-   * this project's name (managed `deco-assets-<name>` or a BYOB bucket). Uses
-   * the non-suspense configs query so the bar never blocks on the bucket list.
+   * this project's site slug (managed `deco-assets-<slug>` or a BYOB bucket).
+   * Resolved through `resolveAgentSiteSlug` so renaming the project doesn't
+   * move its tenancy. Uses the non-suspense configs query so the bar never
+   * blocks on the bucket list.
    */
-  const siteName = entity?.title ?? null;
+  const siteSlug = resolveAgentSiteSlug(entity);
   const fileConfigsQuery = useFileConfigsQuery();
   const showAssetsTab = !!matchSiteSlugConfig(
     fileConfigsQuery.data?.configs ?? [],
-    siteName,
+    siteSlug,
   );
   // Don't bounce a deep-linked `?main=assets` away before the first config load resolves.
   const assetsTabPending = fileConfigsQuery.isPending;

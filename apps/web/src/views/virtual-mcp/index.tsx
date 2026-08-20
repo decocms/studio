@@ -812,11 +812,10 @@ function VirtualMcpDetailViewWithData({
                         field.onBlur();
                         flushAndSave();
                       }}
-                      disabled={hasGithubRepo}
                       placeholder={t(
                         "virtualMcp.virtualMcp.agentNamePlaceholder",
                       )}
-                      className="text-lg font-medium leading-tight text-foreground bg-transparent border-none outline-none px-1 -mx-1 rounded hover:bg-input/25 focus:bg-input/25 transition-colors w-full truncate disabled:hover:bg-transparent disabled:focus:bg-transparent disabled:opacity-50"
+                      className="text-lg font-medium leading-tight text-foreground bg-transparent border-none outline-none px-1 -mx-1 rounded hover:bg-input/25 focus:bg-input/25 transition-colors w-full truncate"
                     />
                   )}
                 />
@@ -835,11 +834,10 @@ function VirtualMcpDetailViewWithData({
                         field.onBlur();
                         flushAndSave();
                       }}
-                      disabled={hasGithubRepo}
                       placeholder={t(
                         "virtualMcp.virtualMcp.descriptionPlaceholder",
                       )}
-                      className="text-sm text-muted-foreground bg-transparent border-none outline-none px-1 -mx-1 rounded hover:bg-input/25 focus:bg-input/25 transition-colors w-full truncate disabled:hover:bg-transparent disabled:focus:bg-transparent disabled:opacity-50"
+                      className="text-sm text-muted-foreground bg-transparent border-none outline-none px-1 -mx-1 rounded hover:bg-input/25 focus:bg-input/25 transition-colors w-full truncate"
                     />
                   )}
                 />
@@ -1292,7 +1290,6 @@ function VirtualMcpDetailViewWithData({
                     field.onBlur();
                     flushAndSave();
                   }}
-                  disabled={hasGithubRepo}
                   placeholder={t(
                     "virtualMcp.virtualMcp.instructionsPlaceholder",
                   )}

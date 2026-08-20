@@ -15,6 +15,7 @@ import { writeAgentPrompts } from "../../file-storage/agent-prompts";
 import { VirtualMCPEntitySchema, VirtualMCPUpdateDataSchema } from "./schema";
 import { requireOrgAdminForPinnedField } from "./require-org-admin-for-pin";
 import { requireConnectionsInOrganization } from "./require-connections-in-org";
+import { pinnedSiteSlugOnRename } from "./pin-site-slug";
 
 /**
  * Input schema for updating a virtual MCP
@@ -74,6 +75,20 @@ export const COLLECTION_VIRTUAL_MCP_UPDATE = defineTool({
     const { prompts, ...data } = input.data;
     if (data.metadata && existing.metadata) {
       data.metadata = { ...existing.metadata, ...data.metadata };
+    }
+
+    // A rename must not move the agent's asset tenancy.
+    const pinnedSiteSlug = pinnedSiteSlugOnRename({
+      nextTitle: data.title,
+      currentTitle: existing.title,
+      currentSiteSlug: existing.metadata?.siteSlug,
+    });
+    if (pinnedSiteSlug) {
+      data.metadata = {
+        ...existing.metadata,
+        ...data.metadata,
+        siteSlug: pinnedSiteSlug,
+      };
     }
 
     if (data.pinned !== undefined && data.pinned !== existing.pinned) {
