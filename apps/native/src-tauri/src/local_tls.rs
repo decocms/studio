@@ -438,26 +438,73 @@ fn write(path: &Path, bytes: &[u8]) -> Result<(), TlsError> {
     })
 }
 
-/// Private keys are written `0600`. They never leave this machine, and nothing
-/// else on it has any business reading them.
+/// Private keys are written `0600`, mode-restricted from the moment the file
+/// is created rather than chmod'd afterward — a create-then-chmod ordering
+/// would leave the key at the process's default (umask-derived, typically
+/// `0644`) permissions for the window between the two syscalls, readable by
+/// any other process running as this user. They never leave this machine,
+/// and nothing else on it has any business reading them.
 fn write_private(path: &Path, bytes: &[u8]) -> Result<(), TlsError> {
-    write(path, bytes)?;
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o600)).map_err(|source| {
-            TlsError::Io {
+        use std::io::Write;
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)
+            .map_err(|source| TlsError::Io {
                 path: path.to_path_buf(),
                 source,
-            }
-        })?;
+            })?;
+        // `mode()` only governs the permissions of a newly-created file — an
+        // existing file from a run predating this fix keeps its old mode on
+        // `truncate`, so re-assert it explicitly too.
+        file.set_permissions(fs::Permissions::from_mode(0o600))
+            .map_err(|source| TlsError::Io {
+                path: path.to_path_buf(),
+                source,
+            })?;
+        file.write_all(bytes).map_err(|source| TlsError::Io {
+            path: path.to_path_buf(),
+            source,
+        })
     }
-    Ok(())
+    #[cfg(not(unix))]
+    write(path, bytes)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn write_private_creates_the_file_mode_0600() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("key.pem");
+        write_private(&path, b"secret").expect("write_private");
+        let mode = fs::metadata(&path).expect("metadata").permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+        assert_eq!(fs::read(&path).expect("read"), b"secret");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_private_tightens_a_pre_existing_looser_file() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("key.pem");
+        fs::write(&path, b"stale").expect("seed file");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).expect("loosen perms");
+        write_private(&path, b"fresh").expect("write_private");
+        let mode = fs::metadata(&path).expect("metadata").permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+        assert_eq!(fs::read(&path).expect("read"), b"fresh");
+    }
 
     /// Apple rejects a TLS server certificate valid for more than 398 days, so
     /// a leaf that drifts past it fails as an untrusted connection rather than
