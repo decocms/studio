@@ -67,6 +67,7 @@ type Links struct {
 	mu               sync.Mutex
 	lastOutputThread string
 	skillsLinked     bool
+	readySpent       bool
 	publicSkillsRun  bool
 	// Closed when the in-flight skill-link sync finishes; nil before the first
 	// one starts. `WaitSkillLinks` is what turns the async sync back into a
@@ -169,6 +170,13 @@ func (l *Links) WaitHomeReady(threadId string) bool {
 	if l == nil || !l.Expected() {
 		return true
 	}
+	// The budget is paid ONCE per pod. A sandbox whose sidecar mounts no home
+	// volume at all — a deployment that configures only outputs, a sidecar that
+	// died — would otherwise stall EVERY dispatch for the full 90s, turning a
+	// missing optional volume into a permanent per-run tax. After the first
+	// timeout each dispatch still re-checks (a mount that shows up late is
+	// picked up on the next run), it just stops sleeping for one.
+	waited := !l.readyBudgetSpent()
 	started := time.Now()
 	for attempt := 1; ; attempt++ {
 		// Does the linking, so a mount that appears mid-wait is picked up.
@@ -180,13 +188,26 @@ func (l *Links) WaitHomeReady(threadId string) bool {
 			}
 			return true
 		}
-		if time.Since(started) >= orgReadyBudget {
+		if !waited || time.Since(started) >= orgReadyBudget {
+			l.spendReadyBudget()
 			slog.Warn("org-fs not ready; running without the org's skills",
-				"thread", threadId, "waited", time.Since(started))
+				"thread", threadId, "waited", time.Since(started), "polled", waited)
 			return false
 		}
 		time.Sleep(orgReadyPoll)
 	}
+}
+
+func (l *Links) readyBudgetSpent() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.readySpent
+}
+
+func (l *Links) spendReadyBudget() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.readySpent = true
 }
 
 // skillsReady reports whether the org's skills dir is where the SDK will look.

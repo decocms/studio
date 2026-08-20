@@ -5,7 +5,51 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
+
+// A pod with no org-fs at all must not wait for it.
+func TestWaitReadyIsImmediateWithoutOrgFs(t *testing.T) {
+	l := &Links{AppRoot: t.TempDir()}
+	started := time.Now()
+	if !l.WaitHomeReady("thread1") {
+		t.Fatal("reported not ready with org-fs absent")
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("waited %s for a pod with no org-fs", elapsed)
+	}
+}
+
+// The budget is paid once. A sandbox whose home volume never arrives would
+// otherwise stall every dispatch for the full 90s, forever.
+func TestWaitReadyPaysItsBudgetOnlyOnce(t *testing.T) {
+	appRoot := t.TempDir()
+	statusPath := filepath.Join(t.TempDir(), "status.json")
+	// org-fs is expected and mounted — but only `.outputs`, never `home`. Skills
+	// can never link, so the wait can never succeed.
+	outputs := filepath.Join(appRoot, "org", ".outputs")
+	if err := os.MkdirAll(outputs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(sidecarStatus{
+		Mounts: []Mount{{Volume: ".outputs", MountPath: outputs}},
+	})
+	if err := os.WriteFile(statusPath, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	l := &Links{AppRoot: appRoot, StatusPath: statusPath, ConfigPath: "unused"}
+	// Stand in for the first dispatch having already spent the budget, so the
+	// test does not sit here for 90 seconds proving it.
+	l.spendReadyBudget()
+
+	started := time.Now()
+	if l.WaitHomeReady("thread1") {
+		t.Fatal("reported ready with no home mount")
+	}
+	if elapsed := time.Since(started); elapsed > 5*time.Second {
+		t.Fatalf("second dispatch paid the budget again: waited %s", elapsed)
+	}
+}
 
 // One pod's worth of state: an org-fs root with the home volume mounted, and a
 // Claude config dir standing in for the pod's local disk.
