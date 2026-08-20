@@ -41,6 +41,16 @@ describe("resolveTabIcon", () => {
     ).toEqual({ kind: "component", Component: LayoutAlt04 });
   });
 
+  test("system tab with an id absent from SYSTEM_TAB_ICONS → fallback", () => {
+    expect(
+      resolveTabIcon({
+        tabId: "not-a-real-system-tab",
+        kind: "system",
+        connections: conns,
+      }),
+    ).toEqual({ kind: "fallback" });
+  });
+
   test("agent ext-app with connection icon URL → url kind", () => {
     expect(
       resolveTabIcon({
