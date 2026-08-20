@@ -8,12 +8,40 @@
  * local stub — tests must never reach api.github.com.
  */
 
+import {
+  countGithubRateLimited,
+  githubRetryAfterMs,
+  isGithubRateLimited,
+  recordGithubRateLimit,
+} from "@/observability/github-rate-limit";
+
 const DEFAULT_TIMEOUT_MS = 15_000;
 
 /** e2e seam: set GITHUB_API_BASE_URL to a local stub. Read per call site so a
  * long-lived process (dev server) and the test webServer agree on one value. */
 function githubApiBaseUrl(): string {
   return process.env.GITHUB_API_BASE_URL ?? "https://api.github.com";
+}
+
+/**
+ * `default_branch` per repo, cached across requests — a client instance lives
+ * for ONE of them (see `client-for-repo.ts`), so its own memo never survives.
+ *
+ * Ten minutes, not an hour: a renamed default branch compares against a branch
+ * that no longer exists until this expires. Keyed by full URL, so the e2e stub
+ * and api.github.com can never share an entry.
+ */
+const DEFAULT_BRANCH_TTL_MS = 10 * 60_000;
+const defaultBranchCache = new Map<string, { value: string; at: number }>();
+
+function cachedDefaultBranch(url: string): string | null {
+  const hit = defaultBranchCache.get(url);
+  if (!hit) return null;
+  if (Date.now() - hit.at > DEFAULT_BRANCH_TTL_MS) {
+    defaultBranchCache.delete(url);
+    return null;
+  }
+  return hit.value;
 }
 
 /**
@@ -49,6 +77,8 @@ function etagCacheable(method: string, path: string): boolean {
     method === "GET" &&
     !path.includes("/git/blobs/") &&
     !path.includes("/git/trees/") &&
+    // `/contents/{path}?ref=<sha>` is sha-pinned, hence content-addressed too.
+    !path.includes("/contents/") &&
     !path.includes("/tarball/")
   );
 }
@@ -93,6 +123,33 @@ export class GitHubApiError extends Error {
   }
 }
 
+/**
+ * GitHub refused the call for rate reasons. NOT retriable: retrying a secondary
+ * limit is the burst being limited. `retryAfterMs` tells the caller when to come
+ * back; it is never slept on inside a request.
+ */
+export class GitHubRateLimitError extends GitHubApiError {
+  constructor(
+    status: number,
+    method: string,
+    path: string,
+    readonly kind: "primary" | "secondary",
+    readonly retryAfterMs: number | null,
+  ) {
+    super(
+      status,
+      method,
+      path,
+      `GitHub ${kind} rate limit reached${
+        retryAfterMs === null
+          ? ""
+          : `; retry in ${Math.ceil(retryAfterMs / 1000)}s`
+      }`,
+    );
+    this.name = "GitHubRateLimitError";
+  }
+}
+
 export interface TreeEntry {
   path: string;
   mode: string;
@@ -134,6 +191,12 @@ export interface GitDataClient {
   getCommitTreeSha(commitSha: string): Promise<string>;
   getTreeRecursive(treeSha: string): Promise<TreeEntry[]>;
   getBlobText(blobSha: string): Promise<string>;
+  /**
+   * One file's text at a ref, addressed by PATH rather than blob sha — null when
+   * the path does not exist there. The base side of a diff needs this: the
+   * compare response's `files[].sha` is the HEAD blob, never the base one.
+   */
+  getFileTextAtRef(ref: string, filePath: string): Promise<string | null>;
   createBlob(content: string): Promise<string>;
   createTree(baseTreeSha: string, entries: TreeWriteEntry[]): Promise<string>;
   createCommit(params: {
@@ -231,8 +294,23 @@ export function createGitDataClient(params: {
       body: body !== undefined ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
     });
+    recordGithubRateLimit(res.headers, { lane: "rest", operation: method });
+
     if (conditional && res.status === 304) {
       return { status: 200, json: conditional.body as T };
+    }
+    if (isGithubRateLimited(res)) {
+      const kind =
+        res.headers.get("retry-after") !== null ? "secondary" : "primary";
+      countGithubRateLimited({ lane: "rest", operation: method, kind });
+      await res.body?.cancel().catch(() => {});
+      throw new GitHubRateLimitError(
+        res.status,
+        method,
+        path,
+        kind,
+        githubRetryAfterMs(res.headers),
+      );
     }
     if (!res.ok && !opts?.allow?.includes(res.status)) {
       const text = await res.text().catch(() => "");
@@ -259,8 +337,15 @@ export function createGitDataClient(params: {
 
     async getDefaultBranch() {
       if (defaultBranch) return defaultBranch;
+      const url = `${githubApiBaseUrl()}${repoBase}`;
+      const shared = cachedDefaultBranch(url);
+      if (shared) {
+        defaultBranch = shared;
+        return shared;
+      }
       const { json } = await call<{ default_branch: string }>("GET", repoBase);
       defaultBranch = json.default_branch;
+      defaultBranchCache.set(url, { value: defaultBranch, at: Date.now() });
       return defaultBranch;
     },
 
@@ -332,6 +417,28 @@ export function createGitDataClient(params: {
           "GET",
           `${repoBase}/git/blobs/${blobSha}`,
           `unexpected blob encoding ${json.encoding}`,
+        );
+      }
+      return Buffer.from(json.content, "base64").toString("utf-8");
+    },
+
+    async getFileTextAtRef(ref, filePath) {
+      const { status, json } = await call<{
+        content?: string;
+        encoding?: string;
+      }>(
+        "GET",
+        `${repoBase}/contents/${encodeRefPath(filePath)}?ref=${encodeURIComponent(ref)}`,
+        undefined,
+        { allow: [404] },
+      );
+      if (status === 404 || json?.content === undefined) return null;
+      if (json.encoding !== "base64") {
+        throw new GitHubApiError(
+          502,
+          "GET",
+          `${repoBase}/contents/${filePath}`,
+          `unexpected content encoding ${json.encoding}`,
         );
       }
       return Buffer.from(json.content, "base64").toString("utf-8");

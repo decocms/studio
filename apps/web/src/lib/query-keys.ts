@@ -199,6 +199,35 @@ export const KEYS = {
     repo: string,
   ) => ["github-branches", orgId, orgSlug, connectionId, owner, repo] as const,
 
+  /**
+   * The branch's pull request with its checks, review state and comments — ONE
+   * key for all four, so those hooks share a single request (see
+   * GITHUB_PR_STATE).
+   */
+  githubPrState: (
+    orgSlug: string,
+    connectionId: string | null | undefined,
+    owner: string,
+    repo: string,
+    branch: string | null,
+  ) => ["github-pr-state", orgSlug, connectionId, owner, repo, branch] as const,
+
+  githubLastPublishedPr: (
+    orgSlug: string,
+    connectionId: string | null | undefined,
+    owner: string,
+    repo: string,
+    base: string | null,
+  ) =>
+    [
+      "github-last-published-pr",
+      orgSlug,
+      connectionId,
+      owner,
+      repo,
+      base,
+    ] as const,
+
   githubBranchSearch: (
     orgId: string,
     orgSlug: string,

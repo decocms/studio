@@ -151,7 +151,7 @@ function withPrLink(
   return [...menu, viewOnGithubItem(t)];
 }
 
-/** Appends "Get latest" when the branch is behind, including on the disabled "Up to date" pill. */
+/** Appends "Get latest" when the branch is behind and it isn't already the primary. */
 function withGetLatest(
   menu: HeaderMenuItem[],
   branch: BranchMeta,
@@ -503,6 +503,16 @@ export function selectHeaderButton(
     );
   }
 
+  // Behind base is not "in sync", so the sync is the primary, not a menu entry.
+  if (ready.behindBase > 0) {
+    return {
+      label: t("thread.cmsActions.getLatest"),
+      action: "sync",
+      variant: "default",
+      tooltip: t("thread.cmsActions.getLatestTooltip"),
+      menu: [],
+    };
+  }
   return {
     label: t("thread.headerActions.upToDate"),
     disabled: true,
@@ -510,6 +520,6 @@ export function selectHeaderButton(
     tooltip: t("thread.headerActions.branchInSyncTooltip", {
       base: ready.base,
     }),
-    menu: withGetLatest([], ready, t),
+    menu: [],
   };
 }

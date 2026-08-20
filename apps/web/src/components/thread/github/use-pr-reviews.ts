@@ -1,27 +1,17 @@
 /**
- * usePrReviews — fetches draft/mergeable/unresolved-conversation/missing-
- * approvals signals for an open PR. Backed by github-mcp-server's
- * `get_pull_request`. Mirrors the polling and stale-time conventions of
- * usePrByBranch and useChecks.
+ * usePrReviews — draft/mergeable/unresolved-conversation/missing-approvals
+ * signals for the branch's PR. A selector over the same `GITHUB_PR_STATE` entry
+ * `usePrByBranch` and `useChecks` read, so it costs no extra request.
  *
- * Semantic notes:
- * - `missingRequiredApprovals` is a heuristic: mergeable_state="blocked"
- *   and no unresolved conversations. GitHub doesn't expose approval-
- *   requirement state via this endpoint directly; this is the best signal
- *   available without an additional review-threads call.
+ * `missingRequiredApprovals` is `reviewDecision` and `unresolvedConversations`
+ * counts unresolved review threads — both were inferences over REST before.
  */
 
-import { useMCPClient, useMCPToolCallQuery } from "@/sdk";
+import { useQuery } from "@tanstack/react-query";
 
-import { assertToolOk, extractToolJson } from "./extract-tool-json.ts";
+import { prStateQueryOptions } from "./use-pr-data.ts";
 
-export type MergeableState =
-  | "clean"
-  | "dirty"
-  | "unstable"
-  | "blocked"
-  | "unknown"
-  | "behind";
+export type MergeableState = "clean" | "dirty" | "blocked" | "unknown";
 
 export interface PrReviewSignals {
   draft: boolean;
@@ -30,54 +20,26 @@ export interface PrReviewSignals {
   missingRequiredApprovals: boolean;
 }
 
-const POLL = 60_000;
-const STALE = 30_000;
-
 interface Args {
   orgId: string;
   orgSlug: string;
   connectionId: string;
   owner: string;
   repo: string;
-  prNumber: number | null | undefined;
+  branch: string | null;
 }
 
 export function usePrReviews(args: Args) {
-  const client = useMCPClient({
-    connectionId: args.connectionId,
-    orgId: args.orgId,
-    orgSlug: args.orgSlug,
-  });
-
-  return useMCPToolCallQuery<PrReviewSignals | null>({
-    client,
-    toolName: "pull_request_read",
-    toolArguments: {
-      method: "get",
-      owner: args.owner,
-      repo: args.repo,
-      pullNumber: args.prNumber ?? 0,
-    },
-    enabled: !!args.prNumber,
-    refetchInterval: POLL,
-    refetchIntervalInBackground: false,
-    staleTime: STALE,
-    select: (r) => {
-      assertToolOk(r);
-      const p = extractToolJson<Record<string, unknown>>(r);
-      if (!p) return null;
-      const ms = (p.mergeable_state as MergeableState | undefined) ?? "unknown";
-      const draft = Boolean(p.draft ?? false);
-      const reviewCommentsCount = Number(p.review_comments ?? 0);
-      const unresolvedConversations =
-        ms === "blocked" && reviewCommentsCount > 0 ? reviewCommentsCount : 0;
-      const missingRequiredApprovals =
-        ms === "blocked" && unresolvedConversations === 0;
+  return useQuery({
+    ...prStateQueryOptions(args),
+    select: (r): PrReviewSignals | null => {
+      const pr = r.pullRequest;
+      if (!pr) return null;
       return {
-        draft,
-        mergeableState: ms,
-        unresolvedConversations,
-        missingRequiredApprovals,
+        draft: pr.draft,
+        mergeableState: pr.mergeableState,
+        unresolvedConversations: pr.unresolvedConversations,
+        missingRequiredApprovals: pr.missingRequiredApprovals,
       };
     },
   });

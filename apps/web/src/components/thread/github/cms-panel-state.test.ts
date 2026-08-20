@@ -75,6 +75,7 @@ function pr(over: Partial<PrSummary> = {}): PrSummary {
     headRepoFullName: "acme/web",
     htmlUrl: "https://github.com/acme/web/pull/42",
     author: "me",
+    changedFiles: 3,
     ...over,
   };
 }
@@ -346,7 +347,8 @@ describe("selectCmsHeaderButton — 5. ready to publish", () => {
     expect(r.action).toBe("publish");
   });
 
-  test.each(["unstable", "behind", "unknown"] as const)(
+  /** "unstable"/"behind" left with `mergeable_state`; CI now lives in `checks`. */
+  test.each(["clean", "unknown"] as const)(
     "mergeableState=%s → Review & Publish",
     (mergeableState) => {
       const r = selectCmsHeaderButton(
@@ -497,21 +499,17 @@ describe("selectCmsHeaderButton — 7. up to date", () => {
     expect(r.menu).toEqual([]);
   });
 
-  test("disabled primary still carries a Get latest menu when behind", () => {
+  /** A branch behind base is not up to date — that label would be a lie. */
+  test("behind base → Get latest as the primary, not a disabled pill", () => {
     const r = selectCmsHeaderButton(
       input({ branch: ready({ behindBase: 4 }) }),
     );
-    expect(r.label).toBe("Up to date");
-    expect(r.disabled).toBe(true);
-    expect(r.action).toBeUndefined();
-    expect(r.menu).toEqual([
-      {
-        key: "get-latest",
-        label: "Get latest",
-        action: "get-latest",
-        tooltip: "Bring in new changes from production",
-      },
-    ]);
+    expect(r.label).toBe("Get latest");
+    expect(r.action).toBe("get-latest");
+    expect(r.variant).toBe("default");
+    expect(r.disabled).toBeFalsy();
+    expect(r.tooltip).toBe("Bring in new changes from production");
+    expect(r.menu).toEqual([]);
   });
 });
 
@@ -545,11 +543,12 @@ describe("selectCmsHeaderButton — Get latest in every menu when behind", () =>
     expect(menuKeys(r.menu)).toEqual(["request-approval", "get-latest"]);
   });
 
-  test("state 7 (up to date) appends Get latest", () => {
+  test("state 7 promotes Get latest to the primary instead of the menu", () => {
     const r = selectCmsHeaderButton(
       input({ branch: ready({ behindBase: 1 }) }),
     );
-    expect(menuKeys(r.menu)).toEqual(["get-latest"]);
+    expect(r.action).toBe("get-latest");
+    expect(menuKeys(r.menu)).toEqual([]);
   });
 
   test("behindBase = 0 → no Get latest anywhere", () => {
@@ -817,6 +816,20 @@ describe("merged pull request", () => {
     expect(r.label).toBe(threadEn["thread.headerActions.upToDate"]);
     expect(r.disabled).toBe(true);
     expect(r.action).toBeUndefined();
+  });
+
+  /** Publishing is done, so syncing this branch is not the next step. */
+  test("a merged PR behind base stays Up to date, Get latest in the menu", () => {
+    const r = selectCmsHeaderButton(
+      input({
+        branch: ready({ aheadOfBase: 2, behindBase: 3, headSha: "merged-sha" }),
+        pr: pr({ state: "closed", merged: true, headSha: "merged-sha" }),
+      }),
+    );
+    expect(r.label).toBe(threadEn["thread.headerActions.upToDate"]);
+    expect(r.disabled).toBe(true);
+    expect(r.action).toBeUndefined();
+    expect(menuKeys(r.menu)).toEqual(["get-latest"]);
   });
 
   test("offers to publish again once the branch advances past the merge", () => {

@@ -24,6 +24,7 @@
  *   GET   /repos/{o}/{r}/git/commits/{sha}            -> { tree: { sha }, parents }
  *   GET   /repos/{o}/{r}/git/trees/{sha}?recursive=1  -> { tree: [...], truncated }
  *   GET   /repos/{o}/{r}/git/blobs/{sha}              -> { content, encoding }
+ *   GET   /repos/{o}/{r}/contents/{path}?ref={sha}    -> { sha, content, encoding }
  *   POST  /repos/{o}/{r}/git/blobs                    -> { sha }
  *   POST  /repos/{o}/{r}/git/trees                    -> { sha } (entry sha:null deletes)
  *   POST  /repos/{o}/{r}/git/commits                  -> { sha }
@@ -463,6 +464,28 @@ async function handleRepos(
         // cold-read path pre-validates tarball downloads against it.
         size: Buffer.byteLength(repo.blobs.get(blobSha) ?? "", "utf8"),
       })),
+    });
+    return;
+  }
+
+  // GET /repos/{o}/{r}/contents/{path}?ref={sha|branch}
+  if (req.method === "GET" && rest[0] === "contents" && rest.length > 1) {
+    const filePath = rest.slice(1).join("/");
+    const ref = url.searchParams.get("ref") ?? repo.defaultBranch;
+    const commitSha = repo.refs.get(ref) ?? ref;
+    const blobSha = treeOfCommit(repo, commitSha).get(filePath);
+    const content = blobSha ? repo.blobs.get(blobSha) : undefined;
+    if (content === undefined) {
+      notFound(res);
+      return;
+    }
+    json(res, 200, {
+      type: "file",
+      path: filePath,
+      sha: blobSha,
+      size: Buffer.byteLength(content, "utf8"),
+      content: Buffer.from(content, "utf-8").toString("base64"),
+      encoding: "base64",
     });
     return;
   }

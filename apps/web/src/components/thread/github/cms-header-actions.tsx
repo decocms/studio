@@ -182,7 +182,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     connectionId: githubRepo?.connectionId ?? "",
     owner: githubRepo?.owner ?? "",
     repo: githubRepo?.name ?? "",
-    prNumber: pr && pr.state === "open" ? pr.number : null,
+    branch: githubHeadBranch,
   });
 
   const reviewsQuery = usePrReviews({
@@ -191,7 +191,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     connectionId: githubRepo?.connectionId ?? "",
     owner: githubRepo?.owner ?? "",
     repo: githubRepo?.name ?? "",
-    prNumber: pr && pr.state === "open" ? pr.number : null,
+    branch: githubHeadBranch,
   });
 
   const settling = isCmsStateSettling({
@@ -201,12 +201,9 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     reviewsQuery,
   });
 
+  /** One refetch covers checks and reviews too — they share this cache entry. */
   const refreshPrState = async () => {
-    await Promise.all([
-      prQuery.refetch(),
-      checksQuery.refetch(),
-      reviewsQuery.refetch(),
-    ]);
+    await prQuery.refetch();
   };
 
   /**

@@ -35,6 +35,9 @@ export function PrSubTabs({
   repo,
 }: Props) {
   const { org } = useProjectContext();
+  const [activeValue, setActiveValue] = useState<TabValue>("changes");
+
+  /** File bodies are the panel's most expensive read — only load them on view. */
   const diffQuery = usePrDiff({
     orgSlug: org.slug,
     orgId: org.id,
@@ -46,12 +49,13 @@ export function PrSubTabs({
     connectionId,
     owner,
     repo,
+    enabled: activeValue === "changes",
   });
-  const diffCount = diffQuery.data
-    ? countGitDiffFiles(diffQuery.data)
-    : undefined;
 
-  const [activeValue, setActiveValue] = useState<TabValue>("changes");
+  /** The PR read already knows the count; the bodies only confirm it. */
+  const diffCount =
+    pr.changedFiles ??
+    (diffQuery.data ? countGitDiffFiles(diffQuery.data) : undefined);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
