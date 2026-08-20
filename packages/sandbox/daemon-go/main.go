@@ -275,7 +275,11 @@ func (d *daemon) onProbeChange(s probe.State) {
 			d.baselineTimer = nil
 		}
 		d.mu.Unlock()
-		d.branchStatus.ClearBaseline()
+		// The `crashed` transition arms the baseline (see OnTransition) if the
+		// pending timer never got to. It is deliberately NOT cleared here: a
+		// dead dev server says nothing about which paths are the user's work,
+		// and dropping the baseline reported a pristine branch as dirty — which
+		// the header reads as "Review & Publish".
 	}
 }
 
@@ -817,6 +821,18 @@ func main() {
 			d.readyOnce.Do(func() {
 				telemetry.RecordReady(context.Background(), time.Since(processStartedAt).Milliseconds())
 			})
+		}
+		// Boot outcomes where no dev server is coming (or the one we had died):
+		// nothing else will write to the checkout on its own, so this is the last
+		// honest moment to record what boot left dirty. The `running` path arms on
+		// a 3s delay instead (see onProbeChange); whichever fires first wins.
+		// Without these, a repo whose dev server never came up had no baseline at
+		// all, so every generated artifact read as the user's work.
+		// Off the probe/transition thread: arming shells out to git, and this hook
+		// runs on the health-probe path.
+		switch next.Phase {
+		case events.PhaseInstallFailed, events.PhaseStartFailed, events.PhaseCrashed:
+			go d.branchStatus.ArmBaseline()
 		}
 		// Working tree just landed (see events.IsWorkingTreeReadyPhase). Announce
 		// the initial draft version here too, not only from emitFileChanged: a

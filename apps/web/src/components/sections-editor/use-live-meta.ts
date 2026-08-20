@@ -90,7 +90,18 @@ export function useLiveMeta(
       const fetchMeta = async (baseUrl: string): Promise<LiveMeta | null> => {
         const url = new URL("/live/_meta", baseUrl).href;
         const res = await fetch(url, { cache: "no-store" }).catch(() => null);
-        return res?.ok ? ((await res.json()) as LiveMeta) : null;
+        if (!res?.ok) return null;
+        // A repo that doesn't use the deco framework for sites still answers
+        // this route: a plain Vite/SPA dev server hands back `index.html` with
+        // a 200. `res.json()` on that throws a SyntaxError that escapes the
+        // whole queryFn — skipping the remaining sources and surfacing an
+        // untagged error the Preview gates can only read as "transient". Treat
+        // an unparseable 200 as no answer instead, same as `parseDecofileBody`.
+        try {
+          return (await res.json()) as LiveMeta;
+        } catch {
+          return null;
+        }
       };
       const readCommitted = () =>
         readCommittedJson<LiveMeta>(
@@ -110,10 +121,12 @@ export function useLiveMeta(
         fastPreviewActive,
       });
       for (const source of sources) {
-        const meta =
-          source.kind === "committed"
-            ? await readCommitted()
-            : await fetchMeta(source.baseUrl);
+        if (source.kind === "committed") {
+          const committed = await readCommitted();
+          if (committed.kind === "data") return committed.data;
+          continue;
+        }
+        const meta = await fetchMeta(source.baseUrl);
         if (meta) return meta;
       }
       const err = new Error(

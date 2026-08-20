@@ -24,9 +24,13 @@ func TestGenerateFromBlocks(t *testing.T) {
 		}
 	})
 
-	t.Run("empty dir → ok=false", func(t *testing.T) {
-		if _, ok := generateFromBlocks(t.TempDir()); ok {
-			t.Fatal("expected ok=false for a dir with no .json files")
+	// The dir's existence is what says "deco site"; its emptiness only says
+	// "no pages yet". Absence has to stay distinguishable from emptiness — the
+	// CMS gates hide on the former and must not on the latter.
+	t.Run("empty dir → an empty decofile", func(t *testing.T) {
+		merged, ok := generateFromBlocks(t.TempDir())
+		if !ok || merged != "{}" {
+			t.Fatalf("expected ok=true and {}, got %q ok=%v", merged, ok)
 		}
 	})
 

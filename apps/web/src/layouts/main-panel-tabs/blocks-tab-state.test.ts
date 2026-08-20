@@ -218,6 +218,19 @@ describe("resolveBlocksTabState", () => {
     ).toEqual({ kind: "error", source: "data" });
   });
 
+  // `framework-missing` is sticky, so a wrong call mid-checkout would outlive
+  // the checkout: the tree is between two branches there.
+  test("a 404 while checking out is not proof — stays loading", () => {
+    expect(
+      resolveBlocksTabState(
+        input({
+          lifecyclePhase: "checking-out",
+          decofile: { status: "error", hasData: false, errorStatus: 404 },
+        }),
+      ),
+    ).toEqual({ kind: "loading" });
+  });
+
   test("a proven-404 repo stays framework-missing through a transient refetch failure", () => {
     for (const errorStatus of [500, 502, undefined]) {
       expect(

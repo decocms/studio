@@ -67,8 +67,13 @@ func generateFromBlocks(blocksDir string) (string, bool) {
 			names = append(names, e.Name())
 		}
 	}
+	// A blocks dir with no blocks in it is an EMPTY decofile, not a missing one:
+	// the dir exists, so this repo does use the deco framework — it just has no
+	// pages yet. Answering ok=false here made the read fall through to "file not
+	// found", which Studio reads as "not a deco repo" and hides the CMS
+	// affordances with, including the "Create page" that would fix it.
 	if len(names) == 0 {
-		return "", false
+		return "{}", true
 	}
 	sort.Strings(names)
 

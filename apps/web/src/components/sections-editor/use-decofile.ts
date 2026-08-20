@@ -7,6 +7,7 @@ import { parseDecofileBody } from "./decofile-body";
 import { fetchDecofile } from "./decofile-api";
 import { buildDecofileFetchUrl } from "./preview-fetch-url";
 import { readCommittedJson } from "./read-committed-file";
+import { decofileErrorStatus } from "./decofile-read-status";
 import { usePackagePath } from "./use-package-path";
 
 interface UseDecofileParams {
@@ -71,25 +72,32 @@ export function useDecofile(
         // Dev server reported ready but the route failed (e.g. dev script
         // crashed): fall back to the committed snapshot so editing still works.
         const committed = await readCommitted();
-        if (committed) return committed;
+        if (committed.kind === "data") return committed.data;
         const err = new Error(
           `Failed to fetch decofile: ${res?.status ?? "network error"}`,
         );
-        // A 200 that isn't a decofile means this dev server has no decofile
-        // route at all — the repo doesn't use the deco framework for sites. Tag
-        // it 404 (same as a missing route) so `resolveBlocksTabState` classifies
-        // it as framework-missing rather than a transient read error.
-        (err as { status?: number }).status = res?.ok
-          ? 404
-          : (res?.status ?? 502);
+        // 404 tags a proven "this repo has no decofile at all" — see
+        // `decofileErrorStatus` for the two proofs — which
+        // `resolveBlocksTabState` reads as framework-missing rather than a
+        // transient read error.
+        (err as { status?: number }).status = decofileErrorStatus({
+          liveOk: !!res?.ok,
+          liveStatus: res?.status,
+          committedAbsent: committed.kind === "absent",
+        });
         throw err;
       }
       const committed = await readCommitted();
-      if (committed) return committed;
+      if (committed.kind === "data") return committed.data;
       const err = new Error(
         "decofile unavailable (preview down, no committed snapshot)",
       );
-      (err as { status?: number }).status = 502;
+      // Same proof, without a dev server to ask: no decofile artifacts in the
+      // checkout means this isn't a deco site. Anything else is transient.
+      (err as { status?: number }).status = decofileErrorStatus({
+        liveOk: false,
+        committedAbsent: committed.kind === "absent",
+      });
       throw err;
     },
     enabled: !!params,

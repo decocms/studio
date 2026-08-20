@@ -48,9 +48,19 @@ afterEach(async () => {
 }, HOOK_TIMEOUT_MS);
 
 describe("GET /_sandbox/decofile", () => {
-  test("404s when there are no blocks to merge", async () => {
+  test("404s when there is no blocks dir at all", async () => {
     const res = await fetch(url(d!, "/_sandbox/decofile"));
     expect(res.status).toBe(404);
+  });
+
+  // Emptiness is not absence: the dir exists, so this IS a deco site that just
+  // has no pages yet. Studio hides its CMS affordances on the 404 above, so
+  // answering it here would strand a fresh site with no way to create a page.
+  test("serves an empty decofile for an empty blocks dir", async () => {
+    await mkdir(blocksDir(d!), { recursive: true });
+    const res = await fetch(url(d!, "/_sandbox/decofile"));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({});
   });
 
   test("serves the merged blocks with a content ETag", async () => {
