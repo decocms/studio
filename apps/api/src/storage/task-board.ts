@@ -69,6 +69,14 @@ function commentFromDbRow(row: {
 }
 
 /** Text of a folded/persisted text part payload (`{ type: "text", text }`). */
+/** Actions that describe editing prose, where a burst of saves is one edit.
+ *  A repeat inside the window moves the existing entry instead of adding one. */
+const COALESCED_ACTIONS = new Set<TaskBoardActivityAction>([
+  "description_changed",
+  "title_changed",
+]);
+const ACTIVITY_COALESCE_WINDOW_MS = 10 * 60_000;
+
 /** Tries at minting the org's next `key_seq` before giving up — each retry
  *  re-reads the max, so it only takes as many attempts as there are creates
  *  landing in the very same instant. */
@@ -1764,10 +1772,18 @@ export class TaskBoardStorage {
   ): Promise<void> {
     if (entries.length === 0) return;
     const now = new Date().toISOString();
+    const fresh: typeof entries = [];
+    for (const entry of entries) {
+      const coalesced =
+        COALESCED_ACTIONS.has(entry.action) &&
+        (await this.touchRecentActivity(entry, now));
+      if (!coalesced) fresh.push(entry);
+    }
+    if (fresh.length === 0) return;
     await this.db
       .insertInto("task_board_activity")
       .values(
-        entries.map((params) => ({
+        fresh.map((params) => ({
           id: generatePrefixedId("act"),
           task_board_item_id: params.taskBoardItemId,
           action: params.action,
@@ -1777,6 +1793,45 @@ export class TaskBoardStorage {
         })),
       )
       .execute();
+  }
+
+  /**
+   * Move this actor's recent entry of the same action to `now`, if there is
+   * one. True when it landed, meaning no new row is needed.
+   *
+   * Writing prose is a stream of saves, not a stream of events: the dialog
+   * autosaves as you type, so one paragraph used to leave a dozen identical
+   * "updated the description" lines burying everything else on the timeline.
+   */
+  private async touchRecentActivity(
+    entry: { taskBoardItemId: string; action: string; actorId: string | null },
+    now: string,
+  ): Promise<boolean> {
+    const since = new Date(
+      Date.parse(now) - ACTIVITY_COALESCE_WINDOW_MS,
+    ).toISOString();
+    const result = await this.db
+      .updateTable("task_board_activity")
+      .set({ occurred_at: new Date(now) })
+      .where(
+        "id",
+        "=",
+        this.db
+          .selectFrom("task_board_activity")
+          .select("id")
+          .where("task_board_item_id", "=", entry.taskBoardItemId)
+          .where("action", "=", entry.action as TaskBoardActivityAction)
+          .where((eb) =>
+            entry.actorId === null
+              ? eb("actor_id", "is", null)
+              : eb("actor_id", "=", entry.actorId),
+          )
+          .where("occurred_at", ">=", new Date(since))
+          .orderBy("occurred_at", "desc")
+          .limit(1),
+      )
+      .executeTakeFirst();
+    return (result.numUpdatedRows ?? 0n) > 0n;
   }
 
   /** A task's activity, oldest first (timeline order). Tenant-scoped through

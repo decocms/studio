@@ -153,8 +153,9 @@ type TaskForm = {
  *  behind a "show more" so the record below stays reachable. */
 const DESCRIPTION_MAX_HEIGHT = 420;
 
-/** How long typing stays quiet before it autosaves. */
-const AUTOSAVE_DELAY_MS = 700;
+/** How long typing stays quiet before it autosaves. Long enough that a
+ *  sentence is one write, short enough that a distracted tab keeps the text. */
+const AUTOSAVE_DELAY_MS = 2000;
 
 const DUE_DATE_FMT = new Intl.DateTimeFormat(undefined, {
   month: "short",
@@ -441,12 +442,15 @@ export function TaskBoardItemDialog({
     else commit();
   };
 
+  /** Write a pending edit now instead of waiting out the debounce. */
+  const flush = () => {
+    if (!saveTimer.current) return;
+    clearTimeout(saveTimer.current);
+    commit();
+  };
+
   const close = () => {
-    // Flush a half-typed title/description rather than dropping it.
-    if (saveTimer.current) {
-      clearTimeout(saveTimer.current);
-      commit();
-    }
+    flush();
     onClose();
   };
 
@@ -655,6 +659,7 @@ export function TaskBoardItemDialog({
                 onKeyDown={(e) => {
                   if (e.key === "Enter") e.preventDefault();
                 }}
+                onBlur={flush}
                 placeholder={t("taskBoard.taskDialog.taskTitlePlaceholder")}
                 autoFocus
                 rows={1}
@@ -683,6 +688,7 @@ export function TaskBoardItemDialog({
                   }
                   // Expand before editing: no caret under the fold.
                   onFocusCapture={() => setDescriptionExpanded(true)}
+                  onBlurCapture={flush}
                 >
                   <div ref={measureDescription}>
                     {/* Markdown in, markdown out — the value also becomes

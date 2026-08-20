@@ -1860,7 +1860,9 @@ export interface TaskBoardActivityTable {
     string | null | undefined,
     string | null
   >;
-  occurred_at: ColumnType<Date, Date | string | undefined, never>;
+  /** Updatable: a burst of prose edits coalesces onto one entry, moving it
+   *  forward instead of appending a near-duplicate (`touchRecentActivity`). */
+  occurred_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
 export interface TaskBoardActivity {
