@@ -37,6 +37,32 @@ export interface Release {
  */
 const ALL_RELEASES: Release[] = [
   {
+    id: "native-app-linux-beta",
+    date: "2026-08-20",
+    eyebrow: "Now Available",
+    title: "Studio for Linux is now in beta",
+    bullets: [
+      {
+        icon: Monitor01,
+        title: "Native Linux desktop app",
+        body: "Studio now ships as an AppImage for 64-bit x86 Linux, bringing the local desktop workflow to Linux.",
+      },
+      {
+        icon: CheckCircle,
+        title: "Verified, no-root install",
+        body: "The installer verifies the download, installs Studio to ~/.local/bin, and adds it to your application launcher without sudo.",
+      },
+      {
+        icon: Zap,
+        title: "Beta today, broader support next",
+        body: "We're validating more distributions and desktop environments. Arm builds are not available yet, and your feedback will shape general availability.",
+      },
+    ],
+    cta: { label: "Install Studio", action: "download-app" },
+    learnMoreHref:
+      "https://github.com/decocms/studio/releases/tag/native-v4.242.0",
+  },
+  {
     id: "native-app-macos",
     date: "2026-07-30",
     eyebrow: "Now Available",
