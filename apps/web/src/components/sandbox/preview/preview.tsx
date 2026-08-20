@@ -104,6 +104,7 @@ import {
   type VisualEditorPayload,
 } from "./visual-editor-script";
 import { CMS_EDITOR_SCRIPT, CmsEditorPayloadSchema } from "./cms-editor-script";
+import { showCmsControls } from "./cms-controls";
 import { parseSections } from "@/components/sections-editor/parse-sections";
 import { resolveSectionCandidates } from "./section-candidates";
 import { getPageVariantSectionsAt } from "@/components/sections-editor/page-variants";
@@ -393,14 +394,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Same readiness classification the CMS panel itself uses. We only auto-open
   // the CMS once this resolves to "content" (metadata loaded AND there is
   // editable content) so the panel never opens onto a loading/empty/error card.
-  const blocksReady =
-    resolveBlocksTabState({
-      lifecyclePhase,
-      decofile: toBlocksQueryState(decofileQuery),
-      meta: toBlocksQueryState(metaQuery),
-      hasEditableContent: hasEditableDecoContent(decofile, meta),
-      fastPreviewActive: fastPreviewEnabled,
-    }).kind === "content";
+  const blocksState = resolveBlocksTabState({
+    lifecyclePhase,
+    decofile: toBlocksQueryState(decofileQuery),
+    meta: toBlocksQueryState(metaQuery),
+    hasEditableContent: hasEditableDecoContent(decofile, meta),
+    fastPreviewActive: fastPreviewEnabled,
+  });
+  const blocksReady = blocksState.kind === "content";
   const createPageParams =
     virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
   const createPage = useCreatePage(createPageParams);
@@ -1237,7 +1238,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // it reads as a distinct action rather than being wedged inside the URL
   // controls. On mobile it anchors the left edge on its own (see below).
   // Filled when the Blocks editor is open; click again for plain preview.
-  const cmsToggle = showPreviewToolbar ? (
+  // Deco sites only — see `showCmsControls`.
+  const cmsControlsVisible = showCmsControls({
+    showPreviewToolbar,
+    blocksState,
+  });
+
+  const cmsToggle = cmsControlsVisible ? (
     <HeaderTabButton
       title={t("sandbox.preview.cms")}
       tooltip={
@@ -1276,284 +1283,286 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         </TooltipContent>
       </Tooltip>
 
-      <div ref={pagesContainerRef} className="relative min-w-0 w-64 shrink">
-        <div className="flex h-7 w-full min-w-0 items-center rounded-md border border-border bg-background transition-colors duration-200 hover:bg-accent">
-          {/* Not a <button>: path-template pages render `:param`
+      {cmsControlsVisible && (
+        <div ref={pagesContainerRef} className="relative min-w-0 w-64 shrink">
+          <div className="flex h-7 w-full min-w-0 items-center rounded-md border border-border bg-background transition-colors duration-200 hover:bg-accent">
+            {/* Not a <button>: path-template pages render `:param`
                   inputs inline, and inputs can't nest inside a button.
                   Keyboard toggling stays on the chevron button. */}
-          <div
-            className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1 pl-2 pr-1"
-            onClick={() => setPagesOpen((prev) => !prev)}
-          >
-            {activeGlobalSection && (
-              <span className="shrink-0 inline-flex items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
-                <Globe02 size={11} />
-                Global
-              </span>
-            )}
-            {activeLoader && (
-              <span className="shrink-0 inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-                <Database01 size={11} />
-                {t("sandbox.preview.loaderBadge")}
-              </span>
-            )}
-            {/* Page name in focus, followed by the route path.
+            <div
+              className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1 pl-2 pr-1"
+              onClick={() => setPagesOpen((prev) => !prev)}
+            >
+              {activeGlobalSection && (
+                <span className="shrink-0 inline-flex items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
+                  <Globe02 size={11} />
+                  Global
+                </span>
+              )}
+              {activeLoader && (
+                <span className="shrink-0 inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                  <Database01 size={11} />
+                  {t("sandbox.preview.loaderBadge")}
+                </span>
+              )}
+              {/* Page name in focus, followed by the route path.
                       Path-template segments (`:param`/`*`) stay editable
                       inputs; plain paths render as muted text. */}
-            <span
-              className={cn(
-                "text-[13px] font-medium text-foreground",
-                // A real page name keeps priority — the route path (flex-1,
-                // below) is the first to truncate. But the name still carries
-                // `min-w-0 truncate` so, once the path is fully shed, the name
-                // clips with an ellipsis instead of sliding under the chevron.
-                currentPageName == null
-                  ? "min-w-0 flex-1 truncate"
-                  : "min-w-0 shrink truncate",
-              )}
-            >
-              {currentPageName ?? previewLabel}
-            </span>
-            {!activeGlobalSection &&
-              !activeLoaderKey &&
-              currentPageName != null &&
-              currentPath && (
-                <span className="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap text-[12px] text-muted-foreground">
-                  {splitPathTemplate(currentPath).map((token, i) => {
-                    if (token.type === "text") {
+              <span
+                className={cn(
+                  "text-[13px] font-medium text-foreground",
+                  // A real page name keeps priority — the route path (flex-1,
+                  // below) is the first to truncate. But the name still carries
+                  // `min-w-0 truncate` so, once the path is fully shed, the name
+                  // clips with an ellipsis instead of sliding under the chevron.
+                  currentPageName == null
+                    ? "min-w-0 flex-1 truncate"
+                    : "min-w-0 shrink truncate",
+                )}
+              >
+                {currentPageName ?? previewLabel}
+              </span>
+              {!activeGlobalSection &&
+                !activeLoaderKey &&
+                currentPageName != null &&
+                currentPath && (
+                  <span className="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap text-[12px] text-muted-foreground">
+                    {splitPathTemplate(currentPath).map((token, i) => {
+                      if (token.type === "text") {
+                        return (
+                          <span
+                            key={`text-${i}`}
+                            className={cn(
+                              i === 0 ? "min-w-0 truncate" : "shrink-0",
+                            )}
+                          >
+                            {token.text}
+                          </span>
+                        );
+                      }
+                      const sources = pathParamSources[token.name];
+                      // Params with a source render as a modal chip; rest inline.
+                      if (sources && pickerSandboxRef) {
+                        return (
+                          <PathParamPickerChip
+                            key={`${currentPageKey}:${token.name}`}
+                            sources={sources}
+                            template={currentPath}
+                            paramName={token.name}
+                            value={pathParamValues[token.name] ?? ""}
+                            sandboxRef={pickerSandboxRef}
+                            onCommit={(value) =>
+                              setPathParamValue(token.name, value)
+                            }
+                          />
+                        );
+                      }
                       return (
-                        <span
-                          key={`text-${i}`}
-                          className={cn(
-                            i === 0 ? "min-w-0 truncate" : "shrink-0",
-                          )}
-                        >
-                          {token.text}
-                        </span>
-                      );
-                    }
-                    const sources = pathParamSources[token.name];
-                    // Params with a source render as a modal chip; rest inline.
-                    if (sources && pickerSandboxRef) {
-                      return (
-                        <PathParamPickerChip
+                        <PathParamInput
                           key={`${currentPageKey}:${token.name}`}
-                          sources={sources}
-                          template={currentPath}
-                          paramName={token.name}
+                          name={token.name}
                           value={pathParamValues[token.name] ?? ""}
-                          sandboxRef={pickerSandboxRef}
                           onCommit={(value) =>
                             setPathParamValue(token.name, value)
                           }
                         />
                       );
-                    }
-                    return (
-                      <PathParamInput
-                        key={`${currentPageKey}:${token.name}`}
-                        name={token.name}
-                        value={pathParamValues[token.name] ?? ""}
-                        onCommit={(value) =>
-                          setPathParamValue(token.name, value)
-                        }
-                      />
-                    );
-                  })}
-                </span>
-              )}
+                    })}
+                  </span>
+                )}
+            </div>
+            <button
+              type="button"
+              className="flex h-full shrink-0 items-center pl-1 pr-2"
+              onClick={() => setPagesOpen((prev) => !prev)}
+              aria-label={t("sandbox.preview.choosePage")}
+            >
+              <ChevronDown
+                size={12}
+                className={cn(
+                  "shrink-0 text-muted-foreground transition-transform",
+                  pagesOpen && "rotate-180",
+                )}
+              />
+            </button>
           </div>
-          <button
-            type="button"
-            className="flex h-full shrink-0 items-center pl-1 pr-2"
-            onClick={() => setPagesOpen((prev) => !prev)}
-            aria-label={t("sandbox.preview.choosePage")}
-          >
-            <ChevronDown
-              size={12}
-              className={cn(
-                "shrink-0 text-muted-foreground transition-transform",
-                pagesOpen && "rotate-180",
-              )}
-            />
-          </button>
-        </div>
 
-        {pagesOpen && (
-          <div className="absolute left-1/2 top-full z-50 mt-1.5 w-[500px] max-w-[calc(100vw-2rem)] -translate-x-1/2 overflow-hidden rounded-lg border bg-popover shadow-lg">
-            <div className="px-2 h-10 flex items-center gap-2 border-b">
-              <SearchLg
-                size={14}
-                className="shrink-0 text-muted-foreground"
-                aria-hidden
-              />
-              <input
-                type="text"
-                value={pagesSearch}
-                onChange={(e) => setPagesSearch(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key !== "Enter") return;
-                  const query = pagesSearch.trim();
-                  if (!query) return;
-                  // Enter only navigates when the typed path matches an
-                  // existing page exactly; otherwise it does nothing.
-                  const target = filteredPages.find(
-                    (p) => normPath(p.path) === normPath(query),
-                  );
-                  if (!target) return;
-                  e.preventDefault();
-                  setPagesOpen(false);
-                  setPagesSearch("");
-                  navigatePreviewToPage(target);
-                }}
-                placeholder={t("sandbox.preview.searchPagesAndComponents")}
-                className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                autoFocus
-              />
-            </div>
-            <div className="p-1.5 border-b">
-              <button
-                type="button"
-                className="flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  setPagesOpen(false);
-                  setPagesSearch("");
-                  setCreatePageError(undefined);
-                  setCreatePageDialogOpen(true);
-                }}
-              >
-                <Plus size={16} className="shrink-0 text-muted-foreground" />
-                <span className="flex-1 font-medium">
-                  {t("sandbox.preview.createNewPage")}
-                </span>
-              </button>
-            </div>
-            {filteredPages.length === 0 &&
-            filteredGlobalSections.length === 0 &&
-            filteredGlobalLoaders.length === 0 ? (
-              <div className="px-4 py-5 text-center text-xs text-muted-foreground">
-                {pages.length === 0 &&
-                globalSections.length === 0 &&
-                globalLoaders.length === 0
-                  ? t("sandbox.preview.noPagesFound")
-                  : t("sandbox.preview.noSearchResults")}
+          {pagesOpen && (
+            <div className="absolute left-1/2 top-full z-50 mt-1.5 w-[500px] max-w-[calc(100vw-2rem)] -translate-x-1/2 overflow-hidden rounded-lg border bg-popover shadow-lg">
+              <div className="px-2 h-10 flex items-center gap-2 border-b">
+                <SearchLg
+                  size={14}
+                  className="shrink-0 text-muted-foreground"
+                  aria-hidden
+                />
+                <input
+                  type="text"
+                  value={pagesSearch}
+                  onChange={(e) => setPagesSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    const query = pagesSearch.trim();
+                    if (!query) return;
+                    // Enter only navigates when the typed path matches an
+                    // existing page exactly; otherwise it does nothing.
+                    const target = filteredPages.find(
+                      (p) => normPath(p.path) === normPath(query),
+                    );
+                    if (!target) return;
+                    e.preventDefault();
+                    setPagesOpen(false);
+                    setPagesSearch("");
+                    navigatePreviewToPage(target);
+                  }}
+                  placeholder={t("sandbox.preview.searchPagesAndComponents")}
+                  className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                  autoFocus
+                />
               </div>
-            ) : (
-              <div className="max-h-80 overflow-y-auto overscroll-contain">
-                {filteredPages.length > 0 && (
-                  <div className="p-1.5">
-                    {filteredPages.map((page) => (
-                      <button
-                        key={page.key}
-                        type="button"
-                        className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          setPagesOpen(false);
-                          setPagesSearch("");
-                          navigatePreviewToPage(page);
-                        }}
-                      >
-                        <LayoutAlt01
-                          size={16}
-                          className="shrink-0 text-muted-foreground"
-                        />
-                        <span className="min-w-0 flex-1 truncate font-medium">
-                          {page.name}
-                        </span>
-                        <span className="shrink-0 text-xs text-muted-foreground">
-                          {page.path}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {filteredGlobalSections.length > 0 && (
-                  <div
-                    className={cn(
-                      "p-1.5",
-                      filteredPages.length > 0 && "border-t",
-                    )}
-                  >
-                    <div className="px-3 py-2 text-xs font-medium text-muted-foreground">
-                      {t("sandbox.preview.globalComponents")}
-                    </div>
-                    {filteredGlobalSections.map((section) => (
-                      <button
-                        key={section.key}
-                        type="button"
-                        className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          setPagesOpen(false);
-                          setPagesSearch("");
-                          navigatePreviewToGlobalSection(section);
-                        }}
-                      >
-                        <Globe02
-                          size={16}
-                          className="shrink-0 text-muted-foreground"
-                        />
-                        <span className="min-w-0 flex-1 truncate font-medium">
-                          {section.name}
-                        </span>
-                        <span className="shrink-0 text-xs text-muted-foreground">
-                          {section.resolveType
-                            .split("/")
-                            .pop()
-                            ?.replace(/\.tsx?$/, "")}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {filteredGlobalLoaders.length > 0 && (
-                  <div
-                    className={cn(
-                      "p-1.5",
-                      (filteredPages.length > 0 ||
-                        filteredGlobalSections.length > 0) &&
-                        "border-t",
-                    )}
-                  >
-                    <div className="px-3 py-2 text-xs font-medium text-muted-foreground">
-                      {t("sandbox.preview.globalLoaders")}
-                    </div>
-                    {filteredGlobalLoaders.map((loader) => (
-                      <button
-                        key={loader.key}
-                        type="button"
-                        className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          setPagesOpen(false);
-                          setPagesSearch("");
-                          navigatePreviewToLoader(loader);
-                        }}
-                      >
-                        <Database01
-                          size={16}
-                          className="shrink-0 text-muted-foreground"
-                        />
-                        <span className="min-w-0 flex-1 truncate font-medium">
-                          {loader.title}
-                        </span>
-                        <span className="shrink-0 text-xs text-muted-foreground">
-                          {loader.resolveType
-                            .split("/")
-                            .pop()
-                            ?.replace(/\.tsx?$/, "")}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
+              <div className="p-1.5 border-b">
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setPagesOpen(false);
+                    setPagesSearch("");
+                    setCreatePageError(undefined);
+                    setCreatePageDialogOpen(true);
+                  }}
+                >
+                  <Plus size={16} className="shrink-0 text-muted-foreground" />
+                  <span className="flex-1 font-medium">
+                    {t("sandbox.preview.createNewPage")}
+                  </span>
+                </button>
               </div>
-            )}
-          </div>
-        )}
-      </div>
+              {filteredPages.length === 0 &&
+              filteredGlobalSections.length === 0 &&
+              filteredGlobalLoaders.length === 0 ? (
+                <div className="px-4 py-5 text-center text-xs text-muted-foreground">
+                  {pages.length === 0 &&
+                  globalSections.length === 0 &&
+                  globalLoaders.length === 0
+                    ? t("sandbox.preview.noPagesFound")
+                    : t("sandbox.preview.noSearchResults")}
+                </div>
+              ) : (
+                <div className="max-h-80 overflow-y-auto overscroll-contain">
+                  {filteredPages.length > 0 && (
+                    <div className="p-1.5">
+                      {filteredPages.map((page) => (
+                        <button
+                          key={page.key}
+                          type="button"
+                          className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setPagesOpen(false);
+                            setPagesSearch("");
+                            navigatePreviewToPage(page);
+                          }}
+                        >
+                          <LayoutAlt01
+                            size={16}
+                            className="shrink-0 text-muted-foreground"
+                          />
+                          <span className="min-w-0 flex-1 truncate font-medium">
+                            {page.name}
+                          </span>
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            {page.path}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {filteredGlobalSections.length > 0 && (
+                    <div
+                      className={cn(
+                        "p-1.5",
+                        filteredPages.length > 0 && "border-t",
+                      )}
+                    >
+                      <div className="px-3 py-2 text-xs font-medium text-muted-foreground">
+                        {t("sandbox.preview.globalComponents")}
+                      </div>
+                      {filteredGlobalSections.map((section) => (
+                        <button
+                          key={section.key}
+                          type="button"
+                          className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setPagesOpen(false);
+                            setPagesSearch("");
+                            navigatePreviewToGlobalSection(section);
+                          }}
+                        >
+                          <Globe02
+                            size={16}
+                            className="shrink-0 text-muted-foreground"
+                          />
+                          <span className="min-w-0 flex-1 truncate font-medium">
+                            {section.name}
+                          </span>
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            {section.resolveType
+                              .split("/")
+                              .pop()
+                              ?.replace(/\.tsx?$/, "")}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {filteredGlobalLoaders.length > 0 && (
+                    <div
+                      className={cn(
+                        "p-1.5",
+                        (filteredPages.length > 0 ||
+                          filteredGlobalSections.length > 0) &&
+                          "border-t",
+                      )}
+                    >
+                      <div className="px-3 py-2 text-xs font-medium text-muted-foreground">
+                        {t("sandbox.preview.globalLoaders")}
+                      </div>
+                      {filteredGlobalLoaders.map((loader) => (
+                        <button
+                          key={loader.key}
+                          type="button"
+                          className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setPagesOpen(false);
+                            setPagesSearch("");
+                            navigatePreviewToLoader(loader);
+                          }}
+                        >
+                          <Database01
+                            size={16}
+                            className="shrink-0 text-muted-foreground"
+                          />
+                          <span className="min-w-0 flex-1 truncate font-medium">
+                            {loader.title}
+                          </span>
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            {loader.resolveType
+                              .split("/")
+                              .pop()
+                              ?.replace(/\.tsx?$/, "")}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
       {/* Available on every surface. Under Fast Preview `iframeSrc` is the
           site's own page URL carrying `?__draft=<handle>@<version>`, so the
           opened tab renders the same draft — an ordinary, shareable link. That
@@ -1578,7 +1587,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const urlControls = showPreviewToolbar ? (
     <div className="flex min-w-0 items-center gap-0.5">
       {cmsToggle}
-      <div className="mx-0.5 h-5 w-px shrink-0 bg-border" />
+      {cmsToggle && <div className="mx-0.5 h-5 w-px shrink-0 bg-border" />}
       {urlGroup}
     </div>
   ) : null;
