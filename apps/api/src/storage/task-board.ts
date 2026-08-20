@@ -302,7 +302,7 @@ export class TaskBoardStorage {
     const row = await this.inTransaction(async (trx) => {
       // Serialize this org's key allocation: `max(key_seq) + 1` is a read the
       // next create must not interleave with. Held to commit, then released.
-      await sql`select pg_advisory_xact_lock(hashtext(${params.organizationId}))`.execute(
+      await sql`select pg_advisory_xact_lock(hashtext(${`task-board-key-seq:${params.organizationId}`})::bigint)`.execute(
         trx,
       );
       return insert(trx);
