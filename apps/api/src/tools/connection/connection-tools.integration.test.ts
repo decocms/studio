@@ -1079,6 +1079,112 @@ describe("Connection Tools", () => {
       ).resolves.toBe(false);
     });
 
+    it("restores grants and rethrows when the callback fails with an existing active token", async () => {
+      const previousTarget = await ctx.storage.connections.create({
+        id: "conn_vault_existing_token_rollback_previous_target",
+        organization_id: "org_123",
+        created_by: "user_1",
+        title: "Vault Existing Token Rollback Previous Target",
+        connection_type: "HTTP",
+        connection_url:
+          "https://existing-token-rollback-previous-target.invalid/mcp",
+        connection_token: null,
+        tools: null,
+      });
+      const subject = await ctx.storage.connections.create({
+        id: "conn_vault_existing_token_rollback_subject",
+        organization_id: "org_123",
+        created_by: "user_1",
+        title: "Vault Existing Token Rollback Subject",
+        connection_type: "HTTP",
+        connection_url: "https://existing-token-rollback-subject.invalid/mcp",
+        connection_token: null,
+        tools: null,
+        configuration_state: {
+          previous: { value: previousTarget.id },
+        },
+        configuration_scopes: [
+          `previous::${CREDENTIAL_ACCESS_TOKEN_READ_SCOPE}`,
+        ],
+      });
+      const target = await ctx.storage.connections.create({
+        id: "conn_vault_existing_token_rollback_target",
+        organization_id: "org_123",
+        created_by: "user_1",
+        title: "Vault Existing Token Rollback Target",
+        connection_type: "HTTP",
+        connection_url: "https://existing-token-rollback-target.invalid/mcp",
+        connection_token: null,
+        tools: null,
+      });
+      await ctx.storage.connectionCredentialVault.replaceGrantsForSubject({
+        organizationId: "org_123",
+        subjectConnectionId: subject.id,
+        createdBy: "user_1",
+        grants: [
+          {
+            targetConnectionId: previousTarget.id,
+            scope: CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
+          },
+        ],
+      });
+      const existingToken =
+        await ctx.storage.connectionCredentialVault.createOrRotateWorkloadToken(
+          {
+            organizationId: "org_123",
+            subjectConnectionId: subject.id,
+          },
+        );
+
+      vi.spyOn(fetchToolsModule, "fetchToolsFromMCP").mockResolvedValue({
+        tools: null,
+        scopes: null,
+      });
+      setMockMcpClient({
+        callTool: vi.fn().mockRejectedValue(new Error("callback unavailable")),
+      });
+
+      await expect(
+        COLLECTION_CONNECTIONS_UPDATE.execute(
+          {
+            id: subject.id,
+            data: {
+              configuration_state: {
+                github: { __type: "@deco/github", value: target.id },
+              },
+              configuration_scopes: [
+                `github::${CREDENTIAL_ACCESS_TOKEN_READ_SCOPE}`,
+              ],
+            },
+          },
+          ctx,
+        ),
+      ).rejects.toThrow("callback unavailable");
+
+      await expect(
+        ctx.storage.connectionCredentialVault.findActiveWorkloadToken({
+          organizationId: "org_123",
+          subjectConnectionId: subject.id,
+        }),
+      ).resolves.toMatchObject({ id: existingToken.record.id });
+      await expect(
+        ctx.storage.connectionCredentialVault.hasGrant({
+          organizationId: "org_123",
+          subjectConnectionId: subject.id,
+          targetConnectionId: previousTarget.id,
+          scope: CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
+        }),
+      ).resolves.toBe(true);
+      await expect(
+        ctx.storage.connectionCredentialVault.hasGrant({
+          organizationId: "org_123",
+          subjectConnectionId: subject.id,
+          targetConnectionId: target.id,
+          scope: CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
+        }),
+      ).resolves.toBe(false);
+    });
+
     it("restores non-configuration fields when bootstrap callback fails", async () => {
       const previousTarget = await ctx.storage.connections.create({
         id: "conn_vault_full_rollback_previous_target",

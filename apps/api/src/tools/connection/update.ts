@@ -406,9 +406,10 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
             subjectConnectionId: id,
             tokenId: createdWorkloadTokenId,
           });
-          await restorePreviousCredentialGrants();
-          throw error;
         }
+        // Always roll back the replaced grants, even without a new token.
+        await restorePreviousCredentialGrants();
+        throw error;
       }
     }
 
