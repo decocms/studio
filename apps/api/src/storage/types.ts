@@ -1804,8 +1804,14 @@ export interface TaskBoardItemThreadRef {
   /** What this run has cost so far, in USD, summed from the usage the harness
    *  recorded on each assistant message. `null` when nothing is recorded yet
    *  (a run that has not finished a message, or a harness that reports no
-   *  cost) — which is NOT the same as zero. */
+   *  cost) — which is NOT the same as zero. An estimate the provider reported,
+   *  never a billed amount. */
   costUsd: number | null;
+  /** Which provider `costUsd` was spent against (`claude-subscription`,
+   *  `openrouter`, …). `null` when unrecorded, or when the run's steps did not
+   *  all agree — the board turns this into a claim about whose money paid, so
+   *  a mixed run must read as unknown rather than pick one. */
+  costProvider: string | null;
   createdAt: string;
 }
 

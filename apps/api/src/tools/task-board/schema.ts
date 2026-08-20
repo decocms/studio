@@ -35,8 +35,12 @@ const TaskBoardItemThreadSchema = z.object({
   /** False when the thread was created and never used — see
    *  `shouldAdvanceToReview` for why status alone can't tell. */
   hasMessages: z.boolean(),
-  /** USD this run has cost so far; null when the harness recorded none. */
+  /** USD this run has cost so far; null when the harness recorded none. An
+   *  estimate the model provider reported, never a billed amount. */
   costUsd: z.number().nullable(),
+  /** Which provider `costUsd` was spent against (e.g. `claude-subscription`,
+   *  `openrouter`); null when unrecorded or when the run mixed providers. */
+  costProvider: z.string().nullable(),
   createdAt: z.string(),
   /** Newest of the thread's `updated_at` / `last_progress_at` — the stall
    *  reaper's heartbeat, present on every `TaskBoardItemThreadRef`. */

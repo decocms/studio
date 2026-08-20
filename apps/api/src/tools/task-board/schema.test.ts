@@ -117,6 +117,7 @@ describe("TaskBoardItemSchema – proxy round-trip validation", () => {
             failureKind: null,
             hasMessages: true,
             costUsd: null,
+            costProvider: null,
             createdAt: "2024-01-01T00:00:00.000Z",
             lastActiveAt: "2024-01-01T00:05:00.000Z",
           },

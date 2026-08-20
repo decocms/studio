@@ -163,10 +163,16 @@ export const taskBoard = {
   "taskBoard.taskDialog.shipError": "Não foi possível mesclar o pull request",
   "taskBoard.taskDialog.costRunCountSingular": "em {runs} execução",
   "taskBoard.taskDialog.costRunCountPlural": "em {runs} execuções",
+  "taskBoard.taskDialog.costEstimatePrefix": "~{amount}",
+  "taskBoard.taskDialog.costOnSubscription": "· no seu plano Claude",
   "taskBoard.taskDialog.costTooltipSingular":
-    "Custo total de IA desta tarefa, somando sua única execução — o Super Agent mais cada rodada de revisão e reexecução.",
+    "Custo estimado de IA desta tarefa, somando sua única execução — o Super Agent mais cada rodada de revisão e reexecução. Calculado a partir da tabela de preços do provedor; não é um valor cobrado e sua fatura real pode diferir.",
   "taskBoard.taskDialog.costTooltipPlural":
-    "Custo total de IA desta tarefa, somando as {runs} execuções — o Super Agent mais cada rodada de revisão e reexecução.",
+    "Custo estimado de IA desta tarefa, somando as {runs} execuções — o Super Agent mais cada rodada de revisão e reexecução. Calculado a partir da tabela de preços do provedor; não é um valor cobrado e sua fatura real pode diferir.",
+  "taskBoard.taskDialog.costTooltipSubscriptionSingular":
+    "Custo estimado de IA desta tarefa, somando sua única execução — o Super Agent mais cada rodada de revisão e reexecução. Esta execução usou seu plano Claude conectado, então você não foi cobrado por isso: ela consome os limites de uso do plano. O valor é quanto os mesmos tokens custariam na API medida.",
+  "taskBoard.taskDialog.costTooltipSubscriptionPlural":
+    "Custo estimado de IA desta tarefa, somando as {runs} execuções — o Super Agent mais cada rodada de revisão e reexecução. Estas execuções usaram seu plano Claude conectado, então você não foi cobrado por isso: elas consomem os limites de uso do plano. O valor é quanto os mesmos tokens custariam na API medida.",
   "taskBoard.taskDialog.propertiesLabel": "Propriedades",
   "taskBoard.taskDialog.reportsContentLocked":
     "Gerado pelo seu relatório — título, descrição e prioridade são gerenciados automaticamente",

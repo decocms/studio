@@ -323,6 +323,7 @@ export interface StudioToolIO {
           failureKind: string | null;
           hasMessages: boolean;
           costUsd: number | null;
+          costProvider: string | null;
           createdAt: string;
           lastActiveAt: string;
         }[];
@@ -378,6 +379,7 @@ export interface StudioToolIO {
           failureKind: string | null;
           hasMessages: boolean;
           costUsd: number | null;
+          costProvider: string | null;
           createdAt: string;
           lastActiveAt: string;
         }[];
@@ -452,6 +454,7 @@ export interface StudioToolIO {
           failureKind: string | null;
           hasMessages: boolean;
           costUsd: number | null;
+          costProvider: string | null;
           createdAt: string;
           lastActiveAt: string;
         }[];
