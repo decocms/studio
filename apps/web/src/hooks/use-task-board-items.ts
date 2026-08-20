@@ -23,6 +23,8 @@ export function useTaskBoardItems() {
   const query = useQuery({
     queryKey,
     queryFn: async () => (await studio.call("TASK_BOARD_ITEM_LIST", {})).items,
+    // Backstop for a stream that died without an error; paused when unfocused.
+    refetchInterval: 60_000,
   });
 
   // Live Super Agent transitions (todo → in_progress → in_review). Upsert the
@@ -42,6 +44,10 @@ export function useTaskBoardItems() {
       queryClient.invalidateQueries({
         queryKey: KEYS.taskBoardActivity(locator, item.id),
       });
+    },
+    // Stream back after a drop — nothing was buffered, so re-read the list.
+    onResync: () => {
+      queryClient.invalidateQueries({ queryKey });
     },
     // Live deletes: drop the removed card so it clears on every open board.
     onDelete: (id) => {

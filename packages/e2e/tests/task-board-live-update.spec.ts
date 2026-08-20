@@ -67,4 +67,28 @@ test.describe("task board live updates", () => {
         }),
       ]);
   });
+
+  // The reported repro: an agent creates a task while the board is open.
+  test("a tool-created task appears on an open board without a reload", async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug } = authedPage;
+    const request = page.context().request;
+
+    await callSelfMcpTool(request, orgSlug, "TASK_BOARD_ITEM_CREATE", {
+      title: "Seed card",
+    });
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(`/${orgSlug}?main=board`);
+    await expect(page.locator('button:has-text("Seed card")')).toBeVisible();
+
+    await callSelfMcpTool(request, orgSlug, "TASK_BOARD_ITEM_CREATE", {
+      title: "Agent created card",
+    });
+
+    // Live push normally; the 60s list backstop is the outer bound.
+    await expect(
+      page.locator('button:has-text("Agent created card")'),
+    ).toBeVisible({ timeout: 90_000 });
+  });
 });

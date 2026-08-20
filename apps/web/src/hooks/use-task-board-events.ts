@@ -23,10 +23,12 @@ export interface UseTaskBoardEventsOptions {
   enabled?: boolean;
   onUpdate: (item: TaskBoardItem) => void;
   onDelete?: (id: string) => void;
+  /** Called after each stream re-establishment — refetch to close the gap. */
+  onResync?: () => void;
 }
 
 export function useTaskBoardEvents(options: UseTaskBoardEventsOptions): void {
-  const { orgSlug, enabled = true, onUpdate, onDelete } = options;
+  const { orgSlug, enabled = true, onUpdate, onDelete, onResync } = options;
 
   const onUpdateRef = useRef(onUpdate);
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- callback kept fresh without re-subscribing
@@ -35,6 +37,10 @@ export function useTaskBoardEvents(options: UseTaskBoardEventsOptions): void {
   const onDeleteRef = useRef(onDelete);
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- callback kept fresh without re-subscribing
   onDeleteRef.current = onDelete;
+
+  const onResyncRef = useRef(onResync);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- callback kept fresh without re-subscribing
+  onResyncRef.current = onResync;
 
   const subscribeRef = useRef<
     ((onStoreChange: () => void) => () => void) | null
@@ -82,7 +88,9 @@ export function useTaskBoardEvents(options: UseTaskBoardEventsOptions): void {
         onStoreChange();
       };
 
-      return taskBoardWatchView.subscribe(orgSlug, handler);
+      return taskBoardWatchView.subscribe(orgSlug, handler, () =>
+        onResyncRef.current?.(),
+      );
     };
   }
 
