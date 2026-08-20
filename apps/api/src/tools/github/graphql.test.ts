@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { parseGraphqlBody, unwrapGraphqlData } from "./graphql";
+import {
+  isGithubTransientServerError,
+  parseGraphqlBody,
+  unwrapGraphqlData,
+} from "./graphql";
 
 const LABEL = "branch search for acme/site";
 
@@ -51,5 +55,24 @@ describe("unwrapGraphqlData", () => {
 
   it("throws when a 200 carried neither data nor errors", () => {
     expect(() => unwrapGraphqlData({}, LABEL)).toThrow(/returned no data/);
+  });
+});
+
+describe("isGithubTransientServerError", () => {
+  it("flags 5xx as retriable outages", () => {
+    expect(isGithubTransientServerError(500)).toBe(true);
+    expect(isGithubTransientServerError(502)).toBe(true);
+    expect(isGithubTransientServerError(503)).toBe(true);
+  });
+
+  it("does not flag a 4xx as transient", () => {
+    expect(isGithubTransientServerError(401)).toBe(false);
+    expect(isGithubTransientServerError(403)).toBe(false);
+    expect(isGithubTransientServerError(404)).toBe(false);
+    expect(isGithubTransientServerError(429)).toBe(false);
+  });
+
+  it("does not flag a 2xx as transient", () => {
+    expect(isGithubTransientServerError(200)).toBe(false);
   });
 });
