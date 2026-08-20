@@ -15,10 +15,14 @@ import type { StudioToolInput as ToolInput } from "@decocms/shared/tools/tool-io
 export type { SimpleModeTier } from "@decocms/shared/organization/schema";
 import {
   DEFAULT_ON_FLAGS,
+  flagsForRepo,
   orgFlagEnabled,
+  repoFlagsKey,
 } from "@decocms/shared/organization/schema";
 import type {
   OrgFlags,
+  OrgRepoFlags,
+  RepoOverridableFlag,
   SimpleModeTier,
 } from "@decocms/shared/organization/schema";
 
@@ -49,6 +53,7 @@ export interface OrganizationSettings {
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
   flags: OrgFlags | null;
+  repo_flags: OrgRepoFlags | null;
   main_agent_id: string | null;
   createdAt?: string;
   updatedAt?: string;
@@ -62,6 +67,7 @@ const EMPTY_SETTINGS: OrganizationSettings = {
   simple_mode: null,
   default_home_agents: null,
   flags: null,
+  repo_flags: null,
   main_agent_id: null,
 };
 
@@ -146,6 +152,7 @@ type OrgSettingsUpdateInput = Partial<
     | "simple_mode"
     | "default_home_agents"
     | "flags"
+    | "repo_flags"
     | "main_agent_id"
   >
 >;
@@ -294,6 +301,67 @@ export function useSetOrgFlag() {
       value: boolean,
       options?: OrgSettingsMutateOptions,
     ) => mutation.mutateAsync({ flags: { [flag]: value } }, options),
+  };
+}
+
+/**
+ * Effective value of one review flag FOR ONE REPO: the org flag with that
+ * repo's override layered on top, plus whether an override is what produced it.
+ * Same resolver the server gates read (`flagsForRepo`), so Settings shows
+ * exactly what will run.
+ */
+export function useRepoFlag(
+  repo: string,
+  flag: RepoOverridableFlag,
+): { enabled: boolean; overridden: boolean } {
+  const { data } = useOrganizationSettings((s) => ({
+    enabled: orgFlagEnabled(flagsForRepo(s, repo), flag),
+    overridden:
+      typeof s.repo_flags?.[repoFlagsKey(repo) ?? repo]?.[flag] === "boolean",
+  }));
+  return data ?? { enabled: DEFAULT_ON_FLAGS.has(flag), overridden: false };
+}
+
+/** True when this repo overrides at least one of the review flags. */
+export function useRepoHasOverrides(repo: string): boolean {
+  const { data } = useOrganizationSettings((s) =>
+    Object.values(s.repo_flags?.[repoFlagsKey(repo) ?? repo] ?? {}).some(
+      (v) => typeof v === "boolean",
+    ),
+  );
+  return data ?? false;
+}
+
+/**
+ * Writer for one repo's override of a review flag. `null` drops the override so
+ * the repo inherits the workspace default again. The server merges two levels
+ * deep, so writing one repo's one flag never disturbs another repo — or that
+ * repo's other flags.
+ */
+export function useSetRepoFlag() {
+  const mutation = useUpdateOrganizationSettings();
+  const write = (
+    repo: string,
+    flags: Partial<Record<RepoOverridableFlag, boolean | null>>,
+  ) => ({ repo_flags: { [repoFlagsKey(repo) ?? repo]: flags } });
+  return {
+    ...mutation,
+    mutate: (
+      repo: string,
+      flag: RepoOverridableFlag,
+      value: boolean | null,
+      options?: OrgSettingsMutateOptions,
+    ) => mutation.mutate(write(repo, { [flag]: value }), options),
+    /** Clear every override for this repo — back to the workspace defaults. */
+    reset: (repo: string, options?: OrgSettingsMutateOptions) =>
+      mutation.mutate(
+        write(repo, {
+          qa_agent_enabled: null,
+          code_reviewer_enabled: null,
+          auto_merge: null,
+        }),
+        options,
+      ),
   };
 }
 

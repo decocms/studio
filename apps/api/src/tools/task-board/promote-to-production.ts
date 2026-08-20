@@ -8,6 +8,7 @@ import {
   type ReviewCycleActivity,
   type ReviewerKind,
 } from "@decocms/shared/task-board";
+import { flagsForRepo } from "@decocms/shared/organization/schema";
 import { TaskBoardItemStatusSchema } from "./schema";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
@@ -69,7 +70,7 @@ export const TASK_BOARD_PROMOTE_TO_PRODUCTION = defineTool({
     }
 
     const settings = await ctx.storage.organizationSettings.get(organizationId);
-    const enabled = enabledReviewerKinds(settings?.flags);
+    const enabled = enabledReviewerKinds(flagsForRepo(settings, item.repo));
     const activity = await ctx.storage.taskBoard.listActivity(
       taskBoardItemId,
       organizationId,

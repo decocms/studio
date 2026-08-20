@@ -68,3 +68,74 @@ describe("OrganizationSettingsStorage — flags bag", () => {
     expect((await storage.get("org_1"))?.flags).toBeNull();
   });
 });
+
+describe("OrganizationSettingsStorage — per-repo flags", () => {
+  let database: StudioDatabase;
+  let storage: OrganizationSettingsStorage;
+
+  beforeAll(async () => {
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
+    await seedCommonTestPgFixtures(database);
+    storage = new OrganizationSettingsStorage(database.db);
+  });
+
+  afterAll(async () => {
+    await closeTestPgDatabase(database);
+  });
+
+  beforeEach(async () => {
+    await database.db.deleteFrom("organization_settings").execute();
+  });
+
+  it("round-trips a repo override through insert", async () => {
+    await storage.upsert("org_1", {
+      repo_flags: { "decocms/studio": { auto_merge: false } },
+    });
+    const got = await storage.get("org_1");
+    expect(got?.repo_flags).toEqual({
+      "decocms/studio": { auto_merge: false },
+    });
+  });
+
+  it("merges two levels deep: other repos AND the repo's other flags survive", async () => {
+    await storage.upsert("org_1", {
+      repo_flags: {
+        "decocms/studio": { auto_merge: true, qa_agent_enabled: false },
+        "decocms/context": { auto_merge: true },
+      },
+    });
+    await storage.upsert("org_1", {
+      repo_flags: { "decocms/studio": { auto_merge: false } },
+    });
+
+    const got = await storage.get("org_1");
+    expect(got?.repo_flags).toEqual({
+      "decocms/studio": { auto_merge: false, qa_agent_enabled: false },
+      "decocms/context": { auto_merge: true },
+    });
+  });
+
+  it("a null override persists — that's how a repo goes back to inheriting", async () => {
+    await storage.upsert("org_1", {
+      repo_flags: { "decocms/studio": { auto_merge: true } },
+    });
+    await storage.upsert("org_1", {
+      repo_flags: { "decocms/studio": { auto_merge: null } },
+    });
+    const got = await storage.get("org_1");
+    expect(got?.repo_flags).toEqual({ "decocms/studio": { auto_merge: null } });
+  });
+
+  it("writing org flags leaves repo overrides untouched, and vice versa", async () => {
+    await storage.upsert("org_1", {
+      repo_flags: { "decocms/studio": { auto_merge: false } },
+    });
+    await storage.upsert("org_1", { flags: { auto_merge: true } });
+    const got = await storage.get("org_1");
+    expect(got?.flags).toEqual({ auto_merge: true });
+    expect(got?.repo_flags).toEqual({
+      "decocms/studio": { auto_merge: false },
+    });
+  });
+});

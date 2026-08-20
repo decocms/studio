@@ -10,6 +10,7 @@ import {
   reviewCycleVerdicts,
   type ReviewerKind,
 } from "@decocms/shared/task-board";
+import { flagsForRepo } from "@decocms/shared/organization/schema";
 import { TaskBoardItemStatusSchema } from "./schema";
 import { recordTaskActivity } from "./activity";
 import {
@@ -326,6 +327,7 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
       ctx,
       organizationId,
       taskBoardItemId,
+      item.repo,
     );
     if (!complete) {
       const refreshed =
@@ -338,7 +340,8 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
     }
 
     const settings = await ctx.storage.organizationSettings.get(organizationId);
-    const autoMergeEnabled = settings?.flags?.auto_merge === true;
+    const autoMergeEnabled =
+      flagsForRepo(settings, item.repo).auto_merge === true;
     const humanRejectedDone = await ctx.storage.taskBoard.hasHumanRejectedDone(
       taskBoardItemId,
       organizationId,
