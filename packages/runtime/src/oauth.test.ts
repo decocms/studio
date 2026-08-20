@@ -495,3 +495,33 @@ describe("OAuth stateSecret sealing", () => {
     expect(await errorOf(response)).toBe("invalid_grant");
   });
 });
+
+describe("OAuth dynamic client registration redirect_uri validation", () => {
+  const registerRequest = (redirectUris: string[]) =>
+    new Request("https://mcp.example.com/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ redirect_uris: redirectUris }),
+    });
+
+  it("accepts an IPv6 loopback redirect_uri", async () => {
+    const handlers = createOAuthHandlers(baseConfig());
+
+    const response = await handlers.handleClientRegistration(
+      registerRequest(["http://[::1]:51234/callback"]),
+    );
+
+    expect(response.status).toBe(201);
+  });
+
+  it("rejects a non-https, non-loopback redirect_uri", async () => {
+    const handlers = createOAuthHandlers(baseConfig());
+
+    const response = await handlers.handleClientRegistration(
+      registerRequest(["http://example.com/callback"]),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await errorOf(response)).toBe("invalid_redirect_uri");
+  });
+});
