@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useChatTask } from "@/components/chat/chat-context";
 import { PreviewContent } from "@/components/sandbox/preview/preview";
-import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { useVirtualMCP } from "@/sdk";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -15,21 +14,20 @@ import { useTaskMetadata } from "./use-task-metadata";
 export function PreviewTab({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
   const entity = useVirtualMCP(virtualMcpId);
-  const { activeTask, taskId } = useChatTask();
+  const { activeTask, taskId, currentBranch } = useChatTask();
   const threadMetadata = useTaskMetadata(taskId);
-  const { previewUrl } = useSandboxLifecycle();
   const [pickerOpen, setPickerOpen] = useState(false);
   // Resolved exactly like the tab bar (see preview-source) off the same thread
-  // metadata, so a visible Preview tab can never render "no source to preview":
-  // a thread-scoped repo previews its checkout, and a repo-less sandbox-hosted
-  // run previews its sandbox dev server.
+  // metadata, so a visible Preview tab can never render "no source to preview"
+  // — and a repo-less sandbox task run, whose tab is hidden, still renders the
+  // empty state if it is deep-linked to.
   const previewSource = resolvePreviewSource({
-    harnessId: activeTask?.harness_id,
+    threadId: taskId,
+    sandboxBranch: activeTask?.branch ?? currentBranch,
     agentHasRepo: agentHasClonableSource(entity?.metadata),
     threadHasRepo:
       agentHasClonableSource(threadMetadata) ||
       agentHasClonableSource(activeTask?.metadata),
-    hasSandboxPreviewUrl: !!previewUrl,
   });
 
   if (previewSource === "none") {

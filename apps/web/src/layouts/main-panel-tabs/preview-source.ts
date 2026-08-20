@@ -1,45 +1,60 @@
 /**
- * What the Preview / Code tabs have to show for the current thread.
+ * Whether the Preview / Code tabs have a source to show for the current thread.
  *
- * Two different things can back them:
- *   - "repo"    — a checked-out clonable source (the agent's repo, or a
- *                 thread-scoped repo bound by `load_repo` / `TASK_ADD_REPO`).
- *   - "sandbox" — no repo, but the thread's sandbox is serving a dev server, so
- *                 the preview can proxy that HTML directly.
- *   - "none"    — nothing to preview: the tabs are hidden entirely.
+ *   - "repo" — a checked-out clonable source: the agent's repo (the sandbox for
+ *              this thread was provisioned from it) or a thread-scoped repo
+ *              bound by `load_repo` / `TASK_ADD_REPO`.
+ *   - "none" — nothing to preview or browse: both tabs are hidden entirely.
  *
- * A sandbox-hosted harness run (`claude-code`) works exclusively inside ITS OWN
- * sandbox, so the agent entity's repo is irrelevant to it — a QA Agent / Code
- * Reviewer / debugging run with no repo of its own used to inherit the agent's
- * `githubRepo`, show a Preview tab, and then render the "No source to preview —
- * Connect a GitHub repository" empty state meant for repo-backed projects. Such
- * a run resolves off its own thread repo, then its sandbox dev server, and
- * otherwise gets no Preview tab at all.
+ * The one case that has neither is a sandbox task run dispatched with NO repo
+ * (QA Agent / Code Reviewer / debugging runs off the task board). Those run on
+ * the bare synthetic `thread:<id>` sandbox key — `enqueueTaskRun` writes it on
+ * the thread row precisely because the run has no repo of its own, and
+ * `resolveSandboxBranch` keeps it (see `apps/api/src/tools/sandbox/thread-repo.ts`).
+ * Such a run never checks out the agent's repo, so inheriting the agent's
+ * `githubRepo` for tab visibility showed a Preview tab that then rendered the
+ * "No source to preview — Connect a GitHub repository" empty state meant for
+ * repo-backed projects.
+ *
+ * Every OTHER thread — including a normal chat thread on a GitHub-linked agent
+ * that pinned the `claude-code` harness — keeps previewing the agent repo: its
+ * sandbox IS the agent repo's checkout (`resolveSandboxBranch`'s `agentRepo`
+ * path), and it never writes a thread-level `githubRepo`. Gating on the harness
+ * id instead would strip Preview and Code from those threads.
+ *
+ * A repo-less run's sandbox dev server is deliberately NOT treated as a source:
+ * the preview surface (`PreviewContent`) is built around a checkout — page list,
+ * decofile, visual editor — so pointing it at a bare dev server would swap one
+ * broken empty state for another. Hiding both tabs is the honest answer until
+ * a real dev-server-only preview surface exists.
  */
-export type PreviewSource = "repo" | "sandbox" | "none";
+type PreviewSource = "repo" | "none";
 
-/** Harnesses whose loop runs inside the sandbox pod (mirrors the API's
- *  `SANDBOX_HOSTED_HARNESSES` in `harnesses/sandbox-dispatch-client.ts`). */
-const SANDBOX_HOSTED_HARNESSES = new Set(["claude-code"]);
-
-function harnessRunsInSandbox(harnessId: string | null | undefined): boolean {
-  return !!harnessId && SANDBOX_HOSTED_HARNESSES.has(harnessId);
+/**
+ * The bare `thread:<id>` sandbox key, mirroring `threadBranch(threadId)` with no
+ * connection id. A key WITH a connection id (`thread:<id>/<conn>`) is a
+ * `load_repo` binding, which does have a repo and is not matched here.
+ */
+function isRepolessSandboxRun(
+  threadId: string | null | undefined,
+  sandboxBranch: string | null | undefined,
+): boolean {
+  return (
+    !!threadId && !!sandboxBranch && sandboxBranch === `thread:${threadId}`
+  );
 }
 
 export function resolvePreviewSource(input: {
-  /** `threads.harness_id` of the active thread, when pinned. */
-  harnessId: string | null | undefined;
+  /** Id of the active thread. */
+  threadId: string | null | undefined;
+  /** `threads.branch` of the active thread — the sandbox isolation key. */
+  sandboxBranch: string | null | undefined;
   /** The agent entity declares a clonable `githubRepo`. */
   agentHasRepo: boolean;
   /** The thread itself declares a clonable `githubRepo`. */
   threadHasRepo: boolean;
-  /** The thread's sandbox is serving a dev server we can proxy. */
-  hasSandboxPreviewUrl: boolean;
 }): PreviewSource {
-  const repo = harnessRunsInSandbox(input.harnessId)
-    ? input.threadHasRepo
-    : input.agentHasRepo || input.threadHasRepo;
-  if (repo) return "repo";
-  if (input.hasSandboxPreviewUrl) return "sandbox";
-  return "none";
+  if (input.threadHasRepo) return "repo";
+  if (isRepolessSandboxRun(input.threadId, input.sandboxBranch)) return "none";
+  return input.agentHasRepo ? "repo" : "none";
 }

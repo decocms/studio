@@ -2,10 +2,10 @@ import { describe, expect, test as it } from "bun:test";
 import { resolvePreviewSource } from "./preview-source";
 
 const base = {
-  harnessId: null as string | null,
+  threadId: "t1",
+  sandboxBranch: null as string | null,
   agentHasRepo: false,
   threadHasRepo: false,
-  hasSandboxPreviewUrl: false,
 };
 
 describe("resolvePreviewSource", () => {
@@ -17,37 +17,61 @@ describe("resolvePreviewSource", () => {
     expect(resolvePreviewSource({ ...base, threadHasRepo: true })).toBe("repo");
   });
 
-  it("hides Preview for a repo-less claude-code sandbox run", () => {
+  it("keeps the agent repo on a claude-code thread of a GitHub project", () => {
+    // The mainstream Claude Code flow: repo lives on the AGENT, the sandbox is
+    // that repo's checkout, the thread carries a minted git branch and no
+    // thread-level githubRepo. Preview and Code must stay.
     expect(
       resolvePreviewSource({
         ...base,
-        harnessId: "claude-code",
+        sandboxBranch: "user-alice-1712000000",
+        agentHasRepo: true,
+      }),
+    ).toBe("repo");
+  });
+
+  it("hides Preview for a repo-less sandbox task run", () => {
+    expect(
+      resolvePreviewSource({
+        ...base,
+        sandboxBranch: "thread:t1",
         agentHasRepo: true,
       }),
     ).toBe("none");
   });
 
-  it("previews the sandbox dev server of a repo-less sandbox run", () => {
+  it("previews the repo a sandbox task run bound mid-run", () => {
+    // TASK_ADD_REPO writes metadata.githubRepo and leaves the bare key alone.
     expect(
       resolvePreviewSource({
         ...base,
-        harnessId: "claude-code",
-        hasSandboxPreviewUrl: true,
-      }),
-    ).toBe("sandbox");
-  });
-
-  it("previews the thread checkout of a sandbox run that cloned a repo", () => {
-    expect(
-      resolvePreviewSource({
-        ...base,
-        harnessId: "claude-code",
+        sandboxBranch: "thread:t1",
         threadHasRepo: true,
       }),
     ).toBe("repo");
   });
 
-  it("has nothing to preview without repo or dev server", () => {
+  it("previews a load_repo sandbox key (repo connection id attached)", () => {
+    expect(
+      resolvePreviewSource({
+        ...base,
+        sandboxBranch: "thread:t1/conn_1",
+        agentHasRepo: true,
+      }),
+    ).toBe("repo");
+  });
+
+  it("does not mistake another thread's bare key for this thread's", () => {
+    expect(
+      resolvePreviewSource({
+        ...base,
+        sandboxBranch: "thread:t2",
+        agentHasRepo: true,
+      }),
+    ).toBe("repo");
+  });
+
+  it("has nothing to preview without any repo", () => {
     expect(resolvePreviewSource(base)).toBe("none");
   });
 });

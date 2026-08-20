@@ -174,16 +174,17 @@ export function useMainPanelTabs(ctx: {
   const vmEvents = useSandboxEvents();
   const { vmEntry, previewUrl } = useSandboxLifecycle();
   // What Preview / Code can actually show for THIS thread — see preview-source:
-  // a sandbox-hosted run (claude-code) resolves off its own sandbox, not off the
-  // agent's repo, so a repo-less run gets no Preview tab instead of a tab that
-  // renders the "connect a GitHub repository" empty state.
+  // a sandbox task run dispatched with no repo (bare `thread:<id>` sandbox key)
+  // never checks out the agent's repo, so it gets no Preview / Code tab instead
+  // of tabs that render the "connect a GitHub repository" empty state. Every
+  // other thread, harness included, still previews the agent repo.
   const previewSource = resolvePreviewSource({
-    harnessId: activeTask?.harness_id,
+    threadId: ctx.taskId,
+    sandboxBranch: activeTask?.branch ?? currentBranch,
     agentHasRepo: agentHasClonableSource(entity?.metadata),
     threadHasRepo:
       agentHasClonableSource(metadata) ||
       agentHasClonableSource(activeTask?.metadata),
-    hasSandboxPreviewUrl: !!previewUrl,
   });
   const devServerReady = vmEvents.lifecycle.phase === "running";
 
@@ -336,7 +337,7 @@ export function useMainPanelTabs(ctx: {
   // have a mirrored `githubRepo`. Clicking from off the Report Agent deep-links
   // into it (see setActiveTab).
   leadingSystemTabs.push(
-    ...getSourceSystemTabs(previewSource !== "none" || reportsOnly).map(
+    ...getSourceSystemTabs(previewSource === "repo" || reportsOnly).map(
       (tab) => ({
         id: tab.id,
         title:
