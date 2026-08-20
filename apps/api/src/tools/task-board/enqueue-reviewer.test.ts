@@ -10,6 +10,8 @@ import {
   MAX_REVIEWER_ATTEMPTS,
   REVIEWER_DISALLOWED_TOOLS,
   reviewerAttemptsExhausted,
+  pinnedRepoConnectionId,
+  priorCycleReviewAt,
   reviewerHandledThisCycle,
   spentAttemptsThisCycle,
   stalePreviewHandoffDue,
@@ -299,6 +301,84 @@ describe("reviewerAttemptsExhausted", () => {
     expect(
       reviewerAttemptsExhausted(task, "code_review", CYCLE_START, NOW),
     ).toBe(false);
+  });
+});
+
+describe("pinnedRepoConnectionId", () => {
+  const choice = {
+    choices: [
+      { connectionId: "conn_a", repo: "decocms/studio" },
+      { connectionId: "conn_b", repo: "decocms/context" },
+    ],
+  };
+
+  it("pins the id for the repo the card names", () => {
+    expect(pinnedRepoConnectionId("decocms/studio", choice)).toBe("conn_a");
+  });
+
+  it("leaves the run to discover when the card names no repo", () => {
+    expect(pinnedRepoConnectionId(null, choice)).toBeNull();
+  });
+
+  it("leaves the run to discover when the name matches nothing loadable", () => {
+    expect(pinnedRepoConnectionId("decocms/gone", choice)).toBeNull();
+  });
+
+  it("has nothing to pin when the sole repo is already cloned", () => {
+    const sole = { repo: { owner: "decocms", name: "studio" } };
+    expect(
+      pinnedRepoConnectionId(
+        "decocms/studio",
+        sole as unknown as Parameters<typeof pinnedRepoConnectionId>[1],
+      ),
+    ).toBeNull();
+    expect(pinnedRepoConnectionId("decocms/studio", null)).toBeNull();
+  });
+});
+
+describe("priorCycleReviewAt", () => {
+  it("is 0 on a first review, so the prompt stays the plain one", () => {
+    const task = taskWith([
+      thread({
+        title: "Code Reviewer: x",
+        status: "in_progress",
+        createdAt: "2026-01-01T10:01:00Z",
+      }),
+    ]);
+    expect(priorCycleReviewAt(task, "code_review", CYCLE_START)).toBe(0);
+  });
+
+  it("reports when this reviewer last ruled on an earlier cycle", () => {
+    const task = taskWith([
+      thread({
+        title: "Code Reviewer: x",
+        status: "completed",
+        createdAt: "2026-01-01T08:00:00Z",
+        lastActiveAt: "2026-01-01T08:30:00Z",
+      }),
+      thread({
+        title: "Code Reviewer: x",
+        status: "completed",
+        createdAt: "2026-01-01T09:00:00Z",
+        lastActiveAt: "2026-01-01T09:30:00Z",
+      }),
+    ]);
+    // The most recent prior verdict, not the first.
+    expect(priorCycleReviewAt(task, "code_review", CYCLE_START)).toBe(
+      new Date("2026-01-01T09:30:00Z").getTime(),
+    );
+  });
+
+  it("does not read the OTHER reviewer's prior cycle as its own", () => {
+    const task = taskWith([
+      thread({
+        title: "QA Agent: x",
+        status: "completed",
+        createdAt: "2026-01-01T09:00:00Z",
+        lastActiveAt: "2026-01-01T09:30:00Z",
+      }),
+    ]);
+    expect(priorCycleReviewAt(task, "code_review", CYCLE_START)).toBe(0);
   });
 });
 
