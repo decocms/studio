@@ -1,6 +1,7 @@
 /**
  * Fast Preview's content-first publish surface — presentation only: reads come
  * from {@link useCmsPublishState}, writes from {@link useCmsPublishActions}.
+ * Loads in two beats — see {@link useCmsPublishState} for what each decides.
  */
 
 import { useMCPClient } from "@/sdk";
@@ -19,6 +20,7 @@ import {
   GitPullRequest,
   Globe01,
   Loading01,
+  RefreshCw01,
 } from "@untitledui/icons";
 import {
   Suspense,
@@ -27,16 +29,23 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { useT } from "@/i18n/use-t.ts";
+import { ErrorBoundary } from "@/components/error-boundary.tsx";
+import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { authClient } from "@/lib/auth-client.ts";
 import { coAuthorFromSessionUser } from "@/lib/co-author-identity.ts";
 import { formatTimeAgo } from "@/lib/format-time.ts";
-import { cn } from "@decocms/ui/lib/utils.ts";
 import { changeId, PublishChangeCard } from "./cms-publish-change-card.tsx";
+import {
+  PublishFrame,
+  PublishGhost,
+  PublishGhostCard,
+  PublishListRegion,
+  type PublishSurfaceState,
+} from "./cms-publish-frame.tsx";
 import { lastPublishAttribution } from "./pr-attribution.ts";
 import {
   buildAutoNote,
-  summarizePublishChanges,
+  resolveVersionNote,
   type PublishChange,
 } from "./publish-change-summary.ts";
 import type { PublishTarget } from "./publish-flow.ts";
@@ -85,6 +94,8 @@ export interface CmsPublishPopoverProps {
   /** Draft URL + destination host from useFastPreviewDraftUrl. */
   draftPreviewUrl: string | null;
   destinationHost: string | null;
+  /** The last publish, warmed by the header — never blocks this surface. */
+  lastPublishedPr?: PrSummary | null;
   /** Blocked gate: hand this surface over to review mode. */
   onRequestApproval: () => void;
   /** When set, publish updates this open PR instead of opening a new one. */
@@ -129,6 +140,7 @@ export function CmsPublishPopover(props: CmsPublishPopoverProps) {
       <PopoverContent
         align="end"
         sideOffset={8}
+        collisionPadding={12}
         // The menu that opened this returns focus to its trigger as it closes.
         onFocusOutside={(event) => event.preventDefault()}
         className="flex max-h-[min(720px,85vh)] w-[420px] flex-col gap-0 overflow-hidden p-0"
@@ -139,68 +151,149 @@ export function CmsPublishPopover(props: CmsPublishPopoverProps) {
   );
 }
 
-function Ghost({ className }: { className?: string }) {
-  return <div className={cn("animate-pulse rounded bg-muted", className)} />;
-}
-
-/** Ghost card matching the change-card anatomy, so loaded content lands in
- *  shapes that were already on screen instead of after a layout jump. */
-function GhostCard({ subline }: { subline?: boolean }) {
+function HeaderLine({
+  mode,
+  title,
+  subLine,
+  trailing,
+}: {
+  mode: CmsPublishMode;
+  title: ReactNode;
+  subLine?: ReactNode;
+  trailing?: ReactNode;
+}) {
+  const Icon = mode === "review" ? GitPullRequest : Globe01;
   return (
-    <div className="rounded-lg border bg-card px-3 py-2.5">
-      <div className="flex items-center gap-2.5">
-        <Ghost className="size-4 rounded-md" />
-        <Ghost className="h-3 w-24" />
-        <Ghost className="h-2.5 w-16" />
-        <Ghost className="ml-auto size-5 rounded-md" />
+    <>
+      <div className="flex items-center gap-2 text-sm font-medium">
+        <Icon className="size-4 shrink-0 text-muted-foreground" />
+        {title}
+        {trailing}
       </div>
-      {subline ? <Ghost className="mt-1.5 ml-[26px] h-2.5 w-56" /> : null}
-    </div>
+      {subLine ? (
+        <div className="pl-6 text-xs text-muted-foreground">{subLine}</div>
+      ) : null}
+    </>
   );
 }
 
-function CmsPublishSkeleton({ mode }: { mode: CmsPublishMode }) {
-  const t = useT();
-  const HeaderIcon = mode === "review" ? GitPullRequest : Globe01;
+/** Preview always works: its URL is a prop, settled before this surface opened. */
+function PreviewButton({
+  draftPreviewUrl,
+  t,
+}: {
+  draftPreviewUrl: string | null;
+  t: TFunction;
+}) {
   return (
-    <>
-      <div className="space-y-1.5 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <HeaderIcon className="size-4 shrink-0 text-muted-foreground" />
-          <Ghost className="h-3.5 w-48" />
+    <Button
+      type="button"
+      variant="outline"
+      onClick={() => {
+        if (draftPreviewUrl) {
+          window.open(draftPreviewUrl, "_blank", "noopener,noreferrer");
+        }
+      }}
+      disabled={!draftPreviewUrl}
+    >
+      <Eye className="size-4" />
+      {t("thread.publishPopover.preview")}
+    </Button>
+  );
+}
+
+function CmsPublishSkeleton({
+  mode,
+  draftPreviewUrl,
+}: {
+  mode: CmsPublishMode;
+  draftPreviewUrl: string | null;
+}) {
+  const t = useT();
+  return (
+    <PublishFrame
+      state="loading"
+      header={
+        <HeaderLine
+          mode={mode}
+          title={<PublishGhost className="h-3.5 w-48" />}
+        />
+      }
+      body={
+        <PublishListRegion>
+          <div className="space-y-1.5">
+            <PublishGhostCard />
+            <PublishGhostCard />
+            <PublishGhostCard />
+          </div>
+        </PublishListRegion>
+      }
+      note={
+        <>
+          <PublishGhost className="h-3 w-20" />
+          <PublishGhost className="h-14 w-full rounded-lg" />
+        </>
+      }
+      footer={
+        <div className="flex gap-2">
+          <PreviewButton draftPreviewUrl={draftPreviewUrl} t={t} />
+          <Button
+            type="button"
+            variant={mode === "review" ? "default" : "brand"}
+            className="flex-1"
+            disabled
+          >
+            {mode === "review"
+              ? t("thread.publishPopover.submitForReview")
+              : t("thread.publishPopover.publish")}
+          </Button>
         </div>
-        <Ghost className="ml-6 h-2.5 w-36" />
-      </div>
-      <div className="border-t" />
-      <div className="space-y-1.5 px-4 pt-3 pb-2">
-        <Ghost className="h-2 w-12" />
-        <GhostCard subline />
-        <GhostCard />
-        <Ghost className="mt-2 h-2 w-14" />
-        <GhostCard />
-      </div>
-      <div className="space-y-1.5 border-t px-4 py-3">
-        <Ghost className="h-2.5 w-20" />
-        <Ghost className="h-14 w-full rounded-lg" />
-      </div>
-      <div className="border-t" />
-      <div className="flex gap-2 px-4 py-3 opacity-50">
-        <Button type="button" variant="outline" disabled>
-          <Eye className="size-4" />
-          {t("thread.publishPopover.preview")}
-        </Button>
-        <Button
-          type="button"
-          variant={mode === "review" ? "default" : "brand"}
-          className="flex-1"
-          disabled
-        >
-          {mode === "review"
-            ? t("thread.publishPopover.submitForReview")
-            : t("thread.publishPopover.publish")}
-        </Button>
-      </div>
-    </>
+      }
+    />
+  );
+}
+
+function CmsPublishLoadError({
+  mode,
+  draftPreviewUrl,
+  message,
+  onRetry,
+}: {
+  mode: CmsPublishMode;
+  draftPreviewUrl: string | null;
+  message: string;
+  onRetry: () => void;
+}) {
+  const t = useT();
+  return (
+    <PublishFrame
+      state="ready"
+      header={
+        <HeaderLine
+          mode={mode}
+          title={
+            <span className="truncate">
+              {t("thread.publishPopover.loadFailed")}
+            </span>
+          }
+        />
+      }
+      body={<p className="px-4 py-6 text-xs text-destructive">{message}</p>}
+      footer={
+        <div className="flex gap-2">
+          <PreviewButton draftPreviewUrl={draftPreviewUrl} t={t} />
+          <Button
+            type="button"
+            variant="outline"
+            className="flex-1"
+            onClick={onRetry}
+          >
+            <RefreshCw01 className="size-4" />
+            {t("thread.publishPopover.retry")}
+          </Button>
+        </div>
+      }
+    />
   );
 }
 
@@ -209,10 +302,29 @@ function CmsPublishBody(
     publishLockRef: React.MutableRefObject<boolean>;
   },
 ) {
+  const mode = props.mode ?? "publish";
   return (
-    <Suspense fallback={<CmsPublishSkeleton mode={props.mode ?? "publish"} />}>
-      <CmsPublishContent {...props} />
-    </Suspense>
+    <ErrorBoundary
+      fallback={({ error, resetError }) => (
+        <CmsPublishLoadError
+          mode={mode}
+          draftPreviewUrl={props.draftPreviewUrl}
+          message={error?.message ?? ""}
+          onRetry={resetError}
+        />
+      )}
+    >
+      <Suspense
+        fallback={
+          <CmsPublishSkeleton
+            mode={mode}
+            draftPreviewUrl={props.draftPreviewUrl}
+          />
+        }
+      >
+        <CmsPublishContent {...props} />
+      </Suspense>
+    </ErrorBoundary>
   );
 }
 
@@ -231,6 +343,7 @@ function CmsPublishContent({
   publishPolicy,
   draftPreviewUrl,
   destinationHost,
+  lastPublishedPr = null,
   onRequestApproval,
   openPullRequest = null,
   onPullRequestChanged,
@@ -248,31 +361,33 @@ function CmsPublishContent({
 
   const {
     status: gitStatus,
+    summary,
+    allPaths,
+    changedFilesTotal,
+    changedFilesTruncated,
+    headSha,
     diff: gitDiff,
-    lastPublishedPr,
-    loadError,
+    bodiesPending,
+    bodiesFailed,
+    cardsPending,
     refresh,
-  } = useCmsPublishState({
-    githubClient,
-    orgSlug,
-    virtualMcpId,
-    branch,
-    baseBranch,
-    owner,
-    repo,
-  });
+  } = useCmsPublishState({ orgSlug, virtualMcpId, branch, baseBranch });
 
-  const [note, setNote] = useState(() =>
-    gitDiff ? buildAutoNote(summarizePublishChanges(gitDiff)) : "",
-  );
+  /** The author's text once they type — until then the note is derived, so a
+   *  change list that lands after mount still describes itself. */
+  const [editedNote, setEditedNote] = useState<string | null>(null);
   const [discardAllConfirm, setDiscardAllConfirm] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   /** Only one card may arm its discard at a time — it is a one-click destroy. */
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
-  const summary = summarizePublishChanges(gitDiff);
+  const note = resolveVersionNote(editedNote, buildAutoNote(summary));
   const isReview = mode === "review";
-  const HeaderIcon = isReview ? GitPullRequest : Globe01;
+  const surfaceState: PublishSurfaceState = cardsPending
+    ? "loading"
+    : bodiesPending
+      ? "manifest"
+      : "ready";
 
   // Submitting for review IS the escalation the gate asks for — never judge it.
   const { gate } = useResolvedPublishGate({
@@ -281,6 +396,7 @@ function CmsPublishContent({
     branch,
     status: gitStatus,
     diff: gitDiff,
+    paths: allPaths,
     policy: publishPolicy,
     judgeEnabled: !isReview,
   });
@@ -296,6 +412,7 @@ function CmsPublishContent({
     repo,
     headBranch: readGitHeadBranch(gitStatus) ?? branch,
     coAuthor: coAuthorFromSessionUser(session?.user),
+    expectedHeadSha: headSha ?? undefined,
     existingOpenPr: commitToOpenPr
       ? { number: openPullRequest.number, htmlUrl: openPullRequest.htmlUrl }
       : undefined,
@@ -312,7 +429,7 @@ function CmsPublishContent({
     mode,
     target,
     note,
-    diff: gitDiff,
+    allPaths,
     destinationHost,
     publishLockRef,
     onOpenChange,
@@ -364,11 +481,6 @@ function CmsPublishContent({
         ? t("thread.publishPopover.publishCount", { count: summary.count })
         : t("thread.publishPopover.publish");
 
-  const openPreview = () => {
-    if (!draftPreviewUrl) return;
-    window.open(draftPreviewUrl, "_blank", "noopener,noreferrer");
-  };
-
   const renderGroup = (label: string, changes: PublishChange[]) => {
     if (changes.length === 0) return null;
     return (
@@ -383,6 +495,7 @@ function CmsPublishContent({
               key={id}
               change={change}
               diff={gitDiff}
+              bodyPending={bodiesPending}
               expanded={expandedId === id}
               onToggleExpanded={() =>
                 setExpandedId(expandedId === id ? null : id)
@@ -406,7 +519,7 @@ function CmsPublishContent({
     if (gate.pending) {
       return (
         <div className="flex items-center gap-2 border-t px-4 py-2.5 text-xs text-muted-foreground">
-          <Loading01 className="size-3.5 animate-spin" />
+          <Loading01 className="size-3.5 animate-spin motion-reduce:animate-none" />
           {t("thread.publishPopover.reviewing")}
         </div>
       );
@@ -423,157 +536,166 @@ function CmsPublishContent({
     );
   })();
 
-  return (
-    <>
-      <div className="space-y-0.5 px-4 py-3">
-        <div className="flex items-center gap-2 text-sm font-medium">
-          <HeaderIcon className="size-4 shrink-0 text-muted-foreground" />
-          <span className="truncate">{headerTitle}</span>
-          {summary.count > 1 ? (
-            discardAllConfirm ? (
-              <span className="ml-auto flex shrink-0 items-center gap-1.5 text-[11px]">
-                <span className="text-destructive">
-                  {t("thread.publishPopover.discardAllConfirm")}
-                </span>
-                <button
-                  type="button"
-                  className="text-muted-foreground hover:text-foreground"
-                  onClick={() => setDiscardAllConfirm(false)}
-                >
-                  {t("thread.publishDialog.cancel")}
-                </button>
-                <button
-                  type="button"
-                  className="font-medium text-destructive disabled:opacity-50"
-                  onClick={() => {
-                    setDiscardAllConfirm(false);
-                    void discardAll();
-                  }}
-                  disabled={isDiscarding}
-                >
-                  {t("thread.publishPopover.discard")}
-                </button>
-              </span>
-            ) : (
-              <button
-                type="button"
-                className="ml-auto shrink-0 text-[11px] text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
-                onClick={() => setDiscardAllConfirm(true)}
-                disabled={isPublishing || isDiscarding}
-              >
-                {t("thread.publishPopover.discardAll")}
-              </button>
-            )
-          ) : null}
-        </div>
-        {subLine ? (
-          <div className="pl-6 text-xs text-muted-foreground">{subLine}</div>
-        ) : null}
-      </div>
-      <div className="border-t" />
-
-      <div className="flex min-h-0 flex-1 flex-col">
-        {loadError ? (
-          <p className="px-4 py-6 text-xs text-destructive">{loadError}</p>
-        ) : summary.count === 0 ? (
-          <div className="flex flex-col items-center gap-1 py-10 text-center">
-            <CheckCircle className="mb-1 size-5 text-success" />
-            <p className="text-sm font-medium">
-              {isReview
-                ? t("thread.publishPopover.nothingToSubmit")
-                : t("thread.publishPopover.everythingLive")}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {isReview
-                ? t("thread.publishPopover.submitEmptyHint")
-                : t("thread.publishPopover.emptyHint")}
-            </p>
-          </div>
-        ) : (
-          <>
-            <div className="scroll-fade min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 pt-3 pb-2 [scrollbar-width:thin]">
-              {renderGroup(
-                t("thread.publishPopover.pagesGroup"),
-                summary.pages,
-              )}
-              {renderGroup(
-                t("thread.publishPopover.blocksGroup"),
-                summary.blocks,
-              )}
-              {renderGroup(
-                t("thread.publishPopover.otherGroup"),
-                summary.other,
-              )}
-            </div>
-            <div className="space-y-1.5 border-t px-4 py-3">
-              <span className="text-[13px] font-medium">
-                {isReview
-                  ? t("thread.publishPopover.reviewNote")
-                  : t("thread.publishPopover.versionNote")}
-              </span>
-              <Textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder={
-                  isReview
-                    ? t("thread.publishPopover.reviewNotePlaceholder")
-                    : t("thread.publishPopover.versionNotePlaceholder")
-                }
-                rows={2}
-                className="resize-none text-[13px]"
-                disabled={isPublishing}
-              />
-            </div>
-          </>
-        )}
-      </div>
-
-      {gateRow}
-
-      <div className="border-t" />
-      <div className="space-y-2 px-4 py-3">
-        <div className="flex gap-2">
-          <Button
+  const discardAllControl = (() => {
+    // Never offer an all-files action over a set the server truncated.
+    if (summary.count <= 1 || changedFilesTruncated) return null;
+    if (discardAllConfirm) {
+      return (
+        <span className="ml-auto flex shrink-0 items-center gap-1.5 text-[11px]">
+          <span className="text-destructive">
+            {t("thread.publishPopover.discardAllConfirm")}
+          </span>
+          <button
             type="button"
-            variant="outline"
-            onClick={openPreview}
-            disabled={!draftPreviewUrl}
+            className="text-muted-foreground hover:text-foreground"
+            onClick={() => setDiscardAllConfirm(false)}
           >
-            <Eye className="size-4" />
-            {t("thread.publishPopover.preview")}
-          </Button>
-          {!isReview && summary.count > 0 && !gate.allowed && !gate.pending ? (
-            <Button
-              type="button"
-              className="flex-1"
-              onClick={onRequestApproval}
-              disabled={isPublishing}
-            >
-              {t("thread.publishPopover.requestApproval")}
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              variant={isReview ? "default" : "brand"}
-              className="flex-1"
-              onClick={() => void submit()}
-              disabled={!canSubmit}
-            >
-              {isPublishing ? (
-                <Loading01 className="size-4 animate-spin" />
-              ) : null}
-              {isPublishing
-                ? isReview
-                  ? t("thread.publishPopover.submitting")
-                  : t("thread.publishPopover.publishing")
-                : primaryLabel}
-            </Button>
-          )}
-        </div>
-        {publishError ? (
-          <p className="text-xs text-destructive">{publishError}</p>
-        ) : null}
+            {t("thread.publishDialog.cancel")}
+          </button>
+          <button
+            type="button"
+            className="font-medium text-destructive disabled:opacity-50"
+            onClick={() => {
+              setDiscardAllConfirm(false);
+              void discardAll();
+            }}
+            disabled={isDiscarding}
+          >
+            {t("thread.publishPopover.discard")}
+          </button>
+        </span>
+      );
+    }
+    return (
+      <button
+        type="button"
+        className="ml-auto shrink-0 text-[11px] text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
+        onClick={() => setDiscardAllConfirm(true)}
+        disabled={isPublishing || isDiscarding}
+      >
+        {t("thread.publishPopover.discardAll")}
+      </button>
+    );
+  })();
+
+  const body = cardsPending ? (
+    <PublishListRegion>
+      <div className="space-y-1.5">
+        <PublishGhostCard />
+        <PublishGhostCard />
       </div>
-    </>
+    </PublishListRegion>
+  ) : summary.count === 0 ? (
+    <div className="flex flex-col items-center gap-1 py-10 text-center">
+      <CheckCircle className="mb-1 size-5 text-success" />
+      <p className="text-sm font-medium">
+        {isReview
+          ? t("thread.publishPopover.nothingToSubmit")
+          : t("thread.publishPopover.everythingLive")}
+      </p>
+      <p className="text-xs text-muted-foreground">
+        {isReview
+          ? t("thread.publishPopover.submitEmptyHint")
+          : t("thread.publishPopover.emptyHint")}
+      </p>
+    </div>
+  ) : (
+    <PublishListRegion>
+      {changedFilesTruncated ? (
+        <p className="text-[11px] text-muted-foreground">
+          {t("thread.publishPopover.showingFirst", {
+            shown: summary.count,
+            total: changedFilesTotal,
+          })}
+        </p>
+      ) : null}
+      {renderGroup(t("thread.publishPopover.pagesGroup"), summary.pages)}
+      {renderGroup(t("thread.publishPopover.blocksGroup"), summary.blocks)}
+      {renderGroup(t("thread.publishPopover.otherGroup"), summary.other)}
+      {bodiesFailed ? (
+        <p className="text-[11px] text-muted-foreground">
+          {t("thread.publishPopover.detailsUnavailable")}
+        </p>
+      ) : null}
+    </PublishListRegion>
+  );
+
+  return (
+    <PublishFrame
+      state={surfaceState}
+      header={
+        <HeaderLine
+          mode={mode}
+          title={<span className="truncate">{headerTitle}</span>}
+          subLine={subLine}
+          trailing={discardAllControl}
+        />
+      }
+      body={body}
+      note={
+        summary.count === 0 ? null : (
+          <>
+            <span className="text-[13px] font-medium">
+              {isReview
+                ? t("thread.publishPopover.reviewNote")
+                : t("thread.publishPopover.versionNote")}
+            </span>
+            <Textarea
+              value={note}
+              onChange={(e) => setEditedNote(e.target.value)}
+              placeholder={
+                isReview
+                  ? t("thread.publishPopover.reviewNotePlaceholder")
+                  : t("thread.publishPopover.versionNotePlaceholder")
+              }
+              rows={2}
+              className="resize-none text-[13px]"
+              disabled={isPublishing}
+            />
+          </>
+        )
+      }
+      gate={gateRow}
+      footer={
+        <>
+          <div className="flex gap-2">
+            <PreviewButton draftPreviewUrl={draftPreviewUrl} t={t} />
+            {!isReview &&
+            summary.count > 0 &&
+            !gate.allowed &&
+            !gate.pending ? (
+              <Button
+                type="button"
+                className="flex-1"
+                onClick={onRequestApproval}
+                disabled={isPublishing}
+              >
+                {t("thread.publishPopover.requestApproval")}
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant={isReview ? "default" : "brand"}
+                className="flex-1"
+                onClick={() => void submit()}
+                disabled={!canSubmit}
+              >
+                {isPublishing ? (
+                  <Loading01 className="size-4 animate-spin motion-reduce:animate-none" />
+                ) : null}
+                {isPublishing
+                  ? isReview
+                    ? t("thread.publishPopover.submitting")
+                    : t("thread.publishPopover.publishing")
+                  : primaryLabel}
+              </Button>
+            )}
+          </div>
+          {publishError ? (
+            <p className="text-xs text-destructive">{publishError}</p>
+          ) : null}
+        </>
+      }
+    />
   );
 }

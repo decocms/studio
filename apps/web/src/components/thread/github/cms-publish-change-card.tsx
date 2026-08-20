@@ -6,6 +6,7 @@
  */
 
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { PublishCardFrame, PublishGhost } from "./cms-publish-frame.tsx";
 import {
   Tooltip,
   TooltipContent,
@@ -22,9 +23,14 @@ import {
 } from "./publish-change-summary.ts";
 import type { GitDiffResult } from "./sandbox-git-api.ts";
 
-/** Stable identity for a card across summary recomputes. */
+/**
+ * Stable identity for a card across summary recomputes. Path first: the file
+ * path is known from the manifest, while `blockKey` and `name` are derived
+ * from content that arrives later — keying on those would remount the card
+ * mid-load, collapsing an open diff and disarming a live discard confirmation.
+ */
 export function changeId(change: PublishChange): string {
-  return change.blockKey ?? change.filepaths[0] ?? change.name;
+  return change.filepaths[0] ?? change.blockKey ?? change.name;
 }
 
 function statusLabel(status: PublishChangeStatus, t: TFunction) {
@@ -84,6 +90,8 @@ interface PublishChangeCardProps {
   change: PublishChange;
   /** The whole publish diff; the card slices out its own files. */
   diff: GitDiffResult | null;
+  /** File bodies are still loading, so an empty slice is "not yet", not "none". */
+  bodyPending?: boolean;
   expanded: boolean;
   onToggleExpanded: () => void;
   /** Armed = this card shows Cancel/Discard; only one card may be armed. */
@@ -97,6 +105,7 @@ interface PublishChangeCardProps {
 export function PublishChangeCard({
   change,
   diff,
+  bodyPending = false,
   expanded,
   onToggleExpanded,
   confirming,
@@ -117,15 +126,14 @@ export function PublishChangeCard({
       }),
     ),
   };
-  const canExpand = Object.keys(rawDiff.diffs).length > 0;
+  // Never flips once bodies land: no click target appears under a resting cursor.
+  const hasBody = Object.keys(rawDiff.diffs).length > 0;
+  const canExpand = bodyPending || hasBody;
 
   // Collapsed card = one big expand target; inner controls stop propagation.
   return (
-    <div
-      className={cn(
-        "rounded-lg border bg-card px-3 py-2.5",
-        canExpand && !expanded && "cursor-pointer",
-      )}
+    <PublishCardFrame
+      className={cn(canExpand && !expanded && "cursor-pointer")}
       data-change-id={changeId(change)}
       onClick={canExpand && !expanded ? onToggleExpanded : undefined}
     >
@@ -226,10 +234,14 @@ export function PublishChangeCard({
       {expanded ? (
         <div className="-mx-3 mt-2 border-t pt-1">
           <div className="scroll-fade max-h-72 overflow-y-auto overscroll-contain [scrollbar-width:thin]">
-            <GitDiffList diff={rawDiff} hideFileRows editorHeight="220px" />
+            {hasBody ? (
+              <GitDiffList diff={rawDiff} hideFileRows editorHeight="220px" />
+            ) : (
+              <PublishGhost className="mx-3 my-2 h-40 rounded" />
+            )}
           </div>
         </div>
       ) : null}
-    </div>
+    </PublishCardFrame>
   );
 }

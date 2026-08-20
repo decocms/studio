@@ -62,14 +62,14 @@ import {
   type CmsAction,
 } from "./cms-panel-state.ts";
 import {
-  fetchGitStatus,
   hasPublishableLocalWork,
   normalizePublishPolicy,
   readGitHeadBranch,
   rebaseGitBranch,
   sandboxGitStatusQueryKey,
+  sandboxGitStatusQueryOptions,
 } from "./sandbox-git-api.ts";
-import { useChecks, usePrByBranch } from "./use-pr-data.ts";
+import { useChecks, useLastPublishedPr, usePrByBranch } from "./use-pr-data.ts";
 import { usePrReviews } from "./use-pr-reviews.ts";
 
 interface Props {
@@ -130,12 +130,12 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
       : null,
   );
 
-  /** Poll-free on purpose: every call forwards to GitHub; save hooks invalidate this key. */
+  /** Poll-free on purpose: every call forwards to GitHub; save hooks invalidate
+   *  this key. Shared verbatim with the publish popover, which reads the
+   *  changed-file manifest off the same entry — hence one options factory. */
   const statusQuery = useQuery({
-    queryKey: sandboxGitStatusQueryKey(org.slug, virtualMcpId, branch ?? ""),
-    queryFn: () => fetchGitStatus(org.slug, virtualMcpId, branch ?? ""),
+    ...sandboxGitStatusQueryOptions(org.slug, virtualMcpId, branch ?? ""),
     enabled: !!branch,
-    staleTime: 15_000,
   });
   const status = statusQuery.data ?? null;
   const branchMeta: BranchMeta = status
@@ -164,6 +164,17 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     branch: githubHeadBranch,
   });
   const pr = prQuery.data ?? null;
+
+  /** Warmed here so the popover's "last published" line is ready before the
+   *  click; it is optional copy and must never gate that surface. */
+  const lastPublishedQuery = useLastPublishedPr({
+    orgId: org.id,
+    orgSlug: org.slug,
+    connectionId: githubRepo?.connectionId ?? "",
+    owner: githubRepo?.owner ?? "",
+    repo: githubRepo?.name ?? "",
+    base: baseBranch,
+  });
 
   const checksQuery = useChecks({
     orgId: org.id,
@@ -386,6 +397,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
           publishPolicy={normalizePublishPolicy(vm?.metadata?.publishPolicy)}
           draftPreviewUrl={draftPreview.url}
           destinationHost={draftPreview.host}
+          lastPublishedPr={lastPublishedQuery.data ?? null}
           onRequestApproval={() => openSurface("review")}
           openPullRequest={pr?.state === "open" ? pr : null}
           onPullRequestChanged={refreshPrState}

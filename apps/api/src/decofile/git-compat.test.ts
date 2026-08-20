@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { buildMergeTreeEntries } from "./git-compat";
+import {
+  buildMergeTreeEntries,
+  buildPublishStatus,
+  normalizeCompareStatus,
+} from "./git-compat";
 
 describe("buildMergeTreeEntries", () => {
   it("writes a rename as create-destination + delete-source", () => {
@@ -74,5 +78,103 @@ describe("buildMergeTreeEntries", () => {
     expect(entries).toEqual([
       { path: "Old.json", mode: "100644", type: "blob", sha: null },
     ]);
+  });
+});
+
+describe("normalizeCompareStatus", () => {
+  it("maps GitHub's full compare vocabulary onto the three drawable states", () => {
+    expect(normalizeCompareStatus("added")).toBe("added");
+    expect(normalizeCompareStatus("copied")).toBe("added");
+    expect(normalizeCompareStatus("removed")).toBe("removed");
+    expect(normalizeCompareStatus("renamed")).toBe("renamed");
+    expect(normalizeCompareStatus("modified")).toBe("modified");
+    expect(normalizeCompareStatus("changed")).toBe("modified");
+    expect(normalizeCompareStatus("unchanged")).toBe("modified");
+  });
+
+  it("folds an unknown status into modified rather than leaking it", () => {
+    expect(normalizeCompareStatus("something-new")).toBe("modified");
+  });
+});
+
+describe("buildPublishStatus", () => {
+  const compared = (
+    files: Array<{
+      filename: string;
+      status: string;
+      previousFilename?: string;
+    }>,
+  ) => ({
+    aheadBy: 2,
+    behindBy: 0,
+    files,
+  });
+
+  it("carries the changed-path manifest with a rename's source path", () => {
+    const status = buildPublishStatus({
+      base: "main",
+      branch: "feat",
+      headSha: "h1",
+      compared: compared([
+        { filename: ".deco/blocks/Home.json", status: "modified" },
+        {
+          filename: ".deco/blocks/Header.json",
+          status: "renamed",
+          previousFilename: ".deco/blocks/Hero.json",
+        },
+      ]),
+    });
+    expect(status.changedFiles).toEqual([
+      { path: ".deco/blocks/Home.json", status: "modified" },
+      {
+        path: ".deco/blocks/Header.json",
+        status: "renamed",
+        previousPath: ".deco/blocks/Hero.json",
+      },
+    ]);
+    expect(status.changedFilesTruncated).toBe(false);
+    expect(status.aheadOfBase).toBe(2);
+    expect(status.headSha).toBe("h1");
+  });
+
+  it("reports the PRE-cap total while capping the manifest itself", () => {
+    const files = Array.from({ length: 240 }, (_, i) => ({
+      filename: `.deco/blocks/Block${i}.json`,
+      status: "added",
+    }));
+    const status = buildPublishStatus({
+      base: "main",
+      branch: "feat",
+      headSha: "h1",
+      compared: compared(files),
+    });
+    expect(status.changedFiles).toHaveLength(200);
+    expect(status.changedFilesTotal).toBe(240);
+    expect(status.changedFilesTruncated).toBe(true);
+  });
+
+  it("reports an empty, untruncated manifest when nothing changed", () => {
+    const status = buildPublishStatus({
+      base: "main",
+      branch: "main",
+      headSha: "h1",
+      compared: { aheadBy: 0, behindBy: 0, files: [] },
+    });
+    expect(status.changedFiles).toEqual([]);
+    expect(status.changedFilesTotal).toBe(0);
+    expect(status.changedFilesTruncated).toBe(false);
+  });
+
+  it("keeps every local-work field empty — sandbox-less mode has no working tree", () => {
+    const status = buildPublishStatus({
+      base: "main",
+      branch: "feat",
+      headSha: "h1",
+      compared: compared([{ filename: "a.json", status: "added" }]),
+    });
+    expect(status.modified).toEqual([]);
+    expect(status.staged).toEqual([]);
+    expect(status.files).toEqual([]);
+    expect(status.unpushed).toBe(0);
   });
 });

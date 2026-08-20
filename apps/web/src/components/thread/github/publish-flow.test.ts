@@ -97,19 +97,24 @@ describe("describePublishFailure", () => {
   it("reports no pull request when an earlier step failed", () => {
     expect(
       describePublishFailure(new PublishStepError("push denied", "push"), t),
-    ).toEqual({ message: "push denied", pullRequest: null });
+    ).toEqual({ message: "push denied", pullRequest: null, headMoved: false });
   });
 
   it("reports no pull request when the merge failed before one opened", () => {
     expect(
       describePublishFailure(new PublishStepError("merge blew up", "merge"), t),
-    ).toEqual({ message: "merge blew up", pullRequest: null });
+    ).toEqual({
+      message: "merge blew up",
+      pullRequest: null,
+      headMoved: false,
+    });
   });
 
   it("passes a plain error's message through", () => {
     expect(describePublishFailure(new Error("offline"), t)).toEqual({
       message: "offline",
       pullRequest: null,
+      headMoved: false,
     });
   });
 
@@ -117,6 +122,7 @@ describe("describePublishFailure", () => {
     expect(describePublishFailure("boom", t)).toEqual({
       message: "thread.publishDialog.failedPublish",
       pullRequest: null,
+      headMoved: false,
     });
   });
 });
