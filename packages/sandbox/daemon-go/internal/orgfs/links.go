@@ -456,14 +456,15 @@ func (l *Links) WaitSkillLinks(budget time.Duration) {
 }
 
 // skillSet is one directory to scan for `<skill>/SKILL.md` children, with the
-// name its links are prefixed by.
+// name its copies are prefixed by.
 type skillSet struct {
 	name string
 	dir  string
 }
 
-// Mount paths under `org/` that are not skill sets: the org home (linked as the
-// USER skill dir already), and the two hidden per-thread volumes.
+// Mount paths under `org/` that are not skill sets: the org home (linked, not
+// copied — the agent writes skills there and they must sync back), and the two
+// hidden per-thread volumes.
 var nonSkillVolumeDirs = map[string]bool{
 	"home": true, ".outputs": true, ".uploads": true,
 }
@@ -499,9 +500,15 @@ func (l *Links) skillSetRoots() []skillSet {
 	return out
 }
 
-// syncPublicSkills does the linking, reporting whether anything was linked. Runs
-// without `mu`: it touches only the checkout's skills dir and the read-only
-// public mounts, which no other link path writes.
+// syncPublicSkills copies every read-only set's skills onto the pod's disk under
+// `<repoDir>/.claude/skills/`, reporting whether anything landed. Runs without
+// `mu`: it touches only the checkout's skills dir and the read-only mounts,
+// which no other link path writes.
+//
+// Copied rather than symlinked — see skillcopy.go for why. The pod therefore
+// holds a snapshot for its lifetime, which is what we want: this already ran
+// once per boot (`publicSkillsRun` latches on success), and a skill that
+// changes underneath a running agent is a hazard, not a feature.
 func (l *Links) syncPublicSkills() bool {
 	sets := l.skillSetRoots()
 	if len(sets) == 0 {
@@ -510,11 +517,11 @@ func (l *Links) syncPublicSkills() bool {
 	}
 	dir := filepath.Join(l.RepoDir, ".claude", "skills")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		slog.Warn("org-fs public skills link failed", "err", err)
+		slog.Warn("org-fs public skills copy failed", "err", err)
 		return false
 	}
-	// Ours are cleared first: a set that lost a skill must not leave a symlink
-	// pointing at nothing, which Claude Code reports as a broken skill.
+	// Ours are cleared first: a set that lost a skill must not leave a stale copy
+	// behind, and a partial copy from a previous attempt must not be reused.
 	if entries, err := os.ReadDir(dir); err == nil {
 		for _, e := range entries {
 			if strings.HasPrefix(e.Name(), publicSkillPrefix) {
@@ -524,33 +531,33 @@ func (l *Links) syncPublicSkills() bool {
 	}
 	gitx.EnsureExclude(l.RepoDir, "/.claude/skills/"+publicSkillPrefix+"*")
 
-	linked, unreadable := 0, 0
+	var jobs []skillJob
+	unreadable := 0
 	for _, set := range sets {
-		setDir := set.dir
-		names := skillDirNames(setDir)
+		names := skillDirNames(set.dir)
 		if len(names) == 0 {
 			continue
 		}
 		// `stat` is served from the mount's metadata and succeeds on a backend
-		// whose GETs hang forever, so a read has to be proven before these are
-		// exposed to Claude Code's startup scan.
-		if !setReads(setDir, names) {
+		// whose GETs hang forever, so a read has to be proven before we commit to
+		// copying a whole set off it.
+		if !setReads(set.dir, names) {
 			unreadable += len(names)
 			continue
 		}
 		for _, name := range names {
 			// `<set>-<skill>`: collision-free across sets. Cosmetic — the name the
 			// model sees comes from SKILL.md's frontmatter, not the directory.
-			link := filepath.Join(dir, publicSkillPrefix+set.name+"-"+name)
-			if err := os.Symlink(filepath.Join(setDir, name), link); err != nil {
-				slog.Warn("org-fs public skill link failed", "skill", name, "err", err)
-				continue
-			}
-			linked++
+			jobs = append(jobs, skillJob{
+				src: filepath.Join(set.dir, name),
+				dst: filepath.Join(dir, publicSkillPrefix+set.name+"-"+name),
+			})
 		}
 	}
-	slog.Info("org-fs public skills linked", "count", linked, "unreadable", unreadable)
-	return linked > 0
+	copied := prefetchSkills(jobs)
+	slog.Info("org-fs skills prefetched",
+		"count", copied, "of", len(jobs), "unreadable", unreadable)
+	return copied > 0
 }
 
 // repointThreadLink points `org/<linkName>` at `<mountDir>/<threadId>`, creating

@@ -216,6 +216,24 @@ func TestSkillsLinkNeverShadowsARealDir(t *testing.T) {
 // read-only — so they reach Claude Code as project skills in the checkout. The
 // invariants: the repo's own skills survive, ours are rebuilt (no dangling
 // symlink when a set loses a skill), and they never reach a commit.
+// assertSkillPresent checks the skill was materialized on LOCAL disk — a real
+// SKILL.md with content, not a symlink into the mount. That distinction is the
+// whole point of the prefetch, so the assertion has to be able to see it.
+func assertSkillPresent(t *testing.T, skillsDir, name string) {
+	t.Helper()
+	path := filepath.Join(skillsDir, name, "SKILL.md")
+	st, err := os.Lstat(path)
+	if err != nil {
+		t.Fatalf("skill %s not prefetched: %v", name, err)
+	}
+	if st.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("skill %s is a symlink into the mount, not a local copy", name)
+	}
+	if b, err := os.ReadFile(path); err != nil || len(b) == 0 {
+		t.Fatalf("skill %s copied empty: %v", name, err)
+	}
+}
+
 func TestPublicSkillLinks(t *testing.T) {
 	appRoot := t.TempDir()
 	repoDir := filepath.Join(appRoot, "repo")
@@ -247,15 +265,9 @@ func TestPublicSkillLinks(t *testing.T) {
 	l.syncPublicSkills()
 
 	skillsDir := filepath.Join(repoDir, ".claude", "skills")
-	target, err := os.Readlink(filepath.Join(skillsDir, "orgfs-core-slides"))
-	if err != nil {
-		t.Fatalf("public skill not linked: %v", err)
-	}
-	if want := filepath.Join(appRoot, "org", "public", "core", "slides"); target != want {
-		t.Errorf("link → %q, want %q", target, want)
-	}
+	assertSkillPresent(t, skillsDir, "orgfs-core-slides")
 	if _, err := os.Lstat(filepath.Join(skillsDir, "orgfs-core-not-a-skill")); err == nil {
-		t.Error("linked a directory with no SKILL.md")
+		t.Error("copied a directory with no SKILL.md")
 	}
 	if _, err := os.Stat(ownSkill); err != nil {
 		t.Errorf("clobbered the repo's own skill: %v", err)
@@ -273,11 +285,9 @@ func TestPublicSkillLinks(t *testing.T) {
 	l.publicSkillsRun = false
 	l.syncPublicSkills()
 	if _, err := os.Lstat(filepath.Join(skillsDir, "orgfs-core-pdf")); err == nil {
-		t.Error("stale symlink kept for a skill that no longer exists")
+		t.Error("stale copy kept for a skill that no longer exists")
 	}
-	if _, err := os.Readlink(filepath.Join(skillsDir, "orgfs-core-slides")); err != nil {
-		t.Errorf("rebuild dropped a live skill: %v", err)
-	}
+	assertSkillPresent(t, skillsDir, "orgfs-core-slides")
 }
 
 func TestSyncedVolumeSkillLinks(t *testing.T) {
@@ -313,18 +323,18 @@ func TestSyncedVolumeSkillLinks(t *testing.T) {
 	l.syncPublicSkills()
 
 	skillsDir := filepath.Join(repoDir, ".claude", "skills")
-	target, err := os.Readlink(filepath.Join(skillsDir, "orgfs-decocms-skills-unslopify"))
-	if err != nil {
-		t.Fatalf("synced-repo skill not linked: %v", err)
-	}
-	if want := filepath.Join(appRoot, "org", "decocms-skills", "unslopify"); target != want {
-		t.Errorf("link → %q, want %q", target, want)
-	}
+	assertSkillPresent(t, skillsDir, "orgfs-decocms-skills-unslopify")
 	for _, name := range []string{"orgfs-home-skills", "orgfs-.outputs-t1"} {
 		if _, err := os.Lstat(filepath.Join(skillsDir, name)); err == nil {
-			t.Errorf("linked a non-skill-set volume: %s", name)
+			t.Errorf("copied a non-skill-set volume: %s", name)
 		}
 	}
+	// The copy must outlive the mount — that is what takes the harness's startup
+	// scan off the network entirely.
+	if err := os.RemoveAll(filepath.Join(appRoot, "org", "decocms-skills")); err != nil {
+		t.Fatal(err)
+	}
+	assertSkillPresent(t, skillsDir, "orgfs-decocms-skills-unslopify")
 }
 
 // A set whose FIRST skill is unreadable must still expose the rest — the failure
@@ -357,9 +367,7 @@ func TestUnreadableSkillDoesNotCondemnSet(t *testing.T) {
 	if !l.syncPublicSkills() {
 		t.Fatal("set condemned by one unreadable skill")
 	}
-	if _, err := os.Readlink(filepath.Join(repoDir, ".claude", "skills", "orgfs-core-slides")); err != nil {
-		t.Errorf("healthy skill behind the bad probe was not linked: %v", err)
-	}
+	assertSkillPresent(t, filepath.Join(repoDir, ".claude", "skills"), "orgfs-core-slides")
 }
 
 func TestWaitSkillLinks(t *testing.T) {
@@ -387,9 +395,57 @@ func TestWaitSkillLinks(t *testing.T) {
 	// The whole point: after this returns the links are on disk, so the harness's
 	// one-shot startup scan cannot miss them.
 	l.WaitSkillLinks(10 * time.Second)
-	if _, err := os.Readlink(filepath.Join(repoDir, ".claude", "skills", "orgfs-core-slides")); err != nil {
-		t.Errorf("WaitSkillLinks returned before the link landed: %v", err)
+	// The whole point of the barrier: the bytes are on disk before the run starts.
+	assertSkillPresent(t, filepath.Join(repoDir, ".claude", "skills"), "orgfs-core-slides")
+}
+
+// Prefetched skills are real directories with real content now, not symlinks, so
+// they look exactly like a skill the model authored. Adopting them would copy
+// every public and synced skill into the org's home on every run.
+func TestPrefetchedSkillsAreNotAdopted(t *testing.T) {
+	appRoot := t.TempDir()
+	repoDir := filepath.Join(appRoot, "repo")
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(t.TempDir(), "config"))
+	statusPath := filepath.Join(t.TempDir(), "status.json")
+	homeMount := filepath.Join(appRoot, "org", "home")
+	if err := os.MkdirAll(filepath.Join(homeMount, "skills"), 0o755); err != nil {
+		t.Fatal(err)
 	}
+	skill := filepath.Join(appRoot, "org", "public", "core", "slides")
+	if err := os.MkdirAll(skill, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skill, "SKILL.md"), []byte("---\nname: x\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(sidecarStatus{Mounts: []Mount{{Volume: "home", MountPath: homeMount}}})
+	if err := os.WriteFile(statusPath, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A real git repo — the exclusion is git's `--exclude-standard` reading
+	// `.git/info/exclude`, so a fake .git directory would not exercise it.
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"init"}, {"config", "user.email", "t@t"}, {"config", "user.name", "t"}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repoDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+
+	l := &Links{AppRoot: appRoot, RepoDir: repoDir, StatusPath: statusPath, ConfigPath: "unused"}
+	l.syncPublicSkills()
+	assertSkillPresent(t, filepath.Join(repoDir, ".claude", "skills"), "orgfs-core-slides")
+
+	l.AdoptStrayRepoSkills()
+
+	if _, err := os.Stat(filepath.Join(homeMount, "skills", "orgfs-core-slides")); err == nil {
+		t.Error("prefetched skill was adopted into the org home")
+	}
+	// And it is still where the harness expects it.
+	assertSkillPresent(t, filepath.Join(repoDir, ".claude", "skills"), "orgfs-core-slides")
 }
 
 func TestAdoptStrayRepoSkills(t *testing.T) {
