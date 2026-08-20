@@ -149,9 +149,16 @@ type TaskForm = {
   tagIds: string[];
 };
 
-/** Tall enough for most tasks to show whole; past it the description collapses
- *  behind a "show more" so the record below stays reachable. */
-const DESCRIPTION_MAX_HEIGHT = 420;
+/**
+ * Where the description collapses behind a "show more", so the record below
+ * stays reachable.
+ *
+ * Comfortably above the editor's own empty footprint (its 320px min-height
+ * plus the attach row, ~364px measured): a cap close to that folds a
+ * description holding a single image, clipping the image's own controls out of
+ * reach.
+ */
+const DESCRIPTION_MAX_HEIGHT = 560;
 
 /** How long typing stays quiet before it autosaves. Long enough that a
  *  sentence is one write, short enough that a distracted tab keeps the text. */
@@ -680,7 +687,13 @@ export function TaskBoardItemDialog({
             <div className="flex flex-col">
               <div className="flex flex-col py-6">
                 <div
-                  className="relative overflow-hidden"
+                  // Clip only while folded: the image node's remove button is
+                  // absolute and reaches outside a 1px image's box, so a
+                  // permanent clip puts it out of reach.
+                  className={cn(
+                    "relative",
+                    collapseDescription && "overflow-hidden",
+                  )}
                   style={
                     collapseDescription
                       ? { maxHeight: DESCRIPTION_MAX_HEIGHT }
