@@ -65,6 +65,28 @@ const branchSearchOutput = z.object({
 
 export type BranchSearchResult = z.infer<typeof branchSearchOutput>;
 
+/**
+ * A 2xx response body isn't guaranteed to be JSON (a proxy/outage page can
+ * still answer 200), and `res.json()` throwing a raw `SyntaxError` on that
+ * would surface as an opaque "Unexpected token" instead of naming what
+ * failed. Same gap the Jira client closed for its own 2xx-but-malformed
+ * case (#6308).
+ */
+export async function parseJsonBody(
+  res: Response,
+  repoLabel: string,
+): Promise<BranchSearchResponse> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text) as BranchSearchResponse;
+  } catch (cause) {
+    throw new Error(
+      `GitHub GraphQL branch search for ${repoLabel} returned invalid JSON: ${text.slice(0, 300)}`,
+      { cause },
+    );
+  }
+}
+
 interface BranchSearchResponse {
   data?: {
     repository?: {
@@ -219,9 +241,10 @@ export const GITHUB_SEARCH_BRANCHES = defineTool({
     }
 
     // GraphQL reports failures as 200 + `errors`, so an ok status isn't enough.
+    const repoLabel = `${input.owner}/${input.repo}`;
     return parseBranchSearchResponse(
-      (await res.json()) as BranchSearchResponse,
-      `${input.owner}/${input.repo}`,
+      await parseJsonBody(res, repoLabel),
+      repoLabel,
     );
   },
 });
