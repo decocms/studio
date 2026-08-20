@@ -239,6 +239,11 @@ export const SANDBOX_START = defineTool({
       providerKind,
       runner,
     });
+    // A pod means a coding session. This is the web's path — `ensureSandbox`'s
+    // own drain never runs here — so record it where the id is known.
+    if (askingThreadId) {
+      void stampRuntimeIfAbsent(ctx, askingThreadId, "sandbox");
+    }
     return {
       ...entry,
       branch: resolvedBranch,

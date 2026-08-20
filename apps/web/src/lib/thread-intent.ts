@@ -46,6 +46,19 @@ export function writeThreadIntent(
   }
 }
 
+/** Drop a parked intent whose create succeeded — nothing will claim it. */
+export function clearThreadIntent(
+  storage: StorageLike,
+  locator: ProjectLocator | string,
+  taskId: string,
+): void {
+  try {
+    storage.removeItem(threadIntentStorageKey(locator, taskId));
+  } catch {
+    /* storage disabled */
+  }
+}
+
 /** Read and clear. Single-use: the create it feeds is the last one for this id. */
 export function claimThreadIntent(
   storage: StorageLike,

@@ -135,11 +135,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
   const vm = useVirtualMCP(virtualMcpId);
-  const {
-    currentBranch: branch,
-    setCurrentTaskBranch,
-    activeTask,
-  } = useChatTask();
+  const { currentBranch: branch, setCurrentTaskBranch, taskId } = useChatTask();
   const chat = useChatStream();
   const { openSidePanel } = usePanelActions();
   const [publishOpen, setPublishOpen] = useState(false);
@@ -180,7 +176,9 @@ export function HeaderActions({ virtualMcpId }: Props) {
     orgSlug: org.slug,
     virtualMcpId,
     branch: branch ?? "",
-    threadId: activeTask?.id ?? null,
+    // `taskId`, not `activeTask?.id`: the latter is deliberately null during
+    // prop/URL skew, and every writer that invalidates this key uses `taskId`.
+    threadId: taskId ?? null,
   };
   const statusQuery = useQuery({
     queryKey: sandboxGitStatusQueryKey(statusRef),

@@ -664,6 +664,7 @@ export function SandboxEventsProvider({
     branch,
     org.slug,
     enabled,
+    taskId,
     directDaemonEventsUrl,
     queryClient,
   ]);

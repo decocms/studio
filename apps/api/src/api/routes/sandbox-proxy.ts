@@ -20,9 +20,11 @@ import type { SandboxProvider } from "@decocms/sandbox/provider";
 import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
 import { computeClaimHandle } from "../../sandbox/claim-handle";
 import {
-  resolveSandboxUserId,
+  loadBranchThread,
+  sandboxUserIdFor,
   threadIdFromBranch,
 } from "../../tools/sandbox/thread-repo";
+import type { Thread } from "../../storage/types";
 import {
   defaultThreadRuntime,
   parseThreadRuntime,
@@ -203,7 +205,11 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
   // claim and reaches the one sandbox it has. Keyed by the caller, a viewer's
   // handle never existed — /events reported `claiming` forever and every other
   // route 404'd. See `resolveSandboxUserId`.
-  const sandboxUserId = await resolveSandboxUserId(ctx, branch, userId);
+  // Read ONCE: the sandbox's owner and this session's runtime are two
+  // questions about the same row on a `thread:<id>` branch, and this runs in
+  // front of every proxied request.
+  const branchThread = await loadBranchThread(ctx, branch);
+  const sandboxUserId = sandboxUserIdFor(branchThread, userId);
   const claimName = computeClaimHandle({ userId: sandboxUserId, projectRef });
   const virtualMcpMetadata =
     (virtualMcp.metadata as Record<string, unknown>) ?? null;
@@ -229,6 +235,7 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
     virtualMcpId,
     sandboxUserId,
     virtualMcpMetadata,
+    branchThread,
   });
 
   if (runtime === "cms") {
@@ -299,14 +306,20 @@ async function resolveClaimRuntime(
     virtualMcpId: string;
     sandboxUserId: string;
     virtualMcpMetadata: Record<string, unknown> | null;
+    /** The `thread:<id>` branch's row, already loaded by the middleware. */
+    branchThread: Thread | null;
   },
 ): Promise<ThreadRuntime> {
   const ctx = c.var.studioContext;
-  const threadId = c.req.query("thread") ?? threadIdFromBranch(claim.branch);
+  const branchThreadId = threadIdFromBranch(claim.branch);
+  const threadId = c.req.query("thread") ?? branchThreadId;
 
-  const thread = threadId
-    ? await ctx.storage.threads.get(threadId).catch(() => null)
-    : null;
+  const thread =
+    threadId && threadId === branchThreadId
+      ? claim.branchThread
+      : threadId
+        ? await ctx.storage.threads.get(threadId).catch(() => null)
+        : null;
   // A thread from another project cannot speak for this claim.
   const owned = thread?.virtual_mcp_id === claim.virtualMcpId ? thread : null;
   const stamp = parseThreadRuntime(
@@ -315,32 +328,41 @@ async function resolveClaimRuntime(
   if (stamp) return stamp;
 
   const projectDefault = defaultThreadRuntime(claim.virtualMcpMetadata);
-  // The probe only runs where it can change the answer. Its result is also the
-  // only EVIDENCE this path has, which is what decides whether we may stamp.
-  const probed = projectDefault === "cms";
-  const live = probed
-    ? await liveSandboxForBranch(ctx, {
-        claimName: claim.claimName,
-        userId: claim.sandboxUserId,
-        branch: claim.branch,
-        virtualMcpMetadata: claim.virtualMcpMetadata,
-      })
-    : true;
-  const runtime: ThreadRuntime = probed && !live ? "cms" : "sandbox";
+  // The probe only runs where it can change the answer, and its result is the
+  // only EVIDENCE this path has.
+  const liveness =
+    projectDefault === "cms"
+      ? await liveSandboxForBranch(ctx, {
+          claimName: claim.claimName,
+          userId: claim.sandboxUserId,
+          branch: claim.branch,
+          virtualMcpMetadata: claim.virtualMcpMetadata,
+        })
+      : "alive";
+  const runtime: ThreadRuntime =
+    projectDefault === "cms" && liveness !== "alive" ? "cms" : "sandbox";
 
-  console.log("sandbox proxy: no runtime stamp", {
-    route: c.req.path,
-    method: c.req.method,
-    reason: owned ? "unstamped" : "threadless",
-    resolved: runtime,
-    stamped: !!owned && probed,
-  });
-  // Stamp ONLY what the probe witnessed. Without `probed`, a legacy thread on a
-  // project whose Fast Preview switch was just turned off would be permanently
-  // converted to a coding session by a `/git/status` poll — and the stamp is
-  // immutable, so there would be no way back.
-  if (owned && probed) {
+  // Stamp ONLY a DEFINITE answer, and only where the probe could distinguish
+  // the two runtimes. A timed-out or errored probe (`unknown`) still routes
+  // this request, but must never be written down: the stamp is immutable, so a
+  // slow control-plane call would permanently convert a live coding session.
+  // Same reason `projectDefault === "sandbox"` never stamps — with no probe it
+  // cannot tell "always was sandbox" from "the switch was just turned off".
+  const stampable =
+    !!owned &&
+    (liveness === "gone" || (liveness === "alive" && projectDefault === "cms"));
+  if (stampable && owned) {
     void stampRuntimeIfAbsent(ctx, owned.id, runtime);
+  }
+  if (projectDefault === "cms") {
+    console.log("sandbox proxy: no runtime stamp", {
+      route: c.req.path,
+      method: c.req.method,
+      reason: owned ? "unstamped" : "threadless",
+      liveness,
+      resolved: runtime,
+      stamped: stampable,
+    });
   }
   return runtime;
 }
@@ -849,9 +871,26 @@ export const createSandboxRoutes = () => {
         400,
       );
     }
-    const podRunner = await resolveBranchRunner(c);
+    // Pod-addressed means a pod that EXISTS. `resolveSandboxProvider` hands
+    // back the env-default provider for any caller, so without the liveness
+    // check a sandbox-less session would proxy to a daemon that was never
+    // provisioned and get a 410 where it used to get a clean 404.
+    const claim = c.get("vmClaim");
+    const podRunner =
+      (await liveSandboxForBranch(c.var.studioContext, {
+        claimName: claim.claimName,
+        userId: claim.userId,
+        branch: claim.branch,
+        virtualMcpMetadata: claim.virtualMcpMetadata,
+      })) === "gone"
+        ? null
+        : await resolveBranchRunner(c);
     if (!podRunner) {
-      return c.json({ error: "No sandbox runner found" }, 404);
+      return c.json(
+        { error: "sandbox not found: nothing is running at this ref" },
+        404,
+        SANDBOX_PROXY_CACHE_HEADERS,
+      );
     }
     // On "start", refresh the daemon's env from the virtual MCP's current
     // `metadata.runtime.env`. The dev script inherits env at spawn time, so
@@ -859,7 +898,6 @@ export const createSandboxRoutes = () => {
     // unless we push the freshly-resolved env to /config before the
     // orchestrator restarts it.
     if (step === "start") {
-      const claim = c.get("vmClaim");
       {
         const organization = requireOrganization(c.var.studioContext);
         const entries = readValidatedRuntimeEnv(claim.virtualMcpMetadata);

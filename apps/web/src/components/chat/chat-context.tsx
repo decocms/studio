@@ -33,7 +33,7 @@ import {
   clearStoredAutosend,
   writeStoredAutosend,
 } from "@/lib/autosend";
-import { writeThreadIntent } from "@/lib/thread-intent";
+import { clearThreadIntent, writeThreadIntent } from "@/lib/thread-intent";
 import {
   getOrOpenStream,
   type ConnStatus,
@@ -705,7 +705,11 @@ export function ChatContextProvider({
         ...(branch ? { branch } : {}),
         ...(opts?.runtime ? { runtime: opts.runtime } : {}),
       })
-      .then(() => navigateToTask(newId))
+      .then(() => {
+        // The create landed, so the parked intent has no claimant.
+        clearThreadIntent(sessionStorage, locator, newId);
+        navigateToTask(newId);
+      })
       .catch(() => {
         // Error toast surfaced by ThreadManagerStore.create; navigate anyway
         // so the user's not stranded — the route loader's ensure fallback
@@ -739,12 +743,13 @@ export function ChatContextProvider({
         virtual_mcp_id: targetVmcp,
         ...(carryBranch ? { branch: carryBranch } : {}),
       })
-      .then(() =>
+      .then(() => {
+        clearThreadIntent(sessionStorage, locator, newId);
         navigateToTask(newId, {
           virtualMcpId: params.virtualMcpId,
           autosend: true,
-        }),
-      )
+        });
+      })
       .catch(() => {
         navigateToTask(newId, {
           virtualMcpId: params.virtualMcpId,

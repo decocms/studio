@@ -37,20 +37,26 @@ export type ThreadsStatus =
  */
 const ARCHIVED_TOMBSTONE_TTL_MS = 60_000;
 
-function applyPatch(list: Task[], patch: RowPatch): Task[] {
+function applyPatch(
+  list: Task[],
+  patch: RowPatch,
+  /** The insert is a `/watch` synthetic, not an authoritative row. */
+  fromWatch = true,
+): Task[] {
   const idx = list.findIndex((t) => t.id === patch.id);
   if (idx === -1) {
     const now = new Date().toISOString();
-    const synthetic: Task = {
+    const inserted: Task = {
       created_at: patch.created_at ?? patch.updated_at ?? now,
       updated_at: patch.updated_at ?? now,
       ...patch,
       title: patch.title ?? "New chat",
       branch: patch.branch ?? null,
-      // A patch carries no `metadata` — see `Task.partial`.
-      partial: true,
+      // A `/watch` patch carries no `metadata` — see `Task.partial`. A row from
+      // COLLECTION_THREADS_LIST does, so it is NOT partial.
+      ...(fromWatch ? { partial: true as const } : {}),
     };
-    return [synthetic, ...list];
+    return [inserted, ...list];
   }
   const next = [...list];
   const current = next[idx]!;
@@ -252,7 +258,7 @@ export class ThreadManagerStore {
     this.threads.update((list) =>
       items.reduce((acc, t) => {
         if (this.isTombstoned(t.id)) return acc;
-        return applyPatch(acc, t);
+        return applyPatch(acc, t, false);
       }, list),
     );
   }
@@ -264,11 +270,15 @@ export class ThreadManagerStore {
     if (!this.client) throw new Error("ThreadManagerStore: no MCP client");
     const snapshot = this.threads.get();
     this.threads.update((list) =>
-      applyPatch(list, {
-        ...(patch as unknown as RowPatch),
-        id,
-        updated_at: new Date().toISOString(),
-      }),
+      applyPatch(
+        list,
+        {
+          ...(patch as unknown as RowPatch),
+          id,
+          updated_at: new Date().toISOString(),
+        },
+        false,
+      ),
     );
     try {
       const result = await this.client.callTool({

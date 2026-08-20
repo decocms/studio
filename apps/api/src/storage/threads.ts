@@ -514,7 +514,9 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .set({
         metadata: sql`coalesce(${sql.ref("metadata")}, '{}'::jsonb)
           || jsonb_build_object('runtime', ${runtime}::text)`,
-        updated_at: new Date().toISOString(),
+        // Deliberately NOT `updated_at`: this is a backfill fired from a read
+        // path, and the sidebar orders by it — a background poll must not jump
+        // a thread to the top of the user's list.
       })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
