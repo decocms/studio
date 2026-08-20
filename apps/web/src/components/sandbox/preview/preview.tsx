@@ -396,13 +396,29 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Same readiness classification the CMS panel itself uses. We only auto-open
   // the CMS once this resolves to "content" (metadata loaded AND there is
   // editable content) so the panel never opens onto a loading/empty/error card.
+  // Sticky per repo+branch; see `frameworkKnownMissing`.
+  const frameworkMissingKey = `${virtualMcpId}:${branch ?? ""}`;
+  // Remembered across renders as state (not a ref): the classification feeds the
+  // render, so it has to re-run when we learn the framework is absent. Storing
+  // the key rather than a boolean makes a repo/branch switch reset it for free.
+  const [frameworkMissingProvenFor, setFrameworkMissingProvenFor] = useState<
+    string | null
+  >(null);
   const blocksState = resolveBlocksTabState({
     lifecyclePhase,
     decofile: toBlocksQueryState(decofileQuery),
     meta: toBlocksQueryState(metaQuery),
     hasEditableContent: hasEditableDecoContent(decofile, meta),
     fastPreviewActive: fastPreviewEnabled,
+    frameworkKnownMissing: frameworkMissingProvenFor === frameworkMissingKey,
   });
+  if (
+    blocksState.kind === "empty" &&
+    blocksState.reason === "framework-missing" &&
+    frameworkMissingProvenFor !== frameworkMissingKey
+  ) {
+    setFrameworkMissingProvenFor(frameworkMissingKey);
+  }
   const blocksReady = blocksState.kind === "content";
   const createPageParams =
     virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;

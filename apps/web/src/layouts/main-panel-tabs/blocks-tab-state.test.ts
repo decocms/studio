@@ -218,6 +218,44 @@ describe("resolveBlocksTabState", () => {
     ).toEqual({ kind: "error", source: "data" });
   });
 
+  test("a proven-404 repo stays framework-missing through a transient refetch failure", () => {
+    for (const errorStatus of [500, 502, undefined]) {
+      expect(
+        resolveBlocksTabState(
+          input({
+            decofile: { status: "error", hasData: false, errorStatus },
+            frameworkKnownMissing: true,
+          }),
+        ),
+      ).toEqual({ kind: "empty", reason: "framework-missing" });
+    }
+    expect(
+      resolveBlocksTabState(
+        input({
+          lifecyclePhase: "crashed",
+          meta: { status: "error", hasData: false, errorStatus: 500 },
+          frameworkKnownMissing: true,
+        }),
+      ),
+    ).toEqual({ kind: "empty", reason: "framework-missing" });
+  });
+
+  test("frameworkKnownMissing doesn't touch the non-failing paths", () => {
+    expect(
+      resolveBlocksTabState(
+        input({ hasEditableContent: true, frameworkKnownMissing: true }),
+      ),
+    ).toEqual({ kind: "content" });
+    expect(
+      resolveBlocksTabState(
+        input({
+          lifecyclePhase: "clone-failed",
+          frameworkKnownMissing: true,
+        }),
+      ),
+    ).toEqual({ kind: "error", source: "sandbox" });
+  });
+
   test("keeps cached editable content during a failed background refetch", () => {
     expect(
       resolveBlocksTabState(
@@ -252,6 +290,19 @@ describe("sandbox-less Fast Preview (fastPreviewActive)", () => {
         }),
       ),
     ).toEqual({ kind: "content" });
+  });
+
+  test("a transient failure stays framework-missing once the 404 was proven", () => {
+    expect(
+      resolveBlocksTabState(
+        input({
+          lifecyclePhase: "idle",
+          decofile: { status: "error", hasData: false, errorStatus: 502 },
+          fastPreviewActive: true,
+          frameworkKnownMissing: true,
+        }),
+      ),
+    ).toEqual({ kind: "empty", reason: "framework-missing" });
   });
 
   test("a failed decofile read is immediately real — no lifecycle recovery is coming", () => {
