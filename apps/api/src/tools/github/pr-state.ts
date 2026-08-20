@@ -357,6 +357,7 @@ export const GITHUB_PR_STATE = defineTool({
         branch: input.branch,
       },
       label: `pull request state for ${input.owner}/${input.repo}@${input.branch}`,
+      operation: "pr_state",
     });
 
     return parsePrState(data);
