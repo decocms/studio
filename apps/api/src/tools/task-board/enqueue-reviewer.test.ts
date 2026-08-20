@@ -380,6 +380,19 @@ describe("priorCycleReviewAt", () => {
     ]);
     expect(priorCycleReviewAt(task, "code_review", CYCLE_START)).toBe(0);
   });
+
+  it("does not count a failed attempt as a finished review", () => {
+    const task = taskWith([
+      thread({
+        title: "Code Reviewer: x",
+        status: "failed",
+        createdAt: "2026-01-01T09:00:00Z",
+        lastActiveAt: "2026-01-01T09:05:00Z",
+      }),
+    ]);
+    // A failed run never read the PR, so this must stay a plain review.
+    expect(priorCycleReviewAt(task, "code_review", CYCLE_START)).toBe(0);
+  });
 });
 
 describe("stalePreviewHandoffDue", () => {
