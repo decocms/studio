@@ -46,7 +46,7 @@ image:
   # instead of silently moving with `:latest`. Bump in lockstep with
   # packages/sandbox/package.json — release-studio-sandbox.yaml tags
   # images using that version. NEVER set this to "latest" in prod.
-  tag: "1.55.11"
+  tag: "1.55.12"
   # Override to Never on local kind clusters that load via `kind load`.
   pullPolicy: IfNotPresent
 
