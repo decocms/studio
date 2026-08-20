@@ -15,10 +15,7 @@
 
 import { useMCPClient, useMCPToolCallQuery } from "@/sdk";
 
-import {
-  extractPullRequestList,
-  type GithubMcpClient,
-} from "./github-pr-api.ts";
+import { extractPullRequestList } from "./github-pr-api.ts";
 import { assertToolOk, extractToolJson } from "./extract-tool-json.ts";
 import type { CheckRunOutput } from "./check-run-output.ts";
 
@@ -153,37 +150,56 @@ export function usePrByBranch(args: RepoArgs & { branch: string | null }) {
   });
 }
 
-/**
- * The most recent merged PR into `base` — in Fast Preview every publish is a
- * squash-merged PR, so this IS the last publish. Fetched on demand (the
- * publish popover bundles it into its one suspense load), never polled:
- * `list_pull_requests` is rate-limit-heavy (see `openPullRequestForBranch`).
- * `sort: updated` can interleave non-merged closed PRs, hence a small page
- * filtered client-side.
+/** The most recent merged PR into `base` — in Fast Preview every publish is a
+ * squash-merged PR, so this IS the last publish. Mounted by the header so the
+ * "last published" line is warm before the publish surface opens; never
+ * polled, because `list_pull_requests` is rate-limit-heavy (see
+ * `openPullRequestForBranch`). `sort: updated` can interleave non-merged
+ * closed PRs, hence a small page filtered client-side.
  */
-export async function fetchLastPublishedPr(
-  client: GithubMcpClient,
-  args: { owner: string; repo: string; base: string },
-): Promise<PrSummary | null> {
-  const result = await client.callTool({
-    name: "list_pull_requests",
-    arguments: {
+export function useLastPublishedPr(
+  args: RepoArgs & { base: string | null; enabled?: boolean },
+) {
+  const client = useMCPClient({
+    connectionId: args.connectionId,
+    orgId: args.orgId,
+    orgSlug: args.orgSlug,
+  });
+
+  return useMCPToolCallQuery<PrSummary | null>({
+    client,
+    toolName: "list_pull_requests",
+    toolArguments: {
       owner: args.owner,
       repo: args.repo,
       state: "closed",
-      base: args.base,
+      base: args.base ?? "",
       sort: "updated",
       direction: "desc",
-      perPage: 10,
+      perPage: LAST_PUBLISHED_PER_PAGE,
+    },
+    enabled:
+      (args.enabled ?? true) &&
+      !!args.base &&
+      !!args.connectionId &&
+      !!args.owner &&
+      !!args.repo,
+    staleTime: LAST_PUBLISHED_STALE,
+    select: (r) => {
+      assertToolOk(r);
+      return (
+        extractPullRequestList(r)
+          .map(mapRawPr)
+          .find((p) => p.merged) ?? null
+      );
     },
   });
-  assertToolOk(result);
-  return (
-    extractPullRequestList(result)
-      .map(mapRawPr)
-      .find((p) => p.merged) ?? null
-  );
 }
+
+/** Closed PRs read per lookup; `sort: updated` mixes in non-merged ones. */
+const LAST_PUBLISHED_PER_PAGE = 10;
+/** The last publish changes only when someone publishes — cheap to keep. */
+const LAST_PUBLISHED_STALE = 5 * 60_000;
 
 /** Max open PRs fetched for the picker; the tail beyond this is not shown. */
 const OPEN_PRS_PER_PAGE = 50;

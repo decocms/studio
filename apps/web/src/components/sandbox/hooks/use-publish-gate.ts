@@ -1,6 +1,7 @@
 import {
   canPublishDirectly,
   needsSmartReviewJudgment,
+  resolvePathGate,
   smartReviewGate,
   type GitDiffResult,
   type GitStatus,
@@ -24,6 +25,13 @@ export function useResolvedPublishGate(args: {
   diff: GitDiffResult | null;
   policy: PublishPolicy;
   judgeEnabled?: boolean;
+  /**
+   * The changed-file manifest, for a surface that counts changes before it can
+   * read them. Without it a null diff falls through as allowed, so such a
+   * surface would publish ungated; with it the decision comes from
+   * {@link resolvePathGate}, which never allows on incomplete information.
+   */
+  paths?: readonly string[] | null;
 }): { gate: PublishGate; ready: boolean } {
   const {
     orgSlug,
@@ -33,6 +41,7 @@ export function useResolvedPublishGate(args: {
     diff,
     policy,
     judgeEnabled = true,
+    paths = null,
   } = args;
 
   const needsJudge = judgeEnabled && needsSmartReviewJudgment(diff, policy);
@@ -48,9 +57,10 @@ export function useResolvedPublishGate(args: {
     enabled: needsJudge,
   });
 
-  // While the diff is still loading (or the sandbox is unreachable) don't gate
-  // the button — let the click fall through to the dialog, which does its own
-  // loading + gating. Only enforce the gate once we actually have the diff.
+  // Manifest known, bodies not: decide from paths.
+  if (!diff && paths)
+    return { gate: resolvePathGate(paths, policy), ready: false };
+  // Neither known: fall through to the dialog, which loads and gates itself.
   if (!diff) return { gate: { allowed: true, reason: null }, ready: false };
   if (!needsJudge)
     return { gate: canPublishDirectly(diff, policy), ready: true };

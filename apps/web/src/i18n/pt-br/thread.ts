@@ -195,6 +195,15 @@ export const thread = {
   "thread.publishDialog.viewPr": "Ver PR",
   "thread.publishDialog.visitPreview": "Abrir o Preview",
   "thread.publishPopover.blocksGroup": "Blocos",
+  "thread.publishPopover.branchMoved":
+    "Esta branch mudou depois que estas alterações foram exibidas. Feche e abra novamente para revisar o que será publicado.",
+  "thread.publishPopover.detailsUnavailable":
+    "Não foi possível carregar os detalhes destas alterações.",
+  "thread.publishPopover.loadFailed":
+    "Não foi possível carregar suas alterações",
+  "thread.publishPopover.retry": "Tentar novamente",
+  "thread.publishPopover.showingFirst":
+    "Mostrando as primeiras {shown} de {total} alterações",
   "thread.publishPopover.chipEdited": "Editado",
   "thread.publishPopover.chipNew": "Novo",
   "thread.publishPopover.chipRemoved": "Removido",

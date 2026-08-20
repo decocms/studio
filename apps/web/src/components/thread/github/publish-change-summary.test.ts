@@ -2,11 +2,15 @@ import { describe, expect, it } from "bun:test";
 import {
   blockKeyFromDiffPath,
   buildAutoNote,
+  countPageSections,
   humanizeFieldName,
+  resolveVersionNote,
   sectionDisplayName,
   summarizePublishChanges,
+  summarizePublishManifest,
 } from "./publish-change-summary";
-import type { GitDiffResult } from "./sandbox-git-api";
+import { changeId } from "./cms-publish-change-card";
+import type { GitChangedFile, GitDiffResult } from "./sandbox-git-api";
 
 const HOME_KEY = "pages-home-c4bcbfb771e9";
 const HOME_PATH = `.deco/blocks/${encodeURIComponent(HOME_KEY)}.json`;
@@ -308,5 +312,147 @@ describe("humanizeFieldName / sectionDisplayName", () => {
       sectionDisplayName({ __resolveType: "site/sections/Hero.tsx" }, 0),
     ).toBe("Hero");
     expect(sectionDisplayName({}, 2)).toBe("Section 3");
+  });
+});
+
+describe("summarizePublishManifest", () => {
+  const HEADER_KEY = "Header";
+  const HEADER_PATH = `.deco/blocks/${HEADER_KEY}.json`;
+  const headerJson = JSON.stringify({ name: "Site header", links: ["a"] });
+
+  const FILES: GitChangedFile[] = [
+    { path: HOME_PATH, status: "modified" },
+    { path: HEADER_PATH, status: "modified" },
+    { path: "static/tailwind.css", status: "modified" },
+    { path: "README.md", status: "added" },
+  ];
+
+  const LOOKUP = {
+    [HOME_KEY]: JSON.parse(pageJson()) as Record<string, unknown>,
+    [HEADER_KEY]: JSON.parse(headerJson) as Record<string, unknown>,
+  };
+
+  const BODIES: GitDiffResult = {
+    diffs: {
+      [HOME_PATH]: { from: pageJson(), to: pageJson({ name: "Home Page" }) },
+      [HEADER_PATH]: { from: headerJson, to: headerJson },
+      "static/tailwind.css": { from: "a{}", to: "b{}" },
+      "README.md": { from: null, to: "# hi" },
+    },
+  };
+
+  it("builds the full card list from paths alone, before any body is fetched", () => {
+    const summary = summarizePublishManifest({ files: FILES, lookup: LOOKUP });
+    expect(summary.count).toBe(3);
+    expect(summary.pages.map((p) => p.name)).toEqual(["Home"]);
+    expect(summary.pages[0]?.pagePath).toBe("/");
+    expect(summary.blocks.map((b) => b.name)).toEqual(["Site header"]);
+    expect(summary.other.map((o) => o.name)).toEqual(["README.md"]);
+    expect(summary.generated).toEqual(["static/tailwind.css"]);
+  });
+
+  it("keeps identity, order, kind and status IDENTICAL once bodies land", () => {
+    const manifestOnly = summarizePublishManifest({
+      files: FILES,
+      lookup: LOOKUP,
+    });
+    const enriched = summarizePublishManifest({
+      files: FILES,
+      lookup: LOOKUP,
+      diff: BODIES,
+    });
+
+    const shape = (s: typeof manifestOnly) => ({
+      count: s.count,
+      ids: [...s.pages, ...s.blocks, ...s.other].map(changeId),
+      kinds: [...s.pages, ...s.blocks, ...s.other].map((c) => c.kind),
+      statuses: [...s.pages, ...s.blocks, ...s.other].map((c) => c.status),
+    });
+    expect(shape(enriched)).toEqual(shape(manifestOnly));
+  });
+
+  it("adds section sub-lines only once bodies land", () => {
+    const before = summarizePublishManifest({ files: FILES, lookup: LOOKUP });
+    const after = summarizePublishManifest({
+      files: FILES,
+      lookup: LOOKUP,
+      diff: BODIES,
+    });
+    expect(before.pages[0]?.sections).toEqual([]);
+    expect(after.pages[0]?.sections.length).toBeGreaterThan(0);
+  });
+
+  it("names a card from the block key when the head decofile has no entry", () => {
+    const summary = summarizePublishManifest({
+      files: [{ path: HEADER_PATH, status: "removed" }],
+      lookup: {},
+    });
+    expect(summary.blocks[0]?.name).toBe("Header");
+    expect(summary.blocks[0]?.status).toBe("removed");
+  });
+
+  it("classifies a removed page by its key convention, with no content to read", () => {
+    const summary = summarizePublishManifest({
+      files: [{ path: HOME_PATH, status: "removed" }],
+      lookup: {},
+    });
+    expect(summary.pages).toHaveLength(1);
+    expect(summary.pages[0]?.name).toBe("home");
+  });
+
+  it("does NOT re-group a card when a late body disagrees with the head shape", () => {
+    const files: GitChangedFile[] = [{ path: HOME_PATH, status: "removed" }];
+    const withBodies = summarizePublishManifest({
+      files,
+      lookup: {},
+      diff: { diffs: { [HOME_PATH]: { from: pageJson(), to: null } } },
+    });
+    expect(withBodies.pages).toHaveLength(1);
+    expect(withBodies.blocks).toHaveLength(0);
+    expect(withBodies.pages[0]?.name).toBe("Home");
+  });
+
+  it("sorts by path so a card cannot move when its name resolves", () => {
+    const files: GitChangedFile[] = [
+      { path: ".deco/blocks/Zebra.json", status: "modified" },
+      { path: ".deco/blocks/Alpha.json", status: "modified" },
+    ];
+    const bare = summarizePublishManifest({ files, lookup: {} });
+    const named = summarizePublishManifest({
+      files,
+      lookup: {
+        Zebra: { name: "AAA first now" },
+        Alpha: { name: "ZZZ last now" },
+      },
+    });
+    expect(bare.blocks.map(changeId)).toEqual(named.blocks.map(changeId));
+  });
+
+  it("counts a NEW page's sections from the head decofile, before bodies land", () => {
+    const summary = summarizePublishManifest({
+      files: [{ path: HOME_PATH, status: "added" }],
+      lookup: LOOKUP,
+    });
+    // Rendered as "New page with N sections" — N must not read 0 and correct
+    // itself once the body arrives.
+    expect(countPageSections(summary.pages[0]?.toJson ?? null)).toBe(2);
+  });
+
+  it("counts nothing when nothing changed", () => {
+    expect(summarizePublishManifest({ files: [], lookup: {} }).count).toBe(0);
+  });
+});
+
+describe("resolveVersionNote", () => {
+  it("derives the note until the author types", () => {
+    expect(resolveVersionNote(null, "Updated Home")).toBe("Updated Home");
+  });
+
+  it("pins the author's text once typed", () => {
+    expect(resolveVersionNote("Mine", "Updated Home")).toBe("Mine");
+  });
+
+  it("keeps a deliberately cleared field empty — never refills it", () => {
+    expect(resolveVersionNote("", "Updated Home")).toBe("");
   });
 });

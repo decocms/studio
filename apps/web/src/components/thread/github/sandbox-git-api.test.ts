@@ -8,9 +8,13 @@ import {
   hasPublishableLocalWork,
   hasUnpublishedWork,
   isDecoOnlyDiff,
+  isDecoOnlyPaths,
   needsSmartReviewJudgment,
   normalizePublishPolicy,
+  resolvePathGate,
   reviewDiffSignature,
+  sandboxGitStatusQueryKey,
+  sandboxGitStatusQueryOptions,
   shouldUseBaseDiff,
   smartReviewGate,
   stripGeneratedFilesFromDiff,
@@ -553,5 +557,75 @@ describe("combinePublishDiffs (full publish payload = committed ∪ working)", (
     );
     expect(gate.allowed).toBe(false);
     expect(gate.reason).toBeNull();
+  });
+});
+
+describe("isDecoOnlyPaths", () => {
+  test("accepts CMS JSON at the repo root and under a package path", () => {
+    expect(isDecoOnlyPaths([".deco/blocks/Home.json"])).toBe(true);
+    expect(isDecoOnlyPaths(["apps/site/.deco/blocks/Home.json"])).toBe(true);
+  });
+
+  test("accepts generated artifacts alongside CMS JSON", () => {
+    expect(
+      isDecoOnlyPaths([".deco/blocks/Home.json", "static/tailwind.css"]),
+    ).toBe(true);
+  });
+
+  test("rejects the list as soon as one path is code", () => {
+    expect(
+      isDecoOnlyPaths([".deco/blocks/Home.json", "site/sections/Hero.tsx"]),
+    ).toBe(false);
+  });
+
+  test("an empty list is not deco-only — nothing is known yet", () => {
+    expect(isDecoOnlyPaths([])).toBe(false);
+  });
+});
+
+describe("resolvePathGate", () => {
+  const DECO = [".deco/blocks/Home.json"];
+  const CODE = [".deco/blocks/Home.json", "site/sections/Hero.tsx"];
+
+  test("open publishes anything", () => {
+    expect(resolvePathGate(DECO, "open").allowed).toBe(true);
+    expect(resolvePathGate(CODE, "open").allowed).toBe(true);
+  });
+
+  test("deco-only publishes under every policy", () => {
+    expect(resolvePathGate(DECO, "smart").allowed).toBe(true);
+    expect(resolvePathGate(DECO, "code-review").allowed).toBe(true);
+  });
+
+  test("code under code-review is blocked outright, not pending", () => {
+    const gate = resolvePathGate(CODE, "code-review");
+    expect(gate.allowed).toBe(false);
+    expect(gate.pending).toBeUndefined();
+  });
+
+  test("code under smart is PENDING — the judge has not run yet", () => {
+    const gate = resolvePathGate(CODE, "smart");
+    expect(gate.allowed).toBe(false);
+    expect(gate.pending).toBe(true);
+  });
+
+  test("an unknown path list never resolves to allowed", () => {
+    for (const policy of ["smart", "code-review", "open"] as const) {
+      expect(resolvePathGate([], policy).allowed).toBe(false);
+    }
+  });
+});
+
+describe("sandboxGitStatusQueryOptions", () => {
+  test("shares one cache entry with sandboxGitStatusQueryKey", () => {
+    expect(sandboxGitStatusQueryOptions("org", "vm", "feat").queryKey).toEqual(
+      sandboxGitStatusQueryKey("org", "vm", "feat"),
+    );
+  });
+
+  test("carries the 5s staleness budget the header and popover both rely on", () => {
+    expect(sandboxGitStatusQueryOptions("org", "vm", "feat").staleTime).toBe(
+      5_000,
+    );
   });
 });

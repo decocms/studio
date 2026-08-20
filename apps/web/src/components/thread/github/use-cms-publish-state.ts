@@ -1,112 +1,152 @@
-/**
- * The publish popover's read side. Git state and the last publish are fetched
- * as one suspense load, so the surface goes straight from a single skeleton to
- * its final render instead of stacking spinners. A failed load lands in
- * `loadError` (and a null `lastPublishedPr`), rendered inline by the popover
- * rather than thrown to an error boundary.
+/** The publish popover's read side, in two lanes.
+ *
+ * The MANIFEST lane is the changed-file list, which rides free on `/git/status`
+ * and is already warm in the header — so the popover's real card list, count,
+ * gate and enabled button are decided one request in, and usually zero. It
+ * suspends; there is nothing to show without it.
+ *
+ * The BODIES lane is the file contents, which only add section sub-lines and
+ * the expanded diff. It never suspends and never blocks the button: a body
+ * arriving (or failing) changes what a card SAYS, never which cards exist.
+ *
+ * Servers that predate the manifest omit `changedFiles`, and the sandbox daemon
+ * has no equivalent — then this falls back to deriving everything from the
+ * bodies, which is what the surface did before the split.
  */
 
-import { useSuspenseQuery } from "@tanstack/react-query";
-import type { GithubMcpClient } from "./github-pr-api.ts";
+import { skipToken, useQuery, useSuspenseQuery } from "@tanstack/react-query";
+import { KEYS } from "@/lib/query-keys.ts";
 import {
-  combinePublishDiffs,
+  summarizePublishChanges,
+  summarizePublishManifest,
+  type PublishChangeSummary,
+} from "./publish-change-summary.ts";
+import {
   fetchGitDiff,
-  fetchGitStatus,
-  hasGitLocalWork,
+  sandboxGitStatusQueryOptions,
   type GitDiffResult,
   type GitStatus,
 } from "./sandbox-git-api.ts";
-import { fetchLastPublishedPr, type PrSummary } from "./use-pr-data.ts";
 
 interface CmsPublishStateArgs {
-  githubClient: GithubMcpClient;
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
   baseBranch: string;
-  owner: string;
-  repo: string;
 }
 
-interface CmsPublishState {
-  status: GitStatus | null;
+export interface CmsPublishState {
+  status: GitStatus;
+  /** Cards to render — complete at the manifest beat, enriched at the bodies beat. */
+  summary: PublishChangeSummary;
+  /** Every changed path including generated artifacts: what "discard all" reverts. */
+  allPaths: string[];
+  /** Changed-path count before the server's cap; may exceed `allPaths.length`. */
+  changedFilesTotal: number;
+  /** The cap dropped paths — never offer an action over the whole set. */
+  changedFilesTruncated: boolean;
+  /** The head the card list was read from; publish asserts it before mutating. */
+  headSha: string | null;
+  /** File bodies, or null until (or unless) they load. */
   diff: GitDiffResult | null;
-  lastPublishedPr: PrSummary | null;
-  loadError: string | null;
-  /** Re-runs the load; the popover calls it after a discard. */
+  /** Bodies are still in flight — sub-lines and the expanded diff aren't ready. */
+  bodiesPending: boolean;
+  /** Bodies failed; the gate falls back to the path rule. */
+  bodiesFailed: boolean;
+  /** True while the card list itself is unknown (no manifest, bodies pending). */
+  cardsPending: boolean;
+  /** Re-reads the manifest; the popover calls it after a discard. */
   refresh: () => Promise<unknown>;
 }
 
-type LoadedPublishState = Omit<CmsPublishState, "refresh">;
-
-function cmsPublishStateQueryKey(
+function cmsPublishBodiesQueryKey(
   orgSlug: string,
   virtualMcpId: string,
   branch: string,
   baseBranch: string,
+  headSha: string | null,
 ) {
   return [
-    "cms-publish-popover-state",
+    "cms-publish-bodies",
     orgSlug,
     virtualMcpId,
     branch,
     baseBranch,
+    headSha,
   ] as const;
 }
 
-export function useCmsPublishState(args: CmsPublishStateArgs): CmsPublishState {
-  const {
-    githubClient,
-    orgSlug,
-    virtualMcpId,
-    branch,
-    baseBranch,
-    owner,
-    repo,
-  } = args;
+/** How long file bodies stay valid. They are content-addressed by `headSha`,
+ *  so a new head is a new entry rather than a stale one. */
+const BODIES_STALE_MS = 60_000;
 
-  const query = useSuspenseQuery<LoadedPublishState>({
-    queryKey: cmsPublishStateQueryKey(
+/**
+ * Read-only subscription to the decofile the CMS already loaded. It holds the
+ * head content of every block still on the branch, which is what turns a file
+ * path into "Home" before a single body has been fetched. `skipToken` makes it
+ * a reactive cache read that never issues a request of its own.
+ */
+function useDecofileHead(
+  orgSlug: string,
+  virtualMcpId: string,
+  branch: string,
+): Record<string, unknown> | undefined {
+  const { data } = useQuery({
+    queryKey: KEYS.decofile(`${orgSlug}/${virtualMcpId}/${branch}`),
+    queryFn: skipToken,
+  });
+  return data as Record<string, unknown> | undefined;
+}
+
+export function useCmsPublishState(args: CmsPublishStateArgs): CmsPublishState {
+  const { orgSlug, virtualMcpId, branch, baseBranch } = args;
+
+  const statusQuery = useSuspenseQuery(
+    sandboxGitStatusQueryOptions(orgSlug, virtualMcpId, branch),
+  );
+  const status = statusQuery.data;
+  const manifest = status.changedFiles ?? null;
+  const headSha = status.headSha ?? null;
+
+  // Sandbox-less local-work fields are always empty, so drift is the only signal.
+  const wantsBodies = manifest
+    ? manifest.length > 0
+    : (status.aheadOfBase ?? 0) > 0;
+
+  const bodiesQuery = useQuery({
+    queryKey: cmsPublishBodiesQueryKey(
       orgSlug,
       virtualMcpId,
       branch,
       baseBranch,
+      headSha,
     ),
-    queryFn: async (): Promise<LoadedPublishState> => {
-      const lastPublishedPromise = fetchLastPublishedPr(githubClient, {
-        owner,
-        repo,
-        base: baseBranch,
-      }).catch(() => null);
-      try {
-        const status = await fetchGitStatus(orgSlug, virtualMcpId, branch);
-        const baseDiff =
-          (status.aheadOfBase ?? 0) > 0
-            ? await fetchGitDiff(orgSlug, virtualMcpId, branch, {
-                base: baseBranch,
-              })
-            : null;
-        const workingDiff = hasGitLocalWork(status)
-          ? await fetchGitDiff(orgSlug, virtualMcpId, branch)
-          : null;
-        return {
-          status,
-          diff: combinePublishDiffs(baseDiff, workingDiff),
-          lastPublishedPr: await lastPublishedPromise,
-          loadError: null,
-        };
-      } catch (error) {
-        return {
-          status: null,
-          diff: null,
-          lastPublishedPr: await lastPublishedPromise,
-          loadError: error instanceof Error ? error.message : String(error),
-        };
-      }
-    },
-    staleTime: 0,
-    gcTime: 0,
+    queryFn: () =>
+      fetchGitDiff(orgSlug, virtualMcpId, branch, { base: baseBranch }),
+    enabled: wantsBodies,
+    staleTime: BODIES_STALE_MS,
   });
 
-  return { ...query.data, refresh: () => query.refetch() };
+  const decofileHead = useDecofileHead(orgSlug, virtualMcpId, branch);
+
+  const diff = bodiesQuery.data ?? null;
+  const summary = manifest
+    ? summarizePublishManifest({ files: manifest, lookup: decofileHead, diff })
+    : summarizePublishChanges(diff);
+
+  return {
+    status,
+    summary,
+    allPaths: manifest
+      ? manifest.map((file) => file.path)
+      : Object.keys(diff?.diffs ?? {}),
+    changedFilesTotal: status.changedFilesTotal ?? summary.count,
+    changedFilesTruncated: status.changedFilesTruncated ?? false,
+    headSha,
+    diff,
+    bodiesPending: wantsBodies && bodiesQuery.isPending,
+    bodiesFailed: bodiesQuery.isError,
+    cardsPending: !manifest && wantsBodies && bodiesQuery.isPending,
+    refresh: () => statusQuery.refetch(),
+  };
 }

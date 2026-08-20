@@ -26,7 +26,8 @@ export interface AppEntry {
   resolveType: string;
 }
 
-function parsePageName(key: string): string {
+/** Display name for a page block key, when its content isn't available. */
+export function parsePageName(key: string): string {
   // "pages-home-c4bcbfb771e9" -> "home"
   // "pages-Category%20Page-69217" -> "Category Page"
   let name = key;

@@ -18,7 +18,7 @@ import {
   runSubmitForReviewFlow,
   type PublishTarget,
 } from "./publish-flow.ts";
-import { discardGitFiles, type GitDiffResult } from "./sandbox-git-api.ts";
+import { discardGitFiles } from "./sandbox-git-api.ts";
 
 /** `publish` merges to production; `review` stops at the pull request. */
 export type CmsPublishMode = "publish" | "review";
@@ -28,7 +28,8 @@ interface CmsPublishActionsArgs {
   target: PublishTarget;
   /** The version note, authored in the popover — title on line 1, body below. */
   note: string;
-  diff: GitDiffResult | null;
+  /** Every changed path, from the manifest — what "discard all" reverts. */
+  allPaths: string[];
   /** Named in the success toast when publishing goes to a custom domain. */
   destinationHost: string | null;
   /** Held while a flow runs, so an outside click can't dismiss its progress. */
@@ -56,7 +57,7 @@ export function useCmsPublishActions(
     mode,
     target,
     note,
-    diff,
+    allPaths,
     destinationHost,
     publishLockRef,
     onOpenChange,
@@ -96,6 +97,8 @@ export function useCmsPublishActions(
       const failure = reportPublishFailure(error, t);
       setPublishError(failure.message);
       if (failure.pullRequestOpened) await onPullRequestChanged?.();
+      // Nothing was published — re-read so the list matches the new head.
+      if (failure.headMoved) await refresh();
     } finally {
       publishLockRef.current = false;
       setIsPublishing(false);
@@ -113,11 +116,11 @@ export function useCmsPublishActions(
       onOpenChange(false);
       await onPullRequestChanged?.();
     } catch (error) {
+      const failure = reportPublishFailure(error, t);
       setPublishError(
-        error instanceof Error
-          ? error.message
-          : t("thread.publishDialog.failedSubmitForReview"),
+        failure.message || t("thread.publishDialog.failedSubmitForReview"),
       );
+      if (failure.headMoved) await refresh();
     } finally {
       publishLockRef.current = false;
       setIsPublishing(false);
@@ -157,11 +160,9 @@ export function useCmsPublishActions(
         t("thread.publishPopover.discarded", { name: change.name }),
       ),
     discardAll: async () => {
-      if (!diff) return;
-      const allFiles = Object.keys(diff.diffs);
-      if (allFiles.length === 0) return;
+      if (allPaths.length === 0) return;
       await discardFiles(
-        allFiles,
+        allPaths,
         t("thread.publishDialog.allChangesDiscarded"),
       );
     },

@@ -24,6 +24,24 @@ export interface GitStatus {
   headSha?: string;
   /** Commits on HEAD not on origin/<branch> (from /git/status). */
   unpushed?: number;
+  /**
+   * base…head changed paths without their contents — the publish manifest.
+   * Fast Preview only: GitHub's compare response carries it for free, the
+   * sandbox daemon has no equivalent, so absent means "ask /git/diff instead".
+   */
+  changedFiles?: GitChangedFile[];
+  /** Changed-path count BEFORE the cap; `changedFiles` may be shorter. */
+  changedFilesTotal?: number;
+  /** True when the cap dropped paths — never offer an all-files action then. */
+  changedFilesTruncated?: boolean;
+}
+
+/** How a path changed between base and head. Mirrors the api's CompatChangedFile. */
+export interface GitChangedFile {
+  path: string;
+  status: "added" | "modified" | "removed" | "renamed";
+  /** Rename source; absent otherwise. */
+  previousPath?: string;
 }
 
 export interface GitDiffEntry {
@@ -262,16 +280,24 @@ function isDecoPath(path: string): boolean {
   );
 }
 
-/** Publish (squash-merge) is only allowed for CMS JSON under `.deco/` (plus generated assets). */
-export function isDecoOnlyDiff(
-  diff: GitDiffResult | null | undefined,
-): boolean {
-  if (!diff) return false;
-  const paths = Object.keys(diff.diffs);
+/**
+ * Publish (squash-merge) is only allowed for CMS JSON under `.deco/` (plus
+ * generated assets). Decided from paths alone, so the gate can be resolved
+ * from the changed-file manifest before any file body has been fetched.
+ */
+export function isDecoOnlyPaths(paths: readonly string[]): boolean {
   if (paths.length === 0) return false;
   return paths.every(
     (p) => isDecoPath(p) || isBlocksGenJsonPath(p) || isTailwindCssPath(p),
   );
+}
+
+/** {@link isDecoOnlyPaths} over a loaded diff's paths. */
+export function isDecoOnlyDiff(
+  diff: GitDiffResult | null | undefined,
+): boolean {
+  if (!diff) return false;
+  return isDecoOnlyPaths(Object.keys(diff.diffs));
 }
 
 /**
@@ -390,6 +416,32 @@ export function sandboxGitStatusQueryKey(
   branch: string,
 ) {
   return ["sandbox-git-status", orgSlug, virtualMcpId, branch] as const;
+}
+
+/**
+ * How long the changed-file manifest may be trusted before revalidating. A
+ * teammate's or the coding agent's commit can appear up to this late; the
+ * publish itself re-checks the head before it mutates anything, so the cost of
+ * being stale is a late-appearing card, never a publish of unseen work.
+ */
+const GIT_STATUS_STALE_MS = 5_000;
+
+/**
+ * The single definition of the git-status read. The Fast Preview header and the
+ * publish popover share one cache entry, so the popover opens on data the
+ * header already fetched — spread this into both rather than restating the key.
+ * Deliberately without `enabled`: `useSuspenseQuery` has no such option.
+ */
+export function sandboxGitStatusQueryOptions(
+  orgSlug: string,
+  virtualMcpId: string,
+  branch: string,
+) {
+  return {
+    queryKey: sandboxGitStatusQueryKey(orgSlug, virtualMcpId, branch),
+    queryFn: () => fetchGitStatus(orgSlug, virtualMcpId, branch),
+    staleTime: GIT_STATUS_STALE_MS,
+  };
 }
 
 export function countGitChanges(status: GitStatus | null): number {
@@ -515,6 +567,27 @@ export function canPublishDirectly(
   return isDecoOnlyDiff(diff)
     ? { allowed: true, reason: null }
     : { allowed: false, reason: null };
+}
+
+/**
+ * The gate decided from the changed-file manifest alone — what the publish
+ * surface uses while file bodies are still loading, and what it falls back to
+ * when they fail to load at all.
+ *
+ * Never resolves to `allowed` on incomplete information: an empty path list is
+ * "not known yet", and `smart` policy over code returns `pending` so the button
+ * stays disabled until the judge (which needs the bodies) has actually run.
+ */
+export function resolvePathGate(
+  paths: readonly string[],
+  policy: PublishPolicy,
+): PublishGate {
+  if (paths.length === 0) return { allowed: false, reason: null };
+  if (policy === "open") return { allowed: true, reason: null };
+  if (isDecoOnlyPaths(paths)) return { allowed: true, reason: null };
+  if (policy === "smart")
+    return { allowed: false, reason: null, pending: true };
+  return { allowed: false, reason: null };
 }
 
 /**

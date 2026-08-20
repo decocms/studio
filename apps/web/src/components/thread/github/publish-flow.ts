@@ -15,10 +15,34 @@ import {
   type CreatedPullRequest,
   type GithubMcpClient,
 } from "./github-pr-api.ts";
-import { publishGitChanges, rebaseGitBranch } from "./sandbox-git-api.ts";
+import {
+  fetchGitStatus,
+  publishGitChanges,
+  rebaseGitBranch,
+} from "./sandbox-git-api.ts";
 
 /** The steps a publish runs, in order. Submitting for review stops at `open-pr`. */
-type PublishStep = "push" | "sync" | "open-pr" | "merge";
+type PublishStep = "verify" | "push" | "sync" | "open-pr" | "merge";
+
+/**
+ * The branch moved between the moment its changes were shown and the moment
+ * publish ran — someone else's commit, the coding agent's, or the author's own
+ * autosave in another tab. Thrown before anything mutates, so the work is
+ * untouched and the surface can re-read and ask again.
+ *
+ * This cannot be a `sha` precondition on the merge instead: the sync step
+ * squash-rebases the branch onto base and force-updates the ref, so by merge
+ * time the head is one we wrote, not the one the author confirmed.
+ */
+class PublishHeadMovedError extends Error {
+  constructor(
+    readonly expectedHeadSha: string,
+    readonly actualHeadSha: string,
+  ) {
+    super("The branch changed since these changes were shown");
+    this.name = "PublishHeadMovedError";
+  }
+}
 
 /**
  * A failure attributed to the step that produced it. `pr` is set only when the
@@ -54,6 +78,12 @@ export interface PublishTarget {
   coAuthor?: CoAuthorIdentity;
   /** The branch's already-open pull request, updated instead of opening a new one. */
   existingOpenPr?: CreatedPullRequest;
+  /**
+   * The head the confirmed change list was read from. Checked against the live
+   * head before anything mutates; see {@link PublishHeadMovedError}. Omit to
+   * publish whatever the branch holds now.
+   */
+  expectedHeadSha?: string;
 }
 
 /** Pull-request title/body and the commit message, from one authored note. */
@@ -111,6 +141,26 @@ async function runStep<T>(
   }
 }
 
+/**
+ * Fail before mutating anything when the branch head is no longer the one the
+ * confirmed change list was read from. A status read that itself fails is not
+ * evidence the head moved, so it lets the publish proceed rather than blocking
+ * on an unrelated outage.
+ */
+async function assertHeadUnchanged(target: PublishTarget): Promise<void> {
+  const expected = target.expectedHeadSha;
+  if (!expected) return;
+  const status = await fetchGitStatus(
+    target.orgSlug,
+    target.virtualMcpId,
+    target.branch,
+  ).catch(() => null);
+  const actual = status?.headSha;
+  if (actual && actual !== expected) {
+    throw new PublishHeadMovedError(expected, actual);
+  }
+}
+
 function pushChanges(target: PublishTarget, message: string): Promise<void> {
   return publishGitChanges(
     target.orgSlug,
@@ -146,6 +196,7 @@ export async function runPublishFlow(
   parts: PublishMessage,
   t: TFunction,
 ): Promise<CreatedPullRequest> {
+  await assertHeadUnchanged(target);
   await runStep("push", t("thread.publishDialog.failedPushChanges"), () =>
     pushChanges(target, parts.message),
   );
@@ -192,6 +243,7 @@ export async function runSubmitForReviewFlow(
   target: PublishTarget,
   parts: PublishMessage,
 ): Promise<CreatedPullRequest> {
+  await assertHeadUnchanged(target);
   await pushChanges(target, parts.message);
   return openPullRequest(target, parts);
 }
@@ -201,6 +253,8 @@ interface PublishFailure {
   message: string;
   /** Set when the merge failed after the PR opened — the work is in that PR. */
   pullRequest: CreatedPullRequest | null;
+  /** The branch moved before anything ran: nothing changed, re-read and retry. */
+  headMoved: boolean;
 }
 
 /**
@@ -212,6 +266,13 @@ export function describePublishFailure(
   error: unknown,
   t: TFunction,
 ): PublishFailure {
+  if (error instanceof PublishHeadMovedError) {
+    return {
+      message: t("thread.publishPopover.branchMoved"),
+      pullRequest: null,
+      headMoved: true,
+    };
+  }
   if (error instanceof PublishStepError && error.step === "merge" && error.pr) {
     return {
       message: t("thread.publishDialog.mergeFailed", {
@@ -219,6 +280,7 @@ export function describePublishFailure(
         message: error.message,
       }),
       pullRequest: error.pr,
+      headMoved: false,
     };
   }
   return {
@@ -227,17 +289,18 @@ export function describePublishFailure(
         ? error.message
         : t("thread.publishDialog.failedPublish"),
     pullRequest: null,
+    headMoved: false,
   };
 }
 
 /**
  * {@link describePublishFailure} plus the toast both surfaces raise for it.
- * `pullRequestOpened` tells the caller to refresh its PR state.
+ * `pullRequestOpened` refreshes PR state; `headMoved` re-reads the change list.
  */
 export function reportPublishFailure(
   error: unknown,
   t: TFunction,
-): { message: string; pullRequestOpened: boolean } {
+): { message: string; pullRequestOpened: boolean; headMoved: boolean } {
   const failure = describePublishFailure(error, t);
   const pr = failure.pullRequest;
   if (pr) {
@@ -248,7 +311,11 @@ export function reportPublishFailure(
       },
     });
   }
-  return { message: failure.message, pullRequestOpened: pr !== null };
+  return {
+    message: failure.message,
+    pullRequestOpened: pr !== null,
+    headMoved: failure.headMoved,
+  };
 }
 
 /** Both surfaces confirm a review submission the same way: PR number + link. */

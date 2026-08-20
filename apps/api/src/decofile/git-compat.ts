@@ -22,6 +22,17 @@ import { mapBounded, resolveOrCreateHead } from "./read-decofile";
 const DIFF_MAX_FILES = 200;
 const DIFF_FETCH_CONCURRENCY = 12;
 
+/** How a path changed between base and head, in the publish manifest. */
+export type CompatChangeStatus = "added" | "modified" | "removed" | "renamed";
+
+/** One changed path, without its content. See {@link CompatGitStatus.changedFiles}. */
+export interface CompatChangedFile {
+  path: string;
+  status: CompatChangeStatus;
+  /** Rename source; absent otherwise. */
+  previousPath?: string;
+}
+
 /** Mirror of the daemon's `git status` JSON (see web GitStatus). */
 export interface CompatGitStatus {
   not_added: string[];
@@ -42,20 +53,51 @@ export interface CompatGitStatus {
   behindBase: number;
   headSha: string;
   unpushed: 0;
+  /**
+   * The base…head changed-path manifest — every path {@link githubGitDiff}
+   * would return a body for, without paying for the bodies. Free: GitHub's
+   * compare response already carries `files`, and asking for it costs the SAME
+   * request the drift check already makes (identical URL, one ETag entry).
+   * Sliced to {@link DIFF_MAX_FILES} so manifest and diff agree key-for-key.
+   */
+  changedFiles: CompatChangedFile[];
+  /** Changed-path count BEFORE the cap — what "N changes" must actually say. */
+  changedFilesTotal: number;
+  /** True when the cap dropped paths, so no caller offers an all-files action. */
+  changedFilesTruncated: boolean;
 }
 
-export async function githubGitStatus(
-  client: GitDataClient,
-  branch: string,
-): Promise<CompatGitStatus> {
-  const base = await client.getDefaultBranch();
-  // Materialize thread-minted branches exactly like the decofile read does —
-  // the header polls status before the CMS ever reads content.
-  const headSha = await resolveOrCreateHead(client, branch);
-  const drift =
-    base === branch
-      ? { aheadBy: 0, behindBy: 0 }
-      : await client.compare(base, branch);
+/**
+ * GitHub's compare `status` vocabulary is wider than the three states the CMS
+ * renders. `copied`/`changed`/`unchanged` fold into the nearest state the
+ * publish surface can draw, rather than leaking an unhandled string into it.
+ */
+export function normalizeCompareStatus(raw: string): CompatChangeStatus {
+  if (raw === "added" || raw === "copied") return "added";
+  if (raw === "removed") return "removed";
+  if (raw === "renamed") return "renamed";
+  return "modified";
+}
+
+interface CompareDetail {
+  aheadBy: number;
+  behindBy: number;
+  files: Array<{ filename: string; status: string; previousFilename?: string }>;
+}
+
+/** Pure fold from a compare response to the status payload. */
+export function buildPublishStatus(args: {
+  base: string;
+  branch: string;
+  headSha: string;
+  compared: CompareDetail;
+}): CompatGitStatus {
+  const { base, branch, headSha, compared } = args;
+  const changedFiles = compared.files.slice(0, DIFF_MAX_FILES).map((f) => ({
+    path: f.filename,
+    status: normalizeCompareStatus(f.status),
+    ...(f.previousFilename ? { previousPath: f.previousFilename } : {}),
+  }));
   return {
     not_added: [],
     conflicted: [],
@@ -71,17 +113,59 @@ export async function githubGitStatus(
     tracking: `origin/${branch}`,
     detached: false,
     base,
-    aheadOfBase: drift.aheadBy,
-    behindBase: drift.behindBy,
+    aheadOfBase: compared.aheadBy,
+    behindBase: compared.behindBy,
     headSha,
     unpushed: 0,
+    changedFiles,
+    changedFilesTotal: compared.files.length,
+    changedFilesTruncated: compared.files.length > changedFiles.length,
   };
+}
+
+/** The manifest rides on the drift check: `compareDetailed` hits the URL
+ *  `compare` already hit and shares its ETag entry. */
+export async function githubGitStatus(
+  client: GitDataClient,
+  branch: string,
+): Promise<CompatGitStatus> {
+  const base = await client.getDefaultBranch();
+  // Materialize thread-minted branches exactly like the decofile read does.
+  const headSha = await resolveOrCreateHead(client, branch);
+  const compared =
+    base === branch
+      ? { aheadBy: 0, behindBy: 0, files: [] }
+      : await client.compareDetailed(base, branch);
+  return buildPublishStatus({ base, branch, headSha, compared });
 }
 
 /** Mirror of the daemon's diff JSON: full old/new contents per path. */
 export interface CompatGitDiff {
   diffs: Record<string, { from: string | null; to: string | null }>;
   mergeBaseSha: string;
+}
+
+/**
+ * Base-side blob sha per path, read off the merge-base tree.
+ *
+ * Empty for an all-additions diff: nothing has a base side, so the two calls
+ * this makes would be discarded. That is also the whole-repo recursive read,
+ * which the ETag cache excludes and which 502s as `tree listing truncated by
+ * GitHub` on large repos — so the common "created a page" publish stops
+ * paying for it, and stops failing on it.
+ */
+async function baseBlobShas(
+  client: GitDataClient,
+  mergeBaseSha: string,
+  files: Array<{ status: string }>,
+): Promise<Map<string, string>> {
+  const byPath = new Map<string, string>();
+  if (files.every((f) => f.status === "added")) return byPath;
+  const baseTreeSha = await client.getCommitTreeSha(mergeBaseSha);
+  for (const entry of await client.getTreeRecursive(baseTreeSha)) {
+    if (entry.type === "blob") byPath.set(entry.path, entry.sha);
+  }
+  return byPath;
 }
 
 /**
@@ -99,10 +183,14 @@ export async function githubGitDiff(
   const detailed = await client.compareDetailed(againstBase, branch);
   const files = detailed.files.slice(0, DIFF_MAX_FILES);
 
-  const baseTreeSha = await client.getCommitTreeSha(detailed.mergeBaseSha);
-  const baseTree = await client.getTreeRecursive(baseTreeSha);
-  const baseBlobByPath = new Map(
-    baseTree.filter((e) => e.type === "blob").map((e) => [e.path, e.sha]),
+  if (files.length === 0) {
+    return { diffs: {}, mergeBaseSha: detailed.mergeBaseSha };
+  }
+
+  const baseBlobByPath = await baseBlobShas(
+    client,
+    detailed.mergeBaseSha,
+    files,
   );
 
   const entries = await mapBounded(files, DIFF_FETCH_CONCURRENCY, async (f) => {

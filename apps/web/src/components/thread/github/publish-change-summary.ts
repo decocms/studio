@@ -11,8 +11,13 @@ import {
   globalSectionLabel,
   isSiteAppBlock,
   pageEntryFromBlock,
+  parsePageName,
 } from "@/components/sections-editor/page-list";
-import { isGeneratedArtifactPath, type GitDiffResult } from "./sandbox-git-api";
+import {
+  isGeneratedArtifactPath,
+  type GitChangedFile,
+  type GitDiffResult,
+} from "./sandbox-git-api";
 
 export type PublishChangeStatus = "new" | "edited" | "removed";
 
@@ -340,12 +345,27 @@ export function summarizePublishChanges(
     });
   }
 
-  const byName = (a: PublishChange, b: PublishChange) =>
-    a.name.localeCompare(b.name);
-  pages.sort(byName);
-  blocks.sort(byName);
-  other.sort(byName);
+  return collectSummary({ pages, blocks, other, generated });
+}
 
+/**
+ * Sorted by file path, not by display name: a card must not reposition when
+ * its name sharpens from the block key to the parsed title.
+ */
+function byPath(a: PublishChange, b: PublishChange): number {
+  return (a.filepaths[0] ?? "").localeCompare(b.filepaths[0] ?? "");
+}
+
+function collectSummary(buckets: {
+  pages: PublishChange[];
+  blocks: PublishChange[];
+  other: PublishChange[];
+  generated: string[];
+}): PublishChangeSummary {
+  const { pages, blocks, other, generated } = buckets;
+  pages.sort(byPath);
+  blocks.sort(byPath);
+  other.sort(byPath);
   return {
     pages,
     blocks,
@@ -353,6 +373,150 @@ export function summarizePublishChanges(
     generated,
     count: pages.length + blocks.length + other.length,
   };
+}
+
+/** Manifest statuses collapse onto the three the surface draws. */
+function manifestStatus(status: GitChangedFile["status"]): PublishChangeStatus {
+  if (status === "added") return "new";
+  if (status === "removed") return "removed";
+  return "edited";
+}
+
+/** A block-keyed path is a page when its content says so — or, with no content
+ *  to read, when it follows the `pages-<name>-<id>` key convention. */
+function looksLikePageKey(blockKey: string): boolean {
+  return blockKey.startsWith("pages-");
+}
+
+interface ManifestInput {
+  /** Changed paths and how they changed — the whole card list. */
+  files: readonly GitChangedFile[];
+  /**
+   * The branch head decofile, keyed by block key. Supplies names, page paths
+   * and classification for every path that still exists on the branch, so the
+   * list is complete before any file body has been fetched.
+   */
+  lookup?: Record<string, unknown> | null;
+  /** File bodies, once loaded. Enriches cards; never re-classifies them. */
+  diff?: GitDiffResult | null;
+}
+
+/**
+ * The publish change model built from the changed-file MANIFEST — which paths
+ * changed — with file bodies as an optional enrichment rather than a
+ * prerequisite. This is what lets the publish surface render its real list one
+ * request in, and it is the only entry point the Fast Preview popover uses.
+ *
+ * Card identity, kind, status and order come from the manifest and the head
+ * decofile alone, never from `diff`, so a body arriving later cannot remount a
+ * card, move it between groups, re-sort it, or recolor it. Bodies add only the
+ * section sub-lines and the raw JSON the expanded diff renders.
+ *
+ * One consequence worth naming: a REMOVED block is absent from the head
+ * decofile, so it classifies by key convention. A removed page not keyed
+ * `pages-*` lists under Blocks — stable and correctly named, in the wrong
+ * group. Reclassifying it once bodies land would be more accurate and worse.
+ */
+export function summarizePublishManifest(
+  input: ManifestInput,
+): PublishChangeSummary {
+  const { files, lookup, diff } = input;
+  const pages: PublishChange[] = [];
+  const blocks: PublishChange[] = [];
+  const other: PublishChange[] = [];
+  const generated: string[] = [];
+
+  for (const file of files) {
+    const path = file.path;
+    if (isGeneratedArtifactPath(path)) {
+      generated.push(path);
+      continue;
+    }
+    const status = manifestStatus(file.status);
+    const blockKey = blockKeyFromDiffPath(path);
+    if (!blockKey) {
+      other.push(otherChange(path, status));
+      continue;
+    }
+
+    const body = diff?.diffs[path];
+    const fromJson = parseBlockJson(body?.from ?? null);
+    const toJson = parseBlockJson(body?.to ?? null);
+    const headShape = readBlockShape(lookup, blockKey);
+    // Classification reads the head shape ONLY — see the doc above.
+    const nameShape = headShape ?? toJson ?? fromJson;
+
+    const headPage = headShape ? pageEntryFromBlock(blockKey, headShape) : null;
+    if (headPage ?? (!headShape && looksLikePageKey(blockKey))) {
+      const namePage = nameShape
+        ? pageEntryFromBlock(blockKey, nameShape)
+        : null;
+      pages.push({
+        kind: "page",
+        blockKey,
+        name: namePage?.name ?? parsePageName(blockKey),
+        pagePath: namePage?.path ?? null,
+        isSiteApp: false,
+        status,
+        filepaths: [path],
+        sections: status === "edited" ? diffPageSections(fromJson, toJson) : [],
+        fromJson,
+        // `new` never diffs sections, so the head shape is a safe stand-in.
+        toJson: toJson ?? (status === "new" ? headShape : null),
+      });
+      continue;
+    }
+
+    const label = globalSectionLabel(blockKey, nameShape ?? {});
+    blocks.push({
+      kind: "block",
+      blockKey,
+      name: label,
+      pagePath: null,
+      isSiteApp: isSiteAppBlock(blockKey, headShape ?? {}),
+      status,
+      filepaths: [path],
+      sections:
+        status === "edited"
+          ? [
+              {
+                name: label,
+                status: "edited" as const,
+                fields: shallowFieldDiff(fromJson, toJson, []),
+              },
+            ].filter((s) => s.fields.length > 0)
+          : [],
+      fromJson,
+      toJson,
+    });
+  }
+
+  return collectSummary({ pages, blocks, other, generated });
+}
+
+/** The head decofile's entry for a block key, when it is a plain object. */
+function readBlockShape(
+  lookup: Record<string, unknown> | null | undefined,
+  blockKey: string,
+): Record<string, unknown> | null {
+  const value = lookup?.[blockKey];
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+/**
+ * The version note to render: the author's text once they have typed anything,
+ * otherwise the note derived from the current change set.
+ *
+ * `??`, never `||` — an author who deliberately clears the field must not have
+ * it refilled underneath them.
+ */
+export function resolveVersionNote(
+  edited: string | null,
+  autoNote: string,
+): string {
+  return edited ?? autoNote;
 }
 
 function joinNames(names: string[]): string {
