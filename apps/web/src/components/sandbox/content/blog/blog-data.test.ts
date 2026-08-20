@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   addCategoryToPost,
   blockComponentName,
+  blocksPublishToggle,
   buildBlogBlock,
   discoverBlogBlockTypes,
   emptyBlogPayload,
@@ -392,6 +393,29 @@ describe("missingPostFields", () => {
         image: "https://cdn/cover.jpg",
       }),
     ).toEqual([]);
+  });
+});
+
+describe("blocksPublishToggle", () => {
+  test("blocks publishing an incomplete draft", () => {
+    expect(blocksPublishToggle({ status: "draft" })).toBe(true);
+  });
+
+  test("allows unpublishing a published post that later lost a required field", () => {
+    expect(blocksPublishToggle({ status: "published" })).toBe(false);
+  });
+
+  test("allows publishing a complete draft", () => {
+    expect(
+      blocksPublishToggle({
+        status: "draft",
+        title: "Hello",
+        slug: "hello",
+        categories: ["news"],
+        excerpt: "A short summary.",
+        image: "https://cdn/cover.jpg",
+      }),
+    ).toBe(false);
   });
 });
 
