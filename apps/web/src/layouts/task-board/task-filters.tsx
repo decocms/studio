@@ -195,7 +195,7 @@ const DUE_OPTIONS_LABEL_KEYS: Record<DueFilter, TranslationKey> = {
  */
 function chipClass(active: boolean, block = false): string {
   return cn(
-    "inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium outline-none transition-colors",
+    "inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium outline-none transition-colors focus-visible:border-ring focus-visible:ring-[2px] focus-visible:ring-ring/20",
     block && "h-10 w-full justify-start px-3 text-sm",
     active
       ? "border-transparent bg-accent text-foreground"
