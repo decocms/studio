@@ -1,5 +1,7 @@
+import { Suspense } from "react";
 import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Switch } from "@decocms/ui/components/switch.tsx";
 import { FileSearch02, GitMerge, ShieldTick } from "@untitledui/icons";
 import {
@@ -52,6 +54,16 @@ const REPO_TOGGLES: {
  * workspace that never touches this section behaves exactly as before.
  */
 export function RepoReviewSettings() {
+  return (
+    <Suspense fallback={<Skeleton className="h-24 w-full" />}>
+      <RepoRows />
+    </Suspense>
+  );
+}
+
+/** Split out because the connection list suspends — same shape as the main-agent
+ *  select, so the rest of the settings page renders while repos load. */
+function RepoRows() {
   const t = useT();
   const githubConnections = useConnections({ slug: "mcp-github" }) ?? [];
   const repos = listRepoScopeLabels(githubConnections);
