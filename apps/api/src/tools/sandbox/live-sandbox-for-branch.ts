@@ -1,5 +1,9 @@
 import type { StudioContext } from "../../core/studio-context";
+import { sleep } from "@decocms/shared/std";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
+
+/** The claim decision cannot wait on a slow control plane. */
+const ALIVE_PROBE_TIMEOUT_MS = 2_000;
 
 /**
  * Is a sandbox actually RUNNING at this claim handle?
@@ -29,8 +33,23 @@ export async function liveSandboxForBranch(
       branch: claim.branch,
       virtualMcpMetadata: claim.virtualMcpMetadata,
     });
-    return await provider.alive(claim.claimName).catch(() => false);
+    return await probeAlive(provider, claim.claimName);
   } catch {
     return false;
   }
+}
+
+/**
+ * `alive()` reaches a live control plane with no deadline of its own, and this
+ * sits in front of every proxied request on an unstamped thread — so bound it.
+ * A probe that does not answer in time is not evidence of a live session.
+ */
+async function probeAlive(
+  provider: { alive: (handle: string) => Promise<boolean> },
+  handle: string,
+): Promise<boolean> {
+  return await Promise.race([
+    provider.alive(handle).catch(() => false),
+    sleep(ALIVE_PROBE_TIMEOUT_MS).then(() => false),
+  ]);
 }

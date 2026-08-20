@@ -1714,8 +1714,13 @@ impl ThreadsDb {
                     .and_then(|thread| thread.metadata)
                     .and_then(|meta| meta.get("runtime").cloned());
                 match (existing, value.clone()) {
+                    // The existing stamp WINS, even when the patch names a
+                    // different one: the cloud's COLLECTION_THREADS_UPDATE
+                    // rejects a change outright, and silently accepting one
+                    // here would strand the local worktree behind a `cms` gate
+                    // with no supported way back.
                     (Some(runtime), Value::Object(mut next)) => {
-                        next.entry("runtime").or_insert(runtime);
+                        next.insert("runtime".to_string(), runtime);
                         Value::Object(next).to_string()
                     }
                     (_, other) => other.to_string(),

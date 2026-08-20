@@ -315,26 +315,32 @@ async function resolveClaimRuntime(
   if (stamp) return stamp;
 
   const projectDefault = defaultThreadRuntime(claim.virtualMcpMetadata);
-  const live =
-    projectDefault === "cms"
-      ? await liveSandboxForBranch(ctx, {
-          claimName: claim.claimName,
-          userId: claim.sandboxUserId,
-          branch: claim.branch,
-          virtualMcpMetadata: claim.virtualMcpMetadata,
-        })
-      : true;
-  const runtime: ThreadRuntime =
-    projectDefault === "cms" && !live ? "cms" : "sandbox";
+  // The probe only runs where it can change the answer. Its result is also the
+  // only EVIDENCE this path has, which is what decides whether we may stamp.
+  const probed = projectDefault === "cms";
+  const live = probed
+    ? await liveSandboxForBranch(ctx, {
+        claimName: claim.claimName,
+        userId: claim.sandboxUserId,
+        branch: claim.branch,
+        virtualMcpMetadata: claim.virtualMcpMetadata,
+      })
+    : true;
+  const runtime: ThreadRuntime = probed && !live ? "cms" : "sandbox";
 
   console.log("sandbox proxy: no runtime stamp", {
     route: c.req.path,
     method: c.req.method,
     reason: owned ? "unstamped" : "threadless",
     resolved: runtime,
+    stamped: !!owned && probed,
   });
-  if (owned && runtime === "sandbox") {
-    void stampRuntimeIfAbsent(ctx, owned.id, "sandbox");
+  // Stamp ONLY what the probe witnessed. Without `probed`, a legacy thread on a
+  // project whose Fast Preview switch was just turned off would be permanently
+  // converted to a coding session by a `/git/status` poll — and the stamp is
+  // immutable, so there would be no way back.
+  if (owned && probed) {
+    void stampRuntimeIfAbsent(ctx, owned.id, runtime);
   }
   return runtime;
 }
@@ -960,29 +966,18 @@ export const createSandboxRoutes = () => {
   });
   app.post("/:virtualMcpId/:branch/git/publish", async (c) => {
     // Sandbox-less: every save is already a commit on the remote branch, so
-    // "sync local work" has nothing to do — UNLESS a coding session is live on
-    // this same branch, whose working tree holds commits the CMS publish would
-    // otherwise leave behind. Flush that pod first, then answer OK.
+    // "sync local work" has nothing to do. Answering OK keeps the publish
+    // dialog's flow (push → rebase → PR/merge via the GitHub connection)
+    // working with no working tree behind it.
+    //
+    // Deliberately does NOT flush a coding session's pod on the same branch:
+    // the daemon's publish commits its ENTIRE working tree, while the gate that
+    // authorized this click was computed from the GitHub manifest alone — so
+    // flushing would push unreviewed code past a `smart`/`code-review` policy.
+    // A teammate's unpushed work staying invisible here is a pre-existing blind
+    // spot, and the honest fix is to widen the GATE, not to widen the push.
     if (c.get("vmClaim").runtime === "cms") {
-      const claim = c.get("vmClaim");
-      const live = await liveSandboxForBranch(c.var.studioContext, {
-        claimName: claim.claimName,
-        userId: claim.userId,
-        branch: claim.branch,
-        virtualMcpMetadata: claim.virtualMcpMetadata,
-      });
-      if (!live) {
-        return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
-      }
-      const podRunner = await resolveBranchRunner(c);
-      if (!podRunner) {
-        return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
-      }
-      return proxyDaemon(c, "/_sandbox/git/publish", {
-        forwardJsonBody: true,
-        map404to410: true,
-        runner: podRunner,
-      });
+      return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
     }
     const runner = requireRunner(c);
     if (runner instanceof Response) return runner;

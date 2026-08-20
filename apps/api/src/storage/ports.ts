@@ -32,6 +32,7 @@ import type {
   ThreadMessage,
 } from "./types";
 import type { UserModelPreferences } from "@decocms/shared/organization/schema";
+import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
 
 export type ThreadUpdateData = Partial<Thread> & {
   /**
@@ -79,6 +80,12 @@ export interface ThreadStoragePort {
     organizationId: string,
     pin: ThreadRuntimePin,
   ): Promise<ThreadRuntimePinResult>;
+  /** Write `metadata.runtime` only if absent. One guarded statement — see the impl. */
+  stampRuntimeIfAbsent(
+    id: string,
+    organizationId: string,
+    runtime: ThreadRuntime,
+  ): Promise<boolean>;
   /**
    * Atomically transition an in-progress thread to completed.
    * Returns the updated row when this call won the transition, or null when the

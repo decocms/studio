@@ -51,6 +51,10 @@ export function findReusableNewChat(
  */
 function runtimeMatches(thread: Task, expected: ThreadRuntime | undefined) {
   if (!expected) return true;
+  // A `/watch` synthetic carries no metadata, so its absent stamp is "not
+  // loaded", not "unstamped" — trusting it would reuse a CMS chat for a coding
+  // session (or the reverse) on nothing more than a race with the feed.
+  if (thread.partial) return false;
   const stamp = parseThreadRuntime(thread.metadata?.runtime);
   return stamp === null || stamp === expected;
 }

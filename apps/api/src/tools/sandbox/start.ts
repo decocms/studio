@@ -314,7 +314,10 @@ export async function ensureSandbox(
   // record from a daemon that no longer exists) leaves one behind forever;
   // probing every kind is what makes that self-healing rather than sticky.
   if (existing) {
-    const alive = await runner.alive(existing.sandboxHandle).catch(() => false);
+    // A probe that ERRORS is not evidence the pod is gone — treat it as alive,
+    // the same way the events handler does. Reaping on a throttled control-plane
+    // call would tear down a healthy sandbox and re-clone it from scratch.
+    const alive = await runner.alive(existing.sandboxHandle).catch(() => true);
     if (alive) return existing;
     await removeSandboxMapEntry(
       ctx.storage.virtualMcps,

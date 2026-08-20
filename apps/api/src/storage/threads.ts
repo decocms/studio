@@ -7,6 +7,7 @@
 
 import { sql, type Kysely } from "kysely";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
+import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import { DEFAULT_THREAD_TITLE } from "@/api/routes/decopilot/constants";
 import type {
   ThreadRuntimePin,
@@ -98,6 +99,10 @@ export class OrgScopedThreadStorage {
     pin: ThreadRuntimePin,
   ): Promise<ThreadRuntimePinResult> {
     return this.inner.pinRuntimeIfUnset(id, this.requireOrg(), pin);
+  }
+
+  stampRuntimeIfAbsent(id: string, runtime: ThreadRuntime): Promise<boolean> {
+    return this.inner.stampRuntimeIfAbsent(id, this.requireOrg(), runtime);
   }
 
   completeRunIfNotCompleted(id: string): Promise<Thread | null> {
@@ -487,6 +492,38 @@ export class SqlThreadStorage implements ThreadStoragePort {
       thread: await this.get(id, organizationId),
       claimed: false,
     };
+  }
+
+  /**
+   * Write `metadata.runtime` only if the thread has none — the drain the
+   * sandbox-proxy claim fires when it had to resolve a legacy row's runtime by
+   * probing. ONE guarded statement, not a read-modify-write: `update()` writes
+   * `metadata` as a whole blob, so reading it in app code and writing it back
+   * would clobber any concurrent metadata write that landed in between.
+   *
+   * `metadata` is jsonb — a later migration converted it from the `text` the
+   * original CREATE TABLE declared, so write jsonb, not a stringified blob.
+   */
+  async stampRuntimeIfAbsent(
+    id: string,
+    organizationId: string,
+    runtime: ThreadRuntime,
+  ): Promise<boolean> {
+    const row = await this.db
+      .updateTable("threads")
+      .set({
+        metadata: sql`coalesce(${sql.ref("metadata")}, '{}'::jsonb)
+          || jsonb_build_object('runtime', ${runtime}::text)`,
+        updated_at: new Date().toISOString(),
+      })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .where(
+        sql<boolean>`coalesce(${sql.ref("metadata")}, '{}'::jsonb) ->> 'runtime' is null`,
+      )
+      .returning("id")
+      .executeTakeFirst();
+    return !!row;
   }
 
   async completeRunIfNotCompleted(

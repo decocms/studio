@@ -28,9 +28,9 @@ export function MainPanelWithDrawer({
     agentHasClonableSource(inset?.entity?.metadata) ||
     agentHasClonableSource(activeTask?.metadata);
   // The one thread-aware gate, scoped to this agent's entity by the id match.
+  const sessionRuntime = useSessionRuntime(inset?.entity?.id).runtime;
   const fastPreviewActive =
-    inset?.entity?.id === virtualMcpId &&
-    useSessionRuntime(inset.entity.id).runtime === "cms";
+    inset?.entity?.id === virtualMcpId && sessionRuntime === "cms";
   const showDrawer = shouldShowTerminalDrawer({
     hasClonableSource,
     fastPreviewActive,

@@ -171,10 +171,13 @@ export function buildSandboxStartArgs(
   virtualMcpId: string,
   branch: string | null,
   sandboxProviderKind: SandboxProviderKind | null,
+  /** The session asking. The server refuses to provision for a CMS one. */
+  threadId?: string | null,
 ): SandboxStartArgs {
   const args: SandboxStartArgs = { virtualMcpId };
   if (branch) args.branch = branch;
   if (sandboxProviderKind) args.sandboxProviderKind = sandboxProviderKind;
+  if (threadId) args.threadId = threadId;
   return args;
 }
 
@@ -361,6 +364,7 @@ import {
   useProjectContext,
 } from "@/sdk";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
+import { useOptionalChatTask } from "@/components/chat/chat-context";
 import type { SandboxMap } from "@decocms/shared/sdk/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { invalidateVirtualMcpQueries } from "@/lib/query-keys";
@@ -473,6 +477,8 @@ export function SandboxLifecycleProvider({
   // ShouldAutoStartArgs.fastPreviewActive). Self-heal/claim-retry stay ungated —
   // they only ever fire for a sandbox that already exists.
   const fastPreviewActive = useSessionRuntime(virtualMcpId).runtime === "cms";
+  /** Sent with every SANDBOX_START so the server's CMS refusal can fire. */
+  const startThreadId = useOptionalChatTask()?.taskId ?? null;
 
   const mcpClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -609,6 +615,7 @@ export function SandboxLifecycleProvider({
       virtualMcpId,
       branch,
       sandboxProviderKind,
+      startThreadId,
     );
     startVmMutate(args, {
       onSuccess: (data) => {
@@ -630,6 +637,7 @@ export function SandboxLifecycleProvider({
     branch,
     virtualMcpId,
     sandboxProviderKind,
+    startThreadId,
     startVmMutate,
     setCurrentTaskBranch,
     setSeededPreviewUrl,
@@ -656,6 +664,7 @@ export function SandboxLifecycleProvider({
       virtualMcpId,
       branch,
       sandboxProviderKind,
+      startThreadId,
     );
     startVmMutate(args, {
       onSuccess: (data) => {
@@ -677,6 +686,7 @@ export function SandboxLifecycleProvider({
     virtualMcpId,
     branch,
     sandboxProviderKind,
+    startThreadId,
     startVmMutate,
     setCurrentTaskBranch,
     setSeededPreviewUrl,
@@ -717,6 +727,7 @@ export function SandboxLifecycleProvider({
       virtualMcpId,
       branch,
       sandboxProviderKind,
+      startThreadId,
     );
     startVmMutate(args, {
       onSuccess: (data) => {
@@ -738,6 +749,7 @@ export function SandboxLifecycleProvider({
     virtualMcpId,
     branch,
     sandboxProviderKind,
+    startThreadId,
     startVmMutate,
     setCurrentTaskBranch,
     setSeededPreviewUrl,
@@ -750,6 +762,7 @@ export function SandboxLifecycleProvider({
       virtualMcpId,
       branch,
       sandboxProviderKind,
+      startThreadId,
     );
     startVmMutate(args, {
       onSuccess: (data) => {

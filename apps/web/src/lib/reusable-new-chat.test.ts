@@ -99,6 +99,17 @@ describe("findReusableNewChat", () => {
       ).toBe("legacy");
     });
 
+    // A /watch synthetic has no metadata: absent is "not loaded", not "unstamped".
+    it("never reuses a partial row when a runtime is expected", () => {
+      const partial = task({ id: "partial", partial: true });
+      expect(
+        findReusableNewChat([partial], "agent-1", USER, "cms"),
+      ).toBeUndefined();
+      expect(findReusableNewChat([partial], "agent-1", USER)?.id).toBe(
+        "partial",
+      );
+    });
+
     it("an unresolved project keeps the pre-existing unfiltered behavior", () => {
       expect(findReusableNewChat([sandbox], "agent-1", USER)?.id).toBe(
         "sandbox",

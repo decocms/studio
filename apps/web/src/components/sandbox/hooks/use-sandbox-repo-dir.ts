@@ -11,7 +11,7 @@ export function useSandboxRepoDir(args: {
 }) {
   const { orgSlug, virtualMcpId, branch, threadId, enabled = true } = args;
   const query = useQuery({
-    queryKey: KEYS.sandboxRepoDir(orgSlug, virtualMcpId, branch),
+    queryKey: KEYS.sandboxRepoDir(orgSlug, virtualMcpId, branch, threadId),
     queryFn: async () => {
       const url = buildSandboxUrl(
         { orgSlug, virtualMcpId, branch, threadId },

@@ -177,14 +177,9 @@ export function SectionsEditor({
   onVariantPreviewOverride?: (params: string[] | null) => void;
 }) {
   const t = useT();
+  const threadId = useOptionalChatTask()?.taskId ?? null;
   const previewFetchParams = previewReady
-    ? {
-        orgSlug,
-        virtualMcpId,
-        branch,
-        threadId: useOptionalChatTask()?.taskId ?? null,
-        previewUrl,
-      }
+    ? { orgSlug, virtualMcpId, branch, threadId, previewUrl }
     : null;
   const { data: decofile, isLoading: decofileLoading } =
     useDecofile(previewFetchParams);
@@ -656,7 +651,6 @@ export function SectionsEditor({
     }
   }
 
-  const threadId = useOptionalChatTask()?.taskId ?? null;
   const sandbox = {
     orgSlug,
     virtualMcpId,
