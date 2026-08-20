@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   blockKeyFromDiffPath,
   buildAutoNote,
+  countPageSections,
   humanizeFieldName,
   resolveVersionNote,
   sectionDisplayName,
@@ -425,6 +426,16 @@ describe("summarizePublishManifest", () => {
       },
     });
     expect(bare.blocks.map(changeId)).toEqual(named.blocks.map(changeId));
+  });
+
+  it("counts a NEW page's sections from the head decofile, before bodies land", () => {
+    const summary = summarizePublishManifest({
+      files: [{ path: HOME_PATH, status: "added" }],
+      lookup: LOOKUP,
+    });
+    // Rendered as "New page with N sections" — N must not read 0 and correct
+    // itself once the body arrives.
+    expect(countPageSections(summary.pages[0]?.toJson ?? null)).toBe(2);
   });
 
   it("counts nothing when nothing changed", () => {

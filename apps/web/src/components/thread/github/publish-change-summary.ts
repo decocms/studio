@@ -461,7 +461,8 @@ export function summarizePublishManifest(
         filepaths: [path],
         sections: status === "edited" ? diffPageSections(fromJson, toJson) : [],
         fromJson,
-        toJson,
+        // `new` never diffs sections, so the head shape is a safe stand-in.
+        toJson: toJson ?? (status === "new" ? headShape : null),
       });
       continue;
     }

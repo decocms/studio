@@ -129,6 +129,12 @@ export function PublishChangeCard({
   // Never flips once bodies land: no click target appears under a resting cursor.
   const hasBody = Object.keys(rawDiff.diffs).length > 0;
   const canExpand = bodyPending || hasBody;
+  /** Holds the height a sub-line will occupy, so the surface does not grow
+   *  under the cursor when bodies land. Only `edited` cards gain sub-lines
+   *  from bodies — a new page already counts its sections, and new or removed
+   *  blocks never have any. */
+  const reservesSubLine =
+    bodyPending && subLines.length === 0 && change.status === "edited";
 
   // Collapsed card = one big expand target; inner controls stop propagation.
   return (
@@ -229,6 +235,10 @@ export function PublishChangeCard({
               {line}
             </div>
           ))}
+        </div>
+      ) : !expanded && reservesSubLine ? (
+        <div className="mt-1 space-y-0.5 pl-[26px]">
+          <PublishGhost className="h-4 w-2/3" />
         </div>
       ) : null}
       {expanded ? (

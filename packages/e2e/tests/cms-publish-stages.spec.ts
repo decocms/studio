@@ -124,8 +124,9 @@ test.describe("fast preview publish stages", () => {
       "the manifest beat must be reached without a body response",
     ).toBeGreaterThan(0);
 
-    // The real card, named — not a ghost.
-    await expect(page.getByText("Hero", { exact: true })).toBeVisible();
+    // The real card, named — not a ghost. Scoped to the surface: the name is
+    // generic enough to collide with the page behind the popover.
+    await expect(surface.getByText("Hero", { exact: true })).toBeVisible();
     await expect(page.getByText(VERSION_NOTE, { exact: true })).toBeVisible();
 
     // The whole point: actionable before the bodies land.
