@@ -47,11 +47,17 @@ interface TaskBoardItem {
  * Close the dialog, which is how a description gets written now: the card
  * autosaves as you type and closing flushes whatever the debounce still holds.
  * There is no Save button to click.
+ *
+ * The autosave is async: closing triggers the mutation but doesn't wait for it
+ * to persist. We wait for network idle to ensure the backend write completes
+ * before the caller proceeds (e.g., to poll the API for the saved value).
  */
 async function closeTask(page: Page) {
   // The button, not Escape: tiptap swallows Escape while the editor has focus.
   await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  // Wait for the autosave mutation to reach the server.
+  await page.waitForLoadState("networkidle");
 }
 
 async function openTask(page: Page, orgSlug: string, title: string) {
