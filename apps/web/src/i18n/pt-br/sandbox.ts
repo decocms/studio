@@ -45,7 +45,7 @@ export const sandbox = {
   "sandbox.blogBrand.dosHint":
     "Instruções que todo post gerado deve seguir. Escreva instruções, não adjetivos.",
   "sandbox.blogBrand.dosNamePlaceholder": "Sobre o que é esta regra",
-  "sandbox.blogBrand.extractButton": "Ler o conteúdo deste site",
+  "sandbox.blogBrand.extractButton": "Preencher",
   "sandbox.blogBrand.extractFailed":
     "Não foi possível ler a marca a partir do conteúdo deste site",
   "sandbox.blogBrand.extractFilled": "{count} campo(s) vazio(s) preenchido(s)",
@@ -61,6 +61,9 @@ export const sandbox = {
   "sandbox.blogBrand.languageLabel": "Idioma de escrita",
   "sandbox.blogBrand.noCompetitorsFound":
     "Nenhum concorrente encontrado. Adicione à mão, ou configure um modelo de busca na web para esta organização.",
+  "sandbox.blogBrand.phaseInferring": "Inferindo a voz e as regras…",
+  "sandbox.blogBrand.phaseReading": "Lendo o conteúdo deste site…",
+  "sandbox.blogBrand.phaseSearching": "Buscando concorrentes na web…",
   "sandbox.blogBrand.removeItem": "Remover item",
   "sandbox.blogBrand.subtitle":
     "A voz e as regras que orientam todo post gerado. Salvo nos arquivos do próprio site.",
@@ -72,6 +75,7 @@ export const sandbox = {
   "sandbox.blogBrand.toneLabel": "Tom de voz",
   "sandbox.blogBrand.toneHint":
     "Como a marca escreve: como trata o leitor, ritmo das frases, humor, nível de jargão.",
+  "sandbox.blogBrand.untitledRule": "Sem título",
   "sandbox.blogBrand.valuesBodyPlaceholder":
     "O que a marca afirma, e a evidência disso",
   "sandbox.blogBrand.valuesLabel": "Valores da marca",
@@ -144,6 +148,9 @@ export const sandbox = {
   "sandbox.collectionsSidebar.blog": "Blog",
   "sandbox.collectionsSidebar.calendar": "Calendário",
   "sandbox.collectionsSidebar.categories": "Categorias",
+  "sandbox.collectionsSidebar.ideas": "Ideias",
+  "sandbox.collectionsSidebar.library": "Biblioteca",
+  "sandbox.collectionsSidebar.planner": "Planejamento",
   "sandbox.collectionsSidebar.content": "Conteúdo",
   "sandbox.collectionsSidebar.loaders": "Carregadores",
   "sandbox.collectionsSidebar.pages": "Páginas",
@@ -297,6 +304,9 @@ export const sandbox = {
   "sandbox.fileTreeRow.newFile": "Novo arquivo",
   "sandbox.fileTreeRow.newFolder": "Nova pasta",
   "sandbox.fileTreeRow.rename": "Renomear",
+  "sandbox.ideas.underDev":
+    "As ideias vão reunir temas sugeridos antes de virarem drafts. Ainda não está ligado.",
+  "sandbox.ideas.underDevTitle": "Ideias — em desenvolvimento",
   "sandbox.itemActions.addVariant": "Adicionar variante",
   "sandbox.itemActions.delete": "Excluir",
   "sandbox.itemActions.duplicate": "Duplicar",
@@ -304,6 +314,13 @@ export const sandbox = {
   "sandbox.itemActions.moreActions": "Mais ações",
   "sandbox.itemActions.rename": "Renomear",
   "sandbox.itemActions.viewJson": "Visualizar JSON",
+  "sandbox.library.formatsUnderDev":
+    "Os formatos vão guardar os esqueletos sobre os quais um post gerado é montado. Ainda não está ligado.",
+  "sandbox.library.formatsUnderDevTitle": "Formatos — em desenvolvimento",
+  "sandbox.library.subtitle": "O contexto que orienta todo post gerado.",
+  "sandbox.library.tabContext": "Contexto",
+  "sandbox.library.tabFormats": "Formatos",
+  "sandbox.library.title": "Biblioteca",
   "sandbox.listBlocks.addCard": "Adicionar card",
   "sandbox.listBlocks.addItem": "Adicionar item",
   "sandbox.listBlocks.addStat": "Adicionar estatística",
@@ -372,6 +389,9 @@ export const sandbox = {
     "Escolha um valor para {paramLabel}",
   "sandbox.pathParamPickerChip.searchPlaceholder":
     "Procurar {options} ou digite um valor…",
+  "sandbox.planner.empty":
+    "O planner vai mostrar os posts gerados num calendário, para você agendá-los. Ainda não está ligado.",
+  "sandbox.planner.emptyTitle": "Nada agendado ainda",
   "sandbox.pathParamPickerChip.useRawValue":
     'Usar "{rawTerm}" como {paramLabel}',
   "sandbox.plainBlocks.bulletedLabel": "Com marcadores",

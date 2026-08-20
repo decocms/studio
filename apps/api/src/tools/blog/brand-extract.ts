@@ -60,7 +60,7 @@ const BlogBrandSchema = z.object({
   dos: z
     .array(BrandRuleSchema)
     .describe(
-      "Instructions a blogpost writer must follow for this brand, derived from patterns the copy consistently follows. `name` names the rule ('Abertura do post'), `value` is the imperative instruction — instructions, not adjectives: 'Open with the customer's problem, never with the company' beats 'customer-focused'. Any brand-specific word for an ordinary thing gets its own rule, quoted: \"call the shopping bag 'mochila', never 'carrinho'\".",
+      "Instructions a blogpost writer must follow for this brand, derived from patterns the copy consistently follows. `name` names the rule ('Abertura do post'), `value` is the imperative instruction — instructions, not adjectives: 'Open with the customer's problem, never with the company' beats 'customer-focused'. Any brand-specific word for an ordinary thing gets its own rule, quoted in the brand's language — for a Portuguese site, \"chame a sacola de 'mochila', nunca de 'carrinho'\".",
     ),
   avoid: z
     .array(BrandRuleSchema)
@@ -97,9 +97,10 @@ Four traps in real block data:
 
 Template placeholders like \`{size}\` or \`{name}\` are slots the site fills at render time. Read the sentence around them; never copy the placeholder into your answer.
 
-Two rules that override everything else:
-1. Every field must rest on prose you actually read here. Fidelity to how THIS brand writes beats how a brand in its category usually writes.
-2. No evidence means empty — an empty string or an empty array. A plausible-sounding guess is worse than a blank field, because someone will read it as fact and every post generated afterwards inherits it. A human reviews this afterwards and can fill a blank; they cannot un-read a confident invention.`;
+Three rules that override everything else:
+1. WRITE EVERY FIELD IN THE SITE'S OWN LANGUAGE — the same one you report in \`language\`. A site that writes in Portuguese gets a Portuguese profile: \`tone\`, \`targetAudience\`, every rule \`name\` and every \`value\`, every category. These instructions are in English because they are instructions; the brand's profile is content, and content follows the brand. Mixing the two languages makes the profile unusable — it is read by people who work in that language, and it is fed to a model that will copy the language it sees. The only exception is \`language\` itself, which stays a BCP-47 tag.
+2. Every field must rest on prose you actually read here. Fidelity to how THIS brand writes beats how a brand in its category usually writes.
+3. No evidence means empty — an empty string or an empty array. A plausible-sounding guess is worse than a blank field, because someone will read it as fact and every post generated afterwards inherits it. A human reviews this afterwards and can fill a blank; they cannot un-read a confident invention.`;
 
 /** Caps on what a client may send — the request body is a trust boundary. */
 const MAX_BLOCKS = 60;
@@ -108,6 +109,8 @@ const MAX_BLOCK_CHARS = 12_000;
 const COMPETITOR_SYSTEM = `You turn a web-research summary into a list of a brand's competitors.
 
 For each competitor: \`name\` is the competitor's name, \`value\` is markdown covering how it positions itself and where it differs from the brand in question — the angle a writer would need to avoid sounding like them.
+
+Write every \`value\` in the language given as the brand's, not in the language of the research text or of these instructions. This list sits alongside the rest of the brand profile and is fed to a model that copies the language it sees.
 
 Only list competitors the research text actually names. If it names none, return an empty array. Never fill the list from what you know about the market segment: this list drives generated content, and an invented competitor becomes a false premise in every post that reads it.`;
 
@@ -132,7 +135,7 @@ const CompetitorsSchema = z.object({
 async function searchCompetitors(
   ctx: Parameters<typeof resolveTier>[0],
   organizationId: string,
-  brand: { companyName: string; description: string },
+  brand: { companyName: string; description: string; language: string },
 ): Promise<z.infer<typeof BrandRuleSchema>[]> {
   if (!brand.companyName.trim()) return [];
   const searchTier = await tryResolveTier(ctx, "web_search");
@@ -145,7 +148,7 @@ async function searchCompetitors(
     );
     const { text } = await generateText({
       model: searchProvider.aiSdk.languageModel(searchTier.modelId),
-      prompt: `Who are the main competitors of ${brand.companyName}? Context on the company: ${brand.description}\n\nFor each competitor, say how it positions itself and how it differs from ${brand.companyName}. Name only companies you can actually source.`,
+      prompt: `Who are the main competitors of ${brand.companyName}? Context on the company: ${brand.description}\n\nFor each competitor, say how it positions itself and how it differs from ${brand.companyName}. Name only companies you can actually source. Search in the brand's own market and language (${brand.language || "unknown"}) — local competitors matter more than global ones.`,
     });
     if (!text.trim()) return [];
 
@@ -158,7 +161,7 @@ async function searchCompetitors(
       model: smartProvider.aiSdk.languageModel(smartTier.modelId),
       schema: CompetitorsSchema,
       system: COMPETITOR_SYSTEM,
-      prompt: `Brand: ${brand.companyName}\n\nResearch:\n${text}`,
+      prompt: `Brand: ${brand.companyName}\nWrite the values in: ${brand.language || "the brand's own language"}\n\nResearch:\n${text}`,
       temperature: 0.2,
     });
     return object.competitors;

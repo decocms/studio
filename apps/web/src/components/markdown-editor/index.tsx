@@ -83,6 +83,7 @@ export function MarkdownEditor({
   onChange,
   placeholder,
   editable = true,
+  attachments = true,
 }: {
   defaultValue: string;
   onChange: (markdown: string) => void;
@@ -90,6 +91,8 @@ export function MarkdownEditor({
   /** Read at creation time only — remount (via `key`) to change it, same as
    *  `defaultValue`. */
   editable?: boolean;
+  /** Off for text-only fields: hides the picker and ignores pasted/dropped files. */
+  attachments?: boolean;
 }) {
   const t = useT();
   const { uploadFile, pending } = useEditorFileUpload();
@@ -105,7 +108,7 @@ export function MarkdownEditor({
   uploadRef.current = uploadFile;
 
   const uploadInto = (view: EditorView, files: File[], at: number) => {
-    if (files.length === 0) return false;
+    if (!attachments || files.length === 0) return false;
     void (async () => {
       let pos = at;
       for (const file of files) {
@@ -180,8 +183,8 @@ export function MarkdownEditor({
       {/* Sits clear of the description body so it reads as a control on the
           editor, not as the last line of the text. Hidden when read-only —
           nothing here would do anything. */}
-      <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
-        {editable && (
+      <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground empty:mt-0">
+        {editable && attachments && (
           <Button
             type="button"
             variant="ghost"

@@ -129,8 +129,10 @@ const RecordEditor = lazy(() =>
   import("./blog/record-editor").then((m) => ({ default: m.RecordEditor })),
 );
 
-const BlogBrandEditor = lazy(() =>
-  import("./blog/brand-editor").then((m) => ({ default: m.BlogBrandEditor })),
+const AutonomousContent = lazy(() =>
+  import("./blog/autonomous").then((m) => ({
+    default: m.AutonomousContent,
+  })),
 );
 
 const CategoryEditor = lazy(() =>
@@ -1151,7 +1153,7 @@ function ContentBrowserReady({
                 />
               )
             ) : activeCollection === "autonomous" ? (
-              <BlogBrandEditor
+              <AutonomousContent
                 orgSlug={orgSlug}
                 virtualMcpId={virtualMcpId}
                 branch={branch}
