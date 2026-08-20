@@ -12,6 +12,7 @@ package orgfs
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -67,6 +68,10 @@ type Links struct {
 	lastOutputThread string
 	skillsLinked     bool
 	publicSkillsRun  bool
+	// Closed when the in-flight skill-link sync finishes; nil before the first
+	// one starts. `WaitSkillLinks` is what turns the async sync back into a
+	// barrier for the run that needs it.
+	publicSkillsDone chan struct{}
 }
 
 // Expected reports whether org-fs volumes should exist on this pod.
@@ -245,14 +250,8 @@ func (l *Links) ensureSkillsLinkLocked() {
 	// skills dir has no file to hang on, and linking it is what gives the agent
 	// somewhere durable to write — skip the link there and the agent writes its
 	// skill into the checkout, which is the whole bug this exists to fix.
-	if names := skillDirNames(target); len(names) > 0 {
-		if ok, err := readableWithin(
-			filepath.Join(target, names[0], "SKILL.md"), skillReadBudget,
-		); !ok {
-			slog.Warn("org-fs skills link skipped: home mount does not read",
-				"probe", names[0], "budget", skillReadBudget, "err", err)
-			return
-		}
+	if names := skillDirNames(target); len(names) > 0 && !setReads(target, names) {
+		return
 	}
 	link := filepath.Join(dir, "skills")
 	if st, err := os.Lstat(link); err == nil {
@@ -283,6 +282,37 @@ func (l *Links) ensureSkillsLinkLocked() {
 // How long a single org-fs read may take before the mount counts as unusable
 // for skills. Generous for a network filesystem, tiny next to a dead run.
 const skillReadBudget = 3 * time.Second
+
+// errReadTimeout marks the ONE probe failure that speaks for the whole mount: a
+// read that never answered. Every other error is one object's problem.
+var errReadTimeout = errors.New("read did not answer within budget")
+
+// setReads reports whether a skill set's mount serves reads, probing skills in
+// order until one answers.
+//
+// The distinction is the point. A TIMEOUT is the mount's answer for the entire
+// set — one volume, one backend — and probing past it would spend the budget
+// again on exactly the wedged mount this gate exists to catch, so it condemns
+// the set on the spot. Any other error belongs to that single object (bytes that
+// were never uploaded surface as EIO) and returns immediately, so it must not
+// take the healthy skills behind it down: condemning a set on its alphabetically
+// first skill is how 84 good skills disappeared.
+func setReads(setDir string, names []string) bool {
+	for _, name := range names {
+		ok, err := readableWithin(filepath.Join(setDir, name, "SKILL.md"), skillReadBudget)
+		if ok {
+			return true
+		}
+		if errors.Is(err, errReadTimeout) {
+			slog.Warn("org-fs skills skipped: mount does not read",
+				"dir", setDir, "probe", name, "skills", len(names), "err", err)
+			return false
+		}
+		slog.Warn("org-fs skills: unreadable skill, probing past it",
+			"dir", setDir, "probe", name, "err", err)
+	}
+	return false
+}
 
 // readableWithin reports whether path's first byte can be read within d, and
 // why not when it fails. The reason matters: "hung mount" and "backend returns
@@ -319,7 +349,7 @@ func readableWithin(path string, d time.Duration) (bool, error) {
 	case err := <-done:
 		return err == nil, err
 	case <-time.After(d):
-		return false, fmt.Errorf("read did not answer within %s", d)
+		return false, fmt.Errorf("%w (%s)", errReadTimeout, d)
 	}
 }
 
@@ -383,12 +413,13 @@ func (l *Links) ensurePublicSkillLinksLocked() {
 	// sync; released again below if nothing linked, so a mount that recovers gets
 	// another attempt.
 	l.publicSkillsRun = true
-	// OFF the caller's thread: this walks a network filesystem, and it ran under
-	// the lock on the dispatch path — 33 unreadable skills × the read budget put
-	// two minutes of dead air in front of a run that was otherwise ready. The
-	// cost of racing the harness's own startup scan is at worst a skill missing
-	// from THIS run; the cost of blocking was the run.
+	done := make(chan struct{})
+	l.publicSkillsDone = done
+	// OFF the caller's thread: this walks a network filesystem and would
+	// otherwise hold `mu` across it. Callers that must not race the harness's own
+	// startup skill scan await `done` via WaitSkillLinks instead of blocking here.
 	go func() {
+		defer close(done)
 		if l.syncPublicSkills() {
 			return
 		}
@@ -396,6 +427,32 @@ func (l *Links) ensurePublicSkillLinksLocked() {
 		l.publicSkillsRun = false
 		l.mu.Unlock()
 	}()
+}
+
+// WaitSkillLinks blocks until the in-flight skill-link sync finishes, or budget
+// elapses. Call it on the dispatch path after the links are triggered and before
+// the harness starts: Claude Code scans its skill dirs ONCE at startup, so a
+// symlink that lands a moment later is invisible for the whole run — which is
+// how a freshly-synced repo's skills went missing while being correctly mounted.
+//
+// Bounded, and fail-open. The sync spends the read budget at most once per set
+// (a timeout condemns that set immediately; every other probe error returns
+// without waiting), so the honest worst case is small — but a run must never
+// hang behind a symlink, so the deadline is the backstop and a miss only costs
+// this run's late skills, which the next dispatch picks up.
+func (l *Links) WaitSkillLinks(budget time.Duration) {
+	l.mu.Lock()
+	done := l.publicSkillsDone
+	l.mu.Unlock()
+	if done == nil {
+		return
+	}
+	select {
+	case <-done:
+	case <-time.After(budget):
+		slog.Warn("org-fs skill links still syncing; starting the run without them",
+			"waited", budget)
+	}
 }
 
 // skillSet is one directory to scan for `<skill>/SKILL.md` children, with the
@@ -474,16 +531,10 @@ func (l *Links) syncPublicSkills() bool {
 		if len(names) == 0 {
 			continue
 		}
-		// ONE probe per set, not per skill. `stat` is served from the mount's
-		// metadata and succeeds on a backend whose GETs hang forever, so a read
-		// has to be proven — but a set is one volume with one backend, so the
-		// first skill's answer is the whole set's answer. Per-skill probing cost
-		// 33 × the budget on a wedged mount.
-		if ok, err := readableWithin(
-			filepath.Join(setDir, names[0], "SKILL.md"), skillReadBudget,
-		); !ok {
-			slog.Warn("org-fs public skills skipped: set does not read",
-				"set", set.name, "probe", names[0], "skills", len(names), "err", err)
+		// `stat` is served from the mount's metadata and succeeds on a backend
+		// whose GETs hang forever, so a read has to be proven before these are
+		// exposed to Claude Code's startup scan.
+		if !setReads(setDir, names) {
 			unreadable += len(names)
 			continue
 		}

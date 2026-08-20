@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // The end-to-end behavior lives in daemon.orgfs.e2e.test.ts. Here: the one
@@ -323,6 +324,71 @@ func TestSyncedVolumeSkillLinks(t *testing.T) {
 		if _, err := os.Lstat(filepath.Join(skillsDir, name)); err == nil {
 			t.Errorf("linked a non-skill-set volume: %s", name)
 		}
+	}
+}
+
+// A set whose FIRST skill is unreadable must still expose the rest — the failure
+// belongs to that object, not to the mount.
+func TestUnreadableSkillDoesNotCondemnSet(t *testing.T) {
+	appRoot := t.TempDir()
+	repoDir := filepath.Join(appRoot, "repo")
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(t.TempDir(), "config"))
+	if err := os.MkdirAll(filepath.Join(repoDir, ".git", "info"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	setDir := filepath.Join(appRoot, "org", "public", "core")
+	// "aaa-broken" sorts first, so it is the probe the old code condemned on. Its
+	// SKILL.md is a DIRECTORY: `skillDirNames` still picks the skill up (that is a
+	// stat, which passes) and the read then fails immediately — the EIO shape, not
+	// a hang. A directory rather than a chmod so the case holds as root too.
+	if err := os.MkdirAll(filepath.Join(setDir, "aaa-broken", "SKILL.md"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(setDir, "slides"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(setDir, "slides", "SKILL.md"), []byte("---\nname: x\n---\n"), 0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	l := &Links{AppRoot: appRoot, RepoDir: repoDir, ConfigPath: "unused"}
+	if !l.syncPublicSkills() {
+		t.Fatal("set condemned by one unreadable skill")
+	}
+	if _, err := os.Readlink(filepath.Join(repoDir, ".claude", "skills", "orgfs-core-slides")); err != nil {
+		t.Errorf("healthy skill behind the bad probe was not linked: %v", err)
+	}
+}
+
+func TestWaitSkillLinks(t *testing.T) {
+	appRoot := t.TempDir()
+	repoDir := filepath.Join(appRoot, "repo")
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(t.TempDir(), "config"))
+	skill := filepath.Join(appRoot, "org", "public", "core", "slides")
+	if err := os.MkdirAll(skill, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skill, "SKILL.md"), []byte("---\nname: x\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(repoDir, ".git", "info"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	l := &Links{AppRoot: appRoot, RepoDir: repoDir, ConfigPath: "unused"}
+	// No sync started yet — the waiter must not block.
+	l.WaitSkillLinks(time.Second)
+
+	l.mu.Lock()
+	l.ensurePublicSkillLinksLocked()
+	l.mu.Unlock()
+	// The whole point: after this returns the links are on disk, so the harness's
+	// one-shot startup scan cannot miss them.
+	l.WaitSkillLinks(10 * time.Second)
+	if _, err := os.Readlink(filepath.Join(repoDir, ".claude", "skills", "orgfs-core-slides")); err != nil {
+		t.Errorf("WaitSkillLinks returned before the link landed: %v", err)
 	}
 }
 

@@ -181,6 +181,12 @@ func (d *daemon) getActiveTasks() []events.ActiveTaskSummary {
 
 const fileChangedDebounce = 300 * time.Millisecond
 
+// How long a dispatch waits for the org-fs skill links before starting the
+// harness anyway. The sync spends its read budget at most once per skill set, so
+// this is slack, not the expected cost — it is the backstop that keeps a wedged
+// mount from ever holding a run.
+const skillLinkWait = 15 * time.Second
+
 func (d *daemon) emitFileChanged(path string) {
 	d.fileChangedMu.Lock()
 	defer d.fileChangedMu.Unlock()
@@ -973,6 +979,11 @@ func main() {
 		// link; never blocks the run.
 		BeforeRun: func(info dispatch.RunInfo) {
 			d.orgFsLinks.RepointForRun(info.ThreadId)
+			// RepointForRun kicks the skill-link sync off-thread; wait for it here.
+			// Claude Code scans its skill dirs once at startup, so a symlink that
+			// lands after that is invisible for the entire run. Bounded — a miss
+			// costs this run's late skills, not the run.
+			d.orgFsLinks.WaitSkillLinks(skillLinkWait)
 			catalogSync.Sync(toolscatalog.Endpoint{
 				URL:       info.McpURL,
 				Headers:   info.McpHeaders,
