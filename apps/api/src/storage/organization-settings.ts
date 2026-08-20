@@ -19,7 +19,7 @@ function mergeRepoFlagsSql(repoFlags: Record<string, unknown>) {
   }
   const merged = entries.map(
     ([repo, flags]) =>
-      sql`${repo}::text, coalesce("organization_settings"."repo_flags" -> ${repo}, '{}'::jsonb) || ${JSON.stringify(flags)}::jsonb`,
+      sql`${repo}::text, coalesce("organization_settings"."repo_flags" -> ${repo}::text, '{}'::jsonb) || ${JSON.stringify(flags)}::jsonb`,
   );
   return sql<string>`coalesce("organization_settings"."repo_flags", '{}'::jsonb) || jsonb_build_object(${sql.join(merged, sql`, `)})`;
 }
