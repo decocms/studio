@@ -90,6 +90,9 @@ export const thread = {
   "thread.headerActions.fixChecks": "Fix checks",
   "thread.headerActions.githubConnectionRemoved":
     "GitHub connection was removed — relink the repository in Settings to save changes",
+  "thread.headerActions.installingPackages": "Installing packages…",
+  "thread.headerActions.installingPackagesTooltip":
+    "Installing dependencies — nothing to review or publish yet",
   "thread.headerActions.loading": "Loading…",
   "thread.headerActions.loadingBranch": "Loading branch…",
   "thread.headerActions.loadingBranchTooltip":
@@ -112,6 +115,9 @@ export const thread = {
   "thread.headerActions.reopenPrTooltip": "Reopen PR #{prNumber}",
   "thread.headerActions.squashMergeTooltip":
     "Squash-merge PR #{prNumber} into {base}",
+  "thread.headerActions.startingApp": "Starting app…",
+  "thread.headerActions.startingAppTooltip":
+    "Starting the dev server — nothing to review or publish yet",
   "thread.headerActions.startingSandbox": "Preparing sandbox…",
   "thread.headerActions.submitForReview": "Submit for review",
   "thread.headerActions.switchingTo": "Switching to {branch}…",

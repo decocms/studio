@@ -217,7 +217,7 @@ export function selectHeaderButton(
     };
   }
 
-  // Git works on the clone, not the dev server: only clone/checkout gate the header; post-clone phases fall through to the git/PR copy below.
+  // Setup phases gate the header; once the app has run (or failed to), git/PR copy below takes over.
   switch (lifecycle.phase) {
     case "idle": {
       const label =
@@ -264,7 +264,26 @@ export function selectHeaderButton(
         }),
         menu: [],
       };
-    // installing/starting/running/*-failed/crashed: fall through to git/PR.
+    // Still booting: nothing runs yet, so nothing to review or publish. The failure phases fall through — pushing a fix is the point there.
+    case "installing":
+      return {
+        label: t("thread.headerActions.installingPackages"),
+        disabled: true,
+        loading: true,
+        variant: "outline",
+        tooltip: t("thread.headerActions.installingPackagesTooltip"),
+        menu: [],
+      };
+    case "starting":
+      return {
+        label: t("thread.headerActions.startingApp"),
+        disabled: true,
+        loading: true,
+        variant: "outline",
+        tooltip: t("thread.headerActions.startingAppTooltip"),
+        menu: [],
+      };
+    // running/*-failed/crashed: fall through to git/PR.
   }
 
   // Defensive: the brief window between checkout and the daemon's first `branch` event.
