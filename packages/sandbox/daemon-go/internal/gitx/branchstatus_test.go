@@ -34,8 +34,8 @@ func TestBaselineSeparatesBootDirtFromUserWork(t *testing.T) {
 	m := NewBranchStatusMonitor(repo, nopBroadcaster{}, nil)
 
 	write(t, repo, "boot.gen.json", "{}\n")
-	if !dirty(t, m) {
-		t.Fatal("un-armed: any dirt reads as dirty")
+	if dirty(t, m) {
+		t.Fatal("un-armed: boot has not settled, so nothing is the user's work yet")
 	}
 
 	m.ArmBaseline()

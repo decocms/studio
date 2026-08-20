@@ -48,6 +48,7 @@ interface BaseInput {
   checks: CheckRun[];
   reviews: PrReviewSignals | null;
   loading?: boolean;
+  noReviewableDiff?: boolean;
   t: TFunction;
 }
 
@@ -336,6 +337,41 @@ describe("selectHeaderButton", () => {
     expect(r.meta?.publishPolicyOverride).toBeUndefined();
     expect(menuKeys(r)).toEqual(["submit-for-review"]);
     expect(menuItem(r, "submit-for-review")?.action).toBe("create-pr");
+  });
+
+  test("empty thread: dirty SSE but git status has nothing to review → Up to date", () => {
+    // Boot artifacts read as dirty until the daemon's baseline arms.
+    const r = selectHeaderButton(
+      happyInput({
+        branch: ready({ workingTreeDirty: true, unpushed: 1 }),
+        noReviewableDiff: true,
+      }),
+    );
+    expect(r.label).toBe("Up to date");
+    expect(r.disabled).toBe(true);
+    expect(r.action).toBeUndefined();
+  });
+
+  test("nothing to review but an open PR → the PR still drives the header", () => {
+    const r = selectHeaderButton(
+      happyInput({
+        branch: ready({ aheadOfBase: 2 }),
+        pr: pr(),
+        noReviewableDiff: true,
+      }),
+    );
+    expect(r.label).toBe("Review & Publish");
+    expect(r.action).toBe("publish");
+  });
+
+  test("no status verdict yet → dirty working tree still arms publish", () => {
+    const r = selectHeaderButton(
+      happyInput({
+        branch: ready({ workingTreeDirty: true }),
+        noReviewableDiff: false,
+      }),
+    );
+    expect(r.label).toBe("Review & Publish");
   });
 
   test("dirty + open PR + behind base → menu also offers GitHub link and Get latest", () => {

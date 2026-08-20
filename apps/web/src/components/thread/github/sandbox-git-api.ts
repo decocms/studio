@@ -267,6 +267,23 @@ export function hasPublishableLocalWork(
 }
 
 /**
+ * Nothing a publish could carry: no non-generated local change, no commit ahead
+ * of base, nothing unpushed. `false` for an absent status — "unknown" must never
+ * read as "empty". Answered from the deepened `/git/status` the publish dialog
+ * reads, so it is the same verdict that dialog would reach.
+ */
+export function hasNothingToReview(
+  status: GitStatus | null | undefined,
+): boolean {
+  if (!status) return false;
+  return (
+    !hasPublishableLocalWork(status) &&
+    (status.aheadOfBase ?? 0) === 0 &&
+    (status.unpushed ?? 0) === 0
+  );
+}
+
+/**
  * CMS artifacts live under a `.deco/` directory. The `/.deco/` (and `/.deco`)
  * forms also match projects whose package path isn't the repo root
  * (`<pkg>/.deco/...`), matching how block writes are addressed elsewhere.

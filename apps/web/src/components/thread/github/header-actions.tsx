@@ -42,6 +42,7 @@ import { useChecks, usePrByBranch } from "./use-pr-data.ts";
 import { usePrReviews } from "./use-pr-reviews.ts";
 import {
   fetchGitStatus,
+  hasNothingToReview,
   normalizePublishPolicy,
   readGitHeadBranch,
   sandboxGitStatusQueryKey,
@@ -175,14 +176,28 @@ export function HeaderActions({ virtualMcpId }: Props) {
     phase: claimPhase,
   } = useSandboxEvents();
 
-  /** Sandbox-less has no `branch` SSE; poll the status route — never on an interval, since every call forwards to the GitHub API (save hooks invalidate this key, focus refetch covers external pushes). */
-  const fpStatusQuery = useQuery({
+  /**
+   * Branch metadata for sandbox-less mode (which has no `branch` SSE), and in
+   * both modes the "is there anything to review" check below.
+   *
+   * Fast Preview never polls: every call there forwards to the GitHub API (save
+   * hooks invalidate this key, focus refetch covers external pushes). With a
+   * sandbox it answers from a local `git status`, so while it reports nothing to
+   * review it re-asks every few seconds — that verdict disables the publish
+   * button, and the agent's first edit must re-arm it without a reload.
+   */
+  const statusQuery = useQuery({
     queryKey: sandboxGitStatusQueryKey(org.slug, virtualMcpId, branch ?? ""),
     queryFn: () => fetchGitStatus(org.slug, virtualMcpId, branch ?? ""),
-    enabled: fastPreviewActive && !!branch,
+    enabled: !!branch,
     staleTime: 15_000,
+    refetchInterval: (query) =>
+      !fastPreviewActive && hasNothingToReview(query.state.data)
+        ? 5_000
+        : false,
   });
-  const fpStatus = fpStatusQuery.data ?? null;
+  const gitStatus = statusQuery.data ?? null;
+  const fpStatus = fastPreviewActive ? gitStatus : null;
   const branchMeta: BranchMeta = fastPreviewActive
     ? fpStatus
       ? {
@@ -282,6 +297,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
         pr,
         checks: checksQuery.data ?? [],
         reviews: reviewsQuery.data ?? null,
+        noReviewableDiff: hasNothingToReview(gitStatus),
         loading: isPrStateActivelyLoading(prQuery),
         t,
       })
@@ -304,6 +320,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
         : null,
     lifecycle: lifecycle.phase,
     githubHeadBranch,
+    noReviewableDiff: hasNothingToReview(gitStatus),
   });
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- debug dedupe ref
   if (debugKeyRef.current !== debugKey) {

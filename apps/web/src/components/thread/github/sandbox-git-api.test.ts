@@ -5,6 +5,7 @@ import {
   DEFAULT_PUBLISH_POLICY,
   hasGitLocalWork,
   hasLocalWorkToPush,
+  hasNothingToReview,
   hasPublishableLocalWork,
   hasUnpublishedWork,
   isDecoOnlyDiff,
@@ -627,5 +628,30 @@ describe("sandboxGitStatusQueryOptions", () => {
     expect(sandboxGitStatusQueryOptions("org", "vm", "feat").staleTime).toBe(
       5_000,
     );
+  });
+});
+
+describe("hasNothingToReview", () => {
+  test("false for an absent status — unknown is not empty", () => {
+    expect(hasNothingToReview(null)).toBe(false);
+    expect(hasNothingToReview(undefined)).toBe(false);
+  });
+
+  test("true for a pristine branch", () => {
+    expect(hasNothingToReview(cleanStatus)).toBe(true);
+  });
+
+  test("true when only generated artifacts changed", () => {
+    expect(
+      hasNothingToReview({ ...cleanStatus, modified: ["blocks.gen.json"] }),
+    ).toBe(true);
+  });
+
+  test("false once there is real work, a commit ahead of base, or an unpushed commit", () => {
+    expect(
+      hasNothingToReview({ ...cleanStatus, modified: ["src/app.tsx"] }),
+    ).toBe(false);
+    expect(hasNothingToReview({ ...cleanStatus, aheadOfBase: 1 })).toBe(false);
+    expect(hasNothingToReview({ ...cleanStatus, unpushed: 1 })).toBe(false);
   });
 });
