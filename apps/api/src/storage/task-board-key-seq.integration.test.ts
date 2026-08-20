@@ -63,15 +63,18 @@ describe("TaskBoardStorage — per-org key_seq", () => {
   });
 
   it("gives concurrent creates distinct numbers", async () => {
+    // Well past the contention that broke a retry-on-conflict allocator: the
+    // advisory lock has to hold under a burst, not merely usually.
+    const burst = 24;
     const created = await Promise.all(
-      Array.from({ length: 8 }, (_, i) => create(ORG, `Concurrent ${i}`)),
+      Array.from({ length: burst }, (_, i) => create(ORG, `Concurrent ${i}`)),
     );
     const seqs = created.map((item) => item.keySeq);
-    expect(new Set(seqs).size).toBe(seqs.length);
-    // The org had 3 cards; these 8 continue the run rather than restarting it.
-    expect([...seqs].sort((a, b) => (a ?? 0) - (b ?? 0))).toEqual([
-      4, 5, 6, 7, 8, 9, 10, 11,
-    ]);
+    expect(new Set(seqs).size).toBe(burst);
+    // The org had 3 cards; the burst continues that run without a gap.
+    expect([...seqs].sort((a, b) => (a ?? 0) - (b ?? 0))).toEqual(
+      Array.from({ length: burst }, (_, i) => i + 4),
+    );
   });
 
   it("reads the number back on list and getById", async () => {

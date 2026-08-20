@@ -22,7 +22,6 @@ import type {
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { RESOLVED_RUN_FAILURE_KINDS } from "@decocms/shared/entities";
-import { retry } from "@decocms/shared/std";
 
 /** One comment on a task, as the tools return it. `parentId` null = thread root;
  *  `resolved` only means anything on a root. */
@@ -76,21 +75,6 @@ const COALESCED_ACTIONS = new Set<TaskBoardActivityAction>([
   "title_changed",
 ]);
 const ACTIVITY_COALESCE_WINDOW_MS = 10 * 60_000;
-
-/** Tries at minting the org's next `key_seq` before giving up — each retry
- *  re-reads the max, so it only takes as many attempts as there are creates
- *  landing in the very same instant. */
-const KEY_SEQ_MAX_ATTEMPTS = 5;
-
-/** The unique index on (organization_id, key_seq) rejecting a raced insert. */
-function isDuplicateKeySeq(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "constraint" in error &&
-    error.constraint === "task_board_items_org_key_seq_unique"
-  );
-}
 
 function extractPartText(payload: unknown): string | null {
   if (payload && typeof payload === "object" && !Array.isArray(payload)) {
@@ -281,8 +265,8 @@ export class TaskBoardStorage {
     // same lane race for, at most, a single round trip instead of two — the
     // previous SELECT-then-INSERT left a full network round trip open for
     // another create to land on the same sort_order.
-    const insert = () =>
-      this.db
+    const insert = (db: Kysely<Database>) =>
+      db
         .insertInto("task_board_items")
         .values({
           id,
@@ -302,7 +286,6 @@ export class TaskBoardStorage {
           where organization_id = ${params.organizationId}
           and status = ${status}
         )`,
-          // The org's next human key; a raced read fails the unique index.
           key_seq: sql<number>`(
           select coalesce(max(key_seq), 0) + 1
           from task_board_items
@@ -316,12 +299,13 @@ export class TaskBoardStorage {
         .returningAll()
         .executeTakeFirstOrThrow();
 
-    const row = await retry(insert, {
-      maxAttempts: KEY_SEQ_MAX_ATTEMPTS,
-      minTimeout: 0,
-      maxTimeout: 25,
-      jitter: 1,
-      isRetriable: isDuplicateKeySeq,
+    const row = await this.inTransaction(async (trx) => {
+      // Serialize this org's key allocation: `max(key_seq) + 1` is a read the
+      // next create must not interleave with. Held to commit, then released.
+      await sql`select pg_advisory_xact_lock(hashtext(${params.organizationId}))`.execute(
+        trx,
+      );
+      return insert(trx);
     });
 
     // Freshly created — no linked threads yet.
