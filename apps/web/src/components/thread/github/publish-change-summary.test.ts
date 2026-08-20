@@ -2,8 +2,8 @@ import { describe, expect, it } from "bun:test";
 import {
   blockKeyFromDiffPath,
   buildAutoNote,
-  countPageSections,
   humanizeFieldName,
+  publishChangeDigest,
   resolveVersionNote,
   sectionDisplayName,
   summarizePublishChanges,
@@ -251,9 +251,92 @@ describe("summarizePublishChanges", () => {
       }),
     );
     const settings = summary.pages[0]!.sections.find(
-      (s) => s.name === "Page settings",
+      (s) => s.kind === "settings",
     )!;
     expect(settings.fields.map((f) => f.label)).toEqual(["Path"]);
+  });
+});
+
+describe("publishChangeDigest", () => {
+  /** Every section here resolves to the same wrapper name — the exact shape
+   *  that used to render twenty identical "Lazy — Section" rows. */
+  function lazyPage(titles: string[]): string {
+    return JSON.stringify({
+      __resolveType: "website/pages/Page.tsx",
+      name: "Home ETC",
+      path: "/farm-etc",
+      sections: titles.map((title) => ({
+        __resolveType: "website/sections/Rendering/Lazy.tsx",
+        section: { __resolveType: title },
+      })),
+    });
+  }
+
+  it("counts changed sections instead of naming them", () => {
+    const summary = summarizePublishChanges(
+      diffOf({
+        [HOME_PATH]: {
+          from: lazyPage(["a", "b", "c"]),
+          to: lazyPage(["a", "B!", "C!"]),
+        },
+      }),
+    );
+    expect(publishChangeDigest(summary.pages[0]!)).toEqual({
+      newPageSections: null,
+      sections: 2,
+      settings: false,
+      fields: 0,
+    });
+  });
+
+  it("reports page settings separately from the section count", () => {
+    const summary = summarizePublishChanges(
+      diffOf({
+        [HOME_PATH]: { from: pageJson(), to: pageJson({ path: "/home" }) },
+      }),
+    );
+    const digest = publishChangeDigest(summary.pages[0]!);
+    expect(digest.sections).toBe(0);
+    expect(digest.settings).toBe(true);
+  });
+
+  it("counts fields, not sections, for a block card", () => {
+    const path = ".deco/blocks/Header.json";
+    const summary = summarizePublishChanges(
+      diffOf({
+        [path]: {
+          from: JSON.stringify({ name: "Header", links: ["a"], logo: "x" }),
+          to: JSON.stringify({ name: "Header", links: ["b"], logo: "y" }),
+        },
+      }),
+    );
+    const digest = publishChangeDigest(summary.blocks[0]!);
+    expect(digest.fields).toBe(2);
+    expect(digest.sections).toBe(0);
+  });
+
+  it("sizes a new page by its sections and skips the changed-section tally", () => {
+    const summary = summarizePublishChanges(
+      diffOf({ [HOME_PATH]: { from: null, to: pageJson() } }),
+    );
+    expect(publishChangeDigest(summary.pages[0]!)).toEqual({
+      newPageSections: 2,
+      sections: 0,
+      settings: false,
+      fields: 0,
+    });
+  });
+
+  it("reports nothing for a removed page", () => {
+    const summary = summarizePublishChanges(
+      diffOf({ [HOME_PATH]: { from: pageJson(), to: null } }),
+    );
+    expect(publishChangeDigest(summary.pages[0]!)).toEqual({
+      newPageSections: null,
+      sections: 0,
+      settings: false,
+      fields: 0,
+    });
   });
 });
 
@@ -435,7 +518,7 @@ describe("summarizePublishManifest", () => {
     });
     // Rendered as "New page with N sections" — N must not read 0 and correct
     // itself once the body arrives.
-    expect(countPageSections(summary.pages[0]?.toJson ?? null)).toBe(2);
+    expect(publishChangeDigest(summary.pages[0]!).newPageSections).toBe(2);
   });
 
   it("counts nothing when nothing changed", () => {

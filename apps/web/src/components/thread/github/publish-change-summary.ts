@@ -33,6 +33,11 @@ export interface PublishFieldChange {
 
 export interface PublishSectionChange {
   name: string;
+  /**
+   * `settings` is the synthetic entry carrying a page's changed top-level
+   * fields — a discriminant, so callers never key off the display name.
+   */
+  kind: "section" | "settings";
   status: PublishChangeStatus;
   fields: PublishFieldChange[];
 }
@@ -231,6 +236,7 @@ function diffPageSections(
       if (sameValue(fromEntry.section, toEntry.section)) continue;
       changes.push({
         name: sectionDisplayName(toEntry.section, i),
+        kind: "section",
         status: "edited",
         fields: shallowFieldDiff(
           fromEntry.section,
@@ -241,12 +247,14 @@ function diffPageSections(
     } else if (toEntry) {
       changes.push({
         name: sectionDisplayName(toEntry.section, i),
+        kind: "section",
         status: "new",
         fields: [],
       });
     } else if (fromEntry) {
       changes.push({
         name: sectionDisplayName(fromEntry.section, i),
+        kind: "section",
         status: "removed",
         fields: [],
       });
@@ -255,7 +263,12 @@ function diffPageSections(
 
   const topLevel = shallowFieldDiff(from, to, [], PAGE_TOP_LEVEL_SKIP);
   if (topLevel.length > 0) {
-    changes.push({ name: "Page settings", status: "edited", fields: topLevel });
+    changes.push({
+      name: "Page settings",
+      kind: "settings",
+      status: "edited",
+      fields: topLevel,
+    });
   }
   return changes;
 }
@@ -335,6 +348,7 @@ export function summarizePublishChanges(
           ? [
               {
                 name: globalSectionLabel(blockKey, shape),
+                kind: "section" as const,
                 status: "edited" as const,
                 fields: shallowFieldDiff(fromJson, toJson, []),
               },
@@ -481,6 +495,7 @@ export function summarizePublishManifest(
           ? [
               {
                 name: label,
+                kind: "section" as const,
                 status: "edited" as const,
                 fields: shallowFieldDiff(fromJson, toJson, []),
               },
@@ -526,7 +541,7 @@ function joinNames(names: string[]): string {
 
 function pageNoteName(change: PublishChange): string {
   const sectionNames = change.sections
-    .filter((s) => s.name !== "Page settings")
+    .filter((s) => s.kind === "section")
     .map((s) => s.name)
     .slice(0, 3);
   return sectionNames.length > 0
@@ -578,8 +593,55 @@ export function buildAutoNote(summary: PublishChangeSummary): string {
 }
 
 /** Section count of a parsed page block, across both section shapes. */
-export function countPageSections(
-  block: Record<string, unknown> | null,
-): number {
+function countPageSections(block: Record<string, unknown> | null): number {
   return block ? sectionsWithPaths(block).length : 0;
+}
+
+/**
+ * How much a card changed, as counts rather than a list of names.
+ *
+ * The names are the problem this replaces: a section's display name comes from
+ * its `__resolveType`, which for a lazy-loaded or wrapper section is the
+ * wrapper ("Lazy", "Section"), not the content the author recognizes. Twenty
+ * rows of "Lazy — Section" told the reader nothing and buried the card. The
+ * expanded diff still shows every field; the collapsed card only carries
+ * magnitude.
+ */
+export interface PublishChangeDigest {
+  /** Sections in a brand-new page; null when the card is not a new page. */
+  newPageSections: number | null;
+  /** Changed sections on an edited page — the settings entry excluded. */
+  sections: number;
+  /** The page's top-level fields changed too. */
+  settings: boolean;
+  /** Changed fields on a block card. */
+  fields: number;
+}
+
+export function publishChangeDigest(
+  change: PublishChange,
+): PublishChangeDigest {
+  const digest: PublishChangeDigest = {
+    newPageSections:
+      change.kind === "page" && change.status === "new"
+        ? countPageSections(change.toJson)
+        : null,
+    sections: 0,
+    settings: false,
+    fields: 0,
+  };
+  if (digest.newPageSections !== null) return digest;
+
+  for (const section of change.sections) {
+    if (section.kind === "settings") {
+      digest.settings = true;
+      continue;
+    }
+    if (change.kind === "page") {
+      digest.sections += 1;
+    } else {
+      digest.fields += section.fields.length;
+    }
+  }
+  return digest;
 }

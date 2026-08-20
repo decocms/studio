@@ -219,6 +219,13 @@ export const thread = {
     "Estas alterações precisam da revisão de um colega antes de irem ao ar",
   "thread.publishPopover.newPage": "Página nova",
   "thread.publishPopover.newPageSections": "Página nova com {count} seções",
+  "thread.publishPopover.newPageSectionOne": "Página nova com 1 seção",
+  "thread.publishPopover.sectionsChanged": "{count} seções alteradas",
+  "thread.publishPopover.sectionChangedOne": "1 seção alterada",
+  "thread.publishPopover.fieldsChanged": "{count} campos alterados",
+  "thread.publishPopover.fieldChangedOne": "1 campo alterado",
+  "thread.publishPopover.pageSettingsChanged":
+    "Configurações da página alteradas",
   "thread.publishPopover.nothingToSubmit": "Nada para enviar",
   "thread.publishPopover.otherGroup": "Outras alterações",
   "thread.publishPopover.pagesGroup": "Páginas",

@@ -74,6 +74,30 @@ function DiffLoadingGhost({ height }: { height: string }) {
   );
 }
 
+/** Shared by both editors so the embedded one can't drift from the dialog's. */
+const DIFF_EDITOR_OPTIONS = {
+  readOnly: true,
+  renderSideBySide: false,
+  minimap: { enabled: false },
+  scrollBeyondLastLine: false,
+  fontSize: 12,
+} as const;
+
+/**
+ * The card's editor drops the chrome that competes with a 220px pane, but
+ * keeps line numbers: they are how a reader says which line they mean, and a
+ * JSON block is long enough that "the second `title`" is not an answer. The
+ * gutter is capped at three digits to stay narrow.
+ */
+const EMBEDDED_DIFF_EDITOR_OPTIONS = {
+  ...DIFF_EDITOR_OPTIONS,
+  lineNumbersMinChars: 3,
+  lineDecorationsWidth: 4,
+  folding: false,
+  glyphMargin: false,
+  renderOverviewRuler: false,
+} as const;
+
 export interface GitDiffListProps {
   diff: GitDiffResult | null | undefined;
   emptyMessage?: string;
@@ -137,19 +161,7 @@ export function GitDiffList({
                 theme={theme}
                 height={editorHeight}
                 loading={<DiffLoadingGhost height={editorHeight} />}
-                options={{
-                  readOnly: true,
-                  renderSideBySide: false,
-                  minimap: { enabled: false },
-                  scrollBeyondLastLine: false,
-                  fontSize: 12,
-                  lineNumbers: "off",
-                  lineNumbersMinChars: 0,
-                  lineDecorationsWidth: 12,
-                  folding: false,
-                  glyphMargin: false,
-                  renderOverviewRuler: false,
-                }}
+                options={EMBEDDED_DIFF_EDITOR_OPTIONS}
               />
             </div>
           );
@@ -257,13 +269,7 @@ export function GitDiffList({
                   theme={theme}
                   height={editorHeight}
                   loading={<DiffLoadingGhost height={editorHeight} />}
-                  options={{
-                    readOnly: true,
-                    renderSideBySide: false,
-                    minimap: { enabled: false },
-                    scrollBeyondLastLine: false,
-                    fontSize: 12,
-                  }}
+                  options={DIFF_EDITOR_OPTIONS}
                 />
               </div>
             )}

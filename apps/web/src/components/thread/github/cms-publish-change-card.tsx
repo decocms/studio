@@ -17,7 +17,7 @@ import { ChevronRight, File06, LayoutAlt01, Trash01 } from "@untitledui/icons";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { GitDiffList } from "./git-diff-list.tsx";
 import {
-  countPageSections,
+  publishChangeDigest,
   type PublishChange,
   type PublishChangeStatus,
 } from "./publish-change-summary.ts";
@@ -67,23 +67,43 @@ function changeDetail(change: PublishChange, t: TFunction) {
     : t("thread.publishPopover.globalSection");
 }
 
-/** A new page is summarized by its size; everything else by what it touched. */
+/**
+ * How much changed, never a list of what. Section display names come from
+ * `__resolveType`, so a page of lazy-loaded sections yielded twenty identical
+ * "Lazy — Section" rows that pushed the next card off screen. Counts stay one
+ * line; the expanded diff is where names and fields belong.
+ */
 function changeSubLines(change: PublishChange, t: TFunction): string[] {
-  if (change.kind === "page" && change.status === "new") {
+  const digest = publishChangeDigest(change);
+  if (digest.newPageSections !== null) {
     return [
-      t("thread.publishPopover.newPageSections", {
-        count: countPageSections(change.toJson),
-      }),
+      digest.newPageSections === 1
+        ? t("thread.publishPopover.newPageSectionOne")
+        : t("thread.publishPopover.newPageSections", {
+            count: digest.newPageSections,
+          }),
     ];
   }
-  return change.sections.map((section) =>
-    section.fields.length > 0
-      ? `${section.name} — ${section.fields
-          .slice(0, 4)
-          .map((f) => f.label)
-          .join(", ")}`
-      : section.name,
-  );
+
+  const lines: string[] = [];
+  if (digest.sections === 1) {
+    lines.push(t("thread.publishPopover.sectionChangedOne"));
+  } else if (digest.sections > 1) {
+    lines.push(
+      t("thread.publishPopover.sectionsChanged", { count: digest.sections }),
+    );
+  }
+  if (digest.fields === 1) {
+    lines.push(t("thread.publishPopover.fieldChangedOne"));
+  } else if (digest.fields > 1) {
+    lines.push(
+      t("thread.publishPopover.fieldsChanged", { count: digest.fields }),
+    );
+  }
+  if (digest.settings) {
+    lines.push(t("thread.publishPopover.pageSettingsChanged"));
+  }
+  return lines;
 }
 
 interface PublishChangeCardProps {
