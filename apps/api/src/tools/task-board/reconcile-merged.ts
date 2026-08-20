@@ -12,30 +12,28 @@
  * The hourly `archive-merged`/`tag-merged` sweeps are not that safety net —
  * both gate on `status === "done"` already, so they never see these cards.
  *
- * This is the missing reconcile: ask GitHub whether the linked PRs are merged
- * and, if they all are, move the card to Done and record the transition. It
- * runs from the review sweeper (see `review-sweeper.ts`), which already visits
- * exactly these cards on their own five-minute interval.
+ * This is the missing reconcile: if the linked PRs have all landed, move the
+ * card to Done and record the transition. It runs from the review sweeper (see
+ * `review-sweeper.ts`), which already visits exactly these cards on their own
+ * five-minute interval and already knows each PR's live merged state.
  */
 
 import type { StudioContext } from "@/core/studio-context";
-import type { TaskBoardItem, TaskBoardItemPrRef } from "@/storage/types";
+import type { TaskBoardItem } from "@/storage/types";
 import { recordTaskActivity } from "./activity";
 import { allPrsMerged } from "./archive-merged";
-import { fetchPrMerged } from "./prs-get";
 import { emitTaskBoardUpdated } from "./run-reactions";
-
-/** How the reconcile asks GitHub whether a PR merged — a parameter only so a
- *  test can drive the path without a GitHub connection, same as the tag sweep. */
-type PrMergedReader = (
-  ctx: StudioContext,
-  orgId: string,
-  pr: TaskBoardItemPrRef,
-) => Promise<boolean | null>;
 
 /**
  * Move `item` to Done if every linked PR is merged on GitHub. Returns whether
  * it moved.
+ *
+ * Takes the merged flags rather than reading GitHub itself: its one caller, the
+ * sweeper, already reads every linked PR through the rate-limited queue
+ * (`readPrStateThrottled`), and `merged` comes back on that same `get`. Reading
+ * again here would put the sweep's real network call OUTSIDE the queue that
+ * exists to keep it from exhausting the shared `github-mcp` budget — see
+ * `dbos-github-read.ts`.
  *
  * Deliberately NOT gated on `auto_merge`, on who merged, or on the reviewers'
  * verdicts: the PR is already in the base branch, so the work shipped and the
@@ -43,24 +41,20 @@ type PrMergedReader = (
  * `hasHumanRejectedDone` — a person who pulled this card back out of Done meant
  * it, and a merged PR is not a reason to overrule them.
  *
- * `null` from the reader (GitHub unreachable) is never read as merged, so a bad
- * fetch defers to the next sweep rather than shipping a card on a guess.
+ * `null` (GitHub unreachable) is never read as merged, so a bad fetch defers to
+ * the next sweep rather than shipping a card on a guess.
  */
 export async function advanceToDoneIfMerged(
   ctx: StudioContext,
   item: TaskBoardItem,
-  prs: TaskBoardItemPrRef[],
-  prMerged: PrMergedReader = fetchPrMerged,
+  merged: (boolean | null)[],
 ): Promise<boolean> {
   const orgId = item.organizationId;
   if (item.status !== "in_review") return false;
-  if (prs.length === 0) return false;
+  if (!allPrsMerged(merged)) return false;
   if (await ctx.storage.taskBoard.hasHumanRejectedDone(item.id, orgId)) {
     return false;
   }
-
-  const merged = await Promise.all(prs.map((pr) => prMerged(ctx, orgId, pr)));
-  if (!allPrsMerged(merged)) return false;
 
   const done = await ctx.storage.taskBoard.update(
     item.id,
