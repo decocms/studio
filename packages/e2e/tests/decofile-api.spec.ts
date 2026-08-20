@@ -899,4 +899,44 @@ test.describe("decofile API", () => {
       await ctx.dispose();
     }
   });
+  test("SANDBOX_START refuses a cms session but still serves a legacy thread", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const user = await signUpViaApi(ctx);
+      const org = user.orgSlug;
+      const owner = uniqueOwner();
+      const project = await createFastPreviewProject(ctx, org, {
+        owner,
+        repo: "site",
+      });
+
+      const cms = await callSelfMcpTool<{
+        item: {
+          id: string;
+          branch: string | null;
+          metadata?: { runtime?: string };
+        };
+      }>(ctx, org, "COLLECTION_THREADS_CREATE", {
+        data: { virtual_mcp_id: project.vmcpId, title: "cms session" },
+      });
+      // The project defaults to CMS, so creation stamped it without being asked.
+      expect(cms.item.metadata?.runtime).toBe("cms");
+
+      const refused = await callSelfMcpTool<unknown>(
+        ctx,
+        org,
+        "SANDBOX_START",
+        {
+          virtualMcpId: project.vmcpId,
+          branch: cms.item.branch as string,
+          threadId: cms.item.id,
+        },
+      ).catch((error: unknown) => error);
+      expect(String(refused)).toMatch(/CMS session/i);
+    } finally {
+      await ctx.dispose();
+    }
+  });
 });
