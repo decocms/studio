@@ -137,8 +137,8 @@ import {
   TaskFiltersBar,
   TaskFiltersDrawer,
   taskMatchesFilters,
-  type TaskFilters,
 } from "./task-filters";
+import { useBoardSearch } from "./filters-search";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useThreadActions } from "@/components/chat/store/hooks";
@@ -149,8 +149,6 @@ import { toast } from "sonner";
 
 // Warm the chat chunk so opening a task's activity doesn't cold-load it (flash).
 void import("../agent-shell-layout/index.tsx").catch(() => {});
-
-type Layout = "board" | "list";
 
 const DATE_FMT = new Intl.DateTimeFormat(undefined, {
   month: "short",
@@ -411,8 +409,8 @@ export function TaskBoardPage() {
   const members = (membersData?.data?.members ?? []) as Member[];
   const memberByUserId = new Map(members.map((m) => [m.userId, m]));
 
-  const [layout, setLayout] = useState<Layout>("board");
-  const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS);
+  // Filters + layout live in the URL, so a refresh or a shared link keeps them.
+  const { filters, setFilters, layout, setLayout } = useBoardSearch();
   const [preferences] = usePreferences();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const toggleSelect = (id: string) =>
