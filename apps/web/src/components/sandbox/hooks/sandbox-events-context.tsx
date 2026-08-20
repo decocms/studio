@@ -32,9 +32,7 @@ import {
   type ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useProjectContext, useVirtualMCP } from "@/sdk";
-import { resolveFastPreview } from "@/sdk/fast-preview";
-import { useActiveThreadMeta } from "@/hooks/use-active-thread-meta";
+import { useProjectContext } from "@/sdk";
 import { KEYS, invalidateVirtualMcpQueries } from "@/lib/query-keys";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 
@@ -221,15 +219,7 @@ export function SandboxEventsProvider({
   // decofile query in that mode — the daemon reads `.deco/blocks/*` straight
   // from disk, and a refetch could revert an optimistic edit against a committed
   // `blocks.gen.json`.
-  const vmcp = useVirtualMCP(virtualMcpId ?? undefined);
   const taskId = useOptionalChatTask()?.taskId ?? null;
-  const fastPreviewActive = resolveFastPreview(
-    vmcp?.metadata,
-    useActiveThreadMeta(),
-  ).active;
-  const fastPreviewActiveRef = useRef(fastPreviewActive);
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- keep the SSE closure reading the latest value without reconnecting
-  fastPreviewActiveRef.current = fastPreviewActive;
   const [phase, setPhase] = useState<ClaimPhase | null>(null);
   const [lifecycle, setLifecycle] = useState<LifecycleState>({ phase: "idle" });
   const [status, setStatus] = useState<DaemonStatus>({ state: "running" });
@@ -472,8 +462,8 @@ export function SandboxEventsProvider({
             const isDecoFile =
               filePath.startsWith(".deco/") || filePath.includes("/.deco/");
             if (isDecoFile) {
-              // Act when the dev server is running OR Fast Preview is on (which
-              // renders via the daemon with no dev server). Otherwise
+              // Act only when the dev server is running: this stream never
+              // opens for a CMS session. Otherwise
               // (crashed/paused — committed-snapshot editing) `blocks.gen.json`
               // is a stale build artifact the dev server can't regenerate, so
               // invalidating + refetching it would overwrite the optimistic
@@ -481,7 +471,7 @@ export function SandboxEventsProvider({
               // visibly revert; leave the optimistic cache as the source of
               // truth until the lifecycle→running transition re-invalidates.
               const devServerRunning = prevLifecyclePhase === "running";
-              if (!devServerRunning && !fastPreviewActiveRef.current) return;
+              if (!devServerRunning) return;
               // Turn on the preview's loading overlay immediately — before the
               // debounce below — so the pending refresh feels instant instead of
               // only appearing once the reload finally fires.

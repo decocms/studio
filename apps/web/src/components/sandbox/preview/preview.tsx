@@ -13,8 +13,7 @@ import { resolvePreviewDisplay } from "./preview-display";
 import { useIframeLoadRecovery } from "./preview-iframe-recovery";
 import { buildPreviewLabel } from "./preview-label";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
-import { resolveFastPreview } from "@/sdk/fast-preview";
-import { useActiveThreadMeta } from "@/hooks/use-active-thread-meta";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
@@ -422,14 +421,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       ? resolvePreviewServerUrl(inset.entity.metadata)
       : null;
   // The one thread-aware gate, scoped to this agent's entity by the id match.
-  const activeThreadMeta = useActiveThreadMeta();
+  const session = useSessionRuntime(virtualMcpId);
   const fastPreviewEnabled =
-    inset?.entity?.id === virtualMcpId &&
-    resolveFastPreview(inset.entity.metadata, activeThreadMeta).active;
+    inset?.entity?.id === virtualMcpId && session.runtime === "cms";
   /** This project defaults to CMS — the question `fastPreviewEnabled` answers for the SESSION. */
-  const projectDefaultsToCms =
-    inset?.entity?.id === virtualMcpId &&
-    resolveFastPreview(inset.entity.metadata).active;
+  const projectDefaultsToCms = session.projectDefault === "cms";
 
   // Base for the `/live/previews` global-section render: production under Fast Preview (no dev server), else the sandbox dev server.
   const sectionPreviewBase = resolveSectionPreviewBase({
@@ -677,8 +673,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // to paint: the sandbox iframe, the published site + a waking pill, or
   // (no production URL) the blocking booting overlay.
   // Coding sessions boot visibly: no production fallback → the boot console.
-  const codingSession =
-    projectDefaultsToCms && activeThreadMeta?.runtime === "sandbox";
+  const codingSession = projectDefaultsToCms && session.runtime === "sandbox";
   const display = resolvePreviewDisplay({
     previewState,
     progressStatus: progress.status,

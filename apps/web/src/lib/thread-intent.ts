@@ -22,7 +22,7 @@ export interface ThreadIntent {
 
 type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
-export function threadIntentStorageKey(
+function threadIntentStorageKey(
   locator: ProjectLocator | string,
   taskId: string,
 ): string {

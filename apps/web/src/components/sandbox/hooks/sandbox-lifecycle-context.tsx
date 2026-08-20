@@ -359,10 +359,8 @@ import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
-  useVirtualMCP,
 } from "@/sdk";
-import { resolveFastPreview } from "@/sdk/fast-preview";
-import { useActiveThreadMeta } from "@/hooks/use-active-thread-meta";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import type { SandboxMap } from "@decocms/shared/sdk/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { invalidateVirtualMcpQueries } from "@/lib/query-keys";
@@ -474,11 +472,7 @@ export function SandboxLifecycleProvider({
   // Sandbox-less mode: Fast Preview projects never auto-provision a pod (see
   // ShouldAutoStartArgs.fastPreviewActive). Self-heal/claim-retry stay ungated —
   // they only ever fire for a sandbox that already exists.
-  const vmcp = useVirtualMCP(virtualMcpId ?? undefined);
-  const fastPreviewActive = resolveFastPreview(
-    vmcp?.metadata,
-    useActiveThreadMeta(),
-  ).active;
+  const fastPreviewActive = useSessionRuntime(virtualMcpId).runtime === "cms";
 
   const mcpClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,

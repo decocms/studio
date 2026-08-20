@@ -1,7 +1,7 @@
 import { Suspense, lazy } from "react";
 import { Loading01 } from "@untitledui/icons";
 import { useProjectContext } from "@/sdk";
-import { useFastPreview } from "@/hooks/use-fast-preview";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useChatTask } from "@/components/chat/context";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
@@ -73,7 +73,7 @@ export function BlocksPanel({
     decofile: toBlocksQueryState(decofile),
     meta: toBlocksQueryState(meta),
     hasEditableContent: hasEditableDecoContent(decofile.data, meta.data),
-    fastPreviewActive: useFastPreview(virtualMcpId).active,
+    fastPreviewActive: useSessionRuntime(virtualMcpId).runtime === "cms",
   });
 
   if (state.kind === "loading") return <MainPanelLoading />;

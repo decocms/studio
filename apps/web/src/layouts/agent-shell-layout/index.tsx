@@ -63,6 +63,7 @@ import { WorkspacePanelGroup } from "./workspace-panel-group";
 import { MobileMainPanelTabSelect } from "@/layouts/main-panel-tabs/mobile-main-panel-tab-select";
 import { MainPanelWithDrawer } from "@/layouts/main-panel-tabs/main-panel-with-drawer";
 import { SandboxEventsProvider } from "@/components/sandbox/hooks/sandbox-events-context.tsx";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import {
   SandboxLifecycleProvider,
   resolveVmEntry,
@@ -265,6 +266,7 @@ function VmEventsBridge({
   // SANDBOX_START (covers the booting window; SandboxLifecycleProvider's
   // auto-start shares this mutation key, so `useIsSandboxStartPending`
   // observes it).
+  const sessionRuntime = useSessionRuntime(virtualMcpId).runtime;
   const isStartPending = useIsSandboxStartPending(
     virtualMcpId,
     currentBranch ?? undefined,
@@ -280,8 +282,14 @@ function VmEventsBridge({
   // vmEntry always agree on which sandbox is active.
   const vmEntry = resolveVmEntry(branchMap, pendingSandboxProviderKind);
   const previewUrl = vmEntry?.previewUrl ?? null;
+  // A CMS session has no daemon to stream from, whatever the map holds. The
+  // presence/pending term stays: it answers a different question (is there a
+  // sandbox to stream FROM), and dropping it opens a 90s no-claim stream and
+  // reconnect loop for every idle coding-session thread.
   const shouldConnect =
-    executionEnabled && (Object.keys(branchMap).length > 0 || isStartPending);
+    executionEnabled &&
+    sessionRuntime !== "cms" &&
+    (Object.keys(branchMap).length > 0 || isStartPending);
 
   // Native coding-agent threads are intentionally unavailable on hosted web.
   // Do not mount their workspace at all: every main-panel surface assumes it

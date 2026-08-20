@@ -3,7 +3,7 @@ import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { KEYS } from "@/lib/query-keys";
 import { decoRepoPath } from "./deco-repo-path";
 import { readCommittedJson } from "./read-committed-file";
-import { useFastPreview } from "@/hooks/use-fast-preview";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { usePackagePath } from "./use-package-path";
 import type { LiveMeta } from "./resolve-schema";
 
@@ -74,8 +74,10 @@ export function useLiveMeta(
   // (`metadata.runtime.path`) when the project isn't at the repo root; the live
   // `/live/_meta` route already resolves relative to the dev-server cwd.
   const packagePath = usePackagePath(params?.virtualMcpId);
-  const { previewServerUrl: productionUrl, active: fastPreviewActive } =
-    useFastPreview(params?.virtualMcpId);
+  const { previewServerUrl: productionUrl, runtime } = useSessionRuntime(
+    params?.virtualMcpId,
+  );
+  const fastPreviewActive = runtime === "cms";
   return useQuery({
     // productionUrl is appended so a settings edit re-fetches; invalidators key
     // on the (org, vm, branch) prefix, which still matches (variadic key).

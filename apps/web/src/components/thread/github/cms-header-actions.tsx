@@ -43,7 +43,7 @@ import { authClient } from "@/lib/auth-client.ts";
 import { resolveGithubAttachment } from "@/lib/github-repo.ts";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
-import { resolveFastPreview } from "@/sdk/fast-preview";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { decofileWriteMutationKey } from "../../sections-editor/decofile-api.ts";
 import { useFastPreviewDraftUrl } from "../../sections-editor/use-fast-preview-draft-url.ts";
 import { fillPathTemplate } from "../../sections-editor/page-path-utils.ts";
@@ -109,7 +109,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     attachment.status === "attached" || attachment.status === "public-clone"
       ? attachment.repo
       : null;
-  const { previewServerUrl } = resolveFastPreview(vm?.metadata);
+  const { previewServerUrl } = useSessionRuntime(virtualMcpId);
 
   const lastPage = branch
     ? readLastPreviewPage(lastPreviewPageKey(org.slug, virtualMcpId, branch))

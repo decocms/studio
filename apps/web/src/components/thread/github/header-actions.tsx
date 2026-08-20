@@ -1,5 +1,4 @@
 import { useMCPClient, useProjectContext, useVirtualMCP } from "@/sdk";
-import { resolveFastPreview } from "@/sdk/fast-preview";
 import { useIsMutating, useQuery } from "@tanstack/react-query";
 import { decofileWriteMutationKey } from "@/components/sections-editor/decofile-api";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -35,7 +34,6 @@ import {
 } from "./panel-state.ts";
 import * as tpl from "./message-templates.ts";
 import { saveChangesDebug } from "./save-changes-debug.ts";
-import { resolveSandboxBranchFromMap } from "./resolve-sandbox-branch.ts";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events.ts";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context.tsx";
 import { useChecks, usePrByBranch } from "./use-pr-data.ts";
@@ -44,7 +42,6 @@ import {
   fetchGitStatus,
   hasNothingToReview,
   normalizePublishPolicy,
-  readGitHeadBranch,
   sandboxGitStatusQueryKey,
   type PublishPolicy,
 } from "./sandbox-git-api.ts";
@@ -143,10 +140,6 @@ export function HeaderActions({ virtualMcpId }: Props) {
     setCurrentTaskBranch,
     activeTask,
   } = useChatTask();
-  const fastPreviewActive = resolveFastPreview(
-    vm?.metadata,
-    activeTask?.metadata,
-  ).active;
   const chat = useChatStream();
   const { openSidePanel } = usePanelActions();
   const [publishOpen, setPublishOpen] = useState(false);
@@ -162,7 +155,6 @@ export function HeaderActions({ virtualMcpId }: Props) {
     attachment.status === "attached" || attachment.status === "public-clone"
       ? attachment.repo
       : null;
-  const userId = session?.user?.id;
 
   const githubClient = useMCPClient({
     connectionId: githubRepo?.connectionId ?? "",
@@ -177,14 +169,12 @@ export function HeaderActions({ virtualMcpId }: Props) {
   } = useSandboxEvents();
 
   /**
-   * Branch metadata for sandbox-less mode (which has no `branch` SSE), and in
-   * both modes the "is there anything to review" check below.
-   *
-   * Fast Preview never polls: every call there forwards to the GitHub API (save
-   * hooks invalidate this key, focus refetch covers external pushes). With a
-   * sandbox it answers from a local `git status`, so while it reports nothing to
-   * review it re-asks every few seconds — that verdict disables the publish
-   * button, and the agent's first edit must re-arm it without a reload.
+   * The "is there anything to review" check below. This surface only ever
+   * renders for a sandbox-backed session (`header-info` routes a CMS one to
+   * `CmsHeaderActions`), so the status answers from a local `git status`:
+   * while it reports nothing to review it re-asks every few seconds, because
+   * that verdict disables the publish button and the agent's first edit must
+   * re-arm it without a reload.
    */
   const statusRef = {
     orgSlug: org.slug,
@@ -198,39 +188,16 @@ export function HeaderActions({ virtualMcpId }: Props) {
     enabled: !!branch,
     staleTime: 15_000,
     refetchInterval: (query) =>
-      !fastPreviewActive && hasNothingToReview(query.state.data)
-        ? 5_000
-        : false,
+      hasNothingToReview(query.state.data) ? 5_000 : false,
   });
   const gitStatus = statusQuery.data ?? null;
-  const fpStatus = fastPreviewActive ? gitStatus : null;
-  const branchMeta: BranchMeta = fastPreviewActive
-    ? fpStatus
-      ? {
-          kind: "ready",
-          branch: readGitHeadBranch(fpStatus) ?? branch ?? "",
-          base: fpStatus.base ?? "main",
-          workingTreeDirty: false,
-          unpushed: 0,
-          aheadOfBase: fpStatus.aheadOfBase ?? 0,
-          behindBase: fpStatus.behindBase ?? 0,
-          headSha: fpStatus.headSha ?? "",
-        }
-      : { kind: "unknown" }
-    : sseBranchMeta;
-  /** Sandbox-less has no boot pipeline, so lifecycle reads as permanently running. */
-  const lifecycle: LifecycleState = fastPreviewActive
-    ? { phase: "running", port: 0, htmlSupport: true }
-    : sseLifecycle;
+  const branchMeta: BranchMeta = sseBranchMeta;
+  const lifecycle: LifecycleState = sseLifecycle;
 
   const sandboxBranch = branchMeta.kind === "ready" ? branchMeta.branch : null;
-  const sandboxMapBranch = resolveSandboxBranchFromMap(
-    vm?.metadata?.sandboxMap,
-    userId,
-    branch ?? sandboxBranch,
-  );
-  const sandboxRouteBranch =
-    branch ?? sandboxBranch ?? sandboxMapBranch ?? undefined;
+  // The SSE-derived fallback stays: a `load_repo` thread whose `branch` column
+  // is null but whose live daemon reports one would otherwise be stranded.
+  const sandboxRouteBranch = branch ?? sandboxBranch ?? undefined;
 
   const githubHeadBranch =
     (branchMeta.kind === "ready" ? branchMeta.branch : null) ??
@@ -338,7 +305,6 @@ export function HeaderActions({ virtualMcpId }: Props) {
       action: button.action,
       chatBranch: branch,
       sandboxBranch,
-      sandboxMapBranch,
       sandboxRouteBranch,
       githubHeadBranch,
       branchMeta,
