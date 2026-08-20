@@ -147,7 +147,15 @@ export class JiraClient {
         },
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
-      const body = await response.text().catch(() => "");
+      let body: string;
+      try {
+        body = await response.text();
+      } catch (cause) {
+        // Distinct from a legit empty body: don't silently coerce to "".
+        throw new Error(`Jira ${path} failed to read response body`, {
+          cause,
+        });
+      }
       if (!response.ok) {
         throw new Error(
           `Jira ${path} failed (${response.status}): ${body.slice(0, 300)}`,
