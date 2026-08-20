@@ -13,9 +13,17 @@ import {
 const NOW = Date.parse("2026-07-30T12:00:00Z");
 const iso = (msAgo: number) => new Date(NOW - msAgo).toISOString();
 
-const manifest = (version: string, pubDate?: string) => ({
+const manifest = (
+  version: string,
+  pubDate?: string,
+  platforms: Record<string, object> = {
+    "darwin-aarch64": {},
+    "linux-x86_64": {},
+  },
+) => ({
   version,
   ...(pubDate !== undefined ? { pub_date: pubDate } : {}),
+  platforms,
 });
 
 describe("parseSemver / compareSemver", () => {
@@ -49,7 +57,9 @@ describe("shouldPromote", () => {
   });
 
   test("never regresses: skips when channel is newer, even forced", () => {
-    const current = manifest("9.0.0", iso(THROTTLE_MS * 2));
+    const current = manifest("9.0.0", iso(THROTTLE_MS * 2), {
+      "darwin-aarch64": {},
+    });
     expect(shouldPromote({ ...base, currentManifest: current }).promote).toBe(
       false,
     );
@@ -78,6 +88,26 @@ describe("shouldPromote", () => {
     ).toBe(true);
   });
 
+  test("missing required platform bypasses the throttle", () => {
+    const current = manifest("4.150.13", iso(60_000), {
+      "darwin-aarch64": {},
+    });
+    expect(shouldPromote({ ...base, currentManifest: current })).toEqual({
+      promote: true,
+      reason: "channel missing required platform(s): linux-x86_64",
+    });
+  });
+
+  test("missing required platform repairs the current version", () => {
+    const current = manifest("4.151.0", iso(60_000), {
+      "darwin-aarch64": {},
+    });
+    expect(shouldPromote({ ...base, currentManifest: current })).toEqual({
+      promote: true,
+      reason: "channel missing required platform(s): linux-x86_64",
+    });
+  });
+
   test("fail-open: missing, unparseable, or FUTURE pub_date promotes", () => {
     for (const bad of [
       manifest("4.150.13"),
@@ -90,7 +120,7 @@ describe("shouldPromote", () => {
     }
   });
 
-  test("throttles a fresh manifest, promotes a stale one", () => {
+  test("throttles a fresh complete manifest, promotes a stale one", () => {
     const fresh = manifest("4.150.13", iso(THROTTLE_MS - 60_000));
     const stale = manifest("4.150.13", iso(THROTTLE_MS + 60_000));
     expect(shouldPromote({ ...base, currentManifest: fresh }).promote).toBe(
