@@ -527,14 +527,15 @@ export interface OAuthConfig {
    * Called when the client requests a new access token with grant_type=refresh_token
    */
   refreshToken?: (refreshToken: string) => Promise<OAuthTokenResponse>;
-  /**
-   * Optional: persistence for dynamic client registration (RFC7591)
-   * If not provided, clients are accepted without validation
-   */
+  /** Client store (RFC7591) `/authorize` matches `redirect_uri` against. Set this or `allowedRedirectHosts`, else `/authorize` rejects everything. */
   persistence?: {
     getClient: (clientId: string) => Promise<OAuthClient | null>;
     saveClient: (client: OAuthClient) => Promise<void>;
   };
+  /** Label-boundary host allowlist for `redirect_uri`, enforced on top of the client's registered URIs. */
+  allowedRedirectHosts?: string[];
+  /** AES-GCM key material for `state` and `code`; unset leaves both plaintext, exposing the upstream token in the code. Share one value across instances. */
+  stateSecret?: string;
 }
 
 export interface CreateMCPServerOptions<

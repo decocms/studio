@@ -1,3 +1,7 @@
+import {
+  redirectUriMatchesRegistered,
+  satisfiesAllowedRedirectHosts,
+} from "./redirect-uri.ts";
 import type { OAuthClient, OAuthConfig, OAuthParams } from "./tools.ts";
 
 /**
@@ -53,14 +57,22 @@ function isValidRedirectUri(uri: string): boolean {
   }
 }
 
+function toBase64Url(binary: string): string {
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+function fromBase64Url(encoded: string): string {
+  return atob(encoded.replace(/-/g, "+").replace(/_/g, "/"));
+}
+
 /**
  * Encode data as base64url JSON
  */
 function encodeState<T>(data: T): string {
-  return btoa(JSON.stringify(data))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
+  return toBase64Url(JSON.stringify(data));
 }
 
 /**
@@ -68,15 +80,93 @@ function encodeState<T>(data: T): string {
  */
 function decodeState<T>(encoded: string): T | null {
   try {
-    const base64 = encoded.replace(/-/g, "+").replace(/_/g, "/");
-    return JSON.parse(atob(base64)) as T;
+    return JSON.parse(fromBase64Url(encoded)) as T;
   } catch {
     return null;
   }
 }
 
+/** Marks a payload as AES-GCM sealed, so an unsealed one can never be mistaken for it. */
+const SEALED_PREFIX = "v1.";
+const GCM_IV_BYTES = 12;
+
+function bytesToBase64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return toBase64Url(binary);
+}
+
+function base64UrlToBytes(encoded: string) {
+  const binary = fromBase64Url(encoded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+/**
+ * Seal and unseal the `state` and `code` this server round-trips through the
+ * browser. A `stateSecret` turns both into AES-GCM ciphertext, which keeps the
+ * upstream access token out of the code and makes the state tamper-evident.
+ * Without one they stay plain base64url JSON.
+ */
+function createSealer(secret: string | undefined) {
+  const keyPromise = secret
+    ? crypto.subtle
+        .digest("SHA-256", new TextEncoder().encode(secret))
+        .then((raw) =>
+          crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, false, [
+            "encrypt",
+            "decrypt",
+          ]),
+        )
+    : null;
+
+  const seal = async <T>(data: T): Promise<string> => {
+    if (!keyPromise) {
+      return encodeState(data);
+    }
+    const iv = crypto.getRandomValues(new Uint8Array(GCM_IV_BYTES));
+    const ciphertext = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv },
+      await keyPromise,
+      new TextEncoder().encode(JSON.stringify(data)),
+    );
+    const sealed = new Uint8Array(GCM_IV_BYTES + ciphertext.byteLength);
+    sealed.set(iv);
+    sealed.set(new Uint8Array(ciphertext), GCM_IV_BYTES);
+    return SEALED_PREFIX + bytesToBase64Url(sealed);
+  };
+
+  const unseal = async <T>(value: string): Promise<T | null> => {
+    if (!keyPromise) {
+      return value.startsWith(SEALED_PREFIX) ? null : decodeState<T>(value);
+    }
+    if (!value.startsWith(SEALED_PREFIX)) {
+      return null;
+    }
+    try {
+      const sealed = base64UrlToBytes(value.slice(SEALED_PREFIX.length));
+      const plaintext = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: sealed.subarray(0, GCM_IV_BYTES) },
+        await keyPromise,
+        sealed.subarray(GCM_IV_BYTES),
+      );
+      return JSON.parse(new TextDecoder().decode(plaintext)) as T;
+    } catch {
+      return null;
+    }
+  };
+
+  return { seal, unseal };
+}
+
 interface PendingAuthState {
   redirectUri: string;
+  clientId?: string;
   clientState?: string;
   codeChallenge?: string;
   codeChallengeMethod?: string;
@@ -112,6 +202,79 @@ const forceHttps = (url: URL) => {
  * Per MCP Authorization spec: https://modelcontextprotocol.io/specification/draft/basic/authorization
  */
 export function createOAuthHandlers(oauth: OAuthConfig) {
+  const { seal, unseal } = createSealer(oauth.stateSecret);
+  const allowedRedirectHosts = oauth.allowedRedirectHosts?.filter(
+    (host) => host.trim().length > 0,
+  );
+
+  /**
+   * Decide whether a `redirect_uri` may receive an authorization code. Returns
+   * `null` when allowed, otherwise the error to render. RFC 6749 §4.1.2.1
+   * forbids redirecting to the URI under scrutiny. Both configured checks must
+   * pass, and with neither configured this fails closed.
+   */
+  const checkRedirectUri = async (
+    clientId: string | null | undefined,
+    redirectUri: string,
+  ): Promise<{ error: string; error_description: string } | null> => {
+    if (!isValidRedirectUri(redirectUri)) {
+      return {
+        error: "invalid_request",
+        error_description: `Invalid redirect_uri: ${redirectUri}`,
+      };
+    }
+
+    if (!clientId) {
+      return {
+        error: "invalid_request",
+        error_description: "client_id required",
+      };
+    }
+
+    if (
+      allowedRedirectHosts?.length &&
+      !satisfiesAllowedRedirectHosts(redirectUri, allowedRedirectHosts)
+    ) {
+      return {
+        error: "invalid_request",
+        error_description: `redirect_uri host is not allowed: ${redirectUri}`,
+      };
+    }
+
+    if (oauth.persistence) {
+      const client = await oauth.persistence.getClient(clientId);
+      if (!client) {
+        return {
+          error: "invalid_client",
+          error_description: "Unknown client_id",
+        };
+      }
+      const registered = client.redirect_uris ?? [];
+      if (
+        !registered.some((uri) =>
+          redirectUriMatchesRegistered(redirectUri, uri),
+        )
+      ) {
+        return {
+          error: "invalid_request",
+          error_description:
+            "redirect_uri does not exactly match a registered redirect URI for this client",
+        };
+      }
+      return null;
+    }
+
+    if (!allowedRedirectHosts?.length) {
+      return {
+        error: "invalid_client",
+        error_description:
+          "This server cannot validate redirect URIs: configure oauth.persistence (to resolve registered clients) or oauth.allowedRedirectHosts",
+      };
+    }
+
+    return null;
+  };
+
   /**
    * Build OAuth 2.0 Protected Resource Metadata (RFC9728)
    * Points to THIS server as the authorization server
@@ -156,9 +319,10 @@ export function createOAuthHandlers(oauth: OAuthConfig) {
    * Handle authorization request - redirects to external OAuth provider
    * Stateless: encodes all needed info in the state parameter
    */
-  const handleAuthorize = (req: Request): Response => {
+  const handleAuthorize = async (req: Request): Promise<Response> => {
     const url = forceHttps(new URL(req.url));
     const redirectUri = url.searchParams.get("redirect_uri");
+    const clientId = url.searchParams.get("client_id");
     const responseType = url.searchParams.get("response_type");
     const clientState = url.searchParams.get("state");
     const codeChallenge = url.searchParams.get("code_challenge");
@@ -175,14 +339,9 @@ export function createOAuthHandlers(oauth: OAuthConfig) {
       );
     }
 
-    if (!isValidRedirectUri(redirectUri)) {
-      return Response.json(
-        {
-          error: "invalid_request",
-          error_description: `Invalid redirect_uri: ${redirectUri}`,
-        },
-        { status: 400 },
-      );
+    const rejection = await checkRedirectUri(clientId, redirectUri);
+    if (rejection) {
+      return Response.json(rejection, { status: 400 });
     }
 
     if (responseType !== "code") {
@@ -203,12 +362,13 @@ export function createOAuthHandlers(oauth: OAuthConfig) {
     // Encode pending auth state (including the clean callback URL)
     const pendingState: PendingAuthState = {
       redirectUri,
+      clientId: clientId ?? undefined,
       clientState: clientState ?? undefined,
       codeChallenge: codeChallenge ?? undefined,
       codeChallengeMethod: codeChallengeMethod ?? undefined,
       oauthCallbackUri,
     };
-    const encodedState = encodeState(pendingState);
+    const encodedState = await seal(pendingState);
 
     // Add state to callback URL
     callbackUrl.searchParams.set("state", encodedState);
@@ -232,8 +392,19 @@ export function createOAuthHandlers(oauth: OAuthConfig) {
 
     // Decode state
     const pending = encodedState
-      ? decodeState<PendingAuthState>(encodedState)
+      ? await unseal<PendingAuthState>(encodedState)
       : null;
+
+    // Every redirect below hands a live credential to `pending.redirectUri`.
+    if (pending?.redirectUri) {
+      const rejection = await checkRedirectUri(
+        pending.clientId,
+        pending.redirectUri,
+      );
+      if (rejection) {
+        return Response.json(rejection, { status: 400 });
+      }
+    }
 
     if (error) {
       const errorDescription =
@@ -286,7 +457,7 @@ export function createOAuthHandlers(oauth: OAuthConfig) {
         codeChallenge: pending.codeChallenge,
         codeChallengeMethod: pending.codeChallengeMethod,
       };
-      const ourCode = encodeState(codePayload);
+      const ourCode = await seal(codePayload);
 
       // Redirect back to client with our code
       const redirectUrl = forceHttps(new URL(pending.redirectUri));
@@ -442,7 +613,7 @@ export function createOAuthHandlers(oauth: OAuthConfig) {
       }
 
       // Decode the code to get the token
-      const payload = decodeState<CodePayload>(code);
+      const payload = await unseal<CodePayload>(code);
       if (!payload || !payload.accessToken) {
         return Response.json(
           {
