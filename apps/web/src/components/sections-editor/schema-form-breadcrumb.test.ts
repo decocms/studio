@@ -1235,7 +1235,14 @@ describe("buildArrayDrillDownBreadcrumb", () => {
       buildArrayDrillDownBreadcrumb([], "Products", "items", 0, {
         arrayKey: "items",
       }),
-    ).toEqual([{ label: "items", itemIndex: 0, arrayLabel: "Products" }]);
+    ).toEqual([
+      {
+        label: "items",
+        itemIndex: 0,
+        arrayLabel: "Products",
+        fieldKey: "items",
+      },
+    ]);
   });
 
   test("carries the array label on the item crumb when a sibling drill-down field exists", () => {
@@ -1255,7 +1262,7 @@ describe("buildArrayDrillDownBreadcrumb", () => {
         arrayKey: "images",
         hasSiblingDrillDownFields: false,
       }),
-    ).toEqual([{ label: "Item 1", itemIndex: 0 }]);
+    ).toEqual([{ label: "Item 1", itemIndex: 0, fieldKey: "images" }]);
   });
 
   test("never yields a standalone array-list navigation stop", () => {
@@ -1279,7 +1286,12 @@ describe("buildArrayDrillDownBreadcrumb", () => {
         itemLabelFromSchema: true,
       }),
     ).toEqual([
-      { label: "cat > 1", itemIndex: 0, arrayLabel: "Selected Facets" },
+      {
+        label: "cat > 1",
+        itemIndex: 0,
+        arrayLabel: "Selected Facets",
+        fieldKey: "selectedFacets",
+      },
     ]);
   });
 
@@ -1332,7 +1344,7 @@ describe("sibling array disambiguation (regression)", () => {
       hasSiblingDrillDownFields: true,
     });
     expect(trail).toEqual([
-      { label: "Item 1", itemIndex: 0, arrayLabel: "Logos" },
+      { label: "Item 1", itemIndex: 0, arrayLabel: "Logos", fieldKey: "logos" },
     ]);
     expect(
       resolveActiveFieldKey(
@@ -1352,7 +1364,9 @@ describe("sibling array disambiguation (regression)", () => {
       arrayKey: "cards",
       hasSiblingDrillDownFields: false,
     });
-    expect(trail).toEqual([{ label: "Men's", itemIndex: 0 }]);
+    expect(trail).toEqual([
+      { label: "Men's", itemIndex: 0, fieldKey: "cards" },
+    ]);
     expect(
       resolveActiveFieldKey(
         ["cards"],
@@ -1361,6 +1375,83 @@ describe("sibling array disambiguation (regression)", () => {
         trail,
       ),
     ).toBe("cards");
+  });
+});
+
+describe("structural fieldKey resolution", () => {
+  const itemSchema = {
+    type: "object",
+    properties: { src: { type: "string" } },
+  } as SchemaProperty;
+  // Two sibling arrays sharing the SAME title AND identical item labels: neither the array label nor the item label can disambiguate — only the recorded fieldKey can.
+  const properties = {
+    a: { title: "Items", type: "array", items: itemSchema },
+    b: { title: "Items", type: "array", items: itemSchema },
+  } as Record<string, SchemaProperty>;
+  const objValue = { a: [{ src: "x" }], b: [{ src: "x" }] };
+
+  test("resolves the drilled array by fieldKey when title AND item label both collide", () => {
+    const trail = buildArrayDrillDownBreadcrumb([], "Items", "Item 1", 0, {
+      arrayKey: "b",
+      hasSiblingDrillDownFields: true,
+    });
+    expect(
+      resolveActiveFieldKey(
+        Object.keys(properties),
+        properties,
+        objValue,
+        trail,
+      ),
+    ).toBe("b");
+  });
+
+  test("a legacy crumb without fieldKey can't disambiguate and picks the first sibling", () => {
+    const legacyTrail: Crumb[] = [
+      { label: "Item 1", itemIndex: 0, arrayLabel: "Items" },
+    ];
+    expect(
+      resolveActiveFieldKey(
+        Object.keys(properties),
+        properties,
+        objValue,
+        legacyTrail,
+      ),
+    ).toBe("a");
+  });
+
+  test("resolveArrayItemSelection pins by index via fieldKey despite a churned label", () => {
+    const items = [{ name: "First" }, { name: "Second" }];
+    const schema = {
+      type: "object",
+      properties: { name: { type: "string" } },
+    } as SchemaProperty;
+    const crumb: Crumb = {
+      label: "STALE — being typed",
+      itemIndex: 1,
+      fieldKey: "cards",
+    };
+    const sel = resolveArrayItemSelection(
+      "Cards",
+      [crumb],
+      items,
+      schema,
+      null,
+      "cards",
+    );
+    expect(sel?.index).toBe(1);
+  });
+
+  test("resolveArrayItemSelection denies a sibling whose key differs from the crumb's fieldKey", () => {
+    const items = [{ name: "First" }, { name: "Second" }];
+    const schema = {
+      type: "object",
+      properties: { name: { type: "string" } },
+    } as SchemaProperty;
+    // Index 1 is in range and the label matches, but the crumb belongs to `cards`, not this array.
+    const crumb: Crumb = { label: "Second", itemIndex: 1, fieldKey: "cards" };
+    expect(
+      resolveArrayItemSelection("Other", [crumb], items, schema, null, "other"),
+    ).toBeNull();
   });
 });
 

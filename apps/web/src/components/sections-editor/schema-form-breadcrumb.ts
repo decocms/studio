@@ -24,9 +24,15 @@ import { unwrapBlockReference } from "./unwrap-section";
  * "array list only" navigation stop the user would have to click back through —
  * the array's list is already shown inline in its parent form.
  */
-export type Crumb =
-  | string
-  | { label: string; itemIndex: number; arrayLabel?: string };
+interface ItemCrumb {
+  label: string;
+  itemIndex: number;
+  arrayLabel?: string;
+  /** The array's own property key, recorded at drill-in for exact ownership resolution (no label guessing). */
+  fieldKey?: string;
+}
+
+export type Crumb = string | ItemCrumb;
 
 /** The human-visible text of a crumb (the label part of an item crumb). */
 export function crumbLabel(crumb: Crumb): string {
@@ -34,15 +40,18 @@ export function crumbLabel(crumb: Crumb): string {
 }
 
 /** Whether a crumb addresses an array item (carries an `itemIndex`). */
-function isItemCrumb(
-  crumb: Crumb,
-): crumb is { label: string; itemIndex: number; arrayLabel?: string } {
+function isItemCrumb(crumb: Crumb): crumb is ItemCrumb {
   return typeof crumb === "object";
 }
 
 /** The disambiguating array label riding on an item crumb, if any. */
 function crumbArrayLabel(crumb: Crumb): string | undefined {
   return isItemCrumb(crumb) ? crumb.arrayLabel : undefined;
+}
+
+/** The array's own property key recorded on an item crumb at drill-in, if any. */
+function crumbFieldKey(crumb: Crumb): string | undefined {
+  return isItemCrumb(crumb) ? crumb.fieldKey : undefined;
 }
 
 /**
@@ -176,13 +185,12 @@ export function buildArrayDrillDownBreadcrumb(
   ) {
     return breadcrumbPath;
   }
-  const itemCrumb = arrayCrumbNeededForDisambiguation(
-    arrayLabel,
-    itemLabel,
-    opts,
-  )
-    ? { label: itemLabel, itemIndex, arrayLabel }
-    : { label: itemLabel, itemIndex };
+  const itemCrumb: ItemCrumb = { label: itemLabel, itemIndex };
+  if (arrayCrumbNeededForDisambiguation(arrayLabel, itemLabel, opts)) {
+    itemCrumb.arrayLabel = arrayLabel;
+  }
+  // Record the array's own key so resolution can match by key, not by label.
+  if (opts?.arrayKey) itemCrumb.fieldKey = opts.arrayKey;
   return [...breadcrumbPath, itemCrumb];
 }
 
@@ -543,6 +551,14 @@ function resolveActiveFieldKeyInScope(
   if (breadcrumbPath.length === 0) return null;
   const head = crumbLabel(breadcrumbPath[0]!);
 
+  // Structural fast-path: an item crumb records the array's own key at drill-in, so a drill-down field it names resolves by exact key match — no label/title/arrayLabel guessing. Label matching below stays the fallback for older/context crumbs.
+  for (const key of keys) {
+    const schema = properties[key];
+    if (!schema || !isArrayDrillDownField(schema, objValue[key])) continue;
+    if (breadcrumbPath.some((crumb) => crumbFieldKey(crumb) === key))
+      return key;
+  }
+
   for (const key of keys) {
     const schema = properties[key];
     if (!schema || !isArrayDrillDownField(schema, objValue[key])) continue;
@@ -844,8 +860,16 @@ function findItemIndexForCrumb(
   itemSchema: SchemaProperty | undefined,
   crumb: Crumb,
   preferredIndex?: number | null,
+  ownerKey?: string,
 ): number {
   if (!isItemCrumb(crumb)) return -1;
+  // Structural ownership: the array's own key claims the item by index alone, so a churned/duplicate label can't strand it or snap it to a colliding sibling.
+  if (crumb.fieldKey != null && ownerKey != null) {
+    if (crumb.fieldKey !== ownerKey) return -1;
+    if (crumb.itemIndex >= 0 && crumb.itemIndex < items.length) {
+      return crumb.itemIndex;
+    }
+  }
   const labels = getArrayItemDisplayLabels(items, itemSchema);
   // Exact pin: the index addresses the item; the label confirms this array owns it.
   if (
@@ -905,6 +929,7 @@ export function resolveArrayItemSelection(
   items: unknown[],
   itemSchema: SchemaProperty | undefined,
   preferredIndex?: number | null,
+  ownerKey?: string,
 ): { index: number; innerPath: Crumb[]; crumbIndex: number } | null {
   if (breadcrumbPath.length === 0) return null;
 
@@ -915,6 +940,7 @@ export function resolveArrayItemSelection(
       itemSchema,
       crumb,
       preferredIndex,
+      ownerKey,
     );
     if (index >= 0) {
       return { index, innerPath: breadcrumbPath.slice(pi + 1), crumbIndex: pi };
@@ -931,6 +957,7 @@ export function resolveArrayItemSelection(
       itemSchema,
       itemCrumb,
       preferredIndex,
+      ownerKey,
     );
     if (index >= 0) {
       return {
