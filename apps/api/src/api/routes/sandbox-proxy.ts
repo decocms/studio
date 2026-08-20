@@ -42,7 +42,10 @@ import {
 } from "../../lib/suggest-commit-message";
 import { judgeRequiresReviewWithLlm } from "../../lib/judge-requires-review";
 import { gitDataClientForRepo } from "../../decofile/client-for-repo";
-import { GitHubApiError } from "../../decofile/github-git-data";
+import {
+  GitHubApiError,
+  GitHubRateLimitError,
+} from "../../decofile/github-git-data";
 import {
   githubGitDiff,
   githubGitDiscard,
@@ -315,6 +318,15 @@ async function fastPreviewGitClient(c: Context<VmEnv>) {
 }
 
 function fastPreviewGitError(c: Context<VmEnv>, err: unknown): Response {
+  /** 429 with GitHub's own wait, so the client backs off instead of retrying. */
+  if (err instanceof GitHubRateLimitError) {
+    return c.json({ error: err.message }, 429, {
+      ...SANDBOX_PROXY_CACHE_HEADERS,
+      ...(err.retryAfterMs === null
+        ? {}
+        : { "Retry-After": String(Math.ceil(err.retryAfterMs / 1000)) }),
+    });
+  }
   if (err instanceof GitHubApiError) {
     const status =
       err.status === 404
