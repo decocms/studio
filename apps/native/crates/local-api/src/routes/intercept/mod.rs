@@ -60,6 +60,7 @@ mod agent_sessions;
 mod dev_server;
 mod git_assist;
 mod preview_invoke;
+mod runtime;
 mod sandbox_events;
 mod sandbox_fs;
 mod sandbox_lifecycle;
@@ -127,15 +128,15 @@ pub async fn try_intercept(
         crate::sandbox::org_mount::warm(&state.app_root, org);
     }
 
-    if let Some(response) = sandbox_fs::try_dispatch(state, method, &rest, body).await {
+    if let Some(response) = sandbox_fs::try_dispatch(state, method, &rest, query, body).await {
         return Some(response);
     }
 
-    if let Some(response) = sandbox_events::try_dispatch(state, method, &rest).await {
+    if let Some(response) = sandbox_events::try_dispatch(state, method, &rest, query).await {
         return Some(response);
     }
 
-    if let Some(response) = preview_invoke::try_dispatch(state, method, &rest, body).await {
+    if let Some(response) = preview_invoke::try_dispatch(state, method, &rest, query, body).await {
         return Some(response);
     }
 

@@ -33,11 +33,16 @@ pub(super) async fn try_dispatch(
     state: &AppState,
     method: &Method,
     rest: &[&str],
+    query: Option<&str>,
     body: &Bytes,
 ) -> Option<Response> {
     let ["sandbox", encoded_virtual_mcp_id, encoded_branch, "preview-invoke"] = rest else {
         return None;
     };
+    // A CMS session has no worktree, whatever this machine happens to hold.
+    if super::runtime::thread_is_cms(state, query) {
+        return None;
+    }
     if *method != Method::POST {
         return Some(
             ApiError::new(

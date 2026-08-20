@@ -32,6 +32,7 @@ pub(super) async fn try_dispatch(
     state: &AppState,
     method: &Method,
     rest: &[&str],
+    query: Option<&str>,
     body: &Bytes,
 ) -> Option<Response> {
     let ["sandbox", encoded_virtual_mcp_id, encoded_branch, operation] = rest else {
@@ -62,6 +63,10 @@ pub(super) async fn try_dispatch(
         if let Some(error) = reject_absolute_read(body) {
             return Some(error.into_response());
         }
+    }
+    // A CMS session has no worktree, whatever this machine happens to hold.
+    if super::runtime::thread_is_cms(state, query) {
+        return None;
     }
     // Keyed by (virtualMcpId, branch) in the URL, but the worktree handle is
     // derived from the REPOSITORY — the registry is what bridges them.
@@ -241,6 +246,7 @@ mod tests {
             &state,
             &Method::POST,
             &["sandbox", "vir_blocks", "feature%2Fblocks", "write"],
+            None,
             &Bytes::from(
                 serde_json::to_vec(&json!({
                     "path": ".deco/blocks/home.json",
@@ -284,6 +290,7 @@ mod tests {
             &restarted_state,
             &Method::POST,
             &["sandbox", "vir_restart", "main", "write"],
+            None,
             &Bytes::from(
                 serde_json::to_vec(&json!({
                     "path": ".deco/blocks/restarted.json",
@@ -323,6 +330,7 @@ mod tests {
             &state,
             &Method::POST,
             &["sandbox", "never_seen", "main", "write"],
+            None,
             &Bytes::from(
                 serde_json::to_vec(&json!({
                     "path": "wrong-target.json",
@@ -354,6 +362,7 @@ mod tests {
             &state,
             &Method::POST,
             &["sandbox", "vir_first", "main", "write"],
+            None,
             &Bytes::from(
                 serde_json::to_vec(&json!({
                     "path": cross_sandbox_path,
@@ -391,6 +400,7 @@ mod tests {
             &state,
             &Method::POST,
             &["sandbox", "vir_read", "main", "read"],
+            None,
             &body,
         )
         .await
@@ -418,6 +428,7 @@ mod tests {
             &state,
             &Method::GET,
             &["sandbox", "vir_blocks", "main", "write"],
+            None,
             &Bytes::new(),
         )
         .await

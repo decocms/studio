@@ -1447,7 +1447,10 @@ impl ThreadsDb {
         )
     }
 
-    #[cfg(test)]
+    /// Unscoped by id. The runtime gate (`intercept::runtime`) reads only the
+    /// `metadata.runtime` stamp of a thread the caller already named in its own
+    /// request, so there is nothing to scope: a wrong id yields `None` and the
+    /// request falls through to the upstream proxy.
     pub fn rt_get_thread(&self, id: &str) -> DbResult<Option<RtThread>> {
         let conn = self.lock();
         rt_thread_by_id(&conn, id)
@@ -1701,8 +1704,25 @@ impl ThreadsDb {
             sql_params.push(Box::new(v.clone()));
         }
         if let Some(v) = &patch.metadata {
+            // `metadata` is a whole-blob write, and `runtime` is stamped once
+            // at creation and immutable — carry it across or a patch that omits
+            // it silently un-stamps the session.
+            let merged = v.as_ref().map(|value| {
+                let existing = rt_thread_by_id(&self.lock(), id)
+                    .ok()
+                    .flatten()
+                    .and_then(|thread| thread.metadata)
+                    .and_then(|meta| meta.get("runtime").cloned());
+                match (existing, value.clone()) {
+                    (Some(runtime), Value::Object(mut next)) => {
+                        next.entry("runtime").or_insert(runtime);
+                        Value::Object(next).to_string()
+                    }
+                    (_, other) => other.to_string(),
+                }
+            });
             sets.push(format!("metadata = ?{}", sql_params.len() + 1));
-            sql_params.push(Box::new(v.as_ref().map(|v| v.to_string())));
+            sql_params.push(Box::new(merged));
         }
         if let Some(v) = &patch.branch {
             sets.push(format!("branch = ?{}", sql_params.len() + 1));
@@ -3228,7 +3248,6 @@ fn rt_message_by_id(conn: &Connection, id: &str) -> DbResult<Option<RtMessage>> 
     .map_err(DbError::from)
 }
 
-#[cfg(test)]
 fn rt_thread_by_id(conn: &Connection, id: &str) -> DbResult<Option<RtThread>> {
     conn.query_row(
         &format!("SELECT {RT_THREAD_COLUMNS} FROM native_scoped_threads WHERE id = ?1"),

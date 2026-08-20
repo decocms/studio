@@ -233,10 +233,10 @@ fn validate_datetime(value: &str, path: &str) -> Result<(), ApiError> {
     }
 }
 
-/// The session runtime a coding session stamps at creation. Mirrors
+/// The session runtime, stamped once at creation and immutable. Mirrors
 /// `THREAD_RUNTIMES` in `packages/shared/src/thread/schema.ts`; the stamp
-/// becomes `metadata.runtime`, which `resolveSessionRuntime` reads to keep a
-/// sandbox-backed session out of a Fast Preview project's CMS default.
+/// becomes `metadata.runtime`, which `readThreadRuntime` (and this crate's
+/// `intercept::runtime`) reads to tell a coding session from a CMS one.
 const THREAD_RUNTIMES: [&str; 2] = ["cms", "sandbox"];
 
 fn optional_runtime<'a>(
