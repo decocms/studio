@@ -210,6 +210,9 @@ export interface AuthContext {
   permissions?: Permission; // Permissions from API key or custom role (MCP OAuth)
   userId?: string; // User ID for server-side API key operations
   apiKeyId?: string; // Set when the principal authenticated with an API key
+  /** Org `role`/`permissions` were resolved for — they must not decide a
+   *  check against a different one. */
+  organizationId?: string;
 }
 
 /**
@@ -221,7 +224,15 @@ export interface AuthContext {
  * 2. Browser sessions → delegate to Better Auth's hasPermission API
  */
 export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
-  const { auth, headers, role, permissions, userId, apiKeyId } = ctx;
+  const {
+    auth,
+    headers,
+    role,
+    permissions,
+    userId,
+    apiKeyId,
+    organizationId: authOrganizationId,
+  } = ctx;
 
   // An API key is authorized SOLELY by its own stored allowlist — the owner's
   // admin/owner role never widens it, or a "read-only" key minted by an admin
@@ -247,6 +258,12 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
         return checkApiKeyPermission(permissions ?? {}, requestedPermission);
       }
 
+      // Checking a tenant other than the one `role`/`permissions` came from.
+      const isCrossOrg =
+        !!options?.organizationId &&
+        !!authOrganizationId &&
+        options.organizationId !== authOrganizationId;
+
       // Only owner/admin bypass all permission checks (full org access). The
       // built-in `user` role is enforced like any member: it gets basic-usage
       // (granted out-of-band in AccessControl) plus its explicit Better Auth /
@@ -255,12 +272,16 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
       // `role` may be Better Auth's comma-joined multi-role string, so a
       // plain exact-match here would deny a legitimate multi-role
       // owner/admin the bypass — see `hasAdminRole`.
-      if (hasAdminRole(role)) {
+      // Bypass on the role for the org being CHECKED: the captured `role` is
+      // the session-active org's, which on a cross-org check is another tenant.
+      const effectiveRole = options ? options.role : role;
+      if (hasAdminRole(effectiveRole)) {
         return true;
       }
 
-      // Flow 1: API Key / MCP OAuth - check against stored permissions
-      if (permissions) {
+      // Flow 1: MCP OAuth — the principal's own-org permissions. Cross-org
+      // falls through to Better Auth, which verifies membership.
+      if (permissions && !isCrossOrg) {
         return checkApiKeyPermission(permissions, requestedPermission);
       }
 
@@ -1480,6 +1501,7 @@ export async function createStudioContextFactory(
       permissions: authResult.permissions,
       userId: authResult.user?.id, // For server-side API key operations
       apiKeyId: authResult.apiKeyId, // Enables scoped-key enforcement
+      organizationId: authResult.organization?.id, // tenant role/permissions came from
     });
 
     // Build auth object for StudioContext
