@@ -198,24 +198,38 @@ const DEVICE_LABEL_KEYS: Record<PreviewDeviceSize, TranslationKey> = {
   desktop: "sandbox.preview.deviceDesktop",
 };
 
-/** Deco reads `deviceHint` to force SSR device matchers (see deco `deviceOf`). */
-function withDeviceHint(url: string, device: PreviewDeviceSize): string {
-  const parsed = new URL(url, window.location.href);
-  parsed.searchParams.set("deviceHint", device);
-  return parsed.href;
+/**
+ * Deco reads `deviceHint` to force SSR device matchers (see deco `deviceOf`).
+ * Falls back to the unmodified `url` on a malformed input instead of throwing
+ * mid-render and taking down the whole preview panel (same defensive shape as
+ * `previewOrigin` below).
+ */
+export function withDeviceHint(url: string, device: PreviewDeviceSize): string {
+  try {
+    const parsed = new URL(url, window.location.href);
+    parsed.searchParams.set("deviceHint", device);
+    return parsed.href;
+  } catch {
+    return url;
+  }
 }
 
 /**
  * Force `__decoFBT=0` on the preview URL — disables deco's loader/block-tree
  * cache so edits render immediately in the iframe (same param the "Open result
  * in new tab" invoke path sets, see `buildInvokeRunUrl`). Passes `null` through
- * so it can wrap the whole `iframeSrc` computation regardless of mode.
+ * so it can wrap the whole `iframeSrc` computation regardless of mode, and
+ * falls back to the unmodified `url` on a malformed input instead of throwing.
  */
-function withDecoFBT(url: string | null): string | null {
+export function withDecoFBT(url: string | null): string | null {
   if (!url) return null;
-  const parsed = new URL(url, window.location.href);
-  parsed.searchParams.set("__decoFBT", "0");
-  return parsed.href;
+  try {
+    const parsed = new URL(url, window.location.href);
+    parsed.searchParams.set("__decoFBT", "0");
+    return parsed.href;
+  } catch {
+    return url;
+  }
 }
 
 /** Origin of the preview iframe's own site, or `null` if `previewUrl` is unset/invalid. */
