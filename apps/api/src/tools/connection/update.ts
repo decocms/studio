@@ -407,9 +407,11 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
             tokenId: createdWorkloadTokenId,
           });
         }
-        // Always roll back the replaced grants, even without a new token.
-        await restorePreviousCredentialGrants();
-        throw error;
+        // Nothing to restore when the update carried no credential grants.
+        if (credentialGrants.length > 0) {
+          await restorePreviousCredentialGrants();
+          throw error;
+        }
       }
     }
 
