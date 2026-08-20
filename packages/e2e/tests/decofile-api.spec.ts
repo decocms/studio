@@ -117,7 +117,7 @@ test.describe("decofile API", () => {
       expect(unknown.status()).toBe(404);
       expect(await unknown.json()).toEqual({ error: "Virtual MCP not found" });
 
-      // Existing vmcp, but no fastPreview/productionUrl metadata: gate off.
+      // Existing vmcp with no preview server URL: nothing to render against.
       const bare = await callSelfMcpTool<{ item: { id: string } }>(
         ctx,
         org,
@@ -127,10 +127,10 @@ test.describe("decofile API", () => {
       const gated = await ctx.get(`/api/${org}/decofile/${bare.item.id}/main`);
       expect(gated.status()).toBe(404);
       expect(await gated.json()).toEqual({
-        error: "Fast Preview is not enabled for this project",
+        error: "Project has no preview server configured",
       });
 
-      // fastPreview flag alone is inert without a valid production URL.
+      // The flag alone gates nothing — the URL is what the CMS runtime needs.
       const flagOnly = await callSelfMcpTool<{ item: { id: string } }>(
         ctx,
         org,
@@ -143,9 +143,8 @@ test.describe("decofile API", () => {
           },
         },
       );
-      // Legacy `productionUrl` key still satisfies the gate (dual-read): this
-      // project has no githubRepo, so passing the gate surfaces the NEXT
-      // failure ("no GitHub repository") instead of the gate-off 404.
+      // Legacy `productionUrl` key satisfies the URL term (dual-read): with no
+      // githubRepo the NEXT failure surfaces instead of the URL-less 404.
       const legacyKey = await callSelfMcpTool<{ item: { id: string } }>(
         ctx,
         org,
@@ -174,7 +173,31 @@ test.describe("decofile API", () => {
       );
       expect(flagOnlyRes.status()).toBe(404);
       expect(await flagOnlyRes.json()).toEqual({
-        error: "Fast Preview is not enabled for this project",
+        error: "Project has no preview server configured",
+      });
+
+      // The switch is a creation-time default, not a data-plane gate.
+      const urlNoFlag = await callSelfMcpTool<{ item: { id: string } }>(
+        ctx,
+        org,
+        "COLLECTION_VIRTUAL_MCP_CREATE",
+        {
+          data: {
+            title: `url-no-flag ${Date.now()}`,
+            metadata: {
+              fastPreview: false,
+              previewServerUrl: "https://url-no-flag.example.com",
+            },
+            connections: [],
+          },
+        },
+      );
+      const urlNoFlagRes = await ctx.get(
+        `/api/${org}/decofile/${urlNoFlag.item.id}/main`,
+      );
+      expect(urlNoFlagRes.status()).toBe(404);
+      expect(await urlNoFlagRes.json()).toEqual({
+        error: "Project has no GitHub repository",
       });
     } finally {
       await ctx.dispose();

@@ -22,7 +22,7 @@ import { computeClaimHandle } from "../../sandbox/claim-handle";
 import { resolveSandboxUserId } from "../../tools/sandbox/thread-repo";
 import { readSandboxMap } from "../../tools/sandbox/sandbox-map";
 import { parseBranchMap } from "@decocms/shared/sdk";
-import { resolveSessionRuntime } from "@decocms/shared/thread/session-runtime";
+import { fastPreviewCapability } from "@decocms/shared/thread/session-runtime";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
 import {
   getUserId,
@@ -234,7 +234,7 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
   // with runner:null + the flag so the `/git/*` handlers serve their
   // GitHub-backed equivalents; daemon-backed routes 503 via requireRunner.
   if (
-    resolveSessionRuntime(virtualMcpMetadata).fastPreviewCapability &&
+    fastPreviewCapability(virtualMcpMetadata) &&
     !sandboxPresent(virtualMcpMetadata, sandboxUserId, branch)
   ) {
     c.set("vmClaim", {
