@@ -279,6 +279,53 @@ func TestPublicSkillLinks(t *testing.T) {
 	}
 }
 
+func TestSyncedVolumeSkillLinks(t *testing.T) {
+	appRoot := t.TempDir()
+	repoDir := filepath.Join(appRoot, "repo")
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(t.TempDir(), "config"))
+	statusPath := filepath.Join(t.TempDir(), "status.json")
+	if err := os.MkdirAll(filepath.Join(repoDir, ".git", "info"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A repo-sync volume mounts at `org/<volume>`; home and the hidden per-thread
+	// volumes mount alongside it and must NOT be scanned for skills.
+	for _, dir := range []string{"decocms-skills/unslopify", "home/skills/mine", ".outputs/t1"} {
+		if err := os.MkdirAll(filepath.Join(appRoot, "org", dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(
+			filepath.Join(appRoot, "org", dir, "SKILL.md"), []byte("---\nname: x\n---\n"), 0o644,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	raw, _ := json.Marshal(sidecarStatus{Mounts: []Mount{
+		{Volume: "decocms-skills", MountPath: filepath.Join(appRoot, "org", "decocms-skills")},
+		{Volume: "home", MountPath: filepath.Join(appRoot, "org", "home")},
+		{Volume: "outputs", MountPath: filepath.Join(appRoot, "org", ".outputs")},
+	}})
+	if err := os.WriteFile(statusPath, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	l := &Links{AppRoot: appRoot, RepoDir: repoDir, StatusPath: statusPath, ConfigPath: "unused"}
+	l.syncPublicSkills()
+
+	skillsDir := filepath.Join(repoDir, ".claude", "skills")
+	target, err := os.Readlink(filepath.Join(skillsDir, "orgfs-decocms-skills-unslopify"))
+	if err != nil {
+		t.Fatalf("synced-repo skill not linked: %v", err)
+	}
+	if want := filepath.Join(appRoot, "org", "decocms-skills", "unslopify"); target != want {
+		t.Errorf("link → %q, want %q", target, want)
+	}
+	for _, name := range []string{"orgfs-home-skills", "orgfs-.outputs-t1"} {
+		if _, err := os.Lstat(filepath.Join(skillsDir, name)); err == nil {
+			t.Errorf("linked a non-skill-set volume: %s", name)
+		}
+	}
+}
+
 func TestAdoptStrayRepoSkills(t *testing.T) {
 	appRoot := t.TempDir()
 	repoDir := filepath.Join(appRoot, "repo")

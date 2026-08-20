@@ -398,13 +398,57 @@ func (l *Links) ensurePublicSkillLinksLocked() {
 	}()
 }
 
+// skillSet is one directory to scan for `<skill>/SKILL.md` children, with the
+// name its links are prefixed by.
+type skillSet struct {
+	name string
+	dir  string
+}
+
+// Mount paths under `org/` that are not skill sets: the org home (linked as the
+// USER skill dir already), and the two hidden per-thread volumes.
+var nonSkillVolumeDirs = map[string]bool{
+	"home": true, ".outputs": true, ".uploads": true,
+}
+
+// skillSetRoots is every directory whose children are candidate skills: the
+// read-only public sets (`org/public/<set>`) plus each repo-sync volume
+// (`org/<volume>`). Synced volumes are read off the live mount list rather than
+// by listing `org/` — a stray local dir there is not a mount and must not be
+// scanned. Reads `ActiveMounts` rather than `mountsOrWait`: this runs after the
+// mounts are already up (the public ReadDir above only succeeds through one), so
+// paying the grace wait here would only stall the retry path.
+func (l *Links) skillSetRoots() []skillSet {
+	orgRoot := filepath.Join(l.AppRoot, "org")
+	var out []skillSet
+	if sets, err := os.ReadDir(filepath.Join(orgRoot, "public")); err == nil {
+		for _, set := range sets {
+			if !set.IsDir() || !safeSegment.MatchString(set.Name()) {
+				continue
+			}
+			out = append(out, skillSet{set.Name(), filepath.Join(orgRoot, "public", set.Name())})
+		}
+	}
+	for _, m := range l.ActiveMounts() {
+		name := filepath.Base(m.MountPath)
+		if filepath.Dir(m.MountPath) != orgRoot || nonSkillVolumeDirs[name] {
+			continue
+		}
+		if !safeSegment.MatchString(name) {
+			continue
+		}
+		out = append(out, skillSet{name, m.MountPath})
+	}
+	return out
+}
+
 // syncPublicSkills does the linking, reporting whether anything was linked. Runs
 // without `mu`: it touches only the checkout's skills dir and the read-only
 // public mounts, which no other link path writes.
 func (l *Links) syncPublicSkills() bool {
-	sets, err := os.ReadDir(filepath.Join(l.AppRoot, "org", "public"))
-	if err != nil {
-		// No public mount on this pod (older sandbox, or none configured).
+	sets := l.skillSetRoots()
+	if len(sets) == 0 {
+		// No public or synced mount on this pod (older sandbox, or none configured).
 		return false
 	}
 	dir := filepath.Join(l.RepoDir, ".claude", "skills")
@@ -425,10 +469,7 @@ func (l *Links) syncPublicSkills() bool {
 
 	linked, unreadable := 0, 0
 	for _, set := range sets {
-		if !set.IsDir() || !safeSegment.MatchString(set.Name()) {
-			continue
-		}
-		setDir := filepath.Join(l.AppRoot, "org", "public", set.Name())
+		setDir := set.dir
 		names := skillDirNames(setDir)
 		if len(names) == 0 {
 			continue
@@ -442,14 +483,14 @@ func (l *Links) syncPublicSkills() bool {
 			filepath.Join(setDir, names[0], "SKILL.md"), skillReadBudget,
 		); !ok {
 			slog.Warn("org-fs public skills skipped: set does not read",
-				"set", set.Name(), "probe", names[0], "skills", len(names), "err", err)
+				"set", set.name, "probe", names[0], "skills", len(names), "err", err)
 			unreadable += len(names)
 			continue
 		}
 		for _, name := range names {
 			// `<set>-<skill>`: collision-free across sets. Cosmetic — the name the
 			// model sees comes from SKILL.md's frontmatter, not the directory.
-			link := filepath.Join(dir, publicSkillPrefix+set.Name()+"-"+name)
+			link := filepath.Join(dir, publicSkillPrefix+set.name+"-"+name)
 			if err := os.Symlink(filepath.Join(setDir, name), link); err != nil {
 				slog.Warn("org-fs public skill link failed", "skill", name, "err", err)
 				continue
