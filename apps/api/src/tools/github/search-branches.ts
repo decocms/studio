@@ -87,6 +87,21 @@ export async function parseJsonBody(
   }
 }
 
+/**
+ * A secondary-rate-limit or abuse-detection response (403/429 + `Retry-After`)
+ * looks identical to a real permissions/server failure once reduced to a bare
+ * status code, so callers can't tell "wait and retry" from "this is broken".
+ */
+export function branchSearchErrorMessage(
+  status: number,
+  retryAfterHeader: string | null,
+): string {
+  if ((status === 403 || status === 429) && retryAfterHeader) {
+    return `GitHub GraphQL branch search rate-limited, retry after ${retryAfterHeader}s`;
+  }
+  return `GitHub GraphQL branch search failed: ${status}`;
+}
+
 interface BranchSearchResponse {
   data?: {
     repository?: {
@@ -237,7 +252,9 @@ export const GITHUB_SEARCH_BRANCHES = defineTool({
     }
 
     if (!res.ok) {
-      throw new Error(`GitHub GraphQL branch search failed: ${res.status}`);
+      throw new Error(
+        branchSearchErrorMessage(res.status, res.headers.get("retry-after")),
+      );
     }
 
     // GraphQL reports failures as 200 + `errors`, so an ok status isn't enough.

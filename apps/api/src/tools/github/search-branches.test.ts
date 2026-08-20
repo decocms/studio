@@ -1,6 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import { isGithubConnection } from "@/oauth/github-mint";
-import { parseBranchSearchResponse, parseJsonBody } from "./search-branches";
+import {
+  branchSearchErrorMessage,
+  parseBranchSearchResponse,
+  parseJsonBody,
+} from "./search-branches";
 
 const REPO = "acme/site";
 
@@ -130,6 +134,32 @@ describe("isGithubConnection", () => {
   it("rejects a connection with no slug", () => {
     expect(isGithubConnection({})).toBe(false);
     expect(isGithubConnection({ slug: null })).toBe(false);
+  });
+});
+
+describe("branchSearchErrorMessage", () => {
+  it("surfaces retry-after guidance on a 403 rate limit", () => {
+    expect(branchSearchErrorMessage(403, "42")).toBe(
+      "GitHub GraphQL branch search rate-limited, retry after 42s",
+    );
+  });
+
+  it("surfaces retry-after guidance on a 429", () => {
+    expect(branchSearchErrorMessage(429, "5")).toBe(
+      "GitHub GraphQL branch search rate-limited, retry after 5s",
+    );
+  });
+
+  it("falls back to a generic status message without a retry-after header", () => {
+    expect(branchSearchErrorMessage(403, null)).toBe(
+      "GitHub GraphQL branch search failed: 403",
+    );
+  });
+
+  it("falls back to a generic status message for an unrelated failure", () => {
+    expect(branchSearchErrorMessage(500, null)).toBe(
+      "GitHub GraphQL branch search failed: 500",
+    );
   });
 });
 
