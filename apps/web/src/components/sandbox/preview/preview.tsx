@@ -647,6 +647,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     !productionOrigin ||
     registeredPreviewOrigin === productionOrigin;
 
+  // Origin of the in-iframe editor bridge — sandbox proxy, or the site's own origin under Fast Preview.
+  const editorBridgeOrigin =
+    display.mode === "production"
+      ? productionOrigin
+      : previewOrigin(previewUrl);
+
   const iframeSrc =
     display.mode === "sandbox"
       ? withVariantMatcherOverride(
@@ -908,7 +914,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — DOM event subscription
   useEffect(() => {
-    const allowedOrigin = previewOrigin(previewUrl);
+    const allowedOrigin = editorBridgeOrigin;
     if (!allowedOrigin) return;
     const handler = (e: MessageEvent) => {
       if (e.origin !== allowedOrigin) return;
@@ -926,7 +932,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [previewUrl]);
+  }, [editorBridgeOrigin]);
 
   // Close pages dropdown on outside click
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — DOM event subscription for outside-click dismiss
@@ -964,10 +970,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   const injectCmsEditor = () => {
     const win = previewIframeRef.current?.contentWindow;
-    const origin = previewOrigin(previewUrl);
+    const origin = editorBridgeOrigin;
     if (!win || !origin) return;
+    // Sandbox speaks the daemon's `visual-editor::activate`; a Fast Preview production frame speaks the deco framework's `editor::inject`.
     win.postMessage(
-      { type: "visual-editor::activate", script: CMS_EDITOR_SCRIPT },
+      display.mode === "production"
+        ? { type: "editor::inject", args: { script: CMS_EDITOR_SCRIPT } }
+        : { type: "visual-editor::activate", script: CMS_EDITOR_SCRIPT },
       origin,
     );
     // Ordered after activate, so the script's listener is registered by the
@@ -986,7 +995,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   const deactivateCmsEditor = () => {
     const win = previewIframeRef.current?.contentWindow;
-    const origin = previewOrigin(previewUrl);
+    const origin = editorBridgeOrigin;
     if (!win || !origin) return;
     win.postMessage({ type: "cms-editor::deactivate" }, origin);
   };
@@ -2029,10 +2038,17 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                         // The page finished loading — always clear the navigation
                         // indicator first, before any of the early returns below.
                         endNavigation();
-                        // The production fallback is a view-only, cross-origin frame:
-                        // skip the sandbox-only load handling (analytics, path sync,
-                        // editor injection) — none of it applies to it.
-                        if (display.mode !== "sandbox") return;
+                        // Production (Fast Preview) frame is cross-origin: skip the sandbox-only load handling, but the site's real pages still take the CMS overlay via the framework's `editor::inject` listener.
+                        if (display.mode !== "sandbox") {
+                          if (
+                            display.mode === "production" &&
+                            !display.showWakingPill &&
+                            editingMode === "blocks"
+                          ) {
+                            injectCmsEditor();
+                          }
+                          return;
+                        }
                         // This is the VM dev-server preview (sandboxed running app),
                         // NOT an MCP app. MCP apps render via <MCPAppRenderer/>.
                         track("vm_preview_loaded", {
