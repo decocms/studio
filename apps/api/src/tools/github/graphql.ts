@@ -9,6 +9,7 @@
  * requests/hour) — moving a read here spends a quota REST is not competing for.
  */
 
+import { retry } from "@decocms/shared/std";
 import type { StudioContext } from "@/core/studio-context";
 import {
   githubConnectionAccessToken,
@@ -30,6 +31,11 @@ function githubGraphqlUrl(): string {
 
 /** Matches the Git Data client's per-attempt timeout. */
 const GITHUB_TIMEOUT_MS = 15_000;
+
+/** A GitHub-side outage, not a real answer — worth retrying, unlike a 4xx. */
+export function isGithubTransientServerError(status: number): boolean {
+  return status >= 500 && status < 600;
+}
 
 export interface GraphqlEnvelope<T> {
   data?: T | null;
@@ -142,7 +148,22 @@ export async function githubGraphql<T>(
       signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
     });
 
-  let res = await post(accessToken);
+  // Every call here is a read, so a 5xx (or a fetch that never lands) is safe to retry.
+  const postWithRetry = (token: string) =>
+    retry(
+      async () => {
+        const res = await post(token);
+        if (isGithubTransientServerError(res.status)) {
+          const status = res.status;
+          await res.body?.cancel().catch(() => {});
+          throw new Error(`GitHub GraphQL transient error: ${status}`);
+        }
+        return res;
+      },
+      { maxAttempts: 3, minTimeout: 300, maxTimeout: 3000, jitter: 1 },
+    );
+
+  let res = await postWithRetry(accessToken);
 
   // Token revoked/rotated behind our clock: one refresh + retry, then give up.
   if (res.status === 401) {
@@ -158,7 +179,7 @@ export async function githubGraphql<T>(
     if (!refreshed) {
       throw new Error(RECONNECT_ERROR);
     }
-    res = await post(refreshed);
+    res = await postWithRetry(refreshed);
     if (res.status === 401) {
       throw new Error(RECONNECT_ERROR);
     }
