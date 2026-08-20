@@ -17,30 +17,27 @@ export const settings = {
   "settings.subnav.clients": "Clients",
   "settings.subnav.planUsage": "Plan & usage",
   "settings.subnav.infrastructure": "Infrastructure",
-  "settings.nav.tasks": "Tasks",
+  "settings.nav.tasks": "Board",
   "settings.jira.sectionTitle": "Jira integration",
-  "settings.jira.pageDescription":
-    "Mirror a Jira project onto the task board. Issues in mapped statuses appear as cards and stay in sync every few minutes, and comments flow both ways — card comments show up on the issue and vice versa. Issue fields are never written back.",
   "settings.jira.connectTitle": "Connect Jira",
   "settings.jira.connectDescription":
-    "Use a Jira Cloud site and an API token (ideally from a service account). Create one at id.atlassian.com → Security → API tokens.",
+    "Use a Jira Cloud site and an API token, ideally from a service account that can see the project.",
+  "settings.jira.siteLabel": "Jira site",
   "settings.jira.sitePlaceholder": "yourcompany.atlassian.net",
-  "settings.jira.emailPlaceholder": "Atlassian account email",
-  "settings.jira.tokenPlaceholder": "API token",
+  "settings.jira.emailLabel": "Atlassian account email",
+  "settings.jira.emailPlaceholder": "you@company.com",
+  "settings.jira.tokenLabel": "API token",
+  "settings.jira.tokenPlaceholder": "Paste your token",
   "settings.jira.connect": "Connect",
   "settings.jira.connecting": "Connecting…",
   "settings.jira.connected": "Jira connected",
   "settings.jira.connectFailed": "Could not connect to Jira",
-  "settings.jira.connectionTitle": "Connection",
   "settings.jira.disconnect": "Disconnect",
   "settings.jira.disconnected": "Jira disconnected",
   "settings.jira.disconnectTitle": "Disconnect Jira?",
   "settings.jira.disconnectDescription":
     "The sync stops and the credentials are deleted. Cards already on the board are kept — they just stop updating.",
   "settings.jira.cancel": "Cancel",
-  "settings.jira.syncTitle": "Sync",
-  "settings.jira.syncDescription":
-    "Pick the Jira board to mirror and map its columns onto this board's lanes.",
   "settings.jira.boardLabel": "Jira board",
   "settings.jira.boardDescription":
     "The board's visible cards are mirrored — its Backlog tab, epics and sub-tasks are not.",
@@ -73,12 +70,6 @@ export const settings = {
   "settings.jira.syncDone": "Synced: {created} created, {updated} updated",
   "settings.jira.syncFailed": "Sync failed",
   "settings.jira.saveFailed": "Could not save the Jira settings",
-  "settings.jira.connectStep1":
-    "Create an API token on your Atlassian account (ideally a service account that can see the project).",
-  "settings.jira.connectStep2":
-    "Fill in your Jira site, the account's email, and the token, then connect.",
-  "settings.jira.connectStep3":
-    "Pick the Jira board to mirror and map its columns onto this board's lanes.",
   "settings.jira.createTokenLink": "Create an API token",
   "settings.jira.webhookTitle": "Instant updates (webhook)",
   "settings.jira.webhookDescription":

@@ -81,12 +81,6 @@ export const SETTINGS_TAB_GROUPS: Record<
     titleKey: "settings.nav.billing",
     tabs: [
       {
-        key: "plan",
-        labelKey: "settings.subnav.planUsage",
-        to: "/$org/settings/billing",
-        requires: "members:manage",
-      },
-      {
         key: "ai-providers",
         labelKey: "settings.nav.aiProviders",
         to: "/$org/settings/ai-providers",

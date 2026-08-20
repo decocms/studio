@@ -1,10 +1,8 @@
 /**
- * Settings > Billing — the org's auto-task subscription. `ORGANIZATION_
- * TASK_QUOTA_GET` is the read side (usage, limit, billing status);
- * `ORGANIZATION_BILLING_CHECKOUT_START` / `_PORTAL` are the only writes —
- * both return Stripe-hosted URLs, opened in a new tab like every other
- * checkout in the app (`deco-credits-hero.tsx`). Everything Stripe hosts
- * (card, invoices, cancellation) stays with Stripe — no custom billing UI.
+ * Auto tasks quota card — merged onto the AI Providers page (it was the only
+ * card behind the old "Plan & usage" tab). Gated on `members:manage` since
+ * that's a different capability than `ai-providers:manage`, which guards the
+ * rest of this page.
  */
 import { useQuery } from "@tanstack/react-query";
 import { CreditCard01, Loading01 } from "@untitledui/icons";
@@ -13,19 +11,16 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Progress } from "@decocms/ui/components/progress.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
-import { Page } from "@/components/page";
 import {
   SettingsCard,
   SettingsCardItem,
-  SettingsPage,
-  SettingsSection,
 } from "@/components/settings/settings-section";
 import { useProjectContext } from "@/sdk";
 import { useStudioTools } from "@/lib/studio-tools";
+import { useCapability } from "@/hooks/use-capability";
 import { useOpenBillingUrl } from "@/hooks/use-open-billing-url";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
-import { SettingsSubnav } from "@/components/settings/settings-subnav";
 
 const PERIOD_END_FMT = new Intl.DateTimeFormat(undefined, {
   month: "short",
@@ -57,7 +52,7 @@ function StatusBadge({
   return <Badge variant="secondary">{t("settings.billing.statusTrial")}</Badge>;
 }
 
-function AutoTasksCard() {
+function AutoTasksCardContent() {
   const t = useT();
   const { org } = useProjectContext();
   const studio = useStudioTools();
@@ -86,8 +81,7 @@ function AutoTasksCard() {
     );
   }
 
-  // Dormant unless STUDIO_TASK_QUOTA_ENFORCED — self-hosted deployments never
-  // gate auto-tasks, so there's nothing to subscribe to or manage.
+  // Self-hosted deployments never enforce the quota — nothing to manage.
   if (!data || !data.enforced) {
     return (
       <SettingsCard>
@@ -193,19 +187,8 @@ function AutoTasksCard() {
   );
 }
 
-export function OrgBillingPage() {
-  return (
-    <Page>
-      <Page.Content>
-        <Page.Body>
-          <SettingsPage>
-            <SettingsSubnav group="billing" />
-            <SettingsSection>
-              <AutoTasksCard />
-            </SettingsSection>
-          </SettingsPage>
-        </Page.Body>
-      </Page.Content>
-    </Page>
-  );
+export function AutoTasksCard() {
+  const { granted } = useCapability("members:manage");
+  if (!granted) return null;
+  return <AutoTasksCardContent />;
 }
