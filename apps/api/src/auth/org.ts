@@ -1,3 +1,4 @@
+import { NEW_ORG_DEFAULT_FLAGS } from "@decocms/shared/organization/schema";
 import {
   getWellKnownCommunityRegistryConnection,
   getWellKnownRegistryConnection,
@@ -9,6 +10,7 @@ import { getDb } from "@/database";
 import { CredentialVault } from "@/encryption/credential-vault";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
 import { ConnectionStorage } from "@/storage/connection";
+import { OrganizationSettingsStorage } from "@/storage/organization-settings";
 import { Permission } from "@/storage/types";
 import { fetchToolsFromMCP } from "@/tools/connection/fetch-tools";
 import {
@@ -80,6 +82,20 @@ function getDefaultOrgMcps(organizationId: string): MCPCreationSpec[] {
       data: getWellKnownRegistryConnection(organizationId),
     },
   ];
+}
+
+/**
+ * Seed NEW_ORG_DEFAULT_FLAGS into a brand-new org's `organization_settings`.
+ * Kept out of `seedOrgDb`, whose single catch would swallow this write and mint
+ * an org on the old defaults under a misleading connection-error log.
+ */
+export async function seedOrgDefaultFlags(organizationId: string) {
+  try {
+    const storage = new OrganizationSettingsStorage(getDb().db);
+    await storage.upsert(organizationId, { flags: NEW_ORG_DEFAULT_FLAGS });
+  } catch (err) {
+    console.error("Failed to seed default organization flags:", err);
+  }
 }
 
 /**

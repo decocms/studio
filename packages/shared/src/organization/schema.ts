@@ -141,7 +141,7 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "First-class navigation: the sidebar lists destinations (Reports, Library, Tasks) instead of chat threads, and the thread list moves into a menu at the top of the chat panel. Always on for reports_only orgs.",
+      "First-class navigation: the sidebar lists destinations (Reports, Library, Tasks) instead of chat threads, and the thread list moves into a menu at the top of the chat panel. Seeded on for newly created orgs (see NEW_ORG_DEFAULT_FLAGS) and defaults on for reports_only orgs; an explicit false wins over both.",
     ),
   qa_agent_enabled: z
     .boolean()
@@ -190,6 +190,15 @@ export const DEFAULT_ON_FLAGS: ReadonlySet<keyof OrgFlags> = new Set([
   "qa_agent_enabled",
   "code_reviewer_enabled",
 ]);
+
+/**
+ * Flags STORED in a new org's bag at creation (`seedOrgDefaultFlags`, apps/api).
+ * Unlike {@link DEFAULT_ON_FLAGS} — a read-time rule that retroactively changes
+ * every org — this only reaches orgs created after it ships.
+ */
+export const NEW_ORG_DEFAULT_FLAGS: OrgFlags = {
+  nav_v2: true,
+};
 
 /**
  * Resolve one org flag to its effective boolean. Honors {@link DEFAULT_ON_FLAGS}

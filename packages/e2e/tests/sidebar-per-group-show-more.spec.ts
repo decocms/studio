@@ -16,7 +16,7 @@
  *   7. Assert the "Show more" button is hidden once all threads are loaded.
  */
 
-import { callSelfMcpTool } from "../fixtures/mcp-tools";
+import { callSelfMcpTool, setOrgFlags } from "../fixtures/mcp-tools";
 import { addSidebarPersonalAgentOrderInitScriptForSlug } from "../fixtures/sidebar-order";
 import { expect, test } from "../fixtures/test";
 
@@ -79,6 +79,9 @@ test.describe("Sidebar My threads Show more", () => {
       user.userId,
       [agentId],
     );
+
+    // This pager only exists in the classic sidebar.
+    await setOrgFlags(request, orgSlug, { nav_v2: false });
 
     await page.goto(`/${orgSlug}`);
     // Wait until the org home content has settled (URL confirmed, shell rendered).

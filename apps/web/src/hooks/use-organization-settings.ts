@@ -249,12 +249,9 @@ export function useReportsOnly(): boolean {
  * destinations (Reports / Library / Tasks) instead of chat threads, and the
  * thread list moves into a menu at the top of the chat panel.
  *
- * Defaults ON for reports-only orgs — their sidebar has no agent navigation to
- * lose, so the destination list is strictly what they need. An explicit
- * `nav_v2: false` still wins, which is why this reads the raw tri-state value
- * rather than going through `useOrgFlag`/`DEFAULT_ON_FLAGS`: that mechanism
- * only expresses a flag defaulting on for every org, not one flag's default
- * depending on another flag's value.
+ * Unset means an org created before NEW_ORG_DEFAULT_FLAGS seeded this on; those
+ * fall back to reports-only. Raw tri-state read, not `useOrgFlag`, so an explicit
+ * `false` wins and one flag's default can depend on another's.
  */
 export function useNavV2(): boolean {
   const { data } = useOrganizationSettings(

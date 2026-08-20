@@ -32,7 +32,7 @@ import {
   seedStubRepo,
   uniqueOwner,
 } from "../fixtures/fast-preview";
-import { callSelfMcpTool } from "../fixtures/mcp-tools";
+import { callSelfMcpTool, setOrgFlags } from "../fixtures/mcp-tools";
 import { expect, test } from "../fixtures/test";
 
 /**
@@ -120,6 +120,10 @@ test.describe("fast preview publish surface", () => {
      * nothing", so it is pinned here where the failure stays legible.
      */
     expect(thread.item.branch).toBe(branch);
+
+    // The publish actions sit in the chat header only while the main panel is
+    // closed AND the org is off the first-class navigation.
+    await setOrgFlags(api, orgSlug, { nav_v2: false });
 
     await page.goto(
       `/${orgSlug}/${thread.item.id}?virtualmcpid=${project.vmcpId}`,
