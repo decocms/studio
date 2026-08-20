@@ -1737,7 +1737,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           : 1,
         1,
       );
-  const previewScalePercent = Math.round(previewScale * 100);
   const previewFrameStyle: CSSProperties = previewFluid
     ? { width: "100%", height: "100%" }
     : {
@@ -1798,14 +1797,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             {t(DEVICE_LABEL_KEYS[previewDeviceSize])}
           </TooltipContent>
         </Tooltip>
-        {previewScalePercent < 100 && (
-          <>
-            <div className="mx-0.5 h-5 w-px bg-border" />
-            <span className="select-none px-1.5 text-xs tabular-nums text-muted-foreground">
-              {previewScalePercent}%
-            </span>
-          </>
-        )}
       </div>
     </div>
   ) : null;
