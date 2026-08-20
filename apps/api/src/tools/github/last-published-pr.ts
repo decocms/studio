@@ -127,6 +127,7 @@ export const GITHUB_LAST_PUBLISHED_PR = defineTool({
       query: LAST_PUBLISHED_QUERY,
       variables: { owner: input.owner, repo: input.repo, base: input.base },
       label: `last published pull request for ${input.owner}/${input.repo}@${input.base}`,
+      operation: "last_published_pr",
     });
 
     return parseLastPublishedPr(data);

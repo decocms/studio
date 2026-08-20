@@ -106,6 +106,12 @@ async function resolveGithubConnection(
  *
  * `label` names the operation in every error message — it is what tells a
  * reader whether "not accessible" came from a branch search or a PR read.
+ *
+ * `operation` is the metrics tag, kept separate from `label`: every call site's
+ * `label` interpolates the caller-supplied owner/repo/branch, and feeding that
+ * straight into an OTel attribute would mint one time series per repo/branch
+ * ever queried. `operation` is a fixed, small-cardinality name instead
+ * ("pr_state", not "pull request state for acme/site@my-branch").
  */
 export async function githubGraphql<T>(
   ctx: StudioContext,
@@ -114,6 +120,7 @@ export async function githubGraphql<T>(
     query: string;
     variables: Record<string, unknown>;
     label: string;
+    operation: string;
   },
 ): Promise<T> {
   const connection = await resolveGithubConnection(ctx, args.connectionId);
@@ -159,14 +166,18 @@ export async function githubGraphql<T>(
 
   recordGithubRateLimit(res.headers, {
     lane: "graphql",
-    operation: args.label,
+    operation: args.operation,
   });
 
   // Never retried here: retrying a secondary limit IS the burst being limited.
   if (isGithubRateLimited(res)) {
     const kind =
       res.headers.get("retry-after") !== null ? "secondary" : "primary";
-    countGithubRateLimited({ lane: "graphql", operation: args.label, kind });
+    countGithubRateLimited({
+      lane: "graphql",
+      operation: args.operation,
+      kind,
+    });
     const waitMs = githubRetryAfterMs(res.headers);
     throw new Error(
       `GitHub ${kind} rate limit reached${

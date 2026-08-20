@@ -144,6 +144,7 @@ export const GITHUB_SEARCH_BRANCHES = defineTool({
         limit: input.limit,
       },
       label: `branch search for ${repoLabel}`,
+      operation: "branch_search",
     });
 
     return parseBranchSearchResponse(data, repoLabel);
