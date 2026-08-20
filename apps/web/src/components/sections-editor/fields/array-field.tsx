@@ -157,6 +157,7 @@ export function ArrayField({
     items,
     itemSchema,
     openIndex,
+    arrayFieldKey,
   );
   const selectedIndex = selection?.index ?? null;
 
