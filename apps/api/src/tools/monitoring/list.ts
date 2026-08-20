@@ -100,6 +100,13 @@ export const MONITORING_LOGS_LIST = defineTool({
     limit: z.number().describe("Current limit for pagination"),
   }),
   handler: async (input, ctx) => {
+    // Authorize BEFORE any IO. `POST /api/:org/tools/:toolName` has no auth
+    // middleware of its own and `resolveOrgFromPath` populates
+    // `ctx.organization` for unauthenticated callers too (so OAuth discovery
+    // works), so this check is the only thing standing between an anonymous
+    // request and another org's tool-call history.
+    await ctx.access.check();
+
     // Flush buffered spans so the query sees the latest data (local mode).
     await flushMonitoringData();
 
