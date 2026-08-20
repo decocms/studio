@@ -1,5 +1,5 @@
 import { sleep } from "@decocms/shared/std";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type CSSProperties } from "react";
 import { useIsMutating } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { formatCodeTabId } from "@/layouts/main-panel-tabs/tab-id";
@@ -169,11 +169,25 @@ const DEV_SERVER_SETTLE_MS = 500;
 
 type PreviewDeviceSize = "mobile" | "tablet" | "desktop";
 
-const PREVIEW_DEVICE_WIDTHS: Record<PreviewDeviceSize, number | null> = {
-  mobile: 375,
-  tablet: 768,
-  desktop: null,
+/**
+ * Logical viewport dimensions per device, matching the legacy admin. The iframe
+ * always renders the page at this fixed logical size and is then scaled down
+ * with a CSS transform to fit the available canvas width — so widening the
+ * blocks panel shrinks a faithful proportional miniature of the full layout
+ * instead of reflowing the responsive breakpoints (desktop) or clipping the
+ * frame (mobile/tablet).
+ */
+const PREVIEW_VIEWPORTS: Record<
+  PreviewDeviceSize,
+  { width: number; height: number }
+> = {
+  mobile: { width: 412, height: 823 }, // Moto G Power
+  tablet: { width: 1024, height: 1366 }, // iPad Pro
+  desktop: { width: 1280, height: 800 }, // MacBook Pro 14
 };
+
+/** Px inset so the scaled frame's border doesn't sit flush against the canvas edge. */
+const PREVIEW_OFFSET = 1;
 
 const DEVICE_CYCLE: PreviewDeviceSize[] = ["desktop", "mobile", "tablet"];
 
@@ -278,6 +292,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   } | null>(null);
   const previewIframeRef = useRef<HTMLIFrameElement>(null);
   const blocksPanelRef = useRef<PanelImperativeHandle>(null);
+  // Live canvas size, used to scale the fixed-width frame to fit.
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   /** Origin most recently confirmed registered with the native shell via
    *  `registerPreviewOrigin` — see the effect below that sets it. `null`
    *  until the very first desktop-app production-mode registration lands. */
@@ -1706,6 +1722,33 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   ) : null;
 
   const canVisualEdit = display.mode === "sandbox";
+
+  // Desktop stays fluid until the canvas is narrower than its logical width; then (and always for mobile/tablet) the frame scales to fit.
+  const previewViewport = PREVIEW_VIEWPORTS[previewDeviceSize];
+  const previewFluid =
+    previewDeviceSize === "desktop" &&
+    (canvasSize.width === 0 ||
+      canvasSize.width >= previewViewport.width + 2 * PREVIEW_OFFSET);
+  const previewScale = previewFluid
+    ? 1
+    : Math.min(
+        canvasSize.width > 0
+          ? canvasSize.width / (previewViewport.width + 2 * PREVIEW_OFFSET)
+          : 1,
+        1,
+      );
+  const previewFrameStyle: CSSProperties = previewFluid
+    ? { width: "100%", height: "100%" }
+    : {
+        width: `${previewViewport.width}px`,
+        height:
+          canvasSize.height > 0
+            ? `${canvasSize.height / previewScale}px`
+            : `${previewViewport.height}px`,
+        transform: `scale(${previewScale})`,
+        transformOrigin: "top center",
+      };
+
   // Device toggle works on any live iframe; visual-editor toggle is sandbox-only.
   const floatingPreviewControls = previewSurfaceActive ? (
     <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 scale-125">
@@ -1866,11 +1909,26 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               className="min-w-0 overflow-hidden"
             >
               <div
+                ref={(node) => {
+                  if (!node) return;
+                  const measure = () =>
+                    setCanvasSize((prev) =>
+                      prev.width === node.clientWidth &&
+                      prev.height === node.clientHeight
+                        ? prev
+                        : {
+                            width: node.clientWidth,
+                            height: node.clientHeight,
+                          },
+                    );
+                  measure();
+                  const observer = new ResizeObserver(measure);
+                  observer.observe(node);
+                  return () => observer.disconnect();
+                }}
                 className={cn(
-                  "h-full relative overflow-hidden",
-                  previewDeviceSize !== "desktop" &&
-                    previewSurfaceActive &&
-                    "flex justify-center bg-muted/30",
+                  "h-full relative overflow-hidden flex justify-center",
+                  previewSurfaceActive && !previewFluid && "bg-muted/30",
                 )}
               >
                 {/* Asymptotic "commit ramp" progress: brand lime fill over a
@@ -1948,16 +2006,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                 {previewSurfaceActive && iframeSrc && (
                   <div
                     className={cn(
-                      "h-full transition-[width] duration-250 [transition-timing-function:var(--ease-in-out-cubic)]",
-                      previewDeviceSize !== "desktop" &&
-                        "w-full max-w-full border-x border-border bg-background shadow-sm",
+                      "shrink-0",
+                      !previewFluid &&
+                        "border-x border-border bg-background shadow-sm",
                     )}
-                    style={{
-                      width:
-                        previewDeviceSize === "desktop"
-                          ? "100%"
-                          : `${PREVIEW_DEVICE_WIDTHS[previewDeviceSize]}px`,
-                    }}
+                    style={previewFrameStyle}
                   >
                     <iframe
                       // Key on the iframe base: remount when the base URL changes
