@@ -78,6 +78,7 @@ function pr(over: Partial<PrSummary> = {}): PrSummary {
     headRepoFullName: "acme/web",
     htmlUrl: "https://github.com/acme/web/pull/42",
     author: "me",
+    changedFiles: 3,
     ...over,
   };
 }
@@ -313,15 +314,16 @@ describe("selectHeaderButton", () => {
     expect(r.menu).toEqual([]);
   });
 
-  test("up to date but behind base → disabled pill with Get latest in the menu", () => {
+  /** A branch behind base is not up to date — that label would be a lie. */
+  test("behind base → Get latest as the primary, not a disabled pill", () => {
     const r = selectHeaderButton(
       happyInput({ branch: ready({ behindBase: 2 }) }),
     );
-    expect(r.label).toBe("Up to date");
-    expect(r.disabled).toBe(true);
-    expect(menuKeys(r)).toEqual(["get-latest"]);
-    expect(menuItem(r, "get-latest")?.label).toBe("Get latest");
-    expect(menuItem(r, "get-latest")?.action).toBe("sync");
+    expect(r.label).toBe("Get latest");
+    expect(r.action).toBe("sync");
+    expect(r.variant).toBe("default");
+    expect(r.disabled).toBeFalsy();
+    expect(menuKeys(r)).toEqual([]);
   });
 
   test("dirty working tree → Review & Publish with Submit for review in the menu", () => {
@@ -427,6 +429,25 @@ describe("selectHeaderButton", () => {
     expect(r.variant).toBe("outline");
     expect(r.tooltip).toBe("PR #42 merged into main");
     expect(menuKeys(r)).toEqual(["view-on-github"]);
+  });
+
+  /** Publishing is done, so syncing this branch is not the next step. */
+  test("merged PR behind base stays Up to date, Get latest in the menu", () => {
+    const r = selectHeaderButton(
+      happyInput({
+        branch: ready({ aheadOfBase: 3, behindBase: 2, headSha: "abc123" }),
+        pr: pr({
+          state: "closed",
+          merged: true,
+          mergedAt: "2026-04-22T00:00:00Z",
+          headSha: "abc123",
+        }),
+      }),
+    );
+    expect(r.label).toBe("Up to date");
+    expect(r.disabled).toBe(true);
+    expect(r.tooltip).toBe("PR #42 merged into main");
+    expect(menuKeys(r)).toEqual(["view-on-github", "get-latest"]);
   });
 
   test("merged PR, branch advanced past merge head → Continue (special)", () => {

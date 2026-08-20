@@ -39,8 +39,7 @@ export interface CmsMenuItem {
  *
  * An absent `action` means the primary half is an inert status pill. `loading`
  * puts a spinner in the primary half and is reserved for a genuine wait.
- * `disabled` and a non-empty `menu` can coexist: "Up to date" has nothing to
- * publish yet still offers "Get latest" when the branch is behind.
+ * `disabled` and a non-empty `menu` can coexist.
  */
 export interface CmsHeaderButton {
   label: string;
@@ -85,7 +84,7 @@ function viewOnGithubItem(t: TFunction): CmsMenuItem {
 /**
  * Appends "Get latest" to `menu` when the branch has commits on `base` it
  * hasn't taken in yet. Applied to every state whose primary action isn't
- * already `get-latest`, including the disabled "Up to date" pill.
+ * already `get-latest`.
  */
 function withGetLatest(
   menu: CmsMenuItem[],
@@ -349,11 +348,20 @@ export function selectCmsHeaderButton(
     };
   }
 
-  // Disabled primary, live menu: nothing to publish but base may have moved.
+  // Behind base is not "up to date", so the sync is the primary, not a menu entry.
+  if (branch.behindBase > 0) {
+    return {
+      label: t("thread.cmsActions.getLatest"),
+      action: "get-latest",
+      variant: "default",
+      tooltip: t("thread.cmsActions.getLatestTooltip"),
+      menu: [],
+    };
+  }
   return {
     label: t("thread.headerActions.upToDate"),
     variant: "outline",
     disabled: true,
-    menu: withGetLatest([], branch, t),
+    menu: [],
   };
 }

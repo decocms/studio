@@ -91,8 +91,8 @@ export function useCmsPublishActions(
             }),
       );
       onOpenChange(false);
-      await onPullRequestChanged?.();
-      await onPublished?.();
+      // Together: awaiting the PR re-read first let the stale open PR render.
+      await Promise.all([onPullRequestChanged?.(), onPublished?.()]);
     } catch (error) {
       const failure = reportPublishFailure(error, t);
       setPublishError(failure.message);
