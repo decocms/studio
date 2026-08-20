@@ -89,13 +89,9 @@ export function Combobox({
                   <CommandItem
                     key={option.value}
                     value={option.label}
-                    onSelect={(currentLabel) => {
-                      const currentValue = options.find(
-                        (option) => option.label === currentLabel,
-                      )?.value;
-                      onChange(
-                        currentValue === value ? "" : (currentValue ?? ""),
-                      );
+                    // Closes over this option's own value — no reverse lookup by label.
+                    onSelect={() => {
+                      onChange(option.value === value ? "" : option.value);
                       setOpen(false);
                     }}
                   >
