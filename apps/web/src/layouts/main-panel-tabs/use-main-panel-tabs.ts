@@ -264,6 +264,8 @@ export function useMainPanelTabs(ctx: {
     fileConfigsQuery.data?.configs ?? [],
     siteName,
   );
+  // Don't bounce a deep-linked `?main=assets` away before the first config load resolves.
+  const assetsTabPending = fileConfigsQuery.isPending;
 
   const { activeTab: rawActiveTab, mainOpen: rawMainOpen } =
     resolveActiveTabAndOpen({
@@ -292,7 +294,7 @@ export function useMainPanelTabs(ctx: {
       ? resolveDefaultTabId(layoutForDefault)
       : rawActiveTab === "content" && !showContentTab
         ? resolveDefaultTabId(layoutForDefault)
-        : rawActiveTab === "assets" && !showAssetsTab
+        : rawActiveTab === "assets" && !showAssetsTab && !assetsTabPending
           ? resolveDefaultTabId(layoutForDefault)
           : rawActiveTab;
   const mainOpen =
