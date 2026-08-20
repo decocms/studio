@@ -244,9 +244,8 @@ function CommentEntry({
       </div>
       <div
         className={cn(
-          // Same size as the task's description: a comment is body prose, not
-          // metadata like the name and timestamp above it.
-          "text-[15px] leading-relaxed text-foreground",
+          // One size per comment; the shared markdown pins its own 14px.
+          "text-sm leading-relaxed text-foreground [&_li]:text-sm [&_p]:text-sm",
           // Avatar (24px) + gap (8px), so a reply's text starts at the name.
           isReply && "pl-8",
         )}
@@ -368,7 +367,7 @@ function CommentComposer({
       placeholder={placeholder}
       rows={1}
       className={cn(
-        "w-full resize-none overflow-hidden border-0 bg-transparent text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground",
+        "w-full resize-none overflow-hidden border-0 bg-transparent text-sm leading-relaxed text-foreground outline-none placeholder:text-muted-foreground",
         variant === "root" && "min-h-10",
       )}
     />

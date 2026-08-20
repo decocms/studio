@@ -153,6 +153,8 @@ export interface TaskBoardItem {
   dueDate: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;
+  /** Per-org sequence behind the card's human key (`DECO-01`). */
+  keySeq: number | null;
   /** Infrastructure retries already spent on this card's runs — the budget
    *  `reactToFailedTaskRun` spends against `MAX_RUN_RETRIES`. */
   retryAttempts: number;

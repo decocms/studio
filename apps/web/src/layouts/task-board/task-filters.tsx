@@ -7,6 +7,7 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { useT, type TranslationKey } from "@/i18n/use-t.ts";
+import { parseTaskKeySeq } from "@decocms/shared/task-key";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -126,6 +127,15 @@ function isSameDay(a: number, b: number): boolean {
   );
 }
 
+/** True when the term names this card by its human key (see `taskKey`). */
+export function matchesTaskKey(
+  search: string,
+  keySeq: number | null | undefined,
+): boolean {
+  if (keySeq == null) return false;
+  return parseTaskKeySeq(search) === keySeq;
+}
+
 export function taskMatchesFilters(
   item: TaskBoardItem,
   f: TaskFilters,
@@ -133,7 +143,9 @@ export function taskMatchesFilters(
   const search = f.search.trim().toLowerCase();
   if (search !== "") {
     const haystack = `${item.title} ${item.description ?? ""}`.toLowerCase();
-    if (!haystack.includes(search)) return false;
+    if (!haystack.includes(search) && !matchesTaskKey(search, item.keySeq)) {
+      return false;
+    }
   }
   if (f.assignee !== null) {
     if (f.assignee === UNASSIGNED_FILTER) {

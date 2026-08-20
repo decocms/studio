@@ -1658,6 +1658,10 @@ export interface TaskBoardItemTable {
   >;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sort_order: ColumnType<number, number | undefined, number>;
+  /** Per-org sequence behind the card's human key (`DECO-01`), assigned once at
+   *  create. Nullable only for rows written before `172-task-board-item-key-seq`
+   *  backfilled it. */
+  key_seq: ColumnType<number | null, number | null | undefined, never>;
   /** When the review sweeper last reconciled this card. Null = never, which is
    *  always due. The sweeper's interval hangs off this column rather than off
    *  its own timer so that every replica shares one budget and a permanently
@@ -1824,6 +1828,8 @@ export interface TaskBoardItem {
   dueDate: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;
+  /** Per-org sequence behind the card's human key (`DECO-01`). */
+  keySeq: number | null;
   /** Infrastructure retries already spent on this card's runs — the budget
    *  `reactToFailedTaskRun` spends against `MAX_RUN_RETRIES`. */
   retryAttempts: number;

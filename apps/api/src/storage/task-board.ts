@@ -22,6 +22,7 @@ import type {
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { RESOLVED_RUN_FAILURE_KINDS } from "@decocms/shared/entities";
+import { retry } from "@decocms/shared/std";
 
 /** One comment on a task, as the tools return it. `parentId` null = thread root;
  *  `resolved` only means anything on a root. */
@@ -68,6 +69,21 @@ function commentFromDbRow(row: {
 }
 
 /** Text of a folded/persisted text part payload (`{ type: "text", text }`). */
+/** Tries at minting the org's next `key_seq` before giving up — each retry
+ *  re-reads the max, so it only takes as many attempts as there are creates
+ *  landing in the very same instant. */
+const KEY_SEQ_MAX_ATTEMPTS = 5;
+
+/** The unique index on (organization_id, key_seq) rejecting a raced insert. */
+function isDuplicateKeySeq(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "constraint" in error &&
+    error.constraint === "task_board_items_org_key_seq_unique"
+  );
+}
+
 function extractPartText(payload: unknown): string | null {
   if (payload && typeof payload === "object" && !Array.isArray(payload)) {
     const text = (payload as { text?: unknown }).text;
@@ -257,33 +273,48 @@ export class TaskBoardStorage {
     // same lane race for, at most, a single round trip instead of two — the
     // previous SELECT-then-INSERT left a full network round trip open for
     // another create to land on the same sort_order.
-    const row = await this.db
-      .insertInto("task_board_items")
-      .values({
-        id,
-        organization_id: params.organizationId,
-        title: params.title,
-        description: params.description ?? null,
-        status,
-        priority: params.priority ?? "medium",
-        assignee_id: params.assigneeId ?? null,
-        assigned_by: params.assignedBy ?? null,
-        repo: params.repo ?? null,
-        due_date: params.dueDate ?? null,
-        external_key: params.externalKey ?? null,
-        sort_order: sql<number>`(
+    const insert = () =>
+      this.db
+        .insertInto("task_board_items")
+        .values({
+          id,
+          organization_id: params.organizationId,
+          title: params.title,
+          description: params.description ?? null,
+          status,
+          priority: params.priority ?? "medium",
+          assignee_id: params.assigneeId ?? null,
+          assigned_by: params.assignedBy ?? null,
+          repo: params.repo ?? null,
+          due_date: params.dueDate ?? null,
+          external_key: params.externalKey ?? null,
+          sort_order: sql<number>`(
           select coalesce(min(sort_order), 0) - 1
           from task_board_items
           where organization_id = ${params.organizationId}
           and status = ${status}
         )`,
-        created_by: params.by,
-        created_at: now,
-        updated_by: params.by,
-        updated_at: now,
-      })
-      .returningAll()
-      .executeTakeFirstOrThrow();
+          // The org's next human key; a raced read fails the unique index.
+          key_seq: sql<number>`(
+          select coalesce(max(key_seq), 0) + 1
+          from task_board_items
+          where organization_id = ${params.organizationId}
+        )`,
+          created_by: params.by,
+          created_at: now,
+          updated_by: params.by,
+          updated_at: now,
+        })
+        .returningAll()
+        .executeTakeFirstOrThrow();
+
+    const row = await retry(insert, {
+      maxAttempts: KEY_SEQ_MAX_ATTEMPTS,
+      minTimeout: 0,
+      maxTimeout: 25,
+      jitter: 1,
+      isRetriable: isDuplicateKeySeq,
+    });
 
     // Freshly created — no linked threads yet.
     return this.itemFromDbRow(row);
@@ -1950,6 +1981,7 @@ export class TaskBoardStorage {
     repo: string | null;
     due_date: string | Date | null;
     sort_order: number;
+    key_seq?: number | null;
     retry_attempts?: number;
     created_by: string;
     created_at: string | Date;
@@ -1971,6 +2003,7 @@ export class TaskBoardStorage {
           ? row.due_date.toISOString()
           : row.due_date,
       sortOrder: row.sort_order,
+      keySeq: row.key_seq ?? null,
       retryAttempts: row.retry_attempts ?? 0,
       // Populated by attachThreads/attachTags for reads; empty for a fresh create.
       threads: [],

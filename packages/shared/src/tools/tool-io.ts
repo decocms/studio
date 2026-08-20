@@ -306,6 +306,7 @@ export interface StudioToolIO {
         repo: string | null;
         dueDate: string | null;
         sortOrder: number;
+        keySeq: number | null;
         retryAttempts: number;
         threads: {
           threadId: string;
@@ -361,6 +362,7 @@ export interface StudioToolIO {
         repo: string | null;
         dueDate: string | null;
         sortOrder: number;
+        keySeq: number | null;
         retryAttempts: number;
         threads: {
           threadId: string;
@@ -393,6 +395,7 @@ export interface StudioToolIO {
         updatedBy: string;
         updatedAt: string;
       }[];
+      repos: string[];
     };
   };
   TASK_BOARD_ITEM_UPDATE: {
@@ -435,6 +438,7 @@ export interface StudioToolIO {
         repo: string | null;
         dueDate: string | null;
         sortOrder: number;
+        keySeq: number | null;
         retryAttempts: number;
         threads: {
           threadId: string;

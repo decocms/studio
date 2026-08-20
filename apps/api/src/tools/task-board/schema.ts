@@ -106,6 +106,8 @@ export const TaskBoardItemSchema = z.object({
   dueDate: z.string().datetime().nullable(),
   // Manual drag-to-reorder position within a lane, ascending.
   sortOrder: z.number(),
+  // Per-org sequence behind the card's human key (`DECO-01`); null pre-backfill.
+  keySeq: z.number().nullable(),
   // Infrastructure retries already spent on this card's runs — the budget
   // `reactToFailedTaskRun` spends against `MAX_RUN_RETRIES`. Present on every
   // `TaskBoardItem` (see storage/types.ts), so it must be modeled here too:
