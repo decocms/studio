@@ -3,6 +3,7 @@ import { useFastPreview } from "@/hooks/use-fast-preview";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { KEYS } from "@/lib/query-keys";
 import { decoRepoPath } from "./deco-repo-path";
+import { parseDecofileBody } from "./decofile-body";
 import { fetchDecofile } from "./decofile-api";
 import { buildDecofileFetchUrl } from "./preview-fetch-url";
 import { readCommittedJson } from "./read-committed-file";
@@ -63,7 +64,10 @@ export function useDecofile(
         const res = await fetch(buildDecofileFetchUrl(params!), {
           cache: "no-store",
         }).catch(() => null);
-        if (res?.ok) return (await res.json()) as Record<string, unknown>;
+        if (res?.ok) {
+          const decofile = parseDecofileBody(await res.text());
+          if (decofile) return decofile;
+        }
         // Dev server reported ready but the route failed (e.g. dev script
         // crashed): fall back to the committed snapshot so editing still works.
         const committed = await readCommitted();
@@ -71,7 +75,13 @@ export function useDecofile(
         const err = new Error(
           `Failed to fetch decofile: ${res?.status ?? "network error"}`,
         );
-        (err as { status?: number }).status = res?.status ?? 502;
+        // A 200 that isn't a decofile means this dev server has no decofile
+        // route at all — the repo doesn't use the deco framework for sites. Tag
+        // it 404 (same as a missing route) so `resolveBlocksTabState` classifies
+        // it as framework-missing rather than a transient read error.
+        (err as { status?: number }).status = res?.ok
+          ? 404
+          : (res?.status ?? 502);
         throw err;
       }
       const committed = await readCommitted();
@@ -95,10 +105,13 @@ export function useDecofile(
     // coming, and the API maps transient GitHub failures (rate limits,
     // upstream 5xx) to 502 — so a single hiccup would otherwise stick as a
     // terminal error card. Bounded retries with backoff ARE the recovery.
-    retry: (failureCount, error) =>
-      fastPreviewActive
-        ? failureCount < 3
-        : (error as { status?: number }).status !== 502 && failureCount < 2,
+    // 404 = no decofile route on this repo (not a deco site) — as terminal as
+    // 502 for retry purposes.
+    retry: (failureCount, error) => {
+      if (fastPreviewActive) return failureCount < 3;
+      const status = (error as { status?: number }).status;
+      return status !== 502 && status !== 404 && failureCount < 2;
+    },
     retryDelay: (attempt) =>
       exponentialBackoffWithJitter(5000, 1000, attempt, 2, 0),
   });

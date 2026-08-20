@@ -47,7 +47,16 @@ export interface BlocksTabStateInput {
 export type BlocksTabState =
   | { kind: "loading" }
   | { kind: "content" }
-  | { kind: "empty" }
+  /**
+   * Nothing to edit. Two very different causes, hence the discriminator:
+   * - `framework-missing`: the decofile/meta reads 404'd, i.e. this repo does
+   *   not use the deco framework for sites at all (Studio itself, any plain app
+   *   repo previewed on a coding agent).
+   * - `no-content`: it IS a deco site, its decofile just has no pages /
+   *   redirects / global sections / apps yet — so page-creation affordances must
+   *   stay reachable.
+   */
+  | { kind: "empty"; reason: "framework-missing" | "no-content" }
   | { kind: "error"; source: "sandbox" | "data" };
 
 type PhaseClass =
@@ -99,7 +108,9 @@ export function resolveBlocksTabState(
     if (!input.decofile.hasData || !input.meta.hasData) {
       return { kind: "loading" };
     }
-    return input.hasEditableContent ? { kind: "content" } : { kind: "empty" };
+    return input.hasEditableContent
+      ? { kind: "content" }
+      : { kind: "empty", reason: "no-content" };
   }
 
   const phaseClass = classifyPhase(input.lifecyclePhase);
@@ -111,7 +122,9 @@ export function resolveBlocksTabState(
     (query) =>
       query.status === "error" && !query.hasData && query.errorStatus === 404,
   );
-  if (blocksFrameworkMissing) return { kind: "empty" };
+  if (blocksFrameworkMissing) {
+    return { kind: "empty", reason: "framework-missing" };
+  }
 
   const initialDataFailed =
     (input.decofile.status === "error" && !input.decofile.hasData) ||
@@ -133,5 +146,7 @@ export function resolveBlocksTabState(
     return { kind: "loading" };
   }
 
-  return input.hasEditableContent ? { kind: "content" } : { kind: "empty" };
+  return input.hasEditableContent
+    ? { kind: "content" }
+    : { kind: "empty", reason: "no-content" };
 }
