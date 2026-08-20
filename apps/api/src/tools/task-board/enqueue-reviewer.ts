@@ -266,6 +266,12 @@ export function pinnedRepoConnectionId(
  * this reviewer already read end to end. Told nothing, the second run repeats
  * the first almost exactly (in production, $3.39 against $3.51 for a fraction
  * of the change). Given the moment it last ruled, it can ask git what moved.
+ *
+ * Only `completed` threads count. A `failed` (or otherwise dead, see
+ * `isSpentAttempt`) prior attempt never read the PR end to end and posted no
+ * verdict — telling the next run it's a "RE-REVIEW" of a diff slice since that
+ * corpse's last heartbeat would have it skip reviewing code nobody actually
+ * reviewed.
  */
 export function priorCycleReviewAt(
   task: TaskBoardItem,
@@ -276,6 +282,7 @@ export function priorCycleReviewAt(
     .filter(
       (thr) =>
         isReviewerThreadTitle(thr.title, kind) &&
+        thr.status === "completed" &&
         new Date(thr.createdAt).getTime() < lastInReviewAt,
     )
     .map((thr) => new Date(thr.lastActiveAt).getTime())
