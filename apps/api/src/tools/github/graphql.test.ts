@@ -1,8 +1,10 @@
 import { describe, expect, it } from "bun:test";
+import { RetryError } from "@decocms/shared/std";
 import {
   isGithubTransientServerError,
   parseGraphqlBody,
   unwrapGraphqlData,
+  unwrapRetryError,
 } from "./graphql";
 
 const LABEL = "branch search for acme/site";
@@ -55,6 +57,18 @@ describe("unwrapGraphqlData", () => {
 
   it("throws when a 200 carried neither data nor errors", () => {
     expect(() => unwrapGraphqlData({}, LABEL)).toThrow(/returned no data/);
+  });
+});
+
+describe("unwrapRetryError", () => {
+  it("surfaces the wrapped cause on retry exhaustion", () => {
+    const cause = new Error("GitHub GraphQL transient error: 503");
+    expect(unwrapRetryError(new RetryError(cause, 3))).toBe(cause);
+  });
+
+  it("passes through a plain error unchanged", () => {
+    const error = new Error("Connection is not a GitHub connection");
+    expect(unwrapRetryError(error)).toBe(error);
   });
 });
 
