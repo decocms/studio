@@ -16,8 +16,9 @@ import {
   applyThreadLock,
   assertHostedDecopilotHarness,
   assertPersistedHostedRuntime,
-  assertReadableHostedRuntime,
+  assertHostedSandboxRuntime,
   assertHostedSandboxProvider,
+  normalizeHostedRuntimePin,
   normalizeHostedSandboxProviderKind,
   computeIdempotencyKey,
   shouldPersistRequestMessage,
@@ -253,41 +254,66 @@ describe("assertHostedSandboxProvider", () => {
   });
 });
 
-describe("assertReadableHostedRuntime", () => {
+describe("assertHostedSandboxRuntime", () => {
   test("lets the web read a sandbox-hosted claude-code queue", () => {
     // Regression: gating the queue GET like a dispatch 409'd it, so a
     // claude-code chat rendered empty and erroring on the web.
     expect(() =>
-      assertReadableHostedRuntime("claude-code", "agent-sandbox"),
+      assertHostedSandboxRuntime("claude-code", "agent-sandbox"),
     ).not.toThrow();
-    expect(() =>
-      assertReadableHostedRuntime("claude-code", null),
-    ).not.toThrow();
+    expect(() => assertHostedSandboxRuntime("claude-code", null)).not.toThrow();
   });
 
   test("still rejects the desktop-pinned and native harnesses", () => {
     // claude-code + user-desktop is the NATIVE coding agent, not this harness.
     expect(() =>
-      assertReadableHostedRuntime("claude-code", "user-desktop"),
+      assertHostedSandboxRuntime("claude-code", "user-desktop"),
     ).toThrow(/unsupported desktop runtime/);
     for (const harnessId of ["codex", "opencode", "future"]) {
       expect(() =>
-        assertReadableHostedRuntime(harnessId, "agent-sandbox"),
+        assertHostedSandboxRuntime(harnessId, "agent-sandbox"),
       ).toThrow(/Studio desktop app/);
     }
   });
 
   test("keeps Decopilot and unpinned behaviour identical", () => {
     expect(() =>
-      assertReadableHostedRuntime("decopilot", "agent-sandbox"),
+      assertHostedSandboxRuntime("decopilot", "agent-sandbox"),
     ).not.toThrow();
-    expect(() => assertReadableHostedRuntime(null, null)).not.toThrow();
+    expect(() => assertHostedSandboxRuntime(null, null)).not.toThrow();
     expect(() =>
-      assertReadableHostedRuntime("decopilot", "user-desktop"),
+      assertHostedSandboxRuntime("decopilot", "user-desktop"),
     ).not.toThrow();
     expect(() =>
-      assertReadableHostedRuntime("decopilot", "future-sandbox"),
+      assertHostedSandboxRuntime("decopilot", "future-sandbox"),
     ).toThrow(/unsupported desktop runtime/);
+  });
+});
+
+describe("normalizeHostedRuntimePin", () => {
+  test("dispatches a sandbox-hosted claude-code thread, kind untouched", () => {
+    // The gate that used to close a task-board thread to follow-ups: the
+    // Decopilot-only normalizer 409'd the row on every messages POST.
+    expect(normalizeHostedRuntimePin("claude-code", "agent-sandbox")).toBe(
+      "agent-sandbox",
+    );
+    expect(normalizeHostedRuntimePin("claude-code", null)).toBeNull();
+  });
+
+  test("still refuses the native desktop coding agent", () => {
+    expect(() =>
+      normalizeHostedRuntimePin("claude-code", "user-desktop"),
+    ).toThrow(/unsupported desktop runtime/);
+    expect(() => normalizeHostedRuntimePin("codex", "agent-sandbox")).toThrow(
+      /Studio desktop app/,
+    );
+  });
+
+  test("leaves the Decopilot rewrite in place", () => {
+    expect(normalizeHostedRuntimePin("decopilot", "user-desktop")).toBe(
+      "agent-sandbox",
+    );
+    expect(normalizeHostedRuntimePin(null, null)).toBeNull();
   });
 });
 

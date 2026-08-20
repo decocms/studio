@@ -56,13 +56,20 @@ type Deps struct {
 	// ⚠️ SECURITY: the result holds a credential. Never log it.
 	RunEnv func() map[string]string
 	// BeforeRun prepares the workspace before the harness streams: org-fs links
-	// repointed at this run's thread, `.deco/tools/` refreshed. Must not block for
-	// long and must not fail the run. Optional.
+	// repointed at this run's thread, the thread's saved agent session restored,
+	// `.deco/tools/` refreshed.
+	//
+	// MAY BLOCK, and the caller does — a run that starts before the org's content
+	// is in place produces a confident wrong answer rather than an error, so
+	// waiting is the safer failure. It must bound its own wait (Studio's dispatch
+	// has no separate readiness deadline to fall back on) and it must never fail
+	// the run: at its ceiling it proceeds without. Optional.
 	BeforeRun func(RunInfo)
 	// AfterRun settles the workspace once the harness has exited, however it
-	// exited (success, crash, cancel): whatever the model wrote to the wrong
-	// place gets moved to where it survives the pod. Same contract as BeforeRun —
-	// quick, and it must not fail the run. Optional.
+	// exited (success, crash, cancel): whatever must outlive the pod — stray
+	// skills, the agent's session transcript — gets moved to where it does. Same
+	// contract as BeforeRun, and likewise bounded: it must not fail the run.
+	// Optional.
 	AfterRun func(RunInfo)
 }
 

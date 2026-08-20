@@ -100,12 +100,14 @@ export async function enqueueAgentRunForTask(
   // branch must be the repo-specific one or the run lands in the shared
   // "ephemeral" sandbox with no repo.
   //
-  // `read_only` rides along on the same write: a sandbox-hosted harness answers
-  // exactly the one prompt it was dispatched with, so a follow-up message would
-  // sit in a queue nothing drains. The chat composer reads this and says so.
+  // NOT marked `read_only` any more. A sandbox-hosted run used to answer exactly
+  // the one prompt it was dispatched with, so the thread was closed to
+  // follow-ups; the messages POST now accepts them and the harness resumes its
+  // Claude Code session (or, on a pod that no longer exists, rebuilds the
+  // conversation from `history`). The flag and its 409 still exist for a thread
+  // that really is closed — nothing sets it.
   const metadata = {
     ...(thread.metadata ?? {}),
-    ...(harnessRunsInSandbox(harnessId) ? { read_only: true } : {}),
     // Read back by `resolveSandboxBranch` at provision time (via the thread, so
     // a durable re-dispatch resolves the same pod). See `pinnedRef` above.
     ...(opts.pinnedRef ? { pinnedRef: opts.pinnedRef } : {}),

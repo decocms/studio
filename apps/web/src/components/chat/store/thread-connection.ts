@@ -48,6 +48,10 @@ import type { Client as MCPClient } from "@modelcontextprotocol/sdk/client/index
 import type { ToolApprovalLevel } from "@/hooks/use-preferences";
 import type { SimpleModeTier } from "@decocms/shared/organization/schema";
 import { DECOPILOT_EVENTS } from "@decocms/shared/sdk";
+/** Thread statuses that mean the run is over. Mirrors the API's
+ *  `TERMINAL_THREAD_STATUSES` — inlined rather than imported, since
+ *  `apps/web` must not reach into `apps/api/src` (same as `rerun-dialog.tsx`). */
+const TERMINAL_THREAD_STATUSES = new Set(["completed", "failed", "expired"]);
 import { decopilotSSE } from "@/hooks/decopilot-sse-pool";
 import type { SSESubscription } from "@/hooks/create-sse-subscription";
 import { Store } from "./store-primitive";
@@ -411,14 +415,33 @@ export class ThreadConnection {
     ) {
       return;
     }
-    let subject: unknown;
+    let parsed: { subject?: unknown; data?: { status?: unknown } };
     try {
-      subject = (JSON.parse(e.data) as { subject?: unknown }).subject;
+      parsed = JSON.parse(e.data);
     } catch {
       return;
     }
-    if (subject !== this.threadId) return;
+    if (parsed.subject !== this.threadId) return;
     void this.refetchLatestPage();
+
+    // A batch thread's turn ends here or nowhere. There is no per-thread stream
+    // to deliver a `finish` chunk, so without this the composer stays in
+    // "submitted" forever after a follow-up and the user cannot send another
+    // message — the run finished, the reply rendered, and the box stayed locked.
+    // A streaming connection must NOT take this path: its own finish chunk owns
+    // the transition, and a status event racing it would end the turn early.
+    if (
+      this.batch &&
+      e.type === DECOPILOT_EVENTS.THREAD_STATUS &&
+      typeof parsed.data?.status === "string" &&
+      TERMINAL_THREAD_STATUSES.has(parsed.data.status)
+    ) {
+      this.clearRunStatusStage();
+      const s = this.status.get();
+      if (s.kind === "submitted" || s.kind === "streaming") {
+        this.status.set({ kind: "ready" });
+      }
+    }
   }
 
   // ── Public mutator (single entry point) ─────────────────────────────────

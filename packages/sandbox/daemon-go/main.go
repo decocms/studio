@@ -974,15 +974,27 @@ func main() {
 			}
 			return env
 		},
-		// Point `org/output` at this run's thread subtree, and refresh `.deco/tools/`
-		// from its MCP endpoint, before the harness can touch either. Degrades to no
-		// link; never blocks the run.
+		// Everything the harness needs from the org, in place before it starts:
+		// `org/output` pointed at this run's thread subtree, the org's skills
+		// linked where the SDK scans, this thread's Claude Code session restored,
+		// and `.deco/tools/` refreshed from the run's MCP endpoint.
+		//
+		// `WaitReady` BLOCKS (bounded) rather than degrading to no link. A run
+		// that starts before its skills and its transcript are there does not
+		// fail — it answers wrongly and silently, which is the worse outcome. See
+		// `WaitReady` for why this one place waits where the rest fail open.
 		BeforeRun: func(info dispatch.RunInfo) {
-			d.orgFsLinks.RepointForRun(info.ThreadId)
-			// RepointForRun kicks the skill-link sync off-thread; wait for it here.
-			// Claude Code scans its skill dirs once at startup, so a symlink that
-			// lands after that is invisible for the entire run. Bounded — a miss
-			// costs this run's late skills, not the run.
+			// Two different waits, in dependency order. This one is for the org
+			// HOME volume to be attached at all: it is what the thread's saved
+			// Claude Code session is restored from, and what the user-scope skills
+			// link points into. It also does the repoint, so a mount that shows up
+			// mid-wait is picked up.
+			d.orgFsLinks.WaitHomeReady(info.ThreadId)
+			d.orgFsLinks.RestoreSession(info.ThreadId)
+			// And this one is for the public skill-link sync the repoint kicked off
+			// off-thread. Claude Code scans its skill dirs once at startup, so a
+			// symlink that lands after that is invisible for the entire run.
+			// Bounded — a miss costs this run's late skills, not the run.
 			d.orgFsLinks.WaitSkillLinks(skillLinkWait)
 			catalogSync.Sync(toolscatalog.Endpoint{
 				URL:       info.McpURL,
@@ -990,10 +1002,13 @@ func main() {
 				ExpiresAt: info.McpExpiresAt,
 			})
 		},
-		// A skill the model authored into the checkout would die with the branch;
-		// move it onto the org mount before anyone goes looking for it.
-		AfterRun: func(dispatch.RunInfo) {
+		// What must outlive the pod, moved off it. A skill the model authored into
+		// the checkout would die with the branch; the SDK session would die with
+		// the pod, taking the thread's conversation with it. Runs on every exit
+		// path — a crashed turn's transcript is still what the follow-up needs.
+		AfterRun: func(info dispatch.RunInfo) {
 			d.orgFsLinks.AdoptStrayRepoSkills()
+			d.orgFsLinks.SaveSession(info.ThreadId)
 		},
 	}
 

@@ -628,8 +628,10 @@ export function ChatInput({
     );
   }
 
-  // Autonomous runs (a sandbox-hosted claude-code task run) answer the one
-  // prompt they were dispatched with; a follow-up would queue forever.
+  // Threads explicitly closed to replies. Sandbox-hosted task runs used to be
+  // marked this way and no longer are — they take follow-ups now — so in
+  // practice this only catches rows stamped before that. Mirrors the same 409
+  // in the messages POST; keep the two in step.
   if (task?.metadata?.read_only) {
     return <ChatInputDisabledState message={t("chat.input.readOnlyThread")} />;
   }

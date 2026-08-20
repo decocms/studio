@@ -282,6 +282,98 @@ test.describe("hosted runtime boundary", () => {
     }
   });
 
+  // The counterpart to the test above, and the boundary that actually moved: a
+  // sandbox-hosted thread is INTERACTIVE. Only an explicit `read_only` closes
+  // one now — the pins alone must not, or every task-board run is a dead end.
+  test("accepts a follow-up message on a sandbox-hosted claude-code thread", async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug, user } = authedPage;
+    const api = page.context().request;
+    const db = await connectDevDb();
+    try {
+      const agent = await callSelfMcpTool<{ item: { id: string } }>(
+        api,
+        orgSlug,
+        "COLLECTION_VIRTUAL_MCP_CREATE",
+        {
+          data: {
+            title: "interactive claude-code thread",
+            connections: [],
+            status: "active",
+            pinned: false,
+          },
+        },
+      );
+      const thread = await callSelfMcpTool<{ item: { id: string } }>(
+        api,
+        orgSlug,
+        "COLLECTION_THREADS_CREATE",
+        { data: { virtual_mcp_id: agent.item.id } },
+      );
+      // Exactly what a task run persists today — and nothing else. No
+      // `read_only`: that is the change.
+      const update = await db.query(
+        `UPDATE threads
+            SET harness_id = 'claude-code',
+                sandbox_provider_kind = 'agent-sandbox',
+                message_storage_version = 2
+          WHERE id = $1 AND created_by = $2`,
+        [thread.item.id, user.userId],
+      );
+      expect(update.rowCount).toBe(1);
+
+      const response = await api.post(
+        `/api/${orgSlug}/decopilot/threads/${thread.item.id}/messages`,
+        {
+          data: {
+            messages: [
+              {
+                id: "msg-claude-code-followup",
+                role: "user",
+                parts: [{ type: "text", text: "Also make it blue" }],
+              },
+            ],
+            agent: { id: agent.item.id },
+          },
+          headers: { "content-type": "application/json" },
+        },
+      );
+      // Accepted, not 409. The run itself needs a sandbox this suite has no
+      // business provisioning; what is asserted here is that the request was
+      // taken and the turn persisted, which is where it used to be refused.
+      expect(response.status()).toBe(202);
+
+      // The pins must survive the write path untouched — a follow-up that
+      // silently re-pinned the thread to Decopilot would "work" while running
+      // the wrong agent.
+      const row = await db.query(
+        `SELECT harness_id, sandbox_provider_kind
+           FROM threads
+          WHERE id = $1 AND created_by = $2`,
+        [thread.item.id, user.userId],
+      );
+      expect(row.rows).toEqual([
+        { harness_id: "claude-code", sandbox_provider_kind: "agent-sandbox" },
+      ]);
+
+      await retry(
+        async () => {
+          const parts = await db.query<{ count: number }>(
+            `SELECT COUNT(*)::int AS count
+               FROM thread_message_parts
+              WHERE thread_id = $1 AND message_id = $2`,
+            [thread.item.id, "msg-claude-code-followup"],
+          );
+          expect(parts.rows[0]?.count).toBeGreaterThan(0);
+        },
+        { maxAttempts: 20, minTimeout: 250 },
+      );
+    } finally {
+      await db.end();
+    }
+  });
+
   test("keeps a retired local Decopilot pin readable as hosted", async ({
     authedPage,
   }) => {

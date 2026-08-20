@@ -253,7 +253,7 @@ export const chat = {
   "chat.input.readOnlyOthersChatNamed":
     "Apenas leitura - você está visualizando o chat de {name}",
   "chat.input.readOnlyThread":
-    "Apenas leitura - este chat rodou de forma autônoma e não aceita respostas",
+    "Apenas leitura - este chat não aceita respostas",
   "chat.input.sendMessage": "Enviar mensagem",
   "chat.input.sendMessageEnter": "Enviar mensagem (Enter)",
   "chat.input.stillSendingPreviousMessage":

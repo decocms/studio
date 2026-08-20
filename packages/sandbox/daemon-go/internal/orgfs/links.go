@@ -136,6 +136,66 @@ func (l *Links) EnsureRepoLink() {
 	l.ensureRepoLinkLocked()
 }
 
+// How long a dispatch waits for the org's content to be in place, and how often
+// it re-checks. The budget is generous because the thing it is racing is a
+// sidecar attaching a network filesystem, and short next to the cost of the run
+// it gates.
+const (
+	orgReadyBudget = 90 * time.Second
+	orgReadyPoll   = 500 * time.Millisecond
+)
+
+// WaitHomeReady blocks until the org HOME volume is attached and the org's
+// skills are linked out of it, and reports whether it got there. A pod with no
+// org-fs configured is ready by definition.
+//
+// Distinct from its neighbour `WaitSkillLinks`, which waits on the public
+// skill-set COPY that a repoint kicks off in the background. This one waits for
+// the mount those links and the thread's saved session both live on — there is
+// nothing to sync until it exists.
+//
+// Waiting, where every other path in this file fails open. The difference is
+// what the failure looks like downstream: a missing `org/output` link is a tool
+// call that errors, which somebody sees. A missing SKILLS link is a run that
+// completes confidently having never been offered the org's own instructions
+// for the task — indistinguishable from a bad answer, and the reason this gate
+// exists. Same for the session restore that follows it: starting the turn before
+// the transcript lands is how an interactive thread silently forgets itself.
+//
+// Bounded, because "wait until ready" unbounded is its own outage — a wedged
+// backend would mean no dispatch ever returns. At the ceiling the run proceeds
+// without, loudly.
+func (l *Links) WaitHomeReady(threadId string) bool {
+	if l == nil || !l.Expected() {
+		return true
+	}
+	started := time.Now()
+	for attempt := 1; ; attempt++ {
+		// Does the linking, so a mount that appears mid-wait is picked up.
+		l.RepointForRun(threadId)
+		if l.skillsReady() {
+			if attempt > 1 {
+				slog.Info("org-fs ready", "thread", threadId,
+					"waited", time.Since(started), "attempts", attempt)
+			}
+			return true
+		}
+		if time.Since(started) >= orgReadyBudget {
+			slog.Warn("org-fs not ready; running without the org's skills",
+				"thread", threadId, "waited", time.Since(started))
+			return false
+		}
+		time.Sleep(orgReadyPoll)
+	}
+}
+
+// skillsReady reports whether the org's skills dir is where the SDK will look.
+func (l *Links) skillsReady() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.skillsLinked
+}
+
 // RepointForRun points `org/output` (and `org/upload`, when that volume is
 // mounted) at threadId's subtree. Reports whether the output link is confirmed
 // pointing there.
