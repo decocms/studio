@@ -255,16 +255,14 @@ export function useMainPanelTabs(ctx: {
 
   /**
    * Assets is a per-site tab: it shows whenever an S3 bucket is associated to
-   * this site's slug (managed `deco-assets-<slug>` or a BYOB bucket). Uses the
-   * non-suspense configs query so the bar never blocks on the bucket list.
+   * this project's name (managed `deco-assets-<name>` or a BYOB bucket). Uses
+   * the non-suspense configs query so the bar never blocks on the bucket list.
    */
-  const siteSlug =
-    (entity?.metadata as { siteSlug?: string | null } | undefined)?.siteSlug ??
-    null;
+  const siteName = entity?.title ?? null;
   const fileConfigsQuery = useFileConfigsQuery();
   const showAssetsTab = !!matchSiteSlugConfig(
     fileConfigsQuery.data?.configs ?? [],
-    siteSlug,
+    siteName,
   );
 
   const { activeTab: rawActiveTab, mainOpen: rawMainOpen } =
