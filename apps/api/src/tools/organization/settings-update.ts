@@ -39,7 +39,17 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
         "Org boolean toggles. Shallow-merged into the stored flags: keys you pass win (explicit false persists), omitted keys keep their value.",
       ),
     repo_flags: z
-      .record(z.string(), RepoFlagsSchema.strict())
+      // Keys are validated as `owner/name` so a typo'd or bogus key can't
+      // accumulate as junk in the bag (nothing ever reads it back).
+      .record(
+        z
+          .string()
+          .regex(
+            /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/,
+            "Repo key must be `owner/name`",
+          ),
+        RepoFlagsSchema.strict(),
+      )
       .optional()
       .describe(
         "Per-repo overrides of the review flags, keyed by `owner/name`. Merged two levels deep: repos you omit keep their overrides, and within a repo you pass, omitted keys keep their value. Pass a flag as null to drop the override and inherit the org default.",
