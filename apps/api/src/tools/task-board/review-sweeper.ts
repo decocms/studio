@@ -72,6 +72,7 @@ import {
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
 import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
 import { retryAutoMergeIfApproved } from "./merge-pr";
+import { advanceToDoneIfMerged } from "./reconcile-merged";
 import {
   emitTaskBoardUpdated,
   handTaskToHuman,
@@ -489,21 +490,17 @@ export class TaskBoardReviewSweeper {
       return false;
     }
 
-    // A card whose review already COMPLETED but whose merge failed is stranded:
-    // the cycle's reviewer attempts are spent, so the dispatch below is a no-op
-    // and nothing else ever retries. Retry the merge first — it's the only path
-    // back out of In Review for these, and it's why the sweep must keep visiting
-    // a card that has no reviewer left to enqueue. Gated on verified approval +
-    // auto-merge inside, so it can't ship anything the reviewers didn't.
-    if (await retryAutoMergeIfApproved(ctx, item)) return true;
-    if (!owned) return false;
-
     // One `get` per PR through the rate-limited queue, never straight at
     // GitHub: `listPrs` carries no live state, and telling an open PR from a
     // closed/merged one is all the dispatch decision needs. Check status does
     // NOT gate it — reviewers run without waiting for CI (see
     // `prReadyForReview`); the merge is gated on green checks separately, so
     // nothing ships on red.
+    //
+    // This is the sweep's ONLY GitHub read, and it is read before the `owned`
+    // gate because the merged-state reconcile below needs it too — the same
+    // `get` already carries `merged`, so nothing here may add a second,
+    // unthrottled call (that is the 429 this queue exists to prevent).
     const live = await Promise.all(
       prs.map(async (pr) => ({
         ...pr,
@@ -522,6 +519,29 @@ export class TaskBoardReviewSweeper {
           `(${live.length} PR(s)) — proceeding on unknown`,
       );
     }
+
+    // A PR merged outside Studio moves no card on its own — see
+    // `reconcile-merged.ts`. Runs before the merge retry and before the `owned`
+    // gate: a handed-off card whose PR a human merged is exactly the stuck case.
+    if (
+      await advanceToDoneIfMerged(
+        ctx,
+        item,
+        live.map((pr) => pr.merged),
+      )
+    ) {
+      return true;
+    }
+
+    // A card whose review already COMPLETED but whose merge failed is stranded:
+    // the cycle's reviewer attempts are spent, so the dispatch below is a no-op
+    // and nothing else ever retries. Retry the merge — it's the only path back
+    // out of In Review for these, and it's why the sweep must keep visiting a
+    // card that has no reviewer left to enqueue. Gated on verified approval +
+    // auto-merge inside, so it can't ship anything the reviewers didn't.
+    if (await retryAutoMergeIfApproved(ctx, item)) return true;
+    if (!owned) return false;
+
     if (!prReadyForReview(live)) return false;
 
     await enqueueEnabledReviewers(ctx, item, {
