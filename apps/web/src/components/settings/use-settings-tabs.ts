@@ -22,10 +22,12 @@ export type VisibleSettingsTabs = Record<SettingsGroupKey, SettingsTabDef[]>;
  */
 export function useVisibleSettingsTabs(): VisibleSettingsTabs {
   const { capabilities, isPrivileged, loading, error } = useCapabilities();
-  const ownsSites = useOwnedSites().sites.length > 0;
+  const { sites, isLoading: sitesLoading } = useOwnedSites();
+  const ownsSites = sites.length > 0;
 
   const canSee = (tab: SettingsTabDef) => {
-    if (tab.requiresOwnedSites && !ownsSites) return false;
+    // Same optimistic-while-loading rule as capabilities: don't hide mid-fetch.
+    if (tab.requiresOwnedSites && !ownsSites && !sitesLoading) return false;
     if (loading || error) return true;
     if (tab.privilegedOnly) return isPrivileged;
     if (!tab.requires) return true;
