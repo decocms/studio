@@ -9,13 +9,18 @@
  * showing the raw preview host, e.g. "pedro-je4bq0tm-38bb…"). Those repos get
  * the plain browser controls (refresh + open in new tab) only.
  *
- * The signal is the very same readiness classification the Blocks/CMS panel
- * uses (`resolveBlocksTabState`): `content` means the decofile AND live meta
- * reads resolved and there is editable deco content, i.e. this really is a deco
- * site. A non-deco repo resolves to `empty` (404 on the reads) or `error`, and a
- * site whose data is still coming resolves to `loading` — in both cases the
- * controls stay hidden until the capability is proven, so they never flash in
- * for a repo that turns out not to be a deco site.
+ * The question is *framework presence*, NOT "is there content right now". So
+ * the gate reads the one state that proves absence — `empty` with reason
+ * `framework-missing` (the decofile/meta reads 404'd) — and hides only there. In
+ * particular a real deco site with an empty decofile stays `no-content` and keeps
+ * its controls, which is how "Create page" (rendered inside the page-selector
+ * dropdown) remains reachable for a site that has no pages yet. A data error
+ * doesn't revoke the capability either: it means the reads never resolved, so
+ * absence is unproven, and the toolbar degrades to its pre-existing behaviour
+ * rather than dropping controls out from under a working site.
+ *
+ * `loading` hides, so the controls never flash in for a repo that turns out not
+ * to be a deco site.
  */
 
 import type { BlocksTabState } from "@/layouts/main-panel-tabs/blocks-tab-state";
@@ -25,5 +30,15 @@ export function showCmsControls(input: {
   showPreviewToolbar: boolean;
   blocksState: BlocksTabState;
 }): boolean {
-  return input.showPreviewToolbar && input.blocksState.kind === "content";
+  if (!input.showPreviewToolbar) return false;
+  const state = input.blocksState;
+  switch (state.kind) {
+    case "loading":
+      return false;
+    case "empty":
+      return state.reason !== "framework-missing";
+    case "content":
+    case "error":
+      return true;
+  }
 }

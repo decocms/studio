@@ -142,7 +142,7 @@ describe("resolveBlocksTabState", () => {
   test("renders empty when the booting snapshot has no editable content (installing)", () => {
     expect(
       resolveBlocksTabState(input({ lifecyclePhase: "installing" })),
-    ).toEqual({ kind: "empty" });
+    ).toEqual({ kind: "empty", reason: "no-content" });
   });
 
   test("loads while initial Deco data is pending", () => {
@@ -160,7 +160,10 @@ describe("resolveBlocksTabState", () => {
   });
 
   test("renders empty after both resources settle without editable content", () => {
-    expect(resolveBlocksTabState(input())).toEqual({ kind: "empty" });
+    expect(resolveBlocksTabState(input())).toEqual({
+      kind: "empty",
+      reason: "no-content",
+    });
   });
 
   test.each(["clone-failed", "install-failed", "start-failed"] as const)(
@@ -202,7 +205,7 @@ describe("resolveBlocksTabState", () => {
           meta: { status: "error", hasData: false, errorStatus: 404 },
         }),
       ),
-    ).toEqual({ kind: "empty" });
+    ).toEqual({ kind: "empty", reason: "framework-missing" });
   });
 
   test("renders a data error when another initial request fails", () => {
@@ -277,6 +280,6 @@ describe("sandbox-less Fast Preview (fastPreviewActive)", () => {
       resolveBlocksTabState(
         input({ lifecyclePhase: "idle", fastPreviewActive: true }),
       ),
-    ).toEqual({ kind: "empty" });
+    ).toEqual({ kind: "empty", reason: "no-content" });
   });
 });

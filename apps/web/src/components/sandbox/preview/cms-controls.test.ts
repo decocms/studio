@@ -11,13 +11,22 @@ describe("showCmsControls", () => {
     ).toBe(true);
   });
 
-  it("hides them for a non-deco repo (no decofile → empty)", () => {
+  it("hides them for a non-deco repo (decofile/meta 404 → framework missing)", () => {
     expect(
       showCmsControls({
         showPreviewToolbar: true,
-        blocksState: { kind: "empty" },
+        blocksState: { kind: "empty", reason: "framework-missing" },
       }),
     ).toBe(false);
+  });
+
+  it("keeps them for a deco site whose decofile has no pages yet (Create page stays reachable)", () => {
+    expect(
+      showCmsControls({
+        showPreviewToolbar: true,
+        blocksState: { kind: "empty", reason: "no-content" },
+      }),
+    ).toBe(true);
   });
 
   it("hides them while the reads are still in flight", () => {
@@ -29,20 +38,26 @@ describe("showCmsControls", () => {
     ).toBe(false);
   });
 
-  it("hides them when the reads failed", () => {
+  it("keeps them when a read failed — absence is unproven, so don't revoke", () => {
     expect(
       showCmsControls({
         showPreviewToolbar: true,
         blocksState: { kind: "error", source: "data" },
       }),
-    ).toBe(false);
+    ).toBe(true);
+    expect(
+      showCmsControls({
+        showPreviewToolbar: true,
+        blocksState: { kind: "error", source: "sandbox" },
+      }),
+    ).toBe(true);
   });
 
   it("hides them when the toolbar itself is hidden", () => {
     expect(
       showCmsControls({
         showPreviewToolbar: false,
-        blocksState: { kind: "content" },
+        blocksState: { kind: "empty", reason: "no-content" },
       }),
     ).toBe(false);
   });
