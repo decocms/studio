@@ -22,6 +22,7 @@ import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import {
   buildBlogBlock,
   getBlogPayload,
+  isPostPublished,
   listBlogPayloads,
   missingPostFields,
   relationPickerState,
@@ -222,8 +223,23 @@ function PostSettings({
   onChange: (key: string, value: unknown) => void;
 }) {
   const t = useT();
+  const isPublished = isPostPublished(post);
+
   return (
     <div className="space-y-5">
+      <div className="flex items-center justify-between gap-3 border-b pb-4">
+        <Label htmlFor="post-published">
+          {t("sandbox.postEditor.publishedLabel")}
+        </Label>
+        <Switch
+          id="post-published"
+          className="data-[state=checked]:bg-success"
+          checked={isPublished}
+          onCheckedChange={(checked) =>
+            onChange("status", checked ? "published" : "draft")
+          }
+        />
+      </div>
       <div className="space-y-2">
         <Label htmlFor="post-excerpt">
           {t("sandbox.postEditor.excerptLabel")}

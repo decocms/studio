@@ -223,6 +223,9 @@ type DeleteTarget =
 
 export type PostSort = "date-desc" | "date-asc" | "az" | "za";
 
+/** Publication states the posts list can filter on — see `isPostPublished`. */
+export type PostStatusFilter = "published" | "draft";
+
 export interface ContentBrowserProps {
   /** Storefront "." deep-link: preselect this page once the decofile loads. */
   deepLinkPage?: PageDeepLink;
@@ -365,6 +368,8 @@ function ContentBrowserReady({
     null,
   );
   const [postAuthorFilter, setPostAuthorFilter] = useState<string | null>(null);
+  const [postStatusFilter, setPostStatusFilter] =
+    useState<PostStatusFilter | null>(null);
   const [postSort, setPostSort] = useState<PostSort>("date-desc");
   const [selectedPostKeys, setSelectedPostKeys] = useState<Set<string>>(
     () => new Set(),
@@ -392,6 +397,7 @@ function ContentBrowserReady({
     setSearchQuery("");
     setPostCategoryFilter(null);
     setPostAuthorFilter(null);
+    setPostStatusFilter(null);
     setPostSort("date-desc");
     setSelectedPostKeys(new Set());
     setBulkCategorySeed(null);
@@ -849,6 +855,7 @@ function ContentBrowserReady({
     setSearchQuery("");
     setPostCategoryFilter(null);
     setPostAuthorFilter(null);
+    setPostStatusFilter(null);
     setPostSort("date-desc");
     setSelectedPostKeys(new Set());
     setBulkCategorySeed(slug || null);
@@ -1011,6 +1018,7 @@ function ContentBrowserReady({
             onSearchChange={setSearchQuery}
             postCategoryFilter={postCategoryFilter}
             postAuthorFilter={postAuthorFilter}
+            postStatusFilter={postStatusFilter}
             postSort={postSort}
             onPostCategoryFilterChange={(slug) => {
               setPostCategoryFilter(slug);
@@ -1018,6 +1026,10 @@ function ContentBrowserReady({
             }}
             onPostAuthorFilterChange={(email) => {
               setPostAuthorFilter(email);
+              setSelectedPostKeys(new Set());
+            }}
+            onPostStatusFilterChange={(status) => {
+              setPostStatusFilter(status);
               setSelectedPostKeys(new Set());
             }}
             onPostSortChange={setPostSort}
@@ -1415,9 +1427,11 @@ function ItemList({
   onSearchChange,
   postCategoryFilter,
   postAuthorFilter,
+  postStatusFilter,
   postSort,
   onPostCategoryFilterChange,
   onPostAuthorFilterChange,
+  onPostStatusFilterChange,
   onPostSortChange,
   selectedPostKeys,
   postBulkPanelOpen,
@@ -1455,9 +1469,11 @@ function ItemList({
   onSearchChange: (q: string) => void;
   postCategoryFilter: string | null;
   postAuthorFilter: string | null;
+  postStatusFilter: PostStatusFilter | null;
   postSort: PostSort;
   onPostCategoryFilterChange: (slug: string | null) => void;
   onPostAuthorFilterChange: (email: string | null) => void;
+  onPostStatusFilterChange: (status: PostStatusFilter | null) => void;
   onPostSortChange: (sort: PostSort) => void;
   selectedPostKeys: Set<string>;
   /** The right-pane bulk panel is open (forces selection mode in the list). */
@@ -1538,6 +1554,11 @@ function ItemList({
   // many posts each option matches (and hide the ones that match none).
   const categoryCounts = new Map<string, number>();
   const authorCounts = new Map<string, number>();
+  const publishedCount = postsWithMeta.filter((p) => p.published).length;
+  const statusCounts = {
+    published: publishedCount,
+    draft: postsWithMeta.length - publishedCount,
+  };
   for (const p of postsWithMeta) {
     for (const slug of p.categorySlugs) {
       categoryCounts.set(slug, (categoryCounts.get(slug) ?? 0) + 1);
@@ -1583,6 +1604,10 @@ function ItemList({
     )
     .filter(
       (p) => !postAuthorFilter || p.authorEmails.includes(postAuthorFilter),
+    )
+    .filter(
+      (p) =>
+        !postStatusFilter || p.published === (postStatusFilter === "published"),
     )
     .sort((a, b) => {
       if (postSort === "az") return a.title.localeCompare(b.title);
@@ -1666,10 +1691,13 @@ function ItemList({
             categories={categoryOptions}
             authors={authorOptions}
             categoryFilter={postCategoryFilter}
+            statusCounts={statusCounts}
             authorFilter={postAuthorFilter}
+            statusFilter={postStatusFilter}
             sort={postSort}
             onCategoryFilterChange={onPostCategoryFilterChange}
             onAuthorFilterChange={onPostAuthorFilterChange}
+            onStatusFilterChange={onPostStatusFilterChange}
             onSortChange={onPostSortChange}
           />
         ))}

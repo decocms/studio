@@ -5,6 +5,7 @@ import {
   buildBlogBlock,
   discoverBlogBlockTypes,
   emptyBlogPayload,
+  isPostPublished,
   listPostsWithMeta,
   missingPostFields,
   relationPickerState,
@@ -214,7 +215,46 @@ describe("discoverBlogBlockTypes", () => {
   });
 });
 
+describe("isPostPublished", () => {
+  test("an unset, empty or non-string status reads as published", () => {
+    expect(isPostPublished({})).toBe(true);
+    expect(isPostPublished({ status: "" })).toBe(true);
+    expect(isPostPublished({ status: null })).toBe(true);
+    expect(isPostPublished({ status: 1 })).toBe(true);
+  });
+
+  test("only an explicit published status reads as published", () => {
+    expect(isPostPublished({ status: "published" })).toBe(true);
+    expect(isPostPublished({ status: "draft" })).toBe(false);
+  });
+
+  test("statuses the CMS does not edit read as not published", () => {
+    expect(isPostPublished({ status: "generating" })).toBe(false);
+    expect(isPostPublished({ status: "awaiting_review" })).toBe(false);
+    expect(isPostPublished({ status: "archived" })).toBe(false);
+  });
+
+  test("is case- and whitespace-sensitive: only the exact value publishes", () => {
+    expect(isPostPublished({ status: "Published" })).toBe(false);
+    expect(isPostPublished({ status: " published " })).toBe(false);
+  });
+});
+
 describe("listPostsWithMeta", () => {
+  test("reports each post's published state for the status filter", () => {
+    const decofile = decofileWithPosts({
+      "collections/blog/posts/a": { title: "Live", status: "published" },
+      "collections/blog/posts/b": { title: "Draft", status: "draft" },
+      "collections/blog/posts/c": { title: "Legacy" },
+    });
+    // Keyed by title so the assertion doesn't encode the list's own ordering.
+    expect(
+      Object.fromEntries(
+        listPostsWithMeta(decofile).map((p) => [p.title, p.published]),
+      ),
+    ).toEqual({ Live: true, Draft: false, Legacy: true });
+  });
+
   test("extracts title, slug, date, category slugs and author emails", () => {
     const decofile = decofileWithPosts({
       "collections/blog/posts/a": {
@@ -235,6 +275,8 @@ describe("listPostsWithMeta", () => {
         authorEmails: ["ada@x.com"],
         // no excerpt or cover image on this fixture
         missing: ["Excerpt", "Cover image"],
+        // no `status` on this fixture — posts predating the field are published
+        published: true,
       },
     ]);
   });

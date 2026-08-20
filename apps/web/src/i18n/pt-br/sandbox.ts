@@ -355,6 +355,7 @@ export const sandbox = {
     "Defina o slug do post (e sua categoria) mais o pageSlug do aplicativo de blog para visualizar",
   "sandbox.postEditor.previewTooltip":
     "Abrir visualização do post em uma nova aba",
+  "sandbox.postEditor.publishedLabel": "Publicado",
   "sandbox.postEditor.removePropLabel": "Remover propriedade",
   "sandbox.postEditor.seePreview": "Ver visualização",
   "sandbox.postEditor.selectAuthorsPlaceholder": "Selecionar autores",
@@ -398,6 +399,9 @@ export const sandbox = {
   "sandbox.postToolbar.sortTitleAZ": "Título A–Z",
   "sandbox.postToolbar.sortTitleZA": "Título Z–A",
   "sandbox.postToolbar.sortZA": "Z–A",
+  "sandbox.postToolbar.statusDraft": "Rascunho",
+  "sandbox.postToolbar.statusLabel": "Status",
+  "sandbox.postToolbar.statusPublished": "Publicado",
   "sandbox.preview.catchAllParamLabel": "caminho",
   "sandbox.preview.choosePage": "Escolher página",
   "sandbox.preview.clickElementToAsk":

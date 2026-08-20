@@ -342,6 +342,7 @@ export const sandbox = {
   "sandbox.postEditor.previewRequiresSlugAndCategory":
     "Set the post slug (and its category) plus the blog app's pageSlug to preview",
   "sandbox.postEditor.previewTooltip": "Open the post preview in a new tab",
+  "sandbox.postEditor.publishedLabel": "Published",
   "sandbox.postEditor.removePropLabel": "Remove prop",
   "sandbox.postEditor.seePreview": "See preview",
   "sandbox.postEditor.selectAuthorsPlaceholder": "Select authors",
@@ -384,6 +385,9 @@ export const sandbox = {
   "sandbox.postToolbar.sortTitleAZ": "Title A–Z",
   "sandbox.postToolbar.sortTitleZA": "Title Z–A",
   "sandbox.postToolbar.sortZA": "Z–A",
+  "sandbox.postToolbar.statusDraft": "Draft",
+  "sandbox.postToolbar.statusLabel": "Status",
+  "sandbox.postToolbar.statusPublished": "Published",
   "sandbox.preview.catchAllParamLabel": "path",
   "sandbox.preview.choosePage": "Choose page",
   "sandbox.preview.clickElementToAsk": "Click any element to ask the AI",
