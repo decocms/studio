@@ -19,30 +19,27 @@ export const settings = {
   "settings.subnav.clients": "Clientes",
   "settings.subnav.planUsage": "Plano e uso",
   "settings.subnav.infrastructure": "Infraestrutura",
-  "settings.nav.tasks": "Tarefas",
+  "settings.nav.tasks": "Quadro",
   "settings.jira.sectionTitle": "Integração com o Jira",
-  "settings.jira.pageDescription":
-    "Espelhe um projeto do Jira no quadro de tarefas. Issues em status mapeados aparecem como cards e ficam em sincronia a cada poucos minutos, e comentários fluem nos dois sentidos — comentários do card aparecem na issue e vice-versa. Campos da issue nunca são escritos de volta.",
   "settings.jira.connectTitle": "Conectar Jira",
   "settings.jira.connectDescription":
-    "Use um site do Jira Cloud e um API token (de preferência de uma conta de serviço). Crie um em id.atlassian.com → Security → API tokens.",
+    "Use um site do Jira Cloud e um API token, de preferência de uma conta de serviço com acesso ao projeto.",
+  "settings.jira.siteLabel": "Site do Jira",
   "settings.jira.sitePlaceholder": "suaempresa.atlassian.net",
-  "settings.jira.emailPlaceholder": "E-mail da conta Atlassian",
-  "settings.jira.tokenPlaceholder": "API token",
+  "settings.jira.emailLabel": "E-mail da conta Atlassian",
+  "settings.jira.emailPlaceholder": "voce@empresa.com",
+  "settings.jira.tokenLabel": "API token",
+  "settings.jira.tokenPlaceholder": "Cole seu token",
   "settings.jira.connect": "Conectar",
   "settings.jira.connecting": "Conectando…",
   "settings.jira.connected": "Jira conectado",
   "settings.jira.connectFailed": "Não foi possível conectar ao Jira",
-  "settings.jira.connectionTitle": "Conexão",
   "settings.jira.disconnect": "Desconectar",
   "settings.jira.disconnected": "Jira desconectado",
   "settings.jira.disconnectTitle": "Desconectar o Jira?",
   "settings.jira.disconnectDescription":
     "A sincronização para e as credenciais são apagadas. Os cards que já estão no quadro são mantidos — só deixam de atualizar.",
   "settings.jira.cancel": "Cancelar",
-  "settings.jira.syncTitle": "Sincronização",
-  "settings.jira.syncDescription":
-    "Escolha o board do Jira a espelhar e mapeie as colunas dele pras lanes deste quadro.",
   "settings.jira.boardLabel": "Board do Jira",
   "settings.jira.boardDescription":
     "Os cards visíveis do board são espelhados — a aba Backlog, epics e sub-tasks não.",
@@ -79,12 +76,6 @@ export const settings = {
   "settings.jira.syncFailed": "Falha na sincronização",
   "settings.jira.saveFailed":
     "Não foi possível salvar as configurações do Jira",
-  "settings.jira.connectStep1":
-    "Crie um API token na sua conta Atlassian (de preferência uma conta de serviço com acesso ao projeto).",
-  "settings.jira.connectStep2":
-    "Preencha o site do Jira, o e-mail da conta e o token, e conecte.",
-  "settings.jira.connectStep3":
-    "Escolha o board do Jira a espelhar e mapeie as colunas dele pras lanes deste quadro.",
   "settings.jira.createTokenLink": "Criar um API token",
   "settings.jira.webhookTitle": "Atualizações instantâneas (webhook)",
   "settings.jira.webhookDescription":

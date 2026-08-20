@@ -10,6 +10,7 @@ import {
   useAiProviders,
 } from "@/hooks/collections/use-ai-providers";
 import { SimpleModeSection } from "./simple-mode-section";
+import { AutoTasksCard } from "./auto-tasks-card";
 import { DecoCreditsHero } from "./deco-credits-hero";
 import { DecoNudgeCard } from "./deco-nudge-card";
 import { ConnectedProvidersSection } from "./connected-providers-section";
@@ -43,6 +44,7 @@ function OrgAiProvidersContent() {
   if (!hasHostedProvider) {
     return (
       <>
+        <AutoTasksCard />
         <ProviderGrid
           providers={providers}
           onSelect={setPendingProvider}
@@ -69,6 +71,7 @@ function OrgAiProvidersContent() {
 
   return (
     <>
+      <AutoTasksCard />
       <Suspense fallback={<Skeleton className="h-16 w-full" />}>
         <SimpleModeSection />
       </Suspense>

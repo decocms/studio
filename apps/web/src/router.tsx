@@ -490,12 +490,16 @@ const settingsAiProvidersRoute = createRoute({
   ),
 });
 
+// Redirects old /settings/billing links to the merged AI Providers page.
 const settingsBillingRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/billing",
-  component: lazyRouteComponent(
-    () => import("./routes/orgs/settings/billing.tsx"),
-  ),
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      to: "/$org/settings/ai-providers",
+      params: { org: params.org },
+    });
+  },
 });
 
 const settingsInfraBillingRoute = createRoute({

@@ -137,7 +137,7 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           key: "billing",
           label: t("settings.nav.billing"),
           icon: <CreditCard01 size={14} />,
-          to: "/$org/settings/billing",
+          to: "/$org/settings/ai-providers",
           group: "billing",
         },
         {
