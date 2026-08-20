@@ -245,13 +245,18 @@ export function useMainPanelTabs(ctx: {
   // snapshots are read as soon as the daemon is up (before the dev server), so
   // the Content tab can show without waiting; the live route fetch stays gated
   // behind `devServerReady` and takes over once the preview warms up.
-  const { data: decofile } = useDecofile(decofileFetchParams, {
-    fetchEnabled: devServerReady,
-  });
-  const { data: meta } = useLiveMeta(decofileFetchParams, {
-    fetchEnabled: devServerReady,
-  });
+  const { data: decofile, isPending: decofileIsPending } = useDecofile(
+    decofileFetchParams,
+    { fetchEnabled: devServerReady },
+  );
+  const { data: meta, isPending: metaIsPending } = useLiveMeta(
+    decofileFetchParams,
+    { fetchEnabled: devServerReady },
+  );
   const showContentTab = hasEditableDecoContent(decofile, meta);
+  // Don't bounce a deep-linked `?main=content` away before the first load resolves.
+  const contentTabPending =
+    !!decofileFetchParams && (decofileIsPending || metaIsPending);
 
   /**
    * Assets is a per-site tab: it shows whenever an S3 bucket is associated to
@@ -292,7 +297,7 @@ export function useMainPanelTabs(ctx: {
   const activeTab =
     rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
       ? resolveDefaultTabId(layoutForDefault)
-      : rawActiveTab === "content" && !showContentTab
+      : rawActiveTab === "content" && !showContentTab && !contentTabPending
         ? resolveDefaultTabId(layoutForDefault)
         : rawActiveTab === "assets" && !showAssetsTab && !assetsTabPending
           ? resolveDefaultTabId(layoutForDefault)
