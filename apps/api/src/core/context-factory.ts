@@ -395,15 +395,12 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
         });
       },
 
-      list: async (userId?: string) => {
+      list: async () => {
         // Choke point: archived (soft-deleted) orgs are invisible to every
         // API/UI surface, so filter them here — no caller of this method ever
         // sees them. A future restore flow would read archived orgs from
         // storage directly, not via this method.
-        const orgs = await auth.api.listOrganizations({
-          headers,
-          query: userId ? { userId } : undefined,
-        });
+        const orgs = await auth.api.listOrganizations({ headers });
         return orgs.filter((org: (typeof orgs)[number]) => !isOrgArchived(org));
       },
 
