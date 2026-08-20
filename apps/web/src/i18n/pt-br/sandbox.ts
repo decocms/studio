@@ -28,14 +28,23 @@ export const sandbox = {
   "sandbox.blogBrand.audienceLabel": "Público-alvo",
   "sandbox.blogBrand.categoriesLabel": "Categorias do blog",
   "sandbox.blogBrand.companyNameLabel": "Nome da marca",
+  "sandbox.blogBrand.competitorsBodyPlaceholder":
+    "Como se posicionam, e onde esta marca se diferencia",
+  "sandbox.blogBrand.competitorsHint":
+    "Marca não cita concorrente na própria copy, então estes vêm de uma busca na web quando sua organização tem uma configurada.",
   "sandbox.blogBrand.competitorsLabel": "Concorrentes",
+  "sandbox.blogBrand.competitorsNamePlaceholder": "Nome do concorrente",
   "sandbox.blogBrand.descriptionLabel": "O que a marca faz",
-  "sandbox.blogBrand.dontsLabel": "O que não fazer",
+  "sandbox.blogBrand.dontsBodyPlaceholder":
+    "O que não fazer, e por quê — ex.: nunca escreva preço em bloco de texto, use um ProductCard",
   "sandbox.blogBrand.dontsHint":
-    "Palavras, afirmações, formatos e temas proibidos. Escreva como instruções.",
-  "sandbox.blogBrand.dosLabel": "O que fazer",
+    "Palavras, afirmações, formatos e temas proibidos. Cada um tem um nome e a regra em si.",
+  "sandbox.blogBrand.dontsNamePlaceholder": "Sobre o que é esta restrição",
+  "sandbox.blogBrand.dosBodyPlaceholder":
+    "A instrução em si — ex.: abra com o problema do cliente, nunca com a empresa",
   "sandbox.blogBrand.dosHint":
-    "Instruções que todo post gerado deve seguir. Escreva como instruções, não como adjetivos.",
+    "Instruções que todo post gerado deve seguir. Escreva instruções, não adjetivos.",
+  "sandbox.blogBrand.dosNamePlaceholder": "Sobre o que é esta regra",
   "sandbox.blogBrand.extractButton": "Ler o conteúdo deste site",
   "sandbox.blogBrand.extractFailed":
     "Não foi possível ler a marca a partir do conteúdo deste site",
@@ -50,14 +59,23 @@ export const sandbox = {
     "Nada a preencher — todos os campos já têm valor. Limpe um campo para preenchê-lo novamente.",
   "sandbox.blogBrand.extracting": "Lendo…",
   "sandbox.blogBrand.languageLabel": "Idioma de escrita",
+  "sandbox.blogBrand.noCompetitorsFound":
+    "Nenhum concorrente encontrado. Adicione à mão, ou configure um modelo de busca na web para esta organização.",
   "sandbox.blogBrand.removeItem": "Remover item",
   "sandbox.blogBrand.subtitle":
     "A voz e as regras que orientam todo post gerado. Salvo nos arquivos do próprio site.",
+  "sandbox.blogBrand.tabBasics": "Dados básicos",
+  "sandbox.blogBrand.tabDos": "Instruções de geração",
+  "sandbox.blogBrand.tabExtra": "Contexto extra",
+  "sandbox.blogBrand.tabGuardrails": "Guardrails",
   "sandbox.blogBrand.title": "Contexto da marca",
   "sandbox.blogBrand.toneLabel": "Tom de voz",
   "sandbox.blogBrand.toneHint":
     "Como a marca escreve: como trata o leitor, ritmo das frases, humor, nível de jargão.",
+  "sandbox.blogBrand.valuesBodyPlaceholder":
+    "O que a marca afirma, e a evidência disso",
   "sandbox.blogBrand.valuesLabel": "Valores da marca",
+  "sandbox.blogBrand.valuesNamePlaceholder": "O valor",
   "sandbox.blockRegistry.unknownBlockType":
     'Tipo de bloco desconhecido{type ? ` (${type})` : ""}.',
   "sandbox.blockRegistry.writeSomethingPlaceholder": "Escreva algo…",

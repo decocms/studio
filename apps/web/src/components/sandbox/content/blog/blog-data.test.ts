@@ -13,6 +13,7 @@ import {
   renameCategoryOnPost,
   replaceCategoryOnPost,
   extractBlockProse,
+  normalizeBrandRules,
   selectBrandEvidenceBlocks,
   stampPostModified,
 } from "./blog-data";
@@ -696,6 +697,46 @@ describe("removeCategoryFromPost", () => {
     const payload = { categories: [{ name: "Old", slug: "old" }] };
     removeCategoryFromPost(payload, "old");
     expect(payload.categories).toEqual([{ name: "Old", slug: "old" }]);
+  });
+});
+
+describe("normalizeBrandRules", () => {
+  test("promotes a legacy flat string to a rule name", () => {
+    expect(
+      normalizeBrandRules(["Nunca escreva preço em bloco de texto"]),
+    ).toEqual([{ name: "Nunca escreva preço em bloco de texto", value: "" }]);
+  });
+
+  test("passes a well-formed rule through", () => {
+    const rule = { name: "Preços", value: "Use **ProductCard**." };
+    expect(normalizeBrandRules([rule])).toEqual([rule]);
+  });
+
+  test("handles a list that mixes both shapes — a half-migrated block", () => {
+    expect(
+      normalizeBrandRules(["antiga", { name: "nova", value: "corpo" }]),
+    ).toEqual([
+      { name: "antiga", value: "" },
+      { name: "nova", value: "corpo" },
+    ]);
+  });
+
+  test("keeps a rule that has only a body", () => {
+    expect(normalizeBrandRules([{ value: "só o corpo" }])).toEqual([
+      { name: "", value: "só o corpo" },
+    ]);
+  });
+
+  test("drops entries that carry no text at all", () => {
+    expect(
+      normalizeBrandRules(["", "   ", {}, { name: "", value: "" }, null, 42]),
+    ).toEqual([]);
+  });
+
+  test("returns empty for a non-array, including the absent field", () => {
+    expect(normalizeBrandRules(undefined)).toEqual([]);
+    expect(normalizeBrandRules("nao é lista")).toEqual([]);
+    expect(normalizeBrandRules({ name: "solto" })).toEqual([]);
   });
 });
 

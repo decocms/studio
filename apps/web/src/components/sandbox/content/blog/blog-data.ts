@@ -769,6 +769,42 @@ export function isBlogPostBlockResolveType(resolveType: string): boolean {
   );
 }
 
+// ------------------ Brand rules (dos / guardrails / values / competitors) ----
+
+/**
+ * One editorial rule: a short name plus a markdown body. Replaces the flat
+ * strings these fields used to hold — a rule worth writing down needs more
+ * room than a single-line input, and a competitor is useless without the
+ * context of why it matters.
+ */
+export interface BrandRule {
+  name: string;
+  value: string;
+}
+
+/**
+ * Read a rule list from a brand block, tolerating the flat `string[]` shape
+ * that Spire wrote and that this editor saved before the change. A legacy
+ * string becomes the rule's name with an empty body, so nothing is lost and the
+ * block picks up the new shape on the next save — no migration.
+ */
+export function normalizeBrandRules(value: unknown): BrandRule[] {
+  if (!Array.isArray(value)) return [];
+  const rules: BrandRule[] = [];
+  for (const entry of value) {
+    if (typeof entry === "string") {
+      if (entry.trim()) rules.push({ name: entry, value: "" });
+      continue;
+    }
+    const record = asRecord(entry);
+    if (!record) continue;
+    const name = str(record.name);
+    const body = str(record.value);
+    if (name || body) rules.push({ name, value: body });
+  }
+  return rules;
+}
+
 // ------------------ Brand-evidence sampling (tone of voice) ------------------
 
 /** Total serialized chars sent to the model; keeps one call affordable. */

@@ -26,14 +26,23 @@ export const sandbox = {
   "sandbox.blogBrand.audienceLabel": "Target audience",
   "sandbox.blogBrand.categoriesLabel": "Blog categories",
   "sandbox.blogBrand.companyNameLabel": "Brand name",
+  "sandbox.blogBrand.competitorsBodyPlaceholder":
+    "How they position themselves, and where this brand differs",
+  "sandbox.blogBrand.competitorsHint":
+    "A brand doesn't name its rivals in its own copy, so these come from a web search when your organization has one configured.",
   "sandbox.blogBrand.competitorsLabel": "Competitors",
+  "sandbox.blogBrand.competitorsNamePlaceholder": "Competitor name",
   "sandbox.blogBrand.descriptionLabel": "What the brand does",
-  "sandbox.blogBrand.dontsLabel": "Don'ts",
+  "sandbox.blogBrand.dontsBodyPlaceholder":
+    "What not to do, and why — e.g. never print prices in a text block, use a ProductCard",
   "sandbox.blogBrand.dontsHint":
-    "Banned words, claims, formats and topics. Written as instructions.",
-  "sandbox.blogBrand.dosLabel": "Dos",
+    "Banned words, claims, formats and topics. Each one gets a name and the rule itself.",
+  "sandbox.blogBrand.dontsNamePlaceholder": "What this guardrail is about",
+  "sandbox.blogBrand.dosBodyPlaceholder":
+    "The instruction itself — e.g. open with the customer's problem, never with the company",
   "sandbox.blogBrand.dosHint":
-    "Instructions every generated post must follow. Written as instructions, not adjectives.",
+    "Instructions every generated post must follow. Write instructions, not adjectives.",
+  "sandbox.blogBrand.dosNamePlaceholder": "What this rule is about",
   "sandbox.blogBrand.extractButton": "Read this site's content",
   "sandbox.blogBrand.extractFailed":
     "Could not read the brand from this site's content",
@@ -47,14 +56,23 @@ export const sandbox = {
     "Nothing to fill — every field already has a value. Clear a field to refill it.",
   "sandbox.blogBrand.extracting": "Reading…",
   "sandbox.blogBrand.languageLabel": "Writing language",
+  "sandbox.blogBrand.noCompetitorsFound":
+    "No competitors found. Add them by hand, or configure a web search model for this organization.",
   "sandbox.blogBrand.removeItem": "Remove item",
   "sandbox.blogBrand.subtitle":
     "The voice and rules every generated post is written against. Saved to this site's own files.",
+  "sandbox.blogBrand.tabBasics": "Basics",
+  "sandbox.blogBrand.tabDos": "Generation rules",
+  "sandbox.blogBrand.tabExtra": "Extra context",
+  "sandbox.blogBrand.tabGuardrails": "Guardrails",
   "sandbox.blogBrand.title": "Brand context",
   "sandbox.blogBrand.toneLabel": "Tone of voice",
   "sandbox.blogBrand.toneHint":
     "How the brand writes: how it addresses the reader, sentence rhythm, humor, jargon level.",
+  "sandbox.blogBrand.valuesBodyPlaceholder":
+    "What the brand claims, and the evidence for it",
   "sandbox.blogBrand.valuesLabel": "Brand values",
+  "sandbox.blogBrand.valuesNamePlaceholder": "The value",
   "sandbox.blockRegistry.unknownBlockType":
     'Unknown block type{type ? ` (${type})` : ""}.',
   "sandbox.blockRegistry.writeSomethingPlaceholder": "Write something…",

@@ -904,12 +904,13 @@ export interface StudioToolIO {
       language: string;
       tone: string;
       targetAudience: string;
-      values: string[];
-      dos: string[];
-      avoid: string[];
+      values: { name: string; value: string }[];
+      dos: { name: string; value: string }[];
+      avoid: { name: string; value: string }[];
       categories: string[];
-      competitors: string[];
+      competitors: { name: string; value: string }[];
       sources: string[];
+      searchedCompetitors: boolean;
     };
   };
   BRAND_GET: {

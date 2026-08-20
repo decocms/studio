@@ -1,15 +1,30 @@
-import { generateObject } from "ai";
+import { generateObject, generateText } from "ai";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
-import { resolveTier } from "../../core/resolve-tier";
+import { resolveTier, tryResolveTier } from "../../core/resolve-tier";
 
 /**
- * Editorial brand context for blogpost generation.
- *
- * Field names match Spire's `blog-manager-brand.json` (`server/core/tools/context.ts`)
- * so a site whose block Spire already wrote stays readable here — `avoid` is the
- * don'ts list, `dos` is the only field this surface adds.
+ * One editorial rule: a short name plus a markdown body. Flat strings could not
+ * carry a rule worth writing down ("never print prices in a text block, use
+ * ProductCard") nor a competitor worth naming (a name alone says nothing about
+ * how the brand differs from it).
+ */
+const BrandRuleSchema = z.object({
+  name: z
+    .string()
+    .describe("Short phrase naming the rule — what it is about, not the rule"),
+  value: z
+    .string()
+    .describe(
+      "The rule itself, as markdown. One or two paragraphs; use a bullet list only when there are genuinely several cases. No heading — the name is the heading.",
+    ),
+});
+
+/**
+ * Editorial brand context for blogpost generation. Field names match Spire's
+ * `blog-manager-brand.json`; `normalizeBrandRules` (web) reads the older
+ * `string[]` rule lists too.
  */
 const BlogBrandSchema = z.object({
   companyName: z
@@ -38,29 +53,29 @@ const BlogBrandSchema = z.object({
       "Who reads this brand's content and what they came looking for. Infer from who the copy addresses and what it assumes the reader already cares about. Say so plainly rather than reaching for marketing personas.",
     ),
   values: z
-    .array(z.string())
+    .array(BrandRuleSchema)
     .describe(
-      "Brand values the content should carry, as the brand itself states them. Institutional copy is the best source — sustainability claims, sourcing commitments, stated numbers. Prefer a value the copy actually argues for over a generic virtue like 'quality' or 'innovation'.",
+      "Brand values the content should carry, as the brand itself states them. `name` is the value ('Biodiversidade brasileira'), `value` explains what the copy actually claims and the evidence for it — stated numbers, sourcing commitments. Prefer a value the copy argues for over a generic virtue like 'quality' or 'innovation'.",
     ),
   dos: z
-    .array(z.string())
+    .array(BrandRuleSchema)
     .describe(
-      "Imperative instructions a blogpost writer must follow for this brand. Derive them from patterns the copy consistently follows. Instructions, not adjectives: 'Open with the customer's problem, never with the company' beats 'customer-focused'. Any brand-specific word for an ordinary thing belongs here, quoted: \"call the shopping bag 'mochila', never 'carrinho'\".",
+      "Instructions a blogpost writer must follow for this brand, derived from patterns the copy consistently follows. `name` names the rule ('Abertura do post'), `value` is the imperative instruction — instructions, not adjectives: 'Open with the customer's problem, never with the company' beats 'customer-focused'. Any brand-specific word for an ordinary thing gets its own rule, quoted: \"call the shopping bag 'mochila', never 'carrinho'\".",
     ),
   avoid: z
-    .array(z.string())
+    .array(BrandRuleSchema)
     .describe(
-      "Imperative things a blogpost writer must not do — banned words, claims, formats, topics. Derive them from what the copy consistently never does, and from any claim the brand is visibly careful about. Do not restate a `dos` entry inverted.",
+      "Things a blogpost writer must not do — banned words, claims, formats, topics. `name` names the guardrail, `value` states the prohibition and why the copy suggests it. Derive them from what the copy consistently never does and from claims the brand is visibly careful about. Do not restate a `dos` entry inverted.",
     ),
   categories: z
     .array(z.string())
     .describe(
-      "Content categories that fit this brand's blog. Take existing category blocks first; with no blog, derive them from the themes the site's own pages keep returning to. Editorial subjects, not the product taxonomy.",
+      "Content categories that fit this brand's blog, as plain names — this is a taxonomy, not a rule, so no body. Take existing category blocks first; with no blog, derive them from the themes the site's own pages keep returning to. Editorial subjects, not the product taxonomy.",
     ),
   competitors: z
-    .array(z.string())
+    .array(BrandRuleSchema)
     .describe(
-      "Competitors named explicitly in the content. A brand rarely names them in its own copy — return an empty array unless a name is actually there. Never guess from the market segment.",
+      "Competitors named explicitly in the content. A brand rarely names them in its own copy — return an empty array unless a name is actually there, and never guess from the market segment. When one is named, `name` is the competitor and `value` is what the content says about it.",
     ),
 });
 
@@ -89,6 +104,69 @@ Two rules that override everything else:
 /** Caps on what a client may send — the request body is a trust boundary. */
 const MAX_BLOCKS = 60;
 const MAX_BLOCK_CHARS = 12_000;
+
+const COMPETITOR_SYSTEM = `You turn a web-research summary into a list of a brand's competitors.
+
+For each competitor: \`name\` is the competitor's name, \`value\` is markdown covering how it positions itself and where it differs from the brand in question — the angle a writer would need to avoid sounding like them.
+
+Only list competitors the research text actually names. If it names none, return an empty array. Never fill the list from what you know about the market segment: this list drives generated content, and an invented competitor becomes a false premise in every post that reads it.`;
+
+const CompetitorsSchema = z.object({
+  competitors: z.array(BrandRuleSchema),
+});
+
+/**
+ * Competitors are the one field a site's own blocks cannot answer — a brand does
+ * not name its rivals in its own copy. So when the org has a `web_search` tier,
+ * search for them.
+ *
+ * `mode: "quick"` of the chat harness's research hook reduces to a plain call
+ * against the search-capable model (`cluster-research-job.ts` → `runStreamingResearch`),
+ * so this does the same with `generateText` instead of importing the harness and
+ * inventing a `taskId`/`toolCallId` for a durable job it doesn't need.
+ *
+ * Returns `[]` when the org has no `web_search` tier configured, when the search
+ * yields nothing, or on any failure: this enriches the result, it must never be
+ * what makes the extract fail.
+ */
+async function searchCompetitors(
+  ctx: Parameters<typeof resolveTier>[0],
+  organizationId: string,
+  brand: { companyName: string; description: string },
+): Promise<z.infer<typeof BrandRuleSchema>[]> {
+  if (!brand.companyName.trim()) return [];
+  const searchTier = await tryResolveTier(ctx, "web_search");
+  if (!searchTier) return [];
+
+  try {
+    const searchProvider = await ctx.aiProviders.activate(
+      searchTier.credentialId,
+      organizationId,
+    );
+    const { text } = await generateText({
+      model: searchProvider.aiSdk.languageModel(searchTier.modelId),
+      prompt: `Who are the main competitors of ${brand.companyName}? Context on the company: ${brand.description}\n\nFor each competitor, say how it positions itself and how it differs from ${brand.companyName}. Name only companies you can actually source.`,
+    });
+    if (!text.trim()) return [];
+
+    const smartTier = await resolveTier(ctx, "smart");
+    const smartProvider = await ctx.aiProviders.activate(
+      smartTier.credentialId,
+      organizationId,
+    );
+    const { object } = await generateObject({
+      model: smartProvider.aiSdk.languageModel(smartTier.modelId),
+      schema: CompetitorsSchema,
+      system: COMPETITOR_SYSTEM,
+      prompt: `Brand: ${brand.companyName}\n\nResearch:\n${text}`,
+      temperature: 0.2,
+    });
+    return object.competitors;
+  } catch (err) {
+    console.warn("[BLOG_BRAND_EXTRACT] competitor search failed", err);
+    return [];
+  }
+}
 
 export const BLOG_BRAND_EXTRACT = defineTool({
   name: "BLOG_BRAND_EXTRACT",
@@ -124,10 +202,15 @@ export const BLOG_BRAND_EXTRACT = defineTool({
 
   outputSchema: BlogBrandSchema.extend({
     sources: z.array(z.string()).describe("Block keys the inference read"),
+    searchedCompetitors: z
+      .boolean()
+      .describe(
+        "True when the blocks named no competitor, so a web search was attempted. An empty `competitors` alongside this means the search found none, or the org has no web_search tier.",
+      ),
   }),
 
   modelSummary: (r) =>
-    `Editorial brand inferred for ${r.companyName} from ${r.sources.length} block(s): tone captured, ${r.dos.length} dos, ${r.avoid.length} don'ts, ${r.categories.length} categories. Not yet saved.`,
+    `Editorial brand inferred for ${r.companyName} from ${r.sources.length} block(s): tone captured, ${r.dos.length} dos, ${r.avoid.length} don'ts, ${r.categories.length} categories, ${r.competitors.length} competitors${r.searchedCompetitors ? " (from web search)" : ""}. Not yet saved.`,
 
   handler: async (input, ctx) => {
     requireAuth(ctx);
@@ -156,6 +239,17 @@ export const BLOG_BRAND_EXTRACT = defineTool({
       temperature: 0.2,
     });
 
-    return { ...object, sources: input.blocks.map((b) => b.key) };
+    // The blocks can't name competitors, so search only when they didn't.
+    const competitors =
+      object.competitors.length > 0
+        ? object.competitors
+        : await searchCompetitors(ctx, organizationId, object);
+
+    return {
+      ...object,
+      competitors,
+      searchedCompetitors: object.competitors.length === 0,
+      sources: input.blocks.map((b) => b.key),
+    };
   },
 });

@@ -5,14 +5,25 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@decocms/ui/components/tabs.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { useStudioTools } from "@/lib/studio-tools";
+import { MarkdownEditor } from "@/components/markdown-editor";
 import { usePackagePath } from "@/components/sections-editor/use-package-path";
 import { extractPages } from "@/components/sections-editor/page-list";
 import { useSaveBlogBlock } from "./use-blog-mutations";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
-import { selectBrandEvidenceBlocks } from "./blog-data";
+import {
+  type BrandRule,
+  normalizeBrandRules,
+  selectBrandEvidenceBlocks,
+} from "./blog-data";
 import { AddButton, RemoveButton, str } from "./blocks/primitives";
 
 /**
@@ -31,14 +42,8 @@ const EMPTY_BRAND: Record<string, unknown> = {};
 
 /** Free-text fields the extractor may fill. */
 const TEXT_FIELDS = ["description", "tone", "targetAudience"] as const;
-/** List fields the extractor may fill. */
-const LIST_FIELDS = [
-  "values",
-  "dos",
-  "avoid",
-  "categories",
-  "competitors",
-] as const;
+/** Fields holding `{ name, value }` rules. */
+const RULE_FIELDS = ["values", "dos", "avoid", "competitors"] as const;
 
 function strList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v) => typeof v === "string") : [];
@@ -75,6 +80,8 @@ export function BlogBrandEditor({
     setBrand({ ...brand, [key]: value });
 
   const [isExtracting, setIsExtracting] = useState(false);
+  /** Bumped to remount the markdown editors: they read `defaultValue` once. */
+  const [editorRevision, setEditorRevision] = useState(0);
 
   /** The site's own content, ranked by how much it reveals about the voice. */
   const evidence = selectBrandEvidenceBlocks(
@@ -82,11 +89,7 @@ export function BlogBrandEditor({
     extractPages(decofile).map((page) => page.key),
   );
 
-  /**
-   * Read the site's own blocks and fill from them. Only writes into fields that
-   * are currently empty — re-running must never wipe dos/don'ts someone wrote
-   * by hand, which is the whole point of having them.
-   */
+  /** Fill from the site's own blocks, writing only into fields still empty. */
   const extract = async () => {
     if (evidence.length === 0) return;
     setIsExtracting(true);
@@ -111,14 +114,22 @@ export function BlogBrandEditor({
           filled.push(field);
         }
       }
-      for (const field of LIST_FIELDS) {
-        if (strList(next[field]).length === 0 && result[field]?.length) {
+      for (const field of RULE_FIELDS) {
+        if (
+          normalizeBrandRules(next[field]).length === 0 &&
+          result[field]?.length
+        ) {
           next[field] = result[field];
           filled.push(field);
         }
       }
+      if (strList(next.categories).length === 0 && result.categories?.length) {
+        next.categories = result.categories;
+        filled.push("categories");
+      }
 
       setBrand(next);
+      setEditorRevision((n) => n + 1);
       toast.success(
         filled.length > 0
           ? t("sandbox.blogBrand.extractFilled", {
@@ -126,6 +137,9 @@ export function BlogBrandEditor({
             })
           : t("sandbox.blogBrand.extractNothingEmpty"),
       );
+      if (result.searchedCompetitors && result.competitors.length === 0) {
+        toast.info(t("sandbox.blogBrand.noCompetitorsFound"));
+      }
     } catch (err) {
       toast.error(
         err instanceof Error
@@ -136,6 +150,19 @@ export function BlogBrandEditor({
       setIsExtracting(false);
     }
   };
+
+  const ruleListFor = (
+    field: (typeof RULE_FIELDS)[number],
+    labels: { add: string; namePlaceholder: string; bodyPlaceholder: string },
+  ) => (
+    <RuleList
+      rules={normalizeBrandRules(brand[field])}
+      onChange={(rules) => setField(field, rules)}
+      revision={editorRevision}
+      idPrefix={field}
+      {...labels}
+    />
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -157,7 +184,7 @@ export function BlogBrandEditor({
             </p>
           </div>
 
-          {/* Read the brand from the site's own content */}
+          {/* Outside the tabs on purpose: it fills fields across all four. */}
           <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
             <div className="space-y-1">
               <Label>{t("sandbox.blogBrand.extractLabel")}</Label>
@@ -183,75 +210,118 @@ export function BlogBrandEditor({
             </Button>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field
-              id="brand-company-name"
-              label={t("sandbox.blogBrand.companyNameLabel")}
-              value={str(brand.companyName)}
-              onChange={(v) => setField("companyName", v)}
-            />
-            <Field
-              id="brand-language"
-              label={t("sandbox.blogBrand.languageLabel")}
-              placeholder="pt-BR"
-              value={str(brand.language)}
-              onChange={(v) => setField("language", v)}
-            />
-          </div>
+          <Tabs defaultValue="basics">
+            <TabsList>
+              <TabsTrigger value="basics">
+                {t("sandbox.blogBrand.tabBasics")}
+              </TabsTrigger>
+              <TabsTrigger value="dos">
+                {t("sandbox.blogBrand.tabDos")}
+              </TabsTrigger>
+              <TabsTrigger value="guardrails">
+                {t("sandbox.blogBrand.tabGuardrails")}
+              </TabsTrigger>
+              <TabsTrigger value="extra">
+                {t("sandbox.blogBrand.tabExtra")}
+              </TabsTrigger>
+            </TabsList>
 
-          <TextAreaField
-            id="brand-description"
-            label={t("sandbox.blogBrand.descriptionLabel")}
-            value={str(brand.description)}
-            onChange={(v) => setField("description", v)}
-          />
-          <TextAreaField
-            id="brand-tone"
-            label={t("sandbox.blogBrand.toneLabel")}
-            hint={t("sandbox.blogBrand.toneHint")}
-            value={str(brand.tone)}
-            onChange={(v) => setField("tone", v)}
-            rows={5}
-          />
-          <TextAreaField
-            id="brand-audience"
-            label={t("sandbox.blogBrand.audienceLabel")}
-            value={str(brand.targetAudience)}
-            onChange={(v) => setField("targetAudience", v)}
-          />
+            <TabsContent value="basics" className="space-y-6 pt-6">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field
+                  id="brand-company-name"
+                  label={t("sandbox.blogBrand.companyNameLabel")}
+                  value={str(brand.companyName)}
+                  onChange={(v) => setField("companyName", v)}
+                />
+                <Field
+                  id="brand-language"
+                  label={t("sandbox.blogBrand.languageLabel")}
+                  placeholder="pt-BR"
+                  value={str(brand.language)}
+                  onChange={(v) => setField("language", v)}
+                />
+              </div>
+              <TextAreaField
+                id="brand-description"
+                label={t("sandbox.blogBrand.descriptionLabel")}
+                value={str(brand.description)}
+                onChange={(v) => setField("description", v)}
+              />
+              <TextAreaField
+                id="brand-tone"
+                label={t("sandbox.blogBrand.toneLabel")}
+                hint={t("sandbox.blogBrand.toneHint")}
+                value={str(brand.tone)}
+                onChange={(v) => setField("tone", v)}
+                rows={5}
+              />
+              <TextAreaField
+                id="brand-audience"
+                label={t("sandbox.blogBrand.audienceLabel")}
+                value={str(brand.targetAudience)}
+                onChange={(v) => setField("targetAudience", v)}
+              />
+            </TabsContent>
 
-          <StringList
-            label={t("sandbox.blogBrand.dosLabel")}
-            hint={t("sandbox.blogBrand.dosHint")}
-            addLabel={t("sandbox.blogBrand.addDo")}
-            values={strList(brand.dos)}
-            onChange={(v) => setField("dos", v)}
-          />
-          <StringList
-            label={t("sandbox.blogBrand.dontsLabel")}
-            hint={t("sandbox.blogBrand.dontsHint")}
-            addLabel={t("sandbox.blogBrand.addDont")}
-            values={strList(brand.avoid)}
-            onChange={(v) => setField("avoid", v)}
-          />
-          <StringList
-            label={t("sandbox.blogBrand.valuesLabel")}
-            addLabel={t("sandbox.blogBrand.addValue")}
-            values={strList(brand.values)}
-            onChange={(v) => setField("values", v)}
-          />
-          <StringList
-            label={t("sandbox.blogBrand.categoriesLabel")}
-            addLabel={t("sandbox.blogBrand.addCategory")}
-            values={strList(brand.categories)}
-            onChange={(v) => setField("categories", v)}
-          />
-          <StringList
-            label={t("sandbox.blogBrand.competitorsLabel")}
-            addLabel={t("sandbox.blogBrand.addCompetitor")}
-            values={strList(brand.competitors)}
-            onChange={(v) => setField("competitors", v)}
-          />
+            <TabsContent value="dos" className="space-y-2 pt-6">
+              <p className="text-sm text-muted-foreground">
+                {t("sandbox.blogBrand.dosHint")}
+              </p>
+              {ruleListFor("dos", {
+                add: t("sandbox.blogBrand.addDo"),
+                namePlaceholder: t("sandbox.blogBrand.dosNamePlaceholder"),
+                bodyPlaceholder: t("sandbox.blogBrand.dosBodyPlaceholder"),
+              })}
+            </TabsContent>
+
+            <TabsContent value="guardrails" className="space-y-2 pt-6">
+              <p className="text-sm text-muted-foreground">
+                {t("sandbox.blogBrand.dontsHint")}
+              </p>
+              {ruleListFor("avoid", {
+                add: t("sandbox.blogBrand.addDont"),
+                namePlaceholder: t("sandbox.blogBrand.dontsNamePlaceholder"),
+                bodyPlaceholder: t("sandbox.blogBrand.dontsBodyPlaceholder"),
+              })}
+            </TabsContent>
+
+            <TabsContent value="extra" className="space-y-8 pt-6">
+              <section className="space-y-2">
+                <Label>{t("sandbox.blogBrand.valuesLabel")}</Label>
+                {ruleListFor("values", {
+                  add: t("sandbox.blogBrand.addValue"),
+                  namePlaceholder: t("sandbox.blogBrand.valuesNamePlaceholder"),
+                  bodyPlaceholder: t("sandbox.blogBrand.valuesBodyPlaceholder"),
+                })}
+              </section>
+
+              <section className="space-y-2">
+                <Label>{t("sandbox.blogBrand.categoriesLabel")}</Label>
+                <StringList
+                  addLabel={t("sandbox.blogBrand.addCategory")}
+                  values={strList(brand.categories)}
+                  onChange={(v) => setField("categories", v)}
+                />
+              </section>
+
+              <section className="space-y-2">
+                <Label>{t("sandbox.blogBrand.competitorsLabel")}</Label>
+                <p className="text-xs text-muted-foreground">
+                  {t("sandbox.blogBrand.competitorsHint")}
+                </p>
+                {ruleListFor("competitors", {
+                  add: t("sandbox.blogBrand.addCompetitor"),
+                  namePlaceholder: t(
+                    "sandbox.blogBrand.competitorsNamePlaceholder",
+                  ),
+                  bodyPlaceholder: t(
+                    "sandbox.blogBrand.competitorsBodyPlaceholder",
+                  ),
+                })}
+              </section>
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
     </div>
@@ -315,19 +385,72 @@ function TextAreaField({
 }
 
 /**
- * Editable list of free-text lines (dos, don'ts, values, categories). Rows are
- * keyed by index: they carry no stable id and reordering isn't offered, so
- * position is the identity.
+ * Editable `{ name, value }` rules — a one-line name and a markdown body. Rows
+ * key by index (no stable id, no reordering); `revision` keys the editors so an
+ * outside fill remounts them.
  */
+function RuleList({
+  rules,
+  onChange,
+  revision,
+  idPrefix,
+  add,
+  namePlaceholder,
+  bodyPlaceholder,
+}: {
+  rules: BrandRule[];
+  onChange: (rules: BrandRule[]) => void;
+  revision: number;
+  idPrefix: string;
+  add: string;
+  namePlaceholder: string;
+  bodyPlaceholder: string;
+}) {
+  const t = useT();
+  const replaceAt = (index: number, patch: Partial<BrandRule>) =>
+    onChange(rules.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+
+  return (
+    <div className="space-y-3">
+      {rules.map((rule, index) => (
+        <div
+          key={index}
+          className="group/item space-y-2 rounded-lg border bg-card p-3"
+        >
+          <div className="flex items-center gap-1.5">
+            <Input
+              value={rule.name}
+              placeholder={namePlaceholder}
+              onChange={(e) => replaceAt(index, { name: e.target.value })}
+              className="h-9 font-medium"
+            />
+            <RemoveButton
+              label={t("sandbox.blogBrand.removeItem")}
+              onClick={() => onChange(rules.filter((_, i) => i !== index))}
+            />
+          </div>
+          <MarkdownEditor
+            key={`${idPrefix}-${index}-${revision}`}
+            defaultValue={rule.value}
+            placeholder={bodyPlaceholder}
+            onChange={(markdown) => replaceAt(index, { value: markdown })}
+          />
+        </div>
+      ))}
+      <AddButton
+        label={add}
+        onClick={() => onChange([...rules, { name: "", value: "" }])}
+      />
+    </div>
+  );
+}
+
+/** Editable list of plain names — used for the blog category taxonomy. */
 function StringList({
-  label,
-  hint,
   addLabel,
   values,
   onChange,
 }: {
-  label: string;
-  hint?: string;
   addLabel: string;
   values: string[];
   onChange: (values: string[]) => void;
@@ -335,8 +458,6 @@ function StringList({
   const t = useT();
   return (
     <div className="space-y-2">
-      <Label>{label}</Label>
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       <div className="space-y-1.5">
         {values.map((value, index) => (
           <div key={index} className="group/item flex items-center gap-1.5">
