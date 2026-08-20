@@ -14,6 +14,8 @@ interface UseDecofileParams {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
+  /** The session reading; `null` only for a thread-less surface. */
+  threadId: string | null;
   previewUrl?: string | null;
 }
 

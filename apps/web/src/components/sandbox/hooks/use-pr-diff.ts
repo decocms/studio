@@ -35,6 +35,7 @@ export function usePrDiff(args: {
   orgId: string;
   virtualMcpId: string;
   branch: string;
+  threadId: string | null;
   base: string;
   headSha: string;
   pullNumber: number;
@@ -48,6 +49,7 @@ export function usePrDiff(args: {
     orgId,
     virtualMcpId,
     branch,
+    threadId,
     base,
     headSha,
     pullNumber,
@@ -75,10 +77,10 @@ export function usePrDiff(args: {
     ),
     queryFn: async () => {
       try {
-        const sandboxDiff = await fetchGitDiff(orgSlug, virtualMcpId, branch, {
-          base,
-          headSha,
-        });
+        const sandboxDiff = await fetchGitDiff(
+          { orgSlug, virtualMcpId, branch, threadId },
+          { base, headSha },
+        );
         if (countGitDiffFiles(sandboxDiff) > 0) return sandboxDiff;
 
         return fetchGithubPrDiff(githubClient, {

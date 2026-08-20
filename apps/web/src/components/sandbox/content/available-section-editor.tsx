@@ -1,3 +1,4 @@
+import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useState } from "react";
 import { ChevronRight, Save01 } from "@untitledui/icons";
 import { toast } from "sonner";
@@ -77,10 +78,12 @@ export function AvailableSectionEditor({
       .pop()
       ?.replace(/\.tsx?$/, "") ?? resolveType;
 
+  const threadId = useOptionalChatTask()?.taskId ?? null;
   const sandbox = {
     orgSlug,
     virtualMcpId,
     branch,
+    threadId,
     previewUrl: previewUrl ?? undefined,
     siteSlug: agentSiteSlug,
   };

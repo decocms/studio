@@ -239,6 +239,7 @@ export function useMainPanelTabs(ctx: {
           orgSlug: org.slug,
           virtualMcpId: entity.id,
           branch: currentBranch,
+          threadId: activeTask?.id ?? null,
           previewUrl,
         }
       : null;

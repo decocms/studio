@@ -297,7 +297,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Mobile / standalone (no header slot): render the toolbar inline below.
   const headerSlot = useMainPanelHeaderSlot();
   const navigate = useNavigate();
-  const { currentBranch: branch } = useChatTask();
+  const { currentBranch: branch, taskId: activeTaskId } = useChatTask();
   const workspace = useBlocksPreviewWorkspace();
 
   const goToTab = (main: string) => {
@@ -402,6 +402,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     orgSlug: org.slug,
     virtualMcpId: virtualMcpId ?? "",
     branch: branch ?? "",
+    threadId: activeTaskId ?? null,
     enabled: isDesktopSandbox && devServerReady && !!virtualMcpId && !!branch,
   });
   // Guard the value, not just the query: React Query's staleTime=Infinity cache
@@ -444,7 +445,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // rendered inside the iframe, which the dev server serves.)
   const decofileParams =
     virtualMcpId && branch
-      ? { orgSlug: org.slug, virtualMcpId, branch, previewUrl }
+      ? {
+          orgSlug: org.slug,
+          virtualMcpId,
+          branch,
+          threadId: activeTaskId ?? null,
+          previewUrl,
+        }
       : null;
   const decofileQuery = useDecofile(decofileParams, {
     fetchEnabled: devServerReady,
@@ -562,7 +569,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     }
   }
   const pickerSandboxRef =
-    virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
+    virtualMcpId && branch
+      ? {
+          orgSlug: org.slug,
+          virtualMcpId,
+          branch,
+          threadId: activeTaskId ?? null,
+        }
+      : null;
 
   // Per-section metadata for the CMS hover overlay, aligned by index with the
   // iframe's top-level section list. `label`: ONLY global (saved block)

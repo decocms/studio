@@ -1,3 +1,4 @@
+import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useEffect, useState } from "react";
 import {
   ArrowLeft,
@@ -93,6 +94,7 @@ export function RunnableBlockEditor({
   /** Show the "Run" button (invoke + result panel). Defaults to true. */
   showRun?: boolean;
 }) {
+  const threadId = useOptionalChatTask()?.taskId ?? null;
   const t = useT();
   const inset = useInsetContext();
   const agentSiteSlug =
@@ -132,7 +134,7 @@ export function RunnableBlockEditor({
     virtualMcpId,
     branch,
   });
-  const run = useRunBlock({ orgSlug, virtualMcpId, branch });
+  const run = useRunBlock({ orgSlug, virtualMcpId, branch, threadId });
 
   // useDebouncedSaveBlock CANCELS pending saves on unmount (its documented
   // contract is that leaving callers flush explicitly). This editor unmounts on
@@ -158,6 +160,7 @@ export function RunnableBlockEditor({
     orgSlug,
     virtualMcpId,
     branch,
+    threadId,
     previewUrl: previewUrl ?? undefined,
     siteSlug: agentSiteSlug,
   };

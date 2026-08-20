@@ -1,3 +1,4 @@
+import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useState } from "react";
 import { ChevronRight, Code01, X } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -106,10 +107,12 @@ export function SavedSectionEditor({
   const blockData = decofile[blockKey] as Record<string, unknown> | undefined;
   const title = blockData ? globalSectionLabel(blockKey, blockData) : blockKey;
 
+  const threadId = useOptionalChatTask()?.taskId ?? null;
   const sandbox = {
     orgSlug,
     virtualMcpId,
     branch,
+    threadId,
     previewUrl: previewUrl ?? undefined,
     siteSlug: agentSiteSlug,
   };

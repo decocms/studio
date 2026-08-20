@@ -316,6 +316,7 @@ export function DynamicOptionsField({
             orgSlug: sandbox!.orgSlug,
             virtualMcpId: sandbox!.virtualMcpId,
             branch: sandbox!.branch,
+            threadId: sandbox!.threadId,
             previewUrl,
           },
           "/sprites.svg",

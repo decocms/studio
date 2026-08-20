@@ -40,7 +40,7 @@ export function CodeTab({ openPath }: { openPath: string | null }) {
   const t = useT();
   const inset = useInsetContext();
   const { org } = useProjectContext();
-  const { currentBranch: branch } = useChatTask();
+  const { currentBranch: branch, taskId } = useChatTask();
   const virtualMcpId = inset?.entity?.id ?? null;
 
   const lifecycle = useSandboxLifecycle();
@@ -53,6 +53,7 @@ export function CodeTab({ openPath }: { openPath: string | null }) {
     orgSlug: org.slug,
     virtualMcpId: virtualMcpId ?? "",
     branch: branch ?? "",
+    threadId: taskId ?? null,
     enabled: isDesktopSandbox && devServerReady && !!virtualMcpId && !!branch,
   });
   const repoDir = isDesktopSandbox ? rawRepoDir : null;
@@ -128,6 +129,7 @@ export function CodeTab({ openPath }: { openPath: string | null }) {
             orgSlug={org.slug}
             virtualMcpId={virtualMcpId}
             branch={branch}
+            threadId={taskId ?? null}
             openPath={openPath}
           />
         </Suspense>

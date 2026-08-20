@@ -1,3 +1,5 @@
+import { useOptionalChatTask } from "@/components/chat/chat-context";
+import { buildSandboxUrl } from "@/sdk/sandbox-url";
 /**
  * Single SSE connection to studio's `/api/:org/sandbox/:virtualMcpId/:branch/events`, fanned out via context.
  *
@@ -220,6 +222,7 @@ export function SandboxEventsProvider({
   // from disk, and a refetch could revert an optimistic edit against a committed
   // `blocks.gen.json`.
   const vmcp = useVirtualMCP(virtualMcpId ?? undefined);
+  const taskId = useOptionalChatTask()?.taskId ?? null;
   const fastPreviewActive = resolveFastPreview(
     vmcp?.metadata,
     useActiveThreadMeta(),
@@ -269,7 +272,10 @@ export function SandboxEventsProvider({
 
     if (!virtualMcpId || !branch || !enabled) return;
 
-    const sseUrl = `/api/${encodeURIComponent(org.slug)}/sandbox/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/events`;
+    const sseUrl = buildSandboxUrl(
+      { orgSlug: org.slug, virtualMcpId, branch, threadId: taskId ?? null },
+      "events",
+    );
 
     let disposed = false;
     let reconnectAttempt = 0;

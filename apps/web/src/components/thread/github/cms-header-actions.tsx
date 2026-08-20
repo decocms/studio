@@ -94,7 +94,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   const queryClient = useQueryClient();
   const { data: session } = authClient.useSession();
   const vm = useVirtualMCP(virtualMcpId);
-  const { currentBranch: branch, setCurrentTaskBranch } = useChatTask();
+  const { currentBranch: branch, setCurrentTaskBranch, taskId } = useChatTask();
   /** One popover, two modes. `mode` outlives `open` so the closing animation
    *  doesn't flash the other mode's labels on its way out. */
   const [surface, setSurface] = useState<{
@@ -134,7 +134,12 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
    *  this key. Shared verbatim with the publish popover, which reads the
    *  changed-file manifest off the same entry — hence one options factory. */
   const statusQuery = useQuery({
-    ...sandboxGitStatusQueryOptions(org.slug, virtualMcpId, branch ?? ""),
+    ...sandboxGitStatusQueryOptions({
+      orgSlug: org.slug,
+      virtualMcpId,
+      branch: branch ?? "",
+      threadId: taskId ?? null,
+    }),
     enabled: !!branch,
   });
   const status = statusQuery.data ?? null;
@@ -226,7 +231,15 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
 
   const getLatest = useMutation({
     mutationFn: async (target: { branch: string; base: string }) => {
-      await rebaseGitBranch(org.slug, virtualMcpId, target.branch, target.base);
+      await rebaseGitBranch(
+        {
+          orgSlug: org.slug,
+          virtualMcpId,
+          branch: target.branch,
+          threadId: taskId ?? null,
+        },
+        target.base,
+      );
       return target;
     },
     /** Invalidates drift AND the editor's content: the merge moved the head. */
@@ -236,11 +249,12 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
       );
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: sandboxGitStatusQueryKey(
-            org.slug,
+          queryKey: sandboxGitStatusQueryKey({
+            orgSlug: org.slug,
             virtualMcpId,
-            branch ?? target.branch,
-          ),
+            branch: branch ?? target.branch,
+            threadId: taskId ?? null,
+          }),
         }),
         queryClient.invalidateQueries({
           queryKey: KEYS.decofile(

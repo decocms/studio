@@ -57,6 +57,8 @@ import {
   type GitStatus,
   type PublishPolicy,
 } from "./sandbox-git-api.ts";
+import type { SandboxProxyRef } from "@/sdk/sandbox-url";
+import { useOptionalChatTask } from "@/components/chat/chat-context";
 
 export type PublishDialogIntent = "open-pr" | "publish-only";
 
@@ -141,6 +143,13 @@ function PublishDialogBody({
   });
   const { data: session } = authClient.useSession();
   const startSandbox = useSandboxStart(selfClient);
+  /** This dialog always renders inside a thread; the ref is what the git routes resolve their runtime from. */
+  const sandboxRef: SandboxProxyRef = {
+    orgSlug,
+    virtualMcpId,
+    branch,
+    threadId: useOptionalChatTask()?.taskId ?? null,
+  };
 
   const coAuthor = coAuthorFromSessionUser(session?.user);
 
@@ -184,22 +193,20 @@ function PublishDialogBody({
   const loadPublishDiff = async (status: GitStatus): Promise<GitDiffResult> => {
     const baseDiff =
       (status.aheadOfBase ?? 0) > 0
-        ? await fetchGitDiff(orgSlug, virtualMcpId, branch, baseDiffOpts)
+        ? await fetchGitDiff(sandboxRef, baseDiffOpts)
         : null;
     const workingDiff = hasGitLocalWork(status)
-      ? await fetchGitDiff(orgSlug, virtualMcpId, branch)
+      ? await fetchGitDiff(sandboxRef)
       : null;
     return combinePublishDiffs(baseDiff, workingDiff);
   };
 
   const loadGitState = async () => {
-    const status = await fetchGitStatus(orgSlug, virtualMcpId, branch);
+    const status = await fetchGitStatus(sandboxRef);
     const diff = isPublishOnly
       ? await loadPublishDiff(status)
       : await fetchGitDiff(
-          orgSlug,
-          virtualMcpId,
-          branch,
+          sandboxRef,
           shouldUseBaseDiff(status, { openPrFromCommits, commitToOpenPr })
             ? baseDiffOpts
             : undefined,
@@ -213,7 +220,7 @@ function PublishDialogBody({
     );
 
     setIsGeneratingSuggestion(true);
-    fetchSuggestCommitMessage(orgSlug, virtualMcpId, branch, {
+    fetchSuggestCommitMessage(sandboxRef, {
       status,
       diff,
     })
@@ -276,7 +283,7 @@ function PublishDialogBody({
   const regenerateSuggestion = () => {
     if (!gitStatus || !gitDiff) return;
     setIsGeneratingSuggestion(true);
-    void fetchSuggestCommitMessage(orgSlug, virtualMcpId, branch, {
+    void fetchSuggestCommitMessage(sandboxRef, {
       status: gitStatus,
       diff: gitDiff,
     })
@@ -299,6 +306,7 @@ function PublishDialogBody({
     orgSlug,
     virtualMcpId,
     branch,
+    threadId: sandboxRef.threadId,
     status: gitStatus,
     diff: gitDiff,
     policy: publishPolicy,
@@ -333,6 +341,7 @@ function PublishDialogBody({
     orgSlug,
     virtualMcpId,
     branch,
+    threadId: sandboxRef.threadId,
     baseBranch,
     githubClient,
     owner,
@@ -380,7 +389,7 @@ function PublishDialogBody({
 
   const handleDiscardFile = async (filepath: string) => {
     try {
-      await discardGitFiles(orgSlug, virtualMcpId, branch, [filepath]);
+      await discardGitFiles(sandboxRef, [filepath]);
       toast.success(t("thread.publishDialog.discardedChanges", { filepath }));
       setGitDiff((prev) => {
         if (!prev) return prev;
@@ -388,7 +397,7 @@ function PublishDialogBody({
         delete next.diffs[filepath];
         return next;
       });
-      const status = await fetchGitStatus(orgSlug, virtualMcpId, branch);
+      const status = await fetchGitStatus(sandboxRef);
       setGitStatus(status);
     } catch (error) {
       toast.error(
@@ -406,10 +415,10 @@ function PublishDialogBody({
     try {
       const allFiles = Object.keys(gitDiff.diffs);
       if (allFiles.length === 0) return;
-      await discardGitFiles(orgSlug, virtualMcpId, branch, allFiles);
+      await discardGitFiles(sandboxRef, allFiles);
       toast.success(t("thread.publishDialog.allChangesDiscarded"));
       setGitDiff(null);
-      const status = await fetchGitStatus(orgSlug, virtualMcpId, branch);
+      const status = await fetchGitStatus(sandboxRef);
       setGitStatus(status);
       handleOpenChange(false);
     } catch (error) {

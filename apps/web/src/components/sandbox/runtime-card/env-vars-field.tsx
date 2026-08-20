@@ -1,3 +1,4 @@
+import { buildSandboxUrl } from "@/sdk/sandbox-url";
 import { Suspense, useState } from "react";
 import type {
   Control,
@@ -173,7 +174,11 @@ function RunningSandboxNotice<T extends FieldValues>({
     setRestarting(true);
     const results = await Promise.allSettled(
       userBranches.map(async (branch) => {
-        const url = `/api/${encodeURIComponent(orgSlug)}/sandbox/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/setup/start`;
+        // Project settings, no thread: `/setup/:step` is pod-addressed and ignores runtime.
+        const url = buildSandboxUrl(
+          { orgSlug, virtualMcpId, branch, threadId: null },
+          "setup/start",
+        );
         const res = await fetch(url, { method: "POST" });
         if (!res.ok) {
           const body = await res.text().catch(() => res.statusText);

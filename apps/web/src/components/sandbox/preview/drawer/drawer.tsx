@@ -1,3 +1,5 @@
+import { buildSandboxUrl } from "@/sdk/sandbox-url";
+import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { WELL_KNOWN_STARTERS } from "@decocms/sandbox/shared";
 import { useRef, useState } from "react";
 import { Play } from "@untitledui/icons";
@@ -86,18 +88,25 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
   // Studio's sandbox proxy route requires virtualMcpId+branch in the path to
   // compute the per-user claim handle. Without them the request 400s
   // before reaching the daemon.
+  const taskId = useOptionalChatTask()?.taskId ?? null;
+  const execRef = {
+    orgSlug: props.orgSlug,
+    virtualMcpId: props.virtualMcpId ?? "",
+    branch: props.branch ?? "",
+    threadId: taskId ?? null,
+  };
+
   const execScript = (name: string) => {
     if (!props.virtualMcpId || !props.branch) return Promise.resolve(null);
-    return fetch(
-      `/api/${encodeURIComponent(props.orgSlug)}/sandbox/${encodeURIComponent(props.virtualMcpId)}/${encodeURIComponent(props.branch)}/exec/${encodeURIComponent(name)}`,
-      { method: "POST" },
-    );
+    return fetch(buildSandboxUrl(execRef, `exec/${encodeURIComponent(name)}`), {
+      method: "POST",
+    });
   };
 
   const killScript = (name: string) => {
     if (!props.virtualMcpId || !props.branch) return Promise.resolve(null);
     return fetch(
-      `/api/${encodeURIComponent(props.orgSlug)}/sandbox/${encodeURIComponent(props.virtualMcpId)}/${encodeURIComponent(props.branch)}/exec/${encodeURIComponent(name)}/kill`,
+      buildSandboxUrl(execRef, `exec/${encodeURIComponent(name)}/kill`),
       { method: "POST" },
     );
   };

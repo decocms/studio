@@ -1,3 +1,4 @@
+import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { ChevronRight, Loading01 } from "@untitledui/icons";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
@@ -50,6 +51,7 @@ export function AppEditor({
   schemaPending?: boolean;
   previewBaseUrl?: string | null;
 }) {
+  const threadId = useOptionalChatTask()?.taskId ?? null;
   const t = useT();
   // Section-gallery previews render against the sandbox dev server, falling
   // back to the Fast Preview production deployment while the sandbox boots.
@@ -224,7 +226,7 @@ export function AppEditor({
                 previewBaseUrl={sectionPreviewBase}
                 onAddSectionItem={handleAddSectionItem}
                 onRequestAddSection={handleRequestAddSection}
-                sandbox={{ orgSlug, virtualMcpId, branch }}
+                sandbox={{ orgSlug, virtualMcpId, branch, threadId }}
               />
             ) : schemaPending ? (
               <div className="flex flex-col items-center gap-2 py-6 text-center text-xs text-muted-foreground">

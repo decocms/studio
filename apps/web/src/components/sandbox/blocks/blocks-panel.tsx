@@ -43,7 +43,7 @@ export function BlocksPanel({
   externalSelection?: { index: number; seq: number } | null;
 }) {
   const { org } = useProjectContext();
-  const { currentBranch } = useChatTask();
+  const { currentBranch, taskId } = useChatTask();
   const sandboxEvents = useSandboxEvents();
   const lifecycle = useSandboxLifecycle();
   const workspace = useBlocksPreviewWorkspace();
@@ -57,6 +57,7 @@ export function BlocksPanel({
         orgSlug: org.slug,
         virtualMcpId,
         branch: currentBranch,
+        threadId: taskId ?? null,
         previewUrl,
       }
     : null;

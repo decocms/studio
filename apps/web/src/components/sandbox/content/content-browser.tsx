@@ -1,3 +1,4 @@
+import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Suspense, lazy, useState } from "react";
 import { type Query } from "@tanstack/react-query";
 import {
@@ -333,7 +334,8 @@ function ContentBrowserReady({
   devServerReady: boolean;
   sandboxWarming: boolean;
 }) {
-  const fetchParams = { orgSlug, virtualMcpId, branch, previewUrl };
+  const threadId = useOptionalChatTask()?.taskId ?? null;
+  const fetchParams = { orgSlug, virtualMcpId, branch, threadId, previewUrl };
   const { data: decofile, isLoading: decofileLoading } = useDecofile(
     fetchParams,
     { fetchEnabled: devServerReady },

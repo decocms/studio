@@ -1,3 +1,4 @@
+import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useState } from "react";
 import {
   ArrowRight,
@@ -81,6 +82,7 @@ export function CategoryEditor({
   previewBaseUrl?: string | null;
 }) {
   const t = useT();
+  const threadId = useOptionalChatTask()?.taskId ?? null;
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const draftPointer = useDraftPointer({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, "categories");
@@ -277,7 +279,7 @@ export function CategoryEditor({
                 value={asBlocks(category.sections)}
                 onChange={(next) => setField("sections", next)}
                 meta={meta}
-                sandboxRef={{ orgSlug, virtualMcpId, branch }}
+                sandboxRef={{ orgSlug, virtualMcpId, branch, threadId }}
                 emptyMessage={t("sandbox.categoryEditor.noContentEmpty")}
               />
             </CollapsibleSection>

@@ -186,9 +186,15 @@ export function HeaderActions({ virtualMcpId }: Props) {
    * review it re-asks every few seconds — that verdict disables the publish
    * button, and the agent's first edit must re-arm it without a reload.
    */
+  const statusRef = {
+    orgSlug: org.slug,
+    virtualMcpId,
+    branch: branch ?? "",
+    threadId: activeTask?.id ?? null,
+  };
   const statusQuery = useQuery({
-    queryKey: sandboxGitStatusQueryKey(org.slug, virtualMcpId, branch ?? ""),
-    queryFn: () => fetchGitStatus(org.slug, virtualMcpId, branch ?? ""),
+    queryKey: sandboxGitStatusQueryKey(statusRef),
+    queryFn: () => fetchGitStatus(statusRef),
     enabled: !!branch,
     staleTime: 15_000,
     refetchInterval: (query) =>
