@@ -1,19 +1,20 @@
 /**
- * PR panel data hooks.
+ * PR panel data hooks. The branch's PR, its check runs, its review state and its
+ * comments all come from ONE polled read — the `GITHUB_PR_STATE` tool. The hooks
+ * below are selectors over that one cache entry (they share
+ * `KEYS.githubPrState`), so mounting all four costs one request and every
+ * surface reads the same instant of the PR.
  *
- * All reads go through the unified `pull_request_read` tool on
- * github-mcp-server, which exposes sub-calls via a `method` arg:
- *   method: "get"             → PR details
- *   method: "get_files"       → files changed
- *   method: "get_check_runs"  → CI check runs for the head commit
- *   method: "get_comments"    → issue-level comments
- *   method: "get_reviews"     → submitted reviews
- *
- * Tool args use camelCase (pullNumber, perPage). Listing PRs by branch
- * still goes through the separate `list_pull_requests` tool.
+ * Still on github-mcp-server: `list_pull_requests` for the branch picker's
+ * "PRs" tab (a repo-wide list, not this PR), and `GET_CHECK_RUN` for one run's
+ * `output` markdown when a Checks row is expanded.
  */
 
+import { useQuery } from "@tanstack/react-query";
+
 import { useMCPClient, useMCPToolCallQuery } from "@/sdk";
+import { callStudioTool } from "@/lib/studio-tools";
+import { KEYS } from "@/lib/query-keys";
 
 import { extractPullRequestList } from "./github-pr-api.ts";
 import { assertToolOk, extractToolJson } from "./extract-tool-json.ts";
@@ -28,7 +29,7 @@ export interface PrSummary {
   mergedAt: string | null;
   base: string;
   head: string;
-  /** SHA of the PR head commit — used to fetch check runs. */
+  /** SHA of the PR head commit — used to key the diff. */
   headSha: string;
   /**
    * `owner/name` of the repo the head branch lives in. Differs from the base
@@ -38,6 +39,11 @@ export interface PrSummary {
   headRepoFullName: string | null;
   htmlUrl: string;
   author: string;
+  /**
+   * Files the PR touches. null when the source could not say — the repo-wide
+   * PR list does not carry it — so a caller must not read null as "no changes".
+   */
+  changedFiles: number | null;
 }
 
 const POLL = 60_000;
@@ -93,7 +99,11 @@ export interface PrComment {
   htmlUrl: string;
 }
 
-/** Maps a raw github-mcp list/get PR object into the app's PrSummary. */
+type PrState = Awaited<
+  ReturnType<typeof callStudioTool<"GITHUB_PR_STATE">>
+>["pullRequest"];
+
+/** Maps a raw github-mcp list PR object into the app's PrSummary. */
 function mapRawPr(p: Record<string, unknown>): PrSummary {
   const base = p.base as Record<string, unknown> | undefined;
   const head = p.head as Record<string, unknown> | undefined;
@@ -112,92 +122,128 @@ function mapRawPr(p: Record<string, unknown>): PrSummary {
     headRepoFullName: (headRepo?.full_name as string) ?? null,
     htmlUrl: (p.html_url as string) ?? "",
     author: (user?.login as string) ?? "",
+    changedFiles: null,
+  };
+}
+
+/** The PrSummary view of the unified read. */
+function toPrSummary(pr: NonNullable<PrState>): PrSummary {
+  return {
+    number: pr.number,
+    title: pr.title,
+    body: pr.body,
+    state: pr.state,
+    merged: pr.merged,
+    mergedAt: pr.mergedAt,
+    base: pr.base,
+    head: pr.head,
+    headSha: pr.headSha,
+    headRepoFullName: pr.headRepoFullName,
+    htmlUrl: pr.htmlUrl,
+    author: pr.author,
+    changedFiles: pr.changedFiles,
   };
 }
 
 /**
- * Fetches the first PR matching a branch head (open or closed).
- * Returns null when no PR exists yet for that branch.
+ * The one PR read every panel hook selects from. Spread this rather than
+ * restating the key — two hooks that disagree about it would double the poll.
  */
-export function usePrByBranch(args: RepoArgs & { branch: string | null }) {
-  const client = useMCPClient({
-    connectionId: args.connectionId,
-    orgId: args.orgId,
-    orgSlug: args.orgSlug,
-  });
-
-  return useMCPToolCallQuery<PrSummary | null>({
-    client,
-    toolName: "list_pull_requests",
-    toolArguments: {
-      owner: args.owner,
-      repo: args.repo,
-      state: "all",
-      ...(args.branch ? { head: `${args.owner}:${args.branch}` } : {}),
-      perPage: 1,
-    },
-    enabled:
-      !!args.branch && !!args.connectionId && !!args.owner && !!args.repo,
+export function prStateQueryOptions(
+  args: RepoArgs & { branch: string | null },
+) {
+  const { orgSlug, connectionId, owner, repo, branch } = args;
+  return {
+    queryKey: KEYS.githubPrState(orgSlug, connectionId, owner, repo, branch),
+    queryFn: () =>
+      callStudioTool(orgSlug, "GITHUB_PR_STATE", {
+        connectionId,
+        owner,
+        repo,
+        branch: branch as string,
+      }),
+    enabled: !!branch && !!connectionId && !!owner && !!repo,
     refetchInterval: POLL,
     refetchIntervalInBackground: false,
     staleTime: STALE,
-    select: (r) => {
-      assertToolOk(r);
-      const arr = extractPullRequestList(r);
-      if (arr.length === 0) return null;
-      return mapRawPr(arr[0]!);
-    },
+  };
+}
+
+/**
+ * The branch's most recent pull request (open or closed).
+ * Returns null when no PR exists yet for that branch.
+ */
+export function usePrByBranch(args: RepoArgs & { branch: string | null }) {
+  return useQuery({
+    ...prStateQueryOptions(args),
+    select: (r): PrSummary | null =>
+      r.pullRequest ? toPrSummary(r.pullRequest) : null,
   });
 }
 
-/** The most recent merged PR into `base` — in Fast Preview every publish is a
- * squash-merged PR, so this IS the last publish. Mounted by the header so the
- * "last published" line is warm before the publish surface opens; never
- * polled, because `list_pull_requests` is rate-limit-heavy (see
- * `openPullRequestForBranch`). `sort: updated` can interleave non-merged
- * closed PRs, hence a small page filtered client-side.
+/**
+ * Check runs for the PR's head commit. Empty unless the PR is open — a closed
+ * PR's checks describe work nobody can act on.
+ */
+export function useChecks(args: RepoArgs & { branch: string | null }) {
+  return useQuery({
+    ...prStateQueryOptions(args),
+    select: (r): CheckRun[] =>
+      r.pullRequest?.state === "open" ? r.pullRequest.checks : [],
+  });
+}
+
+/**
+ * Issue-level comments on the PR. Does NOT include review comments tied to a
+ * file + line — those belong near the diff on the Changes tab.
+ */
+export function usePrComments(args: RepoArgs & { branch: string | null }) {
+  return useQuery({
+    ...prStateQueryOptions(args),
+    select: (r): PrComment[] => r.pullRequest?.comments ?? [],
+  });
+}
+
+/**
+ * The last publish — in Fast Preview every publish is a squash-merged PR.
+ * Mounted by the header so the line is warm before the publish surface opens;
+ * never polled, because it changes only when someone publishes.
  */
 export function useLastPublishedPr(
   args: RepoArgs & { base: string | null; enabled?: boolean },
 ) {
-  const client = useMCPClient({
-    connectionId: args.connectionId,
-    orgId: args.orgId,
-    orgSlug: args.orgSlug,
-  });
-
-  return useMCPToolCallQuery<PrSummary | null>({
-    client,
-    toolName: "list_pull_requests",
-    toolArguments: {
-      owner: args.owner,
-      repo: args.repo,
-      state: "closed",
-      base: args.base ?? "",
-      sort: "updated",
-      direction: "desc",
-      perPage: LAST_PUBLISHED_PER_PAGE,
-    },
+  const { orgSlug, connectionId, owner, repo, base } = args;
+  return useQuery({
+    queryKey: KEYS.githubLastPublishedPr(
+      orgSlug,
+      connectionId,
+      owner,
+      repo,
+      base,
+    ),
+    queryFn: () =>
+      callStudioTool(orgSlug, "GITHUB_LAST_PUBLISHED_PR", {
+        connectionId,
+        owner,
+        repo,
+        base: base as string,
+      }),
     enabled:
-      (args.enabled ?? true) &&
-      !!args.base &&
-      !!args.connectionId &&
-      !!args.owner &&
-      !!args.repo,
+      (args.enabled ?? true) && !!base && !!connectionId && !!owner && !!repo,
     staleTime: LAST_PUBLISHED_STALE,
-    select: (r) => {
-      assertToolOk(r);
-      return (
-        extractPullRequestList(r)
-          .map(mapRawPr)
-          .find((p) => p.merged) ?? null
-      );
-    },
+    select: (r): PrSummary | null =>
+      r.pullRequest
+        ? {
+            ...r.pullRequest,
+            state: "closed" as const,
+            merged: true,
+            headRepoFullName: null,
+            changedFiles: null,
+          }
+        : null,
   });
 }
 
-/** Closed PRs read per lookup; `sort: updated` mixes in non-merged ones. */
-const LAST_PUBLISHED_PER_PAGE = 10;
 /** The last publish changes only when someone publishes — cheap to keep. */
 const LAST_PUBLISHED_STALE = 5 * 60_000;
 
@@ -241,68 +287,10 @@ export function useOpenPrs(args: RepoArgs & { enabled?: boolean }) {
 }
 
 /**
- * Fetches CI check runs for a PR's head commit via
- * pull_request_read(get_check_runs).
- */
-export function useChecks(
-  args: RepoArgs & { prNumber: number | null | undefined },
-) {
-  const client = useMCPClient({
-    connectionId: args.connectionId,
-    orgId: args.orgId,
-    orgSlug: args.orgSlug,
-  });
-
-  return useMCPToolCallQuery<CheckRun[]>({
-    client,
-    toolName: "pull_request_read",
-    toolArguments: {
-      method: "get_check_runs",
-      owner: args.owner,
-      repo: args.repo,
-      pullNumber: args.prNumber ?? 0,
-    },
-    enabled: !!args.prNumber,
-    refetchInterval: POLL,
-    refetchIntervalInBackground: false,
-    staleTime: STALE,
-    select: (r) => {
-      assertToolOk(r);
-      // Accept both `{ check_runs: [...] }` envelopes and raw arrays.
-      const raw = extractToolJson<
-        { check_runs?: Record<string, unknown>[] } | Record<string, unknown>[]
-      >(r);
-      const runs = Array.isArray(raw) ? raw : (raw?.check_runs ?? []);
-      return runs.map((c): CheckRun => {
-        const startedAt = (c as { started_at?: string }).started_at;
-        const completedAt = (c as { completed_at?: string }).completed_at;
-        const durationMs =
-          startedAt && completedAt
-            ? new Date(completedAt).getTime() - new Date(startedAt).getTime()
-            : null;
-        return {
-          id: String((c as { id?: unknown }).id ?? ""),
-          name: String((c as { name?: unknown }).name ?? ""),
-          status:
-            ((c as { status?: unknown }).status as CheckRun["status"]) ??
-            "completed",
-          conclusion:
-            ((c as { conclusion?: unknown }).conclusion as
-              | CheckRun["conclusion"]
-              | undefined) ?? null,
-          htmlUrl: String((c as { html_url?: unknown }).html_url ?? ""),
-          durationMs,
-        };
-      });
-    },
-  });
-}
-
-/**
  * Fetches a single check run's full `output` (title/summary/text markdown) via
- * the github-mcp first-party GET_CHECK_RUN tool. The list tool
- * (pull_request_read get_check_runs) returns a minimal shape without `output`,
- * so the Checks tab lazily loads this when a row is expanded.
+ * the github-mcp first-party GET_CHECK_RUN tool. The unified PR read returns a
+ * minimal check shape without `output`, so the Checks tab lazily loads this
+ * when a row is expanded.
  */
 export function useCheckRunDetail(
   args: RepoArgs & { checkRunId: number | null; enabled: boolean },
@@ -331,51 +319,6 @@ export function useCheckRunDetail(
         summary: d?.output?.summary ?? null,
         text: d?.output?.text ?? null,
       };
-    },
-  });
-}
-
-/**
- * Issue-level comments on a PR via pull_request_read(get_comments).
- * Does NOT return review comments tied to a file + line — those belong
- * near the diff on the Changes tab and are out of scope for this hook.
- */
-export function usePrComments(
-  args: RepoArgs & { prNumber: number | null | undefined },
-) {
-  const client = useMCPClient({
-    connectionId: args.connectionId,
-    orgId: args.orgId,
-    orgSlug: args.orgSlug,
-  });
-
-  return useMCPToolCallQuery<PrComment[]>({
-    client,
-    toolName: "pull_request_read",
-    toolArguments: {
-      method: "get_comments",
-      owner: args.owner,
-      repo: args.repo,
-      pullNumber: args.prNumber ?? 0,
-    },
-    enabled: !!args.prNumber,
-    refetchInterval: POLL,
-    refetchIntervalInBackground: false,
-    staleTime: STALE,
-    select: (r) => {
-      assertToolOk(r);
-      const arr = extractToolJson<Record<string, unknown>[]>(r);
-      if (!Array.isArray(arr)) return [];
-      return arr.map((c): PrComment => {
-        const user = (c as { user?: { login?: string } }).user;
-        return {
-          id: Number((c as { id?: unknown }).id ?? 0),
-          author: user?.login ?? "",
-          body: String((c as { body?: unknown }).body ?? ""),
-          createdAt: String((c as { created_at?: unknown }).created_at ?? ""),
-          htmlUrl: String((c as { html_url?: unknown }).html_url ?? ""),
-        };
-      });
     },
   });
 }

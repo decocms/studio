@@ -93,6 +93,16 @@ export function isSandboxUnreachable(error: unknown): boolean {
   );
 }
 
+/**
+ * Retry predicate for the Fast Preview git queries: a 429 is GitHub refusing us
+ * for rate reasons, and retrying that is the burst that keeps the window shut.
+ * Everything else keeps the client's default single retry.
+ */
+function retryGitRequest(failureCount: number, error: unknown): boolean {
+  if (error instanceof SandboxGitError && error.status === 429) return false;
+  return failureCount < 1;
+}
+
 async function parseJson<T>(res: Response): Promise<T> {
   const body = (await res.json()) as T & { error?: string };
   if (!res.ok) {
@@ -441,6 +451,7 @@ export function sandboxGitStatusQueryOptions(
     queryKey: sandboxGitStatusQueryKey(orgSlug, virtualMcpId, branch),
     queryFn: () => fetchGitStatus(orgSlug, virtualMcpId, branch),
     staleTime: GIT_STATUS_STALE_MS,
+    retry: retryGitRequest,
   };
 }
 

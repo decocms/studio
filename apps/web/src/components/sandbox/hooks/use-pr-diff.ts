@@ -100,7 +100,7 @@ export function usePrDiff(args: {
       }
     },
     enabled: enabled && !!branch && !!headSha && !!connectionId,
-    refetchInterval: 30_000,
-    staleTime: 10_000,
+    /** `headSha` is in the key, so for a fixed key this content cannot change. */
+    staleTime: Infinity,
   });
 }

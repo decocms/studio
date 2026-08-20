@@ -23,7 +23,7 @@ export function DescriptionTab({ pr, connectionId, owner, repo }: Props) {
     connectionId,
     owner,
     repo,
-    prNumber: pr.number,
+    branch: pr.head,
   });
 
   return (
