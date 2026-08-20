@@ -181,16 +181,15 @@ func (m *BranchStatusMonitor) compute() *events.BranchMeta {
 	hasBaseline := m.hasBaseline
 	baseline := m.baseline
 	m.mu.Unlock()
-	if len(dirtyPaths) > 0 {
-		if !hasBaseline {
-			dirty = true
-		} else {
-			for p := range dirtyPaths {
-				baseHash, ok := baseline[p]
-				if !ok || m.hashWorktreeFile(p) != baseHash {
-					dirty = true
-					break
-				}
+	// Un-armed means boot has not settled (ArmBaseline runs at every boot
+	// outcome), so everything dirty here is boot dirt — reporting it as the
+	// user's work armed "Review & Publish" on an untouched, empty thread.
+	if len(dirtyPaths) > 0 && hasBaseline {
+		for p := range dirtyPaths {
+			baseHash, ok := baseline[p]
+			if !ok || m.hashWorktreeFile(p) != baseHash {
+				dirty = true
+				break
 			}
 		}
 	}

@@ -123,6 +123,19 @@ export interface SelectHeaderButtonInput {
   checks: CheckRun[];
   reviews: PrReviewSignals | null;
   loading?: boolean;
+  /**
+   * The authoritative "there is nothing to review" answer, from the deepened
+   * `/git/status` the publish dialog itself reads: no non-generated changed
+   * path, no commit ahead of base, nothing unpushed. Undefined while that
+   * status has not resolved (or is unavailable), in which case the daemon's
+   * `branch` SSE decides alone, exactly as before.
+   *
+   * Only ever narrows the publish gate. The SSE reads dirty on a pristine
+   * checkout whenever its boot-dirty baseline has not armed yet (see
+   * `ArmBaseline` in the daemon's branchstatus.go), which armed
+   * "Review & Publish" on a brand-new, empty thread.
+   */
+  noReviewableDiff?: boolean;
   t: TFunction;
 }
 
@@ -303,6 +316,19 @@ export function selectHeaderButton(
   const trulyUnpushed =
     ready.unpushed > 0 &&
     !(pr && ready.headSha && pr.headSha && ready.headSha === pr.headSha);
+
+  // Empty/no-op thread: nothing to review and no PR to act on (see `noReviewableDiff`).
+  if (input.noReviewableDiff && !pr) {
+    return {
+      label: t("thread.headerActions.upToDate"),
+      disabled: true,
+      variant: "outline",
+      tooltip: t("thread.headerActions.branchInSyncTooltip", {
+        base: ready.base,
+      }),
+      menu: withGetLatest([], ready, t),
+    };
+  }
 
   if (ready.workingTreeDirty || trulyUnpushed) {
     return {
