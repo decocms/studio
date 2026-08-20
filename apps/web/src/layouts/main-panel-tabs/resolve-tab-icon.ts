@@ -44,6 +44,10 @@ export const SYSTEM_TAB_ICONS: Record<SystemTabId, IconComponent> = {
   files: Folder,
 };
 
+function isSystemTabId(tabId: string): tabId is SystemTabId {
+  return tabId in SYSTEM_TAB_ICONS;
+}
+
 type ConnectionLike = { id: string; icon: string | null };
 
 /**
@@ -78,8 +82,9 @@ export function resolveTabIcon(args: {
   connections: ConnectionLike[];
 }): TabIcon {
   if (args.kind === "system") {
-    const Component = SYSTEM_TAB_ICONS[args.tabId as SystemTabId];
-    return { kind: "component", Component };
+    // Unknown system tab id → fall back instead of an undefined Component.
+    if (!isSystemTabId(args.tabId)) return { kind: "fallback" };
+    return { kind: "component", Component: SYSTEM_TAB_ICONS[args.tabId] };
   }
 
   const fromExplicit = toTabIcon(args.iconUrl);
