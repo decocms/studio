@@ -345,6 +345,15 @@ const unifiedChatSearchSchema = z.object({
   contentPageId: z.string().optional(),
   contentPath: z.string().optional(),
   contentPathTemplate: z.string().optional(),
+  /** Task board view state (`main=board`) — persisted in the URL so a refresh
+   *  or a shared link keeps the layout and filters. See `filters-search.ts`. */
+  view: z.string().optional(),
+  q: z.string().optional(),
+  assignee: z.string().optional(),
+  priority: z.string().optional(),
+  due: z.string().optional(),
+  tags: z.string().optional(),
+  repo: z.string().optional(),
 });
 
 const unifiedChatRoute = createRoute({
