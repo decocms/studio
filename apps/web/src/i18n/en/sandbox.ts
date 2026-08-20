@@ -12,11 +12,49 @@ export const sandbox = {
     "No editable fields for this section.",
   "sandbox.availableSectionEditor.saveAsGlobalSection":
     "Save as global section",
+  "sandbox.autonomous.title": "Autonomous content",
   "sandbox.blockPicker.blocksLabel": "Blocks",
   "sandbox.blockPicker.customBlocksLabel": "Custom blocks",
   "sandbox.blockPicker.insertBlockButton": "Insert block",
   "sandbox.blockPicker.noBlocksFound": "No blocks found.",
   "sandbox.blockPicker.searchPlaceholder": "Search blocks…",
+  "sandbox.blogBrand.addCategory": "Add category",
+  "sandbox.blogBrand.addCompetitor": "Add competitor",
+  "sandbox.blogBrand.addDo": "Add a do",
+  "sandbox.blogBrand.addDont": "Add a don't",
+  "sandbox.blogBrand.addValue": "Add value",
+  "sandbox.blogBrand.audienceLabel": "Target audience",
+  "sandbox.blogBrand.categoriesLabel": "Blog categories",
+  "sandbox.blogBrand.companyNameLabel": "Brand name",
+  "sandbox.blogBrand.competitorsLabel": "Competitors",
+  "sandbox.blogBrand.descriptionLabel": "What the brand does",
+  "sandbox.blogBrand.dontsLabel": "Don'ts",
+  "sandbox.blogBrand.dontsHint":
+    "Banned words, claims, formats and topics. Written as instructions.",
+  "sandbox.blogBrand.dosLabel": "Dos",
+  "sandbox.blogBrand.dosHint":
+    "Instructions every generated post must follow. Written as instructions, not adjectives.",
+  "sandbox.blogBrand.extractButton": "Read this site's content",
+  "sandbox.blogBrand.extractFailed":
+    "Could not read the brand from this site's content",
+  "sandbox.blogBrand.extractFilled": "Filled {count} empty field(s)",
+  "sandbox.blogBrand.extractHint":
+    "Reads {count} block(s) from this site — existing posts first, since that's the brand actually writing posts.",
+  "sandbox.blogBrand.extractLabel": "Fill from this site's own content",
+  "sandbox.blogBrand.extractNoContent":
+    "No content to read yet. Write a post, or fill the fields below by hand.",
+  "sandbox.blogBrand.extractNothingEmpty":
+    "Nothing to fill — every field already has a value. Clear a field to refill it.",
+  "sandbox.blogBrand.extracting": "Reading…",
+  "sandbox.blogBrand.languageLabel": "Writing language",
+  "sandbox.blogBrand.removeItem": "Remove item",
+  "sandbox.blogBrand.subtitle":
+    "The voice and rules every generated post is written against. Saved to this site's own files.",
+  "sandbox.blogBrand.title": "Brand context",
+  "sandbox.blogBrand.toneLabel": "Tone of voice",
+  "sandbox.blogBrand.toneHint":
+    "How the brand writes: how it addresses the reader, sentence rhythm, humor, jargon level.",
+  "sandbox.blogBrand.valuesLabel": "Brand values",
   "sandbox.blockRegistry.unknownBlockType":
     'Unknown block type{type ? ` (${type})` : ""}.',
   "sandbox.blockRegistry.writeSomethingPlaceholder": "Write something…",
@@ -79,6 +117,7 @@ export const sandbox = {
   "sandbox.collectionsSidebar.actions": "Actions",
   "sandbox.collectionsSidebar.apps": "Apps",
   "sandbox.collectionsSidebar.authors": "Authors",
+  "sandbox.collectionsSidebar.autonomous": "Autonomous content",
   "sandbox.collectionsSidebar.blog": "Blog",
   "sandbox.collectionsSidebar.calendar": "Calendar",
   "sandbox.collectionsSidebar.categories": "Categories",

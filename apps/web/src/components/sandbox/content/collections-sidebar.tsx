@@ -8,6 +8,7 @@ import {
   Grid01,
   LayoutAlt01,
   Settings01,
+  Stars02,
   Tag01,
   CreditCardSearch,
   Users01,
@@ -134,6 +135,13 @@ export function CollectionsSidebar({
               label={t("sandbox.collectionsSidebar.categories")}
               count={counts.categories}
               active={active === "categories"}
+              onSelect={onSelect}
+            />
+            <CollectionRow
+              id="autonomous"
+              icon={Stars02}
+              label={t("sandbox.collectionsSidebar.autonomous")}
+              active={active === "autonomous"}
               onSelect={onSelect}
             />
           </>

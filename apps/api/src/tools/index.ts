@@ -43,6 +43,7 @@ import * as RegistryTools from "./registry/index";
 import * as SandboxTools from "./sandbox";
 import * as GitHubTools from "./github";
 import * as SearchTools from "./search";
+import * as BlogTools from "./blog";
 import type { ToolName } from "@decocms/shared/tools/registry-metadata";
 // Core tools - always available
 export const CORE_TOOLS = [
@@ -76,6 +77,7 @@ export const CORE_TOOLS = [
   OrganizationTools.BRAND_CONTEXT_UPDATE,
   OrganizationTools.BRAND_CONTEXT_DELETE,
   OrganizationTools.BRAND_CONTEXT_EXTRACT,
+  BlogTools.BLOG_BRAND_EXTRACT,
   OrganizationTools.BRAND_GET,
   OrganizationTools.BRAND_LIST,
   OrganizationTools.ORGANIZATION_DOMAIN_LIST,

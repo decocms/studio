@@ -896,6 +896,22 @@ export interface StudioToolIO {
         | undefined;
     };
   };
+  BLOG_BRAND_EXTRACT: {
+    input: { blocks: { key: string; content: string }[] };
+    output: {
+      companyName: string;
+      description: string;
+      language: string;
+      tone: string;
+      targetAudience: string;
+      values: string[];
+      dos: string[];
+      avoid: string[];
+      categories: string[];
+      competitors: string[];
+      sources: string[];
+    };
+  };
   BRAND_GET: {
     input: { id?: string | undefined };
     output: {
@@ -3952,7 +3968,7 @@ export interface StudioToolIO {
         id: string;
         thread_id: string;
         parts: Record<string, unknown>[];
-        role: "user" | "assistant" | "system";
+        role: "user" | "system" | "assistant";
         created_at: string;
         updated_at: string;
         metadata?: unknown;
@@ -4018,7 +4034,7 @@ export interface StudioToolIO {
         | string
         | {
             [x: string]: unknown;
-            role: "user" | "assistant" | "system";
+            role: "user" | "system" | "assistant";
             parts: Record<string, unknown>[];
             id?: string | undefined;
             metadata?: unknown;
@@ -4092,7 +4108,7 @@ export interface StudioToolIO {
         | string
         | {
             [x: string]: unknown;
-            role: "user" | "assistant" | "system";
+            role: "user" | "system" | "assistant";
             parts: Record<string, unknown>[];
             id?: string | undefined;
             metadata?: unknown;

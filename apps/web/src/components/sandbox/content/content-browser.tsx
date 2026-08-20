@@ -129,6 +129,10 @@ const RecordEditor = lazy(() =>
   import("./blog/record-editor").then((m) => ({ default: m.RecordEditor })),
 );
 
+const BlogBrandEditor = lazy(() =>
+  import("./blog/brand-editor").then((m) => ({ default: m.BlogBrandEditor })),
+);
+
 const CategoryEditor = lazy(() =>
   import("./blog/category-editor").then((m) => ({ default: m.CategoryEditor })),
 );
@@ -171,6 +175,7 @@ export type CollectionId =
   | "loaders"
   | "actions"
   | "redirects"
+  | "autonomous"
   | BlogKind;
 
 export type CollectionCounts = Record<
@@ -1001,6 +1006,7 @@ function ContentBrowserReady({
       />
       {activeCollection !== "seo" &&
         activeCollection !== "site" &&
+        activeCollection !== "autonomous" &&
         activeCollection !== "calendar" &&
         activeCollection !== "loaders" &&
         activeCollection !== "actions" && (
@@ -1144,6 +1150,13 @@ function ContentBrowserReady({
                   description="This project doesn't have a site app block (site/apps/site.ts)."
                 />
               )
+            ) : activeCollection === "autonomous" ? (
+              <BlogBrandEditor
+                orgSlug={orgSlug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                decofile={decofile}
+              />
             ) : activeCollection === "seo" ? (
               <SeoEditor
                 orgSlug={orgSlug}

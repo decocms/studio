@@ -14,11 +14,50 @@ export const sandbox = {
     "Nenhum campo editável para esta seção.",
   "sandbox.availableSectionEditor.saveAsGlobalSection":
     "Salvar como seção global",
+  "sandbox.autonomous.title": "Conteúdo autônomo",
   "sandbox.blockPicker.blocksLabel": "Blocos",
   "sandbox.blockPicker.customBlocksLabel": "Blocos personalizados",
   "sandbox.blockPicker.insertBlockButton": "Inserir bloco",
   "sandbox.blockPicker.noBlocksFound": "Nenhum bloco encontrado.",
   "sandbox.blockPicker.searchPlaceholder": "Pesquisar blocos…",
+  "sandbox.blogBrand.addCategory": "Adicionar categoria",
+  "sandbox.blogBrand.addCompetitor": "Adicionar concorrente",
+  "sandbox.blogBrand.addDo": "Adicionar orientação",
+  "sandbox.blogBrand.addDont": "Adicionar restrição",
+  "sandbox.blogBrand.addValue": "Adicionar valor",
+  "sandbox.blogBrand.audienceLabel": "Público-alvo",
+  "sandbox.blogBrand.categoriesLabel": "Categorias do blog",
+  "sandbox.blogBrand.companyNameLabel": "Nome da marca",
+  "sandbox.blogBrand.competitorsLabel": "Concorrentes",
+  "sandbox.blogBrand.descriptionLabel": "O que a marca faz",
+  "sandbox.blogBrand.dontsLabel": "O que não fazer",
+  "sandbox.blogBrand.dontsHint":
+    "Palavras, afirmações, formatos e temas proibidos. Escreva como instruções.",
+  "sandbox.blogBrand.dosLabel": "O que fazer",
+  "sandbox.blogBrand.dosHint":
+    "Instruções que todo post gerado deve seguir. Escreva como instruções, não como adjetivos.",
+  "sandbox.blogBrand.extractButton": "Ler o conteúdo deste site",
+  "sandbox.blogBrand.extractFailed":
+    "Não foi possível ler a marca a partir do conteúdo deste site",
+  "sandbox.blogBrand.extractFilled": "{count} campo(s) vazio(s) preenchido(s)",
+  "sandbox.blogBrand.extractHint":
+    "Lê {count} bloco(s) deste site — posts existentes primeiro, porque é a marca escrevendo post de verdade.",
+  "sandbox.blogBrand.extractLabel":
+    "Preencher a partir do conteúdo do próprio site",
+  "sandbox.blogBrand.extractNoContent":
+    "Ainda não há conteúdo para ler. Escreva um post, ou preencha os campos abaixo à mão.",
+  "sandbox.blogBrand.extractNothingEmpty":
+    "Nada a preencher — todos os campos já têm valor. Limpe um campo para preenchê-lo novamente.",
+  "sandbox.blogBrand.extracting": "Lendo…",
+  "sandbox.blogBrand.languageLabel": "Idioma de escrita",
+  "sandbox.blogBrand.removeItem": "Remover item",
+  "sandbox.blogBrand.subtitle":
+    "A voz e as regras que orientam todo post gerado. Salvo nos arquivos do próprio site.",
+  "sandbox.blogBrand.title": "Contexto da marca",
+  "sandbox.blogBrand.toneLabel": "Tom de voz",
+  "sandbox.blogBrand.toneHint":
+    "Como a marca escreve: como trata o leitor, ritmo das frases, humor, nível de jargão.",
+  "sandbox.blogBrand.valuesLabel": "Valores da marca",
   "sandbox.blockRegistry.unknownBlockType":
     'Tipo de bloco desconhecido{type ? ` (${type})` : ""}.',
   "sandbox.blockRegistry.writeSomethingPlaceholder": "Escreva algo…",
@@ -83,6 +122,7 @@ export const sandbox = {
   "sandbox.collectionsSidebar.actions": "Ações",
   "sandbox.collectionsSidebar.apps": "Apps",
   "sandbox.collectionsSidebar.authors": "Autores",
+  "sandbox.collectionsSidebar.autonomous": "Conteúdo autônomo",
   "sandbox.collectionsSidebar.blog": "Blog",
   "sandbox.collectionsSidebar.calendar": "Calendário",
   "sandbox.collectionsSidebar.categories": "Categorias",

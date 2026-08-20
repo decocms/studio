@@ -12,6 +12,8 @@ import {
   removeCategoryFromPost,
   renameCategoryOnPost,
   replaceCategoryOnPost,
+  extractBlockProse,
+  selectBrandEvidenceBlocks,
   stampPostModified,
 } from "./blog-data";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
@@ -694,5 +696,137 @@ describe("removeCategoryFromPost", () => {
     const payload = { categories: [{ name: "Old", slug: "old" }] };
     removeCategoryFromPost(payload, "old");
     expect(payload.categories).toEqual([{ name: "Old", slug: "old" }]);
+  });
+});
+
+describe("extractBlockProse", () => {
+  test("drops asset urls, keeps the prose beside them", () => {
+    const block = {
+      video: { src: "https://player.vimeo.com/progressive_redirect/x.mp4" },
+      thumbnail: "https://cdn.example.com/site/2024/banner-mobile.jpg",
+      alt: "do rio pro mundo",
+    };
+    const out = extractBlockProse(block);
+
+    expect(out).toContain("do rio pro mundo");
+    expect(out).not.toContain("vimeo");
+    expect(out).not.toContain("cdn.example.com");
+  });
+
+  test("drops identifiers and dimension labels, not phrases", () => {
+    const out = extractBlockProse({
+      __resolveType: "site/sections/Layout/Flex.tsx",
+      gap: "20px",
+      title: "encontre a loja mais próxima de você",
+    });
+
+    expect(out).not.toContain("Flex.tsx");
+    expect(out).not.toContain("20px");
+    expect(out).toContain("encontre a loja mais próxima de você");
+  });
+
+  test("keeps the prop name, so the model knows what kind of copy it is", () => {
+    expect(extractBlockProse({ alt: "92% de funcionárias" })).toBe(
+      "alt: 92% de funcionárias",
+    );
+  });
+
+  test("keeps html stored as a string", () => {
+    const html = "<p>verifique os detalhes direto na sua mochila</p>";
+    expect(extractBlockProse({ text: html })).toContain("sua mochila");
+  });
+
+  test("drops exact duplicates — a banner repeats across a whole site", () => {
+    const out = extractBlockProse([
+      { text: "vem pro app e ganhe desconto" },
+      { text: "vem pro app e ganhe desconto" },
+    ]);
+    expect(out.split("\n")).toHaveLength(1);
+  });
+
+  test("keeps casing variants — the inconsistency is a fact about the brand", () => {
+    const out = extractBlockProse([
+      { text: "O custo pode mudar" },
+      { text: "o custo pode mudar" },
+    ]);
+    expect(out.split("\n")).toHaveLength(2);
+  });
+});
+
+describe("selectBrandEvidenceBlocks", () => {
+  test("ranks a prose-heavy page above a url-heavy one", () => {
+    const decofile = {
+      "pages/plp": {
+        path: "/roupas",
+        sections: [{ src: "https://cdn.example.com/a-very-long-asset.jpg" }],
+      },
+      "pages/sobre": {
+        path: "/sobre",
+        sections: [{ text: "a biodiversidade brasileira acende em nós" }],
+      },
+    };
+
+    expect(
+      selectBrandEvidenceBlocks(decofile, ["pages/plp", "pages/sobre"]).map(
+        (b) => b.key,
+      ),
+    ).toEqual(["pages/sobre", "pages/plp"]);
+  });
+
+  test("ranks posts before categories before pages", () => {
+    const decofile = {
+      ...decofileWithPosts({
+        "collections/blog/posts/a": { content: "prose" },
+      }),
+      "collections/blog/categories/c": buildBlogBlock(
+        "collections/blog/categories/c",
+        "categories",
+        { name: "News", slug: "news" },
+      ),
+      "pages/home": { path: "/", sections: [] },
+    };
+
+    expect(
+      selectBrandEvidenceBlocks(decofile, ["pages/home"]).map((b) => b.key),
+    ).toEqual([
+      "collections/blog/posts/a",
+      "collections/blog/categories/c",
+      "pages/home",
+    ]);
+  });
+
+  test("puts the post with the most prose first", () => {
+    const decofile = decofileWithPosts({
+      "collections/blog/posts/short": { content: "oi" },
+      "collections/blog/posts/long": { content: "prosa da marca ".repeat(50) },
+    });
+
+    expect(selectBrandEvidenceBlocks(decofile, []).map((b) => b.key)).toEqual([
+      "collections/blog/posts/long",
+      "collections/blog/posts/short",
+    ]);
+  });
+
+  test("stops once the char budget is spent instead of sending everything", () => {
+    const posts: Record<string, Record<string, unknown>> = {};
+    for (let i = 0; i < 20; i++) {
+      posts[`collections/blog/posts/p${i}`] = {
+        content: "prosa da marca ".repeat(1_000),
+      };
+    }
+
+    const selected = selectBrandEvidenceBlocks(decofileWithPosts(posts), []);
+    const total = selected.reduce((sum, b) => sum + b.content.length, 0);
+
+    expect(selected.length).toBeLessThan(20);
+    expect(total).toBeLessThanOrEqual(60_000);
+  });
+
+  test("returns nothing for a site with no content", () => {
+    expect(selectBrandEvidenceBlocks({}, [])).toEqual([]);
+  });
+
+  test("skips page keys the decofile doesn't have", () => {
+    expect(selectBrandEvidenceBlocks({}, ["pages/ghost"])).toEqual([]);
   });
 });

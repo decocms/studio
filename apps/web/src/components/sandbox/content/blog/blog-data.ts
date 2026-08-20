@@ -768,3 +768,123 @@ export function isBlogPostBlockResolveType(resolveType: string): boolean {
     resolveType.startsWith(prefix),
   );
 }
+
+// ------------------ Brand-evidence sampling (tone of voice) ------------------
+
+/** Total serialized chars sent to the model; keeps one call affordable. */
+const BRAND_EVIDENCE_MAX_CHARS = 60_000;
+/**
+ * Per-block cap. Deliberately small relative to the total: breadth beats depth
+ * here. Voice repeats across a site, so 15 pages read shallowly characterize it
+ * better than 5 read deeply — and a high cap lets the few biggest pages (which
+ * are big from having many sections, not from having more voice) crowd out the
+ * institutional ones that carry the values.
+ */
+const BRAND_EVIDENCE_MAX_BLOCK_CHARS = 4_000;
+
+export interface BrandEvidenceBlock {
+  key: string;
+  content: string;
+}
+
+/**
+ * Pull the human-written phrases out of a block as `prop: phrase` lines.
+ *
+ * Sending the block's JSON does not work: a real page is mostly asset URLs,
+ * resolveTypes and loader config, so serialized size measures how many sections
+ * a page has, not how much voice it carries. Ranking Farm Rio's 1018 pages by
+ * JSON size surfaced product-listing stubs and buried the institutional pages
+ * that hold the brand's values.
+ *
+ * A phrase is a string containing a space — enough to separate "do rio pro
+ * mundo" and "92% de funcionárias" from "site/sections/Layout/Flex.tsx" and
+ * "20px" without a prop allowlist. Prop names are kept because they say what
+ * kind of copy it is, and exact duplicates are dropped: a site repeats the same
+ * banner text across hundreds of pages, and paying for it once is enough.
+ * Near-duplicates that differ only in casing survive on purpose — that
+ * inconsistency is itself a fact about the brand.
+ */
+export function extractBlockProse(block: unknown): string {
+  const lines: string[] = [];
+  const seen = new Set<string>();
+
+  const walk = (node: unknown, prop: string) => {
+    if (typeof node === "string") {
+      if (!node.includes(" ") || node.length < 4) return;
+      if (/^(https?:)?\/\//.test(node) || /^data:/.test(node)) return;
+      const line = `${prop}: ${node.trim()}`;
+      if (seen.has(line)) return;
+      seen.add(line);
+      lines.push(line);
+      return;
+    }
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item, prop);
+      return;
+    }
+    if (node && typeof node === "object") {
+      for (const [key, value] of Object.entries(node)) {
+        if (key === "__resolveType") continue;
+        walk(value, key);
+      }
+    }
+  };
+
+  walk(block, "block");
+  return lines.join("\n");
+}
+
+/**
+ * The blocks that show how this brand writes, most telling first: existing
+ * posts (the brand writing blogposts), then categories (the topics it owns),
+ * then pages (marketing copy — weaker voice evidence, and all a site with no
+ * blog has; Farm Rio has 1018 pages and zero posts).
+ *
+ * Within each tier, most prose first — a product-listing page serializes to
+ * almost nothing once URLs are dropped, an institutional page to paragraphs.
+ *
+ * `pageKeys` comes from the caller's `extractPages`, keeping this independent
+ * of the page-list module.
+ */
+export function selectBrandEvidenceBlocks(
+  decofile: Record<string, unknown>,
+  pageKeys: string[],
+): BrandEvidenceBlock[] {
+  const prose = new Map<string, string>();
+  const proseFor = (key: string) => {
+    const cached = prose.get(key);
+    if (cached !== undefined) return cached;
+    const extracted = extractBlockProse(decofile[key]).slice(
+      0,
+      BRAND_EVIDENCE_MAX_BLOCK_CHARS,
+    );
+    prose.set(key, extracted);
+    return extracted;
+  };
+  const byProseDesc = (a: string, b: string) =>
+    proseFor(b).length - proseFor(a).length;
+
+  const ordered = [
+    ...listBlogPayloads(decofile, "posts")
+      .map((p) => p.key)
+      .sort(byProseDesc),
+    ...listBlogPayloads(decofile, "categories").map((c) => c.key),
+    ...[...pageKeys].sort(byProseDesc),
+  ];
+
+  const selected: BrandEvidenceBlock[] = [];
+  const seen = new Set<string>();
+  let remaining = BRAND_EVIDENCE_MAX_CHARS;
+
+  for (const key of ordered) {
+    if (seen.has(key)) continue;
+    if (!decofile[key]) continue;
+    seen.add(key);
+    const content = proseFor(key);
+    if (content.length > remaining) break;
+    selected.push({ key, content });
+    remaining -= content.length;
+  }
+
+  return selected;
+}
