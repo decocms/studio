@@ -17,9 +17,12 @@ import {
 
 const REQUEST_TIMEOUT_MS = 15_000;
 
-/** Account ids per `/user/bulk` request. Jira caps the repeated `accountId`
- *  param at 200; stay well under and let the chunker loop. */
-const USER_LOOKUP_CHUNK = 100;
+/** Account ids per `/user/bulk` request. Jira allows 200, but each id spends
+ *  ~56 URL bytes, so 200 would build a ~11KB request line — past the 4KB cap
+ *  common in proxies, and a 414 is a 4xx: not retried, latching every mention
+ *  to `@unknown`. 50 keeps the URL under ~3KB and costs ~1 extra request per
+ *  50 distinct people in a page. */
+const USER_LOOKUP_CHUNK = 50;
 
 export interface JiraBoard {
   id: number;
