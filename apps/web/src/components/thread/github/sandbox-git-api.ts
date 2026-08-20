@@ -104,7 +104,13 @@ function retryGitRequest(failureCount: number, error: unknown): boolean {
 }
 
 async function parseJson<T>(res: Response): Promise<T> {
-  const body = (await res.json()) as T & { error?: string };
+  let body: T & { error?: string };
+  try {
+    body = (await res.json()) as T & { error?: string };
+  } catch {
+    // Malformed body must surface as SandboxGitError, not a raw SyntaxError.
+    throw new SandboxGitError(`Request failed (${res.status})`, res.status);
+  }
   if (!res.ok) {
     throw new SandboxGitError(
       typeof body.error === "string"

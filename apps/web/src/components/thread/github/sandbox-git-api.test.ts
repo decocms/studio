@@ -1,8 +1,9 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import {
   canPublishDirectly,
   combinePublishDiffs,
   DEFAULT_PUBLISH_POLICY,
+  fetchGitStatus,
   hasGitLocalWork,
   hasLocalWorkToPush,
   hasNothingToReview,
@@ -10,6 +11,7 @@ import {
   hasUnpublishedWork,
   isDecoOnlyDiff,
   isDecoOnlyPaths,
+  isSandboxUnreachable,
   needsSmartReviewJudgment,
   normalizePublishPolicy,
   resolvePathGate,
@@ -653,5 +655,25 @@ describe("hasNothingToReview", () => {
     ).toBe(false);
     expect(hasNothingToReview({ ...cleanStatus, aheadOfBase: 1 })).toBe(false);
     expect(hasNothingToReview({ ...cleanStatus, unpushed: 1 })).toBe(false);
+  });
+});
+
+describe("fetchGitStatus with a malformed response body", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  test("surfaces a SandboxGitError instead of a raw SyntaxError", async () => {
+    globalThis.fetch = (() =>
+      Promise.resolve(
+        new Response("<html>Bad Gateway</html>", { status: 502 }),
+      )) as unknown as typeof fetch;
+
+    const error = await fetchGitStatus("org", "vm", "feat").catch((e) => e);
+    expect(isSandboxUnreachable(error)).toBe(false);
+    expect(error).toHaveProperty("status", 502);
+    expect(error.message).toBe("Request failed (502)");
   });
 });
