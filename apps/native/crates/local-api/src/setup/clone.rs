@@ -401,11 +401,11 @@ async fn clone_fresh(orch: &Arc<SetupOrchestrator>, clone_url: &str, branch: Opt
 /// so every failure path funnels through ONE `Result::Err` — the caller
 /// finalizes the task and transitions `lifecycle` exactly once, at the end.
 ///
-/// Three plain git porcelain commands only — `clone`, `pull`, `worktree
-/// add` — see this module's doc comment. No ref/HEAD inspection anywhere:
-/// an empty remote (zero commits, no branches) needs no special case, since
-/// `git worktree add` itself infers `--orphan` when its source has no
-/// commits yet.
+/// Ref selection is resolved before the mutating `worktree add`: an existing
+/// requested branch wins, then the remote's default head, while a genuinely
+/// empty remote keeps Git's no-start-point/orphan behavior. The selected ref
+/// is passed to `worktree add` as an immutable object ID so a concurrent
+/// fetch cannot change the snapshot between those two operations.
 async fn clone_fresh_body(
     orch: &Arc<SetupOrchestrator>,
     task_id: &str,
@@ -498,14 +498,11 @@ async fn direct_clone(
 /// never gets offered as a worktree source.
 ///
 /// Nothing here touches canonical's own checked-out branch or
-/// `refs/remotes/origin/HEAD` — worktrees are always cut from an explicit
-/// `refs/remotes/origin/*` ref chosen at add-time (see [`add_worktree`]),
-/// which also repairs `origin/HEAD` on demand if it's what's missing. A
-/// worktree that collides with whatever canonical itself happens to be
-/// checked out on (rare: it means the request is for the exact branch
-/// canonical's `git clone` landed on) falls back to a detached worktree with
-/// the right content — same as any other same-branch collision between two
-/// worktrees.
+/// `refs/remotes/origin/HEAD`. [`add_worktree`] resolves the requested remote
+/// ref (or repaired remote HEAD) to an object ID at add-time. If canonical's
+/// own checkout holds the requested local branch, it is detached and the
+/// named add is retried; a sibling worktree holding that branch instead uses
+/// a detached worktree at the same selected object ID.
 async fn sync_canonical(
     orch: &Arc<SetupOrchestrator>,
     task_id: &str,
@@ -569,30 +566,190 @@ async fn sync_canonical(
     Ok(())
 }
 
-/// `git`'s own wording when a `worktree add` commit-ish doesn't resolve
-/// (confirmed against a real repo: `fatal: invalid reference:
-/// refs/remotes/origin/<name>`) — distinct from [`worktree_branch_collision`]'s
-/// wording, so the two failure kinds never get confused. `add_worktree` uses
-/// this to widen its start point candidate rather than pre-checking each one
-/// with a separate `rev-parse` — one `worktree add` that succeeds directly
-/// (the common case: the branch already exists) costs one command, not three.
-fn start_point_unresolvable(stderr: &str) -> bool {
-    stderr.contains("invalid reference") || stderr.contains("unknown revision")
+fn parse_object_id(output: &str) -> Option<String> {
+    let oid = output.trim();
+    if matches!(oid.len(), 40 | 64) && oid.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        Some(oid.to_string())
+    } else {
+        None
+    }
+}
+
+/// Resolves one fully-qualified ref to the immutable commit snapshot a
+/// worktree should start from. A failed commit peel is confirmed with
+/// `show-ref --verify --quiet`: an absent/dangling exact ref returns `None`,
+/// while a ref that exists but does not name a commit remains an error.
+/// Human-readable stderr is deliberately irrelevant, because Git versions
+/// phrase absent and dangling refs differently.
+async fn resolve_commit_oid(
+    orch: &Arc<SetupOrchestrator>,
+    task_id: &str,
+    canonical: &Path,
+    reference: &str,
+    controller: &ProcessController,
+) -> Result<Option<String>, String> {
+    let commit = format!("{reference}^{{commit}}");
+    let result = run_git(
+        orch,
+        Some(task_id),
+        &["rev-parse", "--verify", "--quiet", &commit],
+        Some(canonical),
+        Some(controller),
+    )
+    .await;
+    if let Some(signal) = controller.requested() {
+        return Err(format!(
+            "git rev-parse {reference} cancelled by {}",
+            signal.flag()
+        ));
+    }
+    let (code, output) = result?;
+    if code == 0 {
+        return parse_object_id(&output)
+            .map(Some)
+            .ok_or_else(|| format!("git rev-parse returned an invalid object id for {reference}"));
+    }
+    if code != 1 {
+        return Err(format!(
+            "git rev-parse {reference} exited {code}: {}",
+            output.trim()
+        ));
+    }
+
+    let verification = run_git(
+        orch,
+        Some(task_id),
+        &["show-ref", "--verify", "--quiet", "--", reference],
+        Some(canonical),
+        Some(controller),
+    )
+    .await;
+    if let Some(signal) = controller.requested() {
+        return Err(format!(
+            "git show-ref {reference} cancelled by {}",
+            signal.flag()
+        ));
+    }
+    let (verification_code, verification_output) = verification?;
+    match verification_code {
+        1 => Ok(None),
+        0 => Err(format!(
+            "git ref {reference} exists but does not resolve to a commit (rev-parse exited {code}): {}",
+            output.trim()
+        )),
+        _ => Err(format!(
+            "git show-ref {reference} exited {verification_code}: {}",
+            verification_output.trim()
+        )),
+    }
+}
+
+/// Whether the just-fetched remote-tracking namespace contains any reachable
+/// commit. A missing requested branch plus missing `origin/HEAD` may use Git's
+/// no-start-point orphan behavior only when this is false; otherwise silently
+/// creating an empty branch would discard the remote branches' real starting
+/// content.
+async fn remote_has_commits(
+    orch: &Arc<SetupOrchestrator>,
+    task_id: &str,
+    canonical: &Path,
+    controller: &ProcessController,
+) -> Result<bool, String> {
+    let result = run_git(
+        orch,
+        Some(task_id),
+        &["rev-list", "--max-count=1", "--remotes=origin"],
+        Some(canonical),
+        Some(controller),
+    )
+    .await;
+    if let Some(signal) = controller.requested() {
+        return Err(format!(
+            "git rev-list --remotes=origin cancelled by {}",
+            signal.flag()
+        ));
+    }
+    let (code, output) = result?;
+    if code != 0 {
+        return Err(format!(
+            "git rev-list --remotes=origin exited {code}: {}",
+            output.trim()
+        ));
+    }
+    if output.trim().is_empty() {
+        return Ok(false);
+    }
+    parse_object_id(&output)
+        .map(|_| true)
+        .ok_or_else(|| "git rev-list returned an invalid remote object id".to_string())
+}
+
+/// Chooses and freezes one start point for a requested local branch. Remote
+/// refs are mutable: another sandbox can fetch/prune the canonical checkout
+/// while this worktree is being created. Passing the resolved object id to
+/// `worktree add` preserves the selected snapshot across that race.
+async fn resolve_worktree_start_point(
+    orch: &Arc<SetupOrchestrator>,
+    task_id: &str,
+    canonical: &Path,
+    branch: &str,
+    controller: &ProcessController,
+) -> Result<Option<String>, String> {
+    let requested = format!("refs/remotes/origin/{branch}");
+    if let Some(oid) = resolve_commit_oid(orch, task_id, canonical, &requested, controller).await? {
+        return Ok(Some(oid));
+    }
+
+    const REMOTE_HEAD: &str = "refs/remotes/origin/HEAD";
+    if let Some(oid) = resolve_commit_oid(orch, task_id, canonical, REMOTE_HEAD, controller).await?
+    {
+        return Ok(Some(oid));
+    }
+
+    // A dangling or never-established local `origin/HEAD` can be repaired from
+    // the remote's advertised default. Best effort: the structural probes
+    // below remain authoritative, and preserve the useful failure when the
+    // remote genuinely has no advertised default.
+    let _ = run_git(
+        orch,
+        Some(task_id),
+        &["remote", "set-head", "origin", "-a"],
+        Some(canonical),
+        Some(controller),
+    )
+    .await;
+    if let Some(signal) = controller.requested() {
+        return Err(format!(
+            "git remote set-head origin -a cancelled by {}",
+            signal.flag()
+        ));
+    }
+    if let Some(oid) = resolve_commit_oid(orch, task_id, canonical, REMOTE_HEAD, controller).await?
+    {
+        return Ok(Some(oid));
+    }
+
+    if remote_has_commits(orch, task_id, canonical, controller).await? {
+        return Err(format!(
+            "remote branch {branch} does not exist and origin has commits but no resolvable default branch; configure origin's default branch or request an existing branch"
+        ));
+    }
+    Ok(None)
 }
 
 /// Adds `repo_dir` as a `git worktree` of `canonical`, on `branch` (or
 /// detached when `branch` is `None` — a synthetic/routing-key config value
 /// with no real git ref to check out).
 ///
-/// Start point, in order — each tried only if the previous one didn't
-/// resolve: the requested branch's own content, if the remote has it (kept
-/// current by [`sync_canonical`]'s fetch); the repo's actual default branch
-/// (a brand-new branch forks from there — and if `origin/HEAD` itself is
-/// stale or was never established, e.g. a repo that started empty and only
-/// later got its first push, repaired here on demand with one `remote
-/// set-head`, not on every sync); no start point at all, for a genuinely
-/// empty remote, where git itself infers `--orphan` from canonical's unborn
-/// HEAD.
+/// Start point, in order: the requested branch's own content, if the remote
+/// has it (kept current by [`sync_canonical`]'s fetch); the repo's actual
+/// locally recorded default branch (a brand-new branch forks from there — and
+/// if `origin/HEAD` itself is dangling or was never established, repaired here
+/// on demand with one `remote set-head`, not on every sync); no start point at
+/// all only when the remote-tracking branch namespace has no commit, where git
+/// itself infers `--orphan` from canonical's unborn HEAD. Ref existence comes
+/// from structural Git commands, never version-specific stderr, and the
+/// selected ref is frozen to its object id before `worktree add`.
 ///
 /// Every successful attempt that lands on a NAMED branch explicitly writes
 /// `branch.<name>.{remote,merge}` via [`set_upstream`] afterward — git's own
@@ -647,17 +804,15 @@ async fn add_worktree(
         args
     };
 
-    let candidates: Vec<Option<String>> = match branch {
-        Some(b) => vec![
-            Some(format!("refs/remotes/origin/{b}")),
-            Some("refs/remotes/origin/HEAD".to_string()),
-            None,
-        ],
-        None => vec![None],
+    let start_point = match branch {
+        Some(branch) => {
+            resolve_worktree_start_point(orch, task_id, canonical, branch, controller).await?
+        }
+        None => None,
     };
 
-    let attempt = |start_point: Option<&str>| {
-        let args = add(branch, start_point);
+    let attempt = |requested_branch: Option<&str>| {
+        let args = add(requested_branch, start_point.as_deref());
         async move {
             let argv: Vec<&str> = args.iter().map(String::as_str).collect();
             run_git(
@@ -671,109 +826,67 @@ async fn add_worktree(
         }
     };
 
-    let mut out = String::new();
-    for (i, start_point) in candidates.iter().enumerate() {
-        let is_last = i + 1 == candidates.len();
-        let (code, o) = attempt(start_point.as_deref()).await?;
-        if code == 0 {
+    let (code, mut out) = attempt(branch).await?;
+    if code == 0 {
+        if let Some(branch) = branch {
+            set_upstream(orch, task_id, repo_dir, branch, controller).await;
+        }
+        return Ok(());
+    }
+
+    if worktree_branch_collision(&out) && branch.is_some() {
+        // Most likely culprit: canonical's OWN primary checkout just happens
+        // to be sitting on the requested branch (e.g. the request is for the
+        // repo's actual default). Detaching canonical frees the name up; retry
+        // the SAME immutable snapshot before giving up on a real branch
+        // pointer.
+        let _ = run_git(
+            orch,
+            Some(task_id),
+            &["checkout", "--detach"],
+            Some(canonical),
+            Some(controller),
+        )
+        .await;
+        let (retry_code, retried) = attempt(branch).await?;
+        if retry_code == 0 {
             if let Some(b) = branch {
                 set_upstream(orch, task_id, repo_dir, b, controller).await;
             }
             return Ok(());
         }
-        out = o;
-
-        if worktree_branch_collision(&out) && branch.is_some() {
-            // Most likely culprit: canonical's OWN primary checkout just
-            // happens to be sitting on the requested branch (e.g. the
-            // request is for the repo's actual default — canonical lands
-            // there straight out of `git clone`, and nothing else moves it).
-            // Detaching canonical frees the name up; retry the SAME named
-            // attempt once before giving up on a real branch pointer.
-            let _ = run_git(
-                orch,
-                Some(task_id),
-                &["checkout", "--detach"],
-                Some(canonical),
-                Some(controller),
-            )
-            .await;
-            let (code, retried) = attempt(start_point.as_deref()).await?;
-            if code == 0 {
-                if let Some(b) = branch {
-                    set_upstream(orch, task_id, repo_dir, b, controller).await;
-                }
-                return Ok(());
-            }
-            out = retried;
-            if !worktree_branch_collision(&out) {
-                return Err(format!("git worktree add exited {code}: {}", out.trim()));
-            }
-
-            // Still colliding after detaching canonical — a SIBLING worktree
-            // genuinely holds this branch (two sandboxes on the same work).
-            // It has the right content; only the branch pointer is missing.
-            emit_chunk(
-                orch,
-                Some(task_id),
-                OutputStream::Stdout,
-                &format!(
-                    "[worktree] branch '{}' already checked out elsewhere; detaching HEAD\r\n",
-                    branch.unwrap_or("")
-                ),
-            )
-            .await;
-            // `attempt` closes over `branch`, so the retry (dropping to
-            // detached) is built directly rather than through it.
-            let args = add(None, start_point.as_deref());
-            let argv: Vec<&str> = args.iter().map(String::as_str).collect();
-            let (code, out) = run_git(
-                orch,
-                Some(task_id),
-                &argv,
-                Some(canonical),
-                Some(controller),
-            )
-            .await?;
-            if code != 0 {
-                return Err(format!("git worktree add exited {code}: {}", out.trim()));
-            }
-            return Ok(());
+        out = retried;
+        if !worktree_branch_collision(&out) {
+            return Err(format!(
+                "git worktree add exited {retry_code}: {}",
+                out.trim()
+            ));
         }
 
-        if !is_last && start_point_unresolvable(&out) {
-            // This candidate doesn't exist (yet). `refs/remotes/origin/HEAD`
-            // specifically may just be stale/never-established (a repo that
-            // started empty and only later got its first push) rather than
-            // genuinely absent — repair it once and retry this SAME
-            // candidate before widening further.
-            if start_point.as_deref() == Some("refs/remotes/origin/HEAD") {
-                let _ = run_git(
-                    orch,
-                    Some(task_id),
-                    &["remote", "set-head", "origin", "-a"],
-                    Some(canonical),
-                    Some(controller),
-                )
-                .await;
-                let (code, o) = attempt(start_point.as_deref()).await?;
-                if code == 0 {
-                    if let Some(b) = branch {
-                        set_upstream(orch, task_id, repo_dir, b, controller).await;
-                    }
-                    return Ok(());
-                }
-                out = o;
-                if !start_point_unresolvable(&out) {
-                    return Err(format!("git worktree add exited {code}: {}", out.trim()));
-                }
-            }
-            continue;
+        // Still colliding after detaching canonical — a SIBLING worktree
+        // genuinely holds this branch. It has the selected content; only the
+        // branch pointer is unavailable in this second worktree.
+        emit_chunk(
+            orch,
+            Some(task_id),
+            OutputStream::Stdout,
+            &format!(
+                "[worktree] branch '{}' already checked out elsewhere; detaching HEAD\r\n",
+                branch.unwrap_or("")
+            ),
+        )
+        .await;
+        let (detached_code, detached_out) = attempt(None).await?;
+        if detached_code != 0 {
+            return Err(format!(
+                "git worktree add exited {detached_code}: {}",
+                detached_out.trim()
+            ));
         }
-
-        return Err(format!("git worktree add exited {code}: {}", out.trim()));
+        return Ok(());
     }
-    Err(format!("git worktree add: {}", out.trim()))
+
+    Err(format!("git worktree add exited {code}: {}", out.trim()))
 }
 
 /// Declares that `branch` in `repo_dir` tracks `origin/<branch>`.
@@ -1036,6 +1149,20 @@ mod tests {
         );
     }
 
+    fn git_stdout(dir: &Path, args: &[&str]) -> String {
+        let out = Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .expect("git failed to spawn");
+        assert!(
+            out.status.success(),
+            "git {args:?} failed in {dir:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
     /// A bare "origin" with a single `main` commit — returns the owning
     /// tempdir (keep it alive for the fixture's lifetime) and the bare
     /// repo's path (used directly as a `file://`-style `cloneUrl`).
@@ -1084,6 +1211,124 @@ mod tests {
         let repo_dir = workdir.path().join("repo");
         std::fs::create_dir_all(&repo_dir).unwrap();
         (workdir, repo_dir)
+    }
+
+    #[test]
+    fn object_id_parser_accepts_full_sha1_and_sha256_only() {
+        assert_eq!(parse_object_id(&"a".repeat(40)), Some("a".repeat(40)));
+        assert_eq!(parse_object_id(&"B".repeat(64)), Some("B".repeat(64)));
+        assert_eq!(parse_object_id(&"a".repeat(39)), None);
+        assert_eq!(parse_object_id(&"a".repeat(65)), None);
+        assert_eq!(parse_object_id(&format!("{}g", "a".repeat(39))), None);
+        assert_eq!(
+            parse_object_id(&format!("{}\n{}", "a".repeat(40), "b")),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn ref_resolution_returns_exact_oid_or_absent() {
+        let (origin_root, clone_url) = bare_repo_with_one_commit();
+        let (workdir, repo_dir) = empty_repo_dir();
+        let orch = fresh_orch(repo_dir);
+        let canonical =
+            crate::sandbox::repo_store::canonical_repo_dir(&orch.app_root, &clone_url).unwrap();
+        let controller = ProcessController::new();
+
+        sync_canonical(&orch, "resolve", &canonical, &clone_url, &controller)
+            .await
+            .expect("canonical clone succeeds");
+        let expected = git_stdout(
+            &canonical,
+            &["rev-parse", "refs/remotes/origin/main^{commit}"],
+        );
+
+        assert_eq!(
+            resolve_commit_oid(
+                &orch,
+                "resolve",
+                &canonical,
+                "refs/remotes/origin/main",
+                &controller,
+            )
+            .await
+            .unwrap(),
+            Some(expected)
+        );
+        assert_eq!(
+            resolve_commit_oid(
+                &orch,
+                "resolve",
+                &canonical,
+                "refs/remotes/origin/does-not-exist",
+                &controller,
+            )
+            .await
+            .unwrap(),
+            None
+        );
+
+        let blob_oid = git_stdout(&canonical, &["hash-object", "f.txt"]);
+        git(
+            &canonical,
+            &["update-ref", "refs/remotes/origin/blob", &blob_oid],
+        );
+        let error = resolve_commit_oid(
+            &orch,
+            "resolve",
+            &canonical,
+            "refs/remotes/origin/blob",
+            &controller,
+        )
+        .await
+        .expect_err("an existing non-commit ref must not be widened to missing");
+        assert!(
+            error.contains("exists but does not resolve to a commit"),
+            "{error}"
+        );
+        drop((origin_root, workdir));
+    }
+
+    #[tokio::test]
+    async fn cancellation_is_never_classified_as_an_absent_ref() {
+        let (workdir, repo_dir) = empty_repo_dir();
+        let orch = fresh_orch(repo_dir);
+        let controller = ProcessController::new();
+        controller.signal(KillSignal::Term);
+
+        let error = resolve_commit_oid(
+            &orch,
+            "cancelled",
+            workdir.path(),
+            "refs/remotes/origin/missing",
+            &controller,
+        )
+        .await
+        .expect_err("a requested termination must remain a cancellation");
+
+        assert!(error.contains("cancelled by -TERM"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn ref_resolution_does_not_widen_a_real_git_failure() {
+        let (workdir, repo_dir) = empty_repo_dir();
+        let orch = fresh_orch(repo_dir);
+        let controller = ProcessController::new();
+
+        let error = resolve_worktree_start_point(
+            &orch,
+            "not-a-repository",
+            workdir.path(),
+            "missing",
+            &controller,
+        )
+        .await
+        .expect_err("running outside a Git repository is an error, not an absent ref");
+
+        assert!(
+            error.contains("git rev-parse refs/remotes/origin/missing exited"),
+            "{error}"
+        );
     }
 
     /// A pre-existing BARE canonical mirror at the exact path a fresh clone
@@ -1164,9 +1409,14 @@ mod tests {
             canonical.join(".git").is_dir(),
             "canonical repo exists as a plain (non-bare) clone"
         );
+        let requested_oid = git_stdout(
+            &canonical,
+            &["rev-parse", "refs/remotes/origin/main^{commit}"],
+        );
 
         // And it is genuinely on the requested branch with the remote's commit.
         assert_eq!(current_branch(&repo_dir).await.as_deref(), Some("main"));
+        assert_eq!(git_stdout(&repo_dir, &["rev-parse", "HEAD"]), requested_oid);
         assert!(
             repo_dir.join("f.txt").is_file(),
             "remote content checked out"
@@ -1180,6 +1430,21 @@ mod tests {
         assert!(
             transcript.contains("worktree add"),
             "the shared-store path should be what ran: {transcript:?}"
+        );
+        let worktree_adds: Vec<_> = transcript
+            .lines()
+            .filter(|line| line.starts_with("$ git worktree add "))
+            .collect();
+        assert_eq!(
+            worktree_adds.len(),
+            2,
+            "canonical initially owns main, so the immutable-OID retry must run once: {transcript:?}"
+        );
+        assert!(
+            worktree_adds
+                .iter()
+                .all(|command| command.ends_with(&requested_oid)),
+            "every collision attempt must retain the resolved OID: {worktree_adds:?}"
         );
         drop((origin_root, workdir));
     }
@@ -1253,13 +1518,12 @@ mod tests {
         assert!(!repo_dir.join(".git").exists());
     }
 
-    /// Any requested branch that isn't already what canonical has checked
-    /// out is always created locally via `-B` — there's no remote-existence
-    /// probe left to distinguish "forked" from "already there".
+    /// A requested branch absent from the remote is resolved before the one
+    /// mutating add and forked from the remote's default commit.
     #[tokio::test]
     async fn fresh_clone_of_a_new_branch_creates_it_locally_from_canonical() {
-        let (_origin, clone_url) = bare_repo_with_one_commit();
-        let (_workdir, repo_dir) = empty_repo_dir();
+        let (origin_root, clone_url) = bare_repo_with_one_commit();
+        let (workdir, repo_dir) = empty_repo_dir();
         let orch = fresh_orch(repo_dir.clone());
 
         let config = json!({
@@ -1278,6 +1542,310 @@ mod tests {
             repo_dir.join("f.txt").is_file(),
             "new branch must still be cut from canonical's synced content"
         );
+
+        let canonical =
+            crate::sandbox::repo_store::canonical_repo_dir(&orch.app_root, &clone_url).unwrap();
+        let default_oid = git_stdout(
+            &canonical,
+            &["rev-parse", "refs/remotes/origin/HEAD^{commit}"],
+        );
+        assert_eq!(git_stdout(&repo_dir, &["rev-parse", "HEAD"]), default_oid);
+        assert_eq!(
+            git_stdout(
+                &repo_dir,
+                &["config", "branch.does-not-exist-on-remote.remote"]
+            ),
+            "origin"
+        );
+        assert_eq!(
+            git_stdout(
+                &repo_dir,
+                &["config", "branch.does-not-exist-on-remote.merge"]
+            ),
+            "refs/heads/does-not-exist-on-remote"
+        );
+
+        let transcript = orch
+            .tasks
+            .logs()
+            .tail_read(&app_key("setup"), DEFAULT_TAIL_BYTES)
+            .await;
+        let worktree_adds: Vec<_> = transcript
+            .lines()
+            .filter(|line| line.starts_with("$ git worktree add "))
+            .collect();
+        assert_eq!(
+            worktree_adds.len(),
+            1,
+            "a missing ref must be resolved before the one mutating add: {transcript:?}"
+        );
+        assert!(
+            worktree_adds[0].ends_with(&default_oid),
+            "worktree add must use the immutable default OID: {worktree_adds:?}"
+        );
+        assert!(
+            !worktree_adds[0].contains("refs/remotes/origin/does-not-exist-on-remote"),
+            "the absent ref must never be sent to worktree add: {worktree_adds:?}"
+        );
+        drop((origin_root, workdir));
+    }
+
+    #[tokio::test]
+    async fn existing_non_default_remote_branch_wins_over_origin_head() {
+        let (origin_root, clone_url) = bare_repo_with_one_commit();
+        let author = origin_root.path().join("author");
+        git(&author, &["checkout", "-q", "-b", "feature"]);
+        std::fs::write(author.join("f.txt"), "feature content").unwrap();
+        git(&author, &["add", "f.txt"]);
+        git(&author, &["commit", "-q", "-m", "feature"]);
+        git(&author, &["push", "-q", "-u", "origin", "feature"]);
+
+        let (workdir, repo_dir) = empty_repo_dir();
+        let orch = fresh_orch(repo_dir.clone());
+        let config = json!({
+            "git": { "repository": { "cloneUrl": clone_url, "branch": "feature" } }
+        });
+        assert!(
+            run(&orch, &config).await,
+            "existing feature branch must clone"
+        );
+
+        let canonical =
+            crate::sandbox::repo_store::canonical_repo_dir(&orch.app_root, &clone_url).unwrap();
+        let requested_oid = git_stdout(
+            &canonical,
+            &["rev-parse", "refs/remotes/origin/feature^{commit}"],
+        );
+        let default_oid = git_stdout(
+            &canonical,
+            &["rev-parse", "refs/remotes/origin/HEAD^{commit}"],
+        );
+        assert_ne!(requested_oid, default_oid, "fixture branches must differ");
+        assert_eq!(git_stdout(&repo_dir, &["rev-parse", "HEAD"]), requested_oid);
+        assert_eq!(
+            std::fs::read_to_string(repo_dir.join("f.txt")).unwrap(),
+            "feature content"
+        );
+
+        let transcript = orch
+            .tasks
+            .logs()
+            .tail_read(&app_key("setup"), DEFAULT_TAIL_BYTES)
+            .await;
+        let worktree_adds: Vec<_> = transcript
+            .lines()
+            .filter(|line| line.starts_with("$ git worktree add "))
+            .collect();
+        assert_eq!(worktree_adds.len(), 1, "transcript: {transcript:?}");
+        assert!(
+            worktree_adds[0].ends_with(&requested_oid),
+            "the requested branch OID must win over origin/HEAD: {worktree_adds:?}"
+        );
+        drop((origin_root, workdir));
+    }
+
+    #[tokio::test]
+    async fn missing_or_dangling_origin_head_is_repaired_before_branch_creation() {
+        for dangling in [false, true] {
+            let (origin_root, clone_url) = bare_repo_with_one_commit();
+            let (workdir, repo_dir) = empty_repo_dir();
+            let orch = fresh_orch(repo_dir.clone());
+            let canonical =
+                crate::sandbox::repo_store::canonical_repo_dir(&orch.app_root, &clone_url).unwrap();
+            let controller = ProcessController::new();
+            sync_canonical(&orch, "seed", &canonical, &clone_url, &controller)
+                .await
+                .expect("fixture canonical clone succeeds");
+
+            if dangling {
+                git(
+                    &canonical,
+                    &[
+                        "symbolic-ref",
+                        "refs/remotes/origin/HEAD",
+                        "refs/remotes/origin/deleted-default",
+                    ],
+                );
+            } else {
+                git(
+                    &canonical,
+                    &["symbolic-ref", "--delete", "refs/remotes/origin/HEAD"],
+                );
+            }
+
+            std::fs::remove_dir_all(&repo_dir).unwrap();
+            let task_id = orch.tasks.next_id();
+            assert!(orch.register_task(TaskEntry::new(
+                TaskSummary {
+                    id: task_id.clone(),
+                    command: "git worktree repair test".to_string(),
+                    status: TaskStatus::Running,
+                    exit_code: None,
+                    started_at: now_ms(),
+                    finished_at: None,
+                    timed_out: false,
+                    truncated: false,
+                    log_name: Some("setup".to_string()),
+                    intentional: None,
+                },
+                Some(controller.kill_handle()),
+            )));
+            assert!(
+                add_worktree(
+                    &orch,
+                    &task_id,
+                    &canonical,
+                    &repo_dir,
+                    Some("new-local"),
+                    &controller,
+                )
+                .await
+                .is_ok(),
+                "a {} origin/HEAD must be repaired: {:?}",
+                if dangling { "dangling" } else { "missing" },
+                orch.tasks
+                    .logs()
+                    .tail_read(&app_key("setup"), DEFAULT_TAIL_BYTES)
+                    .await
+            );
+            orch.tasks.finalize(&task_id, TaskStatus::Exited, 0, false);
+            assert_eq!(
+                git_stdout(&canonical, &["symbolic-ref", "refs/remotes/origin/HEAD"]),
+                "refs/remotes/origin/main"
+            );
+            let default_oid = git_stdout(
+                &canonical,
+                &["rev-parse", "refs/remotes/origin/HEAD^{commit}"],
+            );
+            assert_eq!(git_stdout(&repo_dir, &["rev-parse", "HEAD"]), default_oid);
+
+            let transcript = orch
+                .tasks
+                .logs()
+                .tail_read(&app_key("setup"), DEFAULT_TAIL_BYTES)
+                .await;
+            assert!(
+                transcript.contains("$ git remote set-head origin -a"),
+                "repair command missing: {transcript:?}"
+            );
+            let worktree_adds: Vec<_> = transcript
+                .lines()
+                .filter(|line| line.starts_with("$ git worktree add "))
+                .collect();
+            assert_eq!(worktree_adds.len(), 1, "transcript: {transcript:?}");
+            assert!(worktree_adds[0].ends_with(&default_oid));
+            drop((origin_root, workdir));
+        }
+    }
+
+    #[tokio::test]
+    async fn nonempty_remote_without_a_default_head_does_not_become_an_orphan() {
+        let (origin_root, clone_url) = bare_repo_with_one_commit();
+        git(
+            Path::new(&clone_url),
+            &["symbolic-ref", "HEAD", "refs/heads/not-advertised"],
+        );
+        let (workdir, repo_dir) = empty_repo_dir();
+        let orch = fresh_orch(repo_dir.clone());
+        let config = json!({
+            "git": { "repository": { "cloneUrl": clone_url, "branch": "new-local" } }
+        });
+
+        assert!(
+            !run(&orch, &config).await,
+            "a nonempty remote with no default must fail rather than lose its content"
+        );
+        let lifecycle = orch.lifecycle_snapshot();
+        let error = lifecycle["error"]
+            .as_str()
+            .expect("clone failure has an error");
+        assert!(
+            error.contains("origin has commits but no resolvable default branch")
+                && error.contains("configure origin's default branch"),
+            "{error}"
+        );
+        assert!(
+            !repo_dir.join(".git").exists(),
+            "no orphan worktree may be created"
+        );
+        let transcript = orch
+            .tasks
+            .logs()
+            .tail_read(&app_key("setup"), DEFAULT_TAIL_BYTES)
+            .await;
+        assert!(
+            transcript.contains("$ git rev-list --max-count=1 --remotes=origin"),
+            "the nonempty guard must run: {transcript:?}"
+        );
+        assert!(
+            !transcript.contains("$ git worktree add "),
+            "resolution failure must happen before mutation: {transcript:?}"
+        );
+        drop((origin_root, workdir));
+    }
+
+    #[tokio::test]
+    async fn sibling_branch_collision_falls_back_to_the_same_oid_detached() {
+        let (origin_root, clone_url) = bare_repo_with_one_commit();
+        let (workdir, repo_dir) = empty_repo_dir();
+        let orch = fresh_orch(repo_dir.clone());
+        let canonical =
+            crate::sandbox::repo_store::canonical_repo_dir(&orch.app_root, &clone_url).unwrap();
+        let controller = ProcessController::new();
+        sync_canonical(&orch, "seed", &canonical, &clone_url, &controller)
+            .await
+            .expect("fixture canonical clone succeeds");
+        let selected_oid = git_stdout(
+            &canonical,
+            &["rev-parse", "refs/remotes/origin/HEAD^{commit}"],
+        );
+        let sibling = workdir.path().join("sibling");
+        git(
+            &canonical,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "-b",
+                "held-branch",
+                sibling.to_str().unwrap(),
+                &selected_oid,
+            ],
+        );
+
+        assert!(
+            clone_fresh(&orch, &clone_url, Some("held-branch")).await,
+            "a sibling holding the local branch should not block acquisition"
+        );
+        assert_eq!(current_branch(&repo_dir).await, None);
+        assert_eq!(git_stdout(&repo_dir, &["rev-parse", "HEAD"]), selected_oid);
+
+        let transcript = orch
+            .tasks
+            .logs()
+            .tail_read(&app_key("setup"), DEFAULT_TAIL_BYTES)
+            .await;
+        assert!(
+            transcript
+                .contains("branch 'held-branch' already checked out elsewhere; detaching HEAD"),
+            "detached fallback marker missing: {transcript:?}"
+        );
+        let worktree_adds: Vec<_> = transcript
+            .lines()
+            .filter(|line| line.starts_with("$ git worktree add "))
+            .collect();
+        assert_eq!(
+            worktree_adds.len(),
+            3,
+            "named attempt, named retry, and detached fallback should run: {transcript:?}"
+        );
+        assert!(
+            worktree_adds
+                .iter()
+                .all(|command| command.ends_with(&selected_oid)),
+            "every fallback must retain the originally resolved OID: {worktree_adds:?}"
+        );
+        drop((origin_root, workdir));
     }
 
     #[tokio::test]
@@ -1349,12 +1917,10 @@ mod tests {
         );
     }
 
-    /// A bare origin with ZERO commits — the case that used to hard-fail
-    /// clone/setup: `worktree add` from an unborn HEAD, and a canonical
-    /// mirror sync that can never resolve a "default branch" because the
-    /// remote has none to advertise. Neither `sync_canonical` nor
-    /// `add_worktree` needs to know any of that; git's own porcelain infers
-    /// `--orphan` when the source has no commits, so this just works.
+    /// A bare origin with ZERO commits. Ref selection must prove its
+    /// remote-tracking namespace is empty before preserving Git's
+    /// no-start-point behavior, which then infers an orphan worktree from the
+    /// canonical checkout's unborn HEAD.
     fn empty_bare_repo() -> (tempfile::TempDir, String) {
         let root = tempfile::tempdir().unwrap();
         let bare_dir = root.path().join("origin.git");
@@ -1399,6 +1965,25 @@ mod tests {
                 .then_some(())
                 .is_none(),
             "worktree must have zero commits"
+        );
+
+        let transcript = orch
+            .tasks
+            .logs()
+            .tail_read(&app_key("setup"), DEFAULT_TAIL_BYTES)
+            .await;
+        let worktree_adds: Vec<_> = transcript
+            .lines()
+            .filter(|line| line.starts_with("$ git worktree add "))
+            .collect();
+        assert_eq!(
+            worktree_adds.len(),
+            1,
+            "an empty remote is proven before the one no-start-point add: {transcript:?}"
+        );
+        assert!(
+            worktree_adds[0].ends_with(repo_dir.to_str().unwrap()),
+            "the orphan add must not receive a ref or object ID: {worktree_adds:?}"
         );
 
         // The worktree is genuinely usable: a first commit succeeds.
