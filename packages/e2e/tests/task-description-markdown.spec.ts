@@ -43,6 +43,17 @@ interface TaskBoardItem {
   description: string | null;
 }
 
+/**
+ * Close the dialog, which is how a description gets written now: the card
+ * autosaves as you type and closing flushes whatever the debounce still holds.
+ * There is no Save button to click.
+ */
+async function closeTask(page: Page) {
+  // The button, not Escape: tiptap swallows Escape while the editor has focus.
+  await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+}
+
 async function openTask(page: Page, orgSlug: string, title: string) {
   await page.goto(`/${orgSlug}?main=board`);
   const card = page.getByText(title, { exact: true });
@@ -87,7 +98,7 @@ test.describe("task description markdown editor", () => {
     await expect(editor).not.toContainText("#");
     await expect(editor).not.toContainText("**");
 
-    await page.getByRole("button", { name: "Save" }).click();
+    await closeTask(page);
 
     // 3: markdown on the wire, not HTML.
     await expect
@@ -151,7 +162,7 @@ test.describe("task description markdown editor", () => {
       })
       .toBe(1);
 
-    await page.getByRole("button", { name: "Save" }).click();
+    await closeTask(page);
 
     // Persisted as markdown image syntax, with the file name as alt text.
     await expect
@@ -175,7 +186,7 @@ test.describe("task description markdown editor", () => {
     await page.getByRole("button", { name: "Remove image" }).click();
     await expect(reopened).toHaveCount(0);
 
-    await page.getByRole("button", { name: "Save" }).click();
+    await closeTask(page);
     await expect
       .poll(async () => {
         const { items } = await call<{ items: TaskBoardItem[] }>(
@@ -229,7 +240,7 @@ test.describe("task description markdown editor", () => {
     expect(fetched.status()).toBe(200);
     expect(await fetched.text()).toBe(DOC.toString());
 
-    await page.getByRole("button", { name: "Save" }).click();
+    await closeTask(page);
 
     // Persisted as a plain markdown link — legible to whatever reads the
     // description next, including the agent it's fed to as context.
@@ -254,7 +265,7 @@ test.describe("task description markdown editor", () => {
     await page.getByRole("button", { name: "Remove attachment" }).click();
     await expect(reopened).toHaveCount(0);
 
-    await page.getByRole("button", { name: "Save" }).click();
+    await closeTask(page);
     await expect
       .poll(async () => {
         const { items } = await call<{ items: TaskBoardItem[] }>(
