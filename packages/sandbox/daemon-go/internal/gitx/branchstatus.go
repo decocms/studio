@@ -50,26 +50,33 @@ func (m *BranchStatusMonitor) GetLast() events.BranchMeta {
 	return m.last
 }
 
+// ArmBaseline snapshots what is dirty right now as "not the user's work": a
+// checkout is littered with generated artifacts (lockfiles, `*.gen.*`, build
+// output the repo doesn't gitignore) before anyone edits anything, and counting
+// those as changes made a pristine branch look publishable.
+//
+// First arm wins — a later call is a no-op. The arm points are boot outcomes
+// (see the callers), and a dev server that dies and comes back re-enters them;
+// re-baselining there would swallow every edit made in between, which is
+// exactly the data loss the hash comparison exists to prevent.
 func (m *BranchStatusMonitor) ArmBaseline() {
-	paths := m.readDirtyPaths()
 	m.mu.Lock()
-	m.baseline = map[string]string{}
-	m.hasBaseline = true
-	for p := range paths {
-		m.baseline[p] = m.hashWorktreeFile(p)
-	}
-	m.mu.Unlock()
-	m.Refresh()
-}
-
-func (m *BranchStatusMonitor) ClearBaseline() {
-	m.mu.Lock()
-	if !m.hasBaseline {
+	if m.hasBaseline {
 		m.mu.Unlock()
 		return
 	}
-	m.baseline = nil
-	m.hasBaseline = false
+	// Claimed before the scan so a concurrent arm can't double-scan. Until the
+	// map lands, `compute` sees an empty baseline and reports dirty — the same
+	// answer it gave a moment earlier, un-armed.
+	m.hasBaseline = true
+	m.mu.Unlock()
+	paths := m.readDirtyPaths()
+	baseline := make(map[string]string, len(paths))
+	for p := range paths {
+		baseline[p] = m.hashWorktreeFile(p)
+	}
+	m.mu.Lock()
+	m.baseline = baseline
 	m.mu.Unlock()
 	m.Refresh()
 }
