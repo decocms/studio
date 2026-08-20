@@ -11,9 +11,8 @@
  */
 
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useSuspenseQuery } from "@tanstack/react-query";
 import { Globe01, Monitor01 } from "@untitledui/icons";
-import { createElement, useSyncExternalStore } from "react";
+import { createElement } from "react";
 import {
   COMMERCE_DISCOVERY_ICON,
   COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
@@ -28,14 +27,11 @@ import {
 } from "@/sdk";
 import { getUIResourceUri } from "@decocms/shared/mcp-apps/types";
 import { toTitleCase } from "@/components/chat/message/parts/tool-call-part/utils";
-import { KEYS } from "@/lib/query-keys";
-import { useStudioTools } from "@/lib/studio-tools";
 import {
   agentHasClonableSource,
   agentHasConnectedGithub,
 } from "@/lib/agent-capabilities";
 import { useChatTask } from "@/components/chat/index";
-import { useThreadManager } from "@/components/chat/store/hooks";
 import { getActiveGithubRepo } from "@/lib/github-repo.ts";
 import { usePrByBranch } from "@/components/thread/github/use-pr-data.ts";
 import { useDecofile } from "@/components/sections-editor/use-decofile";
@@ -43,11 +39,7 @@ import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
 import { hasEditableDecoContent } from "@/components/sections-editor/page-list";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
-import type {
-  ThreadExpandedTool,
-  ThreadMetadata,
-} from "@decocms/shared/entities";
-import type { Task } from "@/components/chat/task/types";
+import type { ThreadExpandedTool } from "@decocms/shared/entities";
 import { FileTypeIcon } from "@/components/file-type-icon";
 import {
   formatPinnedViewTabId,
@@ -61,6 +53,8 @@ import {
   type AutomationTabParsed,
 } from "./tab-id";
 import { resolveTabIcon, type TabIcon, type TabKind } from "./resolve-tab-icon";
+import { useTaskMetadata } from "./use-task-metadata";
+import { resolvePreviewSource } from "./preview-source";
 import {
   getSourceSystemTabs,
   shouldDeepLinkSourceTab,
@@ -106,48 +100,6 @@ export interface MainPanelTabs {
   leadTabId: string | null;
 }
 
-function useTaskMetadata(taskId: string): ThreadMetadata | null {
-  const { org } = useProjectContext();
-  const studio = useStudioTools();
-  const manager = useThreadManager();
-  // Subscribe to the store so a row that lands AFTER first render (snapshot
-  // arrives late, manager.create prepends, etc.) re-renders this hook with
-  // fresh metadata. Reading via the queryFn alone would pin a stale null in
-  // the React Query cache.
-  const threads = useSyncExternalStore(
-    manager.threads.subscribe,
-    manager.threads.get,
-  );
-  const localHit = taskId
-    ? (threads.find((t) => t.id === taskId) ?? null)
-    : null;
-  // Suspense fallback for the archived-thread / cold-load case — not in the
-  // open-list snapshot, so the store can't help. Result is cached per
-  // `KEYS.ensureTask(orgId, taskId)`; localHit always wins when present, so a
-  // stale-null cache entry is harmless once the store catches up.
-  const { data: fetchedMetadata } = useSuspenseQuery<
-    Task | null,
-    Error,
-    ThreadMetadata | null
-  >({
-    queryKey: KEYS.ensureTask(org.id, taskId),
-    queryFn: async () => {
-      if (!taskId) return null;
-      try {
-        const { item } = await studio.call("COLLECTION_THREADS_GET", {
-          id: taskId,
-        });
-        return (item as Task | null) ?? null;
-      } catch {
-        return null;
-      }
-    },
-    select: (task) => task?.metadata ?? null,
-    staleTime: 30_000,
-  });
-  return localHit?.metadata ?? fetchedMetadata ?? null;
-}
-
 export function useMainPanelTabs(ctx: {
   virtualMcpId: string;
   taskId: string;
@@ -160,7 +112,7 @@ export function useMainPanelTabs(ctx: {
   const entity = useVirtualMCP(ctx.virtualMcpId);
   const metadata = useTaskMetadata(ctx.taskId);
   const { org } = useProjectContext();
-  const { currentBranch } = useChatTask();
+  const { currentBranch, activeTask } = useChatTask();
 
   const githubRepo = getActiveGithubRepo(entity);
   const prQuery = usePrByBranch({
@@ -221,6 +173,18 @@ export function useMainPanelTabs(ctx: {
   // SandboxEventsProvider (desktop tabs bar lives inside VmEventsBridge).
   const vmEvents = useSandboxEvents();
   const { vmEntry, previewUrl } = useSandboxLifecycle();
+  // What Preview / Code can actually show for THIS thread — see preview-source:
+  // a sandbox-hosted run (claude-code) resolves off its own sandbox, not off the
+  // agent's repo, so a repo-less run gets no Preview tab instead of a tab that
+  // renders the "connect a GitHub repository" empty state.
+  const previewSource = resolvePreviewSource({
+    harnessId: activeTask?.harness_id,
+    agentHasRepo: agentHasClonableSource(entity?.metadata),
+    threadHasRepo:
+      agentHasClonableSource(metadata) ||
+      agentHasClonableSource(activeTask?.metadata),
+    hasSandboxPreviewUrl: !!previewUrl,
+  });
   const devServerReady = vmEvents.lifecycle.phase === "running";
 
   // A user-desktop sandbox serves its dev server on a loopback previewUrl
@@ -372,15 +336,17 @@ export function useMainPanelTabs(ctx: {
   // have a mirrored `githubRepo`. Clicking from off the Report Agent deep-links
   // into it (see setActiveTab).
   leadingSystemTabs.push(
-    ...getSourceSystemTabs(hasClonableSource || reportsOnly).map((tab) => ({
-      id: tab.id,
-      title:
-        tab.id === "preview"
-          ? t("common.mainPanelTabs.preview")
-          : tab.id === "code"
-            ? t("common.mainPanelTabs.code")
-            : tab.title,
-    })),
+    ...getSourceSystemTabs(previewSource !== "none" || reportsOnly).map(
+      (tab) => ({
+        id: tab.id,
+        title:
+          tab.id === "preview"
+            ? t("common.mainPanelTabs.preview")
+            : tab.id === "code"
+              ? t("common.mainPanelTabs.code")
+              : tab.title,
+      }),
+    ),
   );
 
   const systemTabs: Array<{ id: string; title: string }> = [];
