@@ -12,8 +12,10 @@ import {
   isDecoOnlyPaths,
   needsSmartReviewJudgment,
   normalizePublishPolicy,
+  parseJson,
   resolvePathGate,
   reviewDiffSignature,
+  SandboxGitError,
   sandboxGitStatusQueryKey,
   sandboxGitStatusQueryOptions,
   shouldUseBaseDiff,
@@ -653,5 +655,33 @@ describe("hasNothingToReview", () => {
     ).toBe(false);
     expect(hasNothingToReview({ ...cleanStatus, aheadOfBase: 1 })).toBe(false);
     expect(hasNothingToReview({ ...cleanStatus, unpushed: 1 })).toBe(false);
+  });
+});
+
+describe("parseJson", () => {
+  test("returns the parsed body on a 2xx JSON response", async () => {
+    const res = new Response(JSON.stringify({ ok: true }), { status: 200 });
+    expect(await parseJson<{ ok: boolean }>(res)).toEqual({ ok: true });
+  });
+
+  test("throws a SandboxGitError with the response's error field on non-2xx JSON", async () => {
+    const res = new Response(JSON.stringify({ error: "no runner" }), {
+      status: 503,
+    });
+    await expect(parseJson(res)).rejects.toMatchObject(
+      new SandboxGitError("no runner", 503),
+    );
+  });
+
+  test("degrades a non-JSON error page instead of throwing a raw SyntaxError", async () => {
+    const page = () =>
+      new Response("<html>502 Bad Gateway</html>", { status: 502 });
+    await expect(parseJson(page())).rejects.toBeInstanceOf(SandboxGitError);
+    await expect(parseJson(page())).rejects.toMatchObject({ status: 502 });
+  });
+
+  test("degrades a non-JSON 2xx body instead of throwing a raw SyntaxError", async () => {
+    const res = new Response("not json", { status: 200 });
+    await expect(parseJson(res)).rejects.toBeInstanceOf(SandboxGitError);
   });
 });

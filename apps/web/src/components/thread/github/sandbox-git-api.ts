@@ -71,7 +71,7 @@ function buildSandboxGitUrl(
 
 /** Error carrying the HTTP status so callers can back off on unreachable
  *  sandboxes (503 no runner, 410 handle gone) instead of polling forever. */
-class SandboxGitError extends Error {
+export class SandboxGitError extends Error {
   constructor(
     message: string,
     readonly status: number,
@@ -103,11 +103,24 @@ function retryGitRequest(failureCount: number, error: unknown): boolean {
   return failureCount < 1;
 }
 
-async function parseJson<T>(res: Response): Promise<T> {
-  const body = (await res.json()) as T & { error?: string };
-  if (!res.ok) {
+/**
+ * A gateway/proxy hiccup between the browser and the sandbox daemon (a 502/504
+ * error page, an empty body on a dropped connection) is not guaranteed to be
+ * JSON even on a non-2xx response. `res.json()` throwing a raw `SyntaxError`
+ * on that would surface as an opaque "Unexpected token" instead of a
+ * `SandboxGitError` callers can branch on (e.g. `isSandboxUnreachable`).
+ */
+export async function parseJson<T>(res: Response): Promise<T> {
+  const text = await res.text();
+  let body: (T & { error?: string }) | undefined;
+  try {
+    body = text ? (JSON.parse(text) as T & { error?: string }) : undefined;
+  } catch {
+    body = undefined;
+  }
+  if (!res.ok || body === undefined) {
     throw new SandboxGitError(
-      typeof body.error === "string"
+      typeof body?.error === "string"
         ? body.error
         : `Request failed (${res.status})`,
       res.status,
