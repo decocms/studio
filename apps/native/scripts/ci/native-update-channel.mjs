@@ -73,17 +73,29 @@ export function shouldPromote({
       reason: `channel already at newer ${currentManifest.version}`,
     };
   }
-  if (cmp === 0 && !force) {
-    // Same version: idempotent skip. A forced dispatch still re-promotes so
-    // a corrupt-but-parseable manifest of the current version can be healed.
+
+  if (force) {
+    return { promote: true, reason: "forced by workflow_dispatch" };
+  }
+
+  const currentPlatforms = new Set(platformKeysOf(currentManifest));
+  const missingRequiredPlatforms = Object.keys(PLATFORM_ASSETS).filter(
+    (key) => !currentPlatforms.has(key),
+  );
+  if (missingRequiredPlatforms.length > 0) {
+    return {
+      promote: true,
+      reason: `channel missing required platform(s): ${missingRequiredPlatforms.join(", ")}`,
+    };
+  }
+
+  if (cmp === 0) {
+    // Same version with complete platform coverage is an idempotent skip.
+    // An incomplete manifest is repaired by the coverage check above.
     return {
       promote: false,
       reason: `channel already at ${currentManifest.version}`,
     };
-  }
-
-  if (force) {
-    return { promote: true, reason: "forced by workflow_dispatch" };
   }
 
   const pubDateMs = Date.parse(currentManifest.pub_date ?? "");
@@ -204,11 +216,13 @@ function platformKeysOf(manifest) {
  * Coverage-regression guard, run against the CURRENTLY-PUBLISHED manifest
  * before uploading a new one.
  *
- * `shouldPromote` compares only `version`, so a repair dispatch from a ref
- * predating a platform key — or a revert — can legitimately decide to promote
- * a narrower manifest over a wider one. Nothing downstream would notice: the
- * dropped platform's clients simply poll a manifest without their key and see
- * "no update" forever, with no failed job and no dangling URL to grep for.
+ * `shouldPromote` detects when the published manifest is missing a platform
+ * required by the current ref, but it cannot detect the inverse: a repair
+ * dispatch from a ref predating a platform key — or a revert — can legitimately
+ * decide to promote a narrower manifest over a wider one. Nothing downstream
+ * would notice: the dropped platform's clients simply poll a manifest without
+ * their key and see "no update" forever, with no failed job and no dangling URL
+ * to grep for.
  *
  * Fail-open on an absent/unreadable current manifest, matching `shouldPromote`
  * — there is nothing to regress from. Fail CLOSED on an empty next manifest:
