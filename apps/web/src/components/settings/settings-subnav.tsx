@@ -26,7 +26,7 @@ export function SettingsSubnav({ group }: { group: SettingsGroupKey }) {
   const { titleKey } = SETTINGS_TAB_GROUPS[group];
 
   return (
-    <div className="flex flex-col gap-4">
+    <div data-slot="settings-heading" className="flex flex-col gap-4">
       <Page.Title>{t(titleKey)}</Page.Title>
       {tabs.length > 1 && (
         <nav

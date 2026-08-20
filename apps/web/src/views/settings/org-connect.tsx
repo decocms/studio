@@ -19,8 +19,6 @@ import {
   LinkExternal01,
   Trash01,
 } from "@untitledui/icons";
-import { Page } from "@/components/page";
-import { SettingsPage } from "@/components/settings/settings-section";
 import {
   type ConnectClient,
   InstallSnippet,
@@ -32,7 +30,7 @@ import {
   useDeleteApiKey,
 } from "@/hooks/use-api-keys";
 import { useT } from "@/i18n/use-t.ts";
-import { SettingsSubnav } from "@/components/settings/settings-subnav";
+import { SettingsGroupPage } from "@/components/settings/settings-group-page";
 
 const KEY_NAME_PREFIX = "Connect: ";
 
@@ -234,7 +232,7 @@ function ConnectKeysList() {
   );
 }
 
-export function OrgConnectPage() {
+function OrgConnectContent() {
   const t = useT();
   const { org } = useProjectContext();
   const url = mcpUrl(org.slug);
@@ -263,94 +261,94 @@ export function OrgConnectPage() {
   const oauthMetadataUrl = `${url}/.well-known/oauth-protected-resource`;
 
   return (
-    <Page>
-      <Page.Content>
-        <Page.Body>
-          <SettingsPage>
-            <SettingsSubnav group="connect" />
+    <>
+      <Card className="p-5 gap-3">
+        <div className="flex items-start gap-3">
+          <div className="size-9 rounded-lg bg-muted/60 flex items-center justify-center text-muted-foreground shrink-0">
+            <LinkExternal01 size={18} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-[15px] font-medium leading-tight">
+              {t("settings.connectClients.orgUnifiedMcp")}
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1 leading-snug">
+              {t("settings.connectClients.orgUnifiedMcpDescription")}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-1.5">
+          <code className="text-xs flex-1 truncate">{url}</code>
+          <CopyInline text={url} />
+        </div>
+        <details className="text-xs text-muted-foreground">
+          <summary className="cursor-pointer hover:text-foreground">
+            {t("settings.connectClients.customClientHint")}
+          </summary>
+          <div className="mt-2 space-y-1">
+            <p>{t("settings.connectClients.oauthMetadataHint")}</p>
+            <div className="flex items-center gap-2 rounded-md border border-border bg-background px-2 py-1">
+              <code className="text-[11px] flex-1 truncate">
+                {oauthMetadataUrl}
+              </code>
+              <CopyInline text={oauthMetadataUrl} />
+            </div>
+          </div>
+        </details>
+      </Card>
 
-            <Card className="p-5 gap-3">
-              <div className="flex items-start gap-3">
-                <div className="size-9 rounded-lg bg-muted/60 flex items-center justify-center text-muted-foreground shrink-0">
-                  <LinkExternal01 size={18} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h2 className="text-[15px] font-medium leading-tight">
-                    {t("settings.connectClients.orgUnifiedMcp")}
-                  </h2>
-                  <p className="text-sm text-muted-foreground mt-1 leading-snug">
-                    {t("settings.connectClients.orgUnifiedMcpDescription")}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-1.5">
-                <code className="text-xs flex-1 truncate">{url}</code>
-                <CopyInline text={url} />
-              </div>
-              <details className="text-xs text-muted-foreground">
-                <summary className="cursor-pointer hover:text-foreground">
-                  {t("settings.connectClients.customClientHint")}
-                </summary>
-                <div className="mt-2 space-y-1">
-                  <p>{t("settings.connectClients.oauthMetadataHint")}</p>
-                  <div className="flex items-center gap-2 rounded-md border border-border bg-background px-2 py-1">
-                    <code className="text-[11px] flex-1 truncate">
-                      {oauthMetadataUrl}
-                    </code>
-                    <CopyInline text={oauthMetadataUrl} />
-                  </div>
-                </div>
-              </details>
-            </Card>
+      <Tabs defaultValue="claude-code" variant="underline">
+        <TabsList variant="underline">
+          {CLIENTS.map((c) => (
+            <TabsTrigger key={c.id} value={c.id} variant="underline">
+              {c.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-            <Tabs defaultValue="claude-code" variant="underline">
-              <TabsList variant="underline">
-                {CLIENTS.map((c) => (
-                  <TabsTrigger key={c.id} value={c.id} variant="underline">
-                    {c.label}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
+        {CLIENTS.map((c) => (
+          <TabsContent key={c.id} value={c.id}>
+            <ClientPanel
+              client={c.id}
+              url={url}
+              newKey={newKeys[c.id] ?? null}
+              onGenerate={() => handleGenerate(c.id)}
+              isGenerating={
+                createKey.isPending &&
+                createKey.variables?.name?.startsWith(
+                  `${KEY_NAME_PREFIX}${c.label}`,
+                ) === true
+              }
+              onClearNewKey={() =>
+                setNewKeys((prev) => {
+                  const next = { ...prev };
+                  delete next[c.id];
+                  return next;
+                })
+              }
+            />
+          </TabsContent>
+        ))}
+      </Tabs>
 
-              {CLIENTS.map((c) => (
-                <TabsContent key={c.id} value={c.id}>
-                  <ClientPanel
-                    client={c.id}
-                    url={url}
-                    newKey={newKeys[c.id] ?? null}
-                    onGenerate={() => handleGenerate(c.id)}
-                    isGenerating={
-                      createKey.isPending &&
-                      createKey.variables?.name?.startsWith(
-                        `${KEY_NAME_PREFIX}${c.label}`,
-                      ) === true
-                    }
-                    onClearNewKey={() =>
-                      setNewKeys((prev) => {
-                        const next = { ...prev };
-                        delete next[c.id];
-                        return next;
-                      })
-                    }
-                  />
-                </TabsContent>
-              ))}
-            </Tabs>
+      <section className="flex flex-col gap-3">
+        <div className="px-4">
+          <h2 className="text-[15px] font-medium leading-tight">
+            {t("settings.connectClients.activeKeys")}
+          </h2>
+          <p className="text-sm text-muted-foreground leading-snug mt-1">
+            {t("settings.connectClients.activeKeysDescription")}
+          </p>
+        </div>
+        <ConnectKeysList />
+      </section>
+    </>
+  );
+}
 
-            <section className="flex flex-col gap-3">
-              <div className="px-4">
-                <h2 className="text-[15px] font-medium leading-tight">
-                  {t("settings.connectClients.activeKeys")}
-                </h2>
-                <p className="text-sm text-muted-foreground leading-snug mt-1">
-                  {t("settings.connectClients.activeKeysDescription")}
-                </p>
-              </div>
-              <ConnectKeysList />
-            </section>
-          </SettingsPage>
-        </Page.Body>
-      </Page.Content>
-    </Page>
+export function OrgConnectPage() {
+  return (
+    <SettingsGroupPage group="connect">
+      <OrgConnectContent />
+    </SettingsGroupPage>
   );
 }

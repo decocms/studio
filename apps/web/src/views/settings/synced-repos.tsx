@@ -32,8 +32,6 @@ import {
 } from "@decocms/ui/components/dialog.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
-import { Page } from "@/components/page";
-import { SettingsPage } from "@/components/settings/settings-section";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import {
   type GitHubImportPayload,
@@ -47,7 +45,7 @@ import {
   useOrgRepoSyncs,
 } from "@/hooks/use-org-repo-syncs";
 import { timeAgo } from "@/layouts/library/cards";
-import { SettingsSubnav } from "@/components/settings/settings-subnav";
+import { SettingsGroupPage } from "@/components/settings/settings-group-page";
 
 /** Suggest a volume name from the repo name (server re-validates). */
 function volumeNameFor(repoName: string): string {
@@ -316,15 +314,8 @@ function SyncedReposContent() {
 
 export function OrgSyncedReposPage() {
   return (
-    <Page>
-      <Page.Content>
-        <Page.Body>
-          <SettingsPage>
-            <SettingsSubnav group="storage" />
-            <SyncedReposContent />
-          </SettingsPage>
-        </Page.Body>
-      </Page.Content>
-    </Page>
+    <SettingsGroupPage group="storage">
+      <SyncedReposContent />
+    </SettingsGroupPage>
   );
 }

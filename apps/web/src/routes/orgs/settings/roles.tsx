@@ -50,7 +50,10 @@ import {
   type RoleEditorTarget,
 } from "@/views/settings/org-role-detail.tsx";
 import { RequirePrivileged } from "@/components/require-privileged";
-import { SettingsSubnav } from "@/components/settings/settings-subnav";
+import {
+  SettingsContentSkeleton,
+  SettingsGroupPage,
+} from "@/components/settings/settings-group-page";
 
 const BUILTIN_ROLE_KEYS = [
   { role: "owner", labelKey: "settings.roles.roleOwner" },
@@ -318,53 +321,46 @@ function RolesPageContent() {
   }
 
   return (
-    <Page>
-      <Page.Content>
-        <Page.Body>
-          <div className="flex flex-col gap-6">
-            <SettingsSubnav group="members" />
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <SearchInput
-                value={search}
-                onChange={setSearch}
-                placeholder={t("settings.roles.searchPlaceholder")}
-                className="w-full md:w-[375px]"
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") {
-                    setSearch("");
-                    (e.target as HTMLInputElement).blur();
-                  }
-                }}
-              />
-              <Button onClick={() => setActiveRole("new")}>
-                <Plus size={16} />
-                {t("settings.roles.createRole")}
-              </Button>
-            </div>
-            <CollectionTableWrapper
-              columns={columns}
-              data={allRows}
-              isLoading={false}
-              onRowClick={handleRowClick}
-              emptyState={
-                search ? (
-                  <EmptyState
-                    title={t("settings.roles.noRolesFound")}
-                    description={t("settings.roles.noRolesMatchSearch", {
-                      search,
-                    })}
-                  />
-                ) : (
-                  <EmptyState
-                    title={t("settings.roles.noRoles")}
-                    description={t("settings.roles.createRoleGetStarted")}
-                  />
-                )
-              }
+    <SettingsGroupPage group="members" className="gap-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder={t("settings.roles.searchPlaceholder")}
+          className="w-full md:w-[375px]"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setSearch("");
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
+        />
+        <Button onClick={() => setActiveRole("new")}>
+          <Plus size={16} />
+          {t("settings.roles.createRole")}
+        </Button>
+      </div>
+      <CollectionTableWrapper
+        columns={columns}
+        data={allRows}
+        isLoading={false}
+        onRowClick={handleRowClick}
+        emptyState={
+          search ? (
+            <EmptyState
+              title={t("settings.roles.noRolesFound")}
+              description={t("settings.roles.noRolesMatchSearch", {
+                search,
+              })}
             />
-          </div>
-        </Page.Body>
-      </Page.Content>
+          ) : (
+            <EmptyState
+              title={t("settings.roles.noRoles")}
+              description={t("settings.roles.createRoleGetStarted")}
+            />
+          )
+        }
+      />
 
       <AlertDialog
         open={roleToDelete !== null}
@@ -396,12 +392,15 @@ function RolesPageContent() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </Page>
+    </SettingsGroupPage>
   );
 }
 
 function RolesPage() {
   const t = useT();
+  const { role: roleParam } = useSearch({ strict: false }) as { role?: string };
+
+  // The role editor is full-bleed with its own heading — only the list gets the group chrome.
   return (
     <ErrorBoundary
       fallback={
@@ -416,14 +415,20 @@ function RolesPage() {
     >
       <Suspense
         fallback={
-          <Page>
-            <div className="flex items-center justify-center h-full">
-              <Loading01
-                size={32}
-                className="animate-spin text-muted-foreground"
-              />
-            </div>
-          </Page>
+          roleParam ? (
+            <Page>
+              <div className="flex items-center justify-center h-full">
+                <Loading01
+                  size={32}
+                  className="animate-spin text-muted-foreground"
+                />
+              </div>
+            </Page>
+          ) : (
+            <SettingsGroupPage group="members" className="gap-6">
+              <SettingsContentSkeleton />
+            </SettingsGroupPage>
+          )
         }
       >
         <RolesPageContent />

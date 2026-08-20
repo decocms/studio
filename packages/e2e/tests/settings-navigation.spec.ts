@@ -11,6 +11,7 @@ import { expect, test } from "../fixtures/test";
 
 const SIDEBAR = '[data-slot="sidebar"]';
 const SUBNAV = '[data-slot="settings-subnav"]';
+const HEADING = '[data-slot="settings-heading"]';
 
 test.describe("settings sidebar", () => {
   test("advanced rows stay collapsed until asked for", async ({
@@ -91,5 +92,36 @@ test.describe("settings tabs", () => {
       );
       await expect(row).toHaveAttribute("data-active", "true");
     }
+  });
+
+  test("the heading and tabs stay put while the next tab loads", async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug } = authedPage;
+    await page.goto(`/${orgSlug}/settings/synced-repos`);
+
+    const tabs = page.locator(SUBNAV);
+    await expect(tabs.getByRole("link", { name: "Buckets" })).toBeVisible();
+
+    // Hold the Buckets tab's fetch open so the assertions below land while it
+    // is still loading — the whole page used to blank out at this moment.
+    await page.route("**/api/*/mcp", async (route) => {
+      if (route.request().postData()?.includes("FILE_CONFIG_LIST")) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+      }
+      await route.continue();
+    });
+
+    await tabs.getByRole("link", { name: "Buckets" }).click();
+
+    await expect(page.getByTestId("settings-content-loading")).toBeVisible();
+    await expect(page.locator(HEADING)).toContainText("Storage");
+    await expect(
+      tabs.getByRole("link", { name: "Synced repos" }),
+    ).toBeVisible();
+
+    await expect(page.getByTestId("settings-content-loading")).toHaveCount(0, {
+      timeout: 15_000,
+    });
   });
 });

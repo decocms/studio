@@ -1,4 +1,4 @@
-import { Suspense, useState } from "react";
+import { useState } from "react";
 import { AlertCircle, Copy01, Key01, Plus, Trash01 } from "@untitledui/icons";
 import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -22,10 +22,6 @@ import {
 } from "@decocms/ui/components/dialog.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
-import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
-import { ErrorBoundary } from "@/components/error-boundary";
-import { Page } from "@/components/page";
-import { SettingsPage } from "@/components/settings/settings-section";
 import { useT } from "@/i18n/use-t.ts";
 import {
   type ApiKey,
@@ -34,7 +30,7 @@ import {
   useCreateApiKey,
   useDeleteApiKey,
 } from "@/hooks/use-api-keys";
-import { SettingsSubnav } from "@/components/settings/settings-subnav";
+import { SettingsGroupPage } from "@/components/settings/settings-group-page";
 
 function ErrorFallback({ error }: { error: Error }) {
   const t = useT();
@@ -356,25 +352,13 @@ function ApiKeysContent() {
 
 export function OrgApiKeysPage() {
   return (
-    <Page>
-      <Page.Content>
-        <Page.Body>
-          <SettingsPage>
-            <SettingsSubnav group="connect" />
-            <ErrorBoundary
-              fallback={({ error }) => (
-                <ErrorFallback
-                  error={error ?? new Error("Failed to load API keys")}
-                />
-              )}
-            >
-              <Suspense fallback={<Skeleton className="h-32 w-full" />}>
-                <ApiKeysContent />
-              </Suspense>
-            </ErrorBoundary>
-          </SettingsPage>
-        </Page.Body>
-      </Page.Content>
-    </Page>
+    <SettingsGroupPage
+      group="connect"
+      errorFallback={({ error }) => (
+        <ErrorFallback error={error ?? new Error("Failed to load API keys")} />
+      )}
+    >
+      <ApiKeysContent />
+    </SettingsGroupPage>
   );
 }
