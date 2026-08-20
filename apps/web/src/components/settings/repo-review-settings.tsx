@@ -90,6 +90,10 @@ function RepoRow({ repo }: { repo: string }) {
   const setRepoFlag = useSetRepoFlag();
   return (
     <SettingsCardItem
+      // Three toggle columns plus Reset don't fit next to the repo name on a
+      // phone, so the row stacks there and the toggles wrap instead of pushing
+      // Reset off-screen.
+      className="flex-col items-start sm:flex-row sm:items-center"
       title={repo}
       description={
         hasOverrides
@@ -97,7 +101,7 @@ function RepoRow({ repo }: { repo: string }) {
           : t("settings.review.perRepoInherited")
       }
       action={
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center justify-start gap-x-3 gap-y-2 sm:justify-end sm:gap-4">
           {REPO_TOGGLES.map(({ flag, icon, labelKey }) => (
             <RepoFlagToggle
               key={flag}
@@ -143,7 +147,7 @@ function RepoFlagToggle({
   const setRepoFlag = useSetRepoFlag();
   const label = `${t(labelKey)} — ${repo}`;
   return (
-    <div className="flex flex-col items-center gap-1.5 w-24">
+    <div className="flex shrink-0 flex-col items-center gap-1.5 w-20 sm:w-24">
       <span
         className="flex items-center gap-1 text-[11px] text-muted-foreground"
         title={overridden ? t("settings.review.perRepoOverridden") : undefined}
