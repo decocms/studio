@@ -17,7 +17,6 @@ export const settings = {
   "settings.nav.advanced": "Avançado",
   "settings.subnav.ariaLabel": "Seções de configurações",
   "settings.subnav.clients": "Clientes",
-  "settings.subnav.planUsage": "Plano e uso",
   "settings.subnav.infrastructure": "Infraestrutura",
   "settings.nav.tasks": "Quadro",
   "settings.jira.sectionTitle": "Integração com o Jira",
