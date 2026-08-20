@@ -790,7 +790,7 @@ test.describe("decofile API", () => {
     }
   });
 
-  test("a provisioned sandbox opts its branch out of the Fast Preview claim", async ({
+  test("a sandboxMap cell does not change a stamped session's runtime", async ({
     playwright,
   }) => {
     const ctx = await newApiContext(playwright);
@@ -803,7 +803,7 @@ test.describe("decofile API", () => {
         repo: "site",
       });
 
-      // Coding sessions share the CMS branch; presence decides the claim.
+      // Coding sessions share the CMS branch; the thread's stamp decides.
       const cmsThread = await callSelfMcpTool<{
         item: { id: string; branch: string | null };
       }>(ctx, org, "COLLECTION_THREADS_CREATE", {
@@ -839,16 +839,28 @@ test.describe("decofile API", () => {
         },
       });
 
-      const gitStatusUrl = `/api/${org}/sandbox/${project.vmcpId}/${branch}/git/status`;
+      const statusUrl = (threadId?: string) =>
+        `/api/${org}/sandbox/${project.vmcpId}/${branch}/git/status` +
+        (threadId ? `?thread=${threadId}` : "");
 
-      // No sandbox yet: the Fast Preview claim answers from GitHub.
-      const before = await ctx.get(gitStatusUrl);
+      // The CMS session answers from GitHub.
+      const before = await ctx.get(statusUrl(cmsThread.item.id));
       expect(before.status()).toBe(200);
       expect(
         ((await before.json()) as { headSha?: string }).headSha,
       ).toBeTruthy();
 
-      // Record a sandbox for (user, branch) — what SANDBOX_START persists.
+      // The coding session on the SAME branch takes the daemon path (which
+      // errors here: no runner in e2e), so one URL answers two ways.
+      const codingRes = await ctx.get(statusUrl(coding.item.id));
+      expect(codingRes.status()).toBeGreaterThanOrEqual(400);
+      expect(
+        ((await codingRes.json().catch(() => ({}))) as { headSha?: string })
+          .headSha,
+      ).toBeUndefined();
+
+      // Record a DEAD sandbox for (user, branch) — the shape a July
+      // `user-desktop` leftover has, and what used to hijack the whole branch.
       await callSelfMcpTool(ctx, org, "COLLECTION_VIRTUAL_MCP_UPDATE", {
         id: project.vmcpId,
         data: {
@@ -868,14 +880,21 @@ test.describe("decofile API", () => {
         },
       });
 
-      // Sandbox present: daemon claim errors (no runner in e2e), never GitHub.
-      const after = await ctx.get(gitStatusUrl);
-      expect(after.status()).toBeGreaterThanOrEqual(400);
-      const afterBody = (await after.json().catch(() => ({}))) as Record<
-        string,
-        unknown
-      >;
-      expect(afterBody.headSha).toBeUndefined();
+      // The stamp still decides: the CMS session keeps its GitHub answer, and
+      // never the 410 the dead cell used to produce.
+      const after = await ctx.get(statusUrl(cmsThread.item.id));
+      expect(after.status()).toBe(200);
+      expect(
+        ((await after.json()) as { headSha?: string }).headSha,
+      ).toBeTruthy();
+
+      // And a thread-less request resolves by LIVENESS: the cell is a corpse,
+      // so it falls back to the sandbox-less answer rather than the daemon.
+      const threadless = await ctx.get(statusUrl());
+      expect(threadless.status()).toBe(200);
+      expect(
+        ((await threadless.json()) as { headSha?: string }).headSha,
+      ).toBeTruthy();
     } finally {
       await ctx.dispose();
     }

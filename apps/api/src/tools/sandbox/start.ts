@@ -63,6 +63,7 @@ import {
 } from "@decocms/shared/branch-name";
 import { PACKAGE_MANAGER_CONFIG } from "@decocms/shared/runtime-defaults";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
+import { stampRuntimeIfAbsent } from "../thread/stamp-runtime-if-absent";
 import {
   getThreadGithubRepo,
   getThreadHeadRef,
@@ -280,12 +281,11 @@ export async function ensureSandbox(
     explicitKind: providerKind,
   });
 
-  // Fast path: trust an agent-sandbox entry directly. For user-desktop, probe the
-  // daemon first — a relinked daemon has an empty sandbox map and answers the
-  // liveness probe with 404, which means we must reap the stale entry and
-  // re-provision (runner.ensure spawns a fresh sandbox on the new daemon).
+  // A recorded entry is trusted only if a pod actually answers at it. Nothing
+  // but SANDBOX_DELETE removes a cell, so an evicted pod (or a `user-desktop`
+  // record from a daemon that no longer exists) leaves one behind forever;
+  // probing every kind is what makes that self-healing rather than sticky.
   if (existing) {
-    if (providerKind !== "user-desktop") return existing;
     const alive = await runner.alive(existing.sandboxHandle).catch(() => false);
     if (alive) return existing;
     await removeSandboxMapEntry(
@@ -296,10 +296,7 @@ export async function ensureSandbox(
       input.branch,
       providerKind,
     ).catch((err) => {
-      console.warn(
-        "[ensureSandbox] failed to reap stale user-desktop entry",
-        err,
-      );
+      console.warn("[ensureSandbox] failed to reap stale entry", err);
     });
   }
 
@@ -309,10 +306,13 @@ export async function ensureSandbox(
   // Recover the thread id from the branch (`thread:<id>[/<conn>]`) so the
   // repo binding is found even on the frontend's SANDBOX_START auto-start path,
   // which doesn't set `ctx.metadata.threadId`. Falls back to the ctx value.
-  const threadRepo = await getThreadGithubRepo(
-    ctx,
-    threadIdFromBranch(input.branch) ?? ctx.metadata?.threadId,
-  );
+  const provisioningThreadId =
+    threadIdFromBranch(input.branch) ?? ctx.metadata?.threadId;
+  // A pod means a coding session; record it so the claim never has to guess.
+  if (provisioningThreadId) {
+    void stampRuntimeIfAbsent(ctx, provisioningThreadId, "sandbox");
+  }
+  const threadRepo = await getThreadGithubRepo(ctx, provisioningThreadId);
   const githubRepo =
     threadRepo ?? (metadata as GithubRepoMeta).githubRepo ?? null;
   const { entry } = await provisionSandbox({
