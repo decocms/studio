@@ -130,3 +130,39 @@ export async function createHttpConnection(
   }
   return response.item;
 }
+
+/** Resolve the org id for a slug via Better Auth's organization list. */
+export async function findOrgId(
+  request: APIRequestContext,
+  orgSlug: string,
+): Promise<string> {
+  const res = await request.get("/api/auth/organization/list");
+  if (!res.ok()) throw new Error(`organization/list → HTTP ${res.status()}`);
+  const body = (await res.json()) as
+    | Array<{ id: string; slug: string }>
+    | { data?: Array<{ id: string; slug: string }> };
+  const orgs = Array.isArray(body) ? body : (body.data ?? []);
+  const org = orgs.find((o) => o.slug === orgSlug);
+  if (!org) throw new Error(`org ${orgSlug} not found in organization/list`);
+  return org.id;
+}
+
+/**
+ * Shallow-merge org boolean flags through ORGANIZATION_SETTINGS_UPDATE,
+ * resolving the org id for you. Keys passed win (explicit `false` persists);
+ * omitted keys keep their stored value.
+ *
+ * Wire contract: flag names are inlined by callers on purpose — this suite owns
+ * its contract (see ban-e2e-app-imports).
+ */
+export async function setOrgFlags(
+  request: APIRequestContext,
+  orgSlug: string,
+  flags: Record<string, boolean>,
+): Promise<void> {
+  const organizationId = await findOrgId(request, orgSlug);
+  await callSelfMcpTool(request, orgSlug, "ORGANIZATION_SETTINGS_UPDATE", {
+    organizationId,
+    flags,
+  });
+}

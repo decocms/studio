@@ -1,5 +1,9 @@
 import { expect, test } from "../fixtures/test";
-import { callSelfMcpTool, createHttpConnection } from "../fixtures/mcp-tools";
+import {
+  callSelfMcpTool,
+  createHttpConnection,
+  setOrgFlags,
+} from "../fixtures/mcp-tools";
 
 async function createClonableAgent(
   api: Parameters<typeof createHttpConnection>[0],
@@ -87,6 +91,8 @@ test.describe("Blocks preview mode", () => {
       page.context().request,
       orgSlug,
     );
+    // The View dropdown drops its Settings option under the new nav.
+    await setOrgFlags(page.context().request, orgSlug, { nav_v2: false });
     await page.goto(
       `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&sidepanel=0&main=settings`,
     );

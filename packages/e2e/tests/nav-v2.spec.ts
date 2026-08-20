@@ -1,19 +1,23 @@
 /**
  * E2E: the first-class navigation (`nav_v2` org flag).
  *
- * With the flag OFF the sidebar renders the chat list; with it ON the sidebar
- * renders destinations (Home, Tasks, Library) and the chat list moves into a
- * menu at the top of the chat panel. Reports is conditional: it joins the list
- * ONLY once the org actually has a Commerce Discovery report, so both the
- * absent and present cases are asserted here.
+ * ON (the seeded default for new orgs) renders destinations and moves the chat
+ * list into the chat panel's menu; OFF is the opt-out and is set up as one here.
+ * Reports joins the list only once the org has a Commerce Discovery report, so
+ * both the absent and present cases are asserted.
  *
  * Wire-contract strings (flag name, `?main=` values, labels) are inlined on
  * purpose — this suite owns its contract (see ban-e2e-app-imports).
  */
 
-import type { APIRequestContext, Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { z } from "zod";
-import { callSelfMcpTool, createHttpConnection } from "../fixtures/mcp-tools";
+import { connectDevDb } from "../fixtures/db";
+import {
+  callSelfMcpTool,
+  createHttpConnection,
+  findOrgId,
+} from "../fixtures/mcp-tools";
 import {
   startTestMcpServer,
   type TestMcpServer,
@@ -61,30 +65,36 @@ async function expandSidebar(page: Page, settled: string) {
   throw new Error(`sidebar never showed "${settled}"`);
 }
 
-/** Turn the flag on the way a user would: the org settings switch. */
-async function enableNavV2(page: Page, orgSlug: string): Promise<void> {
+/** Opt out the way a user would: the org settings switch, which a new org
+ *  finds already on. Persists an explicit `nav_v2: false`. */
+async function disableNavV2(page: Page, orgSlug: string): Promise<void> {
   await page.goto(`/${orgSlug}/settings/general`);
   const toggle = page.getByRole("switch", { name: /first-class navigation/i });
   await toggle.waitFor({ state: "visible", timeout: SHELL_TIMEOUT_MS });
-  await expect(toggle).not.toBeChecked();
-  await toggle.click();
   await expect(toggle).toBeChecked();
+  await toggle.click();
+  await expect(toggle).not.toBeChecked();
 }
 
-/** Resolve the org id for a slug via Better Auth's organization list. */
-async function findOrgId(
-  request: APIRequestContext,
-  orgSlug: string,
-): Promise<string> {
-  const res = await request.get("/api/auth/organization/list");
-  if (!res.ok()) throw new Error(`organization/list → HTTP ${res.status()}`);
-  const body = (await res.json()) as
-    | Array<{ id: string; slug: string }>
-    | { data?: Array<{ id: string; slug: string }> };
-  const orgs = Array.isArray(body) ? body : (body.data ?? []);
-  const org = orgs.find((o) => o.slug === orgSlug);
-  if (!org) throw new Error(`org ${orgSlug} not found in organization/list`);
-  return org.id;
+/**
+ * Drop the creation-time `nav_v2` seed so the flag reads UNSET again.
+ *
+ * Raw SQL because ORGANIZATION_SETTINGS_UPDATE shallow-merges the flags bag and
+ * has no way to remove a key — the state an org created before the seed is in
+ * is unreachable through the tool API.
+ */
+async function clearSeededNavV2(orgId: string): Promise<void> {
+  const db = await connectDevDb();
+  try {
+    await db.query(
+      `UPDATE organization_settings
+          SET flags = flags - 'nav_v2'
+        WHERE "organizationId" = $1`,
+      [orgId],
+    );
+  } finally {
+    await db.end();
+  }
 }
 
 /** A Commerce Discovery MCP that answers with one completed diagnostic. */
@@ -121,9 +131,49 @@ test.describe("first-class navigation", () => {
    *  timeout fires first and reports a misleading "element not found". */
   test.describe.configure({ timeout: 240_000 });
 
-  test("flag off keeps the chat list in the sidebar", async ({
+  test("a new org lands on the first-class navigation with nothing configured", async ({
     authedPage: { page, orgSlug },
   }) => {
+    await page.goto(`/${orgSlug}`);
+    await expandSidebar(page, "Home");
+
+    await expect(
+      page.getByRole("button", { name: "Home", exact: true }),
+    ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await expect(
+      page.getByRole("button", { name: "Library", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Tasks", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /filter chats/i }),
+    ).toHaveCount(0);
+  });
+
+  test("the seed stores nav_v2 rather than resolving it at read time", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const orgId = await findOrgId(page.context().request, orgSlug);
+    const db = await connectDevDb();
+    try {
+      const { rows } = await db.query<{ nav_v2: string | null }>(
+        `SELECT flags ->> 'nav_v2' AS nav_v2
+           FROM organization_settings
+          WHERE "organizationId" = $1`,
+        [orgId],
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.nav_v2).toBe("true");
+    } finally {
+      await db.end();
+    }
+  });
+
+  test("opting out from settings brings the chat list back to the sidebar", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await disableNavV2(page, orgSlug);
     await page.goto(`/${orgSlug}`);
     await expandSidebar(page, "Filter chats");
 
@@ -138,10 +188,9 @@ test.describe("first-class navigation", () => {
     ).toBeVisible();
   });
 
-  test("flag on lists destinations and moves chats to the chat header", async ({
+  test("the first-class sidebar lists destinations and moves chats to the chat header", async ({
     authedPage: { page, orgSlug },
   }) => {
-    await enableNavV2(page, orgSlug);
     await page.goto(`/${orgSlug}`);
     await expandSidebar(page, "Home");
 
@@ -199,7 +248,6 @@ test.describe("first-class navigation", () => {
   test("Reports is hidden until the org has a report, then opens the report app", async ({
     authedPage: { page, orgSlug },
   }) => {
-    await enableNavV2(page, orgSlug);
     await page.goto(`/${orgSlug}`);
     await expandSidebar(page, "Home");
 
@@ -251,6 +299,7 @@ test.describe("first-class navigation", () => {
       organizationId: orgId,
       flags: { reports_only: true },
     });
+    await clearSeededNavV2(orgId);
 
     await page.goto(`/${orgSlug}`);
     await expandSidebar(page, "Home");
@@ -322,7 +371,6 @@ test.describe("first-class navigation", () => {
       { data: { virtual_mcp_id: agent.item.id } },
     );
 
-    await enableNavV2(page, orgSlug);
     await page.goto(
       `/${orgSlug}/${thread.item.id}?virtualmcpid=${agent.item.id}`,
     );

@@ -41,7 +41,7 @@ import { createEmailOtpConfig } from "./email-otp";
 import { createEmailSender, findEmailProvider } from "./email-providers";
 import { emailButton, emailParagraph, emailTemplate } from "./email-template";
 import { createMagicLinkConfig } from "./magic-link";
-import { seedOrgDb } from "./org";
+import { seedOrgDb, seedOrgDefaultFlags } from "./org";
 import { hoistOrgLogo } from "./hoist-org-logo";
 import { identifyAuthenticatedUser } from "./posthog-identify";
 import { ADMIN_ROLES } from "@decocms/shared/auth/roles";
@@ -240,6 +240,8 @@ const plugins = [
   organization({
     organizationCreation: {
       afterCreate: async (data) => {
+        // Before seedOrgDb: the client reads settings as soon as the org exists.
+        await seedOrgDefaultFlags(data.organization.id);
         await seedOrgDb(data.organization.id, data.member.userId);
       },
     },
