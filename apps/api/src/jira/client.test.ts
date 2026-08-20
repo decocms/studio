@@ -234,6 +234,31 @@ describe("JiraClient", () => {
     }
   });
 
+  it("does not retry a 200 response with a malformed JSON body", async () => {
+    let callCount = 0;
+    const originalFetch = globalThis.fetch;
+    const mockFetch = mock(async () => {
+      callCount++;
+      return new Response("not json", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
+
+    try {
+      const client = new JiraClient(
+        "https://acme.atlassian.net",
+        "user@example.com",
+        "token",
+      );
+      await expect(client.myself()).rejects.toThrow("invalid JSON");
+      expect(callCount).toBe(1); // Malformed JSON is deterministic — retrying wastes time
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("does not retry addComment on a transient error — a resubmit would duplicate the comment", async () => {
     let callCount = 0;
     const originalFetch = globalThis.fetch;
