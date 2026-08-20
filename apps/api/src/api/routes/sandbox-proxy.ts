@@ -340,6 +340,40 @@ function fastPreviewGitError(c: Context<VmEnv>, err: unknown): Response {
   return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
 }
 
+/**
+ * Fetches an upstream preview response and relays its body/status, mapping
+ * both a failed fetch and a failed body read to the same 502 shape. Shared by
+ * `preview-fetch` and `preview-invoke`, which otherwise repeated this
+ * fetch-or-502 / text-or-502 dance verbatim.
+ */
+async function proxyPreviewUpstream(
+  c: Context<VmEnv>,
+  url: string,
+  init?: RequestInit,
+): Promise<Response> {
+  let upstream: Response;
+  try {
+    upstream = await fetch(url, init);
+  } catch {
+    return c.json({ error: "Preview unreachable" }, 502);
+  }
+
+  let text: string;
+  try {
+    text = await upstream.text();
+  } catch {
+    return c.json({ error: "Preview unreachable" }, 502);
+  }
+
+  return new Response(text, {
+    status: upstream.status,
+    headers: {
+      "content-type":
+        upstream.headers.get("content-type") ?? "application/json",
+    },
+  });
+}
+
 async function fastPreviewGitStatus(c: Context<VmEnv>): Promise<Response> {
   try {
     const client = await fastPreviewGitClient(c);
@@ -1181,27 +1215,8 @@ export const createSandboxRoutes = () => {
 
     const base = previewUrl.replace(/\/+$/, "");
     const loopback = loopbackPreviewTarget(`${base}${path}`);
-    let upstream: Response;
-    try {
-      upstream = await fetch(loopback?.url ?? `${base}${path}`, {
-        ...(loopback ? { headers: { host: loopback.hostHeader } } : {}),
-      });
-    } catch {
-      return c.json({ error: "Preview unreachable" }, 502);
-    }
-
-    let text: string;
-    try {
-      text = await upstream.text();
-    } catch {
-      return c.json({ error: "Preview unreachable" }, 502);
-    }
-    return new Response(text, {
-      status: upstream.status,
-      headers: {
-        "content-type":
-          upstream.headers.get("content-type") ?? "application/json",
-      },
+    return proxyPreviewUpstream(c, loopback?.url ?? `${base}${path}`, {
+      ...(loopback ? { headers: { host: loopback.hostHeader } } : {}),
     });
   });
 
@@ -1245,33 +1260,14 @@ export const createSandboxRoutes = () => {
 
       const invokeUrl = buildLoaderInvokeUrl(previewUrl, invoke.resolveType);
       const loopback = loopbackPreviewTarget(invokeUrl);
-      let upstream: Response;
-      try {
-        upstream = await fetch(loopback?.url ?? invokeUrl, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            ...(loopback ? { host: loopback.hostHeader } : {}),
-          },
-          body: JSON.stringify(invoke.payload),
-          signal: AbortSignal.timeout(30_000),
-        });
-      } catch {
-        return c.json({ error: "Preview unreachable" }, 502);
-      }
-
-      let text: string;
-      try {
-        text = await upstream.text();
-      } catch {
-        return c.json({ error: "Preview unreachable" }, 502);
-      }
-      return new Response(text, {
-        status: upstream.status,
+      return proxyPreviewUpstream(c, loopback?.url ?? invokeUrl, {
+        method: "POST",
         headers: {
-          "content-type":
-            upstream.headers.get("content-type") ?? "application/json",
+          "content-type": "application/json",
+          ...(loopback ? { host: loopback.hostHeader } : {}),
         },
+        body: JSON.stringify(invoke.payload),
+        signal: AbortSignal.timeout(30_000),
       });
     },
   );
