@@ -1,12 +1,16 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
+import { listRepoScopeLabels } from "@decocms/shared/github-repo-scope";
 import { TaskBoardItemSchema } from "./schema";
 import { recoverStalledTasks } from "./stall-recovery";
 
 export const TASK_BOARD_ITEM_LIST = defineTool({
   name: "TASK_BOARD_ITEM_LIST",
-  description: "List all task board items for the organization.",
+  description:
+    "List all task board items for the organization, plus the `owner/name` " +
+    "repos this organization has imported (the valid values for a task's " +
+    "`repo` field).",
   annotations: {
     title: "List Task Board Items",
     readOnlyHint: true,
@@ -15,7 +19,11 @@ export const TASK_BOARD_ITEM_LIST = defineTool({
     openWorldHint: false,
   },
   inputSchema: z.object({}),
-  outputSchema: z.object({ items: z.array(TaskBoardItemSchema) }),
+  outputSchema: z.object({
+    items: z.array(TaskBoardItemSchema),
+    // The repo picker's option set — the valid values for a task's `repo`.
+    repos: z.array(z.string()),
+  }),
   handler: async (_input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
@@ -28,6 +36,11 @@ export const TASK_BOARD_ITEM_LIST = defineTool({
     }
 
     const items = await ctx.storage.taskBoard.list(organizationId);
+    const { items: githubConnections } = await ctx.storage.connections.list(
+      organizationId,
+      { slug: "mcp-github" },
+    );
+    const repos = listRepoScopeLabels(githubConnections);
 
     // Opening the board is the stall-recovery trigger: re-run the thread-finish
     // decision over the list we just loaded, for the cards whose finish hook
@@ -36,6 +49,6 @@ export const TASK_BOARD_ITEM_LIST = defineTool({
     // moves broadcast over SSE, which is how the board already learns them).
     void recoverStalledTasks(ctx, items);
 
-    return { items };
+    return { items, repos };
   },
 });
