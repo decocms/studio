@@ -1114,10 +1114,10 @@ impl SandboxManager {
             clone_ok,
             git_path,
             git_elapsed_ms = git_started.elapsed().as_millis(),
-            "sandbox ensure: repository ready"
+            "sandbox ensure: repository setup finished"
         );
         if !clone_ok {
-            let message = "git clone/checkout failed; inspect the setup log, then verify the repository exists and this machine's Git credentials can access it";
+            let message = "git repository setup failed; inspect the setup log for repository access, branch selection, or local Git configuration errors";
             let _ = self
                 .registry
                 .mark_state(&handle, "running", "failed", Some(message));
@@ -2310,12 +2310,17 @@ mod tests {
             Err(error) => error,
         };
         assert!(
-            error.contains("git clone/checkout failed"),
-            "the caller must receive a checkout failure, got: {error}"
+            error.contains("git repository setup failed"),
+            "the caller must receive a repository setup failure, got: {error}"
         );
         assert!(
-            error.contains("this machine's Git credentials"),
-            "the caller must receive actionable credential guidance, got: {error}"
+            error
+                .contains("repository access, branch selection, or local Git configuration errors"),
+            "the caller must receive neutral repository setup guidance, got: {error}"
+        );
+        assert!(
+            !error.contains("this machine's Git credentials can access it"),
+            "the caller must not receive credentials-first guidance, got: {error}"
         );
         assert_eq!(
             git_stdout(&sandbox.workdir, &["rev-parse", "--abbrev-ref", "HEAD"]),
