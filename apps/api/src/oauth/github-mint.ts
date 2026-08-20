@@ -20,8 +20,9 @@ import {
 } from "@/oauth/token-refresh";
 import {
   getRepoScope,
-  mintRepoTokenWithChecksFallback,
+  mintRepoTokenWithFallback,
   type RepoScopeRecipe,
+  withOptionalReadPermissions,
 } from "@decocms/shared/github-repo-scope";
 import { DownstreamTokenStorage } from "@/storage/downstream-token";
 import type { ConnectionEntity } from "@/tools/connection/schema";
@@ -74,11 +75,8 @@ async function mintRepoToken(
       content?: Array<{ type?: string; text?: string }>;
     };
 
-    // Self-heal legacy connections on their ~1h re-mint: request checks:read on
-    // top of the stored recipe so the token gains check-run access without a
-    // re-install, falling back to the checks-less recipe when checks isn't
-    // available yet. (Re-probes each cycle — see the helper's note.)
-    const { result: res } = await mintRepoTokenWithChecksFallback<MintResult>(
+    // Self-heal legacy recipes: re-add the optional reads each re-mint, shedding whichever the installation hasn't granted yet (see the helper's note).
+    const { result: res } = await mintRepoTokenWithFallback<MintResult>(
       (permissions) =>
         client.callTool({
           name: "MINT_REPO_TOKEN",
@@ -89,7 +87,7 @@ async function mintRepoToken(
             permissions,
           },
         }) as Promise<MintResult>,
-      recipe.permissions,
+      withOptionalReadPermissions(recipe.permissions),
     );
 
     const token = res.structuredContent?.token;

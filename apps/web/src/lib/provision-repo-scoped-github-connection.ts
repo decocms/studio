@@ -3,7 +3,7 @@ import {
   findReusableRepoConnection,
   GITHUB_SCOPED_PERMISSIONS,
   isOrgSharedConnection,
-  mintRepoTokenWithChecksFallback,
+  mintRepoTokenWithFallback,
 } from "@decocms/shared/github-repo-scope";
 
 type McpCallTool = (req: {
@@ -150,12 +150,9 @@ export async function provisionRepoScopedGithubConnection(params: {
     };
     content?: Array<{ type?: string; text?: string }>;
   };
-  // Request checks:read for the PR Checks tab, falling back to a checks-less
-  // token when the deployed github-mcp/installation doesn't grant it yet — so
-  // importing the repo keeps working. The stored recipe records whichever set
-  // was granted.
+  // Request the full scoped set, shedding whichever optional read the github-mcp allowlist/installation doesn't grant yet; the stored recipe records the granted set.
   const { result: mintRes, grantedPermissions } =
-    await mintRepoTokenWithChecksFallback<MintResult>(
+    await mintRepoTokenWithFallback<MintResult>(
       (permissions) =>
         githubCallTool({
           name: "MINT_REPO_TOKEN",
