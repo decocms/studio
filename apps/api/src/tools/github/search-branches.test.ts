@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { isGithubConnection } from "@/oauth/github-mint";
-import { parseBranchSearchResponse } from "./search-branches";
+import { parseBranchSearchResponse, parseJsonBody } from "./search-branches";
 
 const REPO = "acme/site";
 
@@ -130,5 +130,20 @@ describe("isGithubConnection", () => {
   it("rejects a connection with no slug", () => {
     expect(isGithubConnection({})).toBe(false);
     expect(isGithubConnection({ slug: null })).toBe(false);
+  });
+});
+
+describe("parseJsonBody", () => {
+  it("parses a well-formed JSON body", async () => {
+    const body = { data: { repository: null } };
+    const res = new Response(JSON.stringify(body));
+    expect(await parseJsonBody(res, REPO)).toEqual(body);
+  });
+
+  it("throws a named error instead of a raw SyntaxError on a malformed 2xx body", async () => {
+    const res = new Response("<html>upstream error</html>");
+    await expect(parseJsonBody(res, REPO)).rejects.toThrow(
+      /acme\/site returned invalid JSON: <html>upstream error<\/html>/,
+    );
   });
 });
