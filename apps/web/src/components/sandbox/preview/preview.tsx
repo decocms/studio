@@ -205,6 +205,19 @@ function withDeviceHint(url: string, device: PreviewDeviceSize): string {
   return parsed.href;
 }
 
+/**
+ * Force `__decoFBT=0` on the preview URL — disables deco's loader/block-tree
+ * cache so edits render immediately in the iframe (same param the "Open result
+ * in new tab" invoke path sets, see `buildInvokeRunUrl`). Passes `null` through
+ * so it can wrap the whole `iframeSrc` computation regardless of mode.
+ */
+function withDecoFBT(url: string | null): string | null {
+  if (!url) return null;
+  const parsed = new URL(url, window.location.href);
+  parsed.searchParams.set("__decoFBT", "0");
+  return parsed.href;
+}
+
 /** Origin of the preview iframe's own site, or `null` if `previewUrl` is unset/invalid. */
 function previewOrigin(previewUrl: string | null): string | null {
   if (!previewUrl) return null;
@@ -653,7 +666,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       ? productionOrigin
       : previewOrigin(previewUrl);
 
-  const iframeSrc =
+  const iframeSrc = withDecoFBT(
     display.mode === "sandbox"
       ? withVariantMatcherOverride(
           withDeviceHint(
@@ -677,7 +690,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             ),
             workspace.state.variantOverride ?? [],
           )
-        : null;
+        : null,
+  );
 
   // Registers `productionOrigin` with the native shell before the iframe
   // above is allowed to navigate there (see `productionOriginReady`).
