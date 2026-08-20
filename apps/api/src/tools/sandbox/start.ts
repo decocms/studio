@@ -64,6 +64,7 @@ import {
 import { PACKAGE_MANAGER_CONFIG } from "@decocms/shared/runtime-defaults";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
 import { stampRuntimeIfAbsent } from "../thread/stamp-runtime-if-absent";
+import { parseThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import {
   getThreadGithubRepo,
   getThreadHeadRef,
@@ -121,6 +122,12 @@ export const SANDBOX_START = defineTool({
       .describe(
         "Explicit runtime choice. Hosted provider is `agent-sandbox`; legacy `cluster` input is accepted only for compatibility and normalized to `agent-sandbox`. When omitted, defaults to `user-desktop` if the acting user's link daemon is online, else the env kind.",
       ),
+    threadId: z
+      .string()
+      .optional()
+      .describe(
+        "The session asking for a sandbox. A thread stamped `cms` is refused — that session reads and writes over the decofile API and a pod would be invisible to it. Optional: an unstamped (legacy) thread is always allowed, and so is a caller with no thread.",
+      ),
   }),
   outputSchema: z.object({
     previewUrl: z.string().nullable(),
@@ -136,6 +143,27 @@ export const SANDBOX_START = defineTool({
     await ctx.access.check();
     const resolvedBranch =
       input.branch ?? generateBranchName(branchUserLabel(ctx.auth.user));
+
+    // A CMS session must never provision: the pod it got would be unreachable
+    // from its own surfaces. Only a LITERAL stamp refuses — an unstamped legacy
+    // thread still has to be able to start one.
+    const askingThreadId =
+      threadIdFromBranch(resolvedBranch) ??
+      input.threadId ??
+      ctx.metadata?.threadId;
+    if (askingThreadId) {
+      const asking = await ctx.storage.threads
+        .get(askingThreadId)
+        .catch(() => null);
+      const stamp = parseThreadRuntime(
+        (asking?.metadata as { runtime?: unknown } | null)?.runtime,
+      );
+      if (stamp === "cms") {
+        throw new Error(
+          "This chat is a CMS session and does not use a sandbox. Start a coding session to get one.",
+        );
+      }
+    }
 
     // Resolve kind after loading metadata so recorded sandboxMap entries can
     // pin the provider when the caller did not pass an explicit kind.

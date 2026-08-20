@@ -39,6 +39,7 @@ import { toast } from "sonner";
 import { GitPullRequest, RefreshCw01, Rocket02 } from "@untitledui/icons";
 import { GitHubIcon } from "@/components/icons/github-icon.tsx";
 import { useT } from "@/i18n/use-t";
+import { track } from "@/lib/posthog-client";
 import { authClient } from "@/lib/auth-client.ts";
 import { resolveGithubAttachment } from "@/lib/github-repo.ts";
 import { KEYS } from "@/lib/query-keys";
@@ -94,7 +95,12 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   const queryClient = useQueryClient();
   const { data: session } = authClient.useSession();
   const vm = useVirtualMCP(virtualMcpId);
-  const { currentBranch: branch, setCurrentTaskBranch, taskId } = useChatTask();
+  const {
+    currentBranch: branch,
+    setCurrentTaskBranch,
+    taskId,
+    createTask,
+  } = useChatTask();
   /** One popover, two modes. `mode` outlives `open` so the closing animation
    *  doesn't flash the other mode's labels on its way out. */
   const [surface, setSurface] = useState<{
@@ -300,7 +306,26 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
       </TooltipProvider>
     );
   }
-  if (!githubRepo) return null;
+  /**
+   * A CMS session whose project cannot serve one: no preview server to render
+   * against, or no repo to save to. The runtime is immutable, so the honest
+   * recovery is a NEW session on the same branch, not a silent downgrade.
+   */
+  if (!githubRepo || !previewServerUrl) {
+    return (
+      <CmsUnavailable
+        reason={githubRepo ? "noPreviewServer" : "noRepo"}
+        onStartCodingSession={
+          branch
+            ? () => {
+                const id = createTask?.({ runtime: "sandbox", branch });
+                if (id) track("coding_session_started", { thread_id: id });
+              }
+            : undefined
+        }
+      />
+    );
+  }
   /**
    * No task branch yet: the status query is disabled, so its data never
    * arrives and the state machine would sit on "Loading…" forever. There is
@@ -420,5 +445,43 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
         splitButton
       )}
     </>
+  );
+}
+
+/**
+ * The loud degrade: a CMS session on a project that cannot render or save it.
+ * Says which half is missing and offers the one recovery the immutable runtime
+ * allows — a new coding session on the same branch.
+ */
+function CmsUnavailable({
+  reason,
+  onStartCodingSession,
+}: {
+  reason: "noPreviewServer" | "noRepo";
+  onStartCodingSession?: () => void;
+}) {
+  const t = useT();
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!onStartCodingSession}
+              onClick={onStartCodingSession}
+            >
+              {t("sandbox.cmsUnavailable.startCodingSession")}
+            </Button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          {reason === "noPreviewServer"
+            ? t("sandbox.cmsUnavailable.noPreviewServer")
+            : t("sandbox.cmsUnavailable.noRepo")}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }

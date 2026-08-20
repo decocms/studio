@@ -549,10 +549,18 @@ export const sandbox = {
     "Veja suas alterações antes de publicá-las.",
   "sandbox.cmsSettings.fastPreview.label": "Preview Rápido",
   "sandbox.cmsSettings.fastPreview.description":
-    "Pré-visualize alterações no seu servidor de preview em vez do sandbox.",
+    "Novos chats começam como sessões de CMS, pré-visualizadas no seu servidor de preview em vez de um sandbox. Chats existentes mantêm o modo com que foram criados.",
   "sandbox.cmsSettings.fastPreview.needsPreviewServerUrl":
     "Defina um servidor de preview acima para ativar o Preview Rápido.",
   "sandbox.cmsSettings.editing.title": "Edição",
+  "sandbox.cmsUnavailable.title":
+    "Este chat não consegue pré-visualizar seu site",
+  "sandbox.cmsUnavailable.noPreviewServer":
+    "É uma sessão de CMS, mas este projeto não tem servidor de preview configurado.",
+  "sandbox.cmsUnavailable.noRepo":
+    "É uma sessão de CMS, mas este projeto não tem repositório do GitHub para salvar.",
+  "sandbox.cmsUnavailable.startCodingSession":
+    "Continuar esta branch em uma sessão de código",
   "sandbox.cmsSettings.editing.description":
     "Personalize a experiência de edição de conteúdo no formulário de blocos.",
   "sandbox.previewServerUrlField.description":
