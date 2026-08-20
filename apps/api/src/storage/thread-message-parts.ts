@@ -1,5 +1,5 @@
 import { sleep } from "@decocms/shared/std";
-import type { Kysely } from "kysely";
+import { type Kysely, sql } from "kysely";
 import {
   foldParts,
   type FoldedMessage,
@@ -292,17 +292,35 @@ export class SqlThreadMessagePartStorage {
    * SETTLED message, and prompt history must not replay a half-written turn.
    * Only on the first page — later pages page over anchors, and prepending a
    * moving target to them would shift rows between pages.
+   *
+   * `excludeSubtasks` drops the messages a backgrounded subtask persisted onto
+   * this thread (`metadata.subtaskJobId`). They belong to the thread for
+   * display — the UI nests them under the subtask card — but they are a
+   * SEPARATE agent's transcript, complete with its own raw tool outputs, and
+   * must not be replayed into the parent's prompt: the parent already gets the
+   * subtask's report through the `subtask` tool result. Opt-in, so the display
+   * and projector reads keep seeing them.
    */
   async loadWindow(
     threadId: string,
-    options: { limit: number; offset?: number; includeInFlight?: boolean },
+    options: {
+      limit: number;
+      offset?: number;
+      includeInFlight?: boolean;
+      excludeSubtasks?: boolean;
+    },
   ): Promise<{ messages: FoldedMessage[]; total: number }> {
+    // `true` when excludeSubtasks is off, so the predicate is a no-op there.
+    const notSubtask = options.excludeSubtasks
+      ? sql<boolean>`metadata->>'subtaskJobId' IS NULL`
+      : sql<boolean>`true`;
     const [anchors, totalRow, inFlight] = await Promise.all([
       this.db
         .selectFrom("thread_message_parts")
         .select(["message_id"])
         .where("thread_id", "=", threadId)
         .where("kind", "=", "finish")
+        .where(notSubtask)
         .orderBy("created_at", "desc")
         .orderBy("id", "desc")
         .limit(options.limit)
@@ -313,6 +331,7 @@ export class SqlThreadMessagePartStorage {
         .select((eb) => eb.fn.count<string>("id").as("count"))
         .where("thread_id", "=", threadId)
         .where("kind", "=", "finish")
+        .where(notSubtask)
         .executeTakeFirst(),
       options.includeInFlight && (options.offset ?? 0) === 0
         ? this.db
