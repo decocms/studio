@@ -10,7 +10,7 @@
  * probably deleted, and the board is where you'd look next.
  */
 import { Navigate, useParams } from "@tanstack/react-router";
-import { parseTaskKeySeq } from "@decocms/shared/task-key";
+import { findTaskByKeyOrId } from "./resolve";
 import { useTaskBoardItems } from "@/hooks/use-task-board-items";
 import { useProjectContext } from "@/sdk";
 import { ShellRouteLoading } from "@/layouts/shell-route-loading";
@@ -22,8 +22,7 @@ export default function TaskKeyRedirect() {
 
   if (isLoading) return <ShellRouteLoading />;
 
-  const seq = parseTaskKeySeq(taskKey ?? "");
-  const item = seq === null ? undefined : items.find((i) => i.keySeq === seq);
+  const item = findTaskByKeyOrId(items, taskKey);
 
   return (
     <Navigate
