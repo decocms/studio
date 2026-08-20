@@ -4,12 +4,13 @@ import {
   getOrgGithubConnections,
   getRepoScope,
   GITHUB_SCOPED_PERMISSIONS,
-  isChecksPermissionRejected,
   isOrgSharedConnection,
+  isPermissionRejected,
   listRepoScopeLabels,
-  mintRepoTokenWithChecksFallback,
-  permissionsWithoutChecks,
+  mintRepoTokenWithFallback,
+  OPTIONAL_MINT_PERMISSIONS,
   type RepoScopeRecipe,
+  withOptionalReadPermissions,
 } from "./github-repo-scope";
 
 describe("GITHUB_SCOPED_PERMISSIONS", () => {
@@ -20,6 +21,11 @@ describe("GITHUB_SCOPED_PERMISSIONS", () => {
     expect(GITHUB_SCOPED_PERMISSIONS.checks).toBe("read");
   });
 
+  it("includes deployments:read so the PR panel can read the preview URL", () => {
+    // FastStore WebOps posts the preview only as a Deployment; without it GET_PREVIEW_DEPLOYMENT 403s and previewUrl stays null.
+    expect(GITHUB_SCOPED_PERMISSIONS.deployments).toBe("read");
+  });
+
   it("keeps the write scopes the PR/sandbox flows depend on", () => {
     expect(GITHUB_SCOPED_PERMISSIONS).toMatchObject({
       contents: "write",
@@ -28,57 +34,68 @@ describe("GITHUB_SCOPED_PERMISSIONS", () => {
       issues: "write",
     });
   });
+
+  it("marks every optional permission as one it actually requests", () => {
+    // OPTIONAL_MINT_PERMISSIONS says which requested perms are droppable — never one the scoped set doesn't request.
+    for (const permission of OPTIONAL_MINT_PERMISSIONS) {
+      expect(GITHUB_SCOPED_PERMISSIONS[permission]).toBe("read");
+    }
+  });
 });
 
-describe("isChecksPermissionRejected", () => {
-  it("matches the github-mcp allowlist rejection", () => {
+describe("isPermissionRejected", () => {
+  it("matches the github-mcp allowlist rejection for an optional permission", () => {
     expect(
-      isChecksPermissionRejected(
+      isPermissionRejected(
         'Permission "checks" is not allowed. This tool only mints repo-scoped ' +
           "code access (contents, metadata, pull_requests, issues).",
       ),
     ).toBe(true);
+    expect(
+      isPermissionRejected('Permission "deployments" is not allowed.'),
+    ).toBe(true);
   });
 
-  it("matches the GitHub 422 raised when the installation lacks Checks", () => {
+  it("matches the generic GitHub 422 (which doesn't name the permission)", () => {
     expect(
-      isChecksPermissionRejected(
+      isPermissionRejected(
         "Repository is not in this installation, or the requested permissions " +
           "exceed what the GitHub App was granted.",
       ),
     ).toBe(true);
   });
 
-  it("does not match unrelated errors or empty input", () => {
-    expect(
-      isChecksPermissionRejected('Permission "issues" is not allowed.'),
-    ).toBe(false);
-    expect(isChecksPermissionRejected("Repository is not accessible.")).toBe(
+  it("does NOT match an allowlist rejection for a REQUIRED permission", () => {
+    // A required perm being rejected is a real misconfiguration — surface it, don't downgrade.
+    expect(isPermissionRejected('Permission "issues" is not allowed.')).toBe(
       false,
     );
-    expect(isChecksPermissionRejected(null)).toBe(false);
-    expect(isChecksPermissionRejected(undefined)).toBe(false);
+  });
+
+  it("does not match unrelated errors or empty input", () => {
+    expect(isPermissionRejected("Repository is not accessible.")).toBe(false);
+    expect(isPermissionRejected(null)).toBe(false);
+    expect(isPermissionRejected(undefined)).toBe(false);
   });
 });
 
-describe("permissionsWithoutChecks", () => {
-  it("drops only the checks key and leaves the rest intact", () => {
-    expect(permissionsWithoutChecks(GITHUB_SCOPED_PERMISSIONS)).toEqual({
+describe("withOptionalReadPermissions", () => {
+  it("adds every optional read on top of the base set", () => {
+    expect(withOptionalReadPermissions({ contents: "write" })).toEqual({
       contents: "write",
-      metadata: "read",
-      pull_requests: "write",
-      issues: "write",
+      deployments: "read",
+      checks: "read",
     });
   });
 
-  it("is a no-op when checks is absent", () => {
-    expect(permissionsWithoutChecks({ contents: "write" })).toEqual({
-      contents: "write",
-    });
+  it("does not mutate its input", () => {
+    const base = { contents: "write" };
+    withOptionalReadPermissions(base);
+    expect(base).toEqual({ contents: "write" });
   });
 });
 
-describe("mintRepoTokenWithChecksFallback", () => {
+describe("mintRepoTokenWithFallback", () => {
   type MintResult = {
     isError?: boolean;
     content?: Array<{ type?: string; text?: string }>;
@@ -86,46 +103,91 @@ describe("mintRepoTokenWithChecksFallback", () => {
   };
   const ok: MintResult = { structuredContent: { token: "ghs_x" } };
   const base = { contents: "write", metadata: "read" };
+  const desired = withOptionalReadPermissions(base);
+  const rejected = (text: string): MintResult => ({
+    isError: true,
+    content: [{ type: "text", text }],
+  });
 
-  it("requests checks:read and returns it as granted on success", async () => {
+  it("returns the full desired set as granted on first-try success", async () => {
     const calls: Record<string, string>[] = [];
-    const { result, grantedPermissions } =
-      await mintRepoTokenWithChecksFallback((permissions) => {
+    const { result, grantedPermissions } = await mintRepoTokenWithFallback(
+      (permissions) => {
         calls.push(permissions);
         return Promise.resolve(ok);
-      }, base);
-    expect(calls).toEqual([{ ...base, checks: "read" }]);
+      },
+      desired,
+    );
+    expect(calls).toEqual([desired]);
+    expect(grantedPermissions).toEqual(desired);
+    expect(result).toBe(ok);
+  });
+
+  it("sheds only deployments when checks is granted but deployments isn't", async () => {
+    const calls: Record<string, string>[] = [];
+    const { result, grantedPermissions } = await mintRepoTokenWithFallback(
+      (permissions) => {
+        calls.push(permissions);
+        // Generic 422 on the full set, then success once deployments is gone.
+        return Promise.resolve(
+          "deployments" in permissions
+            ? rejected("the requested permissions exceed what the GitHub App")
+            : ok,
+        );
+      },
+      desired,
+    );
+    expect(calls).toEqual([desired, { ...base, checks: "read" }]);
     expect(grantedPermissions).toEqual({ ...base, checks: "read" });
     expect(result).toBe(ok);
   });
 
-  it("retries without checks when the mint is rejected for checks", async () => {
+  it("sheds both optionals when the installation grants neither", async () => {
     const calls: Record<string, string>[] = [];
-    const rejected: MintResult = {
-      isError: true,
-      content: [{ type: "text", text: 'Permission "checks" is not allowed.' }],
-    };
-    const { result, grantedPermissions } =
-      await mintRepoTokenWithChecksFallback((permissions) => {
+    const { result, grantedPermissions } = await mintRepoTokenWithFallback(
+      (permissions) => {
         calls.push(permissions);
-        return Promise.resolve(calls.length === 1 ? rejected : ok);
-      }, base);
-    expect(calls).toEqual([{ ...base, checks: "read" }, base]);
+        const stillOptional =
+          "deployments" in permissions || "checks" in permissions;
+        return Promise.resolve(
+          stillOptional
+            ? rejected("the requested permissions exceed what the GitHub App")
+            : ok,
+        );
+      },
+      desired,
+    );
+    expect(calls).toEqual([desired, { ...base, checks: "read" }, base]);
     expect(grantedPermissions).toEqual(base);
     expect(result).toBe(ok);
   });
 
-  it("does NOT retry on an unrelated error (surfaces it once)", async () => {
+  it("does NOT drop optionals on an unrelated error (surfaces it once)", async () => {
     const calls: Record<string, string>[] = [];
-    const err: MintResult = {
-      isError: true,
-      content: [{ type: "text", text: "GitHub is temporarily unavailable." }],
-    };
-    const { result } = await mintRepoTokenWithChecksFallback((permissions) => {
+    const err = rejected("GitHub is temporarily unavailable.");
+    const { result } = await mintRepoTokenWithFallback((permissions) => {
       calls.push(permissions);
       return Promise.resolve(err);
-    }, base);
+    }, desired);
     expect(calls).toHaveLength(1);
+    expect(result).toBe(err);
+  });
+
+  it("surfaces a rejection for a required permission after optionals are gone", async () => {
+    const calls: Record<string, string>[] = [];
+    const err = rejected(
+      "the requested permissions exceed what the GitHub App",
+    );
+    const { result, grantedPermissions } = await mintRepoTokenWithFallback(
+      (permissions) => {
+        calls.push(permissions);
+        return Promise.resolve(err);
+      },
+      desired,
+    );
+    // Full -> drop deployments -> drop checks -> base (still rejected) -> surface.
+    expect(calls).toEqual([desired, { ...base, checks: "read" }, base]);
+    expect(grantedPermissions).toEqual(base);
     expect(result).toBe(err);
   });
 });

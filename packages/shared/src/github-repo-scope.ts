@@ -20,9 +20,16 @@
  * Least-privilege permission set minted for an imported agent's repo token.
  *
  * `checks: read` lets the PR panel's Checks tab read CI check runs
- * (`GET /commits/{sha}/check-runs`); without it the GitHub App installation
- * token gets `403 Resource not accessible by integration`. The backing GitHub
- * App must also grant Checks (read) or the mint fails with 422.
+ * (`GET /commits/{sha}/check-runs`); `deployments: read` lets it read a PR's
+ * preview URL from the GitHub Deployments API (`GET /repos/{o}/{r}/deployments`
+ * + `/statuses`, via `GET_PREVIEW_DEPLOYMENT`) — the ONLY place a VTEX FastStore
+ * WebOps preview is published (not a commit-status target_url, not a bot
+ * comment). Without each, the GitHub App installation token gets `403 Resource
+ * not accessible by integration` on that endpoint. The backing GitHub App must
+ * also grant them (and github-mcp's mint allowlist must permit them) or the mint
+ * is rejected — see OPTIONAL_MINT_PERMISSIONS / mintRepoTokenWithFallback, which
+ * sheds them one at a time so an installation that grants neither still mints a
+ * working code token.
  */
 export const GITHUB_SCOPED_PERMISSIONS: Record<string, string> = {
   contents: "write",
@@ -30,35 +37,47 @@ export const GITHUB_SCOPED_PERMISSIONS: Record<string, string> = {
   pull_requests: "write",
   issues: "write",
   checks: "read",
+  deployments: "read",
 };
 
 /**
- * Detects a mint failure caused specifically by requesting `checks`, so callers
- * can retry without it. Two distinct upstreams produce this:
- *   1. github-mcp's own allowlist predating `checks` — it hard-rejects with
- *      `Permission "checks" is not allowed` (deploy-window skew).
- *   2. GitHub itself, when the App installation hasn't granted Checks — the
- *      mint 422s, surfaced as `...the requested permissions exceed what the
- *      GitHub App was granted`.
- * Either way the safe move is a checks-less retry; if the real problem were
- * unrelated (e.g. repo not in the installation), that retry fails identically.
+ * The read permissions an installation (or github-mcp's mint allowlist) may not
+ * grant yet, ordered MOST-DROPPABLE FIRST. `mintRepoTokenWithFallback` sheds
+ * them one at a time on a permission rejection, so an installation that has the
+ * long-standing `checks` but not the newer `deployments` keeps checks. Anything
+ * NOT listed here is required and never dropped — a rejection for one of those
+ * surfaces instead of being silently downgraded.
+ *
+ * Every entry must also appear in GITHUB_SCOPED_PERMISSIONS (asserted in the
+ * unit test): this list marks which of the requested permissions are droppable,
+ * it does not add new ones.
  */
-export function isChecksPermissionRejected(
+export const OPTIONAL_MINT_PERMISSIONS = ["deployments", "checks"] as const;
+
+/**
+ * Detects a mint rejection caused specifically by requesting a permission the
+ * installation/allowlist doesn't grant, so callers can retry without it. Two
+ * distinct upstreams produce this:
+ *   1. github-mcp's own allowlist predating a permission — it hard-rejects with
+ *      `Permission "<name>" is not allowed` (deploy-window skew).
+ *   2. GitHub itself, when the App installation hasn't granted it — the mint
+ *      422s, surfaced as `...the requested permissions exceed what the GitHub
+ *      App was granted`.
+ * The allowlist form matches ONLY for an OPTIONAL permission (a required one
+ * being rejected is a real misconfiguration, not something to silently drop);
+ * the generic 422 doesn't name the offending permission, so the ladder degrades
+ * by dropping optionals in order until the mint succeeds.
+ */
+export function isPermissionRejected(
   message: string | null | undefined,
 ): boolean {
   if (!message) return false;
+  const optional = OPTIONAL_MINT_PERMISSIONS.join("|");
   return (
-    /permission\s+"?checks"?\s+is not allowed/i.test(message) ||
-    /permissions exceed what the github app/i.test(message)
+    new RegExp(`permission\\s+"?(?:${optional})"?\\s+is not allowed`, "i").test(
+      message,
+    ) || /permissions exceed what the github app/i.test(message)
   );
-}
-
-/** A copy of a permission map with the `checks` key removed. */
-export function permissionsWithoutChecks(
-  permissions: Record<string, string>,
-): Record<string, string> {
-  const { checks: _checks, ...rest } = permissions;
-  return rest;
 }
 
 /** Minimal shape of a github-mcp MINT_REPO_TOKEN result the fallback inspects. */
@@ -68,40 +87,59 @@ export interface MintToolResultLike {
 }
 
 /**
- * Mint a repo token requesting `checks:read` on top of `basePermissions`, and
- * transparently retry WITHOUT `checks` when the mint is rejected specifically
- * for it (github-mcp allowlist skew, or an installation that hasn't granted
- * Checks → 422). Single-sources the retry decision shared by the web provision
- * flow and the server re-mint path.
+ * `base` plus every OPTIONAL_MINT_PERMISSIONS key at `read`. Used by the timer
+ * re-mint path to request the current optionals on top of a stored recipe, so a
+ * legacy connection self-heals into `checks`/`deployments` on its next ~1h
+ * re-mint without a re-import.
+ */
+export function withOptionalReadPermissions(
+  base: Record<string, string>,
+): Record<string, string> {
+  const out = { ...base };
+  for (const permission of OPTIONAL_MINT_PERMISSIONS) {
+    out[permission] = "read";
+  }
+  return out;
+}
+
+/**
+ * Mint a repo token requesting `desiredPermissions`, transparently shedding one
+ * OPTIONAL_MINT_PERMISSIONS entry at a time (in list order) whenever the mint is
+ * rejected specifically for exceeding what the installation/allowlist grants —
+ * so importing/refreshing keeps working on an installation that hasn't been
+ * re-approved for the newer reads. Base (required) permissions are never
+ * dropped, so a rejection for one of those (or any unrelated error) surfaces
+ * once the optionals are gone. Single-sources the retry ladder shared by the
+ * web provision flow and the server re-mint path.
  *
  * `callTool` performs the actual MINT_REPO_TOKEN call with a given permission
- * map; the returned `grantedPermissions` is whichever set was ultimately
- * requested (with or without `checks`) so callers can persist the truth.
+ * map; the returned `grantedPermissions` is whichever set ultimately succeeded
+ * (or was last attempted) so callers can persist the truth.
  *
- * Note: callers that re-mint on a timer (github-mint) always re-add `checks`
- * here, so a connection whose installation will never grant Checks pays a
- * second mint each cycle. That's the deliberate cost of picking up a
- * later-granted Checks without a re-import; provision persists the granted set
- * and does not re-probe.
+ * Note: callers that re-mint on a timer (github-mint) always re-add the
+ * optionals via withOptionalReadPermissions, so a connection whose installation
+ * will never grant them pays extra mints each cycle. That's the deliberate cost
+ * of picking up a later-granted permission without a re-import; provision
+ * persists the granted set and does not re-probe.
  */
-export async function mintRepoTokenWithChecksFallback<
-  R extends MintToolResultLike,
->(
+export async function mintRepoTokenWithFallback<R extends MintToolResultLike>(
   callTool: (permissions: Record<string, string>) => Promise<R>,
-  basePermissions: Record<string, string>,
+  desiredPermissions: Record<string, string>,
 ): Promise<{ result: R; grantedPermissions: Record<string, string> }> {
-  const desiredPermissions = { ...basePermissions, checks: "read" };
-  const result = await callTool(desiredPermissions);
-  if (
-    result.isError &&
-    isChecksPermissionRejected(
-      result.content?.find((c) => c.type === "text")?.text,
-    )
-  ) {
-    const grantedPermissions = permissionsWithoutChecks(basePermissions);
-    return { result: await callTool(grantedPermissions), grantedPermissions };
+  let permissions: Record<string, string> = { ...desiredPermissions };
+  for (;;) {
+    const result = await callTool(permissions);
+    if (!result.isError) {
+      return { result, grantedPermissions: permissions };
+    }
+    const text = result.content?.find((c) => c.type === "text")?.text;
+    const droppable = OPTIONAL_MINT_PERMISSIONS.find((p) => p in permissions);
+    if (!droppable || !isPermissionRejected(text)) {
+      return { result, grantedPermissions: permissions };
+    }
+    const { [droppable]: _dropped, ...rest } = permissions;
+    permissions = rest;
   }
-  return { result, grantedPermissions: desiredPermissions };
 }
 
 /** The repo grant metadata stored at `connection.metadata.repoScope`. */
