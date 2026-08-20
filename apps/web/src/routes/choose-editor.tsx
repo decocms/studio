@@ -18,6 +18,7 @@ import { Navigate, useNavigate, useSearch } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Loading01 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { AgentAvatar } from "@/components/agent-icon";
 import RequiredAuthLayout from "@/layouts/required-auth-layout";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
@@ -193,15 +194,11 @@ function EditorChooser({
             })}
             className="flex w-full items-center gap-3 rounded-lg border border-border bg-card p-3 text-left transition-colors hover:bg-accent"
           >
-            {match.project.icon ? (
-              <img
-                src={match.project.icon}
-                alt=""
-                className="size-8 shrink-0 rounded-md object-cover"
-              />
-            ) : (
-              <div className="size-8 shrink-0 rounded-md bg-muted" />
-            )}
+            <AgentAvatar
+              icon={match.project.icon}
+              name={match.project.title}
+              size="sm"
+            />
             <div className="flex min-w-0 flex-col">
               <span className="truncate text-sm font-medium text-foreground">
                 {match.project.title}
