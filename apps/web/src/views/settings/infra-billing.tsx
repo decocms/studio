@@ -36,18 +36,14 @@ import {
   TableHeader,
   TableRow,
 } from "@decocms/ui/components/table.tsx";
-import { Page } from "@/components/page";
-import {
-  SettingsPage,
-  SettingsSection,
-} from "@/components/settings/settings-section";
+import { SettingsSection } from "@/components/settings/settings-section";
 import { useT } from "@/i18n/use-t.ts";
 import {
   useInfraBilling,
   useInfraBillingPortal,
   useOwnedSites,
 } from "@/hooks/use-infra-billing";
-import { SettingsSubnav } from "@/components/settings/settings-subnav";
+import { SettingsGroupPage } from "@/components/settings/settings-group-page";
 
 type UsageRow = {
   date: string;
@@ -624,15 +620,8 @@ function InvoiceStatus({ status }: { status: string }) {
 
 export function OrgInfraBillingPage() {
   return (
-    <Page>
-      <Page.Content>
-        <Page.Body>
-          <SettingsPage>
-            <SettingsSubnav group="billing" />
-            <InfraBillingContent />
-          </SettingsPage>
-        </Page.Body>
-      </Page.Content>
-    </Page>
+    <SettingsGroupPage group="billing">
+      <InfraBillingContent />
+    </SettingsGroupPage>
   );
 }

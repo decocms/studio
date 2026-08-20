@@ -1,4 +1,4 @@
-import { Suspense, useState } from "react";
+import { useState } from "react";
 import { AlertCircle, HardDrive, Plus, Trash01 } from "@untitledui/icons";
 import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -30,19 +30,15 @@ import {
   SelectValue,
 } from "@decocms/ui/components/select.tsx";
 import { Switch } from "@decocms/ui/components/switch.tsx";
-import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { useT } from "@/i18n/use-t.ts";
-import { ErrorBoundary } from "@/components/error-boundary";
-import { Page } from "@/components/page";
-import { SettingsPage } from "@/components/settings/settings-section";
 import {
   type FileConfigInfo,
   useCreateFileConfig,
   useDeleteFileConfig,
   useFileConfigs,
 } from "@/hooks/use-file-configs";
-import { SettingsSubnav } from "@/components/settings/settings-subnav";
+import { SettingsGroupPage } from "@/components/settings/settings-group-page";
 
 /**
  * MCP tool errors arrive as Error messages like
@@ -641,28 +637,18 @@ function FilesContent() {
 export function OrgBucketsPage() {
   const t = useT();
   return (
-    <Page>
-      <Page.Content>
-        <Page.Body>
-          <SettingsPage>
-            <SettingsSubnav group="storage" />
-            <ErrorBoundary
-              fallback={({ error }) => (
-                <ErrorFallback
-                  error={
-                    error ??
-                    new Error(t("settings.buckets.failedToLoadConfigsFallback"))
-                  }
-                />
-              )}
-            >
-              <Suspense fallback={<Skeleton className="h-32 w-full" />}>
-                <FilesContent />
-              </Suspense>
-            </ErrorBoundary>
-          </SettingsPage>
-        </Page.Body>
-      </Page.Content>
-    </Page>
+    <SettingsGroupPage
+      group="storage"
+      errorFallback={({ error }) => (
+        <ErrorFallback
+          error={
+            error ??
+            new Error(t("settings.buckets.failedToLoadConfigsFallback"))
+          }
+        />
+      )}
+    >
+      <FilesContent />
+    </SettingsGroupPage>
   );
 }

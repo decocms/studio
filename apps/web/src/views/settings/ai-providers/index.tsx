@@ -1,10 +1,7 @@
 import { Suspense, useState } from "react";
 import { AlertCircle } from "@untitledui/icons";
-import { Page } from "@/components/page";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
-import { SettingsPage } from "@/components/settings/settings-section";
-import { SettingsSubnav } from "@/components/settings/settings-subnav";
-import { ErrorBoundary } from "@/components/error-boundary";
+import { SettingsGroupPage } from "@/components/settings/settings-group-page";
 import {
   useAiProviderKeys,
   useAiProviders,
@@ -85,25 +82,15 @@ function OrgAiProvidersContent() {
 
 export function OrgAiProvidersPage() {
   return (
-    <Page>
-      <Page.Content>
-        <Page.Body>
-          <SettingsPage>
-            <SettingsSubnav group="billing" />
-            <ErrorBoundary
-              fallback={({ error }) => (
-                <ErrorFallback
-                  error={error ?? new Error("Failed to load AI providers")}
-                />
-              )}
-            >
-              <Suspense fallback={<Skeleton className="h-64 w-full" />}>
-                <OrgAiProvidersContent />
-              </Suspense>
-            </ErrorBoundary>
-          </SettingsPage>
-        </Page.Body>
-      </Page.Content>
-    </Page>
+    <SettingsGroupPage
+      group="billing"
+      errorFallback={({ error }) => (
+        <ErrorFallback
+          error={error ?? new Error("Failed to load AI providers")}
+        />
+      )}
+    >
+      <OrgAiProvidersContent />
+    </SettingsGroupPage>
   );
 }

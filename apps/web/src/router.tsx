@@ -9,6 +9,7 @@ import {
 } from "@tanstack/react-router";
 import { SplashScreen } from "@/components/splash-screen";
 import { ShellRouteLoading } from "@/layouts/shell-route-loading";
+import { settingsGroupPendingComponent } from "@/components/settings/settings-group-page";
 import { ChunkErrorBoundary } from "@/components/error-boundary";
 import { useT } from "@/i18n/use-t";
 import * as z from "zod";
@@ -477,6 +478,7 @@ const settingsGeneralRoute = createRoute({
 const settingsConnectRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/connect",
+  pendingComponent: settingsGroupPendingComponent("connect"),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/connect.tsx"),
   ),
@@ -485,6 +487,7 @@ const settingsConnectRoute = createRoute({
 const settingsAiProvidersRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/ai-providers",
+  pendingComponent: settingsGroupPendingComponent("billing"),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/ai-providers.tsx"),
   ),
@@ -505,6 +508,7 @@ const settingsBillingRoute = createRoute({
 const settingsInfraBillingRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/infra-billing",
+  pendingComponent: settingsGroupPendingComponent("billing"),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/infra-billing.tsx"),
   ),
@@ -521,6 +525,7 @@ const settingsSecretsRoute = createRoute({
 const settingsApiKeysRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/api-keys",
+  pendingComponent: settingsGroupPendingComponent("connect"),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/api-keys.tsx"),
   ),
@@ -529,6 +534,7 @@ const settingsApiKeysRoute = createRoute({
 const settingsBucketsRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/buckets",
+  pendingComponent: settingsGroupPendingComponent("storage"),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/buckets.tsx"),
   ),
@@ -537,6 +543,7 @@ const settingsBucketsRoute = createRoute({
 const settingsSyncedReposRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/synced-repos",
+  pendingComponent: settingsGroupPendingComponent("storage"),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/synced-repos.tsx"),
   ),
@@ -553,6 +560,7 @@ const settingsTasksRoute = createRoute({
 const settingsMembersRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/members",
+  pendingComponent: settingsGroupPendingComponent("members"),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/members.tsx"),
   ),
@@ -561,6 +569,7 @@ const settingsMembersRoute = createRoute({
 const settingsRolesRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/roles",
+  pendingComponent: settingsGroupPendingComponent("members"),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/roles.tsx"),
   ),
