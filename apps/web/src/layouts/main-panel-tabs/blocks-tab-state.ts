@@ -143,6 +143,18 @@ export function resolveBlocksTabState(
     return { kind: "error", source: "sandbox" };
   if (phaseClass === "booting") return { kind: "loading" };
 
+  const readFailed =
+    (input.decofile.status === "error" && !input.decofile.hasData) ||
+    (input.meta.status === "error" && !input.meta.hasData);
+
+  // Mid-checkout the working tree is between two branches, so an absent
+  // `.deco/*` says nothing about the branch being switched TO — and
+  // `framework-missing` is sticky per repo+branch, so a wrong call here would
+  // outlive the checkout that caused it.
+  if (readFailed && input.lifecyclePhase === "checking-out") {
+    return { kind: "loading" };
+  }
+
   const blocksFrameworkMissing = [input.decofile, input.meta].some(
     (query) =>
       query.status === "error" && !query.hasData && query.errorStatus === 404,
@@ -151,14 +163,10 @@ export function resolveBlocksTabState(
     return { kind: "empty", reason: "framework-missing" };
   }
 
-  const initialDataFailed =
-    (input.decofile.status === "error" && !input.decofile.hasData) ||
-    (input.meta.status === "error" && !input.meta.hasData);
-  if (initialDataFailed) {
-    // While booting, the committed snapshot may not be written yet, and an
-    // absent file surfaces as a synthetic 502 from the read fallback (see
-    // `use-decofile`), NOT a 404 — so it can't be classified as "framework
-    // missing" above. Treat it as loading instead of a hard data error: the
+  if (readFailed) {
+    // Not a 404, so absence is unproven (see `decofileErrorStatus` for what
+    // does prove it): the read reached neither the dev server nor the daemon.
+    // Treat it as loading instead of a hard data error: the
     // `→running` lifecycle transition re-invalidates both queries and resolves
     // content/empty authoritatively. Only surface the error once the dev
     // server has settled (running/crashed), where the failure is real.
