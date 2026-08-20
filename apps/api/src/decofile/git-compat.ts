@@ -123,19 +123,44 @@ export function buildPublishStatus(args: {
   };
 }
 
-/** The manifest rides on the drift check: `compareDetailed` hits the URL
- *  `compare` already hit and shares its ETag entry. */
+const NO_DRIFT: CompareDetail = { aheadBy: 0, behindBy: 0, files: [] };
+
+/**
+ * Compare `base…branch`, tolerating a branch that does not exist yet: on first
+ * CMS touch the compare 404s, so the retry waits on `materialized` — the
+ * concurrent {@link resolveOrCreateHead} that mints it — before asking again.
+ */
+async function compareAfterMaterializing(
+  client: GitDataClient,
+  base: string,
+  branch: string,
+  materialized: Promise<unknown>,
+): Promise<CompareDetail> {
+  try {
+    return await client.compareDetailed(base, branch);
+  } catch (err) {
+    if (!(err instanceof GitHubApiError) || err.status !== 404) throw err;
+    await materialized;
+    return client.compareDetailed(base, branch);
+  }
+}
+
+/** The manifest rides free on the drift check: same URL, same ETag entry. */
 export async function githubGitStatus(
   client: GitDataClient,
   branch: string,
 ): Promise<CompatGitStatus> {
   const base = await client.getDefaultBranch();
   // Materialize thread-minted branches exactly like the decofile read does.
-  const headSha = await resolveOrCreateHead(client, branch);
-  const compared =
-    base === branch
-      ? { aheadBy: 0, behindBy: 0, files: [] }
-      : await client.compareDetailed(base, branch);
+  if (base === branch) {
+    const headSha = await resolveOrCreateHead(client, branch);
+    return buildPublishStatus({ base, branch, headSha, compared: NO_DRIFT });
+  }
+  const materialized = resolveOrCreateHead(client, branch);
+  const [headSha, compared] = await Promise.all([
+    materialized,
+    compareAfterMaterializing(client, base, branch, materialized),
+  ]);
   return buildPublishStatus({ base, branch, headSha, compared });
 }
 
@@ -146,33 +171,9 @@ export interface CompatGitDiff {
 }
 
 /**
- * Base-side blob sha per path, read off the merge-base tree.
- *
- * Empty for an all-additions diff: nothing has a base side, so the two calls
- * this makes would be discarded. That is also the whole-repo recursive read,
- * which the ETag cache excludes and which 502s as `tree listing truncated by
- * GitHub` on large repos — so the common "created a page" publish stops
- * paying for it, and stops failing on it.
- */
-async function baseBlobShas(
-  client: GitDataClient,
-  mergeBaseSha: string,
-  files: Array<{ status: string }>,
-): Promise<Map<string, string>> {
-  const byPath = new Map<string, string>();
-  if (files.every((f) => f.status === "added")) return byPath;
-  const baseTreeSha = await client.getCommitTreeSha(mergeBaseSha);
-  for (const entry of await client.getTreeRecursive(baseTreeSha)) {
-    if (entry.type === "blob") byPath.set(entry.path, entry.sha);
-  }
-  return byPath;
-}
-
-/**
- * Base…head diff with full file contents, assembled from a detailed compare:
- * head-side blobs come straight off the compare entries; base-side blobs are
- * resolved through the merge-base tree. Bounded and capped — a runaway diff
- * returns the first {@link DIFF_MAX_FILES} paths rather than ballooning.
+ * Base…head diff with full file contents: head-side blobs come off the compare
+ * entries, base-side contents are read by path at the merge base (see
+ * {@link GitDataClient.getFileTextAtRef}). Capped at {@link DIFF_MAX_FILES}.
  */
 export async function githubGitDiff(
   client: GitDataClient,
@@ -187,18 +188,15 @@ export async function githubGitDiff(
     return { diffs: {}, mergeBaseSha: detailed.mergeBaseSha };
   }
 
-  const baseBlobByPath = await baseBlobShas(
-    client,
-    detailed.mergeBaseSha,
-    files,
-  );
-
   const entries = await mapBounded(files, DIFF_FETCH_CONCURRENCY, async (f) => {
+    // A renamed file's base content lives at its previous path, not its new one.
     const basePath = f.previousFilename ?? f.filename;
-    const baseSha =
-      f.status === "added" ? undefined : baseBlobByPath.get(basePath);
-    const from = baseSha ? await client.getBlobText(baseSha) : null;
-    const to = f.status === "removed" ? null : await client.getBlobText(f.sha);
+    const [from, to] = await Promise.all([
+      f.status === "added"
+        ? null
+        : client.getFileTextAtRef(detailed.mergeBaseSha, basePath),
+      f.status === "removed" ? null : client.getBlobText(f.sha),
+    ]);
     return [f.filename, { from, to }] as const;
   });
 
@@ -225,12 +223,15 @@ export async function githubGitRebase(
 ): Promise<void> {
   for (let attempt = 1; ; attempt++) {
     // Read first: the pre-force check re-reads it, catching any later autosave.
-    const branchHead = await client.getHeadSha(branch);
-    const compared = await client.compareDetailed(base, branch);
+    const [branchHead, compared] = await Promise.all([
+      client.getHeadSha(branch),
+      client.compareDetailed(base, branch),
+    ]);
 
     // Already one commit on base: nothing to bring in, nothing to flatten.
     if (compared.behindBy === 0 && compared.aheadBy <= 1) return;
 
+    // Not hoisted into the pair above: pure waste on that early return.
     const baseHead = await client.getHeadSha(base);
 
     // No commits of its own: a fast-forward, which needs no force.
