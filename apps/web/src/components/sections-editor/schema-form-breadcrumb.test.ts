@@ -1441,6 +1441,23 @@ describe("structural fieldKey resolution", () => {
     expect(sel?.index).toBe(1);
   });
 
+  test("resolveArrayItemSelection returns null for a deleted item instead of snapping to a same-label sibling", () => {
+    // Owner confirmed by fieldKey, but itemIndex 5 was deleted; item 0 merely shares the stale label.
+    const items = [{ name: "Duplicate" }];
+    const schema = {
+      type: "object",
+      properties: { name: { type: "string" } },
+    } as SchemaProperty;
+    const crumb: Crumb = {
+      label: "Duplicate",
+      itemIndex: 5,
+      fieldKey: "cards",
+    };
+    expect(
+      resolveArrayItemSelection("Cards", [crumb], items, schema, null, "cards"),
+    ).toBeNull();
+  });
+
   test("resolveArrayItemSelection denies a sibling whose key differs from the crumb's fieldKey", () => {
     const items = [{ name: "First" }, { name: "Second" }];
     const schema = {

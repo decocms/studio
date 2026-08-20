@@ -863,12 +863,12 @@ function findItemIndexForCrumb(
   ownerKey?: string,
 ): number {
   if (!isItemCrumb(crumb)) return -1;
-  // Structural ownership: the array's own key claims the item by index alone, so a churned/duplicate label can't strand it or snap it to a colliding sibling.
+  // Structural ownership: the array's own key claims the item by index alone (never by label match), so a deleted item returns -1 instead of falling through to snap onto an unrelated same-label sibling.
   if (crumb.fieldKey != null && ownerKey != null) {
     if (crumb.fieldKey !== ownerKey) return -1;
-    if (crumb.itemIndex >= 0 && crumb.itemIndex < items.length) {
-      return crumb.itemIndex;
-    }
+    return crumb.itemIndex >= 0 && crumb.itemIndex < items.length
+      ? crumb.itemIndex
+      : -1;
   }
   const labels = getArrayItemDisplayLabels(items, itemSchema);
   // Exact pin: the index addresses the item; the label confirms this array owns it.
