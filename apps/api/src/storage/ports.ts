@@ -330,6 +330,7 @@ export interface OrganizationSettingsStoragePort {
         | "simple_mode"
         | "default_home_agents"
         | "flags"
+        | "repo_flags"
         | "main_agent_id"
       >
     >,

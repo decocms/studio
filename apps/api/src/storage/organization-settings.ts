@@ -2,6 +2,28 @@ import { sql, type Kysely } from "kysely";
 import type { Database, OrganizationSettings } from "./types";
 import type { OrganizationSettingsStoragePort } from "./ports";
 
+/**
+ * Atomic two-level merge for `repo_flags`: repos absent from the write keep
+ * their stored entry, and a written repo's entry merges key-by-key so setting
+ * one toggle never clears that repo's other two.
+ *
+ * The org-level `flags || $new` concat can't do this — at the top level it would
+ * REPLACE a repo's whole entry. The repo keys are known here (they come from the
+ * caller's write), so the expression is built per key rather than in a
+ * correlated subquery over `jsonb_each`.
+ */
+function mergeRepoFlagsSql(repoFlags: Record<string, unknown>) {
+  const entries = Object.entries(repoFlags);
+  if (entries.length === 0) {
+    return sql<string>`coalesce("organization_settings"."repo_flags", '{}'::jsonb)`;
+  }
+  const merged = entries.map(
+    ([repo, flags]) =>
+      sql`${repo}::text, coalesce("organization_settings"."repo_flags" -> ${repo}::text, '{}'::jsonb) || ${JSON.stringify(flags)}::jsonb`,
+  );
+  return sql<string>`coalesce("organization_settings"."repo_flags", '{}'::jsonb) || jsonb_build_object(${sql.join(merged, sql`, `)})`;
+}
+
 export class OrganizationSettingsStorage
   implements OrganizationSettingsStoragePort
 {
@@ -50,6 +72,11 @@ export class OrganizationSettingsStorage
           ? JSON.parse(record.flags)
           : record.flags
         : null,
+      repo_flags: record.repo_flags
+        ? typeof record.repo_flags === "string"
+          ? JSON.parse(record.repo_flags)
+          : record.repo_flags
+        : null,
       main_agent_id: record.main_agent_id ?? null,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
@@ -67,6 +94,7 @@ export class OrganizationSettingsStorage
         | "simple_mode"
         | "default_home_agents"
         | "flags"
+        | "repo_flags"
         | "main_agent_id"
       >
     >,
@@ -88,6 +116,12 @@ export class OrganizationSettingsStorage
       ? JSON.stringify(data.default_home_agents)
       : null;
     const flagsJson = data?.flags ? JSON.stringify(data.flags) : null;
+    const repoFlagsJson = data?.repo_flags
+      ? JSON.stringify(data.repo_flags)
+      : null;
+    const repoFlagsMerge = data?.repo_flags
+      ? mergeRepoFlagsSql(data.repo_flags)
+      : undefined;
     await this.db
       .insertInto("organization_settings")
       .values({
@@ -98,6 +132,7 @@ export class OrganizationSettingsStorage
         simple_mode: simpleModeJson,
         default_home_agents: defaultHomeAgentsJson,
         flags: flagsJson,
+        repo_flags: repoFlagsJson,
         main_agent_id: data?.main_agent_id ?? null,
         createdAt: now,
         updatedAt: now,
@@ -117,6 +152,8 @@ export class OrganizationSettingsStorage
           flags: flagsJson
             ? sql<string>`coalesce("organization_settings"."flags", '{}'::jsonb) || ${flagsJson}::jsonb`
             : undefined,
+          // Per-repo overrides merge one level DEEPER — see mergeRepoFlagsSql.
+          repo_flags: repoFlagsMerge,
           // Nullable id: explicit `null` clears the main agent; `undefined`
           // (field absent) skips the column so partial updates don't wipe it.
           main_agent_id: data?.main_agent_id,
@@ -136,6 +173,7 @@ export class OrganizationSettingsStorage
         simple_mode: data?.simple_mode ?? null,
         default_home_agents: data?.default_home_agents ?? null,
         flags: data?.flags ?? null,
+        repo_flags: data?.repo_flags ?? null,
         main_agent_id: data?.main_agent_id ?? null,
         createdAt: now,
         updatedAt: now,

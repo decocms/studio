@@ -7,6 +7,9 @@ import {
   SimpleModeConfigSchema,
   DefaultHomeAgentsConfigSchema,
   OrgFlagsSchema,
+  OrgRepoFlagsSchema,
+  RepoFlagsSchema,
+  repoFlagsKey,
 } from "@decocms/shared/organization/schema";
 
 export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
@@ -35,6 +38,22 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
       .describe(
         "Org boolean toggles. Shallow-merged into the stored flags: keys you pass win (explicit false persists), omitted keys keep their value.",
       ),
+    repo_flags: z
+      // Keys are validated as `owner/name` so a typo'd or bogus key can't
+      // accumulate as junk in the bag (nothing ever reads it back).
+      .record(
+        z
+          .string()
+          .regex(
+            /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/,
+            "Repo key must be `owner/name`",
+          ),
+        RepoFlagsSchema.strict(),
+      )
+      .optional()
+      .describe(
+        "Per-repo overrides of the review flags, keyed by `owner/name`. Merged two levels deep: repos you omit keep their overrides, and within a repo you pass, omitted keys keep their value. Pass a flag as null to drop the override and inherit the org default.",
+      ),
     main_agent_id: z
       .string()
       .nullable()
@@ -52,6 +71,7 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
     simple_mode: SimpleModeConfigSchema.nullable().optional(),
     default_home_agents: DefaultHomeAgentsConfigSchema.nullable().optional(),
     flags: OrgFlagsSchema.nullable().optional(),
+    repo_flags: OrgRepoFlagsSchema.nullable().optional(),
     main_agent_id: z.string().nullable().optional(),
     createdAt: z.string().datetime().describe("ISO 8601 timestamp"),
     updatedAt: z.string().datetime().describe("ISO 8601 timestamp"),
@@ -70,6 +90,16 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
       throw new Error("Cannot update settings for a different organization");
     }
 
+    // Stored lowercased so a task's `owner/name` matches however it was cased.
+    const repoFlags = input.repo_flags
+      ? Object.fromEntries(
+          Object.entries(input.repo_flags).map(([repo, flags]) => [
+            repoFlagsKey(repo) ?? repo,
+            flags,
+          ]),
+        )
+      : undefined;
+
     const settings = await ctx.storage.organizationSettings.upsert(
       input.organizationId,
       {
@@ -79,6 +109,7 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
         simple_mode: input.simple_mode,
         default_home_agents: input.default_home_agents,
         flags: input.flags,
+        repo_flags: repoFlags,
         main_agent_id: input.main_agent_id,
       },
     );

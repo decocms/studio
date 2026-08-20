@@ -484,6 +484,16 @@ export const settings = {
     "Auto-assign report tasks to the Super Agent",
   "settings.review.autoAssignReportTasksDescription":
     "Tasks created from a report are delegated to the Super Agent automatically instead of landing unassigned.",
+  "settings.review.qaAgentShort": "QA Agent",
+  "settings.review.codeReviewerShort": "Code Reviewer",
+  "settings.review.autoMergeShort": "Auto-merge",
+  "settings.review.perRepoTitle": "Per-repository overrides",
+  "settings.review.perRepoDescription":
+    "Each repository starts on the settings above. Override any of the three here — for example reviewers on, auto-merge off for one repo — without changing the others.",
+  "settings.review.perRepoInherited": "Using workspace defaults",
+  "settings.review.perRepoCustom": "Custom for this repository",
+  "settings.review.perRepoOverridden": "Overrides the workspace default",
+  "settings.review.perRepoReset": "Reset",
   "settings.review.updateError": "Couldn't update the setting",
   "settings.orgRoleDetail.addMember": "Add Member",
   "settings.orgRoleDetail.addMembersToGrantPermissions":

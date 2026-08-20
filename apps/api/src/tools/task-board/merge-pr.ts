@@ -6,6 +6,7 @@ import {
   approvedButUnverified,
   enabledReviewerKinds,
 } from "@decocms/shared/task-board";
+import { flagsForRepo } from "@decocms/shared/organization/schema";
 import { recordTaskActivity } from "./activity";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
 import {
@@ -295,9 +296,10 @@ export async function allEnabledReviewersVerifiedApproved(
   ctx: StudioContext,
   orgId: string,
   taskBoardItemId: string,
+  repo?: string | null,
 ): Promise<boolean> {
   const settings = await ctx.storage.organizationSettings.get(orgId);
-  const enabled = enabledReviewerKinds(settings?.flags);
+  const enabled = enabledReviewerKinds(flagsForRepo(settings, repo));
   const activity = await ctx.storage.taskBoard.listActivity(
     taskBoardItemId,
     orgId,
@@ -324,7 +326,7 @@ async function handUnverifiedApprovalToHuman(
   const settings = await ctx.storage.organizationSettings.get(
     item.organizationId,
   );
-  const enabled = enabledReviewerKinds(settings?.flags);
+  const enabled = enabledReviewerKinds(flagsForRepo(settings, item.repo));
   const activity = await ctx.storage.taskBoard.listActivity(
     item.id,
     item.organizationId,
@@ -432,12 +434,14 @@ export async function retryAutoMergeIfApproved(
   const orgId = item.organizationId;
   if (item.status !== "in_review") return false;
   const settings = await ctx.storage.organizationSettings.get(orgId);
-  if (settings?.flags?.auto_merge !== true) return false;
+  if (flagsForRepo(settings, item.repo).auto_merge !== true) return false;
   // Same human-override guard `review-decision.ts` and `prs-get` honor.
   if (await ctx.storage.taskBoard.hasHumanRejectedDone(item.id, orgId)) {
     return false;
   }
-  if (!(await allEnabledReviewersVerifiedApproved(ctx, orgId, item.id))) {
+  if (
+    !(await allEnabledReviewersVerifiedApproved(ctx, orgId, item.id, item.repo))
+  ) {
     await handUnverifiedApprovalToHuman(ctx, item);
     return false;
   }

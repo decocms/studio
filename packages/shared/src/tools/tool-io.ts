@@ -130,6 +130,17 @@ export interface StudioToolIO {
           }
         | null
         | undefined;
+      repo_flags?:
+        | Record<
+            string,
+            {
+              qa_agent_enabled?: boolean | null | undefined;
+              code_reviewer_enabled?: boolean | null | undefined;
+              auto_merge?: boolean | null | undefined;
+            }
+          >
+        | null
+        | undefined;
       main_agent_id?: string | null | undefined;
       createdAt?: string | undefined;
       updatedAt?: string | undefined;
@@ -196,6 +207,16 @@ export interface StudioToolIO {
             cheap_reviewer_model?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
           }
+        | undefined;
+      repo_flags?:
+        | Record<
+            string,
+            {
+              qa_agent_enabled?: boolean | null | undefined;
+              code_reviewer_enabled?: boolean | null | undefined;
+              auto_merge?: boolean | null | undefined;
+            }
+          >
         | undefined;
       main_agent_id?: string | null | undefined;
     };
@@ -264,6 +285,17 @@ export interface StudioToolIO {
             cheap_reviewer_model?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
           }
+        | null
+        | undefined;
+      repo_flags?:
+        | Record<
+            string,
+            {
+              qa_agent_enabled?: boolean | null | undefined;
+              code_reviewer_enabled?: boolean | null | undefined;
+              auto_merge?: boolean | null | undefined;
+            }
+          >
         | null
         | undefined;
       main_agent_id?: string | null | undefined;

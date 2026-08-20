@@ -15,7 +15,10 @@ import { enqueueAgentRunForTask } from "./enqueue-task-run";
 import { resolveTaskRepoChoice } from "./claude-code-task-run";
 import { isThreadRunStale } from "@/tools/thread/helpers";
 import { mintReviewToken } from "./review-token";
-import { orgFlagEnabled } from "@decocms/shared/organization/schema";
+import {
+  flagsForRepo,
+  orgFlagEnabled,
+} from "@decocms/shared/organization/schema";
 import type { ClaudeCodeModelClass } from "@/harnesses/claude-code-env";
 
 /** Thread statuses past which a reviewer run is done — a live run has a
@@ -143,7 +146,7 @@ export async function enqueueEnabledReviewers(
   const settings = await ctx.storage.organizationSettings.get(
     task.organizationId,
   );
-  const enabled = enabledReviewerKinds(settings?.flags);
+  const enabled = enabledReviewerKinds(flagsForRepo(settings, task.repo));
   if (enabled.length === 0) return;
   const modelClass: ClaudeCodeModelClass = orgFlagEnabled(
     settings?.flags,

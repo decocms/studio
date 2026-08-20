@@ -170,6 +170,7 @@ import * as migration168orgreposync from "./168-org-repo-sync.ts";
 import * as migration169taskboardmergefailedactivity from "./169-task-board-merge-failed-activity.ts";
 import * as migration170taskboarditemrepo from "./170-task-board-item-repo.ts";
 import * as migration171jiraintegration from "./171-jira-integration.ts";
+import * as migration172orgrepoflags from "./172-org-repo-flags.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -369,6 +370,7 @@ const migrations: Record<string, Migration> = {
     migration169taskboardmergefailedactivity,
   "170-task-board-item-repo": migration170taskboarditemrepo,
   "171-jira-integration": migration171jiraintegration,
+  "172-org-repo-flags": migration172orgrepoflags,
 };
 
 export default migrations;

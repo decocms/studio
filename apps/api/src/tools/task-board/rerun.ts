@@ -42,6 +42,7 @@ import {
   reviewCycleStart,
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
+import { flagsForRepo } from "@decocms/shared/organization/schema";
 import { TERMINAL_THREAD_STATUSES } from "@/storage/task-board";
 import { broadcastRunCancel } from "@/api/routes/decopilot/cancel-registry";
 import { cancelHostedHarness } from "@/dispatch-queue";
@@ -249,17 +250,23 @@ export function mergeRetryExpired(
  */
 export async function refuseIfMergePending(
   ctx: StudioContext,
-  item: { id: string; status: string; organizationId: string },
+  item: {
+    id: string;
+    status: string;
+    organizationId: string;
+    repo?: string | null;
+  },
 ): Promise<void> {
   if (item.status !== "in_review") return;
   const settings = await ctx.storage.organizationSettings.get(
     item.organizationId,
   );
-  if (settings?.flags?.auto_merge !== true) return;
+  if (flagsForRepo(settings, item.repo).auto_merge !== true) return;
   const approved = await allEnabledReviewersVerifiedApproved(
     ctx,
     item.organizationId,
     item.id,
+    item.repo,
   );
   if (!approved) return;
   const activity = await ctx.storage.taskBoard

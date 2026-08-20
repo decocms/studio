@@ -502,6 +502,16 @@ export const settings = {
     "Atribuir tarefas de relat\u00f3rio ao Super Agent automaticamente",
   "settings.review.autoAssignReportTasksDescription":
     "Tarefas criadas a partir de um relat\u00f3rio s\u00e3o delegadas ao Super Agent automaticamente, em vez de ficarem sem respons\u00e1vel.",
+  "settings.review.qaAgentShort": "QA Agent",
+  "settings.review.codeReviewerShort": "Code Reviewer",
+  "settings.review.autoMergeShort": "Auto-merge",
+  "settings.review.perRepoTitle": "Ajustes por repositório",
+  "settings.review.perRepoDescription":
+    "Cada repositório começa com os ajustes acima. Sobrescreva qualquer um dos três aqui — por exemplo revisores ligados e auto-merge desligado em um repositório — sem afetar os outros.",
+  "settings.review.perRepoInherited": "Usando os padrões do workspace",
+  "settings.review.perRepoCustom": "Personalizado para este repositório",
+  "settings.review.perRepoOverridden": "Sobrescreve o padrão do workspace",
+  "settings.review.perRepoReset": "Redefinir",
   "settings.review.updateError":
     "N\u00e3o foi poss\u00edvel atualizar a configura\u00e7\u00e3o",
   "settings.orgRoleDetail.addMember": "Adicionar Membro",

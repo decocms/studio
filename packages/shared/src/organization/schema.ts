@@ -192,6 +192,103 @@ export const DEFAULT_ON_FLAGS: ReadonlySet<keyof OrgFlags> = new Set([
 ]);
 
 /**
+ * The flags a single repository may override, i.e. the per-repo review setup.
+ *
+ * These three are the ones whose right answer differs per repository: a repo
+ * can want the Code Reviewer and QA Agent but not auto-merge, while the next
+ * one wants all three. Everything else in {@link OrgFlagsSchema} is a
+ * workspace-wide product/cosmetic toggle and stays org-only.
+ */
+export const REPO_OVERRIDABLE_FLAGS = [
+  "qa_agent_enabled",
+  "code_reviewer_enabled",
+  "auto_merge",
+] as const;
+
+export type RepoOverridableFlag = (typeof REPO_OVERRIDABLE_FLAGS)[number];
+
+/**
+ * One repository's overrides. Every key is tri-state: `true`/`false` means "this
+ * repo decides", and absent OR null means "inherit the org default" — null is
+ * how a write DROPS an override, since under the two-level merge an omitted key
+ * keeps whatever is stored.
+ */
+export const RepoFlagsSchema = z.object({
+  qa_agent_enabled: z
+    .boolean()
+    .nullable()
+    .optional()
+    .describe("Override for the QA Agent on this repo. Null inherits the org."),
+  code_reviewer_enabled: z
+    .boolean()
+    .nullable()
+    .optional()
+    .describe(
+      "Override for the Code Reviewer on this repo. Null inherits the org.",
+    ),
+  auto_merge: z
+    .boolean()
+    .nullable()
+    .optional()
+    .describe("Override for auto-merge on this repo. Null inherits the org."),
+});
+
+export type RepoFlags = z.infer<typeof RepoFlagsSchema>;
+
+/**
+ * Per-repo overrides of the review flags, stored in the
+ * `organization_settings.repo_flags` jsonb column, keyed by the repository's
+ * lowercased `owner/name` (see {@link repoFlagsKey} — GitHub repo names are
+ * case-insensitive, and the key a task carries must match the key Settings
+ * wrote).
+ *
+ * Additive by construction: an org with no overrides behaves exactly as before,
+ * and a repo with no entry (or with a key left unset) falls back to the org
+ * flag. Reads go through {@link flagsForRepo}, never the raw bag.
+ */
+export const OrgRepoFlagsSchema = z.record(z.string(), RepoFlagsSchema);
+
+export type OrgRepoFlags = z.infer<typeof OrgRepoFlagsSchema>;
+
+/** The `repo_flags` key for a `owner/name` repo, or null when there's no repo
+ *  (org-wide tasks carry none — those always read the org defaults). */
+export function repoFlagsKey(repo: string | null | undefined): string | null {
+  const trimmed = repo?.trim().toLowerCase();
+  return trimmed ? trimmed : null;
+}
+
+/**
+ * The effective flag bag for one repository: the org flags with that repo's
+ * overrides layered on top. THE single reader for every review gate — pass the
+ * result anywhere `settings.flags` used to go (`orgFlagEnabled`,
+ * `enabledReviewerKinds`, the `auto_merge` check) and per-repo config applies
+ * without each call site knowing the override shape.
+ *
+ * `repo` of null (an org-wide task) resolves to the org flags untouched. Only
+ * booleans override, so a stored null never shadows the org value.
+ */
+export function flagsForRepo(
+  settings:
+    | {
+        flags?: Record<string, unknown> | null;
+        repo_flags?: Record<string, Record<string, unknown>> | null;
+      }
+    | null
+    | undefined,
+  repo: string | null | undefined,
+): Record<string, unknown> {
+  const flags = settings?.flags ?? {};
+  const key = repoFlagsKey(repo);
+  const overrides = key ? settings?.repo_flags?.[key] : undefined;
+  if (!overrides) return flags;
+  const applied: Record<string, unknown> = { ...flags };
+  for (const flag of REPO_OVERRIDABLE_FLAGS) {
+    if (typeof overrides[flag] === "boolean") applied[flag] = overrides[flag];
+  }
+  return applied;
+}
+
+/**
  * Resolve one org flag to its effective boolean. Honors {@link DEFAULT_ON_FLAGS}
  * — a default-on flag is enabled unless stored as exactly `false`; every other
  * flag is enabled only when stored as exactly `true`. The single reader shared

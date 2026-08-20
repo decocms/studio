@@ -18,6 +18,7 @@ import type { ChatMessage } from "../api/routes/decopilot/types";
 import type { ProviderId, ThreadStatus } from "@decocms/shared/sdk";
 import type {
   OrgFlags,
+  OrgRepoFlags,
   UserModelPreferences,
 } from "@decocms/shared/organization/schema";
 import type { ThreadMetadata } from "@decocms/shared/entities";
@@ -184,6 +185,9 @@ export interface OrganizationSettingsTable {
   // Boolean toggles bag — the flag set lives in OrgFlagsSchema
   // (@decocms/shared/organization/schema); updates shallow-merge.
   flags: JsonObject<OrgFlags> | null;
+  /** Per-repo overrides of the review flags, keyed by lowercased `owner/name`
+   *  (OrgRepoFlagsSchema); a repo with no entry inherits `flags`. */
+  repo_flags: JsonObject<OrgRepoFlags> | null;
   // Virtual MCP id the org lands on (`/$org`) instead of the Super Agent.
   main_agent_id: string | null;
   createdAt: ColumnType<Date, Date | string, never>;
@@ -198,6 +202,7 @@ export interface OrganizationSettings {
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
   flags: OrgFlags | null;
+  repo_flags: OrgRepoFlags | null;
   main_agent_id: string | null;
   createdAt: Date | string;
   updatedAt: Date | string;

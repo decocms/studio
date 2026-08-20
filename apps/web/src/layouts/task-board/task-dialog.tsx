@@ -83,7 +83,7 @@ import {
   useTaskBoardActivity,
   type TaskBoardActivity,
 } from "@/hooks/use-task-board-activity";
-import { useOrgFlag } from "@/hooks/use-organization-settings";
+import { useRepoFlag } from "@/hooks/use-organization-settings";
 import { usePromoteToProduction } from "@/hooks/use-promote-to-production";
 import {
   enabledReviewers,
@@ -1377,8 +1377,16 @@ function LinksSection({
   const t = useT();
   const { data: prs, isLoading: prsLoading } = useTaskBoardItemPrs(item.id);
   const { data: activity } = useTaskBoardActivity(item.id);
-  const qaEnabled = useOrgFlag("qa_agent_enabled");
-  const codeReviewerEnabled = useOrgFlag("code_reviewer_enabled");
+  // Per-repo resolver, matching the server gate in TASK_BOARD_PROMOTE_TO_PRODUCTION
+  // (`flagsForRepo`): an org-wide task (no repo) falls back to the org flags.
+  const { enabled: qaEnabled } = useRepoFlag(
+    item.repo ?? "",
+    "qa_agent_enabled",
+  );
+  const { enabled: codeReviewerEnabled } = useRepoFlag(
+    item.repo ?? "",
+    "code_reviewer_enabled",
+  );
   const promote = usePromoteToProduction(item.id);
   const links = extractDescriptionLinks(description);
   // Keep the section up (with a skeleton) while the PR enrichment loads; a
