@@ -1,6 +1,6 @@
 {
   "name": "@decocms/e2e",
-  "version": "1.39.3",
+  "version": "1.39.4",
   "private": true,
   "description": "Black-box e2e suite (HTTP + DB) for Studio, isolated from app source.",
   "type": "module",
