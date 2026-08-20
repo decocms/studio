@@ -21,6 +21,7 @@ function item(id: string, sortOrder: number): TaskBoardItem {
     repo: null,
     dueDate: null,
     sortOrder,
+    keySeq: 1,
     retryAttempts: 0,
     threads: [],
     tags: [],

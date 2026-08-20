@@ -3,6 +3,7 @@ setupComponentTest();
 import { describe, expect, test } from "bun:test";
 import { Editor } from "@tiptap/core";
 import { markdownEditorExtensions } from "./extensions";
+import { unwrapListContinuations } from "./unwrap-list-continuations";
 
 /**
  * The description is stored as markdown, so the schema's whole contract is the
@@ -15,7 +16,7 @@ import { markdownEditorExtensions } from "./extensions";
 function roundTrip(markdown: string): { markdown: string; editor: Editor } {
   const editor = new Editor({
     extensions: markdownEditorExtensions(),
-    content: markdown,
+    content: unwrapListContinuations(markdown),
     contentType: "markdown",
   });
   return { markdown: editor.getMarkdown(), editor };
@@ -51,5 +52,14 @@ describe("markdown editor schema", () => {
     const { markdown, editor } = roundTrip(`[q3 \\[final\\].pdf](${FILE_URL})`);
     expect(JSON.stringify(editor.getJSON())).toContain("q3 [final].pdf");
     expect(markdown).toBe(`[q3 \\[final\\].pdf](${FILE_URL})`);
+  });
+
+  // The parser drops a list item's wrapped tail; the normalizer is the guard.
+  test("a hard-wrapped list item keeps all of its text", () => {
+    const { markdown } = roundTrip(`1. um item que passa da margem
+   e continua aqui.
+2. outro item.`);
+    expect(markdown).toContain("e continua aqui.");
+    expect(markdown).toContain("2. outro item.");
   });
 });

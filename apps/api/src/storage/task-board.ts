@@ -68,6 +68,14 @@ function commentFromDbRow(row: {
 }
 
 /** Text of a folded/persisted text part payload (`{ type: "text", text }`). */
+/** Actions that describe editing prose, where a burst of saves is one edit.
+ *  A repeat inside the window moves the existing entry instead of adding one. */
+const COALESCED_ACTIONS = new Set<TaskBoardActivityAction>([
+  "description_changed",
+  "title_changed",
+]);
+const ACTIVITY_COALESCE_WINDOW_MS = 10 * 60_000;
+
 function extractPartText(payload: unknown): string | null {
   if (payload && typeof payload === "object" && !Array.isArray(payload)) {
     const text = (payload as { text?: unknown }).text;
@@ -257,33 +265,48 @@ export class TaskBoardStorage {
     // same lane race for, at most, a single round trip instead of two — the
     // previous SELECT-then-INSERT left a full network round trip open for
     // another create to land on the same sort_order.
-    const row = await this.db
-      .insertInto("task_board_items")
-      .values({
-        id,
-        organization_id: params.organizationId,
-        title: params.title,
-        description: params.description ?? null,
-        status,
-        priority: params.priority ?? "medium",
-        assignee_id: params.assigneeId ?? null,
-        assigned_by: params.assignedBy ?? null,
-        repo: params.repo ?? null,
-        due_date: params.dueDate ?? null,
-        external_key: params.externalKey ?? null,
-        sort_order: sql<number>`(
+    const insert = (db: Kysely<Database>) =>
+      db
+        .insertInto("task_board_items")
+        .values({
+          id,
+          organization_id: params.organizationId,
+          title: params.title,
+          description: params.description ?? null,
+          status,
+          priority: params.priority ?? "medium",
+          assignee_id: params.assigneeId ?? null,
+          assigned_by: params.assignedBy ?? null,
+          repo: params.repo ?? null,
+          due_date: params.dueDate ?? null,
+          external_key: params.externalKey ?? null,
+          sort_order: sql<number>`(
           select coalesce(min(sort_order), 0) - 1
           from task_board_items
           where organization_id = ${params.organizationId}
           and status = ${status}
         )`,
-        created_by: params.by,
-        created_at: now,
-        updated_by: params.by,
-        updated_at: now,
-      })
-      .returningAll()
-      .executeTakeFirstOrThrow();
+          key_seq: sql<number>`(
+          select coalesce(max(key_seq), 0) + 1
+          from task_board_items
+          where organization_id = ${params.organizationId}
+        )`,
+          created_by: params.by,
+          created_at: now,
+          updated_by: params.by,
+          updated_at: now,
+        })
+        .returningAll()
+        .executeTakeFirstOrThrow();
+
+    const row = await this.inTransaction(async (trx) => {
+      // Serialize this org's key allocation: `max(key_seq) + 1` is a read the
+      // next create must not interleave with. Held to commit, then released.
+      await sql`select pg_advisory_xact_lock(hashtext(${`task-board-key-seq:${params.organizationId}`})::bigint)`.execute(
+        trx,
+      );
+      return insert(trx);
+    });
 
     // Freshly created — no linked threads yet.
     return this.itemFromDbRow(row);
@@ -1741,10 +1764,18 @@ export class TaskBoardStorage {
   ): Promise<void> {
     if (entries.length === 0) return;
     const now = new Date().toISOString();
+    const fresh: typeof entries = [];
+    for (const entry of entries) {
+      const coalesced =
+        COALESCED_ACTIONS.has(entry.action) &&
+        (await this.touchRecentActivity(entry, now));
+      if (!coalesced) fresh.push(entry);
+    }
+    if (fresh.length === 0) return;
     await this.db
       .insertInto("task_board_activity")
       .values(
-        entries.map((params) => ({
+        fresh.map((params) => ({
           id: generatePrefixedId("act"),
           task_board_item_id: params.taskBoardItemId,
           action: params.action,
@@ -1754,6 +1785,45 @@ export class TaskBoardStorage {
         })),
       )
       .execute();
+  }
+
+  /**
+   * Move this actor's recent entry of the same action to `now`, if there is
+   * one. True when it landed, meaning no new row is needed.
+   *
+   * Writing prose is a stream of saves, not a stream of events: the dialog
+   * autosaves as you type, so one paragraph used to leave a dozen identical
+   * "updated the description" lines burying everything else on the timeline.
+   */
+  private async touchRecentActivity(
+    entry: { taskBoardItemId: string; action: string; actorId: string | null },
+    now: string,
+  ): Promise<boolean> {
+    const since = new Date(
+      Date.parse(now) - ACTIVITY_COALESCE_WINDOW_MS,
+    ).toISOString();
+    const result = await this.db
+      .updateTable("task_board_activity")
+      .set({ occurred_at: new Date(now) })
+      .where(
+        "id",
+        "=",
+        this.db
+          .selectFrom("task_board_activity")
+          .select("id")
+          .where("task_board_item_id", "=", entry.taskBoardItemId)
+          .where("action", "=", entry.action as TaskBoardActivityAction)
+          .where((eb) =>
+            entry.actorId === null
+              ? eb("actor_id", "is", null)
+              : eb("actor_id", "=", entry.actorId),
+          )
+          .where("occurred_at", ">=", new Date(since))
+          .orderBy("occurred_at", "desc")
+          .limit(1),
+      )
+      .executeTakeFirst();
+    return (result.numUpdatedRows ?? 0n) > 0n;
   }
 
   /** A task's activity, oldest first (timeline order). Tenant-scoped through
@@ -1958,6 +2028,7 @@ export class TaskBoardStorage {
     repo: string | null;
     due_date: string | Date | null;
     sort_order: number;
+    key_seq?: number | null;
     retry_attempts?: number;
     created_by: string;
     created_at: string | Date;
@@ -1979,6 +2050,7 @@ export class TaskBoardStorage {
           ? row.due_date.toISOString()
           : row.due_date,
       sortOrder: row.sort_order,
+      keySeq: row.key_seq ?? null,
       retryAttempts: row.retry_attempts ?? 0,
       // Populated by attachThreads/attachTags for reads; empty for a fresh create.
       threads: [],

@@ -771,15 +771,48 @@ export function TaskBoardPage() {
               { id: activeItem.id, ...boardFields, ...contentFields },
               { onError: onDelegateError },
             );
-          } else {
-            actions.create.mutate(input);
+            // Autosave: the dialog stays open.
+            return;
           }
+          actions.create.mutate(input);
           closeDialog();
         }}
         onDelete={
           activeItem
             ? () => {
                 actions.remove.mutate(activeItem.id);
+                closeDialog();
+              }
+            : undefined
+        }
+        onClone={
+          activeItem
+            ? () => {
+                // A copy starts fresh and undelegated: no assignee, no threads.
+                actions.create.mutate({
+                  title: t("taskBoard.taskDialog.cloneTitle", {
+                    title: activeItem.title,
+                  }),
+                  description: activeItem.description,
+                  status: activeItem.status,
+                  priority: activeItem.priority,
+                  repo: activeItem.repo,
+                  dueDate: activeItem.dueDate,
+                  tagIds: activeItem.tags.map((tag) => tag.id),
+                });
+                toast.success(t("taskBoard.taskDialog.cloneSuccess"));
+                closeDialog();
+              }
+            : undefined
+        }
+        onArchive={
+          activeItem
+            ? () => {
+                actions.update.mutate({
+                  id: activeItem.id,
+                  status: "archived",
+                });
+                toast.success(t("taskBoard.taskDialog.archiveSuccess"));
                 closeDialog();
               }
             : undefined

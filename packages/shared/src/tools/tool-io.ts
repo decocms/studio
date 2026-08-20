@@ -306,6 +306,7 @@ export interface StudioToolIO {
         repo: string | null;
         dueDate: string | null;
         sortOrder: number;
+        keySeq: number | null;
         retryAttempts: number;
         threads: {
           threadId: string;
@@ -362,6 +363,7 @@ export interface StudioToolIO {
         repo: string | null;
         dueDate: string | null;
         sortOrder: number;
+        keySeq: number | null;
         retryAttempts: number;
         threads: {
           threadId: string;
@@ -438,6 +440,7 @@ export interface StudioToolIO {
         repo: string | null;
         dueDate: string | null;
         sortOrder: number;
+        keySeq: number | null;
         retryAttempts: number;
         threads: {
           threadId: string;

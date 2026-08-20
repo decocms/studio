@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { taskMatchesFilters, EMPTY_FILTERS } from "./task-filters";
+import {
+  matchesTaskKey,
+  taskMatchesFilters,
+  EMPTY_FILTERS,
+} from "./task-filters";
 import type { TaskBoardItem } from "./config";
 
 function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
@@ -194,5 +198,31 @@ describe("taskMatchesFilters — repo", () => {
         repo: NO_REPO,
       }),
     ).toBe(false);
+  });
+});
+
+describe("matchesTaskKey", () => {
+  test("matches the bare number, padded or not", () => {
+    expect(matchesTaskKey("7", 7)).toBe(true);
+    expect(matchesTaskKey("07", 7)).toBe(true);
+  });
+
+  test("matches the whole key, in any case", () => {
+    expect(matchesTaskKey("DECO-07", 7)).toBe(true);
+    expect(matchesTaskKey("deco-7", 7)).toBe(true);
+  });
+
+  test("does not match another card's number", () => {
+    expect(matchesTaskKey("8", 7)).toBe(false);
+    expect(matchesTaskKey("70", 7)).toBe(false);
+  });
+
+  test("ordinary words are not keys", () => {
+    expect(matchesTaskKey("carrossel", 7)).toBe(false);
+    expect(matchesTaskKey("", 7)).toBe(false);
+  });
+
+  test("a card from before the backfill never matches", () => {
+    expect(matchesTaskKey("7", null)).toBe(false);
   });
 });

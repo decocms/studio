@@ -371,6 +371,10 @@ const orgIndexSearchSchema = z.object({
   main: z.string().optional(),
   connect: z.coerce.string().optional(),
   siteUrl: z.string().optional(),
+  /** A task board card to open, forwarded to the landing thread. Without it
+   *  here, `/$org?main=board&task=…` (the short card link's target) would drop
+   *  the card on the redirect. */
+  task: z.string().optional(),
 });
 
 const orgIndexRoute = createRoute({
@@ -379,6 +383,16 @@ const orgIndexRoute = createRoute({
   validateSearch: orgIndexSearchSchema,
   pendingComponent: ShellRouteLoading,
   component: lazyRouteComponent(() => import("./layouts/org-home/index.tsx")),
+});
+
+// Short, shareable card link (`/$org/t/DECO-01`).
+const taskKeyRoute = createRoute({
+  getParentRoute: () => orgShellLayout,
+  path: "/t/$taskKey",
+  pendingComponent: ShellRouteLoading,
+  component: lazyRouteComponent(
+    () => import("./layouts/task-key-redirect/index.tsx"),
+  ),
 });
 
 // ============================================
@@ -672,6 +686,7 @@ const agentShellWithChildren = agentShellLayout.addChildren([unifiedChatRoute]);
 
 const orgShellWithChildren = orgShellLayout.addChildren([
   orgIndexRoute,
+  taskKeyRoute,
   agentShellWithChildren,
 ]);
 

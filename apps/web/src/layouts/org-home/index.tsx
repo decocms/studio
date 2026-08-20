@@ -35,10 +35,11 @@ export default function OrgHome() {
   const agents = useVirtualMCPs();
   // `main` carries a deep link into a main-panel overlay (e.g. `board` =
   // Tasks, `files` = Library) through the redirect to the landing thread.
-  const { connect, siteUrl, main } = useSearch({ strict: false }) as {
+  const { connect, siteUrl, main, task } = useSearch({ strict: false }) as {
     connect?: string;
     siteUrl?: string;
     main?: string;
+    task?: string;
   };
   // Stable id for this mount, used only when there's no reusable "New chat".
   const [freshId] = useState(() => crypto.randomUUID());
@@ -69,7 +70,7 @@ export default function OrgHome() {
     <Navigate
       to="/$org/$taskId"
       params={{ org: org.slug, taskId }}
-      search={{ virtualmcpid: landingAgentId, connect, siteUrl, main }}
+      search={{ virtualmcpid: landingAgentId, connect, siteUrl, main, task }}
       replace
     />
   );
