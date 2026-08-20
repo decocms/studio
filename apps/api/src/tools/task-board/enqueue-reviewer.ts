@@ -4,6 +4,7 @@ import type { TaskBoardItem } from "@/storage/types";
 import {
   enabledReviewerKinds,
   isReviewerThreadTitle,
+  PR_DIFF_RECIPE,
   REVIEWER_LABEL,
   reviewCycleStart,
   SHALLOW_CHECKOUT_NOTE,
@@ -12,7 +13,10 @@ import {
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated, handTaskToHuman } from "./run-reactions";
 import { enqueueAgentRunForTask } from "./enqueue-task-run";
-import { resolveTaskRepoChoice } from "./claude-code-task-run";
+import {
+  resolveTaskRepoChoice,
+  type TaskRepoChoice,
+} from "./claude-code-task-run";
 import { isThreadRunStale } from "@/tools/thread/helpers";
 import { mintReviewToken } from "./review-token";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
@@ -235,6 +239,50 @@ export function spentAttemptsThisCycle(
   ).length;
 }
 
+/**
+ * The connectionId for the repository a card already names, when the org has
+ * several and the run would otherwise have to go looking.
+ *
+ * Every reviewer in a multi-repo org opened by calling `TASK_ADD_REPO` with no
+ * arguments — the discovery form, which answers with the org's whole catalog —
+ * and only then called it again with the id. A card that names its repo makes
+ * that round trip pure waste. Null when the card names no repo, when the sole
+ * repo is already cloned (nothing to pick), or when the name matches nothing
+ * loadable: each leaves the run to discover it as before.
+ */
+export function pinnedRepoConnectionId(
+  taskRepo: string | null,
+  choice: TaskRepoChoice,
+): string | null {
+  if (!taskRepo || !choice || !("choices" in choice)) return null;
+  return choice.choices.find((c) => c.repo === taskRepo)?.connectionId ?? null;
+}
+
+/**
+ * When this reviewer last finished a run on an EARLIER review cycle, in ms —
+ * else 0.
+ *
+ * A re-review is not a review: the Super Agent pushed more commits onto a PR
+ * this reviewer already read end to end. Told nothing, the second run repeats
+ * the first almost exactly (in production, $3.39 against $3.51 for a fraction
+ * of the change). Given the moment it last ruled, it can ask git what moved.
+ */
+export function priorCycleReviewAt(
+  task: TaskBoardItem,
+  kind: ReviewerKind,
+  lastInReviewAt: number,
+): number {
+  const times = task.threads
+    .filter(
+      (thr) =>
+        isReviewerThreadTitle(thr.title, kind) &&
+        new Date(thr.createdAt).getTime() < lastInReviewAt,
+    )
+    .map((thr) => new Date(thr.lastActiveAt).getTime())
+    .filter((ms) => Number.isFinite(ms));
+  return times.length === 0 ? 0 : Math.max(...times);
+}
+
 /** A reviewer attempt that produced no verdict and never will: it failed, or it
  *  is non-terminal with a heartbeat past the stall window. */
 function isSpentAttempt(
@@ -417,6 +465,8 @@ async function enqueueReviewerForTask(
   const choice = await resolveTaskRepoChoice(ctx, organizationId);
   const repo = choice && "repo" in choice ? choice.repo : null;
   const sandboxed = choice !== null;
+  const priorReviewAt = priorCycleReviewAt(task, kind, cycleAt.getTime());
+  const pinnedConnectionId = pinnedRepoConnectionId(task.repo, choice);
   // Over the sandbox's MCP client the task-run tools are namespaced; hosted
   // Decopilot calls them bare. Naming them wrong is not cosmetic — it is what
   // the model retries `enable_tool` against before giving up.
@@ -429,6 +479,9 @@ async function enqueueReviewerForTask(
   const commentTool = sandboxed
     ? "mcp__studio__TASK_BOARD_COMMENT_CREATE"
     : "TASK_BOARD_COMMENT_CREATE";
+  const commentListTool = sandboxed
+    ? "mcp__studio__TASK_BOARD_COMMENT_LIST"
+    : "TASK_BOARD_COMMENT_LIST";
 
   // Who this run IS. On the sandboxed path this becomes the harness's system
   // instructions (`agent.instructions`), replacing the org agent's own — those
@@ -462,8 +515,18 @@ async function enqueueReviewerForTask(
     repo
       ? `- The repository ${repo.owner}/${repo.name} is already cloned at your working directory and \`git\` and \`gh\` are authenticated — check the PR's branch out there to inspect / exercise the change. ${SHALLOW_CHECKOUT_NOTE}`
       : sandboxed
-        ? `- Your working directory is EMPTY. Call \`mcp__studio__TASK_ADD_REPO\` with the connectionId of the PR's repository FIRST; it clones the repository and waits for the checkout, and \`git\` and \`gh\` are authenticated once it returns.`
+        ? `- Your working directory is EMPTY. Call \`mcp__studio__TASK_ADD_REPO\` ${
+            pinnedConnectionId
+              ? `with connectionId \`${pinnedConnectionId}\` (${task.repo}) FIRST — do NOT call it with no arguments, that only lists the org's repositories and costs you a turn.`
+              : `with the connectionId of the PR's repository FIRST;`
+          } it clones the repository and waits for the checkout, and \`git\` and \`gh\` are authenticated once it returns. ${SHALLOW_CHECKOUT_NOTE}`
         : "- Load the PR's repository to inspect / exercise the change.",
+    `- ${PR_DIFF_RECIPE}`,
+    ...(priorReviewAt > 0
+      ? [
+          `- This is a RE-REVIEW. You already reviewed an earlier version of this pull request and asked for changes; the Super Agent has pushed more commits since. Read your own previous notes with \`${commentListTool}\`, then review WHAT MOVED SINCE — \`gh pr diff <number>\` still shows the whole PR, so narrow it with \`git log --since='${new Date(priorReviewAt).toISOString()}' --oneline\` and diff only those commits. Confirm your earlier notes were addressed and check the new commits for their own problems. Do NOT re-read the parts of the PR you already cleared.`,
+        ]
+      : []),
     ...(kind === "qa"
       ? [
           `- Exercise the change on the PR's deploy \`previewUrl\` (from \`${prsGetTool}\`), deep-linked to the page/route the task affects (not root). If you cannot render or exercise it, do NOT approve — \`request_changes\` with what's blocking.`,

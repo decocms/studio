@@ -76,6 +76,26 @@ export const SHALLOW_CHECKOUT_NOTE =
   "`git fetch --deepen=100`. Same for `git log main..HEAD` and anything else " +
   "that needs shared history.";
 
+/**
+ * How a reviewer should read the change it is reviewing.
+ *
+ * Left to itself a reviewer improvises: fetch the PR ref, find the merge base,
+ * `--stat`, then `git diff` sliced by directory because it cannot tell how big
+ * the diff is. One production Code Reviewer run spent six turns and 46KB doing
+ * that, across three overlapping slices of ONE diff — and a tool result is not
+ * paid for once, it rides in the prompt of every turn after it.
+ *
+ * `gh pr diff` is served by the API, so it needs neither a fetch nor a merge
+ * base and is immune to the shallow checkout that causes the improvising.
+ */
+export const PR_DIFF_RECIPE =
+  "Read the diff with `gh pr diff <number>`. It comes from the API, so it " +
+  "needs no fetch, no merge base, and is unaffected by the shallow checkout. " +
+  "Read it ONCE — `gh pr diff <number> --name-only` first if you need to size " +
+  "it, then pull the hunks you need per FILE. Do NOT re-run the diff sliced " +
+  "by directory: each slice re-reads bytes you already have into every " +
+  "remaining turn's context, and it is the largest avoidable cost in a review.";
+
 export const REVIEWER_KINDS: ReviewerKind[] = ["qa", "code_review"];
 
 /** Human label for a reviewer — also the prefix of its run thread's title
