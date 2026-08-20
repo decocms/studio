@@ -24,6 +24,7 @@
  * purpose — this suite owns its contract (see ban-e2e-app-imports).
  */
 
+import type { Locator } from "@playwright/test";
 import {
   createFastPreviewProject,
   seedStubRepo,
@@ -41,6 +42,25 @@ const VERSION_NOTE = "Version note";
 
 /** The CTA carries its final count from the manifest beat onward. */
 const PUBLISH_ONE = "Publish 1 change";
+
+/**
+ * The settled `y` of an element, once it stops moving.
+ *
+ * The popover opens with a zoom/slide animation, so a box read the instant the
+ * manifest lands is mid-transform and sits a few px off its final position —
+ * which would otherwise be indistinguishable from the layout shift this spec
+ * exists to catch. Reading until two samples agree measures layout, not motion.
+ */
+async function settledY(locator: Locator): Promise<number> {
+  let previous = (await locator.boundingBox())?.y ?? 0;
+  for (let attempt = 0; attempt < 40; attempt++) {
+    await locator.page().waitForTimeout(50);
+    const current = (await locator.boundingBox())?.y ?? 0;
+    if (Math.abs(current - previous) < 0.5) return current;
+    previous = current;
+  }
+  return previous;
+}
 
 test.describe("fast preview publish stages", () => {
   test("the card list, count and button are live while file bodies are still loading", async ({
@@ -133,8 +153,7 @@ test.describe("fast preview publish stages", () => {
     await expect(publishCta).toBeVisible();
     await expect(publishCta).toBeEnabled();
 
-    const beforeBox = await publishCta.boundingBox();
-    expect(beforeBox).not.toBeNull();
+    const beforeY = await settledY(publishCta);
 
     // --- Beat two: the bodies --------------------------------------------
     releaseBodies();
@@ -144,10 +163,8 @@ test.describe("fast preview publish stages", () => {
 
     // Same button, same label, same place: bodies add detail, never geometry.
     await expect(publishCta).toBeEnabled();
-    const afterBox = await publishCta.boundingBox();
-    expect(afterBox).not.toBeNull();
     expect(
-      Math.abs((afterBox?.y ?? 0) - (beforeBox?.y ?? 0)),
+      Math.abs((await settledY(publishCta)) - beforeY),
       "the publish button moved when file bodies landed",
     ).toBeLessThanOrEqual(1);
   });
