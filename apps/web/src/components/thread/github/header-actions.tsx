@@ -1,6 +1,6 @@
 import { useMCPClient, useProjectContext, useVirtualMCP } from "@/sdk";
-import { useIsMutating, useQuery } from "@tanstack/react-query";
-import { decofileWriteMutationKey } from "@/components/sections-editor/decofile-api";
+import { useQuery } from "@tanstack/react-query";
+import { useDecofileWriting } from "@/components/sections-editor/use-decofile-writing";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   SplitButton,
@@ -236,14 +236,11 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const publishPolicy = normalizePublishPolicy(vm?.metadata?.publishPolicy);
 
   /** An in-flight autosave means the branch state is mid-change — hold the publish surfaces until the write lands. */
-  const decofileSaving =
-    useIsMutating({
-      mutationKey: decofileWriteMutationKey(
-        org.slug,
-        virtualMcpId,
-        branch ?? sandboxRouteBranch ?? "",
-      ),
-    }) > 0;
+  const decofileSaving = useDecofileWriting(
+    org.slug,
+    virtualMcpId,
+    branch ?? sandboxRouteBranch ?? "",
+  );
 
   /** Detached repo: render a reconnect pill, never a blank header. */
   if (attachment.status === "detached") {

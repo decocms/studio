@@ -28,12 +28,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import {
-  useIsMutating,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { GitPullRequest, RefreshCw01, Rocket02 } from "@untitledui/icons";
@@ -45,7 +40,7 @@ import { resolveGithubAttachment } from "@/lib/github-repo.ts";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
-import { decofileWriteMutationKey } from "../../sections-editor/decofile-api.ts";
+import { useDecofileWriting } from "../../sections-editor/use-decofile-writing.ts";
 import { useFastPreviewDraftUrl } from "../../sections-editor/use-fast-preview-draft-url.ts";
 import { fillPathTemplate } from "../../sections-editor/page-path-utils.ts";
 import {
@@ -275,14 +270,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   });
 
   /** Same in-flight signal the preview's autosave indicator reads. */
-  const saving =
-    useIsMutating({
-      mutationKey: decofileWriteMutationKey(
-        org.slug,
-        virtualMcpId,
-        branch ?? "",
-      ),
-    }) > 0;
+  const saving = useDecofileWriting(org.slug, virtualMcpId, branch ?? "");
 
   /**
    * Detached: repo linked via a GitHub connection that's no longer aggregated.
