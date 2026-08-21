@@ -1,6 +1,6 @@
 import { buildDraftPointer, withDraftPointer } from "./section-preview-url";
 import { useDecofileDraft } from "./decofile-api";
-import { useFastPreview } from "@/hooks/use-fast-preview";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
 
 interface DraftParams {
   orgSlug: string;
@@ -21,7 +21,8 @@ interface DraftParams {
  * {@link useFastPreviewDraftUrl} for one known path.
  */
 export function useDraftPointer(params: DraftParams | null): string | null {
-  const fastPreviewActive = useFastPreview(params?.virtualMcpId).active;
+  const fastPreviewActive =
+    useSessionRuntime(params?.virtualMcpId).runtime === "cms";
   const draft = useDecofileDraft(params);
   return params && draft && fastPreviewActive
     ? buildDraftPointer({ ...params, ...draft })

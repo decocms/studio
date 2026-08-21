@@ -63,6 +63,8 @@ import {
 } from "@decocms/shared/branch-name";
 import { PACKAGE_MANAGER_CONFIG } from "@decocms/shared/runtime-defaults";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
+import { stampRuntimeIfAbsent } from "../thread/stamp-runtime-if-absent";
+import { parseThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import {
   getThreadGithubRepo,
   getThreadHeadRef,
@@ -120,6 +122,12 @@ export const SANDBOX_START = defineTool({
       .describe(
         "Explicit runtime choice. Hosted provider is `agent-sandbox`; legacy `cluster` input is accepted only for compatibility and normalized to `agent-sandbox`. When omitted, defaults to `user-desktop` if the acting user's link daemon is online, else the env kind.",
       ),
+    threadId: z
+      .string()
+      .optional()
+      .describe(
+        "The session asking for a sandbox. A thread stamped `cms` is refused — that session reads and writes over the decofile API and a pod would be invisible to it. Optional: an unstamped (legacy) thread is always allowed, and so is a caller with no thread.",
+      ),
   }),
   outputSchema: z.object({
     previewUrl: z.string().nullable(),
@@ -135,6 +143,27 @@ export const SANDBOX_START = defineTool({
     await ctx.access.check();
     const resolvedBranch =
       input.branch ?? generateBranchName(branchUserLabel(ctx.auth.user));
+
+    // A CMS session must never provision: the pod it got would be unreachable
+    // from its own surfaces. Only a LITERAL stamp refuses — an unstamped legacy
+    // thread still has to be able to start one.
+    const askingThreadId =
+      threadIdFromBranch(resolvedBranch) ??
+      input.threadId ??
+      ctx.metadata?.threadId;
+    if (askingThreadId) {
+      const asking = await ctx.storage.threads
+        .get(askingThreadId)
+        .catch(() => null);
+      const stamp = parseThreadRuntime(
+        (asking?.metadata as { runtime?: unknown } | null)?.runtime,
+      );
+      if (stamp === "cms") {
+        throw new Error(
+          "This chat is a CMS session and does not use a sandbox. Start a coding session to get one.",
+        );
+      }
+    }
 
     // Resolve kind after loading metadata so recorded sandboxMap entries can
     // pin the provider when the caller did not pass an explicit kind.
@@ -210,6 +239,11 @@ export const SANDBOX_START = defineTool({
       providerKind,
       runner,
     });
+    // A pod means a coding session. This is the web's path — `ensureSandbox`'s
+    // own drain never runs here — so record it where the id is known.
+    if (askingThreadId) {
+      void stampRuntimeIfAbsent(ctx, askingThreadId, "sandbox");
+    }
     return {
       ...entry,
       branch: resolvedBranch,
@@ -280,13 +314,15 @@ export async function ensureSandbox(
     explicitKind: providerKind,
   });
 
-  // Fast path: trust an agent-sandbox entry directly. For user-desktop, probe the
-  // daemon first — a relinked daemon has an empty sandbox map and answers the
-  // liveness probe with 404, which means we must reap the stale entry and
-  // re-provision (runner.ensure spawns a fresh sandbox on the new daemon).
+  // A recorded entry is trusted only if a pod actually answers at it. Nothing
+  // but SANDBOX_DELETE removes a cell, so an evicted pod (or a `user-desktop`
+  // record from a daemon that no longer exists) leaves one behind forever;
+  // probing every kind is what makes that self-healing rather than sticky.
   if (existing) {
-    if (providerKind !== "user-desktop") return existing;
-    const alive = await runner.alive(existing.sandboxHandle).catch(() => false);
+    // A probe that ERRORS is not evidence the pod is gone — treat it as alive,
+    // the same way the events handler does. Reaping on a throttled control-plane
+    // call would tear down a healthy sandbox and re-clone it from scratch.
+    const alive = await runner.alive(existing.sandboxHandle).catch(() => true);
     if (alive) return existing;
     await removeSandboxMapEntry(
       ctx.storage.virtualMcps,
@@ -296,10 +332,7 @@ export async function ensureSandbox(
       input.branch,
       providerKind,
     ).catch((err) => {
-      console.warn(
-        "[ensureSandbox] failed to reap stale user-desktop entry",
-        err,
-      );
+      console.warn("[ensureSandbox] failed to reap stale entry", err);
     });
   }
 
@@ -309,10 +342,13 @@ export async function ensureSandbox(
   // Recover the thread id from the branch (`thread:<id>[/<conn>]`) so the
   // repo binding is found even on the frontend's SANDBOX_START auto-start path,
   // which doesn't set `ctx.metadata.threadId`. Falls back to the ctx value.
-  const threadRepo = await getThreadGithubRepo(
-    ctx,
-    threadIdFromBranch(input.branch) ?? ctx.metadata?.threadId,
-  );
+  const provisioningThreadId =
+    threadIdFromBranch(input.branch) ?? ctx.metadata?.threadId;
+  // A pod means a coding session; record it so the claim never has to guess.
+  if (provisioningThreadId) {
+    void stampRuntimeIfAbsent(ctx, provisioningThreadId, "sandbox");
+  }
+  const threadRepo = await getThreadGithubRepo(ctx, provisioningThreadId);
   const githubRepo =
     threadRepo ?? (metadata as GithubRepoMeta).githubRepo ?? null;
   const { entry } = await provisionSandbox({

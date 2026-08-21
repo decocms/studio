@@ -526,10 +526,17 @@ export const sandbox = {
     "See your changes before they go live.",
   "sandbox.cmsSettings.fastPreview.label": "Fast Preview",
   "sandbox.cmsSettings.fastPreview.description":
-    "Preview changes on your preview server instead of the sandbox.",
+    "New chats start as CMS sessions, previewed on your preview server instead of a sandbox. Existing chats keep the mode they were created with.",
   "sandbox.cmsSettings.fastPreview.needsPreviewServerUrl":
     "Set a preview server above to enable Fast Preview.",
   "sandbox.cmsSettings.editing.title": "Editing",
+  "sandbox.cmsUnavailable.title": "This chat can't preview your site",
+  "sandbox.cmsUnavailable.noPreviewServer":
+    "It's a CMS session, but this project has no preview server configured.",
+  "sandbox.cmsUnavailable.noRepo":
+    "It's a CMS session, but this project has no GitHub repository to save to.",
+  "sandbox.cmsUnavailable.startCodingSession":
+    "Continue this branch in a coding session",
   "sandbox.cmsSettings.editing.description":
     "Customize the content-editing experience in the blocks form.",
   "sandbox.previewServerUrlField.description":

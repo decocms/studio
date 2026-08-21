@@ -8,7 +8,7 @@ import { useChatTask } from "@/components/chat/chat-context";
 import { useInsetContext } from "@/layouts/agent-shell-layout";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { MainPanelContent } from "@/layouts/main-panel-tabs";
-import { resolveFastPreview } from "@/sdk/fast-preview";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { shouldShowTerminalDrawer } from "./terminal-drawer-gate";
 import { PreviewDrawerHost } from "./preview-drawer-host";
 
@@ -28,9 +28,9 @@ export function MainPanelWithDrawer({
     agentHasClonableSource(inset?.entity?.metadata) ||
     agentHasClonableSource(activeTask?.metadata);
   // The one thread-aware gate, scoped to this agent's entity by the id match.
+  const sessionRuntime = useSessionRuntime(inset?.entity?.id).runtime;
   const fastPreviewActive =
-    inset?.entity?.id === virtualMcpId &&
-    resolveFastPreview(inset.entity.metadata, activeTask?.metadata).active;
+    inset?.entity?.id === virtualMcpId && sessionRuntime === "cms";
   const showDrawer = shouldShowTerminalDrawer({
     hasClonableSource,
     fastPreviewActive,

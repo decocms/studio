@@ -27,6 +27,13 @@ export interface Task {
   harness_id?: string | null;
   /** Per-thread metadata — layout tabs, expanded tools, etc. Loaded by COLLECTION_THREADS_GET. */
   metadata?: ThreadMetadata;
+  /**
+   * Client-only: this row was synthesized from a `/watch` patch, which carries
+   * no `metadata`. Absent fields mean "not loaded", NOT "not set" — a reader
+   * that treats a partial row as authoritative sees an unstamped thread and
+   * resolves the project default instead of the session's own runtime.
+   */
+  partial?: true;
 }
 
 export type { ChatMessage } from "../types.ts";

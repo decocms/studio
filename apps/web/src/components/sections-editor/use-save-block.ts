@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useFastPreview } from "@/hooks/use-fast-preview";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { usePackagePath } from "./use-package-path";
 import { toast } from "sonner";
 import { decoBlockFilePath } from "./deco-block-key";
@@ -12,6 +12,7 @@ import {
   throwResponseError,
 } from "./decofile-api";
 import { sandboxGitStatusQueryKey } from "../thread/github/sandbox-git-api";
+import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { KEYS } from "@/lib/query-keys";
 
 /** Debounce window for form-driven block autosaves (ms). */
@@ -29,12 +30,13 @@ export function useSaveBlock({
   branch,
 }: UseSaveBlockParams) {
   const queryClient = useQueryClient();
+  const threadId = useOptionalChatTask()?.taskId ?? null;
   // Prefixes the daemon path: the daemon resolves against the repo root.
   const packagePath = usePackagePath(virtualMcpId);
   // Sandbox-less mode: writes go through the decofile API (a coalesced commit
   // on the branch) instead of the sandbox working tree. The server owns the
   // key -> file mapping, so no path construction here.
-  const fastPreviewActive = useFastPreview(virtualMcpId).active;
+  const fastPreviewActive = useSessionRuntime(virtualMcpId).runtime === "cms";
 
   return useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
@@ -62,7 +64,12 @@ export function useSaveBlock({
          * "Up to date" over an edit that already exists.
          */
         await queryClient.invalidateQueries({
-          queryKey: sandboxGitStatusQueryKey(orgSlug, virtualMcpId, branch),
+          queryKey: sandboxGitStatusQueryKey({
+            orgSlug,
+            virtualMcpId,
+            branch,
+            threadId,
+          }),
         });
         return draft;
       }

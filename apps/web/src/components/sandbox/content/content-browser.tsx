@@ -1,3 +1,4 @@
+import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Suspense, lazy, useState } from "react";
 import { type Query } from "@tanstack/react-query";
 import {
@@ -67,7 +68,7 @@ import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events"
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { SandboxStateRenderer } from "./sandbox-state-renderer";
 import { resolveContentSandboxGate } from "./content-sandbox-gate";
-import { useFastPreview } from "@/hooks/use-fast-preview";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import {
   buildDuplicatePage,
   buildEmptyPage,
@@ -245,8 +246,8 @@ export function ContentBrowser({ deepLinkPage }: ContentBrowserProps) {
   // that in. Reading `inset.entity.metadata.sandboxMap` directly would miss it
   // and strand Content on "starting" for the ephemeral Decopilot agent.
   const lifecycle = useSandboxLifecycle();
-  const { active: fastPreviewActive, previewServerUrl } =
-    useFastPreview(virtualMcpId);
+  const { runtime, previewServerUrl } = useSessionRuntime(virtualMcpId);
+  const fastPreviewActive = runtime === "cms";
   const gate = resolveContentSandboxGate({
     fastPreviewActive,
     previewState: lifecycle.previewState,
@@ -333,7 +334,8 @@ function ContentBrowserReady({
   devServerReady: boolean;
   sandboxWarming: boolean;
 }) {
-  const fetchParams = { orgSlug, virtualMcpId, branch, previewUrl };
+  const threadId = useOptionalChatTask()?.taskId ?? null;
+  const fetchParams = { orgSlug, virtualMcpId, branch, threadId, previewUrl };
   const { data: decofile, isLoading: decofileLoading } = useDecofile(
     fetchParams,
     { fetchEnabled: devServerReady },

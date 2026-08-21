@@ -9,9 +9,11 @@
  *   POST   /api/:org/decofile/:virtualMcpId/:branch/publish   merge into default (session)
  *   GET    /api/:org/decofile/:virtualMcpId/:branch/status    drift vs default (session)
  *
- * The surface is inert unless the virtual MCP has Fast Preview active
- * (metadata.fastPreview + valid previewServerUrl, legacy key productionUrl) —
- * see resolveFastPreview / resolvePreviewServerUrl.
+ * The surface is inert unless the virtual MCP has both a preview server URL
+ * (`previewServerUrl`, legacy `productionUrl`) and a GitHub repo — what a CMS
+ * session needs to render and to commit. The project's `fastPreview` switch
+ * does NOT gate it; that switch only picks the runtime a NEW thread is stamped
+ * with, and gating this on it would strand an already-stamped session.
  *
  * Anonymous access: `resolveOrgFromPath` lets unauthenticated requests through
  * (membership is only enforced for signed-in principals), so the GET handler
@@ -119,14 +121,13 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
   }
   const metadata = (virtualMcp.metadata as Record<string, unknown>) ?? null;
 
-  // Fast Preview gate — same two-part condition the web derives via
-  // resolveFastPreview: the flag alone is inert without a valid production URL.
+  /** Gated on what the CMS runtime NEEDS — a preview server and (below) a repo.
+   *  Never on `metadata.fastPreview`: that is the default runtime for new
+   *  threads, and gating the data plane on it would strand a session already
+   *  stamped `cms` the moment someone flips the switch off. */
   const previewServerUrl = resolvePreviewServerUrl(metadata);
-  if (!previewServerUrl || metadata?.fastPreview !== true) {
-    return c.json(
-      { error: "Fast Preview is not enabled for this project" },
-      404,
-    );
+  if (!previewServerUrl) {
+    return c.json({ error: "Project has no preview server configured" }, 404);
   }
 
   const connectionIds =

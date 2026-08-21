@@ -649,8 +649,15 @@ export const KEYS = {
   liveMeta: (...parts: string[]) => ["live-meta", ...parts] as const,
   sandboxInvoke: (sandboxKey: string, loaderKey: string) =>
     ["sandbox-invoke", sandboxKey, loaderKey] as const,
-  sandboxRepoDir: (orgSlug: string, virtualMcpId: string, branch: string) =>
-    ["sandbox-repo-dir", orgSlug, virtualMcpId, branch] as const,
+  // `threadId` is part of the key because it is part of the URL: two sessions
+  // on one branch get different answers from `/config`, and with staleTime
+  // Infinity a shared entry would hand one session the other's repoDir.
+  sandboxRepoDir: (
+    orgSlug: string,
+    virtualMcpId: string,
+    branch: string,
+    threadId: string | null,
+  ) => ["sandbox-repo-dir", orgSlug, virtualMcpId, branch, threadId] as const,
   // icon-select previews: the site's /sprites.svg, fetched via the preview proxy
   sandboxSprite: (sandboxKey: string) =>
     ["sandbox-sprite", sandboxKey] as const,

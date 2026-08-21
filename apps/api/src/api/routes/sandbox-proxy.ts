@@ -19,10 +19,19 @@ import { composeSandboxRef } from "@decocms/sandbox/provider";
 import type { SandboxProvider } from "@decocms/sandbox/provider";
 import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
 import { computeClaimHandle } from "../../sandbox/claim-handle";
-import { resolveSandboxUserId } from "../../tools/sandbox/thread-repo";
-import { readSandboxMap } from "../../tools/sandbox/sandbox-map";
-import { parseBranchMap } from "@decocms/shared/sdk";
-import { resolveSessionRuntime } from "@decocms/shared/thread/session-runtime";
+import {
+  loadBranchThread,
+  sandboxUserIdFor,
+  threadIdFromBranch,
+} from "../../tools/sandbox/thread-repo";
+import type { Thread } from "../../storage/types";
+import {
+  defaultThreadRuntime,
+  parseThreadRuntime,
+  type ThreadRuntime,
+} from "@decocms/shared/thread/session-runtime";
+import { liveSandboxForBranch } from "../../tools/sandbox/live-sandbox-for-branch";
+import { stampRuntimeIfAbsent } from "../../tools/thread/stamp-runtime-if-absent";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
 import {
   getUserId,
@@ -72,7 +81,7 @@ interface VmClaim {
    *  `resolveSandboxUserId`). */
   callerUserId: string;
   /** Null when no sandbox runner is configured on this studio instance — or
-   *  when the project is sandbox-less (`fastPreview` below). */
+   *  when the session is sandbox-less (`runtime` below). */
   runner: SandboxProvider | null;
   virtualMcpId: string;
   branch: string;
@@ -81,12 +90,13 @@ interface VmClaim {
   virtualMcpMetadata: Record<string, unknown> | null;
   connectionIds: string[];
   /**
-   * Sandbox-less Fast Preview project: no runner exists by design. The
-   * `/git/*` routes answer from the GitHub API (see decofile/git-compat.ts)
-   * so the publish dialog and header work with no working tree behind them;
-   * every other daemon-backed route stays unavailable.
+   * THIS session's runtime, read from its thread's stamp. `cms` means no
+   * runner exists by design: the `/git/*` routes answer from the GitHub API
+   * (see decofile/git-compat.ts) so the publish dialog and header work with no
+   * working tree behind them, and every other daemon-backed route stays
+   * unavailable.
    */
-  fastPreview?: boolean;
+  runtime: ThreadRuntime;
 }
 
 type VmEnv = Env & { Variables: Env["Variables"] & { vmClaim: VmClaim } };
@@ -146,24 +156,6 @@ function quickFileOpSignal(c: Context<VmEnv>): AbortSignal {
 // ---- Shared middleware ------------------------------------------------------
 
 /**
- * Whether a sandbox is (being) provisioned for this user's branch, read from
- * the vMCP's `sandboxMap`. On Fast Preview projects this is what opts a
- * branch out of the sandbox-less claim: a coding session SHARES the CMS
- * draft's branch, so the runtimes can't be told apart by branch — presence
- * can, and it self-heals (SANDBOX_DELETE and the dead-entry cleanup in
- * SANDBOX_START remove the cell, flipping the branch back to the GitHub-backed
- * claim when the session's sandbox is gone).
- */
-function sandboxPresent(
-  virtualMcpMetadata: Record<string, unknown> | null,
-  userId: string,
-  branch: string,
-): boolean {
-  const cell = readSandboxMap(virtualMcpMetadata)[userId]?.[branch];
-  return !!cell && Object.keys(parseBranchMap(cell)).length > 0;
-}
-
-/**
  * Resolves auth, org ownership, claim handle, and runner for all VM routes.
  * Runner may be `null` — the events handler streams a `failed` phase SSE in
  * that case; other handlers return 503 JSON via `requireRunner()`.
@@ -213,7 +205,11 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
   // claim and reaches the one sandbox it has. Keyed by the caller, a viewer's
   // handle never existed — /events reported `claiming` forever and every other
   // route 404'd. See `resolveSandboxUserId`.
-  const sandboxUserId = await resolveSandboxUserId(ctx, branch, userId);
+  // Read ONCE: the sandbox's owner and this session's runtime are two
+  // questions about the same row on a `thread:<id>` branch, and this runs in
+  // front of every proxied request.
+  const branchThread = await loadBranchThread(ctx, branch);
+  const sandboxUserId = sandboxUserIdFor(branchThread, userId);
   const claimName = computeClaimHandle({ userId: sandboxUserId, projectRef });
   const virtualMcpMetadata =
     (virtualMcp.metadata as Record<string, unknown>) ?? null;
@@ -233,10 +229,16 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
   // Sandbox-less Fast Preview: there is no runner by design. Claim the route
   // with runner:null + the flag so the `/git/*` handlers serve their
   // GitHub-backed equivalents; daemon-backed routes 503 via requireRunner.
-  if (
-    resolveSessionRuntime(virtualMcpMetadata).fastPreviewCapability &&
-    !sandboxPresent(virtualMcpMetadata, sandboxUserId, branch)
-  ) {
+  const runtime = await resolveClaimRuntime(c, {
+    claimName,
+    branch,
+    virtualMcpId,
+    sandboxUserId,
+    virtualMcpMetadata,
+    branchThread,
+  });
+
+  if (runtime === "cms") {
     c.set("vmClaim", {
       claimName,
       callerUserId: userId,
@@ -248,7 +250,7 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
       virtualMcpMetadata,
       connectionIds:
         virtualMcp.connections?.map((conn) => conn.connection_id) ?? [],
-      fastPreview: true,
+      runtime,
     });
     return next();
   }
@@ -280,9 +282,111 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
     virtualMcpMetadata,
     connectionIds:
       virtualMcp.connections?.map((conn) => conn.connection_id) ?? [],
+    runtime,
   });
   return next();
 });
+
+/**
+ * THE runtime decision, in one place.
+ *
+ * A parsing stamp wins outright, with no probe and no map read — that is every
+ * thread created after `COLLECTION_THREADS_CREATE` began stamping. When there
+ * is no stamp to read (a legacy row, or a caller that sends no `?thread=`, such
+ * as a desktop build whose web bundle is frozen), fall back to the pre-change
+ * rule with one substitution: sandbox PRESENCE becomes LIVENESS, so a dead cell
+ * can no longer route a CMS session to a daemon that cannot exist. Resolving
+ * `sandbox` that way stamps the thread, so the ambiguous population drains.
+ */
+async function resolveClaimRuntime(
+  c: Context<VmEnv>,
+  claim: {
+    claimName: string;
+    branch: string;
+    virtualMcpId: string;
+    sandboxUserId: string;
+    virtualMcpMetadata: Record<string, unknown> | null;
+    /** The `thread:<id>` branch's row, already loaded by the middleware. */
+    branchThread: Thread | null;
+  },
+): Promise<ThreadRuntime> {
+  const ctx = c.var.studioContext;
+  const branchThreadId = threadIdFromBranch(claim.branch);
+  const threadId = c.req.query("thread") ?? branchThreadId;
+
+  const thread =
+    threadId && threadId === branchThreadId
+      ? claim.branchThread
+      : threadId
+        ? await ctx.storage.threads.get(threadId).catch(() => null)
+        : null;
+  // A thread from another project cannot speak for this claim.
+  const owned = thread?.virtual_mcp_id === claim.virtualMcpId ? thread : null;
+  const stamp = parseThreadRuntime(
+    (owned?.metadata as { runtime?: unknown } | null)?.runtime,
+  );
+  if (stamp) return stamp;
+
+  const projectDefault = defaultThreadRuntime(claim.virtualMcpMetadata);
+  // The probe only runs where it can change the answer, and its result is the
+  // only EVIDENCE this path has.
+  const liveness =
+    projectDefault === "cms"
+      ? await liveSandboxForBranch(ctx, {
+          claimName: claim.claimName,
+          userId: claim.sandboxUserId,
+          branch: claim.branch,
+          virtualMcpMetadata: claim.virtualMcpMetadata,
+        })
+      : "alive";
+  const runtime: ThreadRuntime =
+    projectDefault === "cms" && liveness !== "alive" ? "cms" : "sandbox";
+
+  // Stamp ONLY a DEFINITE answer, and only where the probe could distinguish
+  // the two runtimes. A timed-out or errored probe (`unknown`) still routes
+  // this request, but must never be written down: the stamp is immutable, so a
+  // slow control-plane call would permanently convert a live coding session.
+  // Same reason `projectDefault === "sandbox"` never stamps — with no probe it
+  // cannot tell "always was sandbox" from "the switch was just turned off".
+  const stampable =
+    !!owned &&
+    (liveness === "gone" || (liveness === "alive" && projectDefault === "cms"));
+  if (stampable && owned) {
+    void stampRuntimeIfAbsent(ctx, owned.id, runtime);
+  }
+  if (projectDefault === "cms") {
+    console.log("sandbox proxy: no runtime stamp", {
+      route: c.req.path,
+      method: c.req.method,
+      reason: owned ? "unstamped" : "threadless",
+      liveness,
+      resolved: runtime,
+      stamped: stampable,
+    });
+  }
+  return runtime;
+}
+
+/**
+ * The runner bound to this ref, whatever the session's runtime is. Only a
+ * pod-addressed route may use it — see `/setup/:step`.
+ */
+async function resolveBranchRunner(
+  c: Context<VmEnv>,
+): Promise<SandboxProvider | null> {
+  const claim = c.get("vmClaim");
+  if (claim.runner) return claim.runner;
+  try {
+    const { provider } = await resolveSandboxProvider(c.var.studioContext, {
+      userId: claim.userId,
+      branch: claim.branch,
+      virtualMcpMetadata: claim.virtualMcpMetadata,
+    });
+    return provider;
+  } catch {
+    return null;
+  }
+}
 
 /** Guard for routes that need a non-null runner. Returns the runner or a 503. */
 function requireRunner(c: Context<VmEnv>): SandboxProvider | Response {
@@ -443,6 +547,8 @@ async function proxyDaemon(
      * resolved runner, immune to a stale/racing frontend provider-kind.
      */
     redactRepoDirUnlessDesktop?: boolean;
+    /** Pod-addressed route: act on this runner whatever the session's runtime is. */
+    runner?: SandboxProvider;
   },
 ) {
   // Sandbox-less Fast Preview: daemon-backed routes have no daemon, ever.
@@ -450,15 +556,15 @@ async function proxyDaemon(
   // (readCommittedJson → null → next source; isSandboxUnreachable → backoff).
   // A 503 here reads as a REAL error and, e.g., fails the meta fallback chain
   // instead of letting it proceed to the preview server's /live/_meta.
-  if (c.get("vmClaim").fastPreview) {
+  if (!opts?.runner && c.get("vmClaim").runtime === "cms") {
     return c.json(
-      { error: "sandbox not found: Fast Preview projects are sandbox-less" },
+      { error: "sandbox not found: this session is sandbox-less" },
       404,
       SANDBOX_PROXY_CACHE_HEADERS,
     );
   }
 
-  const runner = requireRunner(c);
+  const runner = opts?.runner ?? requireRunner(c);
   if (runner instanceof Response) return runner;
 
   const { claimName, userId, projectRef } = c.get("vmClaim");
@@ -751,6 +857,12 @@ export const createSandboxRoutes = () => {
   );
 
   // -- Setup retry ----------------------------------------------------------
+  /**
+   * POD-ADDRESSED, the one route that is: it acts on whatever pod exists at
+   * this ref and never asks whose session it is. Project settings restarts a
+   * dev process from a surface with no thread at all, so a session-scoped
+   * answer here would 404 a running sandbox and silently skip its env push.
+   */
   app.post("/:virtualMcpId/:branch/setup/:step", async (c) => {
     const step = c.req.param("step");
     if (!step || !isSetupStep(step)) {
@@ -759,20 +871,40 @@ export const createSandboxRoutes = () => {
         400,
       );
     }
+    // Pod-addressed means a pod that EXISTS. `resolveSandboxProvider` hands
+    // back the env-default provider for any caller, so without the liveness
+    // check a sandbox-less session would proxy to a daemon that was never
+    // provisioned and get a 410 where it used to get a clean 404.
+    const claim = c.get("vmClaim");
+    const podRunner =
+      (await liveSandboxForBranch(c.var.studioContext, {
+        claimName: claim.claimName,
+        userId: claim.userId,
+        branch: claim.branch,
+        virtualMcpMetadata: claim.virtualMcpMetadata,
+      })) === "gone"
+        ? null
+        : await resolveBranchRunner(c);
+    if (!podRunner) {
+      return c.json(
+        { error: "sandbox not found: nothing is running at this ref" },
+        404,
+        SANDBOX_PROXY_CACHE_HEADERS,
+      );
+    }
     // On "start", refresh the daemon's env from the virtual MCP's current
     // `metadata.runtime.env`. The dev script inherits env at spawn time, so
     // edits made after the last SANDBOX_START don't reach a running process
     // unless we push the freshly-resolved env to /config before the
     // orchestrator restarts it.
     if (step === "start") {
-      const claim = c.get("vmClaim");
-      if (claim.runner) {
+      {
         const organization = requireOrganization(c.var.studioContext);
         const entries = readValidatedRuntimeEnv(claim.virtualMcpMetadata);
         try {
           await resolveAndPushEnv({
             ctx: c.var.studioContext,
-            runner: claim.runner,
+            runner: podRunner,
             handle: claim.claimName,
             orgId: organization.id,
             // Secrets resolve as the CALLER — viewing a teammate's thread must
@@ -792,6 +924,7 @@ export const createSandboxRoutes = () => {
     return proxyDaemon(c, `/_sandbox/setup/${step}`, {
       signal: c.req.raw.signal,
       map404to410: true,
+      runner: podRunner,
     });
   });
 
@@ -828,7 +961,7 @@ export const createSandboxRoutes = () => {
 
   // -- Git (status, diff, publish, discard) ---------------------------------
   app.get("/:virtualMcpId/:branch/git/status", (c) => {
-    if (c.get("vmClaim").fastPreview) return fastPreviewGitStatus(c);
+    if (c.get("vmClaim").runtime === "cms") return fastPreviewGitStatus(c);
     return proxyDaemonGitStatus(c);
   });
   const proxyDaemonGitStatus = (c: Context<VmEnv>) =>
@@ -841,7 +974,7 @@ export const createSandboxRoutes = () => {
       ]),
     });
   app.post("/:virtualMcpId/:branch/git/status", (c) => {
-    if (c.get("vmClaim").fastPreview) return fastPreviewGitStatus(c);
+    if (c.get("vmClaim").runtime === "cms") return fastPreviewGitStatus(c);
     return proxyDaemon(c, "/_sandbox/git/status", {
       map404to410: true,
       signal: AbortSignal.any([
@@ -852,7 +985,7 @@ export const createSandboxRoutes = () => {
   });
   app.post("/:virtualMcpId/:branch/git/diff", async (c) => {
     const claim = c.get("vmClaim");
-    if (claim.fastPreview) {
+    if (claim.runtime === "cms") {
       try {
         const body = (await c.req.json().catch(() => ({}))) as {
           base?: string;
@@ -874,7 +1007,14 @@ export const createSandboxRoutes = () => {
     // "sync local work" has nothing to do. Answering OK keeps the publish
     // dialog's flow (push → rebase → PR/merge via the GitHub connection)
     // working with no working tree behind it.
-    if (c.get("vmClaim").fastPreview) {
+    //
+    // Deliberately does NOT flush a coding session's pod on the same branch:
+    // the daemon's publish commits its ENTIRE working tree, while the gate that
+    // authorized this click was computed from the GitHub manifest alone — so
+    // flushing would push unreviewed code past a `smart`/`code-review` policy.
+    // A teammate's unpushed work staying invisible here is a pre-existing blind
+    // spot, and the honest fix is to widen the GATE, not to widen the push.
+    if (c.get("vmClaim").runtime === "cms") {
       return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
     }
     const runner = requireRunner(c);
@@ -918,7 +1058,7 @@ export const createSandboxRoutes = () => {
   });
   app.post("/:virtualMcpId/:branch/git/discard", async (c) => {
     const claim = c.get("vmClaim");
-    if (claim.fastPreview) {
+    if (claim.runtime === "cms") {
       // No working tree: discarding a COMMITTED change is itself a commit.
       return withClaimGitLock(claim.claimName, async () => {
         const body = (await c.req.json().catch(() => ({}))) as {
@@ -959,7 +1099,7 @@ export const createSandboxRoutes = () => {
   });
   app.post("/:virtualMcpId/:branch/git/rebase", async (c) => {
     const claim = c.get("vmClaim");
-    if (claim.fastPreview) {
+    if (claim.runtime === "cms") {
       return withClaimGitLock(claim.claimName, async () => {
         try {
           const body = (await c.req.json().catch(() => ({}))) as {
@@ -1010,7 +1150,7 @@ export const createSandboxRoutes = () => {
       // runner === null ⇔ sandbox-less Fast Preview (the claim middleware
       // only admits a null runner for that mode).
       let runner: SandboxProvider | null = null;
-      if (!claim.fastPreview) {
+      if (claim.runtime !== "cms") {
         const required = requireRunner(c);
         if (required instanceof Response) return required;
         runner = required;
@@ -1100,7 +1240,7 @@ export const createSandboxRoutes = () => {
       const claim = c.get("vmClaim");
       // runner === null ⇔ sandbox-less Fast Preview (see suggest-commit).
       let runner: SandboxProvider | null = null;
-      if (!claim.fastPreview) {
+      if (claim.runtime !== "cms") {
         const required = requireRunner(c);
         if (required instanceof Response) return required;
         runner = required;

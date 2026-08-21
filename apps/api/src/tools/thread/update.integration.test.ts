@@ -161,4 +161,78 @@ describe("COLLECTION_THREADS_UPDATE", () => {
     );
     expect(updated.item.metadata?.runtime).toBe("sandbox");
   });
+
+  it("rejects a metadata write that would change the runtime stamp", async () => {
+    const vmcp = await env.ctx.storage.virtualMcps.create(
+      env.orgId,
+      env.userId,
+      {
+        title: "immutable-stamp",
+        connections: [],
+        status: "active",
+        pinned: false,
+        metadata: {
+          previewServerUrl: "https://preview.example.com",
+          fastPreview: true,
+        },
+      },
+    );
+    const created = await COLLECTION_THREADS_CREATE.handler(
+      { data: { virtual_mcp_id: vmcp.id, title: "t", runtime: "sandbox" } },
+      env.ctx,
+    );
+
+    await expect(
+      COLLECTION_THREADS_UPDATE.handler(
+        { id: created.item.id, data: { metadata: { runtime: "cms" } } },
+        env.ctx,
+      ),
+    ).rejects.toThrow(/Cannot change a thread's runtime/i);
+
+    const stored = await env.ctx.storage.threads.get(created.item.id);
+    expect(stored?.metadata?.runtime).toBe("sandbox");
+  });
+
+  it("accepts a metadata write that restates the same runtime", async () => {
+    const vmcp = await env.ctx.storage.virtualMcps.create(
+      env.orgId,
+      env.userId,
+      { title: "same-stamp", connections: [], status: "active", pinned: false },
+    );
+    const created = await COLLECTION_THREADS_CREATE.handler(
+      { data: { virtual_mcp_id: vmcp.id, title: "t", runtime: "sandbox" } },
+      env.ctx,
+    );
+
+    const updated = await COLLECTION_THREADS_UPDATE.handler(
+      {
+        id: created.item.id,
+        data: { metadata: { runtime: "sandbox", expanded_tools: [] } },
+      },
+      env.ctx,
+    );
+    expect(updated.item.metadata?.runtime).toBe("sandbox");
+  });
+
+  it("stamps a legacy thread that carries no runtime yet", async () => {
+    const vmcp = await env.ctx.storage.virtualMcps.create(
+      env.orgId,
+      env.userId,
+      { title: "legacy", connections: [], status: "active", pinned: false },
+    );
+    // Pre-stamp row, written the way every thread was before creation stamped one.
+    const legacy = await env.ctx.storage.threads.create({
+      organization_id: env.orgId,
+      created_by: env.userId,
+      virtual_mcp_id: vmcp.id,
+      title: "legacy",
+    });
+    expect(legacy.metadata?.runtime).toBeUndefined();
+
+    const updated = await COLLECTION_THREADS_UPDATE.handler(
+      { id: legacy.id, data: { metadata: { runtime: "cms" } } },
+      env.ctx,
+    );
+    expect(updated.item.metadata?.runtime).toBe("cms");
+  });
 });

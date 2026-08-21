@@ -3,7 +3,10 @@ import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { useOptionalChatStream, useOptionalChatTask } from "../context";
 import { BranchPill } from "./branch-pill";
 import { getActiveGithubRepo } from "@/lib/github-repo";
-import { shouldStartBranchAsCms } from "@/sdk/fast-preview";
+import {
+  defaultThreadRuntime,
+  readThreadRuntime,
+} from "@decocms/shared/thread/session-runtime";
 import { useProjectContext } from "@/sdk";
 import { authClient } from "@/lib/auth-client";
 import { branchUserLabel } from "@decocms/shared/branch-name";
@@ -47,10 +50,13 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
     (stream?.messages ?? []).length > 0 || (taskCtx?.isThreadLocked ?? false);
   const setCurrentTaskBranch = taskCtx?.setCurrentTaskBranch;
   const createTask = taskCtx?.createTask;
-  const createBranchAsCms = shouldStartBranchAsCms(
-    virtualMcp?.metadata,
-    taskCtx?.activeTask?.metadata,
-  );
+  /** A new branch only lands in CMS through a NEW (unstamped) thread: the
+   *  runtime is per-thread and immutable, so a coding session on a CMS-default
+   *  project has to start one rather than switch in place. */
+  const createBranchAsCms =
+    defaultThreadRuntime(virtualMcp?.metadata) === "cms" &&
+    readThreadRuntime(taskCtx?.activeTask?.metadata, virtualMcp?.metadata) ===
+      "sandbox";
 
   const githubRepo = getActiveGithubRepo(virtualMcp);
   const connectionId = githubRepo?.connectionId;

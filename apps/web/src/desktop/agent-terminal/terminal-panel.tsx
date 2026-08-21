@@ -11,7 +11,7 @@ import { useChatTask } from "@/components/chat/context";
 import { ChatSidePanel } from "@/components/chat/side-panel-chat";
 import { GridLoader } from "@/components/grid-loader";
 import { useVirtualMCP } from "@/sdk";
-import { resolveFastPreview } from "@/sdk/fast-preview";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useT } from "@/i18n/use-t";
 import { useNativeTerminalRuntime } from "./active-task-provider";
 import {
@@ -562,10 +562,7 @@ function UnsupportedHarnessState() {
 export function NativeAgentTerminalPanel() {
   const task = useChatTask();
   const vm = useVirtualMCP(task.virtualMcpId);
-  const fastPreviewActive = resolveFastPreview(
-    vm?.metadata,
-    task.activeTask?.metadata,
-  ).active;
+  const fastPreviewActive = useSessionRuntime(vm?.id).runtime === "cms";
   const { controller, snapshot, isReadOnly } = useNativeTerminalRuntime();
   const surface = nativeTerminalPanelSurface({
     isThreadLocked: task.isThreadLocked,

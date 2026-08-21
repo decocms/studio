@@ -33,6 +33,7 @@ import {
   clearStoredAutosend,
   writeStoredAutosend,
 } from "@/lib/autosend";
+import { clearThreadIntent, writeThreadIntent } from "@/lib/thread-intent";
 import {
   getOrOpenStream,
   type ConnStatus,
@@ -692,6 +693,11 @@ export function ChatContextProvider({
     const newId = crypto.randomUUID();
     // A caller-supplied branch wins over the active task's branch carry-over.
     const branch = opts?.branch ?? currentBranch;
+    // Parked for the route loader's create-on-404 fallback — see thread-intent.
+    writeThreadIntent(sessionStorage, locator, newId, {
+      ...(opts?.runtime ? { runtime: opts.runtime } : {}),
+      ...(branch ? { branch } : {}),
+    });
     void threadActions
       .create({
         id: newId,
@@ -699,7 +705,11 @@ export function ChatContextProvider({
         ...(branch ? { branch } : {}),
         ...(opts?.runtime ? { runtime: opts.runtime } : {}),
       })
-      .then(() => navigateToTask(newId))
+      .then(() => {
+        // The create landed, so the parked intent has no claimant.
+        clearThreadIntent(sessionStorage, locator, newId);
+        navigateToTask(newId);
+      })
       .catch(() => {
         // Error toast surfaced by ThreadManagerStore.create; navigate anyway
         // so the user's not stranded — the route loader's ensure fallback
@@ -722,18 +732,24 @@ export function ChatContextProvider({
     const targetVmcp = params.virtualMcpId ?? virtualMcpId;
     const carryBranch = targetVmcp === virtualMcpId ? currentBranch : null;
     writeStoredAutosend(sessionStorage, locator, newId, params.message);
+    if (carryBranch) {
+      writeThreadIntent(sessionStorage, locator, newId, {
+        branch: carryBranch,
+      });
+    }
     void threadActions
       .create({
         id: newId,
         virtual_mcp_id: targetVmcp,
         ...(carryBranch ? { branch: carryBranch } : {}),
       })
-      .then(() =>
+      .then(() => {
+        clearThreadIntent(sessionStorage, locator, newId);
         navigateToTask(newId, {
           virtualMcpId: params.virtualMcpId,
           autosend: true,
-        }),
-      )
+        });
+      })
       .catch(() => {
         navigateToTask(newId, {
           virtualMcpId: params.virtualMcpId,

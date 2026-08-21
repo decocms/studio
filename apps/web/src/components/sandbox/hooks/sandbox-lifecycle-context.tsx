@@ -40,11 +40,16 @@ export interface ShouldAutoStartArgs {
   userStopped: boolean;
   isPending: boolean;
   attempted: boolean;
-  /** Fast Preview projects are sandbox-less: the CMS reads/writes GitHub
-   *  through the decofile API and the preview renders against production, so
-   *  arriving at a branch must NOT boot a pod. A user-driven `start()` (e.g.
-   *  for the Code tab) still works — only the auto-start is gated. */
-  fastPreviewActive: boolean;
+  /**
+   * THIS session's runtime, or `null` while it is not yet known.
+   *
+   * Only `"sandbox"` boots a pod. `null` must not: a CMS session whose project
+   * row had not loaded yet reads as the project default, and acting on that
+   * guess fired SANDBOX_START for a `cms` thread — which the server refuses,
+   * latching an error card over a preview that was about to render fine.
+   * A user-driven `start()` (e.g. for the Code tab) is unaffected.
+   */
+  sessionRuntime: ThreadRuntime | null;
 }
 
 /**
@@ -63,7 +68,7 @@ export interface ShouldAutoStartArgs {
 export function shouldAutoStart(args: ShouldAutoStartArgs): boolean {
   return (
     args.executionEnabled &&
-    !args.fastPreviewActive &&
+    args.sessionRuntime === "sandbox" &&
     args.hasActiveGithubRepo &&
     !!args.userId &&
     !!args.branch &&
@@ -171,10 +176,13 @@ export function buildSandboxStartArgs(
   virtualMcpId: string,
   branch: string | null,
   sandboxProviderKind: SandboxProviderKind | null,
+  /** The session asking. The server refuses to provision for a CMS one. */
+  threadId?: string | null,
 ): SandboxStartArgs {
   const args: SandboxStartArgs = { virtualMcpId };
   if (branch) args.branch = branch;
   if (sandboxProviderKind) args.sandboxProviderKind = sandboxProviderKind;
+  if (threadId) args.threadId = threadId;
   return args;
 }
 
@@ -359,11 +367,11 @@ import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
-  useVirtualMCP,
 } from "@/sdk";
-import { resolveFastPreview } from "@/sdk/fast-preview";
-import { useActiveThreadMeta } from "@/hooks/use-active-thread-meta";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
+import { useOptionalChatTask } from "@/components/chat/chat-context";
 import type { SandboxMap } from "@decocms/shared/sdk/types";
+import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import { useQueryClient } from "@tanstack/react-query";
 import { invalidateVirtualMcpQueries } from "@/lib/query-keys";
 import { useChatTask } from "@/components/chat/context";
@@ -474,11 +482,11 @@ export function SandboxLifecycleProvider({
   // Sandbox-less mode: Fast Preview projects never auto-provision a pod (see
   // ShouldAutoStartArgs.fastPreviewActive). Self-heal/claim-retry stay ungated —
   // they only ever fire for a sandbox that already exists.
-  const vmcp = useVirtualMCP(virtualMcpId ?? undefined);
-  const fastPreviewActive = resolveFastPreview(
-    vmcp?.metadata,
-    useActiveThreadMeta(),
-  ).active;
+  const session = useSessionRuntime(virtualMcpId);
+  /** `null` until the answer is real — see `ShouldAutoStartArgs.sessionRuntime`. */
+  const sessionRuntime = session.resolved ? session.runtime : null;
+  /** Sent with every SANDBOX_START so the server's CMS refusal can fire. */
+  const startThreadId = useOptionalChatTask()?.taskId ?? null;
 
   const mcpClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -605,7 +613,7 @@ export function SandboxLifecycleProvider({
     userStopped,
     isPending: startVm.isPending,
     attempted,
-    fastPreviewActive,
+    sessionRuntime,
   });
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- bridges external state into a one-shot mutation; no render-time equivalent
   useEffect(() => {
@@ -615,6 +623,7 @@ export function SandboxLifecycleProvider({
       virtualMcpId,
       branch,
       sandboxProviderKind,
+      startThreadId,
     );
     startVmMutate(args, {
       onSuccess: (data) => {
@@ -636,6 +645,7 @@ export function SandboxLifecycleProvider({
     branch,
     virtualMcpId,
     sandboxProviderKind,
+    startThreadId,
     startVmMutate,
     setCurrentTaskBranch,
     setSeededPreviewUrl,
@@ -662,6 +672,7 @@ export function SandboxLifecycleProvider({
       virtualMcpId,
       branch,
       sandboxProviderKind,
+      startThreadId,
     );
     startVmMutate(args, {
       onSuccess: (data) => {
@@ -683,6 +694,7 @@ export function SandboxLifecycleProvider({
     virtualMcpId,
     branch,
     sandboxProviderKind,
+    startThreadId,
     startVmMutate,
     setCurrentTaskBranch,
     setSeededPreviewUrl,
@@ -723,6 +735,7 @@ export function SandboxLifecycleProvider({
       virtualMcpId,
       branch,
       sandboxProviderKind,
+      startThreadId,
     );
     startVmMutate(args, {
       onSuccess: (data) => {
@@ -744,6 +757,7 @@ export function SandboxLifecycleProvider({
     virtualMcpId,
     branch,
     sandboxProviderKind,
+    startThreadId,
     startVmMutate,
     setCurrentTaskBranch,
     setSeededPreviewUrl,
@@ -756,6 +770,7 @@ export function SandboxLifecycleProvider({
       virtualMcpId,
       branch,
       sandboxProviderKind,
+      startThreadId,
     );
     startVmMutate(args, {
       onSuccess: (data) => {

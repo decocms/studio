@@ -7,6 +7,7 @@
  */
 
 import type { CoAuthorIdentity } from "@decocms/sandbox/shared";
+import type { SandboxProxyRef } from "@/sdk/sandbox-url";
 import { toast } from "sonner";
 import type { TFunction } from "@/i18n/use-t.ts";
 import {
@@ -69,6 +70,8 @@ export interface PublishTarget {
   virtualMcpId: string;
   /** Sandbox branch — what gets pushed. */
   branch: string;
+  /** The session publishing. Decides which runtime answers the git routes. */
+  threadId: string | null;
   baseBranch: string;
   githubClient: GithubMcpClient;
   owner: string;
@@ -126,6 +129,15 @@ export function publishNoteParts(
   });
 }
 
+function sandboxRef(target: PublishTarget): SandboxProxyRef {
+  return {
+    orgSlug: target.orgSlug,
+    virtualMcpId: target.virtualMcpId,
+    branch: target.branch,
+    threadId: target.threadId,
+  };
+}
+
 async function runStep<T>(
   step: PublishStep,
   fallback: string,
@@ -150,11 +162,7 @@ async function runStep<T>(
 async function assertHeadUnchanged(target: PublishTarget): Promise<void> {
   const expected = target.expectedHeadSha;
   if (!expected) return;
-  const status = await fetchGitStatus(
-    target.orgSlug,
-    target.virtualMcpId,
-    target.branch,
-  ).catch(() => null);
+  const status = await fetchGitStatus(sandboxRef(target)).catch(() => null);
   const actual = status?.headSha;
   if (actual && actual !== expected) {
     throw new PublishHeadMovedError(expected, actual);
@@ -162,12 +170,7 @@ async function assertHeadUnchanged(target: PublishTarget): Promise<void> {
 }
 
 function pushChanges(target: PublishTarget, message: string): Promise<void> {
-  return publishGitChanges(
-    target.orgSlug,
-    target.virtualMcpId,
-    target.branch,
-    message,
-  );
+  return publishGitChanges(sandboxRef(target), message);
 }
 
 function openPullRequest(
@@ -201,12 +204,7 @@ export async function runPublishFlow(
     pushChanges(target, parts.message),
   );
   await runStep("sync", t("thread.publishDialog.failedRebase"), () =>
-    rebaseGitBranch(
-      target.orgSlug,
-      target.virtualMcpId,
-      target.branch,
-      target.baseBranch,
-    ),
+    rebaseGitBranch(sandboxRef(target), target.baseBranch),
   );
   const pr = await runStep(
     "open-pr",

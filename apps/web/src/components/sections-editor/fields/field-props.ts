@@ -6,6 +6,8 @@ export interface SandboxConfig {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
+  /** The session rendering the field; `null` only for a thread-less surface. */
+  threadId: string | null;
   previewUrl?: string;
   siteSlug?: string | null;
 }

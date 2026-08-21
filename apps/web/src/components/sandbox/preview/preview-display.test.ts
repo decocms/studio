@@ -91,6 +91,31 @@ describe("resolvePreviewDisplay", () => {
     expect(result.showBlockingOverlay).toBe(true);
   });
 
+  describe("codingSession", () => {
+    it("keeps the published-site fallback for a CMS session with a preview URL", () => {
+      const result = run({ codingSession: false });
+      expect(result.mode).toBe("production");
+      expect(result.showWakingPill).toBe(true);
+      expect(result.showBlockingOverlay).toBe(false);
+    });
+
+    it("withholds the fallback so a coding session boots visibly", () => {
+      const result = run({ codingSession: true });
+      expect(result.mode).toBe("none");
+      expect(result.showBlockingOverlay).toBe(true);
+      expect(result.showWakingPill).toBe(false);
+    });
+
+    it("still hands a booted coding session its sandbox iframe", () => {
+      const result = run({
+        previewState: IFRAME,
+        progressStatus: "done",
+        codingSession: true,
+      });
+      expect(result.mode).toBe("sandbox");
+    });
+  });
+
   it("yields the canvas to the suspended card (no overlay, no pill)", () => {
     expect(run({ previewState: SUSPENDED, progressStatus: "doing" })).toEqual({
       mode: "none",
