@@ -101,9 +101,11 @@ export async function validateConfiguration(
   }
 
   const referencedConnections = getReferencedConnectionIds(state, scopes);
+  const selfConnectionId = `${organizationId}_self`;
 
   for (const refConnectionId of referencedConnections) {
-    if (refConnectionId.endsWith("_self")) {
+    // Only the caller's own self-connection skips the ownership/access checks below.
+    if (refConnectionId === selfConnectionId) {
       continue;
     }
 
