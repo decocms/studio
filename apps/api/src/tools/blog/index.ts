@@ -6,3 +6,4 @@
  */
 
 export { BLOG_BRAND_EXTRACT } from "./brand-extract";
+export { BLOG_THEME_SUGGEST } from "./theme-suggest";

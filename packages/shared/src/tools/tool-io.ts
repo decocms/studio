@@ -913,6 +913,27 @@ export interface StudioToolIO {
       searchedCompetitors: boolean;
     };
   };
+  BLOG_THEME_SUGGEST: {
+    input: {
+      brand: {
+        companyName?: string | undefined;
+        description?: string | undefined;
+        language?: string | undefined;
+        tone?: string | undefined;
+        targetAudience?: string | undefined;
+        values?: { name: string; value: string }[] | undefined;
+        dos?: { name: string; value: string }[] | undefined;
+        avoid?: { name: string; value: string }[] | undefined;
+        categories?: string[] | undefined;
+        competitors?: { name: string; value: string }[] | undefined;
+      };
+      existingTitles?: string[] | undefined;
+      categories?: string[] | undefined;
+      guidance?: string | undefined;
+      count?: number | undefined;
+    };
+    output: { themes: { title: string; body: string }[]; searched: boolean };
+  };
   BRAND_GET: {
     input: { id?: string | undefined };
     output: {
@@ -7126,7 +7147,7 @@ export interface StudioToolIO {
         htmlUrl: string;
         author: string;
         draft: boolean;
-        mergeableState: "unknown" | "clean" | "dirty" | "blocked";
+        mergeableState: "unknown" | "dirty" | "clean" | "blocked";
         unresolvedConversations: number;
         missingRequiredApprovals: boolean;
         changedFiles: number;

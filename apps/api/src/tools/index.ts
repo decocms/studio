@@ -78,6 +78,7 @@ export const CORE_TOOLS = [
   OrganizationTools.BRAND_CONTEXT_DELETE,
   OrganizationTools.BRAND_CONTEXT_EXTRACT,
   BlogTools.BLOG_BRAND_EXTRACT,
+  BlogTools.BLOG_THEME_SUGGEST,
   OrganizationTools.BRAND_GET,
   OrganizationTools.BRAND_LIST,
   OrganizationTools.ORGANIZATION_DOMAIN_LIST,

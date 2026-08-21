@@ -771,6 +771,9 @@ export function isBlogPostBlockResolveType(resolveType: string): boolean {
 
 // ------------------ Brand rules (dos / guardrails / values / competitors) ----
 
+/** Where the editorial brand context lives, as Spire named it. */
+export const BRAND_BLOCK_KEY = "blog-manager-brand";
+
 /**
  * One editorial rule: a short name plus a markdown body. Replaces the flat
  * strings these fields used to hold — a rule worth writing down needs more
@@ -923,4 +926,77 @@ export function selectBrandEvidenceBlocks(
   }
 
   return selected;
+}
+
+// ------------------ Themes (the editorial planning queue) --------------------
+
+/**
+ * Themes live one per block under this prefix, and carry no `__resolveType` —
+ * they are planning state for Studio, so the site must never resolve them. One
+ * block each (rather than an array in one block) keeps a write surgical: a
+ * suggestion appending five themes cannot clobber the one being edited.
+ */
+export const THEME_KEY_PREFIX = "blog-manager/themes/";
+
+/** A theme: a title and a markdown brief. `key` is its block key. */
+export interface ThemeEntry {
+  key: string;
+  title: string;
+  body: string;
+  createdAt: string;
+}
+
+export function newThemeKey(): string {
+  return `${THEME_KEY_PREFIX}${crypto.randomUUID()}`;
+}
+
+/** Newest first, so a fresh suggestion lands at the top of the list. */
+export function scanThemes(decofile: Record<string, unknown>): ThemeEntry[] {
+  const themes: ThemeEntry[] = [];
+  for (const [key, value] of Object.entries(decofile)) {
+    if (!key.startsWith(THEME_KEY_PREFIX)) continue;
+    const record = asRecord(value);
+    if (!record) continue;
+    themes.push({
+      key,
+      title: str(record.title),
+      body: str(record.body),
+      createdAt: str(record.createdAt),
+    });
+  }
+  return themes.sort(
+    (a, b) =>
+      b.createdAt.localeCompare(a.createdAt) || a.title.localeCompare(b.title),
+  );
+}
+
+/** Casing, accents and spacing are presentation, not identity. */
+function themeTitleKey(title: string): string {
+  return title
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Drop suggestions whose title already exists, and duplicates within the batch.
+ * The tool is told not to repeat, but it is a model — and running "suggest"
+ * twice is the normal way to use the button, so the second run must not double
+ * the list.
+ */
+export function dedupeSuggestedThemes<T extends { title: string }>(
+  existingTitles: string[],
+  suggested: T[],
+): T[] {
+  const seen = new Set(existingTitles.map(themeTitleKey));
+  const fresh: T[] = [];
+  for (const theme of suggested) {
+    const key = themeTitleKey(theme.title);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    fresh.push(theme);
+  }
+  return fresh;
 }

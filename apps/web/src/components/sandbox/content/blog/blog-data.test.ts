@@ -16,6 +16,10 @@ import {
   normalizeBrandRules,
   selectBrandEvidenceBlocks,
   stampPostModified,
+  dedupeSuggestedThemes,
+  newThemeKey,
+  scanThemes,
+  THEME_KEY_PREFIX,
 } from "./blog-data";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 
@@ -869,5 +873,100 @@ describe("selectBrandEvidenceBlocks", () => {
 
   test("skips page keys the decofile doesn't have", () => {
     expect(selectBrandEvidenceBlocks({}, ["pages/ghost"])).toEqual([]);
+  });
+});
+
+describe("scanThemes", () => {
+  test("reads only theme blocks, newest first", () => {
+    const themes = scanThemes({
+      [`${THEME_KEY_PREFIX}b`]: {
+        title: "Segundo",
+        body: "briefing b",
+        createdAt: "2026-02-01T00:00:00.000Z",
+      },
+      [`${THEME_KEY_PREFIX}a`]: {
+        title: "Primeiro",
+        body: "briefing a",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+      "blog-manager-brand": { companyName: "Marca" },
+      "collections/blog/posts/x": {
+        __resolveType: "blog/loaders/Blogpost.ts",
+        post: { title: "Post" },
+      },
+    });
+
+    expect(themes.map((t) => t.title)).toEqual(["Segundo", "Primeiro"]);
+    expect(themes[0]?.key).toBe(`${THEME_KEY_PREFIX}b`);
+    expect(themes[1]?.body).toBe("briefing a");
+  });
+
+  test("a theme still being written has empty fields, not missing ones", () => {
+    const themes = scanThemes({ [`${THEME_KEY_PREFIX}new`]: {} });
+    expect(themes).toEqual([
+      { key: `${THEME_KEY_PREFIX}new`, title: "", body: "", createdAt: "" },
+    ]);
+  });
+
+  test("themes without a date sort last, and ties break by title", () => {
+    const dated = "2026-01-01T00:00:00.000Z";
+    const themes = scanThemes({
+      [`${THEME_KEY_PREFIX}1`]: { title: "Sem data" },
+      [`${THEME_KEY_PREFIX}2`]: { title: "Bravo", createdAt: dated },
+      [`${THEME_KEY_PREFIX}3`]: { title: "Alfa", createdAt: dated },
+    });
+    expect(themes.map((t) => t.title)).toEqual(["Alfa", "Bravo", "Sem data"]);
+  });
+
+  test("ignores a non-object at a theme key", () => {
+    expect(scanThemes({ [`${THEME_KEY_PREFIX}x`]: "corrupted" })).toEqual([]);
+  });
+
+  test("returns nothing for a site with no themes", () => {
+    expect(scanThemes({})).toEqual([]);
+  });
+});
+
+describe("newThemeKey", () => {
+  test("is prefixed and unique", () => {
+    const a = newThemeKey();
+    expect(a.startsWith(THEME_KEY_PREFIX)).toBe(true);
+    expect(a).not.toBe(newThemeKey());
+  });
+});
+
+describe("dedupeSuggestedThemes", () => {
+  test("drops what already exists, ignoring case, accents and spacing", () => {
+    const fresh = dedupeSuggestedThemes(
+      ["Como ler a etiqueta de composição"],
+      [
+        { title: "  como LER a etiqueta de COMPOSICAO  " },
+        { title: "Por que o linho amassa" },
+      ],
+    );
+    expect(fresh.map((t) => t.title)).toEqual(["Por que o linho amassa"]);
+  });
+
+  test("drops duplicates within the same batch", () => {
+    const fresh = dedupeSuggestedThemes(
+      [],
+      [{ title: "Tecidos naturais" }, { title: "tecidos naturais" }],
+    );
+    expect(fresh).toHaveLength(1);
+  });
+
+  test("drops a blank title — it can't be told apart from another blank", () => {
+    expect(dedupeSuggestedThemes([], [{ title: "   " }])).toEqual([]);
+  });
+
+  test("keeps everything when nothing exists yet", () => {
+    const suggested = [{ title: "Um" }, { title: "Dois" }];
+    expect(dedupeSuggestedThemes([], suggested)).toEqual(suggested);
+  });
+
+  test("carries the whole suggestion through, not just the title", () => {
+    expect(
+      dedupeSuggestedThemes([], [{ title: "Um", body: "briefing" }]),
+    ).toEqual([{ title: "Um", body: "briefing" }]);
   });
 });

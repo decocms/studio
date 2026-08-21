@@ -143,7 +143,6 @@ export const sandbox = {
   "sandbox.collectionsSidebar.blog": "Blog",
   "sandbox.collectionsSidebar.calendar": "Calendar",
   "sandbox.collectionsSidebar.categories": "Categories",
-  "sandbox.collectionsSidebar.ideas": "Ideas",
   "sandbox.collectionsSidebar.library": "Library",
   "sandbox.collectionsSidebar.planner": "Planner",
   "sandbox.collectionsSidebar.content": "Content",
@@ -154,6 +153,7 @@ export const sandbox = {
   "sandbox.collectionsSidebar.sections": "Sections",
   "sandbox.collectionsSidebar.seo": "SEO",
   "sandbox.collectionsSidebar.site": "Site",
+  "sandbox.collectionsSidebar.themes": "Themes",
   "sandbox.drawer.failedToRestart": "Failed to restart {name}",
   "sandbox.drawer.failedToRun": "Failed to run {name}",
   "sandbox.drawer.failedToStop": "Failed to stop {name}",
@@ -294,9 +294,6 @@ export const sandbox = {
   "sandbox.fileTreeRow.newFile": "New File",
   "sandbox.fileTreeRow.newFolder": "New Folder",
   "sandbox.fileTreeRow.rename": "Rename",
-  "sandbox.ideas.underDev":
-    "Ideas will collect suggested themes before they become drafts. Not wired up yet.",
-  "sandbox.ideas.underDevTitle": "Ideas — under development",
   "sandbox.itemActions.addVariant": "Add variant",
   "sandbox.itemActions.delete": "Delete",
   "sandbox.itemActions.duplicate": "Duplicate",
@@ -755,6 +752,33 @@ export const sandbox = {
   "sandbox.submoduleCredentialsField.title": "Submodule credentials",
   "sandbox.submoduleCredentialsField.tokenLabel": "Personal access token",
   "sandbox.submoduleCredentialsField.tokenPlaceholder": "ghp_…",
+  "sandbox.themes.add": "New theme",
+  "sandbox.themes.bodyPlaceholder":
+    "The angle, who it's for, and what the post has to cover…",
+  "sandbox.themes.empty":
+    "No themes yet. Write one, or let the agent propose a few from your brand context.",
+  "sandbox.themes.guidancePlaceholder": "Optional: what should they be about?",
+  "sandbox.themes.namePlaceholder": "The theme, as you'd say it out loud",
+  "sandbox.themes.noNewThemes":
+    "Nothing new came back — every proposal was already on the list.",
+  "sandbox.themes.noResearch":
+    "Proposed from your brand context alone: no web search model is configured for this org.",
+  "sandbox.themes.phaseReading": "Reading your brand context…",
+  "sandbox.themes.phaseResearching":
+    "Researching what your audience is asking…",
+  "sandbox.themes.phaseWriting": "Writing the briefs…",
+  "sandbox.themes.remove": "Remove theme",
+  "sandbox.themes.subtitle":
+    "What this blog should publish next. Each theme becomes a draft.",
+  "sandbox.themes.suggest": "Suggest themes",
+  "sandbox.themes.suggestFailed": "Couldn't suggest themes",
+  "sandbox.themes.suggestHint":
+    "Propose themes from your brand context, the posts you already have, and a web search",
+  "sandbox.themes.suggestNoBrand":
+    "Fill in the brand context in the Library first — without it the themes come out generic",
+  "sandbox.themes.suggested": "{count} theme(s) added",
+  "sandbox.themes.title": "Themes",
+  "sandbox.themes.untitled": "Untitled theme",
   "sandbox.toolbar.closeTab": "Close {tab}",
   "sandbox.toolbar.noScriptsFound": "No scripts found",
   "sandbox.toolbar.restart": "Restart",

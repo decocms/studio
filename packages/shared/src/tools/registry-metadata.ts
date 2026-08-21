@@ -62,6 +62,7 @@ const ALL_TOOL_NAMES = [
   "BRAND_CONTEXT_DELETE",
   "BRAND_CONTEXT_EXTRACT",
   "BLOG_BRAND_EXTRACT",
+  "BLOG_THEME_SUGGEST",
   "BRAND_GET",
   "BRAND_LIST",
   "ORGANIZATION_DOMAIN_LIST",
@@ -366,6 +367,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "BLOG_BRAND_EXTRACT",
     description:
       "Infer editorial brand context (tone, dos and don'ts) from a site",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_THEME_SUGGEST",
+    description: "Propose blog themes from a brand's editorial context",
     category: "Blog",
   },
   {

@@ -148,7 +148,6 @@ export const sandbox = {
   "sandbox.collectionsSidebar.blog": "Blog",
   "sandbox.collectionsSidebar.calendar": "Calendário",
   "sandbox.collectionsSidebar.categories": "Categorias",
-  "sandbox.collectionsSidebar.ideas": "Ideias",
   "sandbox.collectionsSidebar.library": "Biblioteca",
   "sandbox.collectionsSidebar.planner": "Planejamento",
   "sandbox.collectionsSidebar.content": "Conteúdo",
@@ -159,6 +158,7 @@ export const sandbox = {
   "sandbox.collectionsSidebar.sections": "Seções",
   "sandbox.collectionsSidebar.seo": "SEO",
   "sandbox.collectionsSidebar.site": "Site",
+  "sandbox.collectionsSidebar.themes": "Temas",
   "sandbox.drawer.failedToRestart": "Falha ao reiniciar {name}",
   "sandbox.drawer.failedToRun": "Falha ao executar {name}",
   "sandbox.drawer.failedToStop": "Falha ao parar {name}",
@@ -304,9 +304,6 @@ export const sandbox = {
   "sandbox.fileTreeRow.newFile": "Novo arquivo",
   "sandbox.fileTreeRow.newFolder": "Nova pasta",
   "sandbox.fileTreeRow.rename": "Renomear",
-  "sandbox.ideas.underDev":
-    "As ideias vão reunir temas sugeridos antes de virarem drafts. Ainda não está ligado.",
-  "sandbox.ideas.underDevTitle": "Ideias — em desenvolvimento",
   "sandbox.itemActions.addVariant": "Adicionar variante",
   "sandbox.itemActions.delete": "Excluir",
   "sandbox.itemActions.duplicate": "Duplicar",
@@ -783,6 +780,33 @@ export const sandbox = {
   "sandbox.submoduleCredentialsField.title": "Credenciais de submódulo",
   "sandbox.submoduleCredentialsField.tokenLabel": "Token de acesso pessoal",
   "sandbox.submoduleCredentialsField.tokenPlaceholder": "ghp_…",
+  "sandbox.themes.add": "Novo tema",
+  "sandbox.themes.bodyPlaceholder":
+    "O ângulo, para quem é, e o que o post tem que cobrir…",
+  "sandbox.themes.empty":
+    "Nenhum tema ainda. Escreva um, ou deixe o agente propor alguns a partir do contexto da sua marca.",
+  "sandbox.themes.guidancePlaceholder": "Opcional: sobre o que devem ser?",
+  "sandbox.themes.namePlaceholder": "O tema, como você diria em voz alta",
+  "sandbox.themes.noNewThemes":
+    "Nada novo voltou — todas as propostas já estavam na lista.",
+  "sandbox.themes.noResearch":
+    "Propostos só a partir do contexto da marca: esta org não tem modelo de busca na web configurado.",
+  "sandbox.themes.phaseReading": "Lendo o contexto da sua marca…",
+  "sandbox.themes.phaseResearching":
+    "Pesquisando o que o seu público está perguntando…",
+  "sandbox.themes.phaseWriting": "Escrevendo os briefings…",
+  "sandbox.themes.remove": "Remover tema",
+  "sandbox.themes.subtitle":
+    "O que este blog deve publicar em seguida. Cada tema virá a ser um draft.",
+  "sandbox.themes.suggest": "Sugerir temas",
+  "sandbox.themes.suggestFailed": "Não foi possível sugerir temas",
+  "sandbox.themes.suggestHint":
+    "Propor temas a partir do contexto da marca, dos posts que você já tem e de uma busca na web",
+  "sandbox.themes.suggestNoBrand":
+    "Preencha o contexto da marca na Biblioteca primeiro — sem ele os temas saem genéricos",
+  "sandbox.themes.suggested": "{count} tema(s) adicionado(s)",
+  "sandbox.themes.title": "Temas",
+  "sandbox.themes.untitled": "Tema sem título",
   "sandbox.toolbar.closeTab": "Fechar {tab}",
   "sandbox.toolbar.noScriptsFound": "Nenhum script encontrado",
   "sandbox.toolbar.restart": "Reiniciar",

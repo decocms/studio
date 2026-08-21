@@ -1,3 +1,8 @@
+/**
+ * Autonomous content: Planner, Themes and Library behind one collection row.
+ * Library holds the brand context, persisted to the site's own
+ * `.deco/blocks/blog-manager-brand.json` as plain JSON.
+ */
 import { useState } from "react";
 import {
   BookClosed,
@@ -23,19 +28,14 @@ import { extractPages } from "@/components/sections-editor/page-list";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 import { EmptyMessage } from "../empty-message";
+import { ThemesScreen } from "./themes";
 import {
+  BRAND_BLOCK_KEY,
   type BrandRule,
   normalizeBrandRules,
   selectBrandEvidenceBlocks,
 } from "./blog-data";
 import { AddButton, RemoveButton, str } from "./blocks/primitives";
-
-/**
- * Autonomous content: Planner, Ideas and Library behind one collection row.
- * Library holds the brand context, persisted to the site's own
- * `.deco/blocks/blog-manager-brand.json` as plain JSON.
- */
-export const BRAND_BLOCK_KEY = "blog-manager-brand";
 
 /** Stable empty seed — `useAutosave` re-seeds on reference change. */
 const EMPTY_BRAND: Record<string, unknown> = {};
@@ -64,7 +64,11 @@ const NAV = [
     icon: Calendar,
     label: "sandbox.collectionsSidebar.planner",
   },
-  { id: "ideas", icon: Lightbulb01, label: "sandbox.collectionsSidebar.ideas" },
+  {
+    id: "themes",
+    icon: Lightbulb01,
+    label: "sandbox.collectionsSidebar.themes",
+  },
   {
     id: "library",
     icon: BookClosed,
@@ -126,11 +130,7 @@ export function AutonomousContent(props: {
             description={t("sandbox.planner.empty")}
           />
         ) : (
-          <EmptyMessage
-            icon={Lightbulb01}
-            title={t("sandbox.ideas.underDevTitle")}
-            description={t("sandbox.ideas.underDev")}
-          />
+          <ThemesScreen {...props} />
         )}
       </div>
     </div>
