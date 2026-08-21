@@ -181,11 +181,17 @@ func (d *daemon) getActiveTasks() []events.ActiveTaskSummary {
 
 const fileChangedDebounce = 300 * time.Millisecond
 
-// How long a dispatch waits for the org-fs skill links before starting the
-// harness anyway. The sync spends its read budget at most once per skill set, so
-// this is slack, not the expected cost — it is the backstop that keeps a wedged
-// mount from ever holding a run.
-const skillLinkWait = 15 * time.Second
+// How long a dispatch waits for the org-fs skill prefetch before starting the
+// harness anyway.
+//
+// Sized for the SLOW path, not the fast one. The bulk route fetches a set in one
+// request and finishes in about a second, so nobody waits this long in practice;
+// the budget is slack for the per-file fallback, which takes ~30s for a hundred
+// skills. It was 15s, which the fallback overran — and because publishing is now
+// all-or-nothing per set, overrunning means a run starts with a set MISSING
+// rather than with a silent arbitrary fraction of it. Waiting once beats
+// answering the wrong question, so the ceiling is generous and loud when hit.
+const skillLinkWait = 40 * time.Second
 
 func (d *daemon) emitFileChanged(path string) {
 	d.fileChangedMu.Lock()

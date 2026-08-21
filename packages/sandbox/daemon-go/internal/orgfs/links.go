@@ -532,60 +532,124 @@ func (l *Links) syncPublicSkills() bool {
 	}
 	dir := filepath.Join(l.RepoDir, ".claude", "skills")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		slog.Warn("org-fs public skills copy failed", "err", err)
+		slog.Warn("org-fs skills dir failed", "err", err)
 		return false
-	}
-	// Ours are cleared first: a set that lost a skill must not leave a stale copy
-	// behind, and a partial copy from a previous attempt must not be reused.
-	if entries, err := os.ReadDir(dir); err == nil {
-		for _, e := range entries {
-			if strings.HasPrefix(e.Name(), publicSkillPrefix) {
-				os.RemoveAll(filepath.Join(dir, e.Name()))
-			}
-		}
 	}
 	gitx.EnsureExclude(l.RepoDir, "/.claude/skills/"+publicSkillPrefix+"*")
 
-	// One budget across every set and both paths: the cap protects the pod's
-	// disk, so it cannot be per volume or per transport.
+	// Staged next to the destination so publishing is a rename on the same
+	// filesystem. Cleared first: a partial stage from a killed attempt must
+	// never be published.
+	staging := filepath.Join(l.RepoDir, ".claude", ".orgfs-staging")
+	os.RemoveAll(staging)
+	defer os.RemoveAll(staging)
+	gitx.EnsureExclude(l.RepoDir, "/.claude/.orgfs-staging")
+
+	// One budget across every set and both transports: the cap protects the
+	// pod's disk, so it cannot be per volume, per worker, or per transport.
 	budget := &atomic.Int64{}
 	budget.Store(skillCopyBudget)
 
-	var jobs []skillJob
-	fromTar, unreadable := 0, 0
+	published := map[string]bool{}
+	fromTar, fromMount, unreadable := 0, 0, 0
 	for _, set := range sets {
+		stage := filepath.Join(staging, set.name)
+		prefix := publicSkillPrefix + set.name + "-"
 		// One request for the whole set. Only when that is unavailable — an older
 		// studio, a rejected token, a truncated stream — does this fall back to
 		// walking the mount file by file.
-		if n := l.fetchSkillTar(set.volume, set.name, dir, budget); n > 0 {
+		if n := l.fetchSkillTar(set.volume, set.name, stage, budget); n > 0 {
 			fromTar += n
+		} else if n := l.copySetToStage(set, stage, prefix, budget, &unreadable); n > 0 {
+			fromMount += n
+		} else {
 			continue
 		}
-		names := skillDirNames(set.dir)
-		if len(names) == 0 {
+		// Published only now that the WHOLE set is staged. Exposing skills as they
+		// arrive is what let a timed-out sync hand the harness an arbitrary
+		// alphabetical prefix of the org's skills — a run that looks healthy and
+		// silently lacks what it needed.
+		publishStaged(stage, dir, published)
+	}
+	// A skill that vanished upstream must not survive as a stale copy. Only ours,
+	// and only once something was published — otherwise a failed sync would strip
+	// the skills a previous one left behind.
+	pruned := 0
+	if len(published) > 0 {
+		pruned = pruneUnpublished(dir, published)
+	}
+	slog.Info("org-fs skills prefetched",
+		"skills", len(published), "fromTar", fromTar, "fromMount", fromMount,
+		"unreadable", unreadable, "pruned", pruned)
+	return len(published) > 0
+}
+
+// copySetToStage is the fallback for a studio without the bulk route: probe the
+// mount, then copy the set's skills into stage. Returns how many landed.
+func (l *Links) copySetToStage(
+	set skillSet, stage, prefix string, budget *atomic.Int64, unreadable *int,
+) int {
+	names := skillDirNames(set.dir)
+	if len(names) == 0 {
+		return 0
+	}
+	// `stat` is served from the mount's metadata and succeeds on a backend whose
+	// GETs hang forever, so a read has to be proven before committing to a set.
+	if !setReads(set.dir, names) {
+		*unreadable += len(names)
+		return 0
+	}
+	jobs := make([]skillJob, 0, len(names))
+	for _, name := range names {
+		// `<set>-<skill>`: collision-free across sets. Cosmetic — the name the
+		// model sees comes from SKILL.md's frontmatter, not the directory.
+		jobs = append(jobs, skillJob{
+			src: filepath.Join(set.dir, name),
+			dst: filepath.Join(stage, prefix+name),
+		})
+	}
+	return prefetchSkills(jobs, budget)
+}
+
+// publishStaged moves a fully-staged set into the skills dir, recording each
+// name in `published`. A rename on one filesystem, so each skill appears whole
+// and the whole set lands in milliseconds rather than over the copy's lifetime.
+func publishStaged(stage, dir string, published map[string]bool) {
+	entries, err := os.ReadDir(stage)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		name := e.Name()
+		dst := filepath.Join(dir, name)
+		// Rename refuses a non-empty target dir; clear the previous copy first.
+		os.RemoveAll(dst)
+		if err := os.Rename(filepath.Join(stage, name), dst); err != nil {
+			slog.Warn("org-fs skill publish failed", "skill", name, "err", err)
 			continue
 		}
-		// `stat` is served from the mount's metadata and succeeds on a backend
-		// whose GETs hang forever, so a read has to be proven before we commit to
-		// copying a whole set off it.
-		if !setReads(set.dir, names) {
-			unreadable += len(names)
+		published[name] = true
+	}
+}
+
+// pruneUnpublished removes `orgfs-*` entries this sync did not publish — the
+// skill was deleted upstream, or its whole set failed and its stale copy would
+// otherwise outlive it.
+func pruneUnpublished(dir string, published map[string]bool) int {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Name(), publicSkillPrefix) || published[e.Name()] {
 			continue
 		}
-		for _, name := range names {
-			// `<set>-<skill>`: collision-free across sets. Cosmetic — the name the
-			// model sees comes from SKILL.md's frontmatter, not the directory.
-			jobs = append(jobs, skillJob{
-				src: filepath.Join(set.dir, name),
-				dst: filepath.Join(dir, publicSkillPrefix+set.name+"-"+name),
-			})
+		if err := os.RemoveAll(filepath.Join(dir, e.Name())); err == nil {
+			n++
 		}
 	}
-	fromMount := prefetchSkills(jobs, budget)
-	slog.Info("org-fs skills prefetched",
-		"fromTar", fromTar, "fromMount", fromMount, "ofMount", len(jobs),
-		"unreadable", unreadable)
-	return fromTar+fromMount > 0
+	return n
 }
 
 // repointThreadLink points `org/<linkName>` at `<mountDir>/<threadId>`, creating
