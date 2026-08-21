@@ -286,26 +286,21 @@ export interface PostMeta {
   slug: string;
   /** Raw `date` string from the payload (ISO date, possibly empty). */
   date: string;
+  /**
+   * Raw `scheduledDatetime` from the payload — the instant the post goes live,
+   * empty when the post isn't scheduled. Distinct from `date`, which is the
+   * editorial date the site displays. Only newer versions of the deco blog app
+   * write it, so it is empty on every post until then.
+   */
+  scheduledDatetime: string;
   /** Slugs of the post's categories (denormalized). */
   categorySlugs: string[];
   /** Emails of the post's authors (denormalized). */
   authorEmails: string[];
   /** Required fields the post is missing (empty when valid). */
   missing: string[];
-  /** Whether the post reads as published — see `isPostPublished`. */
-  published: boolean;
-}
-
-/**
- * Whether a post reads as published. `status` is optional and newer than the
- * posts that predate it, so an unset status means published — otherwise adding
- * the field would retroactively unpublish every existing post. Every other
- * value (`draft`, and the states the CMS doesn't edit such as `generating` or
- * `awaiting_review`) reads as not published.
- */
-export function isPostPublished(payload: Record<string, unknown>): boolean {
-  const status = str(payload.status);
-  return status === "" || status === "published";
+  /** Publication state — see `postStatus`. */
+  status: PostStatus;
 }
 
 function toArray(value: unknown): unknown[] {
@@ -348,15 +343,57 @@ export function missingPostFields(payload: Record<string, unknown>): string[] {
   return missing;
 }
 
-/**
- * Whether the publish toggle should be disabled: only when turning it ON
- * (missing required fields blocks *becoming* published), never when turning
- * it OFF — an already-published post that later lost a required field (e.g.
- * its category was deleted) must still be unpublishable, or the toggle would
- * lock the post published forever.
- */
-export function blocksPublishToggle(payload: Record<string, unknown>): boolean {
-  return !isPostPublished(payload) && missingPostFields(payload).length > 0;
+/** The three publication states the CMS edits. */
+export type PostStatus = "draft" | "scheduled" | "published";
+
+/** Local hour of day a newly scheduled post goes live. */
+export const DEFAULT_SCHEDULE_HOUR = 8;
+
+/** Publication state from `status` alone — unset means published, so adding the field unpublished nothing. */
+export function postStatus(payload: Record<string, unknown>): PostStatus {
+  const status = str(payload.status);
+  if (status === "" || status === "published") return "published";
+  if (status === "scheduled") return "scheduled";
+  return "draft";
+}
+
+/** Whether missing required fields bar this post from *becoming* published — the only gated move. */
+export function blocksPostStatus(
+  payload: Record<string, unknown>,
+  next: PostStatus,
+): boolean {
+  if (next !== "published" || postStatus(payload) === "published") return false;
+  return missingPostFields(payload).length > 0;
+}
+
+/** Go-live instant offered when none is set: tomorrow, local, at {@link DEFAULT_SCHEDULE_HOUR}. */
+export function defaultScheduledDatetime(now: Date): string {
+  const day = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() + 1,
+    DEFAULT_SCHEDULE_HOUR,
+  );
+  return day.toISOString();
+}
+
+/** Move a post to `next`: leaving `scheduled` clears the stale instant, entering it seeds one. */
+export function setPostStatus(
+  payload: Record<string, unknown>,
+  next: PostStatus,
+  now: Date,
+): Record<string, unknown> {
+  if (next !== "scheduled") {
+    return { ...payload, status: next, scheduledDatetime: "" };
+  }
+  const existing = str(payload.scheduledDatetime);
+  return {
+    ...payload,
+    status: "scheduled",
+    scheduledDatetime: Number.isNaN(new Date(existing).getTime())
+      ? defaultScheduledDatetime(now)
+      : existing,
+  };
 }
 
 /**
@@ -372,12 +409,13 @@ export function listPostsWithMeta(
     title: str(payload.title) || "Untitled post",
     slug: str(payload.slug),
     date: str(payload.date),
+    scheduledDatetime: str(payload.scheduledDatetime),
     categorySlugs: toArray(payload.categories)
       .map(categorySlugOf)
       .filter(Boolean),
     authorEmails: toArray(payload.authors).map(authorEmailOf).filter(Boolean),
     missing: missingPostFields(payload),
-    published: isPostPublished(payload),
+    status: postStatus(payload),
   }));
 }
 

@@ -89,6 +89,7 @@ export const sandbox = {
   "sandbox.collectionsSidebar.content": "Conteúdo",
   "sandbox.collectionsSidebar.loaders": "Carregadores",
   "sandbox.collectionsSidebar.pages": "Páginas",
+  "sandbox.collectionsSidebar.postSchedule": "Agendamento",
   "sandbox.collectionsSidebar.posts": "Posts",
   "sandbox.collectionsSidebar.redirects": "Redirecionamentos",
   "sandbox.collectionsSidebar.sections": "Seções",
@@ -326,6 +327,24 @@ export const sandbox = {
   "sandbox.plainBlocks.listItemPlaceholder": "Item de lista",
   "sandbox.plainBlocks.numberedLabel": "Numerada",
   "sandbox.plainBlocks.quotePlaceholder": "Citação",
+  "sandbox.postCalendar.legendScheduled": "Agendado",
+  "sandbox.postCalendar.legendUnscheduled": "Não agendado",
+  "sandbox.postCalendar.next": "Próximo mês",
+  "sandbox.postCalendar.outdatedAppsDescription":
+    "Agendamento precisa do deco apps {required} ou mais novo. Atualize o pin deste site rodando:",
+  "sandbox.postCalendar.outdatedAppsTitle":
+    "Atualize a versão do apps deste site",
+  "sandbox.postCalendar.previous": "Mês anterior",
+  "sandbox.postCalendar.schedulePostOn": "Agendar um post em {date}",
+  "sandbox.postCalendar.today": "Hoje",
+  "sandbox.postCalendar.unscheduledHint":
+    "Posts tracejados não estão agendados — estão na data de exibição deles, e nada vai publicá-los.",
+  "sandbox.postCalendar.undatedEmpty": "Todos os posts têm data.",
+  "sandbox.postCalendar.unsupportedRuntimeDescription":
+    "Este site não roda o app de blog do deco, então nada aqui consegue publicar um post na data agendada. O calendário abaixo é somente leitura.",
+  "sandbox.postCalendar.unsupportedRuntimeTitle":
+    "Ainda não suportamos sites TanStack",
+  "sandbox.postCalendar.undatedLabel": "Sem data · {count}",
   "sandbox.postEditor.addPropLabel": "Adicionar propriedade",
   "sandbox.postEditor.authorsLabel": "Autores",
   "sandbox.postEditor.categoriesLabel": "Categorias",
@@ -356,6 +375,10 @@ export const sandbox = {
   "sandbox.postEditor.previewTooltip":
     "Abrir visualização do post em uma nova aba",
   "sandbox.postEditor.publishedLabel": "Publicado",
+  "sandbox.postEditor.scheduledDatetimeDescription":
+    "Quando este post entra no ar. O site publica sozinho depois que esse momento passa.",
+  "sandbox.postEditor.scheduledDatetimeLabel": "Entra no ar em",
+  "sandbox.postEditor.schedulingLabel": "Agendado",
   "sandbox.postEditor.removePropLabel": "Remover propriedade",
   "sandbox.postEditor.seePreview": "Ver visualização",
   "sandbox.postEditor.selectAuthorsPlaceholder": "Selecionar autores",
@@ -401,6 +424,7 @@ export const sandbox = {
   "sandbox.postToolbar.sortZA": "Z–A",
   "sandbox.postToolbar.statusDraft": "Rascunho",
   "sandbox.postToolbar.statusLabel": "Status",
+  "sandbox.postToolbar.statusScheduled": "Agendado",
   "sandbox.postToolbar.statusPublished": "Publicado",
   "sandbox.preview.catchAllParamLabel": "caminho",
   "sandbox.preview.choosePage": "Escolher página",

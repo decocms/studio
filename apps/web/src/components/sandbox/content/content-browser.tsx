@@ -100,11 +100,17 @@ import {
   isBlogKind,
   listBlogPayloads,
   listPostsWithMeta,
+  type PostStatus,
   removeCategoryFromPost,
   replaceCategoryOnPost,
   scanBlogEntries,
   stampPostModified,
 } from "./blog/blog-data";
+import {
+  rescheduleToDay,
+  scheduledPostPayload,
+} from "./blog/post-calendar-data";
+import { useBlogSupport } from "./blog/use-blog-support";
 import { PageJsonDialog } from "@/components/sections-editor/page-json-dialog";
 import { RunnableBlocksBrowser } from "./runnable-blocks-browser";
 import { countAvailableRunnables } from "./runnable-catalog";
@@ -158,6 +164,10 @@ const VariantCalendar = lazy(() =>
   })),
 );
 
+const PostCalendar = lazy(() =>
+  import("./blog/post-calendar").then((m) => ({ default: m.PostCalendar })),
+);
+
 const RedirectEditor = lazy(() =>
   import("./redirect-editor").then((m) => ({ default: m.RedirectEditor })),
 );
@@ -169,6 +179,7 @@ export type CollectionId =
   | "site"
   | "seo"
   | "calendar"
+  | "post-schedule"
   | "loaders"
   | "actions"
   | "redirects"
@@ -224,8 +235,8 @@ type DeleteTarget =
 
 export type PostSort = "date-desc" | "date-asc" | "az" | "za";
 
-/** Publication states the posts list can filter on — see `isPostPublished`. */
-export type PostStatusFilter = "published" | "draft";
+/** Publication states the posts list can filter on — see `postStatus`. */
+export type PostStatusFilter = PostStatus;
 
 export interface ContentBrowserProps {
   /** Storefront "." deep-link: preselect this page once the decofile loads. */
@@ -461,6 +472,13 @@ function ContentBrowserReady({
     useDecoAppsCatalog(meta ?? undefined, decofile ?? undefined, {
       enabled: activeCollection === "apps",
     });
+
+  const blogSupport = useBlogSupport({
+    orgSlug,
+    virtualMcpId,
+    branch,
+    meta,
+  });
 
   const saveBlock = useSaveBlock(fetchParams);
   const deleteBlock = useDeleteBlock(fetchParams);
@@ -807,6 +825,42 @@ function ContentBrowserReady({
     }
   };
 
+  /** Calendar "+" on a day: a post scheduled for that day, opened to edit. */
+  const handleCreateScheduledPost = async (day: Date) => {
+    const key = generateBlogKey(decofile, "posts");
+    const data = buildBlogBlock(key, "posts", scheduledPostPayload(day));
+    try {
+      await saveBlock.mutateAsync({ blockKey: key, data });
+      toast.success("Created scheduled post");
+      setActiveCollection("posts");
+      setPrevCollection("posts");
+      setSelection({ collection: "posts", key });
+      setOpenPageSeoKey(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not create");
+    }
+  };
+
+  /** Calendar drag: move an already-scheduled post to another day. */
+  const handleReschedulePost = async (key: string, day: Date) => {
+    const source = decofile[key] as Record<string, unknown> | undefined;
+    const payload = source
+      ? rescheduleToDay(getBlogPayload(source, "posts"), day)
+      : null;
+    if (!payload) {
+      toast.error("Only scheduled posts can be moved.");
+      return;
+    }
+    try {
+      await saveBlock.mutateAsync({
+        blockKey: key,
+        data: buildBlogBlock(key, "posts", payload),
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not reschedule");
+    }
+  };
+
   const handleDuplicateBlog = async (entry: BlogEntry) => {
     const source = decofile[entry.key] as Record<string, unknown> | undefined;
     if (!source) {
@@ -1004,6 +1058,7 @@ function ContentBrowserReady({
       {activeCollection !== "seo" &&
         activeCollection !== "site" &&
         activeCollection !== "calendar" &&
+        activeCollection !== "post-schedule" &&
         activeCollection !== "loaders" &&
         activeCollection !== "actions" && (
           <ItemList
@@ -1122,6 +1177,20 @@ function ContentBrowserReady({
           >
             {activeCollection === "calendar" ? (
               <VariantCalendar decofile={decofile} />
+            ) : activeCollection === "post-schedule" ? (
+              <PostCalendar
+                decofile={decofile}
+                support={blogSupport}
+                isCreating={saveBlock.isPending}
+                onCreate={(day) => void handleCreateScheduledPost(day)}
+                onReschedule={(key, day) => void handleReschedulePost(key, day)}
+                onSelect={(key) => {
+                  setActiveCollection("posts");
+                  setPrevCollection("posts");
+                  setSelection({ collection: "posts", key });
+                  setOpenPageSeoKey(null);
+                }}
+              />
             ) : activeCollection === "site" ? (
               siteApp ? (
                 <AppEditor
@@ -1556,11 +1625,12 @@ function ItemList({
   // many posts each option matches (and hide the ones that match none).
   const categoryCounts = new Map<string, number>();
   const authorCounts = new Map<string, number>();
-  const publishedCount = postsWithMeta.filter((p) => p.published).length;
   const statusCounts = {
-    published: publishedCount,
-    draft: postsWithMeta.length - publishedCount,
-  };
+    published: 0,
+    scheduled: 0,
+    draft: 0,
+  } satisfies Record<PostStatusFilter, number>;
+  for (const p of postsWithMeta) statusCounts[p.status]++;
   for (const p of postsWithMeta) {
     for (const slug of p.categorySlugs) {
       categoryCounts.set(slug, (categoryCounts.get(slug) ?? 0) + 1);
@@ -1607,10 +1677,7 @@ function ItemList({
     .filter(
       (p) => !postAuthorFilter || p.authorEmails.includes(postAuthorFilter),
     )
-    .filter(
-      (p) =>
-        !postStatusFilter || p.published === (postStatusFilter === "published"),
-    )
+    .filter((p) => !postStatusFilter || p.status === postStatusFilter)
     .sort((a, b) => {
       if (postSort === "az") return a.title.localeCompare(b.title);
       if (postSort === "za") return b.title.localeCompare(a.title);
