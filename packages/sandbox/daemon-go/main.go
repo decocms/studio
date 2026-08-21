@@ -977,9 +977,15 @@ func main() {
 			if cfg == nil {
 				return nil
 			}
-			env := make(map[string]string, len(cfg.Env)+1)
+			env := make(map[string]string, len(cfg.Env)+2)
 			if token := config.TokenFromCloneUrl(cfg.CloneUrl()); token != "" {
 				env["GH_TOKEN"] = token
+			}
+			// The org's prefetched skills, as a local plugin the harness loads by
+			// absolute path. Empty until a sync published something, so a pod with
+			// no org skills hands the SDK nothing to load.
+			if dir := d.orgFsLinks.SkillPluginDir(); dir != "" {
+				env["CLAUDE_CODE_PLUGIN_DIRS"] = dir
 			}
 			// Tenant env last: an explicit GH_TOKEN from Studio wins.
 			for k, v := range cfg.Env {

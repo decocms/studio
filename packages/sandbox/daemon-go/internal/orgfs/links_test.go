@@ -285,7 +285,7 @@ func TestPublicSkillLinks(t *testing.T) {
 	l := &Links{AppRoot: appRoot, RepoDir: repoDir, ConfigPath: "unused"}
 	l.syncPublicSkills()
 
-	skillsDir := filepath.Join(repoDir, ".claude", "skills")
+	skillsDir := filepath.Join(appRoot, skillPluginDirName, "skills")
 	assertSkillPresent(t, skillsDir, "orgfs-core-slides")
 	if _, err := os.Lstat(filepath.Join(skillsDir, "orgfs-core-not-a-skill")); err == nil {
 		t.Error("copied a directory with no SKILL.md")
@@ -294,9 +294,27 @@ func TestPublicSkillLinks(t *testing.T) {
 		t.Errorf("clobbered the repo's own skill: %v", err)
 	}
 
-	excl, err := os.ReadFile(filepath.Join(repoDir, ".git", "info", "exclude"))
-	if err != nil || !strings.Contains(string(excl), "/.claude/skills/orgfs-*") {
-		t.Errorf("links not git-excluded — a run would commit them: %q %v", excl, err)
+	// The point of the plugin dir: git is never involved. Nothing of ours lands
+	// in the checkout, so there is no exclude to keep honest and no path an
+	// older build's commit can leave stranded there.
+	entries, err := os.ReadDir(filepath.Join(repoDir, ".claude", "skills"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), publicSkillPrefix) {
+			t.Errorf("prefetched %q into the checkout", e.Name())
+		}
+	}
+	// And the dir has to be a plugin, or the SDK loads none of it.
+	manifest, err := os.ReadFile(filepath.Join(
+		appRoot, skillPluginDirName, ".claude-plugin", "plugin.json",
+	))
+	if err != nil || !strings.Contains(string(manifest), skillPluginName) {
+		t.Errorf("no plugin manifest: %q %v", manifest, err)
+	}
+	if l.SkillPluginDir() != filepath.Join(appRoot, skillPluginDirName) {
+		t.Errorf("plugin dir not reported to the harness: %q", l.SkillPluginDir())
 	}
 
 	// A rebuild after `pdf` disappeared must not leave it dangling.
@@ -343,7 +361,7 @@ func TestSyncedVolumeSkillLinks(t *testing.T) {
 	l := &Links{AppRoot: appRoot, RepoDir: repoDir, StatusPath: statusPath, ConfigPath: "unused"}
 	l.syncPublicSkills()
 
-	skillsDir := filepath.Join(repoDir, ".claude", "skills")
+	skillsDir := filepath.Join(appRoot, skillPluginDirName, "skills")
 	assertSkillPresent(t, skillsDir, "orgfs-decocms-skills-unslopify")
 	for _, name := range []string{"orgfs-home-skills", "orgfs-.outputs-t1"} {
 		if _, err := os.Lstat(filepath.Join(skillsDir, name)); err == nil {
@@ -388,7 +406,7 @@ func TestUnreadableSkillDoesNotCondemnSet(t *testing.T) {
 	if !l.syncPublicSkills() {
 		t.Fatal("set condemned by one unreadable skill")
 	}
-	assertSkillPresent(t, filepath.Join(repoDir, ".claude", "skills"), "orgfs-core-slides")
+	assertSkillPresent(t, filepath.Join(appRoot, skillPluginDirName, "skills"), "orgfs-core-slides")
 }
 
 func TestWaitSkillLinks(t *testing.T) {
@@ -417,7 +435,7 @@ func TestWaitSkillLinks(t *testing.T) {
 	// one-shot startup scan cannot miss them.
 	l.WaitSkillLinks(10 * time.Second)
 	// The whole point of the barrier: the bytes are on disk before the run starts.
-	assertSkillPresent(t, filepath.Join(repoDir, ".claude", "skills"), "orgfs-core-slides")
+	assertSkillPresent(t, filepath.Join(appRoot, skillPluginDirName, "skills"), "orgfs-core-slides")
 }
 
 // Prefetched skills are real directories with real content now, not symlinks, so
@@ -458,7 +476,7 @@ func TestPrefetchedSkillsAreNotAdopted(t *testing.T) {
 
 	l := &Links{AppRoot: appRoot, RepoDir: repoDir, StatusPath: statusPath, ConfigPath: "unused"}
 	l.syncPublicSkills()
-	assertSkillPresent(t, filepath.Join(repoDir, ".claude", "skills"), "orgfs-core-slides")
+	assertSkillPresent(t, filepath.Join(appRoot, skillPluginDirName, "skills"), "orgfs-core-slides")
 
 	l.AdoptStrayRepoSkills()
 
@@ -466,7 +484,7 @@ func TestPrefetchedSkillsAreNotAdopted(t *testing.T) {
 		t.Error("prefetched skill was adopted into the org home")
 	}
 	// And it is still where the harness expects it.
-	assertSkillPresent(t, filepath.Join(repoDir, ".claude", "skills"), "orgfs-core-slides")
+	assertSkillPresent(t, filepath.Join(appRoot, skillPluginDirName, "skills"), "orgfs-core-slides")
 }
 
 func TestAdoptStrayRepoSkills(t *testing.T) {
