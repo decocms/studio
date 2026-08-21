@@ -732,8 +732,12 @@ func (l *Links) AdoptStrayRepoSkills() {
 	if l == nil || l.RepoDir == "" || !l.Expected() {
 		return
 	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
+	// Deliberately unlocked: CopyFS below writes through the org mount, and
+	// holding mu across that would stall every other org-fs caller — the same
+	// class of bug RepointForRun's mount wait had to be moved out from under
+	// mu for. Nothing here touches a field mu protects (lastOutputThread,
+	// skillsLinked, publicSkillsRun/Done, api); it only touches the checkout's
+	// `.claude/skills` dir and the home mount, neither written by a locked path.
 	if !l.volumeMounted("home") {
 		return
 	}
