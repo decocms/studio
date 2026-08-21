@@ -137,6 +137,7 @@ import {
   TaskFiltersBar,
   TaskFiltersDrawer,
   taskMatchesFilters,
+  type TaskFilters,
 } from "./task-filters";
 import { useBoardSearch } from "./filters-search";
 import { usePanelActions } from "@/layouts/shell-layout";
@@ -428,6 +429,11 @@ export function TaskBoardPage() {
       return next;
     });
   const clearSelection = () => setSelectedIds(new Set());
+  // A filter change can hide selected cards the same way the list-view toggle does.
+  const handleFiltersChange = (next: TaskFilters) => {
+    setFilters(next);
+    clearSelection();
+  };
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<TaskBoardItem | null>(null);
   // Status a newly-created task should start in (set by a lane's "+"); null for
@@ -603,7 +609,7 @@ export function TaskBoardPage() {
                   members={members}
                   tags={orgTags}
                   repos={repos}
-                  onChange={setFilters}
+                  onChange={handleFiltersChange}
                 />
               </div>
               <div className="hidden sm:block">
@@ -612,7 +618,7 @@ export function TaskBoardPage() {
                   members={members}
                   tags={orgTags}
                   repos={repos}
-                  onChange={setFilters}
+                  onChange={handleFiltersChange}
                 />
               </div>
             </>
@@ -662,7 +668,7 @@ export function TaskBoardPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setFilters(EMPTY_FILTERS)}
+              onClick={() => handleFiltersChange(EMPTY_FILTERS)}
             >
               {t("taskBoard.taskBoard.clearFilters")}
             </Button>
