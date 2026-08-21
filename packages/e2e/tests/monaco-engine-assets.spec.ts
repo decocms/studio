@@ -13,6 +13,13 @@
  * half lives in the native boot smoke's `monacoEngineBoots` check, and "no
  * component bypasses the shared loader" in `monaco-imports.test.ts`.
  *
+ * Each file is asserted to arrive as JavaScript/CSS, not merely to answer:
+ * under a SPA fallback a MISSING file comes back as index.html with a 200, so
+ * the content type is what actually distinguishes "shipped" from "gone". (What
+ * a miss answers is host-specific — 404 from the dev middleware and from
+ * nginx, index.html from the `vite preview` this suite runs against in CI — so
+ * it is not asserted here.)
+ *
  * The engine path is inlined rather than imported — this suite owns its
  * contract (see ban-e2e-app-imports). A version bump changes it on purpose.
  */
@@ -51,11 +58,4 @@ test.describe("monaco engine assets", () => {
       expect((await response.body()).byteLength).toBeGreaterThan(1000);
     });
   }
-
-  test("answers a missing engine file with 404, never index.html", async () => {
-    const response = await api.get(`${MONACO_VS_PATH}/nope.js`);
-
-    expect(response.status()).toBe(404);
-    expect(response.headers()["content-type"] ?? "").not.toMatch(/html/);
-  });
 });
