@@ -142,3 +142,84 @@ describe("MCP Proxy null-org bypass", () => {
     expect(body.error).toContain("Organization context is required");
   });
 });
+
+describe("MCP Proxy call-tool disabled-connection gate", () => {
+  let database: StudioDatabase;
+  let app: Awaited<ReturnType<typeof createApp>>;
+
+  const memberUserId = "user_member";
+  const orgId = "org_owner";
+  const connectionId = "conn_disabled_123";
+
+  beforeEach(async () => {
+    ensureEncryptionKey();
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
+    app = await createApp({ database, disableNats: true });
+
+    const now = new Date().toISOString();
+    const { sql } = await import("kysely");
+    await sql`
+      INSERT INTO "user" (id, email, "emailVerified", name, "createdAt", "updatedAt")
+      VALUES (${memberUserId}, 'member@example.com', false, 'Member', ${now}, ${now})
+    `.execute(database.db);
+
+    await database.db
+      .insertInto("organization" as any)
+      .values({
+        id: orgId,
+        name: "Owner Org",
+        slug: "owner-org",
+        createdAt: now,
+      })
+      .execute();
+
+    await sql`
+      INSERT INTO "member" (id, "userId", "organizationId", role, "createdAt")
+      VALUES ('mem_owner', ${memberUserId}, ${orgId}, 'member', ${now})
+    `.execute(database.db);
+
+    await database.db
+      .insertInto("connections")
+      .values({
+        id: connectionId,
+        organization_id: orgId,
+        created_by: memberUserId,
+        title: "Disabled Connection",
+        connection_type: "HTTP",
+        connection_url: "https://example.com/mcp",
+        status: "error",
+        pinned: false,
+        created_at: now,
+        updated_at: now,
+      })
+      .execute();
+
+    vi.spyOn(auth.api, "getMcpSession").mockResolvedValue(null);
+    vi.spyOn(auth.api, "setActiveOrganization").mockResolvedValue(null as any);
+    vi.spyOn(auth.api, "getSession" as any).mockImplementation(async () => ({
+      user: { id: memberUserId, email: "member@example.com" },
+      session: { activeOrganizationId: null },
+    }));
+  });
+
+  afterEach(async () => {
+    await closeTestPgDatabase(database);
+    vi.restoreAllMocks();
+  });
+
+  it("should reject call-tool against a disabled connection without contacting it", async () => {
+    const response = await app.request(
+      `/mcp/${connectionId}/call-tool/some_tool`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-org-id": orgId },
+        body: JSON.stringify({}),
+      },
+    );
+
+    expect(response.status).toBe(503);
+    const body = await response.json();
+    expect(body.error).toContain("Connection inactive");
+  });
+});
