@@ -179,4 +179,8 @@ export const reports = {
   "reports.emptyState.siteUrlPlaceholder": "yourstore.com",
   "reports.emptyState.start": "Start diagnostic",
   "reports.emptyState.starting": "Starting...",
+  "reports.emptyState.checkPerformance": "Performance",
+  "reports.emptyState.checkSeo": "SEO",
+  "reports.emptyState.checkFunnel": "Conversion funnel",
+  "reports.emptyState.checkTracking": "Analytics & tracking",
 } as const;
