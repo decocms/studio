@@ -151,6 +151,14 @@ export const taskBoard = {
   "taskBoard.taskDialog.shipToProductionButton": "Ship to production",
   "taskBoard.taskDialog.shipSuccess": "Merged and shipped to production",
   "taskBoard.taskDialog.shipError": "Couldn't merge the pull request",
+  "taskBoard.taskDialog.prConflict": "Merge conflict",
+  "taskBoard.taskDialog.resolveConflictButton": "Resolve conflict",
+  "taskBoard.taskDialog.resolveConflictTitle":
+    "This pull request conflicts with its base branch — the agent will resolve it and update the same PR",
+  "taskBoard.taskDialog.resolveConflictSuccess":
+    "Agent dispatched to resolve the conflict",
+  "taskBoard.taskDialog.resolveConflictError":
+    "Couldn't start conflict resolution",
   "taskBoard.taskDialog.costRunCountSingular": "in {runs} run",
   "taskBoard.taskDialog.costRunCountPlural": "in {runs} runs",
   "taskBoard.taskDialog.costEstimatePrefix": "~{amount}",

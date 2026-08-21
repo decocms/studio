@@ -6,6 +6,7 @@ export { TASK_BOARD_ITEM_DELETE } from "./delete";
 export { TASK_BOARD_ITEM_PRS_GET } from "./prs-get";
 export { TASK_BOARD_ITEM_PR_LINK } from "./pr-link";
 export { TASK_BOARD_ITEM_RERUN } from "./rerun";
+export { TASK_BOARD_RESOLVE_CONFLICT } from "./resolve-conflict";
 export { TASK_BOARD_REVIEW_DECISION } from "./review-decision";
 export { TASK_BOARD_PROMOTE_TO_PRODUCTION } from "./promote-to-production";
 export { TASK_BOARD_ACTIVITY_LIST } from "./activity";

@@ -159,6 +159,14 @@ export const taskBoard = {
   "taskBoard.taskDialog.shipToProductionButton": "Subir para produção",
   "taskBoard.taskDialog.shipSuccess": "Mesclado e enviado para produção",
   "taskBoard.taskDialog.shipError": "Não foi possível mesclar o pull request",
+  "taskBoard.taskDialog.prConflict": "Conflito de merge",
+  "taskBoard.taskDialog.resolveConflictButton": "Resolver conflito",
+  "taskBoard.taskDialog.resolveConflictTitle":
+    "Este pull request tem conflito com a branch base — o agente vai resolver e atualizar o mesmo PR",
+  "taskBoard.taskDialog.resolveConflictSuccess":
+    "Agente acionado para resolver o conflito",
+  "taskBoard.taskDialog.resolveConflictError":
+    "Não foi possível iniciar a resolução do conflito",
   "taskBoard.taskDialog.costRunCountSingular": "em {runs} execução",
   "taskBoard.taskDialog.costRunCountPlural": "em {runs} execuções",
   "taskBoard.taskDialog.costEstimatePrefix": "~{amount}",

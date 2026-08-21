@@ -286,6 +286,7 @@ export interface StudioToolIO {
       repo?: string | null | undefined;
       dueDate?: string | null | undefined;
       tagIds?: string[] | undefined;
+      prUrl?: string | null | undefined;
     };
     output: {
       item: {
@@ -420,6 +421,7 @@ export interface StudioToolIO {
       sortOrder?: number | undefined;
       tagIds?: string[] | undefined;
       linkThreadId?: string | undefined;
+      prUrl?: string | null | undefined;
     };
     output: {
       item: {
@@ -514,6 +516,10 @@ export interface StudioToolIO {
   TASK_BOARD_ITEM_RERUN: {
     input: { id: string };
     output: { status: string; supersededThreadIds: string[] };
+  };
+  TASK_BOARD_RESOLVE_CONFLICT: {
+    input: { id: string; prNumber: number };
+    output: { status: string };
   };
   TASK_BOARD_REVIEW_DECISION: {
     input: {
