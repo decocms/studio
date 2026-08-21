@@ -154,3 +154,114 @@ func TestFetchSkillTarWithoutConfig(t *testing.T) {
 		t.Error("accepted an incomplete config")
 	}
 }
+
+// The two-phase contract that fixes the observed failure: a set is copied into
+// STAGING, and only a completed set is renamed into the dir the harness scans.
+// A prod run started with 18 of 103 org skills because the copy wrote straight
+// into that dir and the harness's one-shot scan caught it mid-flight.
+//
+// This pins the contract, not a timing race — the timing itself is covered by
+// construction (nothing reaches the skills dir before publishStaged runs) plus
+// the dispatch barrier.
+func TestSetIsStagedThenPublished(t *testing.T) {
+	appRoot := t.TempDir()
+	repoDir := filepath.Join(appRoot, "repo")
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(t.TempDir(), "config"))
+	if err := os.MkdirAll(filepath.Join(repoDir, ".git", "info"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	setDir := filepath.Join(appRoot, "org", "public", "core")
+	for _, n := range []string{"a", "b", "c"} {
+		dir := filepath.Join(setDir, n)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: x\n---\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	l := &Links{AppRoot: appRoot, RepoDir: repoDir, ConfigPath: "unused"}
+	skillsDir := filepath.Join(repoDir, ".claude", "skills")
+	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stage := filepath.Join(repoDir, ".claude", ".orgfs-staging", "core")
+
+	var unreadable int
+	landed := l.copySetToStage(
+		skillSet{volume: "public-core", name: "core", dir: setDir},
+		stage, "orgfs-core-", budgetOf(1<<20), &unreadable,
+	)
+	if landed != 3 {
+		t.Fatalf("staged %d skills, want 3", landed)
+	}
+	// Phase one: on disk, but NOT where the harness looks.
+	assertSkillPresent(t, stage, "orgfs-core-a")
+	if entries, err := os.ReadDir(skillsDir); err == nil && len(entries) > 0 {
+		t.Fatalf("staged set leaked into the skills dir: %v", entries)
+	}
+
+	// Phase two: the whole set becomes visible at once.
+	published := map[string]bool{}
+	publishStaged(stage, skillsDir, published)
+	if len(published) != 3 {
+		t.Errorf("published %d, want 3", len(published))
+	}
+	for _, n := range []string{"a", "b", "c"} {
+		assertSkillPresent(t, skillsDir, "orgfs-core-"+n)
+	}
+}
+
+// A skill deleted upstream must not survive as a stale local copy.
+func TestPruneRemovesVanishedSkill(t *testing.T) {
+	dir := t.TempDir()
+	for _, n := range []string{"orgfs-core-gone", "orgfs-core-kept", "repo-own"} {
+		if err := os.MkdirAll(filepath.Join(dir, n), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n := pruneUnpublished(dir, map[string]bool{"orgfs-core-kept": true})
+	if n != 1 {
+		t.Errorf("pruned %d, want 1", n)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "orgfs-core-gone")); err == nil {
+		t.Error("stale skill kept")
+	}
+	for _, keep := range []string{"orgfs-core-kept", "repo-own"} {
+		if _, err := os.Stat(filepath.Join(dir, keep)); err != nil {
+			t.Errorf("pruned %s, which was not ours to remove: %v", keep, err)
+		}
+	}
+}
+
+// Staging is scratch space in the user's checkout: it must not survive the sync
+// and must never be committable.
+func TestStagingIsCleanedAndExcluded(t *testing.T) {
+	appRoot := t.TempDir()
+	repoDir := filepath.Join(appRoot, "repo")
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(t.TempDir(), "config"))
+	if err := os.MkdirAll(filepath.Join(repoDir, ".git", "info"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	skill := filepath.Join(appRoot, "org", "public", "core", "slides")
+	if err := os.MkdirAll(skill, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skill, "SKILL.md"), []byte("---\nname: x\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	l := &Links{AppRoot: appRoot, RepoDir: repoDir, ConfigPath: "unused"}
+	if !l.syncPublicSkills() {
+		t.Fatal("sync published nothing")
+	}
+	assertSkillPresent(t, filepath.Join(repoDir, ".claude", "skills"), "orgfs-core-slides")
+	if _, err := os.Stat(filepath.Join(repoDir, ".claude", ".orgfs-staging")); err == nil {
+		t.Error("staging dir left behind in the checkout")
+	}
+	excl, err := os.ReadFile(filepath.Join(repoDir, ".git", "info", "exclude"))
+	if err != nil || !strings.Contains(string(excl), "/.claude/.orgfs-staging") {
+		t.Errorf("staging not git-excluded: %q %v", excl, err)
+	}
+}
