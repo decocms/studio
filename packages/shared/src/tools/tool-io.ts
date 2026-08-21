@@ -19,7 +19,7 @@ export interface StudioToolIO {
     };
   };
   ORGANIZATION_LIST: {
-    input: { userId?: string | undefined };
+    input: { [x: string]: never };
     output: {
       organizations: {
         id: string;

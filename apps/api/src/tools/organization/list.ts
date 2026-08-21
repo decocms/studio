@@ -19,9 +19,7 @@ export const ORGANIZATION_LIST = defineTool({
     openWorldHint: false,
   },
   _meta: { ui: { visibility: "app" } },
-  inputSchema: z.object({
-    userId: z.string().optional(), // Optional: filter by user
-  }),
+  inputSchema: z.object({}),
 
   outputSchema: z.object({
     organizations: z.array(
@@ -36,23 +34,19 @@ export const ORGANIZATION_LIST = defineTool({
     ),
   }),
 
-  handler: async (input, ctx) => {
+  handler: async (_input, ctx) => {
     // Require authentication
     requireAuth(ctx);
 
     // // Check authorization
     await ctx.access.check();
 
-    // // Get current user ID
-    const currentUserId = getUserId(ctx);
-    const userId = input.userId || currentUserId;
-
-    if (!userId) {
+    if (!getUserId(ctx)) {
       throw new Error("User ID required to list organizations");
     }
 
     // Archived orgs are already filtered out by boundAuth.organization.list.
-    const organizations = await ctx.boundAuth.organization.list(userId);
+    const organizations = await ctx.boundAuth.organization.list();
 
     // Convert dates to ISO strings for JSON Schema compatibility
     return {
