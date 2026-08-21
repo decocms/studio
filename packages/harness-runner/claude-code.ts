@@ -360,6 +360,12 @@ export async function runClaudeCode(
         );
         return;
       }
+      // A fresh id per retry, whenever there is no transcript to resume. The
+      // previous attempt's CLI may still be releasing its hold on the old one,
+      // and nothing is lost: a preflight that never reached the model persisted
+      // no session. A RESUMING attempt keeps its id — the transcript is the
+      // point — and falls back on the fork above if the hold outlives it.
+      if (!resumeSession) sessionId = crypto.randomUUID();
       const waitMs = MCP_BACKOFF_BASE_MS * 2 ** (attempt - 1);
       console.error(
         `[claude-code] mcp unusable (${broken}) — retrying in ${waitMs}ms ` +
@@ -369,6 +375,26 @@ export async function runClaudeCode(
     }
   } catch (err) {
     fail(err instanceof Error ? err.message : String(err));
+  }
+
+  /**
+   * Stop an attempt's SDK session, so the next attempt can have one.
+   *
+   * The session id is held by the `claude` child process, not by this one, and
+   * the CLI refuses a session that another process still holds. Both calls are
+   * best-effort — a session that is already gone is exactly the state we want.
+   */
+  async function endSession(stream: ReturnType<typeof query>): Promise<void> {
+    try {
+      await stream.interrupt();
+    } catch {
+      // Only valid mid-turn on a streaming input; not an error worth reporting.
+    }
+    try {
+      await stream.return(undefined);
+    } catch {
+      // Ditto: the generator may already be done.
+    }
   }
 
   /**
@@ -419,7 +445,17 @@ export async function runClaudeCode(
         // still produces a confident-looking answer — the failure that reads as
         // success. Never run in that state; the caller retries instead.
         const broken = brokenStudioMcp(message.mcp_servers, input.mcp.url);
-        if (broken) return broken;
+        if (broken) {
+          // End the session before the caller retries. Abandoning the iteration
+          // is not enough: the CLI process stays alive holding this session id,
+          // so the next attempt dies on "Session ID … is already in use" —
+          // which the fork-once recovery above absorbs exactly once, and the
+          // attempt after that fails the whole run. Observed live: a run with
+          // an unreachable MCP crashed on its THIRD attempt instead of waiting
+          // out the deploy the retry budget exists for.
+          await endSession(stream);
+          return broken;
+        }
       }
       // First Anthropic message id of the turn becomes Studio's assistant
       // message id: stable if the same turn is delivered twice.
