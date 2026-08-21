@@ -149,15 +149,29 @@ func (l *Links) RepointForRun(threadId string) bool {
 		return false
 	}
 	l.mu.Lock()
-	defer l.mu.Unlock()
 	if threadId != "" && threadId == l.lastOutputThread {
 		// Already pointing here; keep the repo link fresh (one lstat).
 		l.ensureRepoLinkLocked()
+		l.mu.Unlock()
 		return true
 	}
+	l.mu.Unlock()
+
+	// Paid unlocked: mountsOrWait can block for the whole firstMountWait grace
+	// period on the pod's first call, and holding mu across that would stall
+	// every other org-fs caller behind it — including WaitSkillLinks, whose own
+	// bounded wait exists specifically so a run never hangs behind org-fs.
 	mounts := l.mountsOrWait()
 	if len(mounts) == 0 {
 		return false
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	// Re-check: another call may have repointed this thread while we waited.
+	if threadId != "" && threadId == l.lastOutputThread {
+		l.ensureRepoLinkLocked()
+		return true
 	}
 	l.ensureRepoLinkLocked()
 	mounted := func(dir string) bool {

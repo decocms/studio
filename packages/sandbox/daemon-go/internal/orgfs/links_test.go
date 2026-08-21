@@ -104,6 +104,27 @@ func TestRepointHealsAnEmptyRealOutputDir(t *testing.T) {
 	}
 }
 
+// RepointForRun's grace wait for the sidecar's first mounts can take up to
+// firstMountWait. If it held mu across that wait, every other org-fs call —
+// notably WaitSkillLinks, whose whole job is to bound how long a run waits on
+// org-fs — would be stuck behind it regardless of its own budget.
+func TestRepointForRunDoesNotBlockOtherCallsWhileWaitingForMounts(t *testing.T) {
+	appRoot := t.TempDir()
+	// Never written: ActiveMounts stays empty, so RepointForRun falls into the
+	// first-touch grace wait.
+	statusPath := filepath.Join(t.TempDir(), "status.json")
+	l := &Links{AppRoot: appRoot, StatusPath: statusPath, ConfigPath: "unused"}
+
+	go l.RepointForRun("t1")
+	time.Sleep(50 * time.Millisecond) // let it enter the wait
+
+	start := time.Now()
+	l.WaitSkillLinks(time.Second)
+	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
+		t.Fatalf("WaitSkillLinks took %s — blocked behind RepointForRun's mount wait", elapsed)
+	}
+}
+
 func TestExpectedRequiresSidecarEnv(t *testing.T) {
 	if (&Links{}).Expected() {
 		t.Error("org-fs expected with no sidecar env — every call would pay the mount wait")
