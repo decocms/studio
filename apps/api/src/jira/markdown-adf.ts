@@ -675,13 +675,15 @@ function linkNodes(link: LinkMatch, marks: AdfMark[]): AdfNode[] {
 }
 
 /**
- * An image degrades to its link. Embedding one needs a `media` node, whose
- * `attrs.id` is a media-services UUID — a different id space from the numeric
- * id `POST /issue/{id}/attachments` returns, which `GET /attachment/{id}` never
- * exposes, so uploading the bytes is not by itself enough to reference them.
- * An `org/output/…` screenshot (rewritten to a Studio path by
- * `embedOrgOutputImages`) has no absolute URL at all, so it degrades further,
- * to its alt text.
+ * An image degrades to its link, until this converter learns to emit `media`.
+ *
+ * Embedding needs a `media` node whose `attrs.id` is a media-services UUID —
+ * a different id space from the numeric id `POST /issue/{id}/attachments`
+ * returns. The UUID is reachable: `GET /attachment/content/{id}` answers 303 to
+ * `https://api.media.atlassian.com/file/<uuid>/binary`, and that uuid with
+ * `collection: ""` embeds and renders. `attrs.id` must be that uuid, and
+ * `collection` must be present — the numeric id fails
+ * `ATTACHMENT_VALIDATION_ERROR`, and omitting `collection` fails `INVALID_INPUT`.
  */
 function imageNodes(image: LinkMatch, marks: AdfMark[]): AdfNode[] {
   return linkNodes(image, marks);
