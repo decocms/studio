@@ -2,6 +2,7 @@ import { useCapabilities } from "@/hooks/use-capability";
 import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
 import { useProjectContext } from "@/sdk";
+import { useT } from "@/i18n/use-t.ts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -38,6 +39,7 @@ export function useJoinRequestActions() {
   const { org, locator } = useProjectContext();
   const studio = useStudioTools();
   const queryClient = useQueryClient();
+  const t = useT();
 
   const invalidate = () => {
     queryClient.invalidateQueries({
@@ -51,10 +53,14 @@ export function useJoinRequestActions() {
       studio.call("ORGANIZATION_JOIN_REQUEST_APPROVE", { requestId }),
     onSuccess: () => {
       invalidate();
-      toast.success("Request approved");
+      toast.success(t("settings.joinRequestsSection.approved"));
     },
     onError: (err) =>
-      toast.error(err instanceof Error ? err.message : "Failed to approve"),
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("settings.joinRequestsSection.approveFailed"),
+      ),
   });
 
   const deny = useMutation({
@@ -62,10 +68,14 @@ export function useJoinRequestActions() {
       studio.call("ORGANIZATION_JOIN_REQUEST_DENY", { requestId }),
     onSuccess: () => {
       invalidate();
-      toast.success("Request denied");
+      toast.success(t("settings.joinRequestsSection.denied"));
     },
     onError: (err) =>
-      toast.error(err instanceof Error ? err.message : "Failed to deny"),
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("settings.joinRequestsSection.denyFailed"),
+      ),
   });
 
   return { approve, deny };

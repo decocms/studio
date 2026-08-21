@@ -433,7 +433,11 @@ export const settings = {
   "settings.editProviderDialog.saving": "Saving...",
   "settings.editProviderDialog.showApiKey": "Show API key",
   "settings.joinRequestsSection.approve": "Approve",
+  "settings.joinRequestsSection.approveFailed": "Failed to approve",
+  "settings.joinRequestsSection.approved": "Request approved",
   "settings.joinRequestsSection.deny": "Deny",
+  "settings.joinRequestsSection.denied": "Request denied",
+  "settings.joinRequestsSection.denyFailed": "Failed to deny",
   "settings.joinRequestsSection.description":
     "People who requested to join via a domain in approval mode.",
   "settings.joinRequestsSection.title": "Join requests",
