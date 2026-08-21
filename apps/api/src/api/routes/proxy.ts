@@ -490,6 +490,11 @@ export const createProxyRoutes = () => {
         return c.json({ error: "Connection not found" }, 404);
       }
 
+      // Mirrors the /:connectionId route's disabled-connection gate.
+      if (connection.status !== "active") {
+        throw new Error(`Connection inactive: ${connection.status}`);
+      }
+
       // Client pool manages lifecycle, no need for await using
       const client = await clientFromConnection(connection, ctx, false);
       const result = await client.callTool({
