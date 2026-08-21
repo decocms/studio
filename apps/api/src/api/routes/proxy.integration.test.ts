@@ -224,6 +224,87 @@ describe("MCP Proxy call-tool disabled-connection gate", () => {
   });
 });
 
+describe("MCP Proxy call-tool malformed body", () => {
+  let database: StudioDatabase;
+  let app: Awaited<ReturnType<typeof createApp>>;
+
+  const memberUserId = "user_member";
+  const orgId = "org_owner";
+  const connectionId = "conn_active_123";
+
+  beforeEach(async () => {
+    ensureEncryptionKey();
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
+    app = await createApp({ database, disableNats: true });
+
+    const now = new Date().toISOString();
+    const { sql } = await import("kysely");
+    await sql`
+      INSERT INTO "user" (id, email, "emailVerified", name, "createdAt", "updatedAt")
+      VALUES (${memberUserId}, 'member@example.com', false, 'Member', ${now}, ${now})
+    `.execute(database.db);
+
+    await database.db
+      .insertInto("organization" as any)
+      .values({
+        id: orgId,
+        name: "Owner Org",
+        slug: "owner-org",
+        createdAt: now,
+      })
+      .execute();
+
+    await sql`
+      INSERT INTO "member" (id, "userId", "organizationId", role, "createdAt")
+      VALUES ('mem_owner', ${memberUserId}, ${orgId}, 'member', ${now})
+    `.execute(database.db);
+
+    await database.db
+      .insertInto("connections")
+      .values({
+        id: connectionId,
+        organization_id: orgId,
+        created_by: memberUserId,
+        title: "Active Connection",
+        connection_type: "HTTP",
+        connection_url: "https://example.com/mcp",
+        status: "active",
+        pinned: false,
+        created_at: now,
+        updated_at: now,
+      })
+      .execute();
+
+    vi.spyOn(auth.api, "getMcpSession").mockResolvedValue(null);
+    vi.spyOn(auth.api, "setActiveOrganization").mockResolvedValue(null as any);
+    vi.spyOn(auth.api, "getSession" as any).mockImplementation(async () => ({
+      user: { id: memberUserId, email: "member@example.com" },
+      session: { activeOrganizationId: null },
+    }));
+  });
+
+  afterEach(async () => {
+    await closeTestPgDatabase(database);
+    vi.restoreAllMocks();
+  });
+
+  it("should reject a non-JSON call-tool body with 400, not 500", async () => {
+    const response = await app.request(
+      `/mcp/${connectionId}/call-tool/some_tool`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-org-id": orgId },
+        body: "not json",
+      },
+    );
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toContain("valid JSON");
+  });
+});
+
 describe("MCP Proxy call-tool organization ownership", () => {
   let database: StudioDatabase;
   let app: Awaited<ReturnType<typeof createApp>>;
