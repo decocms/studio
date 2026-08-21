@@ -1,12 +1,14 @@
 /**
- * Autonomous content: Planner, Themes and Library behind one collection row.
- * Library holds the brand context, persisted to the site's own
- * `.deco/blocks/blog-manager-brand.json` as plain JSON.
+ * Autonomous content: Themes and Library behind one collection row. Library
+ * holds the brand context and the post formats, each persisted to the site's
+ * own `.deco/blocks/blog-manager-*.json` as plain JSON.
+ *
+ * Scheduling deliberately lives outside this tab — it is a first-party feature
+ * of the blog, and generation only produces the drafts it schedules.
  */
 import { useState } from "react";
 import {
   BookClosed,
-  Calendar,
   ChevronDown,
   ChevronRight,
   Lightbulb01,
@@ -29,7 +31,6 @@ import { extractPages } from "@/components/sections-editor/page-list";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
-import { EmptyMessage } from "../empty-message";
 import { ThemesScreen } from "./themes";
 import {
   BRAND_BLOCK_KEY,
@@ -68,11 +69,6 @@ const CONTEXT_SECTIONS = [
 type ContextSection = (typeof CONTEXT_SECTIONS)[number]["id"];
 
 const NAV = [
-  {
-    id: "planner",
-    icon: Calendar,
-    label: "sandbox.collectionsSidebar.planner",
-  },
   {
     id: "themes",
     icon: Lightbulb01,
@@ -130,7 +126,7 @@ export function AutonomousContent(props: {
   meta: LiveMeta;
 }) {
   const t = useT();
-  const [screen, setScreen] = useState<NavId>("planner");
+  const [screen, setScreen] = useState<NavId>("themes");
 
   return (
     <div className="flex h-full">
@@ -156,12 +152,6 @@ export function AutonomousContent(props: {
       <div className="min-w-0 flex-1">
         {screen === "library" ? (
           <LibraryScreen {...props} />
-        ) : screen === "planner" ? (
-          <EmptyMessage
-            icon={Calendar}
-            title={t("sandbox.planner.emptyTitle")}
-            description={t("sandbox.planner.empty")}
-          />
         ) : (
           <ThemesScreen {...props} />
         )}

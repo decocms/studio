@@ -144,7 +144,6 @@ export const sandbox = {
   "sandbox.collectionsSidebar.calendar": "Calendar",
   "sandbox.collectionsSidebar.categories": "Categories",
   "sandbox.collectionsSidebar.library": "Library",
-  "sandbox.collectionsSidebar.planner": "Planner",
   "sandbox.collectionsSidebar.content": "Content",
   "sandbox.collectionsSidebar.loaders": "Loaders",
   "sandbox.collectionsSidebar.pages": "Pages",
@@ -402,9 +401,6 @@ export const sandbox = {
   "sandbox.pathParamPickerChip.searchPlaceholder":
     "Search {options} or enter a value…",
   "sandbox.pathParamPickerChip.useRawValue": 'Use "{rawTerm}" as {paramLabel}',
-  "sandbox.planner.empty":
-    "The planner will show generated posts on a calendar, so you can schedule them. Not wired up yet.",
-  "sandbox.planner.emptyTitle": "Nothing scheduled yet",
   "sandbox.plainBlocks.bulletedLabel": "Bulleted",
   "sandbox.plainBlocks.codePlaceholder": "Code",
   "sandbox.plainBlocks.headingLevel1": "Heading 1",
