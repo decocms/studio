@@ -151,4 +151,11 @@ describe("withVariantMatcherOverride", () => {
     const url = new URL(href);
     expect(url.searchParams.getAll(MATCHER_OVERRIDE_QS)).toEqual(["fresh=1"]);
   });
+
+  it("falls back to the unmodified href on a malformed URL instead of throwing", () => {
+    const href = "http://[::1";
+    expect(
+      withVariantMatcherOverride(href, ["a@sections.0.variants.0.rule=0"]),
+    ).toBe(href);
+  });
 });
