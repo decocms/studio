@@ -43,21 +43,23 @@ interface TaskBoardItem {
   description: string | null;
 }
 
+/** Autosave is fire-and-forget on close; give the poll room for the write to land. */
+const AUTOSAVE_POLL_TIMEOUT_MS = 15_000;
+
 /**
  * Close the dialog, which is how a description gets written now: the card
  * autosaves as you type and closing flushes whatever the debounce still holds.
  * There is no Save button to click.
  *
- * The autosave is async: closing triggers the mutation but doesn't wait for it
- * to persist. We wait for network idle to ensure the backend write completes
- * before the caller proceeds (e.g., to poll the API for the saved value).
+ * Closing triggers the autosave mutation but doesn't wait for it to persist —
+ * `networkidle` isn't a fit either, since the board keeps background traffic
+ * alive. Callers instead poll the API for the saved value with a generous
+ * timeout above.
  */
 async function closeTask(page: Page) {
   // The button, not Escape: tiptap swallows Escape while the editor has focus.
   await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  // Wait for the autosave mutation to reach the server.
-  await page.waitForLoadState("networkidle");
 }
 
 async function openTask(page: Page, orgSlug: string, title: string) {
@@ -108,13 +110,16 @@ test.describe("task description markdown editor", () => {
 
     // 3: markdown on the wire, not HTML.
     await expect
-      .poll(async () => {
-        const { items } = await call<{ items: TaskBoardItem[] }>(
-          "TASK_BOARD_ITEM_LIST",
-          {},
-        );
-        return items.find((i) => i.id === item.id)?.description ?? null;
-      })
+      .poll(
+        async () => {
+          const { items } = await call<{ items: TaskBoardItem[] }>(
+            "TASK_BOARD_ITEM_LIST",
+            {},
+          );
+          return items.find((i) => i.id === item.id)?.description ?? null;
+        },
+        { timeout: AUTOSAVE_POLL_TIMEOUT_MS },
+      )
       .toBe("# Heading here\n\nsome **bold** words");
 
     // 4: reopening renders the saved markdown as rich text again.
@@ -172,13 +177,16 @@ test.describe("task description markdown editor", () => {
 
     // Persisted as markdown image syntax, with the file name as alt text.
     await expect
-      .poll(async () => {
-        const { items } = await call<{ items: TaskBoardItem[] }>(
-          "TASK_BOARD_ITEM_LIST",
-          {},
-        );
-        return items.find((i) => i.id === item.id)?.description ?? null;
-      })
+      .poll(
+        async () => {
+          const { items } = await call<{ items: TaskBoardItem[] }>(
+            "TASK_BOARD_ITEM_LIST",
+            {},
+          );
+          return items.find((i) => i.id === item.id)?.description ?? null;
+        },
+        { timeout: AUTOSAVE_POLL_TIMEOUT_MS },
+      )
       .toMatch(
         /^!\[shot\.png\]\(\/api\/[^/]+\/fs\/uploads\/read\?path=editor-images%2F[\w-]+\.png\)$/,
       );
@@ -194,13 +202,16 @@ test.describe("task description markdown editor", () => {
 
     await closeTask(page);
     await expect
-      .poll(async () => {
-        const { items } = await call<{ items: TaskBoardItem[] }>(
-          "TASK_BOARD_ITEM_LIST",
-          {},
-        );
-        return items.find((i) => i.id === item.id)?.description ?? null;
-      })
+      .poll(
+        async () => {
+          const { items } = await call<{ items: TaskBoardItem[] }>(
+            "TASK_BOARD_ITEM_LIST",
+            {},
+          );
+          return items.find((i) => i.id === item.id)?.description ?? null;
+        },
+        { timeout: AUTOSAVE_POLL_TIMEOUT_MS },
+      )
       .toBe(null);
   });
 
@@ -251,13 +262,16 @@ test.describe("task description markdown editor", () => {
     // Persisted as a plain markdown link — legible to whatever reads the
     // description next, including the agent it's fed to as context.
     await expect
-      .poll(async () => {
-        const { items } = await call<{ items: TaskBoardItem[] }>(
-          "TASK_BOARD_ITEM_LIST",
-          {},
-        );
-        return items.find((i) => i.id === item.id)?.description ?? null;
-      })
+      .poll(
+        async () => {
+          const { items } = await call<{ items: TaskBoardItem[] }>(
+            "TASK_BOARD_ITEM_LIST",
+            {},
+          );
+          return items.find((i) => i.id === item.id)?.description ?? null;
+        },
+        { timeout: AUTOSAVE_POLL_TIMEOUT_MS },
+      )
       .toMatch(
         /^\[spec\.txt\]\(\/api\/[^/]+\/fs\/uploads\/read\?path=editor-files%2F[\w-]+\.txt\)$/,
       );
@@ -273,13 +287,16 @@ test.describe("task description markdown editor", () => {
 
     await closeTask(page);
     await expect
-      .poll(async () => {
-        const { items } = await call<{ items: TaskBoardItem[] }>(
-          "TASK_BOARD_ITEM_LIST",
-          {},
-        );
-        return items.find((i) => i.id === item.id)?.description ?? null;
-      })
+      .poll(
+        async () => {
+          const { items } = await call<{ items: TaskBoardItem[] }>(
+            "TASK_BOARD_ITEM_LIST",
+            {},
+          );
+          return items.find((i) => i.id === item.id)?.description ?? null;
+        },
+        { timeout: AUTOSAVE_POLL_TIMEOUT_MS },
+      )
       .toBe(null);
   });
 });
