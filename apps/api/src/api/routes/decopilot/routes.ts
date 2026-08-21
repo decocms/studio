@@ -381,7 +381,12 @@ export function assertHostedSandboxRuntime(
   harnessId: string | null | undefined,
   sandboxProviderKind: string | null | undefined,
 ): void {
-  if (harnessId === "claude-code") {
+  // `claude-code + user-desktop` is the NATIVE desktop coding agent, not this
+  // harness. It falls through to the Decopilot-only path deliberately: that one
+  // names the actual reason ("can only run in the Studio desktop app"), where
+  // this branch would report the vaguer sandbox-kind complaint about a row whose
+  // sandbox kind is not the problem.
+  if (harnessId === "claude-code" && sandboxProviderKind !== "user-desktop") {
     assertHostedSandboxProvider(sandboxProviderKind);
     return;
   }
@@ -403,6 +408,7 @@ export function normalizeHostedRuntimePin(
   sandboxProviderKind: SandboxProviderKind | null,
 ): SandboxProviderKind | null {
   if (harnessId === "claude-code") {
+    // Throws for the native desktop tuple; see `assertHostedSandboxRuntime`.
     assertHostedSandboxRuntime(harnessId, sandboxProviderKind);
     return sandboxProviderKind;
   }

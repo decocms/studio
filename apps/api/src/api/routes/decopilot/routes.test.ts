@@ -265,10 +265,13 @@ describe("assertHostedSandboxRuntime", () => {
   });
 
   test("still rejects the desktop-pinned and native harnesses", () => {
-    // claude-code + user-desktop is the NATIVE coding agent, not this harness.
+    // claude-code + user-desktop is the NATIVE coding agent, not this harness —
+    // and it is refused BY THAT NAME, not with the sandbox-kind complaint. Its
+    // sandbox kind is not what is wrong with it, and e2e `rejects persisted
+    // native and unknown harness rows` asserts this string over the wire.
     expect(() =>
       assertHostedSandboxRuntime("claude-code", "user-desktop"),
-    ).toThrow(/unsupported desktop runtime/);
+    ).toThrow(/Studio desktop app/);
     for (const harnessId of ["codex", "opencode", "future"]) {
       expect(() =>
         assertHostedSandboxRuntime(harnessId, "agent-sandbox"),
@@ -300,10 +303,14 @@ describe("normalizeHostedRuntimePin", () => {
     expect(normalizeHostedRuntimePin("claude-code", null)).toBeNull();
   });
 
-  test("still refuses the native desktop coding agent", () => {
+  test("still refuses the native desktop coding agent, by its own name", () => {
+    // Not the sandbox-kind complaint: this row IS the desktop agent, and the
+    // messages POST reported exactly this before claude-code became
+    // dispatchable. e2e `rejects persisted native and unknown harness rows`
+    // asserts the same string over the wire.
     expect(() =>
       normalizeHostedRuntimePin("claude-code", "user-desktop"),
-    ).toThrow(/unsupported desktop runtime/);
+    ).toThrow(/Studio desktop app/);
     expect(() => normalizeHostedRuntimePin("codex", "agent-sandbox")).toThrow(
       /Studio desktop app/,
     );
