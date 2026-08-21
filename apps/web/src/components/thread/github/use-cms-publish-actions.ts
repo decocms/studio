@@ -19,6 +19,7 @@ import {
   type PublishTarget,
 } from "./publish-flow.ts";
 import { discardGitFiles } from "./sandbox-git-api.ts";
+import { useRecordPrOnBoard } from "@/hooks/use-record-pr-on-board";
 
 /** `publish` merges to production; `review` stops at the pull request. */
 export type CmsPublishMode = "publish" | "review";
@@ -66,6 +67,7 @@ export function useCmsPublishActions(
     onPublished,
   } = args;
   const t = useT();
+  const recordPrOnBoard = useRecordPrOnBoard();
   const [isPublishing, setIsPublishing] = useState(false);
   const [isDiscarding, setIsDiscarding] = useState(false);
   const [publishError, setPublishError] = useState<string>();
@@ -81,8 +83,13 @@ export function useCmsPublishActions(
     setIsPublishing(true);
     setPublishError(undefined);
     try {
-      await runPublishFlow(target, noteParts(), t);
+      const pr = await runPublishFlow(target, noteParts(), t);
 
+      await recordPrOnBoard({
+        url: pr.htmlUrl,
+        repo: `${target.owner}/${target.repo}`,
+        merged: true,
+      });
       toast.success(
         destinationHost
           ? t("thread.publishPopover.publishedTo", { host: destinationHost })
@@ -113,6 +120,10 @@ export function useCmsPublishActions(
       const pr = await runSubmitForReviewFlow(target, noteParts());
 
       notifySubmittedForReview(pr, t);
+      await recordPrOnBoard({
+        url: pr.htmlUrl,
+        repo: `${target.owner}/${target.repo}`,
+      });
       onOpenChange(false);
       await onPullRequestChanged?.();
     } catch (error) {

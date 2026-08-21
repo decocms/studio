@@ -138,10 +138,10 @@ export const thread = {
     "Preparando seu ambiente — leva só um instante",
   "thread.headerActions.waitingForSandboxBranchTooltip":
     "Preparando seu ambiente — leva só um instante",
-  "thread.openInBoardButton.openTaskAriaLabel": "Abrir tarefa no quadro",
-  "thread.openInBoardButton.openTaskInBoard": "Abrir tarefa no quadro",
   "thread.taskCrumb.openTask": "Abrir {key} no quadro",
   "thread.addToBoard.defaultTitle": "Tarefa sem título",
+  "thread.addToBoard.added": "Adicionado ao quadro · {key}",
+  "thread.addToBoard.openTask": "Abrir tarefa",
   "thread.publishDialog.allChangesDiscarded":
     "Todas as alterações foram descartadas",
   "thread.publishDialog.branchLabel": "Branch:",

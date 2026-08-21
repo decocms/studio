@@ -39,6 +39,7 @@ import {
 import type { PrSummary } from "./use-pr-data.ts";
 import { useSandboxStart } from "@/components/sandbox/hooks/use-sandbox-start";
 import { publishToBaseLabel } from "./publish-label.ts";
+import { useRecordPrOnBoard } from "@/hooks/use-record-pr-on-board";
 import { useResolvedPublishGate } from "@/components/sandbox/hooks/use-publish-gate.ts";
 import {
   combinePublishDiffs,
@@ -129,6 +130,7 @@ function PublishDialogBody({
   onPublished,
 }: PublishDialogProps) {
   const t = useT();
+  const recordPrOnBoard = useRecordPrOnBoard();
   const githubClient = useMCPClient({
     connectionId: githubConnectionId,
     orgId,
@@ -360,9 +362,14 @@ function PublishDialogBody({
     setIsPublishing(true);
     setPublishError(undefined);
     try {
-      await runPublishFlow(publishTarget, messageParts(), t);
+      const pr = await runPublishFlow(publishTarget, messageParts(), t);
 
       toast.success(t("thread.publishDialog.publishedTo", { baseBranch }));
+      await recordPrOnBoard({
+        url: pr.htmlUrl,
+        repo: `${owner}/${repo}`,
+        merged: true,
+      });
       handleOpenChange(false);
       setGitDiff(null);
       setPublishTitle("");
@@ -430,6 +437,7 @@ function PublishDialogBody({
       const pr = await runSubmitForReviewFlow(publishTarget, messageParts());
 
       notifySubmittedForReview(pr, t);
+      await recordPrOnBoard({ url: pr.htmlUrl, repo: `${owner}/${repo}` });
       handleOpenChange(false);
       await onPullRequestChanged?.();
     } catch (error) {
