@@ -245,19 +245,26 @@ test.describe("first-class navigation", () => {
     ).toBeVisible();
   });
 
-  test("Reports is hidden until the org has a report, then opens the report app", async ({
+  test("Reports offers a diagnostic until the org has a report, then opens the report app", async ({
     authedPage: { page, orgSlug },
   }) => {
     await page.goto(`/${orgSlug}`);
     await expandSidebar(page, "Home");
 
-    // No Commerce Discovery connection yet → no Reports destination.
+    // No Commerce Discovery connection yet → the empty state, which starts one.
     await expect(
       page.getByRole("button", { name: "Tasks", exact: true }),
     ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await page
+      .getByRole("button", { name: "Reports", exact: true })
+      .click({ timeout: SHELL_TIMEOUT_MS });
+    await expect(page).toHaveURL(/[?&]main=reports\b/);
+    await expect(page.getByText("No reports yet")).toBeVisible({
+      timeout: SHELL_TIMEOUT_MS,
+    });
     await expect(
-      page.getByRole("button", { name: "Reports", exact: true }),
-    ).toHaveCount(0);
+      page.getByRole("button", { name: "Start diagnostic" }),
+    ).toBeVisible();
 
     const request = page.context().request;
     const orgId = await findOrgId(request, orgSlug);
