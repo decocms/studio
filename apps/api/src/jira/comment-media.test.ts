@@ -1,10 +1,12 @@
 import { describe, expect, it } from "bun:test";
 import {
+  attachImage,
   attachmentName,
   type CommentMediaDeps,
   imageContentType,
   parseOutputsRef,
-  resolveCommentMedia,
+  type PlannedAttachment,
+  plannedAttachments,
 } from "./comment-media";
 
 const ref = (path: string) =>
@@ -78,10 +80,65 @@ describe("attachmentName", () => {
   });
 });
 
+describe("plannedAttachments", () => {
+  it("plans one attachment per distinct claimable target, in order", () => {
+    const targets = [
+      ref("thrd_1/b.png"),
+      ref("thrd_1/a.png"),
+      ref("thrd_1/b.png"),
+    ];
+    expect(plannedAttachments(targets, "acme")).toEqual([
+      {
+        target: ref("thrd_1/b.png"),
+        ref: { volume: "outputs", path: "thrd_1/b.png" },
+        name: "thrd_1_b.png",
+      },
+      {
+        target: ref("thrd_1/a.png"),
+        ref: { volume: "outputs", path: "thrd_1/a.png" },
+        name: "thrd_1_a.png",
+      },
+    ]);
+  });
+
+  it("plans nothing for targets it cannot claim", () => {
+    expect(
+      plannedAttachments(
+        [
+          "https://img.example.dev/a.png",
+          ref("thrd_1/report.pdf"),
+          "/api/other/fs/outputs/read?path=a.png",
+        ],
+        "acme",
+      ),
+    ).toEqual([]);
+  });
+
+  it("caps the plan, because each entry is a write on the issue", () => {
+    const many = Array.from({ length: 12 }, (_unused, i) =>
+      ref(`thrd_1/${i}.png`),
+    );
+    expect(plannedAttachments(many, "acme")).toHaveLength(8);
+  });
+
+  it("is deterministic — the step sequence of a replay depends on it", () => {
+    const targets = [ref("thrd_1/a.png"), ref("thrd_1/b.png")];
+    expect(plannedAttachments(targets, "acme")).toEqual(
+      plannedAttachments(targets, "acme"),
+    );
+  });
+});
+
 interface Recorded {
   uploaded: string[];
   reused: string[];
 }
+
+const planned: PlannedAttachment = {
+  target: ref("thrd_1/a.png"),
+  ref: { volume: "outputs", path: "thrd_1/a.png" },
+  name: "thrd_1_a.png",
+};
 
 function deps(
   overrides: Partial<CommentMediaDeps> = {},
@@ -104,102 +161,60 @@ function deps(
   };
 }
 
-describe("resolveCommentMedia", () => {
-  it("uploads a referenced screenshot and maps it to its media id", async () => {
+describe("attachImage", () => {
+  it("uploads the screenshot and returns what embeds it", async () => {
     const d = deps();
-    const media = await resolveCommentMedia([ref("thrd_1/a.png")], "acme", d);
-    expect(d.calls.uploaded).toEqual(["thrd_1_a.png"]);
-    expect(media.get(ref("thrd_1/a.png"))).toEqual({
+    expect(await attachImage(planned, d)).toEqual({
       id: "uuid-thrd_1_a.png",
       alt: "a.png",
     });
+    expect(d.calls.uploaded).toEqual(["thrd_1_a.png"]);
   });
 
-  it("ignores targets it cannot claim, without any Jira call", async () => {
-    const d = deps();
-    const media = await resolveCommentMedia(
-      [
-        "https://img.example.dev/a.png",
-        ref("thrd_1/report.pdf"),
-        "/api/other/fs/outputs/read?path=a.png",
-      ],
-      "acme",
-      d,
-    );
-    expect(media.size).toBe(0);
-    expect(d.calls.uploaded).toEqual([]);
-  });
-
-  it("reuses an attachment already on the issue instead of uploading twice", async () => {
+  it("adopts an attachment already on the issue — what makes the step retriable", async () => {
     const d = deps({}, [
       { id: "44144", filename: "thrd_1_a.png", size: 3 },
       { id: "44145", filename: "thrd_1_a.png", size: 999 },
     ]);
-    const media = await resolveCommentMedia([ref("thrd_1/a.png")], "acme", d);
-    expect(d.calls.uploaded).toEqual([]);
+    expect((await attachImage(planned, d))?.id).toBe("uuid-existing-44144");
     // Name AND size: the same name at another size is a rewritten file.
     expect(d.calls.reused).toEqual(["44144"]);
-    expect(media.get(ref("thrd_1/a.png"))?.id).toBe("uuid-existing-44144");
-  });
-
-  it("keeps a target as a link when its file is gone", async () => {
-    const d = deps({ read: async () => null });
-    expect(
-      (await resolveCommentMedia([ref("thrd_1/a.png")], "acme", d)).size,
-    ).toBe(0);
     expect(d.calls.uploaded).toEqual([]);
   });
 
-  it("keeps a target as a link when the upload yields no media id", async () => {
-    const d = deps({
+  it("returns null for the outcomes a retry cannot improve", async () => {
+    const gone = deps({ read: async () => null });
+    expect(await attachImage(planned, gone)).toBeNull();
+    expect(gone.calls.uploaded).toEqual([]);
+
+    const oversized = deps({
+      read: async () => new Uint8Array(11 * 1024 * 1024),
+    });
+    expect(await attachImage(planned, oversized)).toBeNull();
+    expect(oversized.calls.uploaded).toEqual([]);
+
+    const noMediaId = deps({
       upload: async () => ({ attachmentId: "1", mediaId: null }),
     });
-    expect(
-      (await resolveCommentMedia([ref("thrd_1/a.png")], "acme", d)).size,
-    ).toBe(0);
+    expect(await attachImage(planned, noMediaId)).toBeNull();
   });
 
-  it("does not let one failed upload cost the other images", async () => {
+  it("throws on a failed upload, so the step retries instead of degrading", async () => {
     const d = deps({
-      upload: async (file) => {
-        if (file.name === "thrd_1_bad.png") throw new Error("507");
-        return { attachmentId: "1", mediaId: `uuid-${file.name}` };
+      upload: async () => {
+        throw new Error("502");
       },
     });
-    const media = await resolveCommentMedia(
-      [ref("thrd_1/bad.png"), ref("thrd_1/good.png")],
-      "acme",
-      d,
-    );
-    expect([...media.keys()]).toEqual([ref("thrd_1/good.png")]);
+    await expect(attachImage(planned, d)).rejects.toThrow("502");
   });
 
-  it("still embeds when the dedup listing fails", async () => {
+  it("still uploads when the dedup listing fails", async () => {
     const d = deps({
       listAttachments: async () => {
         throw new Error("403");
       },
     });
-    const media = await resolveCommentMedia([ref("thrd_1/a.png")], "acme", d);
-    expect(media.size).toBe(1);
+    expect((await attachImage(planned, d))?.id).toBe("uuid-thrd_1_a.png");
     expect(d.calls.uploaded).toEqual(["thrd_1_a.png"]);
-  });
-
-  it("skips an oversized file rather than spending the upload", async () => {
-    const d = deps({ read: async () => new Uint8Array(11 * 1024 * 1024) });
-    expect(
-      (await resolveCommentMedia([ref("thrd_1/big.png")], "acme", d)).size,
-    ).toBe(0);
-    expect(d.calls.uploaded).toEqual([]);
-  });
-
-  it("caps uploads per comment and dedups repeated targets", async () => {
-    const d = deps();
-    const many = Array.from({ length: 12 }, (_unused, i) =>
-      ref(`thrd_1/${i}.png`),
-    );
-    const media = await resolveCommentMedia([...many, ...many], "acme", d);
-    expect(d.calls.uploaded).toHaveLength(8);
-    expect(media.size).toBe(8);
   });
 });

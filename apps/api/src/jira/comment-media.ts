@@ -108,74 +108,85 @@ export interface CommentMediaDeps {
   mediaIdFor(attachmentId: string): Promise<string | null>;
 }
 
+export interface PlannedAttachment {
+  /** The image target as written in the markdown — the converter's map key. */
+  target: string;
+  ref: OutputsRef;
+  /** Filename on the issue, and the dedup key against what is already there. */
+  name: string;
+}
+
 /**
- * Resolve what `markdownToAdf` needs to embed: image target → uploaded media.
+ * Which image targets to attach, and under what name.
  *
- * Fail-open by design, per target: an unreadable file, a failed upload, an
- * unresolvable media id all leave the target out of the map, and the converter
- * keeps it as a link. Losing an inline image is a cosmetic regression; losing
- * the comment is not, and the push step gets no retry.
+ * Pure and deterministic, because the push workflow turns each entry into its
+ * own durable step: the same comment body must always plan the same
+ * attachments in the same order, or a replay would not line up with the steps
+ * already checkpointed.
  */
-export async function resolveCommentMedia(
+export function plannedAttachments(
   targets: readonly string[],
   orgSlug: string,
-  deps: CommentMediaDeps,
-): Promise<Map<string, AdfMedia>> {
-  const media = new Map<string, AdfMedia>();
-  const refs = new Map<string, OutputsRef>();
-  for (const target of new Set(targets)) {
+): PlannedAttachment[] {
+  const planned: PlannedAttachment[] = [];
+  const seen = new Set<string>();
+  for (const target of targets) {
+    if (seen.has(target)) continue;
+    seen.add(target);
     const ref = parseOutputsRef(target, orgSlug);
-    if (ref && imageContentType(ref.path)) refs.set(target, ref);
+    if (!ref || !imageContentType(ref.path)) continue;
+    planned.push({ target, ref, name: attachmentName(ref.path) });
   }
-  if (refs.size === 0) return media;
-
-  const capped = [...refs].slice(0, MAX_UPLOADS);
-  if (refs.size > capped.length) {
+  if (planned.length > MAX_UPLOADS) {
     console.warn(
-      `[jira] comment references ${refs.size} images; embedding the first ${capped.length}, the rest stay links`,
+      `[jira] comment references ${planned.length} images; embedding the first ${MAX_UPLOADS}, the rest stay links`,
     );
   }
+  return planned.slice(0, MAX_UPLOADS);
+}
 
-  let existing: Awaited<ReturnType<CommentMediaDeps["listAttachments"]>> = [];
-  try {
-    existing = await deps.listAttachments();
-  } catch (err) {
-    // Only costs dedup — a re-referenced screenshot uploads a second time.
-    console.warn("[jira] could not list attachments for dedup:", err);
+/**
+ * One planned image → what the converter needs to embed it, or null to leave
+ * it a link.
+ *
+ * Null is for the outcomes a retry cannot improve: the file is gone, it is
+ * over the upload cap, or Jira never yielded a media id. Everything else
+ * throws, so the surrounding step retries — safe because the dedup lookup
+ * makes a re-run find its own earlier upload instead of duplicating it, which
+ * is the property that lets this run as a retriable step at all.
+ */
+export async function attachImage(
+  item: PlannedAttachment,
+  deps: CommentMediaDeps,
+): Promise<AdfMedia | null> {
+  const bytes = await deps.read(item.ref);
+  if (!bytes) return null;
+  if (bytes.byteLength > MAX_UPLOAD_BYTES) {
+    console.warn(
+      `[jira] ${item.ref.path} is ${bytes.byteLength} bytes, over the ${MAX_UPLOAD_BYTES} upload cap — staying a link`,
+    );
+    return null;
   }
-
-  for (const [target, ref] of capped) {
-    try {
-      const bytes = await deps.read(ref);
-      if (!bytes) continue;
-      if (bytes.byteLength > MAX_UPLOAD_BYTES) {
-        console.warn(
-          `[jira] ${ref.path} is ${bytes.byteLength} bytes, over the ${MAX_UPLOAD_BYTES} upload cap — staying a link`,
-        );
-        continue;
-      }
-      const name = attachmentName(ref.path);
-      const alt = ref.path.split("/").pop() ?? name;
-      const match = existing.find(
-        (attachment) =>
-          attachment.filename === name && attachment.size === bytes.byteLength,
-      );
-      const mediaId = match
-        ? await deps.mediaIdFor(match.id)
-        : (
-            await deps.upload({
-              name,
-              bytes,
-              contentType: imageContentType(ref.path) ?? "image/png",
-            })
-          ).mediaId;
-      if (mediaId) media.set(target, { id: mediaId, alt });
-    } catch (err) {
-      console.warn(
-        `[jira] could not attach ${ref.path}, keeping the link:`,
-        err,
-      );
-    }
-  }
-  return media;
+  const existing = await deps
+    .listAttachments()
+    // Only costs dedup: a re-referenced screenshot uploads a second time.
+    .catch((err) => {
+      console.warn("[jira] could not list attachments for dedup:", err);
+      return [];
+    });
+  const match = existing.find(
+    (attachment) =>
+      attachment.filename === item.name && attachment.size === bytes.byteLength,
+  );
+  const mediaId = match
+    ? await deps.mediaIdFor(match.id)
+    : (
+        await deps.upload({
+          name: item.name,
+          bytes,
+          contentType: imageContentType(item.ref.path) ?? "image/png",
+        })
+      ).mediaId;
+  const alt = item.ref.path.split("/").pop() ?? item.name;
+  return mediaId ? { id: mediaId, alt } : null;
 }
