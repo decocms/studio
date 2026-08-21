@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import {
+  formatSprintDates,
   insertSortOrder,
   isTaskHandedToHuman,
   runSortOrders,
@@ -127,5 +128,20 @@ describe("isTaskHandedToHuman", () => {
     for (const status of ["triage", "todo", "in_progress", "done"] as const) {
       expect(isTaskHandedToHuman({ ...item("t", 0), status })).toBe(false);
     }
+  });
+});
+
+describe("formatSprintDates", () => {
+  const config = { enabled: true, weeks: 2, startDate: "2026-01-05" };
+
+  test("spans the sprint's own days, read in UTC", () => {
+    // Day numbers, not the whole string: month names follow the test locale.
+    const label = formatSprintDates(config, 1);
+    expect(label).toContain("5");
+    expect(label).toContain("18");
+  });
+
+  test("is null when the cadence can't be read", () => {
+    expect(formatSprintDates({ ...config, startDate: "nope" }, 1)).toBe(null);
   });
 });

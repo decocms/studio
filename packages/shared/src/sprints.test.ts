@@ -53,20 +53,30 @@ describe("sprintRange", () => {
 describe("sprintOptions", () => {
   const now = new Date("2026-03-02T12:00:00Z"); // sprint 5
 
-  it("offers a window around the current sprint", () => {
-    expect(sprintOptions(CONFIG, now)).toEqual([3, 4, 5, 6, 7, 8]);
+  it("reaches ~20 weeks ahead, so a shorter cadence offers more sprints", () => {
+    // 2-week sprints: 10 ahead of the current one (5), plus 2 behind.
+    expect(sprintOptions(CONFIG, now)).toEqual([
+      3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+    ]);
+    // 4-week sprints cover the same calendar in 5 windows.
+    const monthly = { ...CONFIG, weeks: 4 };
+    const current = sprintNumberAt(monthly, now)!;
+    const options = sprintOptions(monthly, now);
+    expect(options.at(-1)! - current).toBe(5);
   });
 
   it("never offers a sprint below 1", () => {
-    expect(sprintOptions(CONFIG, new Date("2026-01-06T00:00:00Z"))).toEqual([
-      1, 2, 3, 4,
-    ]);
+    expect(
+      sprintOptions(CONFIG, new Date("2026-01-06T00:00:00Z"), [], {
+        future: 3,
+      }),
+    ).toEqual([1, 2, 3, 4]);
   });
 
   it("keeps sprints already in use on the board selectable", () => {
-    expect(sprintOptions(CONFIG, now, [1, 5, null, undefined, 0])).toEqual([
-      1, 3, 4, 5, 6, 7, 8,
-    ]);
+    expect(
+      sprintOptions(CONFIG, now, [1, 5, null, undefined, 0], { future: 3 }),
+    ).toEqual([1, 3, 4, 5, 6, 7, 8]);
   });
 });
 

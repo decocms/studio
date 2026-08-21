@@ -22,6 +22,16 @@ export const DEFAULT_SPRINT_WEEKS = 2;
 /** Selectable cadences, in weeks. */
 export const SPRINT_WEEK_OPTIONS = [1, 2, 3, 4] as const;
 
+/**
+ * How far ahead a sprint picker offers, in WEEKS rather than in sprints — a
+ * team planning a quarter out needs the same calendar reach whether their
+ * sprints are one week or four.
+ */
+export const SPRINT_HORIZON_WEEKS = 20;
+
+/** How many past sprints a picker offers, on top of any already in use. */
+export const SPRINT_PAST_COUNT = 2;
+
 /** UTC midnight of a `YYYY-MM-DD` day, or null when unparseable. */
 function parseDay(day: string): number | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
@@ -91,18 +101,22 @@ export function sprintRange(
  * every sprint already in use on the board (a card parked in a long-past
  * sprint must stay selectable, and re-openable, after the board has moved on).
  *
- * Ascending, deduped, never below 1.
+ * Ascending, deduped, never below 1. The default forward reach is
+ * {@link SPRINT_HORIZON_WEEKS} of calendar, so a shorter cadence offers
+ * proportionally more sprints.
  */
 export function sprintOptions(
   config: SprintConfig,
   now: Date,
   assigned: readonly (number | null | undefined)[] = [],
-  { past = 2, future = 3 }: { past?: number; future?: number } = {},
+  { past = SPRINT_PAST_COUNT, future }: { past?: number; future?: number } = {},
 ): number[] {
+  const ahead =
+    future ?? Math.ceil(SPRINT_HORIZON_WEEKS / Math.max(1, config.weeks));
   const current = sprintNumberAt(config, now);
   const numbers = new Set<number>();
   if (current !== null) {
-    for (let n = current - past; n <= current + future; n++) {
+    for (let n = current - past; n <= current + ahead; n++) {
       if (n >= 1) numbers.add(n);
     }
   }

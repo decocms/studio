@@ -75,6 +75,7 @@ import { getInitials } from "@/lib/get-initials";
 import { useT } from "@/i18n/use-t.ts";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
+  formatSprintDates,
   nextTagColor,
   PRIORITIES,
   PRIORITY_CONFIG,
@@ -1071,7 +1072,10 @@ export function TaskBoardItemDialog({
                           })}
                     </button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-48">
+                  <DropdownMenuContent
+                    align="start"
+                    className="max-h-80 w-72 overflow-y-auto"
+                  >
                     <DropdownMenuRadioGroup
                       value={sprint === null ? NO_SPRINT_VALUE : String(sprint)}
                       onValueChange={(next) =>
@@ -1087,13 +1091,19 @@ export function TaskBoardItemDialog({
                       {sprintOptions(sprintConfig, new Date(), [sprint]).map(
                         (n) => (
                           <DropdownMenuRadioItem key={n} value={String(n)}>
-                            {n === currentSprint
-                              ? t("taskBoard.taskDialog.sprintNumberCurrent", {
-                                  number: String(n),
-                                })
-                              : t("taskBoard.taskDialog.sprintNumber", {
-                                  number: String(n),
-                                })}
+                            <span className="truncate">
+                              {formatSprintDates(sprintConfig, n)}
+                            </span>
+                            <span className="ml-auto shrink-0 text-muted-foreground">
+                              {n === currentSprint
+                                ? t(
+                                    "taskBoard.taskDialog.sprintNumberCurrent",
+                                    { number: String(n) },
+                                  )
+                                : t("taskBoard.taskDialog.sprintNumber", {
+                                    number: String(n),
+                                  })}
+                            </span>
                           </DropdownMenuRadioItem>
                         ),
                       )}

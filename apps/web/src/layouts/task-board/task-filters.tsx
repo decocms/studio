@@ -54,7 +54,9 @@ import {
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { getInitials } from "@/lib/get-initials";
+import { sprintNumberAt, type SprintConfig } from "@decocms/shared/sprints";
 import {
+  formatSprintDates,
   PRIORITIES,
   PRIORITY_CONFIG,
   SUPER_AGENT_ASSIGNEE_ID,
@@ -629,19 +631,22 @@ function RepoFilter({
 function SprintFilter({
   value,
   sprints,
-  currentSprint,
+  sprintConfig,
   onChange,
   block,
 }: {
   value: number | typeof BACKLOG_FILTER | null;
   /** Sprint numbers to offer, ascending (see `sprintOptions`). */
   sprints: number[];
-  /** The sprint today falls in, marked in the list so "now" is findable. */
-  currentSprint: number | null;
+  /** The cadence behind each option's dates; null once sprints are off. */
+  sprintConfig: SprintConfig | null;
   onChange: (next: number | typeof BACKLOG_FILTER | null) => void;
   block?: boolean;
 }) {
   const t = useT();
+  const currentSprint = sprintConfig
+    ? sprintNumberAt(sprintConfig, new Date())
+    : null;
   const label =
     value === null
       ? t("taskBoard.taskFilters.sprintLabel")
@@ -659,7 +664,10 @@ function SprintFilter({
           <ChevronDown size={12} className={chevronClass} />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-48">
+      <DropdownMenuContent
+        align="start"
+        className="max-h-80 w-72 overflow-y-auto"
+      >
         <DropdownMenuRadioGroup
           value={value === null ? ANY_FILTER : String(value)}
           onValueChange={(next) =>
@@ -680,13 +688,18 @@ function SprintFilter({
           </DropdownMenuRadioItem>
           {sprints.map((n) => (
             <DropdownMenuRadioItem key={n} value={String(n)}>
-              {n === currentSprint
-                ? t("taskBoard.taskFilters.sprintNumberCurrent", {
-                    number: String(n),
-                  })
-                : t("taskBoard.taskFilters.sprintNumber", {
-                    number: String(n),
-                  })}
+              <span className="truncate">
+                {sprintConfig ? formatSprintDates(sprintConfig, n) : null}
+              </span>
+              <span className="ml-auto shrink-0 text-muted-foreground">
+                {n === currentSprint
+                  ? t("taskBoard.taskFilters.sprintNumberCurrent", {
+                      number: String(n),
+                    })
+                  : t("taskBoard.taskFilters.sprintNumber", {
+                      number: String(n),
+                    })}
+              </span>
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>
@@ -767,7 +780,7 @@ function FilterControls({
   tags,
   repos,
   sprints,
-  currentSprint,
+  sprintConfig,
   onChange,
   block,
 }: {
@@ -776,7 +789,7 @@ function FilterControls({
   tags: OrgTag[];
   repos: string[];
   sprints: number[];
-  currentSprint: number | null;
+  sprintConfig: SprintConfig | null;
   onChange: (next: TaskFilters) => void;
   block?: boolean;
 }) {
@@ -828,7 +841,7 @@ function FilterControls({
           block={block}
           value={filters.sprint}
           sprints={sprints}
-          currentSprint={currentSprint}
+          sprintConfig={sprintConfig}
           onChange={(sprint) => onChange({ ...filters, sprint })}
         />
       )}
@@ -843,7 +856,7 @@ export function TaskFiltersBar({
   tags,
   repos,
   sprints,
-  currentSprint,
+  sprintConfig,
   onChange,
 }: {
   filters: TaskFilters;
@@ -851,7 +864,7 @@ export function TaskFiltersBar({
   tags: OrgTag[];
   repos: string[];
   sprints: number[];
-  currentSprint: number | null;
+  sprintConfig: SprintConfig | null;
   onChange: (next: TaskFilters) => void;
 }) {
   const t = useT();
@@ -867,7 +880,7 @@ export function TaskFiltersBar({
         tags={tags}
         repos={repos}
         sprints={sprints}
-        currentSprint={currentSprint}
+        sprintConfig={sprintConfig}
         onChange={onChange}
       />
       {hasActiveFilters(filters) && (
@@ -894,7 +907,7 @@ export function TaskFiltersDrawer({
   tags,
   repos,
   sprints,
-  currentSprint,
+  sprintConfig,
   onChange,
 }: {
   filters: TaskFilters;
@@ -902,7 +915,7 @@ export function TaskFiltersDrawer({
   tags: OrgTag[];
   repos: string[];
   sprints: number[];
-  currentSprint: number | null;
+  sprintConfig: SprintConfig | null;
   onChange: (next: TaskFilters) => void;
 }) {
   const t = useT();
@@ -934,7 +947,7 @@ export function TaskFiltersDrawer({
             tags={tags}
             repos={repos}
             sprints={sprints}
-            currentSprint={currentSprint}
+            sprintConfig={sprintConfig}
             onChange={onChange}
           />
         </div>

@@ -13,6 +13,7 @@ import {
   REVIEWER_KINDS,
   type ReviewerKind,
 } from "@decocms/shared/task-board";
+import { sprintRange, type SprintConfig } from "@decocms/shared/sprints";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 
 export {
@@ -32,6 +33,26 @@ export type TaskBoardItemPr =
 /** Org tag, as returned by TAGS_LIST/TAGS_CREATE (same shape a task's `tags`
  *  snapshot is drawn from). */
 export type OrgTag = ToolOutput<"TAGS_LIST">["tags"][number];
+
+/** UTC, matching how `sprintRange` counts days — a local-zone read of the same
+ *  boundary shows the day before for anyone west of UTC. */
+const SPRINT_DATE_FMT = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
+});
+
+/** A sprint's span as `Jan 5 – Jan 18`, or null when the cadence is unusable. */
+export function formatSprintDates(
+  config: SprintConfig,
+  sprint: number,
+): string | null {
+  const range = sprintRange(config, sprint);
+  if (!range) return null;
+  const day = (value: string) =>
+    SPRINT_DATE_FMT.format(new Date(`${value}T00:00:00.000Z`));
+  return `${day(range.start)} – ${day(range.end)}`;
+}
 
 /**
  * A task is "blocked" when one of its agent threads is waiting on human input

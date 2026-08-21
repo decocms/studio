@@ -117,7 +117,7 @@ import {
 } from "./config";
 import { useTags } from "@/hooks/use-tags";
 import { useSprintConfig } from "@/hooks/use-organization-settings";
-import { sprintNumberAt, sprintOptions } from "@decocms/shared/sprints";
+import { sprintOptions } from "@decocms/shared/sprints";
 import { usePreferences } from "@/hooks/use-preferences";
 import {
   TaskBoardItemDialog,
@@ -540,17 +540,15 @@ export function TaskBoardPage() {
     setTaskId(newId, agentId);
   };
 
-  const now = new Date();
-  const currentSprint =
-    sprintConfig && sprintsEnabled ? sprintNumberAt(sprintConfig, now) : null;
-  const sprintNumbers =
-    sprintConfig && sprintsEnabled
-      ? sprintOptions(
-          sprintConfig,
-          now,
-          items.map((item) => item.sprint),
-        )
-      : [];
+  // Null while sprints are off, which is what hides the filter control.
+  const activeSprintConfig = sprintsEnabled ? sprintConfig : null;
+  const sprintNumbers = activeSprintConfig
+    ? sprintOptions(
+        activeSprintConfig,
+        new Date(),
+        items.map((item) => item.sprint),
+      )
+    : [];
 
   const visibleItems = items.filter((item) =>
     taskMatchesFilters(item, filters),
@@ -646,7 +644,7 @@ export function TaskBoardPage() {
                   tags={orgTags}
                   repos={repos}
                   sprints={sprintNumbers}
-                  currentSprint={currentSprint}
+                  sprintConfig={activeSprintConfig}
                   onChange={handleFiltersChange}
                 />
               </div>
@@ -657,7 +655,7 @@ export function TaskBoardPage() {
                   tags={orgTags}
                   repos={repos}
                   sprints={sprintNumbers}
-                  currentSprint={currentSprint}
+                  sprintConfig={activeSprintConfig}
                   onChange={handleFiltersChange}
                 />
               </div>
