@@ -247,6 +247,8 @@ export const createProxyRoutes = () => {
       );
     }
 
+    // Hoisted so the catch block can reuse it instead of re-querying.
+    let connection: ConnectionEntity | null = null;
     try {
       try {
         // Organization context is required — without it the ownership
@@ -256,7 +258,7 @@ export const createProxyRoutes = () => {
         }
 
         // Fetch connection scoped to the caller's organization
-        const connection = await ctx.tracer.startActiveSpan(
+        connection = await ctx.tracer.startActiveSpan(
           "studio.connection.lookup",
           { attributes: { "connection.id": connectionId } },
           async (span) => {
@@ -284,9 +286,11 @@ export const createProxyRoutes = () => {
         if (!connection) {
           throw new Error("Connection not found");
         }
+        // Narrows `connection` for the closures below.
+        const foundConnection = connection;
 
         // Validate organization ownership
-        if (connection.organization_id !== ctx.organization.id) {
+        if (foundConnection.organization_id !== ctx.organization.id) {
           throw new Error(
             "Connection does not belong to the active organization",
           );
@@ -299,22 +303,25 @@ export const createProxyRoutes = () => {
         // disable time) elapses. Within the cooldown we fast-fail with a
         // Retry-After hint so callers stop hammering.
         let recovering = false;
-        if (connection.status !== "active") {
+        if (foundConnection.status !== "active") {
           const sinceDisabledMs =
-            Date.now() - new Date(connection.updated_at).getTime();
+            Date.now() - new Date(foundConnection.updated_at).getTime();
           const canReprobe =
-            connection.status === "error" &&
-            !!connection.connection_url &&
+            foundConnection.status === "error" &&
+            !!foundConnection.connection_url &&
             sinceDisabledMs >= CONNECTION_ERROR_REPROBE_COOLDOWN_MS;
           if (canReprobe) {
             recovering = true;
           } else {
-            if (connection.status === "error" && connection.connection_url) {
+            if (
+              foundConnection.status === "error" &&
+              foundConnection.connection_url
+            ) {
               const remainingMs =
                 CONNECTION_ERROR_REPROBE_COOLDOWN_MS - sinceDisabledMs;
               c.header("Retry-After", String(Math.ceil(remainingMs / 1000)));
             }
-            throw new Error(`Connection inactive: ${connection.status}`);
+            throw new Error(`Connection inactive: ${foundConnection.status}`);
           }
         }
 
@@ -341,20 +348,20 @@ export const createProxyRoutes = () => {
             : true;
         }
         if (recovering) probe = true; // half-open: a real handshake must test recovery
-        if (connection.connection_url && probe) {
+        if (foundConnection.connection_url && probe) {
           assertCircuitClosed(connectionId);
           await ctx.tracer.startActiveSpan(
             "studio.connection.handshake",
             {
               attributes: {
                 "connection.id": connectionId,
-                "connection.url": connection.connection_url,
+                "connection.url": foundConnection.connection_url,
               },
             },
             async (span) => {
               startTime(c, "mcp.client_handshake");
               try {
-                await clientFromConnection(connection, ctx, false);
+                await clientFromConnection(foundConnection, ctx, false);
                 recordSuccess(connectionId);
                 void getConnectionCircuitStore().recordSuccess(connectionId);
                 if (recovering) {
@@ -384,7 +391,7 @@ export const createProxyRoutes = () => {
 
         // Create enhanced server directly (no need for bridge - server is used directly!)
         startTime(c, "mcp.create_server");
-        const server = serverFromConnection(connection, ctx, false);
+        const server = serverFromConnection(foundConnection, ctx, false);
         endTime(c, "mcp.create_server");
 
         // Create HTTP transport
@@ -415,7 +422,7 @@ export const createProxyRoutes = () => {
         }
         // Check if this is an auth error - if so, return appropriate 401
         // Note: This only applies to HTTP connections
-        const connection = await ctx.storage.connections.findById(
+        connection ??= await ctx.storage.connections.findById(
           connectionId,
           ctx.organization?.id,
         );
@@ -466,9 +473,11 @@ export const createProxyRoutes = () => {
     const toolName = c.req.param("toolName");
     const ctx = c.get("studioContext");
 
+    // Hoisted so the catch block can reuse it instead of re-querying.
+    let connection: ConnectionEntity | null = null;
     try {
       // Fetch connection and create client directly
-      const connection = await ctx.storage.connections.findById(
+      connection = await ctx.storage.connections.findById(
         connectionId,
         ctx.organization?.id,
       );
@@ -504,7 +513,7 @@ export const createProxyRoutes = () => {
       // Surface upstream OAuth 401s as a WWW-Authenticate response so the
       // frontend can trigger the OAuth popup — consistent with the main proxy
       // route. Without this, an expired/missing credential would 500 here.
-      const connection = await ctx.storage.connections.findById(
+      connection ??= await ctx.storage.connections.findById(
         connectionId,
         ctx.organization?.id,
       );
