@@ -171,6 +171,8 @@ import * as migration169taskboardmergefailedactivity from "./169-task-board-merg
 import * as migration170taskboarditemrepo from "./170-task-board-item-repo.ts";
 import * as migration171jiraintegration from "./171-jira-integration.ts";
 import * as migration172taskboarditemkeyseq from "./172-task-board-item-key-seq.ts";
+import * as migration173threadgithubrepoconnectionindex from "./173-thread-github-repo-connection-index.ts";
+import * as migration174threadmessagepartspersistedat from "./174-thread-message-parts-persisted-at.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -371,6 +373,10 @@ const migrations: Record<string, Migration> = {
   "170-task-board-item-repo": migration170taskboarditemrepo,
   "171-jira-integration": migration171jiraintegration,
   "172-task-board-item-key-seq": migration172taskboarditemkeyseq,
+  "173-thread-github-repo-connection-index":
+    migration173threadgithubrepoconnectionindex,
+  "174-thread-message-parts-persisted-at":
+    migration174threadmessagepartspersistedat,
 };
 
 export default migrations;

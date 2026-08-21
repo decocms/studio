@@ -59,6 +59,11 @@ import {
   publicVolumeForSet,
 } from "@/file-storage/public-sets";
 import { buildSkillCatalog } from "@/file-storage/skill-catalog";
+import {
+  SKILL_TAR_MAX_BYTES,
+  selectSkillFiles,
+  streamSkillTar,
+} from "@/file-storage/skill-tar";
 import { detectContentType } from "@/object-storage/key-utils";
 
 type Variables = { studioContext: StudioContext };
@@ -562,6 +567,48 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       return c.json({
         skills: await buildSkillCatalog(ctx, ctx.organization.id),
       });
+    } catch (err) {
+      return fsErrorResponse(c, err);
+    }
+  });
+
+  // Every skill folder in one volume as a single tar. The sandbox daemon's
+  // prefetch used to walk the mount file by file (a stat, a presign, an S3 GET
+  // each) — ~350 round trips per pod for ~1.3MB, which was 40 of the 44 seconds
+  // before a run's first token. Here the tree comes from one query and the
+  // objects are read inside the datacenter, so it is one request.
+  //
+  // Above the `/:volume/*` reads only by convention; the literal `skills.tar`
+  // segment cannot collide with them. Member-gated like any other read, and the
+  // same cap the daemon enforces on disk is enforced here on the wire.
+  app.get("/:volume/skills.tar", async (c) => {
+    const volume = c.req.param("volume");
+    const r = await resolve(c, volume, "ORG_FS_READ");
+    if (!r.ok) return r.res;
+    try {
+      const entries = selectSkillFiles(await r.fs.listVolumeFiles(volume));
+      if (entries.length === 0) {
+        return c.json({ error: "No skills in this volume" }, 404);
+      }
+      return new Response(
+        streamSkillTar({
+          entries,
+          read: (path) => r.fs.read(volume, path),
+          maxBytes: SKILL_TAR_MAX_BYTES,
+          onSkip: (name, reason) =>
+            console.warn(
+              `[org-fs] skill tar skipped ${volume}:${name}`,
+              reason,
+            ),
+        }),
+        {
+          headers: {
+            "content-type": "application/x-tar",
+            // Per-pod, per-boot and authorized — never a shared cache entry.
+            "cache-control": "no-store",
+          },
+        },
+      );
     } catch (err) {
       return fsErrorResponse(c, err);
     }

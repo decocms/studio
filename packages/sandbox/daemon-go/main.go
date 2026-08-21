@@ -181,6 +181,18 @@ func (d *daemon) getActiveTasks() []events.ActiveTaskSummary {
 
 const fileChangedDebounce = 300 * time.Millisecond
 
+// How long a dispatch waits for the org-fs skill prefetch before starting the
+// harness anyway.
+//
+// Sized for the SLOW path, not the fast one. The bulk route fetches a set in one
+// request and finishes in about a second, so nobody waits this long in practice;
+// the budget is slack for the per-file fallback, which takes ~30s for a hundred
+// skills. It was 15s, which the fallback overran — and because publishing is now
+// all-or-nothing per set, overrunning means a run starts with a set MISSING
+// rather than with a silent arbitrary fraction of it. Waiting once beats
+// answering the wrong question, so the ceiling is generous and loud when hit.
+const skillLinkWait = 40 * time.Second
+
 func (d *daemon) emitFileChanged(path string) {
 	d.fileChangedMu.Lock()
 	defer d.fileChangedMu.Unlock()
@@ -916,6 +928,13 @@ func main() {
 		StatusPath: os.Getenv("ORGFS_SIDECAR_STATUS_PATH"),
 		ConfigPath: os.Getenv("ORGFS_SIDECAR_CONFIG_PATH"),
 	}
+	// Desktop mounts from the boot env rather than a relayed config, so seed the
+	// prefetch credential from it too.
+	if c := orgfs.ParseConfig([]byte(os.Getenv("ORGFS_CONFIG"))); c != nil {
+		d.orgFsLinks.SetAPIConfig(orgfs.APIConfig{
+			BaseUrl: c.BaseUrl, OrgSlug: c.OrgSlug, Token: c.Token,
+		})
+	}
 	// Fail loud rather than silently unmounted: ORGFS_CONFIG is the desktop's
 	// "mount them yourself" env, which only the TS bundle implements.
 	if os.Getenv("ORGFS_CONFIG") != "" && d.orgFsLinks.StatusPath == "" {
@@ -958,9 +977,15 @@ func main() {
 			if cfg == nil {
 				return nil
 			}
-			env := make(map[string]string, len(cfg.Env)+1)
+			env := make(map[string]string, len(cfg.Env)+2)
 			if token := config.TokenFromCloneUrl(cfg.CloneUrl()); token != "" {
 				env["GH_TOKEN"] = token
+			}
+			// The org's prefetched skills, as a local plugin the harness loads by
+			// absolute path. Empty until a sync published something, so a pod with
+			// no org skills hands the SDK nothing to load.
+			if dir := d.orgFsLinks.SkillPluginDir(); dir != "" {
+				env["CLAUDE_CODE_PLUGIN_DIRS"] = dir
 			}
 			// Tenant env last: an explicit GH_TOKEN from Studio wins.
 			for k, v := range cfg.Env {
@@ -973,6 +998,11 @@ func main() {
 		// link; never blocks the run.
 		BeforeRun: func(info dispatch.RunInfo) {
 			d.orgFsLinks.RepointForRun(info.ThreadId)
+			// RepointForRun kicks the skill-link sync off-thread; wait for it here.
+			// Claude Code scans its skill dirs once at startup, so a symlink that
+			// lands after that is invisible for the entire run. Bounded — a miss
+			// costs this run's late skills, not the run.
+			d.orgFsLinks.WaitSkillLinks(skillLinkWait)
 			catalogSync.Sync(toolscatalog.Endpoint{
 				URL:       info.McpURL,
 				Headers:   info.McpHeaders,
@@ -1066,6 +1096,14 @@ func main() {
 		}),
 		orgfsConfig: routes.OrgFsConfig(routes.OrgFsDeps{
 			ConfigPath: os.Getenv("ORGFS_SIDECAR_CONFIG_PATH"),
+			// The relayed config is also the daemon's own org-fs credential: the
+			// skill prefetch uses it to pull a whole set in one API request rather
+			// than walking the mount file by file.
+			OnConfig: func(baseUrl, orgSlug, token string) {
+				d.orgFsLinks.SetAPIConfig(orgfs.APIConfig{
+					BaseUrl: baseUrl, OrgSlug: orgSlug, Token: token,
+				})
+			},
 		}),
 		fs: map[string]http.HandlerFunc{
 			"read":           routes.Read(fsDeps),

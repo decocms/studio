@@ -1,15 +1,15 @@
 /**
- * E2E: clonable agents (connected GitHub repo) allow editing the icon/logo
- * on the settings tab. Title, description, and instructions remain locked
- * to the repo — those are intentionally NOT asserted here.
- *
- * See docs/superpowers/specs/2026-06-03-clonable-agent-logo-editable-design.md
+ * E2E: clonable agents (connected GitHub repo) allow editing their whole
+ * identity — icon/logo, name and description — on the settings tab. A linked
+ * repo is addressed by `metadata.githubRepo` and its site tenancy by
+ * `metadata.siteSlug`, so neither is keyed off the title and none of these
+ * fields needs to be read-only.
  */
 import { expect, test } from "../fixtures/test";
 import { callSelfMcpTool, createHttpConnection } from "../fixtures/mcp-tools";
 
-test.describe("clonable agent logo (settings tab)", () => {
-  test("icon picker is interactive when the agent has a connected GitHub repo", async ({
+test.describe("clonable agent identity (settings tab)", () => {
+  test("icon, name and description are editable when the agent has a connected GitHub repo", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
@@ -32,7 +32,7 @@ test.describe("clonable agent logo (settings tab)", () => {
       "COLLECTION_VIRTUAL_MCP_CREATE",
       {
         data: {
-          title: "clonable logo e2e",
+          title: "clonable identity e2e",
           description: "from a repo",
           status: "active",
           pinned: false,
@@ -67,21 +67,36 @@ test.describe("clonable agent logo (settings tab)", () => {
     const titleInput = page.getByPlaceholder("Agent name");
     await expect(titleInput).toBeVisible({ timeout: 15_000 });
 
-    // Sanity-check the asymmetry first: the title input is still disabled,
-    // confirming the agent is clonable (agentHasConnectedGithub === true).
-    // If this fails, the metadata wiring or the route navigation broke,
-    // and the icon-button assertion below would be testing the wrong thing.
-    await expect(titleInput).toBeDisabled();
-
     // The IconPicker trigger button is tagged with data-testid so the
     // locator doesn't depend on DOM-tree shape (button order, wrapper
     // divs, etc.). The testid lives on the <button> at the root of
     // <IconPicker> in apps/web/src/components/icon-picker.tsx.
     const iconButton = page.getByTestId("icon-picker-trigger");
 
-    // The assertion under test: the button must be enabled. Without the
-    // fix, `disabled={hasGithubRepo}` makes this fail with the trigger
-    // button reporting `disabled`.
+    // Under test: `disabled={hasGithubRepo}` locked each of these.
     await expect(iconButton).toBeEnabled();
+    await expect(titleInput).toBeEnabled();
+    const descriptionInput = page.getByPlaceholder("Add a description...");
+    await expect(descriptionInput).toBeEnabled();
+
+    // A rename must reach the row — the form autosaves on blur.
+    const renamed = `renamed identity e2e ${Date.now()}`;
+    await titleInput.fill(renamed);
+    await titleInput.blur();
+
+    await expect
+      .poll(
+        async () => {
+          const got = await callSelfMcpTool<{ item: { title: string } }>(
+            api,
+            orgSlug,
+            "COLLECTION_VIRTUAL_MCP_GET",
+            { id: agent.item.id },
+          );
+          return got.item.title;
+        },
+        { timeout: 15_000 },
+      )
+      .toBe(renamed);
   });
 });

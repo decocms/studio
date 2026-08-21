@@ -10,7 +10,7 @@
  * purpose — this suite owns its contract (see ban-e2e-app-imports).
  */
 
-import type { Page } from "@playwright/test";
+import type { APIRequestContext, Page } from "@playwright/test";
 import { z } from "zod";
 import { connectDevDb } from "../fixtures/db";
 import {
@@ -95,6 +95,43 @@ async function clearSeededNavV2(orgId: string): Promise<void> {
   } finally {
     await db.end();
   }
+}
+
+/** Wire contract: the repo a coding agent is created against. Kept distinct
+ *  from every agent title below so the sidebar's label source is unambiguous. */
+const CODING_AGENT_REPO = "nav-v2-e2e";
+
+/** A repo-backed ("coding") agent — the sidebar lists one row per repo. */
+async function createCodingAgent(
+  request: APIRequestContext,
+  orgSlug: string,
+  title: string,
+): Promise<{ item: { id: string } }> {
+  const conn = await createHttpConnection(request, orgSlug, {
+    title: "github-placeholder",
+    url: "http://127.0.0.1:3000/",
+  });
+  return await callSelfMcpTool<{ item: { id: string } }>(
+    request,
+    orgSlug,
+    "COLLECTION_VIRTUAL_MCP_CREATE",
+    {
+      data: {
+        title,
+        status: "active",
+        pinned: false,
+        connections: [{ connection_id: conn.id }],
+        metadata: {
+          githubRepo: {
+            url: `https://github.com/example/${CODING_AGENT_REPO}`,
+            owner: "example",
+            name: CODING_AGENT_REPO,
+            connectionId: conn.id,
+          },
+        },
+      },
+    },
+  );
 }
 
 /** A Commerce Discovery MCP that answers with one completed diagnostic. */
@@ -339,31 +376,7 @@ test.describe("first-class navigation", () => {
     const request = page.context().request;
     const orgId = await findOrgId(request, orgSlug);
 
-    const conn = await createHttpConnection(request, orgSlug, {
-      title: "github-placeholder",
-      url: "http://127.0.0.1:3000/",
-    });
-    const agent = await callSelfMcpTool<{ item: { id: string } }>(
-      request,
-      orgSlug,
-      "COLLECTION_VIRTUAL_MCP_CREATE",
-      {
-        data: {
-          title: "coding agent e2e",
-          status: "active",
-          pinned: false,
-          connections: [{ connection_id: conn.id }],
-          metadata: {
-            githubRepo: {
-              url: "https://github.com/example/nav-v2-e2e",
-              owner: "example",
-              name: "nav-v2-e2e",
-              connectionId: conn.id,
-            },
-          },
-        },
-      },
-    );
+    const agent = await createCodingAgent(request, orgSlug, "coding agent e2e");
     const thread = await callSelfMcpTool<{ item: { id: string } }>(
       request,
       orgSlug,
@@ -381,5 +394,44 @@ test.describe("first-class navigation", () => {
       new RegExp(`[?&]virtualmcpid=${decopilotId(orgId)}\\b`),
     );
     await expect(page).toHaveURL(/[?&]main=board\b/);
+  });
+
+  test("a coding agent is listed by its title, and follows a rename", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const request = page.context().request;
+    const agent = await createCodingAgent(request, orgSlug, "before rename");
+    const thread = await callSelfMcpTool<{ item: { id: string } }>(
+      request,
+      orgSlug,
+      "COLLECTION_THREADS_CREATE",
+      { data: { virtual_mcp_id: agent.item.id } },
+    );
+
+    // The settings tab is driven by `?main=`, not `?tab=`.
+    await page.goto(
+      `/${orgSlug}/${thread.item.id}?virtualmcpid=${agent.item.id}&main=settings`,
+    );
+    await expandSidebar(page, "Home");
+
+    const sidebar = page.locator('[data-sidebar="content"]');
+    const row = (name: string) =>
+      sidebar.getByRole("button", { name, exact: true });
+    await expect(row("before rename")).toBeVisible({
+      timeout: SHELL_TIMEOUT_MS,
+    });
+    await expect(row(CODING_AGENT_REPO)).toHaveCount(0);
+
+    // Rename the way a user does — the identity form autosaves on blur.
+    const titleInput = page.getByPlaceholder("Agent name");
+    await expect(titleInput).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await titleInput.fill("after rename");
+    await titleInput.blur();
+
+    await expect(row("after rename")).toBeVisible({
+      timeout: SHELL_TIMEOUT_MS,
+    });
+    await expect(row("before rename")).toHaveCount(0);
+    await expect(row(CODING_AGENT_REPO)).toHaveCount(0);
   });
 });

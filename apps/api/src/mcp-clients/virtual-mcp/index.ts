@@ -6,7 +6,7 @@
  */
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { isDecopilot } from "@decocms/shared/sdk";
+import { isDecopilot, WellKnownOrgMCPId } from "@decocms/shared/sdk";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { getMcpListCache } from "../mcp-list-cache";
 import type { StudioContext } from "../../core/studio-context";
@@ -54,6 +54,46 @@ export async function createVirtualClient(
 
   // Create client from virtual MCP entity
   return createVirtualClientFrom(virtualMcp, ctx, superUser);
+}
+
+/**
+ * Board tools a coding agent (one with a checkout) is granted at runtime so it
+ * can surface a PR it opens as a card in review. Narrow on purpose: never
+ * REVIEW_DECISION or PROMOTE — an agent must not sign off on its own work.
+ */
+const CODE_AGENT_BOARD_TOOLS = [
+  "TASK_BOARD_ITEM_LIST",
+  "TASK_BOARD_ITEM_CREATE",
+  "TASK_BOARD_ITEM_UPDATE",
+  "TASK_BOARD_COMMENT_CREATE",
+] as const;
+
+/**
+ * The scoped SELF connection entry to graft onto a coding agent so it can put a
+ * PR it opens into review, or null when the agent isn't a coding agent (no
+ * `metadata.githubRepo.url`) or already declares its own SELF connection. Pure
+ * so the inject/skip decision is unit-tested without a StudioContext.
+ */
+export function codeAgentBoardConnection(
+  virtualMcp: Pick<
+    VirtualMCPEntity,
+    "organization_id" | "metadata" | "connections"
+  >,
+): VirtualMCPEntity["connections"][number] | null {
+  const githubRepoUrl = (
+    virtualMcp.metadata as { githubRepo?: { url?: string } | null } | undefined
+  )?.githubRepo?.url;
+  if (!virtualMcp.organization_id || !githubRepoUrl) return null;
+  const selfId = WellKnownOrgMCPId.SELF(virtualMcp.organization_id);
+  if (virtualMcp.connections.some((c) => c.connection_id === selfId)) {
+    return null;
+  }
+  return {
+    connection_id: selfId,
+    selected_tools: [...CODE_AGENT_BOARD_TOOLS],
+    selected_resources: null,
+    selected_prompts: null,
+  };
 }
 
 /**
@@ -161,10 +201,30 @@ export async function createVirtualClientFrom(
     ? ((await renderSkillsCatalogBlock(ctx, virtualMcp)) ?? undefined)
     : undefined;
 
+  // Graft scoped board access onto a coding agent at runtime (see codeAgentBoardConnection).
+  let effectiveVirtualMcp = virtualMcp;
+  const boardConn = codeAgentBoardConnection(virtualMcp);
+  if (
+    boardConn &&
+    !loadedConnections.some((c) => c.id === boardConn.connection_id)
+  ) {
+    const self = await ctx.storage.connections.findById(
+      boardConn.connection_id,
+      virtualMcp.organization_id,
+    );
+    if (self && self.status === "active") {
+      loadedConnections.push(self);
+      effectiveVirtualMcp = {
+        ...virtualMcp,
+        connections: [...virtualMcp.connections, boardConn],
+      };
+    }
+  }
+
   // Build aggregator options
   const clientOptions: VirtualClientOptions = {
     connections: loadedConnections,
-    virtualMcp,
+    virtualMcp: effectiveVirtualMcp,
     superUser,
     mcpListCache: getMcpListCache() ?? undefined,
     listTimeoutMs: options?.listTimeoutMs,

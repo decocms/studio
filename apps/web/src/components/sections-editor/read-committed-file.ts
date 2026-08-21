@@ -1,10 +1,13 @@
 import { stripLineNumbers } from "@/components/sandbox/preview/file-explorer/utils";
+import { buildSandboxUrl } from "@/sdk/sandbox-url";
 import { classifyCommittedReadStatus } from "./decofile-read-status";
 
 interface RepoFileParams {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
+  /** The session reading; `null` only for a thread-less surface. */
+  threadId: string | null;
 }
 
 /**
@@ -30,9 +33,7 @@ export async function readCommittedJson<T>(
   params: RepoFileParams,
   path: string,
 ): Promise<CommittedRead<T>> {
-  const url = `/api/${params.orgSlug}/sandbox/${encodeURIComponent(
-    params.virtualMcpId,
-  )}/${encodeURIComponent(params.branch)}/read`;
+  const url = buildSandboxUrl(params, "read");
   const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },

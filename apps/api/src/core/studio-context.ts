@@ -126,7 +126,7 @@ export interface BoundAuthClient {
 
     get(organizationId?: string): Promise<GetFullOrganizationResult>;
 
-    list(userId?: string): Promise<ListOrganizationsResult>;
+    list(): Promise<ListOrganizationsResult>;
 
     // Member operations
     addMember(data: {

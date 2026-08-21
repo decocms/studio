@@ -23,6 +23,7 @@ import { useMainAgentId } from "@/hooks/use-organization-settings";
 import { authClient } from "@/lib/auth-client.ts";
 import { ShellRouteLoading } from "@/layouts/shell-route-loading";
 import { findReusableNewChat } from "@/lib/reusable-new-chat";
+import { defaultThreadRuntime } from "@decocms/shared/thread/session-runtime";
 
 export default function OrgHome() {
   const { org } = useProjectContext();
@@ -59,10 +60,12 @@ export default function OrgHome() {
 
   // Reuse the landing agent's existing empty "New chat" so revisiting `/$org`
   // doesn't pile up duplicates (see findReusableNewChat).
+  const landingAgent = (agents ?? []).find((a) => a.id === landingAgentId);
   const existing = findReusableNewChat(
     threads,
     landingAgentId,
     session?.user?.id,
+    landingAgent ? defaultThreadRuntime(landingAgent.metadata) : undefined,
   );
   const taskId = existing?.id ?? freshId;
 

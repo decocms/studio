@@ -146,23 +146,26 @@ describe("installStudioPack", () => {
     ]);
   });
 
-  test("Task Manager binds to self with only task-board tools", async () => {
-    await installStudioPack(orgId, userId, virtualMcpStorage);
-    const managerId = StudioPackAgentId.TASK_MANAGER(orgId);
-    const manager = await virtualMcpStorage.findById(managerId, orgId);
-
-    expect(manager?.connections).toHaveLength(1);
-    expect(manager?.connections[0]?.connection_id).toBe(
-      WellKnownOrgMCPId.SELF(orgId),
+  test("deletes a previously-installed Task Manager", async () => {
+    const retiredId = `studio-task-manager_${orgId}`;
+    await virtualMcpStorage.create(
+      orgId,
+      userId,
+      {
+        title: "Task Manager",
+        description: "retired",
+        icon: "icon://Flag01",
+        status: "active",
+        pinned: false,
+        metadata: {},
+        connections: [],
+      },
+      { id: retiredId },
     );
-    expect(manager?.connections[0]?.selected_tools).toEqual([
-      "TASK_BOARD_ITEM_CREATE",
-      "TASK_BOARD_ITEM_LIST",
-      "TASK_BOARD_ITEM_UPDATE",
-      "TASK_BOARD_ITEM_DELETE",
-      "TASK_BOARD_ITEM_PRS_GET",
-      "TASK_BOARD_REVIEW_DECISION",
-    ]);
+
+    await installStudioPack(orgId, userId, virtualMcpStorage);
+
+    expect(await virtualMcpStorage.findById(retiredId, orgId)).toBeNull();
   });
 
   test("overwrites stale tool selections on an existing API Key Manager", async () => {

@@ -533,6 +533,70 @@
   }
   await progress("previewCookieRoundTrip");
 
+  /**
+   * Monaco: the code editor engine this shell asks for is one it can load.
+   *
+   * The engine is not part of the JS bundle — it is ~100 files under
+   * `/monaco/<version>/vs` (`apps/web/vite.config.ts`'s `self-hosted-monaco`),
+   * fetched at runtime by a `<script>` and, for the language services, a
+   * `Worker`. The app shipped a CDN path for months and every code surface
+   * rendered a permanent spinner, because `script-src 'self'` refused the
+   * engine while the file contents themselves loaded fine — green everywhere
+   * else, unusable here.
+   *
+   * Asserts the two facts that turn that bug into a red build, both cheap and
+   * deterministic: the path THIS APP declares (read back from
+   * `MonacoEnvironment`, which `apps/web/src/index.native.tsx` sets at boot)
+   * is same-origin, and the engine actually answers on it. An off-origin path
+   * fails the first; files that never shipped fail the second.
+   *
+   * Deliberately does NOT load the engine (3.7 MB) or start a language worker
+   * (5.5 MB): this self-test shares ONE 60 s process budget with every other
+   * check here, and a slow probe would fail them all rather than itself. That
+   * the engine runs under the packaged CSP is asserted in a browser against
+   * this exact policy, and its assets are covered by
+   * `packages/e2e/tests/monaco-engine-assets.spec.ts`.
+   */
+  async function probeMonacoEngine() {
+    const getWorkerUrl = window.MonacoEnvironment?.getWorkerUrl;
+    if (typeof getWorkerUrl !== "function") {
+      return { ok: false, stage: "app-declared-no-worker-url" };
+    }
+    const workerUrl = getWorkerUrl("workerMain.js", "typescript");
+    const suffix = "/base/worker/workerMain.js";
+    if (typeof workerUrl !== "string" || !workerUrl.endsWith(suffix)) {
+      return { ok: false, stage: "unexpected-worker-url", workerUrl };
+    }
+    // Same-origin means `script-src 'self'` permits it; a CDN URL is the
+    // regression, and `new URL` resolves a relative path against this page.
+    const vs = workerUrl.slice(0, -suffix.length);
+    if (new URL(vs, window.location.href).origin !== window.location.origin) {
+      return { ok: false, stage: "engine-path-is-off-origin", vs };
+    }
+
+    try {
+      const { res } = await fetchNetworkRetry(`${vs}/loader.js`, {
+        credentials: "include",
+      });
+      const contentType = res.headers.get("content-type") || "";
+      return {
+        ok: res.status === 200 && contentType.includes("javascript"),
+        stage: "engine-served",
+        vs,
+        status: res.status,
+        contentType,
+      };
+    } catch (e) {
+      return { ok: false, stage: "engine-fetch-failed", vs, error: String(e) };
+    }
+  }
+  try {
+    results.monacoEngineBoots = await probeMonacoEngine();
+  } catch (e) {
+    results.monacoEngineBoots = { ok: false, error: String(e) };
+  }
+  await progress("monacoEngineBoots");
+
   // --- CSP: zero violations captured by `setup.rs`'s boot-error captor -
   // `securitypolicyviolation` frames (see `setup.rs`'s initialization
   // script) land in `__BOOT_ERRORS` alongside `error`/`unhandledrejection`
@@ -594,6 +658,7 @@
     // result is still reported, so a real regression is visible.
     results.previewIframeLoads,
     results.previewCookieRoundTrip,
+    results.monacoEngineBoots,
     results.noCspViolations,
   ];
   const allPass = gating.every((r) => r && r.ok === true);

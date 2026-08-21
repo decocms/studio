@@ -135,6 +135,14 @@ export class OrgFs {
     );
   }
 
+  /** Every live file in a volume, at any depth. One query — the skill tar
+   *  route needs the whole tree, and walking it with listDir would reintroduce
+   *  the per-directory round trips it exists to remove. */
+  async listVolumeFiles(volume: string): Promise<OrgFsEntry[]> {
+    assertValidVolume(volume);
+    return this.manifest.listVolumeFiles(this.organizationId, volume);
+  }
+
   /** Live immediate children of a directory (root when path is empty). */
   async listDir(volume: string, path: string): Promise<OrgFsEntry[]> {
     assertValidVolume(volume);

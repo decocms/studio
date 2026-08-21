@@ -9,7 +9,8 @@
  *   - the same site across two of the caller's orgs yields two matches;
  *   - a signed-in user who isn't a member sees nothing (empty, not 403);
  *   - an anonymous caller is refused (401);
- *   - a malformed slug fails cleanly (400).
+ *   - a malformed slug fails cleanly (400);
+ *   - renaming a project does not break the shortcut.
  */
 
 import type { APIRequestContext } from "@playwright/test";
@@ -61,7 +62,7 @@ async function createProjectForSite(
     "COLLECTION_VIRTUAL_MCP_CREATE",
     {
       data: {
-        // The project name (`title`) is what editor-resolve matches on.
+        // With no `metadata.siteSlug`, the title is the slug resolved against.
         title: siteSlug,
         connections: [],
         metadata: {
@@ -142,5 +143,55 @@ test.describe("Editor resolve (choose-editor backend)", () => {
     await ownerCtx.dispose();
     await otherCtx.dispose();
     await anonCtx.dispose();
+  });
+
+  test("a renamed project still resolves — the slug is pinned, not the title", async ({
+    playwright,
+  }) => {
+    const ownerCtx = await newApiContext(playwright);
+    const owner = await signUpViaApi(ownerCtx);
+
+    const suffix = `${Date.now()}${Math.random().toString(36).slice(2, 8)}`;
+    const slug = `e2e-rename-${suffix}`;
+
+    const project = await createProjectForSite(ownerCtx, owner.orgSlug, slug);
+
+    const resolveUrl = (site: string) =>
+      `/api/_editor-resolve?site=${encodeURIComponent(site)}`;
+
+    const before = (await (
+      await ownerCtx.get(resolveUrl(slug))
+    ).json()) as ResolveResult;
+    expect(before.matches.map((m) => m.project.id)).toEqual([project]);
+
+    // Rename it to something that could never be a slug (spaces + capitals).
+    const renamedTitle = "Renamed After Import";
+    await callSelfMcpTool(
+      ownerCtx,
+      owner.orgSlug,
+      "COLLECTION_VIRTUAL_MCP_UPDATE",
+      { id: project, data: { title: renamedTitle } },
+    );
+
+    // UPDATE pinned the outgoing title as `metadata.siteSlug`.
+    const after = (await (
+      await ownerCtx.get(resolveUrl(slug))
+    ).json()) as ResolveResult;
+    expect(after.matches.map((m) => m.project.id)).toEqual([project]);
+    expect(after.matches[0]?.project.title).toBe(renamedTitle);
+
+    // A second rename must not re-pin to the now-stale title.
+    await callSelfMcpTool(
+      ownerCtx,
+      owner.orgSlug,
+      "COLLECTION_VIRTUAL_MCP_UPDATE",
+      { id: project, data: { title: "Renamed Again" } },
+    );
+    const afterSecond = (await (
+      await ownerCtx.get(resolveUrl(slug))
+    ).json()) as ResolveResult;
+    expect(afterSecond.matches.map((m) => m.project.id)).toEqual([project]);
+
+    await ownerCtx.dispose();
   });
 });

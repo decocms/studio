@@ -112,7 +112,8 @@ test.describe("fast preview publish stages", () => {
       releaseBodies = resolve;
     });
     let bodyRequests = 0;
-    await page.route("**/git/diff", async (route) => {
+    // Anchored glob: the trailing * is what keeps it matching once the URL carries `?thread=`.
+    await page.route("**/git/diff*", async (route) => {
       bodyRequests += 1;
       await bodiesReleased;
       await route.continue();

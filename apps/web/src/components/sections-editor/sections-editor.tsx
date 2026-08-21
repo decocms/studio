@@ -1,3 +1,4 @@
+import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useState, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useT } from "@/i18n/use-t";
@@ -176,8 +177,9 @@ export function SectionsEditor({
   onVariantPreviewOverride?: (params: string[] | null) => void;
 }) {
   const t = useT();
+  const threadId = useOptionalChatTask()?.taskId ?? null;
   const previewFetchParams = previewReady
-    ? { orgSlug, virtualMcpId, branch, previewUrl }
+    ? { orgSlug, virtualMcpId, branch, threadId, previewUrl }
     : null;
   const { data: decofile, isLoading: decofileLoading } =
     useDecofile(previewFetchParams);
@@ -653,6 +655,7 @@ export function SectionsEditor({
     orgSlug,
     virtualMcpId,
     branch,
+    threadId,
     previewUrl: previewUrl ?? undefined,
     siteSlug: agentSiteSlug,
   };

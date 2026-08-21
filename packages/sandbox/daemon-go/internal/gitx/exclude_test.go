@@ -70,3 +70,43 @@ func TestPublishNeverCommitsTheEndpointCredential(t *testing.T) {
 		t.Fatalf("publish dropped the user's work too: %q", committed)
 	}
 }
+
+// The residue case: a build that predated ReapplyExcludes committed the org-fs
+// skill symlinks onto real site repos, so every clone TRACKS them — and an
+// exclude covers untracked paths only. The org-fs sync then replaces each
+// committed symlink with a real directory, which git reports as a deletion: 33
+// phantom changes in the publish dialog of every new chat, in perpetuity.
+func TestEnsureExcludeHidesAlreadyCommittedDaemonPaths(t *testing.T) {
+	dir := t.TempDir()
+	gitIn(t, dir, "init", "-q")
+	gitIn(t, dir, "config", "user.email", "t@t.t")
+	gitIn(t, dir, "config", "user.name", "t")
+	if err := os.MkdirAll(filepath.Join(dir, ".claude", "skills"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// What the pre-fix daemon committed: a symlink into the org-fs mount.
+	if err := os.Symlink("/mnt/org/public/core/brand", filepath.Join(dir, ".claude", "skills", "orgfs-core-brand")); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, dir, "add", "-A")
+	gitIn(t, dir, "commit", "-qm", "residue")
+
+	// What today's daemon does on top: clear the entry, publish a real copy.
+	os.RemoveAll(filepath.Join(dir, ".claude", "skills", "orgfs-core-brand"))
+	if err := os.MkdirAll(filepath.Join(dir, ".claude", "skills", "orgfs-core-brand"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".claude", "skills", "orgfs-core-brand", "SKILL.md"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	EnsureExclude(dir, "/.claude/skills/orgfs-*")
+
+	if status := gitIn(t, dir, "status", "--porcelain"); strings.TrimSpace(status) != "" {
+		t.Fatalf("daemon-managed path still reads as a user change: %q", status)
+	}
+	gitIn(t, dir, "add", "-A")
+	if staged := gitIn(t, dir, "diff", "--cached", "--name-only"); strings.TrimSpace(staged) != "" {
+		t.Fatalf("`git add -A` staged a daemon-managed path: %q", staged)
+	}
+}

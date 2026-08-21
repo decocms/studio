@@ -35,6 +35,8 @@ import { getActiveGithubRepo } from "@/lib/github-repo";
 import { useThreads } from "@/components/chat/store/hooks";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { findReusableNewChat } from "@/lib/reusable-new-chat";
+import { useProjectDefaultRuntime } from "@/sdk/project-default-runtime";
+import { defaultThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import { authClient } from "@/lib/auth-client";
 import { formatPinnedViewTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { useCommerceDiagnostic } from "@/hooks/use-commerce-diagnostic";
@@ -75,6 +77,7 @@ function useNavDestinations({
   const { threads } = useThreads();
   const { data: session } = authClient.useSession();
   const { setTaskId, createNewTask } = usePanelActions();
+  const projectDefaultRuntime = useProjectDefaultRuntime();
 
   /**
    * These destinations are org-level, so they belong to the Super Agent. From a
@@ -101,6 +104,7 @@ function useNavDestinations({
       threads,
       decopilotId,
       session?.user?.id,
+      projectDefaultRuntime(decopilotId),
     );
     if (existing) setTaskId(existing.id, decopilotId, { main: tabId });
     else void createNewTask(decopilotId, undefined, { main: tabId });
@@ -170,8 +174,7 @@ function useNavDestinations({
 
 /**
  * The org's coding agents — every virtual MCP backed by a GitHub repo (imported
- * from GitHub or cloned from a template). Each is listed by REPO name, since
- * that is what identifies the codebase the agent works on.
+ * from GitHub or cloned from a template), listed by title, repo name as fallback.
  *
  * Selecting one opens that agent's chat, reusing its existing empty "New chat"
  * so repeat clicks don't pile up threads.
@@ -193,7 +196,7 @@ function useCodingAgents({
       const repo = getActiveGithubRepo(agent);
       return {
         key: agent.id,
-        label: repo?.name || agent.title,
+        label: agent.title || repo?.name || "",
         icon: (
           <AgentAvatar
             icon={agent.icon}
@@ -210,6 +213,7 @@ function useCodingAgents({
             threads,
             agent.id,
             session?.user?.id,
+            defaultThreadRuntime(agent.metadata),
           );
           if (existing) setTaskId(existing.id, agent.id);
           else void createNewTask(agent.id);

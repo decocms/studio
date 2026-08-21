@@ -10,6 +10,13 @@ import { githubGraphql } from "./graphql";
  * which interleaves PRs closed WITHOUT merging, so it takes a page of PRs to
  * answer and still reports "never published" for a base whose whole page was
  * abandoned.
+ *
+ * GraphQL's `PullRequestOrder` has no `MERGED_AT` field, only `UPDATED_AT` —
+ * and a comment or label change on an OLDER merged PR bumps its `updatedAt`
+ * past a more-recently-merged one, so the top-1 node isn't reliably the last
+ * publish. `first: 20` pulls a window of recent activity and
+ * {@link parseLastPublishedPr} picks the max `mergedAt` within it instead of
+ * trusting position.
  */
 const LAST_PUBLISHED_QUERY = `
 query LastPublishedPr($owner: String!, $repo: String!, $base: String!) {
@@ -17,7 +24,7 @@ query LastPublishedPr($owner: String!, $repo: String!, $base: String!) {
     pullRequests(
       states: MERGED
       baseRefName: $base
-      first: 1
+      first: 20
       orderBy: { field: UPDATED_AT, direction: DESC }
     ) {
       nodes {
@@ -72,6 +79,28 @@ export interface LastPublishedPrResponse {
   } | null;
 }
 
+/**
+ * Pick the actually-most-recently-merged node from a page ordered by
+ * `updatedAt` — the two diverge whenever an older merged PR was touched
+ * (comment, label) more recently than a newer merge landed.
+ */
+function pickMostRecentlyMerged(
+  nodes: NonNullable<
+    NonNullable<LastPublishedPrResponse["repository"]>["pullRequests"]
+  >["nodes"],
+) {
+  let best: NonNullable<typeof nodes>[number] | null = null;
+  let bestMergedAt = -Infinity;
+  for (const node of nodes ?? []) {
+    if (!node?.mergedAt) continue;
+    const mergedAt = Date.parse(node.mergedAt);
+    if (Number.isNaN(mergedAt) || mergedAt <= bestMergedAt) continue;
+    best = node;
+    bestMergedAt = mergedAt;
+  }
+  return best;
+}
+
 /** Throws rather than reporting "never published" when the repo was hidden. */
 export function parseLastPublishedPr(
   payload: LastPublishedPrResponse,
@@ -82,7 +111,7 @@ export function parseLastPublishedPr(
       "Repository not found or not accessible by this connection",
     );
   }
-  const pr = repository.pullRequests?.nodes?.[0];
+  const pr = pickMostRecentlyMerged(repository.pullRequests?.nodes);
   if (!pr) return { pullRequest: null };
 
   return {

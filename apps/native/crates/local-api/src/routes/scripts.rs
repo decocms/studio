@@ -46,7 +46,31 @@
 //!    killByLogName returns the number of matching tasks killed"). Per
 //!    "the spec is the test suite," this file matches the test (a number),
 //!    not the doc's prose. Worth a doc fix, not a code bug.
-//! 3. **UTF-8 chunk boundaries**: unlike `routes/bash.rs`'s
+//! 3. **`dev`/`start` own the dev lifecycle**: for the two names
+//!    `setup::dev::is_well_known_starter` recognizes, this route does what
+//!    the daemon's `exec.go` does — an ATOMIC spawn-unless-already-running
+//!    (`{taskId, status, alreadyRunning: true}` instead of a rival dev
+//!    server) plus a `starting` nudge gated on `idle|start-failed|crashed`
+//!    — and then one thing the daemon does NOT do: it takes the
+//!    orchestrator's dev token and arms `setup::dev::confirm_running`.
+//!    That last step has no Go counterpart because the daemon runs a
+//!    standing prober (`daemon-go/internal/probe/probe.go`) which owns
+//!    `running` no matter who spawned the server, while this crate
+//!    deliberately has only the single-shot probe tied to the dev-task
+//!    claim (see the `setup` module doc). Without it the dedupe would
+//!    answer `alreadyRunning: true` over a sandbox whose phase can never
+//!    advance — the bug this exists to fix.
+//!
+//!    What this deliberately does NOT copy from `setup/dev.rs::run`: it
+//!    never reaps the previously persisted dev group and never writes
+//!    `dev-process.json`. Reaping is keyed on a record, not on a script
+//!    name, so a `start` click would TERM a healthy `dev` server; and a
+//!    second writer of that record breaks the 1 Hz identity refresher's
+//!    pid/pgid/started_at equality guard. The daemon's exec route reaps
+//!    nothing either. The cost is unchanged from today: a server started
+//!    from this route stays invisible to the next pipeline reap.
+//!
+//! 4. **UTF-8 chunk boundaries**: unlike `routes/bash.rs`'s
 //!    `Utf8ChunkDecoder` (which carries a dangling partial multi-byte
 //!    sequence across two 8KB pipe reads), this file decodes each chunk
 //!    independently via `String::from_utf8_lossy`. A multi-byte character
@@ -100,7 +124,16 @@ pub async fn list(State(state): State<AppState>, headers: HeaderMap) -> Json<Val
     let target = resolve(&state, &headers);
     let snapshot = target.config.snapshot();
     let pm = pm_name(&snapshot.config);
-    let cwd = pm_path(&snapshot.config).unwrap_or_else(|| target.repo_dir.clone());
+    // An unresolvable `packageManager.path` discovers nothing rather than
+    // falling back to the repository root: the root's `package.json` belongs
+    // to a different workspace than the one the config names, and reporting
+    // ITS scripts is how the drawer ends up offering a script `exec` will
+    // then refuse. This route is infallible by contract (byte-parity with
+    // `daemon/routes/scripts.ts`), so the empty set is the only honest answer.
+    let cwd = match resolve_script_root(&snapshot.config, &target.repo_dir).await {
+        Ok(cwd) => cwd,
+        Err(_) => return Json(json!({ "scripts": [] })),
+    };
     let scripts = discover_scripts(&cwd, pm.as_deref());
     emit_if_changed(&target.broadcaster, &cwd, &scripts);
     Json(json!({ "scripts": scripts }))
@@ -159,7 +192,9 @@ pub async fn exec(
     let run_prefix = run_prefix_for(&pm)
         .ok_or_else(|| ApiError::internal(format!("unknown package manager: {pm}")))?;
 
-    let cwd = pm_path(&snapshot.config).unwrap_or_else(|| target.repo_dir.clone());
+    let cwd = resolve_script_root(&snapshot.config, &target.repo_dir)
+        .await
+        .map_err(ApiError::conflict)?;
     let scripts = discover_scripts(&cwd, Some(&pm));
     if !scripts.iter().any(|s| s == &name) {
         return Err(ApiError::with_extra(
@@ -192,7 +227,65 @@ pub async fn exec(
     );
     let env = build_env(&snapshot.config, exec_body.env.as_ref(), default_port);
 
+    // Everything from here runs against the RESOLVED sandbox's registry +
+    // broadcaster (cheap `Arc` clones), so the spawned drain task can outlive
+    // this handler without borrowing `target`.
+    let tasks = target.tasks.clone();
+    let broadcaster = target.broadcaster.clone();
+
+    // A `dev`/`start` script IS this sandbox's dev server — the same command
+    // the pipeline's own start step spawns — and only the task holding the
+    // orchestrator's dev token may publish `running`. So this route owns the
+    // lifecycle for those two names; see this module's doc for the split.
+    let starter = crate::setup::dev::is_well_known_starter(&name);
+
+    let controller = ProcessController::new();
+    let kill_handle = controller.kill_handle();
+    let id = tasks.next_id();
+    let entry = TaskEntry::new(
+        TaskSummary {
+            id: id.clone(),
+            command: command.clone(),
+            status: TaskStatus::Running,
+            exit_code: None,
+            started_at: now_ms(),
+            finished_at: None,
+            timed_out: false,
+            truncated: false,
+            log_name: Some(name.clone()),
+            intentional: None,
+        },
+        Some(kill_handle.clone()),
+    );
+
+    // A starter claims its `log_name` slot BEFORE the spawn: two concurrent
+    // clicks that both spawn is the race `insert_unless_log_name_running`
+    // exists to close. Non-starters keep the historical spawn-then-register
+    // order, so a failed spawn still leaves no task row behind.
+    let deferred_entry = if starter {
+        match tasks.insert_unless_log_name_running(entry) {
+            // Already serving. Never start a rival — hand back the running
+            // task and adopt it into the lifecycle instead.
+            Some(existing) => {
+                adopt_running_dev(&target.setup, &existing, default_port);
+                return Ok(Json(json!({
+                    "taskId": existing.id,
+                    "status": existing.status.as_str(),
+                    "alreadyRunning": true,
+                }))
+                .into_response());
+            }
+            None => {
+                emit_tasks_event(&tasks, &broadcaster);
+                None
+            }
+        }
+    } else {
+        Some(entry)
+    };
+
     let Some(admission) = state.shutdown.admit_work().await else {
+        release_reservation(starter, &tasks, &broadcaster, &id);
         return Err(ApiError::new(
             StatusCode::SERVICE_UNAVAILABLE,
             "application is shutting down",
@@ -200,33 +293,20 @@ pub async fn exec(
     };
 
     let mut cmd = build_command(&command, &cwd, &env);
-    let controller = ProcessController::new();
-    let kill_handle = controller.kill_handle();
-    let mut child = ProcessGroupChild::spawn(&mut cmd, target.tasks.child_lifetime_lock_path())
-        .await
-        .map_err(|err| ApiError::internal(format!("spawn error: {err}")))?;
-
-    // Everything from here runs against the RESOLVED sandbox's registry +
-    // broadcaster (cheap `Arc` clones), so the spawned drain task can outlive
-    // this handler without borrowing `target`.
-    let tasks = target.tasks.clone();
-    let broadcaster = target.broadcaster.clone();
-
-    let id = tasks.next_id();
-    let summary = TaskSummary {
-        id: id.clone(),
-        command: command.clone(),
-        status: TaskStatus::Running,
-        exit_code: None,
-        started_at: now_ms(),
-        finished_at: None,
-        timed_out: false,
-        truncated: false,
-        log_name: Some(name.clone()),
-        intentional: None,
+    let mut child = match ProcessGroupChild::spawn(&mut cmd, tasks.child_lifetime_lock_path()).await
+    {
+        Ok(child) => child,
+        Err(err) => {
+            release_reservation(starter, &tasks, &broadcaster, &id);
+            drop(admission);
+            return Err(ApiError::internal(format!("spawn error: {err}")));
+        }
     };
-    tasks.insert(TaskEntry::new(summary, Some(kill_handle.clone())));
-    emit_tasks_event(&tasks, &broadcaster);
+
+    if let Some(entry) = deferred_entry {
+        tasks.insert(entry);
+        emit_tasks_event(&tasks, &broadcaster);
+    }
 
     // Registration deliberately precedes these takes. Once spawn succeeds,
     // shutdown can always find a durable controller; there is no await or
@@ -236,6 +316,14 @@ pub async fn exec(
         drop(admission);
         return Err(ApiError::internal("spawn error: missing stdio pipe"));
     };
+
+    let dev = starter.then(|| {
+        own_dev_lifecycle(&target.setup, &id, default_port);
+        DevOwnership {
+            setup: target.setup.clone(),
+            starter: name.clone(),
+        }
+    });
 
     let (completion_tx, completion_rx) = oneshot::channel();
     spawn_exec_owner(
@@ -248,6 +336,7 @@ pub async fn exec(
         stderr_pipe,
         timeout_ms,
         controller,
+        dev,
         completion_tx,
     );
     drop(admission);
@@ -301,6 +390,133 @@ pub async fn exec_kill(
     Json(json!({ "killed": killed }))
 }
 
+// --- dev lifecycle ownership --------------------------------------------------
+
+/// Finalize a starter's pre-spawn reservation when the spawn never happened.
+///
+/// The reservation is what makes the dedupe atomic, but it publishes a
+/// `Running` row before there is a process to back it. An un-finalized row
+/// would make every later `POST /_sandbox/exec/dev` adopt a task that never
+/// had a process — and `TaskRegistry::kill` reports success for it while
+/// leaving it `Running`, so nothing could ever clear it. No-op for
+/// non-starters, which are still registered only after a successful spawn.
+fn release_reservation(
+    starter: bool,
+    tasks: &Arc<TaskRegistry>,
+    broadcaster: &Arc<Broadcaster>,
+    id: &str,
+) {
+    if !starter {
+        return;
+    }
+    tasks.finalize(id, TaskStatus::Failed, -1, false);
+    emit_tasks_event(tasks, broadcaster);
+}
+
+/// Carried by a starter's process owner so the child's exit reports the same
+/// terminal phase `setup/dev.rs`'s own watcher would have reported.
+struct DevOwnership {
+    setup: Arc<crate::setup::SetupOrchestrator>,
+    /// The script name, for the `start-failed` message's wording.
+    starter: String,
+}
+
+/// Make a freshly spawned starter the lifecycle's dev server: take the dev
+/// token, raise `starting` if the phase is behind, and arm the readiness
+/// probe that publishes `running`.
+///
+/// The claim is unconditional, exactly as `setup/dev.rs::run` claims: the
+/// newest dev process IS the dev server, and the token is a generation
+/// marker. Reaching this function at all means no `Running` task held the
+/// `dev`/`start` slot, so the only claim this can displace belongs to a
+/// pipeline spawn still inside its pre-registration window (its reap runs
+/// before it registers). That window can already produce two dev servers
+/// today; this narrows the exec-vs-exec case to zero and leaves the
+/// exec-vs-pipeline case exactly as it was, with the newest spawn owning the
+/// token — the same rule the pipeline itself applies.
+fn own_dev_lifecycle(
+    setup: &Arc<crate::setup::SetupOrchestrator>,
+    task_id: &str,
+    port: Option<u16>,
+) {
+    setup.claim_dev_task(task_id);
+
+    // Gate the way the daemon gates it (`daemon-go/internal/routes/exec.go`
+    // `:138-141`): `starting` re-raises the full-canvas boot overlay, so a
+    // phase that is already past it — `running` over a live preview, or a
+    // clone/install still in flight — must never be dragged backwards. The
+    // probe below is what moves a healthy server forward from here.
+    let phase = setup.lifecycle_snapshot();
+    let phase = phase.get("phase").and_then(Value::as_str);
+    if matches!(
+        phase,
+        None | Some("idle") | Some("start-failed") | Some("crashed")
+    ) {
+        setup.transition_lifecycle(json!({ "phase": "starting" }));
+    }
+
+    arm_readiness_probe(setup, task_id, port);
+}
+
+/// Point the dev token at an ALREADY-RUNNING starter task and re-arm its
+/// readiness probe.
+///
+/// This is the whole fix for the reported bug: a dev server relaunched from
+/// the run button used to serve traffic while the phase stayed wherever the
+/// last pipeline run left it, because nothing re-armed a probe and nothing
+/// held the token that lets one publish. Adopting is deliberately *additive*
+/// — it never transitions the phase itself, and the only transition it can
+/// cause is `confirm_running`'s `running`. So a click can move a stuck
+/// sandbox forward and can never drag a working preview back under the boot
+/// overlay.
+///
+/// Deliberate deviation from the daemon (documented, not hidden): Go's exec
+/// route returns `alreadyRunning` and stops there
+/// (`daemon-go/internal/routes/exec.go:126-133`), because a standing prober
+/// (`daemon-go/internal/probe/probe.go`) owns `running` for it regardless of
+/// who spawned the server. This crate deliberately has no standing prober
+/// (see the `setup` module doc), so without this re-arm the dedupe would
+/// answer `alreadyRunning: true` and leave the phase stuck forever.
+fn adopt_running_dev(
+    setup: &Arc<crate::setup::SetupOrchestrator>,
+    existing: &TaskSummary,
+    port: Option<u16>,
+) {
+    // Never steal from a live owner: a pipeline spawn that is mid-boot owns
+    // both its probe and its exit reporter through this token.
+    if !setup.claim_dev_task_if_available(&existing.id) {
+        return;
+    }
+    arm_readiness_probe(setup, &existing.id, port);
+}
+
+/// Spawn the same eager probe `setup/dev.rs::run` spawns. Detached and
+/// self-cancelling: `confirm_running` re-checks `is_current_dev_task` every
+/// iteration, so it stops the moment this task exits or is replaced, and its
+/// only possible write is `{"phase":"running", port, htmlSupport}`.
+fn arm_readiness_probe(
+    setup: &Arc<crate::setup::SetupOrchestrator>,
+    task_id: &str,
+    port: Option<u16>,
+) {
+    // No allocation means no address to probe; the stdout port-sniffer that
+    // would rescue this case lives in the pipeline's watcher, not here.
+    let Some(port) = port else {
+        return;
+    };
+    let setup = setup.clone();
+    let task_id = task_id.to_string();
+    tokio::spawn(async move {
+        crate::setup::dev::confirm_running(
+            setup,
+            task_id,
+            port,
+            crate::setup::dev::BOOT_PROBE_ATTEMPTS,
+        )
+        .await;
+    });
+}
+
 // --- process spawn / drain / kill ---------------------------------------------
 
 pub(crate) fn build_command(
@@ -350,9 +566,13 @@ fn spawn_exec_owner(
     stderr_pipe: ChildStderr,
     timeout_ms: Option<u64>,
     controller: ProcessController,
+    dev: Option<DevOwnership>,
     completion_tx: oneshot::Sender<()>,
 ) {
     tokio::spawn(async move {
+        // A panicking owner must still release the dev token, or the sandbox
+        // keeps a claim no live task backs and every later adopt refuses it.
+        let panic_dev = dev.as_ref().map(|dev| dev.setup.clone());
         let driven = std::panic::AssertUnwindSafe(run_exec(
             tasks.clone(),
             broadcaster.clone(),
@@ -363,6 +583,7 @@ fn spawn_exec_owner(
             stderr_pipe,
             timeout_ms,
             controller,
+            dev,
         ))
         .catch_unwind()
         .await;
@@ -370,6 +591,13 @@ fn spawn_exec_owner(
             child
                 .kill_and_reap(Duration::from_secs(2), "script process-owner panic cleanup")
                 .await;
+            if let Some(setup) = panic_dev {
+                if setup.finish_dev_task(&id) && !setup.is_closed() {
+                    setup.transition_lifecycle(crate::setup::start_failed(
+                        "dev process owner panicked",
+                    ));
+                }
+            }
             tasks.finalize(&id, TaskStatus::Failed, -1, false);
             emit_tasks_event(&tasks, &broadcaster);
         }
@@ -384,7 +612,7 @@ fn spawn_exec_owner(
 /// <log_name>, data: <raw text>}`, source = the script name — the terminal's
 /// tab identity; raw text, the frontend normalizes `\r\n`). Decodes each
 /// chunk independently (`from_utf8_lossy`) — see the module doc's deviation
-/// note #3 on the UTF-8 chunk-boundary gap this deliberately accepts.
+/// note #4 on the UTF-8 chunk-boundary gap this deliberately accepts.
 struct ScriptLogSink {
     tasks: Arc<TaskRegistry>,
     broadcaster: Arc<Broadcaster>,
@@ -421,6 +649,7 @@ async fn run_exec(
     stderr_pipe: ChildStderr,
     timeout_ms: Option<u64>,
     controller: ProcessController,
+    dev: Option<DevOwnership>,
 ) {
     let timeout = timeout_ms.and_then(|ms| (ms > 0).then(|| Duration::from_millis(ms)));
     let mut sink = ScriptLogSink {
@@ -441,8 +670,32 @@ async fn run_exec(
 
     let raw_exit_code = outcome.exit_status.map(exit_status_to_code).unwrap_or(-1);
     let status = classify_status(outcome.timed_out, raw_exit_code);
+
+    // Byte-parity with `setup/dev.rs`'s own terminal block, down to the
+    // ordering: read `intentional`, release the token, THEN finalize — so a
+    // concurrent adopt never sees a token backed by a task that is already
+    // gone. A kill sets `intentional`, which is what keeps `POST
+    // /exec/dev/kill` from painting a failure the user asked for.
+    let released = dev.as_ref().map(|dev| {
+        let intentional = tasks
+            .get(&id)
+            .and_then(|summary| summary.intentional)
+            .unwrap_or(false);
+        (dev, dev.setup.finish_dev_task(&id), intentional)
+    });
+
     tasks.finalize(&id, status, raw_exit_code, outcome.timed_out);
     emit_tasks_event(&tasks, &broadcaster);
+
+    if let Some((dev, was_current, intentional)) = released {
+        if was_current && !dev.setup.is_closed() && !intentional && raw_exit_code != 0 {
+            dev.setup
+                .transition_lifecycle(crate::setup::start_failed(format!(
+                    "{} script exited with code {raw_exit_code}",
+                    dev.starter
+                )));
+        }
+    }
 }
 
 // --- config-store reads (opaque `Value` — see `config/store.rs`) -------------
@@ -457,14 +710,31 @@ fn pm_name(config: &Option<Value>) -> Option<String> {
         .map(str::to_string)
 }
 
-fn pm_path(config: &Option<Value>) -> Option<PathBuf> {
-    config
-        .as_ref()?
-        .get("application")?
-        .get("packageManager")?
-        .get("path")?
-        .as_str()
-        .map(PathBuf::from)
+/// The directory a script runs in: `repo_dir`, or the validated
+/// `application.packageManager.path` beneath it.
+///
+/// Delegates to [`crate::setup::install::pm_root`] — the same resolver the
+/// setup pipeline's install/start steps use — so `POST /exec/dev` and the
+/// pipeline's own start step land in the same workspace. This file used to
+/// read `packageManager.path` on its own and hand the RAW value to
+/// `Command::current_dir`; since `validate_package_manager_path`
+/// (`config/validate.rs:152`) requires that value to be *relative to the
+/// repository*, the effect was a path resolved against local-api's own
+/// process cwd — so on any monorepo, script discovery read the wrong
+/// `package.json` and `exec` 404'd a script that plainly exists.
+///
+/// Deliberate deviation from the daemon (documented, not hidden): Go's
+/// `paths.ResolvePmRoot` (`daemon-go/internal/paths/paths.go:22`) is a bare
+/// join with no existence or containment check, so a bad path there degrades
+/// to an empty script set. This crate resolves through `pm_root`, which
+/// canonicalizes and re-checks containment, and surfaces the failure — the
+/// same strictness `setup/install.rs` and `setup/dev.rs` already chose for
+/// the pipeline.
+async fn resolve_script_root(config: &Option<Value>, repo_dir: &Path) -> Result<PathBuf, String> {
+    let Some(config) = config.as_ref() else {
+        return Ok(repo_dir.to_path_buf());
+    };
+    crate::setup::install::pm_root(config, repo_dir).await
 }
 
 /// Byte-parity target: `PACKAGE_MANAGER_DAEMON_CONFIG` in
@@ -637,16 +907,78 @@ mod tests {
     }
 
     #[test]
-    fn pm_name_and_path_extraction() {
+    fn pm_name_extraction() {
         let cfg = Some(json!({
-            "application": { "packageManager": { "name": "npm", "path": "/tmp/app" } }
+            "application": { "packageManager": { "name": "npm", "path": "apps/web" } }
         }));
         assert_eq!(pm_name(&cfg), Some("npm".to_string()));
-        assert_eq!(pm_path(&cfg), Some(PathBuf::from("/tmp/app")));
 
         let empty: Option<Value> = None;
         assert_eq!(pm_name(&empty), None);
-        assert_eq!(pm_path(&empty), None);
+    }
+
+    /// Inverts the old `pm_name_and_path_extraction`, which asserted this
+    /// file's own `pm_path` handed back `packageManager.path` VERBATIM (and
+    /// used an absolute `/tmp/app` that `validate_package_manager_path`
+    /// rejects outright). A relative path — the only kind config validation
+    /// accepts — must be joined onto the repository, exactly as the setup
+    /// pipeline's start step resolves it, or the run button discovers and
+    /// runs a different workspace's scripts than the pipeline does.
+    #[tokio::test]
+    async fn script_root_joins_a_relative_pm_path_onto_the_repository() {
+        let repo = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(repo.path().join("apps/web")).unwrap();
+        let cfg = Some(json!({
+            "application": { "packageManager": { "name": "npm", "path": "apps/web" } }
+        }));
+
+        let root = resolve_script_root(&cfg, repo.path()).await.unwrap();
+
+        assert_eq!(
+            root,
+            std::fs::canonicalize(repo.path().join("apps/web")).unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn script_root_is_the_repository_when_no_pm_path_is_configured() {
+        let repo = tempfile::tempdir().unwrap();
+
+        assert_eq!(
+            resolve_script_root(&None, repo.path()).await.unwrap(),
+            repo.path()
+        );
+
+        let cfg = Some(json!({ "application": { "packageManager": { "name": "npm" } } }));
+        assert_eq!(
+            resolve_script_root(&cfg, repo.path()).await.unwrap(),
+            repo.path()
+        );
+    }
+
+    /// The strictness this crate chose for the pipeline now also covers the
+    /// run button: an absolute path is refused by config validation, and a
+    /// path naming a directory that isn't there fails to canonicalize. Either
+    /// way `exec` reports the misconfiguration instead of silently spawning
+    /// in whatever directory the process happens to be sitting in.
+    #[tokio::test]
+    async fn script_root_rejects_an_escaping_or_missing_pm_path() {
+        let repo = tempfile::tempdir().unwrap();
+
+        let absolute = Some(json!({
+            "application": { "packageManager": { "name": "npm", "path": "/tmp/app" } }
+        }));
+        assert!(resolve_script_root(&absolute, repo.path()).await.is_err());
+
+        let escaping = Some(json!({
+            "application": { "packageManager": { "name": "npm", "path": "../elsewhere" } }
+        }));
+        assert!(resolve_script_root(&escaping, repo.path()).await.is_err());
+
+        let missing = Some(json!({
+            "application": { "packageManager": { "name": "npm", "path": "apps/nope" } }
+        }));
+        assert!(resolve_script_root(&missing, repo.path()).await.is_err());
     }
 
     #[test]
@@ -814,6 +1146,7 @@ mod tests {
             stderr,
             None,
             controller,
+            None,
         )
         .await;
 
@@ -845,6 +1178,7 @@ mod tests {
             stderr,
             None,
             controller,
+            None,
         )
         .await;
 
@@ -868,6 +1202,7 @@ mod tests {
             stderr,
             Some(100),
             controller,
+            None,
         )
         .await;
 
@@ -894,6 +1229,7 @@ mod tests {
             stderr,
             None,
             controller,
+            None,
         )
         .await;
 
@@ -920,6 +1256,7 @@ mod tests {
             stderr,
             None,
             controller.clone(),
+            None,
             completion_tx,
         );
 
@@ -939,5 +1276,172 @@ mod tests {
             .status()
             .is_ok_and(|status| status.success());
         assert!(!alive, "request cancellation left exec child alive");
+    }
+
+    // --- dev lifecycle ownership ---------------------------------------------
+
+    /// A real listener on a real port. `confirm_running` accepts any HTTP
+    /// response, so this is exactly as much server as a dev server needs to
+    /// be to count as "up" — no mock, no injected client.
+    async fn serve_until_aborted() -> (u16, tokio::task::JoinHandle<()>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let handle = tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                use tokio::io::AsyncWriteExt;
+                let _ = stream
+                    .write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 2\r\n\r\nhi",
+                    )
+                    .await;
+                let _ = stream.shutdown().await;
+            }
+        });
+        (port, handle)
+    }
+
+    fn running_dev(id: &str) -> TaskEntry {
+        TaskEntry::new(
+            TaskSummary {
+                id: id.to_string(),
+                command: "npm run dev".to_string(),
+                status: TaskStatus::Running,
+                exit_code: None,
+                started_at: now_ms(),
+                finished_at: None,
+                timed_out: false,
+                truncated: false,
+                log_name: Some("dev".to_string()),
+                intentional: None,
+            },
+            None,
+        )
+    }
+
+    async fn await_phase(setup: &Arc<crate::setup::SetupOrchestrator>, phase: &str) -> Value {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let snapshot = setup.lifecycle_snapshot();
+            if snapshot.get("phase").and_then(Value::as_str) == Some(phase) {
+                return snapshot;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "lifecycle never reached {phase}: {snapshot}"
+            );
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    }
+
+    /// THE regression test for the reported bug. A dev server relaunched from
+    /// the run button served traffic while the phase stayed pinned at
+    /// `starting` forever, because nothing held the dev token and so nothing
+    /// could ever publish `running`. Adopting the running task must move a
+    /// stuck sandbox forward on its own.
+    #[tokio::test]
+    async fn adopting_a_running_dev_server_publishes_running() {
+        let (port, server) = serve_until_aborted().await;
+        let state = test_state(Arc::new(crate::events::Broadcaster::new()));
+        state.tasks.insert(running_dev("t1"));
+        state
+            .setup
+            .transition_lifecycle(json!({ "phase": "starting" }));
+        let existing = state.tasks.get("t1").unwrap();
+
+        adopt_running_dev(&state.setup, &existing, Some(port));
+
+        let snapshot = await_phase(&state.setup, "running").await;
+        assert_eq!(snapshot.get("port"), Some(&json!(port)));
+        assert_eq!(snapshot.get("htmlSupport"), Some(&json!(true)));
+        assert!(state.setup.is_current_dev_task("t1"));
+        server.abort();
+    }
+
+    /// Adopting must never disarm the pipeline's own in-flight spawn: that
+    /// silences its probe AND its exit reporter, which is how a healthy
+    /// server ends up under a permanent boot overlay.
+    #[tokio::test]
+    async fn adopting_does_not_steal_a_live_pipeline_claim() {
+        let (port, server) = serve_until_aborted().await;
+        let state = test_state(Arc::new(crate::events::Broadcaster::new()));
+        state.tasks.insert(running_dev("pipeline-task"));
+        state.setup.claim_dev_task("pipeline-task");
+        state
+            .setup
+            .transition_lifecycle(json!({ "phase": "starting" }));
+        state.tasks.insert(running_dev("exec-task"));
+        let existing = state.tasks.get("exec-task").unwrap();
+
+        adopt_running_dev(&state.setup, &existing, Some(port));
+        tokio::time::sleep(Duration::from_millis(300)).await;
+
+        assert!(state.setup.is_current_dev_task("pipeline-task"));
+        assert_eq!(
+            state.setup.lifecycle_snapshot(),
+            json!({ "phase": "starting" }),
+            "an adopt that lost the claim must publish nothing"
+        );
+        server.abort();
+    }
+
+    /// A spawn from the run button raises the boot overlay only from a phase
+    /// that is behind it. Dragging `running` back to `starting` would blank a
+    /// preview that is already serving — the hazard
+    /// `sandbox-lifecycle-context.test.ts` exists for — and is why the daemon
+    /// gates the same transition on `idle|start-failed|crashed`.
+    #[tokio::test]
+    async fn owning_the_lifecycle_never_drags_a_live_preview_back_to_starting() {
+        let state = test_state(Arc::new(crate::events::Broadcaster::new()));
+        let serving = json!({ "phase": "running", "port": 4000, "htmlSupport": true });
+        state.setup.transition_lifecycle(serving.clone());
+
+        own_dev_lifecycle(&state.setup, "exec-task", None);
+
+        assert_eq!(state.setup.lifecycle_snapshot(), serving);
+        assert!(
+            state.setup.is_current_dev_task("exec-task"),
+            "the newest dev spawn still owns the token"
+        );
+    }
+
+    #[tokio::test]
+    async fn owning_the_lifecycle_raises_starting_from_a_terminal_phase() {
+        for behind in [
+            json!({ "phase": "idle" }),
+            crate::setup::start_failed("boom"),
+            json!({ "phase": "crashed" }),
+        ] {
+            let state = test_state(Arc::new(crate::events::Broadcaster::new()));
+            state.setup.transition_lifecycle(behind.clone());
+
+            own_dev_lifecycle(&state.setup, "exec-task", None);
+
+            assert_eq!(
+                state.setup.lifecycle_snapshot(),
+                json!({ "phase": "starting" }),
+                "a run-button spawn must clear the stale phase {behind}"
+            );
+        }
+    }
+
+    /// A starter whose spawn never happened must not leave a `Running` row
+    /// behind: it would make every later `POST /exec/dev` adopt a task with
+    /// no process, and `TaskRegistry::kill` reports success without clearing
+    /// it, so the run button would be dead for the life of the process.
+    #[test]
+    fn a_released_reservation_cannot_be_adopted() {
+        let state = test_state(Arc::new(crate::events::Broadcaster::new()));
+        state.tasks.insert(running_dev("t1"));
+
+        release_reservation(true, &state.tasks, &state.broadcaster, "t1");
+
+        assert_eq!(state.tasks.get("t1").unwrap().status, TaskStatus::Failed);
+        assert!(
+            state
+                .tasks
+                .insert_unless_log_name_running(running_dev("t2"))
+                .is_none(),
+            "a released reservation must not block the next start"
+        );
     }
 }

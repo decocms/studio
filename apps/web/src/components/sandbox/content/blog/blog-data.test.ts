@@ -2,12 +2,15 @@ import { describe, expect, test } from "bun:test";
 import {
   addCategoryToPost,
   blockComponentName,
+  blocksPostStatus,
   buildBlogBlock,
+  DEFAULT_SCHEDULE_HOUR,
+  defaultScheduledDatetime,
   discoverBlogBlockTypes,
   emptyBlogPayload,
-  isPostPublished,
   listPostsWithMeta,
   missingPostFields,
+  postStatus,
   relationPickerState,
   removeCategoryFromPost,
   renameCategoryOnPost,
@@ -15,6 +18,7 @@ import {
   extractBlockProse,
   normalizeBrandRules,
   selectBrandEvidenceBlocks,
+  setPostStatus,
   stampPostModified,
   dedupeSuggestedThemes,
   newThemeKey,
@@ -226,44 +230,25 @@ describe("discoverBlogBlockTypes", () => {
   });
 });
 
-describe("isPostPublished", () => {
-  test("an unset, empty or non-string status reads as published", () => {
-    expect(isPostPublished({})).toBe(true);
-    expect(isPostPublished({ status: "" })).toBe(true);
-    expect(isPostPublished({ status: null })).toBe(true);
-    expect(isPostPublished({ status: 1 })).toBe(true);
-  });
-
-  test("only an explicit published status reads as published", () => {
-    expect(isPostPublished({ status: "published" })).toBe(true);
-    expect(isPostPublished({ status: "draft" })).toBe(false);
-  });
-
-  test("statuses the CMS does not edit read as not published", () => {
-    expect(isPostPublished({ status: "generating" })).toBe(false);
-    expect(isPostPublished({ status: "awaiting_review" })).toBe(false);
-    expect(isPostPublished({ status: "archived" })).toBe(false);
-  });
-
-  test("is case- and whitespace-sensitive: only the exact value publishes", () => {
-    expect(isPostPublished({ status: "Published" })).toBe(false);
-    expect(isPostPublished({ status: " published " })).toBe(false);
-  });
-});
-
 describe("listPostsWithMeta", () => {
-  test("reports each post's published state for the status filter", () => {
+  test("reports each post's status for the list filter", () => {
     const decofile = decofileWithPosts({
       "collections/blog/posts/a": { title: "Live", status: "published" },
       "collections/blog/posts/b": { title: "Draft", status: "draft" },
       "collections/blog/posts/c": { title: "Legacy" },
+      "collections/blog/posts/d": { title: "Planned", status: "scheduled" },
     });
     // Keyed by title so the assertion doesn't encode the list's own ordering.
     expect(
       Object.fromEntries(
-        listPostsWithMeta(decofile).map((p) => [p.title, p.published]),
+        listPostsWithMeta(decofile).map((p) => [p.title, p.status]),
       ),
-    ).toEqual({ Live: true, Draft: false, Legacy: true });
+    ).toEqual({
+      Live: "published",
+      Draft: "draft",
+      Legacy: "published",
+      Planned: "scheduled",
+    });
   });
 
   test("extracts title, slug, date, category slugs and author emails", () => {
@@ -282,12 +267,14 @@ describe("listPostsWithMeta", () => {
         title: "Hello",
         slug: "hello",
         date: "2024-01-02",
+        // no `scheduledDatetime` on this fixture — the post isn't scheduled
+        scheduledDatetime: "",
         categorySlugs: ["news"],
         authorEmails: ["ada@x.com"],
         // no excerpt or cover image on this fixture
         missing: ["Excerpt", "Cover image"],
         // no `status` on this fixture — posts predating the field are published
-        published: true,
+        status: "published",
       },
     ]);
   });
@@ -403,6 +390,147 @@ describe("missingPostFields", () => {
         image: "https://cdn/cover.jpg",
       }),
     ).toEqual([]);
+  });
+});
+
+const COMPLETE_POST = {
+  title: "Hello",
+  slug: "hello",
+  categories: ["news"],
+  excerpt: "A short summary.",
+  image: "https://cdn/cover.jpg",
+};
+
+describe("blocksPostStatus", () => {
+  test("blocks an incomplete post from being published", () => {
+    expect(blocksPostStatus({ status: "draft" }, "published")).toBe(true);
+  });
+
+  test("never blocks scheduling — a schedule is a plan, not a release", () => {
+    expect(blocksPostStatus({ status: "draft" }, "scheduled")).toBe(false);
+    expect(blocksPostStatus({ status: "published" }, "scheduled")).toBe(false);
+  });
+
+  test("lets an incomplete post be re-scheduled after scheduling was turned off", () => {
+    const off = setPostStatus({ title: "Untitled post" }, "draft", new Date());
+    expect(blocksPostStatus(off, "scheduled")).toBe(false);
+  });
+
+  test("never blocks dropping to draft", () => {
+    expect(blocksPostStatus({ status: "published" }, "draft")).toBe(false);
+    expect(blocksPostStatus({ status: "scheduled" }, "draft")).toBe(false);
+  });
+
+  test("does not block the state the post is already in", () => {
+    expect(blocksPostStatus({ status: "published" }, "published")).toBe(false);
+  });
+
+  test("allows a complete post to be published", () => {
+    expect(
+      blocksPostStatus({ status: "draft", ...COMPLETE_POST }, "published"),
+    ).toBe(false);
+  });
+});
+
+describe("postStatus", () => {
+  test("reads an unset, empty or non-string status as published", () => {
+    expect(postStatus({})).toBe("published");
+    expect(postStatus({ status: "" })).toBe("published");
+    expect(postStatus({ status: null })).toBe("published");
+    expect(postStatus({ status: 1 })).toBe("published");
+  });
+
+  test("is case- and whitespace-sensitive: only exact values match", () => {
+    expect(postStatus({ status: "Published" })).toBe("draft");
+    expect(postStatus({ status: " published " })).toBe("draft");
+    expect(postStatus({ status: " scheduled " })).toBe("draft");
+  });
+
+  test("reads the three editable states", () => {
+    expect(postStatus({ status: "published" })).toBe("published");
+    expect(postStatus({ status: "scheduled" })).toBe("scheduled");
+    expect(postStatus({ status: "draft" })).toBe("draft");
+  });
+
+  test("reads states the CMS doesn't edit as draft", () => {
+    expect(postStatus({ status: "generating" })).toBe("draft");
+    expect(postStatus({ status: "awaiting_review" })).toBe("draft");
+  });
+
+  test("reads scheduled from the status alone, with no datetime", () => {
+    expect(postStatus({ status: "scheduled" })).toBe("scheduled");
+  });
+});
+
+describe("defaultScheduledDatetime", () => {
+  test("offers the configured hour tomorrow, local time", () => {
+    const iso = defaultScheduledDatetime(new Date(2026, 7, 21, 15, 30));
+    const parsed = new Date(iso);
+    expect(parsed.getDate()).toBe(22);
+    expect(parsed.getMonth()).toBe(7);
+    expect(parsed.getHours()).toBe(DEFAULT_SCHEDULE_HOUR);
+  });
+
+  test("rolls over month and year boundaries", () => {
+    const parsed = new Date(defaultScheduledDatetime(new Date(2026, 11, 31)));
+    expect(parsed.getFullYear()).toBe(2027);
+    expect(parsed.getMonth()).toBe(0);
+    expect(parsed.getDate()).toBe(1);
+  });
+});
+
+describe("setPostStatus", () => {
+  const now = new Date(2026, 7, 21, 15, 30);
+
+  test("seeds a go-live instant when scheduling without one", () => {
+    const next = setPostStatus({ ...COMPLETE_POST }, "scheduled", now);
+    expect(next.status).toBe("scheduled");
+    expect(new Date(next.scheduledDatetime as string).getDate()).toBe(22);
+  });
+
+  test("keeps an instant the post already carries", () => {
+    const existing = new Date(2026, 8, 2, 10).toISOString();
+    const next = setPostStatus(
+      { ...COMPLETE_POST, scheduledDatetime: existing },
+      "scheduled",
+      now,
+    );
+    expect(next.scheduledDatetime).toBe(existing);
+  });
+
+  test("replaces an unparseable instant instead of keeping it", () => {
+    const next = setPostStatus(
+      { scheduledDatetime: "whenever" },
+      "scheduled",
+      now,
+    );
+    expect(new Date(next.scheduledDatetime as string).getDate()).toBe(22);
+  });
+
+  test("clears the instant when leaving scheduled for draft", () => {
+    const next = setPostStatus(
+      { status: "scheduled", scheduledDatetime: new Date().toISOString() },
+      "draft",
+      now,
+    );
+    expect(next.status).toBe("draft");
+    expect(next.scheduledDatetime).toBe("");
+  });
+
+  test("clears the instant when leaving scheduled for published", () => {
+    const next = setPostStatus(
+      { status: "scheduled", scheduledDatetime: new Date().toISOString() },
+      "published",
+      now,
+    );
+    expect(next.status).toBe("published");
+    expect(next.scheduledDatetime).toBe("");
+  });
+
+  test("never mutates the payload it is given", () => {
+    const payload = { status: "draft", title: "Hello" };
+    setPostStatus(payload, "scheduled", now);
+    expect(payload).toEqual({ status: "draft", title: "Hello" });
   });
 });
 

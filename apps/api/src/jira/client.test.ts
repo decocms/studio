@@ -511,4 +511,196 @@ describe("JiraClient", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("posts a comment as rich ADF, with the author line kept unparsed", async () => {
+    const bodies: unknown[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async (_url: string, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)).body);
+      return new Response(JSON.stringify({ id: "10001" }), { status: 201 });
+    }) as unknown as typeof fetch;
+
+    try {
+      const client = new JiraClient(
+        "https://acme.atlassian.net",
+        "user@example.com",
+        "token",
+      );
+      await client.addComment("ISSUE-1", "**done** in `Footer.json`", {
+        header: "Super Agent *no* markup · via Studio:",
+      });
+      expect(bodies[0]).toEqual({
+        type: "doc",
+        version: 1,
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "Super Agent *no* markup · via Studio:" },
+            ],
+          },
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "done", marks: [{ type: "strong" }] },
+              { type: "text", text: " in " },
+              {
+                type: "text",
+                text: "Footer.json",
+                marks: [{ type: "code" }],
+              },
+            ],
+          },
+        ],
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("falls back to a flat body when Jira rejects the document with a 400", async () => {
+    const bodies: unknown[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async (_url: string, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)).body);
+      return bodies.length === 1
+        ? new Response('{"errors":{"body":"INVALID_INPUT"}}', { status: 400 })
+        : new Response(JSON.stringify({ id: "10002" }), { status: 201 });
+    }) as unknown as typeof fetch;
+
+    try {
+      const client = new JiraClient(
+        "https://acme.atlassian.net",
+        "user@example.com",
+        "token",
+      );
+      const created = await client.addComment("ISSUE-1", "**done**", {
+        header: "Super Agent · via Studio:",
+      });
+      expect(created).toEqual({ id: "10002" });
+      // The mirror survives the rejection, carrying the header and the body.
+      expect(bodies).toHaveLength(2);
+      expect(bodies[1]).toEqual(
+        textToAdf("Super Agent · via Studio:\n**done**"),
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+describe("JiraClient.addAttachment", () => {
+  const client = () =>
+    new JiraClient("https://acme.atlassian.net", "user@example.com", "token");
+  const MEDIA = "44d205d6-7f67-4c3e-b58f-e5695f9c828c";
+
+  function stubFetch(handler: (url: string, init: RequestInit) => Response): {
+    calls: Array<{ url: string; init: RequestInit }>;
+    restore: () => void;
+  } {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = mock(async (url: string, init: RequestInit = {}) => {
+      calls.push({ url: String(url), init });
+      return handler(String(url), init);
+    }) as unknown as typeof fetch;
+    return { calls, restore: () => (globalThis.fetch = original) };
+  }
+
+  it("uploads multipart with the XSRF opt-out and reads the media id off the redirect", async () => {
+    const stub = stubFetch((url) =>
+      url.endsWith("/attachments")
+        ? new Response(JSON.stringify([{ id: "44145" }]), { status: 200 })
+        : new Response(null, {
+            status: 303,
+            headers: {
+              location: `https://api.media.atlassian.com/file/${MEDIA}/binary?token=x`,
+            },
+          }),
+    );
+    try {
+      expect(
+        await client().addAttachment("OS-1", {
+          name: "shot.png",
+          bytes: new Uint8Array([1, 2, 3]),
+          contentType: "image/png",
+        }),
+      ).toEqual({ attachmentId: "44145", mediaId: MEDIA });
+
+      const upload = stub.calls[0];
+      expect(upload?.url).toBe(
+        "https://acme.atlassian.net/rest/api/3/issue/OS-1/attachments",
+      );
+      expect(upload?.init.body).toBeInstanceOf(FormData);
+      const headers = (upload?.init.headers ?? {}) as Record<string, string>;
+      // Jira refuses an unbrowsered multipart POST without this header.
+      expect(headers["X-Atlassian-Token"]).toBe("no-check");
+      expect(stub.calls[1]?.init.redirect).toBe("manual");
+    } finally {
+      stub.restore();
+    }
+  });
+
+  it("falls back to the followed URL when the location header is hidden", async () => {
+    const stub = stubFetch((url, init) => {
+      if (url.endsWith("/attachments")) {
+        return new Response(JSON.stringify([{ id: "44145" }]), { status: 200 });
+      }
+      // A filtered opaqueredirect exposes no headers; status 0 is unconstructable.
+      if (init.redirect === "manual")
+        return new Response(null, { status: 303 });
+      const followed = new Response(null, { status: 200 });
+      Object.defineProperty(followed, "url", {
+        value: `https://api.media.atlassian.com/file/${MEDIA}/binary`,
+      });
+      return followed;
+    });
+    try {
+      expect(
+        (
+          await client().addAttachment("OS-1", {
+            name: "shot.png",
+            bytes: new Uint8Array([1]),
+          })
+        ).mediaId,
+      ).toBe(MEDIA);
+    } finally {
+      stub.restore();
+    }
+  });
+
+  it("reports a null media id rather than throwing when no uuid is found", async () => {
+    const stub = stubFetch((url) =>
+      url.endsWith("/attachments")
+        ? new Response(JSON.stringify([{ id: "44145" }]), { status: 200 })
+        : new Response(null, { status: 200 }),
+    );
+    try {
+      expect(
+        await client().addAttachment("OS-1", {
+          name: "shot.png",
+          bytes: new Uint8Array([1]),
+        }),
+      ).toEqual({ attachmentId: "44145", mediaId: null });
+    } finally {
+      stub.restore();
+    }
+  });
+
+  it("throws when the upload itself is refused, and never resolves an id", async () => {
+    const stub = stubFetch(
+      () => new Response("Attachment too large", { status: 413 }),
+    );
+    try {
+      await expect(
+        client().addAttachment("OS-1", {
+          name: "shot.png",
+          bytes: new Uint8Array([1]),
+        }),
+      ).rejects.toThrow("413");
+      expect(stub.calls).toHaveLength(1);
+    } finally {
+      stub.restore();
+    }
+  });
 });

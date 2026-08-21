@@ -153,6 +153,7 @@ export const sandbox = {
   "sandbox.collectionsSidebar.content": "Conteúdo",
   "sandbox.collectionsSidebar.loaders": "Carregadores",
   "sandbox.collectionsSidebar.pages": "Páginas",
+  "sandbox.collectionsSidebar.postSchedule": "Agendamento",
   "sandbox.collectionsSidebar.posts": "Posts",
   "sandbox.collectionsSidebar.redirects": "Redirecionamentos",
   "sandbox.collectionsSidebar.sections": "Seções",
@@ -424,6 +425,24 @@ export const sandbox = {
   "sandbox.plainBlocks.listItemPlaceholder": "Item de lista",
   "sandbox.plainBlocks.numberedLabel": "Numerada",
   "sandbox.plainBlocks.quotePlaceholder": "Citação",
+  "sandbox.postCalendar.legendScheduled": "Agendado",
+  "sandbox.postCalendar.legendUnscheduled": "Não agendado",
+  "sandbox.postCalendar.next": "Próximo mês",
+  "sandbox.postCalendar.outdatedAppsDescription":
+    "Agendamento precisa do deco apps {required} ou mais novo. Atualize o pin deste site rodando:",
+  "sandbox.postCalendar.outdatedAppsTitle":
+    "Atualize a versão do apps deste site",
+  "sandbox.postCalendar.previous": "Mês anterior",
+  "sandbox.postCalendar.schedulePostOn": "Agendar um post em {date}",
+  "sandbox.postCalendar.today": "Hoje",
+  "sandbox.postCalendar.unscheduledHint":
+    "Posts tracejados não estão agendados — estão na data de exibição deles, e nada vai publicá-los.",
+  "sandbox.postCalendar.undatedEmpty": "Todos os posts têm data.",
+  "sandbox.postCalendar.unsupportedRuntimeDescription":
+    "Este site não roda o app de blog do deco, então nada aqui consegue publicar um post na data agendada. O calendário abaixo é somente leitura.",
+  "sandbox.postCalendar.unsupportedRuntimeTitle":
+    "Ainda não suportamos sites TanStack",
+  "sandbox.postCalendar.undatedLabel": "Sem data · {count}",
   "sandbox.postEditor.addPropLabel": "Adicionar propriedade",
   "sandbox.postEditor.authorsLabel": "Autores",
   "sandbox.postEditor.categoriesLabel": "Categorias",
@@ -454,6 +473,10 @@ export const sandbox = {
   "sandbox.postEditor.previewTooltip":
     "Abrir visualização do post em uma nova aba",
   "sandbox.postEditor.publishedLabel": "Publicado",
+  "sandbox.postEditor.scheduledDatetimeDescription":
+    "Quando este post entra no ar. O site publica sozinho depois que esse momento passa.",
+  "sandbox.postEditor.scheduledDatetimeLabel": "Entra no ar em",
+  "sandbox.postEditor.schedulingLabel": "Agendado",
   "sandbox.postEditor.removePropLabel": "Remover propriedade",
   "sandbox.postEditor.seePreview": "Ver visualização",
   "sandbox.postEditor.selectAuthorsPlaceholder": "Selecionar autores",
@@ -499,6 +522,7 @@ export const sandbox = {
   "sandbox.postToolbar.sortZA": "Z–A",
   "sandbox.postToolbar.statusDraft": "Rascunho",
   "sandbox.postToolbar.statusLabel": "Status",
+  "sandbox.postToolbar.statusScheduled": "Agendado",
   "sandbox.postToolbar.statusPublished": "Publicado",
   "sandbox.preview.catchAllParamLabel": "caminho",
   "sandbox.preview.choosePage": "Escolher página",
@@ -647,10 +671,18 @@ export const sandbox = {
     "Veja suas alterações antes de publicá-las.",
   "sandbox.cmsSettings.fastPreview.label": "Preview Rápido",
   "sandbox.cmsSettings.fastPreview.description":
-    "Pré-visualize alterações no seu servidor de preview em vez do sandbox.",
+    "Novos chats começam como sessões de CMS, pré-visualizadas no seu servidor de preview em vez de um sandbox. Chats existentes mantêm o modo com que foram criados.",
   "sandbox.cmsSettings.fastPreview.needsPreviewServerUrl":
     "Defina um servidor de preview acima para ativar o Preview Rápido.",
   "sandbox.cmsSettings.editing.title": "Edição",
+  "sandbox.cmsUnavailable.title":
+    "Este chat não consegue pré-visualizar seu site",
+  "sandbox.cmsUnavailable.noPreviewServer":
+    "É uma sessão de CMS, mas este projeto não tem servidor de preview configurado.",
+  "sandbox.cmsUnavailable.noRepo":
+    "É uma sessão de CMS, mas este projeto não tem repositório do GitHub para salvar.",
+  "sandbox.cmsUnavailable.startCodingSession":
+    "Continuar esta branch em uma sessão de código",
   "sandbox.cmsSettings.editing.description":
     "Personalize a experiência de edição de conteúdo no formulário de blocos.",
   "sandbox.previewServerUrlField.description":

@@ -19,7 +19,10 @@
  */
 
 import { Hono } from "hono";
-import { isValidSiteSlug } from "@decocms/shared/site-slug";
+import {
+  isValidSiteSlug,
+  resolveAgentSiteSlug,
+} from "@decocms/shared/site-slug";
 import { isOrgArchived } from "@decocms/shared/organization/org-archived";
 import type { Env } from "../hono-env";
 import { getUserId } from "@/core/studio-context";
@@ -91,8 +94,9 @@ export function createEditorResolveRoutes() {
       if (!org.slug || isOrgArchived(org)) continue;
       const vms = await ctx.storage.virtualMcps.list(org.id);
       for (const vm of vms) {
-        if (vm.title.toLowerCase() !== slug) continue;
-        // Match by name, but only code agents (repo-backed); skip Decopilot-only.
+        // Match on the site slug, not the (renameable) title.
+        if (resolveAgentSiteSlug(vm) !== slug) continue;
+        // Only code agents (repo-backed); skip Decopilot-only.
         if (!hasClonableSource(vm.metadata)) continue;
         matches.push({
           orgSlug: org.slug,

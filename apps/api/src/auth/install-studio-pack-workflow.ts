@@ -1,6 +1,7 @@
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { getDb } from "@/database";
 import { VirtualMCPStorage } from "@/storage/virtual";
+import { mapWithConcurrency } from "@/tools/connection/map-with-concurrency";
 import {
   STUDIO_PACK_AGENTS,
   installStudioPack,
@@ -88,8 +89,10 @@ const installStudioPackWorkflow = DBOS.registerWorkflow(
  * v3: added API Key Manager.
  * v4: overrides configuration for already-installed Studio Pack agents.
  * v5: added Task Manager.
+ * v6: retired Task Manager — its tools are Super Agent built-ins now, so the
+ *     installed row is deleted.
  */
-const INSTALL_VERSION = "v5";
+const INSTALL_VERSION = "v6";
 
 /**
  * Fire-and-forget enqueue from the Better Auth org.afterCreate callback.
@@ -119,13 +122,16 @@ export async function backfillStudioPackForAllOrgs(): Promise<void> {
     }
   }
 
-  await Promise.all(
-    Array.from(orgToUser).map(async ([orgId, createdBy]) => {
+  // Bound the fan-out so a large deployment doesn't start every org's workflow at once on boot.
+  await mapWithConcurrency(
+    Array.from(orgToUser),
+    10,
+    async ([orgId, createdBy]) => {
       try {
         await enqueueInstallStudioPack({ orgId, createdBy });
       } catch (err) {
         console.error("[studio-pack-backfill] enqueue failed", { orgId }, err);
       }
-    }),
+    },
   );
 }

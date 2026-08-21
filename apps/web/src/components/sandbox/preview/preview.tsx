@@ -13,8 +13,7 @@ import { resolvePreviewDisplay } from "./preview-display";
 import { useIframeLoadRecovery } from "./preview-iframe-recovery";
 import { buildPreviewLabel } from "./preview-label";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
-import { resolveFastPreview } from "@/sdk/fast-preview";
-import { useActiveThreadMeta } from "@/hooks/use-active-thread-meta";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
@@ -243,6 +242,48 @@ function previewOrigin(previewUrl: string | null): string | null {
 }
 
 /**
+ * Resolves `path` against `base` (both come from the sandbox daemon /
+ * production preview server, so treat as untrusted), or `null` on a
+ * malformed value instead of throwing mid-render — same defensive shape as
+ * `previewOrigin` above.
+ */
+export function resolvePreviewUrl(path: string, base: string): string | null {
+  try {
+    return new URL(path, base).href;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Relevance score for a page-picker hit against a lowercased query `q`.
+ * Higher is better; `0` means no match. Ranks closer/more-specific matches
+ * first so `/masculino` beats `/joias/colares/masculino` for the query
+ * "masculino", instead of falling back to alphabetical order by title.
+ */
+function pageMatchScore(name: string, path: string, q: string): number {
+  const n = name.toLowerCase();
+  const p = path.toLowerCase();
+  const segments = p.split("/").filter(Boolean);
+  const textScore = (text: string): number => {
+    if (text === q) return 100;
+    const idx = text.indexOf(q);
+    if (idx === -1) return 0;
+    let s = 40;
+    if (idx === 0)
+      s += 30; // starts with the query
+    else if (/[\s/-]/.test(text[idx - 1] ?? "")) s += 20; // segment boundary
+    s += Math.round((q.length / text.length) * 20); // query covers more = closer
+    return s;
+  };
+  let score = Math.max(textScore(n), textScore(p));
+  if (segments.at(-1) === q)
+    score = Math.max(score, 95); // query is the path's leaf segment
+  else if (segments.includes(q)) score = Math.max(score, 90); // whole segment
+  return score;
+}
+
+/**
  * Renders nothing; fires `onOpen` exactly once when mounted to auto-open the
  * CMS. Headless run-once helper mirroring `PathParamAutoFill`: the parent
  * mounts it only while the auto-open should happen (see `shouldAutoOpenCms`)
@@ -283,7 +324,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Mobile / standalone (no header slot): render the toolbar inline below.
   const headerSlot = useMainPanelHeaderSlot();
   const navigate = useNavigate();
-  const { currentBranch: branch } = useChatTask();
+  const { currentBranch: branch, taskId: activeTaskId } = useChatTask();
   const workspace = useBlocksPreviewWorkspace();
 
   const goToTab = (main: string) => {
@@ -388,6 +429,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     orgSlug: org.slug,
     virtualMcpId: virtualMcpId ?? "",
     branch: branch ?? "",
+    threadId: activeTaskId ?? null,
     enabled: isDesktopSandbox && devServerReady && !!virtualMcpId && !!branch,
   });
   // Guard the value, not just the query: React Query's staleTime=Infinity cache
@@ -407,10 +449,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       ? resolvePreviewServerUrl(inset.entity.metadata)
       : null;
   // The one thread-aware gate, scoped to this agent's entity by the id match.
-  const activeThreadMeta = useActiveThreadMeta();
+  const session = useSessionRuntime(virtualMcpId);
   const fastPreviewEnabled =
-    inset?.entity?.id === virtualMcpId &&
-    resolveFastPreview(inset.entity.metadata, activeThreadMeta).active;
+    inset?.entity?.id === virtualMcpId && session.runtime === "cms";
+  /** This project defaults to CMS — the question `fastPreviewEnabled` answers for the SESSION. */
+  const projectDefaultsToCms = session.projectDefault === "cms";
 
   // Base for the `/live/previews` global-section render: production under Fast Preview (no dev server), else the sandbox dev server.
   const sectionPreviewBase = resolveSectionPreviewBase({
@@ -426,7 +469,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // rendered inside the iframe, which the dev server serves.)
   const decofileParams =
     virtualMcpId && branch
-      ? { orgSlug: org.slug, virtualMcpId, branch, previewUrl }
+      ? {
+          orgSlug: org.slug,
+          virtualMcpId,
+          branch,
+          threadId: activeTaskId ?? null,
+          previewUrl,
+        }
       : null;
   const decofileQuery = useDecofile(decofileParams, {
     fetchEnabled: devServerReady,
@@ -474,13 +523,23 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const globalLoaders =
     decofile && meta ? listSavedRunnables(meta, decofile, "loaders") : [];
   const normPath = normalizePagePath;
-  const filteredPages = pages.filter((page) => {
-    if (!pagesSearch) return true;
-    const q = pagesSearch.toLowerCase();
-    return (
-      page.name.toLowerCase().includes(q) || page.path.toLowerCase().includes(q)
-    );
-  });
+  const filteredPages = !pagesSearch
+    ? pages
+    : (() => {
+        const q = pagesSearch.toLowerCase();
+        // Stable sort keeps `pages`' alpha order as tie-break; shorter path wins.
+        return pages
+          .map((page) => ({
+            page,
+            score: pageMatchScore(page.name, page.path, q),
+          }))
+          .filter(({ score }) => score > 0)
+          .sort(
+            (a, b) =>
+              b.score - a.score || a.page.path.length - b.page.path.length,
+          )
+          .map(({ page }) => page);
+      })();
   const filteredGlobalSections = globalSections.filter((section) => {
     if (!pagesSearch) return true;
     const q = pagesSearch.toLowerCase();
@@ -544,7 +603,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     }
   }
   const pickerSandboxRef =
-    virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
+    virtualMcpId && branch
+      ? {
+          orgSlug: org.slug,
+          virtualMcpId,
+          branch,
+          threadId: activeTaskId ?? null,
+        }
+      : null;
 
   // Per-section metadata for the CMS hover overlay, aligned by index with the
   // iframe's top-level section list. `label`: ONLY global (saved block)
@@ -645,13 +711,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // to paint: the sandbox iframe, the published site + a waking pill, or
   // (no production URL) the blocking booting overlay.
   // Coding sessions boot visibly: no production fallback → the boot console.
-  const codingSession = activeThreadMeta?.runtime === "sandbox";
+  const codingSession = projectDefaultsToCms && session.runtime === "sandbox";
   const display = resolvePreviewDisplay({
     previewState,
     progressStatus: progress.status,
-    previewServerUrl: codingSession ? null : previewServerUrl,
+    previewServerUrl,
     fastPreviewActive: fastPreviewEnabled,
     fastPreviewReady: !!draftPreviewUrl,
+    codingSession,
   });
   const previewSurfaceActive = display.mode !== "none";
 
@@ -662,7 +729,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // mode, or once no `iframeBase` is available yet.
   const productionOrigin =
     display.mode === "production" && display.iframeBase
-      ? new URL(display.iframeBase).origin
+      ? previewOrigin(display.iframeBase)
       : null;
   // In the desktop app, an external production origin must be registered
   // with the native shell's navigation policy BEFORE the iframe below is
@@ -684,7 +751,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     display.mode === "sandbox"
       ? withVariantMatcherOverride(
           withDeviceHint(
-            directPreviewUrl ?? new URL(resolvedPath, display.iframeBase!).href,
+            directPreviewUrl ??
+              resolvePreviewUrl(resolvedPath, display.iframeBase!) ??
+              display.iframeBase!,
             previewDeviceSize,
           ),
           workspace.state.variantOverride ?? [],
@@ -697,7 +766,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               withDraftPointer(
                 directPreviewUrl ??
                   draftPreviewUrl ??
-                  new URL(resolvedPath, display.iframeBase!).href,
+                  resolvePreviewUrl(resolvedPath, display.iframeBase!) ??
+                  display.iframeBase!,
                 display.showWakingPill ? DRAFT_OFF : null,
               ),
               previewDeviceSize,
@@ -748,7 +818,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const productionOpenTabBase =
     draftPreviewUrl ??
     (display.iframeBase
-      ? new URL(resolvedPath, display.iframeBase).href
+      ? resolvePreviewUrl(resolvedPath, display.iframeBase)
       : null);
   const openInNewTabUrl =
     display.mode === "production"

@@ -57,6 +57,7 @@ import {
 } from "./use-cms-publish-actions.ts";
 import { useCmsPublishState } from "./use-cms-publish-state.ts";
 import { useResolvedPublishGate } from "@/components/sandbox/hooks/use-publish-gate.ts";
+import { useOptionalChatTask } from "@/components/chat/chat-context";
 
 export type { CmsPublishMode };
 
@@ -352,6 +353,8 @@ function CmsPublishContent({
   publishLockRef: React.MutableRefObject<boolean>;
 }) {
   const t = useT();
+  /** The session publishing — the git routes resolve their runtime from it. */
+  const threadId = useOptionalChatTask()?.taskId ?? null;
   const githubClient = useMCPClient({
     connectionId: githubConnectionId,
     orgId,
@@ -371,7 +374,13 @@ function CmsPublishContent({
     bodiesFailed,
     cardsPending,
     refresh,
-  } = useCmsPublishState({ orgSlug, virtualMcpId, branch, baseBranch });
+  } = useCmsPublishState({
+    orgSlug,
+    virtualMcpId,
+    branch,
+    threadId,
+    baseBranch,
+  });
 
   /** The author's text once they type — until then the note is derived, so a
    *  change list that lands after mount still describes itself. */
@@ -394,6 +403,7 @@ function CmsPublishContent({
     orgSlug,
     virtualMcpId,
     branch,
+    threadId,
     status: gitStatus,
     diff: gitDiff,
     paths: allPaths,
@@ -406,6 +416,7 @@ function CmsPublishContent({
     orgSlug,
     virtualMcpId,
     branch,
+    threadId,
     baseBranch,
     githubClient,
     owner,

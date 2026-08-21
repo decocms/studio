@@ -448,7 +448,11 @@ export const settings = {
   "settings.editProviderDialog.saving": "Salvando...",
   "settings.editProviderDialog.showApiKey": "Mostrar chave de API",
   "settings.joinRequestsSection.approve": "Aprovar",
+  "settings.joinRequestsSection.approveFailed": "Falha ao aprovar",
+  "settings.joinRequestsSection.approved": "Solicita\u00e7\u00e3o aprovada",
   "settings.joinRequestsSection.deny": "Recusar",
+  "settings.joinRequestsSection.denied": "Solicita\u00e7\u00e3o recusada",
+  "settings.joinRequestsSection.denyFailed": "Falha ao recusar",
   "settings.joinRequestsSection.description":
     "Pessoas que solicitaram entrada por um dom\u00ednio em modo de aprova\u00e7\u00e3o.",
   "settings.joinRequestsSection.title": "Solicita\u00e7\u00f5es de entrada",

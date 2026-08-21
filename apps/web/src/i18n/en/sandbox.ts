@@ -148,6 +148,7 @@ export const sandbox = {
   "sandbox.collectionsSidebar.content": "Content",
   "sandbox.collectionsSidebar.loaders": "Loaders",
   "sandbox.collectionsSidebar.pages": "Pages",
+  "sandbox.collectionsSidebar.postSchedule": "Scheduling",
   "sandbox.collectionsSidebar.posts": "Posts",
   "sandbox.collectionsSidebar.redirects": "Redirects",
   "sandbox.collectionsSidebar.sections": "Sections",
@@ -414,6 +415,23 @@ export const sandbox = {
   "sandbox.plainBlocks.listItemPlaceholder": "List item",
   "sandbox.plainBlocks.numberedLabel": "Numbered",
   "sandbox.plainBlocks.quotePlaceholder": "Quote",
+  "sandbox.postCalendar.legendScheduled": "Scheduled",
+  "sandbox.postCalendar.legendUnscheduled": "Not scheduled",
+  "sandbox.postCalendar.next": "Next month",
+  "sandbox.postCalendar.outdatedAppsDescription":
+    "Scheduling needs deco apps {required} or newer. Update this site's pin by running:",
+  "sandbox.postCalendar.outdatedAppsTitle": "Update this site's apps version",
+  "sandbox.postCalendar.previous": "Previous month",
+  "sandbox.postCalendar.schedulePostOn": "Schedule a post on {date}",
+  "sandbox.postCalendar.today": "Today",
+  "sandbox.postCalendar.unscheduledHint":
+    "Dashed posts aren't scheduled — they sit on their display date, and nothing will publish them.",
+  "sandbox.postCalendar.undatedEmpty": "Every post has a date.",
+  "sandbox.postCalendar.unsupportedRuntimeDescription":
+    "This site doesn't run the deco blog app, so nothing here can publish a post on a schedule. The calendar below is read-only.",
+  "sandbox.postCalendar.unsupportedRuntimeTitle":
+    "TanStack sites aren't supported yet",
+  "sandbox.postCalendar.undatedLabel": "No date · {count}",
   "sandbox.postEditor.addPropLabel": "Add prop",
   "sandbox.postEditor.authorsLabel": "Authors",
   "sandbox.postEditor.categoriesLabel": "Categories",
@@ -441,6 +459,10 @@ export const sandbox = {
     "Set the post slug (and its category) plus the blog app's pageSlug to preview",
   "sandbox.postEditor.previewTooltip": "Open the post preview in a new tab",
   "sandbox.postEditor.publishedLabel": "Published",
+  "sandbox.postEditor.scheduledDatetimeDescription":
+    "When this post goes live. The site publishes it on its own once this moment passes.",
+  "sandbox.postEditor.scheduledDatetimeLabel": "Goes live at",
+  "sandbox.postEditor.schedulingLabel": "Scheduled",
   "sandbox.postEditor.removePropLabel": "Remove prop",
   "sandbox.postEditor.seePreview": "See preview",
   "sandbox.postEditor.selectAuthorsPlaceholder": "Select authors",
@@ -485,6 +507,7 @@ export const sandbox = {
   "sandbox.postToolbar.sortZA": "Z–A",
   "sandbox.postToolbar.statusDraft": "Draft",
   "sandbox.postToolbar.statusLabel": "Status",
+  "sandbox.postToolbar.statusScheduled": "Scheduled",
   "sandbox.postToolbar.statusPublished": "Published",
   "sandbox.preview.catchAllParamLabel": "path",
   "sandbox.preview.choosePage": "Choose page",
@@ -624,10 +647,17 @@ export const sandbox = {
     "See your changes before they go live.",
   "sandbox.cmsSettings.fastPreview.label": "Fast Preview",
   "sandbox.cmsSettings.fastPreview.description":
-    "Preview changes on your preview server instead of the sandbox.",
+    "New chats start as CMS sessions, previewed on your preview server instead of a sandbox. Existing chats keep the mode they were created with.",
   "sandbox.cmsSettings.fastPreview.needsPreviewServerUrl":
     "Set a preview server above to enable Fast Preview.",
   "sandbox.cmsSettings.editing.title": "Editing",
+  "sandbox.cmsUnavailable.title": "This chat can't preview your site",
+  "sandbox.cmsUnavailable.noPreviewServer":
+    "It's a CMS session, but this project has no preview server configured.",
+  "sandbox.cmsUnavailable.noRepo":
+    "It's a CMS session, but this project has no GitHub repository to save to.",
+  "sandbox.cmsUnavailable.startCodingSession":
+    "Continue this branch in a coding session",
   "sandbox.cmsSettings.editing.description":
     "Customize the content-editing experience in the blocks form.",
   "sandbox.previewServerUrlField.description":

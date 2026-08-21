@@ -1,6 +1,7 @@
 import {
   BookOpen01,
   Calendar,
+  CalendarDate,
   CornerUpRight,
   Database01,
   File02,
@@ -135,6 +136,13 @@ export function CollectionsSidebar({
               label={t("sandbox.collectionsSidebar.categories")}
               count={counts.categories}
               active={active === "categories"}
+              onSelect={onSelect}
+            />
+            <CollectionRow
+              id="post-schedule"
+              icon={CalendarDate}
+              label={t("sandbox.collectionsSidebar.postSchedule")}
+              active={active === "post-schedule"}
               onSelect={onSelect}
             />
             <CollectionRow

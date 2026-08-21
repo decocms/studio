@@ -155,19 +155,29 @@ export function buildSectionVariantOverrideParams({
   });
 }
 
-/** Append override params to a preview URL, returning the new href. */
+/**
+ * Append override params to a preview URL, returning the new href. Falls
+ * back to the unmodified `href` on a malformed input instead of throwing
+ * mid-render — `href` comes from the same untrusted sandbox/production
+ * preview base as `previewOrigin`/`withDeviceHint` in preview.tsx, which use
+ * this same defensive shape (see #6362/#6374).
+ */
 export function withVariantMatcherOverride(
   href: string,
   params: string[],
 ): string {
   if (params.length === 0) return href;
-  const url = new URL(href, "http://local");
-  url.searchParams.delete(MATCHER_OVERRIDE_QS);
-  for (const param of params) {
-    url.searchParams.append(MATCHER_OVERRIDE_QS, param);
+  try {
+    const url = new URL(href, "http://local");
+    url.searchParams.delete(MATCHER_OVERRIDE_QS);
+    for (const param of params) {
+      url.searchParams.append(MATCHER_OVERRIDE_QS, param);
+    }
+    // Preserve relative hrefs when the input had no origin.
+    return href.startsWith("http")
+      ? url.toString()
+      : `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return href;
   }
-  // Preserve relative hrefs when the input had no origin.
-  return href.startsWith("http")
-    ? url.toString()
-    : `${url.pathname}${url.search}${url.hash}`;
 }

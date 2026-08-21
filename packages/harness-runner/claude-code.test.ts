@@ -181,6 +181,22 @@ describe("buildOptions", () => {
     expect(options().skills).toBe("all");
   });
 
+  test("loads the daemon's prefetched org skills as plugins, none when unset", () => {
+    // The read-only shared sets used to be copied into the checkout's
+    // `.claude/skills/` — the only dir the SDK scanned that was also writable —
+    // and every git workaround downstream existed to hide them. A plugin dir is
+    // out of the tree, so there is nothing to hide.
+    expect("plugins" in options()).toBe(false);
+    process.env.CLAUDE_CODE_PLUGIN_DIRS = "/app/orgfs-skills";
+    try {
+      expect(options().plugins).toEqual([
+        { type: "local", path: "/app/orgfs-skills" },
+      ]);
+    } finally {
+      delete process.env.CLAUDE_CODE_PLUGIN_DIRS;
+    }
+  });
+
   test("runs in the repo checkout when the workspace has one", () => {
     const opts = options({
       workspace: {
