@@ -20,6 +20,7 @@ import { ImageField } from "@/components/sections-editor/fields/image-field";
 import { StringField } from "@/components/sections-editor/fields/string-field";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import {
+  blocksPublishToggle,
   buildBlogBlock,
   getBlogPayload,
   isPostPublished,
@@ -225,7 +226,8 @@ function PostSettings({
   const t = useT();
   const isPublished = isPostPublished(post);
   const missing = missingPostFields(post);
-  const hasErrors = missing.length > 0;
+  // Blocks only publishing, not unpublishing — see `blocksPublishToggle`.
+  const publishToggleDisabled = blocksPublishToggle(post);
   const missingLabel =
     missing.length === 1
       ? t("sandbox.postEditor.missingFieldSingular", {
@@ -248,14 +250,14 @@ function PostSettings({
                 id="post-published"
                 className="data-[state=checked]:bg-success"
                 checked={isPublished}
-                disabled={hasErrors}
+                disabled={publishToggleDisabled}
                 onCheckedChange={(checked) =>
                   onChange("status", checked ? "published" : "draft")
                 }
               />
             </span>
           </TooltipTrigger>
-          {hasErrors && (
+          {publishToggleDisabled && (
             <TooltipContent side="bottom">{missingLabel}</TooltipContent>
           )}
         </Tooltip>

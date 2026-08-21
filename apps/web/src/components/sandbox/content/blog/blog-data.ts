@@ -349,6 +349,17 @@ export function missingPostFields(payload: Record<string, unknown>): string[] {
 }
 
 /**
+ * Whether the publish toggle should be disabled: only when turning it ON
+ * (missing required fields blocks *becoming* published), never when turning
+ * it OFF — an already-published post that later lost a required field (e.g.
+ * its category was deleted) must still be unpublishable, or the toggle would
+ * lock the post published forever.
+ */
+export function blocksPublishToggle(payload: Record<string, unknown>): boolean {
+  return !isPostPublished(payload) && missingPostFields(payload).length > 0;
+}
+
+/**
  * All posts paired with the metadata the posts list filters and sorts on.
  * Reads the denormalized `categories`/`authors` arrays, tolerating either
  * strings or `{slug}`/`{email}` objects.
