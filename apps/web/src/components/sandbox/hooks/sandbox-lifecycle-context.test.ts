@@ -106,15 +106,21 @@ describe("shouldAutoStart", () => {
     userStopped: false,
     isPending: false,
     attempted: false,
-    fastPreviewActive: false,
+    sessionRuntime: "sandbox" as const,
   };
 
   test("all conditions met → true", () => {
     expect(shouldAutoStart(base)).toBe(true);
   });
 
-  test("fast preview active → false (sandbox-less mode never auto-boots)", () => {
-    expect(shouldAutoStart({ ...base, fastPreviewActive: true })).toBe(false);
+  test("a cms session → false (sandbox-less mode never auto-boots)", () => {
+    expect(shouldAutoStart({ ...base, sessionRuntime: "cms" })).toBe(false);
+  });
+
+  // The regression: an unloaded project row read as the project default, and
+  // acting on that guess fired SANDBOX_START for a `cms` thread.
+  test("an unknown runtime → false (never boot on a guess)", () => {
+    expect(shouldAutoStart({ ...base, sessionRuntime: null })).toBe(false);
   });
 
   test("disabled execution boundary → false", () => {

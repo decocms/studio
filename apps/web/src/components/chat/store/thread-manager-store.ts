@@ -196,9 +196,14 @@ export class ThreadManagerStore {
           | undefined
       )?.item;
       if (!row) throw new Error("create: no item returned");
-      this.threads.update((list) =>
-        list.some((t) => t.id === row.id) ? list : [row, ...list],
-      );
+      // `upsertFullRow`, not "insert if absent": the `/watch` event for this
+      // thread routinely lands BEFORE this response, and that synthetic
+      // carries no `metadata` (so no runtime stamp) and is flagged `partial`.
+      // Skipping the authoritative row there left the partial one in place
+      // forever — which made `useEnsureTask` re-GET the row it had just
+      // created, and made the chat permanently unreusable, so every "New chat"
+      // minted a duplicate.
+      this.threads.update((list) => upsertFullRow(list, row));
       return row;
     } catch (err) {
       // Surface failures here so callers don't each need their own toast.
