@@ -23,8 +23,10 @@ import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import { useStudioTools } from "@/lib/studio-tools";
 import { MarkdownEditor } from "@/components/markdown-editor";
+import type { MarkdownMentions } from "@/components/markdown-editor";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { extractPages } from "@/components/sections-editor/page-list";
+import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 import { EmptyMessage } from "../empty-message";
@@ -32,13 +34,20 @@ import { ThemesScreen } from "./themes";
 import {
   BRAND_BLOCK_KEY,
   type BrandRule,
+  defaultFormatSections,
+  FORMATS_BLOCK_KEY,
+  mentionableSections,
   normalizeBrandRules,
+  normalizeTitleKey,
+  postStructures,
   selectBrandEvidenceBlocks,
+  unknownCitations,
 } from "./blog-data";
 import { AddButton, RemoveButton, str } from "./blocks/primitives";
 
-/** Stable empty seed — `useAutosave` re-seeds on reference change. */
+/** Stable empty seeds — `useAutosave` re-seeds on reference change. */
 const EMPTY_BRAND: Record<string, unknown> = {};
+const EMPTY_FORMATS: Record<string, unknown> = {};
 
 /** Free-text fields the extractor may fill. */
 const TEXT_FIELDS = ["description", "tone", "targetAudience"] as const;
@@ -86,8 +95,31 @@ type NavId = (typeof NAV)[number]["id"];
 type ExtractPhase = Extract<TranslationKey, `sandbox.blogBrand.phase${string}`>;
 const PHASE_READING = "sandbox.blogBrand.phaseReading" satisfies ExtractPhase;
 
+/** Steps the format suggestion goes through, in order. */
+type FormatPhase = Extract<TranslationKey, `sandbox.formats.phase${string}`>;
+const FORMAT_PHASE_READING =
+  "sandbox.formats.phaseReading" satisfies FormatPhase;
+
 function strList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v) => typeof v === "string") : [];
+}
+
+/**
+ * The starter format, for an org with no `smart` tier. Cites only sections the
+ * site actually has, so the brief never points at something unrenderable.
+ */
+function starterFormat(
+  t: ReturnType<typeof useT>,
+  sections: string[],
+): BrandRule {
+  return {
+    name: t("sandbox.formats.starterName"),
+    value: sections.length
+      ? t("sandbox.formats.starterBody", {
+          sections: sections.map((name) => `@${name}`).join(", "),
+        })
+      : t("sandbox.formats.starterBodyNoSections"),
+  };
 }
 
 export function AutonomousContent(props: {
@@ -95,6 +127,7 @@ export function AutonomousContent(props: {
   virtualMcpId: string;
   branch: string;
   decofile: Record<string, unknown>;
+  meta: LiveMeta;
 }) {
   const t = useT();
   const [screen, setScreen] = useState<NavId>("planner");
@@ -142,11 +175,13 @@ function LibraryScreen({
   virtualMcpId,
   branch,
   decofile,
+  meta,
 }: {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
   decofile: Record<string, unknown>;
+  meta: LiveMeta;
 }) {
   const block = decofile[BRAND_BLOCK_KEY] as
     | Record<string, unknown>
@@ -161,6 +196,30 @@ function LibraryScreen({
 
   const setField = (key: string, value: unknown) =>
     setBrand({ ...brand, [key]: value });
+
+  const formatsBlock = decofile[FORMATS_BLOCK_KEY] as
+    | Record<string, unknown>
+    | undefined;
+  const [formatsData, setFormatsData] = useAutosave(
+    formatsBlock ?? EMPTY_FORMATS,
+    (next) => save.mutate({ blockKey: FORMATS_BLOCK_KEY, data: next }),
+  );
+  const formats = normalizeBrandRules(formatsData.formats);
+  const setFormats = (rules: BrandRule[]) =>
+    setFormatsData({ ...formatsData, formats: rules });
+
+  /** The sections a format's brief may cite, and the `@` picker's contents. */
+  const sections = mentionableSections(meta);
+  const sectionNames = sections.map((s) => s.name);
+  const mentions: MarkdownMentions = {
+    items: sections,
+    hint: t("sandbox.formats.mentionHint"),
+    emptyLabel: t("sandbox.formats.mentionEmpty"),
+  };
+
+  const [isSuggesting, setIsSuggesting] = useState(false);
+  const [formatPhase, setFormatPhase] =
+    useState<FormatPhase>(FORMAT_PHASE_READING);
 
   const [isExtracting, setIsExtracting] = useState(false);
   /**
@@ -246,6 +305,61 @@ function LibraryScreen({
     } finally {
       for (const timer of timers) clearTimeout(timer);
       setIsExtracting(false);
+    }
+  };
+
+  /** Name the formats this blog already writes in, from the shape of its posts. */
+  const suggestFormats = async () => {
+    setIsSuggesting(true);
+    setFormatPhase(FORMAT_PHASE_READING);
+    const timer = setTimeout(
+      () => setFormatPhase("sandbox.formats.phaseWriting"),
+      6_000,
+    );
+    try {
+      const result = await studio.call("BLOG_FORMAT_SUGGEST", {
+        brand: {
+          companyName: str(brand.companyName),
+          description: str(brand.description),
+          language: str(brand.language),
+          tone: str(brand.tone),
+          targetAudience: str(brand.targetAudience),
+          dos: normalizeBrandRules(brand.dos),
+          avoid: normalizeBrandRules(brand.avoid),
+        },
+        sections,
+        postStructures: postStructures(decofile).map((post) => ({
+          title: post.title,
+          sections: post.sections,
+        })),
+      });
+
+      const proposed = result.fallback
+        ? [starterFormat(t, defaultFormatSections(sectionNames))]
+        : result.formats;
+      const existing = new Set(formats.map((f) => normalizeTitleKey(f.name)));
+      const fresh = proposed.filter(
+        (f) => f.name.trim() && !existing.has(normalizeTitleKey(f.name)),
+      );
+
+      if (fresh.length === 0) {
+        toast.info(t("sandbox.formats.noNewFormats"));
+        return;
+      }
+      setFormats([...formats, ...fresh]);
+      setEditorRevision((n) => n + 1);
+      toast.success(
+        result.fallback
+          ? t("sandbox.formats.starterAdded")
+          : t("sandbox.formats.suggested", { count: String(fresh.length) }),
+      );
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : t("sandbox.formats.suggestFailed"),
+      );
+    } finally {
+      clearTimeout(timer);
+      setIsSuggesting(false);
     }
   };
 
@@ -433,14 +547,59 @@ function LibraryScreen({
             </Button>
           </div>
         )}
+        {tab === "formats" && (
+          <div className="flex min-w-0 items-center gap-3">
+            {isSuggesting && (
+              <span
+                className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground"
+                aria-live="polite"
+                role="status"
+              >
+                <Loading02 size={12} className="shrink-0 animate-spin" />
+                <span className="truncate">{t(formatPhase)}</span>
+              </span>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="my-2 shrink-0"
+              disabled={isSuggesting}
+              title={t("sandbox.formats.suggestHint")}
+              onClick={() => void suggestFormats()}
+            >
+              <Stars02 size={14} />
+              {t("sandbox.formats.suggestButton")}
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="min-w-0 flex-1 overflow-y-auto">
         {tab === "formats" ? (
-          <EmptyMessage
-            title={t("sandbox.library.formatsUnderDevTitle")}
-            description={t("sandbox.library.formatsUnderDev")}
-          />
+          <div className="min-w-0 max-w-3xl space-y-3 px-8 py-6">
+            <p className="text-xs text-muted-foreground">
+              {t("sandbox.formats.hint")}
+            </p>
+            <RuleList
+              rules={formats}
+              onChange={setFormats}
+              revision={editorRevision}
+              idPrefix="format"
+              add={t("sandbox.formats.add")}
+              namePlaceholder={t("sandbox.formats.namePlaceholder")}
+              bodyPlaceholder={t("sandbox.formats.bodyPlaceholder")}
+              mentions={mentions}
+              citationWarning={(value) => {
+                const unknown = unknownCitations(value, sectionNames);
+                return unknown.length === 0
+                  ? null
+                  : t("sandbox.formats.unknownCitations", {
+                      names: unknown.map((name) => `@${name}`).join(", "),
+                    });
+              }}
+            />
+          </div>
         ) : (
           <div className="grid grid-cols-[240px_1fr] gap-8 px-8 py-6">
             <nav className="sticky top-0 h-fit space-y-0.5 rounded-xl border bg-card p-1.5">
@@ -565,6 +724,8 @@ function RuleList({
   add,
   namePlaceholder,
   bodyPlaceholder,
+  mentions,
+  citationWarning,
 }: {
   rules: BrandRule[];
   onChange: (rules: BrandRule[]) => void;
@@ -573,6 +734,10 @@ function RuleList({
   add: string;
   namePlaceholder: string;
   bodyPlaceholder: string;
+  /** Enables `@` in the body editor. Only formats cite site sections. */
+  mentions?: MarkdownMentions;
+  /** Message for a body citing something that doesn't exist, or null. */
+  citationWarning?: (value: string) => string | null;
 }) {
   const t = useT();
   const [openIndex, setOpenIndex] = useState<number | null>(null);
@@ -590,6 +755,7 @@ function RuleList({
       <ul className="divide-y overflow-hidden rounded-lg border">
         {rules.map((rule, index) => {
           const open = openIndex === index;
+          const warning = open ? citationWarning?.(rule.value) : null;
           return (
             <li key={index} className="group/item bg-card">
               <div className="flex items-center gap-1 pr-2">
@@ -634,10 +800,12 @@ function RuleList({
                     defaultValue={rule.value}
                     placeholder={bodyPlaceholder}
                     attachments={false}
+                    mentions={mentions}
                     onChange={(markdown) =>
                       replaceAt(index, { value: markdown })
                     }
                   />
+                  {warning && <p className="text-xs text-warning">{warning}</p>}
                 </div>
               )}
             </li>

@@ -20,6 +20,10 @@ import {
   newThemeKey,
   scanThemes,
   THEME_KEY_PREFIX,
+  citedSections,
+  defaultFormatSections,
+  postStructures,
+  unknownCitations,
 } from "./blog-data";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 
@@ -968,5 +972,110 @@ describe("dedupeSuggestedThemes", () => {
     expect(
       dedupeSuggestedThemes([], [{ title: "Um", body: "briefing" }]),
     ).toEqual([{ title: "Um", body: "briefing" }]);
+  });
+});
+
+describe("postStructures", () => {
+  test("reads each post's section sequence as component names, in order", () => {
+    const decofile = decofileWithPosts({
+      "collections/blog/posts/a": {
+        title: "Guia",
+        sections: [
+          { __resolveType: "blog/sections/blocks/Heading.tsx" },
+          { __resolveType: "site/sections/Blog/Post/Paragraph.tsx" },
+          { __resolveType: "blog/sections/blocks/ProductShelf.tsx" },
+        ],
+      },
+    });
+    expect(postStructures(decofile)).toEqual([
+      {
+        key: "collections/blog/posts/a",
+        title: "Guia",
+        sections: ["Heading", "Paragraph", "ProductShelf"],
+      },
+    ]);
+  });
+
+  test("a post with no sections still reports its title", () => {
+    const decofile = decofileWithPosts({
+      "collections/blog/posts/empty": { title: "Vazio" },
+    });
+    expect(postStructures(decofile)[0]?.sections).toEqual([]);
+  });
+
+  test("skips sections without a resolveType instead of emitting blanks", () => {
+    const decofile = decofileWithPosts({
+      "collections/blog/posts/a": {
+        sections: [
+          { __resolveType: "blog/sections/blocks/Heading.tsx" },
+          { text: "orphan" },
+          "not an object",
+        ],
+      },
+    });
+    expect(postStructures(decofile)[0]?.sections).toEqual(["Heading"]);
+  });
+
+  test("caps at 40 posts so the suggestion prompt stays bounded", () => {
+    const posts: Record<string, Record<string, unknown>> = {};
+    for (let i = 0; i < 60; i++) {
+      posts[`collections/blog/posts/p${i}`] = { title: `Post ${i}` };
+    }
+    expect(postStructures(decofileWithPosts(posts))).toHaveLength(40);
+  });
+});
+
+describe("citedSections", () => {
+  test("collects distinct @mentions", () => {
+    expect(
+      citedSections("Abre com @Heading, depois @Paragraph e mais @Paragraph."),
+    ).toEqual(["Heading", "Paragraph"]);
+  });
+
+  test("ignores an @ inside a word, so an email is not a citation", () => {
+    expect(citedSections("fale com contato@marca.com.br")).toEqual([]);
+  });
+
+  test("reads a citation after a bracket or at the start of a line", () => {
+    expect(citedSections("@Heading\n- (@Cta) no fim")).toEqual([
+      "Heading",
+      "Cta",
+    ]);
+  });
+
+  test("stops at punctuation but keeps dashes inside the name", () => {
+    expect(citedSections("use @Product-Card.")).toEqual(["Product-Card"]);
+  });
+
+  test("finds nothing in prose without mentions", () => {
+    expect(citedSections("Um formato de guia prático.")).toEqual([]);
+  });
+});
+
+describe("unknownCitations", () => {
+  test("reports only the citations the site does not have", () => {
+    expect(
+      unknownCitations("@Heading e @Removida", ["Heading", "Paragraph"]),
+    ).toEqual(["Removida"]);
+  });
+
+  test("nothing to report when every citation resolves", () => {
+    expect(unknownCitations("@Heading", ["Heading"])).toEqual([]);
+  });
+
+  test("every citation is unknown on a site with no blog sections", () => {
+    expect(unknownCitations("@Heading e @Cta", [])).toEqual(["Heading", "Cta"]);
+  });
+});
+
+describe("defaultFormatSections", () => {
+  test("keeps the preferred order and drops what the site lacks", () => {
+    expect(
+      defaultFormatSections(["Cta", "Paragraph", "Heading", "Shelf"]),
+    ).toEqual(["Heading", "Paragraph", "Cta"]);
+  });
+
+  test("returns nothing when the site has none of them", () => {
+    expect(defaultFormatSections(["Shelf"])).toEqual([]);
   });
 });

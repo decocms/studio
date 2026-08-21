@@ -970,8 +970,123 @@ export function scanThemes(decofile: Record<string, unknown>): ThemeEntry[] {
   );
 }
 
+// ------------------ Formats (loose post templates) ---------------------------
+
+/**
+ * A format is a name plus a markdown brief, injected into the generation
+ * prompt — deliberately loose, so it cites sections rather than sequencing
+ * them. Same `{ name, value }` shape as a brand rule, so `normalizeBrandRules`
+ * already reads the list.
+ */
+export const FORMATS_BLOCK_KEY = "blog-manager-formats";
+
+/** How many posts the format suggestion reads. */
+const MAX_POST_STRUCTURES = 40;
+
+export interface PostStructure {
+  key: string;
+  title: string;
+  /** Component names of the post's sections, in document order. */
+  sections: string[];
+}
+
+/**
+ * The shape of each existing post: which sections it uses, in order.
+ *
+ * This — not the prose — is what reveals the formats a blog already writes in.
+ * Forty sequences of component names is a tiny input next to forty post bodies,
+ * and it is the only part that answers "how is this post built".
+ */
+export function postStructures(
+  decofile: Record<string, unknown>,
+): PostStructure[] {
+  return listBlogPayloads(decofile, "posts")
+    .slice(0, MAX_POST_STRUCTURES)
+    .map(({ key, payload }) => ({
+      key,
+      title: str(payload.title),
+      sections: toArray(payload.sections)
+        .map((section) => str(asRecord(section)?.__resolveType))
+        .filter(Boolean)
+        .map(blockComponentName),
+    }));
+}
+
+export interface MentionableSection {
+  /** The token a brief cites, and what gets inserted: `ProductShelf`. */
+  name: string;
+  title: string;
+  description?: string;
+}
+
+/**
+ * The sections a format's brief may cite, deduped by component name.
+ *
+ * `discoverBlogBlockTypes` dedupes by `resolveType`, so an app and a site
+ * variant of the same component both survive — and since a citation is the bare
+ * component name, those two are indistinguishable once written. Collapsing them
+ * here keeps the picker from listing the same `@Name` twice.
+ */
+export function mentionableSections(meta: LiveMeta): MentionableSection[] {
+  const byName = new Map<string, MentionableSection>();
+  for (const block of discoverBlogBlockTypes(meta)) {
+    const name = blockComponentName(block.resolveType);
+    if (byName.has(name)) continue;
+    byName.set(name, {
+      name,
+      title: block.title,
+      description: block.description,
+    });
+  }
+  return [...byName.values()];
+}
+
+/**
+ * `@Name` mentions in a format's brief. Requires a word boundary before the
+ * `@` so an email address in the prose isn't read as a citation, matching when
+ * the editor's picker fires.
+ */
+export function citedSections(markdown: string): string[] {
+  const cited = new Set<string>();
+  for (const match of markdown.matchAll(/(?:^|[\s([{>])@([A-Za-z][\w-]*)/g)) {
+    if (match[1]) cited.add(match[1]);
+  }
+  return [...cited];
+}
+
+/**
+ * Cited sections the site no longer has. Without surfacing these, a format
+ * keeps pointing at a renamed section and only the generated post shows it.
+ */
+export function unknownCitations(
+  markdown: string,
+  available: string[],
+): string[] {
+  const known = new Set(available);
+  return citedSections(markdown).filter((name) => !known.has(name));
+}
+
+/**
+ * The starter format, for an org with no AI tier configured. Cites only
+ * sections the site actually has, walking a preferred order and skipping
+ * whatever is missing — the labels come from the caller so this stays in the
+ * reader's language.
+ */
+const DEFAULT_FORMAT_SECTIONS = [
+  "Heading",
+  "Paragraph",
+  "BlockImage",
+  "List",
+  "Cta",
+] as const;
+
+export function defaultFormatSections(available: string[]): string[] {
+  const known = new Set(available);
+  return DEFAULT_FORMAT_SECTIONS.filter((name) => known.has(name));
+}
+
 /** Casing, accents and spacing are presentation, not identity. */
-function themeTitleKey(title: string): string {
+export function normalizeTitleKey(title: string): string {
   return title
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "")
@@ -990,10 +1105,10 @@ export function dedupeSuggestedThemes<T extends { title: string }>(
   existingTitles: string[],
   suggested: T[],
 ): T[] {
-  const seen = new Set(existingTitles.map(themeTitleKey));
+  const seen = new Set(existingTitles.map(normalizeTitleKey));
   const fresh: T[] = [];
   for (const theme of suggested) {
-    const key = themeTitleKey(theme.title);
+    const key = normalizeTitleKey(theme.title);
     if (!key || seen.has(key)) continue;
     seen.add(key);
     fresh.push(theme);

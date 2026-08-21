@@ -304,6 +304,32 @@ export const sandbox = {
   "sandbox.fileTreeRow.newFile": "Novo arquivo",
   "sandbox.fileTreeRow.newFolder": "Nova pasta",
   "sandbox.fileTreeRow.rename": "Renomear",
+  "sandbox.formats.add": "Novo formato",
+  "sandbox.formats.bodyPlaceholder":
+    "Quando usar, como abre e fecha, mais ou menos o tamanho, e quais sections sustentam ele…",
+  "sandbox.formats.hint":
+    "Um formato orienta a geração, não dita — descreva a intenção e deixe o modelo decidir a ordem. Digite @ para citar uma das suas sections.",
+  "sandbox.formats.mentionEmpty": "Nenhuma section corresponde",
+  "sandbox.formats.mentionHint": "Digite @ para citar uma section",
+  "sandbox.formats.namePlaceholder": "O formato, nomeado pelo trabalho que faz",
+  "sandbox.formats.noNewFormats":
+    "Nada novo voltou — todo formato proposto já estava na lista.",
+  "sandbox.formats.phaseReading": "Lendo como os seus posts são montados…",
+  "sandbox.formats.phaseWriting": "Nomeando os formatos…",
+  "sandbox.formats.starterAdded":
+    "Esta org não tem modelo de IA configurado, então adicionamos um formato inicial para você editar.",
+  "sandbox.formats.starterBody":
+    "Use para um post direto: abra com o assunto e por que ele importa para quem lê, desenvolva em algumas passagens curtas, e feche com o próximo passo.\n\nSections que sustentam ele: {sections}. Quantas de cada, e em que ordem, depende do tema.",
+  "sandbox.formats.starterBodyNoSections":
+    "Use para um post direto: abra com o assunto e por que ele importa para quem lê, desenvolva em algumas passagens curtas, e feche com o próximo passo.\n\nEste site ainda não reporta sections de post — quando reportar, cite elas aqui com @.",
+  "sandbox.formats.starterName": "Post padrão",
+  "sandbox.formats.suggestButton": "Sugerir formatos",
+  "sandbox.formats.suggestFailed": "Não foi possível sugerir formatos",
+  "sandbox.formats.suggestHint":
+    "Nomear os formatos em que este blog já escreve, a partir de como os posts são montados",
+  "sandbox.formats.suggested": "{count} formato(s) adicionado(s)",
+  "sandbox.formats.unknownCitations":
+    "Este formato cita sections que o site não tem: {names}",
   "sandbox.itemActions.addVariant": "Adicionar variante",
   "sandbox.itemActions.delete": "Excluir",
   "sandbox.itemActions.duplicate": "Duplicar",
@@ -311,9 +337,6 @@ export const sandbox = {
   "sandbox.itemActions.moreActions": "Mais ações",
   "sandbox.itemActions.rename": "Renomear",
   "sandbox.itemActions.viewJson": "Visualizar JSON",
-  "sandbox.library.formatsUnderDev":
-    "Os formatos vão guardar os esqueletos sobre os quais um post gerado é montado. Ainda não está ligado.",
-  "sandbox.library.formatsUnderDevTitle": "Formatos — em desenvolvimento",
   "sandbox.library.subtitle": "O contexto que orienta todo post gerado.",
   "sandbox.library.tabContext": "Contexto",
   "sandbox.library.tabFormats": "Formatos",

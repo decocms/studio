@@ -1,11 +1,12 @@
 import { useRef } from "react";
-import { EditorContent, useEditor } from "@tiptap/react";
+import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import { Selection } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { Attachment01, Loading02 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { Suggestion } from "@/components/chat/tiptap/mention";
 import { BubbleToolbar } from "./bubble-toolbar";
 import { markdownEditorExtensions } from "./extensions";
 import { unwrapListContinuations } from "./unwrap-list-continuations";
@@ -69,6 +70,81 @@ function insertUpload(
 }
 
 /**
+ * One `@`-mentionable item. `name` is inserted into the markdown verbatim, so
+ * it has to be a single word — tiptap's suggestion stops at the first space.
+ */
+export interface MarkdownMention {
+  name: string;
+  title?: string;
+  description?: string;
+}
+
+export interface MarkdownMentions {
+  items: MarkdownMention[];
+  /** Shown under the editor, to make the `@` discoverable at all. */
+  hint?: string;
+  emptyLabel?: string;
+}
+
+/**
+ * A mention lands as plain text (`@Name`), not as a node.
+ *
+ * The value of this editor IS markdown, and a node would need both
+ * `renderMarkdown` and `parseMarkdown` — the latter meaning a token matcher for
+ * arbitrary `@word`, since the markdown parser runs only the first handler
+ * registered for a token. Plain text round-trips for free, stays readable in
+ * whatever stores it, and survives being hand-edited.
+ */
+function MentionMenu({
+  editor,
+  mentions,
+}: {
+  editor: Editor;
+  mentions: MarkdownMentions;
+}) {
+  const items = mentions.items;
+  return (
+    <Suggestion<MarkdownMention>
+      editor={editor}
+      char="@"
+      pluginKey="markdownMentionMenu"
+      queryKey={["markdown-editor-mentions"]}
+      queryFn={({ query }) => {
+        const term = query.trim().toLowerCase();
+        return Promise.resolve(
+          term
+            ? items.filter((item) =>
+                `${item.name} ${item.title ?? ""}`.toLowerCase().includes(term),
+              )
+            : items,
+        );
+      }}
+      emptyLabel={mentions.emptyLabel}
+      renderItem={(item) => (
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <span className="truncate font-medium">
+            {item.title ?? item.name}
+          </span>
+          {item.description && (
+            <span className="line-clamp-1 text-xs text-muted-foreground">
+              {item.description}
+            </span>
+          )}
+        </div>
+      )}
+      onSelect={({ range, item }) => {
+        editor
+          .chain()
+          .focus()
+          /** A JSON text node — `insertContent` with a string parses HTML. */
+          .insertContentAt(range, [{ type: "text", text: `@${item.name} ` }])
+          .run();
+      }}
+    />
+  );
+}
+
+/**
  * WYSIWYG editor that reads and writes plain markdown.
  *
  * Markdown, not HTML, is the value: descriptions are fed to agents as prompt
@@ -84,6 +160,7 @@ export function MarkdownEditor({
   placeholder,
   editable = true,
   attachments = true,
+  mentions,
 }: {
   defaultValue: string;
   onChange: (markdown: string) => void;
@@ -93,6 +170,8 @@ export function MarkdownEditor({
   editable?: boolean;
   /** Off for text-only fields: hides the picker and ignores pasted/dropped files. */
   attachments?: boolean;
+  /** When set, `@` opens a picker that inserts the item's name as plain text. */
+  mentions?: MarkdownMentions;
 }) {
   const t = useT();
   const { uploadFile, pending } = useEditorFileUpload();
@@ -180,10 +259,14 @@ export function MarkdownEditor({
         editor={editor}
         className="text-[15px] text-muted-foreground"
       />
+      {editable && mentions && (
+        <MentionMenu editor={editor} mentions={mentions} />
+      )}
       {/* Sits clear of the description body so it reads as a control on the
           editor, not as the last line of the text. Hidden when read-only —
           nothing here would do anything. */}
       <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground empty:mt-0">
+        {editable && mentions?.hint && <span>{mentions.hint}</span>}
         {editable && attachments && (
           <Button
             type="button"

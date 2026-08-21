@@ -294,6 +294,32 @@ export const sandbox = {
   "sandbox.fileTreeRow.newFile": "New File",
   "sandbox.fileTreeRow.newFolder": "New Folder",
   "sandbox.fileTreeRow.rename": "Rename",
+  "sandbox.formats.add": "New format",
+  "sandbox.formats.bodyPlaceholder":
+    "When to use it, how it opens and closes, roughly how long, and which sections carry it…",
+  "sandbox.formats.hint":
+    "A format guides generation, it doesn't dictate it — describe the intent and let the model decide the order. Type @ to cite one of your sections.",
+  "sandbox.formats.mentionEmpty": "No matching section",
+  "sandbox.formats.mentionHint": "Type @ to cite a section",
+  "sandbox.formats.namePlaceholder": "The format, named by the job it does",
+  "sandbox.formats.noNewFormats":
+    "Nothing new came back — every format proposed was already on the list.",
+  "sandbox.formats.phaseReading": "Reading how your posts are built…",
+  "sandbox.formats.phaseWriting": "Naming the formats…",
+  "sandbox.formats.starterAdded":
+    "No AI model is configured for this org, so a starter format was added for you to edit.",
+  "sandbox.formats.starterBody":
+    "Use this for a straightforward post: open with the subject and why it matters to the reader, develop it in a few short passages, and close with what to do next.\n\nSections that carry it: {sections}. How many of each, and in what order, depends on the theme.",
+  "sandbox.formats.starterBodyNoSections":
+    "Use this for a straightforward post: open with the subject and why it matters to the reader, develop it in a few short passages, and close with what to do next.\n\nThis site reports no post sections yet — once it does, cite them here with @.",
+  "sandbox.formats.starterName": "Standard post",
+  "sandbox.formats.suggestButton": "Suggest formats",
+  "sandbox.formats.suggestFailed": "Couldn't suggest formats",
+  "sandbox.formats.suggestHint":
+    "Name the formats this blog already writes in, from how its posts are built",
+  "sandbox.formats.suggested": "{count} format(s) added",
+  "sandbox.formats.unknownCitations":
+    "This format cites sections the site doesn't have: {names}",
   "sandbox.itemActions.addVariant": "Add variant",
   "sandbox.itemActions.delete": "Delete",
   "sandbox.itemActions.duplicate": "Duplicate",
@@ -301,9 +327,6 @@ export const sandbox = {
   "sandbox.itemActions.moreActions": "More actions",
   "sandbox.itemActions.rename": "Rename",
   "sandbox.itemActions.viewJson": "View JSON",
-  "sandbox.library.formatsUnderDev":
-    "Formats will hold the post skeletons a generated post is built on. Not wired up yet.",
-  "sandbox.library.formatsUnderDevTitle": "Formats — under development",
   "sandbox.library.subtitle":
     "The context every generated post is written against.",
   "sandbox.library.tabContext": "Context",

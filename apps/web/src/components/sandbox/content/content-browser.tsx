@@ -1158,6 +1158,7 @@ function ContentBrowserReady({
                 virtualMcpId={virtualMcpId}
                 branch={branch}
                 decofile={decofile}
+                meta={meta}
               />
             ) : activeCollection === "seo" ? (
               <SeoEditor

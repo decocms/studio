@@ -934,6 +934,28 @@ export interface StudioToolIO {
     };
     output: { themes: { title: string; body: string }[]; searched: boolean };
   };
+  BLOG_FORMAT_SUGGEST: {
+    input: {
+      brand: {
+        companyName?: string | undefined;
+        description?: string | undefined;
+        language?: string | undefined;
+        tone?: string | undefined;
+        targetAudience?: string | undefined;
+        values?: { name: string; value: string }[] | undefined;
+        dos?: { name: string; value: string }[] | undefined;
+        avoid?: { name: string; value: string }[] | undefined;
+        categories?: string[] | undefined;
+        competitors?: { name: string; value: string }[] | undefined;
+      };
+      sections?:
+        | { name: string; title: string; description?: string | undefined }[]
+        | undefined;
+      postStructures?: { title: string; sections: string[] }[] | undefined;
+      count?: number | undefined;
+    };
+    output: { formats: { name: string; value: string }[]; fallback: boolean };
+  };
   BRAND_GET: {
     input: { id?: string | undefined };
     output: {
