@@ -29,6 +29,7 @@ import {
   dedupeSuggestedThemes,
   listPostsWithMeta,
   newThemeKey,
+  filledBrandRules,
   normalizeBrandRules,
   scanBlogEntries,
   scanThemes,
@@ -52,10 +53,10 @@ function brandInput(block: Record<string, unknown> | undefined) {
     language: str(brand.language),
     tone: str(brand.tone),
     targetAudience: str(brand.targetAudience),
-    values: normalizeBrandRules(brand.values),
-    dos: normalizeBrandRules(brand.dos),
-    avoid: normalizeBrandRules(brand.avoid),
-    competitors: normalizeBrandRules(brand.competitors),
+    values: filledBrandRules(normalizeBrandRules(brand.values)),
+    dos: filledBrandRules(normalizeBrandRules(brand.dos)),
+    avoid: filledBrandRules(normalizeBrandRules(brand.avoid)),
+    competitors: filledBrandRules(normalizeBrandRules(brand.competitors)),
     categories: Array.isArray(brand.categories)
       ? brand.categories.filter((c): c is string => typeof c === "string")
       : [],

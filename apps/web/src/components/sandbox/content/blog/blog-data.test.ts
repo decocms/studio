@@ -16,6 +16,7 @@ import {
   renameCategoryOnPost,
   replaceCategoryOnPost,
   extractBlockProse,
+  filledBrandRules,
   normalizeBrandRules,
   selectBrandEvidenceBlocks,
   setPostStatus,
@@ -863,10 +864,15 @@ describe("normalizeBrandRules", () => {
     ]);
   });
 
-  test("drops entries that carry no text at all", () => {
-    expect(
-      normalizeBrandRules(["", "   ", {}, { name: "", value: "" }, null, 42]),
-    ).toEqual([]);
+  test("keeps a blank object — it's a row the user just added", () => {
+    expect(normalizeBrandRules([{ name: "", value: "" }])).toEqual([
+      { name: "", value: "" },
+    ]);
+    expect(normalizeBrandRules([{}])).toEqual([{ name: "", value: "" }]);
+  });
+
+  test("drops blank legacy strings and anything that isn't an object", () => {
+    expect(normalizeBrandRules(["", "   ", null, 42])).toEqual([]);
   });
 
   test("returns empty for a non-array, including the absent field", () => {
@@ -1205,5 +1211,28 @@ describe("defaultFormatSections", () => {
 
   test("returns nothing when the site has none of them", () => {
     expect(defaultFormatSections(["Shelf"])).toEqual([]);
+  });
+});
+
+describe("filledBrandRules", () => {
+  test("drops the blank row the editor keeps, so a prompt never sees it", () => {
+    expect(
+      filledBrandRules([
+        { name: "Preços", value: "Use ProductCard." },
+        { name: "", value: "" },
+      ]),
+    ).toEqual([{ name: "Preços", value: "Use ProductCard." }]);
+  });
+
+  test("whitespace is not substance", () => {
+    expect(filledBrandRules([{ name: "  ", value: "\n" }])).toEqual([]);
+  });
+
+  test("a name alone or a body alone counts as written", () => {
+    const rules = [
+      { name: "só nome", value: "" },
+      { name: "", value: "só corpo" },
+    ];
+    expect(filledBrandRules(rules)).toEqual(rules);
   });
 });

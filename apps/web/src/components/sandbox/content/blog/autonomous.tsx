@@ -39,6 +39,7 @@ import {
   defaultFormatSections,
   FORMATS_BLOCK_KEY,
   mentionableSections,
+  filledBrandRules,
   normalizeBrandRules,
   normalizeTitleKey,
   postStructures,
@@ -265,7 +266,7 @@ function LibraryScreen({
       }
       for (const field of RULE_FIELDS) {
         if (
-          normalizeBrandRules(next[field]).length === 0 &&
+          filledBrandRules(normalizeBrandRules(next[field])).length === 0 &&
           result[field]?.length
         ) {
           next[field] = result[field];
@@ -341,8 +342,8 @@ function LibraryScreen({
           language: str(brand.language),
           tone: str(brand.tone),
           targetAudience: str(brand.targetAudience),
-          dos: normalizeBrandRules(brand.dos),
-          avoid: normalizeBrandRules(brand.avoid),
+          dos: filledBrandRules(normalizeBrandRules(brand.dos)),
+          avoid: filledBrandRules(normalizeBrandRules(brand.avoid)),
         },
         sections,
         postStructures: postStructures(decofile).map((post) => ({

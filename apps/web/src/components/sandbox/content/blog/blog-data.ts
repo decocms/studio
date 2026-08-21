@@ -839,6 +839,12 @@ export interface BrandRule {
  * that Spire wrote and that this editor saved before the change. A legacy
  * string becomes the rule's name with an empty body, so nothing is lost and the
  * block picks up the new shape on the next save — no migration.
+ *
+ * An object entry survives even when both its fields are empty: that is a row
+ * the user just added and hasn't typed into yet, and dropping it made the
+ * editor's "add" button do nothing. Only a non-object, or a legacy string that
+ * is blank, is junk. Use {@link filledBrandRules} where substance is what
+ * matters.
  */
 export function normalizeBrandRules(value: unknown): BrandRule[] {
   if (!Array.isArray(value)) return [];
@@ -850,11 +856,18 @@ export function normalizeBrandRules(value: unknown): BrandRule[] {
     }
     const record = asRecord(entry);
     if (!record) continue;
-    const name = str(record.name);
-    const body = str(record.value);
-    if (name || body) rules.push({ name, value: body });
+    rules.push({ name: str(record.name), value: str(record.value) });
   }
   return rules;
+}
+
+/**
+ * Rules a reader would consider written. Blank rows are real editor state, so
+ * they belong on screen — but not in a prompt, and not in the "is this field
+ * still empty?" check that decides whether an extract may fill it.
+ */
+export function filledBrandRules(rules: BrandRule[]): BrandRule[] {
+  return rules.filter((rule) => rule.name.trim() || rule.value.trim());
 }
 
 // ------------------ Brand-evidence sampling (tone of voice) ------------------
