@@ -1197,6 +1197,13 @@ export interface ThreadMessagePartTable {
   payload_ref: string | null;
   metadata: unknown | null; // jsonb
   created_at: string; // ISO; derived from durable seq order, NOT now+i
+  /**
+   * Wall clock at INSERT, stamped by Postgres (migration 174). `created_at` is
+   * an ordering key (`base + seq`), so it cannot answer "when did this row
+   * actually land" — this can. Never insertable/updatable: the default is the
+   * only writer, which is what keeps it honest. NULL on rows predating 174.
+   */
+  persisted_at: ColumnType<Date | null, never, never>;
 }
 
 // ============================================================================
