@@ -1116,10 +1116,9 @@ export function unknownCitations(
 }
 
 /**
- * The starter format, for an org with no AI tier configured. Cites only
- * sections the site actually has, walking a preferred order and skipping
- * whatever is missing — the labels come from the caller so this stays in the
- * reader's language.
+ * Sections for the starter format, in a sensible reading order, skipping
+ * whatever this site doesn't have — so the brief never cites something
+ * unrenderable. Its prose comes from the caller, to stay translated.
  */
 const DEFAULT_FORMAT_SECTIONS = [
   "Heading",

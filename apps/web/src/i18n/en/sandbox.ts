@@ -12,6 +12,8 @@ export const sandbox = {
     "No editable fields for this section.",
   "sandbox.availableSectionEditor.saveAsGlobalSection":
     "Save as global section",
+  "sandbox.autonomous.noAiProvider":
+    "This organization has no AI provider connected — connect one in Settings → AI Providers to use this",
   "sandbox.autonomous.title": "Autonomous content",
   "sandbox.blockPicker.blocksLabel": "Blocks",
   "sandbox.blockPicker.customBlocksLabel": "Custom blocks",
@@ -306,6 +308,9 @@ export const sandbox = {
     "Nothing new came back — every format proposed was already on the list.",
   "sandbox.formats.phaseReading": "Reading how your posts are built…",
   "sandbox.formats.phaseWriting": "Naming the formats…",
+  "sandbox.formats.starterButton": "Use the standard format",
+  "sandbox.formats.starterHint":
+    "Add a plain format built from the sections this site has — no AI, no credits",
   "sandbox.formats.starterAdded":
     "No AI model is configured for this org, so a starter format was added for you to edit.",
   "sandbox.formats.starterBody":
@@ -727,6 +732,9 @@ export const sandbox = {
   "sandbox.runtimeFields.packagePathDescription":
     "Path (relative to repo root) to the directory containing package.json. Leave blank for the repo root.",
   "sandbox.savedSectionEditor.closeJsonEditor": "Close JSON editor",
+  "sandbox.saveStatus.failed": "Couldn't save",
+  "sandbox.saveStatus.saved": "Saved",
+  "sandbox.saveStatus.saving": "Saving…",
   "sandbox.savedSectionEditor.editAsJson": "Edit as JSON",
   "sandbox.savedSectionEditor.editingBreadcrumb": "Editing breadcrumb",
   "sandbox.savedSectionEditor.globalSectionDescription":
@@ -806,7 +814,10 @@ export const sandbox = {
     "The angle, who it's for, and what the post has to cover…",
   "sandbox.themes.empty":
     "No themes yet. Write one, or let the agent propose a few from your brand context.",
-  "sandbox.themes.guidancePlaceholder": "Optional: what should they be about?",
+  "sandbox.themes.guidanceHint":
+    "Leave it blank and the themes come from your brand context alone.",
+  "sandbox.themes.guidanceLabel": "What should they be about?",
+  "sandbox.themes.guidancePlaceholder": "Optional — e.g. summer pre-sale",
   "sandbox.themes.namePlaceholder": "The theme, as you'd say it out loud",
   "sandbox.themes.noNewThemes":
     "Nothing new came back — every proposal was already on the list.",

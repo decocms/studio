@@ -2,7 +2,7 @@ import { generateObject } from "ai";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
-import { tryResolveTier } from "../../core/resolve-tier";
+import { resolveTier } from "../../core/resolve-tier";
 import { BlogBrandSchema } from "./schema";
 
 /**
@@ -127,17 +127,10 @@ export const BLOG_FORMAT_SUGGEST = defineTool({
 
   outputSchema: z.object({
     formats: z.array(FormatSchema).describe("The proposed formats"),
-    fallback: z
-      .boolean()
-      .describe(
-        "True when the org has no `smart` tier, so nothing was generated and `formats` is empty. The caller writes its own starter format in that case.",
-      ),
   }),
 
   modelSummary: (r) =>
-    r.fallback
-      ? "No model available for the `smart` tier, so no formats were generated."
-      : `${r.formats.length} format(s) proposed: ${r.formats.map((f) => f.name).join("; ")}. Not yet saved.`,
+    `${r.formats.length} format(s) proposed: ${r.formats.map((f) => f.name).join("; ")}. Not yet saved.`,
 
   handler: async (input, ctx) => {
     requireAuth(ctx);
@@ -150,10 +143,7 @@ export const BLOG_FORMAT_SUGGEST = defineTool({
       );
     }
 
-    // Reported, not thrown: the caller's starter format needs no model.
-    const tier = await tryResolveTier(ctx, "smart");
-    if (!tier) return { formats: [], fallback: true };
-
+    const tier = await resolveTier(ctx, "smart");
     const provider = await ctx.aiProviders.activate(
       tier.credentialId,
       organizationId,
@@ -188,9 +178,6 @@ export const BLOG_FORMAT_SUGGEST = defineTool({
       prompt,
     });
 
-    return {
-      formats: object.formats.slice(0, input.count),
-      fallback: false,
-    };
+    return { formats: object.formats.slice(0, input.count) };
   },
 });

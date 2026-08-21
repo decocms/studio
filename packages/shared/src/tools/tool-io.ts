@@ -960,7 +960,7 @@ export interface StudioToolIO {
       postStructures?: { title: string; sections: string[] }[] | undefined;
       count?: number | undefined;
     };
-    output: { formats: { name: string; value: string }[]; fallback: boolean };
+    output: { formats: { name: string; value: string }[] };
   };
   BRAND_GET: {
     input: { id?: string | undefined };

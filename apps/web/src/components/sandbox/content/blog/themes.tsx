@@ -8,10 +8,17 @@ import {
 import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
+import { Label } from "@decocms/ui/components/label.tsx";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@decocms/ui/components/popover.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import { useStudioTools } from "@/lib/studio-tools";
+import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import { MarkdownEditor } from "@/components/markdown-editor";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
@@ -76,8 +83,12 @@ export function ThemesScreen({
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
 
+  /** Every suggestion spends org credits, so none of this works without a provider. */
+  const hasAi = useHostedAiProviderKeys().length > 0;
+
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [guidance, setGuidance] = useState("");
+  const [askOpen, setAskOpen] = useState(false);
   const [isSuggesting, setIsSuggesting] = useState(false);
   /**
    * Advanced on a timer, not by the server: the tool is one round trip, so
@@ -188,14 +199,7 @@ export function ThemesScreen({
         />
       </div>
 
-      <div className="flex items-center gap-2 border-b px-8 py-4">
-        <Input
-          value={guidance}
-          onChange={(e) => setGuidance(e.target.value)}
-          placeholder={t("sandbox.themes.guidancePlaceholder")}
-          disabled={isSuggesting}
-          className="h-9 max-w-sm"
-        />
+      <div className="flex items-center justify-end gap-3 border-b px-8 py-4">
         {isSuggesting && (
           <span
             className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground"
@@ -206,22 +210,64 @@ export function ThemesScreen({
             <span className="truncate">{t(phase)}</span>
           </span>
         )}
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="ml-auto shrink-0"
-          disabled={isSuggesting || !hasBrand}
-          title={
-            hasBrand
-              ? t("sandbox.themes.suggestHint")
-              : t("sandbox.themes.suggestNoBrand")
-          }
-          onClick={() => void suggest()}
-        >
-          <Stars02 size={14} />
-          {t("sandbox.themes.suggest")}
-        </Button>
+        <Popover open={askOpen} onOpenChange={setAskOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              disabled={isSuggesting || !hasBrand || !hasAi}
+              title={
+                !hasAi
+                  ? t("sandbox.autonomous.noAiProvider")
+                  : hasBrand
+                    ? t("sandbox.themes.suggestHint")
+                    : t("sandbox.themes.suggestNoBrand")
+              }
+            >
+              <Stars02 size={14} />
+              {t("sandbox.themes.suggest")}
+            </Button>
+          </PopoverTrigger>
+          {/* The guidance only matters at the moment you ask, and as a
+              standalone field above the list it read as a search box. */}
+          <PopoverContent align="end" className="w-80 space-y-3">
+            <div className="space-y-1">
+              <Label htmlFor="theme-guidance">
+                {t("sandbox.themes.guidanceLabel")}
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                {t("sandbox.themes.guidanceHint")}
+              </p>
+            </div>
+            <Input
+              id="theme-guidance"
+              value={guidance}
+              onChange={(e) => setGuidance(e.target.value)}
+              placeholder={t("sandbox.themes.guidancePlaceholder")}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter") return;
+                e.preventDefault();
+                setAskOpen(false);
+                void suggest();
+              }}
+              className="h-9"
+            />
+            <Button
+              type="button"
+              size="sm"
+              className="w-full"
+              onClick={() => {
+                setAskOpen(false);
+                void suggest();
+              }}
+            >
+              <Stars02 size={14} />
+              {t("sandbox.themes.suggest")}
+            </Button>
+          </PopoverContent>
+        </Popover>
       </div>
 
       <div className="min-w-0 flex-1 space-y-3 overflow-y-auto px-8 py-6">

@@ -24,6 +24,7 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import { useStudioTools } from "@/lib/studio-tools";
+import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import { MarkdownEditor } from "@/components/markdown-editor";
 import type { MarkdownMentions } from "@/components/markdown-editor";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
@@ -101,8 +102,8 @@ function strList(value: unknown): string[] {
 }
 
 /**
- * The starter format, for an org with no `smart` tier. Cites only sections the
- * site actually has, so the brief never points at something unrenderable.
+ * A plain format anyone can start from, written locally: no model, no credits,
+ * and so nothing to fail. Cites only sections the site actually has.
  */
 function starterFormat(
   t: ReturnType<typeof useT>,
@@ -179,6 +180,8 @@ function LibraryScreen({
   const t = useT();
   const studio = useStudioTools();
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  /** Every button here spends org credits, so none of them work without a provider. */
+  const hasAi = useHostedAiProviderKeys().length > 0;
 
   const [brand, setBrand] = useAutosave(block ?? EMPTY_BRAND, (next) => {
     save.mutate({ blockKey: BRAND_BLOCK_KEY, data: next });
@@ -298,6 +301,30 @@ function LibraryScreen({
     }
   };
 
+  /** Append formats whose name isn't taken yet; returns how many landed. */
+  const addFormats = (proposed: BrandRule[]) => {
+    const taken = new Set(formats.map((f) => normalizeTitleKey(f.name)));
+    const fresh = proposed.filter(
+      (f) => f.name.trim() && !taken.has(normalizeTitleKey(f.name)),
+    );
+    if (fresh.length === 0) return 0;
+    setFormats([...formats, ...fresh]);
+    setEditorRevision((n) => n + 1);
+    return fresh.length;
+  };
+
+  /** The starter format, written locally — no model, no credits, no failure. */
+  const addStarterFormat = () => {
+    const added = addFormats([
+      starterFormat(t, defaultFormatSections(sectionNames)),
+    ]);
+    if (added === 0) {
+      toast.info(t("sandbox.formats.noNewFormats"));
+      return;
+    }
+    toast.success(t("sandbox.formats.starterAdded"));
+  };
+
   /** Name the formats this blog already writes in, from the shape of its posts. */
   const suggestFormats = async () => {
     setIsSuggesting(true);
@@ -324,25 +351,12 @@ function LibraryScreen({
         })),
       });
 
-      const proposed = result.fallback
-        ? [starterFormat(t, defaultFormatSections(sectionNames))]
-        : result.formats;
-      const existing = new Set(formats.map((f) => normalizeTitleKey(f.name)));
-      const fresh = proposed.filter(
-        (f) => f.name.trim() && !existing.has(normalizeTitleKey(f.name)),
-      );
-
-      if (fresh.length === 0) {
+      const fresh = addFormats(result.formats);
+      if (fresh === 0) {
         toast.info(t("sandbox.formats.noNewFormats"));
         return;
       }
-      setFormats([...formats, ...fresh]);
-      setEditorRevision((n) => n + 1);
-      toast.success(
-        result.fallback
-          ? t("sandbox.formats.starterAdded")
-          : t("sandbox.formats.suggested", { count: String(fresh.length) }),
-      );
+      toast.success(t("sandbox.formats.suggested", { count: String(fresh) }));
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : t("sandbox.formats.suggestFailed"),
@@ -522,13 +536,15 @@ function LibraryScreen({
               variant="outline"
               size="sm"
               className="my-2 shrink-0"
-              disabled={isExtracting || evidence.length === 0}
+              disabled={isExtracting || evidence.length === 0 || !hasAi}
               title={
-                evidence.length > 0
-                  ? t("sandbox.blogBrand.extractHint", {
-                      count: String(evidence.length),
-                    })
-                  : t("sandbox.blogBrand.extractNoContent")
+                !hasAi
+                  ? t("sandbox.autonomous.noAiProvider")
+                  : evidence.length > 0
+                    ? t("sandbox.blogBrand.extractHint", {
+                        count: String(evidence.length),
+                      })
+                    : t("sandbox.blogBrand.extractNoContent")
               }
               onClick={() => void extract()}
             >
@@ -551,11 +567,25 @@ function LibraryScreen({
             )}
             <Button
               type="button"
+              variant="ghost"
+              size="sm"
+              className="my-2 shrink-0"
+              title={t("sandbox.formats.starterHint")}
+              onClick={addStarterFormat}
+            >
+              {t("sandbox.formats.starterButton")}
+            </Button>
+            <Button
+              type="button"
               variant="outline"
               size="sm"
               className="my-2 shrink-0"
-              disabled={isSuggesting}
-              title={t("sandbox.formats.suggestHint")}
+              disabled={isSuggesting || !hasAi}
+              title={
+                hasAi
+                  ? t("sandbox.formats.suggestHint")
+                  : t("sandbox.autonomous.noAiProvider")
+              }
               onClick={() => void suggestFormats()}
             >
               <Stars02 size={14} />

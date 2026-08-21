@@ -14,6 +14,8 @@ export const sandbox = {
     "Nenhum campo editável para esta seção.",
   "sandbox.availableSectionEditor.saveAsGlobalSection":
     "Salvar como seção global",
+  "sandbox.autonomous.noAiProvider":
+    "Esta organização não tem provedor de IA conectado — conecte um em Configurações → Provedores de IA para usar isto",
   "sandbox.autonomous.title": "Conteúdo autônomo",
   "sandbox.blockPicker.blocksLabel": "Blocos",
   "sandbox.blockPicker.customBlocksLabel": "Blocos personalizados",
@@ -316,6 +318,9 @@ export const sandbox = {
     "Nada novo voltou — todo formato proposto já estava na lista.",
   "sandbox.formats.phaseReading": "Lendo como os seus posts são montados…",
   "sandbox.formats.phaseWriting": "Nomeando os formatos…",
+  "sandbox.formats.starterButton": "Usar o formato padrão",
+  "sandbox.formats.starterHint":
+    "Adiciona um formato simples montado com as sections que este site tem — sem IA, sem créditos",
   "sandbox.formats.starterAdded":
     "Esta org não tem modelo de IA configurado, então adicionamos um formato inicial para você editar.",
   "sandbox.formats.starterBody":
@@ -755,6 +760,9 @@ export const sandbox = {
   "sandbox.runtimeFields.packagePathDescription":
     "Caminho (relativo à raiz do repositório) do diretório que contém package.json. Deixe em branco para a raiz do repositório.",
   "sandbox.savedSectionEditor.closeJsonEditor": "Fechar editor JSON",
+  "sandbox.saveStatus.failed": "Não foi possível salvar",
+  "sandbox.saveStatus.saved": "Salvo",
+  "sandbox.saveStatus.saving": "Salvando…",
   "sandbox.savedSectionEditor.editAsJson": "Editar como JSON",
   "sandbox.savedSectionEditor.editingBreadcrumb": "Trilha de edição",
   "sandbox.savedSectionEditor.globalSectionDescription":
@@ -836,7 +844,10 @@ export const sandbox = {
     "O ângulo, para quem é, e o que o post tem que cobrir…",
   "sandbox.themes.empty":
     "Nenhum tema ainda. Escreva um, ou deixe o agente propor alguns a partir do contexto da sua marca.",
-  "sandbox.themes.guidancePlaceholder": "Opcional: sobre o que devem ser?",
+  "sandbox.themes.guidanceHint":
+    "Deixe em branco e os temas saem só do contexto da sua marca.",
+  "sandbox.themes.guidanceLabel": "Sobre o que devem ser?",
+  "sandbox.themes.guidancePlaceholder": "Opcional — ex: pré-venda de verão",
   "sandbox.themes.namePlaceholder": "O tema, como você diria em voz alta",
   "sandbox.themes.noNewThemes":
     "Nada novo voltou — todas as propostas já estavam na lista.",
@@ -848,7 +859,7 @@ export const sandbox = {
   "sandbox.themes.phaseWriting": "Escrevendo os briefings…",
   "sandbox.themes.remove": "Remover tema",
   "sandbox.themes.subtitle":
-    "O que este blog deve publicar em seguida. Cada tema virá a ser um draft.",
+    "O que este blog deve publicar em seguida. Cada tema vira um draft.",
   "sandbox.themes.suggest": "Sugerir temas",
   "sandbox.themes.suggestFailed": "Não foi possível sugerir temas",
   "sandbox.themes.suggestHint":
