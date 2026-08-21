@@ -4,7 +4,11 @@
 
 import { describe, expect, test } from "bun:test";
 import type { Thread } from "../../storage/types";
-import { normalizeThreadForResponse, THREAD_EXPIRY_MS } from "./helpers";
+import {
+  assertThreadWritable,
+  normalizeThreadForResponse,
+  THREAD_EXPIRY_MS,
+} from "./helpers";
 
 const BASE_THREAD: Thread = {
   id: "thrd_test",
@@ -140,5 +144,54 @@ describe("normalizeThreadForResponse", () => {
     expect(result).not.toHaveProperty("context_start_message_id");
     expect(result).not.toHaveProperty("run_owner_pod");
     expect(result).not.toHaveProperty("run_started_at");
+  });
+});
+
+describe("assertThreadWritable", () => {
+  const OWNED = { ...BASE_THREAD, created_by: "user_owner" };
+
+  test("owner can write their own thread", () => {
+    expect(() =>
+      assertThreadWritable(OWNED, { userId: "user_owner", role: "user" }),
+    ).not.toThrow();
+  });
+
+  test("non-owner member is denied", () => {
+    expect(() =>
+      assertThreadWritable(OWNED, { userId: "user_other", role: "user" }),
+    ).toThrow(/only the chat's owner or an organization admin/);
+  });
+
+  test("org admin can write a teammate's thread", () => {
+    expect(() =>
+      assertThreadWritable(OWNED, { userId: "user_other", role: "admin" }),
+    ).not.toThrow();
+  });
+
+  test("org owner can write a teammate's thread", () => {
+    expect(() =>
+      assertThreadWritable(OWNED, { userId: "user_other", role: "owner" }),
+    ).not.toThrow();
+  });
+
+  test("admin role smuggled in a comma-joined multi-role still bypasses", () => {
+    expect(() =>
+      assertThreadWritable(OWNED, {
+        userId: "user_other",
+        role: "billing-manager,admin",
+      }),
+    ).not.toThrow();
+  });
+
+  test("undefined caller userId is denied (never matches created_by)", () => {
+    expect(() =>
+      assertThreadWritable(OWNED, { userId: undefined, role: "user" }),
+    ).toThrow(/only the chat's owner or an organization admin/);
+  });
+
+  test("undefined role is treated as non-admin", () => {
+    expect(() =>
+      assertThreadWritable(OWNED, { userId: "user_other", role: undefined }),
+    ).toThrow(/only the chat's owner or an organization admin/);
   });
 });

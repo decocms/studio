@@ -13,6 +13,7 @@ import {
   requireOrganization,
 } from "../../core/studio-context";
 import {
+  assertThreadWritable,
   normalizeThreadForResponse,
   requireOwnedVirtualMcp,
   type GithubRepoMeta,
@@ -68,6 +69,8 @@ export const COLLECTION_THREADS_UPDATE = defineTool({
     if (!existing) {
       throw new Error("Thread not found in organization");
     }
+
+    assertThreadWritable(existing, { userId, role: organization.role });
 
     if (data.virtual_mcp_id !== undefined) {
       // Guards against re-pointing a thread at another org's agent.
