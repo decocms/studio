@@ -490,6 +490,13 @@ export const createProxyRoutes = () => {
         return c.json({ error: "Connection not found" }, 404);
       }
 
+      // Validate organization ownership
+      if (connection.organization_id !== ctx.organization.id) {
+        throw new Error(
+          "Connection does not belong to the active organization",
+        );
+      }
+
       // Mirrors the /:connectionId route's disabled-connection gate.
       if (connection.status !== "active") {
         throw new Error(`Connection inactive: ${connection.status}`);
