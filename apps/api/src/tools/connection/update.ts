@@ -406,6 +406,9 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
             subjectConnectionId: id,
             tokenId: createdWorkloadTokenId,
           });
+        }
+        // Nothing to restore when the update carried no credential grants.
+        if (credentialGrants.length > 0) {
           await restorePreviousCredentialGrants();
           throw error;
         }
