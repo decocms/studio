@@ -57,7 +57,7 @@ export const ORGANIZATION_MEMBER_LIST = defineTool({
       );
     }
 
-    // List members via Better Auth
+    // List members via Better Auth — the endpoint returns `{ members, total }`.
     const result = await ctx.boundAuth.organization.listMembers({
       organizationId,
       limit: input.limit,
@@ -65,13 +65,15 @@ export const ORGANIZATION_MEMBER_LIST = defineTool({
     });
 
     // Convert dates to ISO strings for JSON Schema compatibility
-    const members = (Array.isArray(result) ? result : []).map((member) => ({
-      ...member,
-      createdAt:
-        member.createdAt instanceof Date
-          ? member.createdAt.toISOString()
-          : member.createdAt,
-    }));
+    const members = (result?.members ?? []).map(
+      (member: NonNullable<typeof result>["members"][number]) => ({
+        ...member,
+        createdAt:
+          member.createdAt instanceof Date
+            ? member.createdAt.toISOString()
+            : member.createdAt,
+      }),
+    );
 
     return { members };
   },
