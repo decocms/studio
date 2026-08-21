@@ -184,10 +184,15 @@ export const FIXED_SYSTEM_TABS = [
 const FIXED_SYSTEM_TAB_SET = new Set<string>(FIXED_SYSTEM_TABS);
 
 // Agent-independent overlays (Tasks `board`, Library `files`, the commerce
-// report's `connect-sources`) take over the whole panel and aren't
+// report's `connect-sources`, the empty `reports`) take over the panel and aren't
 // sandbox-backed views. Shared by the drawer-visibility check and the
 // in-panel-app navigate allowlist so the two stay in sync.
-export const OVERLAY_TABS = new Set(["board", "files", "connect-sources"]);
+export const OVERLAY_TABS = new Set([
+  "board",
+  "files",
+  "connect-sources",
+  "reports",
+]);
 
 /**
  * Returns true for tab ids that are scoped to a specific thread and must not

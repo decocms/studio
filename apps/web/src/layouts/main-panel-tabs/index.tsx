@@ -22,6 +22,7 @@ import { AutomationTab } from "./automation-tab";
 import { AutomationsListTab } from "./automations-list-tab";
 import { FileTab } from "./file-tab";
 import { ConnectSourcesTab } from "./connect-sources-tab";
+import { ReportsTab } from "./reports-tab";
 import { DeckTab } from "./deck-tab";
 import { LibraryFileTab } from "./library-file-tab";
 import { LibraryTab } from "./library-tab";
@@ -110,6 +111,10 @@ function TabBody({
   }
   if (activeTab === "files") {
     return <LibraryTab />;
+  }
+  if (activeTab === "reports") {
+    // The Reports destination for an org with no report yet: start a diagnostic.
+    return <ReportsTab />;
   }
   if (activeTab === "connect-sources") {
     // Report app hand-off (`?main=connect-sources`) for a client who skipped
