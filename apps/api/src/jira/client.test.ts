@@ -511,4 +511,80 @@ describe("JiraClient", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("posts a comment as rich ADF, with the author line kept unparsed", async () => {
+    const bodies: unknown[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async (_url: string, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)).body);
+      return new Response(JSON.stringify({ id: "10001" }), { status: 201 });
+    }) as unknown as typeof fetch;
+
+    try {
+      const client = new JiraClient(
+        "https://acme.atlassian.net",
+        "user@example.com",
+        "token",
+      );
+      await client.addComment("ISSUE-1", "**done** in `Footer.json`", {
+        header: "Super Agent *no* markup · via Studio:",
+      });
+      expect(bodies[0]).toEqual({
+        type: "doc",
+        version: 1,
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "Super Agent *no* markup · via Studio:" },
+            ],
+          },
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "done", marks: [{ type: "strong" }] },
+              { type: "text", text: " in " },
+              {
+                type: "text",
+                text: "Footer.json",
+                marks: [{ type: "code" }],
+              },
+            ],
+          },
+        ],
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("falls back to a flat body when Jira rejects the document with a 400", async () => {
+    const bodies: unknown[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async (_url: string, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)).body);
+      return bodies.length === 1
+        ? new Response('{"errors":{"body":"INVALID_INPUT"}}', { status: 400 })
+        : new Response(JSON.stringify({ id: "10002" }), { status: 201 });
+    }) as unknown as typeof fetch;
+
+    try {
+      const client = new JiraClient(
+        "https://acme.atlassian.net",
+        "user@example.com",
+        "token",
+      );
+      const created = await client.addComment("ISSUE-1", "**done**", {
+        header: "Super Agent · via Studio:",
+      });
+      expect(created).toEqual({ id: "10002" });
+      // The mirror survives the rejection, carrying the header and the body.
+      expect(bodies).toHaveLength(2);
+      expect(bodies[1]).toEqual(
+        textToAdf("Super Agent · via Studio:\n**done**"),
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

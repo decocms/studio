@@ -8,6 +8,7 @@
  */
 
 import { retry } from "@decocms/shared/std";
+import { markdownToAdf } from "./markdown-adf";
 import {
   collectWikiMentionAccountIds,
   escapeMentionName,
@@ -73,18 +74,28 @@ export interface JiraComment {
 const ISSUE_FIELDS =
   "summary,status,priority,issuetype,updated,description,comment";
 
+/** A non-2xx answer from Jira, carrying the status so a caller can react to a
+ *  specific one (a 400 means the request body was refused, not the request). */
+class JiraRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "JiraRequestError";
+  }
+}
+
 /**
  * Determine if a fetch error should be retried. Transient failures (5xx, timeout,
  * network error) should retry; permanent failures (4xx, auth) should fail fast.
  */
 function isRetriableError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  const statusMatch = message.match(/failed \((\d+)\)/);
-  if (statusMatch && statusMatch[1]) {
-    const status = parseInt(statusMatch[1], 10);
-    // Retry 5xx and 429 (rate limit); do NOT retry 4xx (auth, not found, etc.).
-    return status >= 500 || status === 429;
+  // Retry 5xx and 429 (rate limit); do NOT retry 4xx (auth, not found, etc.).
+  if (error instanceof JiraRequestError) {
+    return error.status >= 500 || error.status === 429;
   }
+  const message = error instanceof Error ? error.message : String(error);
   // Malformed JSON is deterministic, not transient — don't retry it.
   if (/returned invalid JSON/.test(message)) return false;
   // No status — a raw fetch/network throw. Retry with caution.
@@ -169,8 +180,9 @@ export class JiraClient {
         });
       }
       if (!response.ok) {
-        throw new Error(
+        throw new JiraRequestError(
           `Jira ${path} failed (${response.status}): ${body.slice(0, 300)}`,
+          response.status,
         );
       }
       // Transition POSTs answer 204 with an empty body.
@@ -379,18 +391,43 @@ export class JiraClient {
     return comments;
   }
 
-  /** Post a comment (as the credential's account). Returns the Jira id. */
-  async addComment(issueId: string, text: string): Promise<{ id: string }> {
-    return this.request(
-      `/rest/api/3/issue/${encodeURIComponent(issueId)}/comment`,
-      { method: "POST", body: JSON.stringify({ body: textToAdf(text) }) },
-      { idempotent: false },
-    );
+  /**
+   * Post a comment (as the credential's account). Returns the Jira id.
+   *
+   * `markdown` is a board comment, rendered to ADF so the issue shows
+   * formatted text instead of raw `**syntax**`. `header` is prepended as its
+   * own plain paragraph — it carries a tenant-supplied display name, which
+   * must not be parsed as markup.
+   *
+   * A 400 is Jira refusing the document, so nothing was created and reposting
+   * cannot duplicate: fall back once to the flat plain-text body rather than
+   * losing the mirror, since the push step is deliberately non-retriable. Any
+   * other status propagates.
+   */
+  async addComment(
+    issueId: string,
+    markdown: string,
+    { header }: { header?: string } = {},
+  ): Promise<{ id: string }> {
+    const path = `/rest/api/3/issue/${encodeURIComponent(issueId)}/comment`;
+    const post = (body: unknown) =>
+      this.request<{ id: string }>(
+        path,
+        { method: "POST", body: JSON.stringify({ body }) },
+        { idempotent: false },
+      );
+    try {
+      return await post(markdownToAdf(markdown, { header }));
+    } catch (err) {
+      if (!(err instanceof JiraRequestError) || err.status !== 400) throw err;
+      console.warn(`[jira] comment rejected as ADF, posting flat: ${err}`);
+      return post(textToAdf(header ? `${header}\n${markdown}` : markdown));
+    }
   }
 }
 
-/** Plain text → minimal ADF: one paragraph per non-empty line. Rich
- *  formatting (bold, images, links-as-cards) is dropped on purpose. */
+/** Plain text → minimal ADF: one paragraph per non-empty line. The fallback
+ *  for a body `markdownToAdf` renders into something Jira refuses. */
 export function textToAdf(text: string): unknown {
   const lines = text.split("\n").filter((line) => line.trim() !== "");
   return {

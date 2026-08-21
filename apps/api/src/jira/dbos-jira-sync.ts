@@ -132,11 +132,11 @@ async function postCommentToJira(
     integration.email,
     integration.apiToken,
   );
-  const text = `${params.authorLabel} · via Studio:\n${params.body}`.slice(
-    0,
-    MAX_PUSH_CHARS,
+  const created = await client.addComment(
+    link.jiraIssueId,
+    params.body.slice(0, MAX_PUSH_CHARS),
+    { header: `${params.authorLabel} · via Studio:` },
   );
-  const created = await client.addComment(link.jiraIssueId, text);
   return created.id;
 }
 
