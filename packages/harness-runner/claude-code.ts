@@ -53,12 +53,18 @@ export type EmitFrame = (frame: HarnessRunResult) => void;
 /**
  * The instruction that turns a restarted turn into a continuation.
  *
- * A resumed run has no transcript to inherit — a new pod's SDK session is empty,
- * and even in the same pod the session is only remembered once a turn COMPLETED
- * (see `sessionFile`). What it does have is the work itself: the checkout, and on
- * a replaced pod a clone of the branch the dying daemon pushed on SIGTERM. So
- * this tells the model where to look rather than what was done — the repo is the
- * source of truth, and it is the only one that survives the pod.
+ * This is the INTERRUPTED-turn path, not the follow-up path, and the difference
+ * is what survived. A turn cut short mid-flight never reached the `result` that
+ * records its session (see `sessionFile`), so there is no transcript to resume —
+ * not in a replacement pod, and not in this one. What it does have is the work
+ * itself: the checkout, and on a replaced pod a clone of the branch the dying
+ * daemon pushed on SIGTERM. So this tells the model where to look rather than
+ * what was done — the repo is the source of truth for a turn that left no record
+ * of itself.
+ *
+ * A turn that COMPLETED is the other case entirely, and needs none of this: its
+ * session is saved to the org volume and restored into whatever pod the next
+ * message lands in, so the SDK resumes the actual conversation.
  *
  * The "update, don't open a second one" line is load-bearing: without it a
  * continuation that finds its own finished work opens a duplicate pull request.
@@ -133,6 +139,13 @@ export function promptFromUserMessage(userMessage: unknown): string {
  * SDK keeps, so the id and the session it names live and die together. Resuming
  * an id the SDK never persisted fails the whole run, so "no file" has to mean
  * "no session", and it does.
+ *
+ * The pair no longer dies with the pod. The daemon copies both onto the org
+ * volume when a run ends and back before the next one starts
+ * (`internal/orgfs/sessions.go`), preserving exactly this invariant — it writes
+ * the id only after the transcript has landed. So a follow-up on a thread whose
+ * pod was reclaimed hours ago still resumes the real conversation; this file
+ * just reads what is there.
  */
 function sessionFile(threadId: string): string {
   const dir =
@@ -266,7 +279,7 @@ export function brokenStudioMcp(
 
 /**
  * Attempts at reaching Studio's MCP before a run gives up, and the base of the
- * backoff between them (2s, 4s, 8s, 16s — ~30s in all).
+ * backoff between them (2s, 4s, 8s, 16s, 32s, 64s, 128s — ~4 minutes in all).
  *
  * What this waits out is Studio being momentarily unreachable: a rolling
  * restart, a saturated pod, a moment with no free DB connection. That is over
@@ -275,8 +288,15 @@ export function brokenStudioMcp(
  * the user. A retry costs one SDK session start; the session has produced
  * nothing at that point (the preflight reads `system/init`, the first message
  * of all), so restarting it loses nothing.
+ *
+ * Four minutes rather than the original thirty seconds: a rolling deploy of the
+ * Studio API is minutes, not seconds, and a run dispatched into one used to burn
+ * its whole retry budget inside a single unavailable window and fail. The pod is
+ * already provisioned and idle either way — waiting costs its TTL, not a user's
+ * task. The ceiling still exists on purpose: past it, refusing beats running an
+ * agent that cannot see the org's tools (see the `fail` below).
  */
-const MCP_ATTEMPTS = 5;
+const MCP_ATTEMPTS = 8;
 const MCP_BACKOFF_BASE_MS = 2_000;
 
 /**
@@ -321,6 +341,7 @@ export async function runClaudeCode(
 
   try {
     let forkedForSession = false;
+    let restartedWithoutResume = false;
     for (let attempt = 1; ; attempt++) {
       let broken: string | null;
       try {
@@ -332,6 +353,27 @@ export async function runClaudeCode(
         // resume/recreate fails on the same id. Fork a FRESH session once and
         // restart the attempt loop; losing that transcript beats failing every
         // retry forever. Only once — a second "in use" is a real problem.
+        // The stored id names a transcript this pod's SDK cannot resolve, so
+        // the resume fails the WHOLE run — strictly worse than the fresh start
+        // the session was meant to improve on. Causes vary (a transcript copied
+        // under a different cwd slug, a truncated file, an SDK that changed
+        // where it files them) and none are worth distinguishing: drop the
+        // resume and run the turn. Once — a second one is not the session.
+        if (
+          !restartedWithoutResume &&
+          resumeSession &&
+          /no conversation found|session .* not found/i.test(msg)
+        ) {
+          restartedWithoutResume = true;
+          console.error(
+            `[claude-code] session ${sessionId} does not resolve here — ` +
+              `starting a fresh session for this turn`,
+          );
+          sessionId = crypto.randomUUID();
+          resumeSession = false;
+          attempt = 0;
+          continue;
+        }
         if (!forkedForSession && /is already in use/i.test(msg)) {
           forkedForSession = true;
           console.error(
@@ -354,6 +396,12 @@ export async function runClaudeCode(
         );
         return;
       }
+      // A fresh id per retry, whenever there is no transcript to resume. The
+      // previous attempt's CLI may still be releasing its hold on the old one,
+      // and nothing is lost: a preflight that never reached the model persisted
+      // no session. A RESUMING attempt keeps its id — the transcript is the
+      // point — and falls back on the fork above if the hold outlives it.
+      if (!resumeSession) sessionId = crypto.randomUUID();
       const waitMs = MCP_BACKOFF_BASE_MS * 2 ** (attempt - 1);
       console.error(
         `[claude-code] mcp unusable (${broken}) — retrying in ${waitMs}ms ` +
@@ -363,6 +411,26 @@ export async function runClaudeCode(
     }
   } catch (err) {
     fail(err instanceof Error ? err.message : String(err));
+  }
+
+  /**
+   * Stop an attempt's SDK session, so the next attempt can have one.
+   *
+   * The session id is held by the `claude` child process, not by this one, and
+   * the CLI refuses a session that another process still holds. Both calls are
+   * best-effort — a session that is already gone is exactly the state we want.
+   */
+  async function endSession(stream: ReturnType<typeof query>): Promise<void> {
+    try {
+      await stream.interrupt();
+    } catch {
+      // Only valid mid-turn on a streaming input; not an error worth reporting.
+    }
+    try {
+      await stream.return(undefined);
+    } catch {
+      // Ditto: the generator may already be done.
+    }
   }
 
   /**
@@ -413,7 +481,17 @@ export async function runClaudeCode(
         // still produces a confident-looking answer — the failure that reads as
         // success. Never run in that state; the caller retries instead.
         const broken = brokenStudioMcp(message.mcp_servers, input.mcp.url);
-        if (broken) return broken;
+        if (broken) {
+          // End the session before the caller retries. Abandoning the iteration
+          // is not enough: the CLI process stays alive holding this session id,
+          // so the next attempt dies on "Session ID … is already in use" —
+          // which the fork-once recovery above absorbs exactly once, and the
+          // attempt after that fails the whole run. Observed live: a run with
+          // an unreachable MCP crashed on its THIRD attempt instead of waiting
+          // out the deploy the retry budget exists for.
+          await endSession(stream);
+          return broken;
+        }
       }
       // First Anthropic message id of the turn becomes Studio's assistant
       // message id: stable if the same turn is delivered twice.

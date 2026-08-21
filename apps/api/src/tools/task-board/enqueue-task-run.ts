@@ -102,12 +102,21 @@ export async function enqueueAgentRunForTask(
   // branch must be the repo-specific one or the run lands in the shared
   // "ephemeral" sandbox with no repo.
   //
-  // `read_only` rides along on the same write: a sandbox-hosted harness answers
-  // exactly the one prompt it was dispatched with, so a follow-up message would
-  // sit in a queue nothing drains. The chat composer reads this and says so.
+  // NOT marked `read_only` any more. A sandbox-hosted run used to answer exactly
+  // the one prompt it was dispatched with, so the thread was closed to
+  // follow-ups; the messages POST now accepts them and the harness resumes its
+  // Claude Code session, which the daemon carries between pods on the org's home
+  // volume. The flag and its 409 still exist for a thread that really is closed
+  // — nothing sets it.
+  //
+  // The session is the ONLY context a follow-up gets: the dispatch wire carries
+  // one `userMessage` (`harnessStreamInputSchema`) and no history, so a turn
+  // whose session did not restore reads "also make it blue" with nothing to
+  // resolve "it" against. That is the failure mode `WaitHomeReady` is bounded
+  // around, and it is why the home volume is a requirement rather than an
+  // optimization.
   const metadata = {
     ...(thread.metadata ?? {}),
-    ...(harnessRunsInSandbox(harnessId) ? { read_only: true } : {}),
     // Read back by `resolveSandboxBranch` at provision time (via the thread, so
     // a durable re-dispatch resolves the same pod). See `pinnedRef` above.
     ...(opts.pinnedRef ? { pinnedRef: opts.pinnedRef } : {}),

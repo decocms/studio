@@ -282,6 +282,96 @@ test.describe("hosted runtime boundary", () => {
     }
   });
 
+  // The counterpart to the test above, and the boundary that actually moved: a
+  // sandbox-hosted thread is INTERACTIVE. Only an explicit `read_only` closes
+  // one now — the pins alone must not, or every task-board run is a dead end.
+  test("accepts a follow-up message on a sandbox-hosted claude-code thread", async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug, user } = authedPage;
+    const api = page.context().request;
+    const db = await connectDevDb();
+    try {
+      const agent = await callSelfMcpTool<{ item: { id: string } }>(
+        api,
+        orgSlug,
+        "COLLECTION_VIRTUAL_MCP_CREATE",
+        {
+          data: {
+            title: "interactive claude-code thread",
+            connections: [],
+            status: "active",
+            pinned: false,
+          },
+        },
+      );
+      const thread = await callSelfMcpTool<{ item: { id: string } }>(
+        api,
+        orgSlug,
+        "COLLECTION_THREADS_CREATE",
+        { data: { virtual_mcp_id: agent.item.id } },
+      );
+      // Exactly what a task run persists today — and nothing else. No
+      // `read_only`: that is the change.
+      const update = await db.query(
+        `UPDATE threads
+            SET harness_id = 'claude-code',
+                sandbox_provider_kind = 'agent-sandbox',
+                message_storage_version = 2
+          WHERE id = $1 AND created_by = $2`,
+        [thread.item.id, user.userId],
+      );
+      expect(update.rowCount).toBe(1);
+
+      const response = await api.post(
+        `/api/${orgSlug}/decopilot/threads/${thread.item.id}/messages`,
+        {
+          data: {
+            messages: [
+              {
+                id: "msg-claude-code-followup",
+                role: "user",
+                parts: [{ type: "text", text: "Also make it blue" }],
+              },
+            ],
+            agent: { id: agent.item.id },
+          },
+          headers: { "content-type": "application/json" },
+        },
+      );
+      // The gate opened: the request is no longer refused for WHAT THIS THREAD
+      // IS. That is the whole contract this test owns, and it is asserted
+      // without a model provider so it runs everywhere the suite does.
+      //
+      // Whether the run then dispatches is a different question with a
+      // different dependency — an org with no provider gets 400 "No model
+      // available for tier", which is a 202 in every environment that has one
+      // (see decopilot-stop-followup.spec.ts, skipped without OPENROUTER_API_KEY).
+      // Asserting 202 here would make this test a provider check wearing a
+      // boundary test's name.
+      expect(response.status()).not.toBe(409);
+      const body = await response.json();
+      expect(JSON.stringify(body)).not.toMatch(
+        /read only|desktop app|desktop runtime|legacy message storage/,
+      );
+
+      // The pins must survive the request untouched — a follow-up that silently
+      // re-pinned the thread to Decopilot would "work" while running the wrong
+      // agent.
+      const row = await db.query(
+        `SELECT harness_id, sandbox_provider_kind
+           FROM threads
+          WHERE id = $1 AND created_by = $2`,
+        [thread.item.id, user.userId],
+      );
+      expect(row.rows).toEqual([
+        { harness_id: "claude-code", sandbox_provider_kind: "agent-sandbox" },
+      ]);
+    } finally {
+      await db.end();
+    }
+  });
+
   test("keeps a retired local Decopilot pin readable as hosted", async ({
     authedPage,
   }) => {

@@ -56,13 +56,20 @@ type Deps struct {
 	// ⚠️ SECURITY: the result holds a credential. Never log it.
 	RunEnv func() map[string]string
 	// BeforeRun prepares the workspace before the harness streams: org-fs links
-	// repointed at this run's thread, `.deco/tools/` refreshed. Must not block for
-	// long and must not fail the run. Optional.
+	// repointed at this run's thread, the thread's saved agent session restored,
+	// `.deco/tools/` refreshed.
+	//
+	// MAY BLOCK, and the caller does — a run that starts before the org's content
+	// is in place produces a confident wrong answer rather than an error, so
+	// waiting is the safer failure. It must bound its own wait (Studio's dispatch
+	// has no separate readiness deadline to fall back on) and it must never fail
+	// the run: at its ceiling it proceeds without. Optional.
 	BeforeRun func(RunInfo)
 	// AfterRun settles the workspace once the harness has exited, however it
-	// exited (success, crash, cancel): whatever the model wrote to the wrong
-	// place gets moved to where it survives the pod. Same contract as BeforeRun —
-	// quick, and it must not fail the run. Optional.
+	// exited (success, crash, cancel): whatever must outlive the pod — stray
+	// skills, the agent's session transcript — gets moved to where it does. Same
+	// contract as BeforeRun, and likewise bounded: it must not fail the run.
+	// Optional.
 	AfterRun func(RunInfo)
 }
 
@@ -385,6 +392,21 @@ func (reg *Registry) runHarness(
 ) {
 	defer reg.release(runId, entry)
 
+	// Headers and the keepalive FIRST — before `BeforeRun`, not after it.
+	//
+	// Studio calls the pod gone after `DAEMON_SILENCE_TIMEOUT_MS` (90s) without
+	// a byte, and `BeforeRun` legitimately waits on org-fs for up to its own
+	// ~90s budget plus a session copy. Preparing the workspace before opening
+	// the body spent that budget as silence on the wire, so a sandbox whose home
+	// volume was late lost its first turn to a "the pod died" verdict and had
+	// the turn continued elsewhere — on a pod that was fine. The keepalive is
+	// what makes waiting for the org's content safe to do at all.
+	writeResultHeaders(w)
+	body := newBodyWriter(w)
+	startedAt := time.Now()
+	stopKeepalive := startKeepalive(ctx, body, harnessId, runId)
+	defer stopKeepalive()
+
 	// Per-run workspace state, before the harness can touch the workspace. Here
 	// rather than in each caller so the offloaded-messages path gets it too.
 	if deps.BeforeRun != nil {
@@ -393,12 +415,19 @@ func (reg *Registry) runHarness(
 	// Deferred, not placed after RunHarness: every terminal path below returns
 	// early (crash, cancel, unknown harness), and the run that crashed halfway is
 	// exactly the one whose stray output must still be rescued.
+	//
+	// Registered AFTER the keepalive's defer, so it runs BEFORE it: `AfterRun`
+	// copies a skill tree and a session transcript over org-fs, and Studio is
+	// still reading this body until EOF with the same silence timeout that
+	// governs the run itself. Settling the workspace in a keepalive-less window
+	// is how a turn that already sent its terminal frame gets declared dead and
+	// continued on a replacement pod.
 	if deps.AfterRun != nil {
 		defer deps.AfterRun(runInfoOf(input))
 	}
 
 	if len(deps.HarnessRunnerCmd) == 0 {
-		writeResult(w, terminalFrame("unknown_harness",
+		body.write(terminalFrame("unknown_harness",
 			"no harness runner configured (HARNESS_RUNNER_CMD unset)"))
 		return
 	}
@@ -407,14 +436,6 @@ func (reg *Registry) runHarness(
 	if deps.RunEnv != nil {
 		runEnv = deps.RunEnv()
 	}
-
-	// Headers first, then frames as the harness produces them, with a keepalive
-	// byte while it is quiet — the transport between here and Studio hangs up on
-	// an idle body long before a real task finishes.
-	writeResultHeaders(w)
-	body := newBodyWriter(w)
-	startedAt := time.Now()
-	stopKeepalive := startKeepalive(ctx, body, harnessId, runId)
 
 	// One line per frame: without it a streaming run and a buffering one look
 	// identical in the pod log (both are silence until "dispatch done"), which is
@@ -433,7 +454,6 @@ func (reg *Registry) runHarness(
 				"elapsed_s", int(time.Since(startedAt).Seconds()))
 			return body.write(append(frame, '\n'))
 		})
-	stopKeepalive()
 	elapsed := int(time.Since(startedAt).Seconds())
 
 	if ctx.Err() != nil {
@@ -558,12 +578,6 @@ func terminalFrame(code, message string) []byte {
 	}
 	body, _ := json.Marshal(frame)
 	return append(body, '\n')
-}
-
-// writeResult answers a dispatch that never started the harness.
-func writeResult(w http.ResponseWriter, body []byte) {
-	writeResultHeaders(w)
-	w.Write(body)
 }
 
 var runsPathRe = regexp.MustCompile(`/runs/([^/]+)$`)
