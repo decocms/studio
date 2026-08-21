@@ -66,6 +66,19 @@ function sanitizeForPg(value: string): string {
   return value.replace(NUL, "").replace(LONE_SURROGATE, "\uFFFD");
 }
 
+// The replacer below only reaches values, never object keys.
+function sanitizeKeysForPg(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sanitizeKeysForPg);
+  if (value !== null && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, v] of Object.entries(value)) {
+      out[sanitizeForPg(key)] = sanitizeKeysForPg(v);
+    }
+    return out;
+  }
+  return value;
+}
+
 export function serializePayload(payload: unknown): string {
   if (
     estimatePayloadBytes(payload, MAX_PART_PAYLOAD_BYTES) >
@@ -79,7 +92,7 @@ export function serializePayload(payload: unknown): string {
   // A JSON replacer visits every string in the payload tree; clean strings pass
   // through untouched (byte-identical output, so ids derived from the payload
   // stay stable).
-  return JSON.stringify(payload, (_key, value) =>
+  return JSON.stringify(sanitizeKeysForPg(payload), (_key, value) =>
     typeof value === "string" ? sanitizeForPg(value) : value,
   );
 }
