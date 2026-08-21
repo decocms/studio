@@ -1,12 +1,8 @@
 import { useRef, useId } from "react";
-import Editor, {
-  loader,
-  OnMount,
-  type EditorProps,
-} from "@monaco-editor/react";
 import type { Plugin } from "prettier";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { getReturnType } from "./monaco";
+import { Editor, type EditorProps, type OnMount } from "./monaco/editor";
 import { MonacoErrorBoundary } from "./monaco-error-boundary";
 
 // ============================================
@@ -55,13 +51,6 @@ const loadPrettier = async () => {
 
   return prettierCache;
 };
-
-// Configure Monaco to load from CDN
-loader.config({
-  paths: {
-    vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs",
-  },
-});
 
 // ============================================
 // Static Constants (module-scoped for stability)

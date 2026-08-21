@@ -1,6 +1,10 @@
 import type { OnMount } from "@monaco-editor/react";
 import { loader } from "@monaco-editor/react";
 import { sleep } from "@decocms/shared/std";
+import { configureMonacoLoader } from "./loader";
+
+/** `loader.init()` below latches the engine path if it wins the race. */
+configureMonacoLoader();
 
 export async function getReturnType(editor: Parameters<OnMount>[0]) {
   const model = editor.getModel();

@@ -1,7 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, useRef } from "react";
-import Editor, { loader } from "@monaco-editor/react";
-import type { OnMount } from "@monaco-editor/react";
 import {
   FilePlus01,
   FolderPlus,
@@ -19,6 +17,7 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { toast } from "sonner";
 import { useChatStream } from "@/components/chat/context";
+import { Editor, type OnMount } from "@/components/monaco/editor";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { useT } from "@/i18n/use-t.ts";
 import { KEYS } from "@/lib/query-keys";
@@ -61,13 +60,6 @@ import {
   type GlobListResult,
   type GrepContentMatch,
 } from "./utils";
-
-// Configure Monaco CDN (shared with workflow editor)
-loader.config({
-  paths: {
-    vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs",
-  },
-});
 
 /** Max content-search hits requested from the daemon grep endpoint. */
 const CONTENT_SEARCH_LIMIT = 200;

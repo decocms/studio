@@ -28,6 +28,7 @@ import { createRoot } from "react-dom/client";
 import { StrictMode } from "react";
 import { RouterProvider } from "@tanstack/react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { configureMonacoLoader } from "@/components/monaco/loader";
 import { Providers } from "@/providers/providers";
 import { initializeDesktopTransport } from "@/lib/desktop/transport";
 import { initializeDesktopWindowOpen } from "@/lib/desktop/window-open-shim";
@@ -109,6 +110,10 @@ function renderBootstrapFailure(error: unknown): void {
 // and no local API, so a bootstrap failure must still leave external links
 // working on the error screen.
 initializeDesktopWindowOpen();
+
+/** Latches the engine path before any code surface can; the self-test reads
+ * it back to prove this shell asks for a loadable one. */
+configureMonacoLoader();
 
 void initializeDesktopTransport().then(
   renderDesktopEntry,
