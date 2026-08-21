@@ -69,6 +69,7 @@ type Links struct {
 	lastOutputThread string
 	skillsLinked     bool
 	publicSkillsRun  bool
+	skillPluginReady bool
 	// Closed when the in-flight skill-link sync finishes; nil before the first
 	// one starts. `WaitSkillLinks` is what turns the async sync back into a
 	// barrier for the run that needs it.
@@ -406,30 +407,79 @@ func (l *Links) volumeMounted(dir string) bool {
 	return false
 }
 
-// Prefix for the symlinks this daemon plants in the checkout's skills dir. It
-// is what makes them ours: everything matching it is removed and rebuilt on
-// sync, and one git-exclude line covers the whole set.
+// Prefix for the skill dirs this daemon plants. Kept now that they live in the
+// daemon's own plugin dir purely to keep two sets that ship a same-named skill
+// from colliding; the name the model sees comes from SKILL.md's frontmatter.
 const publicSkillPrefix = "orgfs-"
+
+// The org's skills reach Claude Code as a LOCAL PLUGIN, in the daemon's own
+// directory — never in the checkout. `<appRoot>/orgfs-skills` holds a plugin
+// manifest and one `skills/<name>/` per prefetched skill, and the harness loads
+// it by absolute path.
+//
+// This is the whole reason the git plumbing is gone. The first version wrote
+// these into `<repoDir>/.claude/skills/` — the one writable dir the SDK already
+// scanned — and every consequence followed from that: a git-exclude line per
+// path, re-registering the excludes after a clone, a staging dir inside
+// `.claude/`, an adopt sweep that had to know which entries were ours. Worse,
+// an exclude only masks UNTRACKED paths, so the build that committed them once
+// (before the reapply existed) put them on two site repos' default branch,
+// where they still surface as phantom "changes to publish" in every new chat.
+// Out of the tree, git never has an opinion.
+const (
+	skillPluginDirName = "orgfs-skills"
+	skillPluginName    = "orgfs"
+)
+
+// SkillPluginDir is the plugin dir to hand the harness, or "" when this pod
+// prefetched no skills — an empty plugin would only cost the SDK a load.
+func (l *Links) SkillPluginDir() string {
+	if l == nil {
+		return ""
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if !l.skillPluginReady {
+		return ""
+	}
+	return filepath.Join(l.AppRoot, skillPluginDirName)
+}
+
+// writeSkillPluginManifest makes the dir a plugin the SDK will load. Rewritten
+// on every sync: it is three static fields, cheaper to write than to check.
+func writeSkillPluginManifest(pluginDir string) error {
+	dir := filepath.Join(pluginDir, ".claude-plugin")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	manifest, err := json.Marshal(map[string]string{
+		"name":        skillPluginName,
+		"description": "Skills shared by this organization",
+		"version":     "1.0.0",
+	})
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "plugin.json"), manifest, 0o644)
+}
 
 // Volume-name prefix the studio gives the shared public sets (`public-core` is
 // mounted at `org/public/core`), mirroring publicVolumeForSet server-side.
 const publicVolumePrefix = "public-"
 
 // ensurePublicSkillLinksLocked exposes the read-only public skill sets
-// (`org/public/<set>/<skill>`) to Claude Code as PROJECT skills — one symlink
-// per skill under `<repoDir>/.claude/skills/`.
+// (`org/public/<set>/<skill>`) to Claude Code as PLUGIN skills, prefetched into
+// the daemon's own plugin dir — see skillPluginDirName.
 //
 // Why not the user dir like home skills: that dir IS the home mount now, so a
-// symlink dropped there would be written into org-fs — pod-local paths synced
+// copy dropped there would be written into org-fs — pod-local bytes synced
 // org-wide. And the public mounts are read-only, so a plugin manifest cannot go
-// next to them either. The checkout's skills dir is the one writable place the
-// SDK already scans.
+// next to them either.
 //
-// Additive and disposable: the repo's own skills are untouched (only `orgfs-*`
-// entries are ours, and they are cleared before rebuild so a removed set leaves
-// no dangling skill), and one exclude line keeps them out of every commit.
+// Additive and disposable: nothing but this sync writes the plugin dir, so a
+// set that lost a skill leaves nothing dangling, and the checkout is untouched.
 func (l *Links) ensurePublicSkillLinksLocked() {
-	if l.publicSkillsRun || l.RepoDir == "" {
+	if l.publicSkillsRun || l.AppRoot == "" {
 		return
 	}
 	// Claimed before the work starts, so concurrent fs calls don't each launch a
@@ -529,10 +579,9 @@ func (l *Links) skillSetRoots() []skillSet {
 	return out
 }
 
-// syncPublicSkills copies every read-only set's skills onto the pod's disk under
-// `<repoDir>/.claude/skills/`, reporting whether anything landed. Runs without
-// `mu`: it touches only the checkout's skills dir and the read-only mounts,
-// which no other link path writes.
+// syncPublicSkills copies every read-only set's skills into the daemon's plugin
+// dir, reporting whether anything landed. Runs without `mu`: it touches only
+// that dir and the read-only mounts, which no other link path writes.
 //
 // Copied rather than symlinked — see skillcopy.go for why. The pod therefore
 // holds a snapshot for its lifetime, which is what we want: this already ran
@@ -544,20 +593,23 @@ func (l *Links) syncPublicSkills() bool {
 		// No public or synced mount on this pod (older sandbox, or none configured).
 		return false
 	}
-	dir := filepath.Join(l.RepoDir, ".claude", "skills")
+	pluginDir := filepath.Join(l.AppRoot, skillPluginDirName)
+	dir := filepath.Join(pluginDir, "skills")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		slog.Warn("org-fs skills dir failed", "err", err)
 		return false
 	}
-	gitx.EnsureExclude(l.RepoDir, "/.claude/skills/"+publicSkillPrefix+"*")
+	if err := writeSkillPluginManifest(pluginDir); err != nil {
+		slog.Warn("org-fs skill plugin manifest failed", "err", err)
+		return false
+	}
 
 	// Staged next to the destination so publishing is a rename on the same
 	// filesystem. Cleared first: a partial stage from a killed attempt must
 	// never be published.
-	staging := filepath.Join(l.RepoDir, ".claude", ".orgfs-staging")
+	staging := filepath.Join(pluginDir, ".staging")
 	os.RemoveAll(staging)
 	defer os.RemoveAll(staging)
-	gitx.EnsureExclude(l.RepoDir, "/.claude/.orgfs-staging")
 
 	// One budget across every set and both transports: the cap protects the
 	// pod's disk, so it cannot be per volume, per worker, or per transport.
@@ -594,8 +646,14 @@ func (l *Links) syncPublicSkills() bool {
 	}
 	slog.Info("org-fs skills prefetched",
 		"skills", len(published), "fromTar", fromTar, "fromMount", fromMount,
-		"unreadable", unreadable, "pruned", pruned)
-	return len(published) > 0
+		"unreadable", unreadable, "pruned", pruned, "plugin", pluginDir)
+	if len(published) == 0 {
+		return false
+	}
+	l.mu.Lock()
+	l.skillPluginReady = true
+	l.mu.Unlock()
+	return true
 }
 
 // copySetToStage is the fallback for a studio without the bulk route: probe the
@@ -724,16 +782,21 @@ func (l *Links) repointThreadLink(threadId, mountDir, linkName string) bool {
 // nobody notices until they look for it next week.
 //
 // Only UNTRACKED dirs move: the repo's own committed skills are the one thing
-// that legitimately lives there, and `--exclude-standard` already drops the
-// `orgfs-*` symlinks this daemon plants (they are in `.git/info/exclude`).
+// that legitimately lives there. The `orgfs-` prefix is skipped as well — this
+// daemon no longer writes the checkout at all, but a repo carrying the entries
+// an older build committed must not have them "adopted" into the org.
 // Copy-then-remove, not rename — the checkout is local disk and the target is
 // FUSE, so a rename is EXDEV.
 func (l *Links) AdoptStrayRepoSkills() {
 	if l == nil || l.RepoDir == "" || !l.Expected() {
 		return
 	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
+	// Deliberately unlocked: CopyFS below writes through the org mount, and
+	// holding mu across that would stall every other org-fs caller — the same
+	// class of bug RepointForRun's mount wait had to be moved out from under
+	// mu for. Nothing here touches a field mu protects (lastOutputThread,
+	// skillsLinked, publicSkillsRun/Done, api); it only touches the checkout's
+	// `.claude/skills` dir and the home mount, neither written by a locked path.
 	if !l.volumeMounted("home") {
 		return
 	}

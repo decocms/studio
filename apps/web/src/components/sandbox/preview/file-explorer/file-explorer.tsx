@@ -33,6 +33,7 @@ import {
 } from "./file-explorer-name-dialog";
 import { FileExplorerDeleteDialog } from "./file-explorer-delete-dialog";
 import { FileTreeRow } from "./file-tree-row";
+import { buildSandboxUrl, type SandboxProxyRef } from "@/sdk/sandbox-url";
 import {
   buildFileTree,
   decoBlockKeyFromTreePath,
@@ -80,15 +81,12 @@ interface FileExplorerProps {
    * into a file (e.g. "View JSON" opening a page's `.deco/blocks/<key>.json`).
    */
   openPath?: string | null;
+  /** The session browsing — its runtime decides which backend answers. */
+  threadId: string | null;
 }
 
-function buildApiUrl(
-  orgSlug: string,
-  virtualMcpId: string,
-  branch: string,
-  endpoint: string,
-) {
-  return `/api/${orgSlug}/sandbox/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/${endpoint}`;
+function buildApiUrl(ref: SandboxProxyRef, endpoint: string) {
+  return buildSandboxUrl(ref, endpoint);
 }
 
 /** A grep result line with the matched query runs highlighted (VS Code-style). */
@@ -118,8 +116,15 @@ export function FileExplorer({
   orgSlug,
   virtualMcpId,
   branch,
+  threadId,
   openPath,
 }: FileExplorerProps) {
+  const sandboxRef: SandboxProxyRef = {
+    orgSlug,
+    virtualMcpId,
+    branch,
+    threadId,
+  };
   // File tree state
   const [treeLists, setTreeLists] = useState<{
     files: string[];
@@ -211,14 +216,11 @@ export function FileExplorer({
   const [fsActionPending, setFsActionPending] = useState(false);
 
   async function postSandbox(endpoint: string, body: Record<string, unknown>) {
-    const res = await fetch(
-      buildApiUrl(orgSlug, virtualMcpId, branch, endpoint),
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      },
-    );
+    const res = await fetch(buildApiUrl(sandboxRef, endpoint), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
     if (!res.ok) {
       const payload = await res.json().catch(() => ({}));
       throw new Error(
@@ -231,7 +233,7 @@ export function FileExplorer({
 
   async function refreshGitStatus() {
     void queryClient.invalidateQueries({
-      queryKey: sandboxGitStatusQueryKey(orgSlug, virtualMcpId, branch),
+      queryKey: sandboxGitStatusQueryKey(sandboxRef),
     });
   }
 
@@ -790,10 +792,10 @@ export function FileExplorer({
       await postSandbox("write", { path: toDaemonPath(path), content });
       saveChangesDebug("file saved via sandbox /write", { path });
       void queryClient.invalidateQueries({
-        queryKey: sandboxGitStatusQueryKey(orgSlug, virtualMcpId, branch),
+        queryKey: sandboxGitStatusQueryKey(sandboxRef),
       });
       try {
-        const status = await fetchGitStatus(orgSlug, virtualMcpId, branch);
+        const status = await fetchGitStatus(sandboxRef);
         saveChangesDebug("git status after save", status);
       } catch (err) {
         saveChangesDebug("git status after save failed", {

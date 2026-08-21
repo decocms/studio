@@ -21,6 +21,7 @@ export function useResolvedPublishGate(args: {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
+  threadId: string | null;
   status: GitStatus | null;
   diff: GitDiffResult | null;
   policy: PublishPolicy;
@@ -37,6 +38,7 @@ export function useResolvedPublishGate(args: {
     orgSlug,
     virtualMcpId,
     branch,
+    threadId,
     status,
     diff,
     policy,
@@ -52,6 +54,7 @@ export function useResolvedPublishGate(args: {
     orgSlug,
     virtualMcpId,
     branch,
+    threadId,
     status,
     diff,
     enabled: needsJudge,

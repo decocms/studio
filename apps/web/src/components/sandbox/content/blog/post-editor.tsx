@@ -1,3 +1,4 @@
+import { useOptionalChatTask } from "@/components/chat/chat-context";
 import {
   AlertCircle,
   LinkExternal01,
@@ -93,6 +94,7 @@ export function PostEditor({
   previewBaseUrl?: string | null;
 }) {
   const t = useT();
+  const threadId = useOptionalChatTask()?.taskId ?? null;
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const support = useBlogSupport({ orgSlug, virtualMcpId, branch, meta });
   const draftPointer = useDraftPointer({ orgSlug, virtualMcpId, branch });
@@ -201,7 +203,7 @@ export function PostEditor({
                   value={asBlocks(post.sections)}
                   onChange={(next) => setField("sections", next)}
                   meta={meta}
-                  sandboxRef={{ orgSlug, virtualMcpId, branch }}
+                  sandboxRef={{ orgSlug, virtualMcpId, branch, threadId }}
                   emptyMessage={t("sandbox.postEditor.noContentYet")}
                 />
               </div>

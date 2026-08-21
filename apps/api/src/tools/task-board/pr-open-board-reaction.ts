@@ -5,7 +5,7 @@
  * `advanceTaskBoardForRun` + `capturePrForRun` move/link it. A plain chat with
  * a GitHub-imported agent has no card, so nothing happens. This reaction fills
  * that gap: one focused LLM call decides whether the work is already tracked,
- * then the action runs in code (create/update the card, link the PR + thread).
+ * then the action runs in code (create/update the card, link the PR + thread, claim it for the Super Agent so reviewers pick it up).
  *
  * Kept as code (not a system-prompt instruction the main loop may skip) so the
  * bookkeeping is deterministic; kept as a single LLM call (not a heuristic) so
@@ -15,6 +15,7 @@
 
 import { generateObject } from "ai";
 import { z } from "zod";
+import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import type { StudioContext } from "@/core/studio-context";
 import { resolveTier } from "@/core/resolve-tier";
 import type { TaskBoardStorage } from "@/storage/task-board";
@@ -155,14 +156,28 @@ export async function applyBoardDecision(
   let item: TaskBoardItem | null;
   if (target) {
     // Advance into review only from an earlier lane; never regress a finished card.
-    const status = ADVANCEABLE.has(target.status) ? "in_review" : undefined;
-    item = await storage.update(target.id, orgId, { status }, userId);
+    const advancing = ADVANCEABLE.has(target.status);
+    // Claim an unowned card for the Super Agent (reviewer dispatch gates on it); never a human's.
+    const claimSuperAgent = advancing && target.assigneeId == null;
+    item = await storage.update(
+      target.id,
+      orgId,
+      {
+        status: advancing ? "in_review" : undefined,
+        ...(claimSuperAgent
+          ? { assigneeId: SUPER_AGENT_ASSIGNEE_ID, assignedBy: userId }
+          : {}),
+      },
+      userId,
+    );
   } else {
-    // create (also the fallback when an `update` pointed at an unknown card)
+    // Create (also the unknown-taskId fallback), owned by the Super Agent so reviewers pick it up.
     item = await storage.create({
       organizationId: orgId,
       title: decision.title?.trim() || `PR #${pr.number}`,
       status: "in_review",
+      assigneeId: SUPER_AGENT_ASSIGNEE_ID,
+      assignedBy: userId,
       by: userId,
     });
   }

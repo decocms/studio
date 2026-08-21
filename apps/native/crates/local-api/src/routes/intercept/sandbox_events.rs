@@ -53,6 +53,7 @@ pub(super) async fn try_dispatch(
     state: &AppState,
     method: &Method,
     rest: &[&str],
+    query: Option<&str>,
 ) -> Option<Response> {
     let ["sandbox", encoded_virtual_mcp_id, encoded_branch, "events"] = rest else {
         return None;
@@ -77,6 +78,10 @@ pub(super) async fn try_dispatch(
     };
 
     // Keyed by (virtualMcpId, branch); the handle comes from the repository,
+    // A CMS session has no worktree, whatever this machine happens to hold.
+    if super::runtime::thread_is_cms(state, query) {
+        return None;
+    }
     // so the registry bridges them. No row means never provisioned — the same
     // thing `is_registered(false)` means below.
     let Ok(Some(handle)) = state
@@ -119,14 +124,16 @@ mod tests {
 
         // Filesystem operations belong to `sandbox_fs`, not here.
         assert!(
-            try_dispatch(&state, &get(), &["sandbox", "vm", "main", "read"])
+            try_dispatch(&state, &get(), &["sandbox", "vm", "main", "read"], None)
                 .await
                 .is_none()
         );
         // A different family entirely.
-        assert!(try_dispatch(&state, &get(), &["tools", "SANDBOX_START"])
-            .await
-            .is_none());
+        assert!(
+            try_dispatch(&state, &get(), &["tools", "SANDBOX_START"], None)
+                .await
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -134,7 +141,7 @@ mod tests {
         let root = tempfile::tempdir().expect("tempdir");
         let state = super::super::test_state(root.path());
 
-        let response = try_dispatch(&state, &get(), &["sandbox", "vm", "main", "events"])
+        let response = try_dispatch(&state, &get(), &["sandbox", "vm", "main", "events"], None)
             .await
             .expect("the events path is intercepted");
 
@@ -159,9 +166,14 @@ mod tests {
         let root = tempfile::tempdir().expect("tempdir");
         let state = super::super::test_state(root.path());
 
-        let response = try_dispatch(&state, &Method::POST, &["sandbox", "vm", "main", "events"])
-            .await
-            .expect("still intercepted, so it cannot silently proxy upstream");
+        let response = try_dispatch(
+            &state,
+            &Method::POST,
+            &["sandbox", "vm", "main", "events"],
+            None,
+        )
+        .await
+        .expect("still intercepted, so it cannot silently proxy upstream");
         assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
     }
 }

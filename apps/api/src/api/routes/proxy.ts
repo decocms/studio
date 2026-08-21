@@ -502,11 +502,19 @@ export const createProxyRoutes = () => {
         throw new Error(`Connection inactive: ${connection.status}`);
       }
 
+      // Malformed JSON must surface as 400, not fall through as a 500.
+      let args: unknown;
+      try {
+        args = await c.req.json();
+      } catch {
+        return c.json({ error: "Request body must be valid JSON" }, 400);
+      }
+
       // Client pool manages lifecycle, no need for await using
       const client = await clientFromConnection(connection, ctx, false);
       const result = await client.callTool({
         name: toolName,
-        arguments: await c.req.json(),
+        arguments: args as Record<string, unknown>,
       });
 
       if (result.isError) {

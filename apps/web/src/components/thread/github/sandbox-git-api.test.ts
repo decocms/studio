@@ -620,15 +620,28 @@ describe("resolvePathGate", () => {
 });
 
 describe("sandboxGitStatusQueryOptions", () => {
+  const REF = {
+    orgSlug: "org",
+    virtualMcpId: "vm",
+    branch: "feat",
+    threadId: "thrd_1",
+  };
+
   test("shares one cache entry with sandboxGitStatusQueryKey", () => {
-    expect(sandboxGitStatusQueryOptions("org", "vm", "feat").queryKey).toEqual(
-      sandboxGitStatusQueryKey("org", "vm", "feat"),
+    expect(sandboxGitStatusQueryOptions(REF).queryKey).toEqual(
+      sandboxGitStatusQueryKey(REF),
     );
   });
 
   test("carries the 5s staleness budget the header and popover both rely on", () => {
-    expect(sandboxGitStatusQueryOptions("org", "vm", "feat").staleTime).toBe(
-      5_000,
+    expect(sandboxGitStatusQueryOptions(REF).staleTime).toBe(5_000);
+  });
+
+  // Two sessions can share a branch, and they get different answers from the
+  // same URL — so they must not share one cache entry.
+  test("two threads on one branch key separately", () => {
+    expect(sandboxGitStatusQueryKey(REF)).not.toEqual(
+      sandboxGitStatusQueryKey({ ...REF, threadId: "thrd_2" }),
     );
   });
 });
@@ -671,7 +684,12 @@ describe("fetchGitStatus with a malformed response body", () => {
         new Response("<html>Bad Gateway</html>", { status: 502 }),
       )) as unknown as typeof fetch;
 
-    const error = await fetchGitStatus("org", "vm", "feat").catch((e) => e);
+    const error = await fetchGitStatus({
+      orgSlug: "org",
+      virtualMcpId: "vm",
+      branch: "feat",
+      threadId: null,
+    }).catch((e) => e);
     expect(isSandboxUnreachable(error)).toBe(false);
     expect(error).toHaveProperty("status", 502);
     expect(error.message).toBe("Request failed (502)");

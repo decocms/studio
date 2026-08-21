@@ -270,11 +270,14 @@ function AssigneeFilter({
               {t("taskBoard.taskFilters.assigneeNoMembersFound")}
             </CommandEmpty>
             <CommandGroup>
-              <CommandItem value="Anyone" onSelect={() => select(null)}>
+              <CommandItem
+                value={t("taskBoard.taskFilters.assigneeAnyone")}
+                onSelect={() => select(null)}
+              >
                 {t("taskBoard.taskFilters.assigneeAnyone")}
               </CommandItem>
               <CommandItem
-                value="Unassigned"
+                value={t("taskBoard.taskFilters.assigneeUnassigned")}
                 onSelect={() => select(UNASSIGNED_FILTER)}
                 className="gap-2"
               >
@@ -282,7 +285,7 @@ function AssigneeFilter({
                 {t("taskBoard.taskFilters.assigneeUnassigned")}
               </CommandItem>
               <CommandItem
-                value="Super Agent"
+                value={t("taskBoard.taskFilters.assigneeSuperAgent")}
                 onSelect={() => select(SUPER_AGENT_ASSIGNEE_ID)}
                 className="gap-2"
               >
@@ -571,11 +574,14 @@ function RepoFilter({
               {t("taskBoard.taskFilters.repoNoReposFound")}
             </CommandEmpty>
             <CommandGroup>
-              <CommandItem value="Any repo" onSelect={() => select(null)}>
+              <CommandItem
+                value={t("taskBoard.taskFilters.repoAnyRepo")}
+                onSelect={() => select(null)}
+              >
                 {t("taskBoard.taskFilters.repoAnyRepo")}
               </CommandItem>
               <CommandItem
-                value="No repo"
+                value={t("taskBoard.taskFilters.repoNoRepo")}
                 onSelect={() => select(NO_REPO_FILTER)}
               >
                 {t("taskBoard.taskFilters.repoNoRepo")}

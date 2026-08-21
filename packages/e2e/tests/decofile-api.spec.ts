@@ -117,7 +117,7 @@ test.describe("decofile API", () => {
       expect(unknown.status()).toBe(404);
       expect(await unknown.json()).toEqual({ error: "Virtual MCP not found" });
 
-      // Existing vmcp, but no fastPreview/productionUrl metadata: gate off.
+      // Existing vmcp with no preview server URL: nothing to render against.
       const bare = await callSelfMcpTool<{ item: { id: string } }>(
         ctx,
         org,
@@ -127,10 +127,10 @@ test.describe("decofile API", () => {
       const gated = await ctx.get(`/api/${org}/decofile/${bare.item.id}/main`);
       expect(gated.status()).toBe(404);
       expect(await gated.json()).toEqual({
-        error: "Fast Preview is not enabled for this project",
+        error: "Project has no preview server configured",
       });
 
-      // fastPreview flag alone is inert without a valid production URL.
+      // The flag alone gates nothing — the URL is what the CMS runtime needs.
       const flagOnly = await callSelfMcpTool<{ item: { id: string } }>(
         ctx,
         org,
@@ -143,9 +143,8 @@ test.describe("decofile API", () => {
           },
         },
       );
-      // Legacy `productionUrl` key still satisfies the gate (dual-read): this
-      // project has no githubRepo, so passing the gate surfaces the NEXT
-      // failure ("no GitHub repository") instead of the gate-off 404.
+      // Legacy `productionUrl` key satisfies the URL term (dual-read): with no
+      // githubRepo the NEXT failure surfaces instead of the URL-less 404.
       const legacyKey = await callSelfMcpTool<{ item: { id: string } }>(
         ctx,
         org,
@@ -174,7 +173,31 @@ test.describe("decofile API", () => {
       );
       expect(flagOnlyRes.status()).toBe(404);
       expect(await flagOnlyRes.json()).toEqual({
-        error: "Fast Preview is not enabled for this project",
+        error: "Project has no preview server configured",
+      });
+
+      // The switch is a creation-time default, not a data-plane gate.
+      const urlNoFlag = await callSelfMcpTool<{ item: { id: string } }>(
+        ctx,
+        org,
+        "COLLECTION_VIRTUAL_MCP_CREATE",
+        {
+          data: {
+            title: `url-no-flag ${Date.now()}`,
+            metadata: {
+              fastPreview: false,
+              previewServerUrl: "https://url-no-flag.example.com",
+            },
+            connections: [],
+          },
+        },
+      );
+      const urlNoFlagRes = await ctx.get(
+        `/api/${org}/decofile/${urlNoFlag.item.id}/main`,
+      );
+      expect(urlNoFlagRes.status()).toBe(404);
+      expect(await urlNoFlagRes.json()).toEqual({
+        error: "Project has no GitHub repository",
       });
     } finally {
       await ctx.dispose();
@@ -767,7 +790,7 @@ test.describe("decofile API", () => {
     }
   });
 
-  test("a provisioned sandbox opts its branch out of the Fast Preview claim", async ({
+  test("a sandboxMap cell does not change a stamped session's runtime", async ({
     playwright,
   }) => {
     const ctx = await newApiContext(playwright);
@@ -780,7 +803,7 @@ test.describe("decofile API", () => {
         repo: "site",
       });
 
-      // Coding sessions share the CMS branch; presence decides the claim.
+      // Coding sessions share the CMS branch; the thread's stamp decides.
       const cmsThread = await callSelfMcpTool<{
         item: { id: string; branch: string | null };
       }>(ctx, org, "COLLECTION_THREADS_CREATE", {
@@ -816,16 +839,28 @@ test.describe("decofile API", () => {
         },
       });
 
-      const gitStatusUrl = `/api/${org}/sandbox/${project.vmcpId}/${branch}/git/status`;
+      const statusUrl = (threadId?: string) =>
+        `/api/${org}/sandbox/${project.vmcpId}/${branch}/git/status` +
+        (threadId ? `?thread=${threadId}` : "");
 
-      // No sandbox yet: the Fast Preview claim answers from GitHub.
-      const before = await ctx.get(gitStatusUrl);
+      // The CMS session answers from GitHub.
+      const before = await ctx.get(statusUrl(cmsThread.item.id));
       expect(before.status()).toBe(200);
       expect(
         ((await before.json()) as { headSha?: string }).headSha,
       ).toBeTruthy();
 
-      // Record a sandbox for (user, branch) — what SANDBOX_START persists.
+      // The coding session on the SAME branch takes the daemon path (which
+      // errors here: no runner in e2e), so one URL answers two ways.
+      const codingRes = await ctx.get(statusUrl(coding.item.id));
+      expect(codingRes.status()).toBeGreaterThanOrEqual(400);
+      expect(
+        ((await codingRes.json().catch(() => ({}))) as { headSha?: string })
+          .headSha,
+      ).toBeUndefined();
+
+      // Record a DEAD sandbox for (user, branch) — the shape a July
+      // `user-desktop` leftover has, and what used to hijack the whole branch.
       await callSelfMcpTool(ctx, org, "COLLECTION_VIRTUAL_MCP_UPDATE", {
         id: project.vmcpId,
         data: {
@@ -845,14 +880,61 @@ test.describe("decofile API", () => {
         },
       });
 
-      // Sandbox present: daemon claim errors (no runner in e2e), never GitHub.
-      const after = await ctx.get(gitStatusUrl);
-      expect(after.status()).toBeGreaterThanOrEqual(400);
-      const afterBody = (await after.json().catch(() => ({}))) as Record<
-        string,
-        unknown
-      >;
-      expect(afterBody.headSha).toBeUndefined();
+      // The stamp still decides: the CMS session keeps its GitHub answer, and
+      // never the 410 the dead cell used to produce.
+      const after = await ctx.get(statusUrl(cmsThread.item.id));
+      expect(after.status()).toBe(200);
+      expect(
+        ((await after.json()) as { headSha?: string }).headSha,
+      ).toBeTruthy();
+
+      // And a thread-less request resolves by LIVENESS: the cell is a corpse,
+      // so it falls back to the sandbox-less answer rather than the daemon.
+      const threadless = await ctx.get(statusUrl());
+      expect(threadless.status()).toBe(200);
+      expect(
+        ((await threadless.json()) as { headSha?: string }).headSha,
+      ).toBeTruthy();
+    } finally {
+      await ctx.dispose();
+    }
+  });
+  test("SANDBOX_START refuses a cms session but still serves a legacy thread", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const user = await signUpViaApi(ctx);
+      const org = user.orgSlug;
+      const owner = uniqueOwner();
+      const project = await createFastPreviewProject(ctx, org, {
+        owner,
+        repo: "site",
+      });
+
+      const cms = await callSelfMcpTool<{
+        item: {
+          id: string;
+          branch: string | null;
+          metadata?: { runtime?: string };
+        };
+      }>(ctx, org, "COLLECTION_THREADS_CREATE", {
+        data: { virtual_mcp_id: project.vmcpId, title: "cms session" },
+      });
+      // The project defaults to CMS, so creation stamped it without being asked.
+      expect(cms.item.metadata?.runtime).toBe("cms");
+
+      const refused = await callSelfMcpTool<unknown>(
+        ctx,
+        org,
+        "SANDBOX_START",
+        {
+          virtualMcpId: project.vmcpId,
+          branch: cms.item.branch as string,
+          threadId: cms.item.id,
+        },
+      ).catch((error: unknown) => error);
+      expect(String(refused)).toMatch(/CMS session/i);
     } finally {
       await ctx.dispose();
     }

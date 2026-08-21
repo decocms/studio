@@ -15,8 +15,7 @@ import {
   useProjectContext,
   useVirtualMCP,
 } from "@/sdk";
-import { resolveFastPreview } from "@/sdk/fast-preview";
-import { useActiveThreadMeta } from "@/hooks/use-active-thread-meta";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowRight,
@@ -389,11 +388,7 @@ export function ChatInput({
   const { org, locator } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
   const selectedVm = useVirtualMCP(selectedVirtualMcp?.id);
-  const activeThreadMeta = useActiveThreadMeta();
-  const fastPreviewActive = resolveFastPreview(
-    selectedVm?.metadata,
-    activeThreadMeta,
-  ).active;
+  const fastPreviewActive = useSessionRuntime(selectedVm?.id).runtime === "cms";
   const playSwitchSound = useSound(question004Sound);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const { unsupportedFile, onUnsupportedFile, clearUnsupportedFile } =

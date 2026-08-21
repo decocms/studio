@@ -32,6 +32,7 @@ interface CmsPublishStateArgs {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
+  threadId: string | null;
   baseBranch: string;
 }
 
@@ -99,10 +100,11 @@ function useDecofileHead(
 }
 
 export function useCmsPublishState(args: CmsPublishStateArgs): CmsPublishState {
-  const { orgSlug, virtualMcpId, branch, baseBranch } = args;
+  const { orgSlug, virtualMcpId, branch, threadId, baseBranch } = args;
+  const sandboxRef = { orgSlug, virtualMcpId, branch, threadId };
 
   const statusQuery = useSuspenseQuery(
-    sandboxGitStatusQueryOptions(orgSlug, virtualMcpId, branch),
+    sandboxGitStatusQueryOptions(sandboxRef),
   );
   const status = statusQuery.data;
   const manifest = status.changedFiles ?? null;
@@ -121,8 +123,7 @@ export function useCmsPublishState(args: CmsPublishStateArgs): CmsPublishState {
       baseBranch,
       headSha,
     ),
-    queryFn: () =>
-      fetchGitDiff(orgSlug, virtualMcpId, branch, { base: baseBranch }),
+    queryFn: () => fetchGitDiff(sandboxRef, { base: baseBranch }),
     enabled: wantsBodies,
     staleTime: BODIES_STALE_MS,
   });

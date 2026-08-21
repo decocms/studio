@@ -39,6 +39,7 @@ import {
 } from "./dev-assets";
 import {
   finalizeNonBindingPage,
+  resolveDevAssetsSqlWindow,
   shouldConsiderDevAssetsForPage,
 } from "./dev-assets-page";
 import { type ConnectionEntity, ConnectionEntitySchema } from "./schema";
@@ -159,6 +160,27 @@ export const COLLECTION_CONNECTIONS_LIST = defineTool({
     const limit = input.limit ?? 100;
     const offset = input.offset ?? 0;
 
+    // Whether dev-assets qualifies for this listing, needed up front to size the SQL window — see dev-assets-page.ts.
+    const baseUrl = getBaseUrl();
+    const devAssetsId = WellKnownOrgMCPId.DEV_ASSETS(organization.id);
+    const devAssetsCandidate = createDevAssetsConnectionEntity(
+      organization.id,
+      baseUrl,
+    );
+    const devAssetsMatchesFilters =
+      (!input.slug || getConnectionSlug(devAssetsCandidate) === input.slug) &&
+      connectionMatchesWhere(devAssetsCandidate, input.where);
+    const devAssetsQualifies =
+      usesLocalObjectStorage() &&
+      !needsBindingFilter &&
+      devAssetsMatchesFilters;
+
+    const { sqlOffset, sqlLimit } = resolveDevAssetsSqlWindow(
+      offset,
+      limit,
+      devAssetsQualifies,
+    );
+
     const { items: connections, totalCount: sqlTotalCount } =
       await ctx.storage.connections.list(organization.id, {
         includeVirtual: input.include_virtual ?? false,
@@ -166,8 +188,8 @@ export const COLLECTION_CONNECTIONS_LIST = defineTool({
         where: input.where,
         orderBy: input.orderBy,
         // Only push pagination to SQL when no post-filtering is needed
-        limit: needsBindingFilter ? undefined : limit,
-        offset: needsBindingFilter ? undefined : offset,
+        limit: needsBindingFilter ? undefined : sqlLimit,
+        offset: needsBindingFilter ? undefined : sqlOffset,
       });
 
     // Only fetch tools from MCP servers when we need them for binding filtering.
@@ -216,35 +238,13 @@ export const COLLECTION_CONNECTIONS_LIST = defineTool({
     // When no external S3 bucket is configured, inject the dev-assets
     // connection so the OBJECT_STORAGE binding is satisfied by the local
     // DevObjectStorage filesystem fallback.
-    let devAssetsInjected = false;
     if (
       usesLocalObjectStorage() &&
-      shouldConsiderDevAssetsForPage(needsBindingFilter, offset)
+      shouldConsiderDevAssetsForPage(needsBindingFilter, offset) &&
+      devAssetsMatchesFilters &&
+      !connections.some((c) => c.id === devAssetsId)
     ) {
-      const baseUrl = getBaseUrl();
-      const devAssetsId = WellKnownOrgMCPId.DEV_ASSETS(organization.id);
-
-      // Only add it when it isn't already present and when it would satisfy the
-      // caller's filters. The dev-assets row is injected after the SQL query, so
-      // without re-checking the slug and `where` filters here it would bypass
-      // them — e.g. leaking into the agent instance selector's `app_name` filter
-      // and appearing as a selectable instance for every connection.
-      if (!connections.some((c) => c.id === devAssetsId)) {
-        const devAssetsConnection = createDevAssetsConnectionEntity(
-          organization.id,
-          baseUrl,
-        );
-        const slugMatches =
-          !input.slug || getConnectionSlug(devAssetsConnection) === input.slug;
-        const whereMatches = connectionMatchesWhere(
-          devAssetsConnection,
-          input.where,
-        );
-        if (slugMatches && whereMatches) {
-          connections.unshift(devAssetsConnection);
-          devAssetsInjected = true;
-        }
-      }
+      connections.unshift(devAssetsCandidate);
     }
 
     // Binding filter: SQL already handled where/orderBy, we just need to
@@ -289,7 +289,7 @@ export const COLLECTION_CONNECTIONS_LIST = defineTool({
     // Non-binding path: SQL already handled where/orderBy/pagination.
     return finalizeNonBindingPage(
       connections,
-      devAssetsInjected,
+      devAssetsQualifies,
       limit,
       offset,
       sqlTotalCount,

@@ -286,4 +286,59 @@ describe("SqlThreadStorage", () => {
       expect((await storage.get(thread.id, "org_1"))?.harness_id).toBeNull();
     });
   });
+  describe("stampRuntimeIfAbsent", () => {
+    const newThread = () =>
+      storage.create({
+        organization_id: "org_1",
+        created_by: "user_1",
+        virtual_mcp_id: "vm_1",
+        title: "t",
+      });
+
+    it("stamps a thread that has no runtime, and only once", async () => {
+      const thread = await newThread();
+      expect(
+        await storage.stampRuntimeIfAbsent(thread.id, "org_1", "cms"),
+      ).toBe(true);
+      expect((await storage.get(thread.id, "org_1"))?.metadata?.runtime).toBe(
+        "cms",
+      );
+
+      // Immutable afterwards: a second call cannot move it.
+      expect(
+        await storage.stampRuntimeIfAbsent(thread.id, "org_1", "sandbox"),
+      ).toBe(false);
+      expect((await storage.get(thread.id, "org_1"))?.metadata?.runtime).toBe(
+        "cms",
+      );
+    });
+
+    it("preserves the rest of the metadata blob", async () => {
+      const thread = await newThread();
+      await storage.update(thread.id, "org_1", {
+        metadata: { read_only: true, pinnedRef: "refs/heads/x" },
+      });
+
+      expect(
+        await storage.stampRuntimeIfAbsent(thread.id, "org_1", "sandbox"),
+      ).toBe(true);
+      const stored = await storage.get(thread.id, "org_1");
+      expect(stored?.metadata?.runtime).toBe("sandbox");
+      expect(stored?.metadata?.read_only).toBe(true);
+      expect(stored?.metadata?.pinnedRef).toBe("refs/heads/x");
+    });
+
+    it("is tenant-scoped and silent on a missing row", async () => {
+      const thread = await newThread();
+      expect(
+        await storage.stampRuntimeIfAbsent(thread.id, "org_2", "cms"),
+      ).toBe(false);
+      expect(
+        await storage.stampRuntimeIfAbsent("missing", "org_1", "cms"),
+      ).toBe(false);
+      expect(
+        (await storage.get(thread.id, "org_1"))?.metadata?.runtime,
+      ).toBeUndefined();
+    });
+  });
 });

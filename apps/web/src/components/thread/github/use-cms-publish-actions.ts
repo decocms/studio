@@ -131,9 +131,12 @@ export function useCmsPublishActions(
     setIsDiscarding(true);
     try {
       await discardGitFiles(
-        target.orgSlug,
-        target.virtualMcpId,
-        target.branch,
+        {
+          orgSlug: target.orgSlug,
+          virtualMcpId: target.virtualMcpId,
+          branch: target.branch,
+          threadId: target.threadId,
+        },
         filepaths,
       );
       toast.success(success);

@@ -1,3 +1,4 @@
+import { buildSandboxUrl } from "@/sdk/sandbox-url";
 /**
  * Sandbox coordinates the studio preview proxy routes are keyed by. The proxy
  * derives the site origin server-side from the authed claim — the sandbox dev
@@ -8,6 +9,8 @@ export interface PreviewProxyRef {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
+  /** The session asking; `null` only for a thread-less surface. */
+  threadId: string | null;
 }
 
 interface DecofileFetchInput extends PreviewProxyRef {
@@ -16,7 +19,7 @@ interface DecofileFetchInput extends PreviewProxyRef {
 }
 
 function proxyBase(ref: PreviewProxyRef, route: string): string {
-  return `/api/${ref.orgSlug}/sandbox/${encodeURIComponent(ref.virtualMcpId)}/${encodeURIComponent(ref.branch)}/${route}`;
+  return buildSandboxUrl(ref, route);
 }
 
 /**
@@ -30,8 +33,7 @@ export function buildPreviewFetchPath(
   ref: PreviewProxyRef,
   path: string,
 ): string {
-  const search = new URLSearchParams({ path });
-  return `${proxyBase(ref, "preview-fetch")}?${search.toString()}`;
+  return buildSandboxUrl(ref, "preview-fetch", { path });
 }
 
 /**

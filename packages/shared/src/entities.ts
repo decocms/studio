@@ -45,9 +45,10 @@ export interface ThreadMetadata {
    */
   read_only?: boolean;
   /**
-   * The session's runtime, stamped at creation and immutable: "sandbox" forces
-   * a sandbox-backed session (coding session) even on a Fast Preview project.
-   * Absent ⇒ the project default decides (see `resolveSessionRuntime`).
+   * The session's runtime, stamped at creation and immutable: "cms" is a
+   * sandbox-less content session, "sandbox" a coding session with a pod.
+   * Always present on threads created after the stamp existed; absent means a
+   * legacy row (see `readThreadRuntime`).
    */
   runtime?: ThreadRuntime;
   [key: string]: unknown;

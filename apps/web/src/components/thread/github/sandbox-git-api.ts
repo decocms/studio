@@ -1,3 +1,5 @@
+import { buildSandboxUrl, type SandboxProxyRef } from "@/sdk/sandbox-url";
+
 export interface GitStatusFile {
   path: string;
   index: string;
@@ -60,13 +62,8 @@ export interface CommitSuggestion {
   message: string;
 }
 
-function buildSandboxGitUrl(
-  orgSlug: string,
-  virtualMcpId: string,
-  branch: string,
-  endpoint: string,
-) {
-  return `/api/${orgSlug}/sandbox/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/git/${endpoint}`;
+function buildSandboxGitUrl(ref: SandboxProxyRef, endpoint: string) {
+  return buildSandboxUrl(ref, `git/${endpoint}`);
 }
 
 /** Error carrying the HTTP status so callers can back off on unreachable
@@ -127,21 +124,13 @@ function sandboxFetch(url: string, init?: RequestInit): Promise<Response> {
   return fetch(url, { cache: "no-store", ...init });
 }
 
-export async function fetchGitStatus(
-  orgSlug: string,
-  virtualMcpId: string,
-  branch: string,
-): Promise<GitStatus> {
-  const res = await sandboxFetch(
-    buildSandboxGitUrl(orgSlug, virtualMcpId, branch, "status"),
-  );
+export async function fetchGitStatus(ref: SandboxProxyRef): Promise<GitStatus> {
+  const res = await sandboxFetch(buildSandboxGitUrl(ref, "status"));
   return parseJson<GitStatus>(res);
 }
 
 export async function fetchGitDiff(
-  orgSlug: string,
-  virtualMcpId: string,
-  branch: string,
+  ref: SandboxProxyRef,
   options?: { base?: string; headSha?: string },
 ): Promise<GitDiffResult> {
   const payload =
@@ -151,14 +140,11 @@ export async function fetchGitDiff(
           ...(options.headSha ? { headSha: options.headSha } : {}),
         }
       : undefined;
-  const res = await sandboxFetch(
-    buildSandboxGitUrl(orgSlug, virtualMcpId, branch, "diff"),
-    {
-      method: "POST",
-      headers: payload ? { "content-type": "application/json" } : undefined,
-      body: payload ? JSON.stringify(payload) : undefined,
-    },
-  );
+  const res = await sandboxFetch(buildSandboxGitUrl(ref, "diff"), {
+    method: "POST",
+    headers: payload ? { "content-type": "application/json" } : undefined,
+    body: payload ? JSON.stringify(payload) : undefined,
+  });
   return parseJson<GitDiffResult>(res);
 }
 
@@ -182,9 +168,7 @@ export function stripGeneratedFilesFromDiff(
 }
 
 export async function fetchSuggestCommitMessage(
-  orgSlug: string,
-  virtualMcpId: string,
-  branch: string,
+  ref: SandboxProxyRef,
   payload?: { status: GitStatus; diff: GitDiffResult },
 ): Promise<CommitSuggestion> {
   const body = payload
@@ -193,31 +177,23 @@ export async function fetchSuggestCommitMessage(
         diff: stripGeneratedFilesFromDiff(payload.diff),
       }
     : {};
-  const res = await sandboxFetch(
-    buildSandboxGitUrl(orgSlug, virtualMcpId, branch, "suggest-commit"),
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    },
-  );
+  const res = await sandboxFetch(buildSandboxGitUrl(ref, "suggest-commit"), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
   return parseJson<CommitSuggestion>(res);
 }
 
 export async function publishGitChanges(
-  orgSlug: string,
-  virtualMcpId: string,
-  branch: string,
+  ref: SandboxProxyRef,
   message: string,
 ): Promise<void> {
-  const res = await sandboxFetch(
-    buildSandboxGitUrl(orgSlug, virtualMcpId, branch, "publish"),
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ message }),
-    },
-  );
+  const res = await sandboxFetch(buildSandboxGitUrl(ref, "publish"), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ message }),
+  });
   await parseJson(res);
 }
 
@@ -229,19 +205,14 @@ export async function publishGitChanges(
  * choice either.
  */
 export async function rebaseGitBranch(
-  orgSlug: string,
-  virtualMcpId: string,
-  branch: string,
+  ref: SandboxProxyRef,
   base: string,
 ): Promise<void> {
-  const res = await sandboxFetch(
-    buildSandboxGitUrl(orgSlug, virtualMcpId, branch, "rebase"),
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ base }),
-    },
-  );
+  const res = await sandboxFetch(buildSandboxGitUrl(ref, "rebase"), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ base }),
+  });
   await parseJson(res);
 }
 
@@ -395,43 +366,33 @@ export function reviewDiffSignature(diff: GitDiffResult): string {
  * payload under the endpoint's body limit.
  */
 export async function fetchReviewVerdict(
-  orgSlug: string,
-  virtualMcpId: string,
-  branch: string,
+  ref: SandboxProxyRef,
   payload: { status: GitStatus; diff: GitDiffResult; language?: string },
 ): Promise<ReviewVerdict> {
-  const res = await sandboxFetch(
-    buildSandboxGitUrl(orgSlug, virtualMcpId, branch, "judge-review"),
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        status: payload.status,
-        diff: stripGeneratedFilesFromDiff(payload.diff),
-        // The `reason` is shown to the user, so ask the model to write it in
-        // the UI language. This is a deliberate exception to "don't thread
-        // locale to the server" — it applies only to this displayed AI text.
-        ...(payload.language ? { language: payload.language } : {}),
-      }),
-    },
-  );
+  const res = await sandboxFetch(buildSandboxGitUrl(ref, "judge-review"), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      status: payload.status,
+      diff: stripGeneratedFilesFromDiff(payload.diff),
+      // The `reason` is shown to the user, so ask the model to write it in
+      // the UI language. This is a deliberate exception to "don't thread
+      // locale to the server" — it applies only to this displayed AI text.
+      ...(payload.language ? { language: payload.language } : {}),
+    }),
+  });
   return parseJson<ReviewVerdict>(res);
 }
 
 export async function discardGitFiles(
-  orgSlug: string,
-  virtualMcpId: string,
-  branch: string,
+  ref: SandboxProxyRef,
   filepaths: string[],
 ): Promise<void> {
-  const res = await sandboxFetch(
-    buildSandboxGitUrl(orgSlug, virtualMcpId, branch, "discard"),
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ filepaths }),
-    },
-  );
+  const res = await sandboxFetch(buildSandboxGitUrl(ref, "discard"), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ filepaths }),
+  });
   await parseJson(res);
 }
 
@@ -443,12 +404,14 @@ export function readGitHeadBranch(
   return status?.[GIT_HEAD_BRANCH_KEY] ?? null;
 }
 
-export function sandboxGitStatusQueryKey(
-  orgSlug: string,
-  virtualMcpId: string,
-  branch: string,
-) {
-  return ["sandbox-git-status", orgSlug, virtualMcpId, branch] as const;
+export function sandboxGitStatusQueryKey(ref: SandboxProxyRef) {
+  return [
+    "sandbox-git-status",
+    ref.orgSlug,
+    ref.virtualMcpId,
+    ref.branch,
+    ref.threadId,
+  ] as const;
 }
 
 /**
@@ -465,14 +428,10 @@ const GIT_STATUS_STALE_MS = 5_000;
  * header already fetched — spread this into both rather than restating the key.
  * Deliberately without `enabled`: `useSuspenseQuery` has no such option.
  */
-export function sandboxGitStatusQueryOptions(
-  orgSlug: string,
-  virtualMcpId: string,
-  branch: string,
-) {
+export function sandboxGitStatusQueryOptions(ref: SandboxProxyRef) {
   return {
-    queryKey: sandboxGitStatusQueryKey(orgSlug, virtualMcpId, branch),
-    queryFn: () => fetchGitStatus(orgSlug, virtualMcpId, branch),
+    queryKey: sandboxGitStatusQueryKey(ref),
+    queryFn: () => fetchGitStatus(ref),
     staleTime: GIT_STATUS_STALE_MS,
     retry: retryGitRequest,
   };

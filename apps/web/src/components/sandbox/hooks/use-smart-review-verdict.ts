@@ -37,11 +37,13 @@ export function useSmartReviewVerdict(args: {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
+  threadId: string | null;
   status: GitStatus | null;
   diff: GitDiffResult | null;
   enabled: boolean;
 }): { verdict: ReviewVerdict | null; loading: boolean } {
-  const { orgSlug, virtualMcpId, branch, status, diff, enabled } = args;
+  const { orgSlug, virtualMcpId, branch, threadId, status, diff, enabled } =
+    args;
   const [{ language }] = usePreferences();
   const signature = diff ? reviewDiffSignature(diff) : "";
   const canRun = enabled && !!branch && !!status && !!diff && signature !== "";
@@ -55,11 +57,10 @@ export function useSmartReviewVerdict(args: {
       language,
     ),
     queryFn: () =>
-      fetchReviewVerdict(orgSlug, virtualMcpId, branch, {
-        status: status!,
-        diff: diff!,
-        language,
-      }),
+      fetchReviewVerdict(
+        { orgSlug, virtualMcpId, branch, threadId },
+        { status: status!, diff: diff!, language },
+      ),
     enabled: canRun,
     staleTime: Infinity,
     gcTime: 10 * 60_000,

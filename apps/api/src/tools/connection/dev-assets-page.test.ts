@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   finalizeNonBindingPage,
+  resolveDevAssetsSqlWindow,
   shouldConsiderDevAssetsForPage,
 } from "./dev-assets-page";
 
@@ -42,5 +43,44 @@ describe("finalizeNonBindingPage", () => {
     expect(result.items).toEqual([0, 1, 2, 3, 4]);
     expect(result.totalCount).toBe(5);
     expect(result.hasMore).toBe(false);
+  });
+});
+
+describe("resolveDevAssetsSqlWindow", () => {
+  test("passes the requested window through unchanged when it doesn't qualify", () => {
+    expect(resolveDevAssetsSqlWindow(100, 50, false)).toEqual({
+      sqlOffset: 100,
+      sqlLimit: 50,
+    });
+  });
+
+  test("reserves one slot on page 1 when it qualifies", () => {
+    expect(resolveDevAssetsSqlWindow(0, 100, true)).toEqual({
+      sqlOffset: 0,
+      sqlLimit: 99,
+    });
+  });
+
+  test("never goes negative when limit is 0", () => {
+    expect(resolveDevAssetsSqlWindow(0, 0, true)).toEqual({
+      sqlOffset: 0,
+      sqlLimit: 0,
+    });
+  });
+
+  test("shifts a later page's real-row offset back by one", () => {
+    expect(resolveDevAssetsSqlWindow(100, 100, true)).toEqual({
+      sqlOffset: 99,
+      sqlLimit: 100,
+    });
+  });
+
+  test("proves no real row is lost across the page-1/page-2 boundary", () => {
+    // 100 real rows, limit 100: page 1 fetches rows [0, 99) plus dev-assets.
+    const page1 = resolveDevAssetsSqlWindow(0, 100, true);
+    expect(page1).toEqual({ sqlOffset: 0, sqlLimit: 99 });
+    // Page 2 must resume at row 99, the one page 1's synthetic slot bumped.
+    const page2 = resolveDevAssetsSqlWindow(100, 100, true);
+    expect(page2).toEqual({ sqlOffset: 99, sqlLimit: 100 });
   });
 });

@@ -35,6 +35,11 @@ export interface SandboxStartArgs {
    * the env kind). Used by the v2 RunnerPill to materialize a specific kind.
    */
   sandboxProviderKind?: SandboxProviderKind;
+  /**
+   * The session asking for a sandbox. The server refuses to provision for a
+   * thread stamped `cms` — without it that guard is unreachable from the web.
+   */
+  threadId?: string;
 }
 
 export interface SandboxStartResult {

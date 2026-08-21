@@ -8,6 +8,12 @@ import {
 } from "@/oauth/token-refresh";
 import { getRepoScope } from "@decocms/shared/github-repo-scope";
 import { DownstreamTokenStorage } from "../../storage/downstream-token";
+import {
+  countGithubRateLimited,
+  githubRetryAfterMs,
+  isGithubRateLimited,
+  recordGithubRateLimit,
+} from "@/observability/github-rate-limit";
 
 const GITHUB_API = "https://api.github.com";
 /** Matches the Git Data client's per-attempt timeout in `decofile/github-git-data.ts`. */
@@ -158,6 +164,27 @@ export const GITHUB_LIST_USER_ORGS = defineTool({
         if (res.status === 401) {
           throw new Error(RECONNECT_ERROR);
         }
+      }
+
+      recordGithubRateLimit(res.headers, {
+        lane: "rest",
+        operation: "list_user_installations",
+      });
+
+      if (isGithubRateLimited(res)) {
+        const kind =
+          res.headers.get("retry-after") !== null ? "secondary" : "primary";
+        countGithubRateLimited({
+          lane: "rest",
+          operation: "list_user_installations",
+          kind,
+        });
+        const waitMs = githubRetryAfterMs(res.headers);
+        throw new Error(
+          `GitHub ${kind} rate limit reached${
+            waitMs === null ? "" : `; retry in ${Math.ceil(waitMs / 1000)}s`
+          }`,
+        );
       }
 
       if (!res.ok) {

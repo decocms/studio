@@ -5,6 +5,8 @@ import { ErrorBoundary } from "../error-boundary";
 
 import { Chat } from "./index";
 import { useChatStream } from "./context";
+import { useOptionalChatTask } from "./chat-context";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useNeedsRuntimeSetup } from "./use-needs-runtime-setup";
 import { ChatContextPanel } from "./context-panel";
 import { AgentHome } from "./agent-home";
@@ -17,13 +19,20 @@ import { useDecoCredits } from "@/hooks/use-deco-credits";
 
 function ChatSidePanelContent() {
   const { org } = useProjectContext();
+  const taskCtx = useOptionalChatTask();
   const { isChatEmpty } = useChatStream();
   const [activePanel, setActivePanel] = useState<"chat" | "context">("chat");
   const deco = useDecoCredits();
 
   // The structured chat side panel is web-only. Native uses the terminal
   // runtime adapter instead, so cloud provider setup is the only gate here.
-  const showProviderEmptyState = useNeedsRuntimeSetup();
+  const needsRuntimeSetup = useNeedsRuntimeSetup();
+  const { runtime } = useSessionRuntime(taskCtx?.virtualMcpId);
+  // A CMS session never talks to a model, so neither an unconfigured AI
+  // provider nor the agent's icebreakers are ITS empty state. It has exactly
+  // one: the "Start coding session" CTA the composer renders. Offering
+  // "Create Agents" to a session that cannot run one is a dead end.
+  const showProviderEmptyState = needsRuntimeSetup && runtime !== "cms";
 
   if (showProviderEmptyState) {
     return (
@@ -62,7 +71,7 @@ function ChatSidePanelContent() {
             : "opacity-100",
         )}
       >
-        {isChatEmpty ? (
+        {isChatEmpty && runtime !== "cms" ? (
           <AgentHome onOpenContextPanel={() => setActivePanel("context")} />
         ) : (
           <>

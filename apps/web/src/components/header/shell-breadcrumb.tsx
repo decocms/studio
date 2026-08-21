@@ -32,6 +32,7 @@ import { AgentScopePicker } from "@/components/sidebar/agents-section";
 import { useThreads } from "@/components/chat/store/hooks";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { findReusableNewChat } from "@/lib/reusable-new-chat";
+import { useProjectDefaultRuntime } from "@/sdk/project-default-runtime";
 import { authClient } from "@/lib/auth-client.ts";
 import { usePendingInvitations } from "@/hooks/use-pending-invitations";
 import { useT } from "@/i18n/use-t.ts";
@@ -185,6 +186,7 @@ export function AgentSwitcherCrumb({
   const { threads } = useThreads();
   const { data: session } = authClient.useSession();
   const { setTaskId, createNewTask } = usePanelActions();
+  const projectDefaultRuntime = useProjectDefaultRuntime();
 
   const decopilot = getWellKnownDecopilotVirtualMCP(org.id);
   const decopilotId = decopilot.id;
@@ -200,7 +202,12 @@ export function AgentSwitcherCrumb({
   // Decopilot id.
   const handlePickAgent = (id: string | null) => {
     const targetId = id ?? decopilotId;
-    const existing = findReusableNewChat(threads, targetId, session?.user?.id);
+    const existing = findReusableNewChat(
+      threads,
+      targetId,
+      session?.user?.id,
+      projectDefaultRuntime(targetId),
+    );
     if (existing) {
       setTaskId(existing.id, targetId);
     } else {
