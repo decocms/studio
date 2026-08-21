@@ -415,6 +415,13 @@ func (reg *Registry) runHarness(
 	// Deferred, not placed after RunHarness: every terminal path below returns
 	// early (crash, cancel, unknown harness), and the run that crashed halfway is
 	// exactly the one whose stray output must still be rescued.
+	//
+	// Registered AFTER the keepalive's defer, so it runs BEFORE it: `AfterRun`
+	// copies a skill tree and a session transcript over org-fs, and Studio is
+	// still reading this body until EOF with the same silence timeout that
+	// governs the run itself. Settling the workspace in a keepalive-less window
+	// is how a turn that already sent its terminal frame gets declared dead and
+	// continued on a replacement pod.
 	if deps.AfterRun != nil {
 		defer deps.AfterRun(runInfoOf(input))
 	}
@@ -447,7 +454,6 @@ func (reg *Registry) runHarness(
 				"elapsed_s", int(time.Since(startedAt).Seconds()))
 			return body.write(append(frame, '\n'))
 		})
-	stopKeepalive()
 	elapsed := int(time.Since(startedAt).Seconds())
 
 	if ctx.Err() != nil {

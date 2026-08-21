@@ -341,6 +341,7 @@ export async function runClaudeCode(
 
   try {
     let forkedForSession = false;
+    let restartedWithoutResume = false;
     for (let attempt = 1; ; attempt++) {
       let broken: string | null;
       try {
@@ -352,6 +353,27 @@ export async function runClaudeCode(
         // resume/recreate fails on the same id. Fork a FRESH session once and
         // restart the attempt loop; losing that transcript beats failing every
         // retry forever. Only once — a second "in use" is a real problem.
+        // The stored id names a transcript this pod's SDK cannot resolve, so
+        // the resume fails the WHOLE run — strictly worse than the fresh start
+        // the session was meant to improve on. Causes vary (a transcript copied
+        // under a different cwd slug, a truncated file, an SDK that changed
+        // where it files them) and none are worth distinguishing: drop the
+        // resume and run the turn. Once — a second one is not the session.
+        if (
+          !restartedWithoutResume &&
+          resumeSession &&
+          /no conversation found|session .* not found/i.test(msg)
+        ) {
+          restartedWithoutResume = true;
+          console.error(
+            `[claude-code] session ${sessionId} does not resolve here — ` +
+              `starting a fresh session for this turn`,
+          );
+          sessionId = crypto.randomUUID();
+          resumeSession = false;
+          attempt = 0;
+          continue;
+        }
         if (!forkedForSession && /is already in use/i.test(msg)) {
           forkedForSession = true;
           console.error(

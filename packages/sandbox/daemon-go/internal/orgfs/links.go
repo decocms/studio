@@ -150,6 +150,14 @@ func (l *Links) EnsureRepoLink() {
 const (
 	orgReadyBudget = 90 * time.Second
 	orgReadyPoll   = 500 * time.Millisecond
+	// How often the wait may RETRY the linking itself, as opposed to re-reading
+	// the cheap state. A repoint that has not yet linked the skills runs the
+	// mount's read probe (`setReads`, up to `skillReadBudget`) while holding
+	// `l.mu`, and a wedged backend answers none of them — so retrying it on the
+	// poll interval turns this wait into ~25 blocked probes that also stall
+	// every other org-fs caller for the whole window. Once every 15s is often
+	// enough to catch a mount that lands mid-wait.
+	orgReadyRepointEvery = 15 * time.Second
 )
 
 // WaitHomeReady blocks until the org HOME volume is attached and the org's
@@ -184,14 +192,16 @@ func (l *Links) WaitHomeReady(threadId string) bool {
 	// picked up on the next run), it just stops sleeping for one.
 	waited := !l.readyBudgetSpent()
 	started := time.Now()
+	var lastRepoint time.Time
 	for attempt := 1; ; attempt++ {
-		// Gated on the mount, so the poll cannot become the expensive thing it is
-		// waiting for: a repoint probes the skill set for readability, spending up
-		// to `skillReadBudget` and leaking a goroutine parked in the mount each
-		// time it does not answer. 180 of those is a self-inflicted outage. Once
-		// the volume is there, repoint — it does the linking, so a mount that
-		// appears mid-wait is picked up.
-		if l.volumeMounted("home") {
+		// Gated on the mount AND rate-limited, because the repoint is the
+		// expensive half: until the skills link, it runs the mount's read probe
+		// under `l.mu`, and each unanswered probe leaks a goroutine parked in the
+		// filesystem. Polling it every 500ms for 90s is the self-inflicted outage
+		// this wait exists to avoid. The cheap checks below still run every tick.
+		if l.volumeMounted("home") &&
+			(lastRepoint.IsZero() || time.Since(lastRepoint) >= orgReadyRepointEvery) {
+			lastRepoint = time.Now()
 			l.RepointForRun(threadId)
 		}
 		if l.skillsReady() {

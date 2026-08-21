@@ -38,8 +38,11 @@ import {
 } from "./model-permissions";
 import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage, ModelsConfig } from "./types";
-import type { DispatchRunInput } from "./dispatch-run";
-import { buildDurableDispatchInput } from "./dispatch-run";
+import type { DispatchRunInput, HostedHarnessId } from "./dispatch-run";
+import {
+  assertHostedDispatchHarness,
+  buildDurableDispatchInput,
+} from "./dispatch-run";
 import { stringifyError } from "@/harnesses/lib/stream-error";
 import { cancelHostedHarness, enqueueThreadRun } from "@/dispatch-queue";
 import {
@@ -374,8 +377,10 @@ function assertHostedRuntime(
  * turns from the pod, so there is no live tail to hold open — the web follows it
  * through the org-level `/watch` instead (see `isBatchHarness`).
  *
- * Still NOT used by `assertPersistedHostedRuntime` (cancel/flip/queue-cancel):
- * those mutate a run this process owns, and a sandbox-hosted run is not one.
+ * Also the body of `assertPersistedHostedRuntime` (cancel/flip/queue-cancel),
+ * which adds the "has this thread started a run at all" check on top: a
+ * sandbox-hosted turn is cancellable through the same abort path, so refusing
+ * there would leave a turn the user can start and cannot stop.
  */
 export function assertHostedSandboxRuntime(
   harnessId: string | null | undefined,
@@ -438,18 +443,25 @@ export function normalizeHostedSandboxProviderKind(
 }
 
 /**
- * Mutating control routes operate only on a thread that has already been
- * claimed by hosted Decopilot. Unlike the message and stream routes, they do
- * not need to support an unpinned thread: accepting one would leave a race in
- * which native startup could claim the row after validation but before the
- * hosted mutation landed.
+ * Mutating control routes operate only on a thread that has already STARTED a
+ * hosted run — either harness. Unlike the message and stream routes, they do
+ * not support an unpinned thread: accepting one would leave a race in which
+ * native startup could claim the row after validation but before the hosted
+ * mutation landed.
+ *
+ * `claude-code` belongs here now that its thread takes follow-ups. Cancel
+ * reaches it by the same route Decopilot uses: the abort travels to whichever
+ * pod owns the turn, aborts the dispatch HTTP request, and the daemon's harness
+ * child is spawned on that request's context (`exec.CommandContext`), so the
+ * disconnect kills the agent. A turn a user can start and cannot stop is not a
+ * boundary, it is a bug.
  */
 export function assertPersistedHostedRuntime(
   harnessId: string | null | undefined,
   sandboxProviderKind: string | null | undefined,
-): asserts harnessId is "decopilot" {
-  assertHostedRuntime(harnessId, sandboxProviderKind);
-  if (harnessId !== "decopilot") {
+): asserts harnessId is HostedHarnessId {
+  assertHostedSandboxRuntime(harnessId, sandboxProviderKind);
+  if (harnessId !== "decopilot" && harnessId !== "claude-code") {
     throw new HTTPException(409, {
       message: "This chat has not started a hosted run",
     });
@@ -826,10 +838,19 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         await emitter.emitRequestMessage(persistedRequestMessage);
       }
 
-      const serializableRequest = buildDurableDispatchInput(input, {
-        messageId,
-        branch,
-      });
+      // The RUN's harness is the row's pin, not `validate()`'s default. This is
+      // the whole difference between accepting a follow-up and answering it: the
+      // gate above opens for `claude-code`, but `validate()` returns a fixed
+      // `harnessId: "decopilot"`, and that value is the only one that reaches
+      // `prepareRun` (nothing downstream re-reads `threads.harness_id`). Passing
+      // it through would run the in-process Decopilot loop behind a claude-code
+      // pin — no pod, no checkout, no resumed session — which reads as a working
+      // reply while being a different agent entirely.
+      assertHostedDispatchHarness(pinnedHarness);
+      const serializableRequest = buildDurableDispatchInput(
+        { ...input, harnessId: pinnedHarness },
+        { messageId, branch },
+      );
       // The workflow body emits `chat_message_started` inside a DBOS step,
       // so idempotent retries that collapse onto an existing workflowID
       // don't double-count in PostHog. Don't add a duplicate emit here.

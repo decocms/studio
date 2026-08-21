@@ -28,6 +28,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -55,6 +56,11 @@ const (
 	projectsSubdir  = "projects"
 	sessionIdName   = "session-id"
 	localSessionDir = "deco-sessions"
+	// Both sides of the pointer must spell the file the same way or persistence
+	// silently no-ops: restore writes a name the harness never reads, and save
+	// reads one it never wrote. The harness owns the spelling (`sessionFile` in
+	// claude-code.ts), so this mirrors it rather than the other way round.
+	localSessionUnsafe = `[^A-Za-z0-9_-]`
 	// Where a save is assembled before it replaces the live tree. Inside the
 	// store so the swap is a rename within one filesystem.
 	projectsStaging = ".projects.staging"
@@ -69,6 +75,15 @@ const (
 // than one lost conversation. If real threads start hitting it, prune the
 // transcript's oldest entries rather than raising the cap.
 const sessionCopyBudgetBytes int64 = 64 << 20
+
+// saveGen orders the pod's saves. `withinSessionBudget` deliberately does not
+// serialize them — a leaked flight would hold any lock forever — so an abandoned
+// save can wake up long after a later one finished and still be holding a
+// staging dir it wants to swap in. Swapping it would delete the newer
+// transcript and leave the older one behind a live id: a conversation rewound
+// by a turn, or a resume that fails the run outright. A save claims a
+// generation before it copies and only swaps if it is still the newest.
+var saveGen atomic.Uint64
 
 // sessionBudget is one copy's byte allowance. Fresh per call: the budget bounds
 // a single transfer, not the pod's lifetime.
@@ -164,6 +179,14 @@ func copyMissing(src, dst string, budget *atomic.Int64) error {
 	return nil
 }
 
+// localSessionName is the pointer file's name for threadId, matching the
+// harness's own sanitization character for character.
+func localSessionName(threadId string) string {
+	return localSessionUnsafeRe.ReplaceAllString(threadId, "_")
+}
+
+var localSessionUnsafeRe = regexp.MustCompile(localSessionUnsafe)
+
 // transcriptPresent reports whether the transcript the id names is on local
 // disk. The SDK files it as `projects/<cwd-slug>/<sessionId>.jsonl` and the slug
 // is its own business, so this looks for the leaf by name rather than assuming
@@ -232,7 +255,7 @@ func (l *Links) restoreSession(threadId string) {
 		return
 	}
 
-	idPath := filepath.Join(local, localSessionDir, threadId)
+	idPath := filepath.Join(local, localSessionDir, localSessionName(threadId))
 	if _, err := os.Stat(idPath); err == nil {
 		// This pod already holds the session. Nothing to restore.
 		return
@@ -309,7 +332,7 @@ func (l *Links) saveSession(threadId string) {
 		return
 	}
 
-	id, err := os.ReadFile(filepath.Join(local, localSessionDir, threadId))
+	id, err := os.ReadFile(filepath.Join(local, localSessionDir, localSessionName(threadId)))
 	if err != nil {
 		if !errors.Is(err, fs.ErrNotExist) {
 			slog.Warn("claude session save: id unreadable", "thread", threadId, "err", err)
@@ -334,6 +357,7 @@ func (l *Links) saveSession(threadId string) {
 	// interrupted window leaves NO transcript, which `RestoreSession` already
 	// treats as "start fresh".
 	started := time.Now()
+	gen := saveGen.Add(1)
 	if err := os.MkdirAll(store, 0o755); err != nil {
 		slog.Warn("claude session save: store dir failed", "thread", threadId, "err", err)
 		return
@@ -351,6 +375,22 @@ func (l *Links) saveSession(threadId string) {
 	defer os.RemoveAll(staging)
 	if err := copyTree(src, staging, sessionBudget()); err != nil {
 		slog.Warn("claude session save: transcript copy failed", "thread", threadId, "err", err)
+		return
+	}
+	// Everything below MUTATES the stored session, so re-check both things that
+	// can have changed while the copy was in the air.
+	if saveGen.Load() != gen {
+		slog.Warn("claude session save: superseded while copying; keeping the newer session",
+			"thread", threadId)
+		return
+	}
+	// `pruneStaleStaging` clears dirs by age, so a flight slow enough to be
+	// abandoned can have had its own staging swept out from under it. Renaming
+	// what is left would put a half-copied transcript behind a live id — the one
+	// outcome worse than no session at all.
+	if _, err := os.Lstat(staging); err != nil {
+		slog.Warn("claude session save: staging vanished; leaving the stored session alone",
+			"thread", threadId, "err", err)
 		return
 	}
 	live := filepath.Join(store, projectsSubdir)

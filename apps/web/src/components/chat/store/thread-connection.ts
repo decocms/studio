@@ -385,6 +385,14 @@ export class ThreadConnection {
    * running `/stream` loop is left alone: it costs one idle SSE and closes on
    * dispose, which is cheaper than plumbing a cancel through the loop.
    */
+  /**
+   * Set at submit, cleared by the first non-terminal status event that follows.
+   * A batch thread learns its turn is over from the org-level `/watch`, and that
+   * stream also carries the PREVIOUS turn's terminal status — which, arriving
+   * after a new submit, would end the new turn on screen while it runs.
+   */
+  private awaitingRunStart = false;
+
   enableBatch(): void {
     if (this.batch) return;
     this.batch = true;
@@ -422,26 +430,43 @@ export class ThreadConnection {
       return;
     }
     if (parsed.subject !== this.threadId) return;
-    void this.refetchLatestPage();
+    const refetched = this.refetchLatestPage();
 
+    if (
+      !this.batch ||
+      e.type !== DECOPILOT_EVENTS.THREAD_STATUS ||
+      typeof parsed.data?.status !== "string"
+    ) {
+      return;
+    }
+    // Our own turn has started, so any terminal status from here on is ours.
+    // Ordered on one SSE connection, which is what makes this a causal check
+    // rather than a clock comparison between this browser and the server.
+    if (!TERMINAL_THREAD_STATUSES.has(parsed.data.status)) {
+      this.awaitingRunStart = false;
+      return;
+    }
     // A batch thread's turn ends here or nowhere. There is no per-thread stream
     // to deliver a `finish` chunk, so without this the composer stays in
     // "submitted" forever after a follow-up and the user cannot send another
     // message — the run finished, the reply rendered, and the box stayed locked.
     // A streaming connection must NOT take this path: its own finish chunk owns
     // the transition, and a status event racing it would end the turn early.
-    if (
-      this.batch &&
-      e.type === DECOPILOT_EVENTS.THREAD_STATUS &&
-      typeof parsed.data?.status === "string" &&
-      TERMINAL_THREAD_STATUSES.has(parsed.data.status)
-    ) {
+    //
+    // Not the PREVIOUS turn's terminal status, though: a late or redelivered
+    // `completed` for the run before ours would unlock the composer mid-run and
+    // invite a second message the user believes is their first.
+    if (this.awaitingRunStart) return;
+    // After the content, not before it. `refetchLatestPage` is what puts the
+    // reply on screen; unlocking first shows a ready composer above a thread
+    // that still ends with the user's own message.
+    void refetched.finally(() => {
       this.clearRunStatusStage();
       const s = this.status.get();
       if (s.kind === "submitted" || s.kind === "streaming") {
         this.status.set({ kind: "ready" });
       }
-    }
+    });
   }
 
   // ── Public mutator (single entry point) ─────────────────────────────────
@@ -482,6 +507,7 @@ export class ThreadConnection {
 
     this.runStatusStage.set("sending");
     this.status.set({ kind: "submitted" });
+    this.awaitingRunStart = true;
 
     const abort = new AbortController();
     this.inflightPost = abort;

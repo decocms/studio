@@ -352,6 +352,21 @@ describe("assertPersistedHostedRuntime", () => {
       normalizeHostedSandboxProviderKind(null, "user-desktop"),
     ).toThrow(/unsupported desktop runtime/);
   });
+
+  // A sandbox-hosted turn is startable from the composer, so it has to be
+  // stoppable from it too. The abort reaches the pod and the daemon spawns the
+  // harness on the request's context, so the disconnect ends the agent.
+  test("allows a sandbox-hosted claude-code row", () => {
+    expect(() =>
+      assertPersistedHostedRuntime("claude-code", "agent-sandbox"),
+    ).not.toThrow();
+  });
+
+  test("still refuses the native desktop coding agent", () => {
+    expect(() =>
+      assertPersistedHostedRuntime("claude-code", "user-desktop"),
+    ).toThrow(/Studio desktop app/);
+  });
 });
 
 describe("shouldPersistRequestMessage", () => {

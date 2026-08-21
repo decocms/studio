@@ -323,3 +323,65 @@ func TestAWedgedTransferDoesNotPoisonTheNextOne(t *testing.T) {
 		t.Fatalf("a healthy session was collateral damage: id=%q err=%v", id, err)
 	}
 }
+
+// A save that lost its race must leave the winner alone. Without the
+// generation check the older flight's swap deletes the newer transcript and
+// writes the older id over it — a conversation rewound by a turn, or a resume
+// that fails the run.
+func TestASupersededSaveKeepsTheNewerSession(t *testing.T) {
+	l, local := sessionFixture(t)
+	writeLocalSession(t, local, "thread1", "sess-old", `{"turn":1}`)
+
+	// Claim a generation the way an in-flight save does, then let a later save
+	// finish. The first flight's swap must decline.
+	gen := saveGen.Add(1)
+	writeLocalSession(t, local, "thread1", "sess-new", `{"turn":1}{"turn":2}`)
+	l.SaveSession("thread1")
+	if saveGen.Load() == gen {
+		t.Fatal("the later save did not claim a newer generation")
+	}
+
+	store := filepath.Join(l.AppRoot, "org", "home", sessionsDirName, "thread1")
+	id, err := os.ReadFile(filepath.Join(store, sessionIdName))
+	if err != nil {
+		t.Fatalf("stored id unreadable: %v", err)
+	}
+	if string(id) != "sess-new" {
+		t.Fatalf("stored id = %q, want sess-new", id)
+	}
+	body, err := os.ReadFile(filepath.Join(store,
+		projectsSubdir, "-app-repo", "sess-new.jsonl"))
+	if err != nil {
+		t.Fatalf("newer transcript missing: %v", err)
+	}
+	if string(body) != `{"turn":1}{"turn":2}` {
+		t.Fatalf("stored transcript = %q", body)
+	}
+}
+
+// The daemon writes the pointer file the harness reads. `sessionFile` in
+// claude-code.ts rewrites everything outside [A-Za-z0-9_-], so a thread id
+// carrying anything else has to land on the same name here or persistence
+// silently does nothing in both directions.
+func TestSessionPointerMatchesTheHarnessSpelling(t *testing.T) {
+	l, local := sessionFixture(t)
+	const threadId = "thread.1"
+	writeLocalSession(t, local, localSessionName(threadId), "sess-abc", `{"turn":1}`)
+	if localSessionName(threadId) != "thread_1" {
+		t.Fatalf("localSessionName(%q) = %q, want thread_1",
+			threadId, localSessionName(threadId))
+	}
+	l.SaveSession(threadId)
+
+	next := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", next)
+	l.RestoreSession(threadId)
+
+	id, err := os.ReadFile(filepath.Join(next, localSessionDir, "thread_1"))
+	if err != nil {
+		t.Fatalf("session id not restored where the harness reads it: %v", err)
+	}
+	if string(id) != "sess-abc" {
+		t.Fatalf("session id = %q, want sess-abc", id)
+	}
+}
