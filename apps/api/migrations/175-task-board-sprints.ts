@@ -5,10 +5,10 @@ import { type Kysely } from "kysely";
  *
  * Two columns, no sprint table: a sprint is a derived window over the org's
  * cadence (`organization_settings.sprint_config` — `{ enabled, weeks,
- * startDate }`), and a card carries only its 1-based sprint NUMBER. A team
- * that shortens its cadence re-labels future windows without rewriting a
- * single card, and there is no lifecycle (create/close/roll over a sprint row)
- * to keep in sync.
+ * startDate }`), and a card carries only its 1-based sprint NUMBER. Changing
+ * the cadence rewrites no cards and there is no lifecycle (create/close/roll
+ * over a sprint row) to keep in sync — but it re-dates every window, closed
+ * ones included.
  *
  * `sprint` is nullable — a card with no sprint is in the backlog, which is the
  * state every existing card starts in.

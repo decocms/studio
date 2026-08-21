@@ -42,6 +42,20 @@ const SPRINT_DATE_FMT = new Intl.DateTimeFormat(undefined, {
   timeZone: "UTC",
 });
 
+/**
+ * The sprint a card should show, or null when the board isn't running sprints.
+ *
+ * One gate for both the pill and the row that holds it: asking the question
+ * twice is what left a card that kept a sprint from before the toggle went off
+ * reserving an empty pill slot.
+ */
+export function visibleSprint(
+  sprint: number | null,
+  sprintsEnabled: boolean,
+): number | null {
+  return sprintsEnabled ? sprint : null;
+}
+
 /** A sprint's span as `Jan 5 – Jan 18`, or null when the cadence is unusable. */
 export function formatSprintDates(
   config: SprintConfig,

@@ -1,5 +1,9 @@
 import { useState } from "react";
-import { mondayOfWeek, type SprintConfig } from "@decocms/shared/sprints";
+import {
+  mondayOfWeek,
+  sprintOptions,
+  type SprintConfig,
+} from "@decocms/shared/sprints";
 import {
   EMPTY_FILTERS,
   TaskFiltersBar,
@@ -17,8 +21,9 @@ const CONFIG: SprintConfig = {
   startDate: mondayOfWeek(new Date()),
 };
 
-/** The 13 sprints `sprintOptions` offers over a 20-week horizon at 2 weeks. */
-const SPRINTS = Array.from({ length: 13 }, (_, i) => i + 1);
+/** Whatever the board would offer for this cadence — hardcoding a count here
+ *  would leave the horizon test asserting its own constant. */
+const SPRINTS = sprintOptions(CONFIG, new Date());
 
 /**
  * CT surface for the board's sprint filter: the real `TaskFiltersBar` with only

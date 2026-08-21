@@ -113,6 +113,7 @@ import {
   type TaskBoardItemStatus,
   type TaskBoardItemTag,
   type TaskBoardItemThread,
+  visibleSprint,
   type Member,
 } from "./config";
 import { useTags } from "@/hooks/use-tags";
@@ -223,15 +224,16 @@ function DueDatePill({ iso }: { iso: string }) {
 }
 
 /**
- * Which sprint a card is planned into. Reads the cadence itself (one shared,
- * cached query) rather than threading a prop down every lane and row: a board
- * with sprints switched off shows no sprint on any card, even one that kept a
- * sprint from before.
+ * Whether the board is running sprints. Reads the cadence itself (one shared,
+ * cached query) rather than threading a prop down every lane and row.
  */
+function useSprintsEnabled(): boolean {
+  return useSprintConfig()?.enabled === true;
+}
+
+/** Which sprint a card is planned into. Gated by {@link visibleSprint}. */
 function SprintPill({ sprint }: { sprint: number }) {
   const t = useT();
-  const enabled = useSprintConfig()?.enabled === true;
-  if (!enabled) return null;
   return (
     <span className={PILL}>
       <Repeat04 size={14} />
@@ -1992,6 +1994,7 @@ function TaskCard({
 }) {
   const t = useT();
   const StatusIcon = STATUS_CONFIG[item.status].icon;
+  const sprint = visibleSprint(item.sprint, useSprintsEnabled());
   // The Super Agent's own thread, not one of its reviewers' — falls back to
   // the most recent thread overall so a card still shows something before the
   // reviewer/main distinction exists (e.g. mid-migration data).
@@ -2062,7 +2065,7 @@ function TaskCard({
         isTaskHandedToHuman(item) ||
         item.priority !== "none" ||
         Boolean(item.dueDate) ||
-        item.sprint != null ||
+        sprint != null ||
         item.tags.length > 0) && (
         <div className="flex flex-wrap items-center gap-1.5 pl-6">
           {isTaskBlocked(item) && <BlockedBadge />}
@@ -2071,7 +2074,7 @@ function TaskCard({
             <PriorityPill priority={item.priority} />
           )}
           {item.dueDate && <DueDatePill iso={item.dueDate} />}
-          {item.sprint != null && <SprintPill sprint={item.sprint} />}
+          {sprint != null && <SprintPill sprint={sprint} />}
           {item.tags.map((tag) => (
             <TagPill key={tag.id} tag={tag} />
           ))}
@@ -2254,6 +2257,7 @@ function ListRow({
   onOpen: () => void;
 }) {
   const StatusIcon = STATUS_CONFIG[item.status].icon;
+  const sprint = visibleSprint(item.sprint, useSprintsEnabled());
   return (
     <button
       type="button"
@@ -2279,9 +2283,9 @@ function ListRow({
           <DueDatePill iso={item.dueDate} />
         </span>
       )}
-      {item.sprint != null && (
+      {sprint != null && (
         <span className="hidden sm:inline-flex">
-          <SprintPill sprint={item.sprint} />
+          <SprintPill sprint={sprint} />
         </span>
       )}
       {item.tags.length > 0 && (

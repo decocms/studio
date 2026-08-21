@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { toast } from "sonner";
 import { Switch } from "@decocms/ui/components/switch.tsx";
 import {
@@ -15,9 +16,10 @@ import {
   SettingsSection,
 } from "@/components/settings/settings-section";
 import {
-  useSprintConfig,
+  useSprintConfigState,
   useUpdateSprintConfig,
 } from "@/hooks/use-organization-settings";
+import { parseCalendarDay } from "@decocms/shared/organization/schema";
 import {
   DEFAULT_SPRINT_WEEKS,
   mondayOfWeek,
@@ -36,8 +38,10 @@ import { useT } from "@/i18n/use-t.ts";
  */
 export function SprintSettings() {
   const t = useT();
-  const stored = useSprintConfig();
+  const { config: stored, isLoaded } = useSprintConfigState();
   const update = useUpdateSprintConfig();
+  // Held while the date input is being typed into — see `commitStartDate`.
+  const [startDateDraft, setStartDateDraft] = useState<string | null>(null);
 
   /** Cadence a first "on" writes: sprint 1 covers the week it was turned on. */
   const config: SprintConfig = stored ?? {
@@ -46,11 +50,29 @@ export function SprintSettings() {
     startDate: mondayOfWeek(new Date()),
   };
 
+  // Writes replace the cadence whole, so one before the first read lands would
+  // overwrite it with the seeded default above.
+  const busy = update.isPending || !isLoaded;
+
   const save = (next: Partial<SprintConfig>) =>
     update.mutate(
       { ...config, ...next },
       { onError: () => toast.error(t("settings.sprints.updateError")) },
     );
+
+  /**
+   * A native date input reports every keystroke, and the intermediate values
+   * are complete valid days — typing 2026 walks through 0002, 0020 and 0202,
+   * each of which would persist a cadence and renumber the board. So the field
+   * is a draft until focus leaves it.
+   */
+  const commitStartDate = () => {
+    const next = startDateDraft;
+    setStartDateDraft(null);
+    if (!next || next === config.startDate) return;
+    if (parseCalendarDay(next) === null) return;
+    save({ startDate: next });
+  };
 
   /** No plural rules in the i18n module, so one week gets its own key. */
   const weeksLabel = (weeks: number) =>
@@ -74,7 +96,7 @@ export function SprintSettings() {
           action={
             <Switch
               checked={config.enabled}
-              disabled={update.isPending}
+              disabled={busy}
               aria-label={t("settings.sprints.enabledTitle")}
               onCheckedChange={(enabled) => save({ enabled })}
             />
@@ -114,7 +136,7 @@ export function SprintSettings() {
                       <DropdownMenuRadioItem
                         key={weeks}
                         value={String(weeks)}
-                        disabled={update.isPending}
+                        disabled={busy}
                       >
                         {weeksLabel(weeks)}
                       </DropdownMenuRadioItem>
@@ -124,15 +146,13 @@ export function SprintSettings() {
               </DropdownMenu>
               <Input
                 type="date"
-                value={config.startDate}
-                disabled={update.isPending}
+                value={startDateDraft ?? config.startDate}
+                disabled={busy}
                 aria-label={t("settings.sprints.startDateLabel")}
-                // A half-typed day would renumber every sprint on the board.
-                onChange={(e) => {
-                  const next = e.target.value;
-                  if (/^\d{4}-\d{2}-\d{2}$/.test(next)) {
-                    save({ startDate: next });
-                  }
+                onChange={(e) => setStartDateDraft(e.target.value)}
+                onBlur={commitStartDate}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
                 }}
                 className="h-9 w-40"
               />

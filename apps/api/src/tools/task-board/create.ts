@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
+import { MAX_SPRINT } from "@decocms/shared/sprints";
 import { getUserId, requireAuth } from "@/core/studio-context";
 import {
   SUPER_AGENT_ASSIGNEE_ID,
@@ -35,6 +36,7 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       .number()
       .int()
       .min(1)
+      .max(MAX_SPRINT)
       .nullable()
       .optional()
       .describe(

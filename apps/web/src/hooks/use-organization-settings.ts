@@ -309,6 +309,26 @@ export function useSprintConfig(): SprintConfig | null {
   return data ?? null;
 }
 
+/**
+ * The cadence plus whether the settings row has been read at all.
+ *
+ * `useSprintConfig` alone returns null for "never configured" and "still
+ * loading" alike, and `sprint_config` is replaced whole — so a form that writes
+ * before the first read lands replaces a real cadence with a seeded default and
+ * renumbers every card on the board. `isLoaded` is what the form gates on.
+ *
+ * It does NOT distinguish a failed read: the shared query is best-effort and
+ * caches `EMPTY_SETTINGS` for a minute on error, which still reads as "never
+ * configured". Closing that needs the query to stop swallowing, not a flag here.
+ */
+export function useSprintConfigState(): {
+  config: SprintConfig | null;
+  isLoaded: boolean;
+} {
+  const { data, isSuccess } = useOrganizationSettings((s) => s.sprint_config);
+  return { config: data ?? null, isLoaded: isSuccess };
+}
+
 /** Writer for the sprint cadence. Replaced whole, never merged. */
 export function useUpdateSprintConfig() {
   const mutation = useUpdateOrganizationSettings();

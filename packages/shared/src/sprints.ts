@@ -2,15 +2,15 @@
  * Sprint math. Sprints are derived from the org's cadence
  * ({@link SprintConfig}) rather than stored as rows: sprint N is the Nth
  * `weeks`-long window starting at `startDate`, so a task only ever carries a
- * sprint NUMBER and changing the cadence re-labels windows instead of
- * rewriting cards.
+ * sprint NUMBER and changing the cadence re-dates windows instead of rewriting
+ * cards. Note it re-dates ALL of them, closed sprints included.
  *
  * All day math is UTC. `startDate` is a calendar day, not an instant — reading
  * it in the viewer's zone would slide sprint boundaries by a day for anyone
  * west of UTC and make the same card read as two different sprints.
  */
 
-import type { SprintConfig } from "./organization/schema";
+import { parseCalendarDay, type SprintConfig } from "./organization/schema";
 
 export type { SprintConfig };
 
@@ -32,12 +32,16 @@ export const SPRINT_HORIZON_WEEKS = 20;
 /** How many past sprints a picker offers, on top of any already in use. */
 export const SPRINT_PAST_COUNT = 2;
 
-/** UTC midnight of a `YYYY-MM-DD` day, or null when unparseable. */
-function parseDay(day: string): number | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
-  const ms = Date.parse(`${day}T00:00:00.000Z`);
-  return Number.isNaN(ms) ? null : ms;
-}
+/**
+ * Highest sprint a card can be planned into. Not a product ceiling — past this
+ * a window's days leave the range `YYYY-MM-DD` can express, and rendering one
+ * gets a truncated expanded-year string or a thrown `RangeError`.
+ */
+export const MAX_SPRINT = 10_000;
+
+/** Last instant `toDayString` can express — `toISOString` widens the year past
+ *  9999, so `YYYY-MM-DD` stops being a slice of it. */
+const MAX_DAY_MS = Date.UTC(9999, 11, 31);
 
 /** `YYYY-MM-DD` of an instant, in UTC. */
 export function toDayString(date: Date): string {
@@ -62,9 +66,9 @@ export function mondayOfWeek(date: Date): string {
 }
 
 /**
- * Which sprint `date` falls in, 1-based. Null when the cadence is unusable (a
- * malformed `startDate` or a non-positive `weeks` — either would divide the
- * calendar into windows of zero length).
+ * Which sprint `date` falls in, 1-based. Null when the cadence is unusable: a
+ * `startDate` that is not a real calendar day, or a non-positive `weeks` (which
+ * would divide the calendar into windows of zero length).
  *
  * Dates before `startDate` clamp to sprint 1 rather than going negative: a
  * "sprint 0" or "sprint -3" is not a thing a team can plan into.
@@ -73,7 +77,7 @@ export function sprintNumberAt(
   config: SprintConfig,
   date: Date,
 ): number | null {
-  const start = parseDay(config.startDate);
+  const start = parseCalendarDay(config.startDate);
   if (start === null || config.weeks < 1) return null;
   const windowMs = config.weeks * 7 * DAY_MS;
   const elapsed = date.getTime() - start;
@@ -81,19 +85,23 @@ export function sprintNumberAt(
   return Math.floor(elapsed / windowMs) + 1;
 }
 
-/** First and last day (`YYYY-MM-DD`, inclusive) of sprint `n`. */
+/**
+ * First and last day (`YYYY-MM-DD`, inclusive) of sprint `n`, or null when `n`
+ * lands outside the calendar a day string can name. Callers render into a date
+ * formatter, so an unrenderable window has to come back as "no range" rather
+ * than as a truncated string or a throw from {@link toDayString}.
+ */
 export function sprintRange(
   config: SprintConfig,
   n: number,
 ): { start: string; end: string } | null {
-  const start = parseDay(config.startDate);
+  const start = parseCalendarDay(config.startDate);
   if (start === null || config.weeks < 1 || n < 1) return null;
   const windowMs = config.weeks * 7 * DAY_MS;
   const from = start + (n - 1) * windowMs;
-  return {
-    start: toDayString(new Date(from)),
-    end: toDayString(new Date(from + windowMs - DAY_MS)),
-  };
+  const to = from + windowMs - DAY_MS;
+  if (to > MAX_DAY_MS) return null;
+  return { start: toDayString(new Date(from)), end: toDayString(new Date(to)) };
 }
 
 /**

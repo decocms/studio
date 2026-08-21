@@ -30,11 +30,15 @@ test("the horizon reaches well past the current sprint", async ({
   await mount(<SprintFilterHarness />);
   await page.getByRole("button", { name: "Sprint" }).click();
 
+  // 20 weeks of calendar at a 2-week cadence, counted from the current sprint.
   await expect(
-    page.getByRole("menuitemradio", { name: /Sprint 13$/ }),
+    page.getByRole("menuitemradio", { name: /Sprint 11$/ }),
   ).toBeVisible();
-  // Any sprint + No sprint + the 13 offered sprints.
-  await expect(page.getByRole("menuitemradio")).toHaveCount(15);
+  await expect(
+    page.getByRole("menuitemradio", { name: /Sprint 12$/ }),
+  ).toHaveCount(0);
+  // Any sprint + No sprint + the offered sprints.
+  await expect(page.getByRole("menuitemradio")).toHaveCount(13);
 });
 
 test("picking a sprint reports it to the board", async ({ mount, page }) => {

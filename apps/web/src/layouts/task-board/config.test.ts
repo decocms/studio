@@ -6,6 +6,7 @@ import {
   isTaskHandedToHuman,
   runSortOrders,
   statusIconClassName,
+  visibleSprint,
 } from "./config";
 import type { TaskBoardItem } from "./config";
 
@@ -143,5 +144,25 @@ describe("formatSprintDates", () => {
 
   test("is null when the cadence can't be read", () => {
     expect(formatSprintDates({ ...config, startDate: "nope" }, 1)).toBe(null);
+  });
+});
+
+/**
+ * A card keeps its sprint number when an org switches sprints off, so the gate
+ * has to be asked once and used for both the pill and the row holding it —
+ * asking twice left the row reserving an empty slot.
+ */
+describe("visibleSprint", () => {
+  test("shows the card's sprint while the board runs sprints", () => {
+    expect(visibleSprint(3, true)).toBe(3);
+  });
+
+  test("hides a kept sprint once sprints are off, reserving no slot", () => {
+    expect(visibleSprint(3, false)).toBe(null);
+  });
+
+  test("a backlog card has nothing to show either way", () => {
+    expect(visibleSprint(null, true)).toBe(null);
+    expect(visibleSprint(null, false)).toBe(null);
   });
 });

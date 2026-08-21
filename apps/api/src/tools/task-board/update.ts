@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
+import { MAX_SPRINT } from "@decocms/shared/sprints";
 import { getUserId, requireAuth } from "@/core/studio-context";
 import type {
   TaskBoardActivityAction,
@@ -149,7 +150,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     repo: z.string().nullable().optional(),
     dueDate: z.string().datetime().nullable().optional(),
     /** Sprint to plan this task into (1-based); null moves it to the backlog. */
-    sprint: z.number().int().min(1).nullable().optional(),
+    sprint: z.number().int().min(1).max(MAX_SPRINT).nullable().optional(),
     /** New drag-to-reorder position within its lane (ascending). */
     sortOrder: z.number().optional(),
     /** Replaces the task's tags with this exact set (org tag ids). */

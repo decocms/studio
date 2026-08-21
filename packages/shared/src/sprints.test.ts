@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  MAX_SPRINT,
   mondayOfWeek,
   sprintNumberAt,
   sprintOptions,
@@ -30,6 +31,19 @@ describe("sprintNumberAt", () => {
       null,
     );
     expect(sprintNumberAt({ ...CONFIG, weeks: 0 }, new Date())).toBe(null);
+  });
+
+  /**
+   * The schema rejects these at the write, but a cadence is read on every
+   * board render — including one stored before that check existed. Silently
+   * counting from a rolled-over day (2026-02-31 = March 3) would shift every
+   * window three days with nothing to show for it.
+   */
+  it("refuses a well-formed startDate that is not a real day", () => {
+    for (const startDate of ["2026-02-31", "2026-02-29", "2026-04-31"]) {
+      expect(sprintNumberAt({ ...CONFIG, startDate }, new Date())).toBe(null);
+      expect(sprintRange({ ...CONFIG, startDate }, 1)).toBe(null);
+    }
   });
 });
 
@@ -85,5 +99,28 @@ describe("mondayOfWeek", () => {
     expect(mondayOfWeek(new Date("2026-01-07T15:00:00Z"))).toBe("2026-01-05");
     expect(mondayOfWeek(new Date("2026-01-05T00:00:00Z"))).toBe("2026-01-05");
     expect(mondayOfWeek(new Date("2026-01-11T23:00:00Z"))).toBe("2026-01-05");
+  });
+});
+
+/**
+ * `sprint` is a plain integer on the card, so an unbounded one reaches the date
+ * math. Past year 9999 `toISOString` widens the year and `slice(0, 10)` yields
+ * a truncated day string, then an invalid `Date` throws outright — mid-render,
+ * inside the board's sprint picker.
+ */
+describe("sprintRange out-of-calendar sprints", () => {
+  it("returns null instead of a truncated day or a throw", () => {
+    for (const n of [300_000, 7_200_000, 100_000_000]) {
+      expect(sprintRange(CONFIG, n)).toBe(null);
+    }
+  });
+
+  it("still resolves every sprint the tools accept", () => {
+    for (const weeks of [1, 2, 4, 12]) {
+      const range = sprintRange({ ...CONFIG, weeks }, MAX_SPRINT);
+      expect(range).not.toBe(null);
+      expect(range?.start).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(range?.end).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    }
   });
 });
