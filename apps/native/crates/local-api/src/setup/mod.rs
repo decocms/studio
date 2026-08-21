@@ -77,7 +77,7 @@ use tokio::sync::mpsc;
 
 use crate::config::ConfigStore;
 use crate::events::Broadcaster;
-use crate::tasks::{KillAllResult, TaskEntry, TaskRegistry};
+use crate::tasks::{KillAllResult, TaskEntry, TaskRegistry, TaskStatus};
 
 /// The named entry points into the setup pipeline — byte-parity with the
 /// daemon's `Step` union (`setup/orchestrator.ts`). A step always runs
@@ -280,6 +280,40 @@ impl SetupOrchestrator {
 
     pub(crate) fn is_current_dev_task(&self, task_id: &str) -> bool {
         self.lock_active_dev_task().as_deref() == Some(task_id)
+    }
+
+    /// Take the dev-task token for `task_id` unless a *live* owner holds it.
+    /// Returns whether the token is now `task_id`'s.
+    ///
+    /// [`Self::claim_dev_task`] is an unconditional overwrite, which is right
+    /// for a spawner (the newest dev process IS the dev server) and wrong for
+    /// `routes/scripts.rs`'s adopt path, which claims a process it did not
+    /// start. A bare read-then-claim there would be a TOCTOU across two lock
+    /// acquisitions: the setup worker runs on another runtime thread and can
+    /// claim between the two, and stealing its token silences BOTH its probe
+    /// (`dev.rs`'s `is_current_dev_task` guard) and its exit reporter
+    /// (`finish_dev_task` returning `false`) — pinning the phase over a
+    /// healthy server, which is the very bug the adopt path exists to fix.
+    ///
+    /// The whole decision therefore happens under one `active_dev_task`
+    /// guard. A token whose holder is no longer `Running` is stale — its
+    /// owner exited without clearing it, or was displaced — and taking it is
+    /// what lets a stuck sandbox recover. `self.tasks` is a different mutex
+    /// and is only ever taken *inside* this one here, never the reverse.
+    pub(crate) fn claim_dev_task_if_available(&self, task_id: &str) -> bool {
+        let mut active = self.lock_active_dev_task();
+        let held_by_live_owner = active.as_deref().is_some_and(|current| {
+            current != task_id
+                && self
+                    .tasks
+                    .get(current)
+                    .is_some_and(|summary| summary.status == TaskStatus::Running)
+        });
+        if held_by_live_owner {
+            return false;
+        }
+        *active = Some(task_id.to_string());
+        true
     }
 
     /// Publishes a dev lifecycle transition under the same generation fence
@@ -637,6 +671,83 @@ mod tests {
         assert!(!o.is_running());
         assert_eq!(o.pending_count(), 0);
         assert!(!o.resume_from(Step::Start));
+    }
+
+    fn running(id: &str) -> TaskEntry {
+        TaskEntry::new(
+            crate::tasks::TaskSummary {
+                id: id.to_string(),
+                command: "true".to_string(),
+                status: TaskStatus::Running,
+                exit_code: None,
+                started_at: 0,
+                finished_at: None,
+                timed_out: false,
+                truncated: false,
+                log_name: Some("dev".to_string()),
+                intentional: None,
+            },
+            None,
+        )
+    }
+
+    #[test]
+    fn adopt_claims_a_free_dev_token() {
+        let orch = orch();
+
+        assert!(orch.claim_dev_task_if_available("exec-task"));
+        assert!(orch.is_current_dev_task("exec-task"));
+    }
+
+    /// The run button adopting a dev server must never silence the pipeline's
+    /// own spawn: stealing its token disarms BOTH its readiness probe and its
+    /// exit reporter, pinning the phase over a healthy server — the exact bug
+    /// the adopt path exists to fix.
+    #[test]
+    fn adopt_refuses_to_steal_from_a_live_owner() {
+        let orch = orch();
+        orch.tasks.insert(running("pipeline-task"));
+        orch.claim_dev_task("pipeline-task");
+
+        assert!(!orch.claim_dev_task_if_available("exec-task"));
+        assert!(orch.is_current_dev_task("pipeline-task"));
+    }
+
+    /// A token whose owner exited without clearing it is what leaves a
+    /// sandbox stuck: nothing can publish `running` while it stands. Taking
+    /// it over is the recovery.
+    #[test]
+    fn adopt_takes_over_a_token_held_by_a_task_that_is_gone() {
+        let orch = orch();
+        orch.claim_dev_task("vanished-task");
+
+        assert!(orch.claim_dev_task_if_available("exec-task"));
+        assert!(orch.is_current_dev_task("exec-task"));
+    }
+
+    #[test]
+    fn adopt_takes_over_a_token_held_by_an_exited_task() {
+        let orch = orch();
+        orch.tasks.insert(running("old-task"));
+        orch.claim_dev_task("old-task");
+        orch.tasks
+            .finalize("old-task", TaskStatus::Exited, 0, false);
+
+        assert!(orch.claim_dev_task_if_available("exec-task"));
+        assert!(orch.is_current_dev_task("exec-task"));
+    }
+
+    /// Clicking `dev` twice on the same running server must be idempotent —
+    /// the second click re-arms a probe for a task that already holds the
+    /// token, and must not be refused as "someone else's".
+    #[test]
+    fn adopt_is_idempotent_for_the_task_that_already_holds_the_token() {
+        let orch = orch();
+        orch.tasks.insert(running("exec-task"));
+        orch.claim_dev_task("exec-task");
+
+        assert!(orch.claim_dev_task_if_available("exec-task"));
+        assert!(orch.is_current_dev_task("exec-task"));
     }
 
     #[test]
