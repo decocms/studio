@@ -533,6 +533,78 @@
   }
   await progress("previewCookieRoundTrip");
 
+  /**
+   * Monaco: the code editor engine boots from this app's OWN origin.
+   *
+   * The engine is not part of the JS bundle — it is ~100 files under
+   * `/monaco/vs` (`apps/web/vite.config.ts`'s `self-hosted-monaco`), pulled in
+   * at runtime by a `<script>` and, for the language services, a `Worker`.
+   * Those two are what the packaged CSP is strictest about, and no other check
+   * here exercises either: the app shipped a CDN `paths.vs` for months and
+   * every code surface rendered a permanent spinner, because `script-src
+   * 'self'` refused the engine while the file contents themselves loaded fine.
+   *
+   * Asserts the whole chain in the real webview under the real CSP — the files
+   * are embedded and served, the loader script executes, an editor mounts, and
+   * a language worker answers. A `blob:`-wrapped worker (monaco's default when
+   * no `getWorkerUrl` is declared) fails here too, since `worker-src` falls
+   * back to `default-src 'self'`.
+   */
+  async function probeMonacoEngine() {
+    const VS = "/monaco/vs";
+    const loaded = await new Promise((resolve) => {
+      const script = document.createElement("script");
+      script.src = `${VS}/loader.js`;
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+    if (!loaded) return { ok: false, stage: "loader-script-blocked" };
+
+    window.require.config({ paths: { vs: VS } });
+    window.MonacoEnvironment = {
+      getWorkerUrl: () => `${VS}/base/worker/workerMain.js`,
+    };
+    const monaco = await new Promise((resolve) => {
+      window.require(
+        ["vs/editor/editor.main"],
+        (module) => resolve(module),
+        () => resolve(null),
+      );
+    });
+    if (!monaco) return { ok: false, stage: "editor-main-failed" };
+
+    const host = document.createElement("div");
+    host.style.cssText = "position:fixed;left:-9999px;width:400px;height:200px";
+    document.body.appendChild(host);
+    try {
+      const editor = monaco.editor.create(host, {
+        value: "const answer: number = 42;\n",
+        language: "typescript",
+      });
+      const model = editor.getModel();
+      const getWorker = await monaco.languages.typescript.getTypeScriptWorker();
+      const worker = await getWorker(model.uri);
+      await worker.getSemanticDiagnostics(model.uri.toString());
+      return {
+        ok: host.querySelectorAll(".view-line").length > 0,
+        stage: "worker-answered",
+        renderedLines: host.querySelectorAll(".view-line").length,
+      };
+    } catch (e) {
+      return { ok: false, stage: "worker-failed", error: String(e) };
+    } finally {
+      host.remove();
+    }
+  }
+  results.monacoEngineBoots = await Promise.race([
+    probeMonacoEngine().catch((e) => ({ ok: false, error: String(e) })),
+    new Promise((resolve) =>
+      setTimeout(() => resolve({ ok: false, stage: "timeout" }), 30000),
+    ),
+  ]);
+  await progress("monacoEngineBoots");
+
   // --- CSP: zero violations captured by `setup.rs`'s boot-error captor -
   // `securitypolicyviolation` frames (see `setup.rs`'s initialization
   // script) land in `__BOOT_ERRORS` alongside `error`/`unhandledrejection`
@@ -594,6 +666,7 @@
     // result is still reported, so a real regression is visible.
     results.previewIframeLoads,
     results.previewCookieRoundTrip,
+    results.monacoEngineBoots,
     results.noCspViolations,
   ];
   const allPass = gating.every((r) => r && r.ok === true);

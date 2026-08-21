@@ -1,5 +1,7 @@
 declare const __STUDIO_VERSION__: string;
 declare const __E2E_TEST_HOOKS__: boolean;
+/** Where this app serves the Monaco engine from; see vite.config's `self-hosted-monaco`. */
+declare const __MONACO_VS_PATH__: string;
 
 declare module "*?raw" {
   const content: string;

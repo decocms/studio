@@ -6,8 +6,9 @@ import tsconfigPaths from "vite-tsconfig-paths";
 import pkg from "../api/package.json" with { type: "json" };
 import nativePkg from "../native/package.json" with { type: "json" };
 import { fileURLToPath } from "node:url";
-import { existsSync, renameSync } from "node:fs";
-import { join } from "node:path";
+import { createRequire } from "node:module";
+import { existsSync, readdirSync, renameSync } from "node:fs";
+import { dirname, extname, join, resolve } from "node:path";
 import { shouldServeNativeEntryInDev } from "./src/lib/vite-native-entry-rules";
 
 const bunServerTarget = `http://localhost:${process.env.PORT || "3000"}`;
@@ -100,6 +101,77 @@ const serveNativeEntryInDev: Plugin = {
       }
       next();
     });
+  },
+};
+
+/**
+ * Serves the Monaco editor engine from this app's own origin — in dev and in
+ * the built bundle alike — out of the installed `monaco-editor` package.
+ *
+ * `@monaco-editor/loader` pulls the engine in at runtime via
+ * `<script src="{paths.vs}/loader.js">`. From a CDN that script is refused by
+ * the packaged desktop shell's `script-src 'self'`
+ * (`apps/native/src-tauri/tauri.conf.json5`) and every code surface hangs on
+ * its loading spinner. `src/components/monaco/loader.ts` is the client half,
+ * which reads this exact path through the `__MONACO_VS_PATH__` define.
+ *
+ * Deliberately NOT under `assets/`: the desktop shell serves that prefix
+ * `immutable` (`apps/native/src-tauri/src/ui_assets.rs`) since Vite
+ * content-hashes those filenames. These are unhashed, so `immutable` would pin
+ * whichever engine version a browser cached first.
+ */
+const MONACO_URL_PATH = "/monaco/vs";
+const monacoVsDir = dirname(
+  createRequire(import.meta.url).resolve("monaco-editor/min/vs/loader.js"),
+);
+/** `min/vs` ships .js, .css and one .ttf; anything else is not ours to serve. */
+const MONACO_CONTENT_TYPES: Record<string, string> = {
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".ttf": "font/ttf",
+};
+
+function monacoVsFiles(dir = monacoVsDir, prefix = ""): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      return monacoVsFiles(join(dir, entry.name), relativePath);
+    }
+    return extname(entry.name) in MONACO_CONTENT_TYPES ? [relativePath] : [];
+  });
+}
+
+const serveSelfHostedMonaco: Plugin = {
+  name: "self-hosted-monaco",
+  configureServer(server) {
+    /** Prefix-mounted (connect strips it from `req.url`), and registered ahead
+     * of Vite's SPA fallback, which would answer these with index.html. */
+    server.middlewares.use(MONACO_URL_PATH, (req, res, next) => {
+      const [path = "/"] = (req.url ?? "/").split("?");
+      const requested = decodeURIComponent(path);
+      const file = resolve(monacoVsDir, `.${requested}`);
+      const contentType = MONACO_CONTENT_TYPES[extname(file)];
+      // A crafted `..` stays inside the package dir; anything else 404s.
+      if (
+        !file.startsWith(`${monacoVsDir}/`) ||
+        !contentType ||
+        !existsSync(file)
+      ) {
+        next();
+        return;
+      }
+      res.setHeader("content-type", contentType);
+      res.end(readFileSync(file));
+    });
+  },
+  generateBundle() {
+    for (const relativePath of monacoVsFiles()) {
+      this.emitFile({
+        type: "asset",
+        fileName: `${MONACO_URL_PATH.slice(1)}/${relativePath}`,
+        source: readFileSync(join(monacoVsDir, relativePath)),
+      });
+    }
   },
 };
 
@@ -215,6 +287,8 @@ export default defineConfig({
     // Build-time constant so e2e-only hooks (window.__forceTabError) survive
     // the e2e production build but stay dead-stripped from real prod builds.
     __E2E_TEST_HOOKS__: JSON.stringify(process.env.E2E_TEST_HOOKS === "1"),
+    // One source of truth: the plugin below serves what the client requests.
+    __MONACO_VS_PATH__: JSON.stringify(MONACO_URL_PATH),
   },
   build: {
     outDir: isNativeBuild ? "dist/native" : "dist",
@@ -282,6 +356,7 @@ export default defineConfig({
     react({ babel: { plugins: ["babel-plugin-react-compiler"] } }),
     tailwindcss(),
     tsconfigPaths({ root: "." }),
+    serveSelfHostedMonaco,
     ...(isNativeBuild
       ? [emitNativeEntryAsIndexHtml, serveNativeEntryInDev]
       : []),

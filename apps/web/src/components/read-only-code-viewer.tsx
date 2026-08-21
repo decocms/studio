@@ -8,18 +8,13 @@
  * Prettier/TS-diagnostics/save machinery.
  */
 
-import Editor, { loader } from "@monaco-editor/react";
+import Editor from "@monaco-editor/react";
 import { Loading01 } from "@untitledui/icons";
 import { getLanguageFromPath } from "@/components/sandbox/preview/file-explorer/utils";
+import { configureMonacoLoader } from "@/components/monaco/loader";
 import { usePreferences } from "@/hooks/use-preferences";
 
-// Load Monaco from the same CDN as the other editors (idempotent — the
-// config is global and every consumer points at the same version).
-loader.config({
-  paths: {
-    vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs",
-  },
-});
+configureMonacoLoader();
 
 export function ReadOnlyCodeViewer({
   value,
