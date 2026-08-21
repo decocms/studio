@@ -3,6 +3,7 @@
  *  update whitelist or the link tables, so this runs against real Postgres. */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { sql } from "kysely";
 import type { StudioDatabase } from "../../database";
 import {
@@ -31,7 +32,13 @@ describe("applyBoardDecision", () => {
   let database: StudioDatabase;
   let taskBoard: TaskBoardStorage;
 
-  const THREADS = ["thr_create", "thr_update", "thr_fallback", "thr_done"];
+  const THREADS = [
+    "thr_create",
+    "thr_update",
+    "thr_human",
+    "thr_fallback",
+    "thr_done",
+  ];
 
   const apply = (
     decision: BoardDecision,
@@ -95,6 +102,8 @@ describe("applyBoardDecision", () => {
     expect(item).not.toBeNull();
     expect(item!.status).toBe("in_review");
     expect(item!.title).toBe("Ship the widget");
+    // Owned by the Super Agent — otherwise the reviewers never pick the card up.
+    expect(item!.assigneeId).toBe(SUPER_AGENT_ASSIGNEE_ID);
 
     const prs = await taskBoard.listPrs(item!.id, ORG);
     expect(prs.map((p) => p.number)).toEqual([7]);
@@ -120,9 +129,30 @@ describe("applyBoardDecision", () => {
     );
     expect(item!.id).toBe(card.id);
     expect(item!.status).toBe("in_review");
+    // Was unassigned, so advancing into review claims it for the Super Agent.
+    expect(item!.assigneeId).toBe(SUPER_AGENT_ASSIGNEE_ID);
     const prs = await taskBoard.listPrs(card.id, ORG);
     expect(prs.map((p) => p.number)).toEqual([7]);
     expect(await taskBoard.linkedTaskIds("thr_update", ORG)).toContain(card.id);
+  });
+
+  it("update leaves a human assignee in place when advancing to review", async () => {
+    const card = await taskBoard.create({
+      organizationId: ORG,
+      title: "human owned",
+      status: "in_progress",
+      assigneeId: USER,
+      by: USER,
+    });
+    const item = await apply(
+      { action: "update", taskId: card.id },
+      [card],
+      "thr_human",
+    );
+    expect(item!.id).toBe(card.id);
+    expect(item!.status).toBe("in_review");
+    // A human owns it — the claim must not steal the card from them.
+    expect(item!.assigneeId).toBe(USER);
   });
 
   it("update with an unknown taskId falls back to creating a card", async () => {
@@ -159,6 +189,8 @@ describe("applyBoardDecision", () => {
     );
     expect(item!.id).toBe(card.id);
     expect(item!.status).toBe("done");
+    // A terminal card is not advanced, so it is not claimed either.
+    expect(item!.assigneeId).toBeNull();
     const prs = await taskBoard.listPrs(card.id, ORG);
     expect(prs.map((p) => p.number)).toEqual([7]);
   });
