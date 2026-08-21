@@ -574,7 +574,6 @@ func terminalFrame(code, message string) []byte {
 	return append(body, '\n')
 }
 
-// writeResult answers a dispatch that never started the harness.
 var runsPathRe = regexp.MustCompile(`/runs/([^/]+)$`)
 
 func (reg *Registry) HandleCancel(w http.ResponseWriter, r *http.Request, tokenFn func() string) {
