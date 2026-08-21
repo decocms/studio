@@ -58,6 +58,15 @@ export interface UseCommerceDiagnosticResult {
   diagnostic: CommerceDiagnosticRunState | null;
   /** True once the diagnostic query has resolved (vs still loading / disabled). */
   isSuccess: boolean;
+  /**
+   * True while we still can't tell whether a report exists — either gate 1 is in
+   * flight, or it found the connection and the diagnostic read is in flight. It
+   * goes false (with a null diagnostic) as soon as gate 1 says the org has no CD
+   * connection, so "no report" is distinguishable from "not known yet".
+   */
+  isLoading: boolean;
+  /** The org's Commerce Discovery site, as claimed on the connection. */
+  siteUrl: string | null;
   /** The store's hostname from the connection metadata, for copy. */
   host: string | null;
   connectionId: string;
@@ -127,10 +136,16 @@ export function useCommerceDiagnostic(): UseCommerceDiagnosticResult {
     },
   });
 
+  const siteUrl = connectionItem?.metadata?.siteUrl;
+
   return {
     diagnostic: diagnosticQuery.data ?? null,
     isSuccess: diagnosticQuery.isSuccess,
-    host: hostFromSiteUrl(connectionItem?.metadata?.siteUrl),
+    isLoading:
+      connectionQuery.isPending ||
+      (!!connectionItem && diagnosticQuery.isPending),
+    siteUrl: typeof siteUrl === "string" && siteUrl ? siteUrl : null,
+    host: hostFromSiteUrl(siteUrl),
     connectionId,
     cdClient: (cdClient as CommerceDiscoveryClient | undefined) ?? null,
   };

@@ -172,4 +172,11 @@ export const reports = {
   "reports.commerceBanner.generatingSubtitle":
     "Analyzing {store}. This takes a few minutes.",
   "reports.commerceBanner.readySubtitle": "See the full analysis of {store}.",
+  "reports.emptyState.title": "No reports yet",
+  "reports.emptyState.description":
+    "Run a diagnostic on your store to see how it performs and what to fix first.",
+  "reports.emptyState.siteUrlLabel": "Store URL",
+  "reports.emptyState.siteUrlPlaceholder": "yourstore.com",
+  "reports.emptyState.start": "Start diagnostic",
+  "reports.emptyState.starting": "Starting...",
 } as const;
