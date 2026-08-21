@@ -60,7 +60,7 @@ export function ThreadsMenu() {
                 type="button"
                 aria-label={t("chat.threadsMenu.chats")}
                 className={cn(
-                  "flex h-[34px] min-w-0 shrink items-center gap-1.5 rounded-lg px-2 text-sm text-foreground transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+                  "flex h-7 min-w-0 shrink items-center gap-1.5 rounded-lg px-2.5 text-sm text-foreground transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
                   open && "bg-sidebar-accent",
                 )}
               >

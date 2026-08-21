@@ -26,9 +26,11 @@ import {
   ChevronSelectorVertical,
   DotsHorizontal,
   MessageCheckCircle,
+  RefreshCw01,
   Trash03,
   X,
 } from "@untitledui/icons";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { MemoizedMarkdown } from "@/components/chat/markdown";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
@@ -178,9 +180,13 @@ function resolvedSummary(thread: TaskComment, t: TFunction): string {
 export function NewCommentComposer({
   me,
   onSubmit,
+  onSubmitAndRerun,
 }: {
   me: CommentAuthor;
   onSubmit: (body: string) => void;
+  /** Post the comment and steer the agent with it. Absent when the task has no
+   *  run to steer. */
+  onSubmitAndRerun?: (body: string) => void;
 }) {
   const t = useT();
 
@@ -190,6 +196,7 @@ export function NewCommentComposer({
       placeholder={t("taskBoard.taskDialog.commentPlaceholder")}
       author={me}
       onSubmit={onSubmit}
+      onSubmitAndRerun={onSubmitAndRerun}
     />
   );
 }
@@ -326,20 +333,22 @@ function CommentComposer({
   placeholder,
   author,
   onSubmit,
+  onSubmitAndRerun,
 }: {
   variant: "root" | "reply";
   placeholder: string;
   author: CommentAuthor;
   onSubmit: (body: string) => void;
+  onSubmitAndRerun?: (body: string) => void;
 }) {
   const t = useT();
   const ref = useRef<HTMLTextAreaElement>(null);
   const [value, setValue] = useState("");
 
-  const submit = () => {
+  const submit = (handler: (body: string) => void = onSubmit) => {
     const body = value.trim();
     if (!body) return;
-    onSubmit(body);
+    handler(body);
     setValue("");
     const el = ref.current;
     if (el) {
@@ -377,7 +386,7 @@ function CommentComposer({
     <button
       type="button"
       disabled={!value.trim()}
-      onClick={submit}
+      onClick={() => submit()}
       aria-label={t("taskBoard.taskDialog.commentSubmitAriaLabel")}
       // cursor-pointer: the composer around it sets cursor-text, which would
       // otherwise inherit onto the button.
@@ -403,7 +412,24 @@ function CommentComposer({
         className="relative flex cursor-text flex-col gap-1 rounded-xl bg-card p-3 card-shadow"
       >
         {textarea}
-        <div className="flex items-center justify-end">{actions}</div>
+        <div className="flex items-center justify-end gap-1">
+          {onSubmitAndRerun && (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={!value.trim()}
+              onClick={(e) => {
+                e.stopPropagation();
+                submit(onSubmitAndRerun);
+              }}
+              className="gap-1.5 text-muted-foreground"
+            >
+              <RefreshCw01 size={14} />
+              {t("taskBoard.taskDialog.commentAndRerun")}
+            </Button>
+          )}
+          {actions}
+        </div>
       </div>
     );
   }

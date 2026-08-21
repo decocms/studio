@@ -1,26 +1,13 @@
 import type { ReactNode } from "react";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
-import { useOptionalChatStream, useOptionalChatTask } from "../context";
-import { BranchPill } from "./branch-pill";
+import { TaskPill } from "./task-pill";
 import { getActiveGithubRepo } from "@/lib/github-repo";
-import { shouldStartBranchAsCms } from "@/sdk/fast-preview";
-import { useProjectContext } from "@/sdk";
-import { authClient } from "@/lib/auth-client";
-import { branchUserLabel } from "@decocms/shared/branch-name";
 
 interface PureProps {
   branchPill: ReactNode;
 }
 
-/**
- * Pure layout — used by tests. Renders the branch pill (when present) in the
- * parent flex flow. Returns null when there is nothing to show.
- *
- * The runtime choice (Cloud sandbox vs This device) is NOT surfaced here — it
- * lives in the "Smart" model selector's Cloud ⟷ This device toggle, which
- * writes through the same `pendingAgentOption`. A standalone pill here was
- * redundant, so this row only carries the branch pill.
- */
+/** Pure layout, used by tests. */
 export function ChatModeRowPure({ branchPill }: PureProps) {
   if (!branchPill) return null;
   return <>{branchPill}</>;
@@ -28,68 +15,13 @@ export function ChatModeRowPure({ branchPill }: PureProps) {
 
 interface SmartProps {
   virtualMcp: VirtualMCPEntity | null | undefined;
-  currentBranch: string | null;
 }
 
-/**
- * Smart wrapper. Renders the BranchPill for agents imported from GitHub —
- * `metadata.githubRepo` exists AND has an attached `connectionId` (an
- * authenticated user repo, not a public-template clone). Start Website agents
- * populate `metadata.githubRepo.url` for the template but leave `connectionId`
- * unset; branches aren't meaningful there.
- *
- * Locked flag is derived from `useOptionalChatStream().messages.length > 0`.
- */
-export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
-  const stream = useOptionalChatStream();
-  const taskCtx = useOptionalChatTask();
-  const locked =
-    (stream?.messages ?? []).length > 0 || (taskCtx?.isThreadLocked ?? false);
-  const setCurrentTaskBranch = taskCtx?.setCurrentTaskBranch;
-  const createTask = taskCtx?.createTask;
-  const createBranchAsCms = shouldStartBranchAsCms(
-    virtualMcp?.metadata,
-    taskCtx?.activeTask?.metadata,
-  );
-
+/** The header context control is the task, not the branch, so `TaskPill` renders here. */
+export function ChatModeRow({ virtualMcp }: SmartProps) {
   const githubRepo = getActiveGithubRepo(virtualMcp);
-  const connectionId = githubRepo?.connectionId;
-
-  const { data: session } = authClient.useSession();
-  const userId = session?.user?.id ?? "";
-  const userLabel = branchUserLabel(session?.user);
-  const { org } = useProjectContext();
-
-  const branchPill =
-    githubRepo && connectionId ? (
-      <BranchPill
-        // Remount on repo/connection change so search/tab/highlight state
-        // from the previous repo doesn't leak into the new one's picker.
-        key={`${connectionId}:${githubRepo.owner}/${githubRepo.name}`}
-        orgId={org.id}
-        orgSlug={org.slug}
-        userId={userId}
-        userLabel={userLabel}
-        virtualMcpId={virtualMcp?.id ?? ""}
-        connectionId={connectionId}
-        owner={githubRepo.owner}
-        repo={githubRepo.name}
-        sandboxMap={virtualMcp?.metadata?.sandboxMap}
-        value={currentBranch}
-        onChange={(next) => {
-          if (setCurrentTaskBranch) void setCurrentTaskBranch(next);
-        }}
-        onCreateBranch={(next) => {
-          if (createBranchAsCms && createTask) {
-            createTask({ branch: next });
-          } else if (setCurrentTaskBranch) {
-            void setCurrentTaskBranch(next);
-          }
-        }}
-        locked={locked}
-        placement="chat"
-      />
-    ) : null;
-
-  return <ChatModeRowPure branchPill={branchPill} />;
+  const taskPill = githubRepo?.connectionId ? (
+    <TaskPill placement="header" />
+  ) : null;
+  return <ChatModeRowPure branchPill={taskPill} />;
 }

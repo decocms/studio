@@ -1,9 +1,11 @@
 import {
   AlertCircle,
+  AlertSquare,
   Archive,
   CheckCircle,
   Circle,
   Eye,
+  HelpCircle,
   Loading02,
 } from "@untitledui/icons";
 import type { StudioToolOutput as ToolOutput } from "@decocms/shared/tools/tool-io";
@@ -13,7 +15,8 @@ import {
   REVIEWER_KINDS,
   type ReviewerKind,
 } from "@decocms/shared/task-board";
-import type { TranslationKey } from "@/i18n/use-t.ts";
+import { isResolvedRunFailure } from "@decocms/shared/entities";
+import type { TranslationKey, useT } from "@/i18n/use-t.ts";
 
 export {
   SUPER_AGENT_ASSIGNEE_ID,
@@ -69,6 +72,21 @@ export function primaryThread(
   item: TaskBoardItem,
 ): TaskBoardItemThread | undefined {
   return item.threads[0];
+}
+
+/** Rank for ordering agent sessions — lower wins. A running/awaiting-input
+ *  session is always the most important thing; once nothing is running, a
+ *  failure the user can act on is; a clean run outranks a settled failure (a
+ *  superseded attempt, or a run that died after delivering — see
+ *  `isResolvedRunFailure`), which is history and must not paint the card red. */
+export function statusPriority(thread: TaskBoardItemThread): number {
+  if (thread.status === "in_progress" || thread.status === "requires_action") {
+    return 0;
+  }
+  if (thread.status === "failed") {
+    return isResolvedRunFailure(thread.failureKind) ? 3 : 1;
+  }
+  return 2;
 }
 
 /** The QA/code-review threads linked to this task, in `REVIEWER_KINDS` order —
@@ -231,4 +249,73 @@ export const PRIORITY_CONFIG: Record<
  *  inline style rather than a Tailwind token. */
 export function tagDotColor(color: string | null | undefined): string {
   return color ?? DEFAULT_TAG_COLOR;
+}
+
+/**
+ * Live-status style for a linked thread (agent session).
+ *
+ * Takes the thread, not just its status: a `failed` run whose failure is settled
+ * history — a newer attempt replaced it, or it died after already delivering —
+ * is not an error the user can act on, and painting it red is what made a card
+ * the reviewers approved look broken.
+ */
+export function threadStatusStyle(
+  thread: {
+    status: NonNullable<TaskBoardItemThread["status"]>;
+    failureKind?: string | null;
+  },
+  t: ReturnType<typeof useT>,
+): {
+  label: string;
+  className: string;
+  icon: typeof AlertSquare;
+  spin?: boolean;
+} {
+  switch (thread.status) {
+    case "failed":
+      if (isResolvedRunFailure(thread.failureKind)) {
+        return {
+          label:
+            thread.failureKind === "superseded"
+              ? t("taskBoard.taskDialog.threadStatusSuperseded")
+              : t("taskBoard.taskDialog.threadStatusEndedAfterDelivery"),
+          className: "text-muted-foreground",
+          icon: AlertCircle,
+        };
+      }
+      return {
+        label: t("taskBoard.taskDialog.threadStatusError"),
+        className: "text-destructive",
+        icon: AlertSquare,
+      };
+    case "requires_action":
+      return {
+        label: t("taskBoard.taskDialog.threadStatusNeedsInput"),
+        className: "text-warning",
+        icon: HelpCircle,
+      };
+    case "in_progress":
+      return {
+        label: t("taskBoard.taskDialog.threadStatusRunning"),
+        className: "text-primary",
+        icon: Loading02,
+        spin: true,
+      };
+    case "completed":
+      return {
+        label: t("taskBoard.taskDialog.threadStatusCompleted"),
+        className: "text-success",
+        icon: CheckCircle,
+      };
+    case "expired":
+      return {
+        label: t("taskBoard.taskDialog.threadStatusExpired"),
+        className: "text-muted-foreground",
+        icon: AlertCircle,
+      };
+    default: {
+      const _exhaustive: never = thread.status;
+      return _exhaustive;
+    }
+  }
 }

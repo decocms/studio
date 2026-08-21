@@ -290,14 +290,16 @@ export const TASK_BOARD_ITEM_RERUN = defineTool({
     idempotentHint: false,
     openWorldHint: true,
   },
-  // ponytail: no `feedback` / "what to do differently" input from the CALLER.
-  // A re-run on an existing PR is not blind, though: the dispatch funnel picks
-  // up the reviewer's outstanding change request by itself
-  // (`outstandingReviewFeedback`), so the run continues from there instead of
-  // restarting. Add a caller-supplied lead when someone needs to say something
-  // the reviewers did not.
   inputSchema: z.object({
     id: z.string().describe("The task board item to re-run."),
+    /** Takes precedence over carried reviewer feedback (see `wantsCarry`). */
+    feedback: z
+      .string()
+      .optional()
+      .describe(
+        "What the run should do differently. Leads the prompt, taking " +
+          "precedence over carried-over reviewer feedback.",
+      ),
   }),
   outputSchema: z.object({
     status: z.string().describe("The task's lane after the re-run was queued."),
@@ -305,7 +307,7 @@ export const TASK_BOARD_ITEM_RERUN = defineTool({
       .array(z.string())
       .describe("Runs that were failed to make room for this one."),
   }),
-  handler: async ({ id }, ctx) => {
+  handler: async ({ id, feedback }, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
 
@@ -379,7 +381,10 @@ export const TASK_BOARD_ITEM_RERUN = defineTool({
     });
     emitTaskBoardUpdated(organizationId, updated);
 
-    await enqueueSuperAgentForTask(ctx, updated, { userInitiated: true });
+    await enqueueSuperAgentForTask(ctx, updated, {
+      userInitiated: true,
+      ...(feedback?.trim() ? { feedback: feedback.trim() } : {}),
+    });
 
     return { status: updated.status, supersededThreadIds };
   },

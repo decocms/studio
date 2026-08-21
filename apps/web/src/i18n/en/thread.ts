@@ -134,6 +134,8 @@ export const thread = {
     "Getting your environment ready — this only takes a moment",
   "thread.openInBoardButton.openTaskAriaLabel": "Open task in board",
   "thread.openInBoardButton.openTaskInBoard": "Open task in board",
+  "thread.taskCrumb.openTask": "Open {key} in the board",
+  "thread.addToBoard.defaultTitle": "Untitled task",
   "thread.publishDialog.allChangesDiscarded": "All changes discarded",
   "thread.publishDialog.branchLabel": "Branch:",
   "thread.publishDialog.cancel": "Cancel",

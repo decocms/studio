@@ -103,6 +103,8 @@ import {
   PRIORITY_CONFIG,
   runSortOrders,
   statusIconClassName,
+  statusPriority,
+  threadStatusStyle,
   STATUS_CONFIG,
   STATUSES,
   SUPER_AGENT_ASSIGNEE_ID,
@@ -116,22 +118,15 @@ import {
 } from "./config";
 import { useTags } from "@/hooks/use-tags";
 import { usePreferences } from "@/hooks/use-preferences";
-import {
-  TaskBoardItemDialog,
-  threadStatusStyle,
-  toEndOfDayIso,
-} from "./task-dialog";
+import { TaskBoardItemDialog, toEndOfDayIso } from "./task-dialog";
 import { AssigneePickerContent } from "./assignee-picker";
 import { SubscriptionPaywallDialog } from "./subscription-paywall-dialog";
 import { RerunDialog } from "./rerun-dialog";
 import { subscriptionErrorKind } from "@/components/task-board/is-subscription-error";
 import { isReportsTask, type ReviewerKind } from "@decocms/shared/task-board";
-import { isResolvedRunFailure } from "@decocms/shared/entities";
 import { useFlipLanes } from "./use-flip-lanes";
 import { Calendar as DayPickerCalendar } from "@decocms/ui/components/calendar.tsx";
-import { buildTaskChatContext } from "./build-task-chat-context";
 import { track } from "@/lib/posthog-client";
-import { useStudioTools } from "@/lib/studio-tools";
 import {
   EMPTY_FILTERS,
   TaskFiltersBar,
@@ -142,10 +137,7 @@ import {
 import { useBoardSearch } from "./filters-search";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useThreadActions } from "@/components/chat/store/hooks";
-import { writeChatDraft } from "@/lib/chat-draft";
-import { createMentionDoc } from "@/components/chat/tiptap/mention";
-import type { TiptapDoc } from "@/components/chat/types";
+import { useStartTaskSession } from "@/hooks/use-start-task-session";
 import { toast } from "sonner";
 
 // Warm the chat chunk so opening a task's activity doesn't cold-load it (flash).
@@ -389,21 +381,30 @@ export function TaskBoardPage() {
   // task's live run, so it is confirmed rather than fired on click.
   // One entry for a card's own Re-run, many for a selection.
   const [rerunTargets, setRerunTargets] = useState<TaskBoardItem[]>([]);
+  /** A comment the re-run should lead with, when it came from "Comment & re-run". */
+  const [rerunFeedback, setRerunFeedback] = useState<string | null>(null);
+  const clearRerun = () => {
+    setRerunTargets([]);
+    setRerunFeedback(null);
+  };
   const confirmRerun = () => {
     if (rerunTargets.length === 0) return;
     // Same GitHub precondition as delegating: the run is expected to open a PR.
     if (blockSuperAgentWithoutGithub(SUPER_AGENT_ASSIGNEE_ID)) {
-      setRerunTargets([]);
+      clearRerun();
       return;
     }
     // ponytail: fire-and-forget per task, like every other bulk action here —
     // the board reconciles from the invalidation each one triggers.
     for (const target of rerunTargets)
       actions.rerun.mutate(
-        { id: target.id },
+        {
+          id: target.id,
+          ...(rerunFeedback ? { feedback: rerunFeedback } : {}),
+        },
         { onError: (err) => onDelegateError(err as Error) },
       );
-    setRerunTargets([]);
+    clearRerun();
     clearSelection();
   };
   const { data: membersData } = useMembers();
@@ -442,9 +443,8 @@ export function TaskBoardPage() {
     null,
   );
   const { setTaskId } = usePanelActions();
-  const { create } = useThreadActions();
-  const studio = useStudioTools();
-  const { org, locator } = useProjectContext();
+  const startTaskSession = useStartTaskSession();
+  const { org } = useProjectContext();
   const navigate = useNavigate();
   // Deep link: `?main=board&task=<id>` opens that task's modal (from a linked
   // chat's "open in board" button). Derived, so it opens as soon as the item
@@ -465,55 +465,81 @@ export function TaskBoardPage() {
       });
   };
 
-  // Start a fresh chat on the default Decopilot agent, seeded with the task's
-  // title + description as the first user message (via the autosend buffer),
-  // and link the new thread to the task so it shows on the modal.
   const startChatFromTask = async (task: TaskBoardItem) => {
-    const newId = crypto.randomUUID();
-    const agentId = getWellKnownDecopilotVirtualMCP(org.id).id;
-    // Pull the task's linked PRs (best-effort — the chat still opens without
-    // them) so the seeded context references prior work, not just the title.
-    const prs = await studio
-      .call("TASK_BOARD_ITEM_PRS_GET", { taskBoardItemId: task.id })
-      .then((r) => r.prs)
-      .catch(() => []);
-    const context = buildTaskChatContext(task, prs);
-    // Prefill the composer with a removable task @ref chip (not raw text) and
-    // do NOT auto-send — the user reviews/adds to it, then hits send. The chip
-    // expands to the task context at send time (see derive-parts).
-    const doc: TiptapDoc = {
-      type: "doc",
-      content: [
-        {
-          type: "paragraph",
-          content: [
-            createMentionDoc({
-              id: task.id,
-              name: task.title,
-              char: "@",
-              kind: "task",
-              metadata: {
-                title: task.title,
-                description: task.description,
-                context,
-              },
-            }),
-            { type: "text", text: " " },
-          ],
-        },
-      ],
-    };
-    writeChatDraft(sessionStorage, locator, newId, doc);
     setDialogOpen(false);
-    try {
-      await create({ id: newId, virtual_mcp_id: agentId });
-      // Best-effort — a link failure shouldn't block navigating into the chat.
-      await actions.link.mutateAsync({ id: task.id, linkThreadId: newId });
-    } catch {
-      // Toast already fired by the manager; navigate anyway so the route
-      // loader's ensure-fallback can retry the create.
+    await startTaskSession(task);
+  };
+
+  /**
+   * Autosave for an existing card. Reports-generated tasks reject a write
+   * touching title/description/priority (the reports sync owns them), so those
+   * are dropped rather than sent as a payload the server would 500 on. Board
+   * fields (status/assignee/dueDate/tagIds) always go through.
+   */
+  const submitTask = (
+    target: TaskBoardItem,
+    input: {
+      title: string;
+      description: string | null;
+      status: TaskBoardItemStatus;
+      priority: TaskBoardItemPriority;
+      assigneeId: string | null;
+      repo: string | null;
+      dueDate: string | null;
+      tagIds: string[];
+    },
+  ) => {
+    if (blockSuperAgentWithoutGithub(input.assigneeId)) {
+      closeDialog();
+      return;
     }
-    setTaskId(newId, agentId);
+    const { title, description, priority, ...boardFields } = input;
+    const contentFields = isReportsTask(target)
+      ? {}
+      : { title, description, priority };
+    actions.update.mutate(
+      { ...boardFields, id: target.id, ...contentFields },
+      { onError: onDelegateError },
+    );
+  };
+
+  /** A copy starts fresh and undelegated: no assignee, no threads. */
+  const cloneTask = (target: TaskBoardItem) => {
+    actions.create.mutate({
+      title: t("taskBoard.taskDialog.cloneTitle", { title: target.title }),
+      description: target.description,
+      status: target.status,
+      priority: target.priority,
+      repo: target.repo,
+      dueDate: target.dueDate,
+      tagIds: target.tags.map((tag) => tag.id),
+    });
+    toast.success(t("taskBoard.taskDialog.cloneSuccess"));
+    closeDialog();
+  };
+
+  const delegateToSuperAgent = (target: TaskBoardItem) => {
+    if (blockSuperAgentWithoutGithub(SUPER_AGENT_ASSIGNEE_ID)) return;
+    actions.update.mutate(
+      { id: target.id, assigneeId: SUPER_AGENT_ASSIGNEE_ID },
+      { onError: onDelegateError },
+    );
+    closeDialog();
+  };
+
+  /**
+   * Open a session's chat: close the task dialog (it would cover the chat) and
+   * force the chat panel open so the conversation is actually visible. Falls
+   * back to the org agent for a session linked without one, rather than
+   * silently doing nothing.
+   */
+  const openThread = (thread: TaskBoardItemThread) => {
+    closeDialog();
+    setTaskId(
+      thread.threadId,
+      thread.virtualMcpId ?? getWellKnownDecopilotVirtualMCP(org.id).id,
+      { main: thread.hasPreview ? "preview" : "board", sidepanel: "chat" },
+    );
   };
 
   const visibleItems = items.filter((item) =>
@@ -549,11 +575,10 @@ export function TaskBoardPage() {
     });
   };
 
-  // Opening a card always opens the task modal. The modal's activity area is
-  // what navigates into the run's chat (see onOpenThread below).
+  /** Opening a card swaps the panel to its workspace. */
   const openTask = openEdit;
 
-  // The task the modal is editing — a locally-opened card, or the deep-linked
+  // The open task — a locally-opened card, or the deep-linked
   // one. Resolve the LIVE row from the SSE-patched list by id (falling back to
   // the click-time snapshot if it's momentarily absent) so threads/status
   // linked while the modal is open — e.g. the QA Agent session handed off
@@ -756,26 +781,12 @@ export function TaskBoardPage() {
         defaultStatus={createStatus ?? undefined}
         isSaving={actions.create.isPending || actions.update.isPending}
         onSubmit={(input) => {
-          if (blockSuperAgentWithoutGithub(input.assigneeId)) {
-            closeDialog();
+          if (activeItem) {
+            submitTask(activeItem, input);
             return;
           }
-          if (activeItem) {
-            // Reports-generated tasks reject a write touching title/
-            // description/priority (their content is owned by the reports
-            // sync) — the dialog locks those fields, but still round-trips
-            // their unchanged values here, so drop them instead of sending a
-            // payload the server would 500 on. Board interactions
-            // (status/assignee/dueDate/tagIds) always go through.
-            const { title, description, priority, ...boardFields } = input;
-            const contentFields = isReportsTask(activeItem)
-              ? {}
-              : { title, description, priority };
-            actions.update.mutate(
-              { id: activeItem.id, ...boardFields, ...contentFields },
-              { onError: onDelegateError },
-            );
-            // Autosave: the dialog stays open.
+          if (blockSuperAgentWithoutGithub(input.assigneeId)) {
+            closeDialog();
             return;
           }
           actions.create.mutate(input);
@@ -789,26 +800,7 @@ export function TaskBoardPage() {
               }
             : undefined
         }
-        onClone={
-          activeItem
-            ? () => {
-                // A copy starts fresh and undelegated: no assignee, no threads.
-                actions.create.mutate({
-                  title: t("taskBoard.taskDialog.cloneTitle", {
-                    title: activeItem.title,
-                  }),
-                  description: activeItem.description,
-                  status: activeItem.status,
-                  priority: activeItem.priority,
-                  repo: activeItem.repo,
-                  dueDate: activeItem.dueDate,
-                  tagIds: activeItem.tags.map((tag) => tag.id),
-                });
-                toast.success(t("taskBoard.taskDialog.cloneSuccess"));
-                closeDialog();
-              }
-            : undefined
-        }
+        onClone={activeItem ? () => cloneTask(activeItem) : undefined}
         onArchive={
           activeItem
             ? () => {
@@ -825,39 +817,26 @@ export function TaskBoardPage() {
           activeItem ? () => void startChatFromTask(activeItem) : undefined
         }
         onAutoFix={
-          activeItem
-            ? () => {
-                if (blockSuperAgentWithoutGithub(SUPER_AGENT_ASSIGNEE_ID))
-                  return;
-                actions.update.mutate(
-                  {
-                    id: activeItem.id,
-                    assigneeId: SUPER_AGENT_ASSIGNEE_ID,
-                  },
-                  { onError: onDelegateError },
-                );
-                closeDialog();
-              }
-            : undefined
+          activeItem ? () => delegateToSuperAgent(activeItem) : undefined
         }
         onRerun={
           activeItem
             ? () => {
-                // Confirm in the shared dialog rather than firing from here —
-                // the card path does the same, so the takeover warning has one
-                // home. Closing the task dialog first keeps them unstacked.
                 closeDialog();
                 setRerunTargets([activeItem]);
               }
             : undefined
         }
-        onOpenThread={(thread) => {
-          if (!thread.virtualMcpId) return;
-          closeDialog();
-          setTaskId(thread.threadId, thread.virtualMcpId, {
-            main: thread.hasPreview ? "preview" : "board",
-          });
-        }}
+        onRerunWithFeedback={
+          activeItem
+            ? (feedback) => {
+                setRerunFeedback(feedback);
+                closeDialog();
+                setRerunTargets([activeItem]);
+              }
+            : undefined
+        }
+        onOpenThread={openThread}
       />
 
       <ConnectGitHubDialog
@@ -879,7 +858,7 @@ export function TaskBoardPage() {
       <RerunDialog
         items={rerunTargets}
         pending={actions.rerun.isPending}
-        onOpenChange={(open) => !open && setRerunTargets([])}
+        onOpenChange={(open) => !open && clearRerun()}
         onConfirm={confirmRerun}
       />
 
@@ -2085,22 +2064,6 @@ type FooterAgent = {
   name: string;
   thread: TaskBoardItemThread;
 };
-
-/** Rank for picking which agent's row the card footer shows — lower wins. A
- *  running/awaiting-input agent is always the most important thing on the
- *  card; once nothing is running, a failure the user can act on is; a clean run
- *  outranks a settled failure (a superseded attempt, or a run that died after
- *  delivering — see `isResolvedRunFailure`), which is history and must not paint
- *  the card red; otherwise the most recently run agent wins. */
-function statusPriority(thread: TaskBoardItemThread): number {
-  if (thread.status === "in_progress" || thread.status === "requires_action") {
-    return 0;
-  }
-  if (thread.status === "failed") {
-    return isResolvedRunFailure(thread.failureKind) ? 3 : 1;
-  }
-  return 2;
-}
 
 /**
  * The card footer shows a single row for whichever agent thread — the Super

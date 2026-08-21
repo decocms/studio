@@ -57,7 +57,8 @@ export async function reactToSuperAgentDelegation(
  */
 /** Options that steer the Super Agent prompt for a re-run on an existing PR. */
 export type SuperAgentPromptOpts = {
-  /** A reviewer's change request — leads the re-run prompt. */
+  /** A change request — a reviewer's, or a person's comment on the card. Leads
+   *  the re-run prompt. */
   feedback?: string;
   /** The PR already under review, so the re-run updates it in place instead
    *  of opening a second PR. */
@@ -119,8 +120,8 @@ export function buildSuperAgentTaskPrompt(
         opts?.feedback
         ? [
             opts.pr
-              ? `A reviewer requested changes on the existing pull request #${opts.pr.number} (${opts.pr.url}):`
-              : "A reviewer requested changes on your previous work:",
+              ? `Changes were requested on the existing pull request #${opts.pr.number} (${opts.pr.url}):`
+              : "Changes were requested on your previous work:",
             opts.feedback,
             opts.pr
               ? `Load the repo, then CHECK OUT that PR's branch (e.g. \`gh pr checkout ${opts.pr.number}\`) before editing, address the feedback, commit, and push to update the SAME pull request — do NOT open a new one or start a new branch.`

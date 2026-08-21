@@ -41,7 +41,6 @@ import { CmsTour } from "@/components/cms-tour/cms-tour";
 import { headerLayout } from "./header-layout";
 import { VirtualMcpHeaderInfo } from "@/views/virtual-mcp/header-info";
 import { ChatModeRow } from "@/components/chat/pills/chat-mode-row";
-import { useOptionalChatTask } from "@/components/chat/context";
 import {
   AgentSwitcherCrumb,
   NewChatCrumb,
@@ -49,6 +48,9 @@ import {
 import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { ThreadsMenu } from "@/components/chat/threads-menu";
+import { SessionTabs } from "@/components/chat/session-tabs";
+import { TaskCrumb } from "@/components/thread/task-crumb";
+import { useBoardTaskForThread } from "@/hooks/use-task-for-thread";
 import { useNavV2 } from "@/hooks/use-organization-settings";
 import { SidePanel } from "./side-panel";
 import { ChatToggle, PanelCollapseToggle } from "./toggle-buttons";
@@ -185,6 +187,8 @@ export function WorkspacePanelGroup({
   const agentCrumb = sidebarCollapsed && !navV2 ? <AgentSwitcherCrumb /> : null;
   const newChatCrumb = sidebarCollapsed || navV2 ? <NewChatCrumb /> : null;
   const threadsMenu = navV2 ? <ThreadsMenu /> : null;
+  /** In a task, the chat row below is the switcher, not the thread list. */
+  const inTask = !!useBoardTaskForThread(taskId);
 
   /**
    * The main panel's controls (view tabs + branch + publish) belong to the main
@@ -201,10 +205,7 @@ export function WorkspacePanelGroup({
   // sandbox/preview runs on), shared by chat and preview alike. Renders null for
   // agents without a connected GitHub repo. Reads the branch from the task
   // context (this tree is inside Chat.ActiveTaskProvider).
-  const currentBranch = useOptionalChatTask()?.currentBranch ?? null;
-  const branchSelector = (
-    <ChatModeRow virtualMcp={entity} currentBranch={currentBranch} />
-  );
+  const branchSelector = <ChatModeRow virtualMcp={entity} />;
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- syncs URL-derived visibility with the resizable panels' imperative layout API
   useEffect(() => {
@@ -215,40 +216,47 @@ export function WorkspacePanelGroup({
   }, [sideSize, mainSize]);
 
   const chatHeader = (
-    <PanelHeader>
-      {threadsMenu}
-      {agentCrumb}
-      {/* The collapse pair below already owns hide/show for both panels. */}
-      {!navV2 && (
-        <ChatToggle
-          sidePanel={sidePanel}
-          toggleSidePanel={toggleSidePanel}
-          disableActiveSidePanelToggle={!mainOpen}
-        />
-      )}
-      {mainControlsInChat && (
-        <MainControls
-          virtualMcpId={virtualMcpId}
-          taskId={taskId}
-          disableActiveMainToggle
-        />
-      )}
-      <div className="ml-auto flex shrink-0 items-center gap-1">
-        {mainControlsInChat && branchSelector}
-        {mainControlsInChat && publishActions}
-        {newChatCrumb}
-        {/* The main panel's own toggle lives in ITS header; it only relocates
-            here once that header is gone. */}
-        {navV2 && !mainOpen && (
-          <PanelCollapseToggle
-            side="right"
-            open={mainOpen}
-            disabled={!chatOpen}
-            onToggle={toggleMain}
+    <div className="flex shrink-0 flex-col">
+      <PanelHeader>
+        {navV2 && inTask ? <TaskCrumb /> : threadsMenu}
+        {agentCrumb}
+        {/* The collapse pair below already owns hide/show for both panels. */}
+        {!navV2 && (
+          <ChatToggle
+            sidePanel={sidePanel}
+            toggleSidePanel={toggleSidePanel}
+            disableActiveSidePanelToggle={!mainOpen}
           />
         )}
-      </div>
-    </PanelHeader>
+        {mainControlsInChat && (
+          <MainControls
+            virtualMcpId={virtualMcpId}
+            taskId={taskId}
+            disableActiveMainToggle
+          />
+        )}
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          {mainControlsInChat && branchSelector}
+          {mainControlsInChat && publishActions}
+          {newChatCrumb}
+          {/* The main panel's own toggle lives in ITS header; it only relocates
+            here once that header is gone. */}
+          {navV2 && !mainOpen && (
+            <PanelCollapseToggle
+              side="right"
+              open={mainOpen}
+              disabled={!chatOpen}
+              onToggle={toggleMain}
+            />
+          )}
+        </div>
+      </PanelHeader>
+      {navV2 && inTask && (
+        <div className="flex h-10 shrink-0 items-center gap-1 border-t border-border px-1.5">
+          <SessionTabs />
+        </div>
+      )}
+    </div>
   );
 
   // Three content-sized zones spaced with justify-between: tabs left, publish

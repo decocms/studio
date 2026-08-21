@@ -28,7 +28,6 @@ import {
 import { useCopy } from "@decocms/ui/hooks/use-copy.ts";
 import {
   AlertCircle,
-  AlertSquare,
   Archive,
   Bookmark,
   Calendar,
@@ -41,6 +40,7 @@ import {
   Copy06,
   DotsHorizontal,
   Edit05,
+  Eye,
   GitMerge,
   GitPullRequest,
   Globe01,
@@ -78,6 +78,8 @@ import {
   STATUS_CONFIG,
   STATUSES,
   statusIconClassName,
+  statusPriority,
+  threadStatusStyle,
   SUPER_AGENT_ASSIGNEE_ID,
   tagDotColor,
   type Member,
@@ -106,7 +108,6 @@ import { formatTimeAgo } from "@/lib/format-time";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { useConnections, useProjectContext } from "@/sdk";
 import { listRepoScopeLabels } from "@decocms/shared/github-repo-scope";
-import { isResolvedRunFailure } from "@decocms/shared/entities";
 import { AssigneePickerContent } from "./assignee-picker";
 import { TagPickerContent } from "./tag-picker";
 import { extractDescriptionLinks } from "./description-links";
@@ -332,9 +333,16 @@ function RecordSection({
   );
 }
 
-export function TaskBoardItemDialog({
-  open,
+/**
+ * The task workspace: everything a card is, minus a host. Rendered full-height
+ * inside the main panel (the board swaps to it when a card is open) and, for
+ * the legacy surfaces, inside `TaskBoardItemDialog` below.
+ *
+ * Form state initialises from `item`, so the host must key this by task id.
+ */
+function TaskWorkspace({
   onClose,
+  flushRef,
   item,
   defaultStatus,
   onSubmit,
@@ -345,10 +353,13 @@ export function TaskBoardItemDialog({
   onNewChat,
   onAutoFix,
   onRerun,
+  onRerunWithFeedback,
   isSaving,
 }: {
-  open: boolean;
   onClose: () => void;
+  /** Filled with the pending-write flush so a host that dismisses this without
+   *  the close button (a modal overlay, Esc) doesn't drop a debounced edit. */
+  flushRef?: { current: (() => void) | null };
   /** Present in edit mode, prefills the form. */
   item?: TaskBoardItem;
   /** In create mode, the status to start the new task in (e.g. the lane the
@@ -375,6 +386,8 @@ export function TaskBoardItemDialog({
   /** Edit mode only: hand the task to the Super Agent. */
   onAutoFix?: () => void;
   onRerun?: () => void;
+  /** Re-run the task, leading the prompt with this comment. */
+  onRerunWithFeedback?: (feedback: string) => void;
   isSaving?: boolean;
 }) {
   const t = useT();
@@ -461,6 +474,7 @@ export function TaskBoardItemDialog({
     if (saveTimer.current) clearTimeout(saveTimer.current);
     if (debounce) saveTimer.current = setTimeout(commit, AUTOSAVE_DELAY_MS);
     else commit();
+    if (flushRef) flushRef.current = flush;
   };
 
   /** Write a pending edit now instead of waiting out the debounce. */
@@ -504,6 +518,9 @@ export function TaskBoardItemDialog({
     ? members.find((m) => m.userId === item.assignedBy)
     : undefined;
   const StatusIcon = STATUS_CONFIG[status].icon;
+  const previewThread = item?.threads.find(
+    (th) => th.hasPreview && th.virtualMcpId,
+  );
   // Reports-generated tasks: content (title/description/priority) is owned by
   // the reports sync, which refreshes it on open items — TASK_BOARD_ITEM_UPDATE
   // rejects a write that touches any of those fields. Board interactions
@@ -511,744 +528,702 @@ export function TaskBoardItemDialog({
   const contentLocked = !!item && isReportsTask(item);
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && close()}>
-      <DialogContent
-        className="flex max-h-[92vh] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:h-[90vh] sm:max-h-[820px] sm:max-w-[1040px]"
-        closeButtonClassName="hidden"
-      >
-        <DialogTitle className="sr-only">
-          {item
-            ? t("taskBoard.taskDialog.editTaskTitle")
-            : t("taskBoard.taskDialog.newTaskTitle")}
-        </DialogTitle>
-
-        {/* Header row: the task's id on the left, its actions on the right.
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      {/* Header row: the task's id on the left, its actions on the right.
             Outside the scroll area, so it never moves. */}
-        <div className="flex shrink-0 items-center justify-between gap-2 px-6 pb-4 pt-6 sm:px-8">
-          {/* Null only for a card written before the key backfill, which has
+      <div className="flex shrink-0 items-center justify-between gap-2 px-6 pb-4 pt-6 sm:px-8">
+        {/* Null only for a card written before the key backfill, which has
               no key to show. */}
-          {key ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              title={key}
-              aria-label={t("taskBoard.taskDialog.copyIdAriaLabel")}
-              /* -ml-2 cancels the button's own padding so the glyph starts on
+        {key ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            title={key}
+            aria-label={t("taskBoard.taskDialog.copyIdAriaLabel")}
+            /* -ml-2 cancels the button's own padding so the glyph starts on
                  the pane's 32px gutter, as drawn. */
-              className="-ml-2 gap-2 px-2 text-[15px] text-muted-foreground hover:text-foreground"
-              onClick={() => {
-                copyId(key);
-                toast.success(t("taskBoard.taskDialog.idCopied"));
-              }}
-            >
-              {idCopied ? <Check size={16} /> : <Bookmark size={16} />}
-              {key}
-            </Button>
-          ) : (
-            /* Create mode: the key is minted on save. A placeholder keeps the
+            className="-ml-2 gap-2 px-2 text-[15px] text-muted-foreground hover:text-foreground"
+            onClick={() => {
+              copyId(key);
+              toast.success(t("taskBoard.taskDialog.idCopied"));
+            }}
+          >
+            {idCopied ? <Check size={16} /> : <Bookmark size={16} />}
+            {key}
+          </Button>
+        ) : (
+          /* Create mode: the key is minted on save. A placeholder keeps the
                row from reading as broken. */
-            <span
-              aria-hidden
-              className="flex h-7 items-center gap-2 text-[15px] text-muted-foreground opacity-50"
-            >
-              <Bookmark size={16} />–
+          <span
+            aria-hidden
+            className="flex h-7 items-center gap-2 text-[15px] text-muted-foreground opacity-50"
+          >
+            <Bookmark size={16} />–
+          </span>
+        )}
+
+        <div className="flex items-center gap-0.5">
+          {/* Autosave has no button, so this is the only sign of a write. */}
+          {item && isSaving && (
+            <span className="mr-1 text-sm text-muted-foreground">
+              {t("taskBoard.taskDialog.savingLabel")}
             </span>
           )}
-
-          <div className="flex items-center gap-0.5">
-            {/* Autosave has no button, so this is the only sign of a write. */}
-            {item && isSaving && (
-              <span className="mr-1 text-sm text-muted-foreground">
-                {t("taskBoard.taskDialog.savingLabel")}
-              </span>
-            )}
-            {item && (
-              <>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={t("taskBoard.taskDialog.shareAriaLabel")}
-                  title={t("taskBoard.taskDialog.shareTitle")}
-                  className="text-muted-foreground hover:text-foreground"
-                  onClick={() => {
-                    copyLink(
-                      `${window.location.origin}/${org.slug}/t/${key ?? item.id}`,
-                    );
-                    toast.success(t("taskBoard.taskDialog.linkCopied"));
-                  }}
-                >
-                  {linkCopied ? <Check size={16} /> : <Link03 size={16} />}
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={t(
-                        "taskBoard.taskDialog.moreActionsAriaLabel",
-                      )}
-                      className="text-muted-foreground hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground"
-                    >
-                      <DotsHorizontal size={16} />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48">
-                    {onNewChat && (
-                      <DropdownMenuItem onSelect={onNewChat}>
-                        <Edit05 size={16} />
-                        {t("taskBoard.taskDialog.newChatButton")}
-                      </DropdownMenuItem>
-                    )}
-                    {showAutoFix && (
-                      <DropdownMenuItem onSelect={onAutoFix}>
-                        <Lightning01 size={16} />
-                        {t("taskBoard.taskBoard.autoFix")}
-                      </DropdownMenuItem>
-                    )}
-                    {showRerun && (
-                      <DropdownMenuItem onSelect={onRerun}>
-                        <RefreshCw01 size={16} />
-                        {t("taskBoard.taskBoard.rerun")}
-                      </DropdownMenuItem>
-                    )}
-                    {(onNewChat || showAutoFix || showRerun) && (
-                      <DropdownMenuSeparator />
-                    )}
-                    {description && (
-                      <DropdownMenuItem
-                        onSelect={() => handleCopy(description)}
-                      >
-                        {copied ? <Check size={16} /> : <Copy01 size={16} />}
-                        {t("taskBoard.taskDialog.copyDescription")}
-                      </DropdownMenuItem>
-                    )}
-                    {onClone && (
-                      <DropdownMenuItem onSelect={onClone}>
-                        <Copy06 size={16} />
-                        {t("taskBoard.taskDialog.cloneTask")}
-                      </DropdownMenuItem>
-                    )}
-                    {onArchive && status !== "archived" && (
-                      <DropdownMenuItem onSelect={onArchive}>
-                        <Archive size={16} />
-                        {t("taskBoard.taskDialog.archiveTask")}
-                      </DropdownMenuItem>
-                    )}
-                    {onDelete && (
-                      <DropdownMenuItem
-                        variant="destructive"
-                        onSelect={onDelete}
-                      >
-                        <Trash03 size={16} />
-                        {t("taskBoard.taskDialog.deleteTask")}
-                      </DropdownMenuItem>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </>
-            )}
+          {item && previewThread && (
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label={t("taskBoard.taskDialog.closeAriaLabel")}
+              aria-label={t("taskBoard.taskDialog.previewAriaLabel")}
+              title={t("taskBoard.taskDialog.previewTitle")}
               className="text-muted-foreground hover:text-foreground"
-              onClick={close}
+              onClick={() => onOpenThread?.(previewThread)}
             >
-              <X size={16} />
+              <Eye size={16} />
             </Button>
-          </div>
-        </div>
-
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto sm:flex-row sm:overflow-hidden">
-          {/* Editor pane — content-height on mobile so it doesn't leave a big
-              gap above the properties; fills the column on desktop. */}
-          <div className="flex min-w-0 flex-col gap-2 p-6 sm:flex-1 sm:overflow-y-auto sm:p-8 sm:pt-6">
-            <div>
-              <textarea
-                ref={(el) => {
-                  if (!el) return;
-                  el.style.height = "auto";
-                  el.style.height = `${el.scrollHeight}px`;
+          )}
+          {item && (
+            <>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t("taskBoard.taskDialog.shareAriaLabel")}
+                title={t("taskBoard.taskDialog.shareTitle")}
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  copyLink(
+                    `${window.location.origin}/${org.slug}/t/${key ?? item.id}`,
+                  );
+                  toast.success(t("taskBoard.taskDialog.linkCopied"));
                 }}
-                value={title}
-                onChange={(e) => {
-                  if (contentLocked) return;
-                  patch({ title: e.target.value }, true);
-                  e.target.style.height = "auto";
-                  e.target.style.height = `${e.target.scrollHeight}px`;
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") e.preventDefault();
-                }}
-                onBlur={flush}
-                placeholder={t("taskBoard.taskDialog.taskTitlePlaceholder")}
-                autoFocus
-                rows={1}
-                readOnly={contentLocked}
-                className={cn(
-                  "w-full resize-none overflow-hidden border-0 bg-transparent text-2xl font-semibold leading-snug text-foreground outline-none placeholder:text-foreground/30",
-                  contentLocked && "cursor-default",
-                )}
-              />
-              {contentLocked && (
-                <p className="mb-3 mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Lock01 size={12} />
-                  {t("taskBoard.taskDialog.reportsContentLocked")}
-                </p>
-              )}
-            </div>
-
-            <div className="flex flex-col">
-              <div className="flex flex-col py-6">
-                <div
-                  // Clip only while folded: the image node's remove button is
-                  // absolute and reaches outside a 1px image's box, so a
-                  // permanent clip puts it out of reach.
-                  className={cn(
-                    "relative",
-                    collapseDescription && "overflow-hidden",
+              >
+                {linkCopied ? <Check size={16} /> : <Link03 size={16} />}
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t("taskBoard.taskDialog.moreActionsAriaLabel")}
+                    className="text-muted-foreground hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground"
+                  >
+                    <DotsHorizontal size={16} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  {onNewChat && (
+                    <DropdownMenuItem onSelect={onNewChat}>
+                      <Edit05 size={16} />
+                      {t("taskBoard.taskDialog.newChatButton")}
+                    </DropdownMenuItem>
                   )}
-                  style={
-                    collapseDescription
-                      ? { maxHeight: DESCRIPTION_MAX_HEIGHT }
-                      : undefined
-                  }
-                  // Expand before editing: no caret under the fold.
-                  onFocusCapture={() => setDescriptionExpanded(true)}
-                  onBlurCapture={flush}
-                >
-                  <div ref={measureDescription}>
-                    {/* Markdown in, markdown out — the value also becomes
+                  {showAutoFix && (
+                    <DropdownMenuItem onSelect={onAutoFix}>
+                      <Lightning01 size={16} />
+                      {t("taskBoard.taskBoard.autoFix")}
+                    </DropdownMenuItem>
+                  )}
+                  {showRerun && (
+                    <DropdownMenuItem onSelect={onRerun}>
+                      <RefreshCw01 size={16} />
+                      {t("taskBoard.taskBoard.rerun")}
+                    </DropdownMenuItem>
+                  )}
+                  {(onNewChat || showAutoFix || showRerun) && (
+                    <DropdownMenuSeparator />
+                  )}
+                  {description && (
+                    <DropdownMenuItem onSelect={() => handleCopy(description)}>
+                      {copied ? <Check size={16} /> : <Copy01 size={16} />}
+                      {t("taskBoard.taskDialog.copyDescription")}
+                    </DropdownMenuItem>
+                  )}
+                  {onClone && (
+                    <DropdownMenuItem onSelect={onClone}>
+                      <Copy06 size={16} />
+                      {t("taskBoard.taskDialog.cloneTask")}
+                    </DropdownMenuItem>
+                  )}
+                  {onArchive && status !== "archived" && (
+                    <DropdownMenuItem onSelect={onArchive}>
+                      <Archive size={16} />
+                      {t("taskBoard.taskDialog.archiveTask")}
+                    </DropdownMenuItem>
+                  )}
+                  {onDelete && (
+                    <DropdownMenuItem variant="destructive" onSelect={onDelete}>
+                      <Trash03 size={16} />
+                      {t("taskBoard.taskDialog.deleteTask")}
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          )}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={t("taskBoard.taskDialog.closeAriaLabel")}
+            className="text-muted-foreground hover:text-foreground"
+            onClick={close}
+          >
+            <X size={16} />
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto sm:flex-row sm:overflow-hidden">
+        {/* Editor pane — content-height on mobile so it doesn't leave a big
+              gap above the properties; fills the column on desktop. */}
+        <div className="flex min-w-0 flex-col gap-2 p-6 sm:flex-1 sm:overflow-y-auto sm:p-8 sm:pt-6">
+          <div>
+            <textarea
+              ref={(el) => {
+                if (!el) return;
+                el.style.height = "auto";
+                el.style.height = `${el.scrollHeight}px`;
+              }}
+              value={title}
+              onChange={(e) => {
+                if (contentLocked) return;
+                patch({ title: e.target.value }, true);
+                e.target.style.height = "auto";
+                e.target.style.height = `${e.target.scrollHeight}px`;
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.preventDefault();
+              }}
+              onBlur={flush}
+              placeholder={t("taskBoard.taskDialog.taskTitlePlaceholder")}
+              autoFocus
+              rows={1}
+              readOnly={contentLocked}
+              className={cn(
+                "w-full resize-none overflow-hidden border-0 bg-transparent text-2xl font-semibold leading-snug text-foreground outline-none placeholder:text-foreground/30",
+                contentLocked && "cursor-default",
+              )}
+            />
+            {contentLocked && (
+              <p className="mb-3 mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Lock01 size={12} />
+                {t("taskBoard.taskDialog.reportsContentLocked")}
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col">
+            <div className="flex flex-col py-6">
+              <div
+                // Clip only while folded: the image node's remove button is
+                // absolute and reaches outside a 1px image's box, so a
+                // permanent clip puts it out of reach.
+                className={cn(
+                  "relative",
+                  collapseDescription && "overflow-hidden",
+                )}
+                style={
+                  collapseDescription
+                    ? { maxHeight: DESCRIPTION_MAX_HEIGHT }
+                    : undefined
+                }
+                // Expand before editing: no caret under the fold.
+                onFocusCapture={() => setDescriptionExpanded(true)}
+                onBlurCapture={flush}
+              >
+                <div ref={measureDescription}>
+                  {/* Markdown in, markdown out — the value also becomes
                         prompt context for the agent, and plain-text
                         descriptions written before this editor existed still
                         parse as-is. */}
-                    <MarkdownEditor
-                      defaultValue={description}
-                      onChange={(next) => patch({ description: next }, true)}
-                      placeholder={t(
-                        "taskBoard.taskDialog.descriptionPlaceholder",
-                      )}
-                      editable={!contentLocked}
-                    />
-                  </div>
-                  {collapseDescription && (
-                    <div
-                      aria-hidden
-                      className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-background to-transparent"
-                    />
-                  )}
-                </div>
-                {descriptionOverflows && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="mt-2 w-fit text-muted-foreground hover:text-foreground"
-                    onClick={() => setDescriptionExpanded((open) => !open)}
-                  >
-                    <ChevronDown
-                      size={14}
-                      className={cn(
-                        "transition-transform",
-                        descriptionExpanded && "rotate-180",
-                      )}
-                    />
-                    {t(
-                      descriptionExpanded
-                        ? "taskBoard.taskDialog.showLess"
-                        : "taskBoard.taskDialog.showMore",
+                  <MarkdownEditor
+                    defaultValue={description}
+                    onChange={(next) => patch({ description: next }, true)}
+                    placeholder={t(
+                      "taskBoard.taskDialog.descriptionPlaceholder",
                     )}
-                  </Button>
+                    editable={!contentLocked}
+                  />
+                </div>
+                {collapseDescription && (
+                  <div
+                    aria-hidden
+                    className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-background to-transparent"
+                  />
                 )}
               </div>
-
-              {/* Separates the task itself from the record of it (links,
-                  activity). Edit mode only — a new task has neither. */}
-              {item && (
-                <div className="py-4">
-                  <hr className="border-border" />
-                </div>
-              )}
-
-              {item && (
-                <div className="flex flex-col gap-8">
-                  <LinksSection
-                    item={item}
-                    description={description}
-                    onOpenThread={onOpenThread}
+              {descriptionOverflows && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="mt-2 w-fit text-muted-foreground hover:text-foreground"
+                  onClick={() => setDescriptionExpanded((open) => !open)}
+                >
+                  <ChevronDown
+                    size={14}
+                    className={cn(
+                      "transition-transform",
+                      descriptionExpanded && "rotate-180",
+                    )}
                   />
-                  <ActivitySection
-                    item={item}
-                    members={members}
-                    startedBy={assignedBy ?? assignee}
-                    onOpenThread={onOpenThread}
-                  />
-                </div>
+                  {t(
+                    descriptionExpanded
+                      ? "taskBoard.taskDialog.showLess"
+                      : "taskBoard.taskDialog.showMore",
+                  )}
+                </Button>
               )}
             </div>
+
+            {/* Separates the task itself from the record of it (links,
+                  activity). Edit mode only — a new task has neither. */}
+            {item && (
+              <div className="py-4">
+                <hr className="border-border" />
+              </div>
+            )}
+
+            {item && (
+              <div className="flex flex-col gap-8">
+                <SessionsSection
+                  item={item}
+                  startedBy={assignedBy ?? assignee}
+                  onOpenThread={onOpenThread}
+                  onNewSession={onNewChat}
+                />
+                <LinksSection
+                  item={item}
+                  description={description}
+                  onOpenThread={onOpenThread}
+                />
+                <ActivitySection
+                  item={item}
+                  members={members}
+                  onRerunWithFeedback={
+                    showRerun ? onRerunWithFeedback : undefined
+                  }
+                />
+              </div>
+            )}
           </div>
+        </div>
 
-          {/* Properties pane — wrapping chips under the editor on mobile, a
+        {/* Properties pane — wrapping chips under the editor on mobile, a
               stacked sidebar on desktop. */}
-          <div className="flex w-full shrink-0 flex-col gap-8 border-t border-border p-6 sm:w-[300px] sm:border-t-0">
-            {item && <ReviewsGroup item={item} />}
+        <div className="flex w-full shrink-0 flex-col gap-8 border-t border-border p-6 sm:w-[300px] sm:border-t-0">
+          {item && <ReviewsGroup item={item} />}
 
-            <PropertyGroup label={t("taskBoard.taskDialog.propertiesLabel")}>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button type="button" className={PROPERTY_BUTTON}>
-                    <StatusIcon
-                      size={16}
-                      className={cn(
-                        item
-                          ? statusIconClassName({ ...item, status })
-                          : STATUS_CONFIG[status].iconClassName,
-                      )}
-                    />
-                    {t(STATUS_CONFIG[status].labelKey)}
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-44">
-                  {STATUSES.map((s) => {
-                    const Icon = STATUS_CONFIG[s].icon;
-                    return (
-                      <DropdownMenuItem
-                        key={s}
-                        onSelect={() => patch({ status: s })}
-                        className="gap-2"
-                      >
-                        <Icon
-                          size={16}
-                          className={STATUS_CONFIG[s].iconClassName}
-                        />
-                        {t(STATUS_CONFIG[s].labelKey)}
-                      </DropdownMenuItem>
-                    );
-                  })}
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    disabled={contentLocked}
-                    title={
-                      contentLocked
-                        ? t("taskBoard.taskDialog.reportsContentLocked")
-                        : undefined
-                    }
+          <PropertyGroup label={t("taskBoard.taskDialog.propertiesLabel")}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button type="button" className={PROPERTY_BUTTON}>
+                  <StatusIcon
+                    size={16}
                     className={cn(
-                      PROPERTY_BUTTON,
-                      priority === "none" && EMPTY_PROPERTY,
-                      contentLocked && "cursor-default opacity-60",
+                      item
+                        ? statusIconClassName({ ...item, status })
+                        : STATUS_CONFIG[status].iconClassName,
                     )}
-                  >
-                    {priority === "none" ? (
-                      <>
-                        <DotsHorizontal size={16} />
-                        {t("taskBoard.taskDialog.setPriorityButton")}
-                      </>
-                    ) : (
-                      <>
-                        <span
-                          className={cn(
-                            "size-2 rounded-full",
-                            PRIORITY_CONFIG[priority].dotClassName,
-                          )}
-                        />
-                        {t(PRIORITY_CONFIG[priority].labelKey)}
-                      </>
-                    )}
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-40">
-                  {PRIORITIES.map((p) => (
+                  />
+                  {t(STATUS_CONFIG[status].labelKey)}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-44">
+                {STATUSES.map((s) => {
+                  const Icon = STATUS_CONFIG[s].icon;
+                  return (
                     <DropdownMenuItem
-                      key={p}
-                      onSelect={() => patch({ priority: p })}
+                      key={s}
+                      onSelect={() => patch({ status: s })}
+                      className="gap-2"
                     >
+                      <Icon
+                        size={16}
+                        className={STATUS_CONFIG[s].iconClassName}
+                      />
+                      {t(STATUS_CONFIG[s].labelKey)}
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  disabled={contentLocked}
+                  title={
+                    contentLocked
+                      ? t("taskBoard.taskDialog.reportsContentLocked")
+                      : undefined
+                  }
+                  className={cn(
+                    PROPERTY_BUTTON,
+                    priority === "none" && EMPTY_PROPERTY,
+                    contentLocked && "cursor-default opacity-60",
+                  )}
+                >
+                  {priority === "none" ? (
+                    <>
+                      <DotsHorizontal size={16} />
+                      {t("taskBoard.taskDialog.setPriorityButton")}
+                    </>
+                  ) : (
+                    <>
                       <span
                         className={cn(
                           "size-2 rounded-full",
-                          PRIORITY_CONFIG[p].dotClassName,
+                          PRIORITY_CONFIG[priority].dotClassName,
                         )}
                       />
-                      {t(PRIORITY_CONFIG[p].labelKey)}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+                      {t(PRIORITY_CONFIG[priority].labelKey)}
+                    </>
+                  )}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-40">
+                {PRIORITIES.map((p) => (
+                  <DropdownMenuItem
+                    key={p}
+                    onSelect={() => patch({ priority: p })}
+                  >
+                    <span
+                      className={cn(
+                        "size-2 rounded-full",
+                        PRIORITY_CONFIG[p].dotClassName,
+                      )}
+                    />
+                    {t(PRIORITY_CONFIG[p].labelKey)}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-              <div className="flex flex-col">
-                {/* modal: without it the parent Dialog's scroll-lock
+            <div className="flex flex-col">
+              {/* modal: without it the parent Dialog's scroll-lock
                     (react-remove-scroll) swallows wheel events over this
                     portalled popover, so the member list only scrolls via
                     keyboard/click. modal wraps the content in its own
                     RemoveScroll that whitelists the popover. */}
-                <Popover
-                  open={assigneeOpen}
-                  onOpenChange={setAssigneeOpen}
-                  modal
-                >
-                  <PopoverTrigger asChild>
-                    <button
-                      type="button"
-                      className={cn(
-                        PROPERTY_BUTTON,
-                        !assigneeId && EMPTY_PROPERTY,
-                      )}
-                    >
-                      {isSuperAgent && assignedBy ? (
-                        <>
-                          {/* Desktop: the assigner; the Super Agent doing the
+              <Popover open={assigneeOpen} onOpenChange={setAssigneeOpen} modal>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className={cn(
+                      PROPERTY_BUTTON,
+                      !assigneeId && EMPTY_PROPERTY,
+                    )}
+                  >
+                    {isSuperAgent && assignedBy ? (
+                      <>
+                        {/* Desktop: the assigner; the Super Agent doing the
                               work is the nested elbow row below. */}
-                          <span className="hidden items-center gap-2 sm:flex">
+                        <span className="hidden items-center gap-2 sm:flex">
+                          <Avatar
+                            url={assignedBy.user?.image ?? undefined}
+                            fallback={getInitials(assignedBy.user?.name)}
+                            shape="circle"
+                            size="2xs"
+                          />
+                          <span className="truncate">
+                            {assignedBy.user?.name ??
+                              t("taskBoard.taskDialog.superAgentDefaultName")}
+                          </span>
+                        </span>
+                        {/* Mobile: no room for the elbow tree — fold the
+                              delegation into one chip, the assigner eclipsed by
+                              the Super Agent. */}
+                        <span className="flex items-center gap-2 sm:hidden">
+                          <span className="inline-flex items-center">
                             <Avatar
                               url={assignedBy.user?.image ?? undefined}
                               fallback={getInitials(assignedBy.user?.name)}
                               shape="circle"
                               size="2xs"
+                              className="-mr-1.5 ring-2 ring-background"
                             />
-                            <span className="truncate">
-                              {assignedBy.user?.name ??
-                                t("taskBoard.taskDialog.superAgentDefaultName")}
-                            </span>
+                            <SuperAgentIcon
+                              size={16}
+                              className="ring-2 ring-background"
+                            />
                           </span>
-                          {/* Mobile: no room for the elbow tree — fold the
-                              delegation into one chip, the assigner eclipsed by
-                              the Super Agent. */}
-                          <span className="flex items-center gap-2 sm:hidden">
-                            <span className="inline-flex items-center">
-                              <Avatar
-                                url={assignedBy.user?.image ?? undefined}
-                                fallback={getInitials(assignedBy.user?.name)}
-                                shape="circle"
-                                size="2xs"
-                                className="-mr-1.5 ring-2 ring-background"
-                              />
-                              <SuperAgentIcon
-                                size={16}
-                                className="ring-2 ring-background"
-                              />
-                            </span>
-                            {t("taskBoard.taskDialog.superAgentLabel")}
-                          </span>
-                        </>
-                      ) : isSuperAgent ? (
-                        <>
-                          <SuperAgentIcon size={16} />
                           {t("taskBoard.taskDialog.superAgentLabel")}
-                        </>
-                      ) : assignee ? (
-                        <>
-                          <Avatar
-                            url={assignee.user?.image ?? undefined}
-                            fallback={getInitials(assignee.user?.name)}
-                            shape="circle"
-                            size="2xs"
-                          />
-                          <span className="truncate">
-                            {assignee.user?.name ??
-                              t("taskBoard.taskDialog.unassignedLabel")}
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <UserPlus01
-                            size={16}
-                            className="text-muted-foreground"
-                          />
-                          {t("taskBoard.taskDialog.assignButton")}
-                        </>
-                      )}
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent align="start" className="w-56 p-0">
-                    <AssigneePickerContent
-                      members={members}
-                      onSelect={(userId) => {
-                        setAssigneeOpen(false);
-                        // Re-picking the Super Agent on a card it already owns
-                        // leaves the form clean, so Save never appears and the
-                        // pick is silently discarded — which is what "I
-                        // assigned it to Auto fix and it stayed in To Do"
-                        // actually was. That intent is a re-run; hand it to the
-                        // same confirm the Rerun button uses.
-                        if (
-                          userId === SUPER_AGENT_ASSIGNEE_ID &&
-                          item?.assigneeId === SUPER_AGENT_ASSIGNEE_ID
-                        ) {
-                          onRerun?.();
-                          return;
-                        }
-                        patch({ assigneeId: userId });
-                      }}
-                    />
-                  </PopoverContent>
-                </Popover>
-
-                {/* Delegation: the Super Agent doing the work, nested under
-                    the human who handed it off. Desktop only — on mobile the
-                    assignee chip folds this in (see above). */}
-                {isSuperAgent && assignedBy && (
-                  <div className="relative mt-1.5 hidden items-center pl-5 sm:flex">
-                    {/* Elbow drops from the center of the assigner's avatar
-                        (px-3 padding + half of the w-4 "2xs" avatar = 20px).
-                        Starts 6px above the row to bridge the mt-1.5 gap and
-                        still land at this row's vertical center. */}
-                    <span className="absolute -top-1.5 left-5 h-[calc(50%+0.375rem)] w-2.5 rounded-bl-md border-b border-l border-border" />
-                    <span
-                      className={cn(PROPERTY_BUTTON, "pointer-events-none")}
-                    >
-                      <SuperAgentIcon size={16} />
-                      {t("taskBoard.taskDialog.superAgentLabel")}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <Popover open={dueOpen} onOpenChange={setDueOpen}>
-                <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    className={cn(PROPERTY_BUTTON, !dueDate && EMPTY_PROPERTY)}
-                  >
-                    <Calendar size={16} className="text-muted-foreground" />
-                    {dueDate
-                      ? DUE_DATE_FMT.format(dueDate)
-                      : t("taskBoard.taskDialog.dueDateLabel")}
+                        </span>
+                      </>
+                    ) : isSuperAgent ? (
+                      <>
+                        <SuperAgentIcon size={16} />
+                        {t("taskBoard.taskDialog.superAgentLabel")}
+                      </>
+                    ) : assignee ? (
+                      <>
+                        <Avatar
+                          url={assignee.user?.image ?? undefined}
+                          fallback={getInitials(assignee.user?.name)}
+                          shape="circle"
+                          size="2xs"
+                        />
+                        <span className="truncate">
+                          {assignee.user?.name ??
+                            t("taskBoard.taskDialog.unassignedLabel")}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus01
+                          size={16}
+                          className="text-muted-foreground"
+                        />
+                        {t("taskBoard.taskDialog.assignButton")}
+                      </>
+                    )}
                   </button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <DayPickerCalendar
-                    mode="single"
-                    selected={dueDate ?? undefined}
-                    onSelect={(next) => {
-                      patch({ dueDate: next ?? null });
-                      if (next) setDueOpen(false);
+                <PopoverContent align="start" className="w-56 p-0">
+                  <AssigneePickerContent
+                    members={members}
+                    onSelect={(userId) => {
+                      setAssigneeOpen(false);
+                      // Re-picking the Super Agent on a card it already owns
+                      // leaves the form clean, so Save never appears and the
+                      // pick is silently discarded — which is what "I
+                      // assigned it to Auto fix and it stayed in To Do"
+                      // actually was. That intent is a re-run; hand it to the
+                      // same confirm the Rerun button uses.
+                      if (
+                        userId === SUPER_AGENT_ASSIGNEE_ID &&
+                        item?.assigneeId === SUPER_AGENT_ASSIGNEE_ID
+                      ) {
+                        onRerun?.();
+                        return;
+                      }
+                      patch({ assigneeId: userId });
                     }}
-                    initialFocus
                   />
                 </PopoverContent>
               </Popover>
 
-              <TaskCost threads={item?.threads} />
-            </PropertyGroup>
+              {/* Delegation: the Super Agent doing the work, nested under
+                    the human who handed it off. Desktop only — on mobile the
+                    assignee chip folds this in (see above). */}
+              {isSuperAgent && assignedBy && (
+                <div className="relative mt-1.5 hidden items-center pl-5 sm:flex">
+                  {/* Elbow drops from the center of the assigner's avatar
+                        (px-3 padding + half of the w-4 "2xs" avatar = 20px).
+                        Starts 6px above the row to bridge the mt-1.5 gap and
+                        still land at this row's vertical center. */}
+                  <span className="absolute -top-1.5 left-5 h-[calc(50%+0.375rem)] w-2.5 rounded-bl-md border-b border-l border-border" />
+                  <span className={cn(PROPERTY_BUTTON, "pointer-events-none")}>
+                    <SuperAgentIcon size={16} />
+                    {t("taskBoard.taskDialog.superAgentLabel")}
+                  </span>
+                </div>
+              )}
+            </div>
 
-            <PropertyGroup label={t("taskBoard.taskDialog.labelsLabel")}>
-              <Popover open={tagsOpen} onOpenChange={setTagsOpen} modal>
-                {tagIds.length === 0 ? (
-                  <PopoverTrigger asChild>
-                    <button
-                      type="button"
-                      className={cn(PROPERTY_BUTTON, EMPTY_PROPERTY)}
-                    >
-                      <Tag01 size={16} />
-                      {t("taskBoard.taskDialog.tagsButton")}
-                    </button>
-                  </PopoverTrigger>
-                ) : (
-                  <div className="flex flex-wrap items-center gap-1.5 sm:px-3">
-                    {tagIds.map((tagId) => {
-                      const tag = orgTags.find((ot) => ot.id === tagId);
-                      if (!tag) return null;
-                      return (
-                        <button
-                          key={tagId}
-                          type="button"
-                          onClick={() => setTagsOpen(true)}
-                          className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-                        >
-                          <span
-                            className="size-2 shrink-0 rounded-full"
-                            style={{ backgroundColor: tagDotColor(tag.color) }}
-                          />
-                          <span className="truncate">{tag.name}</span>
-                          <span
-                            role="button"
-                            tabIndex={0}
-                            aria-label={t(
-                              "taskBoard.taskDialog.removeTagAriaLabel",
-                              { name: tag.name },
-                            )}
-                            className="-mr-0.5 flex size-3.5 items-center justify-center rounded-sm text-muted-foreground hover:bg-background hover:text-foreground"
-                            onClick={(e) => {
+            <Popover open={dueOpen} onOpenChange={setDueOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(PROPERTY_BUTTON, !dueDate && EMPTY_PROPERTY)}
+                >
+                  <Calendar size={16} className="text-muted-foreground" />
+                  {dueDate
+                    ? DUE_DATE_FMT.format(dueDate)
+                    : t("taskBoard.taskDialog.dueDateLabel")}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <DayPickerCalendar
+                  mode="single"
+                  selected={dueDate ?? undefined}
+                  onSelect={(next) => {
+                    patch({ dueDate: next ?? null });
+                    if (next) setDueOpen(false);
+                  }}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+
+            <TaskCost threads={item?.threads} />
+          </PropertyGroup>
+
+          <PropertyGroup label={t("taskBoard.taskDialog.labelsLabel")}>
+            <Popover open={tagsOpen} onOpenChange={setTagsOpen} modal>
+              {tagIds.length === 0 ? (
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className={cn(PROPERTY_BUTTON, EMPTY_PROPERTY)}
+                  >
+                    <Tag01 size={16} />
+                    {t("taskBoard.taskDialog.tagsButton")}
+                  </button>
+                </PopoverTrigger>
+              ) : (
+                <div className="flex flex-wrap items-center gap-1.5 sm:px-3">
+                  {tagIds.map((tagId) => {
+                    const tag = orgTags.find((ot) => ot.id === tagId);
+                    if (!tag) return null;
+                    return (
+                      <button
+                        key={tagId}
+                        type="button"
+                        onClick={() => setTagsOpen(true)}
+                        className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                      >
+                        <span
+                          className="size-2 shrink-0 rounded-full"
+                          style={{ backgroundColor: tagDotColor(tag.color) }}
+                        />
+                        <span className="truncate">{tag.name}</span>
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          aria-label={t(
+                            "taskBoard.taskDialog.removeTagAriaLabel",
+                            { name: tag.name },
+                          )}
+                          className="-mr-0.5 flex size-3.5 items-center justify-center rounded-sm text-muted-foreground hover:bg-background hover:text-foreground"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            patch({
+                              tagIds: tagIds.filter((id) => id !== tagId),
+                            });
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
                               e.stopPropagation();
                               patch({
                                 tagIds: tagIds.filter((id) => id !== tagId),
                               });
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                patch({
-                                  tagIds: tagIds.filter((id) => id !== tagId),
-                                });
-                              }
-                            }}
-                          >
-                            <X size={10} />
-                          </span>
-                        </button>
-                      );
-                    })}
-                    <PopoverTrigger asChild>
-                      <button
-                        type="button"
-                        aria-label={t("taskBoard.taskDialog.addTagButton")}
-                        className="flex size-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                      >
-                        <Plus size={14} />
+                            }
+                          }}
+                        >
+                          <X size={10} />
+                        </span>
                       </button>
-                    </PopoverTrigger>
-                  </div>
-                )}
-                <PopoverContent align="start" className="w-56 p-0">
-                  <TagPickerContent
-                    tags={orgTags}
-                    selectedIds={tagIds}
-                    defaultColor={nextTagColor(orgTags.length)}
-                    onToggle={(tagId) =>
-                      patch({
-                        tagIds: tagIds.includes(tagId)
-                          ? tagIds.filter((id) => id !== tagId)
-                          : [...tagIds, tagId],
-                      })
-                    }
-                    onCreate={createAndSelectTag}
-                    onDelete={deleteOrgTag}
-                  />
-                </PopoverContent>
-              </Popover>
-            </PropertyGroup>
+                    );
+                  })}
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={t("taskBoard.taskDialog.addTagButton")}
+                      className="flex size-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    >
+                      <Plus size={14} />
+                    </button>
+                  </PopoverTrigger>
+                </div>
+              )}
+              <PopoverContent align="start" className="w-56 p-0">
+                <TagPickerContent
+                  tags={orgTags}
+                  selectedIds={tagIds}
+                  defaultColor={nextTagColor(orgTags.length)}
+                  onToggle={(tagId) =>
+                    patch({
+                      tagIds: tagIds.includes(tagId)
+                        ? tagIds.filter((id) => id !== tagId)
+                        : [...tagIds, tagId],
+                    })
+                  }
+                  onCreate={createAndSelectTag}
+                  onDelete={deleteOrgTag}
+                />
+              </PopoverContent>
+            </Popover>
+          </PropertyGroup>
 
-            <PropertyGroup label={t("taskBoard.taskDialog.projectLabel")}>
-              {/* Which repo (site) this task pertains to — scopes it to a
+          <PropertyGroup label={t("taskBoard.taskDialog.projectLabel")}>
+            {/* Which repo (site) this task pertains to — scopes it to a
                   site's task pill in the task-based flow. */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className={cn(
-                      PROPERTY_BUTTON,
-                      "w-full min-w-0",
-                      !repo && EMPTY_PROPERTY,
-                    )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    PROPERTY_BUTTON,
+                    "w-full min-w-0",
+                    !repo && EMPTY_PROPERTY,
+                  )}
+                >
+                  <GitHubIcon className="size-4 shrink-0" />
+                  <span className="min-w-0 flex-1 truncate text-left">
+                    {repo ?? t("taskBoard.taskDialog.repoButton")}
+                  </span>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuItem onSelect={() => patch({ repo: null })}>
+                  {t("taskBoard.taskDialog.noRepo")}
+                </DropdownMenuItem>
+                {repos.map((r) => (
+                  <DropdownMenuItem
+                    key={r}
+                    className="gap-2"
+                    onSelect={() => patch({ repo: r })}
                   >
                     <GitHubIcon className="size-4 shrink-0" />
-                    <span className="min-w-0 flex-1 truncate text-left">
-                      {repo ?? t("taskBoard.taskDialog.repoButton")}
-                    </span>
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-56">
-                  <DropdownMenuItem onSelect={() => patch({ repo: null })}>
-                    {t("taskBoard.taskDialog.noRepo")}
+                    <span className="truncate">{r}</span>
                   </DropdownMenuItem>
-                  {repos.map((r) => (
-                    <DropdownMenuItem
-                      key={r}
-                      className="gap-2"
-                      onSelect={() => patch({ repo: r })}
-                    >
-                      <GitHubIcon className="size-4 shrink-0" />
-                      <span className="truncate">{r}</span>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </PropertyGroup>
-          </div>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </PropertyGroup>
         </div>
+      </div>
 
-        {/* Create mode only: an existing card autosaves and keeps its actions
+      {/* Create mode only: an existing card autosaves and keeps its actions
             in the header menu, so it has no footer at all. */}
-        {!item && (
-          <div className="flex h-16 items-center justify-end border-t border-border px-4">
-            <Button
-              size="sm"
-              disabled={!title.trim() || isSaving}
-              onClick={commit}
-            >
-              <Plus size={16} />
-              {t("taskBoard.taskDialog.createTaskButton")}
-            </Button>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
+      {!item && (
+        <div className="flex h-16 items-center justify-end border-t border-border px-4">
+          <Button
+            size="sm"
+            disabled={!title.trim() || isSaving}
+            onClick={commit}
+          >
+            <Plus size={16} />
+            {t("taskBoard.taskDialog.createTaskButton")}
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }
 
 /**
- * Live-status style for a linked thread (agent session).
- *
- * Takes the thread, not just its status: a `failed` run whose failure is settled
- * history — a newer attempt replaced it, or it died after already delivering —
- * is not an error the user can act on, and painting it red is what made a card
- * the reviewers approved look broken.
+ * `TaskWorkspace` in a modal, for the surfaces that open a card without owning
+ * the main panel (the home tiles). The board renders the workspace in place.
  */
-export function threadStatusStyle(
-  thread: {
-    status: NonNullable<TaskBoardItemThread["status"]>;
-    failureKind?: string | null;
-  },
-  t: ReturnType<typeof useT>,
-): {
-  label: string;
-  className: string;
-  icon: typeof AlertSquare;
-  spin?: boolean;
-} {
-  switch (thread.status) {
-    case "failed":
-      if (isResolvedRunFailure(thread.failureKind)) {
-        return {
-          label:
-            thread.failureKind === "superseded"
-              ? t("taskBoard.taskDialog.threadStatusSuperseded")
-              : t("taskBoard.taskDialog.threadStatusEndedAfterDelivery"),
-          className: "text-muted-foreground",
-          icon: AlertCircle,
-        };
-      }
-      return {
-        label: t("taskBoard.taskDialog.threadStatusError"),
-        className: "text-destructive",
-        icon: AlertSquare,
-      };
-    case "requires_action":
-      return {
-        label: t("taskBoard.taskDialog.threadStatusNeedsInput"),
-        className: "text-warning",
-        icon: HelpCircle,
-      };
-    case "in_progress":
-      return {
-        label: t("taskBoard.taskDialog.threadStatusRunning"),
-        className: "text-primary",
-        icon: Loading02,
-        spin: true,
-      };
-    case "completed":
-      return {
-        label: t("taskBoard.taskDialog.threadStatusCompleted"),
-        className: "text-success",
-        icon: CheckCircle,
-      };
-    case "expired":
-      return {
-        label: t("taskBoard.taskDialog.threadStatusExpired"),
-        className: "text-muted-foreground",
-        icon: AlertCircle,
-      };
-    default: {
-      const _exhaustive: never = thread.status;
-      return _exhaustive;
-    }
-  }
+export function TaskBoardItemDialog({
+  open,
+  onClose,
+  ...rest
+}: { open: boolean } & Omit<Parameters<typeof TaskWorkspace>[0], "flushRef">) {
+  const t = useT();
+  const flushRef = useRef<(() => void) | null>(null);
+  const dismiss = () => {
+    flushRef.current?.();
+    onClose();
+  };
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && dismiss()}>
+      <DialogContent
+        className="flex max-h-[92vh] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:h-[90vh] sm:max-h-[820px] sm:max-w-[1040px]"
+        closeButtonClassName="hidden"
+      >
+        <DialogTitle className="sr-only">
+          {rest.item
+            ? t("taskBoard.taskDialog.editTaskTitle")
+            : t("taskBoard.taskDialog.newTaskTitle")}
+        </DialogTitle>
+        <TaskWorkspace onClose={dismiss} flushRef={flushRef} {...rest} />
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 /**
@@ -1781,13 +1756,11 @@ function LinksSection({
 function ActivitySection({
   item,
   members,
-  startedBy,
-  onOpenThread,
+  onRerunWithFeedback,
 }: {
   item: TaskBoardItem;
   members: Member[];
-  startedBy?: Member;
-  onOpenThread?: (thread: TaskBoardItemThread) => void;
+  onRerunWithFeedback?: (feedback: string) => void;
 }) {
   const t = useT();
   const { data: activity } = useTaskBoardActivity(item.id);
@@ -1838,7 +1811,6 @@ function ActivitySection({
 
   type Ev =
     | { kind: "activity"; at: number; activity: TaskBoardActivity }
-    | { kind: "thread"; at: number; thread: TaskBoardItemThread }
     | { kind: "comment"; at: number; comment: TaskComment };
   const events: Ev[] = [
     ...(activity ?? []).map(
@@ -1846,13 +1818,6 @@ function ActivitySection({
         kind: "activity",
         at: new Date(a.occurredAt).getTime(),
         activity: a,
-      }),
-    ),
-    ...item.threads.map(
-      (thread): Ev => ({
-        kind: "thread",
-        at: new Date(thread.createdAt).getTime(),
-        thread,
       }),
     ),
     ...threads.map(
@@ -1867,14 +1832,9 @@ function ActivitySection({
   // Group consecutive timeline events so their avatars connect with a rail.
   const blocks: (
     | { type: "timeline"; items: TaskBoardActivity[] }
-    | { type: "thread"; thread: TaskBoardItemThread }
     | { type: "comment"; comment: TaskComment }
   )[] = [];
   for (const ev of events) {
-    if (ev.kind === "thread") {
-      blocks.push({ type: "thread", thread: ev.thread });
-      continue;
-    }
     if (ev.kind === "comment") {
       blocks.push({ type: "comment", comment: ev.comment });
       continue;
@@ -1892,18 +1852,15 @@ function ActivitySection({
         <NewCommentComposer
           me={me}
           onSubmit={(body) => comments.post.mutate({ body })}
+          onSubmitAndRerun={
+            onRerunWithFeedback &&
+            ((body) => {
+              comments.post.mutate({ body });
+              onRerunWithFeedback(body);
+            })
+          }
         />
         {blocks.map((block, i) => {
-          if (block.type === "timeline") {
-            return (
-              <TimelineBlock
-                // A positional run of one feed: the index IS its identity.
-                key={`timeline-${i}`}
-                items={block.items}
-                memberByUserId={memberByUserId}
-              />
-            );
-          }
           if (block.type === "comment") {
             return (
               <CommentThreadCard
@@ -1924,14 +1881,64 @@ function ActivitySection({
             );
           }
           return (
-            <ThreadActivityItem
-              key={`thread-${block.thread.threadId}`}
-              thread={block.thread}
-              startedBy={startedBy}
-              onOpen={onOpenThread}
+            <TimelineBlock
+              // A positional run of one feed: the index IS its identity.
+              key={`timeline-${i}`}
+              items={block.items}
+              memberByUserId={memberByUserId}
             />
           );
         })}
+      </div>
+    </RecordSection>
+  );
+}
+
+/**
+ * The task's agent sessions — the conversations that ran (or are running) on
+ * this task's branch. A live run leads, so the section opens on what is
+ * happening now rather than on history.
+ */
+function SessionsSection({
+  item,
+  startedBy,
+  onOpenThread,
+  onNewSession,
+}: {
+  item: TaskBoardItem;
+  startedBy?: Member;
+  onOpenThread?: (thread: TaskBoardItemThread) => void;
+  onNewSession?: () => void;
+}) {
+  const t = useT();
+  const sessions = [...item.threads].sort((a, b) => {
+    const byStatus = statusPriority(a) - statusPriority(b);
+    if (byStatus !== 0) return byStatus;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
+  if (sessions.length === 0 && !onNewSession) return null;
+  return (
+    <RecordSection label={t("taskBoard.taskDialog.sessionsLabel")}>
+      <div className="flex flex-col gap-3">
+        {sessions.map((thread) => (
+          <ThreadActivityItem
+            key={`thread-${thread.threadId}`}
+            thread={thread}
+            startedBy={startedBy}
+            onOpen={onOpenThread}
+          />
+        ))}
+        {onNewSession && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-fit gap-2"
+            onClick={onNewSession}
+          >
+            <Plus size={16} />
+            {t("taskBoard.taskDialog.newChatButton")}
+          </Button>
+        )}
       </div>
     </RecordSection>
   );

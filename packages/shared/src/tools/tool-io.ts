@@ -514,7 +514,7 @@ export interface StudioToolIO {
     output: { url: string; prNumber: number; taskBoardItemIds: string[] };
   };
   TASK_BOARD_ITEM_RERUN: {
-    input: { id: string };
+    input: { id: string; feedback?: string | undefined };
     output: { status: string; supersededThreadIds: string[] };
   };
   TASK_BOARD_RESOLVE_CONFLICT: {

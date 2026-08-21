@@ -14,7 +14,7 @@ const task = { id: "board_1", title: "Fix the thing", description: null };
 const pr = { number: 7, url: "https://github.com/x/y/pull/7" };
 
 const CONFLICT_LEAD = "MERGE CONFLICT";
-const FEEDBACK_LEAD = "A reviewer requested changes";
+const FEEDBACK_LEAD = "Changes were requested";
 const CONTINUE_LEAD = "already has an open pull request";
 const OPEN_A_PR = "commit on a new branch, push, and open a pull request";
 
@@ -60,7 +60,7 @@ describe("buildSuperAgentTaskPrompt", () => {
     expect(p).not.toContain(FEEDBACK_LEAD);
   });
 
-  it("a reviewer change request leads with the feedback block", () => {
+  it("a change request leads with the feedback block", () => {
     const p = buildSuperAgentTaskPrompt(task, {
       pr,
       feedback: "QA Agent: the button is broken",
@@ -68,6 +68,22 @@ describe("buildSuperAgentTaskPrompt", () => {
     expect(p).toContain(FEEDBACK_LEAD);
     expect(p).toContain("the button is broken");
     expect(p).not.toContain(CONFLICT_LEAD);
+  });
+
+  /**
+   * "Comment & re-run" from the board: a person's comment is the lead, with no
+   * PR and no reviewer involved. Without this the comment posted and the run
+   * started from the title, which reads to the user as being ignored.
+   */
+  it("caller feedback leads even with no PR", () => {
+    const p = buildSuperAgentTaskPrompt(task, {
+      feedback: "Use the design system tokens, not raw hex",
+    });
+    expect(p).toContain(FEEDBACK_LEAD);
+    expect(p).toContain("Use the design system tokens, not raw hex");
+    expect(p).toContain("Address this feedback.");
+    expect(p).not.toContain(CONFLICT_LEAD);
+    expect(p).not.toContain(CONTINUE_LEAD);
   });
 
   it("conflict resolution wins over feedback when both are set", () => {
