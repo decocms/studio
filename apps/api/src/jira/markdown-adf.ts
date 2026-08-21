@@ -352,17 +352,16 @@ function parseList(cursor: Cursor, first: ListMarker, ctx: Ctx): AdfNode {
     : { type: "bulletList", content: items };
 }
 
+/** `mediaSingle` is in both: a probe against Jira Cloud accepted one inside a
+ *  blockquote and inside a listItem. */
 const QUOTE_CONTENT = new Set([
   "paragraph",
   "bulletList",
   "orderedList",
   "codeBlock",
+  "mediaSingle",
 ]);
-/** ADF allows `mediaSingle` in a listItem. Not added to QUOTE_CONTENT on
- *  purpose: whether a blockquote takes one is less certain, and a rejected
- *  document costs the whole comment's formatting, while restricting it here
- *  costs one inline image inside a quote. */
-const LIST_ITEM_CONTENT = new Set([...QUOTE_CONTENT, "mediaSingle"]);
+const LIST_ITEM_CONTENT = QUOTE_CONTENT;
 
 function listItemContent(blocks: AdfNode[]): AdfNode[] {
   const content = restrict(blocks, LIST_ITEM_CONTENT);
@@ -772,7 +771,8 @@ function matchAutolink(source: string, at: number): LinkMatch | null {
 }
 
 /** With no href we can trust — a Studio-relative path, a `javascript:` URL —
- *  the label stays plain text: ADF rejects a link mark without a real href. */
+ *  the label stays plain text. Jira accepts either (probed), so this is about
+ *  not publishing a link nobody reading the issue could follow. */
 function linkNodes(link: LinkMatch, marks: AdfMark[], ctx: Ctx): AdfNode[] {
   const href = safeHref(link.href);
   const label = link.label.trim() === "" ? href : link.label;

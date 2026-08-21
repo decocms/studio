@@ -565,7 +565,9 @@ describe("markdownToAdf images", () => {
     ]);
   });
 
-  it("embeds inside a list item, and degrades to alt text inside a quote", () => {
+  it("embeds inside a list item and inside a blockquote", () => {
+    // Both accepted by Jira Cloud when probed; an earlier revision degraded
+    // the blockquote case to alt text on an assumption that did not hold.
     const [list] = markdownToAdf(`- shot: ![x](${target})`, {
       media,
     }).content;
@@ -577,9 +579,21 @@ describe("markdownToAdf images", () => {
     const [quote] = markdownToAdf(`> shot: ![x](${target})`, {
       media,
     }).content;
-    expect(quote?.content).toEqual([
-      { type: "paragraph", content: [{ type: "text", text: "shot: " }] },
-      { type: "paragraph", content: [{ type: "text", text: "a.png" }] },
+    expect(quote?.content?.map((node) => node.type)).toEqual([
+      "paragraph",
+      "mediaSingle",
+    ]);
+  });
+
+  it("still keeps alt text when a media node cannot live in the parent", () => {
+    // A heading is inline-only, so nothing is uploaded for it in the first
+    // place and the label survives as text.
+    expect(markdownToAdf(`# shot ![x](${target})`, { media }).content).toEqual([
+      {
+        type: "heading",
+        attrs: { level: 1 },
+        content: [{ type: "text", text: "shot x" }],
+      },
     ]);
   });
 });

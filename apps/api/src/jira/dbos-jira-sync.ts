@@ -8,7 +8,7 @@
  * boot via `setJiraSyncRuntime` BEFORE `DBOS.launch()`.
  */
 
-import { DBOS, SchedulerMode } from "@dbos-inc/dbos-sdk";
+import { DBOS, Error as DBOSErrors, SchedulerMode } from "@dbos-inc/dbos-sdk";
 import type { Kysely } from "kysely";
 import { buildOrgContext } from "@/tools/task-board/org-context";
 import type { Database, TaskBoardItem } from "@/storage/types";
@@ -267,7 +267,10 @@ async function jiraCommentPushWorkflowFn(
         );
         if (attached) media.push([item.target, attached]);
       } catch (err) {
-        // Exhausted retries cost this one image, never the comment it is in.
+        // ONLY exhausted retries degrade to a link. Anything else — a
+        // cancellation, a determinism violation — is DBOS steering the
+        // workflow, and swallowing it would post the comment anyway.
+        if (!(err instanceof DBOSErrors.DBOSMaxStepRetriesError)) throw err;
         console.warn(`[jira] could not attach ${item.ref.path}:`, err);
       }
     }
