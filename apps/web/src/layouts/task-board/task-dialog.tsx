@@ -8,6 +8,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
@@ -51,6 +53,7 @@ import {
   Lock01,
   Plus,
   RefreshCw01,
+  Repeat04,
   Link03,
   Tag01,
   Trash03,
@@ -72,6 +75,7 @@ import { getInitials } from "@/lib/get-initials";
 import { useT } from "@/i18n/use-t.ts";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
+  formatSprintDates,
   nextTagColor,
   PRIORITIES,
   PRIORITY_CONFIG,
@@ -109,6 +113,8 @@ import { listRepoScopeLabels } from "@decocms/shared/github-repo-scope";
 import { isResolvedRunFailure } from "@decocms/shared/entities";
 import { AssigneePickerContent } from "./assignee-picker";
 import { TagPickerContent } from "./tag-picker";
+import { useSprintConfig } from "@/hooks/use-organization-settings";
+import { sprintNumberAt, sprintOptions } from "@decocms/shared/sprints";
 import { extractDescriptionLinks } from "./description-links";
 import { taskKey } from "@decocms/shared/task-key";
 import { authClient } from "@/lib/auth-client";
@@ -148,6 +154,8 @@ type TaskForm = {
   assigneeId: string | null;
   repo: string | null;
   dueDate: Date | null;
+  /** Sprint the task is planned into; null = backlog. */
+  sprint: number | null;
   tagIds: string[];
 };
 
@@ -165,6 +173,9 @@ const DESCRIPTION_MAX_HEIGHT = 560;
 /** How long typing stays quiet before it autosaves. Long enough that a
  *  sentence is one write, short enough that a distracted tab keeps the text. */
 const AUTOSAVE_DELAY_MS = 2000;
+
+/** Radix `RadioGroup` needs a string value — this stands in for the backlog. */
+const NO_SPRINT_VALUE = "__backlog__";
 
 const DUE_DATE_FMT = new Intl.DateTimeFormat(undefined, {
   month: "short",
@@ -362,6 +373,7 @@ export function TaskBoardItemDialog({
     assigneeId: string | null;
     repo: string | null;
     dueDate: string | null;
+    sprint: number | null;
     tagIds: string[];
   }) => void;
   onDelete?: () => void;
@@ -399,10 +411,18 @@ export function TaskBoardItemDialog({
     assigneeId: item?.assigneeId ?? null,
     repo: item?.repo ?? null,
     dueDate: parseIsoDate(item?.dueDate),
+    sprint: item?.sprint ?? null,
     tagIds: item?.tags.map((tag) => tag.id) ?? [],
   });
   const { title, description, status, priority, assigneeId, repo, dueDate } =
     form;
+  const sprint = form.sprint;
+  const sprintConfig = useSprintConfig();
+  const sprintsEnabled = sprintConfig?.enabled === true;
+  const currentSprint =
+    sprintConfig && sprintsEnabled
+      ? sprintNumberAt(sprintConfig, new Date())
+      : null;
   const tagIds = form.tagIds;
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [descriptionOverflows, setDescriptionOverflows] = useState(false);
@@ -440,6 +460,7 @@ export function TaskBoardItemDialog({
       assigneeId: v.assigneeId,
       repo: v.repo,
       dueDate: v.dueDate ? toEndOfDayIso(v.dueDate) : null,
+      sprint: v.sprint,
       tagIds: v.tagIds,
     });
   };
@@ -1032,6 +1053,64 @@ export function TaskBoardItemDialog({
                   />
                 </PopoverContent>
               </Popover>
+
+              {sprintsEnabled && sprintConfig && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className={cn(
+                        PROPERTY_BUTTON,
+                        sprint === null && EMPTY_PROPERTY,
+                      )}
+                    >
+                      <Repeat04 size={16} className="text-muted-foreground" />
+                      {sprint === null
+                        ? t("taskBoard.taskDialog.sprintLabel")
+                        : t("taskBoard.taskDialog.sprintNumber", {
+                            number: String(sprint),
+                          })}
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="start"
+                    className="max-h-80 w-72 overflow-y-auto"
+                  >
+                    <DropdownMenuRadioGroup
+                      value={sprint === null ? NO_SPRINT_VALUE : String(sprint)}
+                      onValueChange={(next) =>
+                        patch({
+                          sprint:
+                            next === NO_SPRINT_VALUE ? null : Number(next),
+                        })
+                      }
+                    >
+                      <DropdownMenuRadioItem value={NO_SPRINT_VALUE}>
+                        {t("taskBoard.taskDialog.sprintBacklog")}
+                      </DropdownMenuRadioItem>
+                      {sprintOptions(sprintConfig, new Date(), [sprint]).map(
+                        (n) => (
+                          <DropdownMenuRadioItem key={n} value={String(n)}>
+                            <span className="truncate">
+                              {formatSprintDates(sprintConfig, n)}
+                            </span>
+                            <span className="ml-auto shrink-0 text-muted-foreground">
+                              {n === currentSprint
+                                ? t(
+                                    "taskBoard.taskDialog.sprintNumberCurrent",
+                                    { number: String(n) },
+                                  )
+                                : t("taskBoard.taskDialog.sprintNumber", {
+                                    number: String(n),
+                                  })}
+                            </span>
+                          </DropdownMenuRadioItem>
+                        ),
+                      )}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
 
               <TaskCost threads={item?.threads} />
             </PropertyGroup>

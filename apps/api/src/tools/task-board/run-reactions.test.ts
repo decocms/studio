@@ -203,6 +203,7 @@ function makeItem(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     description: null,
     status: "in_review",
     priority: "medium",
+    sprint: null,
     assigneeId: SUPER_AGENT_ASSIGNEE_ID,
     assignedBy: null,
     repo: null,

@@ -38,6 +38,7 @@ import {
 } from "@decocms/ui/components/select.tsx";
 import { Page } from "@/components/page";
 import { JiraIcon } from "@/components/icons/jira-icon";
+import { SprintSettings } from "@/components/settings/sprint-settings";
 import { ReviewSettings } from "@/components/settings/review-settings";
 import {
   SettingsCard,
@@ -655,6 +656,7 @@ export function OrgTasksSettingsPage() {
           <SettingsPage>
             <Page.Title>{t("settings.nav.tasks")}</Page.Title>
             <ReviewSettings />
+            <SprintSettings />
             <SettingsSection
               title={
                 <span className="flex items-center gap-2">

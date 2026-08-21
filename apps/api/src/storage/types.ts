@@ -18,6 +18,7 @@ import type { ChatMessage } from "../api/routes/decopilot/types";
 import type { ProviderId, ThreadStatus } from "@decocms/shared/sdk";
 import type {
   OrgFlags,
+  SprintConfig,
   UserModelPreferences,
 } from "@decocms/shared/organization/schema";
 import type { ThreadMetadata } from "@decocms/shared/entities";
@@ -186,6 +187,8 @@ export interface OrganizationSettingsTable {
   flags: JsonObject<OrgFlags> | null;
   // Virtual MCP id the org lands on (`/$org`) instead of the Super Agent.
   main_agent_id: string | null;
+  // Task board sprint cadence — see SprintConfigSchema. Null = never configured.
+  sprint_config: JsonObject<SprintConfig> | null;
   createdAt: ColumnType<Date, Date | string, never>;
   updatedAt: ColumnType<Date, Date | string, Date | string>;
 }
@@ -199,6 +202,7 @@ export interface OrganizationSettings {
   default_home_agents: DefaultHomeAgentsConfig | null;
   flags: OrgFlags | null;
   main_agent_id: string | null;
+  sprint_config: SprintConfig | null;
   createdAt: Date | string;
   updatedAt: Date | string;
 }
@@ -1663,6 +1667,10 @@ export interface TaskBoardItemTable {
     Date | string | null | undefined,
     Date | string | null
   >;
+  /** Which sprint this card is planned into (1-based, counted from the org's
+   *  `sprint_config` cadence). Null = backlog, i.e. not planned into one — and
+   *  the state of every card on a board that never turned sprints on. */
+  sprint: ColumnType<number | null, number | null | undefined, number | null>;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sort_order: ColumnType<number, number | undefined, number>;
   /** Per-org sequence behind the card's human key (`DECO-01`), assigned once at
@@ -1838,6 +1846,8 @@ export interface TaskBoardItem {
    *  created org-wide (no site context) carry none. */
   repo: string | null;
   dueDate: string | null;
+  /** Sprint this card is planned into (1-based); null = backlog. */
+  sprint: number | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;
   /** Per-org sequence behind the card's human key (`DECO-01`), never null. */

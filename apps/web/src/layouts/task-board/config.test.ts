@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import {
+  formatSprintDates,
   insertSortOrder,
   isTaskHandedToHuman,
   runSortOrders,
   statusIconClassName,
+  visibleSprint,
 } from "./config";
 import type { TaskBoardItem } from "./config";
 
@@ -16,6 +18,7 @@ function item(id: string, sortOrder: number): TaskBoardItem {
     description: null,
     status: "todo",
     priority: "none",
+    sprint: null,
     assigneeId: null,
     assignedBy: null,
     repo: null,
@@ -126,5 +129,40 @@ describe("isTaskHandedToHuman", () => {
     for (const status of ["triage", "todo", "in_progress", "done"] as const) {
       expect(isTaskHandedToHuman({ ...item("t", 0), status })).toBe(false);
     }
+  });
+});
+
+describe("formatSprintDates", () => {
+  const config = { enabled: true, weeks: 2, startDate: "2026-01-05" };
+
+  test("spans the sprint's own days, read in UTC", () => {
+    // Day numbers, not the whole string: month names follow the test locale.
+    const label = formatSprintDates(config, 1);
+    expect(label).toContain("5");
+    expect(label).toContain("18");
+  });
+
+  test("is null when the cadence can't be read", () => {
+    expect(formatSprintDates({ ...config, startDate: "nope" }, 1)).toBe(null);
+  });
+});
+
+/**
+ * A card keeps its sprint number when an org switches sprints off, so the gate
+ * has to be asked once and used for both the pill and the row holding it —
+ * asking twice left the row reserving an empty slot.
+ */
+describe("visibleSprint", () => {
+  test("shows the card's sprint while the board runs sprints", () => {
+    expect(visibleSprint(3, true)).toBe(3);
+  });
+
+  test("hides a kept sprint once sprints are off, reserving no slot", () => {
+    expect(visibleSprint(3, false)).toBe(null);
+  });
+
+  test("a backlog card has nothing to show either way", () => {
+    expect(visibleSprint(null, true)).toBe(null);
+    expect(visibleSprint(null, false)).toBe(null);
   });
 });

@@ -173,6 +173,7 @@ import * as migration171jiraintegration from "./171-jira-integration.ts";
 import * as migration172taskboarditemkeyseq from "./172-task-board-item-key-seq.ts";
 import * as migration173threadgithubrepoconnectionindex from "./173-thread-github-repo-connection-index.ts";
 import * as migration174threadmessagepartspersistedat from "./174-thread-message-parts-persisted-at.ts";
+import * as migration175taskboardsprints from "./175-task-board-sprints.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -377,6 +378,7 @@ const migrations: Record<string, Migration> = {
     migration173threadgithubrepoconnectionindex,
   "174-thread-message-parts-persisted-at":
     migration174threadmessagepartspersistedat,
+  "175-task-board-sprints": migration175taskboardsprints,
 };
 
 export default migrations;

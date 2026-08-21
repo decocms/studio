@@ -338,6 +338,7 @@ export interface OrganizationSettingsStoragePort {
         | "default_home_agents"
         | "flags"
         | "main_agent_id"
+        | "sprint_config"
       >
     >,
   ): Promise<OrganizationSettings>;

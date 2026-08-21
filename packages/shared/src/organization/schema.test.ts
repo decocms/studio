@@ -3,7 +3,9 @@ import {
   DEFAULT_ON_FLAGS,
   NEW_ORG_DEFAULT_FLAGS,
   OrgFlagsSchema,
+  SprintConfigSchema,
   orgFlagEnabled,
+  parseCalendarDay,
 } from "./schema";
 
 describe("orgFlagEnabled", () => {
@@ -63,5 +65,45 @@ describe("NEW_ORG_DEFAULT_FLAGS", () => {
       ).toBe(false);
     }
     expect(orgFlagEnabled({}, "nav_v2")).toBe(false);
+  });
+});
+
+describe("SprintConfigSchema.startDate", () => {
+  const config = (startDate: string) => ({
+    enabled: true,
+    weeks: 2,
+    startDate,
+  });
+
+  it("accepts a real calendar day", () => {
+    expect(SprintConfigSchema.safeParse(config("2026-01-05")).success).toBe(
+      true,
+    );
+    // Leap day in a leap year is a real day.
+    expect(SprintConfigSchema.safeParse(config("2024-02-29")).success).toBe(
+      true,
+    );
+  });
+
+  it("rejects a well-formed day that does not exist", () => {
+    // `Date.parse` rolls these over instead of failing — 2026-02-31 reads back
+    // as March 3, which would slide every sprint boundary three days.
+    for (const day of ["2026-02-31", "2026-02-29", "2026-04-31"]) {
+      expect(SprintConfigSchema.safeParse(config(day)).success).toBe(false);
+      expect(parseCalendarDay(day)).toBe(null);
+    }
+  });
+
+  it("rejects the wrong shape outright", () => {
+    for (const day of ["2026-1-5", "05/01/2026", "2026-13-01", "nope", ""]) {
+      expect(SprintConfigSchema.safeParse(config(day)).success).toBe(false);
+      expect(parseCalendarDay(day)).toBe(null);
+    }
+  });
+
+  it("parses an accepted day as UTC midnight", () => {
+    expect(parseCalendarDay("2026-01-05")).toBe(
+      Date.parse("2026-01-05T00:00:00.000Z"),
+    );
   });
 });

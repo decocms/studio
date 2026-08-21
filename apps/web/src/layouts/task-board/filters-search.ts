@@ -7,6 +7,7 @@
  */
 
 import { useNavigate, useSearch } from "@tanstack/react-router";
+import { BACKLOG_FILTER } from "./task-filters";
 import type { DueFilter, TaskFilters } from "./task-filters";
 import { PRIORITIES, type TaskBoardItemPriority } from "./config";
 
@@ -23,10 +24,19 @@ type BoardSearch = {
   due?: string;
   tags?: string;
   repo?: string;
+  sprint?: string;
 };
 
 const str = (v: unknown): string | null =>
   typeof v === "string" && v !== "" ? v : null;
+
+/** `backlog`, or a positive integer sprint number — anything else is dropped. */
+function parseSprint(raw: string | null): TaskFilters["sprint"] {
+  if (raw === null) return null;
+  if (raw === BACKLOG_FILTER) return BACKLOG_FILTER;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 1 ? n : null;
+}
 
 /** Anything unrecognized in the URL is dropped, not trusted. */
 export function parseBoardSearch(search: BoardSearch): {
@@ -36,6 +46,7 @@ export function parseBoardSearch(search: BoardSearch): {
   const priority = str(search.priority);
   const due = str(search.due);
   const tags = str(search.tags);
+  const sprint = str(search.sprint);
   return {
     layout: search.view === "list" ? "list" : "board",
     filters: {
@@ -47,6 +58,7 @@ export function parseBoardSearch(search: BoardSearch): {
       due: DUE_FILTERS.includes(due as DueFilter) ? (due as DueFilter) : null,
       tags: tags ? tags.split(",").filter(Boolean) : [],
       repo: str(search.repo),
+      sprint: parseSprint(sprint),
     },
   };
 }
@@ -64,6 +76,12 @@ export function boardSearchParams(
     due: filters.due ?? undefined,
     tags: filters.tags.length > 0 ? filters.tags.join(",") : undefined,
     repo: filters.repo ?? undefined,
+    sprint:
+      filters.sprint === null
+        ? undefined
+        : filters.sprint === BACKLOG_FILTER
+          ? BACKLOG_FILTER
+          : String(filters.sprint),
   };
 }
 

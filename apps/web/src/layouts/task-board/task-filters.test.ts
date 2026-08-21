@@ -27,6 +27,39 @@ function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
   } as TaskBoardItem;
 }
 
+describe("taskMatchesFilters — sprint", () => {
+  test("a sprint filter keeps only that sprint", () => {
+    expect(
+      taskMatchesFilters(item({ sprint: 3 }), { ...EMPTY_FILTERS, sprint: 3 }),
+    ).toBe(true);
+    expect(
+      taskMatchesFilters(item({ sprint: 4 }), { ...EMPTY_FILTERS, sprint: 3 }),
+    ).toBe(false);
+  });
+
+  test("the backlog filter keeps only tasks with no sprint", () => {
+    expect(
+      taskMatchesFilters(item({ sprint: null }), {
+        ...EMPTY_FILTERS,
+        sprint: "backlog",
+      }),
+    ).toBe(true);
+    expect(
+      taskMatchesFilters(item({ sprint: 1 }), {
+        ...EMPTY_FILTERS,
+        sprint: "backlog",
+      }),
+    ).toBe(false);
+  });
+
+  test("no sprint filter keeps both planned and backlog tasks", () => {
+    expect(taskMatchesFilters(item({ sprint: 7 }), EMPTY_FILTERS)).toBe(true);
+    expect(taskMatchesFilters(item({ sprint: null }), EMPTY_FILTERS)).toBe(
+      true,
+    );
+  });
+});
+
 describe("taskMatchesFilters — due date", () => {
   test("'week' excludes a task that is already overdue", () => {
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();

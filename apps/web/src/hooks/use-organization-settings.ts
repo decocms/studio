@@ -20,6 +20,7 @@ import {
 import type {
   OrgFlags,
   SimpleModeTier,
+  SprintConfig,
 } from "@decocms/shared/organization/schema";
 
 export interface ModelSlot {
@@ -50,6 +51,7 @@ export interface OrganizationSettings {
   default_home_agents: DefaultHomeAgentsConfig | null;
   flags: OrgFlags | null;
   main_agent_id: string | null;
+  sprint_config: SprintConfig | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -63,6 +65,7 @@ const EMPTY_SETTINGS: OrganizationSettings = {
   default_home_agents: null,
   flags: null,
   main_agent_id: null,
+  sprint_config: null,
 };
 
 const EMPTY_SIMPLE_MODE: SimpleModeConfig = {
@@ -147,6 +150,7 @@ type OrgSettingsUpdateInput = Partial<
     | "default_home_agents"
     | "flags"
     | "main_agent_id"
+    | "sprint_config"
   >
 >;
 
@@ -291,6 +295,47 @@ export function useSetOrgFlag() {
       value: boolean,
       options?: OrgSettingsMutateOptions,
     ) => mutation.mutateAsync({ flags: { [flag]: value } }, options),
+  };
+}
+
+/**
+ * The org's task board sprint cadence, or null when sprints were never
+ * configured. Null and `{ enabled: false }` both mean "no sprints on the
+ * board" — callers gate on `config?.enabled`, and only the settings form cares
+ * about the difference (it seeds a draft cadence for the null case).
+ */
+export function useSprintConfig(): SprintConfig | null {
+  const { data } = useOrganizationSettings((s) => s.sprint_config);
+  return data ?? null;
+}
+
+/**
+ * The cadence plus whether the settings row has been read at all.
+ *
+ * `useSprintConfig` alone returns null for "never configured" and "still
+ * loading" alike, and `sprint_config` is replaced whole — so a form that writes
+ * before the first read lands replaces a real cadence with a seeded default and
+ * renumbers every card on the board. `isLoaded` is what the form gates on.
+ *
+ * It does NOT distinguish a failed read: the shared query is best-effort and
+ * caches `EMPTY_SETTINGS` for a minute on error, which still reads as "never
+ * configured". Closing that needs the query to stop swallowing, not a flag here.
+ */
+export function useSprintConfigState(): {
+  config: SprintConfig | null;
+  isLoaded: boolean;
+} {
+  const { data, isSuccess } = useOrganizationSettings((s) => s.sprint_config);
+  return { config: data ?? null, isLoaded: isSuccess };
+}
+
+/** Writer for the sprint cadence. Replaced whole, never merged. */
+export function useUpdateSprintConfig() {
+  const mutation = useUpdateOrganizationSettings();
+  return {
+    ...mutation,
+    mutate: (config: SprintConfig, options?: OrgSettingsMutateOptions) =>
+      mutation.mutate({ sprint_config: config }, options),
   };
 }
 

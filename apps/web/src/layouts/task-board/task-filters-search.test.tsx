@@ -42,6 +42,8 @@ describe("task filter options — searchable value matches the displayed label",
         members={[]}
         tags={[]}
         repos={[]}
+        sprints={[]}
+        sprintConfig={null}
         onChange={() => {}}
       />,
     );
@@ -60,6 +62,8 @@ describe("task filter options — searchable value matches the displayed label",
         members={[]}
         tags={[]}
         repos={["acme/site"]}
+        sprints={[]}
+        sprintConfig={null}
         onChange={() => {}}
       />,
     );

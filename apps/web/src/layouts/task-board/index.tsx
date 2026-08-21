@@ -44,6 +44,7 @@ import {
   Loading01,
   Plus,
   RefreshCw01,
+  Repeat04,
   UserPlus01,
   X,
 } from "@untitledui/icons";
@@ -112,9 +113,12 @@ import {
   type TaskBoardItemStatus,
   type TaskBoardItemTag,
   type TaskBoardItemThread,
+  visibleSprint,
   type Member,
 } from "./config";
 import { useTags } from "@/hooks/use-tags";
+import { useSprintConfig } from "@/hooks/use-organization-settings";
+import { sprintOptions } from "@decocms/shared/sprints";
 import { usePreferences } from "@/hooks/use-preferences";
 import {
   TaskBoardItemDialog,
@@ -215,6 +219,25 @@ function DueDatePill({ iso }: { iso: string }) {
     >
       <Calendar size={14} />
       {label}
+    </span>
+  );
+}
+
+/**
+ * Whether the board is running sprints. Reads the cadence itself (one shared,
+ * cached query) rather than threading a prop down every lane and row.
+ */
+function useSprintsEnabled(): boolean {
+  return useSprintConfig()?.enabled === true;
+}
+
+/** Which sprint a card is planned into. Gated by {@link visibleSprint}. */
+function SprintPill({ sprint }: { sprint: number }) {
+  const t = useT();
+  return (
+    <span className={PILL}>
+      <Repeat04 size={14} />
+      {t("taskBoard.taskBoard.sprintPill", { number: String(sprint) })}
     </span>
   );
 }
@@ -344,6 +367,9 @@ export function TaskBoardPage() {
   );
   // Repo filter options: distinct `owner/name` repos the org can reach.
   const repos = listRepoScopeLabels(githubConnections);
+  // Off (or unconfigured) keeps the sprint property and filter off the board.
+  const sprintConfig = useSprintConfig();
+  const sprintsEnabled = sprintConfig?.enabled === true;
   const [connectGithubOpen, setConnectGithubOpen] = useState(false);
   // Connecting only grants a broad org-level GitHub connection — Auto-fix
   // still needs a repo imported (see `hasRepo`), so once connected we chain
@@ -516,6 +542,16 @@ export function TaskBoardPage() {
     setTaskId(newId, agentId);
   };
 
+  // Null while sprints are off, which is what hides the filter control.
+  const activeSprintConfig = sprintsEnabled ? sprintConfig : null;
+  const sprintNumbers = activeSprintConfig
+    ? sprintOptions(
+        activeSprintConfig,
+        new Date(),
+        items.map((item) => item.sprint),
+      )
+    : [];
+
   const visibleItems = items.filter((item) =>
     taskMatchesFilters(item, filters),
   );
@@ -609,6 +645,8 @@ export function TaskBoardPage() {
                   members={members}
                   tags={orgTags}
                   repos={repos}
+                  sprints={sprintNumbers}
+                  sprintConfig={activeSprintConfig}
                   onChange={handleFiltersChange}
                 />
               </div>
@@ -618,6 +656,8 @@ export function TaskBoardPage() {
                   members={members}
                   tags={orgTags}
                   repos={repos}
+                  sprints={sprintNumbers}
+                  sprintConfig={activeSprintConfig}
                   onChange={handleFiltersChange}
                 />
               </div>
@@ -802,6 +842,7 @@ export function TaskBoardPage() {
                   priority: activeItem.priority,
                   repo: activeItem.repo,
                   dueDate: activeItem.dueDate,
+                  sprint: activeItem.sprint,
                   tagIds: activeItem.tags.map((tag) => tag.id),
                 });
                 toast.success(t("taskBoard.taskDialog.cloneSuccess"));
@@ -1936,6 +1977,7 @@ function TaskCard({
 }) {
   const t = useT();
   const StatusIcon = STATUS_CONFIG[item.status].icon;
+  const sprint = visibleSprint(item.sprint, useSprintsEnabled());
   // The Super Agent's own thread, not one of its reviewers' — falls back to
   // the most recent thread overall so a card still shows something before the
   // reviewer/main distinction exists (e.g. mid-migration data).
@@ -2006,6 +2048,7 @@ function TaskCard({
         isTaskHandedToHuman(item) ||
         item.priority !== "none" ||
         Boolean(item.dueDate) ||
+        sprint != null ||
         item.tags.length > 0) && (
         <div className="flex flex-wrap items-center gap-1.5 pl-6">
           {isTaskBlocked(item) && <BlockedBadge />}
@@ -2014,6 +2057,7 @@ function TaskCard({
             <PriorityPill priority={item.priority} />
           )}
           {item.dueDate && <DueDatePill iso={item.dueDate} />}
+          {sprint != null && <SprintPill sprint={sprint} />}
           {item.tags.map((tag) => (
             <TagPill key={tag.id} tag={tag} />
           ))}
@@ -2196,6 +2240,7 @@ function ListRow({
   onOpen: () => void;
 }) {
   const StatusIcon = STATUS_CONFIG[item.status].icon;
+  const sprint = visibleSprint(item.sprint, useSprintsEnabled());
   return (
     <button
       type="button"
@@ -2219,6 +2264,11 @@ function ListRow({
       {item.dueDate && (
         <span className="hidden sm:inline-flex">
           <DueDatePill iso={item.dueDate} />
+        </span>
+      )}
+      {sprint != null && (
+        <span className="hidden sm:inline-flex">
+          <SprintPill sprint={sprint} />
         </span>
       )}
       {item.tags.length > 0 && (

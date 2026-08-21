@@ -498,6 +498,22 @@ export const settings = {
     "Tarefas criadas a partir de um relat\u00f3rio s\u00e3o delegadas ao Super Agent automaticamente, em vez de ficarem sem respons\u00e1vel.",
   "settings.review.updateError":
     "N\u00e3o foi poss\u00edvel atualizar a configura\u00e7\u00e3o",
+  "settings.sprints.title": "Sprints",
+  "settings.sprints.description":
+    "Planeje tarefas em sprints de dura\u00e7\u00e3o fixa. As sprints s\u00e3o contadas a partir de um dia inicial, ent\u00e3o n\u00e3o h\u00e1 nada para abrir ou fechar.",
+  "settings.sprints.enabledTitle": "Ativar sprints",
+  "settings.sprints.enabledDescription":
+    "Adiciona uma propriedade de sprint em cada tarefa e um filtro de sprint no board.",
+  "settings.sprints.cadenceTitle": "Cad\u00eancia",
+  "settings.sprints.cadenceDescription":
+    "Quanto tempo dura uma sprint e o dia em que a sprint 1 come\u00e7ou.",
+  "settings.sprints.cadenceCurrent":
+    "A sprint {number} est\u00e1 em andamento ({start} a {end}).",
+  "settings.sprints.weeksValue": "{count} semanas",
+  "settings.sprints.weeksValueOne": "1 semana",
+  "settings.sprints.startDateLabel": "Dia inicial da sprint 1",
+  "settings.sprints.updateError":
+    "N\u00e3o foi poss\u00edvel atualizar as configura\u00e7\u00f5es de sprint",
   "settings.orgRoleDetail.addMember": "Adicionar Membro",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Adicione membros para conceder as permiss\u00f5es configuradas.",
