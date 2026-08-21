@@ -18,6 +18,8 @@ import { CredentialVault } from "@/encryption/credential-vault";
 import type { StudioContext } from "@/core/studio-context";
 import { JIRA_PUSH_QUEUE } from "@/dispatch-queue/queue-names";
 import { JiraClient } from "./client";
+import { resolveCommentMedia } from "./comment-media";
+import { type AdfMedia, collectImageTargets } from "./markdown-adf";
 import { JIRA_SYNC_ACTOR, syncJiraIntegrationSafe } from "./sync";
 
 /** Every 10 minutes, offset from the public-sets (:04) and org-repo (:07)
@@ -132,12 +134,49 @@ async function postCommentToJira(
     integration.email,
     integration.apiToken,
   );
-  const created = await client.addComment(
-    link.jiraIssueId,
-    params.body.slice(0, MAX_PUSH_CHARS),
-    { header: `${params.authorLabel} · via Studio:` },
-  );
+  const body = params.body.slice(0, MAX_PUSH_CHARS);
+  const created = await client.addComment(link.jiraIssueId, body, {
+    header: `${params.authorLabel} · via Studio:`,
+    media: await commentMedia(client, link.jiraIssueId, params, body),
+  });
   return created.id;
+}
+
+/**
+ * Upload the screenshots this comment references so the mirror embeds them
+ * rather than linking a member-gated Studio URL.
+ *
+ * Runs on the truncated body, the same text the converter sees, so it never
+ * uploads a file the comment then drops. Fail-open at every level: no org
+ * context, no org-fs, a read that throws — the images stay links and the
+ * comment still lands, because the push step gets no retry.
+ */
+async function commentMedia(
+  client: JiraClient,
+  issueId: string,
+  params: JiraCommentPushParams,
+  body: string,
+): Promise<Map<string, AdfMedia>> {
+  const targets = collectImageTargets(body);
+  if (targets.length === 0) return new Map();
+  try {
+    const ctx = await buildOrgContext(
+      requireRuntime().db,
+      params.organizationId,
+    );
+    const orgFs = ctx?.orgFs;
+    const orgSlug = ctx?.organization?.slug;
+    if (!orgFs || !orgSlug) return new Map();
+    return await resolveCommentMedia(targets, orgSlug, {
+      read: (ref) => orgFs.read(ref.volume, ref.path).catch(() => null),
+      listAttachments: () => client.listAttachments(issueId),
+      upload: (file) => client.addAttachment(issueId, file),
+      mediaIdFor: (attachmentId) => client.resolveMediaId(attachmentId),
+    });
+  } catch (err) {
+    console.warn("[jira] comment images stay links:", err);
+    return new Map();
+  }
 }
 
 /** Step 2: record the link — the pull's echo cut for this comment. */

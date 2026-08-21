@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { type AdfNode, markdownToAdf } from "./markdown-adf";
+import {
+  type AdfNode,
+  collectImageTargets,
+  markdownToAdf,
+} from "./markdown-adf";
 
 const doc = (markdown: string, header?: string) =>
   markdownToAdf(markdown, { header }).content;
@@ -484,5 +488,132 @@ describe("markdownToAdf structural guarantees", () => {
     const document = markdownToAdf(kitchenSink, { header: "Super Agent:" });
     expect(document.content.length).toBeGreaterThan(0);
     walk(document as unknown as AdfNode, "root");
+  });
+});
+
+describe("markdownToAdf images", () => {
+  const media = new Map([
+    [
+      "/api/acme/fs/outputs/read?path=t%2Fa.png",
+      { id: "uuid-a", alt: "a.png" },
+    ],
+  ]);
+  const target = "/api/acme/fs/outputs/read?path=t%2Fa.png";
+
+  it("embeds an uploaded image as a media node", () => {
+    expect(markdownToAdf(`![shot](${target})`, { media }).content).toEqual([
+      {
+        type: "mediaSingle",
+        attrs: { layout: "align-start" },
+        content: [
+          {
+            type: "media",
+            attrs: {
+              type: "file",
+              id: "uuid-a",
+              collection: "",
+              alt: "a.png",
+            },
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("falls back to the markdown alt text when the upload carries none", () => {
+    const bare = new Map([[target, { id: "uuid-a" }]]);
+    const [node] = markdownToAdf(`![from markdown](${target})`, {
+      media: bare,
+    }).content;
+    expect(node?.content?.[0]?.attrs?.alt).toBe("from markdown");
+  });
+
+  it("lifts an inline image out of its paragraph, splitting the text", () => {
+    expect(
+      markdownToAdf(`before ![shot](${target}) after`, { media }).content.map(
+        (node) => [
+          node.type,
+          node.content?.[0]?.text ?? node.content?.[0]?.type,
+        ],
+      ),
+    ).toEqual([
+      ["paragraph", "before "],
+      ["mediaSingle", "media"],
+      ["paragraph", " after"],
+    ]);
+  });
+
+  it("keeps an unresolved target as a link, exactly as before", () => {
+    expect(
+      markdownToAdf("![shot](https://img.example.dev/a.png)").content,
+    ).toEqual([
+      {
+        type: "paragraph",
+        content: [
+          {
+            type: "text",
+            text: "shot",
+            marks: [
+              {
+                type: "link",
+                attrs: { href: "https://img.example.dev/a.png" },
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("embeds inside a list item, and degrades to alt text inside a quote", () => {
+    const [list] = markdownToAdf(`- shot: ![x](${target})`, {
+      media,
+    }).content;
+    expect(list?.content?.[0]?.content?.map((node) => node.type)).toEqual([
+      "paragraph",
+      "mediaSingle",
+    ]);
+
+    const [quote] = markdownToAdf(`> shot: ![x](${target})`, {
+      media,
+    }).content;
+    expect(quote?.content).toEqual([
+      { type: "paragraph", content: [{ type: "text", text: "shot: " }] },
+      { type: "paragraph", content: [{ type: "text", text: "a.png" }] },
+    ]);
+  });
+});
+
+describe("collectImageTargets", () => {
+  it("names only the targets the converter would embed", () => {
+    const markdown = [
+      "![one](/out/1.png)",
+      "",
+      "text ![two](/out/2.png) more",
+      "",
+      "- ![three](/out/3.png)",
+      "",
+      "# ![heading](/out/skip-heading.png)",
+      "",
+      "| ![cell](/out/skip-cell.png) |",
+      "| --- |",
+      "| x |",
+      "",
+      "```",
+      "![fenced](/out/skip-fenced.png)",
+      "```",
+    ].join("\n");
+    expect(collectImageTargets(markdown)).toEqual([
+      "/out/1.png",
+      "/out/2.png",
+      "/out/3.png",
+    ]);
+  });
+
+  it("reports a target once per occurrence, and nothing for plain links", () => {
+    expect(
+      collectImageTargets("[link](/out/a.png) ![img](/out/a.png)"),
+    ).toEqual(["/out/a.png"]);
+    expect(collectImageTargets("no images here")).toEqual([]);
   });
 });

@@ -18,6 +18,11 @@
  * Anything unrecognized degrades to its literal source text: a stray `*` on
  * the issue is better than a mangled sentence, and far better than a comment
  * Jira refuses.
+ *
+ * Images are the one thing the converter cannot resolve alone: an embedded
+ * image is a `media` node addressing an upload, so the caller uploads first
+ * (`collectImageTargets` says what to) and passes the result back in as
+ * `options.media`. Unresolved targets stay links, exactly as before.
  */
 
 export interface AdfMark {
@@ -39,6 +44,15 @@ export interface AdfDoc {
   content: AdfNode[];
 }
 
+/** An uploaded attachment, addressed the way an ADF `media` node needs. */
+export interface AdfMedia {
+  /** The media-services uuid — NOT the numeric attachment id, which Jira
+   *  rejects with `ATTACHMENT_VALIDATION_ERROR`. */
+  id: string;
+  /** Defaults to the markdown image's own alt text. */
+  alt?: string;
+}
+
 export interface MarkdownToAdfOptions {
   /**
    * A paragraph prepended verbatim, never parsed. The push uses it for the
@@ -47,13 +61,45 @@ export interface MarkdownToAdfOptions {
    * would let `Ana *Nick* Souza` open emphasis.
    */
   header?: string;
+  /**
+   * Image target, exactly as written in the markdown, → the attachment it was
+   * uploaded as. A target that is absent from the map keeps today's behaviour:
+   * a link, or its alt text when the target is not a usable URL.
+   */
+  media?: ReadonlyMap<string, AdfMedia>;
+}
+
+const NO_MEDIA: ReadonlyMap<string, AdfMedia> = new Map();
+
+/**
+ * The image targets this converter would embed, in source order.
+ *
+ * Deliberately a real parse rather than a regex sweep: the caller uploads what
+ * this returns, so it must not name a target the converter would then ignore —
+ * an image inside a fenced block, or in a heading, would otherwise cost a
+ * stray attachment on the customer's issue.
+ */
+export function collectImageTargets(markdown: string): string[] {
+  const targets: string[] = [];
+  parseBlocks(
+    { lines: toLines(markdown), i: 0 },
+    {
+      media: NO_MEDIA,
+      allowMedia: true,
+      onImage: (target) => targets.push(target),
+    },
+  );
+  return targets;
 }
 
 export function markdownToAdf(
   markdown: string,
   options: MarkdownToAdfOptions = {},
 ): AdfDoc {
-  const content = parseBlocks({ lines: toLines(markdown), i: 0 });
+  const content = parseBlocks(
+    { lines: toLines(markdown), i: 0 },
+    { media: options.media ?? NO_MEDIA, allowMedia: true },
+  );
   if (options.header) content.unshift(textParagraph(options.header));
   return {
     type: "doc",
@@ -85,6 +131,22 @@ interface Cursor {
   i: number;
 }
 
+interface Ctx {
+  media: ReadonlyMap<string, AdfMedia>;
+  /**
+   * `mediaSingle` is a block node, so only a paragraph-bearing context can
+   * emit one. A heading or a table cell is inline-only and keeps the link —
+   * and reports nothing to `onImage`, so nothing is uploaded for it.
+   */
+  allowMedia: boolean;
+  onImage?: (target: string) => void;
+}
+
+/** Same lookup, for the inline-only contexts. */
+function inlineOnly(ctx: Ctx): Ctx {
+  return { ...ctx, allowMedia: false };
+}
+
 const HEADING_RE = /^ {0,3}(#{1,6})(?:[ \t]+(.*))?$/;
 const FENCE_RE = /^ {0,3}(`{3,}|~{3,})[ \t]*([^`\s]*)/;
 const RULE_RE = /^ {0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/;
@@ -92,7 +154,7 @@ const QUOTE_RE = /^ {0,3}> ?(.*)$/;
 const BULLET_RE = /^( *)([-*+])([ \t]+)(.*)$/;
 const ORDERED_RE = /^( *)(\d{1,9})([.)])([ \t]+)(.*)$/;
 
-function parseBlocks(cursor: Cursor): AdfNode[] {
+function parseBlocks(cursor: Cursor, ctx: Ctx): AdfNode[] {
   const blocks: AdfNode[] = [];
   while (cursor.i < cursor.lines.length) {
     const line = cursor.lines[cursor.i] ?? "";
@@ -117,25 +179,26 @@ function parseBlocks(cursor: Cursor): AdfNode[] {
       blocks.push({
         type: "heading",
         attrs: { level: (heading[1] ?? "#").length },
-        content: inlineNodes(heading[2]?.trim() ?? ""),
+        content: inlineNodes(heading[2]?.trim() ?? "", inlineOnly(ctx)),
       });
       continue;
     }
     if (QUOTE_RE.test(line)) {
-      blocks.push(parseQuote(cursor));
+      blocks.push(parseQuote(cursor, ctx));
       continue;
     }
     const item = matchListItem(line);
     if (item) {
-      blocks.push(parseList(cursor, item));
+      blocks.push(parseList(cursor, item, ctx));
       continue;
     }
-    const table = parseTable(cursor);
+    const table = parseTable(cursor, ctx);
     if (table) {
       blocks.push(table);
       continue;
     }
-    blocks.push(parseParagraph(cursor));
+    // A paragraph can yield several blocks: a lifted image splits it.
+    blocks.push(...parseParagraph(cursor, ctx));
   }
   return blocks;
 }
@@ -190,7 +253,7 @@ function sanitizeLanguage(info: string): string {
     .slice(0, 20);
 }
 
-function parseQuote(cursor: Cursor): AdfNode {
+function parseQuote(cursor: Cursor, ctx: Ctx): AdfNode {
   const inner: string[] = [];
   while (cursor.i < cursor.lines.length) {
     const match = QUOTE_RE.exec(cursor.lines[cursor.i] ?? "");
@@ -200,7 +263,7 @@ function parseQuote(cursor: Cursor): AdfNode {
   }
   return {
     type: "blockquote",
-    content: restrict(parseBlocks({ lines: inner, i: 0 }), QUOTE_CONTENT),
+    content: restrict(parseBlocks({ lines: inner, i: 0 }, ctx), QUOTE_CONTENT),
   };
 }
 
@@ -248,7 +311,7 @@ function matchListItem(line: string): ListMarker | null {
  * re-parsed as blocks — so a nested list, a fenced block or a second paragraph
  * inside an item all fall out of the same rule instead of needing their own.
  */
-function parseList(cursor: Cursor, first: ListMarker): AdfNode {
+function parseList(cursor: Cursor, first: ListMarker, ctx: Ctx): AdfNode {
   const items: AdfNode[] = [];
   let marker: ListMarker | null = first;
   while (marker) {
@@ -271,7 +334,7 @@ function parseList(cursor: Cursor, first: ListMarker): AdfNode {
     }
     items.push({
       type: "listItem",
-      content: listItemContent(parseBlocks({ lines: itemLines, i: 0 })),
+      content: listItemContent(parseBlocks({ lines: itemLines, i: 0 }, ctx)),
     });
     const next = matchListItem(cursor.lines[cursor.i] ?? "");
     // A dedent, or a switch between bullets and numbers, ends this list.
@@ -295,7 +358,11 @@ const QUOTE_CONTENT = new Set([
   "orderedList",
   "codeBlock",
 ]);
-const LIST_ITEM_CONTENT = QUOTE_CONTENT;
+/** ADF allows `mediaSingle` in a listItem. Not added to QUOTE_CONTENT on
+ *  purpose: whether a blockquote takes one is less certain, and a rejected
+ *  document costs the whole comment's formatting, while restricting it here
+ *  costs one inline image inside a quote. */
+const LIST_ITEM_CONTENT = new Set([...QUOTE_CONTENT, "mediaSingle"]);
 
 function listItemContent(blocks: AdfNode[]): AdfNode[] {
   const content = restrict(blocks, LIST_ITEM_CONTENT);
@@ -329,6 +396,11 @@ function restrict(blocks: AdfNode[], allowed: ReadonlySet<string>): AdfNode[] {
       continue;
     }
     if (block.type === "rule") continue;
+    if (block.type === "mediaSingle") {
+      const alt = mediaAlt(block);
+      if (alt) out.push(textParagraph(alt));
+      continue;
+    }
     const flattened = flatten(block);
     if (flattened) out.push(flattened);
   }
@@ -351,7 +423,7 @@ const DELIMITER_CELL_RE = /^:?-+:?$/;
 
 /** A GFM table: a pipe row, a delimiter row of matching width, then rows. The
  *  leading pipe is required — `a | b` in prose is not a table. */
-function parseTable(cursor: Cursor): AdfNode | null {
+function parseTable(cursor: Cursor, ctx: Ctx): AdfNode | null {
   const header = splitRow(cursor.lines[cursor.i] ?? "");
   if (!header) return null;
   const delimiter = splitRow(cursor.lines[cursor.i + 1] ?? "");
@@ -363,11 +435,11 @@ function parseTable(cursor: Cursor): AdfNode | null {
     return null;
   }
   cursor.i += 2;
-  const rows: AdfNode[] = [tableRow(header, "tableHeader", header.length)];
+  const rows: AdfNode[] = [tableRow(header, "tableHeader", header.length, ctx)];
   while (cursor.i < cursor.lines.length) {
     const cells = splitRow(cursor.lines[cursor.i] ?? "");
     if (!cells) break;
-    rows.push(tableRow(cells, "tableCell", header.length));
+    rows.push(tableRow(cells, "tableCell", header.length, ctx));
     cursor.i++;
   }
   return {
@@ -402,13 +474,18 @@ function splitRow(line: string): string[] | null {
 
 /** Rows are padded and truncated to the header's width: ADF accepts a ragged
  *  table, but Jira's own editor then treats it as broken. */
-function tableRow(cells: string[], cellType: string, width: number): AdfNode {
+function tableRow(
+  cells: string[],
+  cellType: string,
+  width: number,
+  ctx: Ctx,
+): AdfNode {
   return {
     type: "tableRow",
     content: Array.from({ length: width }, (_unused, column) => ({
       type: cellType,
       attrs: {},
-      content: [paragraph(inlineNodes(cells[column] ?? ""))],
+      content: [paragraph(inlineNodes(cells[column] ?? "", inlineOnly(ctx)))],
     })),
   };
 }
@@ -417,7 +494,7 @@ function paragraph(content: AdfNode[]): AdfNode {
   return { type: "paragraph", content };
 }
 
-function parseParagraph(cursor: Cursor): AdfNode {
+function parseParagraph(cursor: Cursor, ctx: Ctx): AdfNode[] {
   const lines: string[] = [];
   while (cursor.i < cursor.lines.length) {
     const line = cursor.lines[cursor.i] ?? "";
@@ -428,7 +505,33 @@ function parseParagraph(cursor: Cursor): AdfNode {
     lines.push(lines.length === 0 ? line : line.trimStart());
     cursor.i++;
   }
-  return paragraph(inlineNodes(joinLines(lines)));
+  return liftMedia(inlineNodes(joinLines(lines), ctx));
+}
+
+/**
+ * `mediaSingle` is a block node, so an image written mid-sentence has to be
+ * lifted out of its paragraph, splitting the text around it. A paragraph left
+ * holding nothing but line breaks is dropped rather than emitted empty.
+ */
+function liftMedia(nodes: AdfNode[]): AdfNode[] {
+  const blocks: AdfNode[] = [];
+  let inline: AdfNode[] = [];
+  const flush = () => {
+    while (inline[0]?.type === "hardBreak") inline.shift();
+    while (inline.at(-1)?.type === "hardBreak") inline.pop();
+    if (inline.length > 0) blocks.push(paragraph(inline));
+    inline = [];
+  };
+  for (const node of nodes) {
+    if (node.type === "mediaSingle") {
+      flush();
+      blocks.push(node);
+      continue;
+    }
+    inline.push(node);
+  }
+  flush();
+  return blocks.length > 0 ? blocks : [paragraph([])];
 }
 
 /**
@@ -464,7 +567,11 @@ const STRIKE: AdfMark = { type: "strike" };
  * recursion (a link label can be bold), and an unmatched delimiter falls
  * through as the literal character it is.
  */
-function inlineNodes(source: string, marks: AdfMark[] = []): AdfNode[] {
+function inlineNodes(
+  source: string,
+  ctx: Ctx,
+  marks: AdfMark[] = [],
+): AdfNode[] {
   const out: AdfNode[] = [];
   let buffer = "";
   const flush = () => {
@@ -501,7 +608,7 @@ function inlineNodes(source: string, marks: AdfMark[] = []): AdfNode[] {
       const image = matchLink(source, i + 1);
       if (image) {
         flush();
-        out.push(...imageNodes(image, marks));
+        out.push(...imageNodes(image, marks, ctx));
         i = image.next;
         continue;
       }
@@ -509,7 +616,7 @@ function inlineNodes(source: string, marks: AdfMark[] = []): AdfNode[] {
       const link = matchLink(source, i);
       if (link) {
         flush();
-        out.push(...linkNodes(link, marks));
+        out.push(...linkNodes(link, marks, ctx));
         i = link.next;
         continue;
       }
@@ -517,12 +624,12 @@ function inlineNodes(source: string, marks: AdfMark[] = []): AdfNode[] {
       const auto = matchAutolink(source, i);
       if (auto) {
         flush();
-        out.push(...linkNodes(auto, marks));
+        out.push(...linkNodes(auto, marks, ctx));
         i = auto.next;
         continue;
       }
     } else if (char === "*" || char === "_" || char === "~") {
-      const emphasized = matchEmphasis(source, i, marks);
+      const emphasized = matchEmphasis(source, i, marks, ctx);
       if (emphasized) {
         flush();
         out.push(...emphasized.nodes);
@@ -666,27 +773,63 @@ function matchAutolink(source: string, at: number): LinkMatch | null {
 
 /** With no href we can trust — a Studio-relative path, a `javascript:` URL —
  *  the label stays plain text: ADF rejects a link mark without a real href. */
-function linkNodes(link: LinkMatch, marks: AdfMark[]): AdfNode[] {
+function linkNodes(link: LinkMatch, marks: AdfMark[], ctx: Ctx): AdfNode[] {
   const href = safeHref(link.href);
   const label = link.label.trim() === "" ? href : link.label;
   if (!label) return [];
-  if (!href || hasLink(marks)) return inlineNodes(label, marks);
-  return inlineNodes(label, withMark(marks, { type: "link", attrs: { href } }));
+  if (!href || hasLink(marks)) return inlineNodes(label, ctx, marks);
+  return inlineNodes(
+    label,
+    ctx,
+    withMark(marks, { type: "link", attrs: { href } }),
+  );
 }
 
 /**
- * An image degrades to its link, until this converter learns to emit `media`.
+ * An image the caller uploaded becomes a `media` node; anything else degrades
+ * to its link, or to its alt text when the target is not a usable URL.
  *
- * Embedding needs a `media` node whose `attrs.id` is a media-services UUID —
- * a different id space from the numeric id `POST /issue/{id}/attachments`
- * returns. The UUID is reachable: `GET /attachment/content/{id}` answers 303 to
- * `https://api.media.atlassian.com/file/<uuid>/binary`, and that uuid with
- * `collection: ""` embeds and renders. `attrs.id` must be that uuid, and
- * `collection` must be present — the numeric id fails
- * `ATTACHMENT_VALIDATION_ERROR`, and omitting `collection` fails `INVALID_INPUT`.
+ * `attrs.id` is the media-services uuid, a different id space from the numeric
+ * id `POST /issue/{id}/attachments` returns — see `JiraClient.addAttachment`,
+ * which resolves one to the other. Both `type: "file"` and `collection` are
+ * load-bearing: the numeric id fails `ATTACHMENT_VALIDATION_ERROR`, and
+ * omitting `collection` fails `INVALID_INPUT`, so `""` is spelled out.
  */
-function imageNodes(image: LinkMatch, marks: AdfMark[]): AdfNode[] {
-  return linkNodes(image, marks);
+function imageNodes(image: LinkMatch, marks: AdfMark[], ctx: Ctx): AdfNode[] {
+  if (ctx.allowMedia) {
+    ctx.onImage?.(image.href);
+    const media = ctx.media.get(image.href);
+    if (media) {
+      const alt = media.alt ?? image.label.trim();
+      return [
+        {
+          type: "mediaSingle",
+          attrs: { layout: "align-start" },
+          content: [
+            {
+              type: "media",
+              attrs: {
+                type: "file",
+                id: media.id,
+                collection: "",
+                ...(alt === "" ? {} : { alt }),
+              },
+            },
+          ],
+        },
+      ];
+    }
+  }
+  return linkNodes(image, marks, ctx);
+}
+
+/** The alt text of a `mediaSingle`, for a context that cannot hold one. */
+function mediaAlt(block: AdfNode): string {
+  for (const child of block.content ?? []) {
+    const alt = child.attrs?.alt;
+    if (typeof alt === "string" && alt !== "") return alt;
+  }
+  return "";
 }
 
 function safeHref(raw: string): string | null {
@@ -751,6 +894,7 @@ function matchEmphasis(
   source: string,
   at: number,
   marks: AdfMark[],
+  ctx: Ctx,
 ): { nodes: AdfNode[]; next: number } | null {
   const char = source[at] ?? "";
   const run = runLength(source, at, char);
@@ -759,7 +903,11 @@ function matchEmphasis(
     const close = findDelimiter(source, at + 2, "~", 2);
     if (close === -1) return null;
     return {
-      nodes: inlineNodes(source.slice(at + 2, close), withMark(marks, STRIKE)),
+      nodes: inlineNodes(
+        source.slice(at + 2, close),
+        ctx,
+        withMark(marks, STRIKE),
+      ),
       next: close + 2,
     };
   }
@@ -774,7 +922,7 @@ function matchEmphasis(
   let inner = marks;
   for (const mark of added) inner = withMark(inner, mark);
   return {
-    nodes: inlineNodes(source.slice(at + length, close), inner),
+    nodes: inlineNodes(source.slice(at + length, close), ctx, inner),
     next: close + length,
   };
 }

@@ -8,7 +8,7 @@
  */
 
 import { retry } from "@decocms/shared/std";
-import { markdownToAdf } from "./markdown-adf";
+import { type AdfMedia, markdownToAdf } from "./markdown-adf";
 import {
   collectWikiMentionAccountIds,
   escapeMentionName,
@@ -17,6 +17,10 @@ import {
 } from "./wiki-markdown";
 
 const REQUEST_TIMEOUT_MS = 15_000;
+
+/** Attachment uploads carry screenshot bytes, so they get their own budget —
+ *  a QA run's PNG is orders of magnitude larger than any JSON call here. */
+const UPLOAD_TIMEOUT_MS = 60_000;
 
 /** Account ids per `/user/bulk` request. Jira allows 200, but each id spends
  *  ~56 URL bytes, so 200 would build a ~11KB request line — past the 4KB cap
@@ -407,7 +411,10 @@ export class JiraClient {
   async addComment(
     issueId: string,
     markdown: string,
-    { header }: { header?: string } = {},
+    {
+      header,
+      media,
+    }: { header?: string; media?: ReadonlyMap<string, AdfMedia> } = {},
   ): Promise<{ id: string }> {
     const path = `/rest/api/3/issue/${encodeURIComponent(issueId)}/comment`;
     const post = (body: unknown) =>
@@ -417,11 +424,113 @@ export class JiraClient {
         { idempotent: false },
       );
     try {
-      return await post(markdownToAdf(markdown, { header }));
+      return await post(markdownToAdf(markdown, { header, media }));
     } catch (err) {
       if (!(err instanceof JiraRequestError) || err.status !== 400) throw err;
       console.warn(`[jira] comment rejected as ADF, posting flat: ${err}`);
       return post(textToAdf(header ? `${header}\n${markdown}` : markdown));
+    }
+  }
+
+  /** Attachments already on the issue — the dedup check for a re-push. */
+  async listAttachments(
+    issueId: string,
+  ): Promise<Array<{ id: string; filename: string; size: number }>> {
+    const issue = await this.request<{
+      fields?: {
+        attachment?: Array<{ id: string; filename: string; size: number }>;
+      };
+    }>(`/rest/api/3/issue/${encodeURIComponent(issueId)}?fields=attachment`);
+    return issue.fields?.attachment ?? [];
+  }
+
+  /**
+   * Upload a file to the issue and return what an ADF `media` node needs.
+   *
+   * Two calls, because Jira splits the ids: the upload answers with a numeric
+   * attachment id, while `media.attrs.id` is a media-services uuid that no
+   * response body carries. `GET /attachment/content/{id}` answers 303 to
+   * `https://api.media.atlassian.com/file/<uuid>/binary`, which is where the
+   * uuid comes from.
+   *
+   * Not retried: Jira has no idempotency key for an upload either, so a
+   * resubmit after a lost response duplicates the file on the customer's issue.
+   * `mediaId` is null when the redirect does not yield a uuid — the caller then
+   * keeps the image as a link instead of failing the comment.
+   */
+  async addAttachment(
+    issueId: string,
+    file: { name: string; bytes: Uint8Array; contentType?: string },
+  ): Promise<{ attachmentId: string; mediaId: string | null }> {
+    const form = new FormData();
+    form.append(
+      "file",
+      // Copied: `Blob` needs an ArrayBuffer-backed view; org-fs returns wider.
+      new Blob([new Uint8Array(file.bytes)], {
+        type: file.contentType ?? "application/octet-stream",
+      }),
+      file.name,
+    );
+    const response = await fetch(
+      `${this.baseUrl}/rest/api/3/issue/${encodeURIComponent(issueId)}/attachments`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: this.authHeader,
+          Accept: "application/json",
+          // Jira refuses an unbrowsered multipart POST without this.
+          "X-Atlassian-Token": "no-check",
+        },
+        body: form,
+        signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
+      },
+    );
+    const body = await response.text();
+    if (!response.ok) {
+      throw new JiraRequestError(
+        `Jira attachment upload failed (${response.status}): ${body.slice(0, 300)}`,
+        response.status,
+      );
+    }
+    const uploaded = JSON.parse(body) as Array<{ id?: string }>;
+    const attachmentId = uploaded[0]?.id;
+    if (!attachmentId) {
+      throw new Error("Jira attachment upload returned no id");
+    }
+    return { attachmentId, mediaId: await this.resolveMediaId(attachmentId) };
+  }
+
+  /**
+   * Numeric attachment id → media-services uuid, read off the content
+   * redirect. `redirect: "manual"` exposes the `location` header on Bun and
+   * Node; the spec allows hiding it, so a followed HEAD (whose final `url` is
+   * the same media URL, and which transfers no body) is the fallback.
+   */
+  async resolveMediaId(attachmentId: string): Promise<string | null> {
+    const url = `${this.baseUrl}/rest/api/3/attachment/content/${encodeURIComponent(attachmentId)}`;
+    const headers = { Authorization: this.authHeader };
+    const uuidFrom = (candidate: string | null | undefined) =>
+      candidate?.match(/\/file\/([0-9a-f-]{36})\//i)?.[1] ?? null;
+    try {
+      const redirect = await fetch(url, {
+        headers,
+        redirect: "manual",
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+      const located = uuidFrom(redirect.headers.get("location"));
+      if (located) return located;
+      const followed = await fetch(url, {
+        method: "HEAD",
+        headers,
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+      return uuidFrom(followed.url);
+    } catch (err) {
+      console.warn(
+        `[jira] could not resolve the media id for attachment ${attachmentId}:`,
+        err instanceof Error ? err.message : err,
+      );
+      return null;
     }
   }
 }
