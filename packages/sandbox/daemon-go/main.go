@@ -979,10 +979,10 @@ func main() {
 		// linked where the SDK scans, this thread's Claude Code session restored,
 		// and `.deco/tools/` refreshed from the run's MCP endpoint.
 		//
-		// `WaitReady` BLOCKS (bounded) rather than degrading to no link. A run
+		// `WaitHomeReady` BLOCKS (bounded) rather than degrading to no link. A run
 		// that starts before its skills and its transcript are there does not
 		// fail — it answers wrongly and silently, which is the worse outcome. See
-		// `WaitReady` for why this one place waits where the rest fail open.
+		// `WaitHomeReady` for why this one place waits where the rest fail open.
 		BeforeRun: func(info dispatch.RunInfo) {
 			// Two different waits, in dependency order. This one is for the org
 			// HOME volume to be attached at all: it is what the thread's saved

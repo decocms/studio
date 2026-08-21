@@ -68,7 +68,11 @@ type Links struct {
 	lastOutputThread string
 	skillsLinked     bool
 	readySpent       bool
-	publicSkillsRun  bool
+	// Held for the whole flight of a Claude Code session transfer; see
+	// `withinSessionBudget`. Separate from `mu`: a transfer is slow org-fs I/O
+	// and must not block a symlink repoint (or the fs routes waiting on one).
+	sessionMu       sync.Mutex
+	publicSkillsRun bool
 	// Closed when the in-flight skill-link sync finishes; nil before the first
 	// one starts. `WaitSkillLinks` is what turns the async sync back into a
 	// barrier for the run that needs it.
@@ -179,8 +183,15 @@ func (l *Links) WaitHomeReady(threadId string) bool {
 	waited := !l.readyBudgetSpent()
 	started := time.Now()
 	for attempt := 1; ; attempt++ {
-		// Does the linking, so a mount that appears mid-wait is picked up.
-		l.RepointForRun(threadId)
+		// Gated on the mount, so the poll cannot become the expensive thing it is
+		// waiting for: a repoint probes the skill set for readability, spending up
+		// to `skillReadBudget` and leaking a goroutine parked in the mount each
+		// time it does not answer. 180 of those is a self-inflicted outage. Once
+		// the volume is there, repoint — it does the linking, so a mount that
+		// appears mid-wait is picked up.
+		if l.volumeMounted("home") {
+			l.RepointForRun(threadId)
+		}
 		if l.skillsReady() {
 			if attempt > 1 {
 				slog.Info("org-fs ready", "thread", threadId,

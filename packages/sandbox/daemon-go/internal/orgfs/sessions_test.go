@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -200,5 +201,125 @@ func TestSessionRejectsATraversingThreadId(t *testing.T) {
 	}
 	if _, ok := l.sessionStore("../escape"); ok {
 		t.Fatal("resolved a store for a traversing thread id")
+	}
+}
+
+// A FIFO nobody writes to stands in for the failure this whole file is shaped
+// around: an org-fs read that never answers. Unbounded, it parks the dispatch
+// before its first byte and Studio declares a healthy pod dead.
+func wedged(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func mustReturn(t *testing.T, what string, fn func()) {
+	t.Helper()
+	prev := sessionIOBudget
+	sessionIOBudget = 2 * time.Second
+	t.Cleanup(func() { sessionIOBudget = prev })
+	done := make(chan struct{})
+	go func() { fn(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(20 * time.Second):
+		t.Fatalf("%s never returned: unbounded org-fs I/O on the dispatch path", what)
+	}
+}
+
+func TestRestoreGivesUpOnAWedgedIdRead(t *testing.T) {
+	l, _ := sessionFixture(t)
+	store := filepath.Join(l.AppRoot, "org", "home", sessionsDirName, "thread1")
+	wedged(t, filepath.Join(store, sessionIdName))
+	mustReturn(t, "RestoreSession", func() { l.RestoreSession("thread1") })
+}
+
+func TestSaveGivesUpOnAWedgedStore(t *testing.T) {
+	l, local := sessionFixture(t)
+	writeLocalSession(t, local, "thread1", "sess-abc", `{"turn":1}`)
+	store := filepath.Join(l.AppRoot, "org", "home", sessionsDirName, "thread1")
+	// The staging dir is a FIFO, so the copy's first MkdirAll/open blocks.
+	wedged(t, filepath.Join(store, projectsStaging))
+	mustReturn(t, "SaveSession", func() { l.SaveSession("thread1") })
+}
+
+// The invariant the store's id is supposed to carry: it names a transcript that
+// exists. `copyTree` returns nil for a tree that listed empty — which is what a
+// backend answering a readdir it cannot serve looks like — so success has to be
+// verified, not assumed. An id with nothing behind it does not start fresh, it
+// FAILS the run ("No conversation found with session ID").
+func TestRestoreWritesNoIdWhenTheTranscriptDidNotLand(t *testing.T) {
+	l, local := sessionFixture(t)
+	store := filepath.Join(l.AppRoot, "org", "home", sessionsDirName, "thread1")
+	if err := os.MkdirAll(filepath.Join(store, projectsSubdir, "-app-repo"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(store, sessionIdName), []byte("sess-ghost"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	l.RestoreSession("thread1")
+	if id, err := os.ReadFile(filepath.Join(local, localSessionDir, "thread1")); err == nil {
+		t.Fatalf("restored id %q with no transcript behind it", id)
+	}
+}
+
+// One pod serves every thread on its `(user, ref)` key, and they share one
+// `projects/` tree. Restoring thread B must not overwrite the transcript thread
+// A is live on.
+func TestRestoreDoesNotOverwriteAnotherThreadsTranscript(t *testing.T) {
+	l, local := sessionFixture(t)
+	// Thread B's saved session, stored while its pod also held an older A.
+	writeLocalSession(t, local, "threadB", "sess-b", `{"b":1}`)
+	writeLocalSession(t, local, "threadA", "sess-a", `{"a":1}`)
+	l.SaveSession("threadB")
+
+	// A newer pod: A has run further, B has never run here.
+	if err := os.WriteFile(
+		filepath.Join(local, "projects", "-app-repo", "sess-a.jsonl"),
+		[]byte(`{"a":1}{"a":2}`), 0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(local, localSessionDir, "threadB")); err != nil {
+		t.Fatal(err)
+	}
+	l.RestoreSession("threadB")
+
+	if body, _ := os.ReadFile(filepath.Join(local, "projects", "-app-repo", "sess-a.jsonl")); string(body) != `{"a":1}{"a":2}` {
+		t.Fatalf("thread A's live transcript was rewound: %q", body)
+	}
+	if _, err := os.ReadFile(filepath.Join(local, localSessionDir, "threadB")); err != nil {
+		t.Fatalf("thread B was not restored: %v", err)
+	}
+}
+
+// A wedged read costs the session it was reading and nothing else. Serializing
+// flights behind a lock looked safer and was strictly worse: the abandoned
+// goroutine never releases it, so every later session on the pod was skipped —
+// caught in a live pod, where a perfectly good saved session stopped restoring
+// after an unrelated thread's mount hung.
+func TestAWedgedTransferDoesNotPoisonTheNextOne(t *testing.T) {
+	l, local := sessionFixture(t)
+	prev := sessionIOBudget
+	sessionIOBudget = 2 * time.Second
+	t.Cleanup(func() { sessionIOBudget = prev })
+
+	sessions := filepath.Join(l.AppRoot, "org", "home", sessionsDirName)
+	wedged(t, filepath.Join(sessions, "wedged-thread", sessionIdName))
+	l.RestoreSession("wedged-thread") // abandoned at the budget, goroutine parked
+
+	writeLocalSession(t, local, "good-thread", "sess-good", `{"turn":1}`)
+	l.SaveSession("good-thread")
+	next := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", next)
+	l.RestoreSession("good-thread")
+
+	id, err := os.ReadFile(filepath.Join(next, localSessionDir, "good-thread"))
+	if err != nil || string(id) != "sess-good" {
+		t.Fatalf("a healthy session was collateral damage: id=%q err=%v", id, err)
 	}
 }

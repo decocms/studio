@@ -392,6 +392,21 @@ func (reg *Registry) runHarness(
 ) {
 	defer reg.release(runId, entry)
 
+	// Headers and the keepalive FIRST — before `BeforeRun`, not after it.
+	//
+	// Studio calls the pod gone after `DAEMON_SILENCE_TIMEOUT_MS` (90s) without
+	// a byte, and `BeforeRun` legitimately waits on org-fs for up to its own
+	// ~90s budget plus a session copy. Preparing the workspace before opening
+	// the body spent that budget as silence on the wire, so a sandbox whose home
+	// volume was late lost its first turn to a "the pod died" verdict and had
+	// the turn continued elsewhere — on a pod that was fine. The keepalive is
+	// what makes waiting for the org's content safe to do at all.
+	writeResultHeaders(w)
+	body := newBodyWriter(w)
+	startedAt := time.Now()
+	stopKeepalive := startKeepalive(ctx, body, harnessId, runId)
+	defer stopKeepalive()
+
 	// Per-run workspace state, before the harness can touch the workspace. Here
 	// rather than in each caller so the offloaded-messages path gets it too.
 	if deps.BeforeRun != nil {
@@ -405,7 +420,7 @@ func (reg *Registry) runHarness(
 	}
 
 	if len(deps.HarnessRunnerCmd) == 0 {
-		writeResult(w, terminalFrame("unknown_harness",
+		body.write(terminalFrame("unknown_harness",
 			"no harness runner configured (HARNESS_RUNNER_CMD unset)"))
 		return
 	}
@@ -414,14 +429,6 @@ func (reg *Registry) runHarness(
 	if deps.RunEnv != nil {
 		runEnv = deps.RunEnv()
 	}
-
-	// Headers first, then frames as the harness produces them, with a keepalive
-	// byte while it is quiet — the transport between here and Studio hangs up on
-	// an idle body long before a real task finishes.
-	writeResultHeaders(w)
-	body := newBodyWriter(w)
-	startedAt := time.Now()
-	stopKeepalive := startKeepalive(ctx, body, harnessId, runId)
 
 	// One line per frame: without it a streaming run and a buffering one look
 	// identical in the pod log (both are silence until "dispatch done"), which is
@@ -568,11 +575,6 @@ func terminalFrame(code, message string) []byte {
 }
 
 // writeResult answers a dispatch that never started the harness.
-func writeResult(w http.ResponseWriter, body []byte) {
-	writeResultHeaders(w)
-	w.Write(body)
-}
-
 var runsPathRe = regexp.MustCompile(`/runs/([^/]+)$`)
 
 func (reg *Registry) HandleCancel(w http.ResponseWriter, r *http.Request, tokenFn func() string) {

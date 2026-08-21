@@ -23,6 +23,7 @@ package orgfs
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -77,6 +78,112 @@ func sessionBudget() *atomic.Int64 {
 	return budget
 }
 
+// How long either direction of a session transfer may take before the dispatch
+// stops waiting for it. Every path below touches org-fs, a network filesystem
+// whose reads BLOCK INDEFINITELY when the backend is wedged — the hazard
+// `readableWithin` exists for in links.go, and the reason this file copies
+// instead of symlinking. Copying only downgrades a wedged mount from "the run
+// produces nothing" to "a slow dispatch" if the copy has a deadline; without
+// one, the dispatch never writes its first byte and Studio declares the pod
+// gone (`DAEMON_SILENCE_TIMEOUT_MS`) on a pod that is perfectly alive.
+// var, not const, only so the wedged-mount tests do not each sit here for the
+// full budget proving that they stop.
+var sessionIOBudget = 30 * time.Second
+
+// withinSessionBudget runs one direction of a transfer under that deadline.
+//
+// A timeout LEAKS its goroutine, deliberately and on the same bargain as
+// `readableWithin`: the blocked syscall is quarantined here, where it costs a
+// session, rather than in the dispatch, where it costs the run.
+//
+// Deliberately NOT serialized behind a lock. A leaked flight never returns, so a
+// lock it holds is never released — one wedged read would then skip every
+// session on the pod for as long as the pod lives, turning a per-turn
+// degradation into a permanent one (measured: a real saved session stopped
+// restoring after an unrelated wedged read). Two flights overlapping is instead
+// made harmless where it would hurt: restore only fills gaps (`copyMissing`),
+// and each save stages into its own directory.
+func withinSessionBudget(op, threadId string, fn func()) {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		fn()
+	}()
+	select {
+	case <-done:
+	case <-time.After(sessionIOBudget):
+		slog.Warn("claude session "+op+" abandoned: org-fs did not answer within budget",
+			"thread", threadId, "budget", sessionIOBudget)
+	}
+}
+
+// copyMissing copies src into dst like `copyTree`, but never overwrites a file
+// that is already there.
+//
+// A pod is keyed by `(user, ref)`, not by thread, so two threads on one agent
+// branch share one — and `projects/` is a single tree holding both their
+// transcripts. Overwriting on restore would hand thread B's older snapshot to
+// thread A's LIVE session and rewind it by a turn, the same corruption the
+// "a live local session wins" check prevents for the thread being restored.
+// Filling only the gaps gets B its transcript and leaves A's alone.
+func copyMissing(src, dst string, budget *atomic.Int64) error {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		return err
+	}
+	for _, e := range entries {
+		from, to := filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())
+		if e.IsDir() {
+			if err := copyMissing(from, to, budget); err != nil {
+				return err
+			}
+			continue
+		}
+		if !e.Type().IsRegular() {
+			continue
+		}
+		if _, err := os.Lstat(to); err == nil {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			return err
+		}
+		if budget.Add(-info.Size()) < 0 {
+			budget.Add(info.Size())
+			return fmt.Errorf("%w (at %s)", errSkillBudget, e.Name())
+		}
+		if err := copyFile(from, to, info.Mode().Perm()); err != nil {
+			budget.Add(info.Size())
+			return err
+		}
+	}
+	return nil
+}
+
+// transcriptPresent reports whether the transcript the id names is on local
+// disk. The SDK files it as `projects/<cwd-slug>/<sessionId>.jsonl` and the slug
+// is its own business, so this looks for the leaf by name rather than assuming
+// where it sits.
+func transcriptPresent(localProjects, sessionId string) bool {
+	want := sessionId + ".jsonl"
+	found := false
+	filepath.WalkDir(localProjects, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if !d.IsDir() && d.Name() == want {
+			found = true
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	return found
+}
+
 // ClaudeConfigDir is the pod's Claude Code config dir — where the SDK keeps its
 // transcripts and the harness keeps its session-id pointer.
 func ClaudeConfigDir() string {
@@ -112,6 +219,10 @@ func (l *Links) sessionStore(threadId string) (string, bool) {
 // just ran this thread has the live session, and overwriting it with an older
 // snapshot would rewind the conversation by a turn.
 func (l *Links) RestoreSession(threadId string) {
+	withinSessionBudget("restore", threadId, func() { l.restoreSession(threadId) })
+}
+
+func (l *Links) restoreSession(threadId string) {
 	store, ok := l.sessionStore(threadId)
 	if !ok {
 		return
@@ -148,10 +259,21 @@ func (l *Links) RestoreSession(threadId string) {
 			"thread", threadId, "session", id)
 		return
 	}
-	budget := sessionBudget()
-	if err := copyTree(src, filepath.Join(local, projectsSubdir), budget); err != nil {
+	localProjects := filepath.Join(local, projectsSubdir)
+	if err := copyMissing(src, localProjects, sessionBudget()); err != nil {
 		slog.Warn("claude session restore: transcript copy failed",
 			"thread", threadId, "err", err)
+		return
+	}
+	// "The copy did not error" is NOT "the transcript is there": `copyTree`
+	// returns nil for a tree that listed empty, which org-fs does whenever the
+	// backend answers a readdir it cannot yet serve. Writing the id then hands
+	// the harness a session the SDK never had, and THAT fails the whole run
+	// ("No conversation found with session ID") — strictly worse than the fresh
+	// start we are trying to improve on. So verify the named transcript.
+	if !transcriptPresent(localProjects, id) {
+		slog.Warn("claude session restore: transcript did not land; starting fresh",
+			"thread", threadId, "session", id)
 		return
 	}
 
@@ -174,6 +296,10 @@ func (l *Links) RestoreSession(threadId string) {
 // is stored. A run that died before the harness wrote its id would otherwise
 // take the previous turns down with it.
 func (l *Links) SaveSession(threadId string) {
+	withinSessionBudget("save", threadId, func() { l.saveSession(threadId) })
+}
+
+func (l *Links) saveSession(threadId string) {
 	store, ok := l.sessionStore(threadId)
 	if !ok {
 		return
@@ -208,8 +334,20 @@ func (l *Links) SaveSession(threadId string) {
 	// interrupted window leaves NO transcript, which `RestoreSession` already
 	// treats as "start fresh".
 	started := time.Now()
-	staging := filepath.Join(store, projectsStaging)
-	os.RemoveAll(staging)
+	if err := os.MkdirAll(store, 0o755); err != nil {
+		slog.Warn("claude session save: store dir failed", "thread", threadId, "err", err)
+		return
+	}
+	pruneStaleStaging(store)
+	// Its OWN staging dir, not a shared name. A save abandoned at the budget goes
+	// on writing where nobody looks; sharing the path would let it land its
+	// leftovers in the next save's swap and put a partial transcript behind a
+	// live id — the one outcome worse than no session at all.
+	staging, err := os.MkdirTemp(store, projectsStaging+"-")
+	if err != nil {
+		slog.Warn("claude session save: staging dir failed", "thread", threadId, "err", err)
+		return
+	}
 	defer os.RemoveAll(staging)
 	if err := copyTree(src, staging, sessionBudget()); err != nil {
 		slog.Warn("claude session save: transcript copy failed", "thread", threadId, "err", err)
@@ -232,4 +370,24 @@ func (l *Links) SaveSession(threadId string) {
 		return
 	}
 	slog.Info("claude session saved", "thread", threadId, "took", time.Since(started))
+}
+
+// pruneStaleStaging clears staging dirs left behind by abandoned saves. Anything
+// older than twice the budget cannot belong to a flight still in the air, and
+// nothing else in the store is named this way.
+func pruneStaleStaging(store string) {
+	entries, err := os.ReadDir(store)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), projectsStaging) {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil || time.Since(info.ModTime()) < 2*sessionIOBudget {
+			continue
+		}
+		os.RemoveAll(filepath.Join(store, e.Name()))
+	}
 }
