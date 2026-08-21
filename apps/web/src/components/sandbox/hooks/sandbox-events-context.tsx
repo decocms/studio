@@ -234,10 +234,10 @@ export function SandboxEventsProvider({
    * Deno/Fresh dev servers don't watch `.deco/blocks/*`, so unlike the Vite
    * runtime they never reload the preview on a Blocks save (#6430 handed that
    * refresh to the dev server). We drive the iframe reload ourselves for Deno.
-   * A ref so the SSE closure reads the latest without reconnecting.
+   * A dep of the SSE effect below; stable per project (reconnects at most once
+   * if the VM metadata resolves after mount).
    */
-  const isDenoRuntimeRef = useRef(false);
-  isDenoRuntimeRef.current =
+  const isDenoRuntime =
     useVirtualMCP(virtualMcpId)?.metadata?.runtime?.selected === "deno";
 
   const getOrCreateBuffer = (source: string) => {
@@ -486,7 +486,7 @@ export function SandboxEventsProvider({
                   queryKey: KEYS.decofile(cacheKey),
                 });
                 // Deno-only: the dev server won't refresh the preview itself.
-                if (isDenoRuntimeRef.current) {
+                if (isDenoRuntime) {
                   for (const fn of reloadHandlers.current) {
                     try {
                       fn();
@@ -648,6 +648,7 @@ export function SandboxEventsProvider({
     taskId,
     directDaemonEventsUrl,
     queryClient,
+    isDenoRuntime,
   ]);
 
   const value: SandboxEventsValue = {
