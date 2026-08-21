@@ -1143,13 +1143,48 @@ async function prepareRun(
       }
     }
 
+    // Where this dispatch's chunks continue from, and whether it is continuing
+    // anything at all.
+    //
+    // `run_acked_seq` is the highest contiguous seq published for the CURRENT
+    // attempt's fence — durable, and cleared when the fence is minted
+    // (`setRunFence`), so it is per-attempt by construction. A non-zero value
+    // therefore means one thing: a previous Studio process published this run's
+    // first N chunks and then died before finishing the turn. This dispatch is
+    // that turn's continuation.
+    //
+    // Only a sandbox-hosted harness can be in that position. Decopilot's agent
+    // loop lives in this process and dies with it, so a recovered run has nothing
+    // still executing anywhere and starts over from seq 0 — its floor is never
+    // read and never written.
+    //
+    // Read BEFORE the purge below, which consumes it: this is the only honest
+    // "am I a resume?" signal at this point in the dispatch.
+    const sandboxHosted = harnessRunsInSandbox(harnessId);
+    const resumeFromSeq = sandboxHosted
+      ? await ctx.storage.threads.getAckedSeq(mem.thread.id)
+      : 0;
+    if (resumeFromSeq > 0) {
+      console.log("[dispatch] resuming a sandbox-hosted turn", {
+        runId: mem.thread.id,
+        fromSeq: resumeFromSeq,
+      });
+    }
+
     // Purge stale buffered chunks from any PREVIOUS run on this thread — but
     // NOT on resume. A resumed run (DBOS recovery after its owner pod died) IS
     // "the previous run": purging here beheads the very chunk log its projector
     // must replay, so replay hits a StreamGapError ("missing seq 1") and the
     // recovered run is marked `failed` instead of completing. Recovery depends
-    // on the seq 1..N log surviving the pod that owned it.
-    if (!input.isResume) {
+    // on the seq 1..N log surviving the pod that owned it — and this attempt
+    // EXTENDS that log from `resumeFromSeq`, so the hole is guaranteed, not
+    // racy: the projector replays from seq 1 and meets `resumeFromSeq + 1`
+    // ("missing seq 1 (next delivered is N)", prod 2026-08-21).
+    //
+    // `resumeFromSeq`, not `isResume`: no caller has ever set that flag, and a
+    // DBOS step re-executed after its pod died is handed the ORIGINAL input, so
+    // no caller can. The durable per-fence floor is the fact on the ground.
+    if (resumeFromSeq === 0) {
       streamBuffer?.purge(mem.thread.id);
     }
 
@@ -1349,31 +1384,6 @@ async function prepareRun(
         PREPARE_RUN_STATUS_STAGES[2],
       );
     }
-    // Where this dispatch's chunks continue from, and whether it is continuing
-    // anything at all.
-    //
-    // `run_acked_seq` is the highest contiguous seq published for the CURRENT
-    // attempt's fence — durable, and cleared when the fence is minted
-    // (`setRunFence`), so it is per-attempt by construction. A non-zero value
-    // therefore means one thing: a previous Studio process published this run's
-    // first N chunks and then died before finishing the turn. This dispatch is
-    // that turn's continuation.
-    //
-    // Only a sandbox-hosted harness can be in that position. Decopilot's agent
-    // loop lives in this process and dies with it, so a recovered run has nothing
-    // still executing anywhere and starts over from seq 0 — its floor is never
-    // read and never written.
-    const sandboxHosted = harnessRunsInSandbox(harnessId);
-    const resumeFromSeq = sandboxHosted
-      ? await ctx.storage.threads.getAckedSeq(mem.thread.id)
-      : 0;
-    if (resumeFromSeq > 0) {
-      console.log("[dispatch] resuming a sandbox-hosted turn", {
-        runId: mem.thread.id,
-        fromSeq: resumeFromSeq,
-      });
-    }
-
     // The dispatching user's own Claude subscription, when they linked one and
     // it has not expired. It outranks the org's thinking-slot key for a
     // sandbox-hosted run: they asked for their plan to pay. Expired or absent
