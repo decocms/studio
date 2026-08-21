@@ -19,7 +19,7 @@
  */
 import { useMutation } from "@tanstack/react-query";
 import { Navigate, useNavigate } from "@tanstack/react-router";
-import { ArrowRight, BarChartSquare02 } from "@untitledui/icons";
+import { ArrowRight } from "@untitledui/icons";
 import { Suspense, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import {
@@ -28,11 +28,11 @@ import {
 } from "@decocms/shared/reports/site-url";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
-import { EmptyState } from "@/components/empty-state";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
 import { useCommerceDiagnostic } from "@/hooks/use-commerce-diagnostic";
+import { MiniReportPage } from "@/components/home/mini-report-page";
 import {
   COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
   getWellKnownDecopilotVirtualMCP,
@@ -80,6 +80,15 @@ export function ReportsTab() {
   );
 }
 
+/** What the diagnostic looks at. Concrete enough to be worth the wait, short
+ *  enough to scan — the report itself covers far more. */
+const CHECK_KEYS = [
+  "reports.emptyState.checkPerformance",
+  "reports.emptyState.checkSeo",
+  "reports.emptyState.checkFunnel",
+  "reports.emptyState.checkTracking",
+] as const;
+
 /** The empty state's chrome. Without `children` (the error fallback, where no
  *  self client is available) the form is replaced by the claimed store's host,
  *  so the panel still explains itself instead of rendering an error. */
@@ -93,20 +102,43 @@ function StartDiagnosticState({
   const t = useT();
   const host = siteUrlToHost(claimedSiteUrl ?? undefined);
   return (
-    <EmptyState
-      className="h-full w-full"
-      image={<BarChartSquare02 size={48} className="text-muted-foreground" />}
-      title={t("reports.emptyState.title")}
-      description={t("reports.emptyState.description")}
-      descriptionClassName="max-w-[420px]"
-      actionsClassName="w-full max-w-md flex-col items-stretch"
-      actions={
-        children ??
-        (host ? (
-          <p className="text-center text-sm text-muted-foreground">{host}</p>
-        ) : null)
-      }
-    />
+    <div className="flex min-h-full w-full flex-col items-center justify-center gap-10 p-6">
+      {/* The report you don't have yet, tilted under its own glow. */}
+      <div className="relative flex items-end justify-center pt-4">
+        <div
+          aria-hidden
+          className="absolute -bottom-6 size-56 rounded-full bg-success/10 blur-3xl"
+        />
+        <MiniReportPage className="relative h-52 w-40 -rotate-6" />
+        <MiniReportPage className="relative -ml-14 h-56 w-44 rotate-3" />
+      </div>
+
+      <div className="flex flex-col items-center gap-3 text-center">
+        <h2 className="text-2xl font-medium leading-8 text-foreground">
+          {t("reports.emptyState.title")}
+        </h2>
+        <p className="max-w-md text-base leading-6 text-muted-foreground">
+          {t("reports.emptyState.description")}
+        </p>
+      </div>
+
+      <div className="flex w-full max-w-lg flex-col items-center gap-5">
+        {children ??
+          (host ? (
+            <p className="text-sm text-muted-foreground">{host}</p>
+          ) : null)}
+        <ul className="flex flex-wrap items-center justify-center gap-2">
+          {CHECK_KEYS.map((key) => (
+            <li
+              key={key}
+              className="rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground"
+            >
+              {t(key)}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
   );
 }
 
@@ -184,19 +216,24 @@ function StartDiagnostic({
   return (
     <StartDiagnosticState claimedSiteUrl={claimedSiteUrl}>
       <form className="flex w-full flex-col gap-2" onSubmit={onSubmit}>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
           <Input
             aria-label={t("reports.emptyState.siteUrlLabel")}
             type="text"
             inputMode="url"
-            className="min-w-0 flex-1"
+            className="h-12 min-w-0 flex-1 rounded-xl px-4 text-base"
             value={siteInput}
             onChange={(event) => setSiteInput(event.target.value)}
             placeholder={t("reports.emptyState.siteUrlPlaceholder")}
             aria-invalid={!!error}
             disabled={setupMutation.isPending}
           />
-          <Button type="submit" disabled={setupMutation.isPending}>
+          <Button
+            type="submit"
+            size="xl"
+            className="shrink-0 rounded-xl text-base"
+            disabled={setupMutation.isPending}
+          >
             {setupMutation.isPending
               ? t("reports.emptyState.starting")
               : t("reports.emptyState.start")}
