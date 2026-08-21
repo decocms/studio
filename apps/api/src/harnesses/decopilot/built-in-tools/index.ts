@@ -37,6 +37,11 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   search_threads: { readOnly: true, destructive: false },
   get_thread: { readOnly: true, destructive: false },
   list_thread_messages: { readOnly: true, destructive: false },
+  TASK_BOARD_ITEM_LIST: { readOnly: true, destructive: false },
+  TASK_BOARD_ITEM_CREATE: { readOnly: false, destructive: false },
+  TASK_BOARD_ITEM_UPDATE: { readOnly: false, destructive: false },
+  TASK_BOARD_ITEM_DELETE: { readOnly: false, destructive: true },
+  TASK_BOARD_ITEM_PRS_GET: { readOnly: true, destructive: false },
 };
 import { createReadToolOutputTool } from "@/harnesses/lib/decopilot/built-in-tools/read-tool-output";
 import { type VirtualClient } from "@/harnesses/lib/decopilot/built-in-tools/sandbox";
@@ -65,6 +70,7 @@ import { createScrapeUrlTool } from "@/harnesses/lib/decopilot/built-in-tools/sc
 import { createInspectPageTool } from "@/harnesses/lib/decopilot/built-in-tools/inspect-page";
 import { buildPortableBuiltInTools } from "@/harnesses/lib/decopilot/built-in-tools/portable-built-ins";
 import { createThreadTools } from "./thread-tools";
+import { createTaskBoardTools } from "./task-board-tools";
 import { BROWSERLESS_BASE_URL } from "@/harnesses/lib/decopilot/built-in-tools/constants";
 import type { ModelsConfig } from "@/harnesses/lib/types";
 import type { StudioProvider } from "@/ai-providers/types";
@@ -219,6 +225,10 @@ async function buildAllTools(
   // Thread search built-ins — always available so the Super Agent can recall
   // past org conversations regardless of the passthrough MCP allowlist.
   Object.assign(tools, createThreadTools(ctx));
+  // Task-board built-ins — the Super Agent aggregates no connections, so these
+  // are the only way it can read or move cards on the board. Before this it had
+  // to `subtask`-delegate to the (now retired) Task Manager agent.
+  Object.assign(tools, createTaskBoardTools(ctx));
   // VM file tools — six LLM-visible tools (read/write/edit/grep/glob/bash)
   // always registered when a vmContext is provided. The handle is resolved
   // lazily on the first tool invocation: `ensureSandbox` either reuses

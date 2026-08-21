@@ -8,7 +8,6 @@ import { automationManagerAgent } from "./automation-manager";
 import { brandManagerAgent } from "./brand-manager";
 import { connectionManagerAgent } from "./connection-manager";
 import { storeManagerAgent } from "./store-manager";
-import { taskManagerAgent } from "./task-manager";
 import { usageManagerAgent } from "./usage-manager";
 import type {
   ChecklistContext,
@@ -29,6 +28,14 @@ export type {
   StudioPackChecklistItem,
 } from "./types";
 
+/**
+ * Studio Pack agents that used to be installed and no longer are. Their rows
+ * are deleted on the next backfill so the retired manager stops showing up on
+ * the org's agents page. Deleting a virtual MCP also deletes its threads —
+ * intentional here: these are system-managed board-management chats.
+ */
+const RETIRED_AGENT_ID_PREFIXES = ["studio-task-manager_"];
+
 export const STUDIO_PACK_AGENTS = [
   brandManagerAgent,
   agentManagerAgent,
@@ -36,7 +43,6 @@ export const STUDIO_PACK_AGENTS = [
   connectionManagerAgent,
   apiKeyManagerAgent,
   storeManagerAgent,
-  taskManagerAgent,
   usageManagerAgent,
 ] as const;
 
@@ -129,6 +135,12 @@ export async function installStudioPack(
     registry: WellKnownOrgMCPId.REGISTRY(orgId),
     "community-registry": WellKnownOrgMCPId.COMMUNITY_REGISTRY(orgId),
   };
+
+  await Promise.all(
+    RETIRED_AGENT_ID_PREFIXES.map((prefix) =>
+      virtualMcpStorage.delete(`${prefix}${orgId}`),
+    ),
+  );
 
   await Promise.all(
     STUDIO_PACK_AGENTS.map(async (agent) => {

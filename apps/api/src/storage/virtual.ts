@@ -136,8 +136,9 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
   ): Promise<VirtualMCPEntity | null> {
     // Handle Decopilot ID — Decopilot is a pure orchestrator with no
     // aggregated tools. Every platform action goes through a Studio Pack
-    // manager (Agent / Automation / Connection / Store / Task) via `subtask`,
-    // and every product action goes to a custom org agent the same way.
+    // manager (Agent / Automation / Connection / Store) via `subtask`, and
+    // every product action goes to a custom org agent the same way. The
+    // task-board tools are the exception — they're Super Agent built-ins.
     // The model uses the <available-agents> catalog as its routing table.
     const decopilotOrgId = isDecopilot(id);
     if (decopilotOrgId) {
