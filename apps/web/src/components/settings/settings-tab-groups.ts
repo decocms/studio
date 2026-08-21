@@ -14,7 +14,12 @@
 import type { CapabilityId } from "@/hooks/use-capability";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 
-export type SettingsGroupKey = "connect" | "members" | "billing" | "storage";
+export type SettingsGroupKey =
+  | "connect"
+  | "members"
+  | "billing"
+  | "storage"
+  | "skills";
 
 export interface SettingsTabDef {
   /** Stable id for React keys and analytics — never localized. */
@@ -104,6 +109,21 @@ export const SETTINGS_TAB_GROUPS: Record<
         labelKey: "settings.nav.buckets",
         to: "/$org/settings/buckets",
         requires: "file-configs:manage",
+      },
+    ],
+  },
+  /**
+   * Syncing skills from a repo is a skills concern, not a storage one — it is
+   * how an org keeps the agent's skills current without hand-uploading each.
+   */
+  skills: {
+    key: "skills",
+    titleKey: "settings.nav.skills",
+    tabs: [
+      {
+        key: "skills",
+        labelKey: "settings.nav.skills",
+        to: "/$org/settings/skills",
       },
       {
         key: "synced-repos",

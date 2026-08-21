@@ -563,10 +563,27 @@ const settingsBucketsRoute = createRoute({
   ),
 });
 
+const settingsSkillsRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: "/skills",
+  pendingComponent: settingsGroupPendingComponent("skills"),
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/skills.tsx"),
+  ),
+});
+
+const settingsMemoryRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: "/memory",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/memory.tsx"),
+  ),
+});
+
 const settingsSyncedReposRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/synced-repos",
-  pendingComponent: settingsGroupPendingComponent("storage"),
+  pendingComponent: settingsGroupPendingComponent("skills"),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/synced-repos.tsx"),
   ),
@@ -681,6 +698,8 @@ const settingsWithChildren = settingsLayout.addChildren([
   settingsApiKeysRoute,
   settingsBucketsRoute,
   settingsSyncedReposRoute,
+  settingsSkillsRoute,
+  settingsMemoryRoute,
   settingsTasksRoute,
   settingsMembersRoute,
   settingsRolesRoute,

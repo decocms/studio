@@ -110,6 +110,29 @@ export const settings = {
   "settings.syncedRepos.rowSubtitle": "Library folder: {volume}",
   "settings.nav.connections": "Connections",
   "settings.nav.agents": "Agents",
+  "settings.nav.skills": "Skills",
+  "settings.nav.memory": "Memory",
+  "settings.skills.title": "Skills",
+  "settings.skills.description":
+    "Instructions your agents can load on demand. Each skill is a SKILL.md folder in the Library.",
+  "settings.skills.add": "Add skill",
+  "settings.skills.viewInLibrary": "View in Library",
+  "settings.skills.emptyTitle": "No skills yet",
+  "settings.skills.emptyDescription":
+    "Add a SKILL.md folder in the Library, or sync a repo of them from the Synced repos tab.",
+  "settings.memory.title": "Memory",
+  "settings.memory.description":
+    "What your agents remember across tasks. Facts written here are available to every run.",
+  "settings.memory.add": "Add memory",
+  "settings.memory.searchPlaceholder": "Search memory",
+  "settings.memory.emptyTitle": "Nothing remembered yet",
+  "settings.memory.emptyDescription":
+    "Agents write here as they learn how your team works. You can also add a fact yourself.",
+  "settings.memory.noMatches": "No memories match that search.",
+  "settings.memory.mockNotice":
+    "Preview: these entries are sample data and are not saved yet.",
+  "settings.memory.remove": "Remove",
+  "settings.memory.writtenBy": "Written by {source}",
   "settings.nav.automations": "Automations",
   "settings.nav.store": "Store",
   "settings.nav.monitor": "Monitor",

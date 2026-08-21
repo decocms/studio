@@ -116,6 +116,29 @@ export const settings = {
   "settings.syncedRepos.rowSubtitle": "Pasta da biblioteca: {volume}",
   "settings.nav.connections": "Conexões",
   "settings.nav.agents": "Agentes",
+  "settings.nav.skills": "Skills",
+  "settings.nav.memory": "Memória",
+  "settings.skills.title": "Skills",
+  "settings.skills.description":
+    "Instruções que seus agentes podem carregar quando precisam. Cada skill é uma pasta com SKILL.md na Biblioteca.",
+  "settings.skills.add": "Adicionar skill",
+  "settings.skills.viewInLibrary": "Ver na Biblioteca",
+  "settings.skills.emptyTitle": "Nenhuma skill ainda",
+  "settings.skills.emptyDescription":
+    "Adicione uma pasta com SKILL.md na Biblioteca, ou sincronize um repositório na aba Repos sincronizados.",
+  "settings.memory.title": "Memória",
+  "settings.memory.description":
+    "O que seus agentes lembram entre tarefas. Fatos aqui ficam disponíveis para todas as execuções.",
+  "settings.memory.add": "Adicionar memória",
+  "settings.memory.searchPlaceholder": "Buscar na memória",
+  "settings.memory.emptyTitle": "Nada memorizado ainda",
+  "settings.memory.emptyDescription":
+    "Os agentes escrevem aqui conforme aprendem como seu time trabalha. Você também pode adicionar um fato.",
+  "settings.memory.noMatches": "Nenhuma memória corresponde à busca.",
+  "settings.memory.mockNotice":
+    "Prévia: estes registros são dados de exemplo e ainda não são salvos.",
+  "settings.memory.remove": "Remover",
+  "settings.memory.writtenBy": "Escrito por {source}",
   "settings.nav.automations": "Automações",
   "settings.nav.store": "Loja",
   "settings.nav.monitor": "Monitoramento",

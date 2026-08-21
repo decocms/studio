@@ -49,6 +49,9 @@ import {
   Key01,
   HardDrive,
   LinkExternal01,
+  Lightbulb02,
+  Database01,
+  Folder,
 } from "@untitledui/icons";
 import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
@@ -161,16 +164,29 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
       label: t("settings.nav.build"),
       items: [
         {
+          key: "agents",
+          label: t("settings.nav.agents"),
+          icon: <Folder size={14} />,
+          to: "/$org/settings/agents",
+        },
+        {
           key: "connections",
           label: t("settings.nav.connections"),
           icon: <ZapSquare size={14} />,
           to: "/$org/settings/connections",
         },
         {
-          key: "agents",
-          label: t("settings.nav.agents"),
-          icon: <Users03 size={14} />,
-          to: "/$org/settings/agents",
+          key: "skills",
+          label: t("settings.nav.skills"),
+          icon: <Lightbulb02 size={14} />,
+          to: "/$org/settings/skills",
+          group: "skills",
+        },
+        {
+          key: "memory",
+          label: t("settings.nav.memory"),
+          icon: <Database01 size={14} />,
+          to: "/$org/settings/memory",
         },
         {
           key: "automations",
