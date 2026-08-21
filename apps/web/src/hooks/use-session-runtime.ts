@@ -41,11 +41,16 @@ export function useSessionRuntime(
   const project = useVirtualMCP(virtualMcpId);
   const task = useOptionalChatTask();
   const metadata = project?.metadata;
-  const stamp = parseThreadRuntime(task?.activeTask?.metadata?.runtime);
+  const thread = task?.activeTask;
+  const stamp = parseThreadRuntime(thread?.metadata?.runtime);
+  // A `/watch` synthetic carries no metadata, so its missing stamp is "not
+  // loaded", not "unstamped" — the same distinction `Task.partial` exists for.
+  const threadLoaded = !!thread && !thread.partial;
   return {
-    runtime: readThreadRuntime(task?.activeTask?.metadata, metadata),
-    // A stamp is self-sufficient; only the fallback needs the project.
-    resolved: !!stamp || !!project,
+    runtime: readThreadRuntime(thread?.metadata, metadata),
+    // A stamp is self-sufficient. Without one, the answer is the project
+    // default — which is only authoritative once BOTH rows have landed.
+    resolved: !!stamp || (threadLoaded && !!project),
     projectDefault: defaultThreadRuntime(metadata),
     previewServerUrl: resolvePreviewServerUrl(metadata),
   };

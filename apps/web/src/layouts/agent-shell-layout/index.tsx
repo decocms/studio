@@ -266,7 +266,9 @@ function VmEventsBridge({
   // SANDBOX_START (covers the booting window; SandboxLifecycleProvider's
   // auto-start shares this mutation key, so `useIsSandboxStartPending`
   // observes it).
-  const sessionRuntime = useSessionRuntime(virtualMcpId).runtime;
+  const sessionState = useSessionRuntime(virtualMcpId);
+  /** `null` until the answer is real — never act on the project default. */
+  const sessionRuntime = sessionState.resolved ? sessionState.runtime : null;
   const isStartPending = useIsSandboxStartPending(
     virtualMcpId,
     currentBranch ?? undefined,
@@ -314,8 +316,36 @@ function VmEventsBridge({
     );
   }
 
+  /**
+   * A CMS session does not get the sandbox machinery AT ALL — not a stopped
+   * one, not an idle one. The providers below are keyed by (vMCP, branch), and
+   * a coding session SHARES the CMS draft's branch by design, so a sibling
+   * session's boot failure rendered its "Couldn't start the sandbox" card
+   * inside the CMS chat — which owns no sandbox and never asked for one.
+   *
+   * Gating each leaf (auto-start, the events stream, the preview surface) is
+   * whack-a-mole: every new consumer has to remember. Not mounting the
+   * providers makes the whole class unrepresentable — `useSandboxLifecycle`
+   * and `useSandboxEvents` fall through to their inert defaults, so there is
+   * no lifecycle to fail, no claim to retry, and no card to render.
+   */
+  if (sessionRuntime === "cms") {
+    return (
+      <BlocksPreviewWorkspaceProvider
+        key={`${virtualMcpId}:${currentBranch ?? "no-branch"}:${activeTask?.id ?? ""}`}
+      >
+        {children}
+      </BlocksPreviewWorkspaceProvider>
+    );
+  }
+
   return (
     <SandboxEventsProvider
+      // Keyed by the THREAD, not the branch: a coding session shares the CMS
+      // draft's branch, so two sessions differ only by thread id. Without it
+      // React keeps one provider instance across the switch and the previous
+      // session's boot error stays on screen in the next one.
+      key={activeTask?.id ?? "no-thread"}
       virtualMcpId={virtualMcpId}
       branch={currentBranch ?? null}
       previewUrl={previewUrl}
@@ -332,7 +362,7 @@ function VmEventsBridge({
         threadId={activeTask?.id ?? null}
       >
         <BlocksPreviewWorkspaceProvider
-          key={`${virtualMcpId}:${currentBranch ?? "no-branch"}`}
+          key={`${virtualMcpId}:${currentBranch ?? "no-branch"}:${activeTask?.id ?? ""}`}
         >
           {children}
         </BlocksPreviewWorkspaceProvider>

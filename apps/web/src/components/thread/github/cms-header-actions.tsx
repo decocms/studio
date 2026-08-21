@@ -309,8 +309,13 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   /**
    * A CMS session whose project cannot serve one: no preview server to render
    * against, or no repo to save to. The runtime is immutable, so the honest
-   * recovery is a NEW session on the same branch, not a silent downgrade.
+   * recovery is a NEW session on the same branch, not a silent downgrade —
+   * which is exactly why the `!vm` guard above is load-bearing: both inputs
+   * below are read off the project row, so an unloaded one is indistinguishable
+   * from a project that genuinely has neither, and would offer to spend the
+   * one irreversible action on a project that in fact needs nothing.
    */
+  if (!vm) return null;
   if (!githubRepo || !previewServerUrl) {
     return (
       <CmsUnavailable
