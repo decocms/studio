@@ -699,4 +699,34 @@ describe("SqlThreadMessagePartStorage", () => {
       );
     });
   });
+
+  // `created_at` is an ordering key (`base + seq`), so it says nothing about
+  // when a row actually landed — a run's parts all carry a timestamp within
+  // milliseconds of run start even when written minutes apart. `persisted_at`
+  // is the wall clock, stamped by Postgres, and no application code may set it.
+  it("stamps persisted_at at insert, independent of created_at", async () => {
+    const before = Date.now();
+    await parts.appendParts([
+      mk({
+        id: "r_clock:m_clock:0",
+        seq: 0,
+        run_id: "r_clock",
+        message_id: "m_clock",
+        // Deliberately ancient: 2023, the shape the emitter produces on a
+        // resumed run whose base was captured long before this row was built.
+        created_at: new Date(1700000000000).toISOString(),
+      }),
+    ]);
+
+    const row = await database.db
+      .selectFrom("thread_message_parts")
+      .select(["created_at", "persisted_at"])
+      .where("id", "=", "r_clock:m_clock:0")
+      .executeTakeFirstOrThrow();
+
+    expect(new Date(row.created_at).getTime()).toBe(1700000000000);
+    const persisted = row.persisted_at?.getTime();
+    expect(persisted).toBeGreaterThanOrEqual(before - 1000);
+    expect(persisted).toBeLessThanOrEqual(Date.now() + 1000);
+  });
 });
