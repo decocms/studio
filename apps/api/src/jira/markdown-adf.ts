@@ -675,11 +675,13 @@ function linkNodes(link: LinkMatch, marks: AdfMark[]): AdfNode[] {
 }
 
 /**
- * An image degrades to its link, because ADF has no external image: `media`
- * addresses an attachment in the issue's own media collection, which a mirrored
- * board comment has no way to populate. An `org/output/…` screenshot (rewritten
- * to a Studio path by `embedOrgOutputImages`) has no absolute URL at all, so it
- * degrades further, to its alt text.
+ * An image degrades to its link. Embedding one needs a `media` node, whose
+ * `attrs.id` is a media-services UUID — a different id space from the numeric
+ * id `POST /issue/{id}/attachments` returns, which `GET /attachment/{id}` never
+ * exposes, so uploading the bytes is not by itself enough to reference them.
+ * An `org/output/…` screenshot (rewritten to a Studio path by
+ * `embedOrgOutputImages`) has no absolute URL at all, so it degrades further,
+ * to its alt text.
  */
 function imageNodes(image: LinkMatch, marks: AdfMark[]): AdfNode[] {
   return linkNodes(image, marks);
