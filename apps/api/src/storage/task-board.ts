@@ -2028,7 +2028,7 @@ export class TaskBoardStorage {
     repo: string | null;
     due_date: string | Date | null;
     sort_order: number;
-    key_seq?: number | null;
+    key_seq: number;
     retry_attempts?: number;
     created_by: string;
     created_at: string | Date;
@@ -2050,7 +2050,7 @@ export class TaskBoardStorage {
           ? row.due_date.toISOString()
           : row.due_date,
       sortOrder: row.sort_order,
-      keySeq: row.key_seq ?? null,
+      keySeq: row.key_seq,
       retryAttempts: row.retry_attempts ?? 0,
       // Populated by attachThreads/attachTags for reads; empty for a fresh create.
       threads: [],
