@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { KEYS } from "@/lib/query-keys";
 import { decoRepoPath } from "@/components/sections-editor/deco-repo-path";
 import { readCommittedJson } from "@/components/sections-editor/read-committed-file";
@@ -27,11 +28,13 @@ export function useBlogSupport(params: UseBlogSupportParams): BlogSupport {
   const packageManager =
     useVirtualMCP(params.virtualMcpId)?.metadata?.runtime?.selected ?? null;
   const packagePath = usePackagePath(params.virtualMcpId);
+  // Read from the same session as every other committed read (see useSaveBlock).
+  const threadId = useOptionalChatTask()?.taskId ?? null;
   const { data: denoJson } = useQuery({
     queryKey: KEYS.denoJson(params.orgSlug, params.virtualMcpId, params.branch),
     queryFn: async () => {
       const read = await readCommittedJson<unknown>(
-        params,
+        { ...params, threadId },
         decoRepoPath(packagePath, "deno.json"),
       );
       return read.kind === "data" ? read.data : null;
