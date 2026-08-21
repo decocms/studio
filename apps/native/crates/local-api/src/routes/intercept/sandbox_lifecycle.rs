@@ -492,7 +492,13 @@ fn local_sandbox_entries(state: &AppState, virtual_mcp_id: &str) -> Vec<(String,
         // Omitting a dead sandbox is self-correcting: the shell auto-starts,
         // `SANDBOX_START` ensures/adopts it here, and the next read publishes
         // it with a preview origin that is actually listening.
-        if state.sandbox_manager.get(&handle).is_none() {
+        // `adopt` inserts a sandbox it has NOT started, so map presence stopped
+        // meaning "live in this process" and this test began forging the very
+        // entry the comment above says must not exist.
+        let Some(sandbox) = state.sandbox_manager.get(&handle) else {
+            continue;
+        };
+        if !crate::sandbox::manager::is_serving(&sandbox) {
             continue;
         }
         let branch = config

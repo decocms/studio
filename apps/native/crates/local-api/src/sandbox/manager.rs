@@ -32,6 +32,45 @@ fn dev_task_running(sandbox: &Sandbox) -> bool {
         .any(|t| matches!(t.log_name.as_deref(), Some("dev") | Some("start")))
 }
 
+/// Phases in which a sandbox is on its way to serving, or already is. A
+/// sandbox mid-install must still count as serving or the shell double-starts
+/// it under the boot overlay.
+const SERVING_PHASES: [&str; 5] = [
+    "cloning",
+    "checking-out",
+    "installing",
+    "starting",
+    "running",
+];
+
+/// Whether this sandbox has, or is actively acquiring, a dev server.
+///
+/// The one answer to "is a VM serving this branch?", and deliberately a
+/// UNION so it fails safe toward publishing: a too-narrow predicate would
+/// hide a working preview, whereas a too-broad one only delays a restart the
+/// user can still trigger. Cheap terms first — this runs on a dispatch path,
+/// so it reads the task registry, a phase string and an atomic, and never
+/// inspects a process (see [`SandboxManager::reconcile_persisted_dev_process`],
+/// which does that once, asynchronously, at adopt).
+///
+/// Presence in the `sandboxes` map is NOT one of the terms, which is the
+/// whole point: `adopt` inserts a sandbox it has not started, so map presence
+/// answers "do we have a row" rather than "is anything serving".
+pub(crate) fn is_serving(sandbox: &Sandbox) -> bool {
+    if dev_task_running(sandbox) {
+        return true;
+    }
+    if sandbox.dev_orphan_alive.load(Ordering::Relaxed) {
+        return true;
+    }
+    sandbox
+        .setup
+        .lifecycle_snapshot()
+        .get("phase")
+        .and_then(Value::as_str)
+        .is_some_and(|phase| SERVING_PHASES.contains(&phase))
+}
+
 /// The clone target + workload hints a caller resolved from a dispatch
 /// payload (decopilot's `sandbox` block, or the daemon-parity family's
 /// `workspace.repo`/`workspace.branch`) — everything [`SandboxManager::ensure`]
@@ -87,6 +126,10 @@ pub struct Sandbox {
     /// Last `[org-fs]` outcome announced for this sandbox, so `ensure` — which
     /// runs on every dispatch — reports only transitions.
     org_fs_announced: Mutex<Option<bool>>,
+    /// Whether a dev process outside this app's task registry was found alive
+    /// for this sandbox. Written by the async reconcile on adopt; read by
+    /// [`is_serving`] on a dispatch path that must not inspect processes.
+    dev_orphan_alive: AtomicBool,
 }
 
 /// `HashMap<Handle, Arc<Sandbox>>` plus a per-handle async lock so two
@@ -578,12 +621,50 @@ impl SandboxManager {
             return Err(error);
         }
         Self::monitor_branch_status(&sandbox);
+        Self::reconcile_persisted_dev_process(&sandbox).await;
         self.publish_generation(handle, Some(sandbox.clone()));
         tracing::info!(
             handle,
             "adopted persisted sandbox metadata without starting it"
         );
         Ok(Some(sandbox))
+    }
+
+    /// Settle what the persisted dev-process record actually describes,
+    /// BEFORE the generation is published.
+    ///
+    /// A record outlives its process across an app restart and stays well
+    /// formed forever, so `read_dev_process` alone cannot distinguish a
+    /// serving dev server from one that died with last week's app. This is
+    /// the one place that asks, and it caches the answer in
+    /// `dev_orphan_alive` so [`is_serving`] — which runs on a dispatch path
+    /// that must never inspect processes — reads an atomic instead.
+    ///
+    /// A provably-`Gone` group is cleared: the record is fiction and keeping
+    /// it makes every reader above decline to start a server. `Unverifiable`
+    /// (a reused pgid) is left as found AND counted as alive — the
+    /// conservative direction, because omitting the entry would auto-start,
+    /// and `dev::run`'s reap would then signal a group we could not identify.
+    async fn reconcile_persisted_dev_process(sandbox: &Arc<Sandbox>) {
+        use crate::setup::dev::PersistedDevLiveness;
+
+        let sandbox_root = super::dev_port::sandbox_root_for(&sandbox.workdir);
+        let Some(record) = super::persist::read_dev_process(&sandbox_root) else {
+            sandbox.dev_orphan_alive.store(false, Ordering::Relaxed);
+            return;
+        };
+        let gone =
+            crate::setup::dev::persisted_dev_liveness(&record).await == PersistedDevLiveness::Gone;
+        sandbox.dev_orphan_alive.store(!gone, Ordering::Relaxed);
+        if gone {
+            super::persist::clear_dev_process(&sandbox_root);
+            tracing::info!(
+                handle = sandbox.handle,
+                pid = record.pid,
+                pgid = record.pgid,
+                "cleared a dev-process record whose process is gone"
+            );
+        }
     }
 
     /// Metadata-only counterpart of [`Self::resurrect_active`].
@@ -1228,6 +1309,7 @@ impl SandboxManager {
             registry_monitor_started: AtomicBool::new(false),
             branch_monitor_started: AtomicBool::new(false),
             org_fs_announced: Mutex::new(None),
+            dev_orphan_alive: AtomicBool::new(false),
         });
         sandboxes.insert(handle.to_string(), sandbox.clone());
         Ok(sandbox)

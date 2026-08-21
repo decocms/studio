@@ -100,6 +100,47 @@ fn match_group_identity(
     }
 }
 
+/// Whether a persisted dev-process record still describes a live process.
+///
+/// `persist::is_valid_dev_process_record` answers a different question —
+/// whether the record is well *formed*. A record for a
+/// process that exited days ago passes every one of its checks, so a caller
+/// that treats `read_dev_process` as "this sandbox has a dev server" is
+/// reading fiction.
+///
+/// `Unverifiable` carries the same discipline as the sandbox-claim liveness
+/// probe: the pgid is occupied by processes that do not match the recorded
+/// identities (the kernel reused it), so nothing may be concluded and
+/// nothing may be signalled. Never act on it.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum PersistedDevLiveness {
+    Alive,
+    Gone,
+    Unverifiable,
+}
+
+/// The pure half of [`persisted_dev_liveness`], split out so the mapping is
+/// exhaustively unit-tested without a live process table.
+fn liveness_from_match(matched: GroupIdentityMatch) -> PersistedDevLiveness {
+    match matched {
+        GroupIdentityMatch::Gone => PersistedDevLiveness::Gone,
+        GroupIdentityMatch::Verified(_) => PersistedDevLiveness::Alive,
+        GroupIdentityMatch::Unverifiable => PersistedDevLiveness::Unverifiable,
+    }
+}
+
+/// Judge a persisted record against the live process table, reusing the same
+/// observation and identity matching [`reap_persisted_dev_group`] signals on.
+///
+/// An observation that fails is `Unverifiable`, never `Gone` — a platform
+/// that cannot enumerate a process group must not be read as proof of death.
+pub(crate) async fn persisted_dev_liveness(record: &DevProcessRecord) -> PersistedDevLiveness {
+    let Ok(current) = observe_process_group(record.pgid).await else {
+        return PersistedDevLiveness::Unverifiable;
+    };
+    liveness_from_match(match_group_identity(&record.identities, current))
+}
+
 fn port_pattern() -> &'static Regex {
     static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
     RE.get_or_init(|| {
@@ -847,6 +888,52 @@ mod tests {
             birth: birth.to_string(),
             executable: executable.to_string(),
         }
+    }
+
+    #[test]
+    fn liveness_reads_an_empty_group_as_gone() {
+        assert_eq!(
+            liveness_from_match(GroupIdentityMatch::Gone),
+            PersistedDevLiveness::Gone
+        );
+    }
+
+    #[test]
+    fn liveness_reads_a_matching_member_as_alive() {
+        assert_eq!(
+            liveness_from_match(GroupIdentityMatch::Verified(vec![identity(
+                7, "birth", "bun"
+            )])),
+            PersistedDevLiveness::Alive
+        );
+    }
+
+    #[test]
+    fn liveness_never_reads_a_reused_pgid_as_gone() {
+        // A pgid the kernel handed to an unrelated group must not be cleared:
+        // that is the case where acting on a guess disowns a live process.
+        assert_eq!(
+            liveness_from_match(GroupIdentityMatch::Unverifiable),
+            PersistedDevLiveness::Unverifiable
+        );
+    }
+
+    #[tokio::test]
+    async fn a_well_formed_record_for_a_dead_process_is_not_alive() {
+        // The regression this exists for: `is_valid_dev_process_record` passes
+        // a record forever, so shape must never be mistaken for liveness.
+        let record = DevProcessRecord {
+            pid: 999_999,
+            pgid: 999_999,
+            command: "bun run dev".to_string(),
+            started_at: 1,
+            port: Some(54083),
+            identities: vec![identity(999_999, "long ago", "bun")],
+        };
+        assert_ne!(
+            persisted_dev_liveness(&record).await,
+            PersistedDevLiveness::Alive
+        );
     }
 
     #[test]
