@@ -170,8 +170,7 @@ function useNavDestinations({
 
 /**
  * The org's coding agents — every virtual MCP backed by a GitHub repo (imported
- * from GitHub or cloned from a template). Each is listed by REPO name, since
- * that is what identifies the codebase the agent works on.
+ * from GitHub or cloned from a template), listed by title, repo name as fallback.
  *
  * Selecting one opens that agent's chat, reusing its existing empty "New chat"
  * so repeat clicks don't pile up threads.
@@ -193,7 +192,7 @@ function useCodingAgents({
       const repo = getActiveGithubRepo(agent);
       return {
         key: agent.id,
-        label: repo?.name || agent.title,
+        label: agent.title || repo?.name || "",
         icon: (
           <AgentAvatar
             icon={agent.icon}
