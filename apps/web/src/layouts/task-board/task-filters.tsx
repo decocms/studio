@@ -258,6 +258,7 @@ function AssigneeFilter({
         <Command>
           <CommandInput
             placeholder={t("taskBoard.taskFilters.assigneeFilterPlaceholder")}
+            aria-label={t("taskBoard.taskFilters.assigneeFilterPlaceholder")}
             className="h-9"
           />
           <CommandList>
@@ -475,6 +476,7 @@ function TagFilter({
         <Command>
           <CommandInput
             placeholder={t("taskBoard.taskFilters.tagsFilterPlaceholder")}
+            aria-label={t("taskBoard.taskFilters.tagsFilterPlaceholder")}
             className="h-9"
           />
           <CommandList>
@@ -545,6 +547,7 @@ function RepoFilter({
         <Command>
           <CommandInput
             placeholder={t("taskBoard.taskFilters.repoFilterPlaceholder")}
+            aria-label={t("taskBoard.taskFilters.repoFilterPlaceholder")}
             className="h-9"
           />
           <CommandList>
@@ -628,6 +631,7 @@ function SearchToggle({
             if (value === "") setOpen(false);
           }}
           placeholder={t("taskBoard.taskFilters.searchPlaceholder")}
+          aria-label={t("taskBoard.taskFilters.searchPlaceholder")}
           className="w-full min-w-0 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
         />
       )}
