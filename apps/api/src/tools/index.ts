@@ -81,6 +81,7 @@ export const CORE_TOOLS = [
   BlogTools.BLOG_BRAND_EXTRACT,
   BlogTools.BLOG_THEME_SUGGEST,
   BlogTools.BLOG_FORMAT_SUGGEST,
+  BlogTools.BLOG_POST_DRAFT,
   OrganizationTools.BRAND_GET,
   OrganizationTools.BRAND_LIST,
   OrganizationTools.ORGANIZATION_DOMAIN_LIST,

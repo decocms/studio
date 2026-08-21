@@ -145,6 +145,7 @@ export const sandbox = {
   "sandbox.collectionsSidebar.blog": "Blog",
   "sandbox.collectionsSidebar.calendar": "Calendar",
   "sandbox.collectionsSidebar.categories": "Categories",
+  "sandbox.collectionsSidebar.generate": "Generate",
   "sandbox.collectionsSidebar.library": "Library",
   "sandbox.collectionsSidebar.content": "Content",
   "sandbox.collectionsSidebar.loaders": "Loaders",
@@ -325,6 +326,50 @@ export const sandbox = {
   "sandbox.formats.suggested": "{count} format(s) added",
   "sandbox.formats.unknownCitations":
     "This format cites sections the site doesn't have: {names}",
+  "sandbox.generate.back": "Back",
+  "sandbox.generate.badDate": "That date doesn't parse — pick another.",
+  "sandbox.generate.blockedBrand":
+    "A post written without the brand context reads like any other brand's. Fill these in the Library first — the Fill button does it in one go.",
+  "sandbox.generate.blockedBrandTitle": "Fill in the brand context first",
+  "sandbox.generate.blockedSections":
+    "This site exposes no post sections that can be written from text alone, so there is nothing to build a post out of yet.",
+  "sandbox.generate.blockedSectionsTitle": "No sections to write into",
+  "sandbox.generate.cancel": "Cancel",
+  "sandbox.generate.done": "\u201c{title}\u201d generated and scheduled.",
+  "sandbox.generate.extraHint":
+    "Anything you want from this specific post that the theme and format don't already say.",
+  "sandbox.generate.extraLabel": "Extra instructions",
+  "sandbox.generate.extraPlaceholder": "Optional",
+  "sandbox.generate.failed": "Couldn't generate the post",
+  "sandbox.generate.idle":
+    "Every generated post is scheduled, never published — you review it, and it goes live on the day you chose.",
+  "sandbox.generate.new": "New",
+  "sandbox.generate.next": "Continue",
+  "sandbox.generate.noFormats":
+    "No formats yet. Write one here, or name the ones this blog already uses in the Library.",
+  "sandbox.generate.noThemes":
+    "No themes yet. Write one here, or let the agent propose a few in Themes.",
+  "sandbox.generate.phaseFinishing": "Finishing the post\u2026",
+  "sandbox.generate.phaseReading":
+    "Reading the brand, the theme and the format\u2026",
+  "sandbox.generate.phaseWriting": "Writing\u2026",
+  "sandbox.generate.pickFormat": "Which format?",
+  "sandbox.generate.pickInstead": "Pick an existing one",
+  "sandbox.generate.pickTheme": "Which theme?",
+  "sandbox.generate.run": "Generate",
+  "sandbox.generate.scheduleHint":
+    "The post goes live at this instant. Generated posts are only ever scheduled.",
+  "sandbox.generate.scheduleLabel": "Publish on",
+  "sandbox.generate.suggest": "Suggest one",
+  "sandbox.generate.suggesting": "Thinking\u2026",
+  "sandbox.generate.stepExtra": "Extra instructions",
+  "sandbox.generate.stepFormat": "Format",
+  "sandbox.generate.stepSchedule": "Schedule",
+  "sandbox.generate.stepTheme": "Theme",
+  "sandbox.generate.subtitle":
+    "A theme plus a format becomes a scheduled draft.",
+  "sandbox.generate.title": "Generate",
+  "sandbox.generate.writeInstead": "Write a new one",
   "sandbox.itemActions.addVariant": "Add variant",
   "sandbox.itemActions.delete": "Delete",
   "sandbox.itemActions.duplicate": "Duplicate",

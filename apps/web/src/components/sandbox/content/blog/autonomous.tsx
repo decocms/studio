@@ -1,5 +1,6 @@
 /**
- * Autonomous content: Themes and Library behind one collection row. Library
+ * Autonomous content: Generate, Themes and Library behind one collection row.
+ * Library
  * holds the brand context and the post formats, each persisted to the site's
  * own `.deco/blocks/blog-manager-*.json` as plain JSON.
  *
@@ -32,6 +33,7 @@ import { extractPages } from "@/components/sections-editor/page-list";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
+import { GenerateScreen } from "./generate";
 import { ThemesScreen } from "./themes";
 import {
   BRAND_BLOCK_KEY,
@@ -71,6 +73,11 @@ const CONTEXT_SECTIONS = [
 type ContextSection = (typeof CONTEXT_SECTIONS)[number]["id"];
 
 const NAV = [
+  {
+    id: "generate",
+    icon: Stars02,
+    label: "sandbox.collectionsSidebar.generate",
+  },
   {
     id: "themes",
     icon: Lightbulb01,
@@ -128,7 +135,7 @@ export function AutonomousContent(props: {
   meta: LiveMeta;
 }) {
   const t = useT();
-  const [screen, setScreen] = useState<NavId>("themes");
+  const [screen, setScreen] = useState<NavId>("generate");
 
   return (
     <div className="flex h-full">
@@ -154,8 +161,10 @@ export function AutonomousContent(props: {
       <div className="min-w-0 flex-1">
         {screen === "library" ? (
           <LibraryScreen {...props} />
-        ) : (
+        ) : screen === "themes" ? (
           <ThemesScreen {...props} />
+        ) : (
+          <GenerateScreen {...props} />
         )}
       </div>
     </div>

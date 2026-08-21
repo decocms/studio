@@ -962,6 +962,63 @@ export interface StudioToolIO {
     };
     output: { formats: { name: string; value: string }[] };
   };
+  BLOG_POST_DRAFT: {
+    input: {
+      brand: {
+        companyName?: string | undefined;
+        description?: string | undefined;
+        language?: string | undefined;
+        tone?: string | undefined;
+        targetAudience?: string | undefined;
+        values?: { name: string; value: string }[] | undefined;
+        dos?: { name: string; value: string }[] | undefined;
+        avoid?: { name: string; value: string }[] | undefined;
+        categories?: string[] | undefined;
+        competitors?: { name: string; value: string }[] | undefined;
+      };
+      theme: { title: string; body: string };
+      format: { name: string; value: string };
+      sections: {
+        type:
+          | "Heading"
+          | "Paragraph"
+          | "List"
+          | "Quote"
+          | "Callout"
+          | "Cta"
+          | "Divider";
+        purpose?: string | undefined;
+      }[];
+      categories?: { name: string; slug: string }[] | undefined;
+      extraInstructions?: string | undefined;
+    };
+    output: {
+      title: string;
+      excerpt: string;
+      seo: { title: string; description: string };
+      categorySlugs: string[];
+      sections: {
+        type:
+          | "Heading"
+          | "Paragraph"
+          | "List"
+          | "Quote"
+          | "Callout"
+          | "Cta"
+          | "Divider";
+        text?: string | undefined;
+        level?: "1" | "2" | "3" | undefined;
+        html?: string | undefined;
+        items?: string[] | undefined;
+        style?: "ordered" | "unordered" | undefined;
+        quote?: string | undefined;
+        title?: string | undefined;
+        body?: string | undefined;
+        variant?: "info" | "tip" | "warning" | "product" | undefined;
+        href?: string | undefined;
+      }[];
+    };
+  };
   BRAND_GET: {
     input: { id?: string | undefined };
     output: {

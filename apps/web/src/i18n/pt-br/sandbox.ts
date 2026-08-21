@@ -150,6 +150,7 @@ export const sandbox = {
   "sandbox.collectionsSidebar.blog": "Blog",
   "sandbox.collectionsSidebar.calendar": "Calendário",
   "sandbox.collectionsSidebar.categories": "Categorias",
+  "sandbox.collectionsSidebar.generate": "Gerar",
   "sandbox.collectionsSidebar.library": "Biblioteca",
   "sandbox.collectionsSidebar.content": "Conteúdo",
   "sandbox.collectionsSidebar.loaders": "Carregadores",
@@ -335,6 +336,50 @@ export const sandbox = {
   "sandbox.formats.suggested": "{count} formato(s) adicionado(s)",
   "sandbox.formats.unknownCitations":
     "Este formato cita sections que o site não tem: {names}",
+  "sandbox.generate.back": "Voltar",
+  "sandbox.generate.badDate":
+    "Essa data n\u00e3o \u00e9 v\u00e1lida — escolha outra.",
+  "sandbox.generate.blockedBrand":
+    "Um post escrito sem o contexto da marca sai igual ao de qualquer outra. Preencha estes na Biblioteca primeiro — o bot\u00e3o Preencher faz de uma vez.",
+  "sandbox.generate.blockedBrandTitle": "Preencha o contexto da marca primeiro",
+  "sandbox.generate.blockedSections":
+    "Este site n\u00e3o exp\u00f5e nenhuma section de post que d\u00ea para escrever s\u00f3 com texto, ent\u00e3o ainda n\u00e3o h\u00e1 do que montar um post.",
+  "sandbox.generate.blockedSectionsTitle": "Sem sections para escrever",
+  "sandbox.generate.cancel": "Cancelar",
+  "sandbox.generate.done": "\u201c{title}\u201d gerado e agendado.",
+  "sandbox.generate.extraHint":
+    "O que voc\u00ea quer deste post espec\u00edfico e que o tema e o formato ainda n\u00e3o dizem.",
+  "sandbox.generate.extraLabel": "Instru\u00e7\u00f5es extras",
+  "sandbox.generate.extraPlaceholder": "Opcional",
+  "sandbox.generate.failed": "N\u00e3o foi poss\u00edvel gerar o post",
+  "sandbox.generate.idle":
+    "Todo post gerado \u00e9 agendado, nunca publicado — voc\u00ea revisa, e ele entra no ar no dia que escolheu.",
+  "sandbox.generate.new": "Novo",
+  "sandbox.generate.next": "Continuar",
+  "sandbox.generate.noFormats":
+    "Nenhum formato ainda. Escreva um aqui, ou nomeie os que este blog j\u00e1 usa na Biblioteca.",
+  "sandbox.generate.noThemes":
+    "Nenhum tema ainda. Escreva um aqui, ou deixe o agente propor alguns em Temas.",
+  "sandbox.generate.phaseFinishing": "Finalizando o post\u2026",
+  "sandbox.generate.phaseReading": "Lendo a marca, o tema e o formato\u2026",
+  "sandbox.generate.phaseWriting": "Escrevendo\u2026",
+  "sandbox.generate.pickFormat": "Qual formato?",
+  "sandbox.generate.pickInstead": "Escolher um existente",
+  "sandbox.generate.pickTheme": "Qual tema?",
+  "sandbox.generate.run": "Gerar",
+  "sandbox.generate.scheduleHint":
+    "O post entra no ar neste instante. Post gerado \u00e9 sempre agendado.",
+  "sandbox.generate.scheduleLabel": "Publicar em",
+  "sandbox.generate.suggest": "Sugerir um",
+  "sandbox.generate.suggesting": "Pensando\u2026",
+  "sandbox.generate.stepExtra": "Instru\u00e7\u00f5es extras",
+  "sandbox.generate.stepFormat": "Formato",
+  "sandbox.generate.stepSchedule": "Agendamento",
+  "sandbox.generate.stepTheme": "Tema",
+  "sandbox.generate.subtitle":
+    "Um tema mais um formato viram um draft agendado.",
+  "sandbox.generate.title": "Gerar",
+  "sandbox.generate.writeInstead": "Escrever um novo",
   "sandbox.itemActions.addVariant": "Adicionar variante",
   "sandbox.itemActions.delete": "Excluir",
   "sandbox.itemActions.duplicate": "Duplicar",

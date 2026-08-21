@@ -64,6 +64,7 @@ const ALL_TOOL_NAMES = [
   "BLOG_BRAND_EXTRACT",
   "BLOG_THEME_SUGGEST",
   "BLOG_FORMAT_SUGGEST",
+  "BLOG_POST_DRAFT",
   "BRAND_GET",
   "BRAND_LIST",
   "ORGANIZATION_DOMAIN_LIST",
@@ -379,6 +380,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "BLOG_FORMAT_SUGGEST",
     description: "Name the post formats a blog writes in",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_POST_DRAFT",
+    description: "Write a blog post from a theme and a format",
     category: "Blog",
   },
   {

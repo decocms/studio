@@ -25,9 +25,15 @@ import {
   newThemeKey,
   scanThemes,
   THEME_KEY_PREFIX,
+  buildGeneratedPostPayload,
+  buildPostSections,
   citedSections,
   defaultFormatSections,
+  missingBrandForGeneration,
   postStructures,
+  sectionResolveTypes,
+  slugifyTitle,
+  uniquePostSlug,
   unknownCitations,
 } from "./blog-data";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
@@ -1234,5 +1240,253 @@ describe("filledBrandRules", () => {
       { name: "", value: "só corpo" },
     ];
     expect(filledBrandRules(rules)).toEqual(rules);
+  });
+});
+
+describe("missingBrandForGeneration", () => {
+  const complete = {
+    companyName: "Marca",
+    language: "pt-BR",
+    description: "Vende roupa",
+    tone: "Segunda pessoa, sem humor",
+    targetAudience: "Quem procura linho",
+    dos: [{ name: "Abertura", value: "Comece pelo leitor" }],
+    avoid: [{ name: "Preço", value: "Nunca em bloco de texto" }],
+  };
+
+  test("nothing missing when the three required tabs are filled", () => {
+    expect(missingBrandForGeneration(complete)).toEqual([]);
+  });
+
+  test("an absent block is missing everything", () => {
+    expect(missingBrandForGeneration(undefined)).toEqual([
+      "companyName",
+      "language",
+      "description",
+      "tone",
+      "targetAudience",
+      "dos",
+      "avoid",
+    ]);
+  });
+
+  test("whitespace does not satisfy a text field", () => {
+    expect(missingBrandForGeneration({ ...complete, tone: "   " })).toEqual([
+      "tone",
+    ]);
+  });
+
+  test("a rule list holding only the blank editor row counts as missing", () => {
+    expect(
+      missingBrandForGeneration({
+        ...complete,
+        dos: [{ name: "", value: "" }],
+      }),
+    ).toEqual(["dos"]);
+  });
+
+  test("values, categories and competitors are not required", () => {
+    expect(
+      missingBrandForGeneration({
+        ...complete,
+        values: [],
+        categories: [],
+        competitors: [],
+      }),
+    ).toEqual([]);
+  });
+});
+
+describe("sectionResolveTypes", () => {
+  test("maps a component name to this site's own resolveType", () => {
+    expect(
+      sectionResolveTypes(metaWith(["site/sections/Blog/Post/Heading.tsx"])),
+    ).toEqual({ Heading: "site/sections/Blog/Post/Heading.tsx" });
+  });
+
+  test("one name wins when app and site both define it", () => {
+    const map = sectionResolveTypes(
+      metaWith([
+        "blog/sections/blocks/Paragraph.tsx",
+        "site/sections/Blog/Post/Paragraph.tsx",
+      ]),
+    );
+    expect(Object.keys(map)).toEqual(["Paragraph"]);
+  });
+
+  test("a site with no post sections maps nothing", () => {
+    expect(sectionResolveTypes(metaWith(["site/sections/Header.tsx"]))).toEqual(
+      {},
+    );
+  });
+});
+
+describe("buildPostSections", () => {
+  const types = {
+    Heading: "blog/sections/blocks/Heading.tsx",
+    Paragraph: "blog/sections/blocks/Paragraph.tsx",
+    List: "blog/sections/blocks/List.tsx",
+    Quote: "blog/sections/blocks/Quote.tsx",
+    Callout: "blog/sections/blocks/Callout.tsx",
+    Cta: "blog/sections/blocks/Cta.tsx",
+    Divider: "blog/sections/blocks/Divider.tsx",
+  };
+
+  test("a List stores its items newline-joined, not as an array", () => {
+    expect(
+      buildPostSections(
+        [{ type: "List", items: ["um", "dois"], style: "ordered" }],
+        types,
+      ),
+    ).toEqual([
+      { __resolveType: types.List, items: "um\ndois", style: "ordered" },
+    ]);
+  });
+
+  test("fills each kind's own props", () => {
+    expect(
+      buildPostSections(
+        [
+          { type: "Heading", text: "Título", level: "3" },
+          { type: "Paragraph", html: "<strong>oi</strong>" },
+          { type: "Quote", quote: "citação" },
+          { type: "Callout", title: "Dica", body: "corpo", variant: "tip" },
+          { type: "Cta", text: "Ver", href: "/colecao" },
+          { type: "Divider" },
+        ],
+        types,
+      ),
+    ).toEqual([
+      { __resolveType: types.Heading, text: "Título", level: "3" },
+      { __resolveType: types.Paragraph, html: "<strong>oi</strong>" },
+      { __resolveType: types.Quote, quote: "citação" },
+      {
+        __resolveType: types.Callout,
+        title: "Dica",
+        body: "corpo",
+        variant: "tip",
+      },
+      { __resolveType: types.Cta, text: "Ver", href: "/colecao" },
+      { __resolveType: types.Divider },
+    ]);
+  });
+
+  test("defaults the enums rather than writing undefined", () => {
+    expect(buildPostSections([{ type: "Heading", text: "T" }], types)).toEqual([
+      { __resolveType: types.Heading, text: "T", level: "2" },
+    ]);
+    expect(buildPostSections([{ type: "List", items: ["a"] }], types)).toEqual([
+      { __resolveType: types.List, items: "a", style: "unordered" },
+    ]);
+  });
+
+  test("drops a kind this site cannot render", () => {
+    expect(
+      buildPostSections(
+        [
+          { type: "Heading", text: "fica" },
+          { type: "Callout", title: "sai", body: "sai" },
+        ],
+        { Heading: types.Heading },
+      ),
+    ).toEqual([{ __resolveType: types.Heading, text: "fica", level: "2" }]);
+  });
+
+  test("keeps the reading order", () => {
+    const built = buildPostSections(
+      [
+        { type: "Heading", text: "a" },
+        { type: "Paragraph", html: "b" },
+        { type: "Heading", text: "c" },
+      ],
+      types,
+    );
+    expect(built.map((b) => b.__resolveType)).toEqual([
+      types.Heading,
+      types.Paragraph,
+      types.Heading,
+    ]);
+  });
+});
+
+describe("slugifyTitle", () => {
+  test("folds accents and drops punctuation", () => {
+    expect(slugifyTitle("Como ler a etiqueta de composição!")).toBe(
+      "como-ler-a-etiqueta-de-composicao",
+    );
+  });
+
+  test("collapses runs and trims the edges", () => {
+    expect(slugifyTitle("  --  Linho   &   Algodão -- ")).toBe("linho-algodao");
+  });
+
+  test("a title with nothing slug-worthy yields empty", () => {
+    expect(slugifyTitle("!!! ???")).toBe("");
+  });
+});
+
+describe("uniquePostSlug", () => {
+  test("uses the plain slug when it's free", () => {
+    expect(uniquePostSlug("Linho no verão", [])).toBe("linho-no-verao");
+  });
+
+  test("suffixes past a collision", () => {
+    expect(uniquePostSlug("Linho", ["linho"])).toBe("linho-2");
+    expect(uniquePostSlug("Linho", ["linho", "linho-2"])).toBe("linho-3");
+  });
+
+  test("falls back to a random slug for an unslugifiable title", () => {
+    expect(uniquePostSlug("!!!", [])).toMatch(/^post-[0-9a-f]{6}$/);
+  });
+});
+
+describe("buildGeneratedPostPayload", () => {
+  const args = {
+    draft: {
+      title: "Por que o linho amassa",
+      excerpt: "E o que isso diz sobre a peça.",
+      seo: { title: "Por que o linho amassa", description: "Entenda a fibra." },
+      categorySlugs: ["tecidos"],
+      sections: [{ type: "Paragraph" as const, html: "corpo" }],
+    },
+    resolveTypes: { Paragraph: "blog/sections/blocks/Paragraph.tsx" },
+    categories: [
+      { name: "Tecidos", slug: "tecidos" },
+      { name: "Outra", slug: "outra" },
+    ],
+    scheduledFor: new Date("2026-09-01T11:00:00.000Z"),
+    takenSlugs: [],
+    now: new Date("2026-08-21T12:00:00.000Z"),
+  };
+
+  test("is scheduled at the chosen instant, never published", () => {
+    const payload = buildGeneratedPostPayload(args);
+    expect(payload.status).toBe("scheduled");
+    expect(payload.scheduledDatetime).toBe("2026-09-01T11:00:00.000Z");
+  });
+
+  test("the editorial date follows the scheduled day", () => {
+    expect(buildGeneratedPostPayload(args).date).toBe("2026-09-01");
+  });
+
+  test("resolves only the chosen categories into stored refs", () => {
+    expect(buildGeneratedPostPayload(args).categories).toEqual([
+      { name: "Tecidos", slug: "tecidos" },
+    ]);
+  });
+
+  test("leaves the cover image empty, so the reviewer is told", () => {
+    const payload = buildGeneratedPostPayload(args);
+    expect(payload.image).toBe("");
+    expect(missingPostFields(payload)).toEqual(["Cover image"]);
+  });
+
+  test("avoids a slug another post already holds", () => {
+    expect(
+      buildGeneratedPostPayload({
+        ...args,
+        takenSlugs: ["por-que-o-linho-amassa"],
+      }).slug,
+    ).toBe("por-que-o-linho-amassa-2");
   });
 });

@@ -11,6 +11,7 @@
  * shared `useSaveBlock`/`useDeleteBlock`, whose `decoBlockFilePath` already
  * reproduces that encoding.
  */
+import type { StudioToolIO } from "@decocms/shared/tools/tool-io";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { resolveBlockSchemaMetadata } from "@/components/sections-editor/resolve-schema";
 
@@ -1175,4 +1176,203 @@ export function dedupeSuggestedThemes<T extends { title: string }>(
     fresh.push(theme);
   }
   return fresh;
+}
+
+// ------------------ Generation ----------------------------------------------
+
+/** Brand fields a generated post cannot be written without. */
+export type BrandRequirement =
+  | "companyName"
+  | "language"
+  | "description"
+  | "tone"
+  | "targetAudience"
+  | "dos"
+  | "avoid";
+
+const REQUIRED_BRAND_TEXT = [
+  "companyName",
+  "language",
+  "description",
+  "tone",
+  "targetAudience",
+] as const satisfies readonly BrandRequirement[];
+
+/**
+ * What the brand block still lacks before anything may be generated.
+ *
+ * These are the three tabs that decide how a post reads — the basics, the
+ * generation instructions and the guardrails. Without them the model falls back
+ * on what a brand in this category usually sounds like, which is the one
+ * outcome the whole feature exists to avoid, so this blocks rather than warns.
+ * `values`, `categories` and `competitors` are genuinely extra.
+ */
+export function missingBrandForGeneration(block: unknown): BrandRequirement[] {
+  const brand = asRecord(block) ?? {};
+  const missing: BrandRequirement[] = [];
+  for (const field of REQUIRED_BRAND_TEXT) {
+    if (!str(brand[field]).trim()) missing.push(field);
+  }
+  if (filledBrandRules(normalizeBrandRules(brand.dos)).length === 0) {
+    missing.push("dos");
+  }
+  if (filledBrandRules(normalizeBrandRules(brand.avoid)).length === 0) {
+    missing.push("avoid");
+  }
+  return missing;
+}
+
+/**
+ * Component name → the resolveType this site actually exposes for it.
+ *
+ * A generated section names its kind (`Heading`); only the site knows whether
+ * that is `blog/sections/blocks/Heading.tsx` or its own
+ * `site/sections/Blog/Post/Heading.tsx`. Keeping the mapping here means the
+ * model never sees a resolveType and so can never invent one.
+ */
+export function sectionResolveTypes(meta: LiveMeta): Record<string, string> {
+  const byName: Record<string, string> = {};
+  for (const block of discoverBlogBlockTypes(meta)) {
+    const name = blockComponentName(block.resolveType);
+    if (!(name in byName)) byName[name] = block.resolveType;
+  }
+  return byName;
+}
+
+type DraftSection =
+  StudioToolIO["BLOG_POST_DRAFT"]["output"]["sections"][number];
+
+/**
+ * Turn generated sections into decofile blocks.
+ *
+ * This is where the storage conventions live, and they differ per kind — a
+ * `List` stores its items as one newline-joined string, while `Checklist` and
+ * friends store JSON. Getting it wrong yields a block that saves fine and
+ * renders empty, so each kind is written out explicitly rather than spread.
+ *
+ * A kind this site doesn't expose is dropped: better a shorter post than a
+ * block the editor can't render.
+ */
+export function buildPostSections(
+  sections: DraftSection[],
+  resolveTypes: Record<string, string>,
+): Array<Record<string, unknown>> {
+  const blocks: Array<Record<string, unknown>> = [];
+  for (const section of sections) {
+    const __resolveType = resolveTypes[section.type];
+    if (!__resolveType) continue;
+    switch (section.type) {
+      case "Heading":
+        blocks.push({
+          __resolveType,
+          text: str(section.text),
+          level: section.level ?? "2",
+        });
+        break;
+      case "Paragraph":
+        blocks.push({ __resolveType, html: str(section.html) });
+        break;
+      case "List":
+        blocks.push({
+          __resolveType,
+          // One string, newline-separated — see ListBlock in plain-blocks.
+          items: (section.items ?? []).join("\n"),
+          style: section.style ?? "unordered",
+        });
+        break;
+      case "Quote":
+        blocks.push({ __resolveType, quote: str(section.quote) });
+        break;
+      case "Callout":
+        blocks.push({
+          __resolveType,
+          title: str(section.title),
+          body: str(section.body),
+          variant: section.variant ?? "info",
+        });
+        break;
+      case "Cta":
+        blocks.push({
+          __resolveType,
+          text: str(section.text),
+          href: str(section.href),
+        });
+        break;
+      case "Divider":
+        blocks.push({ __resolveType });
+        break;
+    }
+  }
+  return blocks;
+}
+
+/** URL-safe slug from a title: accents folded, punctuation dropped. */
+export function slugifyTitle(title: string): string {
+  return title
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
+/** `slugifyTitle`, suffixed until it stops colliding with an existing post. */
+export function uniquePostSlug(title: string, taken: string[]): string {
+  const base = slugifyTitle(title) || `post-${randomHex(6)}`;
+  const used = new Set(taken);
+  if (!used.has(base)) return base;
+  for (let n = 2; n < 100; n++) {
+    const candidate = `${base}-${n}`;
+    if (!used.has(candidate)) return candidate;
+  }
+  return `${base}-${randomHex(4)}`;
+}
+
+/**
+ * The post payload for a generated draft, always scheduled.
+ *
+ * Generated posts are never published on save: a human reviews them, and the
+ * schedule is the promise they opt into. `setPostStatus` keeps a valid
+ * `scheduledDatetime`, so seeding it first is what pins the chosen instant.
+ *
+ * `image` is left empty — nothing here generates one, and a fabricated URL
+ * would render a broken post. `missingPostFields` reports it, which is the
+ * honest signal for the reviewer.
+ */
+export function buildGeneratedPostPayload({
+  draft,
+  resolveTypes,
+  categories,
+  scheduledFor,
+  takenSlugs,
+  now,
+}: {
+  draft: StudioToolIO["BLOG_POST_DRAFT"]["output"];
+  resolveTypes: Record<string, string>;
+  /** The site's categories, to resolve the chosen slugs into stored refs. */
+  categories: CategoryRef[];
+  scheduledFor: Date;
+  takenSlugs: string[];
+  now: Date;
+}): Record<string, unknown> {
+  const chosen = new Set(draft.categorySlugs);
+  const payload: Record<string, unknown> = {
+    title: draft.title,
+    slug: uniquePostSlug(draft.title, takenSlugs),
+    date: scheduledFor.toISOString().slice(0, 10),
+    excerpt: draft.excerpt,
+    image: "",
+    alt: "",
+    authors: [],
+    categories: categories.filter((category) => chosen.has(category.slug)),
+    seo: {
+      title: draft.seo.title,
+      description: draft.seo.description,
+      image: "",
+    },
+    sections: buildPostSections(draft.sections, resolveTypes),
+    scheduledDatetime: scheduledFor.toISOString(),
+  };
+  return setPostStatus(payload, "scheduled", now);
 }
