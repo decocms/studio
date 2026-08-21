@@ -20,13 +20,15 @@ import { ImageField } from "@/components/sections-editor/fields/image-field";
 import { StringField } from "@/components/sections-editor/fields/string-field";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import {
-  blocksPublishToggle,
+  blocksPostStatus,
   buildBlogBlock,
   getBlogPayload,
-  isPostPublished,
   listBlogPayloads,
   missingPostFields,
+  type PostStatus,
+  postStatus,
   relationPickerState,
+  setPostStatus,
   stampPostModified,
 } from "./blog-data";
 import {
@@ -34,6 +36,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
+import {
+  type BlogSupport,
+  supportsPublishToggle,
+  supportsScheduling,
+} from "./blog-capabilities";
+import { useBlogSupport } from "./use-blog-support";
 import { buildBlogPostPreviewUrl } from "./blog-preview-url";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { useDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
@@ -86,6 +94,7 @@ export function PostEditor({
 }) {
   const t = useT();
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  const support = useBlogSupport({ orgSlug, virtualMcpId, branch, meta });
   const draftPointer = useDraftPointer({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, "posts");
 
@@ -203,7 +212,9 @@ export function PostEditor({
                 <PostSettings
                   post={post}
                   decofile={decofile}
+                  support={support}
                   onChange={setField}
+                  onPatch={(fields) => setPost({ ...post, ...fields })}
                 />
               </div>
             </TabsContent>
@@ -214,20 +225,70 @@ export function PostEditor({
   );
 }
 
+/**
+ * A switch plus its tooltip, disabled when required fields are missing. Only
+ * flipping *on* is ever gated, so a post can always be pulled back down.
+ */
+function StatusSwitch({
+  id,
+  label,
+  checked,
+  blocked,
+  blockedReason,
+  className,
+  onCheckedChange,
+}: {
+  id: string;
+  label: string;
+  checked: boolean;
+  blocked: boolean;
+  blockedReason: string;
+  className?: string;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <Label htmlFor={id}>{label}</Label>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span>
+            <Switch
+              id={id}
+              className={className}
+              checked={checked}
+              disabled={blocked}
+              onCheckedChange={onCheckedChange}
+            />
+          </span>
+        </TooltipTrigger>
+        {blocked && (
+          <TooltipContent side="bottom">{blockedReason}</TooltipContent>
+        )}
+      </Tooltip>
+    </div>
+  );
+}
+
 function PostSettings({
   post,
   decofile,
+  support,
   onChange,
+  onPatch,
 }: {
   post: Record<string, unknown>;
   decofile: Record<string, unknown>;
+  /** Gates the status controls — see {@link supportsPublishToggle}. */
+  support: BlogSupport;
   onChange: (key: string, value: unknown) => void;
+  onPatch: (fields: Record<string, unknown>) => void;
 }) {
   const t = useT();
-  const isPublished = isPostPublished(post);
+  const canPublish = supportsPublishToggle(support);
+  const canSchedule = supportsScheduling(support);
+  const status = postStatus(post);
+  const isScheduled = canSchedule && status === "scheduled";
   const missing = missingPostFields(post);
-  // Blocks only publishing, not unpublishing — see `blocksPublishToggle`.
-  const publishToggleDisabled = blocksPublishToggle(post);
   const missingLabel =
     missing.length === 1
       ? t("sandbox.postEditor.missingFieldSingular", {
@@ -236,32 +297,55 @@ function PostSettings({
       : t("sandbox.postEditor.missingFieldPlural", {
           fields: missing.join(", "),
         });
+  const setStatus = (next: PostStatus) =>
+    onPatch(setPostStatus(post, next, new Date()));
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between gap-3 border-b pb-4">
-        <Label htmlFor="post-published">
-          {t("sandbox.postEditor.publishedLabel")}
-        </Label>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span>
-              <Switch
-                id="post-published"
-                className="data-[state=checked]:bg-success"
-                checked={isPublished}
-                disabled={publishToggleDisabled}
-                onCheckedChange={(checked) =>
-                  onChange("status", checked ? "published" : "draft")
-                }
-              />
-            </span>
-          </TooltipTrigger>
-          {publishToggleDisabled && (
-            <TooltipContent side="bottom">{missingLabel}</TooltipContent>
+      {canPublish && (
+        <div className="space-y-4 border-b pb-4">
+          {canSchedule && (
+            <StatusSwitch
+              id="post-scheduled"
+              label={t("sandbox.postEditor.schedulingLabel")}
+              checked={isScheduled}
+              blocked={blocksPostStatus(post, "scheduled")}
+              blockedReason={missingLabel}
+              onCheckedChange={(checked) =>
+                setStatus(checked ? "scheduled" : "draft")
+              }
+            />
           )}
-        </Tooltip>
-      </div>
+          {isScheduled ? (
+            <StringField
+              schema={{
+                type: "string",
+                format: "date-time",
+                title: t("sandbox.postEditor.scheduledDatetimeLabel"),
+                description: t(
+                  "sandbox.postEditor.scheduledDatetimeDescription",
+                ),
+              }}
+              value={str(post.scheduledDatetime)}
+              onChange={(v) => onChange("scheduledDatetime", v)}
+              path="post-scheduled-datetime"
+              label={t("sandbox.postEditor.scheduledDatetimeLabel")}
+            />
+          ) : (
+            <StatusSwitch
+              id="post-published"
+              label={t("sandbox.postEditor.publishedLabel")}
+              className="data-[state=checked]:bg-success"
+              checked={status === "published"}
+              blocked={blocksPostStatus(post, "published")}
+              blockedReason={missingLabel}
+              onCheckedChange={(checked) =>
+                setStatus(checked ? "published" : "draft")
+              }
+            />
+          )}
+        </div>
+      )}
       <div className="space-y-2">
         <Label htmlFor="post-excerpt">
           {t("sandbox.postEditor.excerptLabel")}

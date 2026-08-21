@@ -46,8 +46,18 @@ const POST_SORT_SHORT_KEYS: Record<PostSort, TranslationKey> = {
 
 const POST_STATUS_LABEL_KEYS: Record<PostStatusFilter, TranslationKey> = {
   published: "sandbox.postToolbar.statusPublished",
+  scheduled: "sandbox.postToolbar.statusScheduled",
   draft: "sandbox.postToolbar.statusDraft",
 };
+
+const STATUS_PREFIX = "status:";
+
+/** The status a `status:<name>` menu value selects, or null if it isn't one. */
+function statusFromValue(value: string): PostStatusFilter | null {
+  if (!value.startsWith(STATUS_PREFIX)) return null;
+  const status = value.slice(STATUS_PREFIX.length);
+  return status in POST_STATUS_LABEL_KEYS ? (status as PostStatusFilter) : null;
+}
 
 type CategoryOption = { slug: string; name: string; count: number };
 type AuthorOption = { email: string; name: string; count: number };
@@ -154,10 +164,10 @@ export function PostFilterBar({
       onCategoryFilterChange(null);
       onStatusFilterChange(null);
       onAuthorFilterChange(v.slice(7));
-    } else if (v === "status:published" || v === "status:draft") {
+    } else if (statusFromValue(v)) {
       onCategoryFilterChange(null);
       onAuthorFilterChange(null);
-      onStatusFilterChange(v === "status:published" ? "published" : "draft");
+      onStatusFilterChange(statusFromValue(v));
     } else {
       clearFilter();
     }
