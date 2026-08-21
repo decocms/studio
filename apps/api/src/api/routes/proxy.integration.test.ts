@@ -223,3 +223,96 @@ describe("MCP Proxy call-tool disabled-connection gate", () => {
     expect(body.error).toContain("Connection inactive");
   });
 });
+
+describe("MCP Proxy call-tool organization ownership", () => {
+  let database: StudioDatabase;
+  let app: Awaited<ReturnType<typeof createApp>>;
+
+  const userIdOrgA = "user_org_a";
+  const userIdOrgB = "user_org_b";
+  const orgIdA = "org_a";
+  const orgIdB = "org_b";
+  const connIdOrgB = "conn_org_b_123";
+
+  beforeEach(async () => {
+    ensureEncryptionKey();
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
+    app = await createApp({ database, disableNats: true });
+
+    const now = new Date().toISOString();
+    const { sql } = await import("kysely");
+
+    // Create two users and two orgs
+    await sql`
+      INSERT INTO "user" (id, email, "emailVerified", name, "createdAt", "updatedAt")
+      VALUES
+        (${userIdOrgA}, 'user-a@example.com', false, 'User A', ${now}, ${now}),
+        (${userIdOrgB}, 'user-b@example.com', false, 'User B', ${now}, ${now})
+    `.execute(database.db);
+
+    await database.db
+      .insertInto("organization" as any)
+      .values([
+        { id: orgIdA, name: "Org A", slug: "org-a", createdAt: now },
+        { id: orgIdB, name: "Org B", slug: "org-b", createdAt: now },
+      ])
+      .execute();
+
+    // Add users to their respective orgs
+    await sql`
+      INSERT INTO "member" (id, "userId", "organizationId", role, "createdAt")
+      VALUES
+        ('mem_a', ${userIdOrgA}, ${orgIdA}, 'member', ${now}),
+        ('mem_b', ${userIdOrgB}, ${orgIdB}, 'member', ${now})
+    `.execute(database.db);
+
+    // Create a connection in Org B
+    await database.db
+      .insertInto("connections")
+      .values({
+        id: connIdOrgB,
+        organization_id: orgIdB,
+        created_by: userIdOrgB,
+        title: "Org B Connection",
+        connection_type: "HTTP",
+        connection_url: "https://example.com/mcp",
+        status: "active",
+        pinned: false,
+        created_at: now,
+        updated_at: now,
+      })
+      .execute();
+  });
+
+  afterEach(async () => {
+    await closeTestPgDatabase(database);
+    vi.restoreAllMocks();
+  });
+
+  it("should reject call-tool when user's org differs from connection's org", async () => {
+    // User from Org A tries to call tool on connection in Org B
+    vi.spyOn(auth.api, "getMcpSession").mockResolvedValue(null);
+    vi.spyOn(auth.api, "setActiveOrganization").mockResolvedValue(null as any);
+    vi.spyOn(auth.api, "getSession" as any).mockImplementation(async () => ({
+      user: { id: userIdOrgA, email: "user-a@example.com" },
+      session: { activeOrganizationId: orgIdA },
+    }));
+    vi.spyOn(auth.api, "getFullOrganization" as any).mockImplementation(
+      async () => ({ id: orgIdA, slug: "org-a" }),
+    );
+
+    const response = await app.request(
+      `/mcp/${connIdOrgB}/call-tool/some_tool`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      },
+    );
+
+    expect(response.status).toBe(404);
+    const body = await response.json();
+    expect(body.error).toContain("Connection not found");
+  });
+});
