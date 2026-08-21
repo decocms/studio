@@ -126,4 +126,19 @@ describe("MCP Proxy null-org bypass", () => {
     const body = await response.json();
     expect(body.error).toContain("Organization context is required");
   });
+
+  it("should reject call-tool access when organization context is missing", async () => {
+    const response = await app.request(
+      "/mcp/conn_victim_123/call-tool/some_tool",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      },
+    );
+
+    expect(response.status).toBe(403);
+    const body = await response.json();
+    expect(body.error).toContain("Organization context is required");
+  });
 });

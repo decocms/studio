@@ -473,13 +473,18 @@ export const createProxyRoutes = () => {
     const toolName = c.req.param("toolName");
     const ctx = c.get("studioContext");
 
+    // Without an org, findById's org filter is skipped — cross-tenant lookup.
+    if (!ctx.organization?.id) {
+      return c.json({ error: "Organization context is required" }, 403);
+    }
+
     // Hoisted so the catch block can reuse it instead of re-querying.
     let connection: ConnectionEntity | null = null;
     try {
       // Fetch connection and create client directly
       connection = await ctx.storage.connections.findById(
         connectionId,
-        ctx.organization?.id,
+        ctx.organization.id,
       );
       if (!connection) {
         return c.json({ error: "Connection not found" }, 404);
@@ -515,7 +520,7 @@ export const createProxyRoutes = () => {
       // route. Without this, an expired/missing credential would 500 here.
       connection ??= await ctx.storage.connections.findById(
         connectionId,
-        ctx.organization?.id,
+        ctx.organization.id,
       );
       if (connection?.connection_url) {
         const authResponse = await handleAuthError({
