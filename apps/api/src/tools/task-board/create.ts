@@ -11,6 +11,7 @@ import { assertValidAssignee } from "./validate-assignee";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
+import { extractPrFromText } from "./pr-extract";
 
 export const TASK_BOARD_ITEM_CREATE = defineTool({
   name: "TASK_BOARD_ITEM_CREATE",
@@ -31,6 +32,16 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     repo: z.string().nullable().optional(),
     dueDate: z.string().datetime().nullable().optional(),
     tagIds: z.array(z.string()).optional(),
+    prUrl: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        "GitHub pull request URL to link to the new task, e.g. " +
+          "https://github.com/owner/repo/pull/123. Pass this with " +
+          '`status: "in_review"` right after you open a PR so the card lands ' +
+          "on the board with its PR already attached for review.",
+      ),
   }),
   outputSchema: z.object({ item: TaskBoardItemSchema }),
   handler: async (input, ctx) => {
@@ -41,6 +52,15 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     if (!organizationId) {
       throw new Error(
         "Organization ID required (no active organization in context)",
+      );
+    }
+
+    // Parse the PR link before any write, so a bad URL fails without orphaning a card.
+    const pr = input.prUrl ? extractPrFromText(input.prUrl) : null;
+    if (input.prUrl && !pr) {
+      throw new Error(
+        `Not a GitHub pull request URL: ${input.prUrl} (expected ` +
+          "https://github.com/<owner>/<repo>/pull/<number>)",
       );
     }
 
@@ -81,6 +101,18 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
         getUserId(ctx)!,
       );
       item = (await ctx.storage.taskBoard.getById(item.id, organizationId))!;
+    }
+
+    if (pr) {
+      await ctx.storage.taskBoard.linkPr({
+        taskBoardItemId: item.id,
+        organizationId,
+        url: pr.url,
+        prNumber: pr.number,
+        repoOwner: pr.owner,
+        repoName: pr.repo,
+        connectionId: null,
+      });
     }
 
     await recordTaskActivity(ctx, {
