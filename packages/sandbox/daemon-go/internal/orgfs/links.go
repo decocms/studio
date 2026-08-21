@@ -71,10 +71,6 @@ type Links struct {
 	readySpent       bool
 	publicSkillsRun  bool
 	skillPluginReady bool
-	// Held for the whole flight of a Claude Code session transfer; see
-	// `withinSessionBudget`. Separate from `mu`: a transfer is slow org-fs I/O
-	// and must not block a symlink repoint (or the fs routes waiting on one).
-	sessionMu sync.Mutex
 	// Closed when the in-flight skill-link sync finishes; nil before the first
 	// one starts. `WaitSkillLinks` is what turns the async sync back into a
 	// barrier for the run that needs it.
