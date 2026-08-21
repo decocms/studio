@@ -35,7 +35,7 @@ export function useSandboxChunkHandler(handler: ChunkHandler | null) {
   }, [subscribeChunks]);
 }
 
-/** Daemon "reload" = config edits framework HMR won't catch (.ts/.tsx uses framework HMR). */
+/** The preview's origin moved or came back. File edits are the dev server's job. */
 export function useSandboxReloadHandler(handler: ReloadHandler | null) {
   const { subscribeReload } = useSandboxEvents();
   const handlerRef = useRef(handler);
@@ -50,24 +50,4 @@ export function useSandboxReloadHandler(handler: ReloadHandler | null) {
     const unsubscribe = subscribeReload(fn);
     return unsubscribe;
   }, [subscribeReload]);
-}
-
-/**
- * Fires the instant a `.deco/*` change is detected (before the debounced
- * reload), so the caller can show a loading indicator immediately.
- */
-export function useSandboxReloadStartHandler(handler: ReloadHandler | null) {
-  const { subscribeReloadStart } = useSandboxEvents();
-  const handlerRef = useRef(handler);
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
-  handlerRef.current = handler;
-
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect — subscription lifecycle bound to the component mount; uses ref for stable identity
-  useEffect(() => {
-    const fn: ReloadHandler = () => {
-      handlerRef.current?.();
-    };
-    const unsubscribe = subscribeReloadStart(fn);
-    return unsubscribe;
-  }, [subscribeReloadStart]);
 }
