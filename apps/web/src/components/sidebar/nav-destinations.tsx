@@ -55,10 +55,7 @@ function useDecopilotId(): string {
   return getWellKnownDecopilotVirtualMCP(org.id).id;
 }
 
-/**
- * The destinations, in display order. Reports only appears once the org
- * actually has a report — the entry opens that report's MCP app.
- */
+/** The destinations, in display order. */
 function useNavDestinations({
   onNavigate,
 }: {
@@ -140,18 +137,18 @@ function useNavDestinations({
     ),
   ];
 
-  if (diagnostic) {
-    destinations.push(
-      destination(
-        formatPinnedViewTabId(
-          connectionId,
-          COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
-        ),
-        t("sidebar.navDestinations.reports"),
-        <BarChartSquare02 size={16} />,
-      ),
-    );
-  }
+  destinations.push(
+    destination(
+      diagnostic
+        ? formatPinnedViewTabId(
+            connectionId,
+            COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
+          )
+        : "reports",
+      t("sidebar.navDestinations.reports"),
+      <BarChartSquare02 size={16} />,
+    ),
+  );
   destinations.push(
     destination(
       "board",

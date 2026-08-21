@@ -51,6 +51,7 @@ import {
 import { SiteBadge } from "./commerce-onboarding/site-badge.tsx";
 import { CommerceOnboardingLoadingIndicator } from "./commerce-onboarding/loading-state.tsx";
 import { parseSelfToolResult } from "./commerce-onboarding/self-tool-result.ts";
+import { translateSiteError } from "./commerce-onboarding/site-error.ts";
 import { cn } from "@decocms/ui/lib/utils.ts";
 
 interface CommerceOrganization {
@@ -240,24 +241,6 @@ function getCommerceAuthCopy(t: ReturnType<typeof useT>) {
       "routes.commerceOnboarding.authCopy.signInWithEmailCode",
     ),
   };
-}
-
-// Translates raw error strings (from normalizeReportsSiteUrl or well-known
-// internal sentinels) into the current locale. Dynamic server errors fall
-// through to the default and are shown as-is.
-function translateSiteError(t: ReturnType<typeof useT>, error: string): string {
-  switch (error) {
-    case "Enter a website URL.":
-      return t("routes.commerceOnboarding.siteUrl.enterUrl");
-    case "Use an HTTP or HTTPS website URL.":
-      return t("routes.commerceOnboarding.siteUrl.useHttpOrHttps");
-    case "Enter a valid website URL.":
-      return t("routes.commerceOnboarding.siteUrl.enterValidUrl");
-    case "__configurationFailed":
-      return t("routes.commerceOnboarding.configurationFailed");
-    default:
-      return error;
-  }
 }
 
 // One-shot per SPA load, render-time (useEffect is banned in this app; same
