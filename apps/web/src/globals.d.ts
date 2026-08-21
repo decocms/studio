@@ -1,7 +1,13 @@
 declare const __STUDIO_VERSION__: string;
 declare const __E2E_TEST_HOOKS__: boolean;
-/** Where this app serves the Monaco engine from; see vite.config's `self-hosted-monaco`. */
-declare const __MONACO_VS_PATH__: string;
+
+/**
+ * Monaco reads its worker/trusted-types hooks off this global. `monaco-editor`
+ * declares it too, but only in the module graph of its runtime entry, which
+ * this app never imports statically — the engine is loaded at runtime from
+ * `MONACO_VS_PATH`. `var`, not `let`, so `globalThis.MonacoEnvironment` types.
+ */
+declare var MonacoEnvironment: import("monaco-editor").Environment | undefined;
 
 declare module "*?raw" {
   const content: string;

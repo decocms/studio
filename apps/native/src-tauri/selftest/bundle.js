@@ -534,75 +534,67 @@
   await progress("previewCookieRoundTrip");
 
   /**
-   * Monaco: the code editor engine boots from this app's OWN origin.
+   * Monaco: the code editor engine this shell asks for is one it can load.
    *
    * The engine is not part of the JS bundle — it is ~100 files under
-   * `/monaco/vs` (`apps/web/vite.config.ts`'s `self-hosted-monaco`), pulled in
-   * at runtime by a `<script>` and, for the language services, a `Worker`.
-   * Those two are what the packaged CSP is strictest about, and no other check
-   * here exercises either: the app shipped a CDN `paths.vs` for months and
-   * every code surface rendered a permanent spinner, because `script-src
-   * 'self'` refused the engine while the file contents themselves loaded fine.
+   * `/monaco/<version>/vs` (`apps/web/vite.config.ts`'s `self-hosted-monaco`),
+   * fetched at runtime by a `<script>` and, for the language services, a
+   * `Worker`. The app shipped a CDN path for months and every code surface
+   * rendered a permanent spinner, because `script-src 'self'` refused the
+   * engine while the file contents themselves loaded fine — green everywhere
+   * else, unusable here.
    *
-   * Asserts the whole chain in the real webview under the real CSP — the files
-   * are embedded and served, the loader script executes, an editor mounts, and
-   * a language worker answers. A `blob:`-wrapped worker (monaco's default when
-   * no `getWorkerUrl` is declared) fails here too, since `worker-src` falls
-   * back to `default-src 'self'`.
+   * Asserts the two facts that turn that bug into a red build, both cheap and
+   * deterministic: the path THIS APP declares (read back from
+   * `MonacoEnvironment`, which `apps/web/src/index.native.tsx` sets at boot)
+   * is same-origin, and the engine actually answers on it. An off-origin path
+   * fails the first; files that never shipped fail the second.
+   *
+   * Deliberately does NOT load the engine (3.7 MB) or start a language worker
+   * (5.5 MB): this self-test shares ONE 60 s process budget with every other
+   * check here, and a slow probe would fail them all rather than itself. That
+   * the engine runs under the packaged CSP is asserted in a browser against
+   * this exact policy, and its assets are covered by
+   * `packages/e2e/tests/monaco-engine-assets.spec.ts`.
    */
   async function probeMonacoEngine() {
-    const VS = "/monaco/vs";
-    const loaded = await new Promise((resolve) => {
-      const script = document.createElement("script");
-      script.src = `${VS}/loader.js`;
-      script.onload = () => resolve(true);
-      script.onerror = () => resolve(false);
-      document.body.appendChild(script);
-    });
-    if (!loaded) return { ok: false, stage: "loader-script-blocked" };
+    const getWorkerUrl = window.MonacoEnvironment?.getWorkerUrl;
+    if (typeof getWorkerUrl !== "function") {
+      return { ok: false, stage: "app-declared-no-worker-url" };
+    }
+    const workerUrl = getWorkerUrl("workerMain.js", "typescript");
+    const suffix = "/base/worker/workerMain.js";
+    if (typeof workerUrl !== "string" || !workerUrl.endsWith(suffix)) {
+      return { ok: false, stage: "unexpected-worker-url", workerUrl };
+    }
+    // Same-origin means `script-src 'self'` permits it; a CDN URL is the
+    // regression, and `new URL` resolves a relative path against this page.
+    const vs = workerUrl.slice(0, -suffix.length);
+    if (new URL(vs, window.location.href).origin !== window.location.origin) {
+      return { ok: false, stage: "engine-path-is-off-origin", vs };
+    }
 
-    window.require.config({ paths: { vs: VS } });
-    window.MonacoEnvironment = {
-      getWorkerUrl: () => `${VS}/base/worker/workerMain.js`,
-    };
-    const monaco = await new Promise((resolve) => {
-      window.require(
-        ["vs/editor/editor.main"],
-        (module) => resolve(module),
-        () => resolve(null),
-      );
-    });
-    if (!monaco) return { ok: false, stage: "editor-main-failed" };
-
-    const host = document.createElement("div");
-    host.style.cssText = "position:fixed;left:-9999px;width:400px;height:200px";
-    document.body.appendChild(host);
     try {
-      const editor = monaco.editor.create(host, {
-        value: "const answer: number = 42;\n",
-        language: "typescript",
+      const { res } = await fetchNetworkRetry(`${vs}/loader.js`, {
+        credentials: "include",
       });
-      const model = editor.getModel();
-      const getWorker = await monaco.languages.typescript.getTypeScriptWorker();
-      const worker = await getWorker(model.uri);
-      await worker.getSemanticDiagnostics(model.uri.toString());
+      const contentType = res.headers.get("content-type") || "";
       return {
-        ok: host.querySelectorAll(".view-line").length > 0,
-        stage: "worker-answered",
-        renderedLines: host.querySelectorAll(".view-line").length,
+        ok: res.status === 200 && contentType.includes("javascript"),
+        stage: "engine-served",
+        vs,
+        status: res.status,
+        contentType,
       };
     } catch (e) {
-      return { ok: false, stage: "worker-failed", error: String(e) };
-    } finally {
-      host.remove();
+      return { ok: false, stage: "engine-fetch-failed", vs, error: String(e) };
     }
   }
-  results.monacoEngineBoots = await Promise.race([
-    probeMonacoEngine().catch((e) => ({ ok: false, error: String(e) })),
-    new Promise((resolve) =>
-      setTimeout(() => resolve({ ok: false, stage: "timeout" }), 30000),
-    ),
-  ]);
+  try {
+    results.monacoEngineBoots = await probeMonacoEngine();
+  } catch (e) {
+    results.monacoEngineBoots = { ok: false, error: String(e) };
+  }
   await progress("monacoEngineBoots");
 
   // --- CSP: zero violations captured by `setup.rs`'s boot-error captor -

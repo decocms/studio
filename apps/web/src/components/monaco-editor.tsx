@@ -1,9 +1,8 @@
 import { useRef, useId } from "react";
-import Editor, { OnMount, type EditorProps } from "@monaco-editor/react";
 import type { Plugin } from "prettier";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { getReturnType } from "./monaco";
-import { configureMonacoLoader } from "./monaco/loader";
+import { Editor, type EditorProps, type OnMount } from "./monaco/editor";
 import { MonacoErrorBoundary } from "./monaco-error-boundary";
 
 // ============================================
@@ -52,8 +51,6 @@ const loadPrettier = async () => {
 
   return prettierCache;
 };
-
-configureMonacoLoader();
 
 // ============================================
 // Static Constants (module-scoped for stability)

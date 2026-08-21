@@ -1,7 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, useRef } from "react";
-import Editor from "@monaco-editor/react";
-import type { OnMount } from "@monaco-editor/react";
 import {
   FilePlus01,
   FolderPlus,
@@ -19,7 +17,7 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { toast } from "sonner";
 import { useChatStream } from "@/components/chat/context";
-import { configureMonacoLoader } from "@/components/monaco/loader";
+import { Editor, type OnMount } from "@/components/monaco/editor";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { useT } from "@/i18n/use-t.ts";
 import { KEYS } from "@/lib/query-keys";
@@ -62,8 +60,6 @@ import {
   type GlobListResult,
   type GrepContentMatch,
 } from "./utils";
-
-configureMonacoLoader();
 
 /** Max content-search hits requested from the daemon grep endpoint. */
 const CONTENT_SEARCH_LIMIT = 200;

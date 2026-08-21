@@ -1,4 +1,3 @@
-import { DiffEditor } from "@monaco-editor/react";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   DropdownMenu,
@@ -9,12 +8,10 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { ChevronRight, DotsHorizontal, File06 } from "@untitledui/icons";
 import { useState } from "react";
-import { configureMonacoLoader } from "@/components/monaco/loader";
+import { DiffEditor } from "@/components/monaco/editor";
 import { useT } from "@/i18n/use-t.ts";
 import { getLanguageFromPath } from "../../sandbox/preview/file-explorer/utils.ts";
 import type { GitDiffResult } from "./sandbox-git-api.ts";
-
-configureMonacoLoader();
 
 function editorTheme(): "vs" | "vs-dark" {
   return document.documentElement.classList.contains("dark") ? "vs-dark" : "vs";
