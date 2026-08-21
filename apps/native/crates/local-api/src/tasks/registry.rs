@@ -461,6 +461,49 @@ impl TaskRegistry {
         guard.insert(entry.summary.id.clone(), entry);
     }
 
+    /// Atomically: if some task with `entry`'s `log_name` is already
+    /// `Running`, register nothing and hand back that task; otherwise insert
+    /// `entry` and return `None`.
+    ///
+    /// Byte-parity target: `TaskManager.SpawnUnlessLogNameRunning`
+    /// (`daemon-go/internal/proc/taskmanager.go:168`). Checking with
+    /// [`Self::list`] and then calling [`Self::insert`] is two critical
+    /// sections, and two concurrent `POST /_sandbox/exec/dev` both reading
+    /// "not running" and each spawning is exactly the race that costs a
+    /// second framework build — worse here than on the daemon's pod, because
+    /// `dev_port::allocate` hands a sandbox back a port it already holds
+    /// even when the socket reads busy (`sandbox/dev_port.rs:119-128`), so
+    /// the rival binds the *same* port and one of the two dies on
+    /// `EADDRINUSE`. Deciding inside one lock closes the window.
+    ///
+    /// Entries with no `log_name` are never deduplicated — that field is what
+    /// names a long-lived process, and the bash/tasks families leave it unset.
+    /// Ties resolve to the earliest-started task so the answer does not depend
+    /// on `HashMap` iteration order.
+    pub fn insert_unless_log_name_running(&self, entry: TaskEntry) -> Option<TaskSummary> {
+        let mut guard = self.lock();
+        if let Some(log_name) = entry.summary.log_name.as_deref() {
+            let existing = guard
+                .values()
+                .filter(|candidate| {
+                    candidate.summary.status == TaskStatus::Running
+                        && candidate.summary.log_name.as_deref() == Some(log_name)
+                })
+                .min_by(|a, b| {
+                    a.summary
+                        .started_at
+                        .cmp(&b.summary.started_at)
+                        .then_with(|| a.summary.id.cmp(&b.summary.id))
+                })
+                .map(|candidate| candidate.summary.clone());
+            if existing.is_some() {
+                return existing;
+            }
+        }
+        guard.insert(entry.summary.id.clone(), entry);
+        None
+    }
+
     /// Mutate a task's summary in place. Returns `false` if `id` is
     /// unknown. Kept as a general-purpose escape hatch per the documented
     /// contract (the native module-ownership contract) for families that
@@ -897,6 +940,121 @@ mod tests {
             log_name: None,
             intentional: None,
         }
+    }
+
+    fn named(id: &str, status: TaskStatus, log_name: &str, started_at: i64) -> TaskSummary {
+        TaskSummary {
+            log_name: Some(log_name.to_string()),
+            started_at,
+            ..summary(id, status)
+        }
+    }
+
+    /// The whole point of the reservation: a second `POST /exec/dev` must
+    /// never register a rival dev server. `dev_port::allocate` would hand it
+    /// the port the first one already holds, so "spawn anyway" costs a second
+    /// framework build AND an `EADDRINUSE` death.
+    #[test]
+    fn reservation_yields_the_running_task_and_registers_nothing() {
+        let (_dir, reg) = registry();
+        reg.insert(TaskEntry::new(
+            named("t1", TaskStatus::Running, "dev", 10),
+            None,
+        ));
+
+        let existing = reg
+            .insert_unless_log_name_running(TaskEntry::new(
+                named("t2", TaskStatus::Running, "dev", 20),
+                None,
+            ))
+            .expect("a running dev task must be handed back");
+
+        assert_eq!(existing.id, "t1");
+        assert!(reg.get("t2").is_none(), "the rival must not be registered");
+        assert_eq!(reg.list(None).len(), 1);
+    }
+
+    /// A dev server that has exited must not block the next start — otherwise
+    /// the run button dies permanently the first time a dev script crashes.
+    #[test]
+    fn reservation_succeeds_when_the_previous_task_is_terminal() {
+        let (_dir, reg) = registry();
+        reg.insert(TaskEntry::new(
+            named("t1", TaskStatus::Exited, "dev", 10),
+            None,
+        ));
+
+        assert!(reg
+            .insert_unless_log_name_running(TaskEntry::new(
+                named("t2", TaskStatus::Running, "dev", 20),
+                None,
+            ))
+            .is_none());
+        assert_eq!(reg.get("t2").unwrap().status, TaskStatus::Running);
+    }
+
+    /// `log_name` is what names a long-lived process; bash/tasks leave it
+    /// unset and must never be deduplicated against each other.
+    #[test]
+    fn reservation_never_dedupes_log_nameless_tasks() {
+        let (_dir, reg) = registry();
+        reg.insert(TaskEntry::new(summary("t1", TaskStatus::Running), None));
+
+        assert!(reg
+            .insert_unless_log_name_running(TaskEntry::new(
+                summary("t2", TaskStatus::Running),
+                None
+            ))
+            .is_none());
+        assert_eq!(reg.list(None).len(), 2);
+    }
+
+    /// Two rows can share a `log_name` only from before this reservation
+    /// existed. Which one is reported must not depend on `HashMap` iteration
+    /// order, or the adopted task — and therefore the lifecycle's dev token —
+    /// changes from click to click.
+    #[test]
+    fn reservation_reports_the_earliest_started_of_several_running() {
+        let (_dir, reg) = registry();
+        reg.insert(TaskEntry::new(
+            named("t9", TaskStatus::Running, "dev", 30),
+            None,
+        ));
+        reg.insert(TaskEntry::new(
+            named("t2", TaskStatus::Running, "dev", 10),
+            None,
+        ));
+        reg.insert(TaskEntry::new(
+            named("t5", TaskStatus::Running, "dev", 20),
+            None,
+        ));
+
+        for _ in 0..8 {
+            let existing = reg
+                .insert_unless_log_name_running(TaskEntry::new(
+                    named("new", TaskStatus::Running, "dev", 40),
+                    None,
+                ))
+                .expect("a running dev task must be handed back");
+            assert_eq!(existing.id, "t2");
+        }
+    }
+
+    /// A different script's running task is not this script's dev server.
+    #[test]
+    fn reservation_is_scoped_to_the_same_log_name() {
+        let (_dir, reg) = registry();
+        reg.insert(TaskEntry::new(
+            named("t1", TaskStatus::Running, "build", 10),
+            None,
+        ));
+
+        assert!(reg
+            .insert_unless_log_name_running(TaskEntry::new(
+                named("t2", TaskStatus::Running, "dev", 20),
+                None,
+            ))
+            .is_none());
     }
 
     #[test]
