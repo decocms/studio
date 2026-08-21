@@ -142,3 +142,14 @@ describe("resolveTaskSwitchSearch — restoring per-thread memory", () => {
     });
   });
 });
+
+describe("resolveTaskSwitchSearch — explicit side panel", () => {
+  test("opts.sidepanel forces the chat panel open over remembered layout", () => {
+    expect(
+      resolve({
+        savedLayout: { main: "board", sidepanel: 0 } as ThreadLayout,
+        opts: { sidepanel: "chat" },
+      }),
+    ).toEqual({ main: "board", sidepanel: "chat" });
+  });
+});

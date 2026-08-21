@@ -122,7 +122,7 @@ export function usePanelActions() {
   const setTaskId = (
     id: string,
     virtualMcpId?: string,
-    opts?: { autosend?: boolean; main?: string },
+    opts?: { autosend?: boolean; main?: string; sidepanel?: "chat" | 0 },
   ) => {
     const isSameThread = !!currentTaskId && currentTaskId === id;
     // Remember the layout of the thread we're leaving so returning to it

@@ -1632,6 +1632,7 @@ export class TaskBoardStorage {
       ])
       .where("link.organization_id", "=", organizationId)
       .where("link.task_board_item_id", "in", ids)
+      .where("t.hidden", "=", false)
       .orderBy("link.created_at", "desc")
       .execute();
 

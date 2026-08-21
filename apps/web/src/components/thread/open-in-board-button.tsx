@@ -7,7 +7,7 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { useChatTask } from "@/components/chat/chat-context";
-import { useTaskForThread } from "@/hooks/use-task-for-thread";
+import { useBoardTaskForThread } from "@/hooks/use-task-for-thread";
 import { useT } from "@/i18n/use-t.ts";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 
@@ -21,7 +21,7 @@ export function OpenInBoardButton() {
   const t = useT();
   const { taskId } = useChatTask();
   const navigate = useNavigate();
-  const boardTaskId = useTaskForThread(taskId);
+  const boardTaskId = useBoardTaskForThread(taskId)?.id ?? null;
 
   if (!boardTaskId) return null;
 

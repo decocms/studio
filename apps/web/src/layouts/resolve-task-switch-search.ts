@@ -30,7 +30,12 @@ export interface ResolveTaskSwitchInput {
   decopilotId: string;
   /** The target thread's remembered layout, or null if none. */
   savedLayout: ThreadLayout | null;
-  opts?: { autosend?: boolean; main?: string };
+  opts?: {
+    autosend?: boolean;
+    main?: string;
+    /** Force the chat panel open (or closed) regardless of remembered layout. */
+    sidepanel?: "chat" | 0;
+  };
   /** `?autosend` sentinel value, injected to avoid an import cycle. */
   autosendValue: string;
 }
@@ -75,6 +80,7 @@ export function resolveTaskSwitchSearch(
     }
   }
 
+  if (opts?.sidepanel !== undefined) sidepanel = opts.sidepanel;
   if (sidepanel !== undefined) next.sidepanel = sidepanel;
   if (opts?.autosend) next.autosend = autosendValue;
   return next;
