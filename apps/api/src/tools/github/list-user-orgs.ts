@@ -13,6 +13,31 @@ const GITHUB_API = "https://api.github.com";
 /** Matches the Git Data client's per-attempt timeout in `decofile/github-git-data.ts`. */
 const GITHUB_TIMEOUT_MS = 15_000;
 
+interface InstallationsPage {
+  installations: Array<{
+    id: number;
+    account: { login: string; avatar_url: string; type: string };
+  }>;
+  total_count: number;
+}
+
+/**
+ * A 2xx response body isn't guaranteed to be JSON (a proxy/outage page can
+ * still answer 200) — `res.json()` throwing a raw `SyntaxError` on that would
+ * surface as an opaque "Unexpected token" instead of naming what failed.
+ * Mirrors `parseGraphqlBody` in `graphql.ts`.
+ */
+export function parseInstallationsBody(text: string): InstallationsPage {
+  try {
+    return JSON.parse(text) as InstallationsPage;
+  } catch (cause) {
+    throw new Error(
+      `GitHub /user/installations returned invalid JSON: ${text.slice(0, 300)}`,
+      { cause },
+    );
+  }
+}
+
 export const GITHUB_LIST_USER_ORGS = defineTool({
   name: "GITHUB_LIST_USER_ORGS",
   description:
@@ -139,13 +164,7 @@ export const GITHUB_LIST_USER_ORGS = defineTool({
         throw new Error(`GitHub /user/installations failed: ${res.status}`);
       }
 
-      const data = (await res.json()) as {
-        installations: Array<{
-          id: number;
-          account: { login: string; avatar_url: string; type: string };
-        }>;
-        total_count: number;
-      };
+      const data = parseInstallationsBody(await res.text());
 
       for (const inst of data.installations) {
         installations.push({
