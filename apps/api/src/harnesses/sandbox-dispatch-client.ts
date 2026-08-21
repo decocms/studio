@@ -326,10 +326,10 @@ export class SandboxDispatchClient implements SandboxClient {
       //
       // The task-run surface, NOT the agent's own: super-agent task runs
       // dispatch as Decopilot, which by design aggregates no connections
-      // (`storage/virtual.ts` findById returns `connections: []`) because
-      // hosted Decopilot reaches TASK_BOARD_* by `subtask`-delegating to the
-      // Task Manager agent. This harness has no `subtask`, so pointing it at
-      // the agent's virtual MCP yielded `connected` with zero tools.
+      // (`storage/virtual.ts` findById returns `connections: []`) — hosted
+      // Decopilot gets TASK_BOARD_* as built-ins instead. This harness is an
+      // out-of-process MCP client with no built-ins, so pointing it at the
+      // agent's virtual MCP yielded `connected` with zero tools.
       //
       // Scoped to this run (thread id in the path) and narrow: the task-board
       // tools plus `TASK_ADD_REPO`. It used to be `/mcp/self` — every management
