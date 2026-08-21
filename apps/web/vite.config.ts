@@ -6,9 +6,11 @@ import tsconfigPaths from "vite-tsconfig-paths";
 import pkg from "../api/package.json" with { type: "json" };
 import nativePkg from "../native/package.json" with { type: "json" };
 import { fileURLToPath } from "node:url";
-import { existsSync, renameSync } from "node:fs";
-import { join } from "node:path";
+import { createRequire } from "node:module";
+import { existsSync, readdirSync, renameSync } from "node:fs";
+import { dirname, extname, join, resolve } from "node:path";
 import { shouldServeNativeEntryInDev } from "./src/lib/vite-native-entry-rules";
+import { MONACO_VS_PATH } from "./src/lib/monaco-vs-path";
 
 const bunServerTarget = `http://localhost:${process.env.PORT || "3000"}`;
 
@@ -100,6 +102,99 @@ const serveNativeEntryInDev: Plugin = {
       }
       next();
     });
+  },
+};
+
+/**
+ * Serves the Monaco editor engine from this app's own origin — in dev and in
+ * the built bundle alike — out of the installed `monaco-editor` package.
+ *
+ * `@monaco-editor/loader` pulls the engine in at runtime via
+ * `<script src="{paths.vs}/loader.js">`. From a CDN that script is refused by
+ * the packaged desktop shell's `script-src 'self'`
+ * (`apps/native/src-tauri/tauri.conf.json5`) and every code surface hangs on
+ * its loading spinner. `src/lib/monaco-vs-path.ts` holds the path both halves
+ * agree on; `src/components/monaco/loader.ts` is the client half.
+ *
+ * Deliberately NOT under `assets/`: the desktop shell serves that prefix
+ * `immutable` (`apps/native/src-tauri/src/ui_assets.rs`) since Vite
+ * content-hashes those filenames. These are unhashed — they carry the engine
+ * version in the path instead, which is what makes them cacheable.
+ */
+const monacoVsDir = dirname(
+  createRequire(import.meta.url).resolve("monaco-editor/min/vs/loader.js"),
+);
+/** `min/vs` ships .js, .css and one .ttf; anything else is not ours to serve. */
+const MONACO_CONTENT_TYPES: Record<string, string> = {
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".ttf": "font/ttf",
+};
+/**
+ * Translation bundles for monaco's own UI strings — ~1.7 MB the app can never
+ * reach, since loading one takes a `require.config({ "vs/nls": … })` call that
+ * nothing here makes. Studio's own i18n (`src/i18n/`) is unrelated.
+ */
+const MONACO_UNREACHABLE = /^nls\.messages\..*\.js$/;
+
+function monacoVsFiles(dir = monacoVsDir, prefix = ""): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      return monacoVsFiles(join(dir, entry.name), relativePath);
+    }
+    const servable =
+      extname(entry.name) in MONACO_CONTENT_TYPES &&
+      !MONACO_UNREACHABLE.test(relativePath);
+    return servable ? [relativePath] : [];
+  });
+}
+
+/** Decoded request path, or null when its escape sequences are malformed. */
+function decodeRequestPath(url: string | undefined): string | null {
+  const [path = "/"] = (url ?? "/").split("?");
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return null;
+  }
+}
+
+const serveSelfHostedMonaco: Plugin = {
+  name: "self-hosted-monaco",
+  configureServer(server) {
+    /**
+     * Prefix-mounted, so connect strips it from `req.url`. A miss is answered
+     * 404 here rather than passed on: Vite's SPA fallback would hand a
+     * `<script>` the index.html body, surfacing as `Unexpected token '<'`.
+     */
+    server.middlewares.use(MONACO_VS_PATH, (req, res) => {
+      const requested = decodeRequestPath(req.url);
+      const file = requested && resolve(monacoVsDir, `.${requested}`);
+      const contentType = file ? MONACO_CONTENT_TYPES[extname(file)] : null;
+      // A crafted `..` stays inside the package dir; anything else 404s.
+      if (
+        !file ||
+        !contentType ||
+        !file.startsWith(`${monacoVsDir}/`) ||
+        !existsSync(file)
+      ) {
+        res.statusCode = 404;
+        res.end("not found");
+        return;
+      }
+      res.setHeader("content-type", contentType);
+      res.end(readFileSync(file));
+    });
+  },
+  generateBundle() {
+    for (const relativePath of monacoVsFiles()) {
+      this.emitFile({
+        type: "asset",
+        fileName: `${MONACO_VS_PATH.slice(1)}/${relativePath}`,
+        source: readFileSync(join(monacoVsDir, relativePath)),
+      });
+    }
   },
 };
 
@@ -430,6 +525,7 @@ export default defineConfig({
     react({ babel: { plugins: ["babel-plugin-react-compiler"] } }),
     tailwindcss(),
     tsconfigPaths({ root: "." }),
+    serveSelfHostedMonaco,
     ...(isNativeBuild
       ? [emitNativeEntryAsIndexHtml, serveNativeEntryInDev]
       : []),

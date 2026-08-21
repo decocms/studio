@@ -1197,6 +1197,13 @@ export interface ThreadMessagePartTable {
   payload_ref: string | null;
   metadata: unknown | null; // jsonb
   created_at: string; // ISO; derived from durable seq order, NOT now+i
+  /**
+   * Wall clock at INSERT, stamped by Postgres (migration 174). `created_at` is
+   * an ordering key (`base + seq`), so it cannot answer "when did this row
+   * actually land" — this can. Never insertable/updatable: the default is the
+   * only writer, which is what keeps it honest. NULL on rows predating 174.
+   */
+  persisted_at: ColumnType<Date | null, never, never>;
 }
 
 // ============================================================================
@@ -1659,9 +1666,8 @@ export interface TaskBoardItemTable {
   /** Manual drag-to-reorder position within a lane, ascending. */
   sort_order: ColumnType<number, number | undefined, number>;
   /** Per-org sequence behind the card's human key (`DECO-01`), assigned once at
-   *  create. Nullable only for rows written before `172-task-board-item-key-seq`
-   *  backfilled it. */
-  key_seq: ColumnType<number | null, number | null | undefined, never>;
+   *  create. Never null (enforced by migration 172). */
+  key_seq: ColumnType<number, number | undefined, never>;
   /** When the review sweeper last reconciled this card. Null = never, which is
    *  always due. The sweeper's interval hangs off this column rather than off
    *  its own timer so that every replica shares one budget and a permanently
@@ -1834,8 +1840,8 @@ export interface TaskBoardItem {
   dueDate: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;
-  /** Per-org sequence behind the card's human key (`DECO-01`). */
-  keySeq: number | null;
+  /** Per-org sequence behind the card's human key (`DECO-01`), never null. */
+  keySeq: number;
   /** Infrastructure retries already spent on this card's runs — the budget
    *  `reactToFailedTaskRun` spends against `MAX_RUN_RETRIES`. */
   retryAttempts: number;

@@ -5,4 +5,4 @@
  * silently drift out of sync across the copies.
  */
 export const STUDIO_PACK_AGENT_NAMES =
-  "Agent Manager, API Key Manager, Automation Manager, Connection Manager, Store Manager, Brand Manager, Task Manager, Usage Manager";
+  "Agent Manager, API Key Manager, Automation Manager, Connection Manager, Store Manager, Brand Manager, Usage Manager";

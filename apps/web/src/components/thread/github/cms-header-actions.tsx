@@ -39,11 +39,12 @@ import { toast } from "sonner";
 import { GitPullRequest, RefreshCw01, Rocket02 } from "@untitledui/icons";
 import { GitHubIcon } from "@/components/icons/github-icon.tsx";
 import { useT } from "@/i18n/use-t";
+import { track } from "@/lib/posthog-client";
 import { authClient } from "@/lib/auth-client.ts";
 import { resolveGithubAttachment } from "@/lib/github-repo.ts";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
-import { resolveFastPreview } from "@/sdk/fast-preview";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { decofileWriteMutationKey } from "../../sections-editor/decofile-api.ts";
 import { useFastPreviewDraftUrl } from "../../sections-editor/use-fast-preview-draft-url.ts";
 import { fillPathTemplate } from "../../sections-editor/page-path-utils.ts";
@@ -94,7 +95,12 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   const queryClient = useQueryClient();
   const { data: session } = authClient.useSession();
   const vm = useVirtualMCP(virtualMcpId);
-  const { currentBranch: branch, setCurrentTaskBranch } = useChatTask();
+  const {
+    currentBranch: branch,
+    setCurrentTaskBranch,
+    taskId,
+    createTask,
+  } = useChatTask();
   /** One popover, two modes. `mode` outlives `open` so the closing animation
    *  doesn't flash the other mode's labels on its way out. */
   const [surface, setSurface] = useState<{
@@ -109,7 +115,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     attachment.status === "attached" || attachment.status === "public-clone"
       ? attachment.repo
       : null;
-  const { previewServerUrl } = resolveFastPreview(vm?.metadata);
+  const { previewServerUrl } = useSessionRuntime(virtualMcpId);
 
   const lastPage = branch
     ? readLastPreviewPage(lastPreviewPageKey(org.slug, virtualMcpId, branch))
@@ -134,7 +140,12 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
    *  this key. Shared verbatim with the publish popover, which reads the
    *  changed-file manifest off the same entry — hence one options factory. */
   const statusQuery = useQuery({
-    ...sandboxGitStatusQueryOptions(org.slug, virtualMcpId, branch ?? ""),
+    ...sandboxGitStatusQueryOptions({
+      orgSlug: org.slug,
+      virtualMcpId,
+      branch: branch ?? "",
+      threadId: taskId ?? null,
+    }),
     enabled: !!branch,
   });
   const status = statusQuery.data ?? null;
@@ -226,7 +237,15 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
 
   const getLatest = useMutation({
     mutationFn: async (target: { branch: string; base: string }) => {
-      await rebaseGitBranch(org.slug, virtualMcpId, target.branch, target.base);
+      await rebaseGitBranch(
+        {
+          orgSlug: org.slug,
+          virtualMcpId,
+          branch: target.branch,
+          threadId: taskId ?? null,
+        },
+        target.base,
+      );
       return target;
     },
     /** Invalidates drift AND the editor's content: the merge moved the head. */
@@ -236,11 +255,12 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
       );
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: sandboxGitStatusQueryKey(
-            org.slug,
+          queryKey: sandboxGitStatusQueryKey({
+            orgSlug: org.slug,
             virtualMcpId,
-            branch ?? target.branch,
-          ),
+            branch: branch ?? target.branch,
+            threadId: taskId ?? null,
+          }),
         }),
         queryClient.invalidateQueries({
           queryKey: KEYS.decofile(
@@ -286,7 +306,31 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
       </TooltipProvider>
     );
   }
-  if (!githubRepo) return null;
+  /**
+   * A CMS session whose project cannot serve one: no preview server to render
+   * against, or no repo to save to. The runtime is immutable, so the honest
+   * recovery is a NEW session on the same branch, not a silent downgrade —
+   * which is exactly why the `!vm` guard above is load-bearing: both inputs
+   * below are read off the project row, so an unloaded one is indistinguishable
+   * from a project that genuinely has neither, and would offer to spend the
+   * one irreversible action on a project that in fact needs nothing.
+   */
+  if (!vm) return null;
+  if (!githubRepo || !previewServerUrl) {
+    return (
+      <CmsUnavailable
+        reason={githubRepo ? "noPreviewServer" : "noRepo"}
+        onStartCodingSession={
+          branch
+            ? () => {
+                const id = createTask?.({ runtime: "sandbox", branch });
+                if (id) track("coding_session_started", { thread_id: id });
+              }
+            : undefined
+        }
+      />
+    );
+  }
   /**
    * No task branch yet: the status query is disabled, so its data never
    * arrives and the state machine would sit on "Loading…" forever. There is
@@ -406,5 +450,43 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
         splitButton
       )}
     </>
+  );
+}
+
+/**
+ * The loud degrade: a CMS session on a project that cannot render or save it.
+ * Says which half is missing and offers the one recovery the immutable runtime
+ * allows — a new coding session on the same branch.
+ */
+function CmsUnavailable({
+  reason,
+  onStartCodingSession,
+}: {
+  reason: "noPreviewServer" | "noRepo";
+  onStartCodingSession?: () => void;
+}) {
+  const t = useT();
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!onStartCodingSession}
+              onClick={onStartCodingSession}
+            >
+              {t("sandbox.cmsUnavailable.startCodingSession")}
+            </Button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          {reason === "noPreviewServer"
+            ? t("sandbox.cmsUnavailable.noPreviewServer")
+            : t("sandbox.cmsUnavailable.noRepo")}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }

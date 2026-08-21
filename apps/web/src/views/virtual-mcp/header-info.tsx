@@ -1,6 +1,6 @@
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { agentShowsGithubHeaderActions } from "@/lib/agent-capabilities";
-import { resolveFastPreview } from "@/sdk/fast-preview";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { CmsHeaderActions } from "../../components/thread/github/cms-header-actions.tsx";
 import { HeaderActions } from "../../components/thread/github/header-actions.tsx";
 import { DevAgentControl } from "../../components/dev-agent/dev-agent-control.tsx";
@@ -10,16 +10,18 @@ import { OpenInBoardButton } from "../../components/thread/open-in-board-button.
  * The agent's header actions (dev-agent control + GitHub publish/PR buttons),
  * rendered inline into the main panel header's right cluster.
  *
- * Fast Preview swaps in the CMS renderer here, not inside `HeaderActions`, so
- * the sandbox hooks that renderer mounts (events, lifecycle, publish gate)
- * never mount on a surface that has no sandbox.
+ * The CMS renderer swaps in here, not inside `HeaderActions`, so the sandbox
+ * hooks that renderer mounts (events, lifecycle, publish gate) never mount on a
+ * session that has no sandbox.
  */
 export function VirtualMcpHeaderInfo({
   virtualMcp,
 }: {
   virtualMcp: VirtualMCPEntity;
 }) {
-  const fastPreviewActive = resolveFastPreview(virtualMcp.metadata).active;
+  // The SESSION's runtime, not the project's: a coding session on a CMS-default
+  // project gets the sandbox header, and the hooks that header mounts.
+  const fastPreviewActive = useSessionRuntime(virtualMcp.id).runtime === "cms";
 
   return (
     <div className="flex items-center gap-2">

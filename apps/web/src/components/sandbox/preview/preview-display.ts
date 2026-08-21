@@ -63,6 +63,13 @@ export interface PreviewDisplayInput {
    * (with the waking pill) instead.
    */
   fastPreviewReady?: boolean;
+  /**
+   * This session is a coding session on a project that otherwise defaults to
+   * CMS. Coding sessions boot visibly — the published site is not a truthful
+   * stand-in for a checkout the user is actively changing — so the fallback is
+   * withheld and the boot console owns the canvas.
+   */
+  codingSession?: boolean;
 }
 
 const NONE: PreviewDisplay = {
@@ -78,12 +85,14 @@ export function resolvePreviewDisplay(
   const {
     previewState,
     progressStatus,
-    previewServerUrl,
     // Optional: a caller that knows nothing about Fast Preview gets exactly
     // the pre-existing behaviour.
     fastPreviewActive = false,
     fastPreviewReady = false,
+    codingSession = false,
   } = input;
+  /** Withheld for a coding session — see `codingSession`. */
+  const previewServerUrl = codingSession ? null : input.previewServerUrl;
 
   // Suspended / errored render their own dedicated card — hand the canvas over
   // so we don't paint a toolbar or load the production iframe behind/around it.

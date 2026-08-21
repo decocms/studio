@@ -18,6 +18,8 @@ export const LOCALSTORAGE_KEYS = {
     `studio:chat:lastAgentOption:${locator}`,
   chatAutosend: (locator: ProjectLocator | string, taskId: string) =>
     `studio:chat:autosend:${locator}:${taskId}`,
+  chatThreadIntent: (locator: ProjectLocator | string, taskId: string) =>
+    `studio:chat:threadIntent:${locator}:${taskId}`,
   chatDraft: (locator: ProjectLocator | string, taskKey: string) =>
     `studio:chat:draft:${locator}:${taskKey}`,
   sidePanelWidth: () => `studio:side-panel:width`,

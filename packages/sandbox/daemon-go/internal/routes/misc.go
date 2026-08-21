@@ -55,6 +55,9 @@ func Setup(step string, resumeFrom func(step string)) http.HandlerFunc {
 
 type OrgFsDeps struct {
 	ConfigPath string
+	// OnConfig receives the validated org-fs endpoint. Called before the relay so
+	// the credential is available even on a pod with no sidecar config path.
+	OnConfig func(baseUrl, orgSlug, token string)
 }
 
 func OrgFsConfig(deps OrgFsDeps) http.HandlerFunc {
@@ -64,9 +67,13 @@ func OrgFsConfig(deps OrgFsDeps) http.HandlerFunc {
 			httpx.Error(w, 400, "invalid org-fs config")
 			return
 		}
-		if orgfs.ParseConfig(raw) == nil {
+		cfg := orgfs.ParseConfig(raw)
+		if cfg == nil {
 			httpx.Error(w, 400, "invalid org-fs config")
 			return
+		}
+		if deps.OnConfig != nil {
+			deps.OnConfig(cfg.BaseUrl, cfg.OrgSlug, cfg.Token)
 		}
 		if deps.ConfigPath == "" {
 			httpx.JSON(w, 200, map[string]any{"written": false})

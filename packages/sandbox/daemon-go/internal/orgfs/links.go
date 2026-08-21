@@ -21,6 +21,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/decocms/studio/sandbox-daemon/internal/gitx"
@@ -68,15 +69,20 @@ type Links struct {
 	lastOutputThread string
 	skillsLinked     bool
 	readySpent       bool
+	publicSkillsRun  bool
+	skillPluginReady bool
 	// Held for the whole flight of a Claude Code session transfer; see
 	// `withinSessionBudget`. Separate from `mu`: a transfer is slow org-fs I/O
 	// and must not block a symlink repoint (or the fs routes waiting on one).
-	sessionMu       sync.Mutex
-	publicSkillsRun bool
+	sessionMu sync.Mutex
 	// Closed when the in-flight skill-link sync finishes; nil before the first
 	// one starts. `WaitSkillLinks` is what turns the async sync back into a
 	// barrier for the run that needs it.
 	publicSkillsDone chan struct{}
+	// org-fs HTTP endpoint from the relayed config — lets the skill prefetch pull
+	// a whole set in one request instead of walking the mount. Nil until a config
+	// arrives, which is what keeps the mount path as the fallback.
+	api *APIConfig
 }
 
 // Expected reports whether org-fs volumes should exist on this pod.
@@ -236,15 +242,29 @@ func (l *Links) RepointForRun(threadId string) bool {
 		return false
 	}
 	l.mu.Lock()
-	defer l.mu.Unlock()
 	if threadId != "" && threadId == l.lastOutputThread {
 		// Already pointing here; keep the repo link fresh (one lstat).
 		l.ensureRepoLinkLocked()
+		l.mu.Unlock()
 		return true
 	}
+	l.mu.Unlock()
+
+	// Paid unlocked: mountsOrWait can block for the whole firstMountWait grace
+	// period on the pod's first call, and holding mu across that would stall
+	// every other org-fs caller behind it — including WaitSkillLinks, whose own
+	// bounded wait exists specifically so a run never hangs behind org-fs.
 	mounts := l.mountsOrWait()
 	if len(mounts) == 0 {
 		return false
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	// Re-check: another call may have repointed this thread while we waited.
+	if threadId != "" && threadId == l.lastOutputThread {
+		l.ensureRepoLinkLocked()
+		return true
 	}
 	l.ensureRepoLinkLocked()
 	mounted := func(dir string) bool {
@@ -479,26 +499,79 @@ func (l *Links) volumeMounted(dir string) bool {
 	return false
 }
 
-// Prefix for the symlinks this daemon plants in the checkout's skills dir. It
-// is what makes them ours: everything matching it is removed and rebuilt on
-// sync, and one git-exclude line covers the whole set.
+// Prefix for the skill dirs this daemon plants. Kept now that they live in the
+// daemon's own plugin dir purely to keep two sets that ship a same-named skill
+// from colliding; the name the model sees comes from SKILL.md's frontmatter.
 const publicSkillPrefix = "orgfs-"
 
+// The org's skills reach Claude Code as a LOCAL PLUGIN, in the daemon's own
+// directory — never in the checkout. `<appRoot>/orgfs-skills` holds a plugin
+// manifest and one `skills/<name>/` per prefetched skill, and the harness loads
+// it by absolute path.
+//
+// This is the whole reason the git plumbing is gone. The first version wrote
+// these into `<repoDir>/.claude/skills/` — the one writable dir the SDK already
+// scanned — and every consequence followed from that: a git-exclude line per
+// path, re-registering the excludes after a clone, a staging dir inside
+// `.claude/`, an adopt sweep that had to know which entries were ours. Worse,
+// an exclude only masks UNTRACKED paths, so the build that committed them once
+// (before the reapply existed) put them on two site repos' default branch,
+// where they still surface as phantom "changes to publish" in every new chat.
+// Out of the tree, git never has an opinion.
+const (
+	skillPluginDirName = "orgfs-skills"
+	skillPluginName    = "orgfs"
+)
+
+// SkillPluginDir is the plugin dir to hand the harness, or "" when this pod
+// prefetched no skills — an empty plugin would only cost the SDK a load.
+func (l *Links) SkillPluginDir() string {
+	if l == nil {
+		return ""
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if !l.skillPluginReady {
+		return ""
+	}
+	return filepath.Join(l.AppRoot, skillPluginDirName)
+}
+
+// writeSkillPluginManifest makes the dir a plugin the SDK will load. Rewritten
+// on every sync: it is three static fields, cheaper to write than to check.
+func writeSkillPluginManifest(pluginDir string) error {
+	dir := filepath.Join(pluginDir, ".claude-plugin")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	manifest, err := json.Marshal(map[string]string{
+		"name":        skillPluginName,
+		"description": "Skills shared by this organization",
+		"version":     "1.0.0",
+	})
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "plugin.json"), manifest, 0o644)
+}
+
+// Volume-name prefix the studio gives the shared public sets (`public-core` is
+// mounted at `org/public/core`), mirroring publicVolumeForSet server-side.
+const publicVolumePrefix = "public-"
+
 // ensurePublicSkillLinksLocked exposes the read-only public skill sets
-// (`org/public/<set>/<skill>`) to Claude Code as PROJECT skills — one symlink
-// per skill under `<repoDir>/.claude/skills/`.
+// (`org/public/<set>/<skill>`) to Claude Code as PLUGIN skills, prefetched into
+// the daemon's own plugin dir — see skillPluginDirName.
 //
 // Why not the user dir like home skills: that dir IS the home mount now, so a
-// symlink dropped there would be written into org-fs — pod-local paths synced
+// copy dropped there would be written into org-fs — pod-local bytes synced
 // org-wide. And the public mounts are read-only, so a plugin manifest cannot go
-// next to them either. The checkout's skills dir is the one writable place the
-// SDK already scans.
+// next to them either.
 //
-// Additive and disposable: the repo's own skills are untouched (only `orgfs-*`
-// entries are ours, and they are cleared before rebuild so a removed set leaves
-// no dangling skill), and one exclude line keeps them out of every commit.
+// Additive and disposable: nothing but this sync writes the plugin dir, so a
+// set that lost a skill leaves nothing dangling, and the checkout is untouched.
 func (l *Links) ensurePublicSkillLinksLocked() {
-	if l.publicSkillsRun || l.RepoDir == "" {
+	if l.publicSkillsRun || l.AppRoot == "" {
 		return
 	}
 	// Claimed before the work starts, so concurrent fs calls don't each launch a
@@ -547,11 +620,13 @@ func (l *Links) WaitSkillLinks(budget time.Duration) {
 	}
 }
 
-// skillSet is one directory to scan for `<skill>/SKILL.md` children, with the
-// name its copies are prefixed by.
+// skillSet is one source of `<skill>/SKILL.md` children: the org-fs volume it
+// lives on (how the API addresses it), the name its copies are prefixed by, and
+// the mount dir used when the API route is unavailable.
 type skillSet struct {
-	name string
-	dir  string
+	volume string
+	name   string
+	dir    string
 }
 
 // Mount paths under `org/` that are not skill sets: the org home (linked, not
@@ -576,7 +651,11 @@ func (l *Links) skillSetRoots() []skillSet {
 			if !set.IsDir() || !safeSegment.MatchString(set.Name()) {
 				continue
 			}
-			out = append(out, skillSet{set.Name(), filepath.Join(orgRoot, "public", set.Name())})
+			out = append(out, skillSet{
+				volume: publicVolumePrefix + set.Name(),
+				name:   set.Name(),
+				dir:    filepath.Join(orgRoot, "public", set.Name()),
+			})
 		}
 	}
 	for _, m := range l.ActiveMounts() {
@@ -587,15 +666,14 @@ func (l *Links) skillSetRoots() []skillSet {
 		if !safeSegment.MatchString(name) {
 			continue
 		}
-		out = append(out, skillSet{name, m.MountPath})
+		out = append(out, skillSet{volume: m.Volume, name: name, dir: m.MountPath})
 	}
 	return out
 }
 
-// syncPublicSkills copies every read-only set's skills onto the pod's disk under
-// `<repoDir>/.claude/skills/`, reporting whether anything landed. Runs without
-// `mu`: it touches only the checkout's skills dir and the read-only mounts,
-// which no other link path writes.
+// syncPublicSkills copies every read-only set's skills into the daemon's plugin
+// dir, reporting whether anything landed. Runs without `mu`: it touches only
+// that dir and the read-only mounts, which no other link path writes.
 //
 // Copied rather than symlinked — see skillcopy.go for why. The pod therefore
 // holds a snapshot for its lifetime, which is what we want: this already ran
@@ -607,49 +685,135 @@ func (l *Links) syncPublicSkills() bool {
 		// No public or synced mount on this pod (older sandbox, or none configured).
 		return false
 	}
-	dir := filepath.Join(l.RepoDir, ".claude", "skills")
+	pluginDir := filepath.Join(l.AppRoot, skillPluginDirName)
+	dir := filepath.Join(pluginDir, "skills")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		slog.Warn("org-fs public skills copy failed", "err", err)
+		slog.Warn("org-fs skills dir failed", "err", err)
 		return false
 	}
-	// Ours are cleared first: a set that lost a skill must not leave a stale copy
-	// behind, and a partial copy from a previous attempt must not be reused.
-	if entries, err := os.ReadDir(dir); err == nil {
-		for _, e := range entries {
-			if strings.HasPrefix(e.Name(), publicSkillPrefix) {
-				os.RemoveAll(filepath.Join(dir, e.Name()))
-			}
-		}
+	if err := writeSkillPluginManifest(pluginDir); err != nil {
+		slog.Warn("org-fs skill plugin manifest failed", "err", err)
+		return false
 	}
-	gitx.EnsureExclude(l.RepoDir, "/.claude/skills/"+publicSkillPrefix+"*")
 
-	var jobs []skillJob
-	unreadable := 0
+	// Staged next to the destination so publishing is a rename on the same
+	// filesystem. Cleared first: a partial stage from a killed attempt must
+	// never be published.
+	staging := filepath.Join(pluginDir, ".staging")
+	os.RemoveAll(staging)
+	defer os.RemoveAll(staging)
+
+	// One budget across every set and both transports: the cap protects the
+	// pod's disk, so it cannot be per volume, per worker, or per transport.
+	budget := &atomic.Int64{}
+	budget.Store(skillCopyBudget)
+
+	published := map[string]bool{}
+	fromTar, fromMount, unreadable := 0, 0, 0
 	for _, set := range sets {
-		names := skillDirNames(set.dir)
-		if len(names) == 0 {
+		stage := filepath.Join(staging, set.name)
+		prefix := publicSkillPrefix + set.name + "-"
+		// One request for the whole set. Only when that is unavailable — an older
+		// studio, a rejected token, a truncated stream — does this fall back to
+		// walking the mount file by file.
+		if n := l.fetchSkillTar(set.volume, set.name, stage, budget); n > 0 {
+			fromTar += n
+		} else if n := l.copySetToStage(set, stage, prefix, budget, &unreadable); n > 0 {
+			fromMount += n
+		} else {
 			continue
 		}
-		// `stat` is served from the mount's metadata and succeeds on a backend
-		// whose GETs hang forever, so a read has to be proven before we commit to
-		// copying a whole set off it.
-		if !setReads(set.dir, names) {
-			unreadable += len(names)
+		// Published only now that the WHOLE set is staged. Exposing skills as they
+		// arrive is what let a timed-out sync hand the harness an arbitrary
+		// alphabetical prefix of the org's skills — a run that looks healthy and
+		// silently lacks what it needed.
+		publishStaged(stage, dir, published)
+	}
+	// A skill that vanished upstream must not survive as a stale copy. Only ours,
+	// and only once something was published — otherwise a failed sync would strip
+	// the skills a previous one left behind.
+	pruned := 0
+	if len(published) > 0 {
+		pruned = pruneUnpublished(dir, published)
+	}
+	slog.Info("org-fs skills prefetched",
+		"skills", len(published), "fromTar", fromTar, "fromMount", fromMount,
+		"unreadable", unreadable, "pruned", pruned, "plugin", pluginDir)
+	if len(published) == 0 {
+		return false
+	}
+	l.mu.Lock()
+	l.skillPluginReady = true
+	l.mu.Unlock()
+	return true
+}
+
+// copySetToStage is the fallback for a studio without the bulk route: probe the
+// mount, then copy the set's skills into stage. Returns how many landed.
+func (l *Links) copySetToStage(
+	set skillSet, stage, prefix string, budget *atomic.Int64, unreadable *int,
+) int {
+	names := skillDirNames(set.dir)
+	if len(names) == 0 {
+		return 0
+	}
+	// `stat` is served from the mount's metadata and succeeds on a backend whose
+	// GETs hang forever, so a read has to be proven before committing to a set.
+	if !setReads(set.dir, names) {
+		*unreadable += len(names)
+		return 0
+	}
+	jobs := make([]skillJob, 0, len(names))
+	for _, name := range names {
+		// `<set>-<skill>`: collision-free across sets. Cosmetic — the name the
+		// model sees comes from SKILL.md's frontmatter, not the directory.
+		jobs = append(jobs, skillJob{
+			src: filepath.Join(set.dir, name),
+			dst: filepath.Join(stage, prefix+name),
+		})
+	}
+	return prefetchSkills(jobs, budget)
+}
+
+// publishStaged moves a fully-staged set into the skills dir, recording each
+// name in `published`. A rename on one filesystem, so each skill appears whole
+// and the whole set lands in milliseconds rather than over the copy's lifetime.
+func publishStaged(stage, dir string, published map[string]bool) {
+	entries, err := os.ReadDir(stage)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		name := e.Name()
+		dst := filepath.Join(dir, name)
+		// Rename refuses a non-empty target dir; clear the previous copy first.
+		os.RemoveAll(dst)
+		if err := os.Rename(filepath.Join(stage, name), dst); err != nil {
+			slog.Warn("org-fs skill publish failed", "skill", name, "err", err)
 			continue
 		}
-		for _, name := range names {
-			// `<set>-<skill>`: collision-free across sets. Cosmetic — the name the
-			// model sees comes from SKILL.md's frontmatter, not the directory.
-			jobs = append(jobs, skillJob{
-				src: filepath.Join(set.dir, name),
-				dst: filepath.Join(dir, publicSkillPrefix+set.name+"-"+name),
-			})
+		published[name] = true
+	}
+}
+
+// pruneUnpublished removes `orgfs-*` entries this sync did not publish — the
+// skill was deleted upstream, or its whole set failed and its stale copy would
+// otherwise outlive it.
+func pruneUnpublished(dir string, published map[string]bool) int {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Name(), publicSkillPrefix) || published[e.Name()] {
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(dir, e.Name())); err == nil {
+			n++
 		}
 	}
-	copied := prefetchSkills(jobs)
-	slog.Info("org-fs skills prefetched",
-		"count", copied, "of", len(jobs), "unreadable", unreadable)
-	return copied > 0
+	return n
 }
 
 // repointThreadLink points `org/<linkName>` at `<mountDir>/<threadId>`, creating
@@ -710,16 +874,21 @@ func (l *Links) repointThreadLink(threadId, mountDir, linkName string) bool {
 // nobody notices until they look for it next week.
 //
 // Only UNTRACKED dirs move: the repo's own committed skills are the one thing
-// that legitimately lives there, and `--exclude-standard` already drops the
-// `orgfs-*` symlinks this daemon plants (they are in `.git/info/exclude`).
+// that legitimately lives there. The `orgfs-` prefix is skipped as well — this
+// daemon no longer writes the checkout at all, but a repo carrying the entries
+// an older build committed must not have them "adopted" into the org.
 // Copy-then-remove, not rename — the checkout is local disk and the target is
 // FUSE, so a rename is EXDEV.
 func (l *Links) AdoptStrayRepoSkills() {
 	if l == nil || l.RepoDir == "" || !l.Expected() {
 		return
 	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
+	// Deliberately unlocked: CopyFS below writes through the org mount, and
+	// holding mu across that would stall every other org-fs caller — the same
+	// class of bug RepointForRun's mount wait had to be moved out from under
+	// mu for. Nothing here touches a field mu protects (lastOutputThread,
+	// skillsLinked, publicSkillsRun/Done, api); it only touches the checkout's
+	// `.claude/skills` dir and the home mount, neither written by a locked path.
 	if !l.volumeMounted("home") {
 		return
 	}

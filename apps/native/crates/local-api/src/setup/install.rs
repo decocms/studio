@@ -23,9 +23,14 @@ use crate::tasks::{now_ms, OutputStream, ProcessController, TaskEntry, TaskStatu
 /// Resolves the package-manager cwd inside `repo_dir`. Config validation
 /// rejects lexical escapes; canonicalization here also rejects symlinks that
 /// point outside the repository before install/dev hands the path to a child.
-/// `pub(super)`: shared with `setup/dev.rs` so both operations enforce the
-/// same boundary.
-pub(super) async fn pm_root(config: &Value, repo_dir: &Path) -> Result<PathBuf, String> {
+/// `pub(crate)`: the ONE package-manager-root resolver in this crate, shared
+/// by `setup/install.rs`, `setup/dev.rs`, `setup/detect_runtime.rs` and
+/// `routes/scripts.rs` — mirroring the daemon, where every consumer goes
+/// through the single `paths.ResolvePmRoot`
+/// (`daemon-go/internal/paths/paths.go:22`). The run button must land in the
+/// same directory the pipeline's start step does, or the two run different
+/// things for the same script name.
+pub(crate) async fn pm_root(config: &Value, repo_dir: &Path) -> Result<PathBuf, String> {
     let Some(path) = crate::config::get_str(config, &["application", "packageManager", "path"])
         .filter(|s| !s.is_empty())
     else {

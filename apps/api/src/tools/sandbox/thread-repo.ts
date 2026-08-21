@@ -11,6 +11,7 @@
  */
 
 import type { StudioContext } from "@/core/studio-context";
+import type { Thread } from "@/storage/types";
 import type {
   GithubRepo,
   SandboxMap,
@@ -108,10 +109,26 @@ export async function resolveSandboxUserId(
   branch: string | null | undefined,
   callerUserId: string,
 ): Promise<string> {
+  return sandboxUserIdFor(await loadBranchThread(ctx, branch), callerUserId);
+}
+
+/** The thread a `thread:<id>` branch names, or `null`. Never throws. */
+export async function loadBranchThread(
+  ctx: StudioContext,
+  branch: string | null | undefined,
+): Promise<Thread | null> {
   const threadId = threadIdFromBranch(branch);
-  if (!threadId) return callerUserId;
-  const thread = await ctx.storage.threads.get(threadId).catch(() => null);
-  return thread?.created_by ?? callerUserId;
+  if (!threadId) return null;
+  return await ctx.storage.threads.get(threadId).catch(() => null);
+}
+
+/** The owner half of {@link resolveSandboxUserId}, for a caller that already
+ *  holds the row (the sandbox proxy reads it once for both questions). */
+export function sandboxUserIdFor(
+  branchThread: Thread | null,
+  callerUserId: string,
+): string {
+  return branchThread?.created_by ?? callerUserId;
 }
 
 /** Read a thread's metadata JSON. Returns `null` only when the thread is

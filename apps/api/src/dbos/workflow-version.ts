@@ -63,5 +63,14 @@
  *
  * Version 7 removes the per-seat billing workflows (`syncOrgBenefitsWorkflow`
  * + `benefitsSyncSweep`); in-flight v6 instances strand by design.
+ *
+ * Version 8 splits `jiraCommentPushWorkflow` from one step into one step per
+ * external call — `resolveCommentTarget`, `readOrgSlug`, `attachCommentImage`
+ * per screenshot, then `postCommentToJira` (which also gained recorded
+ * arguments). Added and reordered steps, so a v7 instance replayed against v8
+ * hits `stored.functionName !== funcName` on its first step and throws
+ * `DBOSUnexpectedStepError`; those instances strand instead, by design. The
+ * one already past its Jira POST is still not re-mirrored by the pull, which
+ * cuts the echo by author account as well as by comment link (`sync.ts`).
  */
-export const DBOS_WORKFLOW_VERSION = "7";
+export const DBOS_WORKFLOW_VERSION = "8";

@@ -438,7 +438,6 @@ const studioPackAgentPrefixes = {
   API_KEY_MANAGER: createWellKnownAgentPrefix("studio-api-key-manager_"),
   STORE_MANAGER: createWellKnownAgentPrefix("studio-store-manager_"),
   BRAND_MANAGER: createWellKnownAgentPrefix("studio-brand-manager_"),
-  TASK_MANAGER: createWellKnownAgentPrefix("studio-task-manager_"),
   USAGE_MANAGER: createWellKnownAgentPrefix("studio-usage-manager_"),
 } as const;
 
@@ -452,7 +451,6 @@ export const StudioPackAgentId = {
   API_KEY_MANAGER: studioPackAgentPrefixes.API_KEY_MANAGER.get,
   STORE_MANAGER: studioPackAgentPrefixes.STORE_MANAGER.get,
   BRAND_MANAGER: studioPackAgentPrefixes.BRAND_MANAGER.get,
-  TASK_MANAGER: studioPackAgentPrefixes.TASK_MANAGER.get,
   USAGE_MANAGER: studioPackAgentPrefixes.USAGE_MANAGER.get,
 } as const;
 

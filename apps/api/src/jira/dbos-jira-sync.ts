@@ -10,6 +10,8 @@
 
 import { DBOS, SchedulerMode } from "@dbos-inc/dbos-sdk";
 import type { Kysely } from "kysely";
+import { isMaxStepRetriesError } from "@/dbos/step-errors";
+import { OrgFsNotFoundError } from "@/file-storage/org-fs";
 import { buildOrgContext } from "@/tools/task-board/org-context";
 import type { Database, TaskBoardItem } from "@/storage/types";
 import { JiraIntegrationStorage } from "@/storage/jira-integrations";
@@ -18,6 +20,12 @@ import { CredentialVault } from "@/encryption/credential-vault";
 import type { StudioContext } from "@/core/studio-context";
 import { JIRA_PUSH_QUEUE } from "@/dispatch-queue/queue-names";
 import { JiraClient } from "./client";
+import {
+  attachImage,
+  type PlannedAttachment,
+  plannedAttachments,
+} from "./comment-media";
+import { type AdfMedia, collectImageTargets } from "./markdown-adf";
 import { JIRA_SYNC_ACTOR, syncJiraIntegrationSafe } from "./sync";
 
 /** Every 10 minutes, offset from the public-sets (:04) and org-repo (:07)
@@ -112,11 +120,85 @@ export interface JiraCommentPushParams {
 
 const MAX_PUSH_CHARS = 30_000;
 
-/** Step 1: post the comment on the linked issue. Null = nothing to do —
- *  integration gone/disabled, card unlinked, or already pushed (the link
- *  check is what makes workflow re-entry idempotent). */
+interface CommentPushTarget {
+  jiraIssueId: string;
+}
+
+/** Step 1: is there anything to push? Null = nothing to do — integration
+ *  gone/disabled, card unlinked, or already pushed (the link check is what
+ *  makes workflow re-entry idempotent). Ahead of any upload, so we never
+ *  attach a screenshot to an issue we then decline to comment on. */
+async function resolveCommentTarget(
+  params: JiraCommentPushParams,
+): Promise<CommentPushTarget | null> {
+  const storage = storageFromRuntime();
+  const integration = await storage.getByOrg(params.organizationId);
+  if (!integration?.enabled) return null;
+  const link = await storage.getLinkByItemId(
+    params.taskBoardItemId,
+    params.organizationId,
+  );
+  if (!link) return null;
+  if (await storage.hasCommentLink(params.commentId)) return null;
+  return { jiraIssueId: link.jiraIssueId };
+}
+
+/** The org slug, which is what scopes an image ref to this tenant. Its own
+ *  step, and only reached when the comment actually references an image. */
+async function readOrgSlug(organizationId: string): Promise<string | null> {
+  const row = await requireRuntime()
+    .db.selectFrom("organization")
+    .select("slug")
+    .where("id", "=", organizationId)
+    .executeTakeFirst();
+  return row?.slug ?? null;
+}
+
+/**
+ * One image, one step: read the bytes, reuse or upload the attachment, resolve
+ * the media id.
+ *
+ * Per image rather than per comment so a pod death partway through does not
+ * re-upload what already landed — each completed attachment is checkpointed.
+ * Retriable because `attachImage` dedups against the issue's attachments
+ * first, so a re-run adopts its own earlier upload instead of duplicating it.
+ */
+async function attachCommentImage(
+  organizationId: string,
+  issueId: string,
+  item: PlannedAttachment,
+): Promise<AdfMedia | null> {
+  const integration = await storageFromRuntime().getByOrg(organizationId);
+  if (!integration?.enabled) return null;
+  const ctx = await buildOrgContext(requireRuntime().db, organizationId);
+  const orgFs = ctx?.orgFs;
+  if (!orgFs) return null;
+  const client = new JiraClient(
+    integration.siteUrl,
+    integration.email,
+    integration.apiToken,
+  );
+  return attachImage(item, {
+    read: (ref) =>
+      orgFs.read(ref.volume, ref.path).catch((err: unknown) => {
+        // Only a genuinely absent file is terminal; a transient object-store
+        // error must reach the step so it retries instead of dropping.
+        if (err instanceof OrgFsNotFoundError) return null;
+        throw err;
+      }),
+    listAttachments: () => client.listAttachments(issueId),
+    upload: (file) => client.addAttachment(issueId, file),
+    mediaIdFor: (attachmentId) => client.resolveMediaId(attachmentId),
+  });
+}
+
+/** Final step: post the comment, embedding whatever the attach steps
+ *  resolved. Re-reads the row so the credential never crosses a step
+ *  boundary, and re-checks the link so a replay is a no-op. */
 async function postCommentToJira(
   params: JiraCommentPushParams,
+  body: string,
+  media: Array<[string, AdfMedia]>,
 ): Promise<string | null> {
   const storage = storageFromRuntime();
   const integration = await storage.getByOrg(params.organizationId);
@@ -132,11 +214,10 @@ async function postCommentToJira(
     integration.email,
     integration.apiToken,
   );
-  const text = `${params.authorLabel} · via Studio:\n${params.body}`.slice(
-    0,
-    MAX_PUSH_CHARS,
-  );
-  const created = await client.addComment(link.jiraIssueId, text);
+  const created = await client.addComment(link.jiraIssueId, body, {
+    header: `${params.authorLabel} · via Studio:`,
+    media: new Map(media),
+  });
   return created.id;
 }
 
@@ -156,17 +237,62 @@ async function recordCommentLink(
   }
 }
 
+/**
+ * Mirror one board comment, one external call per step.
+ *
+ * The body's slice and `plannedAttachments` are pure, so the workflow itself
+ * stays deterministic: the same params always drive the same steps in the same
+ * order, which is what lets a replay reuse the attachments already uploaded.
+ */
 async function jiraCommentPushWorkflowFn(
   params: JiraCommentPushParams,
 ): Promise<void> {
+  const body = params.body.slice(0, MAX_PUSH_CHARS);
+  const target = await DBOS.runStep(() => resolveCommentTarget(params), {
+    name: "resolveCommentTarget",
+    retriesAllowed: true,
+    maxAttempts: 3,
+  });
+  if (!target) return;
+
+  const media: Array<[string, AdfMedia]> = [];
+  const imageTargets = collectImageTargets(body);
+  if (imageTargets.length > 0) {
+    const orgSlug = await DBOS.runStep(
+      () => readOrgSlug(params.organizationId),
+      { name: "readOrgSlug", retriesAllowed: true, maxAttempts: 3 },
+    );
+    for (const item of plannedAttachments(imageTargets, orgSlug ?? "")) {
+      try {
+        const attached = await DBOS.runStep(
+          () =>
+            attachCommentImage(params.organizationId, target.jiraIssueId, item),
+          {
+            name: `attachCommentImage:${item.name}`,
+            retriesAllowed: true,
+            maxAttempts: 3,
+          },
+        );
+        if (attached) media.push([item.target, attached]);
+      } catch (err) {
+        // ONLY exhausted retries degrade to a link. Anything else — a
+        // cancellation, a determinism violation — is DBOS steering the
+        // workflow, and swallowing it would post the comment anyway.
+        // Matched by code, not `instanceof` — see `isMaxStepRetriesError`.
+        if (!isMaxStepRetriesError(err)) throw err;
+        console.warn(`[jira] could not attach ${item.ref.path}:`, err);
+      }
+    }
+  }
+
   // NOT retriable: Jira has no idempotency key for comments, so a retry after
   // a lost response (timeout, 502 past the commit) posts the comment again on
   // the customer's issue. One missed mirror beats four copies; the comment
   // itself is already safe in Studio and the failure is logged.
-  const jiraCommentId = await DBOS.runStep(() => postCommentToJira(params), {
-    name: "postCommentToJira",
-    retriesAllowed: false,
-  });
+  const jiraCommentId = await DBOS.runStep(
+    () => postCommentToJira(params, body, media),
+    { name: "postCommentToJira", retriesAllowed: false },
+  );
   if (!jiraCommentId) return;
   await DBOS.runStep(() => recordCommentLink(params, jiraCommentId), {
     name: "recordCommentLink",

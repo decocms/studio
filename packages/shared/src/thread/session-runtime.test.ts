@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
+  defaultThreadRuntime,
+  fastPreviewCapability,
   parseThreadRuntime,
-  resolveSessionRuntime,
+  readThreadRuntime,
 } from "./session-runtime.ts";
 
 const FP_PROJECT = {
@@ -9,78 +11,92 @@ const FP_PROJECT = {
   previewServerUrl: "https://acme.com",
 };
 
-describe("resolveSessionRuntime", () => {
-  test("unstamped thread on a fast-preview project resolves to cms", () => {
-    const r = resolveSessionRuntime(FP_PROJECT, {});
-    expect(r.runtime).toBe("cms");
-    expect(r.fastPreviewCapability).toBe(true);
-    expect(r.previewServerUrl).toBe("https://acme.com/");
-  });
-
-  test("absent thread metadata behaves like an unstamped thread", () => {
-    expect(resolveSessionRuntime(FP_PROJECT).runtime).toBe("cms");
-    expect(resolveSessionRuntime(FP_PROJECT, null).runtime).toBe("cms");
-  });
-
-  test("sandbox stamp overrides the fast-preview default", () => {
-    const r = resolveSessionRuntime(FP_PROJECT, { runtime: "sandbox" });
-    expect(r.runtime).toBe("sandbox");
-    // The capability is a project fact — the stamp doesn't erase it.
-    expect(r.fastPreviewCapability).toBe(true);
-  });
-
-  test("flag without a URL is inert (today's gate)", () => {
-    const r = resolveSessionRuntime({ fastPreview: true });
-    expect(r.runtime).toBe("sandbox");
-    expect(r.fastPreviewCapability).toBe(false);
-    expect(r.previewServerUrl).toBeNull();
-  });
-
-  test("URL without the flag stays sandbox (today's gate)", () => {
-    const r = resolveSessionRuntime({
-      previewServerUrl: "https://acme.com",
-    });
-    expect(r.runtime).toBe("sandbox");
-    expect(r.fastPreviewCapability).toBe(false);
-    expect(r.previewServerUrl).toBe("https://acme.com/");
-  });
-
-  test("legacy productionUrl key satisfies the capability", () => {
-    const r = resolveSessionRuntime({
-      fastPreview: true,
-      productionUrl: "https://legacy.acme.com",
-    });
-    expect(r.runtime).toBe("cms");
-    expect(r.previewServerUrl).toBe("https://legacy.acme.com/");
-  });
-
-  test("cms stamp without the capability resolves to sandbox", () => {
-    const r = resolveSessionRuntime({}, { runtime: "cms" });
-    expect(r.runtime).toBe("sandbox");
-  });
-
-  test("cms stamp with the capability resolves to cms", () => {
-    const r = resolveSessionRuntime(FP_PROJECT, { runtime: "cms" });
-    expect(r.runtime).toBe("cms");
-  });
-
-  test("garbage stamps fall through to the default", () => {
+describe("fastPreviewCapability", () => {
+  test("needs both the flag and a URL", () => {
+    expect(fastPreviewCapability(FP_PROJECT)).toBe(true);
+    expect(fastPreviewCapability({ fastPreview: true })).toBe(false);
     expect(
-      resolveSessionRuntime(FP_PROJECT, { runtime: "SANDBOX" }).runtime,
-    ).toBe("cms");
-    expect(resolveSessionRuntime(FP_PROJECT, { runtime: 1 }).runtime).toBe(
-      "cms",
-    );
-    expect(resolveSessionRuntime({}, { runtime: "weird" }).runtime).toBe(
+      fastPreviewCapability({ previewServerUrl: "https://acme.com" }),
+    ).toBe(false);
+  });
+
+  test("honors the legacy productionUrl key", () => {
+    expect(
+      fastPreviewCapability({
+        fastPreview: true,
+        productionUrl: "https://legacy.acme.com",
+      }),
+    ).toBe(true);
+  });
+
+  test("no other project metadata enters the predicate", () => {
+    const withRepo = { ...FP_PROJECT, githubRepo: { owner: "acme" } };
+    const withoutRepo = { ...FP_PROJECT };
+    expect(fastPreviewCapability(withRepo)).toBe(true);
+    expect(fastPreviewCapability(withoutRepo)).toBe(true);
+  });
+
+  test("null / undefined metadata is not capable", () => {
+    expect(fastPreviewCapability(null)).toBe(false);
+    expect(fastPreviewCapability(undefined)).toBe(false);
+  });
+});
+
+describe("defaultThreadRuntime", () => {
+  test("capable project defaults new threads to cms", () => {
+    expect(defaultThreadRuntime(FP_PROJECT)).toBe("cms");
+  });
+
+  test("everything else defaults to sandbox", () => {
+    expect(defaultThreadRuntime({ fastPreview: true })).toBe("sandbox");
+    expect(defaultThreadRuntime({ previewServerUrl: "https://acme.com" })).toBe(
       "sandbox",
     );
+    expect(defaultThreadRuntime({})).toBe("sandbox");
+    expect(defaultThreadRuntime(null)).toBe("sandbox");
+  });
+});
+
+describe("readThreadRuntime", () => {
+  test("the stamp decides, whatever the project says", () => {
+    expect(readThreadRuntime({ runtime: "sandbox" }, FP_PROJECT)).toBe(
+      "sandbox",
+    );
+    expect(readThreadRuntime({ runtime: "cms" }, FP_PROJECT)).toBe("cms");
   });
 
-  test("null vmcp metadata resolves to sandbox", () => {
-    const r = resolveSessionRuntime(null);
-    expect(r.runtime).toBe("sandbox");
-    expect(r.fastPreviewCapability).toBe(false);
-    expect(r.previewServerUrl).toBeNull();
+  // Inverted: the old resolver collapsed a `cms` stamp on a capability-less project into `sandbox`.
+  test("a cms stamp survives a project with no capability", () => {
+    expect(readThreadRuntime({ runtime: "cms" }, {})).toBe("cms");
+    expect(readThreadRuntime({ runtime: "cms" }, null)).toBe("cms");
+    expect(readThreadRuntime({ runtime: "cms" }, { fastPreview: true })).toBe(
+      "cms",
+    );
+  });
+
+  test("an unstamped thread falls back to the project default", () => {
+    expect(readThreadRuntime({}, FP_PROJECT)).toBe("cms");
+    expect(readThreadRuntime(null, FP_PROJECT)).toBe("cms");
+    expect(readThreadRuntime(undefined, FP_PROJECT)).toBe("cms");
+    expect(readThreadRuntime({}, {})).toBe("sandbox");
+  });
+
+  test("a garbage stamp is not a stamp", () => {
+    expect(readThreadRuntime({ runtime: "SANDBOX" }, FP_PROJECT)).toBe("cms");
+    expect(readThreadRuntime({ runtime: 1 }, FP_PROJECT)).toBe("cms");
+    expect(readThreadRuntime({ runtime: "weird" }, {})).toBe("sandbox");
+  });
+
+  test("the unstamped fallback IS the creation default", () => {
+    for (const meta of [
+      FP_PROJECT,
+      { fastPreview: true },
+      { previewServerUrl: "https://acme.com" },
+      {},
+      null,
+    ]) {
+      expect(readThreadRuntime({}, meta)).toBe(defaultThreadRuntime(meta));
+    }
   });
 });
 

@@ -88,6 +88,7 @@ import {
   type TaskBoardItemThread,
 } from "./config";
 import { summarizeTaskCost } from "./task-cost";
+import { prCardActions } from "./pr-card-actions";
 import { toast } from "sonner";
 import { useTaskBoardItemPrs } from "@/hooks/use-task-board-item-prs";
 import {
@@ -96,6 +97,7 @@ import {
 } from "@/hooks/use-task-board-activity";
 import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { usePromoteToProduction } from "@/hooks/use-promote-to-production";
+import { useResolveConflict } from "@/hooks/use-resolve-conflict";
 import {
   enabledReviewers,
   reviewsSatisfiedForPromotion,
@@ -1443,7 +1445,9 @@ function PrCard({
   previewThread,
   reviewsReady,
   shipPending,
+  resolvePending,
   onShip,
+  onResolveConflict,
   onOpenThread,
 }: {
   pr: TaskBoardItemPr;
@@ -1451,18 +1455,21 @@ function PrCard({
   /** Task-level: In Review + every enabled reviewer approved. */
   reviewsReady: boolean;
   shipPending: boolean;
+  resolvePending: boolean;
   onShip: () => void;
+  onResolveConflict: () => void;
   onOpenThread?: (thread: TaskBoardItemThread) => void;
 }) {
   const t = useT();
   const [checksOpen, setChecksOpen] = useState(false);
   const style = prStateStyle(pr, t);
   const checksHeader = prChecksStyle(pr.checksStatus, t);
-  const isOpen = pr.state === "open" && !pr.merged;
-  // Hide Ship only on red CI; a human may ship over in-flight (pending) checks.
-  const checksOk = pr.checksStatus !== "failing";
-  const showShip = reviewsReady && isOpen && checksOk;
-  const hasActions = !!previewThread || !!pr.previewUrl || showShip;
+  const { isOpen, hasConflict, showShip, showResolveConflict } = prCardActions(
+    pr,
+    reviewsReady,
+  );
+  const hasActions =
+    !!previewThread || !!pr.previewUrl || showShip || showResolveConflict;
   // Null-safe: react-query cache from before `checks` shipped can lack it.
   const checks = pr.checks ?? [];
   const hasChecksFooter = checks.length > 0 || checksHeader != null;
@@ -1498,6 +1505,12 @@ function PrCard({
           />
         </a>
       </div>
+      {hasConflict && isOpen && (
+        <div className="flex items-center gap-1.5 text-xs font-medium text-warning">
+          <AlertCircle size={13} className="shrink-0" />
+          {t("taskBoard.taskDialog.prConflict")}
+        </div>
+      )}
       {hasActions && (
         <div className="flex flex-wrap items-center gap-2">
           {previewThread && (
@@ -1537,6 +1550,20 @@ function PrCard({
               onClick={onShip}
             >
               {t("taskBoard.taskDialog.shipToProductionButton")}
+            </Button>
+          )}
+          {showResolveConflict && (
+            <Button
+              type="button"
+              variant="warning"
+              size="sm"
+              className="gap-1.5"
+              disabled={resolvePending}
+              title={t("taskBoard.taskDialog.resolveConflictTitle")}
+              onClick={onResolveConflict}
+            >
+              <GitMerge size={13} />
+              {t("taskBoard.taskDialog.resolveConflictButton")}
             </Button>
           )}
         </div>
@@ -1656,6 +1683,7 @@ function LinksSection({
   const qaEnabled = useOrgFlag("qa_agent_enabled");
   const codeReviewerEnabled = useOrgFlag("code_reviewer_enabled");
   const promote = usePromoteToProduction(item.id);
+  const resolveConflict = useResolveConflict(item.id);
   const links = extractDescriptionLinks(description);
   // Keep the section up (with a skeleton) while the PR enrichment loads; a
   // PR-less task resolves instantly, so the skeleton barely flashes for it.
@@ -1683,6 +1711,13 @@ function LinksSection({
           : toast.error(t("taskBoard.taskDialog.shipError")),
       onError: () => toast.error(t("taskBoard.taskDialog.shipError")),
     });
+  const onResolveConflict = (prNumber: number) =>
+    resolveConflict.mutate(prNumber, {
+      onSuccess: () =>
+        toast.success(t("taskBoard.taskDialog.resolveConflictSuccess")),
+      onError: () =>
+        toast.error(t("taskBoard.taskDialog.resolveConflictError")),
+    });
 
   // The task's preview-capable thread (a bound repo checked out on the PR's
   // branch). Opening it paints that branch's live dev server — so "Edit" lands
@@ -1707,7 +1742,9 @@ function LinksSection({
               previewThread={previewThread}
               reviewsReady={reviewsReady}
               shipPending={promote.isPending}
+              resolvePending={resolveConflict.isPending}
               onShip={onShip}
+              onResolveConflict={() => onResolveConflict(pr.number)}
               onOpenThread={onOpenThread}
             />
           ))

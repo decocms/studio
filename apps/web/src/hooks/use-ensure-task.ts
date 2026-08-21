@@ -34,6 +34,8 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { useMutation } from "@tanstack/react-query";
 import type { Task } from "../components/chat/task/types";
 import { useThreadManager } from "../components/chat/store/hooks";
+import { useProjectContext } from "@/sdk";
+import { claimThreadIntent } from "@/lib/thread-intent";
 
 type State =
   | { status: "loading" }
@@ -43,6 +45,7 @@ type State =
 
 export function useEnsureTask(id: string, virtualMcpId: string): State {
   const manager = useThreadManager();
+  const { locator } = useProjectContext();
   const threads = useSyncExternalStore(
     manager.threads.subscribe,
     manager.threads.get,
@@ -51,7 +54,10 @@ export function useEnsureTask(id: string, virtualMcpId: string): State {
     manager.threadsStatus.subscribe,
     manager.threadsStatus.get,
   );
-  const localHit = id ? (threads.find((t) => t.id === id) ?? null) : null;
+  /** Skips a `/watch` synthetic: it carries no metadata, so it can't answer the session's runtime. */
+  const localHit = id
+    ? (threads.find((t) => t.id === id && !t.partial) ?? null)
+    : null;
 
   // fetchedTask tracks the result of manager.fetchThread:
   //   undefined  = not yet attempted
@@ -93,7 +99,12 @@ export function useEnsureTask(id: string, virtualMcpId: string): State {
 
   const ensureCreate = useMutation<Task, Error, string>({
     mutationFn: async (taskId) =>
-      manager.create({ id: taskId, virtual_mcp_id: virtualMcpId }),
+      manager.create({
+        id: taskId,
+        virtual_mcp_id: virtualMcpId,
+        // What the failed create asked for; the runtime it stamps is permanent.
+        ...claimThreadIntent(sessionStorage, locator, taskId),
+      }),
   });
 
   // Fire create only after fetchThread has confirmed the row doesn't exist

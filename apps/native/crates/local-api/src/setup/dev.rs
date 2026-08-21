@@ -39,6 +39,19 @@ use crate::tasks::{
 };
 
 const WELL_KNOWN_STARTERS: [&str; 2] = ["dev", "start"];
+
+/// Whether `name` is a script this crate treats as "the dev server" — the
+/// same set [`run`] picks a starter from. Byte-parity target:
+/// `proc.IsWellKnownStarter` (`daemon-go/internal/proc/portsniffer.go:11`),
+/// which gates the daemon's own exec-route special case.
+///
+/// `pub(crate)`: `routes/scripts.rs` asks the same question, so the run
+/// button and the pipeline cannot disagree about which scripts own the
+/// lifecycle.
+pub(crate) fn is_well_known_starter(name: &str) -> bool {
+    WELL_KNOWN_STARTERS.contains(&name)
+}
+
 /// 40 attempts * 250ms = 10s — generous enough for a freshly `npm install`-ed
 /// dev server to finish booting AFTER it has already announced its bind port
 /// (the announcement itself means the listener is up, so this is mostly
@@ -55,7 +68,7 @@ const PROBE_ATTEMPTS: u32 = 40;
 /// `is_current_dev_task` every iteration, so it stops the moment the dev task
 /// exits or is replaced. The count only bounds a process that stays alive
 /// forever without ever listening.
-const BOOT_PROBE_ATTEMPTS: u32 = 4 * 60 * 20;
+pub(crate) const BOOT_PROBE_ATTEMPTS: u32 = 4 * 60 * 20;
 const PROBE_INTERVAL: Duration = Duration::from_millis(250);
 const IDENTITY_CAPTURE_ATTEMPTS: u32 = 20;
 const IDENTITY_CAPTURE_INTERVAL: Duration = Duration::from_millis(25);
@@ -539,7 +552,12 @@ fn sniff_port(text: &str) -> Option<u16> {
 /// if the pipeline wasn't already there — byte-parity in spirit with
 /// `probe.ts`'s booting -> online transition + `entry.ts`'s
 /// `if (wasDown) broadcaster.emit("reload", {})`.
-async fn confirm_running(orch: Arc<SetupOrchestrator>, task_id: String, port: u16, attempts: u32) {
+pub(crate) async fn confirm_running(
+    orch: Arc<SetupOrchestrator>,
+    task_id: String,
+    port: u16,
+    attempts: u32,
+) {
     if orch.is_closed() || !orch.is_current_dev_task(&task_id) {
         return;
     }

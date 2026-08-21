@@ -55,6 +55,10 @@ pub(super) async fn try_dispatch(
         Err(error) => return Some(error.into_response()),
     };
 
+    // A CMS session has no worktree, whatever this machine happens to hold.
+    if super::runtime::thread_is_cms(state, query) {
+        return None;
+    }
     // Keyed by (virtualMcpId, branch) in the URL, but the worktree handle is
     // derived from the REPOSITORY — the registry is what bridges them.
     let handle = match state

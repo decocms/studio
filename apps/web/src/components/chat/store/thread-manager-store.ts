@@ -37,18 +37,26 @@ export type ThreadsStatus =
  */
 const ARCHIVED_TOMBSTONE_TTL_MS = 60_000;
 
-function applyPatch(list: Task[], patch: RowPatch): Task[] {
+function applyPatch(
+  list: Task[],
+  patch: RowPatch,
+  /** The insert is a `/watch` synthetic, not an authoritative row. */
+  fromWatch = true,
+): Task[] {
   const idx = list.findIndex((t) => t.id === patch.id);
   if (idx === -1) {
     const now = new Date().toISOString();
-    const synthetic: Task = {
+    const inserted: Task = {
       created_at: patch.created_at ?? patch.updated_at ?? now,
       updated_at: patch.updated_at ?? now,
       ...patch,
       title: patch.title ?? "New chat",
       branch: patch.branch ?? null,
+      // A `/watch` patch carries no `metadata` — see `Task.partial`. A row from
+      // COLLECTION_THREADS_LIST does, so it is NOT partial.
+      ...(fromWatch ? { partial: true as const } : {}),
     };
-    return [synthetic, ...list];
+    return [inserted, ...list];
   }
   const next = [...list];
   const current = next[idx]!;
@@ -76,7 +84,8 @@ function upsertFullRow(list: Task[], row: Task): Task[] {
   const idx = list.findIndex((t) => t.id === row.id);
   if (idx === -1) return [row, ...list];
   const next = [...list];
-  next[idx] = { ...next[idx]!, ...row };
+  // An authoritative row clears the partial flag a synthetic may have set.
+  next[idx] = { ...next[idx]!, ...row, partial: undefined };
   return next;
 }
 
@@ -187,9 +196,14 @@ export class ThreadManagerStore {
           | undefined
       )?.item;
       if (!row) throw new Error("create: no item returned");
-      this.threads.update((list) =>
-        list.some((t) => t.id === row.id) ? list : [row, ...list],
-      );
+      // `upsertFullRow`, not "insert if absent": the `/watch` event for this
+      // thread routinely lands BEFORE this response, and that synthetic
+      // carries no `metadata` (so no runtime stamp) and is flagged `partial`.
+      // Skipping the authoritative row there left the partial one in place
+      // forever — which made `useEnsureTask` re-GET the row it had just
+      // created, and made the chat permanently unreusable, so every "New chat"
+      // minted a duplicate.
+      this.threads.update((list) => upsertFullRow(list, row));
       return row;
     } catch (err) {
       // Surface failures here so callers don't each need their own toast.
@@ -249,7 +263,7 @@ export class ThreadManagerStore {
     this.threads.update((list) =>
       items.reduce((acc, t) => {
         if (this.isTombstoned(t.id)) return acc;
-        return applyPatch(acc, t);
+        return applyPatch(acc, t, false);
       }, list),
     );
   }
@@ -261,11 +275,15 @@ export class ThreadManagerStore {
     if (!this.client) throw new Error("ThreadManagerStore: no MCP client");
     const snapshot = this.threads.get();
     this.threads.update((list) =>
-      applyPatch(list, {
-        ...(patch as unknown as RowPatch),
-        id,
-        updated_at: new Date().toISOString(),
-      }),
+      applyPatch(
+        list,
+        {
+          ...(patch as unknown as RowPatch),
+          id,
+          updated_at: new Date().toISOString(),
+        },
+        false,
+      ),
     );
     try {
       const result = await this.client.callTool({

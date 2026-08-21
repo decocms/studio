@@ -21,7 +21,8 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import {
@@ -68,6 +69,9 @@ const UNASSIGNED_FILTER = "__unassigned__";
 
 /** Sentinel repo filter matching tasks with no associated repo. */
 const NO_REPO_FILTER = "__no_repo__";
+
+/** Radix `RadioGroup` needs a string value — this stands in for `null` (any). */
+const ANY_FILTER = "__any__";
 
 export type DueFilter = "overdue" | "today" | "week" | "none";
 
@@ -258,6 +262,7 @@ function AssigneeFilter({
         <Command>
           <CommandInput
             placeholder={t("taskBoard.taskFilters.assigneeFilterPlaceholder")}
+            aria-label={t("taskBoard.taskFilters.assigneeFilterPlaceholder")}
             className="h-9"
           />
           <CommandList>
@@ -265,11 +270,14 @@ function AssigneeFilter({
               {t("taskBoard.taskFilters.assigneeNoMembersFound")}
             </CommandEmpty>
             <CommandGroup>
-              <CommandItem value="Anyone" onSelect={() => select(null)}>
+              <CommandItem
+                value={t("taskBoard.taskFilters.assigneeAnyone")}
+                onSelect={() => select(null)}
+              >
                 {t("taskBoard.taskFilters.assigneeAnyone")}
               </CommandItem>
               <CommandItem
-                value="Unassigned"
+                value={t("taskBoard.taskFilters.assigneeUnassigned")}
                 onSelect={() => select(UNASSIGNED_FILTER)}
                 className="gap-2"
               >
@@ -277,7 +285,7 @@ function AssigneeFilter({
                 {t("taskBoard.taskFilters.assigneeUnassigned")}
               </CommandItem>
               <CommandItem
-                value="Super Agent"
+                value={t("taskBoard.taskFilters.assigneeSuperAgent")}
                 onSelect={() => select(SUPER_AGENT_ASSIGNEE_ID)}
                 className="gap-2"
               >
@@ -345,24 +353,29 @@ function PriorityFilter({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-40">
-        <DropdownMenuItem onSelect={() => onChange(null)}>
-          {t("taskBoard.taskFilters.priorityAnyPriority")}
-        </DropdownMenuItem>
-        {PRIORITIES.map((p) => (
-          <DropdownMenuItem
-            key={p}
-            onSelect={() => onChange(p)}
-            className="gap-2"
-          >
-            <span
-              className={cn(
-                "size-2 rounded-full",
-                PRIORITY_CONFIG[p].dotClassName,
-              )}
-            />
-            {t(PRIORITY_CONFIG[p].labelKey)}
-          </DropdownMenuItem>
-        ))}
+        <DropdownMenuRadioGroup
+          value={value ?? ANY_FILTER}
+          onValueChange={(next) =>
+            onChange(
+              next === ANY_FILTER ? null : (next as TaskBoardItemPriority),
+            )
+          }
+        >
+          <DropdownMenuRadioItem value={ANY_FILTER}>
+            {t("taskBoard.taskFilters.priorityAnyPriority")}
+          </DropdownMenuRadioItem>
+          {PRIORITIES.map((p) => (
+            <DropdownMenuRadioItem key={p} value={p} className="gap-2">
+              <span
+                className={cn(
+                  "size-2 rounded-full",
+                  PRIORITY_CONFIG[p].dotClassName,
+                )}
+              />
+              {t(PRIORITY_CONFIG[p].labelKey)}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -391,33 +404,40 @@ function DueDateFilter({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-44">
-        <DropdownMenuItem onSelect={() => onChange(null)} className="gap-2">
-          <Calendar size={16} className="text-muted-foreground" />
-          {t("taskBoard.taskFilters.dueDateAnyTime")}
-        </DropdownMenuItem>
-        {(
-          Object.entries(DUE_OPTIONS_LABEL_KEYS) as Array<
-            [DueFilter, TranslationKey]
-          >
-        ).map(([value, labelKey]) => {
-          const danger = value === "overdue";
-          return (
-            <DropdownMenuItem
-              key={value}
-              onSelect={() => onChange(value)}
-              className={cn("gap-2", danger && "text-destructive")}
+        <DropdownMenuRadioGroup
+          value={value ?? ANY_FILTER}
+          onValueChange={(next) =>
+            onChange(next === ANY_FILTER ? null : (next as DueFilter))
+          }
+        >
+          <DropdownMenuRadioItem value={ANY_FILTER} className="gap-2">
+            <Calendar size={16} className="text-muted-foreground" />
+            {t("taskBoard.taskFilters.dueDateAnyTime")}
+          </DropdownMenuRadioItem>
+          {(
+            Object.entries(DUE_OPTIONS_LABEL_KEYS) as Array<
+              [DueFilter, TranslationKey]
             >
-              <Calendar
-                size={16}
-                className={cn(
-                  "shrink-0",
-                  danger ? "text-destructive" : "text-muted-foreground",
-                )}
-              />
-              {t(labelKey)}
-            </DropdownMenuItem>
-          );
-        })}
+          ).map(([due, labelKey]) => {
+            const danger = due === "overdue";
+            return (
+              <DropdownMenuRadioItem
+                key={due}
+                value={due}
+                className={cn("gap-2", danger && "text-destructive")}
+              >
+                <Calendar
+                  size={16}
+                  className={cn(
+                    "shrink-0",
+                    danger ? "text-destructive" : "text-muted-foreground",
+                  )}
+                />
+                {t(labelKey)}
+              </DropdownMenuRadioItem>
+            );
+          })}
+        </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -475,6 +495,7 @@ function TagFilter({
         <Command>
           <CommandInput
             placeholder={t("taskBoard.taskFilters.tagsFilterPlaceholder")}
+            aria-label={t("taskBoard.taskFilters.tagsFilterPlaceholder")}
             className="h-9"
           />
           <CommandList>
@@ -545,6 +566,7 @@ function RepoFilter({
         <Command>
           <CommandInput
             placeholder={t("taskBoard.taskFilters.repoFilterPlaceholder")}
+            aria-label={t("taskBoard.taskFilters.repoFilterPlaceholder")}
             className="h-9"
           />
           <CommandList>
@@ -552,11 +574,14 @@ function RepoFilter({
               {t("taskBoard.taskFilters.repoNoReposFound")}
             </CommandEmpty>
             <CommandGroup>
-              <CommandItem value="Any repo" onSelect={() => select(null)}>
+              <CommandItem
+                value={t("taskBoard.taskFilters.repoAnyRepo")}
+                onSelect={() => select(null)}
+              >
                 {t("taskBoard.taskFilters.repoAnyRepo")}
               </CommandItem>
               <CommandItem
-                value="No repo"
+                value={t("taskBoard.taskFilters.repoNoRepo")}
                 onSelect={() => select(NO_REPO_FILTER)}
               >
                 {t("taskBoard.taskFilters.repoNoRepo")}
@@ -628,6 +653,7 @@ function SearchToggle({
             if (value === "") setOpen(false);
           }}
           placeholder={t("taskBoard.taskFilters.searchPlaceholder")}
+          aria-label={t("taskBoard.taskFilters.searchPlaceholder")}
           className="w-full min-w-0 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
         />
       )}

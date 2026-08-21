@@ -384,10 +384,18 @@ fn dev_port_for(
     }
     // The sandbox's held allocation — the port EVERY spawn path binds (the
     // orchestrator and the UI's exec relaunch share `dev_port::resolve`).
-    // Consulted before the config's static value: outside a lifecycle-owned
-    // run (a server relaunched from the run button never transitions the
-    // lifecycle) the allocation is where the server actually is, and the
-    // config port is merely what seeded it.
+    // Consulted before the config's static value: while a spawn is still
+    // proving itself the phase is not yet `running`, and the allocation is
+    // already where the server will answer; the config port is merely what
+    // seeded it.
+    //
+    // This used to be the ONLY thing keeping a run-button relaunch
+    // previewable, because that path never touched the lifecycle at all —
+    // the preview worked while the boot overlay stayed up forever.
+    // `routes/scripts.rs` now owns the lifecycle for `dev`/`start`, so the
+    // phase catches up on its own; this fallback stays as the bridge across
+    // the window before a probe confirms, and for a server started outside
+    // any spawn path this crate knows about.
     let sandbox_root = crate::sandbox::dev_port::sandbox_root_for(&setup.repo_dir);
     if let Some(port) = crate::sandbox::dev_port::assigned(&sandbox_root) {
         return Some(port);

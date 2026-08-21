@@ -137,12 +137,13 @@ type skillJob struct{ src, dst string }
 const skillCopyConcurrency = 8
 
 // prefetchSkills copies every job onto local disk, bounded-parallel, and reports
-// how many landed. One shared byte budget across all of them: the cap protects
-// the pod's disk, so it cannot be per set or per worker.
-func prefetchSkills(jobs []skillJob) int {
-	budget := &atomic.Int64{}
-	budget.Store(skillCopyBudget)
-
+// how many landed. The byte budget is passed in and shared with the tar path:
+// the cap protects the pod's disk, so it cannot be per set, per worker, or per
+// transport.
+func prefetchSkills(jobs []skillJob, budget *atomic.Int64) int {
+	if len(jobs) == 0 {
+		return 0
+	}
 	work := make(chan skillJob)
 	var wg sync.WaitGroup
 	var copied atomic.Int64

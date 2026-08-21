@@ -8,6 +8,7 @@ import {
 } from "@decocms/ui/components/tabs.tsx";
 import { LinkExternal01 } from "@untitledui/icons";
 import { usePrDiff } from "@/components/sandbox/hooks/use-pr-diff.ts";
+import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { countGitDiffFiles } from "./github-pr-diff.ts";
 import { ChangesTab } from "./changes-tab.tsx";
 import { ChecksTab } from "./checks-tab.tsx";
@@ -43,6 +44,7 @@ export function PrSubTabs({
     orgId: org.id,
     virtualMcpId,
     branch,
+    threadId: useOptionalChatTask()?.taskId ?? null,
     base: pr.base,
     headSha: pr.headSha,
     pullNumber: pr.number,

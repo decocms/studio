@@ -487,6 +487,7 @@ async function main(): Promise<void> {
       "domMountedEarly",
       "previewIframeLoads",
       "previewCookieRoundTrip",
+      "monacoEngineBoots",
       "noCspViolations",
     ]);
     for (const [name, check] of Object.entries(report.results)) {
