@@ -1,5 +1,5 @@
 {
-  "auth/install-studio-pack-workflow.ts": "e284b2fd9950d5cc803d66a3b79e86258968b7d9a124cf2746363f8a4f7513a3",
+  "auth/install-studio-pack-workflow.ts": "eb00aca122e19317bd404dfd7cf629f89e3da4859fdd77c6606469297d0db018",
   "automations/dbos-workflow.ts": "dd8535f7577bbd3c0270c60f14f480d4fb42e366666245c3efa77f0ce73a9da2",
   "dispatch-queue/hosted-harness-workflow.ts": "cfd768375dc88a9066f2978e871e8d49eefbac0116794b5b6a2d71d686ddcb5e",
   "dispatch-queue/thread-gate-workflow.ts": "c56fe55f6306b7fed3323d6b77f5632abf1d8dcd2a1673cb1cd625a1728333ef",

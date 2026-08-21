@@ -42,7 +42,6 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   TASK_BOARD_ITEM_UPDATE: { readOnly: false, destructive: false },
   TASK_BOARD_ITEM_DELETE: { readOnly: false, destructive: true },
   TASK_BOARD_ITEM_PRS_GET: { readOnly: true, destructive: false },
-  TASK_BOARD_REVIEW_DECISION: { readOnly: false, destructive: false },
 };
 import { createReadToolOutputTool } from "@/harnesses/lib/decopilot/built-in-tools/read-tool-output";
 import { type VirtualClient } from "@/harnesses/lib/decopilot/built-in-tools/sandbox";

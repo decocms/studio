@@ -17,7 +17,12 @@ describe("createTaskBoardTools", () => {
       "TASK_BOARD_ITEM_LIST",
       "TASK_BOARD_ITEM_PRS_GET",
       "TASK_BOARD_ITEM_UPDATE",
-      "TASK_BOARD_REVIEW_DECISION",
     ]);
+  });
+
+  test("omits TASK_BOARD_REVIEW_DECISION — the reviewers own that verdict", () => {
+    expect(createTaskBoardTools({} as never)).not.toHaveProperty(
+      "TASK_BOARD_REVIEW_DECISION",
+    );
   });
 });

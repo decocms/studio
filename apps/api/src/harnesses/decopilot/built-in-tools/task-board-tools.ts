@@ -10,6 +10,10 @@
  * other built-ins: the guide prompts and the reviewer instructions already
  * tell the model to call them by these names.
  *
+ * `TASK_BOARD_REVIEW_DECISION` is deliberately NOT here: recording a QA /
+ * Code Reviewer verdict belongs to those reviewers, which reach the tool over
+ * their run-scoped MCP endpoint. The Super Agent is the reviewed party.
+ *
  * Imported from the concrete tool files to keep this built-in set explicit.
  */
 
@@ -20,7 +24,6 @@ import { TASK_BOARD_ITEM_LIST } from "@/tools/task-board/list";
 import { TASK_BOARD_ITEM_UPDATE } from "@/tools/task-board/update";
 import { TASK_BOARD_ITEM_DELETE } from "@/tools/task-board/delete";
 import { TASK_BOARD_ITEM_PRS_GET } from "@/tools/task-board/prs-get";
-import { TASK_BOARD_REVIEW_DECISION } from "@/tools/task-board/review-decision";
 
 export function createTaskBoardTools(ctx: StudioContext): ToolSet {
   return {
@@ -48,11 +51,6 @@ export function createTaskBoardTools(ctx: StudioContext): ToolSet {
       description: TASK_BOARD_ITEM_PRS_GET.description,
       inputSchema: zodSchema(TASK_BOARD_ITEM_PRS_GET.inputSchema),
       execute: (input) => TASK_BOARD_ITEM_PRS_GET.execute(input, ctx),
-    }),
-    TASK_BOARD_REVIEW_DECISION: tool({
-      description: TASK_BOARD_REVIEW_DECISION.description,
-      inputSchema: zodSchema(TASK_BOARD_REVIEW_DECISION.inputSchema),
-      execute: (input) => TASK_BOARD_REVIEW_DECISION.execute(input, ctx),
     }),
   };
 }
