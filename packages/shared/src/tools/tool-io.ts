@@ -131,6 +131,10 @@ export interface StudioToolIO {
         | null
         | undefined;
       main_agent_id?: string | null | undefined;
+      sprint_config?:
+        | { enabled: boolean; weeks: number; startDate: string }
+        | null
+        | undefined;
       createdAt?: string | undefined;
       updatedAt?: string | undefined;
     };
@@ -198,6 +202,9 @@ export interface StudioToolIO {
           }
         | undefined;
       main_agent_id?: string | null | undefined;
+      sprint_config?:
+        | { enabled: boolean; weeks: number; startDate: string }
+        | undefined;
     };
     output: {
       organizationId: string;
@@ -267,6 +274,10 @@ export interface StudioToolIO {
         | null
         | undefined;
       main_agent_id?: string | null | undefined;
+      sprint_config?:
+        | { enabled: boolean; weeks: number; startDate: string }
+        | null
+        | undefined;
     };
   };
   TASK_BOARD_ITEM_CREATE: {
@@ -285,6 +296,7 @@ export interface StudioToolIO {
       assigneeId?: string | null | undefined;
       repo?: string | null | undefined;
       dueDate?: string | null | undefined;
+      sprint?: number | null | undefined;
       tagIds?: string[] | undefined;
       prUrl?: string | null | undefined;
     };
@@ -306,6 +318,7 @@ export interface StudioToolIO {
         assignedBy: string | null;
         repo: string | null;
         dueDate: string | null;
+        sprint: number | null;
         sortOrder: number;
         keySeq: number | null;
         retryAttempts: number;
@@ -363,6 +376,7 @@ export interface StudioToolIO {
         assignedBy: string | null;
         repo: string | null;
         dueDate: string | null;
+        sprint: number | null;
         sortOrder: number;
         keySeq: number | null;
         retryAttempts: number;
@@ -418,6 +432,7 @@ export interface StudioToolIO {
       assigneeId?: string | null | undefined;
       repo?: string | null | undefined;
       dueDate?: string | null | undefined;
+      sprint?: number | null | undefined;
       sortOrder?: number | undefined;
       tagIds?: string[] | undefined;
       linkThreadId?: string | undefined;
@@ -441,6 +456,7 @@ export interface StudioToolIO {
         assignedBy: string | null;
         repo: string | null;
         dueDate: string | null;
+        sprint: number | null;
         sortOrder: number;
         keySeq: number | null;
         retryAttempts: number;
@@ -7051,6 +7067,7 @@ export interface StudioToolIO {
         | "user-desktop"
         | "cluster"
         | undefined;
+      threadId?: string | undefined;
     };
     output: {
       previewUrl: string | null;

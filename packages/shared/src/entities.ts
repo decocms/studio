@@ -157,6 +157,8 @@ export interface TaskBoardItem {
   /** `owner/name` of the repo (site) this task pertains to. */
   repo: string | null;
   dueDate: string | null;
+  /** Sprint this card is planned into (1-based); null = backlog. */
+  sprint: number | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;
   /** Per-org sequence behind the card's human key (`DECO-01`). */

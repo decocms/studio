@@ -108,6 +108,9 @@ export const TaskBoardItemSchema = z.object({
   // `owner/name` of the repo (site) this task pertains to.
   repo: z.string().nullable(),
   dueDate: z.string().datetime().nullable(),
+  /** Sprint this card is planned into, counted 1-based from the org's
+   *  `sprint_config` cadence. Null = backlog, or sprints never configured. */
+  sprint: z.number().int().nullable(),
   // Manual drag-to-reorder position within a lane, ascending.
   sortOrder: z.number(),
   // Per-org sequence behind the card's human key (`DECO-01`); null pre-backfill.

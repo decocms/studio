@@ -113,6 +113,39 @@ export type DefaultHomeAgentsConfig = z.infer<
 >;
 
 /**
+ * Sprint cadence for the task board. Its own column rather than an entry in
+ * the `flags` bag: `weeks` and `startDate` are not booleans, and `enabled`
+ * belongs with them so turning sprints on and setting their cadence is one
+ * write.
+ *
+ * Sprints are DERIVED from this cadence, not rows: sprint N is the Nth
+ * `weeks`-long window starting at `startDate` (see `@decocms/shared/sprints`).
+ * A task carries only its sprint number, so changing the cadence re-labels
+ * future windows without rewriting a single card.
+ */
+export const SprintConfigSchema = z.object({
+  enabled: z
+    .boolean()
+    .describe(
+      "Whether the board shows the sprint property and its filter. Off hides both; tasks keep any sprint already assigned.",
+    ),
+  weeks: z
+    .number()
+    .int()
+    .min(1)
+    .max(12)
+    .describe("How many weeks one sprint lasts."),
+  startDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .describe(
+      "Calendar day sprint 1 starts on (YYYY-MM-DD, read as UTC). Every later sprint is counted from here.",
+    ),
+});
+
+export type SprintConfig = z.infer<typeof SprintConfigSchema>;
+
+/**
  * Org-level boolean toggles, stored in the `organization_settings.flags`
  * jsonb bag. THE single source of truth: adding a flag is one line here —
  * storage, the settings tools, and the web hook all derive from this schema.

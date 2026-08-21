@@ -44,6 +44,7 @@ import {
   Loading01,
   Plus,
   RefreshCw01,
+  Repeat04,
   UserPlus01,
   X,
 } from "@untitledui/icons";
@@ -115,6 +116,8 @@ import {
   type Member,
 } from "./config";
 import { useTags } from "@/hooks/use-tags";
+import { useSprintConfig } from "@/hooks/use-organization-settings";
+import { sprintNumberAt, sprintOptions } from "@decocms/shared/sprints";
 import { usePreferences } from "@/hooks/use-preferences";
 import {
   TaskBoardItemDialog,
@@ -215,6 +218,24 @@ function DueDatePill({ iso }: { iso: string }) {
     >
       <Calendar size={14} />
       {label}
+    </span>
+  );
+}
+
+/**
+ * Which sprint a card is planned into. Reads the cadence itself (one shared,
+ * cached query) rather than threading a prop down every lane and row: a board
+ * with sprints switched off shows no sprint on any card, even one that kept a
+ * sprint from before.
+ */
+function SprintPill({ sprint }: { sprint: number }) {
+  const t = useT();
+  const enabled = useSprintConfig()?.enabled === true;
+  if (!enabled) return null;
+  return (
+    <span className={PILL}>
+      <Repeat04 size={14} />
+      {t("taskBoard.taskBoard.sprintPill", { number: String(sprint) })}
     </span>
   );
 }
@@ -344,6 +365,9 @@ export function TaskBoardPage() {
   );
   // Repo filter options: distinct `owner/name` repos the org can reach.
   const repos = listRepoScopeLabels(githubConnections);
+  // Off (or unconfigured) keeps the sprint property and filter off the board.
+  const sprintConfig = useSprintConfig();
+  const sprintsEnabled = sprintConfig?.enabled === true;
   const [connectGithubOpen, setConnectGithubOpen] = useState(false);
   // Connecting only grants a broad org-level GitHub connection — Auto-fix
   // still needs a repo imported (see `hasRepo`), so once connected we chain
@@ -516,6 +540,18 @@ export function TaskBoardPage() {
     setTaskId(newId, agentId);
   };
 
+  const now = new Date();
+  const currentSprint =
+    sprintConfig && sprintsEnabled ? sprintNumberAt(sprintConfig, now) : null;
+  const sprintNumbers =
+    sprintConfig && sprintsEnabled
+      ? sprintOptions(
+          sprintConfig,
+          now,
+          items.map((item) => item.sprint),
+        )
+      : [];
+
   const visibleItems = items.filter((item) =>
     taskMatchesFilters(item, filters),
   );
@@ -609,6 +645,8 @@ export function TaskBoardPage() {
                   members={members}
                   tags={orgTags}
                   repos={repos}
+                  sprints={sprintNumbers}
+                  currentSprint={currentSprint}
                   onChange={handleFiltersChange}
                 />
               </div>
@@ -618,6 +656,8 @@ export function TaskBoardPage() {
                   members={members}
                   tags={orgTags}
                   repos={repos}
+                  sprints={sprintNumbers}
+                  currentSprint={currentSprint}
                   onChange={handleFiltersChange}
                 />
               </div>
@@ -802,6 +842,7 @@ export function TaskBoardPage() {
                   priority: activeItem.priority,
                   repo: activeItem.repo,
                   dueDate: activeItem.dueDate,
+                  sprint: activeItem.sprint,
                   tagIds: activeItem.tags.map((tag) => tag.id),
                 });
                 toast.success(t("taskBoard.taskDialog.cloneSuccess"));
@@ -2023,6 +2064,7 @@ function TaskCard({
         isTaskHandedToHuman(item) ||
         item.priority !== "none" ||
         Boolean(item.dueDate) ||
+        item.sprint != null ||
         item.tags.length > 0) && (
         <div className="flex flex-wrap items-center gap-1.5 pl-6">
           {isTaskBlocked(item) && <BlockedBadge />}
@@ -2031,6 +2073,7 @@ function TaskCard({
             <PriorityPill priority={item.priority} />
           )}
           {item.dueDate && <DueDatePill iso={item.dueDate} />}
+          {item.sprint != null && <SprintPill sprint={item.sprint} />}
           {item.tags.map((tag) => (
             <TagPill key={tag.id} tag={tag} />
           ))}
@@ -2236,6 +2279,11 @@ function ListRow({
       {item.dueDate && (
         <span className="hidden sm:inline-flex">
           <DueDatePill iso={item.dueDate} />
+        </span>
+      )}
+      {item.sprint != null && (
+        <span className="hidden sm:inline-flex">
+          <SprintPill sprint={item.sprint} />
         </span>
       )}
       {item.tags.length > 0 && (

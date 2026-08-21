@@ -354,6 +354,7 @@ const unifiedChatSearchSchema = z.object({
   due: z.string().optional(),
   tags: z.string().optional(),
   repo: z.string().optional(),
+  sprint: z.string().optional(),
 });
 
 const unifiedChatRoute = createRoute({

@@ -31,6 +31,15 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     assigneeId: z.string().nullable().optional(),
     repo: z.string().nullable().optional(),
     dueDate: z.string().datetime().nullable().optional(),
+    sprint: z
+      .number()
+      .int()
+      .min(1)
+      .nullable()
+      .optional()
+      .describe(
+        "Sprint to plan this task into (1-based, counted from the org's sprint cadence). Omit or null to leave it in the backlog.",
+      ),
     tagIds: z.array(z.string()).optional(),
     prUrl: z
       .string()
@@ -91,6 +100,7 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       assignedBy: input.assigneeId ? getUserId(ctx)! : null,
       repo: input.repo ?? null,
       dueDate: input.dueDate ?? null,
+      sprint: input.sprint ?? null,
       by: getUserId(ctx)!,
     });
 
