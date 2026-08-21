@@ -21,6 +21,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/decocms/studio/sandbox-daemon/internal/gitx"
@@ -72,6 +73,10 @@ type Links struct {
 	// one starts. `WaitSkillLinks` is what turns the async sync back into a
 	// barrier for the run that needs it.
 	publicSkillsDone chan struct{}
+	// org-fs HTTP endpoint from the relayed config — lets the skill prefetch pull
+	// a whole set in one request instead of walking the mount. Nil until a config
+	// arrives, which is what keeps the mount path as the fallback.
+	api *APIConfig
 }
 
 // Expected reports whether org-fs volumes should exist on this pod.
@@ -392,6 +397,10 @@ func (l *Links) volumeMounted(dir string) bool {
 // sync, and one git-exclude line covers the whole set.
 const publicSkillPrefix = "orgfs-"
 
+// Volume-name prefix the studio gives the shared public sets (`public-core` is
+// mounted at `org/public/core`), mirroring publicVolumeForSet server-side.
+const publicVolumePrefix = "public-"
+
 // ensurePublicSkillLinksLocked exposes the read-only public skill sets
 // (`org/public/<set>/<skill>`) to Claude Code as PROJECT skills — one symlink
 // per skill under `<repoDir>/.claude/skills/`.
@@ -455,11 +464,13 @@ func (l *Links) WaitSkillLinks(budget time.Duration) {
 	}
 }
 
-// skillSet is one directory to scan for `<skill>/SKILL.md` children, with the
-// name its copies are prefixed by.
+// skillSet is one source of `<skill>/SKILL.md` children: the org-fs volume it
+// lives on (how the API addresses it), the name its copies are prefixed by, and
+// the mount dir used when the API route is unavailable.
 type skillSet struct {
-	name string
-	dir  string
+	volume string
+	name   string
+	dir    string
 }
 
 // Mount paths under `org/` that are not skill sets: the org home (linked, not
@@ -484,7 +495,11 @@ func (l *Links) skillSetRoots() []skillSet {
 			if !set.IsDir() || !safeSegment.MatchString(set.Name()) {
 				continue
 			}
-			out = append(out, skillSet{set.Name(), filepath.Join(orgRoot, "public", set.Name())})
+			out = append(out, skillSet{
+				volume: publicVolumePrefix + set.Name(),
+				name:   set.Name(),
+				dir:    filepath.Join(orgRoot, "public", set.Name()),
+			})
 		}
 	}
 	for _, m := range l.ActiveMounts() {
@@ -495,7 +510,7 @@ func (l *Links) skillSetRoots() []skillSet {
 		if !safeSegment.MatchString(name) {
 			continue
 		}
-		out = append(out, skillSet{name, m.MountPath})
+		out = append(out, skillSet{volume: m.Volume, name: name, dir: m.MountPath})
 	}
 	return out
 }
@@ -531,9 +546,21 @@ func (l *Links) syncPublicSkills() bool {
 	}
 	gitx.EnsureExclude(l.RepoDir, "/.claude/skills/"+publicSkillPrefix+"*")
 
+	// One budget across every set and both paths: the cap protects the pod's
+	// disk, so it cannot be per volume or per transport.
+	budget := &atomic.Int64{}
+	budget.Store(skillCopyBudget)
+
 	var jobs []skillJob
-	unreadable := 0
+	fromTar, unreadable := 0, 0
 	for _, set := range sets {
+		// One request for the whole set. Only when that is unavailable — an older
+		// studio, a rejected token, a truncated stream — does this fall back to
+		// walking the mount file by file.
+		if n := l.fetchSkillTar(set.volume, set.name, dir, budget); n > 0 {
+			fromTar += n
+			continue
+		}
 		names := skillDirNames(set.dir)
 		if len(names) == 0 {
 			continue
@@ -554,10 +581,11 @@ func (l *Links) syncPublicSkills() bool {
 			})
 		}
 	}
-	copied := prefetchSkills(jobs)
+	fromMount := prefetchSkills(jobs, budget)
 	slog.Info("org-fs skills prefetched",
-		"count", copied, "of", len(jobs), "unreadable", unreadable)
-	return copied > 0
+		"fromTar", fromTar, "fromMount", fromMount, "ofMount", len(jobs),
+		"unreadable", unreadable)
+	return fromTar+fromMount > 0
 }
 
 // repointThreadLink points `org/<linkName>` at `<mountDir>/<threadId>`, creating

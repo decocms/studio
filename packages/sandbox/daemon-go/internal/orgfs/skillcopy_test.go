@@ -86,7 +86,7 @@ func TestPrefetchSkillsSharesOneBudget(t *testing.T) {
 		writeSkillDir(t, src, n, map[string]int{"SKILL.md": int(skillCopyBudget / 4)})
 		jobs = append(jobs, skillJob{filepath.Join(src, n), filepath.Join(dstRoot, n)})
 	}
-	if got := prefetchSkills(jobs); got != 4 {
+	if got := prefetchSkills(jobs, budgetOf(skillCopyBudget)); got != 4 {
 		t.Errorf("copied %d skills, want 4 (the budget fits exactly four)", got)
 	}
 }

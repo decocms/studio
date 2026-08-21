@@ -922,6 +922,13 @@ func main() {
 		StatusPath: os.Getenv("ORGFS_SIDECAR_STATUS_PATH"),
 		ConfigPath: os.Getenv("ORGFS_SIDECAR_CONFIG_PATH"),
 	}
+	// Desktop mounts from the boot env rather than a relayed config, so seed the
+	// prefetch credential from it too.
+	if c := orgfs.ParseConfig([]byte(os.Getenv("ORGFS_CONFIG"))); c != nil {
+		d.orgFsLinks.SetAPIConfig(orgfs.APIConfig{
+			BaseUrl: c.BaseUrl, OrgSlug: c.OrgSlug, Token: c.Token,
+		})
+	}
 	// Fail loud rather than silently unmounted: ORGFS_CONFIG is the desktop's
 	// "mount them yourself" env, which only the TS bundle implements.
 	if os.Getenv("ORGFS_CONFIG") != "" && d.orgFsLinks.StatusPath == "" {
@@ -1077,6 +1084,14 @@ func main() {
 		}),
 		orgfsConfig: routes.OrgFsConfig(routes.OrgFsDeps{
 			ConfigPath: os.Getenv("ORGFS_SIDECAR_CONFIG_PATH"),
+			// The relayed config is also the daemon's own org-fs credential: the
+			// skill prefetch uses it to pull a whole set in one API request rather
+			// than walking the mount file by file.
+			OnConfig: func(baseUrl, orgSlug, token string) {
+				d.orgFsLinks.SetAPIConfig(orgfs.APIConfig{
+					BaseUrl: baseUrl, OrgSlug: orgSlug, Token: token,
+				})
+			},
 		}),
 		fs: map[string]http.HandlerFunc{
 			"read":           routes.Read(fsDeps),
