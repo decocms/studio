@@ -112,6 +112,39 @@ export function buildConnectionRequestHeaders(
 }
 
 /**
+ * Maps a `listTools()` result into our stored `ToolDefinition[]` shape.
+ * Shared by the HTTP and SSE fetchers, which map identically; STDIO omits
+ * the `additionalProperties` relaxation since its output schemas aren't
+ * meant to be lenient the same way a remote server's are.
+ */
+function mapListedTools(
+  tools: Array<{
+    name: string;
+    description?: string;
+    inputSchema?: unknown;
+    outputSchema?: Record<string, unknown>;
+    annotations?: unknown;
+    _meta?: unknown;
+  }>,
+  { relaxOutputSchema }: { relaxOutputSchema: boolean },
+): ToolDefinition[] | null {
+  if (tools.length === 0) return null;
+  return tools.map((tool) => ({
+    name: tool.name,
+    description: tool.description ?? undefined,
+    inputSchema: tool.inputSchema ?? {},
+    outputSchema: tool.outputSchema
+      ? relaxOutputSchema
+        ? // We strive to have lenient output schemas, so allow additional properties
+          { ...tool.outputSchema, additionalProperties: true }
+        : tool.outputSchema
+      : undefined,
+    annotations: tool.annotations ?? undefined,
+    _meta: tool._meta ?? undefined,
+  })) as ToolDefinition[];
+}
+
+/**
  * Try to fetch configuration scopes from the MCP_CONFIGURATION tool.
  * Returns null if the tool is not implemented or the call fails.
  */
@@ -184,20 +217,9 @@ async function fetchToolsFromHttpMCP(
       "Connection timeout",
     );
 
-    const tools =
-      result.tools && result.tools.length > 0
-        ? result.tools.map((tool) => ({
-            name: tool.name,
-            description: tool.description ?? undefined,
-            inputSchema: tool.inputSchema ?? {},
-            outputSchema: tool.outputSchema
-              ? // We strive to have lenient output schemas, so allow additional properties
-                { ...tool.outputSchema, additionalProperties: true }
-              : undefined,
-            annotations: tool.annotations ?? undefined,
-            _meta: tool._meta ?? undefined,
-          }))
-        : null;
+    const tools = mapListedTools(result.tools ?? [], {
+      relaxOutputSchema: true,
+    });
 
     const scopes = await fetchScopesFromMCP(client);
 
@@ -262,19 +284,9 @@ async function fetchToolsFromSSEMCP(
       "SSE connection timeout",
     );
 
-    const tools =
-      result.tools && result.tools.length > 0
-        ? result.tools.map((tool) => ({
-            name: tool.name,
-            description: tool.description ?? undefined,
-            inputSchema: tool.inputSchema ?? {},
-            outputSchema: tool.outputSchema
-              ? { ...tool.outputSchema, additionalProperties: true }
-              : undefined,
-            annotations: tool.annotations ?? undefined,
-            _meta: tool._meta ?? undefined,
-          }))
-        : null;
+    const tools = mapListedTools(result.tools ?? [], {
+      relaxOutputSchema: true,
+    });
 
     const scopes = await fetchScopesFromMCP(client);
 
@@ -345,17 +357,9 @@ async function fetchToolsFromStdioMCP(
       "Tool fetch timeout",
     );
 
-    const tools =
-      result.tools && result.tools.length > 0
-        ? result.tools.map((tool) => ({
-            name: tool.name,
-            description: tool.description ?? undefined,
-            inputSchema: tool.inputSchema ?? {},
-            outputSchema: tool.outputSchema ?? undefined,
-            annotations: tool.annotations ?? undefined,
-            _meta: tool._meta ?? undefined,
-          }))
-        : null;
+    const tools = mapListedTools(result.tools ?? [], {
+      relaxOutputSchema: false,
+    });
 
     const scopes = await fetchScopesFromMCP(client);
 
