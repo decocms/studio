@@ -159,12 +159,13 @@ export const taskBoard = {
   "taskBoard.taskDialog.shipToProductionButton": "Subir para produção",
   "taskBoard.taskDialog.shipSuccess": "Mesclado e enviado para produção",
   "taskBoard.taskDialog.shipError": "Não foi possível mesclar o pull request",
-  "taskBoard.taskDialog.prConflict": "Precisa de atualização para subir",
-  "taskBoard.taskDialog.resolveConflictButton": "Resolver com o agente",
+  "taskBoard.taskDialog.prConflict":
+    "Precisa resolver conflitos antes de subir",
+  "taskBoard.taskDialog.resolveConflictButton": "Resolver",
   "taskBoard.taskDialog.resolveConflictTitle":
-    "Essa alteração ficou desatualizada em relação ao que já está no repositório e não pode subir ainda — o agente vai atualizar e resolver pra você",
+    "Essa alteração tem conflitos que precisam ser resolvidos antes de subir — o agente resolve pra você",
   "taskBoard.taskDialog.resolveConflictSuccess":
-    "Agente acionado para atualizar e resolver",
+    "Agente acionado para resolver os conflitos",
   "taskBoard.taskDialog.resolveConflictError":
     "Não foi possível acionar o agente",
   "taskBoard.taskDialog.costRunCountSingular": "em {runs} execução",
