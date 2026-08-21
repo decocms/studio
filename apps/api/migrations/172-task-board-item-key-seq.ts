@@ -35,6 +35,12 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     where t.id = numbered.id
   `.execute(db);
 
+  // After backfill, enforce that every row has a sequence number.
+  await db.schema
+    .alterTable("task_board_items")
+    .alterColumn("key_seq", (col) => col.setNotNull())
+    .execute();
+
   await db.schema
     .createIndex("task_board_items_org_key_seq_unique")
     .on("task_board_items")
