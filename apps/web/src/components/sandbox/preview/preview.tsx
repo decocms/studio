@@ -257,6 +257,34 @@ export function resolvePreviewUrl(path: string, base: string): string | null {
 }
 
 /**
+ * Relevance score for a page-picker hit against a lowercased query `q`.
+ * Higher is better; `0` means no match. Ranks closer/more-specific matches
+ * first so `/masculino` beats `/joias/colares/masculino` for the query
+ * "masculino", instead of falling back to alphabetical order by title.
+ */
+function pageMatchScore(name: string, path: string, q: string): number {
+  const n = name.toLowerCase();
+  const p = path.toLowerCase();
+  const segments = p.split("/").filter(Boolean);
+  const textScore = (text: string): number => {
+    if (text === q) return 100;
+    const idx = text.indexOf(q);
+    if (idx === -1) return 0;
+    let s = 40;
+    if (idx === 0)
+      s += 30; // starts with the query
+    else if (/[\s/-]/.test(text[idx - 1] ?? "")) s += 20; // segment boundary
+    s += Math.round((q.length / text.length) * 20); // query covers more = closer
+    return s;
+  };
+  let score = Math.max(textScore(n), textScore(p));
+  if (segments.at(-1) === q)
+    score = Math.max(score, 95); // query is the path's leaf segment
+  else if (segments.includes(q)) score = Math.max(score, 90); // whole segment
+  return score;
+}
+
+/**
  * Renders nothing; fires `onOpen` exactly once when mounted to auto-open the
  * CMS. Headless run-once helper mirroring `PathParamAutoFill`: the parent
  * mounts it only while the auto-open should happen (see `shouldAutoOpenCms`)
@@ -488,13 +516,23 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const globalLoaders =
     decofile && meta ? listSavedRunnables(meta, decofile, "loaders") : [];
   const normPath = normalizePagePath;
-  const filteredPages = pages.filter((page) => {
-    if (!pagesSearch) return true;
-    const q = pagesSearch.toLowerCase();
-    return (
-      page.name.toLowerCase().includes(q) || page.path.toLowerCase().includes(q)
-    );
-  });
+  const filteredPages = !pagesSearch
+    ? pages
+    : (() => {
+        const q = pagesSearch.toLowerCase();
+        // Stable sort keeps `pages`' alpha order as tie-break; shorter path wins.
+        return pages
+          .map((page) => ({
+            page,
+            score: pageMatchScore(page.name, page.path, q),
+          }))
+          .filter(({ score }) => score > 0)
+          .sort(
+            (a, b) =>
+              b.score - a.score || a.page.path.length - b.page.path.length,
+          )
+          .map(({ page }) => page);
+      })();
   const filteredGlobalSections = globalSections.filter((section) => {
     if (!pagesSearch) return true;
     const q = pagesSearch.toLowerCase();
