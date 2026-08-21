@@ -61,14 +61,25 @@ export function parseOutputsRef(
     fs !== "fs" ||
     action !== "read" ||
     volume !== "outputs" ||
-    slug === undefined ||
-    decodeURIComponent(slug) !== orgSlug
+    decodeSegment(slug) !== orgSlug
   ) {
     return null;
   }
   const path = url.searchParams.get("path");
   if (!path || path.includes("..")) return null;
   return { volume, path };
+}
+
+/** `decodeURIComponent` throws a `URIError` on a malformed escape like `%zz`,
+ *  and this runs in a workflow body, outside any step — an agent writing one
+ *  in a comment would fail the whole push. */
+function decodeSegment(segment: string | undefined): string | null {
+  if (segment === undefined) return null;
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return null;
+  }
 }
 
 /** The content type for an image path, or null when it is not an image we

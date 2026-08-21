@@ -631,3 +631,44 @@ describe("collectImageTargets", () => {
     expect(collectImageTargets("no images here")).toEqual([]);
   });
 });
+
+describe("markdownToAdf bounds", () => {
+  const nodes = (value: AdfNode): number =>
+    1 + (value.content ?? []).reduce((sum, child) => sum + nodes(child), 0);
+
+  it("bounds a wide, tall table instead of amplifying it", () => {
+    // A 4-character `|x|` row is padded to the header's width, so without a
+    // cap a 30KB comment builds millions of nodes — twice per push.
+    const columns = 300;
+    const header = `|${" a |".repeat(columns)}`;
+    const delimiter = `|${"---|".repeat(columns)}`;
+    const rows = Array.from({ length: 4000 }, () => "|x|").join("\n");
+    const document = markdownToAdf(
+      [header, delimiter, rows].join("\n").slice(0, 30_000),
+    );
+    expect(nodes(document as unknown as AdfNode)).toBeLessThan(50_000);
+
+    const table = document.content.find((node) => node.type === "table");
+    expect(table?.content?.[0]?.content).toHaveLength(24);
+    expect(table?.content?.length).toBeLessThanOrEqual(201);
+  });
+
+  it("never emits an empty blockquote, which ADF rejects", () => {
+    for (const markdown of ["> ---", ">", "> ***", "> \n> ---"]) {
+      const [quote] = markdownToAdf(markdown).content;
+      expect(quote?.type).toBe("blockquote");
+      expect(quote?.content?.length ?? 0).toBeGreaterThan(0);
+    }
+  });
+
+  it("keeps something visible when an image target is unusable", () => {
+    const relative = "/api/acme/fs/outputs/read?path=a.png";
+    // Unlabelled and unattachable: it must not silently disappear.
+    expect(markdownToAdf(`![](${relative})`).content).toEqual([
+      { type: "paragraph", content: [{ type: "text", text: relative }] },
+    ]);
+    expect(markdownToAdf(`![shot](${relative})`).content).toEqual([
+      { type: "paragraph", content: [{ type: "text", text: "shot" }] },
+    ]);
+  });
+});

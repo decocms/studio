@@ -261,9 +261,15 @@ function parseQuote(cursor: Cursor, ctx: Ctx): AdfNode {
     inner.push(match[1] ?? "");
     cursor.i++;
   }
+  const content = restrict(
+    parseBlocks({ lines: inner, i: 0 }, ctx),
+    QUOTE_CONTENT,
+  );
   return {
     type: "blockquote",
-    content: restrict(parseBlocks({ lines: inner, i: 0 }, ctx), QUOTE_CONTENT),
+    // ADF wants one child or more, and `> ---` restricts down to none.
+    content:
+      content.length > 0 ? content : [{ type: "paragraph", content: [] }],
   };
 }
 
@@ -417,6 +423,13 @@ function flatten(block: AdfNode): AdfNode | null {
   return text === "" ? null : textParagraph(text);
 }
 
+/** A data row is padded to the header's width, so one 4-character `|x|` line
+ *  costs a cell per column: 300 columns of pipes inside the 30KB push budget
+ *  built a 4.1M-node, 162MB document. Both caps bound that product; rows past
+ *  the cap fall through to paragraphs, which stay linear in the input. */
+const MAX_TABLE_COLUMNS = 24;
+const MAX_TABLE_ROWS = 200;
+
 const TABLE_ROW_RE = /^ {0,3}\|/;
 const DELIMITER_CELL_RE = /^:?-+:?$/;
 
@@ -434,12 +447,23 @@ function parseTable(cursor: Cursor, ctx: Ctx): AdfNode | null {
     return null;
   }
   cursor.i += 2;
-  const rows: AdfNode[] = [tableRow(header, "tableHeader", header.length, ctx)];
-  while (cursor.i < cursor.lines.length) {
+  const width = Math.min(header.length, MAX_TABLE_COLUMNS);
+  if (header.length > width) {
+    console.warn(
+      `[jira] table has ${header.length} columns; keeping the first ${width}`,
+    );
+  }
+  const rows: AdfNode[] = [tableRow(header, "tableHeader", width, ctx)];
+  while (cursor.i < cursor.lines.length && rows.length <= MAX_TABLE_ROWS) {
     const cells = splitRow(cursor.lines[cursor.i] ?? "");
     if (!cells) break;
-    rows.push(tableRow(cells, "tableCell", header.length, ctx));
+    rows.push(tableRow(cells, "tableCell", width, ctx));
     cursor.i++;
+  }
+  if (splitRow(cursor.lines[cursor.i] ?? "")) {
+    console.warn(
+      `[jira] table exceeds ${MAX_TABLE_ROWS} rows; the rest render as text`,
+    );
   }
   return {
     type: "table",
@@ -770,13 +794,20 @@ function matchAutolink(source: string, at: number): LinkMatch | null {
   return { label: target, href: target, next: end + 1 };
 }
 
-/** With no href we can trust — a Studio-relative path, a `javascript:` URL —
- *  the label stays plain text. Jira accepts either (probed), so this is about
- *  not publishing a link nobody reading the issue could follow. */
+/**
+ * With no href we can trust — a Studio-relative path, a `javascript:` URL —
+ * the label stays plain text. Jira accepts either (probed), so this is about
+ * not publishing a link nobody reading the issue could follow.
+ *
+ * An empty label falls back to the target itself, as text. Ugly for a long
+ * URL, but an unlabelled `![](…)` whose upload failed would otherwise vanish
+ * from the comment with nothing in its place.
+ */
 function linkNodes(link: LinkMatch, marks: AdfMark[], ctx: Ctx): AdfNode[] {
   const href = safeHref(link.href);
-  const label = link.label.trim() === "" ? href : link.label;
-  if (!label) return [];
+  const label =
+    link.label.trim() !== "" ? link.label : (href ?? link.href.trim());
+  if (label === "") return [];
   if (!href || hasLink(marks)) return inlineNodes(label, ctx, marks);
   return inlineNodes(
     label,
@@ -786,8 +817,9 @@ function linkNodes(link: LinkMatch, marks: AdfMark[], ctx: Ctx): AdfNode[] {
 }
 
 /**
- * An image the caller uploaded becomes a `media` node; anything else degrades
- * to its link, or to its alt text when the target is not a usable URL.
+ * An image the caller uploaded becomes a `media` node. Anything else degrades
+ * to a link, or — for a Studio-relative target Jira could never fetch — to its
+ * alt text, or to the target as text when there is no alt either.
  *
  * `attrs.id` is the media-services uuid, a different id space from the numeric
  * id `POST /issue/{id}/attachments` returns — see `JiraClient.addAttachment`,

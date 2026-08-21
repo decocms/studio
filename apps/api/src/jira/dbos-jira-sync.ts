@@ -8,8 +8,10 @@
  * boot via `setJiraSyncRuntime` BEFORE `DBOS.launch()`.
  */
 
-import { DBOS, Error as DBOSErrors, SchedulerMode } from "@dbos-inc/dbos-sdk";
+import { DBOS, SchedulerMode } from "@dbos-inc/dbos-sdk";
 import type { Kysely } from "kysely";
+import { isMaxStepRetriesError } from "@/dbos/step-errors";
+import { OrgFsNotFoundError } from "@/file-storage/org-fs";
 import { buildOrgContext } from "@/tools/task-board/org-context";
 import type { Database, TaskBoardItem } from "@/storage/types";
 import { JiraIntegrationStorage } from "@/storage/jira-integrations";
@@ -177,7 +179,13 @@ async function attachCommentImage(
     integration.apiToken,
   );
   return attachImage(item, {
-    read: (ref) => orgFs.read(ref.volume, ref.path).catch(() => null),
+    read: (ref) =>
+      orgFs.read(ref.volume, ref.path).catch((err: unknown) => {
+        // Only a genuinely absent file is terminal; a transient object-store
+        // error must reach the step so it retries instead of dropping.
+        if (err instanceof OrgFsNotFoundError) return null;
+        throw err;
+      }),
     listAttachments: () => client.listAttachments(issueId),
     upload: (file) => client.addAttachment(issueId, file),
     mediaIdFor: (attachmentId) => client.resolveMediaId(attachmentId),
@@ -270,7 +278,8 @@ async function jiraCommentPushWorkflowFn(
         // ONLY exhausted retries degrade to a link. Anything else — a
         // cancellation, a determinism violation — is DBOS steering the
         // workflow, and swallowing it would post the comment anyway.
-        if (!(err instanceof DBOSErrors.DBOSMaxStepRetriesError)) throw err;
+        // Matched by code, not `instanceof` — see `isMaxStepRetriesError`.
+        if (!isMaxStepRetriesError(err)) throw err;
         console.warn(`[jira] could not attach ${item.ref.path}:`, err);
       }
     }

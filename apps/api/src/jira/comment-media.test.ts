@@ -218,3 +218,20 @@ describe("attachImage", () => {
     expect(d.calls.uploaded).toEqual(["thrd_1_a.png"]);
   });
 });
+
+describe("parseOutputsRef malformed input", () => {
+  it("returns null instead of throwing on a bad percent-escape", () => {
+    // Runs in a workflow body, outside any step: a URIError here would fail
+    // the whole comment push over a URL an agent merely typed.
+    for (const target of [
+      "/api/a%zz/fs/outputs/read?path=a.png",
+      "/api/%/fs/outputs/read?path=a.png",
+      "/api/acme/fs/outputs/read?path=%zz",
+    ]) {
+      expect(() => parseOutputsRef(target, "acme")).not.toThrow();
+    }
+    expect(
+      parseOutputsRef("/api/a%zz/fs/outputs/read?path=a.png", "acme"),
+    ).toBeNull();
+  });
+});
