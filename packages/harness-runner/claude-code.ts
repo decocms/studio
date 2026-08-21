@@ -28,6 +28,10 @@ const ENVS = {
   STUDIO_MCP_SERVER_NAME: "studio",
   MODEL_ENV: "CLAUDE_CODE_MODEL",
   EXECUTABLE_ENV: "CLAUDE_CODE_PATH",
+  // Absolute plugin dirs the sandbox daemon prefetched the org's skills into,
+  // colon-separated. Set by the daemon, not by Studio: it is the daemon that
+  // knows where it wrote them, and the value must not outlive that pod.
+  PLUGIN_DIRS_ENV: "CLAUDE_CODE_PLUGIN_DIRS",
 };
 
 /**
@@ -187,6 +191,9 @@ export function buildOptions(args: {
     .filter(Boolean)
     .join("\n\n");
   const executable = process.env[ENVS.EXECUTABLE_ENV];
+  const pluginDirs = (process.env[ENVS.PLUGIN_DIRS_ENV] ?? "")
+    .split(":")
+    .filter(Boolean);
   return {
     ...(cwd ? { cwd } : {}),
     ...(executable ? { pathToClaudeCodeExecutable: executable } : {}),
@@ -199,10 +206,17 @@ export function buildOptions(args: {
       preset: "claude_code",
       append: instructionsWithSkills,
     },
-    // The org's skills reach the pod as `~/.claude/skills` (the daemon links it
-    // onto the org-fs mount), which the SDK discovers from the `user` setting
-    // source — but only once skills are turned on for the session.
+    // Two sources, both wired by the daemon. The org's writable skills are
+    // `~/.claude/skills`, symlinked onto the org-fs mount and discovered from
+    // the `user` setting source. The read-only shared sets are prefetched to pod
+    // disk and loaded as local plugins — out of the checkout, so nothing about
+    // them is the repo's business.
     skills: "all",
+    ...(pluginDirs.length
+      ? {
+          plugins: pluginDirs.map((path) => ({ type: "local" as const, path })),
+        }
+      : {}),
     ...(model ? { model } : {}),
     // ponytail: fixed, not configurable — raise it here if runs come back thin.
     effort: "low",

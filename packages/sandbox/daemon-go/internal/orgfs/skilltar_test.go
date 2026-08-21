@@ -182,11 +182,12 @@ func TestSetIsStagedThenPublished(t *testing.T) {
 	}
 
 	l := &Links{AppRoot: appRoot, RepoDir: repoDir, ConfigPath: "unused"}
-	skillsDir := filepath.Join(repoDir, ".claude", "skills")
+	pluginDir := filepath.Join(appRoot, skillPluginDirName)
+	skillsDir := filepath.Join(pluginDir, "skills")
 	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	stage := filepath.Join(repoDir, ".claude", ".orgfs-staging", "core")
+	stage := filepath.Join(pluginDir, ".staging", "core")
 
 	var unreadable int
 	landed := l.copySetToStage(
@@ -235,9 +236,9 @@ func TestPruneRemovesVanishedSkill(t *testing.T) {
 	}
 }
 
-// Staging is scratch space in the user's checkout: it must not survive the sync
-// and must never be committable.
-func TestStagingIsCleanedAndExcluded(t *testing.T) {
+// Staging is scratch space in the plugin dir: it must not survive the sync, and
+// it is out of the checkout entirely — nothing to exclude, nothing to commit.
+func TestStagingIsCleanedUp(t *testing.T) {
 	appRoot := t.TempDir()
 	repoDir := filepath.Join(appRoot, "repo")
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(t.TempDir(), "config"))
@@ -256,12 +257,12 @@ func TestStagingIsCleanedAndExcluded(t *testing.T) {
 	if !l.syncPublicSkills() {
 		t.Fatal("sync published nothing")
 	}
-	assertSkillPresent(t, filepath.Join(repoDir, ".claude", "skills"), "orgfs-core-slides")
-	if _, err := os.Stat(filepath.Join(repoDir, ".claude", ".orgfs-staging")); err == nil {
-		t.Error("staging dir left behind in the checkout")
+	pluginDir := filepath.Join(appRoot, skillPluginDirName)
+	assertSkillPresent(t, filepath.Join(pluginDir, "skills"), "orgfs-core-slides")
+	if _, err := os.Stat(filepath.Join(pluginDir, ".staging")); err == nil {
+		t.Error("staging dir left behind")
 	}
-	excl, err := os.ReadFile(filepath.Join(repoDir, ".git", "info", "exclude"))
-	if err != nil || !strings.Contains(string(excl), "/.claude/.orgfs-staging") {
-		t.Errorf("staging not git-excluded: %q %v", excl, err)
+	if _, err := os.Stat(filepath.Join(repoDir, ".claude")); err == nil {
+		t.Error("the sync touched the checkout")
 	}
 }
