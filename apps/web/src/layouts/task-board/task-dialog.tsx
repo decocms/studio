@@ -579,7 +579,11 @@ export function TaskBoardItemDialog({
                 >
                   {linkCopied ? <Check size={16} /> : <Link03 size={16} />}
                 </Button>
-                <DropdownMenu>
+                {/* Non-modal: a modal menu blocks outside pointer events by
+                    setting `pointer-events: none` on <body>, and half these
+                    items unmount the dialog they live in — leaving that style
+                    behind with no layer to restore it. */}
+                <DropdownMenu modal={false}>
                   <DropdownMenuTrigger asChild>
                     <Button
                       variant="ghost"
