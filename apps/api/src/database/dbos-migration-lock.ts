@@ -27,6 +27,7 @@
  * drops, so a process killed mid-migration cannot wedge the others.
  */
 
+import { sleep } from "@decocms/shared/std";
 import pg from "pg";
 
 /**
@@ -37,12 +38,15 @@ import pg from "pg";
 const DBOS_MIGRATION_LOCK_KEY = 8_314_027_461_559_302n;
 
 /**
- * How long to wait for the holder before giving up. A cold migration applies
- * every migration the SDK ships and can take minutes, so this is generous.
- * Failing beats blocking forever: the pod exits, Kubernetes restarts it, and
- * the retry finds the work already done.
+ * How long to keep trying before giving up. A cold migration applies every
+ * migration the SDK ships and can take minutes, so this is generous. Failing
+ * beats blocking forever: the pod exits, Kubernetes restarts it, and the retry
+ * finds the work already done.
  */
 const LOCK_TIMEOUT_MS = 10 * 60 * 1000;
+
+/** Gap between attempts. Short enough to start promptly, long enough to idle. */
+const POLL_INTERVAL_MS = 500;
 
 export interface DbosMigrationLockOptions {
   /** Postgres URL, already passed through withSslmode() by the caller. */
@@ -65,30 +69,44 @@ export async function withDbosMigrationLock<T>(
   const log = options.log ?? ((message: string) => console.log(message));
 
   // A dedicated connection, not a pooled one: the lock lives on the session,
-  // so it must outlive nothing else and be released by closing exactly this.
+  // so it must be released by closing exactly this.
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
 
   const startedAt = Date.now();
+  let acquired = false;
   try {
-    // lock_timeout bounds the wait itself; without it a stuck holder blocks
-    // this process forever with no signal.
-    await client.query(`SET lock_timeout = ${Math.floor(lockTimeoutMs)}`);
-    try {
-      await client.query("SELECT pg_advisory_lock($1)", [
-        DBOS_MIGRATION_LOCK_KEY.toString(),
-      ]);
-    } catch (error) {
-      // 55P03 lock_not_available — someone else is still migrating.
-      const code = (error as { code?: string } | null)?.code;
-      if (code === "55P03") {
+    // Poll with try-lock and sit IDLE between attempts. Blocking in
+    // `pg_advisory_lock()` would deadlock the very thing we are protecting:
+    // several of the DBOS migrations are `CREATE INDEX CONCURRENTLY`, whose
+    // second phase waits for every concurrent virtual transaction in the
+    // database to finish — and a backend parked inside a blocking
+    // `pg_advisory_lock()` is an *active statement*, so it holds a virtualxid
+    // and never finishes. The holder would wait on the waiters' virtualxids
+    // while the waiters wait on the holder's lock. Postgres does not report
+    // that as a deadlock (a CIC's virtualxid wait is not in the detector's
+    // graph), so it hangs until the timeout. Observed exactly this: the holder
+    // stuck on `CREATE INDEX CONCURRENTLY ... idx_workflow_status_forked_from`
+    // with two backends parked in pg_advisory_lock. An idle session holds no
+    // virtualxid, so polling keeps CIC unblocked.
+    while (!acquired) {
+      const res = await client.query<{ locked: boolean }>(
+        "SELECT pg_try_advisory_lock($1) AS locked",
+        [DBOS_MIGRATION_LOCK_KEY.toString()],
+      );
+      acquired = res.rows[0]?.locked === true;
+      if (acquired) break;
+
+      if (Date.now() - startedAt >= lockTimeoutMs) {
         throw new Error(
           `Timed out after ${lockTimeoutMs}ms waiting for the DBOS migration lock. ` +
             `Another process is still migrating the dbos schema; this pod will restart and retry.`,
-          { cause: error },
         );
       }
-      throw error;
+      // Client-side sleep, deliberately: `pg_sleep()` would keep the statement
+      // active and reintroduce the virtualxid that blocks CREATE INDEX
+      // CONCURRENTLY.
+      await sleep(POLL_INTERVAL_MS);
     }
 
     const waitedMs = Date.now() - startedAt;
@@ -100,15 +118,14 @@ export async function withDbosMigrationLock<T>(
 
     return await fn();
   } finally {
-    // end() drops the session, which releases the lock even if the unlock
-    // below fails — the explicit call just makes the release immediate and the
-    // intent obvious.
-    try {
-      await client.query("SELECT pg_advisory_unlock($1)", [
-        DBOS_MIGRATION_LOCK_KEY.toString(),
-      ]);
-    } catch {
-      // Releasing on disconnect is the backstop; a failure here is not fatal.
+    if (acquired) {
+      try {
+        await client.query("SELECT pg_advisory_unlock($1)", [
+          DBOS_MIGRATION_LOCK_KEY.toString(),
+        ]);
+      } catch {
+        // Releasing on disconnect is the backstop; a failure here is not fatal.
+      }
     }
     await client.end().catch(() => {});
   }
