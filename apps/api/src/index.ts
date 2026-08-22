@@ -19,6 +19,7 @@ import {
   THREAD_GATE_QUEUE,
 } from "./dispatch-queue/queue-names";
 import { buildDbosConfig } from "./dbos/config";
+import { withDbosMigrationLock } from "./database/dbos-migration-lock";
 import { getSettings } from "./settings";
 import { resolveShutdownDrainMs } from "./settings/resolve-config";
 import { initObservability } from "./observability";
@@ -196,10 +197,19 @@ const app = await createApp({ clientDir });
 // Conductor opt-in via env (SDK defaults conductorURL to wss://cloud.dbos.dev/...).
 const conductorKey = process.env.DBOS_CONDUCTOR_KEY?.trim();
 const conductorURL = process.env.DBOS_CONDUCTOR_URL?.trim();
-await DBOS.launch({
-  ...(conductorKey ? { conductorKey } : {}),
-  ...(conductorKey && conductorURL ? { conductorURL } : {}),
-});
+// Under the migration lock: launch() applies the DBOS system-schema migrations,
+// and the SDK bumps its version with an UPDATE that has no WHERE clause, so two
+// processes reaching it together brick the schema permanently. Every process
+// that can launch takes the lock; the first migrates, the rest wait and then
+// find nothing to do. See database/dbos-migration-lock.ts.
+await withDbosMigrationLock(
+  { databaseUrl: withSslmode(settings.databaseUrl, settings.databasePgSsl) },
+  () =>
+    DBOS.launch({
+      ...(conductorKey ? { conductorKey } : {}),
+      ...(conductorKey && conductorURL ? { conductorURL } : {}),
+    }),
+);
 // Surface the DBOS application version on every boot so the pin is verifiable
 // from pod logs (`grep "dbos] application version"`). Expect the pinned
 // DBOS_WORKFLOW_VERSION ("1"), never a 32-char hash — a hash means the pin was
