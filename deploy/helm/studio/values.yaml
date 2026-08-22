@@ -215,23 +215,17 @@ preview:
 # finishes, so the race is fully closed. Under plain `helm install` the hook
 # runs alongside the first pods rather than before them — it must, since it
 # consumes this release's ConfigMap and Secret, which do not exist during a
-# pre-install hook.
+# pre-install hook. That is fine, because correctness does not depend on the
+# ordering: the app takes a Postgres advisory lock around DBOS.launch(), so
+# whoever gets there first migrates and the rest wait. What the Job adds is
+# somewhere for a cold migration to actually FINISH — it has no liveness probe,
+# while an API container that migrates during boot is killed at roughly 60s by
+# livenessProbe (initialDelay 30s, period 10s, threshold 3) and a cold run takes
+# minutes.
 #
-# So for a FIRST install against an empty database under plain Helm, install
-# with NO app pods and let the Job be the only writer, then turn the app on:
-#
-#   helm install ... --set replicaCount=0 \
-#                    --set worker.replicaCount=0 \
-#                    --set worker.autoscaling.enabled=false
-#   helm upgrade ... -f your-real-values.yaml
-#
-# All three are needed. replicaCount: 1 is NOT enough — a pod runs two API
-# containers (api-0, api-1), so one replica is already two processes calling
-# DBOS.launch(). And worker.replicaCount: 0 is a no-op while worker autoscaling
-# is on, because the HPA's minReplicas: 2 brings the pods right back.
-#
-# Upgrades are safe at any replica count: the version is already at max, so no
-# pod writes to that table.
+# On a first install under plain Helm you will therefore see the app pods
+# restart a few times while the Job migrates. That is expected, it converges on
+# its own, and nothing is corrupted. No pre-scaling dance is required.
 migrateJob:
   enabled: true
   # Hard deadline. backoffLimit only counts failed pods; a Job that hangs
