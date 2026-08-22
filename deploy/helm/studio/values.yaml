@@ -203,6 +203,34 @@ preview:
     limits:
       memory: "1Gi"
 
+# Single-writer migration Job. ON by default, and you want it on: every replica
+# runs the DBOS system-schema migration on boot, and the SDK's version bump is
+# an UPDATE with no WHERE that assumes one row in dbos.dbos_migrations. Two
+# replicas reaching it together leave two rows, after which every bump collides
+# on the primary key and the schema version can never advance — a permanent
+# CrashLoopBackOff that only a manual DELETE clears.
+#
+# The Job is a Helm post-install/post-upgrade hook (weight -10) and an Argo CD
+# Sync hook (wave -10). Under Argo the app Deployments are held until it
+# finishes, so the race is fully closed. Under plain `helm install` the hook
+# runs alongside the first pods rather than before them — it must, since it
+# consumes this release's ConfigMap and Secret, which do not exist during a
+# pre-install hook. For a FIRST install against an empty database, install with
+# replicaCount: 1 and worker.replicaCount: 1, then scale up once the pods are
+# Ready. Upgrades are safe at any replica count: the version is already at max,
+# so no pod writes to that table.
+migrateJob:
+  enabled: true
+  # Hard deadline. backoffLimit only counts failed pods; a Job that hangs
+  # without producing one never trips it.
+  deadlineSeconds: 900
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "512Mi"
+    limits:
+      memory: "1Gi"
+
 # ServiceAccount for the API and worker pods. Undocumented until now, though the
 # templates have always honoured it — and the sandbox layer depends on it: the
 # sandbox-env chart grants claim/port-forward RBAC to a NAMED service account,
