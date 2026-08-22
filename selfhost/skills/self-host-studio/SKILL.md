@@ -61,12 +61,14 @@ detected environment, then walk these. Record answers into a values file you'll
      subcharts → two-phase CRD; then provision the `studio_monitoring_logs` view).
    - **NATS**: bundled (default) OR their own (`nats.enabled=false` + `NATS_URL`).
 
-2b. **First install against an empty database?** Nothing to configure — the app
-   holds an advisory lock around the DBOS migration, so replica count does not
-   matter. Just warn the user: under plain Helm the app pods restart a few times
-   while the migration Job runs (a cold run takes minutes and the API's liveness
-   probe kills a migrating container at ~60s). It converges; nothing is
-   corrupted. Under Argo CD the sync wave hides even that.
+2b. **First install against an empty database?** Nothing to configure if the
+   image carries the migration advisory lock — replica count does not matter.
+   On an image that predates it, expect the app pods to crash and restart a few
+   times (`deadlock detected`, `duplicate key ... pg_class_relname_nsp_index`)
+   while whichever process wins finishes the DBOS migration. Measured 2-4
+   restarts per pod on a 3-replica local install; it settled, but the same race
+   is what bricked a customer's database, so treat a pre-lock image as needing
+   the pods held back until the migration Job completes.
    Every replica migrates the DBOS system schema on boot and the SDK's version
    bump is an `UPDATE` with no `WHERE`; two replicas racing there leave two rows
    in `dbos.dbos_migrations` and brick the database permanently. The chart's

@@ -217,15 +217,19 @@ preview:
 # consumes this release's ConfigMap and Secret, which do not exist during a
 # pre-install hook. That is fine, because correctness does not depend on the
 # ordering: the app takes a Postgres advisory lock around DBOS.launch(), so
-# whoever gets there first migrates and the rest wait. What the Job adds is
-# somewhere for a cold migration to actually FINISH — it has no liveness probe,
-# while an API container that migrates during boot is killed at roughly 60s by
-# livenessProbe (initialDelay 30s, period 10s, threshold 3) and a cold run takes
-# minutes.
+# whoever gets there first migrates and the rest wait.
 #
-# On a first install under plain Helm you will therefore see the app pods
-# restart a few times while the Job migrates. That is expected, it converges on
-# its own, and nothing is corrupted. No pre-scaling dance is required.
+# What the Job adds is a controlled, observable place for the migration to
+# happen — one named resource that either succeeded or failed — instead of
+# whichever pod happened to win. Correctness comes from the lock; legibility
+# comes from the Job.
+#
+# Measured on a local cluster with an image that predates the lock: 3 replicas
+# against an empty database produced 16 `deadlock detected`, 8
+# `pg_type_typname_nsp_index` and 4 `pg_class_relname_nsp_index` errors across
+# the pods, each restarting 2-4 times before the install settled. It did settle,
+# uncorrupted, but only by luck of timing — the customer report this fix comes
+# from is the same race not settling. Pods carrying the lock do not race at all.
 migrateJob:
   enabled: true
   # Hard deadline. backoffLimit only counts failed pods; a Job that hangs
