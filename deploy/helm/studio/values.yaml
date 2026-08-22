@@ -215,10 +215,23 @@ preview:
 # finishes, so the race is fully closed. Under plain `helm install` the hook
 # runs alongside the first pods rather than before them — it must, since it
 # consumes this release's ConfigMap and Secret, which do not exist during a
-# pre-install hook. For a FIRST install against an empty database, install with
-# replicaCount: 1 and worker.replicaCount: 1, then scale up once the pods are
-# Ready. Upgrades are safe at any replica count: the version is already at max,
-# so no pod writes to that table.
+# pre-install hook.
+#
+# So for a FIRST install against an empty database under plain Helm, install
+# with NO app pods and let the Job be the only writer, then turn the app on:
+#
+#   helm install ... --set replicaCount=0 \
+#                    --set worker.replicaCount=0 \
+#                    --set worker.autoscaling.enabled=false
+#   helm upgrade ... -f your-real-values.yaml
+#
+# All three are needed. replicaCount: 1 is NOT enough — a pod runs two API
+# containers (api-0, api-1), so one replica is already two processes calling
+# DBOS.launch(). And worker.replicaCount: 0 is a no-op while worker autoscaling
+# is on, because the HPA's minReplicas: 2 brings the pods right back.
+#
+# Upgrades are safe at any replica count: the version is already at max, so no
+# pod writes to that table.
 migrateJob:
   enabled: true
   # Hard deadline. backoffLimit only counts failed pods; a Job that hangs

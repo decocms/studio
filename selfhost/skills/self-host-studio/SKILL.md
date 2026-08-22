@@ -61,8 +61,12 @@ detected environment, then walk these. Record answers into a values file you'll
      subcharts → two-phase CRD; then provision the `studio_monitoring_logs` view).
    - **NATS**: bundled (default) OR their own (`nats.enabled=false` + `NATS_URL`).
 
-2b. **First install against an empty database?** If yes, set `replicaCount: 1`
-   and `worker.replicaCount: 1` for that first install and scale up afterwards.
+2b. **First install against an empty database?** Under plain Helm, install with
+   NO app pods so the migration Job is the only writer, then turn the app on:
+   `--set replicaCount=0 --set worker.replicaCount=0 --set
+   worker.autoscaling.enabled=false`, then `helm upgrade` with the real values.
+   All three matter — a pod runs TWO api containers, and the worker HPA's
+   minReplicas overrides a zeroed replicaCount.
    Every replica migrates the DBOS system schema on boot and the SDK's version
    bump is an `UPDATE` with no `WHERE`; two replicas racing there leave two rows
    in `dbos.dbos_migrations` and brick the database permanently. The chart's
@@ -318,7 +322,7 @@ wildcard **preview URLs** (Istio Gateway + cert-manager; needs Gateway API CRDs)
 | ClickHouse torn down / `UPGRADE FAILED` after a re-run with observability | disabling the `clickhouse-cluster` CR on a running release makes the operator delete ClickHouse → only two-phase when the CRD is ABSENT (first install) — never do `--set clickhouse-cluster.enabled=false` on a live release |
 | `helm install` fails "must be installed into the 'agent-sandbox-system' namespace" | installing `sandbox-operator` as a subchart under another release namespace → set `sandbox-operator.allowForeignNamespace=true` (operator resources are pinned to agent-sandbox-system regardless); the umbrella does this |
 | `kind: SandboxTemplate` / CRD not found on install | operator's CRDs must exist before the CR → the operator ships them in `crds/` (installed before templates), so a single umbrella release works; if you installed the charts separately, install the operator and wait for the CRD first |
-| All pods `CrashLoopBackOff`, `duplicate key ... dbos_migrations_pkey`, `Key (version)=(N) already exists` | `dbos.dbos_migrations` holds more than one row, left by concurrent first boots. The SDK bumps the version with an `UPDATE` that has no `WHERE`, so it writes the same value into every row and collides forever — deterministic, reproduces with a single pod. Recover: `DELETE FROM dbos.dbos_migrations WHERE version <> (SELECT max(version) FROM dbos.dbos_migrations);` leaving exactly ONE row, then run the migration once with the Deployments scaled to 0, then scale up. Never `INSERT` another row — that makes it worse. Prevent: first install with `replicaCount: 1`. |
+| All pods `CrashLoopBackOff`, `duplicate key ... dbos_migrations_pkey`, `Key (version)=(N) already exists` | `dbos.dbos_migrations` holds more than one row, left by concurrent first boots. The SDK bumps the version with an `UPDATE` that has no `WHERE`, so it writes the same value into every row and collides forever — deterministic, reproduces with a single pod. Recover: `DELETE FROM dbos.dbos_migrations WHERE version <> (SELECT max(version) FROM dbos.dbos_migrations);` leaving exactly ONE row, then run the migration once with the Deployments scaled to 0, then scale up. Never `INSERT` another row — that makes it worse. Prevent: first install with zero app pods (`replicaCount=0`, `worker.replicaCount=0`, `worker.autoscaling.enabled=false`), then upgrade. |
 | Namespace stuck / "object has been deleted" on re-install | previous `uninstall` still Terminating → wait for it to clear before recreating |
 
 Always show real evidence (`kubectl get pods`, `logs`, `get events
