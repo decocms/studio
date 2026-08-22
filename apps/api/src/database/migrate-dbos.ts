@@ -23,6 +23,7 @@
  */
 
 import { buildDbosConfig } from "../dbos/config";
+import { withDbosMigrationLock } from "./dbos-migration-lock";
 import { getSettings } from "../settings";
 import { withSslmode } from "./index";
 
@@ -45,9 +46,19 @@ export async function migrateDbos(): Promise<void> {
     }),
   );
 
-  // launch() is what applies the system-schema migrations.
-  await DBOS.launch();
-  await DBOS.shutdown();
+  // launch() is what applies the system-schema migrations. Under the lock even
+  // here: this entry point is the designated writer, but nothing stops an app
+  // pod from booting alongside it, and the SDK's version bump is not safe
+  // against a second writer. See dbos-migration-lock.ts.
+  await withDbosMigrationLock(
+    {
+      databaseUrl: withSslmode(settings.databaseUrl, settings.databasePgSsl),
+    },
+    async () => {
+      await DBOS.launch();
+      await DBOS.shutdown();
+    },
+  );
 }
 
 if (import.meta.main) {

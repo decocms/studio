@@ -2,6 +2,10 @@ apiVersion: v2
 name: chart-deco-studio
 description: Helm chart for deco Studio — supports inline secrets, external secretName, and AWS Secrets Manager via ExternalSecret
 type: application
+# 0.15.0: the single-writer migration Job now runs outside preview too
+# (migrateJob.enabled, default true). Every replica migrates the DBOS system
+# schema on boot and the SDK bumps its version with an UPDATE that has no
+# WHERE, so concurrent first boots brick the database permanently.
 # 0.14.8: the migration Job gets activeDeadlineSeconds. backoffLimit only counts
 # failed pods, so the two ways this Job actually broke — no pod at all, and a pod
 # stuck on a missing ConfigMap — left it Running indefinitely. Because it is a
@@ -72,7 +76,7 @@ type: application
 # when disabled, so existing releases are unaffected.
 # 0.12.4: chart-managed API/worker dispatch roles now use
 # STUDIO_DISPATCH_ROLE; legacy overrides are rejected.
-version: 0.14.8
+version: 0.15.0
 appVersion: "latest"
 
 dependencies:

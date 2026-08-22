@@ -151,6 +151,10 @@ helm install deco-studio \
   --values studio-values.yaml
 ```
 
+<Callout type="note">
+  **A first install against an empty database migrates before it serves.** Studio takes a Postgres advisory lock around the DBOS system-schema migration, so whichever process starts first migrates and the others wait — no replica-count juggling is needed, with or without Argo CD. The chart also ships a single-writer migration Job (`migrateJob.enabled`, on by default). It does not provide the guarantee — the lock does — but it gives the migration one named place that either succeeded or failed, instead of whichever pod happened to win. Under Argo CD the sync wave holds the Deployments until the Job finishes; under plain `helm install` the Job starts alongside the first pods, which is harmless once the pods carry the lock.
+</Callout>
+
 The main Deployment contains nginx and two API containers. The separate worker Deployment is required and enabled by default. The chart also enables its NATS dependency by default and requires PostgreSQL so API and worker pods share the DBOS run queue.
 
 ### 3. Install the per-environment sandbox resources

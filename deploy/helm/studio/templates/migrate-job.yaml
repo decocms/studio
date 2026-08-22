@@ -1,6 +1,22 @@
-{{- if .Values.preview.enabled }}
+{{- $preview := .Values.preview.enabled }}
+{{- if or .Values.migrateJob.enabled $preview }}
+{{- $name := printf "%s-%s" (include "chart-deco-studio.fullname" .) (ternary "preview-migrate" "migrate" $preview) }}
+{{- $deadline := ternary .Values.preview.migrateDeadlineSeconds .Values.migrateJob.deadlineSeconds $preview }}
+{{- $jobResources := ternary .Values.preview.jobResources .Values.migrateJob.resources $preview }}
 {{- /*
-Sync-phase hook at wave -10: the single migration writer for a preview.
+The single migration writer. Runs before the app pods can race each other.
+
+Why it must exist outside preview too: DBOS migrates its own `dbos` schema on
+DBOS.launch(), every replica does it on boot, and the SDK's version bump is
+`UPDATE dbos.dbos_migrations SET version = $1` with no WHERE — it assumes the
+table holds exactly one row. Two replicas reaching the bump together insert two
+rows, and from then on every bump tries to write the same version into both,
+collides on the primary key, and the schema version can never advance again.
+The install is bricked permanently, reproducible with a single pod, and only a
+manual DELETE recovers it. This is not theoretical: it happened on a customer's
+first install with replicaCount: 3.
+
+Sync-phase hook at wave -10: the single migration writer.
 
 A Sync hook rather than PreSync because the preview's Postgres (wave -20) is a
 Sync-phase resource — a PreSync Job would run before it exists. Argo holds each
@@ -16,7 +32,7 @@ inserts into dbos.dbos_migrations — see tests/multi-pod/docker-compose.yml.
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "chart-deco-studio.fullname" . }}-preview-migrate
+  name: {{ $name }}
   labels:
     {{- include "chart-deco-studio.labels" . | nindent 4 }}
   annotations:
@@ -43,7 +59,7 @@ spec:
   # Failing frees the operation: Argo reports a failed sync, retry applies, and
   # removing the label works again. 15 minutes is well past a cold migration
   # (measured ~3 min, nearly all of it waiting for the image to publish).
-  activeDeadlineSeconds: {{ .Values.preview.migrateDeadlineSeconds }}
+  activeDeadlineSeconds: {{ $deadline }}
   template:
     metadata:
       labels:
@@ -88,5 +104,5 @@ spec:
               bun run node_modules/decocms/dist/server/migrate.js
               bun run node_modules/decocms/dist/server/migrate-dbos.js
           resources:
-            {{- toYaml .Values.preview.jobResources | nindent 12 }}
+            {{- toYaml $jobResources | nindent 12 }}
 {{- end }}
