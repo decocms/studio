@@ -444,6 +444,18 @@ export async function runClaudeCode(
       options: buildOptions({ input, sessionId, resume: resumeSession }),
     });
 
+    try {
+      return await consumeStream(stream);
+    } catch (err) {
+      // Any throw here otherwise leaves the session locked for the next attempt.
+      await endSession(stream);
+      throw err;
+    }
+  }
+
+  async function consumeStream(
+    stream: ReturnType<typeof query>,
+  ): Promise<string | null> {
     const startedAt = Date.now();
     for await (const message of stream) {
       // Every SDK message, with the seconds it took to arrive. Without this a
