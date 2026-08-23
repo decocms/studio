@@ -125,24 +125,30 @@ export async function resolveTier(
   const orgId = ctx.organization?.id;
   if (!orgId) throw new Error("resolveTier called without an organization");
 
-  const settings = await ctx.storage.organizationSettings.get(orgId);
-  const orgSlot = settings?.simple_mode?.tiers?.[tier] ?? null;
-
   // Per-user override, opt-in and chat-tiers-only (see ResolveTierOptions).
   // Skipping the read entirely when it can't win also keeps a dispatch from
   // issuing three throwaway queries for image/web_search/deep_research.
   const userId = ctx.auth?.user?.id;
   const chatTier = ChatTierSchema.safeParse(tier);
-  const userSlot =
-    opts?.applyUserPrefs && chatTier.success && userId
-      ? ((await ctx.storage.userModelPreferences.get(userId, orgId))?.tiers?.[
-          chatTier.data
-        ] ?? null)
-      : null;
+  const applyUserPrefs = Boolean(
+    opts?.applyUserPrefs && chatTier.success && userId,
+  );
 
-  const keys = (
-    await ctx.storage.aiProviderKeys.list({ organizationId: orgId })
-  ).filter((key) => isHostedProviderId(key.providerId));
+  // These three reads are independent — fetch them concurrently.
+  const [settings, userPrefs, allKeys] = await Promise.all([
+    ctx.storage.organizationSettings.get(orgId),
+    applyUserPrefs
+      ? ctx.storage.userModelPreferences.get(userId as string, orgId)
+      : Promise.resolve(null),
+    ctx.storage.aiProviderKeys.list({ organizationId: orgId }),
+  ]);
+
+  const orgSlot = settings?.simple_mode?.tiers?.[tier] ?? null;
+  const userSlot =
+    applyUserPrefs && chatTier.success
+      ? (userPrefs?.tiers?.[chatTier.data] ?? null)
+      : null;
+  const keys = allKeys.filter((key) => isHostedProviderId(key.providerId));
 
   // Prefer the user override, then the org slot; take the first whose key is
   // still live. A slot pointing at a deleted key is skipped so resolution
