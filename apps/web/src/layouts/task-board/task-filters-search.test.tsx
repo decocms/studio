@@ -75,3 +75,71 @@ describe("task filter options — searchable value matches the displayed label",
     }
   });
 });
+
+describe("search toggle — collapses when cleared externally", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  test("an unfocused search chip collapses when 'Clear all' resets filters", () => {
+    const { getByPlaceholderText, queryByPlaceholderText, rerender } = render(
+      <TaskFiltersBar
+        filters={{ ...EMPTY_FILTERS, search: "login" }}
+        members={[]}
+        tags={[]}
+        repos={[]}
+        sprints={[]}
+        sprintConfig={null}
+        onChange={() => {}}
+      />,
+    );
+
+    const input = getByPlaceholderText("Search tasks…");
+    fireEvent.blur(input);
+
+    rerender(
+      <TaskFiltersBar
+        filters={EMPTY_FILTERS}
+        members={[]}
+        tags={[]}
+        repos={[]}
+        sprints={[]}
+        sprintConfig={null}
+        onChange={() => {}}
+      />,
+    );
+
+    expect(queryByPlaceholderText("Search tasks…")).toBeNull();
+  });
+
+  test("a focused search box stays open while backspaced to empty", () => {
+    const { getByPlaceholderText, rerender } = render(
+      <TaskFiltersBar
+        filters={{ ...EMPTY_FILTERS, search: "login" }}
+        members={[]}
+        tags={[]}
+        repos={[]}
+        sprints={[]}
+        sprintConfig={null}
+        onChange={() => {}}
+      />,
+    );
+
+    const input = getByPlaceholderText("Search tasks…");
+    fireEvent.focus(input);
+
+    rerender(
+      <TaskFiltersBar
+        filters={EMPTY_FILTERS}
+        members={[]}
+        tags={[]}
+        repos={[]}
+        sprints={[]}
+        sprintConfig={null}
+        onChange={() => {}}
+      />,
+    );
+
+    expect(getByPlaceholderText("Search tasks…")).not.toBeNull();
+  });
+});

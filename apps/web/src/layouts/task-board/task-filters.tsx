@@ -724,6 +724,15 @@ function SearchToggle({
 }) {
   const t = useT();
   const [open, setOpen] = useState(value !== "");
+  const [focused, setFocused] = useState(false);
+
+  // Collapse a filter cleared externally while unfocused (not one emptied by typing).
+  const [prevValue, setPrevValue] = useState(value);
+  if (value !== prevValue) {
+    setPrevValue(value);
+    if (value === "" && !focused) setOpen(false);
+  }
+
   const expanded = open || block;
 
   return (
@@ -747,7 +756,9 @@ function SearchToggle({
           autoFocus={!block}
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onFocus={() => setFocused(true)}
           onBlur={() => {
+            setFocused(false);
             if (value === "") setOpen(false);
           }}
           placeholder={t("taskBoard.taskFilters.searchPlaceholder")}
