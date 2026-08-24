@@ -216,6 +216,33 @@ describe("PartRowBuilder", () => {
     expect(text).toEndWith("… [truncated 1992000 characters]");
   });
 
+  it("truncates an oversized tool output-error errorText", () => {
+    const builder = new PartRowBuilder({
+      orgId: "org_1",
+      threadId: "thread_1",
+      runId: "thread_1",
+      baseTimeMs: 1_700_000_000_000,
+    });
+
+    const rows = builder.emitFinal({
+      id: "assistant_1",
+      role: "assistant",
+      parts: [
+        {
+          type: "tool-search",
+          state: "output-error",
+          toolCallId: "tc_1",
+          input: {},
+          errorText: "x".repeat(2_000_000),
+        },
+      ],
+    });
+
+    const payload = rows[0]?.payload as { errorText: string };
+    expect(payload.errorText.length).toBeLessThan(8_200);
+    expect(payload.errorText).toEndWith("… [truncated 1992000 characters]");
+  });
+
   it("does not freeze streaming text", () => {
     expect(isFinalPart({ type: "text", state: "streaming", text: "he" })).toBe(
       false,
