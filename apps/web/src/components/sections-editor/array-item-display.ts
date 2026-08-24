@@ -6,7 +6,7 @@ import type { SchemaProperty } from "./resolve-schema";
 import { labelFromResolveType } from "./section-types";
 import { safeEditorImageUrl } from "./safe-editor-image-url";
 
-function resolveResolvable(obj: Record<string, unknown>): string | undefined {
+function resolveResolvable(obj: Record<string, unknown>): unknown {
   if (Array.isArray(obj.variants)) {
     const variants = obj.variants as Array<{
       rule?: { __resolveType?: string };
@@ -15,9 +15,9 @@ function resolveResolvable(obj: Record<string, unknown>): string | undefined {
     const always = variants.find((v) =>
       v.rule?.__resolveType?.includes("always"),
     );
-    if (typeof always?.value === "string") return always.value;
-    const first = variants.find((v) => typeof v.value === "string");
-    if (first) return first.value as string;
+    // Unwrap object-valued variants too (e.g. `{ desktop, mobile }`), not only strings.
+    const chosen = always ?? variants.find((v) => v.value != null);
+    if (chosen && chosen.value != null) return chosen.value;
   }
   if (typeof obj.src === "string") return obj.src;
   if (typeof obj.url === "string") return obj.url;
@@ -34,7 +34,9 @@ function resolveImageValue(value: unknown): unknown {
   }
   const obj = value as Record<string, unknown>;
   if (obj.__resolveType) {
-    return resolveResolvable(obj) ?? value;
+    // Recurse: an unwrapped variant value may itself be an object of URLs.
+    const unwrapped = resolveResolvable(obj);
+    return unwrapped === undefined ? value : resolveImageValue(unwrapped);
   }
   return resolveImageValues(obj);
 }

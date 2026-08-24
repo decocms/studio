@@ -319,6 +319,31 @@ describe("getArrayItemImageSrc", () => {
     expect(getArrayItemImageSrc(item, schema)).toBeUndefined();
   });
 
+  test("unwraps a multivariate image whose variant value is an object", () => {
+    const item = {
+      matcher: ["/produtos/cheirinho"],
+      image: {
+        __resolveType: "site/flags/multivariate/desktopAndMobileImage.ts",
+        variants: [
+          {
+            rule: { __resolveType: "website/matchers/always.ts" },
+            value: {
+              desktop: "https://example.com/desktop.jpg",
+              mobile: "https://example.com/mobile.jpg",
+            },
+          },
+        ],
+      },
+    };
+    const schema: SchemaProperty = {
+      type: "object",
+      image: "{{{image.mobile}}}",
+    };
+    expect(getArrayItemImageSrc(item, schema)).toBe(
+      "https://example.com/mobile.jpg",
+    );
+  });
+
   test("defaults to image.mobile when image is a nested object", () => {
     const item = {
       image: {
