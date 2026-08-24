@@ -641,6 +641,14 @@ export class ThreadManagerStore {
 
 let current: ThreadManagerStore | null = null;
 
+// A hot-replaced module instance starts with `current: null`, orphaning the old instance's live `/watch` subscription — dispose it on HMR teardown.
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    current?.dispose();
+    current = null;
+  });
+}
+
 /** Idempotent: same key → same instance. Different key → dispose + reopen. */
 export function getOrOpenManager(
   orgSlug: string,
