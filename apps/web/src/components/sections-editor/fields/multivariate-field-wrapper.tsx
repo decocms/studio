@@ -20,7 +20,7 @@ import {
 import { formatMatcher } from "../format-matcher";
 import { seedMatcherRule } from "../matcher-rules";
 import type { LiveMeta } from "../resolve-schema";
-import { SchemaForm } from "../schema-form";
+import { VariantRuleForm } from "../sections-editor-panels";
 import { ALWAYS_MATCHER_RESOLVE_TYPE } from "../section-types";
 import { cachedResolveSchema } from "./resolved-schema-cache";
 
@@ -205,11 +205,15 @@ export function MultivariateFieldWrapper({
           />
           {ruleSchema && (
             <div className="pt-1">
-              <SchemaForm
+              <VariantRuleForm
+                key={`${safeIndex}-${currentRt}`}
                 schema={ruleSchema}
                 value={ruleFormValue}
                 onChange={handleRuleFormChange}
-                basePath=""
+                meta={meta}
+                decofile={props.decofile}
+                onSaveReferencedBlock={props.onSaveReferencedBlock}
+                sandbox={props.sandbox}
               />
             </div>
           )}

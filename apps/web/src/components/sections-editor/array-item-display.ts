@@ -1,6 +1,7 @@
 import { arrayItemDisplayValue } from "./array-item-hidden";
 import { lazyWrappedInner } from "./block-ref-field-utils";
 import { extractUrl } from "./fields/extract-url";
+import { formatMatcher } from "./format-matcher";
 import { inferInlineUnionIndex } from "./fields/inline-union-value";
 import type { SchemaProperty } from "./resolve-schema";
 import { labelFromResolveType } from "./section-types";
@@ -195,6 +196,10 @@ function baseArrayItemLabel(
     }
     const resolveType = obj.__resolveType;
     if (typeof resolveType === "string" && resolveType) {
+      // Matcher items show their configured rule, matching the variant tabs.
+      if (resolveType.includes("/matchers/")) {
+        return formatMatcher(obj);
+      }
       return labelFromResolveType(resolveType);
     }
     if (itemSchema?.title) {
