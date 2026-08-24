@@ -1,15 +1,16 @@
 /**
- * Follow a task: stacked avatars of everyone already following, plus the
- * toggle. Sits to the right of the Activity section header in the task dialog.
+ * Follow a task: the toggle, plus stacked avatars of everyone already
+ * following. Sits to the right of the Activity section header in the task
+ * dialog.
  *
  * Following means both channels at once — the update lands in your inbox and in
  * your next email digest. One toggle, because "inbox but not email" is a
  * preference nobody asked for yet and unsubscribing already covers "neither".
  *
- * DESIGN PREVIEW: the toggle is local state and the starting subscribers are
- * the task's assignee plus the first couple of org members. Wiring this to real
- * subscriptions replaces `useState` with the subscription hook; the markup is
- * final.
+ * NOT WIRED YET: `subscribed` is local state, so it resets on reload, and
+ * `subscriberIds` arrives empty. Wiring it means replacing the `useState` with
+ * the real subscription state and passing the real ids in — the markup is
+ * final either way.
  */
 
 import { useState } from "react";
@@ -24,29 +25,27 @@ import type { Member } from "./config";
 const MAX_AVATARS = 3;
 
 export function SubscribeToggle({
-  assigneeId,
+  subscriberIds,
   members,
 }: {
-  /** Seeds the sample subscriber list — the assignee follows their own task. */
-  assigneeId: string | null;
+  /** Everyone following this task. Resolved against the org's members. */
+  subscriberIds: string[];
   members: Member[];
 }) {
   const t = useT();
   const { data: session } = authClient.useSession();
   const myUserId = session?.user?.id;
-  const [isSubscribed, setIsSubscribed] = useState(true);
+  const [subscribed, setSubscribed] = useState(false);
 
-  // Assignee first, then whoever else is around.
-  const others = members
-    .filter((m) => m.userId !== myUserId)
-    .sort(
-      (a, b) =>
-        Number(b.userId === assigneeId) - Number(a.userId === assigneeId),
-    )
-    .slice(0, 2);
-  const me = members.find((m) => m.userId === myUserId);
-  const subscribers = [...(isSubscribed && me ? [me] : []), ...others];
+  const memberByUserId = new Map(members.map((m) => [m.userId, m]));
+  const me = myUserId ? memberByUserId.get(myUserId) : undefined;
+  const others = subscriberIds
+    .filter((id) => id !== myUserId)
+    .map((id) => memberByUserId.get(id))
+    .filter((m): m is Member => !!m);
 
+  // Subscribing puts you at the front of the stack.
+  const subscribers = [...(subscribed && me ? [me] : []), ...others];
   const shown = subscribers.slice(0, MAX_AVATARS);
   const overflow = subscribers.length - shown.length;
 
@@ -56,10 +55,10 @@ export function SubscribeToggle({
         type="button"
         variant="ghost"
         size="sm"
-        onClick={() => setIsSubscribed((prev) => !prev)}
+        onClick={() => setSubscribed((prev) => !prev)}
         className="h-7 px-2 text-sm font-normal text-muted-foreground"
       >
-        {isSubscribed
+        {subscribed
           ? t("taskBoard.taskDialog.unsubscribe")
           : t("taskBoard.taskDialog.subscribe")}
       </Button>

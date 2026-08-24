@@ -1978,7 +1978,8 @@ function ActivitySection({
     <RecordSection
       label={t("taskBoard.taskDialog.activityLabel")}
       action={
-        <SubscribeToggle assigneeId={item.assigneeId} members={members} />
+        // Empty until subscriptions are wired — see subscribe-button.tsx.
+        <SubscribeToggle subscriberIds={[]} members={members} />
       }
     >
       <div className="flex flex-col gap-5">

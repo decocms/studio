@@ -5,8 +5,8 @@
  * Opening the popover does NOT clear the dot — a glance isn't reading. Marking
  * read is its own action, so an update you saw but didn't act on survives.
  *
- * Updates are sample data for now (see `use-inbox-feed.ts`); this file is the
- * finished surface.
+ * The finished surface: it renders whatever `useInboxFeed` returns, which is
+ * currently nothing (so, the empty state) until that feed is wired.
  */
 
 import { type ReactNode, useState } from "react";

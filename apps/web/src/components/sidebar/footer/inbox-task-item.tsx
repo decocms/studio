@@ -67,6 +67,7 @@ export function InboxTaskItem({
         <SuperAgentIcon size={24} className="shrink-0" />
       ) : (
         <Avatar
+          url={update.actorImage ?? undefined}
           fallback={getInitials(update.actorName ?? undefined)}
           shape="circle"
           // 24px, matching SuperAgentIcon above — `sm` is 32 and read bigger.

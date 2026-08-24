@@ -1,10 +1,14 @@
 /**
- * The inbox feed — DESIGN PREVIEW ONLY.
+ * The inbox feed.
  *
- * Updates are hardcoded here so the inbox can be reviewed before any backend
- * exists. The real version reads them from the server (derived from the task
- * activity log against your subscriptions); `sampleUpdates()` is the only thing
- * that gets replaced.
+ * NOT WIRED YET — this returns an empty feed, so the inbox renders its empty
+ * state. Implementing it means fetching the updates and dropping them in here;
+ * nothing else in the inbox UI needs to change.
+ *
+ * The shape below is the contract the surface is built against: one row per
+ * unseen change to a task you follow, newest first, plus a count for the dot
+ * and a way to clear it. `actorName` is null for the agent's own work, which is
+ * what makes the row render the agent glyph instead of an avatar.
  *
  * The inbox carries task updates and nothing else. Product/release notes have
  * their own surface (the floating announcement card), invitations live in the
@@ -12,17 +16,17 @@
  * of work you follow rather than a catch-all.
  */
 
-import { useState } from "react";
-
-/** What a task update carries. Mirrors the shape the real feed will return. */
 export interface InboxTaskUpdate {
   id: string;
   taskBoardItemId: string;
   taskTitle: string;
+  /** Per-org sequence behind the card's human key (`DECO-01`). */
   taskKeySeq: number;
   action: InboxTaskAction;
-  /** Null for the agent's own work — the row renders its glyph instead. */
+  /** Null for the agent/system — the row renders its glyph instead. */
   actorName: string | null;
+  /** Falls back to initials when absent. */
+  actorImage?: string | null;
   occurredAt: string;
 }
 
@@ -37,77 +41,17 @@ export type InboxTaskAction =
   | "merge_failed";
 
 export interface InboxFeed {
+  /** Unseen updates, newest first. */
   updates: InboxTaskUpdate[];
-  /** Unread updates — what the dot counts. */
+  /** What the unread dot counts. */
   redDotCount: number;
   markAllRead: () => void;
 }
 
-const minutesAgo = (n: number) =>
-  new Date(Date.now() - n * 60_000).toISOString();
-
-/** Enough variety to judge the row treatment: a human and an agent actor, a
- *  long title that has to truncate, and every action the row styles. */
-function sampleUpdates(): InboxTaskUpdate[] {
-  return [
-    {
-      id: "u1",
-      taskBoardItemId: "t1",
-      taskTitle: "Checkout drops the coupon field on mobile Safari",
-      taskKeySeq: 12,
-      action: "commented",
-      actorName: "Ana Prado",
-      occurredAt: minutesAgo(3),
-    },
-    {
-      id: "u2",
-      taskBoardItemId: "t2",
-      taskTitle: "Add server-side rendering to the product listing page",
-      taskKeySeq: 8,
-      action: "review_approved",
-      actorName: null,
-      occurredAt: minutesAgo(21),
-    },
-    {
-      id: "u3",
-      taskBoardItemId: "t3",
-      taskTitle: "Migrate the search index to the new analyzer",
-      taskKeySeq: 31,
-      action: "status_changed",
-      actorName: "Bruno Salles",
-      occurredAt: minutesAgo(96),
-    },
-    {
-      id: "u4",
-      taskBoardItemId: "t4",
-      taskTitle: "Cart totals disagree with the order confirmation email",
-      taskKeySeq: 4,
-      action: "review_changes_requested",
-      actorName: null,
-      occurredAt: minutesAgo(240),
-    },
-    {
-      id: "u5",
-      taskBoardItemId: "t5",
-      taskTitle: "Ship the new gift-card redemption flow",
-      taskKeySeq: 27,
-      action: "merge_failed",
-      actorName: null,
-      occurredAt: minutesAgo(1500),
-    },
-  ];
-}
-
 export function useInboxFeed(): InboxFeed {
-  const [readAt, setReadAt] = useState<number | null>(null);
-
-  const updates = sampleUpdates().filter(
-    (u) => readAt === null || new Date(u.occurredAt).getTime() > readAt,
-  );
-
   return {
-    updates,
-    redDotCount: updates.length,
-    markAllRead: () => setReadAt(Date.now()),
+    updates: [],
+    redDotCount: 0,
+    markAllRead: () => {},
   };
 }
