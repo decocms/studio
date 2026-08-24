@@ -10,7 +10,10 @@ import {
   type LiveMeta,
   type SchemaProperty,
 } from "./resolve-schema";
-import { labelFromResolveType } from "./section-types";
+import {
+  labelFromResolveType,
+  SECTION_MULTIVARIATE_RESOLVE_TYPE,
+} from "./section-types";
 
 export interface SectionCatalogEntry {
   resolveType: string;
@@ -120,6 +123,40 @@ export function listAvailableSections(
   return entries.sort((a, b) => a.title.localeCompare(b.title));
 }
 
+/**
+ * A saved block whose top-level resolveType is the multivariate section flag
+ * (`website/flags/multivariate/section.ts`) is still an insertable section — it
+ * wraps a real section under `variants[].value` (with A/B variants + matcher
+ * rules). Confirm at least one variant resolves to a manifest section so a dead
+ * flag isn't offered. Mirrors how the runtime resolves the block ref.
+ */
+function multivariateWrapsManifestSection(
+  meta: LiveMeta,
+  block: Record<string, unknown>,
+): boolean {
+  const variants = block.variants;
+  if (!Array.isArray(variants)) return false;
+
+  for (const variant of variants) {
+    const value = (variant as Record<string, unknown>)?.value as
+      | Record<string, unknown>
+      | undefined;
+    if (!value) continue;
+
+    // Lazy-wrapped section values nest the real section under `.section`.
+    let rt = value.__resolveType;
+    if (typeof rt === "string" && isLazyResolveType(rt)) {
+      const inner = value.section as Record<string, unknown> | undefined;
+      rt = inner?.__resolveType ?? rt;
+    }
+    if (typeof rt === "string" && isManifestSectionResolveType(meta, rt)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export function listSavedSectionBlocks(
   meta: LiveMeta,
   decofile: Record<string, unknown>,
@@ -137,7 +174,12 @@ export function listSavedSectionBlocks(
     if (PAGE_BLOCK_RESOLVE_TYPES.has(rt)) continue;
     if (typeof obj.path === "string") continue;
     if (shouldSkipSectionResolveType(rt)) continue;
-    if (!isManifestSectionResolveType(meta, rt)) continue;
+
+    const isSectionBlock =
+      isManifestSectionResolveType(meta, rt) ||
+      (rt === SECTION_MULTIVARIATE_RESOLVE_TYPE &&
+        multivariateWrapsManifestSection(meta, obj));
+    if (!isSectionBlock) continue;
 
     entries.push({
       resolveType: key,
