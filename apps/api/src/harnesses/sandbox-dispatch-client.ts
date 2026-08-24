@@ -32,7 +32,10 @@
 import type { UIMessageChunk } from "ai";
 import { sleep } from "@decocms/shared/std";
 import type { SandboxClient } from "@decocms/sandbox/dispatch/sandbox-client";
-import { harnessRunResultSchema } from "@decocms/sandbox/dispatch/schemas";
+import {
+  harnessRunResultSchema,
+  type HarnessStreamInputWire,
+} from "@decocms/sandbox/dispatch/schemas";
 import {
   SANDBOX_GONE_TERMINAL_CODE,
   SANDBOX_UNREACHABLE_PREFIX,
@@ -52,7 +55,12 @@ import {
 import { mergeRunEnv, resolveOrgRunEnv } from "@/harnesses/org-run-env";
 import { withModelMetadata } from "@/harnesses/with-model-metadata";
 import type { StudioContext } from "../core/studio-context";
-import { mintMcpEndpoint } from "@/mcp-clients/virtual-mcp/mint-endpoint";
+import {
+  mintMcpEndpoint,
+  orgMcpServers,
+} from "@/mcp-clients/virtual-mcp/mint-endpoint";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
+import { getPublicUrl } from "@/core/server-constants";
 import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
 import { getSettings } from "@/settings";
 import { ensureSandbox } from "@/tools/sandbox/start";
@@ -283,6 +291,59 @@ export class SandboxDispatchClient implements SandboxClient {
     };
   }
 
+  /**
+   * The MCP surfaces one run gets: its own narrow Studio endpoint (`mcp`), plus
+   * — when the org opted in — every MCP connection in the org as its own server
+   * (`orgMcps`).
+   *
+   * Behind a flag because it is unbounded: each connection is one more server
+   * the harness connects to at session start and one more toolset in the
+   * model's context, and nothing here knows whether an org has three
+   * connections or thirty.
+   *
+   * One credential for all of them (see `orgMcpServers`), and a connection the
+   * proxy cannot reach is not this method's problem — the harness treats a
+   * broken org server as a missing toolset, not a failed run.
+   */
+  private async mcpForRun(
+    organization: { id: string; slug?: string; name?: string },
+    threadId: string,
+  ): Promise<Pick<HarnessStreamInputWire, "mcp" | "orgMcps">> {
+    const mcp = await mintMcpEndpoint(
+      this.ctx,
+      this.virtualMcpId,
+      organization,
+      `${this.harnessId}-run`,
+      "task-run",
+      threadId,
+    );
+    const settings = await this.ctx.storage.organizationSettings.get(
+      organization.id,
+    );
+    if (
+      !organization.slug ||
+      !orgFlagEnabled(settings?.flags, "coding_agent_org_mcps")
+    ) {
+      return { mcp };
+    }
+    // `list` excludes VIRTUAL connections (agents, not MCP servers) by default.
+    // Non-active ones are dropped here: a connection Studio already knows is
+    // erroring only costs the session a failed connect at startup.
+    const { items } = await this.ctx.storage.connections.list(organization.id);
+    const orgMcps = orgMcpServers({
+      publicUrl: getPublicUrl(),
+      organizationSlug: organization.slug,
+      headers: mcp.headers,
+      connections: items.filter((connection) => connection.status === "active"),
+    });
+    console.log(
+      `[${this.harnessId}] org mcps: ${
+        orgMcps.map((server) => server.name).join(" ") || "none"
+      }`,
+    );
+    return { mcp, orgMcps };
+  }
+
   private async *stream(
     input: HarnessStreamInput,
   ): AsyncIterable<UIMessageChunk> {
@@ -335,17 +396,9 @@ export class SandboxDispatchClient implements SandboxClient {
       // tools plus `TASK_ADD_REPO`. It used to be `/mcp/self` — every management
       // tool Studio has, ~200 of them, for the two this harness calls.
       //
-      // ponytail: one surface, not both — the agent's aggregated connections
-      // are not merged in. Add a second MCP server on the wire if a
-      // claude-code run ever needs an agent's own external tools.
-      mcp: await mintMcpEndpoint(
-        this.ctx,
-        this.virtualMcpId,
-        organization,
-        `${this.harnessId}-run`,
-        "task-run",
-        input.threadId,
-      ),
+      // The org's own MCP connections come alongside it (`orgMcps`), behind
+      // the `coding_agent_org_mcps` flag — see `mcpForRun`.
+      ...(await this.mcpForRun(organization, input.threadId)),
       // Hosted Decopilot mounts no working directory; this harness edits the
       // checkout the daemon prepared.
       workspace: await this.resolveWorkspace(input.threadId),

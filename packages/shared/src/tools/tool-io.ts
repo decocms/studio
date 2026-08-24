@@ -126,6 +126,7 @@ export interface StudioToolIO {
             code_reviewer_enabled?: boolean | undefined;
             auto_merge?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
+            coding_agent_org_mcps?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
           }
         | null
@@ -198,6 +199,7 @@ export interface StudioToolIO {
             code_reviewer_enabled?: boolean | undefined;
             auto_merge?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
+            coding_agent_org_mcps?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
           }
         | undefined;
@@ -269,6 +271,7 @@ export interface StudioToolIO {
             code_reviewer_enabled?: boolean | undefined;
             auto_merge?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
+            coding_agent_org_mcps?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
           }
         | null

@@ -134,3 +134,51 @@ export async function mintMcpEndpoint(
     expiresAt: Date.now() + MCP_KEY_TTL_SECONDS * 1000,
   };
 }
+
+/**
+ * One MCP server entry per org connection, for a run that gets the org's
+ * connections on top of its own Studio surface (`orgMcps` on the wire).
+ *
+ * Every entry points at Studio's per-connection proxy and reuses the run's
+ * already-minted credential — the key is minted with full access, so it
+ * authorizes every connection in the org; a key per connection would be N live
+ * credentials nobody revokes for one run.
+ *
+ * Names are the client's tool namespace (`mcp__<name>__<tool>`), so they are
+ * sanitized to what an MCP client accepts and deduped — two connections with
+ * the same title must not collapse into one server. Pure: the unit test owns
+ * the naming.
+ */
+export function orgMcpServers(args: {
+  publicUrl: string;
+  organizationSlug: string;
+  headers: Record<string, string>;
+  connections: {
+    id: string;
+    title?: string | null;
+    slug?: string | null;
+  }[];
+}): { name: string; url: string; headers: Record<string, string> }[] {
+  const { publicUrl, organizationSlug, headers, connections } = args;
+  const taken = new Set<string>();
+  return connections.map((connection) => {
+    const base =
+      sanitizeServerName(connection.slug ?? connection.title ?? "") || "mcp";
+    let name = base;
+    for (let n = 2; taken.has(name); n++) name = `${base}-${n}`;
+    taken.add(name);
+    return {
+      name,
+      url: `${publicUrl}/api/${organizationSlug}/mcp/${encodeURIComponent(connection.id)}`,
+      headers,
+    };
+  });
+}
+
+/** Lowercase alphanumerics and hyphens — what an MCP client accepts as a name. */
+function sanitizeServerName(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
