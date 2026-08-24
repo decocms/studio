@@ -240,7 +240,7 @@ describe("selectHeaderButton", () => {
     expect(r.loading).toBe(true);
   });
 
-  // Setup phases hold the header; failure phases fall through to git/PR logic: git works even when the dev server can't run.
+  // Installing holds the header (working tree not in place). `starting` releases committed work — git works while the dev server boots — but a dirty-only tree stays held: workingTreeDirty may be boot noise until #6332's baseline arms (this is the #6314 false-"Review & Publish"-on-a-fresh-branch guard).
 
   test("lifecycle.installing + dirty branch → Installing packages… (not publishable yet)", () => {
     const r = selectHeaderButton(
@@ -256,7 +256,31 @@ describe("selectHeaderButton", () => {
     expect(r.menu).toEqual([]);
   });
 
-  test("lifecycle.starting + clean ready branch → Starting app…", () => {
+  test("lifecycle.starting + committed work → Review & Publish (git works while the dev server boots)", () => {
+    const r = selectHeaderButton(
+      happyInput({
+        lifecycle: { phase: "starting" },
+        branch: ready({ aheadOfBase: 2 }),
+      }),
+    );
+    expect(r.label).toBe("Review & Publish");
+    expect(r.action).toBe("publish");
+  });
+
+  test("lifecycle.starting + dirty-only tree (no commits) → Starting app… (boot dirt is not proof of work)", () => {
+    const r = selectHeaderButton(
+      happyInput({
+        lifecycle: { phase: "starting" },
+        branch: ready({ workingTreeDirty: true }),
+      }),
+    );
+    expect(r.label).toBe("Starting app…");
+    expect(r.disabled).toBe(true);
+    expect(r.loading).toBe(true);
+    expect(r.action).toBeUndefined();
+  });
+
+  test("lifecycle.starting + clean branch, no work → Starting app…", () => {
     const r = selectHeaderButton(
       happyInput({ lifecycle: { phase: "starting" } }),
     );

@@ -230,7 +230,7 @@ export function selectHeaderButton(
     };
   }
 
-  // Setup phases gate the header; once the app has run (or failed to), git/PR copy below takes over.
+  // Setup phases gate the header until the checkout is in place; `starting` then releases committed work to the git/PR copy — publishing it needs the sandbox alive, not the dev server serving.
   switch (lifecycle.phase) {
     case "idle": {
       const label =
@@ -277,7 +277,7 @@ export function selectHeaderButton(
         }),
         menu: [],
       };
-    // Still booting: nothing runs yet, so nothing to review or publish. The failure phases fall through — pushing a fix is the point there.
+    // Working tree not in place yet: nothing to review or publish.
     case "installing":
       return {
         label: t("thread.headerActions.installingPackages"),
@@ -287,15 +287,19 @@ export function selectHeaderButton(
         tooltip: t("thread.headerActions.installingPackagesTooltip"),
         menu: [],
       };
+    // `starting`: committed work publishes now (git needs the checkout, not the dev server); a dirty-only tree waits, since workingTreeDirty may be boot noise until #6332's baseline arms.
     case "starting":
-      return {
-        label: t("thread.headerActions.startingApp"),
-        disabled: true,
-        loading: true,
-        variant: "outline",
-        tooltip: t("thread.headerActions.startingAppTooltip"),
-        menu: [],
-      };
+      if (!(branch.kind === "ready" && branch.aheadOfBase > 0)) {
+        return {
+          label: t("thread.headerActions.startingApp"),
+          disabled: true,
+          loading: true,
+          variant: "outline",
+          tooltip: t("thread.headerActions.startingAppTooltip"),
+          menu: [],
+        };
+      }
+      break;
     // running/*-failed/crashed: fall through to git/PR.
   }
 
