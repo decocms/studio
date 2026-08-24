@@ -39,7 +39,10 @@ import {
 import { Page } from "@/components/page";
 import { JiraIcon } from "@/components/icons/jira-icon";
 import { SprintSettings } from "@/components/settings/sprint-settings";
-import { ReviewSettings } from "@/components/settings/review-settings";
+import {
+  AgentToolsSettings,
+  ReviewSettings,
+} from "@/components/settings/review-settings";
 import {
   SettingsCard,
   SettingsCardItem,
@@ -664,6 +667,7 @@ export function OrgTasksSettingsPage() {
             <Page.Title>{t("settings.nav.tasks")}</Page.Title>
             <ReviewSettings />
             <SprintSettings />
+            <AgentToolsSettings />
             <SettingsSection
               title={
                 <span className="flex items-center gap-2">
