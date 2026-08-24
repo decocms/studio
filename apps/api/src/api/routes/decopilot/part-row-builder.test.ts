@@ -201,6 +201,21 @@ describe("PartRowBuilder", () => {
     ]);
   });
 
+  it("truncates an oversized error text", () => {
+    const builder = new PartRowBuilder({
+      orgId: "org_1",
+      threadId: "thread_1",
+      runId: "thread_1",
+      baseTimeMs: 1_700_000_000_000,
+    });
+
+    const rows = builder.emitError("error_msg", "x".repeat(2_000_000));
+    const text = (rows[0]?.payload as { text: string }).text;
+
+    expect(text.length).toBeLessThan(8_200);
+    expect(text).toEndWith("… [truncated 1992000 characters]");
+  });
+
   it("does not freeze streaming text", () => {
     expect(isFinalPart({ type: "text", state: "streaming", text: "he" })).toBe(
       false,
