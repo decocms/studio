@@ -161,7 +161,7 @@ export class PartRowBuilder {
         message.role,
         seq,
         kindForPart(part),
-        part,
+        capPartErrorText(part),
       );
       this.partKeyByRowId.set(row.id, key);
       rows.push(row);
@@ -187,7 +187,7 @@ export class PartRowBuilder {
         message.role,
         seq,
         kindForPart(part),
-        part,
+        capPartErrorText(part),
       );
       this.partKeyByRowId.set(row.id, key);
       rows.push(row);
@@ -321,7 +321,7 @@ export class PartRowBuilder {
         message.role,
         seq,
         kindForPart(part),
-        part,
+        capPartErrorText(part),
       );
       this.partKeyByRowId.set(row.id, key);
       rows.push(row);
@@ -378,4 +378,23 @@ function truncateErrorText(errorText: string): string {
   if (errorText.length <= MAX_ERROR_TEXT_LENGTH) return errorText;
   const dropped = errorText.length - MAX_ERROR_TEXT_LENGTH;
   return `${errorText.slice(0, MAX_ERROR_TEXT_LENGTH)}… [truncated ${dropped} characters]`;
+}
+
+/**
+ * Same growth mechanism as {@link truncateErrorText}, on a different part
+ * shape: a tool part's `input-error`/`output-error` state carries its own
+ * `errorText` (often quoting the tool's own oversized input back, e.g. a
+ * schema-validation failure on a large write). It is stored raw and replayed
+ * into every later request the same way an assistant error part is, so an
+ * uncapped one grows the thread on every retry exactly like the case above.
+ */
+function capPartErrorText(part: AnyPart): AnyPart {
+  const errorText = (part as { errorText?: unknown }).errorText;
+  if (
+    typeof errorText !== "string" ||
+    errorText.length <= MAX_ERROR_TEXT_LENGTH
+  ) {
+    return part;
+  }
+  return { ...part, errorText: truncateErrorText(errorText) };
 }
