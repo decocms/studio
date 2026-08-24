@@ -939,4 +939,66 @@ test.describe("decofile API", () => {
       await ctx.dispose();
     }
   });
+
+  test("GET /meta serves committed meta.gen.json, falls back to default branch, 404 when absent", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const user = await signUpViaApi(ctx);
+      const owner = uniqueOwner();
+      const project = await createFastPreviewProject(ctx, user.orgSlug, {
+        owner,
+        repo: "site",
+      });
+      const meta = { schema: { root: "site/mod.ts" } };
+      await seedStubRepo(ctx, {
+        owner,
+        repo: "site",
+        defaultBranch: "main",
+        branches: {
+          // Default branch commits the artifact; a feature branch does not.
+          main: {
+            files: { ".deco/meta.gen.json": `${JSON.stringify(meta)}\n` },
+          },
+          feature: { files: { ".deco/blocks/Hero.json": '{"n":1}\n' } },
+        },
+      });
+
+      const metaUrl = (branch: string) =>
+        `/api/${project.org}/decofile/${project.vmcpId}/${branch}/meta`;
+
+      // Branch that commits it: served straight back, parsed as JSON.
+      const onMain = await ctx.get(metaUrl("main"));
+      expect(onMain.status()).toBe(200);
+      expect(onMain.headers()["content-type"]).toContain("application/json");
+      expect(await onMain.json()).toEqual(meta);
+
+      // A branch without it falls back to the default branch's committed copy.
+      const onFeature = await ctx.get(metaUrl("feature"));
+      expect(onFeature.status()).toBe(200);
+      expect(await onFeature.json()).toEqual(meta);
+
+      // Neither branch nor default commits it: 404 (client falls to production).
+      const bare = uniqueOwner();
+      const bareProject = await createFastPreviewProject(ctx, user.orgSlug, {
+        owner: bare,
+        repo: "site",
+      });
+      await seedStubRepo(ctx, {
+        owner: bare,
+        repo: "site",
+        defaultBranch: "main",
+        branches: {
+          main: { files: { ".deco/blocks/Hero.json": '{"n":1}\n' } },
+        },
+      });
+      const missing = await ctx.get(
+        `/api/${bareProject.org}/decofile/${bareProject.vmcpId}/main/meta`,
+      );
+      expect(missing.status()).toBe(404);
+    } finally {
+      await ctx.dispose();
+    }
+  });
 });

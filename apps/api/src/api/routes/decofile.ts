@@ -248,6 +248,37 @@ export function createDecofileRoutes() {
     }
   });
 
+  app.get("/:virtualMcpId/:branch/meta", async (c) => {
+    const scope = c.get("decofileScope");
+    const metaPath = scope.packagePath
+      ? `${scope.packagePath}/.deco/meta.gen.json`
+      : ".deco/meta.gen.json";
+    try {
+      const client = await gitDataClientForScope(c);
+      /** The thread branch may not be materialized on GitHub yet (it forks
+       *  from default at first CMS touch), so fall back to the default branch —
+       *  meta.gen.json is a code artifact the CMS never edits, so the default's
+       *  copy is the schema the forked branch would carry anyway. */
+      let text = await client.getFileTextAtRef(scope.branch, metaPath);
+      if (text === null) {
+        const defaultBranch = await client.getDefaultBranch();
+        if (defaultBranch !== scope.branch) {
+          text = await client.getFileTextAtRef(defaultBranch, metaPath);
+        }
+      }
+      if (text === null) {
+        return c.json({ error: "meta.gen.json not committed" }, 404);
+      }
+      return c.body(text, 200, {
+        "content-type": "application/json",
+        "Cache-Control": "no-store",
+        "Access-Control-Allow-Origin": "*",
+      });
+    } catch (err) {
+      return errorResponse(c, err);
+    }
+  });
+
   app.patch("/:virtualMcpId/:branch", async (c) => {
     const scope = c.get("decofileScope");
     const ctx = c.var.studioContext;

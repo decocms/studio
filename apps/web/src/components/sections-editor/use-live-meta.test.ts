@@ -76,7 +76,7 @@ describe("metaSourceOrder", () => {
     expect(committedIdx).toBeLessThan(productionIdx);
   });
 
-  it("fast preview: production only — no dev server, no daemon to read", () => {
+  it("fast preview: committed (via git) → production, never live", () => {
     expect(
       metaSourceOrder({
         fetchEnabled: true,
@@ -84,6 +84,17 @@ describe("metaSourceOrder", () => {
         productionUrl: PROD,
         fastPreviewActive: true,
       }),
-    ).toEqual([{ kind: "production", baseUrl: PROD }]);
+    ).toEqual([{ kind: "committed" }, { kind: "production", baseUrl: PROD }]);
+  });
+
+  it("fast preview, no production: committed is the only source", () => {
+    expect(
+      metaSourceOrder({
+        fetchEnabled: true,
+        previewUrl: PREVIEW,
+        productionUrl: null,
+        fastPreviewActive: true,
+      }),
+    ).toEqual([{ kind: "committed" }]);
   });
 });
