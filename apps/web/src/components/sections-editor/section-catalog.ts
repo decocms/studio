@@ -110,17 +110,26 @@ export function listAvailableSections(
   meta: LiveMeta,
 ): Array<{ resolveType: string; title: string }> {
   const blocks = meta.manifest?.blocks ?? {};
-  const entries: Array<{ resolveType: string; title: string }> = [];
+  const byResolveType = new Map<
+    string,
+    { resolveType: string; title: string }
+  >();
 
   for (const [blockType, blockMap] of Object.entries(blocks)) {
     if (!blockType.includes("sections")) continue;
     for (const resolveType of Object.keys(blockMap)) {
       if (shouldSkipSectionResolveType(resolveType)) continue;
-      entries.push({ resolveType, title: labelFromResolveType(resolveType) });
+      if (byResolveType.has(resolveType)) continue;
+      byResolveType.set(resolveType, {
+        resolveType,
+        title: labelFromResolveType(resolveType),
+      });
     }
   }
 
-  return entries.sort((a, b) => a.title.localeCompare(b.title));
+  return [...byResolveType.values()].sort((a, b) =>
+    a.title.localeCompare(b.title),
+  );
 }
 
 /**
