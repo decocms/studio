@@ -90,6 +90,14 @@ export async function mintMcpEndpoint(
   target: McpEndpointTarget = "agent-tools",
   /** Required by `target: "task-run"`. */
   threadId?: string,
+  /**
+   * The key's allowlist. Defaults to full access, which is what a caller whose
+   * surface is the agent's own virtual MCP needs. A caller that knows exactly
+   * which tools its surface exposes should pass that instead — the key is a
+   * live credential handed to an autonomous run, and "every tool in Studio" is
+   * not a scope anyone chose, it is one nobody narrowed.
+   */
+  permissions: Record<string, string[]> = { "*": ["*"] },
 ): Promise<{
   url: string;
   headers: Record<string, string>;
@@ -107,12 +115,9 @@ export async function mintMcpEndpoint(
   const apiKey = await ctx.boundAuth.apiKey.create({
     name: apiKeyName,
     // The per-run key is the agent's own callback credential — it acts on
-    // behalf of the user, against `/mcp/virtual-mcp/<agentId>` (a `vir_*`
-    // resource) or the org's management MCP, for the duration of the run, so it
-    // needs full access. With no implicit default (auth/index.ts), the scope
-    // must be explicit; wildcard matches the prior behavior (full access via
-    // the admin bypass).
-    permissions: { "*": ["*"] },
+    // behalf of the user for the duration of the run. With no implicit default
+    // (auth/index.ts), the scope must be explicit; see the parameter.
+    permissions,
     expiresIn: MCP_KEY_TTL_SECONDS,
     metadata: {
       organization: {

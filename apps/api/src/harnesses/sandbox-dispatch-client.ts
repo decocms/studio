@@ -61,6 +61,7 @@ import {
 } from "@/mcp-clients/virtual-mcp/mint-endpoint";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
+import { REVIEW_RUN_TOOL_NAMES } from "@/tools/task-board/task-run-context";
 import { getPublicUrl } from "@/core/server-constants";
 import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
 import { getSettings } from "@/settings";
@@ -317,6 +318,19 @@ export class SandboxDispatchClient implements SandboxClient {
       `${this.harnessId}-run`,
       "task-run",
       threadId,
+      // Exactly the tools this run's surface exposes, not a wildcard. The
+      // reviewer superset covers both run kinds; which of them a given run can
+      // actually call is already decided by the server it talks to
+      // (`toolSubsetMCP`), so the key never widens that — it only stops being a
+      // full-access credential for every other management tool in Studio.
+      //
+      // `self` is the resource key management tools are checked under (see
+      // AccessControl's default `connectionId`). It does NOT gate the
+      // per-connection proxy the `orgMcps` entries dial: that route authorizes
+      // by ORG MEMBERSHIP and connection ownership, with no `access.check` at
+      // all, so a run reaches exactly the connections any member of the org
+      // reaches — no more, but also no less.
+      { self: [...REVIEW_RUN_TOOL_NAMES] },
     );
     const settings = await this.ctx.storage.organizationSettings.get(
       organization.id,

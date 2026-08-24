@@ -255,6 +255,27 @@ export function buildOptions(args: {
  * deduped there). The Studio entry wins a name clash — an org connection called
  * `studio` must not displace the surface the run reports its work through.
  *
+ * The two differ in ONE option, and it is the whole reason an org can hand a
+ * run thirty connections without drowning it: `alwaysLoad`.
+ *
+ * - Org connections are left at the default, which means their tools are
+ *   DEFERRED behind Claude Code's tool search — the model sees them only after
+ *   searching for one, so N connections cost the prompt nothing up front, and
+ *   their servers connect in the background instead of blocking the session.
+ * - Studio's own server is `alwaysLoad: true`. Its tools are how the run
+ *   reports what it did (the board), so they have to be in the turn-1 prompt
+ *   rather than behind a search the model may never run. It is also what makes
+ *   the `brokenStudioMcp` preflight mean anything: `alwaysLoad` blocks startup
+ *   until the server connects (capped at 5s), so `system/init` reports it as
+ *   connected or failed instead of the `pending` a deferred server shows.
+ *
+ * Deferral is Claude Code's own behavior, not something requested here, and it
+ * only applies when tool search is on — which it is NOT on a non-first-party
+ * `ANTHROPIC_BASE_URL` (our OpenRouter path) unless `ENABLE_TOOL_SEARCH` is set
+ * for that process. On those runs every org tool loads eagerly, so a big org is
+ * still a big prompt. Setting it there is a decision about whether the proxy
+ * forwards `tool_reference` blocks, which is not this file's to make.
+ *
  * Exported for the unit test, which owns the merge.
  */
 export function mcpServersFor(
@@ -276,6 +297,7 @@ export function mcpServersFor(
       type: "http" as const,
       url: input.mcp.url,
       headers: input.mcp.headers,
+      alwaysLoad: true,
     };
   }
   return servers;

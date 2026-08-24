@@ -271,6 +271,7 @@ describe("buildOptions", () => {
         type: "http",
         url: "https://studio.example/mcp/virtual-mcp/agent_1",
         headers: { Authorization: "Bearer k", "x-org-id": "org_1" },
+        alwaysLoad: true,
       },
     });
   });
@@ -313,8 +314,25 @@ describe("mcpServersFor", () => {
         type: "http",
         url: studio.url,
         headers: studio.headers,
+        alwaysLoad: true,
       },
     });
+  });
+
+  test("org connections stay deferred; only Studio's own is always loaded", () => {
+    // The whole reason an org can hand a run thirty connections: their tools
+    // sit behind tool search instead of the turn-1 prompt. Studio's own cannot
+    // — the board tools are how the run reports what it did.
+    const servers = mcpServersFor(
+      input({
+        mcp: studio,
+        orgMcps: [
+          { name: "linear", url: "https://x.example/mcp", headers: {} },
+        ],
+      }),
+    );
+    expect(servers.linear).not.toHaveProperty("alwaysLoad");
+    expect(servers.studio).toHaveProperty("alwaysLoad", true);
   });
 
   test("Studio's surface survives an org connection named `studio`", () => {
@@ -330,6 +348,7 @@ describe("mcpServersFor", () => {
       type: "http",
       url: studio.url,
       headers: studio.headers,
+      alwaysLoad: true,
     });
   });
 
