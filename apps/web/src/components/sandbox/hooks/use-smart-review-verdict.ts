@@ -9,20 +9,24 @@ import {
   type ReviewVerdict,
 } from "../../thread/github/sandbox-git-api.ts";
 
-function smartReviewVerdictQueryKey(
-  orgSlug: string,
-  virtualMcpId: string,
-  branch: string,
-  signature: string,
-  language: string,
-) {
+export function smartReviewVerdictQueryKey(args: {
+  orgSlug: string;
+  virtualMcpId: string;
+  branch: string;
+  threadId: string | null;
+  fastPreview?: boolean;
+  signature: string;
+  language: string;
+}) {
   return [
     "smart-review-verdict",
-    orgSlug,
-    virtualMcpId,
-    branch,
-    signature,
-    language,
+    args.orgSlug,
+    args.virtualMcpId,
+    args.branch,
+    args.threadId,
+    args.fastPreview ? "fast-preview-upstream" : "sandbox",
+    args.signature,
+    args.language,
   ] as const;
 }
 
@@ -58,13 +62,15 @@ export function useSmartReviewVerdict(args: {
   const canRun = enabled && !!branch && !!status && !!diff && signature !== "";
 
   const query = useQuery<ReviewVerdict>({
-    queryKey: smartReviewVerdictQueryKey(
+    queryKey: smartReviewVerdictQueryKey({
       orgSlug,
       virtualMcpId,
       branch,
+      threadId,
+      fastPreview,
       signature,
       language,
-    ),
+    }),
     queryFn: () =>
       fetchReviewVerdict(
         { orgSlug, virtualMcpId, branch, threadId },

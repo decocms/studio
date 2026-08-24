@@ -128,7 +128,7 @@ async function parseJson<T>(res: Response): Promise<T> {
  * would otherwise claim the route. This is only a routing hint: the API
  * re-derives the runtime from the thread and vMCP before serving the request.
  */
-export const FAST_PREVIEW_HEADER = "x-deco-fast-preview";
+const FAST_PREVIEW_HEADER = "x-deco-fast-preview";
 
 export interface SandboxGitCallOptions {
   fastPreview?: boolean;
