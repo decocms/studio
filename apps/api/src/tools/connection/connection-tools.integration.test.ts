@@ -93,6 +93,7 @@ describe("Connection Tools", () => {
           database.db,
         ),
         subsidizedGatewayKeys: null as never,
+        notifications: null as never,
         organizationSettings: {
           get: async () => null,
           upsert: async (_orgId: string) => ({

@@ -134,6 +134,11 @@ export interface Settings {
    *  reviewer runs for every org on a timer, so it needs one way to stop it that
    *  doesn't require a code change — see `tools/task-board/review-sweeper.ts`. */
   taskBoardReviewSweeperEnabled: boolean;
+  /** Kill switch for the boot-time task-digest worker (TASK_DIGEST_ENABLED,
+   *  default on). It sends email to members of every org that turned the
+   *  `task_notifications` flag on, so it needs one way to stop all of them
+   *  without a deploy — see `notifications/task-digest-worker.ts`. */
+  taskDigestEnabled: boolean;
   /** Same, for a run whose agent loop executes in its own SANDBOX pod
    *  (SANDBOX_MAX_CONCURRENT_HOSTED_RUNS) — `workerConcurrency` on
    *  HOSTED_HARNESS_SANDBOXED_QUEUE. Much higher than the in-process cap

@@ -76,8 +76,7 @@ export function OrgIcon({
 /**
  * A pending cross-org invitation, rendered as a row in the switcher right
  * alongside the orgs you already belong to — accepting joins the org and
- * navigates there. This is where invitations live now (the old global "inbox"
- * was removed); org-admin join-requests still live in Settings.
+ * navigates there. The only place invitations live; join-requests are in Settings.
  */
 function InvitationRow({
   invitation,

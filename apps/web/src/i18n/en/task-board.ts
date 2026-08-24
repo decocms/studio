@@ -85,6 +85,9 @@ export const taskBoard = {
     "{reviewer} requested changes: {notes}",
   "taskBoard.taskDialog.activityMergeConflictResolution":
     "couldn't merge the pull request — resolving a merge conflict",
+  "taskBoard.taskDialog.activityCommented": "commented",
+  "taskBoard.taskDialog.subscribe": "Subscribe",
+  "taskBoard.taskDialog.unsubscribe": "Unsubscribe",
   "taskBoard.taskDialog.activityMergeFailed": "couldn't merge the pull request",
   "taskBoard.taskDialog.activityMergeFailedNoPr":
     "couldn't merge — no pull request is linked to this task",

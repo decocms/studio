@@ -173,6 +173,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "When a report import creates a task board item without an assignee, delegate it to the Super Agent automatically instead of leaving it unassigned.",
     ),
+  task_notifications: z
+    .boolean()
+    .optional()
+    .describe(
+      "Subscribe to a task to follow it: its updates land in the in-product inbox and arrive as a batched email digest. Off by default — it sends email to members, so an org opts in deliberately.",
+    ),
 });
 
 export type OrgFlags = z.infer<typeof OrgFlagsSchema>;

@@ -119,6 +119,7 @@ import {
   type TaskComment,
 } from "./task-comments";
 import { useTaskBoardComments } from "@/hooks/use-task-board-comments";
+import { SubscribeToggle } from "./subscribe-button";
 
 // ponytail: pinned to end-of-day so "due today" doesn't flip to overdue
 // mid-morning. Local zone in, UTC out.
@@ -309,24 +310,29 @@ function ReviewsGroup({ item }: { item: TaskBoardItem }) {
 
 /**
  * A collapsible record section (Links, Activity) — a chevron + label that the
- * whole header toggles, with its content indented to nothing.
+ * label toggles, with its content indented to nothing. `action` sits opposite.
  */
 function RecordSection({
   label,
+  action,
   children,
 }: {
   label: string;
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <Collapsible defaultOpen className="flex flex-col gap-2">
-      <CollapsibleTrigger className="group flex w-fit items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground">
-        {label}
-        <ChevronDown
-          size={14}
-          className="shrink-0 transition-transform group-data-[state=closed]:-rotate-90"
-        />
-      </CollapsibleTrigger>
+      <div className="flex min-h-7 items-center justify-between gap-2">
+        <CollapsibleTrigger className="group flex w-fit items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground">
+          {label}
+          <ChevronDown
+            size={14}
+            className="shrink-0 transition-transform group-data-[state=closed]:-rotate-90"
+          />
+        </CollapsibleTrigger>
+        {action}
+      </div>
       <CollapsibleContent>{children}</CollapsibleContent>
     </Collapsible>
   );
@@ -1841,13 +1847,16 @@ function ActivitySection({
     | { kind: "thread"; at: number; thread: TaskBoardItemThread }
     | { kind: "comment"; at: number; comment: TaskComment };
   const events: Ev[] = [
-    ...(activity ?? []).map(
-      (a): Ev => ({
-        kind: "activity",
-        at: new Date(a.occurredAt).getTime(),
-        activity: a,
-      }),
-    ),
+    // `commented` only feeds the inbox and digest; the comment card is below.
+    ...(activity ?? [])
+      .filter((a) => a.action !== "commented")
+      .map(
+        (a): Ev => ({
+          kind: "activity",
+          at: new Date(a.occurredAt).getTime(),
+          activity: a,
+        }),
+      ),
     ...item.threads.map(
       (thread): Ev => ({
         kind: "thread",
@@ -1885,7 +1894,10 @@ function ActivitySection({
   }
 
   return (
-    <RecordSection label={t("taskBoard.taskDialog.activityLabel")}>
+    <RecordSection
+      label={t("taskBoard.taskDialog.activityLabel")}
+      action={<SubscribeToggle itemId={item.id} members={members} />}
+    >
       <div className="flex flex-col gap-5">
         {/* At the top: the feed reads newest-first, so this is where a new
             comment lands. */}
@@ -2195,6 +2207,9 @@ function describeActivity(
           });
     case "merge_conflict_resolution":
       return t("taskBoard.taskDialog.activityMergeConflictResolution");
+    // Filtered out of the feed above; reachable only if that filter regresses.
+    case "commented":
+      return t("taskBoard.taskDialog.activityCommented");
     case "merge_failed": {
       // `detail` names the repo (no_connection) or carries GitHub's refusal
       // text — the difference between "it's broken" and "connect this repo".

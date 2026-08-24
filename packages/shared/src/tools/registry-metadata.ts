@@ -264,6 +264,10 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_COMMENT_CREATE",
   "TASK_BOARD_COMMENT_UPDATE",
   "TASK_BOARD_COMMENT_DELETE",
+  "TASK_BOARD_SUBSCRIPTION_GET",
+  "TASK_BOARD_SUBSCRIPTION_SET",
+  "TASK_BOARD_INBOX_LIST",
+  "TASK_BOARD_INBOX_MARK_READ",
   "TASK_BOARD_DISMISSED_LIST",
   "TASK_BOARD_DISMISSED_RESTORE",
   "TASK_ADD_REPO",
@@ -1245,6 +1249,26 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Task Board",
   },
   {
+    name: "TASK_BOARD_SUBSCRIPTION_GET",
+    description: "Read a task board item's subscribers",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_SUBSCRIPTION_SET",
+    description: "Follow or unfollow a task board item's updates",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_INBOX_LIST",
+    description: "List unread updates on the tasks you follow",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_INBOX_MARK_READ",
+    description: "Clear your task inbox",
+    category: "Task Board",
+  },
+  {
     name: "TASK_BOARD_DISMISSED_LIST",
     description:
       "List diagnostic findings dismissed by deleting their task board cards",
@@ -1376,6 +1400,10 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_COMMENT_CREATE",
       "TASK_BOARD_COMMENT_UPDATE",
       "TASK_BOARD_COMMENT_DELETE",
+      "TASK_BOARD_SUBSCRIPTION_GET",
+      "TASK_BOARD_SUBSCRIPTION_SET",
+      "TASK_BOARD_INBOX_LIST",
+      "TASK_BOARD_INBOX_MARK_READ",
       "TASK_BOARD_DISMISSED_LIST",
       "TASK_BOARD_DISMISSED_RESTORE",
     ],

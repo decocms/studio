@@ -356,6 +356,7 @@ export function resolveConfig(
       envVars.TASK_BOARD_REVIEW_SWEEPER_ENABLED,
       true,
     ),
+    taskDigestEnabled: toBoolWithDefault(envVars.TASK_DIGEST_ENABLED, true),
     sandboxMaxConcurrentHostedRuns: toPositiveIntegerOrDefault(
       "SANDBOX_MAX_CONCURRENT_HOSTED_RUNS",
       envVars.SANDBOX_MAX_CONCURRENT_HOSTED_RUNS,

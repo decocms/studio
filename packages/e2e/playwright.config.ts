@@ -49,7 +49,14 @@ const githubStubOrigin = `http://localhost:${githubStubPort}`;
 // the config isn't a spec module).
 const vaultServiceToken = "e2e-vault-service-token";
 
-const apiServerCommand = `MCP_CACHE_ENABLED=true VAULT_SERVICE_TOKEN=${vaultServiceToken} REPORTS_INTERNAL_API_URL=${commerceMockOrigin} REPORTS_INTERNAL_API_KEY=${commerceMockKey} GITHUB_API_BASE_URL=${githubStubOrigin} BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} RUN_IDLE_TIMEOUT_MS=120000 DEPLOYMENT_ADMIN_EMAILS=deployment-admin@e2e.local,deployment-admin-2@e2e.local bun run dev`;
+/**
+ * DISABLE_RATE_LIMIT: Better Auth's default rule caps /sign-up at 3 per 10s,
+ * and every test here mints its own user — so any spec whose tests sign up in
+ * quick succession 429s. CI only escapes it because 4 workers spread slow specs
+ * far enough apart. No spec asserts on rate limiting, so turn it off rather
+ * than pace the suite around it.
+ */
+const apiServerCommand = `DISABLE_RATE_LIMIT=true MCP_CACHE_ENABLED=true VAULT_SERVICE_TOKEN=${vaultServiceToken} REPORTS_INTERNAL_API_URL=${commerceMockOrigin} REPORTS_INTERNAL_API_KEY=${commerceMockKey} GITHUB_API_BASE_URL=${githubStubOrigin} BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} RUN_IDLE_TIMEOUT_MS=120000 DEPLOYMENT_ADMIN_EMAILS=deployment-admin@e2e.local,deployment-admin-2@e2e.local bun run dev`;
 // CI serves the PRODUCTION build via `vite preview` (same Node proxy as dev —
 // see apps/web/vite.config.ts): the suite's charter is production-like
 // behavior, and the dev server's on-demand transform inflated browser-heavy

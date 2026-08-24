@@ -11,6 +11,8 @@ import type { StudioContext } from "@/core/studio-context";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { enqueueJiraCommentPush } from "@/jira/dbos-jira-sync";
 import { taskRunContextStore } from "./task-run-context";
+import { recordTaskActivity } from "./activity";
+import { autoSubscribeToTask } from "./subscriptions";
 
 const TaskBoardCommentSchema = z.object({
   id: z.string(),
@@ -123,6 +125,14 @@ export const TASK_BOARD_COMMENT_CREATE = defineTool({
       body,
     });
     if (!comment) throw new Error("Task board item not found");
+    // Saying something on a task follows it; the sentinel author is dropped.
+    await autoSubscribeToTask(ctx, comment.taskBoardItemId, [comment.authorId]);
+    await recordTaskActivity(ctx, {
+      taskBoardItemId: comment.taskBoardItemId,
+      action: "commented",
+      actorId: taskRun ? null : getUserId(ctx)!,
+      data: { commentId: comment.id },
+    });
     // Durable enqueue (a DB write): the DBOS queue mirrors it onto the issue.
     await enqueueJiraCommentPush(ctx, {
       commentId: comment.id,

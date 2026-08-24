@@ -53,6 +53,14 @@ export const KEYS = {
   taskBoardComments: (locator: ProjectLocator, itemId: string) =>
     [locator, "task-board-comments", itemId] as const,
 
+  // Who follows a task, and whether you do
+  taskBoardSubscription: (locator: ProjectLocator, itemId: string) =>
+    [locator, "task-board-subscription", itemId] as const,
+
+  // Unread updates on the tasks you follow
+  notificationInbox: (locator: ProjectLocator) =>
+    [locator, "notification-inbox"] as const,
+
   homeGithubRecentPrs: (orgId: string, connectionId: string) =>
     ["home-github-recent-prs", orgId, connectionId] as const,
 

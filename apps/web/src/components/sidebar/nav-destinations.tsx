@@ -10,8 +10,6 @@
  * The org's coding agents (GitHub-backed virtual MCPs) trail the list, one row
  * per repo — those DO switch agents, since each owns its own codebase.
  *
- * Inbox is in the design but has no backing surface yet, so it is deliberately
- * not listed.
  */
 
 import type { ReactNode } from "react";

@@ -15,6 +15,7 @@ import {
 import { assertValidAssignee } from "./validate-assignee";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 import { recordTaskActivities } from "./activity";
+import { autoSubscribeToTask } from "./subscriptions";
 import { taskRunContextStore } from "./task-run-context";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { extractPrFromText } from "./pr-extract";
@@ -358,6 +359,10 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
             ...entry,
           })),
         );
+      }
+      // Taking on a task follows it; reassignment leaves the old assignee subscribed.
+      if (previous.assigneeId !== item.assigneeId) {
+        await autoSubscribeToTask(ctx, item.id, [item.assigneeId]);
       }
     }
 

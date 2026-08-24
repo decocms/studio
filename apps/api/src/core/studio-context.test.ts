@@ -24,6 +24,7 @@ const createMockContext = (
     subsidizedGatewayKeys: null as never,
     organizationSettings: null as never,
     userModelPreferences: null as never,
+    notifications: null as never,
     monitoring: null as never,
     virtualMcps: null as never,
     users: null as never,

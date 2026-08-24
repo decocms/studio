@@ -10,6 +10,7 @@ import {
 import { assertValidAssignee } from "./validate-assignee";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 import { recordTaskActivity } from "./activity";
+import { autoSubscribeToTask } from "./subscriptions";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { extractPrFromText } from "./pr-extract";
 
@@ -120,6 +121,7 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       action: "created",
       actorId: getUserId(ctx)!,
     });
+    await autoSubscribeToTask(ctx, item.id, [getUserId(ctx), item.assigneeId]);
 
     // Broadcast the new card so every open board adds it live, no polling.
     emitTaskBoardUpdated(organizationId, item);

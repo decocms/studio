@@ -91,6 +91,9 @@ export const taskBoard = {
     "{reviewer} pediu alterações: {notes}",
   "taskBoard.taskDialog.activityMergeConflictResolution":
     "não conseguiu mesclar o pull request — resolvendo um conflito de merge",
+  "taskBoard.taskDialog.activityCommented": "comentou",
+  "taskBoard.taskDialog.subscribe": "Seguir",
+  "taskBoard.taskDialog.unsubscribe": "Deixar de seguir",
   "taskBoard.taskDialog.activityMergeFailed":
     "não conseguiu mesclar o pull request",
   "taskBoard.taskDialog.activityMergeFailedNoPr":

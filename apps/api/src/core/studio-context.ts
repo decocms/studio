@@ -288,6 +288,7 @@ import type {
 } from "../storage/ports";
 import type { OrganizationSettingsStorage } from "../storage/organization-settings";
 import type { UserModelPreferencesStorage } from "../storage/user-model-preferences";
+import type { NotificationStorage } from "../storage/notifications";
 import type { TagStorage } from "../storage/tags";
 import type { UserStorage } from "../storage/user";
 import type { VirtualMCPStorage } from "../storage/virtual";
@@ -352,6 +353,7 @@ export interface StudioStorage {
   orgRepoSyncs: OrgRepoSyncStorage;
   jiraIntegrations: JiraIntegrationStorage;
   taskBoard: TaskBoardStorage;
+  notifications: NotificationStorage;
   orgFsEntries: OrgFsEntryStorage;
   oauthPkceStates: OAuthPkceStateStorage;
   claudeSubscriptions: ClaudeSubscriptionStorage;

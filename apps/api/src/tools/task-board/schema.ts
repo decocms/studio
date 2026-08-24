@@ -152,12 +152,18 @@ export const TASK_BOARD_ACTIVITY_ACTIONS = [
   "review_changes_requested",
   "merge_conflict_resolution",
   "merge_failed",
+  /** A comment was posted. Logged so the inbox and the email digest can read
+   *  `task_board_activity` alone; the dialog renders the comment itself and
+   *  filters this row out of its timeline. */
+  "commented",
 ] as const;
 
 export type TaskBoardActivityAction =
   (typeof TASK_BOARD_ACTIVITY_ACTIONS)[number];
 
-const TaskBoardActivityActionSchema = z.enum(TASK_BOARD_ACTIVITY_ACTIONS);
+export const TaskBoardActivityActionSchema = z.enum(
+  TASK_BOARD_ACTIVITY_ACTIONS,
+);
 
 /** One entry in a task's change timeline — who did what, when. */
 export const TaskBoardActivitySchema = z.object({

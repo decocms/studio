@@ -1887,6 +1887,52 @@ export interface TaskBoardActivity {
   occurredAt: string;
 }
 
+/** Who follows a task. `subscribed = false` is a sticky opt-out, not a deleted
+ *  row: auto-subscribe inserts `on conflict do nothing`, so keeping the row is
+ *  what stops an automatic rule from resurrecting someone who left.
+ *  `created_at` is the notification floor — activity older than it never
+ *  reaches this subscriber. */
+export interface TaskBoardSubscriberTable {
+  task_board_item_id: string;
+  user_id: string;
+  subscribed: ColumnType<boolean, boolean | undefined, boolean>;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** How far one (user, org) has been caught up on task notifications.
+ *  `last_emailed_at` doubles as the digest's compare-and-set claim — see
+ *  `NotificationStorage.claimDigest`. */
+export interface TaskNotificationCursorTable {
+  user_id: string;
+  organization_id: string;
+  last_read_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
+  last_emailed_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** One pending notification for a subscriber: an activity row joined to the
+ *  task it happened on. Shared by the inbox and the email digest. */
+export interface TaskNotification {
+  id: string;
+  taskBoardItemId: string;
+  taskTitle: string;
+  taskKeySeq: number;
+  action: TaskBoardActivityAction;
+  actorId: string | null;
+  data: Record<string, unknown>;
+  occurredAt: string;
+}
+
 // ============================================================================
 // Brand Context Table Definition
 // ============================================================================
@@ -2139,6 +2185,8 @@ export interface Database extends PrivateRegistryDatabase {
   task_board_comments: TaskBoardCommentTable;
   task_board_item_tags: TaskBoardItemTagTable;
   task_board_import_runs: TaskBoardImportRunTable;
+  task_board_subscribers: TaskBoardSubscriberTable;
+  task_notification_cursors: TaskNotificationCursorTable;
 
   // Jira integration (per-org pull sync into the task board)
   org_jira_integrations: OrgJiraIntegrationTable;

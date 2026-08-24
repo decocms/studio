@@ -127,6 +127,7 @@ export interface StudioToolIO {
             auto_merge?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
+            task_notifications?: boolean | undefined;
           }
         | null
         | undefined;
@@ -195,6 +196,7 @@ export interface StudioToolIO {
             auto_merge?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
+            task_notifications?: boolean | undefined;
           }
         | undefined;
       main_agent_id?: string | null | undefined;
@@ -263,6 +265,7 @@ export interface StudioToolIO {
             auto_merge?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
+            task_notifications?: boolean | undefined;
           }
         | null
         | undefined;
@@ -572,7 +575,8 @@ export interface StudioToolIO {
           | "review_approved"
           | "review_changes_requested"
           | "merge_conflict_resolution"
-          | "merge_failed";
+          | "merge_failed"
+          | "commented";
         actorId: string | null;
         data: Record<string, unknown>;
         occurredAt: string;
@@ -635,6 +639,48 @@ export interface StudioToolIO {
   TASK_BOARD_COMMENT_DELETE: {
     input: { id: string };
     output: { success: boolean };
+  };
+  TASK_BOARD_SUBSCRIPTION_GET: {
+    input: { taskBoardItemId: string };
+    output: { subscriberIds: string[]; subscribed: boolean };
+  };
+  TASK_BOARD_SUBSCRIPTION_SET: {
+    input: { taskBoardItemId: string; subscribed: boolean };
+    output: { subscriberIds: string[]; subscribed: boolean };
+  };
+  TASK_BOARD_INBOX_LIST: {
+    input: { limit?: number | undefined };
+    output: {
+      items: {
+        id: string;
+        taskBoardItemId: string;
+        taskTitle: string;
+        taskKeySeq: number;
+        action:
+          | "created"
+          | "status_changed"
+          | "assignee_changed"
+          | "priority_changed"
+          | "due_date_changed"
+          | "title_changed"
+          | "description_changed"
+          | "tags_changed"
+          | "review_requested"
+          | "review_approved"
+          | "review_changes_requested"
+          | "merge_conflict_resolution"
+          | "merge_failed"
+          | "commented";
+        actorId: string | null;
+        data: Record<string, unknown>;
+        occurredAt: string;
+      }[];
+      lastReadAt: string | null;
+    };
+  };
+  TASK_BOARD_INBOX_MARK_READ: {
+    input: { through?: string | undefined };
+    output: { lastReadAt: string };
   };
   TASK_BOARD_DISMISSED_LIST: {
     input: { [x: string]: never };
@@ -7051,6 +7097,7 @@ export interface StudioToolIO {
         | "user-desktop"
         | "cluster"
         | undefined;
+      threadId?: string | undefined;
     };
     output: {
       previewUrl: string | null;

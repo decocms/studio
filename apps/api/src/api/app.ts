@@ -48,7 +48,7 @@ import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import { cors } from "hono/cors";
 import { endTime, startTime, timing } from "hono/timing";
-import { auth } from "../auth";
+import { auth, authConfig } from "../auth";
 import { createMemberRoleCache } from "../auth/member-role-cache";
 import {
   ContextFactory,
@@ -170,6 +170,8 @@ import { advanceTasksToReviewOnThreadFinish } from "../tools/task-board/run-reac
 import { SqlAsyncResearchJobStorage } from "../storage/async-research-jobs";
 import { AsyncResearchJobSweeper } from "../storage/async-research-jobs-sweeper";
 import { TaskBoardReviewSweeper } from "../tools/task-board/review-sweeper";
+import { TaskDigestWorker } from "../notifications/task-digest-worker";
+import { NotificationStorage } from "../storage/notifications";
 import { registerMonitoringRetentionWorkflow } from "../monitoring/dbos-retention-workflow";
 import "../auth/install-studio-pack-workflow";
 import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
@@ -1629,6 +1631,27 @@ export async function createApp(options: CreateAppOptions = {}) {
     currentDecopilotCleanup = async () => {
       await previousCleanup?.();
       taskBoardReviewSweeper.dispose();
+    };
+  }
+  /**
+   * Emails the batched task digest to subscribers. Gated per-org by the
+   * `task_notifications` flag (checked in SQL, so a flagless org is never a
+   * candidate) and globally by TASK_DIGEST_ENABLED, which stops every org's
+   * email without a deploy.
+   */
+  const taskDigestWorker = new TaskDigestWorker(
+    new NotificationStorage(database.db),
+    {
+      emailProviders: authConfig.emailProviders,
+      providerId: authConfig.inviteEmailProviderId,
+    },
+  );
+  if (getSettings().taskDigestEnabled) {
+    taskDigestWorker.start();
+    const previousCleanup = currentDecopilotCleanup;
+    currentDecopilotCleanup = async () => {
+      await previousCleanup?.();
+      taskDigestWorker.dispose();
     };
   }
   setProjectorWorkflowRuntime({
