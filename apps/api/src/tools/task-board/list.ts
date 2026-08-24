@@ -35,11 +35,10 @@ export const TASK_BOARD_ITEM_LIST = defineTool({
       );
     }
 
-    const items = await ctx.storage.taskBoard.list(organizationId);
-    const { items: githubConnections } = await ctx.storage.connections.list(
-      organizationId,
-      { slug: "mcp-github" },
-    );
+    const [items, { items: githubConnections }] = await Promise.all([
+      ctx.storage.taskBoard.list(organizationId),
+      ctx.storage.connections.list(organizationId, { slug: "mcp-github" }),
+    ]);
     const repos = listRepoScopeLabels(githubConnections);
 
     // Opening the board is the stall-recovery trigger: re-run the thread-finish
