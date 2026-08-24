@@ -46,8 +46,13 @@ export const ORGANIZATION_UPDATE = defineTool({
     const updateData: Record<string, unknown> = {};
     if (input.name) updateData.name = input.name;
     // !== undefined, not truthy: "" clears the description and must persist.
-    if (input.description !== undefined)
-      updateData.metadata = { description: input.description };
+    if (input.description !== undefined) {
+      const org = await ctx.boundAuth.organization.get(input.id);
+      updateData.metadata = {
+        ...(org?.metadata ?? {}),
+        description: input.description,
+      };
+    }
 
     // Update organization via Better Auth
     const result = await ctx.boundAuth.organization.update({
