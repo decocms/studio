@@ -45,7 +45,8 @@ export const ORGANIZATION_UPDATE = defineTool({
     // and renaming would silently invalidate every saved URL.
     const updateData: Record<string, unknown> = {};
     if (input.name) updateData.name = input.name;
-    if (input.description)
+    // !== undefined, not truthy: "" clears the description and must persist.
+    if (input.description !== undefined)
       updateData.metadata = { description: input.description };
 
     // Update organization via Better Auth
