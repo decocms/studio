@@ -96,6 +96,37 @@ describe("getArrayItemLabel", () => {
     );
   });
 
+  test("labels a date matcher item by its configured range", () => {
+    // Real farmrio data: a Multi rule's `matchers` child.
+    const item = {
+      __resolveType: "website/matchers/date.ts",
+      start: "2026-08-10T15:00:00Z",
+      end: "2026-08-31T23:59:00Z",
+    };
+    const label = getArrayItemLabel(item, 0, undefined);
+    expect(label).toContain("→");
+    expect(label).not.toBe("Date");
+  });
+
+  test("labels a device matcher item by its selected devices", () => {
+    const item = {
+      __resolveType: "website/matchers/device.ts",
+      mobile: true,
+      tablet: true,
+    };
+    expect(getArrayItemLabel(item, 0, undefined)).toBe("Mobile & Tablet");
+  });
+
+  test("falls back to the matcher type name when unconfigured", () => {
+    const item = { __resolveType: "website/matchers/date.ts" };
+    expect(getArrayItemLabel(item, 0, undefined)).toBe("Date");
+  });
+
+  test("labels a saved matcher block reference by its block key", () => {
+    const item = { __resolveType: "ETC Segment" };
+    expect(getArrayItemLabel(item, 0, undefined)).toBe("ETC Segment");
+  });
+
   // Inline unions carry a per-branch Mustache title, resolved against branch data.
   const matcherUnionSchema: SchemaProperty = {
     type: "inline-union",
