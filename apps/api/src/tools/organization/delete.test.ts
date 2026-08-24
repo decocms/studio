@@ -17,6 +17,7 @@ function makeCtx(existingMetadata: unknown) {
   return {
     auth: { user: { id: "user-1" } },
     access: { check: mock(async () => {}) },
+    organization: { id: "org-1", slug: "acme", name: "Acme" },
     boundAuth: { organization: { get, update } },
     get,
     update,
@@ -49,5 +50,16 @@ describe("ORGANIZATION_DELETE", () => {
       data: { metadata: Record<string, unknown> };
     };
     expect(call.data.metadata.archived).toBe(true);
+  });
+
+  it("rejects deleting an organization other than the authenticated one", async () => {
+    const ctx = makeCtx({ description: "an acme org" });
+
+    await expect(
+      ORGANIZATION_DELETE.handler({ id: "org-2" }, ctx),
+    ).rejects.toThrow(
+      "Organization ID does not match authenticated organization",
+    );
+    expect(ctx.update.mock.calls.length).toBe(0);
   });
 });
