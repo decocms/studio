@@ -181,6 +181,50 @@ describe("section-catalog", () => {
     expect(resolveTypes).not.toContain("Preview /sections/Footer.tsx");
   });
 
+  it("extractSectionCatalog includes saved multivariate section blocks", () => {
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          pages: {
+            "website/pages/Page.tsx": { $ref: "#/definitions/Page" },
+          },
+          sections: {
+            "site/sections/Content/Alert.tsx": { $ref: "#/definitions/Alert" },
+          },
+        },
+      },
+      schema: { definitions: { Page: {}, Alert: {} } },
+    };
+
+    const decofile = {
+      Alerta: {
+        __resolveType: "website/flags/multivariate/section.ts",
+        variants: [
+          {
+            value: { __resolveType: "site/sections/Content/Alert.tsx" },
+            rule: { __resolveType: "website/matchers/always.ts" },
+          },
+        ],
+      },
+      // Non-section variants must not be offered as an insertable section.
+      "Loader Flag": {
+        __resolveType: "website/flags/multivariate/section.ts",
+        variants: [
+          { value: { __resolveType: "vtex/loaders/legacy/productList.ts" } },
+        ],
+      },
+    };
+
+    const catalog = extractSectionCatalog(meta, decofile);
+    const resolveTypes = catalog.map((entry) => entry.resolveType);
+
+    expect(resolveTypes).toContain("Alerta");
+    expect(resolveTypes).not.toContain("Loader Flag");
+    expect(catalog.find((e) => e.resolveType === "Alerta")?.isSavedBlock).toBe(
+      true,
+    );
+  });
+
   it("extractSectionCatalog includes manifest sections even when page anyOf is populated", () => {
     const meta: LiveMeta = {
       manifest: {
