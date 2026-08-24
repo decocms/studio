@@ -241,6 +241,7 @@ export function NavDestinationsContent({
       <SidebarMenuButton
         onClick={item.onSelect}
         isActive={item.isActive}
+        aria-current={item.isActive ? "page" : undefined}
         tooltip={showTooltip ? item.label : undefined}
       >
         {item.icon}
