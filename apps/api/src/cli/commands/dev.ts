@@ -15,7 +15,6 @@ import {
   updateService,
 } from "../cli-store";
 import { findAvailablePort } from "../find-available-port";
-import { stripAnsi } from "../strip-ansi";
 
 export interface DevOptions {
   port: string;
@@ -40,7 +39,7 @@ function pipeToLogStore(stream: ReadableStream<Uint8Array>) {
     const lines = buffer.split("\n");
     buffer = lines.pop() ?? "";
     for (const raw of lines) {
-      const stripped = stripAnsi(raw)
+      const stripped = Bun.stripANSI(raw)
         .replace(/^\[\d+\]\s*/, "")
         .trim();
       if (!stripped) continue;
@@ -63,7 +62,7 @@ function pipeToLogStore(stream: ReadableStream<Uint8Array>) {
       processLines();
     }
     if (buffer.trim()) {
-      const stripped = stripAnsi(buffer)
+      const stripped = Bun.stripANSI(buffer)
         .replace(/^\[\d+\]\s*/, "")
         .trim();
       if (stripped) {
