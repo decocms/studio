@@ -354,3 +354,18 @@ func TestUnauthorizedCancelLeavesNoTombstone(t *testing.T) {
 		t.Fatal("a rejected cancel must not tombstone the run")
 	}
 }
+
+// An oversized inline dispatch body must be rejected before it is buffered in
+// full — the offload path already caps at this size, and the inline path had
+// no cap at all.
+func TestDispatchRejectsOversizedBody(t *testing.T) {
+	const token = "tkn"
+	body := strings.NewReader(strings.Repeat("a", maxDispatchBodyBytes+1))
+	req := httptest.NewRequest("POST", "/dispatch", body)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	NewRegistry().HandleDispatch(rec, req, Deps{DaemonToken: func() string { return token }})
+	if rec.Code != 413 {
+		t.Fatalf("dispatch with oversized body returned %d, want 413", rec.Code)
+	}
+}

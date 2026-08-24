@@ -3,6 +3,7 @@ package dispatch
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -17,6 +18,12 @@ import (
 )
 
 const tombstoneTTL = 60 * time.Second
+
+// maxDispatchBodyBytes bounds the inline `/dispatch` request body. Matches
+// maxOffloadBytes: a run whose messages are actually this large is expected to
+// come in via messagesRef, not inline, so this cap just stops an unbounded
+// read from parking the pod's memory on one request.
+const maxDispatchBodyBytes = maxOffloadBytes
 
 // Terminal code for a run this pod could not finish (shutdown / dropped
 // connection) as opposed to one that was cancelled on purpose. Studio maps it
@@ -282,8 +289,13 @@ func (reg *Registry) HandleDispatch(w http.ResponseWriter, r *http.Request, deps
 		jsonError(w, 401, map[string]string{"error": "unauthorized"})
 		return
 	}
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxDispatchBodyBytes))
 	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			jsonError(w, 413, map[string]string{"error": "body_too_large"})
+			return
+		}
 		jsonError(w, 400, map[string]string{"error": "bad_json"})
 		return
 	}
