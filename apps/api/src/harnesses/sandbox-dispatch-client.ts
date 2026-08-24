@@ -60,6 +60,7 @@ import {
   orgMcpServers,
 } from "@/mcp-clients/virtual-mcp/mint-endpoint";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
+import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
 import { getPublicUrl } from "@/core/server-constants";
 import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
 import { getSettings } from "@/settings";
@@ -327,14 +328,18 @@ export class SandboxDispatchClient implements SandboxClient {
       return { mcp };
     }
     // `list` excludes VIRTUAL connections (agents, not MCP servers) by default.
-    // Non-active ones are dropped here: a connection Studio already knows is
-    // erroring only costs the session a failed connect at startup.
     const { items } = await this.ctx.storage.connections.list(organization.id);
     const orgMcps = orgMcpServers({
       publicUrl: getPublicUrl(),
       organizationSlug: organization.slug,
       headers: mcp.headers,
-      connections: items.filter((connection) => connection.status === "active"),
+      connections: items.filter(
+        (connection) =>
+          // A connection Studio already knows is erroring only costs the
+          // session a failed connect at startup.
+          connection.status === "active" &&
+          !isStudioOwnedConnection(organization.id, connection.id),
+      ),
     });
     console.log(
       `[${this.harnessId}] org mcps: ${
@@ -947,4 +952,24 @@ export async function* ndjsonLines(
     // leaves the request (and the daemon's run) hanging behind us.
     await reader.return?.().catch(() => {});
   }
+}
+
+/**
+ * Studio's own well-known connections, which every org has whether or not
+ * anyone configured an MCP: the management surface and the two store
+ * registries. Excluded from a run's `orgMcps` — `_self` alone is ~200
+ * management tools, which is exactly what the narrow task-run surface exists to
+ * avoid, and browsing the MCP store is not a coding agent's job. What the user
+ * actually connected is everything else.
+ */
+function isStudioOwnedConnection(
+  organizationId: string,
+  connectionId: string,
+): boolean {
+  return [
+    WellKnownOrgMCPId.SELF,
+    WellKnownOrgMCPId.REGISTRY,
+    WellKnownOrgMCPId.COMMUNITY_REGISTRY,
+    WellKnownOrgMCPId.DEV_ASSETS,
+  ].some((id) => id(organizationId) === connectionId);
 }
