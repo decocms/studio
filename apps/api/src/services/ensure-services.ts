@@ -526,10 +526,10 @@ async function stopPostgres(home: string): Promise<void> {
 // NATS (auto-downloaded binary)
 // ---------------------------------------------------------------------------
 
-function natsArtifactName(): string {
-  const p = platform();
-  const a = arch();
-
+export function natsArtifactName(
+  p: string = platform(),
+  a: string = arch(),
+): string {
   const osMap: Record<string, string> = {
     darwin: "darwin",
     linux: "linux",
@@ -554,6 +554,75 @@ function natsArtifactName(): string {
   return `nats-server-${NATS_VERSION}-${osName}-${archName}.${ext}`;
 }
 
+/**
+ * Read the NATS executable from its Unix release archive without extracting
+ * archive-controlled paths to disk. Bun.Archive detects gzip automatically.
+ */
+export async function readNatsBinaryFromTarGzip(
+  archiveBytes: Uint8Array,
+  artifact: string,
+): Promise<File> {
+  if (!artifact.endsWith(".tar.gz")) {
+    throw new Error(`Expected a .tar.gz NATS artifact, received ${artifact}`);
+  }
+
+  const archiveRoot = artifact.slice(0, -".tar.gz".length);
+  const binaryEntry = `${archiveRoot}/nats-server`;
+  const files = await new Bun.Archive(archiveBytes).files(binaryEntry);
+  const binary = files.get(binaryEntry);
+
+  if (!binary) {
+    throw new Error(
+      `NATS binary not found at ${binaryEntry} in archive ${artifact}`,
+    );
+  }
+
+  return binary;
+}
+
+export function natsBinaryTempPath(
+  binPath: string,
+  pid: number,
+  nonce: string,
+): string {
+  return `${binPath}.download-${pid}-${nonce}`;
+}
+
+export function shouldInstallExtractedNatsBinary(
+  binPathExists: boolean,
+  extractedBinExists: boolean,
+): boolean {
+  return !binPathExists && extractedBinExists;
+}
+
+async function installNatsBinaryFromTarGzip(
+  archiveBytes: Uint8Array,
+  artifact: string,
+  binPath: string,
+): Promise<void> {
+  const binary = await readNatsBinaryFromTarGzip(archiveBytes, artifact);
+  // Prepare beside the destination so rename remains atomic on one filesystem.
+  const tmpPath = natsBinaryTempPath(binPath, process.pid, crypto.randomUUID());
+
+  try {
+    await Bun.write(tmpPath, binary);
+    await chmod(tmpPath, 0o755);
+    renameSync(tmpPath, binPath);
+  } catch (error) {
+    try {
+      await unlink(tmpPath);
+    } catch (cleanupError) {
+      if ((cleanupError as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw new AggregateError(
+          [error, cleanupError],
+          `Failed to install NATS and clean up ${tmpPath}`,
+        );
+      }
+    }
+    throw error;
+  }
+}
+
 function natsBinaryPath(home: string): string {
   return join(servicesDir(home), "nats", "bin", `nats-server${EXE_EXT}`);
 }
@@ -574,42 +643,51 @@ async function downloadNats(home: string): Promise<string> {
     );
   }
 
-  const archivePath = join(binDir, artifact);
   const arrayBuffer = await response.arrayBuffer();
-  writeFileSync(archivePath, Buffer.from(arrayBuffer));
-
-  // Both the Windows `.zip` and the unix `.tar.gz` contain a single versioned
-  // top-level directory (e.g. nats-server-v2.14.2-linux-amd64/nats-server).
-  // Extract the whole archive, then move the binary up to binDir and drop the
-  // versioned directory so binPath resolves regardless of platform packaging.
-  const extractedDir = join(binDir, artifact.replace(/\.(zip|tar\.gz)$/, ""));
 
   if (IS_WINDOWS) {
-    const proc = Bun.spawn([
-      "powershell",
-      "-Command",
-      `Expand-Archive -Path '${archivePath}' -DestinationPath '${binDir}' -Force`,
-    ]);
-    await proc.exited;
-  } else {
-    // `tar` (with gzip via -z) is universally present on macOS/Linux, unlike
-    // `unzip`. Unix releases ship only `.tar.gz` since the 2.11 line.
-    const proc = Bun.spawn(["tar", "-xzf", archivePath, "-C", binDir]);
-    await proc.exited;
-  }
+    const stagingDir = join(
+      binDir,
+      `.nats-download-${process.pid}-${crypto.randomUUID()}`,
+    );
+    const archivePath = join(stagingDir, artifact);
+    const extractedDir = join(stagingDir, artifact.replace(/\.zip$/, ""));
 
-  if (!existsSync(binPath)) {
-    const extractedBin = join(extractedDir, `nats-server${EXE_EXT}`);
-    if (existsSync(extractedBin)) {
-      renameSync(extractedBin, binPath);
+    try {
+      ensureDir(stagingDir);
+      writeFileSync(archivePath, Buffer.from(arrayBuffer));
+
+      const proc = Bun.spawn([
+        "powershell",
+        "-Command",
+        `Expand-Archive -Path '${archivePath}' -DestinationPath '${stagingDir}' -Force`,
+      ]);
+      const exitCode = await proc.exited;
+      if (exitCode !== 0) {
+        throw new Error(
+          `Failed to extract NATS ZIP: PowerShell exited with code ${exitCode}`,
+        );
+      }
+
+      const extractedBin = join(extractedDir, `nats-server${EXE_EXT}`);
+      if (
+        shouldInstallExtractedNatsBinary(
+          existsSync(binPath),
+          existsSync(extractedBin),
+        )
+      ) {
+        renameSync(extractedBin, binPath);
+      }
+    } finally {
+      // Own the archive and extracted directory under one per-call staging dir.
+      rmSync(stagingDir, { recursive: true, force: true });
     }
-  }
-  rmSync(extractedDir, { recursive: true, force: true });
-
-  await unlink(archivePath).catch(() => {});
-
-  if (!IS_WINDOWS) {
-    await chmod(binPath, 0o755);
+  } else {
+    await installNatsBinaryFromTarGzip(
+      new Uint8Array(arrayBuffer),
+      artifact,
+      binPath,
+    );
   }
 
   if (!existsSync(binPath)) {
