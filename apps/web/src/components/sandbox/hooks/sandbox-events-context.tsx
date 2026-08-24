@@ -32,7 +32,7 @@ import {
   type ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useProjectContext } from "@/sdk";
+import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { KEYS, invalidateVirtualMcpQueries } from "@/lib/query-keys";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 
@@ -229,6 +229,16 @@ export function SandboxEventsProvider({
   const reloadHandlers = useRef(new Set<ReloadHandler>());
   const prevPortRef = useRef<number | null>(null);
   const directDaemonEventsUrl = buildDirectDaemonEventsUrl(previewUrl);
+
+  /**
+   * Deno/Fresh dev servers don't watch `.deco/blocks/*`, so unlike the Vite
+   * runtime they never reload the preview on a Blocks save (#6430 handed that
+   * refresh to the dev server). We drive the iframe reload ourselves for Deno.
+   * A dep of the SSE effect below; stable per project (reconnects at most once
+   * if the VM metadata resolves after mount).
+   */
+  const isDenoRuntime =
+    useVirtualMCP(virtualMcpId)?.metadata?.runtime?.selected === "deno";
 
   const getOrCreateBuffer = (source: string) => {
     let buf = buffers.current.get(source);
@@ -475,6 +485,16 @@ export function SandboxEventsProvider({
                 void queryClient.invalidateQueries({
                   queryKey: KEYS.decofile(cacheKey),
                 });
+                // Deno-only: the dev server won't refresh the preview itself.
+                if (isDenoRuntime) {
+                  for (const fn of reloadHandlers.current) {
+                    try {
+                      fn();
+                    } catch {
+                      // swallow
+                    }
+                  }
+                }
               }, 500);
             } else {
               // Debounce liveMeta invalidation so the dev server has time to
@@ -628,6 +648,7 @@ export function SandboxEventsProvider({
     taskId,
     directDaemonEventsUrl,
     queryClient,
+    isDenoRuntime,
   ]);
 
   const value: SandboxEventsValue = {
