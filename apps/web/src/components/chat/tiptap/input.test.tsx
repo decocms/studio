@@ -51,6 +51,23 @@ describe("TiptapProvider disabled", () => {
   });
 });
 
+describe("TiptapProvider accessible name", () => {
+  it("exposes the placeholder as the editable region's aria-label", () => {
+    const { container } = render(
+      <TiptapProvider
+        tiptapDoc={undefined}
+        setTiptapDoc={() => {}}
+        placeholder="Ask anything"
+      >
+        <EditableProbe />
+      </TiptapProvider>,
+    );
+    const editable = container.querySelector("[contenteditable]");
+    expect(editable?.getAttribute("role")).toBe("textbox");
+    expect(editable?.getAttribute("aria-label")).toBe("Ask anything");
+  });
+});
+
 describe("TiptapProvider enter-to-submit vs. an open suggestion dropdown", () => {
   // ProseMirror's own keydown listener runs before the @/ mention picker's
   // (it's registered at editor mount, well before the picker ever opens —
