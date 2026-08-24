@@ -19,8 +19,8 @@ export const ORGANIZATION_MEMBER_LIST = defineTool({
     openWorldHint: false,
   },
   inputSchema: z.object({
-    limit: z.number().optional(),
-    offset: z.number().optional(),
+    limit: z.number().int().min(1).max(1000).optional(),
+    offset: z.number().int().min(0).optional(),
   }),
 
   outputSchema: z.object({
