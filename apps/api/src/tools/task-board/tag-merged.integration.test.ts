@@ -99,7 +99,10 @@ describe("merged-tag sweep", () => {
   it("tags a merged card, logs it, and drops it from the work list", async () => {
     const id = await seed("done", true);
 
-    const first = await tagMergedForOrg(ctx, ORG, [id], async () => true);
+    const first = await tagMergedForOrg(ctx, ORG, [id], async () => ({
+      state: "closed" as const,
+      merged: true,
+    }));
     expect(first.tagged).toBe(1);
     expect(
       (await taskBoard.getById(id, ORG))?.tags.map((t) => t.name),
@@ -122,7 +125,10 @@ describe("merged-tag sweep", () => {
     const a = await seed("done", true);
     const b = await seed("done", true);
 
-    await tagMergedForOrg(ctx, ORG, [a, b], async () => true);
+    await tagMergedForOrg(ctx, ORG, [a, b], async () => ({
+      state: "closed" as const,
+      merged: true,
+    }));
 
     const merged = (await tags.listOrgTags(ORG)).filter(
       (t) => t.name.toLowerCase() === MERGED_TAG_NAME,
@@ -135,10 +141,20 @@ describe("merged-tag sweep", () => {
     const open = await seed("done", true);
 
     expect(
-      (await tagMergedForOrg(ctx, ORG, [unknown], async () => null)).tagged,
+      (
+        await tagMergedForOrg(ctx, ORG, [unknown], async () => ({
+          state: null,
+          merged: null,
+        }))
+      ).tagged,
     ).toBe(0);
     expect(
-      (await tagMergedForOrg(ctx, ORG, [open], async () => false)).tagged,
+      (
+        await tagMergedForOrg(ctx, ORG, [open], async () => ({
+          state: "open" as const,
+          merged: false,
+        }))
+      ).tagged,
     ).toBe(0);
     expect((await taskBoard.getById(unknown, ORG))?.tags).toEqual([]);
     expect((await taskBoard.getById(open, ORG))?.tags).toEqual([]);
@@ -164,7 +180,10 @@ describe("merged-tag sweep", () => {
       by: USER,
     });
 
-    await tagMergedForOrg(ctx, otherOrg, [item.id], async () => false);
+    await tagMergedForOrg(ctx, otherOrg, [item.id], async () => ({
+      state: "open" as const,
+      merged: false,
+    }));
 
     expect(await tags.listOrgTags(otherOrg)).toEqual([]);
   });
