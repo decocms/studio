@@ -89,6 +89,9 @@ export function TiptapProvider({
     editorProps: {
       attributes: {
         "data-chat-input": "true",
+        role: "textbox",
+        "aria-multiline": "true",
+        "aria-label": placeholder ?? "",
         class:
           "prose prose-sm max-w-none focus:outline-none w-full h-full text-[15px] p-[18px]",
       },
