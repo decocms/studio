@@ -357,11 +357,25 @@ export class PartRowBuilder {
       const seq = this.seqFor(key);
       const row = this.row(messageId, "assistant", seq, "error", {
         type: "text",
-        text: `Error: ${errorText}`,
+        text: `Error: ${truncateErrorText(errorText)}`,
       });
       this.partKeyByRowId.set(row.id, key);
       rows.push(row);
     }
     return [...rows, ...this.markFinished(messageId, "assistant")];
   }
+}
+
+/**
+ * Cap on persisted error text. Some errors quote their whole input back — an AI
+ * SDK `Type validation failed` embeds the entire message array — and the part is
+ * replayed into the next request, so an untruncated one grows on every retry
+ * until the thread is unloadable and the provider rejects the prompt.
+ */
+const MAX_ERROR_TEXT_LENGTH = 8_000;
+
+function truncateErrorText(errorText: string): string {
+  if (errorText.length <= MAX_ERROR_TEXT_LENGTH) return errorText;
+  const dropped = errorText.length - MAX_ERROR_TEXT_LENGTH;
+  return `${errorText.slice(0, MAX_ERROR_TEXT_LENGTH)}… [truncated ${dropped} characters]`;
 }
