@@ -86,6 +86,18 @@ describe("mcpEndpointUrl task-run", () => {
       }),
     ).toThrow(/threadId is required/);
   });
+
+  it("a task-run endpoint with no slug reports its own target, not 'management'", () => {
+    expect(() =>
+      mcpEndpointUrl({
+        publicUrl,
+        agentId: "vir_1",
+        organization: { id: "org_1" },
+        target: "task-run",
+        threadId: "thrd_1",
+      }),
+    ).toThrow(/"task-run" MCP endpoint/);
+  });
 });
 
 describe("orgMcpServers", () => {
