@@ -96,6 +96,47 @@ describe("getArrayItemLabel", () => {
     );
   });
 
+  test("labels a lazy-wrapped item containing a hidden section by the section name", () => {
+    // Real scenario: lazy wrapper around a multivariate flag (hidden item) containing a section
+    const item = {
+      __resolveType: "website/sections/Rendering/Lazy.tsx",
+      section: {
+        __resolveType: "website/flags/multivariate.ts",
+        variants: [
+          {
+            value: {
+              __resolveType:
+                "site/sections/Content/BannerCarrouselDepartment.tsx",
+            },
+            rule: { __resolveType: "website/matchers/never.ts" },
+          },
+        ],
+      },
+    };
+    expect(getArrayItemLabel(item, 0, undefined)).toBe(
+      "BannerCarrouselDepartment",
+    );
+  });
+
+  test("labels a lazy-wrapped item containing a hidden object by its fields", () => {
+    // Lazy wrapper around a hidden item with a title field
+    const item = {
+      __resolveType: "website/sections/Rendering/Lazy.tsx",
+      section: {
+        __resolveType: "website/flags/multivariate.ts",
+        variants: [
+          {
+            value: {
+              title: "Hidden Banner Title",
+            },
+            rule: { __resolveType: "website/matchers/never.ts" },
+          },
+        ],
+      },
+    };
+    expect(getArrayItemLabel(item, 0, undefined)).toBe("Hidden Banner Title");
+  });
+
   test("labels a date matcher item by its configured range", () => {
     // Real farmrio data: a Multi rule's `matchers` child.
     const item = {
