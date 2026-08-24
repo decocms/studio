@@ -538,7 +538,7 @@ function HeaderButtonRenderer(props: {
         {...(action && !loading ? { icon: actionIcon(action) } : {})}
         {...(tooltip ? { tooltip } : {})}
         items={items}
-        menuAriaLabel={t("thread.cmsActions.moreActionsAriaLabel")}
+        menuAriaLabel={t("thread.headerActions.moreActionsAriaLabel")}
         onClick={action ? () => onAction(action) : undefined}
       />
     </span>

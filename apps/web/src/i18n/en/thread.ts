@@ -100,6 +100,7 @@ export const thread = {
   "thread.headerActions.markReady": "Mark ready",
   "thread.headerActions.markDraftReadyTooltip":
     "Mark draft PR ready for review",
+  "thread.headerActions.moreActionsAriaLabel": "More actions",
   "thread.headerActions.openNewPrTooltip":
     "Open a new PR with the latest commits",
   "thread.headerActions.prMergedTooltip": "PR #{prNumber} merged into {base}",
