@@ -11,12 +11,15 @@ import {
   Lightbulb02,
   Loading02,
   PlusCircle,
+  Rocket01,
   Settings01,
   Shield01,
+  ShieldTick,
+  ThumbsUp,
 } from "@untitledui/icons";
 import { Bug } from "lucide-react";
 import type { StudioToolOutput as ToolOutput } from "@decocms/shared/tools/tool-io";
-import { DEFAULT_TAG_COLOR } from "@decocms/shared/task-board";
+import { DEFAULT_TAG_COLOR, DELIVERY_LANES } from "@decocms/shared/task-board";
 import { isResolvedRunFailure } from "@decocms/shared/entities";
 import type { Sprint } from "@decocms/shared/sprints";
 import type { ComponentType } from "react";
@@ -184,6 +187,9 @@ export const STATUSES: TaskBoardItemStatus[] = [
   "todo",
   "in_progress",
   "in_review",
+  "approved",
+  "merged",
+  "post_deploy_validation",
   "done",
   "archived",
 ];
@@ -217,6 +223,21 @@ export const STATUS_CONFIG: Record<
   in_review: {
     labelKey: "taskBoard.config.statusInReview",
     icon: Eye,
+    iconClassName: "text-warning",
+  },
+  approved: {
+    labelKey: "taskBoard.config.statusApproved",
+    icon: ThumbsUp,
+    iconClassName: "text-success",
+  },
+  merged: {
+    labelKey: "taskBoard.config.statusMerged",
+    icon: Rocket01,
+    iconClassName: "text-primary",
+  },
+  post_deploy_validation: {
+    labelKey: "taskBoard.config.statusPostDeployValidation",
+    icon: ShieldTick,
     iconClassName: "text-warning",
   },
   done: {
@@ -286,6 +307,55 @@ export const TASK_TYPE_CONFIG: Record<
     iconClassName: "text-purple-500",
   },
 };
+
+/** True for one of the post-merge delivery lanes. */
+export function isDeliveryLane(status: TaskBoardItemStatus): boolean {
+  return (DELIVERY_LANES as string[]).includes(status);
+}
+
+/**
+ * Lanes a card may be MOVED to — "Move to", the status dropdown, drag targets.
+ * With the delivery lanes off they aren't offered, so nobody can put a card
+ * somewhere the org's state machine doesn't ship to. Rendering a lane's own
+ * label is a separate question, always answered by `STATUS_CONFIG`.
+ */
+export function moveTargets(deliveryEnabled: boolean): TaskBoardItemStatus[] {
+  return deliveryEnabled
+    ? STATUSES
+    : STATUSES.filter((s) => !isDeliveryLane(s));
+}
+
+/**
+ * Which lanes the board draws as columns, and which collapse into the "Hidden
+ * columns" drawer. A lane hides when it's hidden by default (`HIDDEN_STATUSES`)
+ * or is a delivery lane the board doesn't run; `shownLanes` overrides either.
+ * `occupied` is what keeps a card from getting stuck: an unrun delivery lane is
+ * absent while empty, but reappears in the drawer the moment a card sits in it.
+ */
+export function laneVisibility({
+  deliveryEnabled,
+  shownLanes,
+  occupied,
+}: {
+  deliveryEnabled: boolean;
+  /** `string[]`: it comes out of localStorage, which can hold a dead lane. */
+  shownLanes: readonly string[];
+  occupied: readonly TaskBoardItemStatus[];
+}): {
+  lanes: TaskBoardItemStatus[];
+  hidden: TaskBoardItemStatus[];
+  hideable: TaskBoardItemStatus[];
+} {
+  const known = STATUSES.filter(
+    (s) => deliveryEnabled || !isDeliveryLane(s) || occupied.includes(s),
+  );
+  const hideable = known.filter(
+    (s) =>
+      HIDDEN_STATUSES.includes(s) || (!deliveryEnabled && isDeliveryLane(s)),
+  );
+  const hidden = hideable.filter((s) => !shownLanes.includes(s));
+  return { lanes: known.filter((s) => !hidden.includes(s)), hidden, hideable };
+}
 
 export const PRIORITIES: TaskBoardItemPriority[] = [
   "none",

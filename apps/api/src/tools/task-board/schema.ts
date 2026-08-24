@@ -20,6 +20,9 @@ export const TaskBoardItemStatusSchema = z.enum([
   "todo",
   "in_progress",
   "in_review",
+  "approved",
+  "merged",
+  "post_deploy_validation",
   "done",
   "archived",
 ]);

@@ -129,6 +129,7 @@ export interface StudioToolIO {
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
+            delivery_lanes_enabled?: boolean | undefined;
           }
         | null
         | undefined;
@@ -199,6 +200,7 @@ export interface StudioToolIO {
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
+            delivery_lanes_enabled?: boolean | undefined;
           }
         | undefined;
       main_agent_id?: string | null | undefined;
@@ -269,6 +271,7 @@ export interface StudioToolIO {
             coding_agent_org_mcps?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
+            delivery_lanes_enabled?: boolean | undefined;
           }
         | null
         | undefined;
@@ -323,6 +326,9 @@ export interface StudioToolIO {
         | "todo"
         | "in_progress"
         | "in_review"
+        | "approved"
+        | "merged"
+        | "post_deploy_validation"
         | "archived"
         | undefined;
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
@@ -345,6 +351,9 @@ export interface StudioToolIO {
           | "todo"
           | "in_progress"
           | "in_review"
+          | "approved"
+          | "merged"
+          | "post_deploy_validation"
           | "archived";
         priority: "none" | "low" | "medium" | "high" | "urgent";
         type: "bug" | "feature" | "chore" | "spike" | "security";
@@ -409,6 +418,9 @@ export interface StudioToolIO {
           | "todo"
           | "in_progress"
           | "in_review"
+          | "approved"
+          | "merged"
+          | "post_deploy_validation"
           | "archived";
         priority: "none" | "low" | "medium" | "high" | "urgent";
         type: "bug" | "feature" | "chore" | "spike" | "security";
@@ -478,6 +490,9 @@ export interface StudioToolIO {
         | "todo"
         | "in_progress"
         | "in_review"
+        | "approved"
+        | "merged"
+        | "post_deploy_validation"
         | "archived"
         | undefined;
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
@@ -502,6 +517,9 @@ export interface StudioToolIO {
           | "todo"
           | "in_progress"
           | "in_review"
+          | "approved"
+          | "merged"
+          | "post_deploy_validation"
           | "archived";
         priority: "none" | "low" | "medium" | "high" | "urgent";
         type: "bug" | "feature" | "chore" | "spike" | "security";
@@ -610,6 +628,9 @@ export interface StudioToolIO {
         | "todo"
         | "in_progress"
         | "in_review"
+        | "approved"
+        | "merged"
+        | "post_deploy_validation"
         | "archived";
       merged: boolean;
     };
@@ -623,6 +644,9 @@ export interface StudioToolIO {
         | "todo"
         | "in_progress"
         | "in_review"
+        | "approved"
+        | "merged"
+        | "post_deploy_validation"
         | "archived";
       merged: boolean;
     };
@@ -4898,6 +4922,9 @@ export interface StudioToolIO {
             | "todo"
             | "in_progress"
             | "in_review"
+            | "approved"
+            | "merged"
+            | "post_deploy_validation"
             | "archived",
             string[]
           >
@@ -4926,6 +4953,9 @@ export interface StudioToolIO {
               | "todo"
               | "in_progress"
               | "in_review"
+              | "approved"
+              | "merged"
+              | "post_deploy_validation"
               | "archived",
               string[]
             >
@@ -4948,6 +4978,9 @@ export interface StudioToolIO {
             | "todo"
             | "in_progress"
             | "in_review"
+            | "approved"
+            | "merged"
+            | "post_deploy_validation"
             | "archived",
             string[]
           >

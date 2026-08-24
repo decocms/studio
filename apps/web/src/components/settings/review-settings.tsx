@@ -5,6 +5,7 @@ import {
   Cube01,
   FileSearch02,
   GitMerge,
+  Rocket01,
   ShieldTick,
   Terminal,
   UserSquare,
@@ -55,6 +56,12 @@ export function ReviewSettings() {
           icon={<GitMerge size={16} />}
           titleKey="settings.review.autoMergeTitle"
           descriptionKey="settings.review.autoMergeDescription"
+        />
+        <FlagToggle
+          flag="delivery_lanes_enabled"
+          icon={<Rocket01 size={16} />}
+          titleKey="settings.review.deliveryLanesTitle"
+          descriptionKey="settings.review.deliveryLanesDescription"
         />
         <FlagToggle
           flag="auto_assign_report_tasks_to_super_agent"

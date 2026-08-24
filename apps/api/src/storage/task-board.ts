@@ -21,7 +21,7 @@ import type {
   TaskBoardItemThreadRef,
 } from "./types";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
-import { DEFAULT_TASK_TYPE } from "@decocms/shared/task-board";
+import { DEFAULT_TASK_TYPE, DELIVERY_LANES } from "@decocms/shared/task-board";
 import {
   type ReviewCycleActivity,
   REVIEWER_KINDS,
@@ -211,6 +211,14 @@ function newestIso(
     lastProgressAt === null ? Number.NEGATIVE_INFINITY : ms(lastProgressAt);
   return new Date(Math.max(a, b)).toISOString();
 }
+
+/** Lanes a merged PR can leave a card on, and therefore where the merged-tag
+ *  sweep has to look. `archived` is deliberately absent: a card that far along
+ *  is history, and tagging it moves nothing. */
+const TAGGABLE_MERGED_STATUSES: TaskBoardItemStatus[] = [
+  ...DELIVERY_LANES,
+  "done",
+];
 
 export class TaskBoardStorage {
   constructor(private db: Kysely<Database>) {}
@@ -752,7 +760,11 @@ export class TaskBoardStorage {
     const rows = await this.db
       .selectFrom("task_board_items as i")
       .select(["i.id", "i.organization_id as organizationId"])
-      .where("i.status", "=", "done")
+      // Not just Done: with the delivery lanes on a merge lands the card on
+      // `merged`, and gating on Done alone would mean no card is ever tagged
+      // until a human drags it the rest of the way — days after the tag was
+      // worth seeing, which is the whole reason this sweep is not the archive's.
+      .where("i.status", "in", TAGGABLE_MERGED_STATUSES)
       .where("i.dismissed_at", "is", null)
       .where((eb) =>
         eb.exists(
@@ -1980,7 +1992,9 @@ export class TaskBoardStorage {
   }
 
   /** A null actor is a machine path; a `reason` marks a move that meant something
-   *  other than "not done" (Rerun-from-Done stamps `reason: "rerun"`). */
+   *  other than "not done" (Rerun-from-Done stamps `reason: "rerun"`).
+   *  `merged` counts as leaving Done — with the delivery lanes on, that is
+   *  where a merged PR lands. */
   async hasHumanRejectedDone(
     taskBoardItemId: string,
     organizationId: string,
@@ -1997,7 +2011,7 @@ export class TaskBoardStorage {
       .where("a.task_board_item_id", "=", taskBoardItemId)
       .where("a.action", "=", "status_changed")
       .where(byMember, "is not", null)
-      .where(laneLeft, "=", "done")
+      .where(laneLeft, "in", ["done", "merged"])
       .where(moveReason, "is", null)
       .limit(1)
       .executeTakeFirst();

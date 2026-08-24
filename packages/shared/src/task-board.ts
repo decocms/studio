@@ -140,6 +140,40 @@ export function enabledReviewerKinds(
   return REVIEWER_KINDS.filter((k) => orgFlagEnabled(flags, REVIEWER_FLAG[k]));
 }
 
+/**
+ * The lanes a release process needs AFTER the pull request merges, sitting
+ * between In Review and Done. A subset of both sides' status unions, so each
+ * assigns these names with no cast. The lane TYPE is unconditional — every
+ * status stays in the union, keeping `LANE_RANK`/`STATUS_CONFIG` exhaustive.
+ * The flag gates REACHABILITY: which lanes a board offers, where a ship lands.
+ */
+export type DeliveryLane = "approved" | "merged" | "post_deploy_validation";
+
+export const DELIVERY_LANES: DeliveryLane[] = [
+  "approved",
+  "merged",
+  "post_deploy_validation",
+];
+
+/** True when this org runs the delivery lanes. Off by default. */
+export function deliveryLanesEnabled(
+  flags: Record<string, unknown> | null | undefined,
+): boolean {
+  return orgFlagEnabled(flags, "delivery_lanes_enabled");
+}
+
+/**
+ * The lane a merged/shipped pull request moves its task to. Every automatic
+ * ship path reads this, so "flag off means no behaviour change" is one tested
+ * function rather than five call sites agreeing by luck. Falsy flags of every
+ * shape resolve to `done`; that default IS the safety property.
+ */
+export function shippedLane(
+  flags: Record<string, unknown> | null | undefined,
+): "merged" | "done" {
+  return deliveryLanesEnabled(flags) ? "merged" : "done";
+}
+
 /** True when a thread title belongs to the given reviewer's run. */
 export function isReviewerThreadTitle(
   title: string | null | undefined,

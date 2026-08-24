@@ -6,12 +6,16 @@ import type { ConnectionEntity } from "@/tools/connection/schema";
 import { clientFromConnection } from "@/mcp-clients";
 import type { TaskBoardItemPrRef } from "@/storage/types";
 import { getRepoScope } from "@decocms/shared/github-repo-scope";
-import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import {
+  shippedLane,
+  SUPER_AGENT_ASSIGNEE_ID,
+} from "@decocms/shared/task-board";
 import { retry, RetryError } from "@decocms/shared/std";
 import { InMemoryMcpReadCache } from "@/mcp-clients/mcp-read-cache";
 import { TaskBoardItemPrSchema } from "./schema";
 import { cardWorkLanded } from "./archive-merged";
 import { recordTaskActivity } from "./activity";
+import { movesForward } from "./lanes";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
@@ -1246,15 +1250,18 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
     }
 
     // ponytail: reconcile-on-view — there's no GitHub PR webhook, so a merged PR
-    // only advances the card to Done when someone opens this modal. Upgrade path:
+    // only advances the card when someone opens this modal. Upgrade path:
     // a `pull_request` webhook calling the same forward move. Best-effort; a
-    // failure must never break the read. Forward-only: never un-does Done or Archived.
+    // failure must never break the read. Forward-only via `movesForward`.
     if (cardWorkLanded(prs)) {
       try {
+        // Inside the try: this block is best-effort and must not fail the read.
+        const settings =
+          await ctx.storage.organizationSettings.get(organizationId);
+        const shipped = shippedLane(settings?.flags);
         if (
           item &&
-          item.status !== "done" &&
-          item.status !== "archived" &&
+          movesForward(item.status, shipped) &&
           !(await ctx.storage.taskBoard.hasHumanRejectedDone(
             taskBoardItemId,
             organizationId,
@@ -1263,7 +1270,7 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
           const updated = await ctx.storage.taskBoard.update(
             taskBoardItemId,
             organizationId,
-            { status: "done" },
+            { status: shipped },
             item.updatedBy,
           );
           // Every other path that moves a card to Done (the review-decision
@@ -1275,12 +1282,12 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
             taskBoardItemId,
             action: "status_changed",
             actorId: null,
-            data: { from: item.status, to: "done" },
+            data: { from: item.status, to: shipped },
           });
           emitTaskBoardUpdated(organizationId, updated);
         }
       } catch (err) {
-        console.error("[task-board] merge→done reconcile failed", err);
+        console.error("[task-board] merged-PR reconcile failed", err);
       }
     }
 

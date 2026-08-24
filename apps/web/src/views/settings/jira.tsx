@@ -65,6 +65,8 @@ import {
   useUpsertJiraIntegration,
 } from "@/hooks/use-jira-integration";
 import { timeAgo } from "@/layouts/library/cards";
+import { isDeliveryLane } from "@/layouts/task-board/config";
+import { useOrgFlag } from "@/hooks/use-organization-settings";
 
 type BoardStatus = keyof JiraIntegration["statusMapping"];
 type StatusMapping = JiraIntegration["statusMapping"];
@@ -93,9 +95,25 @@ const BOARD_STATUS_OPTIONS: Array<{
   { value: "todo", labelKey: "taskBoard.config.statusTodo" },
   { value: "in_progress", labelKey: "taskBoard.config.statusInProgress" },
   { value: "in_review", labelKey: "taskBoard.config.statusInReview" },
+  { value: "approved", labelKey: "taskBoard.config.statusApproved" },
+  { value: "merged", labelKey: "taskBoard.config.statusMerged" },
+  {
+    value: "post_deploy_validation",
+    labelKey: "taskBoard.config.statusPostDeployValidation",
+  },
   { value: "done", labelKey: "taskBoard.config.statusDone" },
   { value: "archived", labelKey: "taskBoard.config.statusArchived" },
 ];
+
+/** The lanes this org can map a Jira status onto — offering an unrun delivery
+ *  lane would route issues into a column the board never draws. */
+function boardStatusOptions(
+  deliveryEnabled: boolean,
+): typeof BOARD_STATUS_OPTIONS {
+  return deliveryEnabled
+    ? BOARD_STATUS_OPTIONS
+    : BOARD_STATUS_OPTIONS.filter((o) => !isDeliveryLane(o.value));
+}
 
 /** Radix Select forbids empty item values — sentinel for "not synced". */
 const DONT_SYNC = "__dont_sync__";
@@ -227,6 +245,7 @@ function ColumnMappingRows({ integration }: { integration: JiraIntegration }) {
   const t = useT();
   const upsert = useUpsertJiraIntegration();
   const columns = useJiraBoardColumns(integration.boardId);
+  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
 
   // Optimistic local copy so two quick edits don't race the save round-trip and stomp each other.
   const [mapping, setMapping] = useState(integration.statusMapping);
@@ -317,7 +336,7 @@ function ColumnMappingRows({ integration }: { integration: JiraIntegration }) {
               <SelectItem value={DONT_SYNC}>
                 {t("settings.jira.dontSync")}
               </SelectItem>
-              {BOARD_STATUS_OPTIONS.map((option) => (
+              {boardStatusOptions(deliveryEnabled).map((option) => (
                 <SelectItem key={option.value} value={option.value}>
                   {t(option.labelKey)}
                 </SelectItem>

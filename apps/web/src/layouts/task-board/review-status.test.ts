@@ -3,6 +3,7 @@ import type { TaskBoardActivity } from "@/hooks/use-task-board-activity";
 import {
   checksSummary,
   enabledReviewers,
+  laneCanShip,
   type ReviewerKind,
   reviewsSatisfiedForPromotion,
 } from "./review-status";
@@ -161,5 +162,27 @@ describe("checksSummary", () => {
     expect(
       checksSummary([rejected("qa"), approved("code_review")], only),
     ).toEqual({ passed: 1, total: 1, tone: "ok" });
+  });
+});
+
+describe("laneCanShip", () => {
+  it("offers the button from the two lanes the server accepts", () => {
+    expect(laneCanShip("in_review")).toBe(true);
+    // The server ships from Approved, so hiding the button there strands the card.
+    expect(laneCanShip("approved")).toBe(true);
+  });
+
+  it("hides it before review and after the ship", () => {
+    for (const lane of [
+      "triage",
+      "todo",
+      "in_progress",
+      "merged",
+      "post_deploy_validation",
+      "done",
+      "archived",
+    ]) {
+      expect(laneCanShip(lane)).toBe(false);
+    }
   });
 });

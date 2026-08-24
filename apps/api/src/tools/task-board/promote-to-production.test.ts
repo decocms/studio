@@ -42,4 +42,22 @@ describe("isReadyToShip", () => {
       ),
     ).toBe(true);
   });
+
+  // Refusing to ship from Approved would make the lane a dead end.
+  it("allows shipping from Approved", () => {
+    expect(isReadyToShip("approved", [], [])).toBe(true);
+    expect(
+      isReadyToShip(
+        "approved",
+        [approved("qa"), approved("code_review")],
+        ["qa", "code_review"],
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects an already-shipped task", () => {
+    expect(isReadyToShip("merged", [], [])).toBe(false);
+    expect(isReadyToShip("post_deploy_validation", [], [])).toBe(false);
+    expect(isReadyToShip("done", [], [])).toBe(false);
+  });
 });
