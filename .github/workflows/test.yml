@@ -158,8 +158,8 @@ jobs:
 
       - name: Run tests
         # The root command discovers the same filename-based unit tier and runs
-        # each file in an isolated Bun process. Integration, daemon E2E, and
-        # Playwright suites remain owned by their dedicated workflows.
+        # each file with Bun's per-file isolation. Integration, daemon E2E,
+        # and Playwright suites remain owned by their dedicated workflows.
         run: bun run test
 
   build:
