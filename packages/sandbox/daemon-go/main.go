@@ -1035,6 +1035,7 @@ func main() {
 		AppRoot: appRoot,
 		RepoDir: repoDir,
 		OnWorkingTreeWrite: func(path string) {
+			d.branchStatus.MarkUserTouched(path)
 			d.branchStatus.Refresh()
 			d.emitFileChanged(path)
 		},
