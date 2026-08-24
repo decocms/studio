@@ -22,7 +22,7 @@
   },
   "devDependencies": {
     "@decocms/sandbox": "workspace:*",
-    "@types/bun": "latest",
+    "@types/bun": "1.4.0",
     "ai": "^6.0.208",
     "typescript": "^7.0.2"
   }

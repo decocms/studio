@@ -1,6 +1,6 @@
 # Simplified Dockerfile - installs the locally-built decocms tarball (see below)
 # Uses debian-slim (not alpine) because @duckdb/node-bindings requires glibc
-FROM oven/bun:1-slim
+FROM oven/bun:1.4.0-slim
 
 # The package tarball is built once by CI (build-dist job) and dropped into the
 # build context as decocms.tgz. Installing that exact tarball keeps this image
@@ -8,7 +8,7 @@ FROM oven/bun:1-slim
 # round-trip (and propagation race) at image-build time.
 
 # Install runtime dependencies.
-# - ca-certificates: the oven/bun:1-slim base ships NO system CA bundle, but
+# - ca-certificates: the oven/bun:1.4.0-slim base ships NO system CA bundle, but
 #   DuckDB's native httpfs (OpenSSL) needs the OS trust store to verify TLS to
 #   storage.googleapis.com. Without it the GCS monitoring read fails with
 #   "Problem with the SSL CA cert (path? access rights?)". Bun/Node bundle their

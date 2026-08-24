@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { EventEmitter } from "node:events";
 import {
   createNoRedirectFetch,
   isPrivateUrl,
@@ -118,7 +119,11 @@ describe("withTimeout", () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
       expect(rejection).toBeUndefined();
     } finally {
-      process.off("unhandledRejection", onUnhandledRejection);
+      EventEmitter.prototype.off.call(
+        process,
+        "unhandledRejection",
+        onUnhandledRejection,
+      );
     }
   });
 

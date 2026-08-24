@@ -32,7 +32,7 @@
   "devDependencies": {
     "@nats-io/jetstream": "3.4.0",
     "@nats-io/nats-core": "3.4.0",
-    "@types/bun": "latest",
+    "@types/bun": "1.4.0",
     "typescript": "^7.0.2"
   }
 }

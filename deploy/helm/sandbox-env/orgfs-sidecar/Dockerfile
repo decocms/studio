@@ -5,7 +5,7 @@
 # Build context is the REPO ROOT (the bundle pulls TS from packages/):
 # docker build -f deploy/helm/sandbox-env/orgfs-sidecar/Dockerfile .
 
-FROM oven/bun:1.3.14-debian AS build
+FROM oven/bun:1.4.0-debian AS build
 WORKDIR /repo
 # Only the sidecar's import graph — no full workspace install.
 # @decocms/shared/std is a zero-dependency workspace export; a hand-made
@@ -17,7 +17,7 @@ RUN mkdir -p node_modules/@decocms \
   && bun build packages/sandbox/orgfs/sidecar-main.ts \
     --target bun --outfile /out/sidecar.js
 
-FROM oven/bun:1.3.14-debian
+FROM oven/bun:1.4.0-debian
 LABEL org.opencontainers.image.source="https://github.com/decocms/studio"
 # rclone does the FUSE mounting; user_allow_other lets the unprivileged main
 # container (different uid) read the mounts after propagation.

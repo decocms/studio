@@ -1,4 +1,4 @@
-FROM oven/bun:1-alpine
+FROM oven/bun:1.4.0-alpine
 
 WORKDIR /app
 COPY server.ts /app/server.ts

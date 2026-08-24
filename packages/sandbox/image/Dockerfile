@@ -24,7 +24,7 @@ COPY daemon-go/ ./
 RUN CGO_ENABLED=0 GOOS=linux GOARCH="${TARGETARCH}" \
       go build -trimpath -ldflags="-s -w" -o /out/daemon-go .
 
-FROM oven/bun:1.3.14-debian AS runtime-base
+FROM oven/bun:1.4.0-debian AS runtime-base
 
 ARG COREPACK_VERSION=0.35.0
 ARG DENO_VERSION=v1.46.3
