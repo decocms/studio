@@ -7,18 +7,13 @@ import {
   Loading02,
 } from "@untitledui/icons";
 import type { StudioToolOutput as ToolOutput } from "@decocms/shared/tools/tool-io";
-import {
-  DEFAULT_TAG_COLOR,
-  isReviewerThreadTitle,
-  REVIEWER_KINDS,
-  type ReviewerKind,
-} from "@decocms/shared/task-board";
+import { DEFAULT_TAG_COLOR } from "@decocms/shared/task-board";
+import { isResolvedRunFailure } from "@decocms/shared/entities";
 import { sprintRange, type SprintConfig } from "@decocms/shared/sprints";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 
 export {
   SUPER_AGENT_ASSIGNEE_ID,
-  isReviewerThreadTitle,
   nextTagColor,
 } from "@decocms/shared/task-board";
 
@@ -99,24 +94,20 @@ export function statusIconClassName(item: TaskBoardItem): string {
     : STATUS_CONFIG[item.status].iconClassName;
 }
 
-/** The thread to surface in the card — the most recent linked run. */
-export function primaryThread(
-  item: TaskBoardItem,
-): TaskBoardItemThread | undefined {
-  return item.threads[0];
-}
-
-/** The QA/code-review threads linked to this task, in `REVIEWER_KINDS` order —
- *  present only once that reviewer has actually run. */
-export function reviewerThreads(
-  item: TaskBoardItem,
-): { kind: ReviewerKind; thread: TaskBoardItemThread }[] {
-  return REVIEWER_KINDS.flatMap((kind) => {
-    const thread = item.threads.find((t) =>
-      isReviewerThreadTitle(t.title, kind),
-    );
-    return thread ? [{ kind, thread }] : [];
-  });
+/**
+ * Whether any agent on this task is working, or died trying — the whole of what
+ * a card says about run state, as a single dot.
+ *
+ * `"running"` wins over `"failed"` so a visibly working card never reads broken.
+ * A failure that is settled history (`isResolvedRunFailure`) returns null, else
+ * re-running a card would leave it permanently red.
+ */
+export function agentPulse(item: TaskBoardItem): "running" | "failed" | null {
+  if (item.threads.some((t) => t.status === "in_progress")) return "running";
+  const failed = item.threads.some(
+    (t) => t.status === "failed" && !isResolvedRunFailure(t.failureKind),
+  );
+  return failed ? "failed" : null;
 }
 
 /**
@@ -261,6 +252,27 @@ export const PRIORITY_CONFIG: Record<
     dotClassName: "bg-destructive",
   },
 };
+
+/**
+ * How soon a due date is, or null when it is far enough out that a card should
+ * not spend a line on it.
+ *
+ * A board card is a glance, and a date three weeks away answers a question
+ * nobody is asking while it is on screen; the list view and the dialog still
+ * show every date. `soon` deliberately includes today.
+ */
+export function dueDateUrgency(
+  iso: string,
+  now: number = Date.now(),
+): "overdue" | "soon" | null {
+  const due = new Date(iso).getTime();
+  if (Number.isNaN(due)) return null;
+  if (due < now) return "overdue";
+  return due - now <= DUE_SOON_DAYS * 86_400_000 ? "soon" : null;
+}
+
+/** How far ahead a due date still counts as worth a card's ink. */
+const DUE_SOON_DAYS = 3;
 
 /** A tag's dot color — arbitrary hex off `organization_tags.color`, hence an
  *  inline style rather than a Tailwind token. */

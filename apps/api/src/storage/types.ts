@@ -22,6 +22,7 @@ import type {
   UserModelPreferences,
 } from "@decocms/shared/organization/schema";
 import type { ThreadMetadata } from "@decocms/shared/entities";
+import type { ReviewerKind } from "@decocms/shared/task-board";
 import type { PrivateRegistryDatabase } from "./registry/types";
 
 export type {
@@ -1792,6 +1793,24 @@ export interface TaskBoardItemPrRef {
   createdAt: string;
 }
 
+/**
+ * One reviewer's standing verdict, within the task's CURRENT review cycle.
+ * Verdicts from before it last entered In Review are stale and not reported;
+ * absent from the array = that reviewer has not decided yet.
+ *
+ * A reviewer thread that reads `completed` may well have asked for changes, so
+ * thread status cannot stand in for this.
+ */
+export interface TaskBoardItemReviewVerdict {
+  reviewer: ReviewerKind;
+  verdict: "approved" | "changes_requested";
+  /** Whether the approval was token-verified. An unverified approval still
+   *  counts as an approval, but it can never satisfy the auto-merge gate — see
+   *  `approvedButUnverified`, which is why the flag travels with the verdict
+   *  rather than being collapsed into it. Always false for a change-request. */
+  verified: boolean;
+}
+
 /** A thread linked to a task, with the run state the board needs to render it. */
 export interface TaskBoardItemThreadRef {
   threadId: string;
@@ -1859,6 +1878,9 @@ export interface TaskBoardItem {
   threads: TaskBoardItemThreadRef[];
   /** Org tags attached to this task, name ascending. */
   tags: TaskBoardItemTagRef[];
+  /** Each reviewer's standing verdict in the current review cycle, in
+   *  `REVIEWER_KINDS` order. Reviewers that have not decided are absent. */
+  reviewVerdicts: TaskBoardItemReviewVerdict[];
   createdBy: string;
   createdAt: string;
   updatedBy: string;

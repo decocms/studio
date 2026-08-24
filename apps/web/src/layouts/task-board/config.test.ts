@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import {
+  agentPulse,
+  dueDateUrgency,
   formatSprintDates,
   insertSortOrder,
   isTaskHandedToHuman,
@@ -28,6 +30,7 @@ function item(id: string, sortOrder: number): TaskBoardItem {
     retryAttempts: 0,
     threads: [],
     tags: [],
+    reviewVerdicts: [],
     createdBy: "user-1",
     createdAt: new Date().toISOString(),
     updatedBy: "user-1",
@@ -164,5 +167,79 @@ describe("visibleSprint", () => {
   test("a backlog card has nothing to show either way", () => {
     expect(visibleSprint(null, true)).toBe(null);
     expect(visibleSprint(null, false)).toBe(null);
+  });
+});
+
+/**
+ * The card's one dot of run state. It exists because the card no longer has an
+ * agent footer, and a card whose run died must not look like a card that is
+ * simply idle.
+ */
+describe("agentPulse", () => {
+  const withThreads = (
+    threads: { status: string; failureKind?: string | null }[],
+  ) => ({ ...item("a", 0), threads }) as unknown as TaskBoardItem;
+
+  test("no threads, nothing to say", () => {
+    expect(agentPulse(item("a", 0))).toBeNull();
+  });
+
+  test("a completed run is not a pulse", () => {
+    expect(agentPulse(withThreads([{ status: "completed" }]))).toBeNull();
+  });
+
+  test("an in-progress run is running", () => {
+    expect(agentPulse(withThreads([{ status: "in_progress" }]))).toBe(
+      "running",
+    );
+  });
+
+  test("an unresolved failure is failed", () => {
+    expect(
+      agentPulse(withThreads([{ status: "failed", failureKind: null }])),
+    ).toBe("failed");
+  });
+
+  test("a live run outranks an earlier attempt's error", () => {
+    expect(
+      agentPulse(
+        withThreads([
+          { status: "failed", failureKind: null },
+          { status: "in_progress" },
+        ]),
+      ),
+    ).toBe("running");
+  });
+
+  test("a failure that is settled history is not the task's failure", () => {
+    for (const failureKind of ["superseded", "ended_after_delivery"]) {
+      expect(agentPulse(withThreads([{ status: "failed", failureKind }]))).toBe(
+        null,
+      );
+    }
+  });
+});
+
+describe("dueDateUrgency", () => {
+  const now = Date.parse("2026-03-10T12:00:00.000Z");
+  const at = (iso: string) => dueDateUrgency(iso, now);
+
+  test("a date in the past is overdue", () => {
+    expect(at("2026-03-10T11:59:00.000Z")).toBe("overdue");
+    expect(at("2026-01-01T00:00:00.000Z")).toBe("overdue");
+  });
+
+  test("within three days is soon", () => {
+    expect(at("2026-03-10T18:00:00.000Z")).toBe("soon");
+    expect(at("2026-03-13T11:00:00.000Z")).toBe("soon");
+  });
+
+  test("further out earns no ink on a card", () => {
+    expect(at("2026-03-13T13:00:00.000Z")).toBeNull();
+    expect(at("2026-09-01T00:00:00.000Z")).toBeNull();
+  });
+
+  test("an unparseable date is not urgent", () => {
+    expect(at("not a date")).toBeNull();
   });
 });

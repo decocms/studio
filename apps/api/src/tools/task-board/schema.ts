@@ -47,6 +47,24 @@ const TaskBoardItemThreadSchema = z.object({
   lastActiveAt: z.string(),
 });
 
+/**
+ * One reviewer's standing verdict in the task's CURRENT review cycle — what the
+ * board card's `1/2` checks indicator counts. Verdicts recorded before the task
+ * last entered In Review are stale and never reported; a reviewer that has not
+ * decided yet is simply absent from the array.
+ *
+ * A reviewer's THREAD status can't stand in for this: a review run that reads
+ * `completed` may well have asked for changes.
+ */
+const TaskBoardItemReviewVerdictSchema = z.object({
+  reviewer: z.enum(["qa", "code_review"]),
+  verdict: z.enum(["approved", "changes_requested"]),
+  /** Whether the approval was token-verified. An unverified approval counts as
+   *  an approval but can never satisfy the auto-merge gate, so it must not
+   *  render as a clean pass — see `approvedButUnverified`. */
+  verified: z.boolean(),
+});
+
 /** A tag attached to a task, plus who attached it and when. */
 const TaskBoardItemTagSchema = z.object({
   id: z.string(),
@@ -127,6 +145,11 @@ export const TaskBoardItemSchema = z.object({
   threads: z.array(TaskBoardItemThreadSchema),
   // Org tags attached to this task, name ascending.
   tags: z.array(TaskBoardItemTagSchema),
+  /** Each reviewer's standing verdict in the current review cycle, in
+   *  `REVIEWER_KINDS` order; undecided reviewers are absent. Present on every
+   *  `TaskBoardItem`, so — like `retryAttempts` above — it MUST be modeled here
+   *  or Ajv-revalidating MCP clients reject every response with `-32602`. */
+  reviewVerdicts: z.array(TaskBoardItemReviewVerdictSchema),
   createdBy: z.string(),
   createdAt: z.string().datetime(),
   updatedBy: z.string(),

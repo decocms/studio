@@ -35,6 +35,7 @@ import { useT } from "@/i18n/use-t.ts";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import {
   Calendar,
+  CheckCircle,
   ChevronRight,
   Columns03,
   DotsHorizontal,
@@ -64,8 +65,6 @@ import {
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
-import { QaAgentIcon } from "@/components/qa-agent-icon";
-import { CodeReviewerIcon } from "@/components/code-reviewer-icon";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import {
   Dialog,
@@ -93,13 +92,12 @@ import {
 } from "@/hooks/use-task-board-items";
 import { formatTimeAgo } from "@/lib/format-time";
 import {
+  agentPulse,
+  dueDateUrgency,
   insertSortOrder,
-  isReviewerThreadTitle,
   isTaskBlocked,
   isTaskHandedToHuman,
   HIDDEN_STATUSES,
-  primaryThread,
-  reviewerThreads,
   PRIORITIES,
   PRIORITY_CONFIG,
   runSortOrders,
@@ -112,25 +110,24 @@ import {
   type TaskBoardItemPriority,
   type TaskBoardItemStatus,
   type TaskBoardItemTag,
-  type TaskBoardItemThread,
   visibleSprint,
   type Member,
 } from "./config";
 import { useTags } from "@/hooks/use-tags";
-import { useSprintConfig } from "@/hooks/use-organization-settings";
+import { useOrgFlag, useSprintConfig } from "@/hooks/use-organization-settings";
 import { sprintOptions } from "@decocms/shared/sprints";
 import { usePreferences } from "@/hooks/use-preferences";
-import {
-  TaskBoardItemDialog,
-  threadStatusStyle,
-  toEndOfDayIso,
-} from "./task-dialog";
+import { TaskBoardItemDialog, toEndOfDayIso } from "./task-dialog";
 import { AssigneePickerContent } from "./assignee-picker";
 import { SubscriptionPaywallDialog } from "./subscription-paywall-dialog";
 import { RerunDialog } from "./rerun-dialog";
 import { subscriptionErrorKind } from "@/components/task-board/is-subscription-error";
 import { isReportsTask, type ReviewerKind } from "@decocms/shared/task-board";
-import { isResolvedRunFailure } from "@decocms/shared/entities";
+import {
+  type ChecksSummary,
+  checksSummary,
+  enabledReviewers,
+} from "./review-status";
 import { useFlipLanes } from "./use-flip-lanes";
 import { Calendar as DayPickerCalendar } from "@decocms/ui/components/calendar.tsx";
 import { buildTaskChatContext } from "./build-task-chat-context";
@@ -173,6 +170,17 @@ function formatDueDate(iso: string): { label: string; overdue: boolean } {
 const PILL =
   "inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground";
 
+/**
+ * The same chip stripped of its chrome, for board cards. A lane of cards each
+ * carrying four outlined boxes reads as clutter long before the words do; the
+ * border is what has to go, not the meta.
+ */
+const FLAT = "inline-flex items-center gap-1 text-xs text-muted-foreground";
+
+/** Tags a card shows before collapsing the rest into `+N`. Matches the list
+ *  view's existing cap; the full set is in the task dialog. */
+const CARD_TAG_LIMIT = 2;
+
 /** Card flag for a task whose agent is paused waiting on human input. */
 function BlockedBadge() {
   const t = useT();
@@ -200,19 +208,38 @@ function HandedToHumanBadge() {
   );
 }
 
-function PriorityPill({ priority }: { priority: TaskBoardItemPriority }) {
+function PriorityPill({
+  priority,
+  flat,
+}: {
+  priority: TaskBoardItemPriority;
+  flat?: boolean;
+}) {
   const t = useT();
   const config = PRIORITY_CONFIG[priority];
+  const label = t(config.labelKey);
+  // On a card, "Medium" is on nearly every row — the dot already says it.
+  const showLabel = !flat || priority === "high" || priority === "urgent";
   return (
-    <span className={PILL}>
-      <span className={cn("size-2 rounded-full", config.dotClassName)} />
-      {t(config.labelKey)}
+    <span className={cn(flat ? FLAT : PILL)} title={label}>
+      <span
+        className={cn("size-2 shrink-0 rounded-full", config.dotClassName)}
+      />
+      {showLabel && label}
     </span>
   );
 }
 
-function DueDatePill({ iso }: { iso: string }) {
+function DueDatePill({ iso, flat }: { iso: string; flat?: boolean }) {
   const { label, overdue } = formatDueDate(iso);
+  if (flat) {
+    return (
+      <span className={cn(FLAT, overdue ? "text-destructive" : "text-warning")}>
+        <Calendar size={12} />
+        {label}
+      </span>
+    );
+  }
   return (
     <span
       className={cn(PILL, overdue && "border-destructive/30 text-destructive")}
@@ -232,21 +259,21 @@ function useSprintsEnabled(): boolean {
 }
 
 /** Which sprint a card is planned into. Gated by {@link visibleSprint}. */
-function SprintPill({ sprint }: { sprint: number }) {
+function SprintPill({ sprint, flat }: { sprint: number; flat?: boolean }) {
   const t = useT();
   return (
-    <span className={PILL}>
-      <Repeat04 size={14} />
+    <span className={cn(flat ? FLAT : PILL)}>
+      <Repeat04 size={flat ? 12 : 14} />
       {t("taskBoard.taskBoard.sprintPill", { number: String(sprint) })}
     </span>
   );
 }
 
-function TagPill({ tag }: { tag: TaskBoardItemTag }) {
+function TagPill({ tag, flat }: { tag: TaskBoardItemTag; flat?: boolean }) {
   return (
-    <span className={PILL}>
+    <span className={cn(flat ? FLAT : PILL)}>
       <span
-        className="size-2 rounded-full"
+        className="size-2 shrink-0 rounded-full"
         style={{ backgroundColor: tagDotColor(tag.color) }}
       />
       {tag.name}
@@ -255,10 +282,117 @@ function TagPill({ tag }: { tag: TaskBoardItemTag }) {
 }
 
 /**
+ * How far a card is through review, as one glyph: `1/2`.
+ *
+ * Replaces a footer row that named whichever agent thread ranked highest and
+ * echoed its prose — which agent that was depended on run ordering, so a lane
+ * headlined three different agents and none of them compared.
+ *
+ * Per-reviewer detail lives in the `title`: a card is already a button, so a
+ * hover card here would nest interactive elements.
+ */
+function ChecksChip({
+  summary,
+  verdicts,
+  enabled,
+}: {
+  summary: ChecksSummary;
+  verdicts: TaskBoardItem["reviewVerdicts"];
+  enabled: ReviewerKind[];
+}) {
+  const t = useT();
+  const detail = enabled
+    .map((kind) => {
+      const verdict = verdicts.find((v) => v.reviewer === kind);
+      const name = t(
+        kind === "qa"
+          ? "taskBoard.taskDialog.qaAgentLabel"
+          : "taskBoard.taskDialog.codeReviewerLabel",
+      );
+      if (!verdict) return `${name}: ${t("taskBoard.taskBoard.checksPending")}`;
+      if (verdict.verdict === "changes_requested") {
+        return `${name}: ${t("taskBoard.taskBoard.checksChangesRequested")}`;
+      }
+      return `${name}: ${t(
+        verdict.verified
+          ? "taskBoard.taskBoard.checksApproved"
+          : "taskBoard.taskBoard.checksUnverified",
+      )}`;
+    })
+    .join(" · ");
+
+  return (
+    <span
+      className={cn(
+        "mt-px flex shrink-0 items-center gap-1 text-xs font-medium tabular-nums",
+        summary.tone === "ok" && "text-success",
+        summary.tone === "pending" && "text-warning",
+        summary.tone === "danger" && "text-destructive",
+      )}
+      title={detail}
+      aria-label={t("taskBoard.taskBoard.checksLabel", {
+        passed: String(summary.passed),
+        total: String(summary.total),
+      })}
+    >
+      <CheckCircle size={12} />
+      {summary.passed}/{summary.total}
+    </span>
+  );
+}
+
+/**
+ * Run state as a single dot: an agent is working, or one died. Small as it is,
+ * the footer this card no longer has was the only place a failed run surfaced.
+ */
+function AgentPulseDot({ state }: { state: "running" | "failed" }) {
+  const t = useT();
+  const label = t(
+    state === "running"
+      ? "taskBoard.taskBoard.agentRunning"
+      : "taskBoard.taskBoard.agentFailed",
+  );
+  return (
+    <span className="mt-1.5 flex shrink-0 items-center" title={label}>
+      <span
+        className={cn(
+          "size-1.5 rounded-full",
+          state === "running" ? "animate-pulse bg-primary" : "bg-destructive",
+        )}
+      />
+      <span className="sr-only">{label}</span>
+    </span>
+  );
+}
+
+/**
+ * The card's checks indicator, or null when there is nothing to say: this org
+ * runs no reviewers, or the task has not reached review yet (a To Do card with
+ * `0/2` would be reporting a failure that hasn't had a chance to happen).
+ */
+function useCardChecks(item: TaskBoardItem): {
+  summary: ChecksSummary;
+  enabled: ReviewerKind[];
+} | null {
+  const enabled = enabledReviewers({
+    qa: useOrgFlag("qa_agent_enabled"),
+    codeReview: useOrgFlag("code_reviewer_enabled"),
+  });
+  if (item.reviewVerdicts.length === 0 && item.status !== "in_review") {
+    return null;
+  }
+  const summary = checksSummary(item.reviewVerdicts, enabled);
+  return summary ? { summary, enabled } : null;
+}
+
+/**
  * Assignee glyph for a card/row. For a Super Agent task it renders the
  * delegation as overlapping avatars — the assigner's avatar eclipsed by the
  * Super Agent capybara — so it's clear a human handed the task off. Otherwise a
  * plain member avatar.
+ *
+ * `showDelegation` is off on board cards — repeated down a lane the capybara says
+ * nothing the pulse dot and checks don't. A list row has no lane, so it keeps it.
  */
 function AssigneeDisplay({
   item,
@@ -266,28 +400,37 @@ function AssigneeDisplay({
   assignedBy,
   members,
   onAssign,
+  showDelegation = true,
 }: {
   item: TaskBoardItem;
   assignee?: Member;
   assignedBy?: Member;
   members?: Member[];
   onAssign?: (userId: string | null) => void;
+  showDelegation?: boolean;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
 
   if (item.assigneeId === SUPER_AGENT_ASSIGNEE_ID) {
+    const title = assignedBy?.user?.name
+      ? t("taskBoard.taskBoard.assignedToSuperAgentBy", {
+          name: assignedBy.user.name,
+        })
+      : t("taskBoard.taskBoard.assignedToSuperAgent");
+    if (!showDelegation) {
+      return assignedBy ? (
+        <Avatar
+          url={assignedBy.user?.image ?? undefined}
+          fallback={getInitials(assignedBy.user?.name)}
+          shape="circle"
+          size="xs"
+          title={title}
+        />
+      ) : null;
+    }
     return (
-      <span
-        className="inline-flex items-center"
-        title={
-          assignedBy?.user?.name
-            ? t("taskBoard.taskBoard.assignedToSuperAgentBy", {
-                name: assignedBy.user.name,
-              })
-            : t("taskBoard.taskBoard.assignedToSuperAgent")
-        }
-      >
+      <span className="inline-flex items-center" title={title}>
         {assignedBy && (
           <Avatar
             url={assignedBy.user?.image ?? undefined}
@@ -1976,18 +2119,12 @@ function TaskCard({
   onAssign?: (userId: string | null) => void;
 }) {
   const t = useT();
-  const StatusIcon = STATUS_CONFIG[item.status].icon;
   const sprint = visibleSprint(item.sprint, useSprintsEnabled());
-  // The Super Agent's own thread, not one of its reviewers' — falls back to
-  // the most recent thread overall so a card still shows something before the
-  // reviewer/main distinction exists (e.g. mid-migration data).
-  const mainThread =
-    item.threads.find(
-      (thr) =>
-        !isReviewerThreadTitle(thr.title, "qa") &&
-        !isReviewerThreadTitle(thr.title, "code_review"),
-    ) ?? primaryThread(item);
-  const reviewThreads = reviewerThreads(item);
+  const checks = useCardChecks(item);
+  const pulse = agentPulse(item);
+  // A state of the card, not a label on it — hence the colour, not a chip.
+  const blocked = isTaskBlocked(item);
+  const dueUrgency = item.dueDate ? dueDateUrgency(item.dueDate) : null;
 
   const showAutoFix =
     onAutoFix &&
@@ -2021,46 +2158,64 @@ function TaskCard({
         else onOpen();
       }}
       className={cn(
-        "group relative flex shrink-0 cursor-grab flex-col gap-2 rounded-xl bg-card px-3 py-2.5 text-left card-shadow hover:bg-accent/60 active:cursor-grabbing",
+        "group relative flex shrink-0 cursor-grab flex-col gap-2 rounded-xl px-3 py-2.5 text-left card-shadow active:cursor-grabbing",
+        blocked
+          ? "bg-destructive/10 hover:bg-destructive/15"
+          : "bg-card hover:bg-accent/60",
         selected && "bg-accent",
         className,
       )}
-      title={item.title}
+      title={
+        blocked
+          ? `${item.title} — ${t("taskBoard.taskBoard.blockedBadgeTitle")}`
+          : item.title
+      }
     >
       <div className="flex items-start gap-2">
-        <StatusIcon
-          size={16}
-          className={cn("mt-px shrink-0", statusIconClassName(item))}
-        />
         <span className="min-w-0 flex-1 text-sm font-medium leading-snug text-foreground line-clamp-2">
           {item.title}
         </span>
+        {blocked && (
+          <span className="sr-only">{t("taskBoard.taskBoard.needsInput")}</span>
+        )}
+        {pulse && <AgentPulseDot state={pulse} />}
+        {checks && (
+          <ChecksChip
+            summary={checks.summary}
+            verdicts={item.reviewVerdicts}
+            enabled={checks.enabled}
+          />
+        )}
         <AssigneeDisplay
           item={item}
           assignee={assignee}
           assignedBy={assignedBy}
           members={members}
           onAssign={onAssign}
+          showDelegation={false}
         />
       </div>
 
-      {(isTaskBlocked(item) ||
-        isTaskHandedToHuman(item) ||
+      {(isTaskHandedToHuman(item) ||
         item.priority !== "none" ||
-        Boolean(item.dueDate) ||
+        dueUrgency != null ||
         sprint != null ||
         item.tags.length > 0) && (
-        <div className="flex flex-wrap items-center gap-1.5 pl-6">
-          {isTaskBlocked(item) && <BlockedBadge />}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           {isTaskHandedToHuman(item) && <HandedToHumanBadge />}
           {item.priority !== "none" && (
-            <PriorityPill priority={item.priority} />
+            <PriorityPill priority={item.priority} flat />
           )}
-          {item.dueDate && <DueDatePill iso={item.dueDate} />}
-          {sprint != null && <SprintPill sprint={sprint} />}
-          {item.tags.map((tag) => (
-            <TagPill key={tag.id} tag={tag} />
+          {item.dueDate && dueUrgency != null && (
+            <DueDatePill iso={item.dueDate} flat />
+          )}
+          {sprint != null && <SprintPill sprint={sprint} flat />}
+          {item.tags.slice(0, CARD_TAG_LIMIT).map((tag) => (
+            <TagPill key={tag.id} tag={tag} flat />
           ))}
+          {item.tags.length > CARD_TAG_LIMIT && (
+            <span className={FLAT}>+{item.tags.length - CARD_TAG_LIMIT}</span>
+          )}
         </div>
       )}
 
@@ -2095,136 +2250,7 @@ function TaskCard({
           {t("taskBoard.taskBoard.rerun")}
         </button>
       )}
-
-      {mainThread && (
-        <AgentReviewFooter
-          mainThread={mainThread}
-          reviewThreads={reviewThreads}
-        />
-      )}
     </button>
-  );
-}
-
-/** An agent thread paired with its glyph kind and display name, for the card footer. */
-type FooterAgent = {
-  kind: "main" | ReviewerKind;
-  name: string;
-  thread: TaskBoardItemThread;
-};
-
-/** Rank for picking which agent's row the card footer shows — lower wins. A
- *  running/awaiting-input agent is always the most important thing on the
- *  card; once nothing is running, a failure the user can act on is; a clean run
- *  outranks a settled failure (a superseded attempt, or a run that died after
- *  delivering — see `isResolvedRunFailure`), which is history and must not paint
- *  the card red; otherwise the most recently run agent wins. */
-function statusPriority(thread: TaskBoardItemThread): number {
-  if (thread.status === "in_progress" || thread.status === "requires_action") {
-    return 0;
-  }
-  if (thread.status === "failed") {
-    return isResolvedRunFailure(thread.failureKind) ? 3 : 1;
-  }
-  return 2;
-}
-
-/**
- * The card footer shows a single row for whichever agent thread — the Super
- * Agent's own run, or a QA/code-review thread — matters most right now:
- * something running or awaiting input beats everything else, an error beats
- * a clean run, and among equals the most recently run agent wins. Stacking
- * all three threads (one row each, or a row plus a collapsed icon strip)
- * cost more space than it was worth for a card whose job is a quick glance —
- * full activity detail already lives one click away in the task dialog.
- */
-function AgentReviewFooter({
-  mainThread,
-  reviewThreads,
-}: {
-  mainThread: TaskBoardItemThread;
-  reviewThreads: { kind: ReviewerKind; thread: TaskBoardItemThread }[];
-}) {
-  const t = useT();
-  const agents: FooterAgent[] = [
-    {
-      kind: "main",
-      name: t("taskBoard.taskDialog.superAgentDefaultName"),
-      thread: mainThread,
-    },
-    ...reviewThreads.map(({ kind, thread }) => ({
-      kind,
-      name: t(
-        kind === "qa"
-          ? "taskBoard.taskDialog.qaAgentLabel"
-          : "taskBoard.taskDialog.codeReviewerLabel",
-      ),
-      thread,
-    })),
-  ];
-  const featuredAgent = agents.reduce((best, agent) => {
-    const rank = statusPriority(agent.thread);
-    const bestRank = statusPriority(best.thread);
-    if (rank !== bestRank) return rank < bestRank ? agent : best;
-    return agent.thread.createdAt > best.thread.createdAt ? agent : best;
-  });
-
-  return (
-    <div className="-mx-3 flex flex-col gap-1.5 border-t border-border px-3 pt-3">
-      <AgentThreadFooterRow {...featuredAgent} />
-    </div>
-  );
-}
-
-/** An agent's glyph — the Super Agent capybara, or the QA/Code Reviewer badge. */
-function AgentGlyph({
-  kind,
-  size,
-  className,
-}: {
-  kind: FooterAgent["kind"];
-  size: number;
-  className?: string;
-}) {
-  if (kind === "qa") return <QaAgentIcon size={size} className={className} />;
-  if (kind === "code_review") {
-    return <CodeReviewerIcon size={size} className={className} />;
-  }
-  return <SuperAgentIcon size={size} className={className} />;
-}
-
-/**
- * One agent's row in the card footer, all on a single truncated line: glyph,
- * name, its live status — e.g. the red "Error" state — then a preview of the
- * thread's last message. A condensed version of `ThreadActivityItem`'s status
- * row in the task dialog.
- */
-function AgentThreadFooterRow({ kind, name, thread }: FooterAgent) {
-  const t = useT();
-  const state = thread.status
-    ? threadStatusStyle({ ...thread, status: thread.status }, t)
-    : null;
-
-  return (
-    <div className="flex items-center gap-1.5">
-      <AgentGlyph kind={kind} size={16} />
-      <span className="shrink-0 text-xs font-medium text-foreground">
-        {name}
-      </span>
-      {state && (
-        <span
-          className={cn("flex shrink-0 items-center gap-1", state.className)}
-        >
-          <state.icon size={12} className={cn(state.spin && "animate-spin")} />
-          <span className="text-xs">{state.label}</span>
-        </span>
-      )}
-      {thread.lastMessage && (
-        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-          {thread.lastMessage}
-        </span>
-      )}
-    </div>
   );
 }
 

@@ -15,6 +15,13 @@ export const taskBoard = {
   "taskBoard.taskBoard.assignedToSuperAgent": "Atribuído ao Super Agent",
   "taskBoard.taskBoard.assignedToSuperAgentBy":
     "Atribuído ao Super Agent por {name}",
+  "taskBoard.taskBoard.agentFailed": "A execução do agente nesta tarefa falhou",
+  "taskBoard.taskBoard.agentRunning": "Um agente está trabalhando nesta tarefa",
+  "taskBoard.taskBoard.checksApproved": "aprovado",
+  "taskBoard.taskBoard.checksChangesRequested": "mudanças solicitadas",
+  "taskBoard.taskBoard.checksLabel": "{passed} de {total} revisões aprovadas",
+  "taskBoard.taskBoard.checksPending": "ainda não revisado",
+  "taskBoard.taskBoard.checksUnverified": "aprovado (não verificado)",
   "taskBoard.taskBoard.autoFix": "Auto-correção",
   "taskBoard.taskBoard.rerun": "Executar de novo",
   "taskBoard.taskBoard.blockedBadgeTitle":

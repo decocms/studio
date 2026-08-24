@@ -1273,7 +1273,7 @@ export function TaskBoardItemDialog({
  * is not an error the user can act on, and painting it red is what made a card
  * the reviewers approved look broken.
  */
-export function threadStatusStyle(
+function threadStatusStyle(
   thread: {
     status: NonNullable<TaskBoardItemThread["status"]>;
     failureKind?: string | null;

@@ -168,6 +168,14 @@ export interface TaskBoardItem {
   retryAttempts: number;
   threads: TaskBoardItemThreadRef[];
   tags: TaskBoardItemTagRef[];
+  /** Each reviewer's standing verdict in the current review cycle; reviewers
+   *  that have not decided are absent. Mirrors `TaskBoardItemReviewVerdict` in
+   *  `apps/api/src/storage/types.ts`. */
+  reviewVerdicts: {
+    reviewer: "qa" | "code_review";
+    verdict: "approved" | "changes_requested";
+    verified: boolean;
+  }[];
   createdBy: string;
   createdAt: string;
   updatedBy: string;

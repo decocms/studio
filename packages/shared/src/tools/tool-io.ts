@@ -349,6 +349,11 @@ export interface StudioToolIO {
           createdBy: string;
           createdAt: string;
         }[];
+        reviewVerdicts: {
+          reviewer: "qa" | "code_review";
+          verdict: "approved" | "changes_requested";
+          verified: boolean;
+        }[];
         createdBy: string;
         createdAt: string;
         updatedBy: string;
@@ -406,6 +411,11 @@ export interface StudioToolIO {
           color: string | null;
           createdBy: string;
           createdAt: string;
+        }[];
+        reviewVerdicts: {
+          reviewer: "qa" | "code_review";
+          verdict: "approved" | "changes_requested";
+          verified: boolean;
         }[];
         createdBy: string;
         createdAt: string;
@@ -486,6 +496,11 @@ export interface StudioToolIO {
           color: string | null;
           createdBy: string;
           createdAt: string;
+        }[];
+        reviewVerdicts: {
+          reviewer: "qa" | "code_review";
+          verdict: "approved" | "changes_requested";
+          verified: boolean;
         }[];
         createdBy: string;
         createdAt: string;
