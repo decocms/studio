@@ -18,6 +18,7 @@ import { ContextFactory } from "../../core/context-factory";
 import type { StudioContext } from "../../core/studio-context";
 import { auth } from "../../auth";
 import { retry, RetryError } from "@decocms/shared/std";
+import { guardAgainstPrivateUrl } from "@/tools/registry/discover-tools";
 import {
   authorizationServerMetadataUrls,
   buildPathPrefix,
@@ -707,6 +708,15 @@ async function fetchMetadataWithRetry(
 export async function fetchAuthorizationServerMetadata(
   authServerUrl: string,
 ): Promise<Response> {
+  // Origin-controlled (via authorization_servers[0]), not the connection's own vetted URL — guard against private/internal targets.
+  const guardError = await guardAgainstPrivateUrl(authServerUrl);
+  if (guardError) {
+    return new Response(JSON.stringify({ error: guardError }), {
+      status: 502,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   // URL formats (OAuth 2.0 / OIDC, with/without path component) per RFC 8414
   // are built in oauth-proxy-metadata.ts; here we just probe them in order.
   const urlsToTry = authorizationServerMetadataUrls(authServerUrl);
