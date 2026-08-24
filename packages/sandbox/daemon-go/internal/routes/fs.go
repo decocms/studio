@@ -561,6 +561,14 @@ func Grep(deps FsDeps) http.HandlerFunc {
 			}
 			lines = append(lines, line)
 		}
+		if reader.Err() != nil && !truncated {
+			// A line over the scanner's buffer cap (e.g. a minified/lockfile
+			// match) leaves rg still writing to a pipe nobody drains; without
+			// killing it here, cmd.Wait() below blocks forever once the pipe
+			// buffer fills, hanging the request and the daemon's health probe.
+			truncated = true
+			cmd.Process.Kill()
+		}
 		err = cmd.Wait()
 		code := 0
 		if err != nil {
