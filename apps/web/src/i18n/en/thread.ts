@@ -117,7 +117,7 @@ export const thread = {
     "Squash-merge PR #{prNumber} into {base}",
   "thread.headerActions.startingApp": "Starting app…",
   "thread.headerActions.startingAppTooltip":
-    "Starting the dev server — nothing to review or publish yet",
+    "Starting the dev server — no committed work to review or publish yet",
   "thread.headerActions.startingSandbox": "Preparing sandbox…",
   "thread.headerActions.submitForReview": "Submit for review",
   "thread.headerActions.switchingTo": "Switching to {branch}…",
