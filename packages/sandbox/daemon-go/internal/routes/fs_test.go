@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // seedBlocks lays a repo with two `.deco/blocks/*.json` sources but NO merged
@@ -94,6 +95,49 @@ func TestGrepCapsCallerSuppliedLimit(t *testing.T) {
 	}
 	if out.MatchCount > grepMaxResultLimit {
 		t.Fatalf("expected matchCount capped at %d, got %d", grepMaxResultLimit, out.MatchCount)
+	}
+}
+
+// A match line longer than the scanner's 4MB buffer used to hang the request
+// forever: Scan() gave up on the oversized line but rg kept writing to a pipe
+// nobody was draining, so cmd.Wait() blocked once the pipe buffer filled.
+func TestGrepOversizedLineDoesNotHang(t *testing.T) {
+	if _, err := exec.LookPath("rg"); err != nil {
+		t.Skip("ripgrep not installed")
+	}
+	repoDir := t.TempDir()
+	var content strings.Builder
+	content.WriteString("needle ")
+	for content.Len() < 5*1024*1024 {
+		content.WriteString("padding ")
+	}
+	content.WriteString("\n")
+	for i := 0; i < 2000; i++ {
+		content.WriteString("needle\n")
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "haystack.txt"), []byte(content.String()), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	deps := FsDeps{AppRoot: repoDir, RepoDir: repoDir}
+	body, _ := json.Marshal(map[string]any{
+		"pattern":     "needle",
+		"output_mode": "content",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/grep", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	done := make(chan struct{})
+	go func() {
+		Grep(deps)(rec, req)
+		close(done)
+	}()
+	select {
+	case <-done:
+		if rec.Code != 200 {
+			t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Grep hung on an oversized match line")
 	}
 }
 
