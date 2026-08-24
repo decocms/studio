@@ -3,6 +3,7 @@ import {
   MissingOrganizationSlugError,
   mcpEndpointUrl,
   orgMcpServers,
+  runKeyPermissions,
 } from "./mint-endpoint";
 
 const publicUrl = "https://studio.example.com";
@@ -141,5 +142,29 @@ describe("orgMcpServers", () => {
     expect(servers([{ id: "a/b", title: "x" }])[0]?.url).toBe(
       "https://studio.example.com/api/acme/mcp/a%2Fb",
     );
+  });
+});
+
+describe("runKeyPermissions", () => {
+  const permissions = (connectionIds: string[]) =>
+    runKeyPermissions({ toolNames: ["TASK_BOARD_ITEM_UPDATE"], connectionIds });
+
+  it("names every mounted connection as its own resource", () => {
+    // The regression this pins: a proxied call is authorized as
+    // `{ <connectionId>: [<toolName>] }`, so a key that names only `self`
+    // denies every org-MCP tool the run has.
+    expect(permissions(["conn_1", "conn_2"])).toEqual({
+      self: ["TASK_BOARD_ITEM_UPDATE"],
+      conn_1: ["*"],
+      conn_2: ["*"],
+    });
+  });
+
+  it("grants no wildcard resource — the key is not full access", () => {
+    expect(permissions(["conn_1"])["*"]).toBeUndefined();
+  });
+
+  it("is just the tool scope when the run mounts no connections", () => {
+    expect(permissions([])).toEqual({ self: ["TASK_BOARD_ITEM_UPDATE"] });
   });
 });

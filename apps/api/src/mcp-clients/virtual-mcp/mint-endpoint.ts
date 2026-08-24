@@ -187,3 +187,26 @@ function sanitizeServerName(raw: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
+
+/**
+ * The allowlist for a run's key: the tools its own Studio surface exposes,
+ * under `self`, plus one entry per connection it mounts.
+ *
+ * Both halves are load-bearing and the connection half was missed once, which
+ * denied every org-MCP call a run made (`Access denied to: VTEX_LIST_BRANDS`).
+ * A proxied tool call is authorized as `{ <connectionId>: [<toolName>] }` — the
+ * connection is the RESOURCE, not the tool — so a key that names only `self`
+ * can call nothing on any connection. Pure, so that stays pinned.
+ */
+export function runKeyPermissions(args: {
+  /** Management tools the run's own surface exposes (checked under `self`). */
+  toolNames: readonly string[];
+  /** Connections the run mounts; each becomes its own resource key. */
+  connectionIds: readonly string[];
+}): Record<string, string[]> {
+  return {
+    self: [...args.toolNames],
+    // `"*"`: a run that was given a connection was given the whole connection.
+    ...Object.fromEntries(args.connectionIds.map((id) => [id, ["*"]])),
+  };
+}
