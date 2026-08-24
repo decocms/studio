@@ -30,7 +30,7 @@ export interface DevOptions {
  * Pipe a readable stream line-by-line into the CLI store log entries.
  * Lines are stripped of ANSI codes and concurrently prefixes like "[0] " / "[1] ".
  */
-function pipeToLogStore(stream: ReadableStream<Uint8Array>) {
+export function pipeToLogStore(stream: ReadableStream<Uint8Array>) {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -55,11 +55,15 @@ function pipeToLogStore(stream: ReadableStream<Uint8Array>) {
   }
 
   (async () => {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      processLines();
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        processLines();
+      }
+    } catch {
+      // A pipe read error shouldn't crash the whole dev CLI.
     }
     if (buffer.trim()) {
       const stripped = Bun.stripANSI(buffer)
