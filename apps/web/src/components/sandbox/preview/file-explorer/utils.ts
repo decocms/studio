@@ -332,7 +332,14 @@ export function flattenTree(
       node.children.length > 0 &&
       expandedDirectories.has(node.path)
     ) {
-      rows.push(...flattenTree(node.children, expandedDirectories, depth + 1));
+      // A loop, not `rows.push(...flattenTree(...))` — spreading a huge array as call args overflows the stack.
+      for (const row of flattenTree(
+        node.children,
+        expandedDirectories,
+        depth + 1,
+      )) {
+        rows.push(row);
+      }
     }
   }
 
