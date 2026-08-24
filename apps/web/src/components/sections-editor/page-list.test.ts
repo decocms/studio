@@ -201,6 +201,39 @@ describe("page-list", () => {
     });
   });
 
+  it("extractGlobalSections resolves the underlying component type for a multivariate-wrapped section", () => {
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          sections: {
+            "site/sections/Content/Alert.tsx": { $ref: "#/definitions/Alert" },
+          },
+        },
+      },
+      schema: {},
+    };
+    const decofile = {
+      Alerta: {
+        __resolveType: "website/flags/multivariate/section.ts",
+        variants: [
+          {
+            value: { __resolveType: "site/sections/Content/Alert.tsx" },
+            rule: { __resolveType: "website/matchers/always.ts" },
+          },
+        ],
+      },
+    };
+
+    const sections = extractGlobalSections(decofile, meta);
+    expect(sections).toEqual([
+      {
+        key: "Alerta",
+        name: "Alerta",
+        resolveType: "site/sections/Content/Alert.tsx",
+      },
+    ]);
+  });
+
   it("hasEditableDecoContent is true when pages exist", () => {
     expect(
       hasEditableDecoContent(
