@@ -129,6 +129,27 @@ export const harnessStreamInputSchema = z
         expiresAt: z.number().int().positive(),
       })
       .strict(),
+    /**
+     * Extra MCP servers this run mounts alongside `mcp` — one per org
+     * connection, each pointing at Studio's per-connection proxy
+     * (`/api/<slug>/mcp/<connectionId>`). Absent/empty = only `mcp`.
+     *
+     * A LIST of servers rather than tools merged into `mcp`: Studio's
+     * aggregator flattens tool names first-wins, so two connections exposing
+     * `SEARCH` would shadow each other. One server each keeps them namespaced
+     * by the client (`mcp__<name>__<tool>`).
+     */
+    orgMcps: z
+      .array(
+        z
+          .object({
+            name: z.string(),
+            url: z.string().url(),
+            headers: z.record(z.string(), z.string()),
+          })
+          .strict(),
+      )
+      .optional(),
     mode: z.enum(["default", "plan", "web-search", "gen-image"]),
     temperature: z.number(),
     toolApprovalLevel: z.enum(["auto", "readonly"]),

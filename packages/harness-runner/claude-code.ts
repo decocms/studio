@@ -8,10 +8,11 @@
  * assistant `messageId` derivable (the Anthropic message id of the turn, so a
  * re-delivered turn dedupes).
  *
- * Tools come from two places and neither needs configuring here: Claude Code's
- * built-ins operate on the checkout, and Studio's org tools arrive over MCP
- * from the endpoint minted for this run. Permissions are bypassed — the pod is
- * the isolation boundary, and there is no UI to answer a prompt.
+ * Tools come from three places and none needs configuring here: Claude Code's
+ * built-ins operate on the checkout, Studio's own tools arrive over MCP from the
+ * endpoint minted for this run, and the org's MCP connections arrive as one
+ * server each (`orgMcps`, when the org opted in). Permissions are bypassed —
+ * the pod is the isolation boundary, and there is no UI to answer a prompt.
  */
 
 import { query } from "@anthropic-ai/claude-agent-sdk";
@@ -207,6 +208,7 @@ export function buildOptions(args: {
   const pluginDirs = (process.env[ENVS.PLUGIN_DIRS_ENV] ?? "")
     .split(":")
     .filter(Boolean);
+  const mcpServers = mcpServersFor(input);
   return {
     ...(cwd ? { cwd } : {}),
     ...(executable ? { pathToClaudeCodeExecutable: executable } : {}),
@@ -243,18 +245,62 @@ export function buildOptions(args: {
     // replaying it as prompt text. `sessionId` seeds a new one at the same id
     // so the next turn can resume it.
     ...(resume ? { resume: sessionId } : { sessionId }),
-    ...(input.mcp.url
-      ? {
-          mcpServers: {
-            [ENVS.STUDIO_MCP_SERVER_NAME]: {
-              type: "http" as const,
-              url: input.mcp.url,
-              headers: input.mcp.headers,
-            },
-          },
-        }
-      : {}),
+    ...(Object.keys(mcpServers).length ? { mcpServers } : {}),
   };
+}
+
+/**
+ * Every MCP server this run mounts: Studio's own surface under a fixed name,
+ * plus one per org connection Studio sent in `orgMcps` (each already named and
+ * deduped there). The Studio entry wins a name clash — an org connection called
+ * `studio` must not displace the surface the run reports its work through.
+ *
+ * The two differ in ONE option, and it is the whole reason an org can hand a
+ * run thirty connections without drowning it: `alwaysLoad`.
+ *
+ * - Org connections are left at the default, which means their tools are
+ *   DEFERRED behind Claude Code's tool search — the model sees them only after
+ *   searching for one, so N connections cost the prompt nothing up front, and
+ *   their servers connect in the background instead of blocking the session.
+ * - Studio's own server is `alwaysLoad: true`. Its tools are how the run
+ *   reports what it did (the board), so they have to be in the turn-1 prompt
+ *   rather than behind a search the model may never run. It is also what makes
+ *   the `brokenStudioMcp` preflight mean anything: `alwaysLoad` blocks startup
+ *   until the server connects (capped at 5s), so `system/init` reports it as
+ *   connected or failed instead of the `pending` a deferred server shows.
+ *
+ * Deferral is Claude Code's own behavior, not something requested here, and it
+ * only applies when tool search is on — which it is NOT on a non-first-party
+ * `ANTHROPIC_BASE_URL` (our OpenRouter path) unless `ENABLE_TOOL_SEARCH` is set
+ * for that process. On those runs every org tool loads eagerly, so a big org is
+ * still a big prompt. Setting it there is a decision about whether the proxy
+ * forwards `tool_reference` blocks, which is not this file's to make.
+ *
+ * Exported for the unit test, which owns the merge.
+ */
+export function mcpServersFor(
+  input: HarnessStreamInputWire,
+): NonNullable<Options["mcpServers"]> {
+  const servers: NonNullable<Options["mcpServers"]> = {};
+  for (const server of input.orgMcps ?? []) {
+    if (server.name === ENVS.STUDIO_MCP_SERVER_NAME) continue;
+    servers[server.name] = {
+      type: "http" as const,
+      url: server.url,
+      headers: server.headers,
+    };
+  }
+  // Decopilot's in-process runs carry the empty sentinel; a server pointing at
+  // an empty URL fails the SDK's startup connect.
+  if (input.mcp.url) {
+    servers[ENVS.STUDIO_MCP_SERVER_NAME] = {
+      type: "http" as const,
+      url: input.mcp.url,
+      headers: input.mcp.headers,
+      alwaysLoad: true,
+    };
+  }
+  return servers;
 }
 
 /**
@@ -270,8 +316,14 @@ export function brokenStudioMcp(
   mcpUrl: string,
 ): string | null {
   if (!mcpUrl) return null;
-  const broken = servers.filter((server) =>
-    ["failed", "needs-auth", "disabled"].includes(server.status),
+  const broken = servers.filter(
+    (server) =>
+      // STUDIO's server only. The org's connections ride along on the same
+      // session (`orgMcps`) and any of them can be down, unauthorized, or just
+      // gone — that is a missing toolset, not a reason to refuse the run and
+      // burn the whole retry budget on it.
+      server.name === ENVS.STUDIO_MCP_SERVER_NAME &&
+      ["failed", "needs-auth", "disabled"].includes(server.status),
   );
   if (broken.length === 0) return null;
   return broken.map((server) => `${server.name}=${server.status}`).join(" ");

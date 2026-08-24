@@ -90,6 +90,14 @@ export async function mintMcpEndpoint(
   target: McpEndpointTarget = "agent-tools",
   /** Required by `target: "task-run"`. */
   threadId?: string,
+  /**
+   * The key's allowlist. Defaults to full access, which is what a caller whose
+   * surface is the agent's own virtual MCP needs. A caller that knows exactly
+   * which tools its surface exposes should pass that instead — the key is a
+   * live credential handed to an autonomous run, and "every tool in Studio" is
+   * not a scope anyone chose, it is one nobody narrowed.
+   */
+  permissions: Record<string, string[]> = { "*": ["*"] },
 ): Promise<{
   url: string;
   headers: Record<string, string>;
@@ -107,12 +115,9 @@ export async function mintMcpEndpoint(
   const apiKey = await ctx.boundAuth.apiKey.create({
     name: apiKeyName,
     // The per-run key is the agent's own callback credential — it acts on
-    // behalf of the user, against `/mcp/virtual-mcp/<agentId>` (a `vir_*`
-    // resource) or the org's management MCP, for the duration of the run, so it
-    // needs full access. With no implicit default (auth/index.ts), the scope
-    // must be explicit; wildcard matches the prior behavior (full access via
-    // the admin bypass).
-    permissions: { "*": ["*"] },
+    // behalf of the user for the duration of the run. With no implicit default
+    // (auth/index.ts), the scope must be explicit; see the parameter.
+    permissions,
     expiresIn: MCP_KEY_TTL_SECONDS,
     metadata: {
       organization: {
@@ -133,4 +138,52 @@ export async function mintMcpEndpoint(
     // (v2 — currently only used for logging / forward-compat).
     expiresAt: Date.now() + MCP_KEY_TTL_SECONDS * 1000,
   };
+}
+
+/**
+ * One MCP server entry per org connection, for a run that gets the org's
+ * connections on top of its own Studio surface (`orgMcps` on the wire).
+ *
+ * Every entry points at Studio's per-connection proxy and reuses the run's
+ * already-minted credential — the key is minted with full access, so it
+ * authorizes every connection in the org; a key per connection would be N live
+ * credentials nobody revokes for one run.
+ *
+ * Names are the client's tool namespace (`mcp__<name>__<tool>`), so they are
+ * sanitized to what an MCP client accepts and deduped — two connections with
+ * the same title must not collapse into one server. Pure: the unit test owns
+ * the naming.
+ */
+export function orgMcpServers(args: {
+  publicUrl: string;
+  organizationSlug: string;
+  headers: Record<string, string>;
+  connections: {
+    id: string;
+    title?: string | null;
+    slug?: string | null;
+  }[];
+}): { name: string; url: string; headers: Record<string, string> }[] {
+  const { publicUrl, organizationSlug, headers, connections } = args;
+  const taken = new Set<string>();
+  return connections.map((connection) => {
+    const base =
+      sanitizeServerName(connection.slug ?? connection.title ?? "") || "mcp";
+    let name = base;
+    for (let n = 2; taken.has(name); n++) name = `${base}-${n}`;
+    taken.add(name);
+    return {
+      name,
+      url: `${publicUrl}/api/${organizationSlug}/mcp/${encodeURIComponent(connection.id)}`,
+      headers,
+    };
+  });
+}
+
+/** Lowercase alphanumerics and hyphens — what an MCP client accepts as a name. */
+function sanitizeServerName(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }

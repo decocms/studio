@@ -498,6 +498,13 @@ export const settings = {
     "Tarefas criadas a partir de um relat\u00f3rio s\u00e3o delegadas ao Super Agent automaticamente, em vez de ficarem sem respons\u00e1vel.",
   "settings.review.updateError":
     "N\u00e3o foi poss\u00edvel atualizar a configura\u00e7\u00e3o",
+  "settings.agentTools.title": "Ferramentas do agente",
+  "settings.agentTools.description":
+    "O que um run de agente de c\u00f3digo alcan\u00e7a al\u00e9m do reposit\u00f3rio em que est\u00e1 trabalhando.",
+  "settings.agentTools.orgMcpsTitle":
+    "Dar aos runs as conex\u00f5es MCP desta organiza\u00e7\u00e3o",
+  "settings.agentTools.orgMcpsDescription":
+    "Cada MCP conectado fica dispon\u00edvel para o Super Agent e para os revisores, al\u00e9m das ferramentas de tarefa que eles sempre recebem. As ferramentas carregam s\u00f3 quando o agente procura por uma, ent\u00e3o conectar mais n\u00e3o ocupa o contexto dele.",
   "settings.sprints.title": "Sprints",
   "settings.sprints.description":
     "Planeje tarefas em sprints de dura\u00e7\u00e3o fixa. As sprints s\u00e3o contadas a partir de um dia inicial, ent\u00e3o n\u00e3o h\u00e1 nada para abrir ou fechar.",

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { MissingOrganizationSlugError, mcpEndpointUrl } from "./mint-endpoint";
+import {
+  MissingOrganizationSlugError,
+  mcpEndpointUrl,
+  orgMcpServers,
+} from "./mint-endpoint";
 
 const publicUrl = "https://studio.example.com";
 const organization = { id: "org_1", slug: "acme" };
@@ -80,5 +84,62 @@ describe("mcpEndpointUrl task-run", () => {
         target: "task-run",
       }),
     ).toThrow(/threadId is required/);
+  });
+});
+
+describe("orgMcpServers", () => {
+  const headers = { Authorization: "Bearer k" };
+  const servers = (
+    connections: { id: string; title?: string | null; slug?: string | null }[],
+  ) =>
+    orgMcpServers({
+      publicUrl,
+      organizationSlug: "acme",
+      headers,
+      connections,
+    });
+
+  it("points each connection at the org-scoped proxy, with the run's key", () => {
+    expect(servers([{ id: "conn_1", slug: "linear" }])).toEqual([
+      {
+        name: "linear",
+        url: "https://studio.example.com/api/acme/mcp/conn_1",
+        headers,
+      },
+    ]);
+  });
+
+  it("sanitizes a title into a name a client accepts", () => {
+    expect(servers([{ id: "c", title: "Google Drive!" }])[0]?.name).toBe(
+      "google-drive",
+    );
+  });
+
+  it("prefers the slug over the title", () => {
+    expect(
+      servers([{ id: "c", slug: "gdrive", title: "Drive" }])[0]?.name,
+    ).toBe("gdrive");
+  });
+
+  it("dedupes names so same-titled connections stay distinct servers", () => {
+    expect(
+      servers([
+        { id: "c1", title: "Notion" },
+        { id: "c2", title: "notion" },
+        { id: "c3", title: "NOTION" },
+      ]).map((server) => server.name),
+    ).toEqual(["notion", "notion-2", "notion-3"]);
+  });
+
+  it("falls back to a usable name when there is nothing to derive one from", () => {
+    expect(
+      servers([{ id: "c1", title: "///" }, { id: "c2" }]).map((s) => s.name),
+    ).toEqual(["mcp", "mcp-2"]);
+  });
+
+  it("url-encodes the connection id", () => {
+    expect(servers([{ id: "a/b", title: "x" }])[0]?.url).toBe(
+      "https://studio.example.com/api/acme/mcp/a%2Fb",
+    );
   });
 });
