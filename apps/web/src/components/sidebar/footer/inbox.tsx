@@ -238,8 +238,9 @@ export function InboxFullButton() {
           className="relative"
         >
           <Inbox01 />
-          <span>{t("sidebar.inbox.title")}</span>
+          {/* Before the label: the collapsed rail hides `span:last-child`. */}
           <InboxDot />
+          <span className="truncate">{t("sidebar.inbox.title")}</span>
         </SidebarMenuButton>
       </PopoverTrigger>
     </InboxPopover>
