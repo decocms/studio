@@ -156,11 +156,26 @@ jobs:
       - name: Setup Bun and install dependencies
         uses: ./.github/actions/setup-bun
 
+      # Timing data only changes worker dispatch order: every discovered unit
+      # file still runs. Keep the machine-specific profile out of git, seed
+      # each commit from the latest compatible successful run, then let Bun
+      # refresh it for the next commit. actions/cache saves only after success,
+      # so a partial or failed suite cannot replace the shared profile.
+      - name: Restore unit-test timings
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/bun-test-timings-v1.json
+          key: bun-test-timings-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/actions/setup-bun/action.yml') }}-${{ github.sha }}
+          restore-keys: |
+            bun-test-timings-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/actions/setup-bun/action.yml') }}-
+
       - name: Run tests
         # The root command discovers the same filename-based unit tier and runs
         # each file in an isolated Bun process. Integration, daemon E2E, and
         # Playwright suites remain owned by their dedicated workflows.
         run: bun run test
+        env:
+          BUN_TEST_TIMINGS_FILE: ${{ runner.temp }}/bun-test-timings-v1.json
 
   build:
     needs: changes

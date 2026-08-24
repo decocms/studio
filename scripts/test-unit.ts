@@ -15,6 +15,20 @@ const testRoots = [
 ];
 const skippedDirectories = new Set([".git", "dist", "node_modules"]);
 
+export function buildUnitTestCommand(
+  testFiles: readonly string[],
+  timingsFile?: string,
+): string[] {
+  const command = ["bun", "test", "--parallel"];
+
+  if (timingsFile) {
+    command.push(`--timings=${timingsFile}`, "--update-timings");
+  }
+
+  command.push(...testFiles);
+  return command;
+}
+
 async function collectUnitTests(directory: string): Promise<string[]> {
   const entries = await readdir(join(repoRoot, directory), {
     withFileTypes: true,
@@ -41,21 +55,31 @@ async function collectUnitTests(directory: string): Promise<string[]> {
   return files;
 }
 
-const testFiles = (
-  await Promise.all(testRoots.map((root) => collectUnitTests(root)))
-)
-  .flat()
-  .sort();
+async function main(): Promise<number> {
+  const testFiles = (
+    await Promise.all(testRoots.map((root) => collectUnitTests(root)))
+  )
+    .flat()
+    .sort();
 
-console.log(`Running ${testFiles.length} isolated unit test files...`);
+  console.log(`Running ${testFiles.length} isolated unit test files...`);
 
-// --parallel implies --isolate: each file gets a fresh global object and
-// module registry across a pool of reused worker processes (one per core), so
-// the per-file isolation this tier requires holds without spawning a process
-// per file. Positional args are filters; exact relative paths match only
-// themselves, which is how the tier's filename-based exclusions stay applied.
-const child = Bun.spawn(["bun", "test", "--parallel", ...testFiles], {
-  cwd: repoRoot,
-  stdio: ["inherit", "inherit", "inherit"],
-});
-process.exit(await child.exited);
+  // --parallel implies --isolate: each file gets a fresh global object and
+  // module registry across a pool of reused worker processes (one per core), so
+  // the per-file isolation this tier requires holds without spawning a process
+  // per file. Positional args are filters; exact relative paths match only
+  // themselves, which is how the tier's filename-based exclusions stay applied.
+  const command = buildUnitTestCommand(
+    testFiles,
+    process.env.BUN_TEST_TIMINGS_FILE,
+  );
+  const child = Bun.spawn(command, {
+    cwd: repoRoot,
+    stdio: ["inherit", "inherit", "inherit"],
+  });
+  return child.exited;
+}
+
+if (import.meta.main) {
+  process.exit(await main());
+}
