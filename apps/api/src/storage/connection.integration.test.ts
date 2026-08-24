@@ -85,6 +85,37 @@ describe("ConnectionStorage", () => {
         grantType: "authorization_code",
       });
     });
+
+    it("should surface a friendly error, not a raw driver error, when two concurrent creates race on the same id", async () => {
+      const id = "conn_racing_create";
+      const results = await Promise.allSettled([
+        storage.create({
+          id,
+          organization_id: "org_123",
+          created_by: "user_123",
+          title: "Racer A",
+          connection_type: "HTTP",
+          connection_url: "https://racer-a.invalid/mcp",
+        }),
+        storage.create({
+          id,
+          organization_id: "org_123",
+          created_by: "user_123",
+          title: "Racer B",
+          connection_type: "HTTP",
+          connection_url: "https://racer-b.invalid/mcp",
+        }),
+      ]);
+
+      const rejected = results.filter((r) => r.status === "rejected");
+      expect(rejected.length).toBeLessThanOrEqual(1);
+      for (const r of rejected) {
+        expect((r as PromiseRejectedResult).reason).toBeInstanceOf(Error);
+        expect((r as PromiseRejectedResult).reason.message).toBe(
+          "Connection ID already exists",
+        );
+      }
+    });
   });
 
   describe("createNew", () => {
