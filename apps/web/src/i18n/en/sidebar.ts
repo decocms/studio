@@ -46,12 +46,10 @@ export const sidebar = {
   "sidebar.taskGroupsList.viewList": "List",
   "sidebar.taskGroupsList.viewStatus": "Status",
   "sidebar.inbox.title": "Inbox",
-  "sidebar.inbox.back": "Back to inbox",
   "sidebar.inbox.markAllRead": "Mark all read",
-  "sidebar.inbox.newRelease": "New release",
   "sidebar.inbox.emptyTitle": "Nothing here yet",
   "sidebar.inbox.emptyBody":
-    "Updates on the tasks you follow, and release notes, will appear here.",
+    "Updates on the tasks you follow will appear here.",
   "sidebar.inbox.actionCommented": "New comment",
   "sidebar.inbox.actionCreated": "Task created",
   "sidebar.inbox.actionStatusChanged": "Moved to a new column",

@@ -50,12 +50,10 @@ export const sidebar = {
   "sidebar.taskGroupsList.viewList": "Lista",
   "sidebar.taskGroupsList.viewStatus": "Status",
   "sidebar.inbox.title": "Caixa de entrada",
-  "sidebar.inbox.back": "Voltar para a caixa de entrada",
   "sidebar.inbox.markAllRead": "Marcar tudo como lido",
-  "sidebar.inbox.newRelease": "Nova versão",
   "sidebar.inbox.emptyTitle": "Nada por aqui ainda",
   "sidebar.inbox.emptyBody":
-    "Atualizações das tarefas que você segue, e notas de versão, vão aparecer aqui.",
+    "Atualizações das tarefas que você segue vão aparecer aqui.",
   "sidebar.inbox.actionCommented": "Novo comentário",
   "sidebar.inbox.actionCreated": "Tarefa criada",
   "sidebar.inbox.actionStatusChanged": "Movida para outra coluna",

@@ -1,21 +1,18 @@
 /**
  * The inbox feed — DESIGN PREVIEW ONLY.
  *
- * Task updates are hardcoded here so the inbox can be reviewed before any
- * backend exists. The real version reads them from the server (derived from the
- * task activity log against your subscriptions); everything below the
- * `InboxFeed` boundary is what gets replaced. Release notes are already a
- * client-side constant, so those are wired for real.
+ * Updates are hardcoded here so the inbox can be reviewed before any backend
+ * exists. The real version reads them from the server (derived from the task
+ * activity log against your subscriptions); `sampleUpdates()` is the only thing
+ * that gets replaced.
  *
- * Deliberately NOT here: invitations and join requests. Invitations live in the
- * org switcher (`components/header/org-switcher.tsx`) and join requests in
- * Settings → Members; a second accept path would mean two components racing the
- * same mutation.
+ * The inbox carries task updates and nothing else. Product/release notes have
+ * their own surface (the floating announcement card), invitations live in the
+ * org switcher, and join requests in Settings → Members — so this stays a feed
+ * of work you follow rather than a catch-all.
  */
 
 import { useState } from "react";
-import { useReleaseSeenState } from "@/hooks/use-release-seen-state";
-import { type Release, RELEASES } from "@/lib/release-feed";
 
 /** What a task update carries. Mirrors the shape the real feed will return. */
 export interface InboxTaskUpdate {
@@ -39,16 +36,11 @@ export type InboxTaskAction =
   | "review_changes_requested"
   | "merge_failed";
 
-export type InboxFeedItem =
-  | { type: "task"; update: InboxTaskUpdate }
-  | { type: "release"; release: Release; isSeen: boolean };
-
 export interface InboxFeed {
-  items: InboxFeedItem[];
-  /** Unread task updates plus unseen releases — what the dot counts. */
+  updates: InboxTaskUpdate[];
+  /** Unread updates — what the dot counts. */
   redDotCount: number;
-  markReleaseSeen: (id: string) => void;
-  markTasksRead: () => void;
+  markAllRead: () => void;
 }
 
 const minutesAgo = (n: number) =>
@@ -107,28 +99,15 @@ function sampleUpdates(): InboxTaskUpdate[] {
 }
 
 export function useInboxFeed(): InboxFeed {
-  const { isSeen, markSeen, unseenCount } = useReleaseSeenState();
   const [readAt, setReadAt] = useState<number | null>(null);
 
   const updates = sampleUpdates().filter(
     (u) => readAt === null || new Date(u.occurredAt).getTime() > readAt,
   );
 
-  const releases = [...RELEASES]
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    .map<InboxFeedItem>((release) => ({
-      type: "release",
-      release,
-      isSeen: isSeen(release.id),
-    }));
-
   return {
-    items: [
-      ...updates.map<InboxFeedItem>((update) => ({ type: "task", update })),
-      ...releases,
-    ],
-    redDotCount: updates.length + unseenCount,
-    markReleaseSeen: markSeen,
-    markTasksRead: () => setReadAt(Date.now()),
+    updates,
+    redDotCount: updates.length,
+    markAllRead: () => setReadAt(Date.now()),
   };
 }
