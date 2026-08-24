@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { UIMessageChunk } from "ai";
 import { harnessRunResultSchema } from "@decocms/sandbox/dispatch/schemas";
+import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
 import { withModelMetadata } from "./with-model-metadata";
 import {
   describeTermination,
@@ -8,6 +9,7 @@ import {
   errorForTerminal,
   harnessRunsInSandbox,
   isRunSuperseded,
+  isStudioOwnedConnection,
   isUnreachableStatus,
   ndjsonLines,
   pushSandboxEnv,
@@ -39,6 +41,24 @@ const collect = async (it: AsyncIterable<UIMessageChunk>) => {
   for await (const c of it) out.push(c);
   return out;
 };
+
+describe("isStudioOwnedConnection", () => {
+  const orgId = "org_1";
+
+  test.each([
+    ["self", WellKnownOrgMCPId.SELF],
+    ["registry", WellKnownOrgMCPId.REGISTRY],
+    ["community registry", WellKnownOrgMCPId.COMMUNITY_REGISTRY],
+    ["dev assets", WellKnownOrgMCPId.DEV_ASSETS],
+    ["commerce discovery", WellKnownOrgMCPId.COMMERCE_DISCOVERY],
+  ])("excludes the %s connection", (_name, wellKnownId) => {
+    expect(isStudioOwnedConnection(orgId, wellKnownId(orgId))).toBe(true);
+  });
+
+  test("does not exclude a real user-configured connection", () => {
+    expect(isStudioOwnedConnection(orgId, "conn_abc123")).toBe(false);
+  });
+});
 
 describe("harnessRunsInSandbox", () => {
   test("claude-code is sandbox-hosted", () => {
