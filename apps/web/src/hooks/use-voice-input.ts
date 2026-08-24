@@ -143,6 +143,8 @@ export function useVoiceInput(): UseVoiceInputReturn {
     };
 
     recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+      // Ignore a stale instance's async error once a newer one took over.
+      if (recognitionRef.current !== recognition) return;
       // "no-speech" is routine in continuous mode; onend restarts it below.
       if (event.error === "no-speech") return;
       // Fatal error (network/mic/permission) — stop, don't let onend restart it.
@@ -153,6 +155,7 @@ export function useVoiceInput(): UseVoiceInputReturn {
     };
 
     recognition.onend = () => {
+      if (recognitionRef.current !== recognition) return;
       if (isRecordingRef.current) {
         try {
           recognition.start();
