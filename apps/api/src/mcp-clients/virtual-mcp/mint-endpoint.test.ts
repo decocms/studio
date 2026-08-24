@@ -146,25 +146,25 @@ describe("orgMcpServers", () => {
 });
 
 describe("runKeyPermissions", () => {
-  const permissions = (connectionIds: string[]) =>
-    runKeyPermissions({ toolNames: ["TASK_BOARD_ITEM_UPDATE"], connectionIds });
+  const permissions = (grants: Record<string, string[]>) =>
+    runKeyPermissions({ toolNames: ["TASK_BOARD_ITEM_UPDATE"], grants });
 
   it("names every mounted connection as its own resource", () => {
     // The regression this pins: a proxied call is authorized as
     // `{ <connectionId>: [<toolName>] }`, so a key that names only `self`
     // denies every org-MCP tool the run has.
-    expect(permissions(["conn_1", "conn_2"])).toEqual({
+    expect(permissions({ conn_1: ["*"], conn_2: ["READ"] })).toEqual({
       self: ["TASK_BOARD_ITEM_UPDATE"],
       conn_1: ["*"],
-      conn_2: ["*"],
+      conn_2: ["READ"],
     });
   });
 
   it("grants no wildcard resource — the key is not full access", () => {
-    expect(permissions(["conn_1"])["*"]).toBeUndefined();
+    expect(permissions({ conn_1: ["*"] })["*"]).toBeUndefined();
   });
 
   it("is just the tool scope when the run mounts no connections", () => {
-    expect(permissions([])).toEqual({ self: ["TASK_BOARD_ITEM_UPDATE"] });
+    expect(permissions({})).toEqual({ self: ["TASK_BOARD_ITEM_UPDATE"] });
   });
 });

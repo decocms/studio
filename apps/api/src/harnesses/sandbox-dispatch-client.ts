@@ -63,6 +63,10 @@ import {
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
 import type { ConnectionEntity } from "@/tools/connection/schema";
+import { hasAdminRole } from "@decocms/shared/auth/roles";
+import { fetchRolePermissions } from "@/core/context-factory";
+import type { Permission } from "@/storage/types";
+import { connectionGrantsFor, rolesOf } from "@/harnesses/org-mcp-grants";
 import { REVIEW_RUN_TOOL_NAMES } from "@/tools/task-board/task-run-context";
 import { getPublicUrl } from "@/core/server-constants";
 import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
@@ -317,8 +321,17 @@ export class SandboxDispatchClient implements SandboxClient {
   private async mcpForRun(
     organization: { id: string; slug?: string; name?: string },
     threadId: string,
+    dispatcherUserId: string,
   ): Promise<Pick<HarnessStreamInputWire, "mcp" | "orgMcps">> {
-    const connections = await this.orgMcpConnections(organization);
+    const candidates = await this.orgMcpConnections(organization);
+    const grants = await this.dispatcherConnectionGrants(
+      organization.id,
+      dispatcherUserId,
+      candidates.map((connection) => connection.id),
+    );
+    const connections = candidates.filter(
+      (connection) => connection.id in grants,
+    );
     const mcp = await mintMcpEndpoint(
       this.ctx,
       this.virtualMcpId,
@@ -335,10 +348,7 @@ export class SandboxDispatchClient implements SandboxClient {
       // already decided by the server it talks to (`toolSubsetMCP`). Each
       // connection is its own resource key, `"*"` because a run that was given
       // a connection was given the whole connection.
-      runKeyPermissions({
-        toolNames: REVIEW_RUN_TOOL_NAMES,
-        connectionIds: connections.map((connection) => connection.id),
-      }),
+      runKeyPermissions({ toolNames: REVIEW_RUN_TOOL_NAMES, grants }),
     );
     if (connections.length === 0 || !organization.slug) return { mcp };
     const orgMcps = orgMcpServers({
@@ -350,9 +360,53 @@ export class SandboxDispatchClient implements SandboxClient {
     console.log(
       `[${this.harnessId}] org mcps: ${
         orgMcps.map((server) => server.name).join(" ") || "none"
+      }${
+        candidates.length === connections.length
+          ? ""
+          : ` (${candidates.length - connections.length} withheld — the ` +
+            `dispatching user has no grant for them)`
       }`,
     );
     return { mcp, orgMcps };
+  }
+
+  /**
+   * The dispatching user's own per-connection authority, as
+   * `{ <connectionId>: [tools] }` — the scope the run's key gets, and the
+   * filter on which connections it mounts at all.
+   *
+   * The role is read from the member row rather than taken off the context: a
+   * dispatch can arrive from the board or a worker, where the context was not
+   * built from that user's session, and a missing role would silently strip
+   * every connection.
+   */
+  private async dispatcherConnectionGrants(
+    organizationId: string,
+    dispatcherUserId: string,
+    connectionIds: string[],
+  ): Promise<Record<string, string[]>> {
+    if (connectionIds.length === 0) return {};
+    const member = await this.ctx.db
+      .selectFrom("member")
+      .select(["role"])
+      .where("organizationId", "=", organizationId)
+      .where("userId", "=", dispatcherUserId)
+      .executeTakeFirst();
+    const role = member?.role;
+    const statements = hasAdminRole(role ?? undefined)
+      ? []
+      : (
+          await Promise.all(
+            rolesOf(role).map((one) =>
+              fetchRolePermissions(this.ctx.db, organizationId, one),
+            ),
+          )
+        ).filter((statement): statement is Permission => Boolean(statement));
+    return connectionGrantsFor({
+      role,
+      roleStatements: statements,
+      connectionIds,
+    });
   }
 
   /**
@@ -433,7 +487,7 @@ export class SandboxDispatchClient implements SandboxClient {
       //
       // The org's own MCP connections come alongside it (`orgMcps`), behind
       // the `coding_agent_org_mcps` flag — see `mcpForRun`.
-      ...(await this.mcpForRun(organization, input.threadId)),
+      ...(await this.mcpForRun(organization, input.threadId, input.user.id)),
       // Hosted Decopilot mounts no working directory; this harness edits the
       // checkout the daemon prepared.
       workspace: await this.resolveWorkspace(input.threadId),
