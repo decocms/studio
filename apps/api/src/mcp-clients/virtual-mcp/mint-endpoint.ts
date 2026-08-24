@@ -39,10 +39,10 @@ const MCP_KEY_TTL_SECONDS = 3600;
 export type McpEndpointTarget = "agent-tools" | "management" | "task-run";
 
 export class MissingOrganizationSlugError extends Error {
-  constructor(organizationId: string) {
+  constructor(organizationId: string, target: McpEndpointTarget) {
     super(
-      `cannot mint a management MCP endpoint for organization "${organizationId}": ` +
-        `the org-scoped path /api/<slug>/mcp/self needs the org slug, which was not loaded.`,
+      `cannot mint a "${target}" MCP endpoint for organization "${organizationId}": ` +
+        `the org-scoped path needs the org slug, which was not loaded.`,
     );
     this.name = "MissingOrganizationSlugError";
   }
@@ -69,7 +69,7 @@ export function mcpEndpointUrl(args: {
     return `${publicUrl}/mcp/virtual-mcp/${agentId}`;
   }
   if (!organization.slug) {
-    throw new MissingOrganizationSlugError(organization.id);
+    throw new MissingOrganizationSlugError(organization.id, target);
   }
   if (target === "task-run") {
     if (!threadId) {
