@@ -58,9 +58,11 @@ import type { StudioContext } from "../core/studio-context";
 import {
   mintMcpEndpoint,
   orgMcpServers,
+  runKeyPermissions,
 } from "@/mcp-clients/virtual-mcp/mint-endpoint";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
+import type { ConnectionEntity } from "@/tools/connection/schema";
 import { REVIEW_RUN_TOOL_NAMES } from "@/tools/task-board/task-run-context";
 import { getPublicUrl } from "@/core/server-constants";
 import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
@@ -299,18 +301,24 @@ export class SandboxDispatchClient implements SandboxClient {
    * (`orgMcps`).
    *
    * Behind a flag because it is unbounded: each connection is one more server
-   * the harness connects to at session start and one more toolset in the
-   * model's context, and nothing here knows whether an org has three
+   * the harness connects to, and nothing here knows whether an org has three
    * connections or thirty.
    *
-   * One credential for all of them (see `orgMcpServers`), and a connection the
-   * proxy cannot reach is not this method's problem — the harness treats a
-   * broken org server as a missing toolset, not a failed run.
+   * The connections are resolved BEFORE the key is minted, because they are
+   * part of its scope: every proxied tool call is authorized as
+   * `{ <connectionId>: [<toolName>] }` (see the outbound transport's
+   * `AccessControl`), so a key that does not name a connection cannot call
+   * anything on it. One credential for all of them — a key per connection would
+   * be N live credentials nobody revokes for one run.
+   *
+   * A connection the proxy cannot reach is still not this method's problem: the
+   * harness treats a broken org server as a missing toolset, not a failed run.
    */
   private async mcpForRun(
     organization: { id: string; slug?: string; name?: string },
     threadId: string,
   ): Promise<Pick<HarnessStreamInputWire, "mcp" | "orgMcps">> {
+    const connections = await this.orgMcpConnections(organization);
     const mcp = await mintMcpEndpoint(
       this.ctx,
       this.virtualMcpId,
@@ -318,42 +326,26 @@ export class SandboxDispatchClient implements SandboxClient {
       `${this.harnessId}-run`,
       "task-run",
       threadId,
-      // Exactly the tools this run's surface exposes, not a wildcard. The
-      // reviewer superset covers both run kinds; which of them a given run can
-      // actually call is already decided by the server it talks to
-      // (`toolSubsetMCP`), so the key never widens that — it only stops being a
-      // full-access credential for every other management tool in Studio.
+      // Exactly what this run mounts, never a wildcard: the tools its own
+      // Studio surface exposes, plus the connections it was given.
       //
       // `self` is the resource key management tools are checked under (see
-      // AccessControl's default `connectionId`). It does NOT gate the
-      // per-connection proxy the `orgMcps` entries dial: that route authorizes
-      // by ORG MEMBERSHIP and connection ownership, with no `access.check` at
-      // all, so a run reaches exactly the connections any member of the org
-      // reaches — no more, but also no less.
-      { self: [...REVIEW_RUN_TOOL_NAMES] },
+      // AccessControl's default `connectionId`); the reviewer superset covers
+      // both run kinds, and which of them a given run can actually call is
+      // already decided by the server it talks to (`toolSubsetMCP`). Each
+      // connection is its own resource key, `"*"` because a run that was given
+      // a connection was given the whole connection.
+      runKeyPermissions({
+        toolNames: REVIEW_RUN_TOOL_NAMES,
+        connectionIds: connections.map((connection) => connection.id),
+      }),
     );
-    const settings = await this.ctx.storage.organizationSettings.get(
-      organization.id,
-    );
-    if (
-      !organization.slug ||
-      !orgFlagEnabled(settings?.flags, "coding_agent_org_mcps")
-    ) {
-      return { mcp };
-    }
-    // `list` excludes VIRTUAL connections (agents, not MCP servers) by default.
-    const { items } = await this.ctx.storage.connections.list(organization.id);
+    if (connections.length === 0 || !organization.slug) return { mcp };
     const orgMcps = orgMcpServers({
       publicUrl: getPublicUrl(),
       organizationSlug: organization.slug,
       headers: mcp.headers,
-      connections: items.filter(
-        (connection) =>
-          // A connection Studio already knows is erroring only costs the
-          // session a failed connect at startup.
-          connection.status === "active" &&
-          !isStudioOwnedConnection(organization.id, connection.id),
-      ),
+      connections,
     });
     console.log(
       `[${this.harnessId}] org mcps: ${
@@ -361,6 +353,30 @@ export class SandboxDispatchClient implements SandboxClient {
       }`,
     );
     return { mcp, orgMcps };
+  }
+
+  /**
+   * The org connections this run mounts, or none when the org has not opted in
+   * (or has no slug, without which the per-connection URL cannot be built).
+   */
+  private async orgMcpConnections(organization: {
+    id: string;
+    slug?: string;
+  }): Promise<ConnectionEntity[]> {
+    if (!organization.slug) return [];
+    const settings = await this.ctx.storage.organizationSettings.get(
+      organization.id,
+    );
+    if (!orgFlagEnabled(settings?.flags, "coding_agent_org_mcps")) return [];
+    // `list` excludes VIRTUAL connections (agents, not MCP servers) by default.
+    const { items } = await this.ctx.storage.connections.list(organization.id);
+    return items.filter(
+      (connection) =>
+        // A connection Studio already knows is erroring only costs the session
+        // a failed connect at startup.
+        connection.status === "active" &&
+        !isStudioOwnedConnection(organization.id, connection.id),
+    );
   }
 
   private async *stream(
