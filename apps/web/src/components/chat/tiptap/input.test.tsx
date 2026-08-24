@@ -66,6 +66,17 @@ describe("TiptapProvider accessible name", () => {
     expect(editable?.getAttribute("role")).toBe("textbox");
     expect(editable?.getAttribute("aria-label")).toBe("Ask anything");
   });
+
+  it("falls back to the default placeholder text when none is given", () => {
+    const { container } = render(
+      <TiptapProvider tiptapDoc={undefined} setTiptapDoc={() => {}}>
+        <EditableProbe />
+      </TiptapProvider>,
+    );
+    const editable = container.querySelector("[contenteditable]");
+    expect(editable?.getAttribute("aria-label")).not.toBe("");
+    expect(editable?.getAttribute("aria-label")).toContain("Ask anything");
+  });
 });
 
 describe("TiptapProvider enter-to-submit vs. an open suggestion dropdown", () => {
