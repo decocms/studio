@@ -33,6 +33,7 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { useT } from "@/i18n/use-t.ts";
 import { useProjectContext } from "@/sdk";
 import { useInsetContext } from "@/layouts/agent-shell-layout";
 import { useChatTask } from "@/components/chat/context";
@@ -345,6 +346,7 @@ function ContentBrowserReady({
   devServerReady: boolean;
   sandboxWarming: boolean;
 }) {
+  const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const fetchParams = { orgSlug, virtualMcpId, branch, threadId, previewUrl };
   const { data: decofile, isLoading: decofileLoading } = useDecofile(
@@ -831,13 +833,17 @@ function ContentBrowserReady({
     const data = buildBlogBlock(key, "posts", scheduledPostPayload(day));
     try {
       await saveBlock.mutateAsync({ blockKey: key, data });
-      toast.success("Created scheduled post");
+      toast.success(t("sandbox.postCalendar.createdScheduledPost"));
       setActiveCollection("posts");
       setPrevCollection("posts");
       setSelection({ collection: "posts", key });
       setOpenPageSeoKey(null);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not create");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sandbox.postCalendar.couldNotCreate"),
+      );
     }
   };
 
@@ -848,7 +854,7 @@ function ContentBrowserReady({
       ? rescheduleToDay(getBlogPayload(source, "posts"), day)
       : null;
     if (!payload) {
-      toast.error("Only scheduled posts can be moved.");
+      toast.error(t("sandbox.postCalendar.onlyScheduledCanMove"));
       return;
     }
     try {
@@ -857,7 +863,11 @@ function ContentBrowserReady({
         data: buildBlogBlock(key, "posts", payload),
       });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not reschedule");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sandbox.postCalendar.couldNotReschedule"),
+      );
     }
   };
 

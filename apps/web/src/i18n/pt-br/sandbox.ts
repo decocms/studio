@@ -331,9 +331,14 @@ export const sandbox = {
   "sandbox.plainBlocks.listItemPlaceholder": "Item de lista",
   "sandbox.plainBlocks.numberedLabel": "Numerada",
   "sandbox.plainBlocks.quotePlaceholder": "Citação",
+  "sandbox.postCalendar.couldNotCreate": "Não foi possível criar",
+  "sandbox.postCalendar.couldNotReschedule": "Não foi possível reagendar",
+  "sandbox.postCalendar.createdScheduledPost": "Post agendado criado",
   "sandbox.postCalendar.legendScheduled": "Agendado",
   "sandbox.postCalendar.legendUnscheduled": "Não agendado",
   "sandbox.postCalendar.next": "Próximo mês",
+  "sandbox.postCalendar.onlyScheduledCanMove":
+    "Apenas posts agendados podem ser movidos.",
   "sandbox.postCalendar.outdatedAppsDescription":
     "Agendamento precisa do deco apps {required} ou mais novo. Atualize o pin deste site rodando:",
   "sandbox.postCalendar.outdatedAppsTitle":
