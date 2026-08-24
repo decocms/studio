@@ -201,12 +201,12 @@ function sanitizeServerName(raw: string): string {
 export function runKeyPermissions(args: {
   /** Management tools the run's own surface exposes (checked under `self`). */
   toolNames: readonly string[];
-  /** Connections the run mounts; each becomes its own resource key. */
-  connectionIds: readonly string[];
+  /**
+   * Per-connection grants for the run, `{ <connectionId>: [tools] }` — see
+   * `connectionGrantsFor`, which derives them from the dispatching user's own
+   * authority rather than from the org's connection list.
+   */
+  grants: Record<string, string[]>;
 }): Record<string, string[]> {
-  return {
-    self: [...args.toolNames],
-    // `"*"`: a run that was given a connection was given the whole connection.
-    ...Object.fromEntries(args.connectionIds.map((id) => [id, ["*"]])),
-  };
+  return { self: [...args.toolNames], ...args.grants };
 }
