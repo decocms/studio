@@ -209,6 +209,14 @@ function ColumnMappingRows({ integration }: { integration: JiraIntegration }) {
   const upsert = useUpsertJiraIntegration();
   const columns = useJiraBoardColumns(integration.boardId);
 
+  // Optimistic local copy so two quick edits don't race the save round-trip and stomp each other.
+  const [mapping, setMapping] = useState(integration.statusMapping);
+  const [syncedWith, setSyncedWith] = useState(integration);
+  if (syncedWith !== integration) {
+    setSyncedWith(integration);
+    setMapping(integration.statusMapping);
+  }
+
   if (columns.isPending) return <Skeleton className="h-24 w-full mt-3" />;
   if (columns.isError) {
     return (
@@ -220,7 +228,7 @@ function ColumnMappingRows({ integration }: { integration: JiraIntegration }) {
 
   // The mapping is keyed by STATUS name; one row writes every status its column groups.
   function setColumnMapping(statuses: string[], value: string) {
-    const next = { ...integration.statusMapping };
+    const next = { ...mapping };
     for (const status of statuses) {
       if (value === DONT_SYNC) {
         delete next[status];
@@ -228,6 +236,7 @@ function ColumnMappingRows({ integration }: { integration: JiraIntegration }) {
         next[status] = value as BoardStatus;
       }
     }
+    setMapping(next);
     upsert.mutate(
       { statusMapping: next },
       {
@@ -255,9 +264,7 @@ function ColumnMappingRows({ integration }: { integration: JiraIntegration }) {
           </div>
           <Select
             value={
-              (column.statuses[0] &&
-                integration.statusMapping[column.statuses[0]]) ??
-              DONT_SYNC
+              (column.statuses[0] && mapping[column.statuses[0]]) ?? DONT_SYNC
             }
             onValueChange={(value) => setColumnMapping(column.statuses, value)}
           >
