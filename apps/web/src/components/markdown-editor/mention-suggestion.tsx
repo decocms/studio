@@ -20,6 +20,7 @@ import Suggestion, {
 } from "@tiptap/suggestion";
 import { Extension, type Editor, type Range } from "@tiptap/core";
 import { PluginKey } from "@tiptap/pm/state";
+import type { Node } from "@tiptap/pm/model";
 import { createPortal } from "react-dom";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import {
@@ -56,6 +57,8 @@ const CLOSED: MenuState = { query: "", range: null, rect: null, editor: null };
 export class MentionMenuStore {
   private state: MenuState = CLOSED;
   private listeners = new Set<() => void>();
+  /** The `@` the user dismissed, if any. See `dismiss`. */
+  dismissal: Dismissal | null = null;
 
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -88,17 +91,42 @@ function insert(editor: Editor, range: Range, member: MentionMember) {
       { type: "text", text: " " },
     ])
     .run();
-  dismiss(editor);
+  // Plain exit, not `dismiss`: the `@query` this replaced is gone, so there is
+  // no trigger left to keep suppressed.
+  exitSuggestion(editor.view, MENTION_SUGGESTION_KEY);
+}
+
+/** A dismissed trigger: where the `@` sits, and the text matched at the time. */
+interface Dismissal {
+  from: number;
+  text: string;
+}
+
+/** The text at `from`, as long as `length`, clamped to the document. */
+function textAt(doc: Node, from: number, length: number): string {
+  const to = Math.min(from + length, doc.content.size);
+  return from >= to ? "" : doc.textBetween(from, to, "\ufffc", "\ufffc");
 }
 
 /**
- * Deactivate the suggestion plugin itself, not just the menu.
+ * Dismiss the picker for good — not just for one transaction.
  *
- * Hiding the React menu leaves the plugin matching, and a matching plugin
- * still claims Enter — so an Escape'd picker would silently swallow the next
- * send. This is the only thing that actually ends the match.
+ * `exitSuggestion` clears the plugin's state, but the plugin re-runs its match
+ * on EVERY transaction, so the next one (returning focus to the editor is one)
+ * finds the same `@` still sitting there and reopens. Remembering which `@` was
+ * dismissed is what `allow` below consults to keep it shut.
  */
-function dismiss(editor: Editor) {
+function dismiss(editor: Editor, store: MentionMenuStore) {
+  const state = MENTION_SUGGESTION_KEY.getState(editor.state) as
+    | { range?: { from: number; to: number } }
+    | undefined;
+  const range = state?.range;
+  if (range && range.to > range.from) {
+    store.dismissal = {
+      from: range.from,
+      text: editor.state.doc.textBetween(range.from, range.to, "\ufffc"),
+    };
+  }
   exitSuggestion(editor.view, MENTION_SUGGESTION_KEY);
 }
 
@@ -116,6 +144,25 @@ export function mentionSuggestionExtension(store: MentionMenuStore) {
         pluginKey: MENTION_SUGGESTION_KEY,
         // An `@` inside a word is an email address, not a mention.
         allowedPrefixes: [" ", "\n"],
+        // Keeps a dismissed `@` dismissed. Still matching means still claiming
+        // Enter, so without this an Escape'd picker both reopens and swallows
+        // the next send. Self-clearing: once the text at that spot is no longer
+        // what was dismissed (the `@` was deleted, say), the trigger is live
+        // again — typing MORE after it is not, which is the behaviour everyone
+        // else's `@` menu has.
+        allow: ({ state, range }) => {
+          const dismissed = store.dismissal;
+          if (!dismissed) return true;
+          if (
+            range.from === dismissed.from &&
+            textAt(state.doc, dismissed.from, dismissed.text.length) ===
+              dismissed.text
+          ) {
+            return false;
+          }
+          store.dismissal = null;
+          return true;
+        },
         // The list is fetched and filtered in React; the plugin only reports
         // the query.
         items: () => [],
@@ -138,9 +185,9 @@ export function mentionSuggestionExtension(store: MentionMenuStore) {
           },
           // The menu's input holds focus while it's open, so these keys only
           // arrive in the gap before that lands — or if focusing failed.
-          onKeyDown: ({ event, view }) => {
+          onKeyDown: ({ event }) => {
             if (event.key === "Escape") {
-              exitSuggestion(view, MENTION_SUGGESTION_KEY);
+              dismiss(this.editor, store);
               store.close();
               return true;
             }
@@ -207,7 +254,7 @@ function OpenMentionMenu({
 
   /** End the match and put the menu away. Focus is the caller's business. */
   const close = () => {
-    if (state.editor) dismiss(state.editor);
+    if (state.editor) dismiss(state.editor, store);
     store.close();
   };
 
