@@ -86,7 +86,6 @@ const harnessWorkspaceSchema = z.discriminatedUnion("cwd", [
 
 export const harnessStreamInputSchema = z
   .object({
-    harnessId: z.enum(["decopilot", "claude-code", "codex"]).optional(),
     threadId: z.string(),
     userMessage: chatMessageSchema,
     harness: z.object({ sessionId: z.string().optional() }).strict(),

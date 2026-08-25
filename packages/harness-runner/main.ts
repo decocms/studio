@@ -3,7 +3,7 @@
  * The harness-runner: the TS half of the Go daemon's `/dispatch` path.
  *
  * One process per run. The daemon execs the argv in `HARNESS_RUNNER_CMD`, writes
- * `{harnessId, input}` to stdin, and reads a stream of `HarnessRunResult` frames
+ * `{input}` to stdin, and reads a stream of `HarnessRunResult` frames
  * back off stdout — one JSON line each, forwarded to Studio as they arrive so a
  * long turn persists as it goes. The wire is
  * `daemon-go/internal/dispatch/runner.go`. stderr is the pod's log.
@@ -27,17 +27,11 @@ function fail(code: string, message: string): never {
 }
 
 const raw = await Bun.stdin.text();
-let body: { harnessId?: unknown; input?: unknown };
+let body: { input?: unknown };
 try {
   body = JSON.parse(raw);
 } catch {
   fail("bad_input", "stdin is not JSON");
-}
-if (body.harnessId !== "claude-code") {
-  fail(
-    "unknown_harness",
-    `harness-runner does not implement ${JSON.stringify(body.harnessId)}`,
-  );
 }
 if (typeof body.input !== "object" || body.input === null) {
   fail("bad_input", "input is missing");

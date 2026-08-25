@@ -42,7 +42,7 @@ import {
 import type { PodTermination } from "@decocms/sandbox/provider";
 import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import { isTransientStreamError } from "@/harnesses/decopilot/built-in-tools/subtask";
-import type { HarnessId, HarnessStreamInput } from "@/harnesses/lib/types";
+import type { HarnessStreamInput } from "@/harnesses/lib/types";
 import {
   claudeCodeEnvFromCredential,
   modelClassFromMetadata,
@@ -86,8 +86,8 @@ import {
  */
 const SANDBOX_REPO_CWD = "/repo";
 
-/** Harnesses this client can dispatch. Decopilot is in-process, never here. */
-const SANDBOX_HOSTED_HARNESSES = new Set<HarnessId>(["claude-code"]);
+/** The one harness this client dispatches. Decopilot runs in-process. */
+const SANDBOX_HOSTED_HARNESS = "claude-code";
 
 /**
  * Dispatches per run WITHOUT PROGRESS: the first, plus ONE continuation after
@@ -204,20 +204,14 @@ export function isUnreachableStatus(status: number): boolean {
   return status === 404 || status === 410 || status >= 500;
 }
 
-/**
- * Widened past `HarnessId` so callers holding a raw `threads.harness_id` can ask
- * without an `as`-cast — a cast there would hide a renamed harness until
- * runtime. A Set lookup is total over strings, so nothing is lost.
- */
 export function harnessRunsInSandbox(
   harnessId: string | null | undefined,
 ): boolean {
-  return SANDBOX_HOSTED_HARNESSES.has(harnessId as HarnessId);
+  return harnessId === SANDBOX_HOSTED_HARNESS;
 }
 
 export class SandboxDispatchClient {
   private readonly ctx: StudioContext;
-  private readonly harnessId: HarnessId;
   private readonly virtualMcpId: string;
   private readonly branch: string;
   private readonly credential: ClaudeCodeCredential | null;
@@ -225,7 +219,6 @@ export class SandboxDispatchClient {
 
   constructor(args: {
     ctx: StudioContext;
-    harnessId: HarnessId;
     virtualMcpId: string;
     branch: string;
     /** Resolved thinking-slot credential; becomes the sandbox's model env. */
@@ -238,13 +231,7 @@ export class SandboxDispatchClient {
      */
     resume?: { reason: string };
   }) {
-    if (!harnessRunsInSandbox(args.harnessId)) {
-      throw new Error(
-        `SandboxDispatchClient runs sandbox-hosted harnesses only; got "${args.harnessId}"`,
-      );
-    }
     this.ctx = args.ctx;
-    this.harnessId = args.harnessId;
     this.virtualMcpId = args.virtualMcpId;
     this.branch = args.branch;
     this.credential = args.credential;
@@ -333,7 +320,7 @@ export class SandboxDispatchClient {
       this.ctx,
       this.virtualMcpId,
       organization,
-      `${this.harnessId}-run`,
+      `${SANDBOX_HOSTED_HARNESS}-run`,
       "task-run",
       threadId,
       // Exactly what this run mounts, never a wildcard: the tools its own
@@ -355,7 +342,7 @@ export class SandboxDispatchClient {
       connections,
     });
     console.log(
-      `[${this.harnessId}] org mcps: ${
+      `[${SANDBOX_HOSTED_HARNESS}] org mcps: ${
         orgMcps.map((server) => server.name).join(" ") || "none"
       }${
         candidates.length === connections.length
@@ -435,7 +422,7 @@ export class SandboxDispatchClient {
   ): AsyncIterable<UIMessageChunk> {
     if (!this.credential) {
       throw new Error(
-        `the ${this.harnessId} harness needs a resolved model credential; ` +
+        `the ${SANDBOX_HOSTED_HARNESS} harness needs a resolved model credential; ` +
           `this run has none (check the agent's thinking model)`,
       );
     }
@@ -450,7 +437,7 @@ export class SandboxDispatchClient {
     const organization = this.ctx.organization;
     if (!organization) {
       throw new Error(
-        `the ${this.harnessId} harness needs an organization on the context ` +
+        `the ${SANDBOX_HOSTED_HARNESS} harness needs an organization on the context ` +
           `to mint its MCP endpoint; this run has none`,
       );
     }
@@ -492,7 +479,7 @@ export class SandboxDispatchClient {
     // rather than a second agent in the same checkout (see the daemon's
     // `Registry.claim`).
     const runId = input.threadId;
-    const { ctx, harnessId, virtualMcpId, branch } = this;
+    const { ctx, virtualMcpId, branch } = this;
     const credentialProviderId = this.credential.providerId;
 
     // Provisioning is re-done per attempt on purpose. On the continuation path
@@ -526,7 +513,6 @@ export class SandboxDispatchClient {
           dispatchToDaemon({
             provider,
             handle: sandbox.sandboxHandle,
-            harnessId,
             input: resume ? { ...wireInput, resume } : wireInput,
             runId,
             signal: input.signal,
@@ -802,7 +788,6 @@ function renewWhileStreaming(
 async function* dispatchToDaemon(args: {
   provider: Pick<AgentSandboxProvider, "proxyDaemonRequest" | "renewTtl">;
   handle: string;
-  harnessId: HarnessId;
   runId: string;
   input: HarnessStreamInput;
   signal?: AbortSignal;
@@ -811,22 +796,37 @@ async function* dispatchToDaemon(args: {
   // "operation timed out" with no run, no handle and no duration on it, which is
   // indistinguishable from a model error until you go read pod logs.
   const startedAt = Date.now();
+  const wireInput = toWireInput(args.input);
+  const request = (legacyHarnessId = false) =>
+    args.provider.proxyDaemonRequest(args.handle, "/_sandbox/dispatch", {
+      method: "POST",
+      headers: new Headers({ "content-type": "application/json" }),
+      body: JSON.stringify({
+        ...(legacyHarnessId ? { harnessId: SANDBOX_HOSTED_HARNESS } : {}),
+        runId: args.runId,
+        input: wireInput,
+      }),
+      ...(args.signal ? { signal: args.signal } : {}),
+    });
   let res: Response;
   try {
-    res = await args.provider.proxyDaemonRequest(
-      args.handle,
-      "/_sandbox/dispatch",
-      {
-        method: "POST",
-        headers: new Headers({ "content-type": "application/json" }),
-        body: JSON.stringify({
-          harnessId: args.harnessId,
-          runId: args.runId,
-          input: toWireInput(args.input),
-        }),
-        ...(args.signal ? { signal: args.signal } : {}),
-      },
-    );
+    res = await request();
+    if (res.status === 400) {
+      const errorBody: unknown = await res
+        .clone()
+        .json()
+        .catch(() => null);
+      if (
+        typeof errorBody === "object" &&
+        errorBody !== null &&
+        "error" in errorBody &&
+        errorBody.error === "missing_harness_id"
+      ) {
+        // Old pods can outlive an API rollout; their rejection happens before
+        // the run is claimed, so this compatibility retry is side-effect-free.
+        res = await request(true);
+      }
+    }
   } catch (err) {
     // The proxy could not reach the pod at all (port-forward gone, TLS to a
     // dead node, ECONNRESET). Nothing ran, so this is always safe to continue
