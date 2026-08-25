@@ -206,6 +206,21 @@ test("date-time format → native datetime-local input", async ({ mount }) => {
   await expect(input).toHaveAttribute("type", "datetime-local");
 });
 
+test("datetime format (hyphen-less alias) → native datetime-local input", async ({
+  mount,
+}) => {
+  const meta = sectionWithProps({
+    startsAt: { type: "string", title: "Starts At", format: "datetime" },
+  });
+  const component = await mount(
+    <SchemaFormHarness meta={meta} resolveType={TEST_RESOLVE_TYPE} />,
+  );
+
+  const input = component.getByLabel("Starts At");
+  await expect(input).toBeVisible();
+  await expect(input).toHaveAttribute("type", "datetime-local");
+});
+
 test("textarea format → textarea element", async ({ mount }) => {
   const meta = sectionWithProps({
     body: { type: "string", title: "Body", format: "textarea" },

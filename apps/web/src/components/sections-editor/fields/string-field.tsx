@@ -217,7 +217,9 @@ export function StringField({
     );
   }
 
-  if (format === "date" || format === "date-time") {
+  // "date-time" is JSON Schema canonical; "datetime" is a common variant.
+  const isDateTime = format === "date-time" || format === "datetime";
+  if (format === "date" || isDateTime) {
     return (
       <div className="space-y-2">
         <FieldLabel
@@ -228,7 +230,7 @@ export function StringField({
         />
         <DatePickerInput
           id={path}
-          withTime={format === "date-time"}
+          withTime={isDateTime}
           value={strValue}
           onChange={onChange}
           calendarLabel={t("sectionsEditor.stringField.openCalendar")}
