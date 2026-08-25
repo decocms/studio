@@ -240,9 +240,17 @@ function PriorityIcon({ priority }: { priority: TaskBoardItemPriority }) {
 function CardFooter({
   item,
   checks,
+  assignee,
+  assignedBy,
+  members,
+  onAssign,
 }: {
   item: TaskBoardItem;
   checks: { summary: ChecksSummary; enabled: ReviewerKind[] } | null;
+  assignee?: Member;
+  assignedBy?: Member;
+  members?: Member[];
+  onAssign?: (userId: string | null) => void;
 }) {
   const { org } = useProjectContext();
   const key = taskKey(org.slug, item.keySeq);
@@ -260,6 +268,14 @@ function CardFooter({
             enabled={checks.enabled}
           />
         )}
+        <AssigneeDisplay
+          item={item}
+          assignee={assignee}
+          assignedBy={assignedBy}
+          members={members}
+          onAssign={onAssign}
+          showDelegation={false}
+        />
       </span>
     </div>
   );
@@ -2230,14 +2246,6 @@ function TaskCard({
         </span>
         {attentionLabel && <span className="sr-only">{attentionLabel}</span>}
         {pulse && <AgentPulseDot state={pulse} />}
-        <AssigneeDisplay
-          item={item}
-          assignee={assignee}
-          assignedBy={assignedBy}
-          members={members}
-          onAssign={onAssign}
-          showDelegation={false}
-        />
       </div>
 
       {(dueUrgency != null || sprint != null || item.tags.length > 0) && (
@@ -2287,7 +2295,14 @@ function TaskCard({
         </button>
       )}
 
-      <CardFooter item={item} checks={checks} />
+      <CardFooter
+        item={item}
+        checks={checks}
+        assignee={assignee}
+        assignedBy={assignedBy}
+        members={members}
+        onAssign={onAssign}
+      />
     </button>
   );
 }
