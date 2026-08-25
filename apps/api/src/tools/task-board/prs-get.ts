@@ -1018,13 +1018,24 @@ async function fetchPrGet(
 }
 
 /** Just "is this PR merged?", for the archive sweep. */
-export async function fetchPrMerged(
+export async function fetchPrLanding(
   ctx: StudioContext,
   orgId: string,
   pr: TaskBoardItemPrRef,
-): Promise<boolean | null> {
-  const obj = await fetchPrGet(ctx, orgId, pr, "merged");
-  return typeof obj?.merged === "boolean" ? obj.merged : null;
+): Promise<{ state: "open" | "closed" | null; merged: boolean | null }> {
+  const obj = await fetchPrGet(ctx, orgId, pr, "landing");
+  return {
+    // `merged` alone cannot answer `cardWorkLanded`: a closed-unmerged PR and an
+    // open one both report false, and only the first is settled. Both fields
+    // come off the one `get` this already pays for.
+    state:
+      obj?.state === "closed"
+        ? "closed"
+        : obj?.state === "open"
+          ? "open"
+          : null,
+    merged: typeof obj?.merged === "boolean" ? obj.merged : null,
+  };
 }
 
 /**
