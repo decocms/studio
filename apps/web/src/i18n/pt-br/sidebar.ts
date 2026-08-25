@@ -55,6 +55,7 @@ export const sidebar = {
   "sidebar.inbox.emptyBody":
     "Atualizações das tarefas que você segue vão aparecer aqui.",
   "sidebar.inbox.actionCommented": "Novo comentário",
+  "sidebar.inbox.actionMentioned": "Mencionou você",
   "sidebar.inbox.actionCreated": "Tarefa criada",
   "sidebar.inbox.actionStatusChanged": "Movida para outra coluna",
   "sidebar.inbox.actionAssigneeChanged": "Responsável alterado",

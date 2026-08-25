@@ -372,6 +372,18 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       }
     }
 
+    // Only the mentions this edit ADDED — the body is resent whole, so the
+    // previous description is what keeps a typo fix from re-pinging everyone.
+    if (previous && item.description !== previous.description) {
+      await ctx.storage.notifications.notifyMentions({
+        taskBoardItemId: item.id,
+        organizationId,
+        actorId: getUserId(ctx)!,
+        body: item.description ?? "",
+        previousBody: previous.description,
+      });
+    }
+
     // Broadcast EVERY change so open boards reflect it live. Not just the
     // browser's own edits (those also patch optimistically): an agent calling
     // this tool over MCP — e.g. moving its task to In Review — has no client

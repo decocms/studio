@@ -51,6 +51,7 @@ export const sidebar = {
   "sidebar.inbox.emptyBody":
     "Updates on the tasks you follow will appear here.",
   "sidebar.inbox.actionCommented": "New comment",
+  "sidebar.inbox.actionMentioned": "Mentioned you",
   "sidebar.inbox.actionCreated": "Task created",
   "sidebar.inbox.actionStatusChanged": "Moved to a new column",
   "sidebar.inbox.actionAssigneeChanged": "Reassigned",

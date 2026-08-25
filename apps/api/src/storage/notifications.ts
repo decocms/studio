@@ -12,6 +12,10 @@ import {
   type NotificationData,
 } from "../notifications/schema";
 import { notify, type NotifyParams } from "../notifications/notify";
+import {
+  notifyMentions,
+  type NotifyMentionsParams,
+} from "../notifications/mentions";
 
 /** One page of the inbox. The popover scrolls and pages through the rest. */
 const PAGE_SIZE = 20;
@@ -148,6 +152,13 @@ export class NotificationStorage {
    *  `notifications` rows; never throws. */
   async notify(params: Omit<NotifyParams, "db">): Promise<void> {
     await notify({ ...params, db: this.db });
+  }
+
+  /** Ping the members newly `@`-mentioned in a body. Never throws. */
+  async notifyMentions(
+    params: Omit<NotifyMentionsParams, "db">,
+  ): Promise<void> {
+    await notifyMentions({ ...params, db: this.db });
   }
 
   /** The user ids following this task. */
