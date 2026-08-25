@@ -42,7 +42,7 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       .describe(
         "Sprint to plan this task into (1-based, counted from the org's sprint cadence). Omit or null to leave it in the backlog.",
       ),
-    tagIds: z.array(z.string()).optional(),
+    tagIds: z.array(z.string()).max(1000).optional(),
     prUrl: z
       .string()
       .nullable()

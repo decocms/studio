@@ -154,7 +154,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     /** New drag-to-reorder position within its lane (ascending). */
     sortOrder: z.number().optional(),
     /** Replaces the task's tags with this exact set (org tag ids). */
-    tagIds: z.array(z.string()).optional(),
+    tagIds: z.array(z.string()).max(1000).optional(),
     /** Link an existing chat thread to this task (many-to-many, idempotent). */
     linkThreadId: z.string().optional(),
     prUrl: z
