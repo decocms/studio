@@ -86,8 +86,8 @@ The package has four major layers:
 2. **Daemon layer** — the Go daemon (`daemon-go/`) serves HTTP inside the sandbox
    on port `9000`. Authenticated routes perform project, process, Git,
    filesystem, and dispatch work.
-3. **Dispatch layer** — versioned Zod schemas and relay helpers carry harness input,
-   output, control frames, and task state.
+3. **Dispatch layer** — Zod schemas define the direct harness input and output
+   exchanged between Studio and sandbox daemons.
 4. **Proxy and filesystem layer** — HTTP/WebSocket helpers expose development
    servers, while organization filesystem helpers manage mounted Studio content.
 
@@ -216,7 +216,7 @@ preview contract.
 | `@decocms/sandbox/provider/agent-sandbox` | Kubernetes agent-sandbox provider implementation |
 | `@decocms/sandbox/daemon-client` | Authenticated daemon HTTP client |
 | `@decocms/sandbox/org-fs` | Organization filesystem client and contracts |
-| `@decocms/sandbox/dispatch` | Dispatch schemas, relay, versioning, and fixtures namespace |
+| `@decocms/sandbox/dispatch` | Direct dispatch schemas and fixtures namespace |
 | `@decocms/sandbox/dispatch/*` | Individual dispatch modules |
 | `@decocms/sandbox/proxy/http` | HTTP preview proxy primitives |
 | `@decocms/sandbox/proxy/websocket` | WebSocket preview proxy primitives |
@@ -231,7 +231,7 @@ path.
 | `daemon-go/` | The sandbox daemon (Go). Runs as PID 1 inside every sandbox pod. |
 | `daemon-e2e/` | Black-box HTTP/SSE conformance suite for whatever binary `DAEMON_E2E_CMD` names; defaults to `daemon-go/bin/daemon`. |
 | `server/` | Host-side providers and the authenticated daemon client. |
-| `dispatch/` | Versioned dispatch schemas and NATS relay helpers shared by both ends. |
+| `dispatch/` | Direct dispatch schemas and fixtures shared by both ends. |
 | `orgfs/` | Org-filesystem client, WebDAV handler, and the privileged mounter sidecar image entrypoint. |
 | `proxy/` | HTTP/WebSocket preview-proxy primitives used by Studio. |
 | `image/` | Sandbox container image (Dockerfile + bundled skills). |

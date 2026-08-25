@@ -18,7 +18,12 @@
  *   done:             runId:fenceToken:done:finalSeq
  */
 import type { UIMessageChunk } from "ai";
-import { MAX_PUBLISH_BYTES } from "./offload-messages";
+
+/**
+ * Per-message byte budget for the NATS stream hop. Kept below the server's
+ * default 1 MiB max payload to leave room for subject and protocol framing.
+ */
+export const MAX_PUBLISH_BYTES = 768 * 1024;
 
 // --- Subject + msgId scheme --------------------------------------------------
 

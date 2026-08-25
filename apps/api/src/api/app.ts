@@ -1006,7 +1006,6 @@ export async function createApp(options: CreateAppOptions = {}) {
     cancelBroadcast = {
       start: async () => {},
       broadcast: () => {},
-      publishControlFrame: () => {},
       stop: async () => {},
     };
     streamBuffer = {

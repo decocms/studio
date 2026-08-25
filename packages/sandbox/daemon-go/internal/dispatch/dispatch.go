@@ -19,11 +19,9 @@ import (
 
 const tombstoneTTL = 60 * time.Second
 
-// maxDispatchBodyBytes bounds the inline `/dispatch` request body. Matches
-// maxOffloadBytes: a run whose messages are actually this large is expected to
-// come in via messagesRef, not inline, so this cap just stops an unbounded
-// read from parking the pod's memory on one request.
-const maxDispatchBodyBytes = maxOffloadBytes
+// maxDispatchBodyBytes stops an unbounded request body from parking the pod's
+// memory. Current dispatch always sends the complete input inline.
+const maxDispatchBodyBytes = 32 * 1024 * 1024
 
 // Terminal code for a run this pod could not finish (shutdown / dropped
 // connection) as opposed to one that was cancelled on purpose. Studio maps it
@@ -47,10 +45,8 @@ var takeoverTimeout = 10 * time.Second
 var dispatchHeartbeat = 15 * time.Second
 
 type Deps struct {
-	DaemonToken      func() string
-	AppRoot          string
-	AllowedHosts     []string
-	AllowSameHostDev bool
+	DaemonToken func() string
+	AppRoot     string
 	// HarnessRunnerCmd is the argv the harness runs as, one process per run
 	// (HARNESS_RUNNER_CMD env). Empty → every dispatch fails with
 	// unknown_harness.
@@ -81,8 +77,7 @@ type Deps struct {
 }
 
 // RunInfo is what the daemon needs from a dispatched run's input to prepare the
-// workspace. Extracted in one place so both dispatch paths (inline input and
-// offloaded messages) feed the same hook.
+// workspace. Extracted once so every harness receives the same preparation.
 type RunInfo struct {
 	ThreadId string
 	// Mcp is the run's Virtual MCP endpoint; zero URL when the run carries none.
@@ -319,11 +314,6 @@ func (reg *Registry) HandleDispatch(w http.ResponseWriter, r *http.Request, deps
 		input = json.RawMessage("null")
 	}
 
-	if ref := ParseMessagesRef(frame); ref != nil {
-		reg.handleOffloadDispatch(w, r, deps, frame, ref, harnessId, runId)
-		return
-	}
-
 	if reason := ValidateHarnessInput(input); reason != "" {
 		jsonError(w, 400, map[string]string{"error": "bad_input", "detail": reason})
 		return
@@ -340,48 +330,6 @@ func (reg *Registry) HandleDispatch(w http.ResponseWriter, r *http.Request, deps
 	awaitTakeover()
 
 	reg.runHarness(ctx, w, deps, harnessId, runId, entry, rebaseInput(input, deps.AppRoot))
-}
-
-func (reg *Registry) handleOffloadDispatch(
-	w http.ResponseWriter,
-	r *http.Request,
-	deps Deps,
-	frame map[string]json.RawMessage,
-	ref *MessagesRef,
-	harnessId, runId string,
-) {
-	messages, err := FetchOffloadedMessages(ref.URL, deps.AllowedHosts, deps.AllowSameHostDev, ref.Sha256)
-	if err != nil {
-		slog.Error("dispatch offload fetch failed", "harness", harnessId, "url", ref.URL, "err", err)
-		jsonError(w, 400, map[string]string{"error": "offload_fetch_failed", "detail": err.Error()})
-		return
-	}
-
-	var baseInput map[string]json.RawMessage
-	if raw, ok := frame["input"]; ok {
-		json.Unmarshal(raw, &baseInput)
-	}
-	if baseInput == nil {
-		baseInput = map[string]json.RawMessage{}
-	}
-	baseInput["messages"] = messages
-	merged, _ := json.Marshal(baseInput)
-
-	if reason := ValidateHarnessInput(merged); reason != "" {
-		jsonError(w, 400, map[string]string{"error": "bad_input", "detail": reason})
-		return
-	}
-
-	if reg.tombstoned(runId) {
-		jsonError(w, 410, map[string]string{"error": "tombstoned"})
-		return
-	}
-
-	ctx, cancel := context.WithCancel(r.Context())
-	entry, awaitTakeover := reg.claim(runId, cancel)
-	slog.Info("dispatch received (offload)", "harness", harnessId, "run_id", runId, "bytes", ref.Bytes)
-	awaitTakeover()
-	reg.runHarness(ctx, w, deps, harnessId, runId, entry, rebaseInput(merged, deps.AppRoot))
 }
 
 // runHarness runs the harness for one run and streams its frames as this
@@ -419,8 +367,7 @@ func (reg *Registry) runHarness(
 	stopKeepalive := startKeepalive(ctx, body, harnessId, runId)
 	defer stopKeepalive()
 
-	// Per-run workspace state, before the harness can touch the workspace. Here
-	// rather than in each caller so the offloaded-messages path gets it too.
+	// Per-run workspace state, before the harness can touch the workspace.
 	if deps.BeforeRun != nil {
 		deps.BeforeRun(runInfoOf(input))
 	}

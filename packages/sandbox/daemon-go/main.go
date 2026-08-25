@@ -783,11 +783,11 @@ func main() {
 	// was SIGKILLed before deleting.
 	setup.SweepSubmoduleCredentials(tmpDir)
 
-	var offloadHosts []string
+	var transferAllowedHosts []string
 	for _, h := range strings.Split(os.Getenv("OFFLOAD_ALLOWED_HOSTS"), ",") {
 		h = strings.TrimSpace(h)
 		if h != "" {
-			offloadHosts = append(offloadHosts, h)
+			transferAllowedHosts = append(transferAllowedHosts, h)
 		}
 	}
 
@@ -959,8 +959,6 @@ func main() {
 	d.dispatchDeps = dispatch.Deps{
 		DaemonToken:      d.getToken,
 		AppRoot:          appRoot,
-		AllowedHosts:     offloadHosts,
-		AllowSameHostDev: os.Getenv("OFFLOAD_ALLOW_SAME_HOST_DEV") == "1",
 		HarnessRunnerCmd: dispatch.ParseRunnerCmd(os.Getenv("HARNESS_RUNNER_CMD")),
 		// The tenant env Studio pushed on the config channel — the harness's model
 		// credential lives there, and it reaches the harness as its spawn
@@ -1039,7 +1037,7 @@ func main() {
 			d.branchStatus.Refresh()
 			d.emitFileChanged(path)
 		},
-		AllowedHosts:     offloadHosts,
+		AllowedHosts:     transferAllowedHosts,
 		AllowSameHostDev: os.Getenv("OFFLOAD_ALLOW_SAME_HOST_DEV") == "1",
 	}
 	gitDeps := routes.GitDeps{
