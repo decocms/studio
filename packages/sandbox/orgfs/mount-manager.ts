@@ -11,9 +11,8 @@
  *
  * Boot-safety: a mount is purely additive. Every step is wrapped so a failure
  * logs and is skipped — it never breaks the daemon, the dev server, the fs
- * routes, or the harnesses. Mounting only happens when the studio pushes
- * `TenantConfig.orgFs` (it won't for cluster pods, whose security posture
- * blocks mounts — desktop links are the target).
+ * routes, or the harnesses. Mounting only happens after the sidecar receives a
+ * valid Studio-pushed config.
  */
 
 import { mkdir } from "node:fs/promises";
@@ -24,8 +23,6 @@ import { OrgFsClient } from "./client";
 import { createWebdavHandler } from "./webdav";
 import type { OrgFsMountConfig, OrgFsVolumeMount } from "./config";
 import { makeRcRefresh, runInvalidator } from "./invalidator";
-
-export type { OrgFsMountConfig, OrgFsVolumeMount } from "./config";
 
 /** A handle to an established OS mount. */
 export interface MountHandle {

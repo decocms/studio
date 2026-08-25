@@ -7,10 +7,9 @@ import {
   type InvalidatorFactory,
   type Mounter,
   MountManager,
-  type OrgFsMountConfig,
   resolveMountPath,
 } from "./mount-manager";
-import { parseOrgFsConfig } from "./config";
+import { type OrgFsMountConfig, parseOrgFsConfig } from "./config";
 
 /**
  * Records invalidator start/stop per volume; never polls or touches rclone rc

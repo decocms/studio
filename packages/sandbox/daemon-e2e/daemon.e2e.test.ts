@@ -1,5 +1,5 @@
 /**
- * Daemon conformance suite — CORE (auth, config, fs, tasks, orgfs, smoke).
+ * Daemon conformance suite — CORE (auth, config, fs, tasks, smoke).
  *
  * Spawns the daemon under test (see daemon.e2e.helpers.ts — swap the binary via
  * DAEMON_E2E_CMD) and exercises real HTTP/SSE endpoints. Every assertion is a
@@ -22,10 +22,6 @@ import {
   expect,
   it,
 } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import { retry } from "@decocms/shared/std";
 
 import {
@@ -102,7 +98,7 @@ describe("daemon e2e: readSseUntil is deadline-bounded", () => {
 
 // --- Smoke / CORS / no-auth GETs (shared daemon — read-only) -----------------
 
-describe("daemon e2e: smoke, CORS, dual-prefix", () => {
+describe("daemon e2e: smoke and CORS", () => {
   let d: Daemon;
   beforeAll(async () => {
     d = await startDaemon();
@@ -179,21 +175,8 @@ describe("daemon e2e: smoke, CORS, dual-prefix", () => {
     expect(body.error).toContain("Not found");
   });
 
-  // Dual-serve compat (T11): both the canonical /_sandbox/* and legacy
-  // /_decopilot_vm/* prefixes are served for one release window.
-  it("GET /_sandbox/idle and legacy /_decopilot_vm/idle both work without auth", async () => {
+  it("GET /_sandbox/idle works without auth", async () => {
     expect((await fetch(url(d, "/_sandbox/idle"))).status).toBe(200);
-    expect((await fetch(url(d, "/_decopilot_vm/idle"))).status).toBe(200);
-  });
-
-  it("POST /_decopilot_vm/bash (legacy prefix) with bearer is not 401/404", async () => {
-    const res = await fetch(url(d, "/_decopilot_vm/bash"), {
-      method: "POST",
-      headers: jsonAuthHeaders(),
-      body: toBody({ command: "true" }),
-    });
-    expect(res.status).not.toBe(401);
-    expect(res.status).not.toBe(404);
   });
 
   it("GET /health works without auth and tolerates an arbitrary Authorization header", async () => {
@@ -765,81 +748,6 @@ describe("daemon e2e: tasks", () => {
   });
 });
 
-// --- orgfs-config ------------------------------------------------------------
-
-describe("daemon e2e: orgfs-config", () => {
-  const validConfig = toBody({
-    baseUrl: "https://cluster.example",
-    orgSlug: "acme",
-    token: "fs-scoped-token",
-    mounts: [{ volume: "skills", path: "skills", readonly: true }],
-  });
-
-  it(
-    "returns { written: false } when no sidecar path is configured",
-    async () => {
-      const d = await startDaemon();
-      try {
-        const res = await fetch(url(d, "/_sandbox/orgfs-config"), {
-          method: "POST",
-          headers: jsonAuthHeaders(),
-          body: validConfig,
-        });
-        expect(res.status).toBe(200);
-        expect(((await res.json()) as { written: boolean }).written).toBe(
-          false,
-        );
-      } finally {
-        await stopDaemon(d);
-      }
-    },
-    HOOK_TIMEOUT_MS,
-  );
-
-  it(
-    "invalid org-fs config returns 400",
-    async () => {
-      const d = await startDaemon();
-      try {
-        const res = await fetch(url(d, "/_sandbox/orgfs-config"), {
-          method: "POST",
-          headers: jsonAuthHeaders(),
-          body: toBody({ not: "a valid org-fs config" }),
-        });
-        expect(res.status).toBe(400);
-      } finally {
-        await stopDaemon(d);
-      }
-    },
-    HOOK_TIMEOUT_MS,
-  );
-
-  it(
-    "writes the config to the sidecar control path when configured",
-    async () => {
-      const sidecarDir = mkdtempSync(join(tmpdir(), "daemon-e2e-orgfs-"));
-      const sidecarPath = join(sidecarDir, "orgfs.json");
-      const d = await startDaemon({ ORGFS_SIDECAR_CONFIG_PATH: sidecarPath });
-      try {
-        const res = await fetch(url(d, "/_sandbox/orgfs-config"), {
-          method: "POST",
-          headers: jsonAuthHeaders(),
-          body: validConfig,
-        });
-        expect(res.status).toBe(200);
-        const body = (await res.json()) as { written: boolean };
-        // With a sidecar path wired and a valid config, the relay must write it.
-        expect(body.written).toBe(true);
-        expect(readFileSync(sidecarPath, "utf8").length).toBeGreaterThan(0);
-      } finally {
-        await stopDaemon(d);
-        rmSync(sidecarDir, { recursive: true, force: true });
-      }
-    },
-    HOOK_TIMEOUT_MS,
-  );
-});
-
 // --- auth matrix on mutating routes (shared daemon) --------------------------
 
 describe("daemon e2e: auth on mutating routes", () => {
@@ -883,7 +791,6 @@ describe("daemon e2e: auth on mutating routes", () => {
       path: "/_sandbox/config",
       body: toBody({ env: { A: "1" } }),
     },
-    { name: "orgfs-config", path: "/_sandbox/orgfs-config", body: "{}" },
     {
       name: "git/publish",
       path: "/_sandbox/git/publish",
