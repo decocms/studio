@@ -188,6 +188,15 @@ const PILL =
  * PILL} (which the list view uses), but still bounded — the labels read as
  * discrete things rather than a run-on line of words.
  */
+/**
+ * Footer glyph size. 12, not 14, because every icon here is drawn on a 24 grid:
+ * 12 is exactly half, so strokes land on whole device pixels. At 14 the scale
+ * is 7/12 and a two-line glyph like `Equal` straddles pixel boundaries in
+ * mirrored proportions — one line smears up, the other down, and the pair reads
+ * as a pixel out of true.
+ */
+const FOOTER_GLYPH = 12;
+
 const CHIP =
   "inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground";
 
@@ -234,7 +243,7 @@ function PriorityIcon({ priority }: { priority: TaskBoardItemPriority }) {
   return (
     <GlyphTooltip label={label}>
       <config.icon
-        size={14}
+        size={FOOTER_GLYPH}
         className={cn("shrink-0", config.iconClassName)}
         aria-label={label}
       />
@@ -275,7 +284,7 @@ function TaskTypeIcon({ type }: { type: TaskBoardItemType }) {
   return (
     <GlyphTooltip label={label}>
       <config.icon
-        size={14}
+        size={FOOTER_GLYPH}
         className={cn("shrink-0", config.iconClassName)}
         aria-label={label}
       />
