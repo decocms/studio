@@ -325,41 +325,39 @@ function SortableSectionItem({
         </Tooltip>
       )}
 
-      {!section.isMultivariate && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={
-                isHidden
-                  ? t("sectionsEditor.sectionList.showSection")
-                  : t("sectionsEditor.sectionList.hideSection")
-              }
-              className={cn(
-                actionButtonVisibilityClass(reserveActionButtonSpace, isHidden),
-              )}
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleHidden();
-              }}
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-              {isHidden ? (
-                <EyeOff className="h-3.5 w-3.5" />
-              ) : (
-                <Eye className="h-3.5 w-3.5" />
-              )}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            {isHidden
-              ? t("sectionsEditor.sectionList.showSection")
-              : t("sectionsEditor.sectionList.hideSection")}
-          </TooltipContent>
-        </Tooltip>
-      )}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={
+              isHidden
+                ? t("sectionsEditor.sectionList.showSection")
+                : t("sectionsEditor.sectionList.hideSection")
+            }
+            className={cn(
+              actionButtonVisibilityClass(reserveActionButtonSpace, isHidden),
+            )}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleHidden();
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            {isHidden ? (
+              <EyeOff className="h-3.5 w-3.5" />
+            ) : (
+              <Eye className="h-3.5 w-3.5" />
+            )}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          {isHidden
+            ? t("sectionsEditor.sectionList.showSection")
+            : t("sectionsEditor.sectionList.hideSection")}
+        </TooltipContent>
+      </Tooltip>
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

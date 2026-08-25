@@ -127,6 +127,33 @@ describe("unwrapSection", () => {
     });
   });
 
+  it("returns null for a hidden variant section (would flatten the variants)", () => {
+    const raw = {
+      __resolveType: MV,
+      variants: [
+        {
+          value: {
+            __resolveType: MV,
+            variants: [
+              {
+                value: { __resolveType: HERO, title: "A" },
+                rule: { __resolveType: "website/matchers/always.ts" },
+              },
+              {
+                value: { __resolveType: HERO, title: "B" },
+                rule: { __resolveType: "website/matchers/device.ts" },
+              },
+            ],
+          },
+          rule: { __resolveType: NEVER },
+        },
+      ],
+    };
+    const parsed = parseSections([raw], {})[0]!;
+    expect(parsed.isHidden).toBe(true);
+    expect(unwrapSection(raw, parsed, {})).toBeNull();
+  });
+
   it("returns null for multivariate sections", () => {
     const raw = {
       __resolveType: MV,

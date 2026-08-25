@@ -74,4 +74,41 @@ describe("parseSections", () => {
     );
     expect(parsed[0]?.isHidden).toBe(true);
   });
+
+  it("keeps the 'Variants of X' label when a variant section is hidden", () => {
+    const parsed = parseSections(
+      [
+        {
+          __resolveType: "website/flags/multivariate/section.ts",
+          variants: [
+            {
+              value: {
+                __resolveType: "website/flags/multivariate/section.ts",
+                variants: [
+                  {
+                    value: {
+                      __resolveType: "site/sections/Category/CategoryShelf.tsx",
+                    },
+                    rule: { __resolveType: "website/matchers/always.ts" },
+                  },
+                  {
+                    value: {
+                      __resolveType: "site/sections/Category/CategoryShelf.tsx",
+                    },
+                    rule: { __resolveType: "website/matchers/device.ts" },
+                  },
+                ],
+              },
+              rule: { __resolveType: "website/matchers/never.ts" },
+            },
+          ],
+        },
+      ],
+      {},
+    );
+    expect(parsed[0]?.isHidden).toBe(true);
+    // Hidden variant sections are edited via un-hide, not as a single section.
+    expect(parsed[0]?.isMultivariate).toBeUndefined();
+    expect(parsed[0]?.label).toBe("Variants of CategoryShelf");
+  });
 });
