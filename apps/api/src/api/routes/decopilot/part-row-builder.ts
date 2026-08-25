@@ -122,8 +122,8 @@ export class PartRowBuilder {
     return {
       // Per-MESSAGE-scoped id: seq restarts at 0 per builder (per message), so
       // the runId+seq pair alone is NOT unique across messages of one run (e.g.
-      // independently built user and assistant messages each start at seq 0).
-      // The messageId segment keeps them disjoint while same-message
+      // the user message and the assistant message of a pull turn each start at
+      // seq 0). The messageId segment keeps them disjoint while same-message
       // re-emits (same messageId + same seq) stay idempotent for ON CONFLICT.
       id: `${this.ctx.runId}:${messageId}:${seq}`,
       seq,

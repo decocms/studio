@@ -150,8 +150,8 @@ export async function startDevServer(
         ? { BETTER_AUTH_SECRET: settings.betterAuthSecret }
         : {}),
       // Object storage (managed MinIO or external S3). Pass from frozen
-      // settings so the child server resolves the real S3Service for the
-      // message-offload path instead of the DevObjectStorage fallback.
+      // settings so the child server resolves the real S3Service instead of
+      // the DevObjectStorage fallback.
       ...(settings.s3Endpoint
         ? {
             S3_ENDPOINT: settings.s3Endpoint,

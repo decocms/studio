@@ -127,9 +127,9 @@ describe("foldParts", () => {
     expect(foldParts(input)).toEqual(foldParts(input));
   });
 
-  it("folds two same-thread messages built by separate per-message builders", () => {
-    // The user message and assistant message are persisted by separate
-    // PartRowBuilders sharing run_id == thread_id,
+  it("folds the combined rows of two same-thread messages built by separate per-message builders (pull turn: user + assistant)", () => {
+    // Regression: the PULL path persists the user message and the assistant
+    // message via two SEPARATE PartRowBuilders sharing run_id == thread_id,
     // each with seq restarting at 0. Per-message-scoped ids
     // (`${runId}:${messageId}:${seq}`) keep their rows distinct, and distinct
     // baseTimeMs (dispatch time vs later response time) keeps the user message
