@@ -189,6 +189,15 @@ const PILL =
 const CHIP =
   "inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground";
 
+/**
+ * A label chip, held a step back from full strength.
+ *
+ * Tags carry arbitrary hex, so at full opacity a saturated one out-shouts the
+ * title it is describing. 70% keeps each tag's colour legible as identity while
+ * letting the card read title-first.
+ */
+const LABEL = `${CHIP} opacity-70`;
+
 /** Tags a card shows before collapsing the rest into `+N`. Matches the list
  *  view's existing cap; the full set is in the task dialog. */
 const CARD_TAG_LIMIT = 2;
@@ -274,7 +283,7 @@ function TaskTypeIcon({ type }: { type: TaskBoardItemType }) {
     <GlyphTooltip label={label}>
       <config.icon
         size={14}
-        className="shrink-0 text-muted-foreground"
+        className={cn("shrink-0", config.iconClassName)}
         aria-label={label}
       />
     </GlyphTooltip>
@@ -402,7 +411,7 @@ function useSprintsEnabled(): boolean {
 function SprintPill({ sprint, flat }: { sprint: number; flat?: boolean }) {
   const t = useT();
   return (
-    <span className={cn(flat ? CHIP : PILL)}>
+    <span className={cn(flat ? LABEL : PILL)}>
       <Repeat04 size={flat ? 12 : 14} />
       {t("taskBoard.taskBoard.sprintPill", { number: String(sprint) })}
     </span>
@@ -416,7 +425,7 @@ function TagPill({ tag, flat }: { tag: TaskBoardItemTag; flat?: boolean }) {
   // are denser and a coloured outline per tag would be a lot of edges.
   if (flat) {
     return (
-      <span className={CHIP} style={{ color, borderColor: color }}>
+      <span className={LABEL} style={{ color, borderColor: color }}>
         {tag.name}
       </span>
     );
@@ -2355,7 +2364,7 @@ function TaskCard({
             <TagPill key={tag.id} tag={tag} flat />
           ))}
           {item.tags.length > CARD_TAG_LIMIT && (
-            <span className={CHIP}>+{item.tags.length - CARD_TAG_LIMIT}</span>
+            <span className={LABEL}>+{item.tags.length - CARD_TAG_LIMIT}</span>
           )}
           {showAutoFix && (
             <button

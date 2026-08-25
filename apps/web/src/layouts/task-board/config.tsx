@@ -266,13 +266,40 @@ type TaskTypeIconComponent = ComponentType<{
  */
 export const TASK_TYPE_CONFIG: Record<
   TaskBoardItemType,
-  { labelKey: TranslationKey; icon: TaskTypeIconComponent }
+  {
+    labelKey: TranslationKey;
+    icon: TaskTypeIconComponent;
+    iconClassName: string;
+  }
 > = {
-  bug: { labelKey: "taskBoard.config.typeBug", icon: Bug },
-  feature: { labelKey: "taskBoard.config.typeFeature", icon: CirclePlus },
-  chore: { labelKey: "taskBoard.config.typeChore", icon: Wrench },
-  spike: { labelKey: "taskBoard.config.typeSpike", icon: FlaskConical },
-  security: { labelKey: "taskBoard.config.typeSecurity", icon: Shield },
+  bug: {
+    labelKey: "taskBoard.config.typeBug",
+    icon: Bug,
+    iconClassName: "text-destructive",
+  },
+  feature: {
+    labelKey: "taskBoard.config.typeFeature",
+    icon: CirclePlus,
+    iconClassName: "text-success",
+  },
+  // Grey on purpose: `chore` is the DEFAULT type, so it lands on every card
+  // nobody classified. A colour there would be on most of the board, saying
+  // nothing — the one type worth NOT painting is the one you get for free.
+  chore: {
+    labelKey: "taskBoard.config.typeChore",
+    icon: Wrench,
+    iconClassName: "text-muted-foreground",
+  },
+  spike: {
+    labelKey: "taskBoard.config.typeSpike",
+    icon: FlaskConical,
+    iconClassName: "text-purple-500",
+  },
+  security: {
+    labelKey: "taskBoard.config.typeSecurity",
+    icon: Shield,
+    iconClassName: "text-warning",
+  },
 };
 
 export const PRIORITIES: TaskBoardItemPriority[] = [
