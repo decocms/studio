@@ -10,6 +10,10 @@ const idFor = (projectRef: string, userId = "u_1"): SandboxId => ({
 const ID = idFor("agent:org:vmcp:deco/mellow-flint");
 
 describe("computeHandle", () => {
+  it("preserves the stable SHA-256 routing hash", () => {
+    expect(hashSandboxId(ID)).toBe("96371d07c69454ac");
+  });
+
   it("strips the prefix before the last `/` from the branch slug", () => {
     expect(computeHandle(ID)).toMatch(/^mellow-flint-[0-9a-f]{16}$/);
   });
@@ -41,6 +45,33 @@ describe("computeHandle", () => {
     expect(match).not.toBeNull();
     expect(match![1]!.length).toBeLessThanOrEqual(24);
     expect(match![1]!.endsWith("-")).toBe(false);
+  });
+
+  it("uses the 24th character when a separator and character both fit", () => {
+    const prefix = "a".repeat(22);
+    expect(computeHandle(idFor(`agent:org:vmcp:${prefix}-b`))).toMatch(
+      new RegExp(`^${prefix}-b-[0-9a-f]{16}$`),
+    );
+  });
+
+  it("drops a separator truncated into the 24th position", () => {
+    const prefix = "a".repeat(23);
+    expect(computeHandle(idFor(`agent:org:vmcp:${prefix}-b`))).toMatch(
+      new RegExp(`^${prefix}-[0-9a-f]{16}$`),
+    );
+  });
+
+  it("handles long separator runs without regex backtracking", () => {
+    const separators = "-".repeat(100_000);
+    expect(
+      computeHandle(idFor(`agent:org:vmcp:${separators}safe${separators}`)),
+    ).toMatch(/^safe-[0-9a-f]{16}$/);
+  });
+
+  it("treats non-ASCII characters as separators", () => {
+    expect(computeHandle(idFor("agent:org:vmcp:Fóó--Bär"))).toMatch(
+      /^f-b-r-[0-9a-f]{16}$/,
+    );
   });
 
   it("keeps the connection id as the slug for a thread-scoped branch", () => {
