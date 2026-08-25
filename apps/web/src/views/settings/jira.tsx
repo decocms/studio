@@ -231,6 +231,7 @@ function ColumnMappingRows({ integration }: { integration: JiraIntegration }) {
 
   // The mapping is keyed by STATUS name; one row writes every status its column groups.
   function setColumnMapping(statuses: string[], value: string) {
+    const previous = mapping;
     const next = { ...mapping };
     for (const status of statuses) {
       if (value === DONT_SYNC) {
@@ -243,8 +244,11 @@ function ColumnMappingRows({ integration }: { integration: JiraIntegration }) {
     upsert.mutate(
       { statusMapping: next },
       {
-        onError: (err) =>
-          toast.error(errorMessage(err, t("settings.jira.saveFailed"))),
+        onError: (err) => {
+          // Roll back — a refetch matching the pre-mutation value can keep the same object reference and never resync this row otherwise.
+          setMapping(previous);
+          toast.error(errorMessage(err, t("settings.jira.saveFailed")));
+        },
       },
     );
   }
