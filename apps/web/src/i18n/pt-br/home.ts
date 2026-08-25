@@ -118,4 +118,6 @@ export const home = {
   "home.projectCard.mainAgentUnset": 'Removido "{title}" como agente principal',
   "home.projectCard.mainAgentError":
     "Não foi possível atualizar o agente principal",
+  "home.projectCard.pinToSidebar": "Fixar na barra lateral",
+  "home.projectCard.unpinFromSidebar": "Desafixar da barra lateral",
 } satisfies Record<keyof typeof homeEn, string>;

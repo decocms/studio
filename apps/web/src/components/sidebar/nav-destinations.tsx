@@ -29,8 +29,13 @@ import {
   useProjectContext,
   useVirtualMCPs,
 } from "@/sdk";
+import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { AgentAvatar } from "@/components/agent-icon";
-import { agentHasClonableSource } from "@/lib/agent-capabilities";
+import {
+  agentHasClonableSource,
+  agentIsSidebarPinned,
+  getDevAgentIds,
+} from "@/lib/agent-capabilities";
 import { getActiveGithubRepo } from "@/lib/github-repo";
 import { useThreads } from "@/components/chat/store/hooks";
 import { usePanelActions } from "@/layouts/shell-layout";
@@ -96,7 +101,7 @@ function useNavDestinations({
       });
       return;
     }
-    // Reuse-or-create via setTaskId/createNewTask — same path useCodingAgents uses.
+    // Reuse-or-create via setTaskId/createNewTask — same path useAgentNavRows uses.
     const existing = findReusableNewChat(
       threads,
       decopilotId,
@@ -169,26 +174,24 @@ function useNavDestinations({
   return destinations;
 }
 
-/**
- * The org's coding agents — every virtual MCP backed by a GitHub repo (imported
- * from GitHub or cloned from a template), listed by title, repo name as fallback.
- *
- * Selecting one opens that agent's chat, reusing its existing empty "New chat"
- * so repeat clicks don't pile up threads.
- */
-function useCodingAgents({
-  onNavigate,
-}: {
-  onNavigate?: () => void;
-} = {}): NavDestination[] {
+/** Sidebar agent rows matching `predicate` (coding agents / org-pinned non-code); selecting one opens its chat, reusing an empty "New chat". */
+function useAgentNavRows(
+  predicate: (agent: VirtualMCPEntity, devAgentIds: Set<string>) => boolean,
+  {
+    onNavigate,
+  }: {
+    onNavigate?: () => void;
+  } = {},
+): NavDestination[] {
   const search = useSearch({ strict: false }) as { virtualmcpid?: string };
   const agents = useVirtualMCPs() ?? [];
+  const devAgentIds = getDevAgentIds(agents);
   const { threads } = useThreads();
   const { data: session } = authClient.useSession();
   const { setTaskId, createNewTask } = usePanelActions();
 
   return agents
-    .filter((agent) => agentHasClonableSource(agent.metadata))
+    .filter((agent) => predicate(agent, devAgentIds))
     .map((agent) => {
       const repo = getActiveGithubRepo(agent);
       return {
@@ -231,7 +234,16 @@ export function NavDestinationsContent({
   onNavigate?: () => void;
 }) {
   const destinations = useNavDestinations({ onNavigate });
-  const codingAgents = useCodingAgents({ onNavigate });
+  const codingAgents = useAgentNavRows(
+    (agent) => agentHasClonableSource(agent.metadata),
+    { onNavigate },
+  );
+  const pinnedAgents = useAgentNavRows(
+    (agent, devAgentIds) =>
+      agentIsSidebarPinned(agent) && !devAgentIds.has(agent.id),
+    { onNavigate },
+  );
+  const agentRows = [...codingAgents, ...pinnedAgents];
   // Expanded, the label is right there — a tooltip repeating it is noise.
   const { state, isMobile } = useSidebar();
   const showTooltip = state === "collapsed" && !isMobile;
@@ -253,8 +265,8 @@ export function NavDestinationsContent({
   return (
     <SidebarMenu className="gap-1">
       {destinations.map(row)}
-      {codingAgents.length > 0 && <li aria-hidden className="h-2" />}
-      {codingAgents.map(row)}
+      {agentRows.length > 0 && <li aria-hidden className="h-2" />}
+      {agentRows.map(row)}
     </SidebarMenu>
   );
 }
