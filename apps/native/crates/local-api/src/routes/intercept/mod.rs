@@ -3,19 +3,21 @@
 //! the REAL production web shell (`apps/web/src`), and this module is
 //! where local-api answers, LOCALLY, the specific narrow set of routes that
 //! shell's thread, native-terminal, and sandbox surfaces need served from local
-//! SQLite + the native runtime instead of the (unmodified,
-//! possibly-production) upstream mesh. Every route below cites
+//! SQLite + the native runtime instead of upstream.
+//!
+//! Every route below cites
 //! the native interception contract (the wire-contract recon)
 //! for the exact shape it emulates — this module is that recon turned into
 //! code, not a reinterpretation of it.
 //!
 //! [`try_intercept`] is [`crate::routes::upstream::proxy`]'s FIRST decision,
 //! before the `/api/auth/*` cookie-relay branch or the ordinary
-//! bearer-forwarding branch ever run: intercepted routes need neither — they
-//! never talk to upstream at all. Anything this module doesn't recognize
-//! returns `None`, and the caller falls through to the unmodified proxy
-//! behavior (bearer + persisted-cookie forwarding). See each submodule's own
-//! doc comment for its slice of the table:
+//! bearer-forwarding branch ever runs. Most intercepted routes are local-only;
+//! sandbox lifecycle interception deliberately makes authenticated upstream
+//! tool calls for virtual-MCP configuration while keeping lifecycle ownership
+//! local. Anything this module doesn't recognize returns `None`, and the caller
+//! falls through to the unmodified proxy behavior (bearer + persisted-cookie
+//! forwarding). See each submodule's own doc comment for its slice of the table:
 //!
 //! | Route(s) | Map section | Submodule |
 //! | --- | --- | --- |
@@ -25,6 +27,8 @@
 //! | `POST /api/:org/tools/COLLECTION_THREADS_UPDATE` | §3.1 | [`thread_tools`] |
 //! | `POST /api/:org/tools/COLLECTION_THREADS_DELETE` | §3.1 | [`thread_tools`] |
 //! | `POST /api/:org/tools/COLLECTION_THREAD_MESSAGES_LIST` | §3.1 | [`thread_tools`] |
+//! | `POST /api/:org/tools/{SANDBOX_START,SANDBOX_DELETE}` | native sandbox lifecycle | [`sandbox_lifecycle`] |
+//! | `POST /api/:org/tools/{COLLECTION_VIRTUAL_MCP_GET,COLLECTION_VIRTUAL_MCP_LIST}` | upstream virtual MCP enriched with native sandbox state | [`sandbox_lifecycle`] |
 //! | `GET /api/:org/watch` | local thread lifecycle SSE | [`watch`] |
 //! | `POST /api/:org/sandbox/:virtualMcpId/:branch/{read,write,unlink,mkdir,rename,glob,grep}` | native sandbox filesystem bridge | [`sandbox_fs`] |
 //! | any `/api/:org/sandbox/*` carrying [`FAST_PREVIEW_HEADER`] | sandbox-less by definition | never intercepted (`None`) |
@@ -57,7 +61,6 @@
 //! point about `virtual_mcp_id`: these are opaque strings scoping purely
 //! local data, never round-tripped against upstream.
 
-mod agent_sessions;
 mod dev_server;
 mod git_assist;
 mod preview_invoke;
@@ -169,10 +172,6 @@ pub async fn try_intercept(
     }
 
     if let Some(response) = sandbox_ops::try_dispatch(state, method, &rest, query, body).await {
-        return Some(response);
-    }
-
-    if let Some(response) = agent_sessions::try_dispatch(state, method, &rest, query).await {
         return Some(response);
     }
 

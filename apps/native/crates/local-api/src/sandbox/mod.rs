@@ -8,12 +8,9 @@
 //! path is UNCHANGED by this module.
 //!
 //! For a git-BACKED virtual MCP (a chat pinned to a `{cloneUrl, branch}`),
-//! prod (`bunx decocms link`) gives every `(virtualMcpId, branch)` pair its
-//! OWN full clone directory, keyed by a derived `handle` — see the design
-//! doc's "Prod contract" section. [`SandboxManager`] is that same idea,
-//! adapted to run in-process (no per-handle daemon subprocess, no
-//! `<handle>.localhost` routing — both dropped for the reasons the design
-//! doc's "Desktop adaptation" section explains): one [`Sandbox`] per handle,
+//! the native app gives every `(virtualMcpId, branch)` pair its OWN full clone
+//! directory, keyed by a derived `handle`. [`SandboxManager`] runs that model
+//! in-process (no per-handle daemon subprocess): one [`Sandbox`] per handle,
 //! each with its OWN `workdir`, `ConfigStore`, `TaskRegistry`, `Broadcaster`,
 //! and `SetupOrchestrator` — the EXISTING clone -> install -> start pipeline
 //! (`crate::setup`), just instantiated per-workdir instead of once globally.

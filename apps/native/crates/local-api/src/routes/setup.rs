@@ -106,11 +106,11 @@ struct EnsureWorkload {
     package_manager_path: Option<String>,
 }
 
-/// Establish a durable, explicitly-addressable git sandbox from the same
-/// `DesktopSandboxBlock` shape carried by the native sandbox setup flow. Returns as
-/// soon as the setup worker accepts clone/start so the UI can attach SSE and
-/// render clone/install output live; lifecycle failures arrive on that stream
-/// and are also persisted in the registry.
+/// Establish a durable, explicitly-addressable git sandbox from the
+/// daemon-parity ensure request. Returns as soon as the setup worker accepts
+/// clone/start so the UI can attach SSE and render clone/install output live;
+/// lifecycle failures arrive on that stream and are also persisted in the
+/// registry.
 pub async fn ensure(
     State(state): State<AppState>,
     Json(body): Json<EnsureSandboxRequest>,
@@ -291,8 +291,8 @@ pub async fn start(State(state): State<AppState>, headers: HeaderMap) -> ApiResu
 /// sandbox drawer's Stop button a real desktop-local action to call — see
 /// the native desktop-runtime audit finding #1's
 /// sibling bug: `stop()` (`sandbox-lifecycle-context.tsx`) had NO desktop
-/// branch at all, only the cloud `SANDBOX_DELETE` path gated on a
-/// `sandboxProviderKind` that's always `null` in Tauri.
+/// branch at all, only the cloud `SANDBOX_DELETE` path, which cannot control
+/// this process's local tasks.
 ///
 /// A registered handle forgotten by this process is already stopped: its old
 /// child lifetime ended with that process. We persist `desired=stopped` and

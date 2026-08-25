@@ -816,7 +816,6 @@ pub struct RtThread {
     pub virtual_mcp_id: String,
     pub trigger_id: Option<String>,
     pub branch: Option<String>,
-    pub sandbox_provider_kind: Option<String>,
     pub harness_id: Option<String>,
     #[serde(skip_serializing_if = "thread_metadata_is_absent")]
     pub metadata: Option<Value>,
@@ -1115,7 +1114,7 @@ pub(crate) fn now_rfc3339() -> String {
     )
 }
 
-pub(crate) fn format_rfc3339(d: Duration) -> String {
+fn format_rfc3339(d: Duration) -> String {
     let secs = d.as_secs() as i64;
     let millis = d.subsec_millis();
     let days = secs.div_euclid(86_400);
@@ -1390,9 +1389,9 @@ impl ThreadsDb {
         let inserted = tx.execute(
             "INSERT OR IGNORE INTO native_scoped_threads \
              (id, organization_id, title, description, hidden, status, created_by, updated_by, \
-              updated_by_explicit, virtual_mcp_id, trigger_id, branch, sandbox_provider_kind, \
-              harness_id, metadata, run_config, created_at, updated_at, generation, account_scope) \
-             VALUES (?1, ?2, ?3, ?4, 0, 'completed', ?5, ?5, 0, ?6, NULL, ?7, NULL, NULL, ?8, NULL, ?9, ?9, ?10, ?11)",
+              updated_by_explicit, virtual_mcp_id, trigger_id, branch, harness_id, metadata, \
+              run_config, created_at, updated_at, generation, account_scope) \
+             VALUES (?1, ?2, ?3, ?4, 0, 'completed', ?5, ?5, 0, ?6, NULL, ?7, NULL, ?8, NULL, ?9, ?9, ?10, ?11)",
             params![
                 id,
                 organization_id,
@@ -1910,8 +1909,8 @@ impl ThreadsDb {
     }
 
     /// First-terminal thread-lock pin:
-    /// sets `harness_id`/`sandbox_provider_kind`/`branch` ONLY when each is
-    /// currently `NULL` — a later launch on the same thread leaves them
+    /// sets `harness_id`/`branch` ONLY when each is currently `NULL` — a later
+    /// launch on the same thread leaves them
     /// untouched even if it names a different harness.
     #[cfg(test)]
     pub fn rt_pin_harness_if_unset_in_org(
@@ -1919,23 +1918,15 @@ impl ThreadsDb {
         organization_id: &str,
         id: &str,
         harness_id: &str,
-        sandbox_provider_kind: Option<&str>,
         branch: Option<&str>,
     ) -> DbResult<()> {
         let conn = self.lock();
         conn.execute(
             "UPDATE native_scoped_threads SET \
              harness_id = COALESCE(harness_id, ?1), \
-             sandbox_provider_kind = COALESCE(sandbox_provider_kind, ?2), \
-             branch = COALESCE(branch, ?3) \
-             WHERE id = ?4 AND organization_id = ?5",
-            params![
-                harness_id,
-                sandbox_provider_kind,
-                branch,
-                id,
-                organization_id
-            ],
+             branch = COALESCE(branch, ?2) \
+             WHERE id = ?3 AND organization_id = ?4",
+            params![harness_id, branch, id, organization_id],
         )?;
         Ok(())
     }
@@ -1944,20 +1935,17 @@ impl ThreadsDb {
         &self,
         fence: &RtThreadFence,
         harness_id: &str,
-        sandbox_provider_kind: Option<&str>,
         branch: Option<&str>,
     ) -> DbResult<bool> {
         let conn = self.lock();
         Ok(conn.execute(
             "UPDATE native_scoped_threads SET \
              harness_id = COALESCE(harness_id, ?1), \
-             sandbox_provider_kind = COALESCE(sandbox_provider_kind, ?2), \
-             branch = COALESCE(branch, ?3) \
-             WHERE id = ?4 AND organization_id = ?5 AND generation = ?6 \
-               AND account_scope = ?7 AND delete_pending = 0 AND hidden = 0",
+             branch = COALESCE(branch, ?2) \
+             WHERE id = ?3 AND organization_id = ?4 AND generation = ?5 \
+               AND account_scope = ?6 AND delete_pending = 0 AND hidden = 0",
             params![
                 harness_id,
-                sandbox_provider_kind,
                 branch,
                 fence.thread_id,
                 fence.organization_id,
@@ -2999,8 +2987,8 @@ impl ThreadsDb {
 }
 
 const RT_THREAD_COLUMNS: &str = "id, organization_id, title, description, hidden, status, \
-     created_by, updated_by, virtual_mcp_id, trigger_id, branch, sandbox_provider_kind, \
-     harness_id, metadata, run_config, created_at, updated_at, updated_by_explicit";
+     created_by, updated_by, virtual_mcp_id, trigger_id, branch, harness_id, metadata, \
+     run_config, created_at, updated_at, updated_by_explicit";
 
 fn parse_stored_json(raw: String, column: usize) -> rusqlite::Result<Value> {
     serde_json::from_str(&raw).map_err(|error| {
@@ -3020,10 +3008,10 @@ fn parse_optional_stored_json(
 }
 
 fn row_to_rt_thread(row: &rusqlite::Row) -> rusqlite::Result<RtThread> {
-    let metadata_raw: Option<String> = row.get(13)?;
-    let run_config_raw: Option<String> = row.get(14)?;
+    let metadata_raw: Option<String> = row.get(12)?;
+    let run_config_raw: Option<String> = row.get(13)?;
     let updated_by_raw: String = row.get(7)?;
-    let updated_by_explicit = row.get::<_, i64>(17)? != 0;
+    let updated_by_explicit = row.get::<_, i64>(16)? != 0;
     Ok(RtThread {
         id: row.get(0)?,
         organization_id: row.get(1)?,
@@ -3036,12 +3024,11 @@ fn row_to_rt_thread(row: &rusqlite::Row) -> rusqlite::Result<RtThread> {
         virtual_mcp_id: row.get(8)?,
         trigger_id: row.get(9)?,
         branch: row.get(10)?,
-        sandbox_provider_kind: row.get(11)?,
-        harness_id: row.get(12)?,
-        metadata: parse_optional_stored_json(metadata_raw, 13)?,
-        run_config: parse_optional_stored_json(run_config_raw, 14)?,
-        created_at: row.get(15)?,
-        updated_at: row.get(16)?,
+        harness_id: row.get(11)?,
+        metadata: parse_optional_stored_json(metadata_raw, 12)?,
+        run_config: parse_optional_stored_json(run_config_raw, 13)?,
+        created_at: row.get(14)?,
+        updated_at: row.get(15)?,
     })
 }
 
@@ -4967,14 +4954,8 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
             .rt_update_thread_in_org("org-b", "thread-a", "user-b", &patch)
             .unwrap()
             .is_none());
-        db.rt_pin_harness_if_unset_in_org(
-            "org-b",
-            "thread-a",
-            "codex",
-            Some("user-desktop"),
-            Some("other-branch"),
-        )
-        .unwrap();
+        db.rt_pin_harness_if_unset_in_org("org-b", "thread-a", "codex", Some("other-branch"))
+            .unwrap();
         db.rt_set_thread_status_in_org("org-b", "thread-a", "failed")
             .unwrap();
         assert!(db
@@ -5062,7 +5043,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
 
         assert_eq!(db.rt_harness_id_fenced(&fence).unwrap(), Some(None));
         assert!(db
-            .rt_pin_harness_if_unset_fenced(&fence, "codex", None, None)
+            .rt_pin_harness_if_unset_fenced(&fence, "codex", None)
             .unwrap());
         assert_eq!(
             db.rt_harness_id_fenced(&fence).unwrap(),
@@ -5072,6 +5053,37 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
         let mut stale = fence;
         stale.generation = "stale-generation".to_string();
         assert_eq!(db.rt_harness_id_fenced(&stale).unwrap(), None);
+    }
+
+    #[test]
+    fn legacy_sandbox_provider_value_is_ignored_and_not_serialized() {
+        let db = ThreadsDb::open_in_memory().unwrap();
+        create_rt_thread(&db, "org", "thread");
+        db.lock()
+            .execute(
+                "UPDATE native_scoped_threads SET sandbox_provider_kind = 'legacy-provider' \
+                 WHERE id = 'thread'",
+                [],
+            )
+            .unwrap();
+
+        let thread = db.rt_get_thread("thread").unwrap().unwrap();
+        let serialized = serde_json::to_value(&thread).unwrap();
+        assert!(serialized.get("sandbox_provider_kind").is_none());
+
+        let fence = db.rt_thread_fence_in_org("org", "thread").unwrap().unwrap();
+        assert!(db
+            .rt_pin_harness_if_unset_fenced(&fence, "claude-code", Some("feature"))
+            .unwrap());
+        let stored: Option<String> = db
+            .lock()
+            .query_row(
+                "SELECT sandbox_provider_kind FROM native_scoped_threads WHERE id = 'thread'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(stored.as_deref(), Some("legacy-provider"));
     }
 
     #[test]
@@ -5090,7 +5102,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
             .rt_delete_thread_in_org_if_generation(&old_fence)
             .unwrap());
         assert!(!db
-            .rt_pin_harness_if_unset_fenced(&old_fence, "claude-code", Some("user-desktop"), None,)
+            .rt_pin_harness_if_unset_fenced(&old_fence, "claude-code", None)
             .unwrap());
         assert!(!db
             .rt_delete_thread_in_org_if_generation(&old_fence)
@@ -5768,7 +5780,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
         assert!(matches!(
             error,
             DbError::Sqlite(rusqlite::Error::FromSqlConversionFailure(
-                13,
+                12,
                 rusqlite::types::Type::Text,
                 _
             ))
@@ -5850,7 +5862,7 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
         assert_eq!(created.thread.status, RT_THREAD_STATUS_COMPLETED);
         assert_eq!(created.thread.harness_id, None);
         assert!(db
-            .rt_pin_harness_if_unset_fenced(&fence, "claude-code", None, None)
+            .rt_pin_harness_if_unset_fenced(&fence, "claude-code", None)
             .unwrap());
         assert_eq!(
             db.rt_harness_id_fenced(&fence)
@@ -6562,7 +6574,10 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
         }
 
         let db = ThreadsDb::open(dir.path()).unwrap();
-        assert_eq!(schema_version(&local_db_path(dir.path())), 12);
+        assert_eq!(
+            schema_version(&local_db_path(dir.path())),
+            CURRENT_SCHEMA_VERSION
+        );
         let fence = db
             .rt_thread_fence_in_scope(&scope, "v12-org", "v12-thread")
             .unwrap()
@@ -6662,7 +6677,10 @@ ON rt_turn_queue(state, organization_id, thread_id, thread_generation, fifo_ordi
         }
 
         let db = ThreadsDb::open(dir.path()).unwrap();
-        assert_eq!(schema_version(&local_db_path(dir.path())), 12);
+        assert_eq!(
+            schema_version(&local_db_path(dir.path())),
+            CURRENT_SCHEMA_VERSION
+        );
         let fence = db
             .rt_thread_fence_in_scope(&scope, "v10-org", "v10-thread")
             .unwrap()
