@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -94,8 +95,10 @@ func validateApplication(app *Application) string {
 		if app.PackageManager.Name != nil && !validPms[*app.PackageManager.Name] {
 			return fmt.Sprintf("packageManager invalid: %s", *app.PackageManager.Name)
 		}
-		if app.PackageManager.Path != nil && *app.PackageManager.Path == "" {
-			return "packageManager.path must be non-empty"
+		if app.PackageManager.Path != nil {
+			if reason := validatePmPath(*app.PackageManager.Path); reason != "" {
+				return reason
+			}
 		}
 	}
 	if app.Port != nil {
@@ -103,6 +106,22 @@ func validateApplication(app *Application) string {
 		if p != float64(int(p)) || p <= 0 || p > 65535 {
 			return fmt.Sprintf("port invalid: %v", p)
 		}
+	}
+	return ""
+}
+
+// validatePmPath rejects a packageManager.path that would let
+// paths.ResolvePmRoot (internal/paths/paths.go) run install/dev commands
+// outside the repo checkout: an absolute path is used verbatim, and a
+// relative path is joined onto the repo dir without a containment check, so
+// "../.." segments walk out of it.
+func validatePmPath(p string) string {
+	if p == "" {
+		return "packageManager.path must be non-empty"
+	}
+	clean := filepath.Clean(p)
+	if filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return fmt.Sprintf("packageManager.path must be a relative path within the repo: %s", p)
 	}
 	return ""
 }
