@@ -6,17 +6,12 @@
  * Following means both channels at once — the update lands in your inbox and in
  * your next email digest. One toggle, because "inbox but not email" is a
  * preference nobody asked for yet and unsubscribing already covers "neither".
- *
- * NOT WIRED YET: `subscribed` is local state, so it resets on reload, and
- * `subscriberIds` arrives empty. Wiring it means replacing the `useState` with
- * the real subscription state and passing the real ids in — the markup is
- * final either way.
  */
 
-import { useState } from "react";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { getInitials } from "@/lib/get-initials";
+import { useTaskSubscription } from "@/hooks/use-task-subscription";
 import { useT } from "@/i18n/use-t.ts";
 import { authClient } from "@/lib/auth-client";
 import type { Member } from "./config";
@@ -25,17 +20,18 @@ import type { Member } from "./config";
 const MAX_AVATARS = 3;
 
 export function SubscribeToggle({
-  subscriberIds,
+  itemId,
   members,
 }: {
-  /** Everyone following this task. Resolved against the org's members. */
-  subscriberIds: string[];
+  itemId: string | undefined;
+  /** The org's members, which the follower ids resolve against. */
   members: Member[];
 }) {
   const t = useT();
   const { data: session } = authClient.useSession();
   const myUserId = session?.user?.id;
-  const [subscribed, setSubscribed] = useState(false);
+  const { subscriberIds, setSubscribed } = useTaskSubscription(itemId);
+  const subscribed = !!myUserId && subscriberIds.includes(myUserId);
 
   const memberByUserId = new Map(members.map((m) => [m.userId, m]));
   const me = myUserId ? memberByUserId.get(myUserId) : undefined;
@@ -55,7 +51,8 @@ export function SubscribeToggle({
         type="button"
         variant="ghost"
         size="sm"
-        onClick={() => setSubscribed((prev) => !prev)}
+        disabled={!itemId || setSubscribed.isPending}
+        onClick={() => setSubscribed.mutate(!subscribed)}
         className="h-7 px-2 text-sm font-normal text-muted-foreground"
       >
         {subscribed

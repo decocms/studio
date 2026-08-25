@@ -25,7 +25,9 @@ type IdPrefixes =
   | "fcfg"
   | "board"
   | "act"
-  | "cmt";
+  | "cmt"
+  | "nsub"
+  | "notif";
 
 export function generatePrefixedId(prefix: IdPrefixes) {
   return `${prefix}_${nanoid()}`;

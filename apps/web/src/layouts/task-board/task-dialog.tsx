@@ -1977,10 +1977,7 @@ function ActivitySection({
   return (
     <RecordSection
       label={t("taskBoard.taskDialog.activityLabel")}
-      action={
-        // Empty until subscriptions are wired — see subscribe-button.tsx.
-        <SubscribeToggle subscriberIds={[]} members={members} />
-      }
+      action={<SubscribeToggle itemId={item.id} members={members} />}
     >
       <div className="flex flex-col gap-5">
         {/* At the top: the feed reads newest-first, so this is where a new

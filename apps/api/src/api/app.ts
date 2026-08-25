@@ -31,6 +31,10 @@ import {
   setTaskBoardArchiveSweepRuntime,
 } from "@/tools/task-board/dbos-archive-sweep";
 import {
+  registerNotificationDigestWorkflow,
+  setNotificationDigestRuntime,
+} from "@/notifications/dbos-digest";
+import {
   registerTaskBoardMergedTagSweepWorkflow,
   setTaskBoardMergedTagSweepRuntime,
 } from "@/tools/task-board/dbos-tag-merged-sweep";
@@ -1538,6 +1542,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Hourly auto-archive of settled Done cards, one org leg per candidate org.
   setTaskBoardArchiveSweepRuntime({ db: database.db });
 
+  // Every 5 minutes: email what's still unread, then prune the 30-day window.
+  setNotificationDigestRuntime({ db: database.db });
+
   // Hourly `merged` tagging of Done cards whose PRs landed.
   setTaskBoardMergedTagSweepRuntime({ db: database.db });
 
@@ -1809,6 +1816,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerOrgRepoSyncWorkflow();
   registerJiraSyncWorkflow();
   registerTaskBoardArchiveSweepWorkflow();
+  registerNotificationDigestWorkflow();
   registerTaskBoardMergedTagSweepWorkflow();
   registerTaskBoardGithubReadWorkflow();
 

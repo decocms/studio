@@ -117,6 +117,7 @@ describe("Connection Tools", () => {
         orgRepoSyncs: null as never,
         jiraIntegrations: null as never,
         taskBoard: null as never,
+        notifications: null as never,
         orgFsEntries: null as never,
         oauthPkceStates: null as never,
         claudeSubscriptions: null as never,

@@ -16,6 +16,7 @@ import type { OAuthConfig } from "../tools/connection/schema";
 import type { TaskBoardActivityAction } from "../tools/task-board/schema";
 import type { ChatMessage } from "../api/routes/decopilot/types";
 import type { ProviderId, ThreadStatus } from "@decocms/shared/sdk";
+import type { NotificationType } from "@decocms/shared/notification-types";
 import type {
   OrgFlags,
   SprintConfig,
@@ -2052,6 +2053,43 @@ export interface TaskBoardCommentJiraLinkTable {
  * NOTE: This uses *Table types with ColumnType for proper Kysely type mapping
  * NOTE: Organizations, teams, members, and roles are managed by Better Auth organization plugin
  */
+/** Who follows a task. No row = never involved; `subscribed = false` = muted on
+ *  purpose, which auto-subscribe must never overwrite. */
+export interface NotificationSubscriptionTable {
+  id: string;
+  user_id: string;
+  task_board_item_id: string;
+  subscribed: ColumnType<boolean, boolean | undefined, boolean>;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** One row per recipient per event. Immutable except for the two timestamps,
+ *  each of which is the record of its own event. */
+export interface NotificationTable {
+  id: string;
+  user_id: string;
+  /** Its own column, never a join: tenancy must stay one indexable equality. */
+  organization_id: string;
+  task_board_item_id: string;
+  type: NotificationType;
+  /** Null = the agent/system did it, or the actor's account was deleted. */
+  actor_id: string | null;
+  /** Everything the inbox row renders — see `NotificationDataSchema`. */
+  data: ColumnType<Record<string, unknown>, string, string>;
+  read_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
+  emailed_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
 export interface Database extends PrivateRegistryDatabase {
   // Core tables (all within organization scope)
   users: UserTable; // System users
@@ -2154,6 +2192,10 @@ export interface Database extends PrivateRegistryDatabase {
   org_jira_integrations: OrgJiraIntegrationTable;
   task_board_item_jira_links: TaskBoardItemJiraLinkTable;
   task_board_comment_jira_links: TaskBoardCommentJiraLinkTable;
+
+  // Follow/inbox for the task board
+  notification_subscriptions: NotificationSubscriptionTable;
+  notifications: NotificationTable;
 
   sandbox_runner_state: SandboxProviderStateTable;
 }

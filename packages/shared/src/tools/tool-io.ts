@@ -283,6 +283,42 @@ export interface StudioToolIO {
         | undefined;
     };
   };
+  NOTIFICATION_LIST: {
+    input: { [x: string]: never };
+    output: {
+      notifications: {
+        id: string;
+        taskBoardItemId: string;
+        type:
+          | "created"
+          | "commented"
+          | "status_changed"
+          | "assignee_changed"
+          | "review_requested"
+          | "review_approved"
+          | "review_changes_requested"
+          | "merge_failed";
+        taskTitle: string;
+        taskKeySeq: number | null;
+        actorName: string | null;
+        actorImage: string | null;
+        createdAt: string;
+      }[];
+      unreadCount: number;
+    };
+  };
+  NOTIFICATION_MARK_READ: {
+    input: { ids?: string[] | undefined };
+    output: { marked: number };
+  };
+  NOTIFICATION_SUBSCRIPTION_SET: {
+    input: { taskBoardItemId: string; subscribed: boolean };
+    output: { subscribed: boolean };
+  };
+  NOTIFICATION_SUBSCRIPTION_LIST: {
+    input: { taskBoardItemId: string };
+    output: { userIds: string[] };
+  };
   TASK_BOARD_ITEM_CREATE: {
     input: {
       title: string;
@@ -582,16 +618,16 @@ export interface StudioToolIO {
           | "created"
           | "status_changed"
           | "assignee_changed"
+          | "review_requested"
+          | "review_approved"
+          | "review_changes_requested"
+          | "merge_failed"
           | "priority_changed"
           | "due_date_changed"
           | "title_changed"
           | "description_changed"
           | "tags_changed"
-          | "review_requested"
-          | "review_approved"
-          | "review_changes_requested"
-          | "merge_conflict_resolution"
-          | "merge_failed";
+          | "merge_conflict_resolution";
         actorId: string | null;
         data: Record<string, unknown>;
         occurredAt: string;
