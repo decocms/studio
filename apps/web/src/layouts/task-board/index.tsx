@@ -410,11 +410,22 @@ function SprintPill({ sprint, flat }: { sprint: number; flat?: boolean }) {
 }
 
 function TagPill({ tag, flat }: { tag: TaskBoardItemTag; flat?: boolean }) {
+  const color = tagDotColor(tag.color);
+  // On a card the chip IS the colour — border and text — so the tag needs no
+  // swatch towed alongside its name. The list view keeps the dot, where rows
+  // are denser and a coloured outline per tag would be a lot of edges.
+  if (flat) {
+    return (
+      <span className={CHIP} style={{ color, borderColor: color }}>
+        {tag.name}
+      </span>
+    );
+  }
   return (
-    <span className={cn(flat ? CHIP : PILL)}>
+    <span className={PILL}>
       <span
         className="size-2 shrink-0 rounded-full"
-        style={{ backgroundColor: tagDotColor(tag.color) }}
+        style={{ backgroundColor: color }}
       />
       {tag.name}
     </span>
@@ -2333,8 +2344,12 @@ function TaskCard({
         {pulse && <AgentPulseDot state={pulse} />}
       </div>
 
-      {(sprint != null || item.tags.length > 0) && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      {/* The card's body: everything between the title and the footer bar. The
+          Auto-fix button shares this row rather than claiming one of its own —
+          alone on a line it read as a section of the card instead of an action
+          on it. `ml-auto` keeps it trailing even when the labels wrap. */}
+      {(sprint != null || item.tags.length > 0 || showAutoFix) && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           {sprint != null && <SprintPill sprint={sprint} flat />}
           {item.tags.slice(0, CARD_TAG_LIMIT).map((tag) => (
             <TagPill key={tag.id} tag={tag} flat />
@@ -2342,21 +2357,20 @@ function TaskCard({
           {item.tags.length > CARD_TAG_LIMIT && (
             <span className={CHIP}>+{item.tags.length - CARD_TAG_LIMIT}</span>
           )}
+          {showAutoFix && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAutoFix();
+              }}
+              className="ml-auto flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+            >
+              <Lightning01 size={12} />
+              {t("taskBoard.taskBoard.autoFix")}
+            </button>
+          )}
         </div>
-      )}
-
-      {showAutoFix && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onAutoFix();
-          }}
-          className="flex items-center gap-1.5 self-end rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent"
-        >
-          <Lightning01 size={12} />
-          {t("taskBoard.taskBoard.autoFix")}
-        </button>
       )}
 
       {showRerun && (
