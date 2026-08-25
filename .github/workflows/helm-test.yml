@@ -147,6 +147,57 @@ jobs:
             --set database.url=postgresql://ci:ci@postgres.example.com:5432/studio \
             > /dev/null
 
+      - name: Render (migration Job mounts PostgreSQL CA)
+        run: |
+          set -euo pipefail
+          helm template deco-studio deploy/helm/studio \
+            --set database.url=postgresql://ci:ci@postgres.example.com:5432/studio \
+            --set-string database.caCert=test-ca \
+            --set-string configMap.meshConfig.NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-cert.pem \
+            > /tmp/studio-ca.yaml
+
+          python3 - <<'PY'
+          import sys, yaml
+
+          docs = [doc for doc in yaml.safe_load_all(open("/tmp/studio-ca.yaml")) if doc]
+          by_kind_name = {
+              (doc["kind"], doc["metadata"]["name"]): doc
+              for doc in docs
+          }
+          job = by_kind_name[("Job", "deco-studio-migrate")]
+          ca = by_kind_name[("ConfigMap", "deco-studio-ca-cert")]
+          pod = job["spec"]["template"]["spec"]
+          container = next(item for item in pod["containers"] if item["name"] == "migrate")
+          mount = next(
+              (item for item in container.get("volumeMounts", []) if item["name"] == "ca-cert"),
+              None,
+          )
+          volume = next(
+              (item for item in pod.get("volumes", []) if item["name"] == "ca-cert"),
+              None,
+          )
+          errors = []
+          if mount != {"name": "ca-cert", "mountPath": "/etc/ssl/certs", "readOnly": True}:
+              errors.append(f"wrong migration CA mount: {mount!r}")
+          expected_volume = {
+              "name": "ca-cert",
+              "configMap": {
+                  "name": "deco-studio-ca-cert",
+                  "items": [{"key": "ca-cert.pem", "path": "ca-cert.pem"}],
+              },
+          }
+          if volume != expected_volume:
+              errors.append(f"wrong migration CA volume: {volume!r}")
+          ca_wave = int(ca["metadata"]["annotations"]["argocd.argoproj.io/sync-wave"])
+          job_wave = int(job["metadata"]["annotations"]["argocd.argoproj.io/sync-wave"])
+          if ca_wave >= job_wave:
+              errors.append(f"CA ConfigMap wave {ca_wave} must precede migration Job wave {job_wave}")
+          if errors:
+              print("::error::" + "; ".join(errors))
+              sys.exit(1)
+          print(f"migration CA is mounted; ConfigMap wave {ca_wave} precedes Job wave {job_wave}")
+          PY
+
       # -n deco-studio matches the watchNamespaces pin in the example values;
       # the chart's namespace validation fails the render otherwise.
       - name: Render (in-cluster ClickHouse example)
