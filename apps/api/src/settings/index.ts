@@ -28,6 +28,19 @@ export function getSettings(): Settings {
 }
 
 /**
+ * Whether this deployment can run sandbox-hosted harnesses (`claude-code`):
+ * the hosted provider is configured and this is not local mode, which has no
+ * cluster to claim pods from. The one definition of that availability —
+ * `/api/config` reports it as `runtime.agentSandbox`, and harness selection
+ * must consult it BEFORE picking `claude-code`, or a disabled deployment
+ * enqueues runs that fail only at dispatch.
+ */
+export function agentSandboxEnabled(): boolean {
+  const s = getSettings();
+  return !s.localMode && s.sandboxProviderKind === "agent-sandbox";
+}
+
+/**
  * Initialize settings directly from process.env.
  *
  * Used by child processes (dev:server) and the bundled production server
