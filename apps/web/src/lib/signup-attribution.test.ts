@@ -42,4 +42,9 @@ describe("captureSignupAttribution", () => {
     expect(document.cookie).toContain("studio_signup_ref=first");
     expect(document.cookie).not.toContain("second");
   });
+
+  test("drops an oversized ref/src instead of ballooning the cookie", () => {
+    captureSignupAttribution({ ref: "a".repeat(129), src: "b".repeat(129) });
+    expect(document.cookie).toBe("");
+  });
 });
