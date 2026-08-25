@@ -14,7 +14,7 @@ export const NOTIFICATION_MARK_READ = defineTool({
     idempotentHint: true,
     openWorldHint: false,
   },
-  inputSchema: z.object({ ids: z.array(z.string()).optional() }),
+  inputSchema: z.object({ ids: z.array(z.string()).max(1000).optional() }),
   outputSchema: z.object({ marked: z.number() }),
   handler: async (input, ctx) => {
     requireAuth(ctx);
