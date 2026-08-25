@@ -302,6 +302,29 @@ describe("section-catalog", () => {
     ).toBeTruthy();
   });
 
+  it("listAvailableSections dedupes a resolveType listed under multiple sections block groups", () => {
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          sections: {
+            "site/sections/Hero.tsx": { $ref: "#/definitions/Hero" },
+          },
+          "website/sections": {
+            "site/sections/Hero.tsx": { $ref: "#/definitions/Hero" },
+          },
+        },
+      },
+      schema: { definitions: {} },
+    };
+
+    const available = listAvailableSections(meta);
+    const matches = available.filter(
+      (entry) => entry.resolveType === "site/sections/Hero.tsx",
+    );
+
+    expect(matches).toHaveLength(1);
+  });
+
   it("extractSectionCatalog excludes Theme sections", () => {
     const meta: LiveMeta = {
       manifest: {

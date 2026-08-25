@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,6 +27,12 @@ type BranchStatusMonitor struct {
 	last        events.BranchMeta
 	baseline    map[string]string
 	hasBaseline bool
+	// userTouched is the set of repo-relative paths written through the daemon's
+	// own fs routes — the user's work. Boot dirt is written by the dev server
+	// process directly and never lands here, so it is exactly the separator the
+	// time-based baseline can't provide: a path the user edited is never folded
+	// into the baseline. Copy-on-write so `compute` can read a snapshot lock-free.
+	userTouched map[string]struct{}
 	pollStop    chan struct{}
 	pollStarted bool
 	stopped     bool
@@ -79,6 +86,41 @@ func (m *BranchStatusMonitor) ArmBaseline() {
 	m.baseline = baseline
 	m.mu.Unlock()
 	m.Refresh()
+}
+
+// MarkUserTouched records a path the user wrote through the fs routes so the
+// baseline never counts it as boot dirt. An edit made while the sandbox is still
+// `starting` — before the baseline arms — would otherwise be snapshotted into the
+// baseline and silently swallowed; this keeps it publishable. Refreshing is the
+// caller's (the fs route already does).
+func (m *BranchStatusMonitor) MarkUserTouched(path string) {
+	rel := m.toRepoRel(path)
+	if rel == "" {
+		return
+	}
+	m.mu.Lock()
+	next := make(map[string]struct{}, len(m.userTouched)+1)
+	for p := range m.userTouched {
+		next[p] = struct{}{}
+	}
+	next[rel] = struct{}{}
+	m.userTouched = next
+	m.mu.Unlock()
+}
+
+// toRepoRel normalizes a fs-route path to the slash-separated, repo-relative form
+// `git status` emits (relative paths resolve against repoDir, matching SafePath).
+// Anything outside the repo returns "" and is ignored.
+func (m *BranchStatusMonitor) toRepoRel(path string) string {
+	abs := path
+	if !filepath.IsAbs(abs) {
+		abs = filepath.Join(m.repoDir, path)
+	}
+	rel, err := filepath.Rel(m.repoDir, filepath.Clean(abs))
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return ""
+	}
+	return filepath.ToSlash(rel)
 }
 
 func (m *BranchStatusMonitor) Refresh() {
@@ -180,12 +222,28 @@ func (m *BranchStatusMonitor) compute() *events.BranchMeta {
 	m.mu.Lock()
 	hasBaseline := m.hasBaseline
 	baseline := m.baseline
+	userTouched := m.userTouched
 	m.mu.Unlock()
-	// Un-armed means boot has not settled (ArmBaseline runs at every boot
-	// outcome), so everything dirty here is boot dirt — reporting it as the
-	// user's work armed "Review & Publish" on an untouched, empty thread.
-	if len(dirtyPaths) > 0 && hasBaseline {
+	// A path the user wrote through the fs routes is their work regardless of the
+	// baseline OR whether the dev server has settled — boot dirt is written by the
+	// dev server directly and never comes through those routes. Reporting it dirty
+	// before the baseline arms is what frees the header from the dev-server
+	// lifecycle: an edit made while the sandbox is still `starting` is publishable
+	// immediately, instead of waiting on a probe that may never fire.
+	//
+	// For every other dirty path we still need the baseline: un-armed means boot
+	// has not settled (ArmBaseline runs at every boot outcome), so a non-user
+	// path here is boot dirt — reporting it as the user's work armed
+	// "Review & Publish" on an untouched, empty thread.
+	if len(dirtyPaths) > 0 {
 		for p := range dirtyPaths {
+			if _, touched := userTouched[p]; touched {
+				dirty = true
+				break
+			}
+			if !hasBaseline {
+				continue
+			}
 			baseHash, ok := baseline[p]
 			if !ok || m.hashWorktreeFile(p) != baseHash {
 				dirty = true

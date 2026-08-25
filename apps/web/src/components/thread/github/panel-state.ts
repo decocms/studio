@@ -230,7 +230,7 @@ export function selectHeaderButton(
     };
   }
 
-  // Setup phases gate the header; once the app has run (or failed to), git/PR copy below takes over.
+  // Setup phases gate the header until the checkout is in place; `starting` then releases committed work to the git/PR copy — publishing it needs the sandbox alive, not the dev server serving.
   switch (lifecycle.phase) {
     case "idle": {
       const label =
@@ -277,7 +277,7 @@ export function selectHeaderButton(
         }),
         menu: [],
       };
-    // Still booting: nothing runs yet, so nothing to review or publish. The failure phases fall through — pushing a fix is the point there.
+    // Working tree not in place yet: nothing to review or publish.
     case "installing":
       return {
         label: t("thread.headerActions.installingPackages"),
@@ -287,15 +287,25 @@ export function selectHeaderButton(
         tooltip: t("thread.headerActions.installingPackagesTooltip"),
         menu: [],
       };
-    case "starting":
-      return {
-        label: t("thread.headerActions.startingApp"),
-        disabled: true,
-        loading: true,
-        variant: "outline",
-        tooltip: t("thread.headerActions.startingAppTooltip"),
-        menu: [],
-      };
+    // `starting` never gates the verdict — publishing is git (needs the checkout, not the dev server). Fall through the moment either signal resolves: real work (workingTreeDirty is user-written-only mid-boot, commits are never boot noise) → git/PR copy, or an authoritative-empty /git/status → "Up to date". Hold the boot pill only while both are still undecided.
+    case "starting": {
+      const hasWork =
+        branch.kind === "ready" &&
+        (branch.workingTreeDirty ||
+          branch.aheadOfBase > 0 ||
+          branch.unpushed > 0);
+      if (!hasWork && !input.noReviewableDiff) {
+        return {
+          label: t("thread.headerActions.startingApp"),
+          disabled: true,
+          loading: true,
+          variant: "outline",
+          tooltip: t("thread.headerActions.startingAppTooltip"),
+          menu: [],
+        };
+      }
+      break;
+    }
     // running/*-failed/crashed: fall through to git/PR.
   }
 

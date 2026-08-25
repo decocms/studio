@@ -294,6 +294,26 @@ describe("section-variants", () => {
     }
   });
 
+  it("hideSection/showSection round-trips a whole multivariate (variant) section", () => {
+    const mvSection = {
+      __resolveType: "website/flags/multivariate/section.ts",
+      variants: [
+        {
+          rule: { __resolveType: "website/matchers/always.ts" },
+          value: { __resolveType: "site/sections/Hero.tsx", title: "A" },
+        },
+        {
+          rule: { __resolveType: "website/matchers/device.ts", mobile: true },
+          value: { __resolveType: "site/sections/Hero.tsx", title: "B" },
+        },
+      ],
+    };
+
+    const hidden = hideSection(mvSection as never);
+    expect(parseSections([hidden], {})[0]?.isHidden).toBe(true);
+    expect(showSection(hidden as never)).toEqual(mvSection as never);
+  });
+
   it("hideSection on lazy sections stores the core section, not the lazy wrapper", () => {
     const lazy = {
       __resolveType: "website/sections/Rendering/Lazy.tsx",

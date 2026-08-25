@@ -1039,14 +1039,16 @@ export async function* ndjsonLines(
 }
 
 /**
- * Studio's own well-known connections, which every org has whether or not
- * anyone configured an MCP: the management surface and the two store
- * registries. Excluded from a run's `orgMcps` — `_self` alone is ~200
- * management tools, which is exactly what the narrow task-run surface exists to
- * avoid, and browsing the MCP store is not a coding agent's job. What the user
- * actually connected is everything else.
+ * Studio's own well-known connections — the management surface, the two store
+ * registries, and (for orgs that ran commerce onboarding) the Commerce
+ * Discovery report connection. Excluded from a run's `orgMcps` — `_self`
+ * alone is ~200 management tools, which is exactly what the narrow task-run
+ * surface exists to avoid, browsing the MCP store is not a coding agent's
+ * job, and the report connection is a diagnostics tool for the commerce UI,
+ * not something a coding agent should be handed. What the user actually
+ * connected is everything else.
  */
-function isStudioOwnedConnection(
+export function isStudioOwnedConnection(
   organizationId: string,
   connectionId: string,
 ): boolean {
@@ -1055,5 +1057,6 @@ function isStudioOwnedConnection(
     WellKnownOrgMCPId.REGISTRY,
     WellKnownOrgMCPId.COMMUNITY_REGISTRY,
     WellKnownOrgMCPId.DEV_ASSETS,
+    WellKnownOrgMCPId.COMMERCE_DISCOVERY,
   ].some((id) => id(organizationId) === connectionId);
 }

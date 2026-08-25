@@ -1,7 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { decopilotHarnessFactory } from "./index";
-import type { HarnessStreamInput } from "../types";
-import { setDecopilotRunContext } from "./run-context";
+import type { StudioContext } from "@/core/studio-context";
+import type { HarnessStreamInput } from "@/harnesses/lib/types";
+import { setDecopilotRunContext } from "@/harnesses/lib/decopilot/run-context";
+import { streamDecopilot } from "./stream";
 
 function makeInput(overrides: Partial<HarnessStreamInput>): HarnessStreamInput {
   const input: HarnessStreamInput = {
@@ -41,10 +42,11 @@ function makeInput(overrides: Partial<HarnessStreamInput>): HarnessStreamInput {
   return input;
 }
 
-describe("decopilotHarnessFactory", () => {
+describe("streamDecopilot", () => {
   it("requires a resolved secret model source instead of an activated runtime provider", async () => {
-    const harness = decopilotHarnessFactory.create({} as never);
-    const iterator = harness.stream(makeInput({}))[Symbol.asyncIterator]();
+    const iterator = streamDecopilot({} as StudioContext, makeInput({}))[
+      Symbol.asyncIterator
+    ]();
 
     await expect(iterator.next()).rejects.toThrow(
       /secret thinking model source/,

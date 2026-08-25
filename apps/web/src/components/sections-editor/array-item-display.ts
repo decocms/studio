@@ -141,6 +141,8 @@ function baseArrayItemLabel(
     const inner = lazyWrappedInner(obj);
     if (inner) {
       obj = inner;
+      // Unwrap again in case the lazy wrapper contains a hidden item.
+      obj = arrayItemDisplayValue(obj) as Record<string, unknown>;
     }
     if (itemSchema?.titleBy) {
       const fromTitleBy = readTitleByValue(obj, itemSchema.titleBy);

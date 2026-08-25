@@ -1,9 +1,9 @@
 /**
- * CLUSTER Decopilot environment-deps assembler (spec §5.2/§9 — "ONE factory").
+ * Studio's concrete Decopilot environment-deps assembler.
  *
  * The Decopilot harness runs ONE orchestration loop (`runDecopilotCore`). The
- * package factory gets its StudioContext-backed `DecopilotToolRuntime` +
- * `telemetry` through this registered cluster assembler:
+ * stream executor gets its StudioContext-backed `DecopilotToolRuntime` and
+ * telemetry directly from this cluster assembler:
  *
  *   - the in-process virtual-MCP passthrough client + the full cluster tool set
  *     (web_search / update_interests / Browserless built-ins) + the per-run

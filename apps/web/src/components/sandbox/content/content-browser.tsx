@@ -741,7 +741,9 @@ function ContentBrowserReady({
       blockKey: blockId,
       data: { ...formValue, name: blockId, __resolveType: resolveType },
     });
-    toast.success(`Created section "${blockId}"`);
+    toast.success(
+      t("sandbox.contentBrowser.createdSection", { name: blockId }),
+    );
     setSelection({ collection: "sections", key: blockId });
   };
 
@@ -753,7 +755,7 @@ function ContentBrowserReady({
   const handleDuplicateSection = async (section: GlobalSectionEntry) => {
     const source = decofile[section.key] as Record<string, unknown> | undefined;
     if (!source) {
-      toast.error("Section not found.");
+      toast.error(t("sandbox.contentBrowser.sectionNotFound"));
       return;
     }
     const newKey = nextUniqueBlockKey(decofile, section.key);
@@ -761,10 +763,16 @@ function ContentBrowserReady({
     const data: Record<string, unknown> = { ...source, name: newName };
     try {
       await saveBlock.mutateAsync({ blockKey: newKey, data });
-      toast.success(`Duplicated "${section.name}"`);
+      toast.success(
+        t("sandbox.contentBrowser.duplicatedSection", { name: section.name }),
+      );
       setSelection({ collection: "sections", key: newKey });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Duplicate failed");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sandbox.contentBrowser.duplicateFailed"),
+      );
     }
   };
 
@@ -774,7 +782,7 @@ function ContentBrowserReady({
       | Record<string, unknown>
       | undefined;
     if (!source) {
-      toast.error("Section not found.");
+      toast.error(t("sandbox.contentBrowser.sectionNotFound"));
       return;
     }
     try {
@@ -782,10 +790,14 @@ function ContentBrowserReady({
         blockKey: renameSectionKey,
         data: { ...source, name: newName },
       });
-      toast.success("Section renamed");
+      toast.success(t("sandbox.contentBrowser.sectionRenamed"));
       setRenameSectionKey(null);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Rename failed");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sandbox.contentBrowser.renameFailed"),
+      );
     }
   };
 

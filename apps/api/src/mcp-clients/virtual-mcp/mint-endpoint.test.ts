@@ -48,6 +48,17 @@ describe("mcpEndpointUrl", () => {
     ).toThrow(MissingOrganizationSlugError);
   });
 
+  it("url-encodes the agent id so it can't break out of its path segment", () => {
+    expect(
+      mcpEndpointUrl({
+        publicUrl,
+        agentId: "vir 1/2",
+        organization,
+        target: "agent-tools",
+      }),
+    ).toBe("https://studio.example.com/mcp/virtual-mcp/vir%201%2F2");
+  });
+
   it("still resolves agent-tools without a slug — that path is not org-scoped", () => {
     expect(
       mcpEndpointUrl({

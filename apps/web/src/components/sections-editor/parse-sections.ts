@@ -69,12 +69,62 @@ export function parseSections(
         >;
         let innerRt = (innerValue.__resolveType as string) ?? "";
         const innerIsLazy = isLazyResolveType(innerRt);
+        let mvInner: Record<string, unknown> = innerValue;
         if (innerIsLazy) {
           const nested = innerValue.section as
             | Record<string, unknown>
             | undefined;
           innerRt = (nested?.__resolveType as string) ?? innerRt;
+          if (nested) mvInner = nested;
         }
+
+        // Hidden variant section: keep the "Variants of X" label from the wrapped multivariate block.
+        if (
+          innerRt === PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE ||
+          innerRt === SECTION_MULTIVARIATE_RESOLVE_TYPE
+        ) {
+          const innerVariants = Array.isArray(mvInner.variants)
+            ? (mvInner.variants as Array<Record<string, unknown>>)
+            : [];
+          const firstValueRt = (
+            innerVariants[0]?.value as Record<string, unknown> | undefined
+          )?.__resolveType as string | undefined;
+          const sectionLabel = firstValueRt
+            ? labelFromResolveType(firstValueRt)
+            : "Section";
+          return {
+            index: idx,
+            resolveType: rt,
+            label: `Variants of ${sectionLabel}`,
+            isHidden: true,
+            isLazy: innerIsLazy,
+          };
+        }
+
+        if (
+          innerRt !== "" &&
+          isSavedBlockResolveType(innerRt) &&
+          innerRt in decofile
+        ) {
+          const resolvedBlock = decofile[innerRt] as
+            | Record<string, unknown>
+            | undefined;
+          const label =
+            (typeof resolvedBlock?.name === "string" && resolvedBlock.name) ||
+            innerRt
+              .replace(/[-_]/g, " ")
+              .replace(/\b\w/g, (c) => c.toUpperCase()) ||
+            `Section ${idx + 1}`;
+          return {
+            index: idx,
+            resolveType: rt,
+            label,
+            isHidden: true,
+            isLazy: innerIsLazy,
+            isSavedBlock: true,
+          };
+        }
+
         return {
           index: idx,
           resolveType: rt,

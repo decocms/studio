@@ -8,7 +8,7 @@
 
 import { expect, test } from "bun:test";
 import { NOTIFICATION_TYPES } from "@decocms/shared/notification-types";
-import { TYPES as MIGRATION_TYPES } from "../../migrations/176-notifications";
+import { TYPES as MIGRATION_TYPES } from "../../migrations/177-notifications";
 import { TASK_BOARD_ACTIVITY_ACTIONS } from "../tools/task-board/schema";
 import { COALESCED_ACTIONS } from "../storage/task-board";
 

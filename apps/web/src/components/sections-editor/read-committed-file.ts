@@ -72,3 +72,36 @@ export async function readCommittedJson<T>(
     return { kind: "unavailable" };
   }
 }
+
+/**
+ * Read the committed `.deco/meta.gen.json` from the branch via the sandbox-less
+ * decofile API (`/api/:org/decofile/:vmId/:branch/meta`), which resolves it
+ * through the GitHub API — no dev server, no daemon. This is the Fast Preview
+ * equivalent of `readCommittedJson`: the schema source that answers before (and
+ * without) a running runtime, so the CMS isn't stuck on a cross-origin
+ * `/live/_meta` fetch that CORS blocks.
+ *
+ * 404 = the artifact isn't committed on this branch → `absent` (fall through to
+ * production). Other non-ok statuses throw so the caller's query retries.
+ */
+export async function readCommittedMetaViaGit<T>(params: {
+  orgSlug: string;
+  virtualMcpId: string;
+  branch: string;
+}): Promise<CommittedRead<T>> {
+  const url = `/api/${params.orgSlug}/decofile/${encodeURIComponent(
+    params.virtualMcpId,
+  )}/${encodeURIComponent(params.branch)}/meta`;
+  const res = await fetch(url, { cache: "no-store" });
+  if (res.status === 404) return { kind: "absent" };
+  if (!res.ok) {
+    const err = new Error(`Failed to read committed meta: ${res.status}`);
+    (err as { status?: number }).status = res.status;
+    throw err;
+  }
+  try {
+    return { kind: "data", data: (await res.json()) as T };
+  } catch {
+    return { kind: "unavailable" };
+  }
+}

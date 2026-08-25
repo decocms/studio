@@ -108,19 +108,29 @@ export function unwrapSection(
     return null;
   }
 
-  if (parsed.isSavedBlock) {
+  if (parsed.isSavedBlock && !parsed.isHidden) {
     const blockKey = parsed.isLazy
       ? ((raw.section?.__resolveType as string) ?? raw.__resolveType)
       : raw.__resolveType;
     return resolveSavedBlockData(blockKey, decofile);
   }
 
+  // Hidden checked before isSavedBlock: a hidden section's raw.__resolveType is the never-matcher wrapper, not the block key.
   if (parsed.isHidden) {
     const isLazy = isLazyResolveType(raw.__resolveType);
     const mvObj = isLazy ? (raw.section as RawSection | undefined) : raw;
     const innerValue =
       (mvObj?.variants?.[0]?.value as Record<string, unknown>) ??
       (raw as Record<string, unknown>);
+    const innerRt = (innerValue.__resolveType as string) ?? "";
+    const effectiveInnerRt = isLazyResolveType(innerRt)
+      ? (((innerValue.section as Record<string, unknown> | undefined)
+          ?.__resolveType as string) ?? innerRt)
+      : innerRt;
+    // Hidden variant section wraps a multivariate block; editing it as one section would flatten the variants.
+    if (isMultivariateResolveType(effectiveInnerRt)) {
+      return null;
+    }
     return unwrapSectionValue(innerValue, decofile);
   }
 
