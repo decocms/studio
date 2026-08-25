@@ -50,7 +50,6 @@ import type { VirtualMCPEntity } from "@decocms/shared/sdk";
 import type {
   DecopilotSecretModelSource,
   DecopilotSecretModelSources,
-  HarnessId,
   HarnessStreamInput,
   HarnessUserContext,
   ModelSelection,
@@ -67,22 +66,21 @@ import type {
 import { createProviderFromSecret } from "@/harnesses/lib/decopilot/provider-from-secret";
 import { stringifyError } from "@/harnesses/lib/stream-error";
 import { DEFAULT_WINDOW_SIZE, generateMessageId } from "./constants";
-import { mintRunFenceToken } from "./dispatch-fence";
 import { synthesizedErrorMessageId } from "./message-ids";
 import { loadDecopilotContext } from "@/harnesses/decopilot/context-loader";
 import { PartEmitter } from "./part-emitter";
 import { foldedToUIMessage } from "./projector-seed";
 import { uploadFileParts, resolveStorageRefs } from "./file-materializer";
 import type { ToolApprovalLevel } from "./helpers";
-import { type ChatMode } from "./mode-config";
+import { type ChatMode } from "@/harnesses/lib/decopilot/mode-config";
 
-export type { ChatMode } from "./mode-config";
+export type { ChatMode } from "@/harnesses/lib/decopilot/mode-config";
 import { createMemory } from "./memory";
 import { ensureModelCompatibility } from "./model-compat";
 import {
   PREPARE_RUN_STATUS_STAGES,
   publishRunStatusStage,
-  shouldPublishClusterRunStatus,
+  shouldPublishRunStatus,
 } from "./run-status-stage";
 import { publishUserMessage } from "./user-message-stream";
 import type {
@@ -380,16 +378,11 @@ export interface DispatchRunInput {
   isResume?: boolean;
   /** Persisted to the thread row on first-message creation. */
   branch?: string | null;
-  /** Hosted runs always use the managed agent sandbox. */
-  sandboxProviderKind: "agent-sandbox";
   /** Hosted dispatch accepts an explicit hosted harness — never a default. */
   harnessId: HostedHarnessId;
   /**
-   * Single-writer fence token for this run. Durable submit callers mint and
-   * persist it before starting DBOS, then thread it down here so `prepareRun`
-   * uses the submit-time value. When omitted (legacy/direct callers, tests that
-   * exercise `prepareRun` standalone), `prepareRun` falls back to minting +
-   * `setRunFence` itself, preserving the prior behavior.
+   * Single-writer fence token for this run. It is absent on a newly submitted
+   * request and becomes required after the thread gate claims the run.
    */
   runFenceToken?: string;
 }
@@ -411,7 +404,6 @@ export interface FrozenRunSnapshot {
    *  it to downstream MCP tool calls (see DispatchRunInput.runMetadata). */
   runMetadata?: Record<string, string>;
   branch?: string | null;
-  sandboxProviderKind: "agent-sandbox";
   harnessId: HostedHarnessId;
   /**
    * Per-turn system context the client attached to this user turn (the
@@ -432,6 +424,7 @@ export interface DurableDispatchRunInput extends FrozenRunSnapshot {
   userId: string;
   taskId: string;
   messageId: string;
+  /** Required by the claimed execution type after the thread gate runs. */
   runFenceToken?: string;
   abortSignal?: AbortSignal;
   isResume?: boolean;
@@ -440,6 +433,10 @@ export interface DurableDispatchRunInput extends FrozenRunSnapshot {
 export type DispatchRunRuntimeInput =
   | DispatchRunInput
   | DurableDispatchRunInput;
+
+export type ClaimedDispatchRunInput = DispatchRunRuntimeInput & {
+  runFenceToken: string;
+};
 
 /**
  * Harnesses hosted dispatch can run.
@@ -520,7 +517,6 @@ export function buildDurableDispatchInput(
       ? { runMetadata: input.runMetadata }
       : {}),
     branch: options.branch ?? input.branch ?? null,
-    sandboxProviderKind: input.sandboxProviderKind,
     harnessId: input.harnessId,
     organizationId: input.organizationId,
     userId: input.userId,
@@ -605,7 +601,7 @@ function dispatchRunSpanAttrs(
  * completes.
  */
 export async function dispatchRunAndWait(
-  input: DispatchRunRuntimeInput,
+  input: ClaimedDispatchRunInput,
   ctx: StudioContext,
   deps: DispatchRunDeps,
 ): Promise<DispatchRunResult> {
@@ -712,9 +708,7 @@ export async function dispatchRunAndWait(
  * lazy harness chunk source:
  * `{ ...wireHarnessInput, signal: registrySignal }`.
  */
-type WireHarnessInput = Omit<HarnessStreamInput, "signal"> & {
-  harnessId: HarnessId;
-};
+type WireHarnessInput = Omit<HarnessStreamInput, "signal">;
 
 interface PreparedRun {
   taskId: string;
@@ -808,7 +802,7 @@ async function resolveEffectiveVirtualMcpForHarness({
  * consumer.
  */
 async function prepareRun(
-  input: DispatchRunRuntimeInput,
+  input: ClaimedDispatchRunInput,
   ctx: StudioContext,
   deps: DispatchRunDeps,
   rootSpan: import("@opentelemetry/api").Span,
@@ -838,18 +832,13 @@ async function prepareRun(
     const clientModels = input.models;
     rootSpan.setAttribute("decopilot.harnessId", harnessId);
 
-    // Every run is hosted. Stash it on the context so downstream sandbox tools
-    // resolve the hosted provider without re-querying the registry.
-    ctx.sandboxPreference = "agent-sandbox";
+    // Every run is hosted on the managed agent sandbox.
     rootSpan.setAttribute(
       "decopilot.dispatchTarget.sandboxProviderKind",
       "agent-sandbox",
     );
 
-    const shouldPublishRunStatus = shouldPublishClusterRunStatus({
-      harnessId,
-      sandboxProviderKind: "agent-sandbox",
-    });
+    const publishRunStatus = shouldPublishRunStatus(harnessId);
 
     // Normalize the client models payload into the v2 per-slot shape FIRST
     // (the HTTP layer still sends a root credentialId), so the permission
@@ -893,7 +882,7 @@ async function prepareRun(
     if (!input.taskId) {
       throw new Error("dispatchRunAndWait: taskId is required");
     }
-    if (shouldPublishRunStatus) {
+    if (publishRunStatus) {
       await publishRunStatusStage(
         streamBuffer,
         input.taskId,
@@ -955,7 +944,7 @@ async function prepareRun(
         input.userId,
       ),
     ]);
-    if (shouldPublishRunStatus) {
+    if (publishRunStatus) {
       await publishRunStatusStage(
         streamBuffer,
         input.taskId,
@@ -1088,28 +1077,19 @@ async function prepareRun(
     // so reset the flag alongside the new fence.
     await ctx.storage.threads.clearCancelRequested(mem.thread.id);
 
-    // Single-writer fence token for this run. The token is included in
-    // HarnessStreamInput so every ingest append carries it.
+    // Single-writer fence token for this run. The projector and cancellation
+    // paths use it to reject work from an earlier attempt.
     // It is fresh PER TURN (runId == threadId is stable across turns) so the
     // fence-scoped JetStream dedup key (`runId:fenceToken:seq`) and the
     // projector's per-(runId, fenceToken) accumulator never collide two turns.
     //
-    // Durable submit callers arrive here with `input.runFenceToken` already
-    // set: the thread gate's dispatch step claims + persists the fence via
+    // The thread gate's dispatch step claims + persists the fence via
     // `claimRunFenceForDispatch` (thread-gate-workflow.ts) while it holds the
     // thread's partition slot, and bakes that value into the request this
-    // function receives — so we USE it and skip the write. The mint-and-write
-    // fallback below only fires for legacy/direct callers that bypass the
-    // gate. Either way the same value flows into the wire harness input, the
-    // NATS msg ids, and the projector/consume fence checks.
+    // function receives. The same value keys the NATS msg ids and the
+    // projector/consume fence checks.
     // A failed run may leave run_fence_token set; the next run overwrites it.
-    let runFenceToken: string;
-    if (input.runFenceToken) {
-      runFenceToken = input.runFenceToken;
-    } else {
-      runFenceToken = mintRunFenceToken();
-      await ctx.storage.threads.setRunFence(mem.thread.id, runFenceToken);
-    }
+    const runFenceToken = input.runFenceToken;
 
     const registrySignal = runRegistry.getAbortSignal(mem.thread.id);
     if (!registrySignal) {
@@ -1264,7 +1244,6 @@ async function prepareRun(
 
     const pendingOps: Promise<void>[] = [];
 
-    const organization = ctx.organization!;
     const streamStartAt = Date.now();
 
     // ── Build the wire HarnessStreamInput EAGERLY ───────────────────────────
@@ -1340,7 +1319,6 @@ async function prepareRun(
     };
 
     const wireHarnessInput: WireHarnessInput = {
-      harnessId,
       threadId: mem.thread.id,
       userMessage: wireUserMessage,
       harness: { sessionId: undefined },
@@ -1354,7 +1332,6 @@ async function prepareRun(
       maxAgentSteps: input.maxAgentSteps,
       user: { id: input.userId, email: ctx.auth.user?.email ?? "" },
       organizationId: input.organizationId,
-      organizationSlug: organization.slug,
       agent: {
         id: input.agent.id,
         instructions: agentInstructions,
@@ -1362,9 +1339,7 @@ async function prepareRun(
           ? { disallowedTools: input.agent.disallowedTools }
           : {}),
       },
-      triggerId: input.triggerId,
       currentThreadTitle: mem.thread.title,
-      runFenceToken,
     };
     // ── LAZY harness dispatch ───────────────────────────────────────────────
     // This generator's body — local harness dispatch — runs only when the
@@ -1375,9 +1350,9 @@ async function prepareRun(
     // directly after prepareRun returns and publishes every chunk into the
     // per-task subject — that's what /stream tails.
     //
-    // Only Decopilot runs a hosted loop here. Coding-agent harnesses are
-    // native-only and the thread gate rejects them before this point.
-    if (shouldPublishRunStatus) {
+    // Decopilot runs its loop here. Hosted coding-agent harnesses take the
+    // sandbox dispatch path below instead.
+    if (publishRunStatus) {
       await publishRunStatusStage(
         streamBuffer,
         input.taskId,
@@ -1410,10 +1385,10 @@ async function prepareRun(
         };
         setDecopilotRunContext(harnessInput, decopilotRunContext);
 
-        // Either SandboxClient returns the same chunk iterable, and
-        // consumeHarnessStream consumes it verbatim: Decopilot's comes from an
-        // in-process call, claude-code's from the sandbox daemon over SSE.
-        if (shouldPublishRunStatus) {
+        // Both execution paths return the same chunk iterable, which
+        // consumeHarnessStream consumes verbatim: Decopilot's comes from an
+        // in-process call, claude-code's from the sandbox daemon over HTTP.
+        if (publishRunStatus) {
           await publishRunStatusStage(
             streamBuffer,
             mem.thread.id,

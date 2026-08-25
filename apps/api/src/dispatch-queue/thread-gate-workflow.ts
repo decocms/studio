@@ -31,7 +31,7 @@ import type { StudioContext } from "@/core/studio-context";
 import { posthog } from "@/posthog";
 import {
   publishRunStatusStage,
-  shouldPublishThreadGateRunStatus,
+  shouldPublishRunStatus,
 } from "@/api/routes/decopilot/run-status-stage";
 import { mintRunFenceToken } from "@/api/routes/decopilot/dispatch-fence";
 import { consumeRunProjection } from "@/api/routes/decopilot/consume-run-projection";
@@ -73,6 +73,10 @@ export function assertHarnessRunsInCluster(harnessId?: string | null): void {
 export type SerializableDispatchRunInput =
   | Omit<DispatchRunInput, "abortSignal">
   | Omit<DurableDispatchRunInput, "abortSignal">;
+
+type ClaimedSerializableDispatchRunInput = SerializableDispatchRunInput & {
+  runFenceToken: string;
+};
 
 export interface ThreadGateContext {
   /** Stable thread identifier — also used as the queue partition key. */
@@ -141,14 +145,14 @@ export function claimRunFenceForDispatch(
   mint: () => string = mintRunFenceToken,
 ): {
   runFenceToken: string;
-  claimedRequest: SerializableDispatchRunInput;
+  claimedRequest: ClaimedSerializableDispatchRunInput;
   shouldPersistFence: boolean;
 } {
   const submitFenceToken = request.runFenceToken;
   if (submitFenceToken) {
     return {
       runFenceToken: submitFenceToken,
-      claimedRequest: request,
+      claimedRequest: { ...request, runFenceToken: submitFenceToken },
       shouldPersistFence: false,
     };
   }
@@ -169,11 +173,7 @@ async function dispatchRunAndWaitStep(
   const rt = requireRuntime();
   const { request } = ctx;
   const taskId = request.taskId ?? ctx.threadId;
-  if (
-    shouldPublishThreadGateRunStatus({
-      harnessId: request.harnessId,
-    })
-  ) {
+  if (shouldPublishRunStatus(request.harnessId)) {
     await publishRunStatusStage(rt.deps.streamBuffer, taskId, "starting-run");
   }
 
