@@ -67,7 +67,24 @@ import {
 } from "@/hooks/use-jira-integration";
 import { timeAgo } from "@/layouts/library/cards";
 
-type BoardStatus = JiraIntegration["statusMapping"][string];
+type BoardStatus = keyof JiraIntegration["statusMapping"];
+type StatusMapping = JiraIntegration["statusMapping"];
+
+/** One column of the org's Jira board, as `JIRA_BOARD_COLUMNS_LIST` returns it. */
+type BoardColumn = { name: string; statuses: string[] };
+
+/** The lane a board column currently maps to, found through any one of the
+ *  statuses it groups. */
+function laneOfColumn(
+  mapping: StatusMapping,
+  column: BoardColumn,
+): BoardStatus | undefined {
+  const first = column.statuses[0];
+  if (!first) return undefined;
+  return Object.entries(mapping).find(([, names]) =>
+    (names as string[]).includes(first),
+  )?.[0] as BoardStatus | undefined;
+}
 
 const BOARD_STATUS_OPTIONS: Array<{
   value: BoardStatus;
@@ -229,16 +246,24 @@ function ColumnMappingRows({ integration }: { integration: JiraIntegration }) {
     );
   }
 
-  // The mapping is keyed by STATUS name; one row writes every status its column groups.
-  function setColumnMapping(statuses: string[], value: string) {
+  /**
+   * Rewrite the whole mapping from the column list rather than patching one
+   * entry, so each lane's statuses come out in BOARD ORDER. That order is not
+   * cosmetic: the push sends a card entering a lane to position 0, so the
+   * leftmost Jira column of a lane is where it lands.
+   */
+  function setColumnMapping(changed: BoardColumn, value: string) {
     const previous = mapping;
-    const next = { ...mapping };
-    for (const status of statuses) {
-      if (value === DONT_SYNC) {
-        delete next[status];
-      } else {
-        next[status] = value as BoardStatus;
-      }
+    const next: StatusMapping = {};
+    for (const column of columns.data ?? []) {
+      const lane =
+        column.name === changed.name
+          ? value === DONT_SYNC
+            ? undefined
+            : (value as BoardStatus)
+          : laneOfColumn(mapping, column);
+      if (!lane) continue;
+      next[lane] = [...(next[lane] ?? []), ...column.statuses];
     }
     setMapping(next);
     upsert.mutate(
@@ -270,10 +295,8 @@ function ColumnMappingRows({ integration }: { integration: JiraIntegration }) {
             )}
           </div>
           <Select
-            value={
-              (column.statuses[0] && mapping[column.statuses[0]]) ?? DONT_SYNC
-            }
-            onValueChange={(value) => setColumnMapping(column.statuses, value)}
+            value={laneOfColumn(mapping, column) ?? DONT_SYNC}
+            onValueChange={(value) => setColumnMapping(column, value)}
           >
             <SelectTrigger className="w-44 shrink-0">
               <SelectValue />

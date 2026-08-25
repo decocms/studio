@@ -1,10 +1,10 @@
 import type { Kysely } from "kysely";
 import type { CredentialVault } from "../encryption/credential-vault";
-import type {
-  Database,
-  OrgJiraIntegration,
-  TaskBoardItemStatus,
-} from "./types";
+import {
+  type JiraStatusMapping,
+  normalizeStatusMapping,
+} from "@decocms/shared/jira-status-mapping";
+import type { Database, OrgJiraIntegration } from "./types";
 
 /**
  * Per-org Jira Cloud integration configs (see migration 171). One row per
@@ -26,7 +26,7 @@ type Row = {
   api_token: string;
   board_id: string | null;
   board_name: string | null;
-  status_mapping: Record<string, TaskBoardItemStatus> | string;
+  status_mapping: unknown;
   jql_filter: string | null;
   auto_delegate: boolean;
   webhook_secret: string;
@@ -62,10 +62,13 @@ export class JiraIntegrationStorage {
       boardId: row.board_id,
       boardName: row.board_name,
       // Defensive parse — driver jsonb handling varies (see organization-settings.ts).
-      statusMapping:
+      // Normalized on the way out, so every reader gets lane → statuses and
+      // a row still in the legacy status → lane shape keeps syncing.
+      statusMapping: normalizeStatusMapping(
         typeof row.status_mapping === "string"
           ? JSON.parse(row.status_mapping)
           : row.status_mapping,
+      ),
       jqlFilter: row.jql_filter,
       autoDelegate: row.auto_delegate,
       webhookSecret: row.webhook_secret,
@@ -95,7 +98,7 @@ export class JiraIntegrationStorage {
     apiToken: string;
     boardId: string | null;
     boardName: string | null;
-    statusMapping: Record<string, TaskBoardItemStatus>;
+    statusMapping: JiraStatusMapping;
     jqlFilter: string | null;
     autoDelegate: boolean;
     enabled: boolean;

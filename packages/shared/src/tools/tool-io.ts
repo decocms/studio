@@ -4863,9 +4863,16 @@ export interface StudioToolIO {
         email: string;
         boardId: string | null;
         boardName: string | null;
-        statusMapping: Record<
-          string,
-          "done" | "triage" | "todo" | "in_progress" | "in_review" | "archived"
+        statusMapping: Partial<
+          Record<
+            | "done"
+            | "triage"
+            | "todo"
+            | "in_progress"
+            | "in_review"
+            | "archived",
+            string[]
+          >
         >;
         jqlFilter: string | null;
         autoDelegate: boolean;
@@ -4885,14 +4892,16 @@ export interface StudioToolIO {
       boardId?: string | null | undefined;
       boardName?: string | null | undefined;
       statusMapping?:
-        | Record<
-            string,
-            | "done"
-            | "triage"
-            | "todo"
-            | "in_progress"
-            | "in_review"
-            | "archived"
+        | Partial<
+            Record<
+              | "done"
+              | "triage"
+              | "todo"
+              | "in_progress"
+              | "in_review"
+              | "archived",
+              string[]
+            >
           >
         | undefined;
       jqlFilter?: string | null | undefined;
@@ -4906,9 +4915,16 @@ export interface StudioToolIO {
         email: string;
         boardId: string | null;
         boardName: string | null;
-        statusMapping: Record<
-          string,
-          "done" | "triage" | "todo" | "in_progress" | "in_review" | "archived"
+        statusMapping: Partial<
+          Record<
+            | "done"
+            | "triage"
+            | "todo"
+            | "in_progress"
+            | "in_review"
+            | "archived",
+            string[]
+          >
         >;
         jqlFilter: string | null;
         autoDelegate: boolean;
