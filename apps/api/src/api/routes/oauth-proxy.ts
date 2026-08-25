@@ -656,14 +656,12 @@ const METADATA_FETCH_TIMEOUT_MS = 4000;
  * `fetchMetadataWithRetry`.
  */
 // Refuses 3xx so an attacker-controlled origin can't redirect this fetch to a private address and bypass isPrivateUrl.
-const noRedirectFetch = createNoRedirectFetch();
-
 function fetchWithTimeout(
   url: string,
   init: RequestInit,
   timeoutMs = METADATA_FETCH_TIMEOUT_MS,
 ): Promise<Response> {
-  return noRedirectFetch(url, {
+  return createNoRedirectFetch()(url, {
     ...init,
     signal: AbortSignal.timeout(timeoutMs),
   });
