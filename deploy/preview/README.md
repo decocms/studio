@@ -27,7 +27,7 @@ the clock.
 
 | Not supported | Reason |
 |---|---|
-| Agent execution against a hosted sandbox | `STUDIO_SANDBOX_PROVIDER=user-desktop`, no daemon attached → `409 link_offline`. A hosted-sandbox preview class needs the `sandbox-env` chart and is out of scope. |
+| Agent execution against a hosted sandbox | `STUDIO_AGENT_SANDBOX_ENABLED=false`; a hosted-sandbox preview class needs the `sandbox-env` chart and is out of scope. |
 | AI features out of the box | No provider key is seeded, so preview LLM spend is zero by construction. Add your own key in org settings. |
 | Google / GitHub sign-in | OAuth callbacks cannot be registered for a per-PR hostname. Email/password only. |
 | Monitoring dashboard, billing, outbound email | No ClickHouse, no Stripe, no mail provider. |
