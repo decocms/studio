@@ -773,7 +773,20 @@ impl SandboxManager {
         let handle_lock = self.handle_lock(handle);
         let _permit = handle_lock.lock().await;
 
+        let sandbox = self.get(handle);
         let killed = self.stop_locked(handle).await?;
+        if let Some(sandbox) = sandbox {
+            let worker_stopped = sandbox
+                .setup
+                .join_closed_worker(TASK_KILL_REAP_DEADLINE)
+                .await;
+            if !worker_stopped {
+                tracing::warn!(
+                    handle,
+                    "aborted a setup worker before reclaiming its worktree"
+                );
+            }
+        }
 
         let root = crate::sandbox::worktree_root(&self.app_root, handle);
         match tokio::fs::remove_dir_all(&root).await {
@@ -2274,6 +2287,70 @@ mod tests {
         assert!(
             !worktree.exists(),
             "reclaim proceeds once the git op releases the lock"
+        );
+    }
+
+    #[tokio::test]
+    async fn remove_registered_joins_the_setup_worker_before_deleting_its_worktree() {
+        let (_root, clone_url) = setup_two_branch_repo();
+        let app_root = tempfile::tempdir().unwrap();
+        let manager = Arc::new(SandboxManager::new(app_root.path().to_path_buf()));
+        let cfg = GitSandboxConfig {
+            virtual_mcp_id: "vmcp-worker-reclaim".to_string(),
+            clone_url,
+            branch: Some("work".to_string()),
+            ..Default::default()
+        };
+
+        let sandbox = manager.ensure(&cfg).await.expect("ensure succeeds");
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                let settled = sandbox.setup.lifecycle_snapshot()["phase"] == "start-failed"
+                    && !sandbox.setup.is_running()
+                    && sandbox.setup.pending_count() == 0;
+                if settled {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("the initial setup pipeline settles");
+
+        std::fs::write(sandbox.workdir.join("package-lock.json"), "{}\n").unwrap();
+        let (append_entered, release_append) = sandbox.tasks.logs().block_next_append();
+        assert!(sandbox.setup.resume_from(Step::Install));
+        let entered = tokio::time::timeout(Duration::from_secs(5), append_entered.acquire())
+            .await
+            .expect("runtime detection reaches its log append")
+            .expect("append gate stays open");
+        entered.forget();
+
+        let handle = sandbox.handle.clone();
+        let worktree = crate::sandbox::worktree_root(app_root.path(), &handle);
+        drop(sandbox);
+        let reclaim = tokio::spawn({
+            let manager = manager.clone();
+            let handle = handle.clone();
+            async move { manager.remove_registered(&handle).await }
+        });
+        for _ in 0..50 {
+            tokio::task::yield_now().await;
+        }
+        assert!(
+            !reclaim.is_finished(),
+            "reclaim must join a setup worker that can still write below the worktree root"
+        );
+
+        release_append.add_permits(1);
+        reclaim
+            .await
+            .expect("reclaim task doesn't panic")
+            .expect("reclaim succeeds")
+            .expect("a registered handle is not unknown");
+        assert!(
+            !worktree.exists(),
+            "the joined setup worker cannot recreate the reclaimed root"
         );
     }
 

@@ -348,10 +348,21 @@ impl SetupOrchestrator {
     ) -> SetupShutdownResult {
         self.close();
         let tasks = self.tasks.kill_all_and_wait(term_grace, kill_grace).await;
+        let worker_stopped = self.join_closed_worker(kill_grace).await;
+        SetupShutdownResult {
+            worker_stopped,
+            tasks,
+        }
+    }
 
+    /// Joins the worker after admission has been closed and its process tasks
+    /// have been reaped. A timed-out worker is aborted and still fully joined,
+    /// so callers may safely remove the directories it owns after this returns.
+    pub(crate) async fn join_closed_worker(&self, timeout: Duration) -> bool {
+        debug_assert!(self.is_closed());
         let worker = self.lock_worker().take();
         let worker_stopped = match worker {
-            Some(mut worker) => match tokio::time::timeout(kill_grace, &mut worker).await {
+            Some(mut worker) => match tokio::time::timeout(timeout, &mut worker).await {
                 Ok(_) => true,
                 Err(_) => {
                     worker.abort();
@@ -363,10 +374,7 @@ impl SetupOrchestrator {
         };
         self.running.store(false, Ordering::SeqCst);
         self.pending.store(0, Ordering::SeqCst);
-        SetupShutdownResult {
-            worker_stopped,
-            tasks,
-        }
+        worker_stopped
     }
 
     /// `true` while a step is actively being applied. Surfaced on
