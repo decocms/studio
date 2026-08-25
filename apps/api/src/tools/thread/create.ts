@@ -51,6 +51,7 @@ import {
   branchUserLabel,
   generateBranchName,
 } from "@decocms/shared/branch-name";
+import { AGENT_SANDBOX_KIND } from "../sandbox/sandbox-map";
 
 const CreateInputSchema = z.object({
   data: ThreadCreateDataSchema.describe(
@@ -72,10 +73,8 @@ type SandboxMapMeta = {
 };
 
 /**
- * Pick the user's most-recently-touched branch from sandboxMap (3-level shape:
- * sandboxMap[userId][branch][sandboxProviderKind] → SandboxRecord). Returns
- * undefined when the user has no entries (caller falls back to
- * generateBranchName).
+ * Pick the user's most-recently-touched hosted branch from sandboxMap. Native
+ * desktop siblings are not routable by the API and cannot warm a hosted chat.
  */
 function pickWarmBranchFromSandboxMap(
   sandboxMap: SandboxMapMeta["sandboxMap"],
@@ -83,18 +82,13 @@ function pickWarmBranchFromSandboxMap(
 ): string | undefined {
   const branchMap = sandboxMap?.[userId];
   if (!branchMap) return undefined;
-  // For each branch, take the max createdAt across all sandboxProviderKind entries.
-  const sorted = Object.entries(branchMap).sort(([, aKinds], [, bKinds]) => {
-    const aMax = Math.max(
-      0,
-      ...Object.values(aKinds).map((e) => e.createdAt ?? 0),
+  const sorted = Object.entries(branchMap)
+    .filter(([, kinds]) => AGENT_SANDBOX_KIND in kinds)
+    .sort(
+      ([, aKinds], [, bKinds]) =>
+        (bKinds[AGENT_SANDBOX_KIND]?.createdAt ?? 0) -
+        (aKinds[AGENT_SANDBOX_KIND]?.createdAt ?? 0),
     );
-    const bMax = Math.max(
-      0,
-      ...Object.values(bKinds).map((e) => e.createdAt ?? 0),
-    );
-    return bMax - aMax;
-  });
   return sorted[0]?.[0];
 }
 

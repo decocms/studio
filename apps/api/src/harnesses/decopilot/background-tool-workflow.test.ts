@@ -11,7 +11,6 @@ describe("isHostedDecopilotThread", () => {
   test("ignores retired provider values", () => {
     const dirtyThread = {
       harness_id: "decopilot",
-      sandbox_provider_kind: "local-api",
     };
     expect(isHostedDecopilotThread(dirtyThread)).toBe(true);
   });

@@ -21,4 +21,11 @@ describe("ThreadUpdateDataSchema", () => {
     const result = ThreadUpdateDataSchema.safeParse({});
     expect(result.success).toBe(true);
   });
+
+  test("rejects the server-managed sandbox map", () => {
+    const result = ThreadUpdateDataSchema.safeParse({
+      metadata: { sandboxMap: {} },
+    });
+    expect(result.success).toBe(false);
+  });
 });

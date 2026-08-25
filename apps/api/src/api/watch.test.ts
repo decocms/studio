@@ -138,7 +138,6 @@ function makeThread(overrides: Partial<Thread>): Thread {
     last_progress_at: overrides.last_progress_at ?? null,
     virtual_mcp_id: overrides.virtual_mcp_id ?? "",
     branch: overrides.branch ?? null,
-    sandbox_provider_kind: overrides.sandbox_provider_kind ?? null,
     harness_id: overrides.harness_id ?? null,
     metadata: overrides.metadata ?? {},
     created_at: overrides.created_at ?? "2026-01-01T00:00:00.000Z",
