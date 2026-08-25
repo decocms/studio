@@ -49,6 +49,14 @@ export const KEYS = {
   taskBoardActivity: (locator: ProjectLocator, itemId: string) =>
     [locator, "task-board-activity", itemId] as const,
 
+  // The current user's unread notifications in this org
+  notifications: (locator: ProjectLocator) =>
+    [locator, "notifications"] as const,
+
+  // Everyone following a task
+  notificationSubscribers: (locator: ProjectLocator, itemId: string) =>
+    [locator, "notification-subscribers", itemId] as const,
+
   // A task's comment threads
   taskBoardComments: (locator: ProjectLocator, itemId: string) =>
     [locator, "task-board-comments", itemId] as const,

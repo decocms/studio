@@ -175,6 +175,7 @@ import * as migration173threadgithubrepoconnectionindex from "./173-thread-githu
 import * as migration174threadmessagepartspersistedat from "./174-thread-message-parts-persisted-at.ts";
 import * as migration175taskboardsprints from "./175-task-board-sprints.ts";
 import * as migration176taskboarddonesweepindex from "./176-task-board-done-sweep-index.ts";
+import * as migration177notifications from "./177-notifications.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -381,6 +382,7 @@ const migrations: Record<string, Migration> = {
     migration174threadmessagepartspersistedat,
   "175-task-board-sprints": migration175taskboardsprints,
   "176-task-board-done-sweep-index": migration176taskboarddonesweepindex,
+  "177-notifications": migration177notifications,
 };
 
 export default migrations;

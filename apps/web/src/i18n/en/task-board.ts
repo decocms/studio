@@ -84,6 +84,8 @@ export const taskBoard = {
     "{reviewer} requested changes and handed the task back to the Super Agent",
   "taskBoard.taskDialog.activityReviewChangesRequestedWithNotes":
     "{reviewer} requested changes: {notes}",
+  "taskBoard.taskDialog.subscribe": "Subscribe",
+  "taskBoard.taskDialog.unsubscribe": "Unsubscribe",
   "taskBoard.taskDialog.activityMergeConflictResolution":
     "couldn't merge the pull request — resolving a merge conflict",
   "taskBoard.taskDialog.activityMergeFailed": "couldn't merge the pull request",

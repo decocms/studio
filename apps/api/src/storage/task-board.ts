@@ -22,6 +22,16 @@ import type {
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { RESOLVED_RUN_FAILURE_KINDS } from "@decocms/shared/entities";
+import { NOTIFICATION_TYPES } from "@decocms/shared/notification-types";
+import type { NotificationType } from "@decocms/shared/notification-types";
+import { notify } from "../notifications/notify";
+
+/** Activity actions that also earn an inbox row and an email. */
+const NOTIFIED_ACTIONS = new Set<string>(NOTIFICATION_TYPES);
+
+function notifiedType(action: string): NotificationType | null {
+  return NOTIFIED_ACTIONS.has(action) ? (action as NotificationType) : null;
+}
 
 /** One comment on a task, as the tools return it. `parentId` null = thread root;
  *  `resolved` only means anything on a root. */
@@ -70,7 +80,7 @@ function commentFromDbRow(row: {
 /** Text of a folded/persisted text part payload (`{ type: "text", text }`). */
 /** Actions that describe editing prose, where a burst of saves is one edit.
  *  A repeat inside the window moves the existing entry instead of adding one. */
-const COALESCED_ACTIONS = new Set<TaskBoardActivityAction>([
+export const COALESCED_ACTIONS = new Set<TaskBoardActivityAction>([
   "description_changed",
   "title_changed",
 ]);
@@ -1722,6 +1732,8 @@ export class TaskBoardStorage {
     action: TaskBoardActivityAction;
     actorId: string | null;
     data?: Record<string, unknown>;
+    /** Users this event enrolls as followers (see `notify`). */
+    alsoSubscribe?: (string | null | undefined)[];
   }): Promise<void> {
     await this.db
       .insertInto("task_board_activity")
@@ -1734,6 +1746,30 @@ export class TaskBoardStorage {
         occurred_at: new Date().toISOString(),
       })
       .execute();
+    await this.fanOut([params]);
+  }
+
+  /** Inbox + digest fan-out for the entries that earn one. Never throws — the
+   *  activity row has already committed. */
+  private async fanOut(
+    entries: {
+      taskBoardItemId: string;
+      action: string;
+      actorId: string | null;
+      alsoSubscribe?: (string | null | undefined)[];
+    }[],
+  ): Promise<void> {
+    for (const entry of entries) {
+      const type = notifiedType(entry.action);
+      if (!type) continue;
+      await notify({
+        db: this.db,
+        taskBoardItemId: entry.taskBoardItemId,
+        type,
+        actorId: entry.actorId,
+        alsoSubscribe: entry.alsoSubscribe,
+      });
+    }
   }
 
   /** Resolve a legacy review token to its claim for a task. Null when the token
@@ -1765,6 +1801,8 @@ export class TaskBoardStorage {
       action: TaskBoardActivityAction;
       actorId: string | null;
       data?: Record<string, unknown>;
+      /** Users this event enrolls as followers (see `notify`). */
+      alsoSubscribe?: (string | null | undefined)[];
     }[],
   ): Promise<void> {
     if (entries.length === 0) return;
@@ -1790,6 +1828,7 @@ export class TaskBoardStorage {
         })),
       )
       .execute();
+    await this.fanOut(fresh);
   }
 
   /**

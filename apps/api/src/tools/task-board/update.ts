@@ -361,6 +361,12 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
             taskBoardItemId: item.id,
             actorId,
             ...entry,
+            // Only a reassignment enrolls anyone; editing a field does not.
+            alsoSubscribe:
+              entry.action === "assignee_changed" &&
+              item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID
+                ? [item.assigneeId]
+                : undefined,
           })),
         );
       }

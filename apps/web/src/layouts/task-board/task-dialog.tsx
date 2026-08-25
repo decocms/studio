@@ -125,6 +125,7 @@ import {
   type TaskComment,
 } from "./task-comments";
 import { useTaskBoardComments } from "@/hooks/use-task-board-comments";
+import { SubscribeToggle } from "./subscribe-button";
 
 // ponytail: pinned to end-of-day so "due today" doesn't flip to overdue
 // mid-morning. Local zone in, UTC out.
@@ -324,20 +325,26 @@ function ReviewsGroup({ item }: { item: TaskBoardItem }) {
  */
 function RecordSection({
   label,
+  action,
   children,
 }: {
   label: string;
+  /** Rendered opposite the label, outside the trigger so it can't collapse. */
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <Collapsible defaultOpen className="flex flex-col gap-2">
-      <CollapsibleTrigger className="group flex w-fit items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground">
-        {label}
-        <ChevronDown
-          size={14}
-          className="shrink-0 transition-transform group-data-[state=closed]:-rotate-90"
-        />
-      </CollapsibleTrigger>
+      <div className="flex min-h-7 items-center justify-between gap-2">
+        <CollapsibleTrigger className="group flex w-fit items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground">
+          {label}
+          <ChevronDown
+            size={14}
+            className="shrink-0 transition-transform group-data-[state=closed]:-rotate-90"
+          />
+        </CollapsibleTrigger>
+        {action}
+      </div>
       <CollapsibleContent>{children}</CollapsibleContent>
     </Collapsible>
   );
@@ -1968,7 +1975,10 @@ function ActivitySection({
   }
 
   return (
-    <RecordSection label={t("taskBoard.taskDialog.activityLabel")}>
+    <RecordSection
+      label={t("taskBoard.taskDialog.activityLabel")}
+      action={<SubscribeToggle itemId={item.id} members={members} />}
+    >
       <div className="flex flex-col gap-5">
         {/* At the top: the feed reads newest-first, so this is where a new
             comment lands. */}

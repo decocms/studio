@@ -90,6 +90,8 @@ export const taskBoard = {
     "{reviewer} pediu alterações e devolveu a tarefa ao Super Agent",
   "taskBoard.taskDialog.activityReviewChangesRequestedWithNotes":
     "{reviewer} pediu alterações: {notes}",
+  "taskBoard.taskDialog.subscribe": "Seguir",
+  "taskBoard.taskDialog.unsubscribe": "Deixar de seguir",
   "taskBoard.taskDialog.activityMergeConflictResolution":
     "não conseguiu mesclar o pull request — resolvendo um conflito de merge",
   "taskBoard.taskDialog.activityMergeFailed":
