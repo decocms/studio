@@ -9,7 +9,7 @@ import { Glob } from "bun";
 //
 // `@decocms/*` workspace deps are allowed (declared in package.json). The
 // package is also `@decocms/sandbox`-free by design — the sandbox glue lives in
-// studio (cluster-sandbox-fs.ts) / the daemon, never here.
+// studio (agent-sandbox-fs.ts) / the daemon, never here.
 const BANNED =
   /from\s+["'](?:@\/|(?:\.\.\/)+(?:apps\/[^/]+|app\/)|@decocms\/sandbox)/;
 
