@@ -287,9 +287,16 @@ export function selectHeaderButton(
         tooltip: t("thread.headerActions.installingPackagesTooltip"),
         menu: [],
       };
-    // `starting`: committed work publishes now (git needs the checkout, not the dev server); a dirty-only tree waits, since workingTreeDirty may be boot noise until #6332's baseline arms.
+    // `starting`: any real work publishes now (git needs the checkout, not the dev server); workingTreeDirty is trustworthy mid-boot since the daemon reports it only for user-written paths (BranchStatusMonitor.userTouched), not boot dirt.
     case "starting":
-      if (!(branch.kind === "ready" && branch.aheadOfBase > 0)) {
+      if (
+        !(
+          branch.kind === "ready" &&
+          (branch.workingTreeDirty ||
+            branch.aheadOfBase > 0 ||
+            branch.unpushed > 0)
+        )
+      ) {
         return {
           label: t("thread.headerActions.startingApp"),
           disabled: true,

@@ -224,16 +224,25 @@ func (m *BranchStatusMonitor) compute() *events.BranchMeta {
 	baseline := m.baseline
 	userTouched := m.userTouched
 	m.mu.Unlock()
-	// Un-armed means boot has not settled (ArmBaseline runs at every boot
-	// outcome), so everything dirty here is boot dirt — reporting it as the
-	// user's work armed "Review & Publish" on an untouched, empty thread.
-	if len(dirtyPaths) > 0 && hasBaseline {
+	// A path the user wrote through the fs routes is their work regardless of the
+	// baseline OR whether the dev server has settled — boot dirt is written by the
+	// dev server directly and never comes through those routes. Reporting it dirty
+	// before the baseline arms is what frees the header from the dev-server
+	// lifecycle: an edit made while the sandbox is still `starting` is publishable
+	// immediately, instead of waiting on a probe that may never fire.
+	//
+	// For every other dirty path we still need the baseline: un-armed means boot
+	// has not settled (ArmBaseline runs at every boot outcome), so a non-user
+	// path here is boot dirt — reporting it as the user's work armed
+	// "Review & Publish" on an untouched, empty thread.
+	if len(dirtyPaths) > 0 {
 		for p := range dirtyPaths {
-			// A path the user wrote is their work regardless of the baseline — this
-			// is what stops an edit made before arming from being swallowed by it.
 			if _, touched := userTouched[p]; touched {
 				dirty = true
 				break
+			}
+			if !hasBaseline {
+				continue
 			}
 			baseHash, ok := baseline[p]
 			if !ok || m.hashWorktreeFile(p) != baseHash {
