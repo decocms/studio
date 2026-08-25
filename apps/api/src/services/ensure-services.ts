@@ -741,10 +741,9 @@ async function stopNats(home: string): Promise<void> {
 // MinIO (auto-downloaded binary — S3-compatible object storage for dev)
 // ---------------------------------------------------------------------------
 //
-// Object storage is a hard dependency of the message-offload path. In dev we
-// auto-provision a real S3-compatible store (MinIO) so the offload code runs
-// against the production S3Service rather than the DevObjectStorage fallback,
-// mirroring how postgres and nats-server are managed above.
+// In dev we auto-provision a real S3-compatible store (MinIO) so uploads and
+// large generated results exercise the production S3Service rather than the
+// DevObjectStorage fallback, mirroring postgres and nats-server above.
 //
 // MinIO publishes per-OS/arch *server* binaries at a stable URL:
 //   https://dl.min.io/server/minio/release/<os>-<arch>/minio[.exe]
@@ -851,19 +850,6 @@ async function waitForMinioReady(
 /**
  * Create the dev bucket (idempotent). Uses the already-installed
  * @aws-sdk/client-s3 so there's no `mc` version to keep in sync.
- *
- * Object-storage hygiene notes for dispatch offload objects:
- * - `link-dispatch/` offload objects are written when a desktop work item's
- *   `harnessInput.messages` exceeds the inline payload budget. They are
- *   reclaimed by the bucket's lifecycle TTL (there is no eager per-run delete).
- * - An S3 lifecycle `Prefix` rule is left-anchored and literal. Real offload
- *   object keys are `<orgId>/link-dispatch/<reqId>` (BoundObjectStorage
- *   prepends `<orgId>/`), so a `Prefix: "link-dispatch/"` rule would never
- *   match them. Rather than install a silently-broken rule here, we omit it.
- * - Production operators who want automatic cleanup should configure a
- *   lifecycle rule appropriate to their key layout, e.g. an object-tag-based
- *   rule (tag offload objects on PUT and filter on that tag), or an
- *   `<orgId>/link-dispatch/` prefix per org if their layout is known.
  */
 async function provisionMinioBucket(endpoint: string): Promise<void> {
   const { S3Client, CreateBucketCommand } = await import("@aws-sdk/client-s3");
@@ -911,8 +897,8 @@ async function provisionMinioBucket(endpoint: string): Promise<void> {
       name !== "BucketAlreadyExists" &&
       !(e instanceof Error && e.message.includes("already"))
     ) {
-      // Genuine bucket-create failure: the offload feature requires the bucket,
-      // so let this propagate and abort startup.
+      // A genuine bucket-create failure leaves object-backed features unusable,
+      // so let it propagate and abort startup.
       client.destroy();
       throw e;
     }

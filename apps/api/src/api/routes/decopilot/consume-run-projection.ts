@@ -37,11 +37,12 @@ export interface ConsumeRunProjectionOptions {
  * subject, then keep delivering as new messages arrive" — and
  * `natsChunkSource`'s pull loop (`nats-chunk-source.ts`) simply `await`s the
  * next message when nothing is available yet, live-tailing rather than
- * assuming a complete/retained stream. Every projected run uses this same
- * `createProjectorChunkStream` path.
+ * assuming a complete/retained stream. There is no hosted-only branch
+ * anywhere in this path that assumed the producer had already finished; both
+ * topologies always went through the same `createProjectorChunkStream` call.
  *
- * With no child await, subject silence is the only signal an executor died
- * before or without publishing.
+ * unified-control-plane T4: with no child await anywhere (T3), subject
+ * silence is the only signal an executor died before/without publishing.
  * `idleTimeoutMs` (defaulted here to `RUN_IDLE_TIMEOUT_MS`) is threaded all
  * the way to `natsChunkSource`, which errors the stream with
  * `StreamIdleTimeoutError` after that much silence. `runProjectorWorkflowBody`'s

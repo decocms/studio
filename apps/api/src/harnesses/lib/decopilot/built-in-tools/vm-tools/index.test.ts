@@ -42,7 +42,7 @@ function fakeFs(
 }
 
 describe("createVmTools", () => {
-  test("read tool delegates to fs (no SandboxProvider)", async () => {
+  test("read tool delegates to the filesystem hooks", async () => {
     const { fs, calls } = fakeFs(() => ({
       kind: "text",
       content: "hello world",

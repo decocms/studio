@@ -170,8 +170,8 @@ const previewBaseDomain = parsePreviewBaseDomain(
 );
 const previewProxyDeps = {
   baseDomain: previewBaseDomain ?? "",
-  // getOrInitSharedRunner resolves to the cluster AgentSandboxProvider (the
-  // only env-instantiable provider) or null — exactly what PreviewProxyDeps
+  // getOrInitSharedRunner resolves to the AgentSandboxProvider when enabled,
+  // or null — exactly what PreviewProxyDeps
   // wants, so no kind check or cast is needed.
   getRunner: getOrInitRunnerForPreview,
 };

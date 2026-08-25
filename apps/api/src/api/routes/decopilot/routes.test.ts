@@ -1,8 +1,8 @@
 /**
  * Unit tests for the pure helpers exported from ./routes.
  *
- * The POST /messages orchestration that used to live here was a route handler
- * with every dependency mocked (resolveTier, model-permissions,
+ * The POST /messages dispatch/link-gating behavior that used to live here was
+ * a route handler with every dependency mocked (resolveTier, model-permissions,
  * dispatch-queue, the sandbox-kind resolver, and a fabricated StudioContext) —
  * the bad zone. It now runs through the real front door in
  * packages/e2e/tests/decopilot-messages.spec.ts. What remains is genuinely
