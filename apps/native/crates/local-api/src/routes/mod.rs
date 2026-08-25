@@ -15,7 +15,6 @@ pub mod git;
 pub mod health;
 pub mod intercept;
 pub mod mcp_callback;
-pub mod orgfs;
 pub mod proxy;
 pub mod repo_dir;
 pub mod scripts;

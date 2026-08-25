@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "bun:test";
-import { signSessionCookieValue } from "./desktop-session-bridge";
+import { signSessionCookieValue } from "./desktop-auth";
 
 describe("signSessionCookieValue", () => {
   it("matches better-auth's own HMAC-SHA256 + base64 + URI-escape scheme", () => {

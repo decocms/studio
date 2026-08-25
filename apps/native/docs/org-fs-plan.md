@@ -11,11 +11,9 @@ link` had and the Rust `local-api` never implemented.
 read `org/home/MEMORY.md`, load skills from `org/public/<set>/`, read the user's
 chat attachments from `org/upload/`, and write deliverables to `org/output/`.
 
-The Rust backend implements **none** of it. `routes/orgfs.rs` exists but is a
-config *relay* only — it validates a config and writes it to a file a
-privileged sidecar would watch. On the desktop it never even does that:
-`ORGFS_CONFIG` and `ORGFS_SIDECAR_CONFIG_PATH` are never set, so the handler
-returns `{"written": false}` and exits.
+The hosted sidecar config relay has no native counterpart. Desktop org-fs uses
+local-api's authenticated WebDAV surface and the native mount lifecycle instead
+of accepting a hosted pod configuration.
 
 The gap that bites today: `decopilot.rs` computes `has_attachments()` and
 reports it in the queue payload — the UI shows the paperclip — but nothing
@@ -359,7 +357,6 @@ both dialects compile and unit-test on either host.
   which reintroduces exactly the dependency macOS `nfsmount` avoids. Linux is
   no longer a non-goal: it mounts through rclone's own FUSE support, which
   needs no driver install beyond `fuse3`, and is described below.
-- **`offload-fetch` / `messagesRef`** — messages are sent inline on desktop.
 - **The link-daemon transport layer** (tunnel, outbox, NATS control plane,
   local ingress, machine-id) — architecturally obsolete: the webview talks to
   localhost, so there is no cluster→machine hop to maintain.

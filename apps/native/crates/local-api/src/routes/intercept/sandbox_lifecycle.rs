@@ -1,16 +1,15 @@
 //! Native interception for the production shell's sandbox lifecycle tools.
 //!
 //! `POST /api/:org/tools/SANDBOX_START` is what the real web shell calls to
-//! provision the sandbox behind a thread. In the browser that reaches mesh,
-//! which provisions either a cloud `agent-sandbox` or — for a `bunx decocms
-//! link` user — the `user-desktop` runtime on their machine. Inside the desktop
-//! app THIS process is that machine, so the same call has to resolve against
-//! the local [`SandboxManager`] instead of a cluster.
+//! provision the sandbox behind a thread. In the browser that reaches Studio's
+//! hosted `agent-sandbox`. Inside the desktop app THIS process owns the runtime,
+//! so the same call resolves against the local [`SandboxManager`] instead of a
+//! cluster.
 //!
 //! The frontend does not tell us which sandbox provider to use, and deliberately
 //! so: native coding agents always run on the user's machine, and `local-api`
-//! answers every request from the webview. This module therefore answers
-//! unconditionally and reports `user-desktop` back.
+//! owns every lifecycle request from the webview. The response describes the
+//! sandbox directly; there is no provider selector or discriminator.
 //!
 //! ## Where the git config comes from
 //!
@@ -18,11 +17,10 @@
 //! runtime. That used to ride along on the chat dispatch payload (the web
 //! bundle's `build-sandbox-block.ts`), which meant the frontend carried desktop
 //! -specific plumbing. It no longer does, so we resolve it here from the
-//! cluster-side virtual-MCP registry via [`upstream::call_org_tool`] — the one
-//! deliberate upstream read in an otherwise strictly-local table (see that
-//! function's doc comment). Field mapping mirrors what the dispatch block used
-//! to send, so the resulting sandbox is byte-identical to the one the old path
-//! produced.
+//! hosted virtual-MCP registry via [`upstream::call_org_tool`] — a deliberate
+//! upstream dependency in an otherwise locally owned lifecycle. Field
+//! mapping mirrors what the dispatch block used to send, so the resulting
+//! sandbox is byte-identical to the one the old path produced.
 
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::OnceLock;
@@ -263,8 +261,8 @@ pub(crate) fn config_from_virtual_mcp(
     })
 }
 
-/// `SANDBOX_START` / `SANDBOX_DELETE`, or `None` for any other tool so the
-/// caller falls through to the ordinary upstream proxy.
+/// Native lifecycle and virtual-MCP read tools, or `None` for any other tool so
+/// the caller falls through to the ordinary upstream proxy.
 pub(crate) async fn try_dispatch(
     state: &AppState,
     method: &Method,
@@ -302,8 +300,8 @@ pub(crate) async fn try_dispatch(
 /// Rather than teach the frontend a second source of truth, answer the question
 /// it already asks: proxy the tool upstream unchanged, then merge in an entry
 /// per locally-registered sandbox for this agent. Entries are keyed
-/// `user-desktop`, so they sit alongside any hosted ones rather than replacing
-/// them.
+/// `local-api`; hosted entries are removed because desktop exposes only its
+/// local execution surface.
 /// Both the single-item read and the collection list. LIST matters as much as
 /// GET: the collection hooks seed the per-item cache from it, so an un-enriched
 /// list entry is what the shell would read for the active agent.
@@ -366,7 +364,7 @@ fn enrich_entity(state: &AppState, entity: &mut Value, user_id: &str) {
     // route here resolves against local worktrees only, so a cloud entry in
     // the map would offer a branch whose file explorer, git panel and preview
     // are all dead. Strip the hosted kinds upstream reported before adding
-    // this machine's own. `user-desktop` entries from OTHER users survive —
+    // this machine's own. `local-api` entries from OTHER users survive —
     // they are what tells the shell a teammate's desktop owns a branch.
     strip_hosted_sandbox_entries(entity);
     let local = local_sandbox_entries(state, &id);
@@ -375,7 +373,7 @@ fn enrich_entity(state: &AppState, entity: &mut Value, user_id: &str) {
     }
 }
 
-/// Remove every non-`user-desktop` kind from `metadata.sandboxMap`, dropping
+/// Remove every non-`local-api` kind from `metadata.sandboxMap`, dropping
 /// branch and user levels that empty out.
 fn strip_hosted_sandbox_entries(entity: &mut Value) {
     let Some(by_user) = entity
@@ -393,70 +391,15 @@ fn strip_hosted_sandbox_entries(entity: &mut Value) {
             let Some(by_kind) = by_kind.as_object_mut() else {
                 return false;
             };
-            by_kind.retain(|kind, _| kind == "user-desktop");
+            by_kind.retain(|kind, _| kind == "local-api");
             !by_kind.is_empty()
         });
         !by_branch.is_empty()
     });
 }
 
-/// `(branch, record)` for every sandbox on this machine that belongs to
+/// `(branch, record)` for every live sandbox on this machine that belongs to
 /// `virtual_mcp_id`.
-///
-/// Reads the per-handle sidecars rather than the registry, because those carry
-/// the `(virtual_mcp_id, branch)` the handle hashes away — there is no reverse
-/// lookup from an agent to its handles.
-/// This machine's sandboxes for `virtual_mcp_id`, in the
-/// `agent-sandbox-sessions` wire shape.
-///
-/// Unlike [`local_sandbox_entries`], which publishes only sandboxes live in
-/// THIS process (an entry there means "a VM is serving this branch"), a
-/// session is a durable record: a stopped or failed sandbox is exactly what
-/// the shell needs to show, so this reads the registry rather than the live
-/// map.
-pub(super) fn local_sandbox_sessions(state: &AppState, virtual_mcp_id: &str) -> Vec<Value> {
-    if virtual_mcp_id.is_empty() {
-        return Vec::new();
-    }
-    let mut sessions = Vec::new();
-    for record in state
-        .sandbox_manager
-        .records_for_agent(virtual_mcp_id)
-        .unwrap_or_default()
-    {
-        let handle = record.handle.clone();
-        let stored = record.config.branch.as_deref();
-        let branch = crate::sandbox::normalize_branch(stored);
-        // A pre-rule row on `main`/`master` normalizes AWAY from its stored
-        // branch: no lookup can reach it anymore, so listing it would offer a
-        // dead entry. Hide it rather than render an unreachable sandbox.
-        if stored.is_some_and(|stored| stored != branch) {
-            continue;
-        }
-        // A preview origin is only meaningful while something is serving it,
-        // and it is per-handle: each sandbox has its own host.
-        let preview = preview_url(&handle);
-        let preview_url = (record.observed_status == "running")
-            .then_some(preview.as_deref())
-            .flatten();
-        sessions.push(super::agent_sessions::session_json(
-            super::agent_sessions::LocalSession {
-                virtual_mcp_id,
-                branch,
-                handle: &handle,
-                preview_url,
-                desired_status: &record.desired_status,
-                observed_status: &record.observed_status,
-                failure_reason: record.error.as_deref(),
-                updated_at_rfc3339: crate::routes::threads::db::format_rfc3339(
-                    std::time::Duration::from_secs(record.updated_at.max(0) as u64),
-                ),
-            },
-        ));
-    }
-    sessions
-}
-
 fn local_sandbox_entries(state: &AppState, virtual_mcp_id: &str) -> Vec<(String, Value)> {
     if virtual_mcp_id.is_empty() {
         return Vec::new();
@@ -471,7 +414,8 @@ fn local_sandbox_entries(state: &AppState, virtual_mcp_id: &str) -> Vec<(String,
         let config = record.config;
         {
             let stored = config.branch.as_deref();
-            // Same unreachable-legacy-row rule as `local_sandbox_sessions`.
+            // A pre-rule row on `main`/`master` normalizes away from its stored
+            // branch, so no lookup can reach it.
             if stored.is_some_and(|stored| stored != crate::sandbox::normalize_branch(Some(stored)))
             {
                 continue;
@@ -512,9 +456,8 @@ fn local_sandbox_entries(state: &AppState, virtual_mcp_id: &str) -> Vec<(String,
             json!({
                 "sandboxHandle": handle,
                 "previewUrl": preview_url(&handle),
-                // For user-desktop the daemon IS the preview origin.
+                // For local-api the daemon IS the preview origin.
                 "sandboxApiUrl": preview_url(&handle),
-                "sandboxProviderKind": "user-desktop",
             }),
         ));
     }
@@ -522,7 +465,7 @@ fn local_sandbox_entries(state: &AppState, virtual_mcp_id: &str) -> Vec<(String,
 }
 
 /// Merge `entries` into `entity.metadata.sandboxMap[user_id][branch]` under the
-/// `user-desktop` key, creating the intermediate objects as needed and leaving
+/// `local-api` key, creating the intermediate objects as needed and leaving
 /// every other key untouched.
 fn merge_sandbox_map(entity: &mut Value, user_id: &str, entries: Vec<(String, Value)>) {
     let Some(object) = entity.as_object_mut() else {
@@ -555,7 +498,7 @@ fn merge_sandbox_map(entity: &mut Value, user_id: &str, entries: Vec<(String, Va
             .or_insert_with(|| json!({}))
             .as_object_mut();
         if let Some(by_kind) = by_kind {
-            by_kind.insert("user-desktop".to_string(), record);
+            by_kind.insert("local-api".to_string(), record);
         }
     }
 }
@@ -707,7 +650,6 @@ async fn start(state: &AppState, org: &str, body: &Bytes) -> Response {
         "sandboxHandle": handle,
         "branch": reported_branch,
         "isNewVm": !existed,
-        "sandboxProviderKind": "user-desktop",
     }))
     .into_response()
 }
@@ -773,7 +715,7 @@ mod tests {
         // merge_sandbox_map is a pure merge and never clobbers sibling kinds.
         // (In the enrich pipeline, hosted kinds are stripped BEFORE this merge
         // runs — see strip_hosted_sandbox_entries — so what this preserves in
-        // practice is other users' user-desktop entries, not cloud rows.)
+        // practice is other users' local-api entries, not cloud rows.)
         let mut entity = json!({
             "id": "vm-1",
             "metadata": {
@@ -793,7 +735,7 @@ mod tests {
         );
 
         let branch = &entity["metadata"]["sandboxMap"]["user-1"]["main"];
-        assert_eq!(branch["user-desktop"]["sandboxHandle"], "local-1");
+        assert_eq!(branch["local-api"]["sandboxHandle"], "local-1");
         assert_eq!(branch["agent-sandbox"]["sandboxHandle"], "cloud-1");
         // Unrelated metadata survives — this is a merge, not a replacement.
         assert_eq!(
@@ -818,7 +760,7 @@ mod tests {
                         }
                     },
                     "user-2": {
-                        "feature": { "user-desktop": { "sandboxHandle": "their-local" } },
+                        "feature": { "local-api": { "sandboxHandle": "their-local" } },
                         "hosted-only": { "agent-sandbox": { "sandboxHandle": "cloud-3" } }
                     }
                 }
@@ -830,7 +772,7 @@ mod tests {
         // user-1 had only hosted kinds — the whole user level empties out.
         assert!(map.get("user-1").is_none(), "{map}");
         assert_eq!(
-            map["user-2"]["feature"]["user-desktop"]["sandboxHandle"],
+            map["user-2"]["feature"]["local-api"]["sandboxHandle"],
             "their-local"
         );
         assert!(map["user-2"].get("hosted-only").is_none(), "{map}");
@@ -847,7 +789,7 @@ mod tests {
             vec![("feature".to_string(), json!({ "sandboxHandle": "h" }))],
         );
         assert_eq!(
-            entity["metadata"]["sandboxMap"]["user-1"]["feature"]["user-desktop"]["sandboxHandle"],
+            entity["metadata"]["sandboxMap"]["user-1"]["feature"]["local-api"]["sandboxHandle"],
             "h"
         );
     }
