@@ -1,35 +1,5 @@
 import { z } from "zod";
 
-export const capabilitySchema = z.enum([
-  "claude-code",
-  "codex",
-  "decopilot-sandbox",
-  "body-offload",
-]);
-export type Capability = z.infer<typeof capabilitySchema>;
-
-// Per-element tolerant: unknown capabilities are dropped, known ones survive.
-export const capabilitiesArraySchema = z
-  .array(z.string())
-  .catch([])
-  .transform((arr) =>
-    arr.filter((c): c is Capability => capabilitySchema.safeParse(c).success),
-  );
-
-export const dispatchSSEEventSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("ui-message-chunk"),
-    chunk: z.unknown(),
-  }),
-  z.object({
-    type: z.literal("error"),
-    code: z.string(),
-    message: z.string(),
-  }),
-  z.object({ type: z.literal("done") }),
-]);
-export type DispatchSSEEvent = z.infer<typeof dispatchSSEEventSchema>;
-
 /**
  * One frame of a harness run's output. The body of `POST /_sandbox/dispatch` is
  * a stream of these, newline-delimited, one per step the harness produced —
@@ -60,7 +30,7 @@ export const harnessRunResultSchema = z.object({
 });
 export type HarnessRunResult = z.infer<typeof harnessRunResultSchema>;
 
-const chatMessageSchema = z.record(z.string(), z.unknown()); // opaque to link-protocol
+const chatMessageSchema = z.record(z.string(), z.unknown());
 
 const modelSelectionSchema = z
   .object({
@@ -159,7 +129,6 @@ export const harnessStreamInputSchema = z
     maxAgentSteps: z.number().int().optional(),
     user: z.object({ id: z.string(), email: z.string() }).strict(),
     organizationId: z.string(),
-    organizationSlug: z.string().optional(),
     agent: z
       .object({
         id: z.string(),
@@ -173,15 +142,7 @@ export const harnessStreamInputSchema = z
         disallowedTools: z.array(z.string()).optional(),
       })
       .strict(),
-    triggerId: z.string().optional(),
     currentThreadTitle: z.string().optional(),
-    traceparent: z.string().optional(),
-    /**
-     * Single-writer fence token for this run (spec §3.5). The desktop
-     * presents this on every POST .../stream append. Minted by
-     * prepareRun (Phase B), absent on ws-path runs.
-     */
-    runFenceToken: z.string().optional(),
     /**
      * Set when this dispatch CONTINUES a turn a previous attempt started and
      * infrastructure cut short — the Studio pod driving it died, or the sandbox

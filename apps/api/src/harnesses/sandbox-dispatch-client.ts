@@ -1,16 +1,16 @@
 /**
- * SandboxDispatchClient — the `SandboxClient` for harnesses that run INSIDE the
- * sandbox instead of in this process.
+ * Dispatches harnesses that run inside the hosted sandbox instead of in the
+ * Studio process.
  *
- * Decopilot runs in-process (`InProcessSandboxClient`); the Claude Agent SDK
- * cannot — it is a TS library that drives the `claude` CLI, and it belongs next
+ * Decopilot runs in-process; the Claude Agent SDK cannot — it is a TS library
+ * that drives the `claude` CLI, and it belongs next
  * to the checkout. So this client provisions the pod, POSTs the same
  * `HarnessStreamInputWire` to the daemon's `/_sandbox/dispatch`, and yields the
  * turn it answers with as the `UIMessageChunk` iterable every consumer upstream
  * already expects. Nothing downstream of `dispatch()` can tell the difference.
  *
- * STUDIO-OWNED, like its in-process sibling: it closes over StudioContext, so
- * it cannot live in `@decocms/sandbox`.
+ * STUDIO-OWNED: it closes over StudioContext, so it cannot live in
+ * `@decocms/sandbox`.
  *
  * Transport note: one request per run, held open for its whole length, with the
  * daemon streaming newline-delimited `HarnessRunResult` frames as the harness
@@ -31,7 +31,6 @@
 
 import type { UIMessageChunk } from "ai";
 import { sleep } from "@decocms/shared/std";
-import type { SandboxClient } from "@decocms/sandbox/dispatch/sandbox-client";
 import {
   harnessRunResultSchema,
   type HarnessStreamInputWire,
@@ -218,7 +217,7 @@ export function harnessRunsInSandbox(
   return SANDBOX_HOSTED_HARNESSES.has(harnessId as HarnessId);
 }
 
-export class SandboxDispatchClient implements SandboxClient {
+export class SandboxDispatchClient {
   private readonly ctx: StudioContext;
   private readonly harnessId: HarnessId;
   private readonly virtualMcpId: string;

@@ -141,18 +141,54 @@ func TestRebaseWorkspaceCwd(t *testing.T) {
 	}
 }
 
-func TestOffloadAllowlistFailsClosed(t *testing.T) {
-	if err := AssertAllowedRefUrl("https://s3.example.com/x", nil, false); err == nil {
-		t.Fatal("empty allowlist must reject every host")
+// `messagesRef` belonged to the retired relay/offload protocol. A direct
+// dispatch may carry an unknown top-level field during a rolling deployment,
+// but the daemon must never fetch it or replace the inline input with it.
+func TestDispatchIgnoresRetiredMessagesRef(t *testing.T) {
+	const token = "tkn"
+	body := `{
+		"harnessId": "claude-code",
+		"runId": "run-legacy-ref",
+		"messagesRef": {
+			"url": "https://not-allowed.invalid/messages",
+			"bytes": 10,
+			"sha256": "retired"
+		},
+		"input": {
+			"threadId": "t1",
+			"userMessage": {"role": "user"},
+			"harness": {},
+			"workspace": {"cwd": null},
+			"models": {"thinking": {"id": "m", "title": "M", "credentialId": "c"}},
+			"mcp": {"url": "https://example.com/mcp", "headers": {}, "expiresAt": 123},
+			"mode": "default",
+			"temperature": 0.5,
+			"toolApprovalLevel": "auto",
+			"user": {"id": "u", "email": "u@example.com"},
+			"organizationId": "org",
+			"agent": {"id": "a"}
+		}
+	}`
+	req := httptest.NewRequest("POST", "/dispatch", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	NewRegistry().HandleDispatch(rec, req, Deps{
+		DaemonToken: func() string { return token },
+	})
+
+	if rec.Code != 200 {
+		t.Fatalf("legacy messagesRef changed direct dispatch status: got %d body=%q", rec.Code, rec.Body.String())
 	}
-	if err := AssertAllowedRefUrl("https://s3.example.com/x", []string{"s3.example.com"}, false); err != nil {
-		t.Fatalf("allowlisted host rejected: %v", err)
+	var result struct {
+		Error *struct {
+			Code string `json:"code"`
+		} `json:"error"`
 	}
-	if err := AssertAllowedRefUrl("http://s3.example.com/x", []string{"s3.example.com"}, false); err == nil {
-		t.Fatal("plain http must be rejected outside dev loopback")
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("direct dispatch result is not JSON: %v", err)
 	}
-	if err := AssertAllowedRefUrl("http://127.0.0.1:9000/x", []string{"127.0.0.1"}, true); err != nil {
-		t.Fatalf("dev loopback rejected: %v", err)
+	if result.Error == nil || result.Error.Code != "unknown_harness" {
+		t.Fatalf("inline input did not reach the direct runner gate: %q", rec.Body.String())
 	}
 }
 
@@ -355,9 +391,7 @@ func TestUnauthorizedCancelLeavesNoTombstone(t *testing.T) {
 	}
 }
 
-// An oversized inline dispatch body must be rejected before it is buffered in
-// full — the offload path already caps at this size, and the inline path had
-// no cap at all.
+// An oversized dispatch body must be rejected before it is buffered in full.
 func TestDispatchRejectsOversizedBody(t *testing.T) {
 	const token = "tkn"
 	body := strings.NewReader(strings.Repeat("a", maxDispatchBodyBytes+1))
