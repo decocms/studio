@@ -37,7 +37,6 @@ import type { StudioContext } from "@/core/studio-context";
 import { PermanentRunError } from "@/core/dispatch-errors";
 import { posthog } from "@/posthog";
 import type { UIMessage, UIMessageChunk } from "ai";
-import { InProcessSandboxClient } from "@/harnesses/in-process-sandbox-client";
 import { CLAUDE_SUBSCRIPTION_PROVIDER_ID } from "@/harnesses/claude-code-env";
 import {
   harnessRunsInSandbox,
@@ -56,8 +55,9 @@ import type {
   HarnessUserContext,
   ModelSelection,
   ModelsConfig,
-} from "@/harnesses";
-import { createSecretModelSource } from "@/harnesses";
+} from "@/harnesses/lib/types";
+import { createSecretModelSource } from "@/harnesses/lib/types";
+import { streamDecopilot } from "@/harnesses/decopilot/stream";
 import { setDecopilotRunContext } from "@/harnesses/lib/decopilot/run-context";
 import type {
   DecopilotHttpMcpSource,
@@ -1420,7 +1420,7 @@ async function prepareRun(
             PREPARE_RUN_STATUS_STAGES[3],
           );
         }
-        const sandboxClient = sandboxHosted
+        const rawHarnessChunks = sandboxHosted
           ? new SandboxDispatchClient({
               ctx,
               harnessId,
@@ -1463,9 +1463,8 @@ async function prepareRun(
                         : {}),
                     }
                   : null,
-            })
-          : new InProcessSandboxClient({ ctx, harnessId });
-        const rawHarnessChunks = sandboxClient.dispatch(harnessInput);
+            }).dispatch(harnessInput)
+          : streamDecopilot(ctx, harnessInput);
         yield* rawHarnessChunks;
       };
 

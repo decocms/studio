@@ -51,7 +51,7 @@ import {
 } from "./run-status-stage";
 import { wrapWithSseKeepalive } from "./sse-keepalive";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
-import type { HarnessId } from "@/harnesses";
+import type { HarnessId } from "@/harnesses/lib/types";
 import { isRetiredLinkedDecopilotRuntime } from "@/harnesses/decopilot/hosted-runtime";
 import type { Thread } from "@/storage/types";
 import { cancelThreadBackgroundJobs } from "@/harnesses/decopilot/background-tool-workflow";

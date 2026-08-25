@@ -3,7 +3,6 @@ import { createSecretModelSource, openMcpSource } from "./sources";
 import type {
   DecopilotMcpSource,
   DecopilotModelSource,
-  DecopilotSandboxSource,
   DecopilotHttpMcpSource,
   OpenMcpSourceOptions,
 } from "./types";
@@ -117,12 +116,10 @@ test("Decopilot source types are exported from harness types", () => {
     apiKey: "test",
     modelId: "gpt-test",
   };
-  const sandbox: DecopilotSandboxSource = { kind: "none" };
   const options: OpenMcpSourceOptions = {};
 
   expect(mcp.kind).toBe("http");
   expect(httpMcp.kind).toBe("http");
   expect(model.kind).toBe("secret");
-  expect(sandbox.kind).toBe("none");
   expect(options.openHttp).toBeUndefined();
 });
