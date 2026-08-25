@@ -1,26 +1,16 @@
 /**
- * Single source of truth for `projectRef`. Two opaque encodings:
- *   `agent:<orgId>:<virtualMcpId>:<branch>` — agent-thread sandboxes.
- *   `thread:<threadId>` — ad-hoc sandboxes.
+ * Single source of truth for the agent sandbox's opaque `projectRef`:
+ *   `agent:<orgId>:<virtualMcpId>:<branch>`.
  * Runners never parse the ref; they hash it for their routing key.
  */
 
-export type AgentSandboxRefInput = {
+type SandboxRefInput = {
   orgId: string;
   virtualMcpId: string;
   branch: string;
 };
 
-export type ThreadSandboxRefInput = { threadId: string };
-
-export type SandboxRefInput = AgentSandboxRefInput | ThreadSandboxRefInput;
-
 export function composeSandboxRef(input: SandboxRefInput): string {
-  if ("threadId" in input) {
-    if (!input.threadId)
-      throw new Error("composeSandboxRef: threadId required");
-    return `thread:${input.threadId}`;
-  }
   if (!input.orgId || !input.virtualMcpId || !input.branch) {
     throw new Error(
       "composeSandboxRef: orgId, virtualMcpId and branch are all required for agent refs",
@@ -31,7 +21,7 @@ export function composeSandboxRef(input: SandboxRefInput): string {
 
 /**
  * The human-readable part of a ref, used as the handle's slug source: the
- * branch for `agent:` refs, the threadId for `thread:` refs.
+ * branch for `agent:` refs.
  *
  * Exists so `computeHandle` derives its slug from the SAME value it hashes.
  * When the slug came from a separate `branch` argument the two could disagree,
@@ -44,8 +34,6 @@ export function composeSandboxRef(input: SandboxRefInput): string {
  * falls back to a bare hash.
  */
 export function refSlugSource(projectRef: string): string {
-  if (projectRef.startsWith("thread:"))
-    return projectRef.slice("thread:".length);
   if (!projectRef.startsWith("agent:")) return "";
   // agent:<orgId>:<vmcpId>:<branch> — the branch itself may contain ":" (a
   // thread-scoped branch is `thread:<threadId>/<connId>`), so keep every
