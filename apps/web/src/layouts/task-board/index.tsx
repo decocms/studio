@@ -297,7 +297,9 @@ function CardFooter({
   const { org } = useProjectContext();
   const key = taskKey(org.slug, item.keySeq);
   return (
-    <div className="-mx-3 mt-auto flex h-8 shrink-0 items-center justify-between gap-2 border-t border-border px-3 pt-px">
+    // `pb-px` balances `border-t`: the border eats a pixel off the top of the
+    // box, so without a matching pixel at the bottom the centred row sits low.
+    <div className="-mx-3 mt-auto flex h-8 shrink-0 items-center justify-between gap-2 border-t border-border px-3 pb-px">
       <span className="flex min-w-0 items-center gap-3">
         {item.type && <TaskTypeIcon type={item.type} />}
         <span className="shrink-0 text-[11px] font-medium tabular-nums text-muted-foreground/70">
