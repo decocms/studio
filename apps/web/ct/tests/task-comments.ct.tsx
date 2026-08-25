@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/experimental-ct-react";
-import { TaskCommentsHarness } from "../harness/task-comments-harness";
+import {
+  TaskCommentsDialogHarness,
+  TaskCommentsHarness,
+} from "../harness/task-comments-harness";
 
 test("renders a thread as one card with its replies", async ({ mount }) => {
   const component = await mount(<TaskCommentsHarness />);
@@ -325,4 +328,45 @@ test("clicking away dismisses the picker without stealing the caret back", async
   await expect(
     component.getByRole("textbox", { name: "Leave a reply..." }),
   ).toBeFocused();
+});
+
+test("inside a modal dialog the picker is still clickable, typable and scrollable", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(<TaskCommentsDialogHarness />);
+  const composer = component.getByRole("textbox", {
+    name: "Leave a comment...",
+  });
+
+  await composer.click();
+  await composer.pressSequentially("@");
+  const menu = page.getByTestId("mention-menu");
+  await expect(menu).toBeVisible();
+
+  // Rendering is not the bar. A modal Radix dialog puts `pointer-events: none`
+  // on the body, so a menu portalled to the body renders perfectly and is
+  // inert — unclickable, and the wheel scrolls the dialog behind it instead.
+  const search = menu.getByPlaceholder("Search members...");
+  await search.click();
+  await expect(search).toBeFocused();
+  await search.pressSequentially("ana");
+  await expect(search).toHaveValue("ana");
+  await expect(menu.getByText("Ana Silva")).toBeVisible();
+
+  // And the wheel belongs to the list, not to whatever sits behind it.
+  await search.fill("");
+  const list = menu.locator("[cmdk-list]");
+  const dialogScroller = component.locator(".overflow-y-auto").first();
+  const before = await dialogScroller.evaluate((el) => el.scrollTop);
+  await list.hover();
+  await page.mouse.wheel(0, 120);
+  await expect
+    .poll(() => list.evaluate((el) => el.scrollTop))
+    .toBeGreaterThan(0);
+  expect(await dialogScroller.evaluate((el) => el.scrollTop)).toBe(before);
+
+  // It still does its job from in here.
+  await menu.getByText("Ana Silva").click();
+  await expect(component.getByTestId("mention-chip")).toHaveText("@Ana Silva");
 });

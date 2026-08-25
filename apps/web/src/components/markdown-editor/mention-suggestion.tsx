@@ -230,26 +230,45 @@ function OpenMentionMenu({
   // before focus landed here — cmdk's input owns its own state otherwise.
   const [query, setQuery] = useState(state.query);
 
-  // Fixed to the caret's own rect, in a body portal so the editor's overflow
-  // can't clip it. Full floating-ui placement would buy collision detection
-  // against every edge; the only edge a menu under a caret actually hits is
-  // the bottom of the viewport, and that's the flip below.
+  // Portalled out of the editor so its overflow can't clip the menu — but
+  // only as far as the enclosing dialog, never to `document.body`. A modal
+  // Radix dialog puts `pointer-events: none` on the body, so a menu portalled
+  // there is unclickable and the wheel falls straight through to the dialog
+  // behind it. Staying inside also keeps the focus trap and the
+  // click-outside-to-close from treating the menu as "outside".
+  const host = portalHost(state.editor);
+  const hostRect = host.getBoundingClientRect();
+  // What actually clips the menu. The task dialog is `overflow-hidden`, so
+  // there the dialog's own edges are the ones to flip and clamp against, not
+  // the viewport's — a menu measured against the viewport gets cut off by a
+  // dialog that ends well above it. The body is the other way round: its rect
+  // is as tall as the document, so the viewport is the bound.
+  const bounds =
+    host === document.body
+      ? new DOMRect(0, 0, window.innerWidth, window.innerHeight)
+      : hostRect;
+
   const caret = state.rect?.() ?? new DOMRect(0, 0, 0, 0);
-  const below = window.innerHeight - caret.bottom;
-  const flipUp = below < MENU_MAX_HEIGHT && caret.top > below;
+  const below = bounds.bottom - caret.bottom;
+  const flipUp = below < MENU_MAX_HEIGHT && caret.top - bounds.top > below;
   // The cap the LIST scrolls within, never the wrapper's: a wrapper that clips
   // (it has to, for the rounded corners) shorter than the list's own scroll
   // container just hides the overflow instead of scrolling it.
   const listMaxHeight =
     Math.max(flipUp ? caret.top - 8 : below - 8, MENU_MIN_HEIGHT) -
     INPUT_HEIGHT;
+  // Positioned against the host, not the viewport: the dialog is
+  // `translate`d, and a transformed ancestor is what `position: fixed`
+  // resolves against — so viewport coordinates would land the menu somewhere
+  // else entirely. Subtracting the host's own rect works for either host,
+  // since both rects are viewport-relative.
   const style: React.CSSProperties = {
-    position: "fixed",
+    position: "absolute",
     width: MENU_WIDTH,
-    left: Math.min(caret.left, window.innerWidth - MENU_WIDTH - 8),
+    left: Math.min(caret.left, bounds.right - MENU_WIDTH - 8) - hostRect.left,
     ...(flipUp
-      ? { bottom: window.innerHeight - caret.top + 6 }
-      : { top: caret.bottom + 6 }),
+      ? { bottom: hostRect.bottom - caret.top + 6 }
+      : { top: caret.bottom - hostRect.top + 6 }),
   };
 
   /** End the match and put the menu away. Focus is the caller's business. */
@@ -331,6 +350,16 @@ function OpenMentionMenu({
         </CommandList>
       </Command>
     </div>,
-    document.body,
+    host,
   );
+}
+
+/**
+ * Where the menu renders: the nearest enclosing dialog, or the body when there
+ * isn't one. Never anything between — the editor's own ancestors are what
+ * would clip it.
+ */
+function portalHost(editor: Editor | null): HTMLElement {
+  const dialog = editor?.view.dom.closest('[role="dialog"]');
+  return dialog instanceof HTMLElement ? dialog : document.body;
 }
