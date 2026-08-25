@@ -5,6 +5,13 @@ metadata:
   name: {{ include "chart-deco-studio.fullname" . }}-ca-cert
   labels:
     {{- include "chart-deco-studio.labels" . | nindent 4 }}
+  annotations:
+    # Ahead of the migrate Job (-10) that now mounts this as a volume. A missing
+    # volume source leaves the container in CreateContainerConfigError, which
+    # stalls the whole sync on the hook with nothing on any object reporting a
+    # problem — the same shape as the ConfigMap at 0.14.1 and the ServiceAccount
+    # at 0.14.5. Only a real sync surfaces it; `helm template` cannot.
+    argocd.argoproj.io/sync-wave: "-30"
 data:
   ca-cert.pem: |
 {{ .Values.database.caCert | indent 4 }}

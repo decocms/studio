@@ -105,4 +105,27 @@ spec:
               bun run node_modules/decocms/dist/server/migrate-dbos.js
           resources:
             {{- toYaml $jobResources | nindent 12 }}
+          {{- if and (eq (lower (default "sqlite" .Values.database.engine)) "postgresql") .Values.database.caCert }}
+          # NODE_EXTRA_CA_CERTS points at /etc/ssl/certs/ca-cert.pem, so the Job
+          # needs the same mount the Deployments get. Without it the variable
+          # names a file that is not there, the extra CA is silently skipped,
+          # and a privately-rooted Postgres — an RDS instance endpoint, whose
+          # chain is not in the Node root store — fails the connection with
+          # SELF_SIGNED_CERT_IN_CHAIN seconds into the Job. Being a sync hook at
+          # wave -10, that aborts the operation and nothing in wave 0 is ever
+          # applied.
+          volumeMounts:
+            - name: ca-cert
+              mountPath: /etc/ssl/certs
+              readOnly: true
+          {{- end }}
+      {{- if and (eq (lower (default "sqlite" .Values.database.engine)) "postgresql") .Values.database.caCert }}
+      volumes:
+        - name: ca-cert
+          configMap:
+            name: {{ include "chart-deco-studio.fullname" . }}-ca-cert
+            items:
+              - key: ca-cert.pem
+                path: ca-cert.pem
+      {{- end }}
 {{- end }}
