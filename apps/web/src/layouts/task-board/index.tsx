@@ -187,7 +187,7 @@ const PILL =
  * discrete things rather than a run-on line of words.
  */
 const CHIP =
-  "inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground";
+  "inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground";
 
 /**
  * A label chip, held a step back from full strength.
