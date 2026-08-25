@@ -10,6 +10,7 @@ import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { retry, RetryError } from "@decocms/shared/std";
 import { InMemoryMcpReadCache } from "@/mcp-clients/mcp-read-cache";
 import { TaskBoardItemPrSchema } from "./schema";
+import { cardWorkLanded } from "./archive-merged";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { enqueueEnabledReviewers } from "./enqueue-reviewer";
@@ -1248,7 +1249,7 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
     // only advances the card to Done when someone opens this modal. Upgrade path:
     // a `pull_request` webhook calling the same forward move. Best-effort; a
     // failure must never break the read. Forward-only: never un-does Done or Archived.
-    if (prs.some((p) => p.merged)) {
+    if (cardWorkLanded(prs)) {
       try {
         if (
           item &&
