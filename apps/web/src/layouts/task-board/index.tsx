@@ -182,11 +182,12 @@ const PILL =
   "inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground";
 
 /**
- * The same chip stripped of its chrome, for board cards. A lane of cards each
- * carrying four outlined boxes reads as clutter long before the words do; the
- * border is what has to go, not the meta.
+ * The card's chip: an outline at card scale. Smaller and lighter than {@link
+ * PILL} (which the list view uses), but still bounded — the labels read as
+ * discrete things rather than a run-on line of words.
  */
-const FLAT = "inline-flex items-center gap-1 text-xs text-muted-foreground";
+const CHIP =
+  "inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground";
 
 /** Tags a card shows before collapsing the rest into `+N`. Matches the list
  *  view's existing cap; the full set is in the task dialog. */
@@ -292,10 +293,10 @@ function FooterDueDate({ iso }: { iso: string }) {
   return (
     <span
       className={cn(
-        "flex shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] tabular-nums",
+        CHIP,
+        "tabular-nums",
         urgency === "overdue" && "border-destructive/30 text-destructive",
         urgency === "soon" && "border-warning/30 text-warning",
-        urgency === null && "border-border text-muted-foreground/70",
       )}
     >
       <Calendar size={11} />
@@ -327,9 +328,11 @@ function CardFooter({
   const { org } = useProjectContext();
   const key = taskKey(org.slug, item.keySeq);
   return (
-    // `pb-px` balances `border-t`: the border eats a pixel off the top of the
-    // box, so without a matching pixel at the bottom the centred row sits low.
-    <div className="-mx-3 mt-auto flex h-8 shrink-0 items-center justify-between gap-2 border-t border-border px-3 pb-px">
+    // `-mx-3 -mb-2.5` cancels the card's own padding so the bar sits flush in
+    // its bottom corner; without the vertical half it floated above 10px of
+    // card. The extra pixel on `pb` offsets `border-t`, which eats one off the
+    // top — otherwise the centred row lands half a pixel low.
+    <div className="-mx-3 -mb-2.5 mt-auto flex min-h-9 shrink-0 items-center justify-between gap-2 border-t border-border px-3 pt-1 pb-1.25">
       <span className="flex min-w-0 items-center gap-3">
         <TaskTypeIcon type={item.type} />
         <span className="shrink-0 text-[11px] font-medium tabular-nums text-muted-foreground/70">
@@ -399,7 +402,7 @@ function useSprintsEnabled(): boolean {
 function SprintPill({ sprint, flat }: { sprint: number; flat?: boolean }) {
   const t = useT();
   return (
-    <span className={cn(flat ? FLAT : PILL)}>
+    <span className={cn(flat ? CHIP : PILL)}>
       <Repeat04 size={flat ? 12 : 14} />
       {t("taskBoard.taskBoard.sprintPill", { number: String(sprint) })}
     </span>
@@ -408,7 +411,7 @@ function SprintPill({ sprint, flat }: { sprint: number; flat?: boolean }) {
 
 function TagPill({ tag, flat }: { tag: TaskBoardItemTag; flat?: boolean }) {
   return (
-    <span className={cn(flat ? FLAT : PILL)}>
+    <span className={cn(flat ? CHIP : PILL)}>
       <span
         className="size-2 shrink-0 rounded-full"
         style={{ backgroundColor: tagDotColor(tag.color) }}
@@ -2337,7 +2340,7 @@ function TaskCard({
             <TagPill key={tag.id} tag={tag} flat />
           ))}
           {item.tags.length > CARD_TAG_LIMIT && (
-            <span className={FLAT}>+{item.tags.length - CARD_TAG_LIMIT}</span>
+            <span className={CHIP}>+{item.tags.length - CARD_TAG_LIMIT}</span>
           )}
         </div>
       )}
