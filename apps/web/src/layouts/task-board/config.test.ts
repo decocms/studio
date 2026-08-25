@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import {
   agentPulse,
-  cardAttentionReason,
+  cardNeedsAttention,
   dueDateUrgency,
   formatSprintDates,
   insertSortOrder,
@@ -246,35 +246,33 @@ describe("dueDateUrgency", () => {
 });
 
 /**
- * The single "a person is next" state. It replaced two separate badges, one of
- * which ("Needs you") rendered on nearly every card in the In Review lane —
- * where the lane header already says it.
+ * The one state that colours a whole card. Narrowed to `requires_action`
+ * alone: the hand-off signal it used to include is `in_review && !assigneeId`,
+ * which every unowned card in the lane matches, so the colour stopped meaning
+ * anything. An empty assignee slot in the footer carries that case instead.
  */
-describe("cardAttentionReason", () => {
+describe("cardNeedsAttention", () => {
   const inReview = (assigneeId: string | null) =>
     ({ ...item("a", 0), status: "in_review", assigneeId }) as TaskBoardItem;
   const asking = (base: TaskBoardItem) =>
     ({ ...base, threads: [{ status: "requires_action" }] }) as TaskBoardItem;
 
   test("a quiet card needs nobody", () => {
-    expect(cardAttentionReason(item("a", 0))).toBeNull();
+    expect(cardNeedsAttention(item("a", 0))).toBe(false);
   });
 
-  test("an agent waiting on input needs input", () => {
-    expect(cardAttentionReason(asking(item("a", 0)))).toBe("needs_input");
+  test("an agent waiting on input needs attention", () => {
+    expect(cardNeedsAttention(asking(item("a", 0)))).toBe(true);
   });
 
-  test("In Review with no owner is a hand-off", () => {
-    expect(cardAttentionReason(inReview(null))).toBe("handed_to_human");
+  // Inverted: this used to colour the card, and matched nearly every card in
+  // the In Review lane.
+  test("In Review with no owner does NOT colour the card", () => {
+    expect(cardNeedsAttention(inReview(null))).toBe(false);
   });
 
-  test("In Review with an owner is nobody's problem yet", () => {
-    expect(cardAttentionReason(inReview("user-1"))).toBeNull();
-    expect(cardAttentionReason(inReview(SUPER_AGENT_ASSIGNEE_ID))).toBeNull();
-  });
-
-  // Both at once: the agent's question is the specific, actionable one.
-  test("a pending question outranks the hand-off", () => {
-    expect(cardAttentionReason(asking(inReview(null)))).toBe("needs_input");
+  test("an owner makes no difference either way", () => {
+    expect(cardNeedsAttention(inReview("user-1"))).toBe(false);
+    expect(cardNeedsAttention(asking(inReview("user-1")))).toBe(true);
   });
 });

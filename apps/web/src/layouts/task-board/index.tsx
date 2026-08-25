@@ -93,7 +93,7 @@ import {
 import { formatTimeAgo } from "@/lib/format-time";
 import {
   agentPulse,
-  cardAttentionReason,
+  cardNeedsAttention,
   dueDateUrgency,
   insertSortOrder,
   isTaskBlocked,
@@ -233,6 +233,30 @@ function PriorityIcon({ priority }: { priority: TaskBoardItemPriority }) {
 }
 
 /**
+ * A card's due date, in the footer. Shown whenever the card has one — the
+ * footer is the row of fixed facts — but only coloured once it is close enough
+ * to act on, so a date months out sits quiet instead of competing with the
+ * overdue ones.
+ */
+function FooterDueDate({ iso }: { iso: string }) {
+  const urgency = dueDateUrgency(iso);
+  const { label } = formatDueDate(iso);
+  return (
+    <span
+      className={cn(
+        "flex shrink-0 items-center gap-1 text-[11px] tabular-nums",
+        urgency === "overdue" && "text-destructive",
+        urgency === "soon" && "text-warning",
+        urgency === null && "text-muted-foreground/70",
+      )}
+    >
+      <Calendar size={11} />
+      {label}
+    </span>
+  );
+}
+
+/**
  * The card's baseline: its key, its priority, how far review got. Fixed height
  * and always present, so the eye finds the same three facts at the same offset
  * on every card in a lane — which is the whole point of the redesign.
@@ -256,8 +280,11 @@ function CardFooter({
   const key = taskKey(org.slug, item.keySeq);
   return (
     <div className="-mx-3 mt-auto flex h-8 shrink-0 items-center justify-between gap-2 border-t border-border px-3 pt-px">
-      <span className="truncate text-[11px] font-medium tabular-nums text-muted-foreground/70">
-        {key}
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="shrink-0 text-[11px] font-medium tabular-nums text-muted-foreground/70">
+          {key}
+        </span>
+        {item.dueDate && <FooterDueDate iso={item.dueDate} />}
       </span>
       <span className="flex shrink-0 items-center gap-2">
         {item.priority !== "none" && <PriorityIcon priority={item.priority} />}
@@ -296,16 +323,9 @@ function PriorityPill({ priority }: { priority: TaskBoardItemPriority }) {
   );
 }
 
-function DueDatePill({ iso, flat }: { iso: string; flat?: boolean }) {
+/** List-row due date. Cards use {@link FooterDueDate} instead. */
+function DueDatePill({ iso }: { iso: string }) {
   const { label, overdue } = formatDueDate(iso);
-  if (flat) {
-    return (
-      <span className={cn(FLAT, overdue ? "text-destructive" : "text-warning")}>
-        <Calendar size={12} />
-        {label}
-      </span>
-    );
-  }
   return (
     <span
       className={cn(PILL, overdue && "border-destructive/30 text-destructive")}
@@ -2189,15 +2209,9 @@ function TaskCard({
   const checks = useCardChecks(item);
   const pulse = agentPulse(item);
   // A state of the card, not a label on it — hence the colour, not a chip.
-  const attention = cardAttentionReason(item);
-  const attentionLabel = attention
-    ? t(
-        attention === "needs_input"
-          ? "taskBoard.taskBoard.blockedBadgeTitle"
-          : "taskBoard.taskBoard.handedToHumanBadgeTitle",
-      )
+  const attentionLabel = cardNeedsAttention(item)
+    ? t("taskBoard.taskBoard.blockedBadgeTitle")
     : null;
-  const dueUrgency = item.dueDate ? dueDateUrgency(item.dueDate) : null;
 
   const showAutoFix =
     onAutoFix &&
@@ -2232,7 +2246,7 @@ function TaskCard({
       }}
       className={cn(
         "group relative flex shrink-0 cursor-grab flex-col gap-2 rounded-xl px-3 py-2.5 text-left card-shadow active:cursor-grabbing",
-        attention
+        attentionLabel
           ? "bg-destructive/10 hover:bg-destructive/15"
           : "bg-card hover:bg-accent/60",
         selected && "bg-accent",
@@ -2248,11 +2262,8 @@ function TaskCard({
         {pulse && <AgentPulseDot state={pulse} />}
       </div>
 
-      {(dueUrgency != null || sprint != null || item.tags.length > 0) && (
+      {(sprint != null || item.tags.length > 0) && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          {item.dueDate && dueUrgency != null && (
-            <DueDatePill iso={item.dueDate} flat />
-          )}
           {sprint != null && <SprintPill sprint={sprint} flat />}
           {item.tags.slice(0, CARD_TAG_LIMIT).map((tag) => (
             <TagPill key={tag.id} tag={tag} flat />

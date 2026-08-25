@@ -88,23 +88,21 @@ export function isTaskHandedToHuman(item: TaskBoardItem): boolean {
 }
 
 /**
- * Why a card needs a person, or null when it doesn't.
+ * Whether a card is stopped waiting on a person — the one state that colours
+ * the whole card.
  *
- * Two different situations put a card in front of a human — its agent asked a
- * question (`requires_action`), or the automation gave up and parked it In
- * Review unowned — and both used to earn their own chip. In the In Review lane
- * that made "Needs you" render on nearly every card, which says nothing: the
- * lane already means a person is next.
+ * This is `isTaskBlocked` alone, deliberately. `isTaskHandedToHuman` used to
+ * colour a card too, but it is only `in_review && !assigneeId`, which cannot
+ * tell a deliberate hand-off from a card nobody ever assigned — so every
+ * unowned card in the In Review lane came out coloured, which says nothing the
+ * lane header doesn't. An unowned card is already legible without a colour:
+ * the footer gives every card an assignee slot, and an empty one is the signal.
  *
- * So it is one card-level STATE now, drawn as the card's background, and the
- * reason survives only in the tooltip. `needs_input` wins the tie because it
- * names something specific the agent is waiting for.
+ * Reserving the colour for `requires_action` keeps it meaning exactly one
+ * thing: an agent asked a question and is waiting for the answer.
  */
-export function cardAttentionReason(
-  item: TaskBoardItem,
-): "needs_input" | "handed_to_human" | null {
-  if (isTaskBlocked(item)) return "needs_input";
-  return isTaskHandedToHuman(item) ? "handed_to_human" : null;
+export function cardNeedsAttention(item: TaskBoardItem): boolean {
+  return isTaskBlocked(item);
 }
 
 /**
