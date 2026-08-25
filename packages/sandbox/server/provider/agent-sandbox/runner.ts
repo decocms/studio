@@ -1546,6 +1546,7 @@ export class AgentSandboxProvider {
           }
         : null,
       repo: opts?.repo ?? null,
+      extraRepos: opts?.extraRepos ?? [],
       port: opts?.workload?.devPort ?? DEFAULT_DEV_PORT,
       tenant: opts?.tenant ?? undefined,
       // Sent on every ensure that carries opts, so a warm-pool pod inheriting a

@@ -15,6 +15,8 @@ export function buildConfigPayload(args: {
   packageManager: PackageManagerConfig | null;
   port?: number;
   repo: NonNullable<EnsureOptions["repo"]> | null;
+  /** Extra checkouts beside `repo`; dropped when there is no primary. */
+  extraRepos?: EnsureOptions["extraRepos"];
   tenant?: EnsureOptions["tenant"];
   /** Checkout only — the daemon skips install + dev server. */
   cloneOnly?: boolean;
@@ -34,6 +36,18 @@ export function buildConfigPayload(args: {
           // Same reasoning as `cloneOnly` below.
           submoduleCredentials: repo.submoduleCredentials ?? [],
         },
+        // Empty included: absent means keep-current to the daemon's merge.
+        repositories: extraRepoDirNames(
+          (args.extraRepos ?? []).map((extra) => extra.cloneUrl),
+        ).map((repoName, i) => {
+          const extra = (args.extraRepos ?? [])[i]!;
+          return {
+            cloneUrl: extra.cloneUrl,
+            repoName,
+            ...(extra.branch ? { branch: extra.branch } : {}),
+            submoduleCredentials: extra.submoduleCredentials ?? [],
+          };
+        }),
         // Omitted when there is no user: a tenant warm pool bootstraps its pods
         // with a repo and no author, and the daemon rejects a blank identity
         // outright (and treats an absent one as "not claimed by a user yet").
@@ -107,4 +121,39 @@ function deriveRepoLabel(cloneUrl: string): string {
   } catch {
     return cloneUrl;
   }
+}
+
+/**
+ * Directory names for the secondary checkouts, one per clone URL and in the
+ * same order.
+ *
+ * `deriveRepoLabel` is the wrong source: it yields `owner/name`, and a
+ * secondary's name IS a directory, which the daemon refuses if it carries a
+ * separator. So this takes the last path segment, and falls back to
+ * `owner-name` for every member of a colliding set — two orgs owning a repo
+ * called `checkout` must not share one checkout directory.
+ *
+ * Exported for the test; the uniqueness rule is the part worth pinning.
+ */
+export function extraRepoDirNames(cloneUrls: string[]): string[] {
+  const parts = cloneUrls.map((url) => {
+    const segments = deriveRepoLabel(url).split("/").filter(Boolean);
+    const name = segments[segments.length - 1] ?? "repo";
+    const owner = segments.length > 1 ? segments[segments.length - 2]! : "";
+    return { name, owner };
+  });
+  const shared = new Set(
+    parts.map((p) => p.name).filter((name, i, all) => all.indexOf(name) !== i),
+  );
+  return parts.map(({ name, owner }) =>
+    sanitizeDirName(shared.has(name) && owner ? `${owner}-${name}` : name),
+  );
+}
+
+/** Bounded to what the daemon accepts: opens on an alphanumeric, no separator. */
+function sanitizeDirName(raw: string): string {
+  const cleaned = raw
+    .replace(/[^A-Za-z0-9._-]/g, "-")
+    .replace(/^[^A-Za-z0-9]+/, "");
+  return cleaned || "repo";
 }

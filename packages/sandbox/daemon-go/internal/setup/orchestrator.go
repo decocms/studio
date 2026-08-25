@@ -381,6 +381,8 @@ func (o *Orchestrator) stepCloneInner() bool {
 		}
 	}
 
+	o.cloneSecondaryRepos(cfg)
+
 	o.gitSetup(cfg)
 	o.fillApplicationDefaults()
 	// Before install, so install runs against the up-to-date lockfile.
@@ -390,6 +392,51 @@ func (o *Orchestrator) stepCloneInner() bool {
 	o.refreshBranchHead()
 	o.deps.BranchStatus.Refresh()
 	return true
+}
+
+// cloneSecondaryRepos checks out the extra repositories beside the primary.
+//
+// Never fails the stage: the sandbox's contract is the primary checkout, and a
+// secondary that will not clone (a revoked token, a repo since deleted) must
+// leave the agent with a working pod rather than no pod. Each failure is
+// announced on the stream so the absence is visible rather than mysterious.
+//
+// Already-present checkouts are skipped, so this is idempotent across the
+// re-provisions and config patches that reach a live pod.
+func (o *Orchestrator) cloneSecondaryRepos(cfg *config.Enriched) {
+	repos := cfg.AdditionalRepositories()
+	if len(repos) == 0 {
+		return
+	}
+	for _, repo := range repos {
+		name := ""
+		if repo.RepoName != nil {
+			name = *repo.RepoName
+		}
+		dir, ok := paths.SecondaryRepoDir(o.deps.RepoDir, name)
+		if !ok {
+			o.chunk(fmt.Sprintf("\r\n[orchestrator] skipping secondary repo with unusable name %q\r\n", name))
+			continue
+		}
+		if paths.HasGitRepo(dir) {
+			continue
+		}
+		branch := ""
+		if repo.Branch != nil {
+			branch = *repo.Branch
+		}
+		result := SpawnClone(CloneDeps{
+			RepoDir:              dir,
+			CloneUrl:             *repo.CloneUrl,
+			Branch:               branch,
+			SubmoduleCredentials: repo.SubmoduleCredentials,
+			TmpDir:               o.deps.LogsDir,
+			OnChunk:              func(data string) { o.rawChunk(data) },
+		})
+		if result.Code != 0 {
+			o.chunk(fmt.Sprintf("\r\n[orchestrator] secondary repo %s failed to clone (exit %d) — continuing without it\r\n", name, result.Code))
+		}
+	}
 }
 
 // maybeFastForwardToBase advances an idle, unchanged sandbox to its base
