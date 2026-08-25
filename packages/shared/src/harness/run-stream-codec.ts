@@ -36,7 +36,7 @@ export const FRAG_INDEX_HEADER = "Dp-Frag-Idx";
 /** Header name carrying the total fragment count within a fragmented chunk. */
 export const FRAG_TOTAL_HEADER = "Dp-Frag-Total";
 
-/** Hard drop ceiling for a single encoded stream chunk (32 MiB). */
+/** Hard ceiling for a single encoded stream chunk (32 MiB). */
 export const MAX_CHUNKED_BYTES = 32 * 1024 * 1024;
 
 function assertSafeSubjectToken(id: string): void {
@@ -110,12 +110,6 @@ export function parseRunStreamMsgId(
       ? { kind: "done", runId, fenceToken, finalSeq }
       : null;
   }
-  if (third === "ckpt") {
-    // Leftover checkpoint markers from in-flight runs must parse to null so
-    // they are not misclassified. Checkpoint publication was removed; this
-    // branch exists solely as a transition-safety guard.
-    return null;
-  }
   const seq = positiveInt(third);
   if (seq === null) return null;
   if (parts.length === 3) {
@@ -145,7 +139,8 @@ const encoder = new TextEncoder();
  * Encode one UI chunk as `{p:chunk}` → 1+ wire messages.
  * - Fragments over MAX_PUBLISH_BYTES; each fragment gets FRAG_INDEX/TOTAL headers
  *   and a per-fragment msgId (`:frag:N` suffix).
- * - Returns [] (caller should warn) for payloads over MAX_CHUNKED_BYTES.
+ * - Throws for payloads over MAX_CHUNKED_BYTES so callers cannot acknowledge
+ *   data they did not publish.
  * - `dedup` present ⇒ each message carries its canonical Nats-Msg-Id.
  */
 export function serializeChunk(
@@ -154,7 +149,11 @@ export function serializeChunk(
 ): WireMessage[] {
   const subject = streamSubject(opts.runId);
   const bytes = encoder.encode(JSON.stringify({ p: chunk }));
-  if (bytes.length > MAX_CHUNKED_BYTES) return [];
+  if (bytes.length > MAX_CHUNKED_BYTES) {
+    throw new RangeError(
+      `stream chunk is ${bytes.length} bytes; maximum is ${MAX_CHUNKED_BYTES}`,
+    );
+  }
   if (bytes.length <= MAX_PUBLISH_BYTES) {
     return [
       {

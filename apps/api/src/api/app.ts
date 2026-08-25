@@ -82,7 +82,7 @@ import {
   fenceRawAdminSurface,
 } from "./routes/admin";
 import { createSsoRoutes } from "./routes/org-sso";
-import { createDecopilotRoutes } from "./routes/decopilot";
+import { createDecopilotRoutes } from "./routes/decopilot/routes";
 import { createDownstreamTokenRoutes } from "./routes/downstream-token";
 import {
   DownstreamTokenStorage,
@@ -1426,9 +1426,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   // owns, NOT `use("*", ...)`. Because this sub-app is mounted at `/`, a
   // wildcard middleware fires for every request to the root app — and the
   // suppression logic in `log-deprecated-route.ts` can't reliably tell
-  // root-app handlers (e.g. `/api/links/heartbeat`) apart from this
-  // sub-app's handlers via basePath alone. Pinning the middleware to the
-  // actual deprecated patterns avoids the false-positive entirely.
+  // unrelated root-app handlers apart from this sub-app's handlers via
+  // basePath alone. Pinning the middleware to the actual deprecated patterns
+  // avoids the false-positive entirely.
   legacyWellKnownProtectedResource.use(
     "/.well-known/oauth-protected-resource/mcp/:connectionId",
     logDeprecatedRoute,
@@ -1573,11 +1573,10 @@ export async function createApp(options: CreateAppOptions = {}) {
     studioContextFactory: automationContextFactory,
   });
 
-  // The per-thread gate now STARTS the run (hosted: fire-and-forget enqueue of
-  // the hosted-harness child; desktop: publish the work item) and lets the
-  // consume step write terminal status. It no longer runs the agent loop itself,
-  // so it no longer needs a `dispatchRunFn` or a status-poll cap. Wiring happens
-  // before `DBOS.launch()` for the same reasons as automations.
+  // The per-thread gate starts the hosted run and lets the consume step write
+  // terminal status. It no longer runs the agent loop itself, so it no longer
+  // needs a `dispatchRunFn` or a status-poll cap. Wiring happens before
+  // `DBOS.launch()` for the same reasons as automations.
   setThreadGateRuntime({
     studioContextFactory: automationContextFactory,
     deps: {
@@ -1593,7 +1592,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // onto HOSTED_HARNESS_QUEUE instead of running inline. Wired here before
   // `DBOS.launch()` (it only sets a module-level pointer, no DBOS API calls),
   // mirroring the thread-gate runtime. The gate immediately proceeds to its
-  // consume step, which writes terminal status for both hosted and desktop runs.
+  // consume step, which writes terminal status for hosted runs.
   setHostedHarnessRuntime({
     dispatchRunFn: dispatchRunAndWait,
     studioContextFactory: automationContextFactory,
@@ -1675,8 +1674,8 @@ export async function createApp(options: CreateAppOptions = {}) {
         orgId,
       );
       // Push the terminal status to the org SSE so the sidebar chip updates
-      // live. user-desktop runs finalize here (not via the run-reactor), so
-      // without this the chip stays "running" until a refetch. `flipped` is
+      // live. Projected runs finalize here rather than through the live
+      // reactor, so without this the chip stays "running" until a refetch. `flipped` is
       // null on a no-op (already terminal) → no double-publish.
       emitTerminalThreadStatus(sseHub, orgId, runId, flipped);
       if (flipped) {

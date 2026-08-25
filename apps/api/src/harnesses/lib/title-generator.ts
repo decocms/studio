@@ -55,10 +55,8 @@ const FALLBACK_TITLE_MAX_CHARS = 32;
 const TITLE_GEN_MAX_ATTEMPTS = 3;
 
 export function genTitle(config: {
-  /** Optional: aborts title generation when the parent stream is cancelled.
-   *  Undefined on the desktop/pull path, where the harness runs from a
-   *  serialized wire input that cannot carry a (non-serializable) AbortSignal. */
-  abortSignal?: AbortSignal;
+  /** Aborts title generation when the parent stream is cancelled. */
+  abortSignal: AbortSignal;
   /** Ordered fallback chain, fast/cheap first — each entry is a lazy factory
    *  so an unbuildable model fails only its own attempt (never at call time).
    *  Attempt N uses `models[N]`, clamped to the last entry once exhausted. */
@@ -102,17 +100,13 @@ export function genTitle(config: {
     settleLatch = resolve;
   });
 
-  // Abort title generation if parent stream is aborted. `abortSignal` is
-  // optional-at-runtime: on the desktop/pull path the serialized wire input
-  // omits the (non-serializable) AbortSignal, and a caller may legitimately
-  // have nothing to tie lifetime to. Guard so a missing signal degrades to "no
-  // parent abort wiring" instead of throwing `addEventListener of undefined`.
-  // Cancelled run → resolve the latch with null so no title is emitted.
+  // Abort title generation if the parent stream is aborted. Cancelled run →
+  // resolve the latch with null so no title is emitted.
   const onParentAbort = () => {
     titleAbortController.abort();
     settleLatch(null);
   };
-  abortSignal?.addEventListener("abort", onParentAbort, { once: true });
+  abortSignal.addEventListener("abort", onParentAbort, { once: true });
 
   let graceTimeoutId: ReturnType<typeof setTimeout> | undefined;
 
@@ -181,7 +175,7 @@ export function genTitle(config: {
       if (err.name === "AbortError") {
         // Parent stream was cancelled (user hit stop) → do NOT title a cancelled
         // run; emit nothing.
-        if (abortSignal?.aborted) {
+        if (abortSignal.aborted) {
           console.warn(
             "[decopilot:title] Title generation aborted (parent abort)",
           );
@@ -203,7 +197,7 @@ export function genTitle(config: {
     } finally {
       clearTimeout(graceTimeoutId);
       clearTimeout(selfTimeoutId);
-      abortSignal?.removeEventListener("abort", onParentAbort);
+      abortSignal.removeEventListener("abort", onParentAbort);
     }
   })();
 

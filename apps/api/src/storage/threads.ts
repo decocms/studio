@@ -220,21 +220,13 @@ export class OrgScopedThreadStorage {
     return this.inner.messageParts();
   }
 
-  /**
-   * Current fence token for a run (thread id == run id today). Returns null
-   * if no fence has been minted, which means any token (including null) is
-   * accepted by `fenceMatches`.
-   */
+  /** Current fence token for a run (thread id == run id today). */
   getRunFence(threadId: string): Promise<string | null> {
     return this.inner.getRunFence(threadId);
   }
 
-  /**
-   * Set (or clear) the fence token for a run. Minted by `prepareRun` after
-   * the run is claimed (Phase B). Cleared by the ingest finish handler so
-   * late-arriving duplicate appends are rejected with 409.
-   */
-  setRunFence(threadId: string, token: string | null): Promise<void> {
+  /** Claim a new fence epoch for a run. */
+  setRunFence(threadId: string, token: string): Promise<void> {
     return this.inner.setRunFence(threadId, token);
   }
 
@@ -1027,11 +1019,10 @@ export class SqlThreadStorage implements ThreadStoragePort {
   }
 
   /**
-   * Set (or clear) the fence token. Called exactly once per turn-start, before
+   * Set the fence token. Called exactly once per turn-start, before
    * any chunks are ingested. Atomically resets `run_acked_seq` to NULL so the
-   * new fence epoch always starts with a clean floor — preventing a prior
-   * turn's ack high-water mark from causing `RelaySessionImpl.push()` to drop
-   * the new turn's early chunks (cross-turn chunk loss bug).
+   * new fence epoch always starts with a clean floor, preventing a prior turn's
+   * ack high-water mark from dropping the new turn's early chunks.
    *
    * When CLAIMING a turn (token non-null), also resets `status` to
    * `in_progress`. `runId === threadId`, so the run row is shared across every
@@ -1042,20 +1033,15 @@ export class SqlThreadStorage implements ThreadStoragePort {
    * "No response was generated". Resetting here — atomically with the new fence
    * — re-arms the run for this turn (mirrors the per-turn `(runId,fenceToken)`
    * message-id namespacing: turn-stable runId needs an explicit per-turn reset).
-   * Clearing the fence (token null, teardown) leaves status untouched.
    */
-  async setRunFence(threadId: string, token: string | null): Promise<void> {
+  async setRunFence(threadId: string, token: string): Promise<void> {
     await this.db
       .updateTable("threads")
-      .set(
-        token === null
-          ? { run_fence_token: null, run_acked_seq: null }
-          : {
-              run_fence_token: token,
-              run_acked_seq: null,
-              status: "in_progress",
-            },
-      )
+      .set({
+        run_fence_token: token,
+        run_acked_seq: null,
+        status: "in_progress",
+      })
       .where("id", "=", threadId)
       .execute();
   }
@@ -1170,7 +1156,6 @@ export class SqlThreadStorage implements ThreadStoragePort {
     updated_by: string | null;
     hidden: boolean | number | null;
     message_storage_version?: number | null;
-    link_transport?: string | null;
   }): Thread {
     let metadata: ThreadMetadata = {};
     if (row.metadata != null) {
@@ -1217,7 +1202,6 @@ export class SqlThreadStorage implements ThreadStoragePort {
       // Defaults to 1 (legacy) when the column is absent/null so existing
       // threads keep reading from `thread_messages`.
       message_storage_version: row.message_storage_version ?? 1,
-      link_transport: row.link_transport ?? null,
     };
   }
 
