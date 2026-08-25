@@ -60,8 +60,8 @@ export function resolveThreadStatus(
  *
  * An ABSENT finishReason means "this stream carried no AI-SDK `finish` chunk",
  * not "the run failed" — `resolveThreadStatus(undefined, …)` reports failed,
- * which is right for a hosted stream that reported `unknown` but wrong for the
- * desktop/relay path and for any harness whose turn ends on `{done}`.
+ * which is right for a stream that reported `unknown` but wrong for a harness
+ * whose turn ends cleanly on `{done}`.
  *
  * The two writers disagreeing is not a cosmetic drift, it is unrecoverable: the
  * live write lands first and is what the projector's `in_progress`-guarded

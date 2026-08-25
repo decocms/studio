@@ -44,7 +44,7 @@ describe("ProgressBumpThrottle", () => {
 
 // ---------------------------------------------------------------------------
 // tapProgressStream — the run liveness heartbeat tap (sole heartbeat for
-// both hosted and desktop runs). `chunkStream` in project-chunks.ts is a
+// hosted runs). `chunkStream` in project-chunks.ts is a
 // `ReadableStream<UIMessageChunk>` (not an AsyncIterable), so the tap is a
 // pass-through TransformStream.
 // ---------------------------------------------------------------------------

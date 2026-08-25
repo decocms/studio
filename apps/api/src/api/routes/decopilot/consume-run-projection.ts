@@ -28,24 +28,20 @@ export interface ConsumeRunProjectionOptions {
  * inside `projectFromJetStreamStep`, streams those chunks through the AI SDK
  * fold, persists step/final parts, and writes the terminal status.
  *
- * unified-control-plane T3: for the hosted topology, the thread gate now
- * calls this step immediately after STARTING (not awaiting) the hosted child
- * — so this consumer is routinely opened BEFORE the child has published its
- * first chunk. This is safe and not new: it is exactly the timing the
- * desktop topology has always used (the gate returns as soon as the work item
- * is durably published to the tunnel, well before the remote daemon streams
- * anything back). `projectFromJetStreamStep` → `createProjectorChunkStream`
+ * The thread gate calls this step immediately after starting (but not awaiting)
+ * the hosted child, so this consumer is routinely opened before the child has
+ * published its first chunk. `projectFromJetStreamStep` →
+ * `createProjectorChunkStream`
  * opens the JetStream consumer with `deliver_policy: DeliverPolicy.All`
  * (`projector-chunk-stream.ts`) — "deliver everything retained on the
  * subject, then keep delivering as new messages arrive" — and
  * `natsChunkSource`'s pull loop (`nats-chunk-source.ts`) simply `await`s the
  * next message when nothing is available yet, live-tailing rather than
- * assuming a complete/retained stream. There is no hosted-only branch
- * anywhere in this path that assumed the producer had already finished; both
- * topologies always went through the same `createProjectorChunkStream` call.
+ * assuming a complete/retained stream. Every projected run uses this same
+ * `createProjectorChunkStream` path.
  *
- * unified-control-plane T4: with no child await anywhere (T3), subject
- * silence is the only signal an executor died before/without publishing.
+ * With no child await, subject silence is the only signal an executor died
+ * before or without publishing.
  * `idleTimeoutMs` (defaulted here to `RUN_IDLE_TIMEOUT_MS`) is threaded all
  * the way to `natsChunkSource`, which errors the stream with
  * `StreamIdleTimeoutError` after that much silence. `runProjectorWorkflowBody`'s

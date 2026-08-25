@@ -90,7 +90,7 @@ export interface RunReactorDeps {
    * projector — so without this hook those runs leave the card parked In
    * Progress and the quota charged for a run that produced nothing.
    *
-   * Optional so a caller with no board (tests, the desktop path) can omit it.
+   * Optional so tests and minimal embedders can omit it.
    */
   onThreadFinished?: (threadId: string, orgId: string) => Promise<void>;
 }
@@ -112,13 +112,12 @@ async function handleTerminalStatus(
   // is now the sole writer for completed/requires_action. The live reactor only emits
   // SSE for instant UX — the durable projector workflow owns the terminal DB transition.
   // (RUN_FAILED below still writes directly, but the projector path now runs
-  // unconditionally for both topologies too — so for stream-driven failures that write
+  // unconditionally for hosted runs too — so for stream-driven failures that write
   // RACES the projector's `markRunFailed` on the same terminal state. Both sides of
   // that race are now guarded on `in_progress`, so whichever lands first wins and the
   // loser is a no-op; neither can stamp a terminal over an already-settled one. The
-  // write here remains the sole DB terminal for desktop pre-publish setup failures
-  // (`failPreparedRun`) and for reaped/cancelled/ghost force-fails, which never reach
-  // the projector.)
+  // write here remains the sole DB terminal for reaped/cancelled/ghost
+  // force-fails, which never reach the projector.)
   sseHub.emit(
     orgId,
     createDecopilotThreadStatusEvent(taskId, status, {

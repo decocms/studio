@@ -37,7 +37,7 @@ export type ClientModelsInput = Omit<
  *
  * `capabilities` is forwarded (wire-only keys; see toSelection: `vision`/
  * `text`/`reasoning`) so `createLanguageModel`'s `reasoning !== false` gate
- * sees the client's flags on every harness, cluster or desktop (plan Task 13);
+ * sees the client's flags on every hosted harness;
  * `coding` dropped (D11).
  */
 function toSelection(slot: ModelInfo, credentialId: string): ModelSelection {

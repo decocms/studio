@@ -29,7 +29,7 @@
  *    can't surface as an unhandled exception.
  *
  *  - Downstream cancel (client closed connection) is forwarded to the source
- *    so the relay/JetStream chain unwinds correctly.
+ *    so the upstream stream unwinds correctly.
  *
  *  - The wrapper never originates errors; source errors propagate unchanged.
  */

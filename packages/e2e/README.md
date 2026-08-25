@@ -17,15 +17,15 @@ uses their public interfaces, and asserts on observable behavior. It does not
 import application implementation code, so the same contract can survive an
 internal rewrite.
 
-Tests cover browser flows, raw HTTP APIs, Postgres state, NATS-based protocols,
-MCP servers, desktop-link behavior, and optional S3-backed object storage.
+Tests cover browser flows, raw HTTP APIs, Postgres state, NATS-backed streaming,
+MCP servers, native authentication, and optional S3-backed object storage.
 
 ## Responsibilities
 
 - Verify user-visible flows in Chromium.
 - Verify HTTP, authentication, authorization, and MCP wire contracts.
 - Assert persisted state against the same Postgres used by the API.
-- Exercise NATS and desktop-link protocols through standalone test drivers.
+- Exercise NATS-backed behavior through public HTTP and database contracts.
 - Protect tenant isolation and concurrency behavior under parallel execution.
 
 ## Usage
@@ -58,7 +58,7 @@ the `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, and
 and HTTP boundaries.
 
 `tests/` owns wire-level and browser contracts. `fixtures/` provides standalone
-HTTP, authentication, Postgres, NATS, MCP, and relay drivers. `pages/` contains
+HTTP, authentication, Postgres, MCP, and GitHub drivers. `pages/` contains
 small page objects for repeated browser interactions.
 
 Playwright's `APIRequestContext` covers HTTP, Chromium covers UI behavior, and

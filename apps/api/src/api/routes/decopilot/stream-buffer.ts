@@ -57,7 +57,7 @@ export interface StreamBuffer {
    *
    * `dedup` sets the JetStream `Nats-Msg-Id` for time-based dedup: a
    * seq-keyed id (`${runId}:${fenceToken}:${seq}`) lets an at-least-once
-   * producer (outbox retry) re-publish the same chunk without double-writing.
+   * producer retry re-publish the same chunk without double-writing.
    */
   publishRawChunk(
     taskId: string,
