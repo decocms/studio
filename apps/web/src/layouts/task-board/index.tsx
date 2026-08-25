@@ -339,11 +339,12 @@ function CardFooter({
   const { org } = useProjectContext();
   const key = taskKey(org.slug, item.keySeq);
   return (
-    // `-mx-3 -mb-2.5` cancels the card's own padding so the bar sits flush in
-    // its bottom corner; without the vertical half it floated above 10px of
-    // card. The extra pixel on `pb` offsets `border-t`, which eats one off the
-    // top — otherwise the centred row lands half a pixel low.
-    <div className="-mx-2 -mb-2.5 mt-auto flex shrink-0 items-center justify-between gap-2 border-t border-border px-2 pt-1.75 pb-2">
+    // `-mx-3 -mb-2.5` cancels the card's padding so the bar spans corner to
+    // corner, then it re-pads at its own, tighter inset: 8px on each of its
+    // three open sides, against the body's 12. The extra pixel on `pb` offsets
+    // `border-t`, which eats one off the top — otherwise the row lands half a
+    // pixel low.
+    <div className="-mx-3 -mb-2.5 mt-auto flex shrink-0 items-center justify-between gap-2 border-t border-border px-2 pt-1.75 pb-2">
       <span className="flex min-w-0 items-center gap-3">
         <TaskTypeIcon type={item.type} />
         <span className="shrink-0 text-[11px] font-medium tabular-nums text-muted-foreground/70">
@@ -2335,7 +2336,7 @@ function TaskCard({
         else onOpen();
       }}
       className={cn(
-        "group relative flex shrink-0 cursor-grab flex-col gap-2 rounded-xl px-2 py-2.5 text-left card-shadow active:cursor-grabbing",
+        "group relative flex shrink-0 cursor-grab flex-col gap-2 rounded-xl px-3 py-2.5 text-left card-shadow active:cursor-grabbing",
         attentionLabel
           ? "bg-destructive/10 hover:bg-destructive/15"
           : "bg-card hover:bg-accent/60",
