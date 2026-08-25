@@ -66,7 +66,7 @@ export function mcpEndpointUrl(args: {
 }): string {
   const { publicUrl, agentId, organization, target, threadId } = args;
   if (target === "agent-tools") {
-    return `${publicUrl}/mcp/virtual-mcp/${agentId}`;
+    return `${publicUrl}/mcp/virtual-mcp/${encodeURIComponent(agentId)}`;
   }
   if (!organization.slug) {
     throw new MissingOrganizationSlugError(organization.id, target);
