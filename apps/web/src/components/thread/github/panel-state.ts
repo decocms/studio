@@ -287,9 +287,14 @@ export function selectHeaderButton(
         tooltip: t("thread.headerActions.installingPackagesTooltip"),
         menu: [],
       };
-    // `starting`: committed work publishes now (git needs the checkout, not the dev server); a dirty-only tree waits, since workingTreeDirty may be boot noise until #6332's baseline arms.
-    case "starting":
-      if (!(branch.kind === "ready" && branch.aheadOfBase > 0)) {
+    // `starting` never gates the verdict — publishing is git (needs the checkout, not the dev server). Fall through the moment either signal resolves: real work (workingTreeDirty is user-written-only mid-boot, commits are never boot noise) → git/PR copy, or an authoritative-empty /git/status → "Up to date". Hold the boot pill only while both are still undecided.
+    case "starting": {
+      const hasWork =
+        branch.kind === "ready" &&
+        (branch.workingTreeDirty ||
+          branch.aheadOfBase > 0 ||
+          branch.unpushed > 0);
+      if (!hasWork && !input.noReviewableDiff) {
         return {
           label: t("thread.headerActions.startingApp"),
           disabled: true,
@@ -300,6 +305,7 @@ export function selectHeaderButton(
         };
       }
       break;
+    }
     // running/*-failed/crashed: fall through to git/PR.
   }
 

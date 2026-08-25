@@ -240,7 +240,7 @@ describe("selectHeaderButton", () => {
     expect(r.loading).toBe(true);
   });
 
-  // Installing holds the header (working tree not in place). `starting` releases committed work — git works while the dev server boots — but a dirty-only tree stays held: workingTreeDirty may be boot noise until #6332's baseline arms (this is the #6314 false-"Review & Publish"-on-a-fresh-branch guard).
+  // Installing holds the header (working tree not in place). `starting` releases any real work — publishing is git, which needs the checkout, not the dev server. workingTreeDirty is trustworthy here: the daemon reports it only for user-written paths (BranchStatusMonitor.userTouched), so boot dirt no longer masquerades as work and the #6314 fresh-branch guard is preserved without gating on the lifecycle.
 
   test("lifecycle.installing + dirty branch → Installing packages… (not publishable yet)", () => {
     const r = selectHeaderButton(
@@ -267,26 +267,47 @@ describe("selectHeaderButton", () => {
     expect(r.action).toBe("publish");
   });
 
-  test("lifecycle.starting + dirty-only tree (no commits) → Starting app… (boot dirt is not proof of work)", () => {
+  test("lifecycle.starting + dirty-only tree (no commits) → Review & Publish (daemon reports dirty only for user-written paths, not boot dirt)", () => {
     const r = selectHeaderButton(
       happyInput({
         lifecycle: { phase: "starting" },
         branch: ready({ workingTreeDirty: true }),
       }),
     );
-    expect(r.label).toBe("Starting app…");
-    expect(r.disabled).toBe(true);
-    expect(r.loading).toBe(true);
-    expect(r.action).toBeUndefined();
+    expect(r.label).toBe("Review & Publish");
+    expect(r.action).toBe("publish");
   });
 
-  test("lifecycle.starting + clean branch, no work → Starting app…", () => {
+  test("lifecycle.starting + unpushed commits → Review & Publish (git works while the dev server boots)", () => {
+    const r = selectHeaderButton(
+      happyInput({
+        lifecycle: { phase: "starting" },
+        branch: ready({ aheadOfBase: 1, unpushed: 1 }),
+      }),
+    );
+    expect(r.label).toBe("Review & Publish");
+    expect(r.action).toBe("publish");
+  });
+
+  test("lifecycle.starting + clean branch, git status still resolving → Starting app…", () => {
     const r = selectHeaderButton(
       happyInput({ lifecycle: { phase: "starting" } }),
     );
     expect(r.label).toBe("Starting app…");
     expect(r.disabled).toBe(true);
     expect(r.loading).toBe(true);
+  });
+
+  test("lifecycle.starting + clean branch, git status resolved empty → Up to date (not the boot pill)", () => {
+    const r = selectHeaderButton(
+      happyInput({
+        lifecycle: { phase: "starting" },
+        noReviewableDiff: true,
+      }),
+    );
+    expect(r.label).toBe("Up to date");
+    expect(r.disabled).toBe(true);
+    expect(r.action).toBeUndefined();
   });
 
   test("lifecycle.install-failed + dirty branch → Review & Publish (commit fixes)", () => {
