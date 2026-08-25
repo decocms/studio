@@ -115,6 +115,70 @@ describe("notifications", () => {
     expect((await store.listUnread("user_123", "org_1")).unreadCount).toBe(1);
   });
 
+  it("notifies the user an event enrolls, not just prior followers", async () => {
+    // What "assigning someone notifies them" rests on: the enroll happens
+    // before the subscriber lookup, so the new assignee gets THIS event and not
+    // merely the next one.
+    const task = await tasks.create({
+      organizationId: "org_test",
+      title: "Assigned to you",
+      by: "user_test",
+    });
+    await notify({
+      db: database.db,
+      taskBoardItemId: task.id,
+      type: "assignee_changed",
+      actorId: "user_test",
+      alsoSubscribe: ["user_1"],
+    });
+
+    const inbox = await store.listUnread("user_1", "org_test");
+    expect(
+      inbox.notifications.some(
+        (n) => n.taskBoardItemId === task.id && n.type === "assignee_changed",
+      ),
+    ).toBe(true);
+  });
+
+  it("pages by keyset, so rows read between pages can't shift the window", async () => {
+    const task = await tasks.create({
+      organizationId: "org_test",
+      title: "Paged",
+      by: "user_test",
+    });
+    await store.setSubscribed("user_test", task.id, true);
+    // One burst, one transaction each — several rows share a created_at, which
+    // is exactly the tie an id-less cursor loses rows on.
+    for (let i = 0; i < 5; i++) {
+      await notify({
+        db: database.db,
+        taskBoardItemId: task.id,
+        type: "commented",
+        actorId: null,
+      });
+    }
+
+    const first = await store.listUnread("user_test", "org_test", { limit: 2 });
+    expect(first.notifications).toHaveLength(2);
+    expect(first.unreadCount).toBe(5);
+    expect(first.nextCursor).not.toBeNull();
+
+    const second = await store.listUnread("user_test", "org_test", {
+      limit: 2,
+      cursor: first.nextCursor!,
+    });
+    const third = await store.listUnread("user_test", "org_test", {
+      limit: 2,
+      cursor: second.nextCursor!,
+    });
+
+    const ids = [first, second, third]
+      .flatMap((page) => page.notifications)
+      .map((n) => n.id);
+    expect(new Set(ids).size).toBe(5);
+    expect(third.nextCursor).toBeNull();
+  });
+
   it("cascades subscriptions and notifications when the task is deleted", async () => {
     const doomed = await tasks.create({
       organizationId: "org_test",

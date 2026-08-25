@@ -1,5 +1,5 @@
 /**
- * The email digest: every 5 minutes, mail each recipient the notifications
+ * The email digest: every 15 seconds, mail each recipient the notifications
  * they haven't read in the app yet, then stamp them.
  *
  * Same shape as `tools/task-board/dbos-archive-sweep.ts`: the scheduler picks
@@ -22,10 +22,16 @@ import type { Database } from "@/storage/types";
 import { buildDigestEmail, type DigestRow } from "./digest-email";
 import { NotificationDataSchema } from "./schema";
 
-const DIGEST_CRONTAB = "*/5 * * * *";
+/** Six fields — the leading one is seconds. */
+const DIGEST_CRONTAB = "*/15 * * * * *";
 
-/** The debounce: a burst on one task becomes one email. */
-const DEBOUNCE_MS = 5 * 60_000;
+/**
+ * The batching window: a burst inside it becomes one email, and a notification
+ * still unread when the window closes is mailed on the next tick — so the mail
+ * lands within DEBOUNCE_MS + one tick, not five minutes. Ticking faster than
+ * the window would only re-check rows the window has not released yet.
+ */
+const DEBOUNCE_MS = 30_000;
 
 /** Ceiling per tick, across all recipients. A backlog drains next tick. */
 const MAX_ROWS_PER_TICK = 500;
@@ -176,10 +182,17 @@ async function digestWorkflowFn(
     }
   }
 
-  await DBOS.runStep(
-    () => pruneOld(new Date(scheduledTime.getTime() - RETENTION_MS)),
-    { name: "pruneOldNotifications" },
-  );
+  // Retention is a whole-table DELETE and the tick is 15s — hourly is plenty.
+  // Derived from `scheduledTime`, so a replay makes the same choice.
+  if (
+    scheduledTime.getUTCMinutes() === 37 &&
+    scheduledTime.getUTCSeconds() < 15
+  ) {
+    await DBOS.runStep(
+      () => pruneOld(new Date(scheduledTime.getTime() - RETENTION_MS)),
+      { name: "pruneOldNotifications" },
+    );
+  }
 }
 
 let registeredWorkflow: typeof digestWorkflowFn | null = null;

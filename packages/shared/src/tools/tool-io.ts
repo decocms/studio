@@ -284,7 +284,7 @@ export interface StudioToolIO {
     };
   };
   NOTIFICATION_LIST: {
-    input: { [x: string]: never };
+    input: { cursor?: string | undefined; limit?: number | undefined };
     output: {
       notifications: {
         id: string;
@@ -305,6 +305,7 @@ export interface StudioToolIO {
         createdAt: string;
       }[];
       unreadCount: number;
+      nextCursor: string | null;
     };
   };
   NOTIFICATION_MARK_READ: {

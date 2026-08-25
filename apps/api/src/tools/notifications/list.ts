@@ -2,7 +2,8 @@
  * The inbox read: the current user's unread task updates in the current org.
  *
  * Unread-only, because the inbox shows unseen changes and "Mark all read"
- * empties it. No cursor — `unreadCount` already tells the UI there is more.
+ * empties it. Keyset-paged so the popover can scroll a long backlog;
+ * `unreadCount` is always the full count, not the page's.
  */
 
 import { z } from "zod";
@@ -35,18 +36,25 @@ export const NOTIFICATION_LIST = defineTool({
     idempotentHint: true,
     openWorldHint: false,
   },
-  inputSchema: z.object({}),
+  inputSchema: z.object({
+    /** `nextCursor` from the previous page. Omit for the newest page. */
+    cursor: z.string().optional(),
+    limit: z.number().int().positive().max(50).optional(),
+  }),
   outputSchema: z.object({
     notifications: z.array(NotificationSchema),
     unreadCount: z.number(),
+    /** Null when this is the last page. */
+    nextCursor: z.string().nullable(),
   }),
-  handler: async (_input, ctx) => {
+  handler: async (input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
-    const { notifications, unreadCount } =
+    const { notifications, unreadCount, nextCursor } =
       await ctx.storage.notifications.listUnread(
         getUserId(ctx)!,
         requireOrg(ctx),
+        { cursor: input.cursor, limit: input.limit },
       );
     return {
       notifications: notifications.map((n) => ({
@@ -60,6 +68,7 @@ export const NOTIFICATION_LIST = defineTool({
         createdAt: n.createdAt,
       })),
       unreadCount,
+      nextCursor,
     };
   },
 });

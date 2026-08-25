@@ -17,6 +17,7 @@ import {
   SidebarMenuButton,
   useSidebar,
 } from "@decocms/ui/components/sidebar.tsx";
+import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { useNavigate } from "@tanstack/react-router";
 import { useInboxFeed } from "@/hooks/use-inbox-feed";
@@ -25,11 +26,31 @@ import { taskKey } from "@decocms/shared/task-key";
 import { useT } from "@/i18n/use-t.ts";
 import { InboxTaskItem } from "./inbox-task-item";
 
+/**
+ * Loads the next page once it scrolls into view. An observer in a ref callback
+ * rather than an effect — React 19 runs the returned cleanup on detach.
+ */
+function LoadMoreSentinel({ onReach }: { onReach: () => void }) {
+  return (
+    <div
+      className="h-8 shrink-0"
+      ref={(node) => {
+        if (!node) return;
+        const observer = new IntersectionObserver((entries) => {
+          if (entries.some((entry) => entry.isIntersecting)) onReach();
+        });
+        observer.observe(node);
+        return () => observer.disconnect();
+      }}
+    />
+  );
+}
+
 function InboxPanel({ onClose }: { onClose: () => void }) {
   const t = useT();
   const navigate = useNavigate();
   const { org } = useProjectContext();
-  const { updates, markAllRead } = useInboxFeed();
+  const { updates, markAllRead, markRead, hasMore, fetchMore } = useInboxFeed();
 
   return (
     <>
@@ -57,7 +78,7 @@ function InboxPanel({ onClose }: { onClose: () => void }) {
           </p>
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto">
+        <ScrollArea className="min-h-0 flex-1">
           {updates.map((update) => {
             const key = taskKey(org.slug, update.taskKeySeq);
             return (
@@ -66,6 +87,8 @@ function InboxPanel({ onClose }: { onClose: () => void }) {
                 update={update}
                 orgSlug={org.slug}
                 onSelect={() => {
+                  // Opening it is reading it.
+                  markRead(update.id);
                   onClose();
                   if (key) {
                     navigate({
@@ -77,7 +100,8 @@ function InboxPanel({ onClose }: { onClose: () => void }) {
               />
             );
           })}
-        </div>
+          {hasMore && <LoadMoreSentinel onReach={fetchMore} />}
+        </ScrollArea>
       )}
     </>
   );
