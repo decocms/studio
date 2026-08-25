@@ -1405,6 +1405,49 @@ describe("structural fieldKey resolution", () => {
     ).toBe("b");
   });
 
+  test("a nested array crumb sharing a key name with a top-level array does not hijack it", () => {
+    // The outermost crumb (`tabs`) owns the root scope; the inner `cards` crumb belongs to the tab item, not the same-named top-level `cards`.
+    const cardItem = {
+      type: "object",
+      properties: { title: { type: "string" } },
+    } as SchemaProperty;
+    const nestedProps = {
+      cards: { title: "Cards", type: "array", items: cardItem },
+      tabs: {
+        title: "Tabs",
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            cards: { title: "Cards da tab", type: "array", items: cardItem },
+          },
+        },
+      },
+    } as Record<string, SchemaProperty>;
+    const nestedValue = {
+      cards: [{ title: "Coleção 1" }, { title: "Coleção 2" }],
+      tabs: [{ title: "Ouro", cards: [{}, {}] }],
+    };
+    const trail: Crumb[] = [
+      { label: "Ouro", itemIndex: 0, fieldKey: "tabs" },
+      {
+        label: "Item 1",
+        itemIndex: 0,
+        fieldKey: "cards",
+        arrayLabel: "Cards da tab",
+      },
+    ];
+    expect(
+      resolveActiveFieldKey(
+        Object.keys(nestedProps),
+        nestedProps,
+        nestedValue,
+        trail,
+      ),
+    ).toBe("tabs");
+  });
+
   test("a legacy crumb without fieldKey can't disambiguate and picks the first sibling", () => {
     const legacyTrail: Crumb[] = [
       { label: "Item 1", itemIndex: 0, arrayLabel: "Items" },
