@@ -5,7 +5,7 @@
  */
 
 import { useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   DndContext,
@@ -33,6 +33,11 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@decocms/ui/components/tooltip.tsx";
 import {
   Calendar,
   CheckCircle,
@@ -65,6 +70,8 @@ import {
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
+import { QaAgentIcon } from "@/components/qa-agent-icon";
+import { CodeReviewerIcon } from "@/components/code-reviewer-icon";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import {
   Dialog,
@@ -221,16 +228,39 @@ function PriorityIcon({ priority }: { priority: TaskBoardItemPriority }) {
   const t = useT();
   const config = PRIORITY_CONFIG[priority];
   const label = t(config.labelKey);
-  // The tooltip lives on a wrapper: the icon components don't render children,
-  // so a nested <title> never reaches the DOM.
   return (
-    <span className="flex shrink-0 items-center" title={label}>
+    <GlyphTooltip label={label}>
       <config.icon
         size={14}
         className={cn("shrink-0", config.iconClassName)}
         aria-label={label}
       />
-    </span>
+    </GlyphTooltip>
+  );
+}
+
+/**
+ * Hover label for a footer glyph.
+ *
+ * `asChild` over a span on purpose: `TooltipTrigger` renders a button by
+ * default, and the card is already a button — nesting one inside it is a
+ * hydration error. The span isn't focusable, so the glyph keeps its
+ * `aria-label` for anyone not using a pointer.
+ */
+function GlyphTooltip({
+  label,
+  children,
+}: {
+  label: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="flex shrink-0 items-center">{children}</span>
+      </TooltipTrigger>
+      <TooltipContent side="top">{label}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -240,13 +270,13 @@ function TaskTypeIcon({ type }: { type: TaskBoardItemType }) {
   const config = TASK_TYPE_CONFIG[type];
   const label = t(config.labelKey);
   return (
-    <span className="flex shrink-0 items-center" title={label}>
+    <GlyphTooltip label={label}>
       <config.icon
         size={14}
         className="shrink-0 text-muted-foreground"
         aria-label={label}
       />
-    </span>
+    </GlyphTooltip>
   );
 }
 
@@ -408,43 +438,58 @@ function ChecksChip({
   enabled: ReviewerKind[];
 }) {
   const t = useT();
-  const detail = enabled
-    .map((kind) => {
-      const verdict = verdicts.find((v) => v.reviewer === kind);
-      const name = t(
-        kind === "qa"
-          ? "taskBoard.taskDialog.qaAgentLabel"
-          : "taskBoard.taskDialog.codeReviewerLabel",
-      );
-      if (!verdict) return `${name}: ${t("taskBoard.taskBoard.checksPending")}`;
-      if (verdict.verdict === "changes_requested") {
-        return `${name}: ${t("taskBoard.taskBoard.checksChangesRequested")}`;
-      }
-      return `${name}: ${t(
-        verdict.verified
-          ? "taskBoard.taskBoard.checksApproved"
-          : "taskBoard.taskBoard.checksUnverified",
-      )}`;
-    })
-    .join(" · ");
+  // One row per reviewer, rather than a joined string — the whole point of a
+  // real tooltip over a `title` is that it can be laid out.
+  const detail = (
+    <span className="flex flex-col gap-0.5">
+      {enabled.map((kind) => {
+        const verdict = verdicts.find((v) => v.reviewer === kind);
+        const Glyph = kind === "qa" ? QaAgentIcon : CodeReviewerIcon;
+        const name = t(
+          kind === "qa"
+            ? "taskBoard.taskDialog.qaAgentLabel"
+            : "taskBoard.taskDialog.codeReviewerLabel",
+        );
+        const state = !verdict
+          ? t("taskBoard.taskBoard.checksPending")
+          : verdict.verdict === "changes_requested"
+            ? t("taskBoard.taskBoard.checksChangesRequested")
+            : t(
+                verdict.verified
+                  ? "taskBoard.taskBoard.checksApproved"
+                  : "taskBoard.taskBoard.checksUnverified",
+              );
+        return (
+          <span
+            key={kind}
+            className="flex items-center gap-1.5 whitespace-nowrap"
+          >
+            <Glyph size={12} />
+            {name} — {state}
+          </span>
+        );
+      })}
+    </span>
+  );
 
   return (
-    <span
-      className={cn(
-        "flex shrink-0 items-center gap-1 text-xs font-medium tabular-nums",
-        summary.tone === "ok" && "text-success",
-        summary.tone === "pending" && "text-warning",
-        summary.tone === "danger" && "text-destructive",
-      )}
-      title={detail}
-      aria-label={t("taskBoard.taskBoard.checksLabel", {
-        passed: String(summary.passed),
-        total: String(summary.total),
-      })}
-    >
-      <CheckCircle size={12} />
-      {summary.passed}/{summary.total}
-    </span>
+    <GlyphTooltip label={detail}>
+      <span
+        className={cn(
+          "flex shrink-0 items-center gap-1 text-xs font-medium tabular-nums",
+          summary.tone === "ok" && "text-success",
+          summary.tone === "pending" && "text-warning",
+          summary.tone === "danger" && "text-destructive",
+        )}
+        aria-label={t("taskBoard.taskBoard.checksLabel", {
+          passed: String(summary.passed),
+          total: String(summary.total),
+        })}
+      >
+        <CheckCircle size={12} />
+        {summary.passed}/{summary.total}
+      </span>
+    </GlyphTooltip>
   );
 }
 
@@ -460,13 +505,15 @@ function AgentPulseDot({ state }: { state: "running" | "failed" }) {
       : "taskBoard.taskBoard.agentFailed",
   );
   return (
-    <span className="mt-1.5 flex shrink-0 items-center" title={label}>
-      <span
-        className={cn(
-          "size-1.5 rounded-full",
-          state === "running" ? "animate-pulse bg-primary" : "bg-destructive",
-        )}
-      />
+    <span className="mt-1.5 flex shrink-0 items-center">
+      <GlyphTooltip label={label}>
+        <span
+          className={cn(
+            "size-1.5 rounded-full",
+            state === "running" ? "animate-pulse bg-primary" : "bg-destructive",
+          )}
+        />
+      </GlyphTooltip>
       <span className="sr-only">{label}</span>
     </span>
   );
