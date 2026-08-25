@@ -99,6 +99,7 @@ import {
 import { createDecoAppsRoutes } from "./routes/deco-apps";
 import { createVirtualMcpRoutes } from "./routes/virtual-mcp";
 import {
+  assertOriginEndpointIsSafe,
   createLegacyWellKnownProtectedResourceRoutes,
   createWellKnownAuthServerRoutes,
   fetchAuthorizationServerMetadata,
@@ -520,6 +521,9 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
   if (!originEndpointUrl) {
     return c.json({ error: `Unknown OAuth endpoint: ${endpoint}` }, 404);
   }
+
+  const endpointGuardError = assertOriginEndpointIsSafe(originEndpointUrl);
+  if (endpointGuardError) return endpointGuardError;
 
   // Build URL with query string
   const targetUrl = new URL(originEndpointUrl);
