@@ -9,7 +9,12 @@
 
 import type { Kysely } from "kysely";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
-import type { NotificationType } from "@decocms/shared/notification-types";
+import {
+  NOTIFICATION_CREATED_EVENT,
+  type NotificationType,
+} from "@decocms/shared/notification-types";
+import { sseHub } from "@/event-bus/sse-hub";
+import { enqueueUserDigest } from "./dbos-digest";
 import type { Database } from "@/storage/types";
 import { NotificationDataSchema } from "./schema";
 
@@ -45,6 +50,8 @@ async function loadActor(db: Kysely<Database>, actorId: string | null) {
 export async function notify(params: NotifyParams): Promise<void> {
   const { db, taskBoardItemId, type, actorId } = params;
   try {
+    /** Filled by the write, emitted only after it commits. */
+    let notified: string[] = [];
     const subject = await loadSubject(db, taskBoardItemId);
     if (!subject) return;
 
@@ -80,6 +87,7 @@ export async function notify(params: NotifyParams): Promise<void> {
         .map((row) => row.user_id)
         .filter((userId) => userId !== actorId);
       if (recipients.length === 0) return;
+      notified = recipients;
 
       const actor = await loadActor(tx, actorId);
       const data = NotificationDataSchema.parse({
@@ -105,6 +113,23 @@ export async function notify(params: NotifyParams): Promise<void> {
         .execute();
     };
     await (db.isTransaction ? run(db) : db.transaction().execute(run));
+
+    // After the commit, never inside it: a listener that refetches on this
+    // event must find the row it describes.
+    // ponytail: inside a caller's transaction this still runs pre-commit, so a
+    // refetch can race the row. Move the emit to an after-commit hook if the
+    // inbox is ever seen missing an event it was told about.
+    for (const userId of notified) {
+      // Debounced onto the end of this recipient's 30s window.
+      enqueueUserDigest(userId);
+      sseHub.emit(subject.organization_id, {
+        id: crypto.randomUUID(),
+        type: NOTIFICATION_CREATED_EVENT,
+        source: "notifications",
+        subject: userId,
+        time: new Date().toISOString(),
+      });
+    }
   } catch (err) {
     console.error("[notifications] fan-out failed", err);
   }

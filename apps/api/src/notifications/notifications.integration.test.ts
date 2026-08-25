@@ -10,6 +10,7 @@ import type { StudioDatabase } from "../database";
 import { TaskBoardStorage } from "../storage/task-board";
 import { NotificationStorage } from "../storage/notifications";
 import { notify } from "./notify";
+import { claimForEmail, setNotificationDigestRuntime } from "./dbos-digest";
 
 describe("notifications", () => {
   let database: StudioDatabase;
@@ -113,6 +114,103 @@ describe("notifications", () => {
       0,
     );
     expect((await store.listUnread("user_123", "org_1")).unreadCount).toBe(1);
+  });
+
+  it("claims rows for email exactly once, so two senders can't double-mail", async () => {
+    setNotificationDigestRuntime({ db: database.db });
+    const task = await tasks.create({
+      organizationId: "org_test",
+      title: "Claimed",
+      by: "user_test",
+    });
+    await store.setSubscribed("user_123", task.id, true);
+    await notify({
+      db: database.db,
+      taskBoardItemId: task.id,
+      type: "commented",
+      actorId: null,
+    });
+    const ids = (await store.listUnread("user_123", "org_test")).notifications
+      .filter((n) => n.taskBoardItemId === task.id)
+      .map((n) => n.id);
+    expect(ids).toHaveLength(1);
+
+    // The sweep and the per-user workflow reaching for the same row.
+    const [first, second] = await Promise.all([
+      claimForEmail(ids),
+      claimForEmail(ids),
+    ]);
+    expect(first.size + second.size).toBe(1);
+  });
+
+  it("notifies the user an event enrolls, not just prior followers", async () => {
+    // What "assigning someone notifies them" rests on: the enroll happens
+    // before the subscriber lookup, so the new assignee gets THIS event and not
+    // merely the next one.
+    const task = await tasks.create({
+      organizationId: "org_test",
+      title: "Assigned to you",
+      by: "user_test",
+    });
+    await notify({
+      db: database.db,
+      taskBoardItemId: task.id,
+      type: "assignee_changed",
+      actorId: "user_test",
+      alsoSubscribe: ["user_1"],
+    });
+
+    const inbox = await store.listUnread("user_1", "org_test");
+    expect(
+      inbox.notifications.some(
+        (n) => n.taskBoardItemId === task.id && n.type === "assignee_changed",
+      ),
+    ).toBe(true);
+  });
+
+  it("pages by keyset, so rows read between pages can't shift the window", async () => {
+    const task = await tasks.create({
+      organizationId: "org_test",
+      title: "Paged",
+      by: "user_test",
+    });
+    await store.setSubscribed("user_test", task.id, true);
+    // One burst, one transaction each — several rows share a created_at, which
+    // is exactly the tie an id-less cursor loses rows on.
+    for (let i = 0; i < 5; i++) {
+      await notify({
+        db: database.db,
+        taskBoardItemId: task.id,
+        type: "commented",
+        actorId: null,
+      });
+    }
+
+    // One statement, one `now()`: every row shares a created_at to the
+    // microsecond, so paging has nothing but `id` left to order by. This is
+    // what a millisecond-truncated cursor silently drops rows on.
+    await sql`UPDATE notifications SET created_at = now()
+      WHERE task_board_item_id = ${task.id}`.execute(database.db);
+
+    const first = await store.listUnread("user_test", "org_test", { limit: 2 });
+    expect(first.notifications).toHaveLength(2);
+    expect(first.unreadCount).toBe(5);
+    expect(first.nextCursor).not.toBeNull();
+
+    const second = await store.listUnread("user_test", "org_test", {
+      limit: 2,
+      cursor: first.nextCursor!,
+    });
+    const third = await store.listUnread("user_test", "org_test", {
+      limit: 2,
+      cursor: second.nextCursor!,
+    });
+
+    const ids = [first, second, third]
+      .flatMap((page) => page.notifications)
+      .map((n) => n.id);
+    expect(new Set(ids).size).toBe(5);
+    expect(third.nextCursor).toBeNull();
   });
 
   it("cascades subscriptions and notifications when the task is deleted", async () => {

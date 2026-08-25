@@ -21,3 +21,12 @@ export const NOTIFICATION_TYPES = [
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
+/**
+ * Org-scoped SSE event pushed on `sseHub` after a notification row commits.
+ * `subject` is the recipient's user id and `data` carries nothing else — the
+ * hub fans out per org, so every member's stream sees it and only the addressed
+ * client refetches. Keeping the payload empty is what stops one member's inbox
+ * from streaming through another's connection.
+ */
+export const NOTIFICATION_CREATED_EVENT = "notification.created";

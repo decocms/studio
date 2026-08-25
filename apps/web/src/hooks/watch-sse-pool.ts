@@ -9,6 +9,7 @@ import {
   TASK_BOARD_ITEM_DELETED_EVENT,
   TASK_BOARD_ITEM_UPDATED_EVENT,
 } from "@decocms/shared/task-board";
+import { NOTIFICATION_CREATED_EVENT } from "@decocms/shared/notification-types";
 import {
   createSSESubscription,
   filterEventTypes,
@@ -20,6 +21,7 @@ const WATCH_TYPES = [
   ...ALL_DECOPILOT_EVENT_TYPES,
   TASK_BOARD_ITEM_UPDATED_EVENT,
   TASK_BOARD_ITEM_DELETED_EVENT,
+  NOTIFICATION_CREATED_EVENT,
 ];
 
 /** `?types=` patterns sent to the server. */
@@ -47,3 +49,10 @@ export const taskBoardWatchView: SSESubscription = filterEventTypes(watchSSE, [
   TASK_BOARD_ITEM_UPDATED_EVENT,
   TASK_BOARD_ITEM_DELETED_EVENT,
 ]);
+
+/** Inbox fan-out (`notification.created`). Org-wide — the consumer matches the
+ *  event's `subject` against its own user id. */
+export const notificationWatchView: SSESubscription = filterEventTypes(
+  watchSSE,
+  [NOTIFICATION_CREATED_EVENT],
+);
