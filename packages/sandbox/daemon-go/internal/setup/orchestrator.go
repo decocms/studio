@@ -394,6 +394,11 @@ func (o *Orchestrator) stepCloneInner() bool {
 	return true
 }
 
+// secondaryCloneConcurrency bounds the parallel git processes. The pod has 1-2
+// CPUs and clones are network-bound, so a handful overlaps usefully while a
+// 17-repo org cannot fork seventeen gits at its own boot.
+const secondaryCloneConcurrency = 4
+
 // cloneSecondaryRepos checks out the extra repositories beside the primary.
 //
 // Never fails the stage: the sandbox's contract is the primary checkout, and a
@@ -404,11 +409,12 @@ func (o *Orchestrator) stepCloneInner() bool {
 // Already-present checkouts are skipped, so this is idempotent across the
 // re-provisions and config patches that reach a live pod.
 func (o *Orchestrator) cloneSecondaryRepos(cfg *config.Enriched) {
-	repos := cfg.AdditionalRepositories()
-	if len(repos) == 0 {
-		return
+	type job struct {
+		name, dir, cloneUrl, branch string
+		submodules                  []config.SubmoduleCredential
 	}
-	for _, repo := range repos {
+	jobs := make([]job, 0, len(cfg.AdditionalRepositories()))
+	for _, repo := range cfg.AdditionalRepositories() {
 		name := ""
 		if repo.RepoName != nil {
 			name = *repo.RepoName
@@ -425,18 +431,41 @@ func (o *Orchestrator) cloneSecondaryRepos(cfg *config.Enriched) {
 		if repo.Branch != nil {
 			branch = *repo.Branch
 		}
-		result := SpawnClone(CloneDeps{
-			RepoDir:              dir,
-			CloneUrl:             *repo.CloneUrl,
-			Branch:               branch,
-			SubmoduleCredentials: repo.SubmoduleCredentials,
-			TmpDir:               o.deps.LogsDir,
-			OnChunk:              func(data string) { o.rawChunk(data) },
-		})
-		if result.Code != 0 {
-			o.chunk(fmt.Sprintf("\r\n[orchestrator] secondary repo %s failed to clone (exit %d) — continuing without it\r\n", name, result.Code))
-		}
+		jobs = append(jobs, job{name, dir, *repo.CloneUrl, branch, repo.SubmoduleCredentials})
 	}
+	if len(jobs) == 0 {
+		return
+	}
+
+	o.chunk(fmt.Sprintf("\r\n[orchestrator] cloning %d secondary repo(s)\r\n", len(jobs)))
+	slots := make(chan struct{}, secondaryCloneConcurrency)
+	var wg sync.WaitGroup
+	for _, j := range jobs {
+		wg.Add(1)
+		go func(j job) {
+			defer wg.Done()
+			slots <- struct{}{}
+			defer func() { <-slots }()
+			// Its own tmp dir, so two clones cannot write each other's
+			// submodule PATs into one fixed-name credentials file.
+			result := SpawnClone(CloneDeps{
+				RepoDir:              j.dir,
+				CloneUrl:             j.cloneUrl,
+				Branch:               j.branch,
+				SubmoduleCredentials: j.submodules,
+				TmpDir:               SecondaryCloneTmpDir(o.deps.LogsDir, j.name),
+				// Output is dropped rather than streamed: N clones interleaving
+				// line-by-line is unreadable, and the primary owns the stream.
+				OnChunk: func(string) {},
+			})
+			if result.Code != 0 {
+				o.chunk(fmt.Sprintf("\r\n[orchestrator] secondary repo %s failed to clone (exit %d) — continuing without it\r\n", j.name, result.Code))
+				return
+			}
+			o.chunk(fmt.Sprintf("\r\n[orchestrator] secondary repo %s ready\r\n", j.name))
+		}(j)
+	}
+	wg.Wait()
 }
 
 // maybeFastForwardToBase advances an idle, unchanged sandbox to its base
