@@ -37,7 +37,6 @@ import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
 import { resolveTier } from "@/core/resolve-tier";
 import type { StudioContext } from "@/core/studio-context";
 import { enqueueThreadRun } from "@/dispatch-queue";
-import { isNudgeableRuntime } from "@/harnesses/decopilot/hosted-runtime";
 import { shouldAdvanceToReview } from "@/storage/task-board";
 import type { TaskBoardItem, Thread } from "@/storage/types";
 import { getDecopilotId } from "@decocms/shared/sdk";
@@ -55,7 +54,6 @@ export function decideStallAction(thread: {
   status: string | null;
   messageStorageVersion: number;
   harnessId: string | null;
-  sandboxProviderKind: string | null;
 }): StallAction {
   if (thread.status === "completed") return "advance";
   // Only v2 threads can take a new turn: dispatch nulls the part emitter for v1
@@ -65,7 +63,7 @@ export function decideStallAction(thread: {
   if (
     thread.status === "failed" &&
     thread.messageStorageVersion === 2 &&
-    isNudgeableRuntime(thread)
+    (thread.harnessId === "decopilot" || thread.harnessId === "claude-code")
   ) {
     return "nudge";
   }
@@ -147,7 +145,6 @@ async function nudgeThread(
         // that did the work.
         harnessId:
           thread.harness_id === "claude-code" ? "claude-code" : "decopilot",
-        sandboxProviderKind: "agent-sandbox",
         // The branch the failed run was dispatched on, so the re-prompt lands
         // in a sandbox on the SAME checkout (`resolveSandboxBranch` needs the
         // explicit bare `thread:<id>` key for a run that started repo-less and
@@ -178,7 +175,6 @@ async function resolveStallAction(
       status: thread.status,
       messageStorageVersion: thread.message_storage_version,
       harnessId: thread.harness_id,
-      sandboxProviderKind: thread.sandbox_provider_kind,
     }),
     thread,
   };

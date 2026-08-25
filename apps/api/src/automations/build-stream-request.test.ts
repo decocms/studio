@@ -116,6 +116,16 @@ describe("buildStreamRequest", () => {
     expect(result.userId).toBe("user_abc");
   });
 
+  it("does not carry a sandbox provider selector", () => {
+    const result = buildStreamRequest(
+      makeAutomation(),
+      null,
+      "thrd_1",
+      makeResolvedModel(),
+    );
+    expect("sandboxProviderKind" in result).toBe(false);
+  });
+
   it("passes triggerId when provided", () => {
     const result = buildStreamRequest(
       makeAutomation(),

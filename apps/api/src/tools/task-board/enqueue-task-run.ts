@@ -88,7 +88,6 @@ export async function enqueueAgentRunForTask(
     // Consume/terminal writer skips v1 threads — pin v2 or the run never completes.
     message_storage_version: 2,
     harness_id: harnessId,
-    sandbox_provider_kind: "agent-sandbox",
     created_by: userId,
     // Provably the computed default too: `agentId` is the synthetic Super Agent vMCP, which has no `fastPreview`.
     metadata: { runtime: "sandbox" },
@@ -192,7 +191,6 @@ export async function enqueueAgentRunForTask(
         organizationId,
         userId,
         harnessId,
-        sandboxProviderKind: "agent-sandbox",
         // Only meaningful for the repo-less sandbox run above: `resolveSandboxBranch`
         // derives the key from the thread's repo when there is one, and needs the
         // explicit bare key when there isn't. Carried in the durable snapshot, so a

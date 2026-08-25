@@ -43,9 +43,8 @@
  *   2. The step immediately after — `consumeRunProjection` — now runs at a
  *      structurally different point in time for the hosted topology: before,
  *      it always ran AFTER the child (and everything it published) had
- *      already finished; now it runs concurrently with the child, live-
- *      tailing the stream exactly like the desktop topology already did (see
- *      `consume-run-projection.ts`'s T3 comment). That's a genuine step-
+ *      already finished; now it runs concurrently with the child and live-
+ *      tails the stream (see `consume-run-projection.ts`). That's a genuine step-
  *      sequence/timing contract change on a durably-recorded step, not an
  *      edit confined to logic inside one step.
  * Deploy consequence: any v3 gate workflow still mid-flight at deploy time
