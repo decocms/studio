@@ -22,6 +22,7 @@ import {
   ThreadUpdateDataSchema,
 } from "@decocms/shared/thread/schema";
 import { parseThreadRuntime } from "@decocms/shared/thread/session-runtime";
+import { stripServerManagedMetadata } from "../strip-server-managed-metadata";
 
 /**
  * Input schema for updating threads
@@ -105,11 +106,12 @@ export const COLLECTION_THREADS_UPDATE = defineTool({
 
     if (data.metadata !== undefined) {
       // `runtime` is stamped once at creation and immutable; `metadata` is a full-replacement write, so preserve it.
+      const incomingMetadata = stripServerManagedMetadata(data.metadata) ?? {};
       const existingRuntime = parseThreadRuntime(
         (existing.metadata as { runtime?: unknown } | null)?.runtime,
       );
       const incomingRuntime = parseThreadRuntime(
-        (data.metadata as { runtime?: unknown })?.runtime,
+        (incomingMetadata as { runtime?: unknown }).runtime,
       );
       if (
         existingRuntime &&
@@ -120,9 +122,16 @@ export const COLLECTION_THREADS_UPDATE = defineTool({
           `Cannot change a thread's runtime (${existingRuntime} → ${incomingRuntime}); it is stamped once at creation. Start a new chat instead.`,
         );
       }
-      updateData.metadata = existingRuntime
-        ? { ...data.metadata, runtime: existingRuntime }
-        : data.metadata;
+      const existingSandboxMap = (
+        existing.metadata as { sandboxMap?: unknown } | null
+      )?.sandboxMap;
+      updateData.metadata = {
+        ...incomingMetadata,
+        ...(existingRuntime ? { runtime: existingRuntime } : {}),
+        ...(existingSandboxMap !== undefined
+          ? { sandboxMap: existingSandboxMap }
+          : {}),
+      };
     }
 
     if (data.branch !== undefined) {

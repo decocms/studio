@@ -953,7 +953,7 @@ export interface ThreadTable {
   virtual_mcp_id: string;
   /** Git branch this thread is pinned to (GitHub-linked virtualmcps only) */
   branch: string | null;
-  /** Sandbox provider kind pinned on first message (e.g. "agent-sandbox", "user-desktop") */
+  /** Dormant legacy column retained in the physical schema; runtime code ignores it. */
   sandbox_provider_kind: string | null;
   /** Harness id pinned on first message (e.g. "claude-code", "codex", "decopilot") */
   harness_id: string | null;
@@ -1040,8 +1040,6 @@ export interface Thread {
   virtual_mcp_id: string;
   /** Git branch this thread is pinned to (GitHub-linked virtualmcps only) */
   branch: string | null;
-  /** Sandbox provider kind pinned on first message (e.g. "agent-sandbox", "user-desktop") */
-  sandbox_provider_kind: string | null;
   /** Harness id pinned on first message (e.g. "claude-code", "codex", "decopilot") */
   harness_id: string | null;
   metadata: ThreadMetadata;

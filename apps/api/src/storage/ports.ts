@@ -34,7 +34,7 @@ import type {
 import type { UserModelPreferences } from "@decocms/shared/organization/schema";
 import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
 
-export type ThreadUpdateData = Partial<Thread> & {
+export type ThreadUpdateData = Omit<Partial<Thread>, "harness_id"> & {
   /**
    * Internal liveness heartbeat. Exposed only on updates so RUN_STARTED can
    * clear progress from an older turn in the same write that marks the new run
@@ -47,9 +47,10 @@ export type ThreadUpdateData = Partial<Thread> & {
   failure_kind?: string | null;
 };
 
+export type ThreadCreateData = Partial<Thread>;
+
 export interface ThreadRuntimePin {
   harnessId: string;
-  sandboxProviderKind: string | null;
   branch: string | null;
   messageStorageVersion?: number;
 }
@@ -63,7 +64,7 @@ export interface ThreadStoragePort {
   /** `isNew` is false when `data.id` collided with an existing row (the
    *  insert is `ON CONFLICT DO NOTHING`) — callers use it to skip
    *  create-only side effects (e.g. analytics) on a replayed/idempotent call. */
-  create(data: Partial<Thread>): Promise<Thread & { isNew: boolean }>;
+  create(data: ThreadCreateData): Promise<Thread & { isNew: boolean }>;
   get(id: string, organizationId: string): Promise<Thread | null>;
   update(
     id: string,

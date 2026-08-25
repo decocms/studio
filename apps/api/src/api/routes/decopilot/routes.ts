@@ -630,7 +630,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           // overwrite a runtime that became native after our preceding read.
           const claimed = await ctx.storage.threads.pinRuntimeIfUnset(taskId, {
             harnessId: pinnedHarness,
-            sandboxProviderKind: "agent-sandbox",
             branch,
             ...(pinV2 ? { messageStorageVersion: 2 } : {}),
           });

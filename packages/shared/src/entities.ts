@@ -78,11 +78,9 @@ export interface StudioThread {
   last_progress_at: string | null;
   virtual_mcp_id: string;
   branch: string | null;
-  sandbox_provider_kind: string | null;
   harness_id: string | null;
   metadata: ThreadMetadata;
   message_storage_version: number;
-  link_transport: string | null;
 }
 
 export interface StudioThreadMessage {

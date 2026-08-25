@@ -151,6 +151,19 @@ describe("COLLECTION_THREADS_UPDATE", () => {
       env.ctx,
     );
     expect(created.item.metadata?.runtime).toBe("sandbox");
+    const sandboxMap = {
+      [env.userId]: {
+        main: {
+          "agent-sandbox": {
+            sandboxHandle: "sandbox-1",
+            previewUrl: null,
+          },
+        },
+      },
+    };
+    await env.ctx.storage.threads.update(created.item.id, {
+      metadata: { ...created.item.metadata, sandboxMap },
+    });
 
     const updated = await COLLECTION_THREADS_UPDATE.handler(
       {
@@ -160,6 +173,7 @@ describe("COLLECTION_THREADS_UPDATE", () => {
       env.ctx,
     );
     expect(updated.item.metadata?.runtime).toBe("sandbox");
+    expect(updated.item.metadata?.sandboxMap).toEqual(sandboxMap);
   });
 
   it("rejects a metadata write that would change the runtime stamp", async () => {
