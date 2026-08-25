@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import {
   agentPulse,
+  cardAttentionReason,
   dueDateUrgency,
   formatSprintDates,
   insertSortOrder,
@@ -241,5 +242,39 @@ describe("dueDateUrgency", () => {
 
   test("an unparseable date is not urgent", () => {
     expect(at("not a date")).toBeNull();
+  });
+});
+
+/**
+ * The single "a person is next" state. It replaced two separate badges, one of
+ * which ("Needs you") rendered on nearly every card in the In Review lane —
+ * where the lane header already says it.
+ */
+describe("cardAttentionReason", () => {
+  const inReview = (assigneeId: string | null) =>
+    ({ ...item("a", 0), status: "in_review", assigneeId }) as TaskBoardItem;
+  const asking = (base: TaskBoardItem) =>
+    ({ ...base, threads: [{ status: "requires_action" }] }) as TaskBoardItem;
+
+  test("a quiet card needs nobody", () => {
+    expect(cardAttentionReason(item("a", 0))).toBeNull();
+  });
+
+  test("an agent waiting on input needs input", () => {
+    expect(cardAttentionReason(asking(item("a", 0)))).toBe("needs_input");
+  });
+
+  test("In Review with no owner is a hand-off", () => {
+    expect(cardAttentionReason(inReview(null))).toBe("handed_to_human");
+  });
+
+  test("In Review with an owner is nobody's problem yet", () => {
+    expect(cardAttentionReason(inReview("user-1"))).toBeNull();
+    expect(cardAttentionReason(inReview(SUPER_AGENT_ASSIGNEE_ID))).toBeNull();
+  });
+
+  // Both at once: the agent's question is the specific, actionable one.
+  test("a pending question outranks the hand-off", () => {
+    expect(cardAttentionReason(asking(inReview(null)))).toBe("needs_input");
   });
 });

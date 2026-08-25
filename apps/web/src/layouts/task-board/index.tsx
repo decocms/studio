@@ -93,6 +93,7 @@ import {
 import { formatTimeAgo } from "@/lib/format-time";
 import {
   agentPulse,
+  cardAttentionReason,
   dueDateUrgency,
   insertSortOrder,
   isTaskBlocked,
@@ -128,6 +129,7 @@ import {
   checksSummary,
   enabledReviewers,
 } from "./review-status";
+import { taskKey } from "@decocms/shared/task-key";
 import { useFlipLanes } from "./use-flip-lanes";
 import { Calendar as DayPickerCalendar } from "@decocms/ui/components/calendar.tsx";
 import { buildTaskChatContext } from "./build-task-chat-context";
@@ -208,24 +210,72 @@ function HandedToHumanBadge() {
   );
 }
 
-function PriorityPill({
-  priority,
-  flat,
-}: {
-  priority: TaskBoardItemPriority;
-  flat?: boolean;
-}) {
+/**
+ * Priority as a single glyph, the way Jira ranks it — the name is in the
+ * tooltip. A card carries one priority and it is never news; spelling it out
+ * cost a chip's worth of width on every row to say "Medium".
+ */
+function PriorityIcon({ priority }: { priority: TaskBoardItemPriority }) {
   const t = useT();
   const config = PRIORITY_CONFIG[priority];
   const label = t(config.labelKey);
-  // On a card, "Medium" is on nearly every row — the dot already says it.
-  const showLabel = !flat || priority === "high" || priority === "urgent";
+  // The tooltip lives on a wrapper: the icon components don't render children,
+  // so a nested <title> never reaches the DOM.
   return (
-    <span className={cn(flat ? FLAT : PILL)} title={label}>
+    <span className="flex shrink-0 items-center" title={label}>
+      <config.icon
+        size={14}
+        className={cn("shrink-0", config.iconClassName)}
+        aria-label={label}
+      />
+    </span>
+  );
+}
+
+/**
+ * The card's baseline: its key, its priority, how far review got. Fixed height
+ * and always present, so the eye finds the same three facts at the same offset
+ * on every card in a lane — which is the whole point of the redesign.
+ */
+function CardFooter({
+  item,
+  checks,
+}: {
+  item: TaskBoardItem;
+  checks: { summary: ChecksSummary; enabled: ReviewerKind[] } | null;
+}) {
+  const { org } = useProjectContext();
+  const key = taskKey(org.slug, item.keySeq);
+  return (
+    <div className="-mx-3 mt-auto flex h-8 shrink-0 items-center justify-between gap-2 border-t border-border px-3 pt-px">
+      <span className="truncate text-[11px] font-medium tabular-nums text-muted-foreground/70">
+        {key}
+      </span>
+      <span className="flex shrink-0 items-center gap-2">
+        {item.priority !== "none" && <PriorityIcon priority={item.priority} />}
+        {checks && (
+          <ChecksChip
+            summary={checks.summary}
+            verdicts={item.reviewVerdicts}
+            enabled={checks.enabled}
+          />
+        )}
+      </span>
+    </div>
+  );
+}
+
+/** List-row priority: dot + name. Cards use {@link PriorityIcon} instead. */
+function PriorityPill({ priority }: { priority: TaskBoardItemPriority }) {
+  const t = useT();
+  const config = PRIORITY_CONFIG[priority];
+  const label = t(config.labelKey);
+  return (
+    <span className={PILL} title={label}>
       <span
         className={cn("size-2 shrink-0 rounded-full", config.dotClassName)}
       />
-      {showLabel && label}
+      {label}
     </span>
   );
 }
@@ -324,7 +374,7 @@ function ChecksChip({
   return (
     <span
       className={cn(
-        "mt-px flex shrink-0 items-center gap-1 text-xs font-medium tabular-nums",
+        "flex shrink-0 items-center gap-1 text-xs font-medium tabular-nums",
         summary.tone === "ok" && "text-success",
         summary.tone === "pending" && "text-warning",
         summary.tone === "danger" && "text-destructive",
@@ -2123,7 +2173,14 @@ function TaskCard({
   const checks = useCardChecks(item);
   const pulse = agentPulse(item);
   // A state of the card, not a label on it — hence the colour, not a chip.
-  const blocked = isTaskBlocked(item);
+  const attention = cardAttentionReason(item);
+  const attentionLabel = attention
+    ? t(
+        attention === "needs_input"
+          ? "taskBoard.taskBoard.blockedBadgeTitle"
+          : "taskBoard.taskBoard.handedToHumanBadgeTitle",
+      )
+    : null;
   const dueUrgency = item.dueDate ? dueDateUrgency(item.dueDate) : null;
 
   const showAutoFix =
@@ -2159,33 +2216,20 @@ function TaskCard({
       }}
       className={cn(
         "group relative flex shrink-0 cursor-grab flex-col gap-2 rounded-xl px-3 py-2.5 text-left card-shadow active:cursor-grabbing",
-        blocked
+        attention
           ? "bg-destructive/10 hover:bg-destructive/15"
           : "bg-card hover:bg-accent/60",
         selected && "bg-accent",
         className,
       )}
-      title={
-        blocked
-          ? `${item.title} — ${t("taskBoard.taskBoard.blockedBadgeTitle")}`
-          : item.title
-      }
+      title={attentionLabel ? `${item.title} — ${attentionLabel}` : item.title}
     >
       <div className="flex items-start gap-2">
         <span className="min-w-0 flex-1 text-sm font-medium leading-snug text-foreground line-clamp-2">
           {item.title}
         </span>
-        {blocked && (
-          <span className="sr-only">{t("taskBoard.taskBoard.needsInput")}</span>
-        )}
+        {attentionLabel && <span className="sr-only">{attentionLabel}</span>}
         {pulse && <AgentPulseDot state={pulse} />}
-        {checks && (
-          <ChecksChip
-            summary={checks.summary}
-            verdicts={item.reviewVerdicts}
-            enabled={checks.enabled}
-          />
-        )}
         <AssigneeDisplay
           item={item}
           assignee={assignee}
@@ -2196,16 +2240,8 @@ function TaskCard({
         />
       </div>
 
-      {(isTaskHandedToHuman(item) ||
-        item.priority !== "none" ||
-        dueUrgency != null ||
-        sprint != null ||
-        item.tags.length > 0) && (
+      {(dueUrgency != null || sprint != null || item.tags.length > 0) && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          {isTaskHandedToHuman(item) && <HandedToHumanBadge />}
-          {item.priority !== "none" && (
-            <PriorityPill priority={item.priority} flat />
-          )}
           {item.dueDate && dueUrgency != null && (
             <DueDatePill iso={item.dueDate} flat />
           )}
@@ -2244,12 +2280,14 @@ function TaskCard({
           // Super-Agent card qualifies, so a flow-positioned hover button
           // left a permanent empty gap on every card, and showing it
           // unconditionally would put a button on nearly the whole board.
-          className="pointer-events-none absolute bottom-2 right-2 z-10 flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground opacity-0 shadow-sm transition-opacity hover:bg-accent focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+          className="pointer-events-none absolute bottom-10 right-2 z-10 flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground opacity-0 shadow-sm transition-opacity hover:bg-accent focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
         >
           <RefreshCw01 size={12} />
           {t("taskBoard.taskBoard.rerun")}
         </button>
       )}
+
+      <CardFooter item={item} checks={checks} />
     </button>
   );
 }

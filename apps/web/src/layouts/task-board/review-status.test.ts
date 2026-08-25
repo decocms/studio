@@ -143,11 +143,12 @@ describe("checksSummary", () => {
     ).toEqual({ passed: 2, total: 2, tone: "ok" });
   });
 
-  // `approvedButUnverified`: green would claim done on a card that cannot ship.
-  test("a full set of approvals stays pending when one is unverified", () => {
+  // Inverted: an earlier cut held this at `pending`, so the chip contradicted
+  // its own number. Verification is a separate question, and lives in the tooltip.
+  test("a full set of approvals is ok even when one is unverified", () => {
     expect(
       checksSummary([approved("qa", false), approved("code_review")], BOTH),
-    ).toEqual({ passed: 2, total: 2, tone: "pending" });
+    ).toEqual({ passed: 2, total: 2, tone: "ok" });
   });
 
   test("a disabled reviewer's verdict is ignored entirely", () => {

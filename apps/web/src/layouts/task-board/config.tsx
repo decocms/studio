@@ -1,8 +1,12 @@
 import {
   AlertCircle,
+  AlertOctagon,
   Archive,
+  ArrowNarrowDown,
+  ArrowNarrowUp,
   CheckCircle,
   Circle,
+  Equal,
   Eye,
   Loading02,
 } from "@untitledui/icons";
@@ -81,6 +85,26 @@ export function isTaskBlocked(item: TaskBoardItem): boolean {
  */
 export function isTaskHandedToHuman(item: TaskBoardItem): boolean {
   return item.status === "in_review" && !item.assigneeId;
+}
+
+/**
+ * Why a card needs a person, or null when it doesn't.
+ *
+ * Two different situations put a card in front of a human — its agent asked a
+ * question (`requires_action`), or the automation gave up and parked it In
+ * Review unowned — and both used to earn their own chip. In the In Review lane
+ * that made "Needs you" render on nearly every card, which says nothing: the
+ * lane already means a person is next.
+ *
+ * So it is one card-level STATE now, drawn as the card's background, and the
+ * reason survives only in the tooltip. `needs_input` wins the tie because it
+ * names something specific the agent is waiting for.
+ */
+export function cardAttentionReason(
+  item: TaskBoardItem,
+): "needs_input" | "handed_to_human" | null {
+  if (isTaskBlocked(item)) return "needs_input";
+  return isTaskHandedToHuman(item) ? "handed_to_human" : null;
 }
 
 /**
@@ -224,32 +248,46 @@ export const PRIORITY_CONFIG: Record<
     labelKey: TranslationKey;
     flagClassName: string;
     dotClassName: string;
+    /** The card footer's single priority glyph — direction reads as rank the
+     *  way Jira's does, so it needs no legend. */
+    icon: typeof Circle;
+    iconClassName: string;
   }
 > = {
   none: {
     labelKey: "taskBoard.config.priorityNone",
     flagClassName: "text-muted-foreground",
     dotClassName: "border border-muted-foreground/50",
+    icon: Equal,
+    iconClassName: "text-muted-foreground/40",
   },
   low: {
     labelKey: "taskBoard.config.priorityLow",
     flagClassName: "text-muted-foreground",
     dotClassName: "bg-muted-foreground/40",
+    icon: ArrowNarrowDown,
+    iconClassName: "text-muted-foreground",
   },
   medium: {
     labelKey: "taskBoard.config.priorityMedium",
     flagClassName: "text-blue-500",
     dotClassName: "bg-blue-500",
+    icon: Equal,
+    iconClassName: "text-blue-500",
   },
   high: {
     labelKey: "taskBoard.config.priorityHigh",
     flagClassName: "text-warning",
     dotClassName: "bg-warning",
+    icon: ArrowNarrowUp,
+    iconClassName: "text-warning",
   },
   urgent: {
     labelKey: "taskBoard.config.priorityUrgent",
     flagClassName: "text-destructive",
     dotClassName: "bg-destructive",
+    icon: AlertOctagon,
+    iconClassName: "text-destructive",
   },
 };
 
