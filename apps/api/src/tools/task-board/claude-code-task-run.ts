@@ -207,8 +207,11 @@ export function buildClaudeCodeTaskPrompt(
             (c) => `- ${c.repo} (connectionId: ${c.connectionId})`,
           ),
           opts?.repoChoices?.length
-            ? "Pick the one the task is about. If the task doesn't say and the names don't " +
-              "settle it, take the first."
+            ? "Start with the one the task is about. If it turns out to need a change in " +
+              "another of them too, call `mcp__studio__TASK_ADD_REPO` again — repositories " +
+              "accumulate, so a second call adds a checkout beside the first rather than " +
+              "replacing it. Each lands in its own directory and keeps its own git remote, " +
+              "so open one pull request per repository you changed."
             : "Call `mcp__studio__TASK_ADD_REPO` with no arguments to list them.",
         ].join("\n"),
     "",

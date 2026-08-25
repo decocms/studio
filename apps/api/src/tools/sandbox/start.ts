@@ -17,6 +17,7 @@ import {
   type Workload,
 } from "@decocms/sandbox/provider";
 import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
+import type { EnsureRepo } from "@decocms/sandbox/provider";
 import { sleep } from "@decocms/shared/std";
 import { defineTool } from "../../core/define-tool";
 import {
@@ -61,6 +62,7 @@ import { stampRuntimeIfAbsent } from "../thread/stamp-runtime-if-absent";
 import { parseThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import {
   getThreadGithubRepo,
+  getThreadGithubRepos,
   getThreadHeadRef,
   resolveSandboxUserId,
   setThreadSandboxMapEntry,
@@ -198,6 +200,10 @@ export const SANDBOX_START = defineTool({
       branch: resolvedBranch,
       metadata,
       githubRepo,
+      threadRepos: await getThreadGithubRepos(
+        ctx,
+        threadIdFromBranch(resolvedBranch) ?? ctx.metadata?.threadId,
+      ),
       existing,
       runner,
     });
@@ -303,6 +309,7 @@ export async function ensureSandbox(
     branch: input.branch,
     metadata,
     githubRepo,
+    threadRepos: await getThreadGithubRepos(ctx, provisioningThreadId),
     existing: null,
     runner,
     ...(input.purpose ? { purpose: input.purpose } : {}),
@@ -324,11 +331,62 @@ type StartParams = {
   branch: string;
   metadata: Record<string, unknown>;
   githubRepo: GithubRepo | null;
+  /** The thread's secondary checkouts, accumulated by `TASK_ADD_REPO`. */
+  threadRepos?: GithubRepo[];
   existing: SandboxRecord | null;
   runner: AgentSandboxProvider;
   /** See `ensureSandbox`'s `purpose`. `harness-run` implies checkout-only. */
   purpose?: SandboxPurpose;
 };
+
+/**
+ * `EnsureRepo` entries for a thread's secondary checkouts.
+ *
+ * Skips the primary when it turns up in the list, so a repo cannot be cloned
+ * twice into two directories. A repo whose connection has since gone is dropped
+ * with a log rather than sent with a dead clone URL: one revoked connection
+ * should cost its own checkout, never the pod.
+ */
+async function buildExtraRepoOpts(args: {
+  ctx: StudioContext;
+  orgId: string;
+  repos: GithubRepo[];
+  primary: GithubRepo | null;
+  gitUserName: string;
+  gitUserEmail: string;
+}): Promise<EnsureRepo[]> {
+  const primaryKey = args.primary
+    ? `${args.primary.owner}/${args.primary.name}`.toLowerCase()
+    : null;
+  const out: EnsureRepo[] = [];
+  for (const repo of args.repos) {
+    if (`${repo.owner}/${repo.name}`.toLowerCase() === primaryKey) continue;
+    if (!repo.connectionId) continue;
+    try {
+      const { cloneUrl } = await buildCloneInfo(
+        repo.connectionId,
+        repo.owner,
+        repo.name,
+        args.ctx.db,
+        args.ctx.vault,
+      );
+      out.push({
+        cloneUrl,
+        connectionId: repo.connectionId,
+        userName: args.gitUserName,
+        userEmail: args.gitUserEmail,
+        displayName: `${repo.owner}/${repo.name}`,
+        submoduleCredentials: [],
+      });
+    } catch (err) {
+      console.warn(
+        `[provisionSandbox] skipping secondary ${repo.owner}/${repo.name}:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+  return out;
+}
 
 async function provisionSandbox(
   params: StartParams,
@@ -341,6 +399,7 @@ async function provisionSandbox(
     virtualMcpId,
     branch,
     metadata,
+    threadRepos,
     existing,
     runner,
     purpose,
@@ -498,6 +557,19 @@ async function provisionSandbox(
     };
   }
 
+  // The secondaries this thread accumulated through `TASK_ADD_REPO`. Sent on
+  // every provision, so a recreated pod gets every checkout back instead of
+  // just the primary. Their clone URLs are minted here for the same reason the
+  // primary's are: the embedded token lives an hour.
+  const extraRepos = await buildExtraRepoOpts({
+    ctx,
+    orgId,
+    repos: threadRepos ?? [],
+    primary: githubRepo,
+    gitUserName: repoOpts?.userName ?? "",
+    gitUserEmail: repoOpts?.userEmail ?? "",
+  });
+
   // Missing workload = clone-only; the runner picks its default. `devPort` is
   // omitted unless the user explicitly pinned one.
   const workload: Workload | undefined =
@@ -567,6 +639,7 @@ async function provisionSandbox(
       // carries this branch, so runner and proxy agree without being told.
       branch,
       repo: repoOpts,
+      extraRepos,
       workload,
       // Explicit, not implied by the absent `workload`: the daemon autodetects a
       // package manager from the lockfile when the config names none, so an

@@ -176,6 +176,48 @@ async function listOrgRepos(ctx: StudioContext, orgId: string) {
   return selectLoadableRepos(items);
 }
 
+/**
+ * The daemon's `git.repositories` entries for a thread's secondary checkouts.
+ *
+ * Every clone URL is minted fresh here rather than reused from a previous call:
+ * they embed a GitHub App installation token that lives an hour, and this same
+ * payload is what a recreated pod replays. A repo whose connection has since
+ * gone is dropped rather than sent with a dead URL, so one revoked connection
+ * costs its own checkout and not the others.
+ */
+async function secondaryRepoConfigs(
+  ctx: StudioContext,
+  repos: { owner: string; name: string; connectionId?: string }[],
+): Promise<
+  { cloneUrl: string; repoName: string; submoduleCredentials: never[] }[]
+> {
+  const out: {
+    cloneUrl: string;
+    repoName: string;
+    submoduleCredentials: never[];
+  }[] = [];
+  for (const repo of repos) {
+    if (!repo.connectionId) continue;
+    try {
+      const { cloneUrl } = await buildCloneInfo(
+        repo.connectionId,
+        repo.owner,
+        repo.name,
+        ctx.db,
+        ctx.vault,
+        { bufferMs: CLONE_TOKEN_MIN_TTL_MS },
+      );
+      out.push({ cloneUrl, repoName: repo.name, submoduleCredentials: [] });
+    } catch (err) {
+      console.warn(
+        `[TASK_ADD_REPO] skipping secondary ${repo.owner}/${repo.name}:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+  return out;
+}
+
 export const TASK_ADD_REPO = defineTool({
   name: "TASK_ADD_REPO",
   description:
@@ -304,22 +346,34 @@ export const TASK_ADD_REPO = defineTool({
       { bufferMs: CLONE_TOKEN_MIN_TTL_MS },
     );
 
+    const existingPrimary = (
+      thread.metadata as { githubRepo?: { owner?: string } } | null
+    )?.githubRepo?.owner;
+    const bound = {
+      url: `https://github.com/${repo.owner}/${repo.repo}`,
+      owner: repo.owner,
+      name: repo.repo,
+      installationId: repo.installationId,
+      connectionId: repo.connectionId,
+    };
     // Bind the repo to the thread. This is what every later consumer reads —
     // the shutdown git sync, a re-provision's credential refresh, the board's
     // PR extraction — so it has to be persisted, not just handed to the daemon.
-    await ctx.storage.threads.update(threadId, {
-      metadata: {
-        ...(thread.metadata ?? {}),
-        githubRepo: {
-          url: `https://github.com/${repo.owner}/${repo.repo}`,
-          owner: repo.owner,
-          name: repo.repo,
-          installationId: repo.installationId,
-          connectionId: repo.connectionId,
-        },
-      },
-      updated_by: userId,
-    });
+    //
+    // The FIRST repo is the primary: `githubRepo` is what drives the sandbox's
+    // package-manager probe, dev server and preview, and a second call must not
+    // move that out from under a running dev server. Later ones accumulate in
+    // `githubRepos` and land as secondary checkouts.
+    const isPrimary = !existingPrimary;
+    const secondaries = isPrimary
+      ? []
+      : await ctx.storage.threads.appendThreadGithubRepo(threadId, bound);
+    if (isPrimary) {
+      await ctx.storage.threads.update(threadId, {
+        metadata: { ...(thread.metadata ?? {}), githubRepo: bound },
+        updated_by: userId,
+      });
+    }
 
     // The daemon reads its clone target off the config channel. Adding a
     // repository (and its branch) to a config that had none classifies as a
@@ -342,11 +396,18 @@ export const TASK_ADD_REPO = defineTool({
         // ⚠️ SECURITY: `cloneUrl` embeds a GitHub token. Never log this body.
         body: JSON.stringify({
           git: {
-            repository: {
-              cloneUrl,
-              branch: gitRef,
-              repoName: `${repo.owner}/${repo.repo}`,
-            },
+            // The full list every time, not just the new entry: the daemon's
+            // merge replaces this key, and a recreated pod has to be able to
+            // read one config and know every checkout it owes.
+            ...(isPrimary
+              ? {
+                  repository: {
+                    cloneUrl,
+                    branch: gitRef,
+                    repoName: `${repo.owner}/${repo.repo}`,
+                  },
+                }
+              : { repositories: await secondaryRepoConfigs(ctx, secondaries) }),
             identity: { userName: gitUserName, userEmail: gitUserEmail },
           },
         }),
