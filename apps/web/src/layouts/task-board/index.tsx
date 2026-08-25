@@ -189,15 +189,6 @@ const PILL =
 const CHIP =
   "inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground";
 
-/**
- * A label chip, held a step back from full strength.
- *
- * Tags carry arbitrary hex, so at full opacity a saturated one out-shouts the
- * title it is describing. 80% keeps each tag's colour legible as identity while
- * letting the card read title-first.
- */
-const LABEL = `${CHIP} opacity-80`;
-
 /** Tags a card shows before collapsing the rest into `+N`. Matches the list
  *  view's existing cap; the full set is in the task dialog. */
 const CARD_TAG_LIMIT = 2;
@@ -408,33 +399,22 @@ function useSprintsEnabled(): boolean {
 }
 
 /** Which sprint a card is planned into. Gated by {@link visibleSprint}. */
-function SprintPill({ sprint, flat }: { sprint: number; flat?: boolean }) {
+function SprintPill({ sprint }: { sprint: number }) {
   const t = useT();
   return (
-    <span className={cn(flat ? LABEL : PILL)}>
-      <Repeat04 size={flat ? 12 : 14} />
+    <span className={PILL}>
+      <Repeat04 size={14} />
       {t("taskBoard.taskBoard.sprintPill", { number: String(sprint) })}
     </span>
   );
 }
 
-function TagPill({ tag, flat }: { tag: TaskBoardItemTag; flat?: boolean }) {
-  const color = tagDotColor(tag.color);
-  // On a card the chip IS the colour — border and text — so the tag needs no
-  // swatch towed alongside its name. The list view keeps the dot, where rows
-  // are denser and a coloured outline per tag would be a lot of edges.
-  if (flat) {
-    return (
-      <span className={LABEL} style={{ color, borderColor: color }}>
-        {tag.name}
-      </span>
-    );
-  }
+function TagPill({ tag }: { tag: TaskBoardItemTag }) {
   return (
     <span className={PILL}>
       <span
         className="size-2 shrink-0 rounded-full"
-        style={{ backgroundColor: color }}
+        style={{ backgroundColor: tagDotColor(tag.color) }}
       />
       {tag.name}
     </span>
@@ -2359,12 +2339,12 @@ function TaskCard({
           on it. `ml-auto` keeps it trailing even when the labels wrap. */}
       {(sprint != null || item.tags.length > 0 || showAutoFix) && (
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          {sprint != null && <SprintPill sprint={sprint} flat />}
+          {sprint != null && <SprintPill sprint={sprint} />}
           {item.tags.slice(0, CARD_TAG_LIMIT).map((tag) => (
-            <TagPill key={tag.id} tag={tag} flat />
+            <TagPill key={tag.id} tag={tag} />
           ))}
           {item.tags.length > CARD_TAG_LIMIT && (
-            <span className={LABEL}>+{item.tags.length - CARD_TAG_LIMIT}</span>
+            <span className={PILL}>+{item.tags.length - CARD_TAG_LIMIT}</span>
           )}
           {showAutoFix && (
             <button
