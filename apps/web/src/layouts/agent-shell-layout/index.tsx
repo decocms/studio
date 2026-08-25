@@ -30,7 +30,6 @@ import {
   type ReactNode,
 } from "react";
 import { Chat, useChatTask } from "@/components/chat/index";
-import { useChatPrefs } from "@/components/chat/context";
 import { ChatSidePanel } from "@/components/chat/side-panel-chat";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { isModKey } from "@/lib/keyboard-shortcuts";
@@ -66,10 +65,8 @@ import { SandboxEventsProvider } from "@/components/sandbox/hooks/sandbox-events
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import {
   SandboxLifecycleProvider,
-  resolveVmEntry,
   overlayThreadSandboxMap,
   shouldAdoptBranch,
-  type BranchMapEntryLike,
 } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useEnsureTask } from "@/hooks/use-ensure-task";
 import { ShellRouteLoading } from "@/layouts/shell-route-loading";
@@ -202,14 +199,15 @@ function VmEventsBridge({
 }) {
   const t = useT();
   const { currentBranch, activeTask, setCurrentTaskBranch } = useChatTask();
-  const { pendingSandboxProviderKind } = useChatPrefs();
   const isDesktopApp = useIsDesktopApp();
+  const expectedSandboxProviderKind = isDesktopApp
+    ? "local-api"
+    : "agent-sandbox";
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
   const executionEnabled = !shouldBlockHostedRuntime({
     isDesktopApp,
     harnessId: activeTask?.harness_id,
-    sandboxProviderKind: activeTask?.sandbox_provider_kind,
   });
 
   // Overlay the thread's own sandbox record for the current branch. A thread has
@@ -275,14 +273,9 @@ function VmEventsBridge({
   );
   const branchMap =
     userId && currentBranch
-      ? (parseBranchMap(
-          effectiveSandboxMap?.[userId]?.[currentBranch],
-        ) as Record<string, BranchMapEntryLike>)
+      ? parseBranchMap(effectiveSandboxMap?.[userId]?.[currentBranch])
       : {};
-  // Use the resolved provider kind to pick the matching entry — the SAME
-  // helper as SandboxLifecycleProvider so the SSE previewUrl and the lifecycle
-  // vmEntry always agree on which sandbox is active.
-  const vmEntry = resolveVmEntry(branchMap, pendingSandboxProviderKind);
+  const vmEntry = branchMap[expectedSandboxProviderKind] ?? null;
   const previewUrl = vmEntry?.previewUrl ?? null;
   // A CMS session has no daemon to stream from, whatever the map holds. The
   // presence/pending term stays: it answers a different question (is there a
@@ -291,7 +284,7 @@ function VmEventsBridge({
   const shouldConnect =
     executionEnabled &&
     sessionRuntime !== "cms" &&
-    (Object.keys(branchMap).length > 0 || isStartPending);
+    (!!vmEntry || isStartPending);
 
   // Native coding-agent threads are intentionally unavailable on hosted web.
   // Do not mount their workspace at all: every main-panel surface assumes it
@@ -357,8 +350,7 @@ function VmEventsBridge({
         branch={currentBranch ?? null}
         userId={userId ?? null}
         hasActiveGithubRepo={effectiveHasGithubRepo}
-        sandboxMap={effectiveSandboxMap}
-        sandboxProviderKind={pendingSandboxProviderKind}
+        vmEntry={vmEntry}
         threadId={activeTask?.id ?? null}
       >
         <BlocksPreviewWorkspaceProvider

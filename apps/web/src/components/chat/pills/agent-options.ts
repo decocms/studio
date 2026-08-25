@@ -1,77 +1,29 @@
 import type { HarnessId } from "@decocms/shared/harness/types";
-import {
-  normalizeSandboxProviderKind,
-  type LegacySandboxProviderKind,
-  type SandboxProviderKind,
-} from "@/sdk";
 
-export type AgentOption =
-  | "decopilot"
+export type LocalAgentOption =
   | "claude-code-desktop"
   | "codex-desktop"
   | "opencode-desktop";
-export type LocalAgentOption = Exclude<AgentOption, "decopilot">;
 export type NativeHarnessId = HarnessId | "opencode";
 
-export interface AgentPins {
-  harness: NativeHarnessId;
-  sandbox: SandboxProviderKind | null;
-}
+export const AGENT_OPTION_HARNESSES: Record<LocalAgentOption, NativeHarnessId> =
+  {
+    "claude-code-desktop": "claude-code",
+    "codex-desktop": "codex",
+    "opencode-desktop": "opencode",
+  };
 
-/**
- * Canonical (harness, sandbox) pair for each `AgentOption`. The persisted
- * pending-agent value is the source of truth; terminal launch and the native
- * sandbox picker read through here so the pair cannot drift.
- */
-export const AGENT_OPTION_PINS: Record<AgentOption, AgentPins> = {
-  decopilot: { harness: "decopilot", sandbox: "agent-sandbox" },
-  "claude-code-desktop": { harness: "claude-code", sandbox: "user-desktop" },
-  "codex-desktop": { harness: "codex", sandbox: "user-desktop" },
-  "opencode-desktop": { harness: "opencode", sandbox: "user-desktop" },
-};
-
-/**
- * Inverse of `AGENT_OPTION_PINS`. Maps a (harness, sandbox) tuple — typically
- * sourced from `threads.harness_id` + `threads.sandbox_provider_kind` on a
- * locked thread — back to the canonical `AgentOption`.
- *
- * Returns `null` when the pair does not correspond to any known option (which
- * can happen for legacy or trigger-created rows that wrote a harness without
- * going through this picker).
- */
-export function agentOptionFor(
-  harness: string | null,
-  sandbox: LegacySandboxProviderKind | null,
-): AgentOption | null {
-  if (!harness) return null;
-  const normalizedSandbox = sandbox
-    ? normalizeSandboxProviderKind(sandbox)
-    : null;
-  if (
-    harness === "decopilot" &&
-    (normalizedSandbox === null || normalizedSandbox === "user-desktop")
-  ) {
-    return "decopilot";
-  }
-  for (const [option, pins] of Object.entries(AGENT_OPTION_PINS) as [
-    AgentOption,
-    AgentPins,
-  ][]) {
-    if (pins.harness === harness && pins.sandbox === normalizedSandbox) {
-      return option;
-    }
-  }
-  return null;
+/** Maps a native thread's locked harness back to its picker option. */
+function localAgentOptionFor(harness: string | null): LocalAgentOption | null {
+  if (harness === "claude-code") return "claude-code-desktop";
+  if (harness === "codex") return "codex-desktop";
+  return harness === "opencode" ? "opencode-desktop" : null;
 }
 
 /**
  * Resolve the only agent options a native build may expose.
  *
- * Native has no cloud runtime, so a stale persisted Decopilot pick must never
- * win. A locked local harness also wins by harness alone: early native builds
- * could pin a coding-agent thread before `sandbox_provider_kind` was
- * available, and requiring the full tuple would misclassify that local thread
- * as cloud.
+ * Native has no cloud runtime, so a persisted Decopilot pick must never win.
  *
  * Returns null until the user makes an explicit local choice. CLI detection
  * annotates the picker but never chooses an agent on the user's behalf.
@@ -80,14 +32,11 @@ export function resolveNativeAgentOption({
   pendingOption,
   lockedHarness,
 }: {
-  pendingOption: AgentOption | null;
+  pendingOption: LocalAgentOption | null;
   lockedHarness: string | null;
 }): LocalAgentOption | null {
-  if (lockedHarness === "claude-code") return "claude-code-desktop";
-  if (lockedHarness === "codex") return "codex-desktop";
-  if (lockedHarness === "opencode") return "opencode-desktop";
-  if (pendingOption === "claude-code-desktop") return pendingOption;
-  if (pendingOption === "codex-desktop") return pendingOption;
-  if (pendingOption === "opencode-desktop") return pendingOption;
-  return null;
+  if (lockedHarness) {
+    return localAgentOptionFor(lockedHarness);
+  }
+  return pendingOption;
 }
