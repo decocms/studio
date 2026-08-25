@@ -17,3 +17,10 @@ test("no mentions is empty, not a throw", () => {
   expect(parseMentions("")).toEqual([]);
   expect(parseMentions("plain @ana text")).toEqual([]);
 });
+
+test("caps the number of parsed mentions", () => {
+  const body = Array.from({ length: 200 }, (_, i) =>
+    mentionMarkdown(`usr_${i}`, `User ${i}`),
+  ).join(" ");
+  expect(parseMentions(body)).toHaveLength(50);
+});
