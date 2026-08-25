@@ -2046,6 +2046,20 @@ export class TaskBoardStorage {
     return true;
   }
 
+  async getComment(
+    id: string,
+    organizationId: string,
+  ): Promise<TaskBoardComment | null> {
+    const row = await this.db
+      .selectFrom("task_board_comments as c")
+      .innerJoin("task_board_items as item", "item.id", "c.task_board_item_id")
+      .selectAll("c")
+      .where("c.id", "=", id)
+      .where("item.organization_id", "=", organizationId)
+      .executeTakeFirst();
+    return row ? commentFromDbRow(row) : null;
+  }
+
   private async commentInOrg(
     id: string,
     organizationId: string,

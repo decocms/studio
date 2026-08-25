@@ -173,9 +173,14 @@ export const TASK_BOARD_COMMENT_UPDATE = defineTool({
   handler: async (input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
+    const organizationId = requireOrg(ctx);
+    const existing =
+      input.body !== undefined
+        ? await ctx.storage.taskBoard.getComment(input.id, organizationId)
+        : null;
     const comment = await ctx.storage.taskBoard.updateComment({
       id: input.id,
-      organizationId: requireOrg(ctx),
+      organizationId,
       callerId: getUserId(ctx)!,
       body: input.body,
       resolved: input.resolved,
@@ -184,6 +189,16 @@ export const TASK_BOARD_COMMENT_UPDATE = defineTool({
       throw new Error(
         "Comment not found, or you can only edit your own comments",
       );
+    }
+    // Notify only mentions this edit added, same as an edited description.
+    if (input.body !== undefined && comment.body !== existing?.body) {
+      await ctx.storage.notifications.notifyMentions({
+        taskBoardItemId: comment.taskBoardItemId,
+        organizationId,
+        actorId: getUserId(ctx)!,
+        body: comment.body,
+        previousBody: existing?.body ?? null,
+      });
     }
     return { comment };
   },
