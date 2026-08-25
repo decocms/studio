@@ -1,4 +1,10 @@
-import { DotsVertical, Home02, Settings02, Trash01 } from "@untitledui/icons";
+import {
+  DotsVertical,
+  Home02,
+  Pin01,
+  Settings02,
+  Trash01,
+} from "@untitledui/icons";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR as ptBRLocale } from "date-fns/locale/pt-BR";
 import { toast } from "sonner";
@@ -10,7 +16,9 @@ import {
   useMainAgentId,
   useSetMainAgent,
 } from "@/hooks/use-organization-settings";
-import { useCapability } from "@/hooks/use-capability";
+import { useCapabilities, useCapability } from "@/hooks/use-capability";
+import { agentCanBePinned } from "@/lib/agent-capabilities";
+import { useVirtualMCPActions } from "@/sdk";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Card } from "@decocms/ui/components/card.tsx";
 import {
@@ -43,6 +51,15 @@ export function ProjectCard({
   // the action isn't shown to users whose click would fail server-side.
   const { granted: canSetMainAgent } = useCapability("org:manage");
   const isMainAgent = mainAgentId === project.id;
+
+  // Org-wide pin: backend gates `pinned` on owner/admin; coding agents auto-list.
+  const actions = useVirtualMCPActions();
+  const { isPrivileged } = useCapabilities();
+  const canPin = isPrivileged && agentCanBePinned(project);
+  const isPinned = !!project.pinned;
+  const togglePin = () => {
+    actions.update.mutate({ id: project.id, data: { pinned: !isPinned } });
+  };
 
   const toggleMainAgent = () => {
     const next = isMainAgent ? null : project.id;
@@ -107,6 +124,19 @@ export function ProjectCard({
                       {isMainAgent
                         ? t("home.projectCard.unsetMainAgent")
                         : t("home.projectCard.setAsMainAgent")}
+                    </DropdownMenuItem>
+                  )}
+                  {canPin && (
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        togglePin();
+                      }}
+                    >
+                      <Pin01 size={16} />
+                      {isPinned
+                        ? t("home.projectCard.unpinFromSidebar")
+                        : t("home.projectCard.pinToSidebar")}
                     </DropdownMenuItem>
                   )}
                   {onDeleteClick && (
