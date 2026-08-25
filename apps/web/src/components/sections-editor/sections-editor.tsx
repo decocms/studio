@@ -984,14 +984,12 @@ export function SectionsEditor({
     savePageSections(updatedSections);
   };
 
-  // Hide/show a section via the multivariate+never wrapper (see hideSection /
-  // showSection). Round-trips normal, lazy, and saved-block sections.
-  // Multivariate sections (real variants) are managed through the variant UI.
+  // Hide/show any section via the multivariate+never wrapper (see hideSection / showSection).
   const handleToggleHidden = (index: number) => {
     if (!activePageKey) return;
     const rawSection = rawSections[index];
     const parsed = parsedSections[index];
-    if (!rawSection || !parsed || parsed.isMultivariate) return;
+    if (!rawSection || !parsed) return;
 
     const next = parsed.isHidden
       ? showSection(rawSection)

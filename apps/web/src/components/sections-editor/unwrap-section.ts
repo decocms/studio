@@ -121,6 +121,15 @@ export function unwrapSection(
     const innerValue =
       (mvObj?.variants?.[0]?.value as Record<string, unknown>) ??
       (raw as Record<string, unknown>);
+    const innerRt = (innerValue.__resolveType as string) ?? "";
+    const effectiveInnerRt = isLazyResolveType(innerRt)
+      ? (((innerValue.section as Record<string, unknown> | undefined)
+          ?.__resolveType as string) ?? innerRt)
+      : innerRt;
+    // Hidden variant section wraps a multivariate block; editing it as one section would flatten the variants.
+    if (isMultivariateResolveType(effectiveInnerRt)) {
+      return null;
+    }
     return unwrapSectionValue(innerValue, decofile);
   }
 
