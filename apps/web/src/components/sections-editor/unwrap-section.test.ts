@@ -109,6 +109,22 @@ describe("unwrapSection", () => {
     expect(unwrapSection(raw, parsed, {})).toBeNull();
   });
 
+  it("unwraps a hidden saved-block section to its resolved data", () => {
+    const raw = {
+      __resolveType: MV,
+      variants: [
+        { value: { __resolveType: "Header" }, rule: { __resolveType: NEVER } },
+      ],
+    };
+    const decofile = { Header: { __resolveType: HERO, title: "Site Header" } };
+    const parsed = parseSections([raw], decofile)[0]!;
+    expect(parsed.isSavedBlock).toBe(true);
+    expect(unwrapSection(raw, parsed, decofile)).toEqual({
+      data: { __resolveType: HERO, title: "Site Header" },
+      resolveType: HERO,
+    });
+  });
+
   it("unwrapBlockReference loads saved block data for site theme pointers", () => {
     const decofile = {
       Deco: {

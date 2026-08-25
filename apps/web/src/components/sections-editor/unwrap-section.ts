@@ -108,13 +108,14 @@ export function unwrapSection(
     return null;
   }
 
-  if (parsed.isSavedBlock) {
+  if (parsed.isSavedBlock && !parsed.isHidden) {
     const blockKey = parsed.isLazy
       ? ((raw.section?.__resolveType as string) ?? raw.__resolveType)
       : raw.__resolveType;
     return resolveSavedBlockData(blockKey, decofile);
   }
 
+  // Hidden checked before isSavedBlock: a hidden section's raw.__resolveType is the never-matcher wrapper, not the block key.
   if (parsed.isHidden) {
     const isLazy = isLazyResolveType(raw.__resolveType);
     const mvObj = isLazy ? (raw.section as RawSection | undefined) : raw;
