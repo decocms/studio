@@ -30,7 +30,7 @@ import {
 } from "@/core/studio-context";
 import { selectLoadableRepos } from "@/harnesses/decopilot/built-in-tools/load-repo";
 import { pickGitBranch } from "@/sandbox/head-ref";
-import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
+import { getAgentSandboxProvider } from "@/sandbox/lifecycle";
 import {
   buildCloneInfo,
   ensureGithubCloneToken,
@@ -43,7 +43,7 @@ import {
   syntheticBranchToGitRef,
 } from "@/tools/sandbox/thread-repo";
 import { retry, sleep } from "@decocms/shared/std";
-import type { SandboxProvider } from "@decocms/sandbox/provider";
+import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import { requireTaskRunContext } from "./task-run-context";
 
 /**
@@ -82,7 +82,6 @@ async function waitForSandboxRecord(
   threadId: string,
   sandboxUserId: string,
   branch: string,
-  kind: Parameters<typeof resolveVm>[3],
 ): Promise<ReturnType<typeof resolveVm>> {
   return retry(
     async () => {
@@ -90,7 +89,6 @@ async function waitForSandboxRecord(
         await getThreadSandboxMap(ctx, threadId),
         sandboxUserId,
         branch,
-        kind,
       );
       if (!record) throw new Error("sandbox record not written yet");
       return record;
@@ -112,7 +110,7 @@ const CLONE_MAX_CONSECUTIVE_FAILURES = 5;
 
 /** One bash command in the run's pod. Throws on a non-2xx from the daemon. */
 async function podBash(
-  provider: SandboxProvider,
+  provider: AgentSandboxProvider,
   handle: string,
   threadId: string,
   command: string,
@@ -269,17 +267,12 @@ export const TASK_ADD_REPO = defineTool({
       runBranch: thread.branch,
     });
     const sandboxUserId = await resolveSandboxUserId(ctx, branch, userId);
-    const { provider, kind } = await resolveSandboxProvider(ctx, {
-      userId: sandboxUserId,
-      branch,
-      virtualMcpMetadata: null,
-    });
+    const provider = await getAgentSandboxProvider(ctx);
     const record = await waitForSandboxRecord(
       ctx,
       threadId,
       sandboxUserId,
       branch,
-      kind,
     );
     if (!record) {
       throw new Error(

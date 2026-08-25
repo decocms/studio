@@ -399,6 +399,9 @@ export function resolveConfig(
         envVars.MESH_DISPATCH_ROLE,
       ),
     ),
+    agentSandboxEnabled:
+      envVars.STUDIO_AGENT_SANDBOX_ENABLED === "true" ||
+      envVars.STUDIO_AGENT_SANDBOX_ENABLED === "1",
     sandboxProviderKind: resolveSandboxProviderKind(
       envVars.STUDIO_SANDBOX_PROVIDER,
     ),

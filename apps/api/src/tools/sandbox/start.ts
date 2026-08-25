@@ -1,28 +1,22 @@
 /**
- * SANDBOX_START. Keyed by (userId, branch, sandboxProviderKind) in the Virtual
+ * SANDBOX_START. Keyed by (userId, branch, "agent-sandbox") in the Virtual
  * MCP's `sandboxMap`, where `userId` is the sandbox's OWNER — the thread's
  * creator on a thread-scoped branch, so a member opening a teammate's thread
  * resumes that thread's single sandbox instead of booting a private copy of the
  * same git branch (see `resolveSandboxUserId`).
- * Provider-agnostic — dispatches through the active `SandboxProvider`; this
- * handler only does `sandboxMap` bookkeeping. Branch is minted from the caller's
+ * Branch is minted from the caller's
  * slug + a timestamp (`generateBranchName`) when omitted — a fresh identity, so
  * callers that have a branch must pass it or they get a second sandbox.
- *
- * Different sandbox provider kinds coexist as siblings under the same
- * (user, branch) key — no stale-sandbox teardown is needed on kind change.
  */
 
 import { z } from "zod";
 import type { SandboxRecord } from "@decocms/shared/sdk";
 import {
   composeSandboxRef,
-  normalizeSandboxProviderKind,
-  type SandboxProvider,
-  type SandboxProviderKind,
   type SandboxPurpose,
   type Workload,
 } from "@decocms/sandbox/provider";
+import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import { sleep } from "@decocms/shared/std";
 import { defineTool } from "../../core/define-tool";
 import {
@@ -62,7 +56,7 @@ import {
   generateBranchName,
 } from "@decocms/shared/branch-name";
 import { PACKAGE_MANAGER_CONFIG } from "@decocms/shared/runtime-defaults";
-import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
+import { getAgentSandboxProvider } from "../../sandbox/lifecycle";
 import { stampRuntimeIfAbsent } from "../thread/stamp-runtime-if-absent";
 import { parseThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import {
@@ -74,7 +68,6 @@ import {
   threadIdFromBranch,
 } from "./thread-repo";
 import { pickGitBranch } from "../../sandbox/head-ref";
-import { deriveOffloadAllowlist } from "../../object-storage/offload-allowlist";
 import { getSettings } from "../../settings";
 import { getPublicUrl } from "../../core/server-constants";
 import { mintOrgFsConfigJson } from "../../file-storage/mount/provisioning";
@@ -90,12 +83,6 @@ type GithubRepo = {
 type GithubRepoMeta = {
   githubRepo?: GithubRepo | null;
 };
-
-const sandboxProviderKindInputSchema = z.enum([
-  "agent-sandbox",
-  "user-desktop",
-  "cluster",
-]);
 
 export const SANDBOX_START = defineTool({
   name: "SANDBOX_START",
@@ -117,11 +104,6 @@ export const SANDBOX_START = defineTool({
       .describe(
         "Git branch to check out. Pass the thread's branch whenever the caller has one: when omitted the handler mints a fresh `<user-slug>-<timestamp>` name, which becomes a SEPARATE sandbox from the one the thread's own branch resolves to. The resolved branch is returned in the response so callers can persist it.",
       ),
-    sandboxProviderKind: sandboxProviderKindInputSchema
-      .optional()
-      .describe(
-        "Explicit runtime choice. Hosted provider is `agent-sandbox`; legacy `cluster` input is accepted only for compatibility and normalized to `agent-sandbox`. When omitted, defaults to `user-desktop` if the acting user's link daemon is online, else the env kind.",
-      ),
     threadId: z
       .string()
       .optional()
@@ -134,7 +116,6 @@ export const SANDBOX_START = defineTool({
     sandboxHandle: z.string(),
     branch: z.string(),
     isNewVm: z.boolean(),
-    sandboxProviderKind: z.enum(["agent-sandbox", "user-desktop"]),
   }),
 
   handler: async (input, ctx) => {
@@ -165,8 +146,6 @@ export const SANDBOX_START = defineTool({
       }
     }
 
-    // Resolve kind after loading metadata so recorded sandboxMap entries can
-    // pin the provider when the caller did not pass an explicit kind.
     const userId = getUserId(ctx);
     if (!userId) throw new Error("User ID required");
 
@@ -189,28 +168,12 @@ export const SANDBOX_START = defineTool({
     }
     const metadata = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
 
-    // Resolve the runner once. `resolveSandboxProvider` returns the
-    // existing kind when sandboxMap already has an entry for (user, branch),
-    // honors `input.sandboxProviderKind` as a caller override, and
-    // otherwise applies the link-or-env default policy. We bind the
-    // provider here so the kind we record in sandboxMap matches the runner
-    // that actually `ensure`d the sandbox.
-    const explicitKind = input.sandboxProviderKind
-      ? normalizeSandboxProviderKind(input.sandboxProviderKind)
-      : undefined;
-    const { provider: runner, kind: providerKind } =
-      await resolveSandboxProvider(ctx, {
-        userId: sandboxUserId,
-        branch: resolvedBranch,
-        virtualMcpMetadata: metadata,
-        explicitKind,
-      });
+    const runner = await getAgentSandboxProvider(ctx);
 
     const existing: SandboxRecord | null = resolveVm(
       readSandboxMap(metadata),
       sandboxUserId,
       resolvedBranch,
-      providerKind,
     );
 
     // Thread-scoped repo (bound by `load_repo`) wins over the agent's repo — the
@@ -236,7 +199,6 @@ export const SANDBOX_START = defineTool({
       metadata,
       githubRepo,
       existing,
-      providerKind,
       runner,
     });
     // A pod means a coding session. This is the web's path — `ensureSandbox`'s
@@ -248,7 +210,6 @@ export const SANDBOX_START = defineTool({
       ...entry,
       branch: resolvedBranch,
       isNewVm,
-      sandboxProviderKind: providerKind,
     };
   },
 });
@@ -257,17 +218,13 @@ export const SANDBOX_START = defineTool({
  * Lazy provisioner for the always-on sandbox tools path. Mirrors SANDBOX_START's
  * flow but: (a) tolerates a missing GitHub repo (boots a blank sandbox),
  * and (b) takes a fast path when the existing sandboxMap entry already
- * matches the requested kind — avoiding a full `provider.ensure` round-trip
+ * matches — avoiding a full `provider.ensure` round-trip
  * on every fresh stream when the sandbox is already registered.
- *
- * Unlike SANDBOX_START, `sandboxProviderKind` is required — callers (e.g. POST
- * /messages) must resolve the kind before calling this function.
  */
 export async function ensureSandbox(
   input: {
     virtualMcpId: string;
     branch: string;
-    sandboxProviderKind: SandboxProviderKind;
     /**
      * What the sandbox is for. `harness-run` — one headless agent loop, no
      * preview — drops the application workload (install + dev server) from the
@@ -298,26 +255,13 @@ export async function ensureSandbox(
     readSandboxMap(metadata),
     sandboxUserId,
     input.branch,
-    input.sandboxProviderKind,
   );
 
-  const providerKind = input.sandboxProviderKind;
-
-  // Resolve the runner up front: for user-desktop we must verify the cached
-  // entry against the live daemon before trusting it (the daemon may have
-  // restarted via `deco link` relink, leaving the sandboxMap pointing at a
-  // dead handle). resolveSandboxProvider is cheap and idempotent.
-  const { provider: runner } = await resolveSandboxProvider(ctx, {
-    userId: sandboxUserId,
-    branch: input.branch,
-    virtualMcpMetadata: metadata,
-    explicitKind: providerKind,
-  });
+  const runner = await getAgentSandboxProvider(ctx);
 
   // A recorded entry is trusted only if a pod actually answers at it. Nothing
-  // but SANDBOX_DELETE removes a cell, so an evicted pod (or a `user-desktop`
-  // record from a daemon that no longer exists) leaves one behind forever;
-  // probing every kind is what makes that self-healing rather than sticky.
+  // but SANDBOX_DELETE removes a cell, so an evicted pod leaves one behind
+  // forever; probing it is what makes that self-healing rather than sticky.
   if (existing) {
     // A probe that ERRORS is not evidence the pod is gone — treat it as alive,
     // the same way the events handler does. Reaping on a throttled control-plane
@@ -330,7 +274,6 @@ export async function ensureSandbox(
       userId,
       sandboxUserId,
       input.branch,
-      providerKind,
     ).catch((err) => {
       console.warn("[ensureSandbox] failed to reap stale entry", err);
     });
@@ -361,7 +304,6 @@ export async function ensureSandbox(
     metadata,
     githubRepo,
     existing: null,
-    providerKind,
     runner,
     ...(input.purpose ? { purpose: input.purpose } : {}),
   });
@@ -383,8 +325,7 @@ type StartParams = {
   metadata: Record<string, unknown>;
   githubRepo: GithubRepo | null;
   existing: SandboxRecord | null;
-  providerKind: SandboxProviderKind;
-  runner: SandboxProvider;
+  runner: AgentSandboxProvider;
   /** See `ensureSandbox`'s `purpose`. `harness-run` implies checkout-only. */
   purpose?: SandboxPurpose;
 };
@@ -557,11 +498,8 @@ async function provisionSandbox(
     };
   }
 
-  // Missing workload = clone-only; the runner picks its default.
-  // `devPort` is omitted unless the user explicitly pinned one — leaves
-  // runners free to assign a unique dynamic port (user-desktop needs this;
-  // multiple sandboxes on the user's machine share the host network and
-  // can't all bind 3000).
+  // Missing workload = clone-only; the runner picks its default. `devPort` is
+  // omitted unless the user explicitly pinned one.
   const workload: Workload | undefined =
     runtime && packageManager && !cloneOnly
       ? {
@@ -578,33 +516,17 @@ async function provisionSandbox(
     branch,
   });
 
-  // Message-offload SSRF allowlist. The user-desktop daemon fails closed
-  // (empty allowlist) unless the control plane pushes the object-storage host
-  // it mints presigned offload URLs against. Derive it from the control
-  // plane's OWN trusted S3 config (never a request frame) and pass it through
-  // the ensure control channel so it lands in the spawned daemon's boot env.
-  // Only relevant for `user-desktop`; hosted execution reads its own S3 env.
-  const offload =
-    runner.kind === "user-desktop"
-      ? await deriveOffloadAllowlist(ctx.objectStorage, {
-          isProduction: getSettings().nodeEnv === "production",
-        })
-      : null;
-
-  // Org-fs mounts: mint an fs-scoped token + build the daemon's ORGFS_CONFIG.
-  // org-fs is the universal substrate now — both desktop links and hosted
-  // pods always mount (hosted relies on the privileged org-fs sidecar
-  // shipping in the default deploy). Guarded inside the helper: a mint
-  // failure → undefined → no mounting, never breaks provisioning.
+  // Org-fs mounts: mint an fs-scoped token and build the daemon config payload.
+  // Hosted pods mount through the privileged org-fs sidecar shipped in the
+  // default deployment. Guarded inside the helper: a mint failure → undefined
+  // → no mounting, never breaks provisioning.
   //
   // DISABLE_ORGFS_MOUNTS is a debug escape hatch (opt-out, default off): it
   // skips provisioning the mount so a sandbox boots without org-fs, for
   // low-level mount debugging. NOT a supported "org-fs-off" product mode —
   // the prompt/tools still assume org-fs, so the agent's `org/` paths just
   // won't exist while it's set.
-  const wantsOrgFs =
-    (runner.kind === "user-desktop" || runner.kind === "agent-sandbox") &&
-    !getSettings().orgFsMountsDisabled;
+  const wantsOrgFs = !getSettings().orgFsMountsDisabled;
   // ctx.organization is unset on the decopilot vm-tools dispatch path (the
   // org travels as the `orgId` param there) — resolve the slug from the row
   // so chat-ephemeral sandboxes get mounts too.
@@ -635,7 +557,7 @@ async function provisionSandbox(
   // here turns over-admission into a queue. Bounded well under the readiness
   // timeout this call already tolerates, so it adds no new liveness risk; past
   // the bound the error is phrased for the task-board retry to recognize as
-  // infrastructure. No-op for a provider that can't answer.
+  // infrastructure.
   await waitForSchedulableCapacity(runner);
 
   const sandbox = await runner.ensure(
@@ -662,12 +584,6 @@ async function provisionSandbox(
         ...(ctx.auth.user?.email ? { userEmail: ctx.auth.user.email } : {}),
         ...(ctx.auth.user?.name ? { userName: ctx.auth.user.name } : {}),
       },
-      ...(offload
-        ? {
-            offloadAllowedHosts: offload.hosts,
-            offloadAllowSameHostDev: offload.allowSameHostDev,
-          }
-        : {}),
       ...(orgFsConfigJson ? { orgFsConfigJson } : {}),
     },
   );
@@ -699,8 +615,6 @@ async function provisionSandbox(
   const entry: SandboxRecord = {
     sandboxHandle: sandbox.handle,
     previewUrl: sandbox.previewUrl,
-    sandboxApiUrl: sandbox.previewUrl, // for desktop the two are equal
-    sandboxProviderKind: runner.kind,
     createdAt,
     startedWith: {
       packageManager: runtimeSelected,
@@ -715,7 +629,6 @@ async function provisionSandbox(
     userId,
     sandboxUserId,
     branch,
-    params.providerKind,
     entry,
   );
   // Thread-scoped branch: the agent write above is a no-op for the synthetic
@@ -725,14 +638,7 @@ async function provisionSandbox(
   // ctx fallback: a `pinnedRef` run is keyed by a real git ref, not `thread:<id>`.
   const threadId = threadIdFromBranch(branch) ?? ctx.metadata?.threadId;
   if (threadId) {
-    await setThreadSandboxMapEntry(
-      ctx,
-      threadId,
-      sandboxUserId,
-      branch,
-      params.providerKind,
-      entry,
-    );
+    await setThreadSandboxMapEntry(ctx, threadId, sandboxUserId, branch, entry);
   }
 
   // Different handle = new sandbox (stale entry / orphan recovery / state miss).
@@ -863,9 +769,8 @@ const CAPACITY_POLL_MS = 5_000;
  * instead of every run in the burst.
  */
 async function waitForSchedulableCapacity(
-  runner: SandboxProvider,
+  runner: AgentSandboxProvider,
 ): Promise<void> {
-  if (!runner.hasSchedulableCapacity) return;
   const deadline = Date.now() + CAPACITY_WAIT_MS;
   let logged = false;
   while (!(await runner.hasSchedulableCapacity())) {

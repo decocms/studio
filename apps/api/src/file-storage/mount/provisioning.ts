@@ -1,7 +1,6 @@
 /**
- * Builds the `ORGFS_CONFIG` payload the studio pushes to a sandbox daemon (as a
- * boot env var) to turn on org-fs mounting. The daemon's `parseOrgFsConfig`
- * (packages/sandbox/orgfs/config.ts) validates this shape.
+ * Builds the org-fs payload Studio posts to a sandbox daemon. The daemon
+ * validates and relays this shape to its mounter sidecar.
  *
  * The mounted set is hardcoded for now (per the team decision); later this
  * becomes per-agent configurable. Three volumes (org skills are deliberately
@@ -33,8 +32,8 @@ import {
   publicVolumeForSet,
 } from "../public-sets";
 
-/** Shape the daemon parses from ORGFS_CONFIG (mirrors OrgFsMountConfig). */
-export interface OrgFsProvisionConfig {
+/** Shape the daemon relays to the sidecar (mirrors OrgFsMountConfig). */
+interface OrgFsProvisionConfig {
   baseUrl: string;
   orgSlug: string;
   token: string;
@@ -101,16 +100,16 @@ export function buildOrgFsConfig(opts: {
   };
 }
 
-/** API-key lifetime for the org-fs token baked into a sandbox's ORGFS_CONFIG.
+/** API-key lifetime for the org-fs token relayed to a sandbox.
  *  Sandboxes are ephemeral and re-provisioned (re-minting) on restart, so a
  *  generous fixed TTL is fine for now; tie to the sandbox lifecycle later. */
 const ORG_FS_KEY_TTL_SECONDS = 60 * 60 * 24 * 7;
 
 /**
- * Mint an org-fs API key for the caller and return the JSON `ORGFS_CONFIG` the
- * daemon mounts from — or `undefined` if minting fails (mounting is then simply
- * skipped; never breaks sandbox provisioning). Used by both sandbox-ensure
- * paths (SANDBOX_START + dispatch), desktop-only.
+ * Mint an org-fs API key for the caller and return the JSON config the daemon
+ * relays to its sidecar — or `undefined` if minting fails (mounting is then
+ * skipped; never breaks sandbox provisioning). Used by both hosted
+ * sandbox-ensure paths (SANDBOX_START + dispatch).
  */
 export async function mintOrgFsConfigJson(
   ctx: {

@@ -6,15 +6,11 @@ import type {
   EnsureOptions,
   Sandbox,
   SandboxId,
-  SandboxProvider,
 } from "@decocms/sandbox/provider";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
+import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 
-// Pin provider kind — the dev env flips STUDIO_SANDBOX_PROVIDER and SANDBOX_START
-// reads it at handler time.
-process.env.STUDIO_SANDBOX_PROVIDER = "agent-sandbox";
-
-// Mock runner BEFORE importing SANDBOX_START — handler is runner-agnostic.
+// Mock the hosted runner before importing SANDBOX_START.
 
 const mockEnsure = mock(
   async (_id: SandboxId, _opts?: EnsureOptions): Promise<Sandbox> => ({
@@ -24,48 +20,35 @@ const mockEnsure = mock(
   }),
 );
 
-const mockClusterDelete = mock(async (_handle: string) => {});
-const mockAgentSandboxDelete = mock(async (_handle: string) => {});
+const mockDelete = mock(async (_handle: string) => {});
 
 async function* readyOnly() {
   yield { kind: "ready" as const };
 }
 
-const mockClusterRunner: SandboxProvider = {
-  kind: "agent-sandbox",
+const mockRunner: Pick<
+  AgentSandboxProvider,
+  | "alive"
+  | "delete"
+  | "ensure"
+  | "getPreviewUrl"
+  | "hasSchedulableCapacity"
+  | "proxyDaemonRequest"
+  | "watchClaimLifecycle"
+> = {
   ensure: (id, opts) => mockEnsure(id, opts),
-  delete: (handle) => mockClusterDelete(handle),
+  delete: (handle) => mockDelete(handle),
   alive: async () => true,
   getPreviewUrl: async () => "https://stub.preview/",
-  proxyDaemonRequest: async () => new Response(null, { status: 204 }),
-  watchClaimLifecycle: () => readyOnly(),
-};
-
-const mockDesktopDelete = mock(async (_handle: string) => {});
-
-const mockDesktopRunner: SandboxProvider = {
-  kind: "user-desktop",
-  ensure: (id, opts) => mockEnsure(id, opts),
-  delete: (handle) => mockDesktopDelete(handle),
-  alive: async () => true,
-  getPreviewUrl: async () => "https://stub.preview/",
+  hasSchedulableCapacity: async () => true,
   proxyDaemonRequest: async () => new Response(null, { status: 204 }),
   watchClaimLifecycle: () => readyOnly(),
 };
 
 mock.module("../../sandbox/lifecycle", () => ({
-  // Only ever invoked for the agent-sandbox kind — the desktop path goes through
-  // `buildDesktopProvider` (below); user-desktop is never instantiated here.
-  getSandboxProviderByKind: (
-    _ctx: unknown,
-    _kind: "agent-sandbox" | "user-desktop",
-  ) => mockClusterRunner,
-  // The unified resolver in `resolve-provider.ts` calls
-  // `buildDesktopProvider` directly (no ctx side-effects), so a mock
-  // is needed for SANDBOX_START's desktop path to construct the expected
-  // runner under test.
-  buildDesktopProvider: async () => mockDesktopRunner,
-  getOrInitSharedRunner: async () => mockClusterRunner,
+  getAgentSandboxProvider: async () => mockRunner,
+  getAgentSandboxProviderForTeardown: async () => mockRunner,
+  getOrInitSharedRunner: async () => mockRunner,
   // Bun's mock.module persists across test files in the same shard. Other
   // tests in the shard (e.g. oauth-proxy.e2e.test.ts) load app.ts which
   // imports subscribeLifecycle from this module — keep the export shape
@@ -74,8 +57,15 @@ mock.module("../../sandbox/lifecycle", () => ({
   __resetSharedLifecyclesForTesting: () => {},
 }));
 
+let mockSettings: Record<string, unknown> = { nodeEnv: "test" };
 mock.module("../../settings", () => ({
-  getSettings: () => ({ nodeEnv: "test" }),
+  getSettings: () => mockSettings,
+  // Bun keeps module mocks alive across test files in one shard. Preserve the
+  // real module's complete runtime surface so later settings-backed tests can
+  // replace and restore their configuration normally.
+  setGlobalSettings: (settings: Record<string, unknown>) => {
+    mockSettings = settings;
+  },
 }));
 
 const { DownstreamTokenStorage: RealDownstreamTokenStorage } = await import(
@@ -316,12 +306,8 @@ describe("SANDBOX_START", () => {
       async () => new Response("{}", { status: 404 }),
     ) as unknown as typeof fetch;
     mockEnsure.mockReset();
-    mockClusterDelete.mockReset();
-    mockAgentSandboxDelete.mockReset();
-    mockDesktopDelete.mockReset();
-    mockClusterDelete.mockImplementation(async () => {});
-    mockAgentSandboxDelete.mockImplementation(async () => {});
-    mockDesktopDelete.mockImplementation(async () => {});
+    mockDelete.mockReset();
+    mockDelete.mockImplementation(async () => {});
     mockTokenGet.mockReset();
     mockEnsure.mockImplementation(async () => ({
       handle: "vm_xyz",
@@ -436,7 +422,7 @@ describe("SANDBOX_START", () => {
     expect(Object.keys(updated.metadata.sandboxMap)).toEqual([USER_ID]);
   });
 
-  it("persists sandboxMap entry with handle + previewUrl + sandboxProviderKind", async () => {
+  it("persists the hosted sandbox under the fixed map key", async () => {
     mockEnsure.mockImplementation(async () => ({
       handle: "vm_xyz",
       workdir: "/app",
@@ -455,7 +441,6 @@ describe("SANDBOX_START", () => {
     expect(result.previewUrl).toBe("https://stub.preview/");
     expect(result.branch).toBe(BRANCH);
     expect(result.isNewVm).toBe(true);
-    expect(result.sandboxProviderKind).toBe("agent-sandbox");
 
     expect(updateSpy).toHaveBeenCalledTimes(1);
     const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
@@ -468,7 +453,6 @@ describe("SANDBOX_START", () => {
     expect(stored).toMatchObject({
       sandboxHandle: "vm_xyz",
       previewUrl: "https://stub.preview/",
-      sandboxProviderKind: "agent-sandbox",
     });
     // Server-stamped; assert recency, not exact value.
     expect(typeof (stored as SandboxRecord)?.createdAt).toBe("number");
@@ -762,54 +746,10 @@ describe("SANDBOX_START", () => {
     expect(opts.repo?.cloneUrl).not.toContain("ghu_stale_token");
   });
 
-  it("an explicit user-desktop reuses the agent-sandbox entry instead of provisioning a second VM", async () => {
-    // `user-desktop` is legacy: the desktop link daemon that implemented it is
-    // gone, so the resolver normalizes it to `agent-sandbox` — provider AND
-    // kind. An explicit legacy override therefore looks up the hosted entry it
-    // will actually run on, rather than recording a sibling row under a kind
-    // with no runner (which would leave the handle and the runner mismatched).
+  it("reuses an existing hosted sandbox entry", async () => {
     const agentSandboxEntry: SandboxRecord = {
       sandboxHandle: "vm_agent-sandbox_existing",
       previewUrl: "https://agent-sandbox.preview/",
-      sandboxProviderKind: "agent-sandbox",
-      createdAt: 123,
-    };
-    mockEnsure.mockImplementation(async () => ({
-      handle: agentSandboxEntry.sandboxHandle,
-      workdir: "/app",
-      previewUrl: agentSandboxEntry.previewUrl,
-    }));
-    const metadata: Metadata = {
-      ...BASE_METADATA,
-      // 3-level: agent-sandbox entry lives under its own key
-      sandboxMap: {
-        [USER_ID]: {
-          [BRANCH]: { "agent-sandbox": agentSandboxEntry },
-        },
-      },
-    };
-    const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
-    const ctx = makeCtx({ virtualMcp });
-
-    const result = await SANDBOX_START.handler(
-      {
-        virtualMcpId: VMCP_ID,
-        branch: BRANCH,
-        sandboxProviderKind: "user-desktop",
-      },
-      ctx,
-    );
-
-    expect(mockClusterDelete).not.toHaveBeenCalled();
-    expect(result.sandboxProviderKind).toBe("agent-sandbox");
-    expect(result.isNewVm).toBe(false);
-  });
-
-  it("SANDBOX_START with no sandboxProviderKind honors an existing recorded kind", async () => {
-    const agentSandboxEntry: SandboxRecord = {
-      sandboxHandle: "vm_agent-sandbox_existing",
-      previewUrl: "https://agent-sandbox.preview/",
-      sandboxProviderKind: "agent-sandbox",
       createdAt: 123,
     };
     mockEnsure.mockImplementation(async () => ({
@@ -834,9 +774,7 @@ describe("SANDBOX_START", () => {
       ctx,
     );
 
-    expect(result.sandboxProviderKind).toBe("agent-sandbox");
     expect(result.isNewVm).toBe(false);
-    expect(mockDesktopDelete).not.toHaveBeenCalled();
     const sandboxMapCall = (updateSpy.mock.calls as unknown[][]).find(
       (call) => {
         const meta = (call[2] as { metadata?: { sandboxMap?: SandboxMap } })
@@ -853,16 +791,14 @@ describe("SANDBOX_START", () => {
       | undefined;
     expect(branchMap?.["agent-sandbox"]).toMatchObject({
       sandboxHandle: agentSandboxEntry.sandboxHandle,
-      sandboxProviderKind: "agent-sandbox",
     });
-    expect(branchMap?.["user-desktop"]).toBeUndefined();
+    expect(branchMap?.["local-api"]).toBeUndefined();
   });
 
   it("does not tear down anything when the existing entry is on the same runner", async () => {
     const sameRunnerEntry: SandboxRecord = {
       sandboxHandle: "vm_agent-sandbox_existing",
       previewUrl: "https://agent-sandbox.preview/",
-      sandboxProviderKind: "agent-sandbox",
     };
     const metadata: Metadata = {
       ...BASE_METADATA,
@@ -877,85 +813,7 @@ describe("SANDBOX_START", () => {
 
     await SANDBOX_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx);
 
-    expect(mockAgentSandboxDelete).not.toHaveBeenCalled();
-    expect(mockClusterDelete).not.toHaveBeenCalled();
-  });
-
-  // -----------------------------------------------------------------------
-  // sandboxProviderKind default-resolution tests
-  // -----------------------------------------------------------------------
-
-  it("SANDBOX_START with no sandboxProviderKind picks the env kind (default policy is env-only)", async () => {
-    // Optimistic presence: the default no longer consults link liveness.
-    // STUDIO_SANDBOX_PROVIDER is "agent-sandbox" at module load time (top of
-    // file), so a fresh (user, branch) with no recorded kind resolves to it.
-    const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
-    const updateSpy = mock(async () => {});
-    const ctx = makeCtx({ virtualMcp, updateSpy });
-
-    const result = await SANDBOX_START.handler(
-      { virtualMcpId: VMCP_ID, branch: BRANCH },
-      ctx,
-    );
-
-    expect(result.sandboxProviderKind).toBe("agent-sandbox");
-    const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
-    const updated = (updateCall[2] as { metadata: { sandboxMap: SandboxMap } })
-      .metadata;
-    // 3-level key: sandboxMap[userId][branch][kind]
-    const stored = (
-      updated.sandboxMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["agent-sandbox"] as SandboxRecord | undefined;
-    expect(stored?.sandboxProviderKind).toBe("agent-sandbox");
-  });
-
-  it("SANDBOX_START with explicit sandboxProviderKind ignores defaults", async () => {
-    const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
-    const updateSpy = mock(async () => {});
-    const ctx = makeCtx({ virtualMcp, updateSpy });
-
-    const result = await SANDBOX_START.handler(
-      {
-        virtualMcpId: VMCP_ID,
-        branch: BRANCH,
-        sandboxProviderKind: "agent-sandbox",
-      },
-      ctx,
-    );
-
-    expect(result.sandboxProviderKind).toBe("agent-sandbox");
-    const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
-    const updated = (updateCall[2] as { metadata: { sandboxMap: SandboxMap } })
-      .metadata;
-    // 3-level key: sandboxMap[userId][branch][kind]
-    const stored = (
-      updated.sandboxMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["agent-sandbox"] as SandboxRecord | undefined;
-    expect(stored?.sandboxProviderKind).toBe("agent-sandbox");
-  });
-
-  it("normalizes legacy cluster input to agent-sandbox", async () => {
-    const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
-    const updateSpy = mock(async () => {});
-    const ctx = makeCtx({ virtualMcp, updateSpy });
-
-    const result = await SANDBOX_START.handler(
-      {
-        virtualMcpId: VMCP_ID,
-        branch: BRANCH,
-        sandboxProviderKind: "cluster",
-      } as unknown as Parameters<typeof SANDBOX_START.handler>[0],
-      ctx,
-    );
-
-    expect(result.sandboxProviderKind).toBe("agent-sandbox");
-    const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
-    const updated = (updateCall[2] as { metadata: { sandboxMap: SandboxMap } })
-      .metadata;
-    const stored = (
-      updated.sandboxMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["agent-sandbox"] as SandboxRecord | undefined;
-    expect(stored?.sandboxProviderKind).toBe("agent-sandbox");
+    expect(mockDelete).not.toHaveBeenCalled();
   });
 
   it("throws RECONNECT_ERROR when refreshing an expired token fails", async () => {
