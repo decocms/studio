@@ -7,8 +7,6 @@
 import { homedir } from "os";
 import type { CliFlags, DispatchRole, Settings } from "./types";
 
-type SandboxProviderKind = Settings["sandboxProviderKind"];
-
 const DISPATCH_ROLES = new Set<DispatchRole>(["all", "worker", "api"]);
 
 /** Normalize `STUDIO_DISPATCH_ROLE`; anything unknown coerces to safe "all". */
@@ -171,28 +169,6 @@ function resolveAliasedEnv(
   legacyValue: string | undefined,
 ): string | undefined {
   return value || legacyValue;
-}
-
-const SANDBOX_PROVIDER_KINDS = new Set<SandboxProviderKind>([
-  "agent-sandbox",
-  "user-desktop",
-]);
-type LegacySandboxProviderKind = SandboxProviderKind | "cluster";
-
-function resolveSandboxProviderKind(
-  raw: string | undefined,
-): SandboxProviderKind {
-  const trimmed = (raw ?? "").trim();
-  const kind = (trimmed.length > 0 ? trimmed : "user-desktop") as
-    | LegacySandboxProviderKind
-    | string;
-  if (kind === "cluster") return "agent-sandbox";
-  if (!SANDBOX_PROVIDER_KINDS.has(kind as SandboxProviderKind)) {
-    throw new Error(
-      `Unknown STUDIO_SANDBOX_PROVIDER="${raw}" — expected "agent-sandbox", legacy "cluster", or "user-desktop".`,
-    );
-  }
-  return kind as SandboxProviderKind;
 }
 
 export interface ResolvedConfig {
@@ -381,12 +357,7 @@ export function resolveConfig(
         envVars.MESH_DISPATCH_ROLE,
       ),
     ),
-    agentSandboxEnabled:
-      envVars.STUDIO_AGENT_SANDBOX_ENABLED === "true" ||
-      envVars.STUDIO_AGENT_SANDBOX_ENABLED === "1",
-    sandboxProviderKind: resolveSandboxProviderKind(
-      envVars.STUDIO_SANDBOX_PROVIDER,
-    ),
+    agentSandboxEnabled: toBool(envVars.STUDIO_AGENT_SANDBOX_ENABLED),
     sandboxStickyHeadRefEnabled: toBool(envVars.SANDBOX_STICKY_HEAD_REF),
     taskBoardRerunReusesPrBranch: toBoolWithDefault(
       envVars.TASK_BOARD_RERUN_REUSES_PR_BRANCH,

@@ -13,36 +13,29 @@ const flags: CliFlags = {
   skipMigrations: false,
 };
 
-describe("resolveConfig sandbox provider kind", () => {
-  it("accepts canonical agent-sandbox", () => {
+describe("resolveConfig agent sandbox availability", () => {
+  it("defaults to disabled", () => {
+    expect(resolveConfig(flags, {}).settings.agentSandboxEnabled).toBe(false);
+  });
+
+  it.each(["true", "1"])("enables with %p", (value) => {
     const result = resolveConfig(flags, {
-      STUDIO_SANDBOX_PROVIDER: "agent-sandbox",
+      STUDIO_AGENT_SANDBOX_ENABLED: value,
     });
 
-    expect(result.settings.sandboxProviderKind).toBe("agent-sandbox");
+    expect(result.settings.agentSandboxEnabled).toBe(true);
   });
 
-  it("normalizes legacy cluster to agent-sandbox", () => {
-    const result = resolveConfig(flags, {
-      STUDIO_SANDBOX_PROVIDER: "cluster",
-    });
+  it.each(["false", "0", "agent-sandbox", ""])(
+    "stays disabled with %p",
+    (value) => {
+      const result = resolveConfig(flags, {
+        STUDIO_AGENT_SANDBOX_ENABLED: value,
+      });
 
-    expect(result.settings.sandboxProviderKind).toBe("agent-sandbox");
-  });
-
-  it("trims surrounding whitespace/newlines instead of throwing", () => {
-    const result = resolveConfig(flags, {
-      STUDIO_SANDBOX_PROVIDER: "agent-sandbox\n",
-    });
-
-    expect(result.settings.sandboxProviderKind).toBe("agent-sandbox");
-  });
-
-  it("still throws for a genuinely unknown value", () => {
-    expect(() =>
-      resolveConfig(flags, { STUDIO_SANDBOX_PROVIDER: "bogus" }),
-    ).toThrow(/Unknown STUDIO_SANDBOX_PROVIDER/);
-  });
+      expect(result.settings.agentSandboxEnabled).toBe(false);
+    },
+  );
 });
 
 describe("resolveConfig sandbox sticky head ref", () => {

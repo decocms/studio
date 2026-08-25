@@ -462,13 +462,6 @@ export interface StudioContext {
     orgId: string,
     userId: string,
   ) => Promise<FireAutomationOutcome>;
-
-  /**
-   * Sandbox dispatch preference for the in-flight run. This remains on the
-   * context until every lifecycle caller has moved to the fixed hosted
-   * provider later in the stack.
-   */
-  sandboxPreference?: "agent-sandbox" | "cluster-default" | "user-desktop";
 }
 
 // ============================================================================

@@ -2076,25 +2076,23 @@ export interface StudioToolIO {
                 string,
                 Record<
                   string,
-                  Record<
-                    string,
-                    {
-                      sandboxHandle: string;
-                      previewUrl: string | null;
-                      sandboxApiUrl?: string | null | undefined;
-                      sandboxProviderKind?:
-                        | "agent-sandbox"
-                        | "user-desktop"
-                        | undefined;
-                      createdAt?: number | undefined;
-                      startedWith?:
-                        | {
-                            packageManager?: string | null | undefined;
-                            port?: string | null | undefined;
-                            path?: string | null | undefined;
-                          }
-                        | undefined;
-                    }
+                  Partial<
+                    Record<
+                      "agent-sandbox" | "local-api",
+                      {
+                        sandboxHandle: string;
+                        previewUrl: string | null;
+                        sandboxApiUrl?: string | null | undefined;
+                        createdAt?: number | undefined;
+                        startedWith?:
+                          | {
+                              packageManager?: string | null | undefined;
+                              port?: string | null | undefined;
+                              path?: string | null | undefined;
+                            }
+                          | undefined;
+                      }
+                    >
                   >
                 >
               >
@@ -2280,34 +2278,6 @@ export interface StudioToolIO {
                   }
                 | null
                 | undefined;
-              sandboxMap?:
-                | Record<
-                    string,
-                    Record<
-                      string,
-                      Record<
-                        string,
-                        {
-                          sandboxHandle: string;
-                          previewUrl: string | null;
-                          sandboxApiUrl?: string | null | undefined;
-                          sandboxProviderKind?:
-                            | "agent-sandbox"
-                            | "user-desktop"
-                            | undefined;
-                          createdAt?: number | undefined;
-                          startedWith?:
-                            | {
-                                packageManager?: string | null | undefined;
-                                port?: string | null | undefined;
-                                path?: string | null | undefined;
-                              }
-                            | undefined;
-                        }
-                      >
-                    >
-                  >
-                | undefined;
               knowledge?:
                 | {
                     id: string;
@@ -2463,25 +2433,23 @@ export interface StudioToolIO {
                 string,
                 Record<
                   string,
-                  Record<
-                    string,
-                    {
-                      sandboxHandle: string;
-                      previewUrl: string | null;
-                      sandboxApiUrl?: string | null | undefined;
-                      sandboxProviderKind?:
-                        | "agent-sandbox"
-                        | "user-desktop"
-                        | undefined;
-                      createdAt?: number | undefined;
-                      startedWith?:
-                        | {
-                            packageManager?: string | null | undefined;
-                            port?: string | null | undefined;
-                            path?: string | null | undefined;
-                          }
-                        | undefined;
-                    }
+                  Partial<
+                    Record<
+                      "agent-sandbox" | "local-api",
+                      {
+                        sandboxHandle: string;
+                        previewUrl: string | null;
+                        sandboxApiUrl?: string | null | undefined;
+                        createdAt?: number | undefined;
+                        startedWith?:
+                          | {
+                              packageManager?: string | null | undefined;
+                              port?: string | null | undefined;
+                              path?: string | null | undefined;
+                            }
+                          | undefined;
+                      }
+                    >
                   >
                 >
               >
@@ -2652,25 +2620,23 @@ export interface StudioToolIO {
                 string,
                 Record<
                   string,
-                  Record<
-                    string,
-                    {
-                      sandboxHandle: string;
-                      previewUrl: string | null;
-                      sandboxApiUrl?: string | null | undefined;
-                      sandboxProviderKind?:
-                        | "agent-sandbox"
-                        | "user-desktop"
-                        | undefined;
-                      createdAt?: number | undefined;
-                      startedWith?:
-                        | {
-                            packageManager?: string | null | undefined;
-                            port?: string | null | undefined;
-                            path?: string | null | undefined;
-                          }
-                        | undefined;
-                    }
+                  Partial<
+                    Record<
+                      "agent-sandbox" | "local-api",
+                      {
+                        sandboxHandle: string;
+                        previewUrl: string | null;
+                        sandboxApiUrl?: string | null | undefined;
+                        createdAt?: number | undefined;
+                        startedWith?:
+                          | {
+                              packageManager?: string | null | undefined;
+                              port?: string | null | undefined;
+                              path?: string | null | undefined;
+                            }
+                          | undefined;
+                      }
+                    >
                   >
                 >
               >
@@ -2832,25 +2798,23 @@ export interface StudioToolIO {
                 string,
                 Record<
                   string,
-                  Record<
-                    string,
-                    {
-                      sandboxHandle: string;
-                      previewUrl: string | null;
-                      sandboxApiUrl?: string | null | undefined;
-                      sandboxProviderKind?:
-                        | "agent-sandbox"
-                        | "user-desktop"
-                        | undefined;
-                      createdAt?: number | undefined;
-                      startedWith?:
-                        | {
-                            packageManager?: string | null | undefined;
-                            port?: string | null | undefined;
-                            path?: string | null | undefined;
-                          }
-                        | undefined;
-                    }
+                  Partial<
+                    Record<
+                      "agent-sandbox" | "local-api",
+                      {
+                        sandboxHandle: string;
+                        previewUrl: string | null;
+                        sandboxApiUrl?: string | null | undefined;
+                        createdAt?: number | undefined;
+                        startedWith?:
+                          | {
+                              packageManager?: string | null | undefined;
+                              port?: string | null | undefined;
+                              path?: string | null | undefined;
+                            }
+                          | undefined;
+                      }
+                    >
                   >
                 >
               >
@@ -3000,34 +2964,6 @@ export interface StudioToolIO {
                       | undefined;
                   }
                 | null
-                | undefined;
-              sandboxMap?:
-                | Record<
-                    string,
-                    Record<
-                      string,
-                      Record<
-                        string,
-                        {
-                          sandboxHandle: string;
-                          previewUrl: string | null;
-                          sandboxApiUrl?: string | null | undefined;
-                          sandboxProviderKind?:
-                            | "agent-sandbox"
-                            | "user-desktop"
-                            | undefined;
-                          createdAt?: number | undefined;
-                          startedWith?:
-                            | {
-                                packageManager?: string | null | undefined;
-                                port?: string | null | undefined;
-                                path?: string | null | undefined;
-                              }
-                            | undefined;
-                        }
-                      >
-                    >
-                  >
                 | undefined;
               knowledge?:
                 | {
@@ -3192,25 +3128,23 @@ export interface StudioToolIO {
                 string,
                 Record<
                   string,
-                  Record<
-                    string,
-                    {
-                      sandboxHandle: string;
-                      previewUrl: string | null;
-                      sandboxApiUrl?: string | null | undefined;
-                      sandboxProviderKind?:
-                        | "agent-sandbox"
-                        | "user-desktop"
-                        | undefined;
-                      createdAt?: number | undefined;
-                      startedWith?:
-                        | {
-                            packageManager?: string | null | undefined;
-                            port?: string | null | undefined;
-                            path?: string | null | undefined;
-                          }
-                        | undefined;
-                    }
+                  Partial<
+                    Record<
+                      "agent-sandbox" | "local-api",
+                      {
+                        sandboxHandle: string;
+                        previewUrl: string | null;
+                        sandboxApiUrl?: string | null | undefined;
+                        createdAt?: number | undefined;
+                        startedWith?:
+                          | {
+                              packageManager?: string | null | undefined;
+                              port?: string | null | undefined;
+                              path?: string | null | undefined;
+                            }
+                          | undefined;
+                      }
+                    >
                   >
                 >
               >
@@ -3370,25 +3304,23 @@ export interface StudioToolIO {
                 string,
                 Record<
                   string,
-                  Record<
-                    string,
-                    {
-                      sandboxHandle: string;
-                      previewUrl: string | null;
-                      sandboxApiUrl?: string | null | undefined;
-                      sandboxProviderKind?:
-                        | "agent-sandbox"
-                        | "user-desktop"
-                        | undefined;
-                      createdAt?: number | undefined;
-                      startedWith?:
-                        | {
-                            packageManager?: string | null | undefined;
-                            port?: string | null | undefined;
-                            path?: string | null | undefined;
-                          }
-                        | undefined;
-                    }
+                  Partial<
+                    Record<
+                      "agent-sandbox" | "local-api",
+                      {
+                        sandboxHandle: string;
+                        previewUrl: string | null;
+                        sandboxApiUrl?: string | null | undefined;
+                        createdAt?: number | undefined;
+                        startedWith?:
+                          | {
+                              packageManager?: string | null | undefined;
+                              port?: string | null | undefined;
+                              path?: string | null | undefined;
+                            }
+                          | undefined;
+                      }
+                    >
                   >
                 >
               >
@@ -3745,7 +3677,6 @@ export interface StudioToolIO {
         virtual_mcp_id?: string | undefined;
         trigger_id?: string | null | undefined;
         branch?: string | null | undefined;
-        sandbox_provider_kind?: string | null | undefined;
         harness_id?: string | null | undefined;
         metadata?:
           | {
@@ -3813,7 +3744,6 @@ export interface StudioToolIO {
         virtual_mcp_id?: string | undefined;
         trigger_id?: string | null | undefined;
         branch?: string | null | undefined;
-        sandbox_provider_kind?: string | null | undefined;
         harness_id?: string | null | undefined;
         metadata?:
           | {
@@ -3858,7 +3788,6 @@ export interface StudioToolIO {
         virtual_mcp_id?: string | undefined;
         trigger_id?: string | null | undefined;
         branch?: string | null | undefined;
-        sandbox_provider_kind?: string | null | undefined;
         harness_id?: string | null | undefined;
         metadata?:
           | {
@@ -3931,7 +3860,6 @@ export interface StudioToolIO {
         virtual_mcp_id?: string | undefined;
         trigger_id?: string | null | undefined;
         branch?: string | null | undefined;
-        sandbox_provider_kind?: string | null | undefined;
         harness_id?: string | null | undefined;
         metadata?:
           | {
@@ -3974,7 +3902,6 @@ export interface StudioToolIO {
         virtual_mcp_id?: string | undefined;
         trigger_id?: string | null | undefined;
         branch?: string | null | undefined;
-        sandbox_provider_kind?: string | null | undefined;
         harness_id?: string | null | undefined;
         metadata?:
           | {
@@ -4410,25 +4337,23 @@ export interface StudioToolIO {
                 string,
                 Record<
                   string,
-                  Record<
-                    string,
-                    {
-                      sandboxHandle: string;
-                      previewUrl: string | null;
-                      sandboxApiUrl?: string | null | undefined;
-                      sandboxProviderKind?:
-                        | "agent-sandbox"
-                        | "user-desktop"
-                        | undefined;
-                      createdAt?: number | undefined;
-                      startedWith?:
-                        | {
-                            packageManager?: string | null | undefined;
-                            port?: string | null | undefined;
-                            path?: string | null | undefined;
-                          }
-                        | undefined;
-                    }
+                  Partial<
+                    Record<
+                      "agent-sandbox" | "local-api",
+                      {
+                        sandboxHandle: string;
+                        previewUrl: string | null;
+                        sandboxApiUrl?: string | null | undefined;
+                        createdAt?: number | undefined;
+                        startedWith?:
+                          | {
+                              packageManager?: string | null | undefined;
+                              port?: string | null | undefined;
+                              path?: string | null | undefined;
+                            }
+                          | undefined;
+                      }
+                    >
                   >
                 >
               >
@@ -7102,11 +7027,6 @@ export interface StudioToolIO {
     input: {
       virtualMcpId: string;
       branch?: string | undefined;
-      sandboxProviderKind?:
-        | "agent-sandbox"
-        | "user-desktop"
-        | "cluster"
-        | undefined;
       threadId?: string | undefined;
     };
     output: {
@@ -7114,7 +7034,6 @@ export interface StudioToolIO {
       sandboxHandle: string;
       branch: string;
       isNewVm: boolean;
-      sandboxProviderKind: "agent-sandbox" | "user-desktop";
     };
   };
   SANDBOX_DELETE: {

@@ -42,12 +42,8 @@ export {
   type SubmoduleCredential,
   SUBMODULE_HOST_RE,
   ENV_VAR_KEY_RE,
-  parseSandboxRecord,
   parseBranchMap,
   normalizeSandboxMap,
-  normalizeSandboxProviderKind,
-  type SandboxProviderKind,
-  type LegacySandboxProviderKind,
 } from "./virtual-mcp";
 
 export {
