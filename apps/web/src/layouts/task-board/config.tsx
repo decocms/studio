@@ -122,13 +122,15 @@ export function statusIconClassName(item: TaskBoardItem): string {
 
 /**
  * Whether any agent on this task is working, or died trying — the whole of what
- * a card says about run state, as a single dot.
+ * a card says about run state, as a single glyph.
  *
  * `"running"` wins over `"failed"` so a visibly working card never reads broken.
  * A failure that is settled history (`isResolvedRunFailure`) returns null, else
  * re-running a card would leave it permanently red.
  */
-export function agentPulse(item: TaskBoardItem): "running" | "failed" | null {
+export function agentRunState(
+  item: TaskBoardItem,
+): "running" | "failed" | null {
   if (item.threads.some((t) => t.status === "in_progress")) return "running";
   const failed = item.threads.some(
     (t) => t.status === "failed" && !isResolvedRunFailure(t.failureKind),

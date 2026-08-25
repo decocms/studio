@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import {
-  agentPulse,
+  agentRunState,
   cardNeedsAttention,
   dueDateUrgency,
   formatSprintDates,
@@ -177,34 +177,34 @@ describe("visibleSprint", () => {
  * agent footer, and a card whose run died must not look like a card that is
  * simply idle.
  */
-describe("agentPulse", () => {
+describe("agentRunState", () => {
   const withThreads = (
     threads: { status: string; failureKind?: string | null }[],
   ) => ({ ...item("a", 0), threads }) as unknown as TaskBoardItem;
 
   test("no threads, nothing to say", () => {
-    expect(agentPulse(item("a", 0))).toBeNull();
+    expect(agentRunState(item("a", 0))).toBeNull();
   });
 
   test("a completed run is not a pulse", () => {
-    expect(agentPulse(withThreads([{ status: "completed" }]))).toBeNull();
+    expect(agentRunState(withThreads([{ status: "completed" }]))).toBeNull();
   });
 
   test("an in-progress run is running", () => {
-    expect(agentPulse(withThreads([{ status: "in_progress" }]))).toBe(
+    expect(agentRunState(withThreads([{ status: "in_progress" }]))).toBe(
       "running",
     );
   });
 
   test("an unresolved failure is failed", () => {
     expect(
-      agentPulse(withThreads([{ status: "failed", failureKind: null }])),
+      agentRunState(withThreads([{ status: "failed", failureKind: null }])),
     ).toBe("failed");
   });
 
   test("a live run outranks an earlier attempt's error", () => {
     expect(
-      agentPulse(
+      agentRunState(
         withThreads([
           { status: "failed", failureKind: null },
           { status: "in_progress" },
@@ -215,9 +215,9 @@ describe("agentPulse", () => {
 
   test("a failure that is settled history is not the task's failure", () => {
     for (const failureKind of ["superseded", "ended_after_delivery"]) {
-      expect(agentPulse(withThreads([{ status: "failed", failureKind }]))).toBe(
-        null,
-      );
+      expect(
+        agentRunState(withThreads([{ status: "failed", failureKind }])),
+      ).toBe(null);
     }
   });
 });

@@ -39,6 +39,7 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import {
+  AlertTriangle,
   Calendar,
   CheckCircle,
   ChevronRight,
@@ -70,6 +71,7 @@ import {
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
+import { LoaderCircle } from "lucide-react";
 import { QaAgentIcon } from "@/components/qa-agent-icon";
 import { CodeReviewerIcon } from "@/components/code-reviewer-icon";
 import { GitHubIcon } from "@/components/icons/github-icon";
@@ -99,7 +101,7 @@ import {
 } from "@/hooks/use-task-board-items";
 import { formatTimeAgo } from "@/lib/format-time";
 import {
-  agentPulse,
+  agentRunState,
   cardNeedsAttention,
   TASK_TYPE_CONFIG,
   type TaskBoardItemType,
@@ -332,7 +334,7 @@ function CardFooter({
     // its bottom corner; without the vertical half it floated above 10px of
     // card. The extra pixel on `pb` offsets `border-t`, which eats one off the
     // top — otherwise the centred row lands half a pixel low.
-    <div className="-mx-3 -mb-2.5 mt-auto flex min-h-9 shrink-0 items-center justify-between gap-2 border-t border-border px-3 pt-1 pb-1.25">
+    <div className="-mx-2 -mb-2.5 mt-auto flex shrink-0 items-center justify-between gap-2 border-t border-border px-2 pt-1.75 pb-2">
       <span className="flex min-w-0 items-center gap-3">
         <TaskTypeIcon type={item.type} />
         <span className="shrink-0 text-[11px] font-medium tabular-nums text-muted-foreground/70">
@@ -500,21 +502,29 @@ function ChecksChip({
  * Run state as a single dot: an agent is working, or one died. Small as it is,
  * the footer this card no longer has was the only place a failed run surfaced.
  */
-function AgentPulseDot({ state }: { state: "running" | "failed" }) {
+function AgentRunIndicator({ state }: { state: "running" | "failed" }) {
   const t = useT();
+  const running = state === "running";
   const label = t(
-    state === "running"
+    running
       ? "taskBoard.taskBoard.agentRunning"
       : "taskBoard.taskBoard.agentFailed",
   );
+  // LoaderCircle, not the board's `Loading01`: that one is eight evenly-spaced
+  // spokes, so rotating it lands on an identical image every 45° and
+  // `animate-spin` reads as a still frame. An arc has to be asymmetric to look
+  // like it is turning.
+  const Icon = running ? LoaderCircle : AlertTriangle;
   return (
-    <span className="mt-1.5 flex shrink-0 items-center">
+    <span className="mt-px flex shrink-0 items-center">
       <GlyphTooltip label={label}>
-        <span
+        <Icon
+          size={14}
           className={cn(
-            "size-1.5 rounded-full",
-            state === "running" ? "animate-pulse bg-primary" : "bg-destructive",
+            "shrink-0",
+            running ? "animate-spin text-primary" : "text-destructive",
           )}
+          aria-label={label}
         />
       </GlyphTooltip>
       <span className="sr-only">{label}</span>
@@ -2278,7 +2288,7 @@ function TaskCard({
   const t = useT();
   const sprint = visibleSprint(item.sprint, useSprintsEnabled());
   const checks = useCardChecks(item);
-  const pulse = agentPulse(item);
+  const runState = agentRunState(item);
   // A state of the card, not a label on it — hence the colour, not a chip.
   const attentionLabel = cardNeedsAttention(item)
     ? t("taskBoard.taskBoard.blockedBadgeTitle")
@@ -2316,7 +2326,7 @@ function TaskCard({
         else onOpen();
       }}
       className={cn(
-        "group relative flex shrink-0 cursor-grab flex-col gap-2 rounded-xl px-3 py-2.5 text-left card-shadow active:cursor-grabbing",
+        "group relative flex shrink-0 cursor-grab flex-col gap-2 rounded-xl px-2 py-2.5 text-left card-shadow active:cursor-grabbing",
         attentionLabel
           ? "bg-destructive/10 hover:bg-destructive/15"
           : "bg-card hover:bg-accent/60",
@@ -2330,7 +2340,7 @@ function TaskCard({
           {item.title}
         </span>
         {attentionLabel && <span className="sr-only">{attentionLabel}</span>}
-        {pulse && <AgentPulseDot state={pulse} />}
+        {runState && <AgentRunIndicator state={runState} />}
       </div>
 
       {/* The card's body: everything between the title and the footer bar. The
