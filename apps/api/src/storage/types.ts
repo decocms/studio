@@ -24,6 +24,7 @@ import type {
 } from "@decocms/shared/organization/schema";
 import type { ThreadMetadata } from "@decocms/shared/entities";
 import type { PrivateRegistryDatabase } from "./registry/types";
+import type { JiraStatusMapping } from "@decocms/shared/jira-status-mapping";
 
 export type {
   OrgSsoConfigPublic,
@@ -1948,13 +1949,11 @@ export interface OrgJiraIntegrationTable {
   /** Agile board the sync mirrors (its columns minus its Backlog tab). */
   board_id: string | null;
   board_name: string | null;
-  /** { "<jira status name>": "<board status>" } — the per-tenant mapping.
-   *  Issues whose Jira status is not a key here are skipped by the sync. */
-  status_mapping: ColumnType<
-    Record<string, TaskBoardItemStatus>,
-    string | undefined,
-    string
-  >;
+  /** { "<board status>": ["<jira status name>", …] } — the per-tenant mapping,
+   *  each lane's Jira statuses in board order. Issues whose Jira status names
+   *  no lane are skipped by the sync. Read through `normalizeStatusMapping`,
+   *  which also accepts the pre-array shape (migration 205). */
+  status_mapping: ColumnType<JiraStatusMapping, string | undefined, string>;
   /** Optional extra JQL ANDed into the pull (labels, sprints, …) — the
    *  tenant's way to match their board's saved filter. */
   jql_filter: ColumnType<
@@ -1987,7 +1986,7 @@ export interface OrgJiraIntegration {
   apiToken: string;
   boardId: string | null;
   boardName: string | null;
-  statusMapping: Record<string, TaskBoardItemStatus>;
+  statusMapping: JiraStatusMapping;
   jqlFilter: string | null;
   autoDelegate: boolean;
   webhookSecret: string;
