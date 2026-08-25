@@ -178,9 +178,10 @@ preview:
   # with production sandboxes — see templates/preview-sandbox-rbac.yaml for why
   # that cannot currently be narrowed, and what would remove the need.
   #
-  # The application also needs the matching STUDIO_SANDBOX_* configuration
-  # (provider, runner, template name, preview gateway) pointed at an existing
-  # environment; enabling this alone grants permission but changes no behaviour.
+  # The application also needs STUDIO_AGENT_SANDBOX_ENABLED plus matching
+  # environment, template, sentinel/pool and preview-routing configuration
+  # pointed at an existing environment; enabling this alone grants permission
+  # but changes no behaviour.
   sandbox:
     enabled: false
     # Namespace holding the SandboxTemplates, warm pools and claims.

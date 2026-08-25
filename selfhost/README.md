@@ -69,7 +69,7 @@ namespace guard is opted out for this case via `sandbox-operator.allowForeignNam
 
 - **Required:** PostgreSQL (DB + DBOS workflow engine); `BETTER_AUTH_SECRET`;
   `ENCRYPTION_KEY` (credential vault).
-- **Bundled by the chart:** NATS (event-bus wake-ups + CLI link tunnel).
+- **Bundled by the chart:** NATS (event-bus wake-ups + run streaming).
 - **Required for a faithful run:** an S3-compatible object store (assets /
   buckets / org-fs). Locally = MinIO; in prod = managed S3.
 - **Optional:** ClickHouse + OTel collector (monitoring dashboard), sandbox
@@ -119,7 +119,7 @@ removed values key won't error — `helm template` after big `deploy/` changes).
 
 The sandbox is a separate layer — the `sandbox-operator` (agent-sandbox operator
 + CRDs) and `sandbox-env` charts under [`deploy/helm`](../deploy/helm), plus
-Studio wiring (`STUDIO_SANDBOX_PROVIDER=agent-sandbox`). Core Studio (agents,
+Studio wiring (`STUDIO_AGENT_SANDBOX_ENABLED=true`). Core Studio (agents,
 connections, MCP proxy) runs fine without it; enable it for the *full* install.
 
 The umbrella installs the sandbox layer as part of the one `helm install`: the
