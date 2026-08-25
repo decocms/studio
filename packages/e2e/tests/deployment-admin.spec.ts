@@ -585,6 +585,208 @@ test.describe("/api/_admin/*", () => {
     await ownerCtx.dispose();
   });
 
+  test("billing: quota overrides round-trip and usage reflects live claims", async ({
+    playwright,
+  }) => {
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const ownerCtx = await newApiContext(playwright);
+    const owner = await signUpViaApi(ownerCtx);
+    const orgRow = await db.query<{ id: string }>(
+      `SELECT id FROM "organization" WHERE slug = $1`,
+      [owner.orgSlug],
+    );
+    const orgId = orgRow.rows[0]?.id;
+    if (!orgId) throw new Error("Org not found after signup");
+
+    // /me exposes the flag the UI's Billing tab gates on.
+    const me = await adminCtx.get("/api/_admin/me");
+    const meBody = (await me.json()) as { taskQuotaEnforced?: boolean };
+    expect(typeof meBody.taskQuotaEnforced).toBe("boolean");
+
+    // Simulate consumption: two charged claims, one refunded. Only the held
+    // one may count — refunded slots were given back.
+    const taskIds = [crypto.randomUUID(), crypto.randomUUID()];
+    for (const taskId of taskIds) {
+      await db.query(
+        `INSERT INTO task_board_items (id, organization_id, title, created_by, updated_by)
+         VALUES ($1, $2, 'quota e2e task', 'system', 'system')`,
+        [taskId, orgId],
+      );
+    }
+    await db.query(
+      `INSERT INTO task_quota_claims (task_board_item_id, organization_id, period_key, state)
+       VALUES ($1, $3, 'trial', 'held'), ($2, $3, 'trial', 'released')`,
+      [taskIds[0], taskIds[1], orgId],
+    );
+
+    // Exercise the insert branch of the upsert (an org whose creation-time
+    // billing seed failed has no row — the self-heal path).
+    await db.query(
+      `DELETE FROM organization_billing WHERE organization_id = $1`,
+      [orgId],
+    );
+
+    // Override the free quota; monthly stays on the deployment default.
+    const patch = await adminCtx.patch(`/api/_admin/billing/orgs/${orgId}`, {
+      data: { freeTaskExecutions: 50, monthlyTaskExecutions: null },
+    });
+    expect(patch.status()).toBe(200);
+    const overrideRow = await db.query<{
+      free_task_executions: number | null;
+      monthly_task_executions: number | null;
+    }>(
+      `SELECT free_task_executions, monthly_task_executions
+       FROM organization_billing WHERE organization_id = $1`,
+      [orgId],
+    );
+    expect(overrideRow.rows[0]?.free_task_executions).toBe(50);
+    expect(overrideRow.rows[0]?.monthly_task_executions).toBeNull();
+
+    // The listing reflects the override as the effective limit and counts
+    // only the held claim in the trial bucket.
+    const list = await adminCtx.get(
+      `/api/_admin/billing/orgs?search=${encodeURIComponent(owner.orgSlug)}`,
+    );
+    expect(list.status()).toBe(200);
+    const listBody = (await list.json()) as {
+      defaults: {
+        freeTaskExecutions: number;
+        monthlyTaskExecutions: number;
+      };
+      organizations: Array<{
+        id: string;
+        periodKey: string;
+        used: number;
+        limit: number;
+        freeTaskExecutions: number | null;
+        totalClaims: number;
+      }>;
+    };
+    expect(listBody.defaults.freeTaskExecutions).toBeGreaterThan(0);
+    const org = listBody.organizations.find((o) => o.id === orgId);
+    expect(org).toBeTruthy();
+    expect(org?.periodKey).toBe("trial");
+    expect(org?.freeTaskExecutions).toBe(50);
+    expect(org?.limit).toBe(50);
+    expect(org?.used).toBe(1);
+    expect(org?.totalClaims).toBe(1);
+
+    // Resetting to null falls back to the deployment default.
+    const reset = await adminCtx.patch(`/api/_admin/billing/orgs/${orgId}`, {
+      data: { freeTaskExecutions: null },
+    });
+    expect(reset.status()).toBe(200);
+    const afterReset = await adminCtx.get(
+      `/api/_admin/billing/orgs?search=${encodeURIComponent(owner.orgSlug)}`,
+    );
+    const afterResetBody = (await afterReset.json()) as typeof listBody;
+    const resetOrg = afterResetBody.organizations.find((o) => o.id === orgId);
+    expect(resetOrg?.freeTaskExecutions).toBeNull();
+    expect(resetOrg?.limit).toBe(afterResetBody.defaults.freeTaskExecutions);
+
+    // An omitted field is left untouched — the API's omitted-vs-null
+    // distinction, proven with a non-null value that must survive.
+    await adminCtx.patch(`/api/_admin/billing/orgs/${orgId}`, {
+      data: { freeTaskExecutions: 11, monthlyTaskExecutions: 7 },
+    });
+    const partial = await adminCtx.patch(`/api/_admin/billing/orgs/${orgId}`, {
+      data: { freeTaskExecutions: null },
+    });
+    expect(partial.status()).toBe(200);
+    const partialRow = await db.query<{
+      free_task_executions: number | null;
+      monthly_task_executions: number | null;
+    }>(
+      `SELECT free_task_executions, monthly_task_executions
+       FROM organization_billing WHERE organization_id = $1`,
+      [orgId],
+    );
+    expect(partialRow.rows[0]?.free_task_executions).toBeNull();
+    expect(partialRow.rows[0]?.monthly_task_executions).toBe(7);
+
+    // Subscribed bucket: the GET must recompute the exact `sub:<ISO>` key the
+    // claim was stored under — the one join a timestamptz serialization drift
+    // would silently break (every paying org would read used: 0).
+    const periodEnd = "2030-01-01T00:00:00.000Z";
+    await db.query(
+      `UPDATE organization_billing
+       SET status = 'active', current_period_end = $2
+       WHERE organization_id = $1`,
+      [orgId, periodEnd],
+    );
+    const subTaskId = crypto.randomUUID();
+    await db.query(
+      `INSERT INTO task_board_items (id, organization_id, title, created_by, updated_by)
+       VALUES ($1, $2, 'quota e2e task', 'system', 'system')`,
+      [subTaskId, orgId],
+    );
+    await db.query(
+      `INSERT INTO task_quota_claims (task_board_item_id, organization_id, period_key, state)
+       VALUES ($1, $2, $3, 'held')`,
+      [subTaskId, orgId, `sub:${periodEnd}`],
+    );
+    const subList = await adminCtx.get(
+      `/api/_admin/billing/orgs?search=${encodeURIComponent(owner.orgSlug)}`,
+    );
+    const subBody = (await subList.json()) as typeof listBody;
+    const subOrg = subBody.organizations.find((o) => o.id === orgId);
+    expect(subOrg?.periodKey).toBe(`sub:${periodEnd}`);
+    // Only the claim in THIS bucket counts (the trial claims don't), and the
+    // monthly override from the partial-update leg is the effective limit.
+    expect(subOrg?.used).toBe(1);
+    expect(subOrg?.limit).toBe(7);
+
+    // Paid but no period end yet (checkout completed, invoice.paid pending):
+    // the sub:pending bucket, empty.
+    await db.query(
+      `UPDATE organization_billing SET current_period_end = NULL
+       WHERE organization_id = $1`,
+      [orgId],
+    );
+    const pendingList = await adminCtx.get(
+      `/api/_admin/billing/orgs?search=${encodeURIComponent(owner.orgSlug)}`,
+    );
+    const pendingBody = (await pendingList.json()) as typeof listBody;
+    const pendingOrg = pendingBody.organizations.find((o) => o.id === orgId);
+    expect(pendingOrg?.periodKey).toBe("sub:pending");
+    expect(pendingOrg?.used).toBe(0);
+
+    // Validation: zero, negatives, non-integers, int4 overflow, and empty
+    // patches are 400; unknown org is 404 (DB constraints must never surface
+    // as a 500).
+    for (const data of [
+      { freeTaskExecutions: 0 },
+      { monthlyTaskExecutions: -1 },
+      { freeTaskExecutions: 1.5 },
+      { freeTaskExecutions: "10" },
+      { freeTaskExecutions: 2147483648 },
+      {},
+    ]) {
+      const bad = await adminCtx.patch(`/api/_admin/billing/orgs/${orgId}`, {
+        data,
+      });
+      expect(bad.status(), `payload ${JSON.stringify(data)}`).toBe(400);
+    }
+    // A JSON body of literal `null` parses successfully — must 400, not 500.
+    const nullBody = await adminCtx.patch(`/api/_admin/billing/orgs/${orgId}`, {
+      headers: { "content-type": "application/json" },
+      data: "null",
+    });
+    expect(nullBody.status()).toBe(400);
+
+    const unknownOrg = await adminCtx.patch(
+      `/api/_admin/billing/orgs/nonexistent-org-id`,
+      { data: { freeTaskExecutions: 5 } },
+    );
+    expect(unknownOrg.status()).toBe(404);
+
+    await adminCtx.dispose();
+    await ownerCtx.dispose();
+  });
+
   test("the SSO-enforcement middleware exempts /api/_admin/*", async ({
     playwright,
   }) => {
@@ -665,6 +867,10 @@ test.describe("/api/_admin/*", () => {
       page.getByRole("heading", { name: "Admin Dashboard" }),
     ).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("link", { name: "Users" })).toBeVisible();
+
+    // The Billing tab is gated on taskQuotaEnforced; the e2e server runs
+    // without STUDIO_TASK_QUOTA_ENFORCED, so it must be absent.
+    await expect(page.getByRole("link", { name: "Billing" })).toHaveCount(0);
 
     // The index route redirects to the users tab; a broken redirect renders a
     // blank outlet under a green heading.

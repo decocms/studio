@@ -20,9 +20,12 @@
  */
 import { Hono } from "hono";
 import type { Context } from "hono";
+import { sql } from "kysely";
 import { auth, getTrustedOrigins, grantDeploymentAdmin } from "@/auth";
 import { isAlreadyMemberError } from "@/auth/is-already-member-error";
 import { BUILTIN_ROLES, type BuiltinRole } from "@decocms/shared/auth/roles";
+import { taskQuotaState } from "@/billing/task-quota";
+import { LIVE_CLAIM_FILTER } from "@/storage/organization-billing";
 import { getDb } from "@/database";
 import { posthog } from "@/posthog";
 import { getSettings } from "@/settings";
@@ -145,10 +148,15 @@ export function createAdminRoutes(): Hono<Env> {
   app.use("*", requireDeploymentAdmin);
 
   // The middleware IS the check — the UI gate just probes this.
+  // `taskQuotaEnforced` gates the Billing tab: on deployments without the
+  // quota gate (self-hosted) there is nothing to administer there.
   app.get("/me", (c) => {
     const email = c.get("studioContext").auth.user?.email;
     if (!email) return c.json({ error: "Unauthorized" }, 401);
-    return c.json({ email });
+    return c.json({
+      email,
+      taskQuotaEnforced: getSettings().taskQuotaEnforced,
+    });
   });
 
   app.get("/users", async (c) => {
@@ -267,7 +275,7 @@ export function createAdminRoutes(): Hono<Env> {
     // ~10^5 member rows; past that, switch to limit-first + LATERAL count and
     // add an index on member(organizationId).
     const search = c.req.query("search")?.trim();
-    const requested = Number(c.req.query("limit"));
+    const requested = Math.floor(Number(c.req.query("limit")));
     const limit = Math.min(requested > 0 ? requested : 100, 100);
     const db = getDb().db;
 
@@ -372,6 +380,204 @@ export function createAdminRoutes(): Hono<Env> {
         organization_id: orgId,
         added_user_id: user.id,
         role,
+      },
+    });
+
+    return c.json({ ok: true });
+  });
+
+  /**
+   * Per-org task-quota consumption. Same clamp+search contract as /orgs, but
+   * ordered by all-time live claims so the orgs actually consuming quota rank
+   * first. The current bucket (trial vs subscription cycle) and its ceiling
+   * are computed with the SAME `taskQuotaState` the enforcement path uses,
+   * and the counts share `LIVE_CLAIM_FILTER` with it, so this view can never
+   * disagree with what a dispatch would be allowed.
+   *
+   * Scale ceiling is the same ~10^5 orgs as /orgs (the ordering subquery is
+   * an index probe per org, pre-LIMIT). Past that, /orgs's limit-first +
+   * LATERAL trick does NOT apply here — the ORDER BY *is* the count — so the
+   * fix is inverted: aggregate task_quota_claims first (it only has rows for
+   * quota-consuming orgs), join orgs back, pad with zero-claim orgs.
+   */
+  app.get("/billing/orgs", async (c) => {
+    const search = c.req.query("search")?.trim();
+    const requested = Math.floor(Number(c.req.query("limit")));
+    const limit = Math.min(requested > 0 ? requested : 100, 100);
+    const db = getDb().db;
+    const settings = getSettings();
+
+    let query = db
+      .selectFrom("organization")
+      .leftJoin(
+        "organization_billing",
+        "organization_billing.organization_id",
+        "organization.id",
+      )
+      .select([
+        "organization.id as id",
+        "organization.name as name",
+        "organization.slug as slug",
+        "organization_billing.status as status",
+        "organization_billing.current_period_end as currentPeriodEnd",
+        "organization_billing.free_task_executions as freeTaskExecutions",
+        "organization_billing.monthly_task_executions as monthlyTaskExecutions",
+      ])
+      .select((eb) =>
+        eb
+          .selectFrom("task_quota_claims")
+          .select((eb2) => eb2.fn.countAll<string>().as("count"))
+          .whereRef("task_quota_claims.organization_id", "=", "organization.id")
+          .where(...LIVE_CLAIM_FILTER)
+          .as("totalClaims"),
+      );
+
+    if (search) {
+      query = query.where((eb) =>
+        eb.or([
+          eb("organization.name", "ilike", `%${search}%`),
+          eb("organization.slug", "ilike", `%${search}%`),
+        ]),
+      );
+    }
+
+    const rows = await query
+      .orderBy(sql.ref("totalClaims"), "desc")
+      .orderBy("organization.createdAt", "desc")
+      .limit(limit)
+      .execute();
+
+    // Used-in-current-bucket, one grouped query for the page (no N+1); the
+    // right bucket per org is picked in JS because it depends on each org's
+    // subscription state.
+    const counts = await c
+      .get("studioContext")
+      .storage.organizationBilling.liveClaimCountsByPeriod(
+        rows.map((row) => row.id),
+      );
+    const usedByOrgPeriod = new Map(
+      counts.map(
+        (row) => [`${row.organizationId} ${row.periodKey}`, row.count] as const,
+      ),
+    );
+
+    return c.json({
+      defaults: {
+        freeTaskExecutions: settings.freeTaskExecutions,
+        monthlyTaskExecutions: settings.monthlyTaskExecutions,
+      },
+      organizations: rows.map((row) => {
+        const billing =
+          row.status == null
+            ? null
+            : {
+                status: row.status,
+                currentPeriodEnd: row.currentPeriodEnd,
+                freeTaskExecutions: row.freeTaskExecutions,
+                monthlyTaskExecutions: row.monthlyTaskExecutions,
+              };
+        const quota = taskQuotaState(billing, settings);
+        return {
+          id: row.id,
+          name: row.name,
+          slug: row.slug,
+          status: row.status ?? "none",
+          currentPeriodEnd: row.currentPeriodEnd,
+          periodKey: quota.periodKey,
+          used: usedByOrgPeriod.get(`${row.id} ${quota.periodKey}`) ?? 0,
+          limit: quota.limit,
+          freeTaskExecutions: row.freeTaskExecutions,
+          monthlyTaskExecutions: row.monthlyTaskExecutions,
+          totalClaims: Number(row.totalClaims ?? 0),
+        };
+      }),
+    });
+  });
+
+  /**
+   * Set/clear an org's quota overrides (migration 164's operator action —
+   * deliberately not an MCP tool so an org admin can never raise their own
+   * limit). null resets a knob to the deployment default; an omitted field is
+   * left untouched. Deliberately usable while the quota gate is off: the
+   * columns are dormant then, and an override set ahead of enabling the gate
+   * should stick.
+   */
+  app.patch("/billing/orgs/:orgId", async (c) => {
+    const orgId = c.req.param("orgId");
+    // `?? {}`: a body of JSON `null` parses fine and would explode on the
+    // property reads below.
+    const body = ((await c.req.json().catch(() => ({}))) ?? {}) as {
+      freeTaskExecutions?: unknown;
+      monthlyTaskExecutions?: unknown;
+    };
+    // undefined = don't touch, null = reset to default, else a positive int4
+    // (the DB rejects 0/negative/overflow too, but with a 500).
+    const parse = (value: unknown): number | null | undefined | "invalid" =>
+      value === undefined
+        ? undefined
+        : value === null
+          ? null
+          : typeof value === "number" &&
+              Number.isInteger(value) &&
+              value > 0 &&
+              value <= 2_147_483_647
+            ? value
+            : "invalid";
+    const free = parse(body.freeTaskExecutions);
+    const monthly = parse(body.monthlyTaskExecutions);
+    if (
+      free === "invalid" ||
+      monthly === "invalid" ||
+      (free === undefined && monthly === undefined)
+    ) {
+      return c.json(
+        {
+          error:
+            "freeTaskExecutions / monthlyTaskExecutions must be a positive integer or null (null = deployment default)",
+        },
+        400,
+      );
+    }
+
+    const org = await getDb()
+      .db.selectFrom("organization")
+      .select("id")
+      .where("id", "=", orgId)
+      .executeTakeFirst();
+    if (!org) return c.json({ error: "Organization not found" }, 404);
+
+    // Previous values first, so the audit line can reconstruct a lowered
+    // quota without DB history.
+    const billing = c.get("studioContext").storage.organizationBilling;
+    const previous = await billing.getBilling(orgId);
+    await billing.setQuotaOverrides(orgId, {
+      freeTaskExecutions: free,
+      monthlyTaskExecutions: monthly,
+    });
+
+    // Changing what a tenant is entitled to is a privileged action — audit it
+    // like /impersonate and member-add, attributed to the REAL actor.
+    const { actorId: effectiveActorId, impersonatedBy } =
+      await getAuditActor(c);
+    const actorId = impersonatedBy ?? effectiveActorId;
+    auditAdminAction("quota_update", {
+      actor_user_id: actorId,
+      ...(impersonatedBy ? { impersonated_user_id: effectiveActorId } : {}),
+      organization_id: orgId,
+      free_task_executions: free,
+      monthly_task_executions: monthly,
+      previous_free_task_executions: previous?.freeTaskExecutions ?? null,
+      previous_monthly_task_executions: previous?.monthlyTaskExecutions ?? null,
+    });
+    posthog.capture({
+      distinctId: actorId ?? orgId,
+      event: "deployment_admin_quota_updated",
+      groups: { organization: orgId },
+      properties: {
+        actor_user_id: actorId,
+        organization_id: orgId,
+        free_task_executions: free,
+        monthly_task_executions: monthly,
       },
     });
 

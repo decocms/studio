@@ -12,13 +12,19 @@ const TABS = [
   { to: "/_admin/orgs", labelKey: "admin.layout.organizationsTab" },
 ] as const;
 
-function AdminTabs() {
+const BILLING_TAB = {
+  to: "/_admin/billing",
+  labelKey: "admin.layout.billingTab",
+} as const;
+
+function AdminTabs({ showBilling }: { showBilling: boolean }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const t = useT();
+  const tabs = showBilling ? [...TABS, BILLING_TAB] : TABS;
 
   return (
     <nav className="flex items-center gap-1 border-b border-border px-4 md:px-10">
-      {TABS.map((tab) => (
+      {tabs.map((tab) => (
         <Link
           key={tab.to}
           to={tab.to}
@@ -37,7 +43,8 @@ function AdminTabs() {
 }
 
 function AdminGate() {
-  const { isAdmin, loading, needsEmailVerification } = useDeploymentAdmin();
+  const { isAdmin, loading, needsEmailVerification, billingEnabled } =
+    useDeploymentAdmin();
   const t = useT();
 
   if (loading) {
@@ -73,7 +80,7 @@ function AdminGate() {
           {t("admin.layout.adminDashboard")}
         </h1>
       </div>
-      <AdminTabs />
+      <AdminTabs showBilling={billingEnabled} />
       <div className="flex-1 overflow-hidden">
         <Outlet />
       </div>
