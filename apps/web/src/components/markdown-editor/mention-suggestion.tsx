@@ -13,6 +13,7 @@
 
 import { useState, useSyncExternalStore } from "react";
 import Suggestion, {
+  exitSuggestion,
   type SuggestionOptions,
   type SuggestionProps,
 } from "@tiptap/suggestion";
@@ -74,6 +75,8 @@ export class MentionMenuStore {
   }
 }
 
+export const MENTION_SUGGESTION_KEY = new PluginKey("markdownEditorMention");
+
 /** Insert the chip, replacing the typed `@query`. */
 function insert(editor: Editor, range: Range, member: MentionMember) {
   editor
@@ -86,9 +89,19 @@ function insert(editor: Editor, range: Range, member: MentionMember) {
       { type: "text", text: " " },
     ])
     .run();
+  dismiss(editor);
 }
 
-export const MENTION_SUGGESTION_KEY = new PluginKey("markdownEditorMention");
+/**
+ * Deactivate the suggestion plugin itself, not just the menu.
+ *
+ * Hiding the React menu leaves the plugin matching, and a matching plugin
+ * still claims Enter — so an Escape'd picker would silently swallow the next
+ * send. This is the only thing that actually ends the match.
+ */
+function dismiss(editor: Editor) {
+  exitSuggestion(editor.view, MENTION_SUGGESTION_KEY);
+}
 
 /**
  * The Tiptap half. `store` is created by the component that owns the editor,
@@ -124,8 +137,9 @@ export function mentionSuggestionExtension(store: MentionMenuStore) {
               editor: props.editor,
             });
           },
-          onKeyDown: ({ event }) => {
+          onKeyDown: ({ event, view }) => {
             if (event.key === "Escape") {
+              exitSuggestion(view, MENTION_SUGGESTION_KEY);
               store.close();
               return true;
             }

@@ -78,6 +78,12 @@ export function MentionInput({
     ],
     editorProps: {
       attributes: {
+        // A contenteditable is not a `<textarea>`: without these it has no
+        // role and no name, so nothing — a screen reader or a test — can
+        // address it by the label the user can see.
+        role: "textbox",
+        "aria-label": placeholder,
+        "aria-multiline": "true",
         class: cn(
           "outline-none text-sm leading-relaxed text-foreground",
           PLACEHOLDER_CLASS,

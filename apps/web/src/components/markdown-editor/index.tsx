@@ -135,6 +135,11 @@ export function MarkdownEditor({
     editable,
     editorProps: {
       attributes: {
+        // A contenteditable has no role and no accessible name of its own, so
+        // without these nothing can address it by the label the user sees.
+        role: "textbox",
+        "aria-label": placeholder ?? "",
+        "aria-multiline": "true",
         class: cn(CONTENT_CLASS, PLACEHOLDER_CLASS),
       },
       handlePaste: (view, event) => {
