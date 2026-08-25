@@ -224,12 +224,22 @@ test("typing @ opens the member picker, and picking one inserts a chip", async (
   const menu = page.getByTestId("mention-menu");
   await expect(menu).toBeVisible();
 
-  // The query is what was typed after the `@` — there is no second input.
-  await composer.pressSequentially("an");
+  // Opening moves focus into the menu's own search field — the picker is a
+  // real combobox, not a list that reads the document behind it.
+  const search = menu.getByPlaceholder("Search members...");
+  await expect(search).toBeFocused();
+
+  await search.fill("an");
   await expect(menu.getByText("Ana Silva")).toBeVisible();
   await expect(menu.getByText("Bruno")).toHaveCount(0);
 
-  await composer.press("Enter");
+  // Email matches too, so you can find someone whose display name you can't
+  // spell.
+  await search.fill("bruno@deco.cx");
+  await expect(menu.getByText("Bruno")).toBeVisible();
+
+  await search.fill("ana");
+  await search.press("Enter");
   await expect(menu).toHaveCount(0);
   await expect(component.getByTestId("mention-chip")).toHaveText("@Ana Silva");
 
@@ -238,6 +248,35 @@ test("typing @ opens the member picker, and picking one inserts a chip", async (
   await expect(component.getByTestId("posted")).toHaveText(
     JSON.stringify(["ping [@Ana Silva](mention:u2)"]),
   );
+});
+
+test("the picker's list scrolls rather than clipping its members", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(<TaskCommentsHarness />);
+  const composer = component.getByRole("textbox", {
+    name: "Leave a comment...",
+  });
+
+  await composer.click();
+  await composer.pressSequentially("@");
+  const list = page.getByTestId("mention-menu").locator("[cmdk-list]");
+  await expect(list).toBeVisible();
+
+  // The list is its own scroll container, and the wrapper never clips it
+  // shorter than that: a clipped list hides members instead of scrolling to
+  // them, which is exactly what the first cut of this menu did.
+  expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(
+    true,
+  );
+  await list.evaluate((el) => el.scrollBy(0, 40));
+  expect(await list.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+
+  // The last member is reachable — the point of scrolling.
+  const last = page.getByTestId("mention-menu").getByText("Coworker 25");
+  await last.scrollIntoViewIfNeeded();
+  await expect(last).toBeVisible();
 });
 
 test("Escape dismisses the picker and leaves the typed text alone", async ({
@@ -250,16 +289,40 @@ test("Escape dismisses the picker and leaves the typed text alone", async ({
   });
 
   await composer.click();
-  await composer.pressSequentially("hey @an");
-  await expect(page.getByTestId("mention-menu")).toBeVisible();
+  await composer.pressSequentially("hey @");
+  const menu = page.getByTestId("mention-menu");
+  await expect(menu).toBeVisible();
 
-  await composer.press("Escape");
-  await expect(page.getByTestId("mention-menu")).toHaveCount(0);
-  await expect(composer).toHaveText("hey @an");
+  await menu.getByPlaceholder("Search members...").press("Escape");
+  await expect(menu).toHaveCount(0);
+  // Escape hands the caret back, and what was typed is untouched.
+  await expect(composer).toHaveText("hey @");
+  await expect(composer).toBeFocused();
 
   // Enter now sends, because the picker no longer owns it.
   await composer.press("Enter");
   await expect(component.getByTestId("posted")).toHaveText(
-    JSON.stringify(["hey @an"]),
+    JSON.stringify(["hey @"]),
   );
+});
+
+test("clicking away dismisses the picker without stealing the caret back", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(<TaskCommentsHarness />);
+  const composer = component.getByRole("textbox", {
+    name: "Leave a comment...",
+  });
+
+  await composer.click();
+  await composer.pressSequentially("@");
+  await expect(page.getByTestId("mention-menu")).toBeVisible();
+
+  await component.getByRole("textbox", { name: "Leave a reply..." }).click();
+  await expect(page.getByTestId("mention-menu")).toHaveCount(0);
+  // The click chose where focus goes; the dismissal must not undo that.
+  await expect(
+    component.getByRole("textbox", { name: "Leave a reply..." }),
+  ).toBeFocused();
 });

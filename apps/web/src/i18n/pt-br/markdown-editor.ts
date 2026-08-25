@@ -3,6 +3,7 @@ import type { markdownEditor as markdownEditorEn } from "../en/markdown-editor.t
 export const markdownEditor = {
   "markdownEditor.toolbarAriaLabel": "Formatação de texto",
   "markdownEditor.mentionEmpty": "Nenhum membro encontrado",
+  "markdownEditor.mentionSearch": "Buscar membros...",
   "markdownEditor.bold": "Negrito",
   "markdownEditor.italic": "Itálico",
   "markdownEditor.strikethrough": "Riscado",
