@@ -101,6 +101,30 @@ export function parseSections(
           };
         }
 
+        if (
+          innerRt !== "" &&
+          isSavedBlockResolveType(innerRt) &&
+          innerRt in decofile
+        ) {
+          const resolvedBlock = decofile[innerRt] as
+            | Record<string, unknown>
+            | undefined;
+          const label =
+            (typeof resolvedBlock?.name === "string" && resolvedBlock.name) ||
+            innerRt
+              .replace(/[-_]/g, " ")
+              .replace(/\b\w/g, (c) => c.toUpperCase()) ||
+            `Section ${idx + 1}`;
+          return {
+            index: idx,
+            resolveType: rt,
+            label,
+            isHidden: true,
+            isLazy: innerIsLazy,
+            isSavedBlock: true,
+          };
+        }
+
         return {
           index: idx,
           resolveType: rt,

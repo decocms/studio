@@ -75,6 +75,31 @@ describe("parseSections", () => {
     expect(parsed[0]?.isHidden).toBe(true);
   });
 
+  it("resolves the saved block's own name and isSavedBlock when hidden", () => {
+    const parsed = parseSections(
+      [
+        {
+          __resolveType: "website/flags/multivariate/section.ts",
+          variants: [
+            {
+              value: { __resolveType: "Header" },
+              rule: { __resolveType: "website/matchers/never.ts" },
+            },
+          ],
+        },
+      ],
+      {
+        Header: {
+          __resolveType: "site/sections/Header/Header.tsx",
+          name: "Site Header",
+        },
+      },
+    );
+    expect(parsed[0]?.isHidden).toBe(true);
+    expect(parsed[0]?.isSavedBlock).toBe(true);
+    expect(parsed[0]?.label).toBe("Site Header");
+  });
+
   it("keeps the 'Variants of X' label when a variant section is hidden", () => {
     const parsed = parseSections(
       [
