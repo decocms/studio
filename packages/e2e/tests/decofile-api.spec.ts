@@ -26,6 +26,7 @@
 import { randomUUID } from "node:crypto";
 import { signUpViaApi } from "../fixtures/auth-api";
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
+import { connectDevDb } from "../fixtures/db";
 import {
   createFastPreviewProject,
   type FastPreviewProject,
@@ -794,6 +795,7 @@ test.describe("decofile API", () => {
     playwright,
   }) => {
     const ctx = await newApiContext(playwright);
+    const db = await connectDevDb();
     try {
       const user = await signUpViaApi(ctx);
       const org = user.orgSlug;
@@ -860,25 +862,28 @@ test.describe("decofile API", () => {
       ).toBeUndefined();
 
       // Record a DEAD sandbox for (user, branch) — the shape a July
-      // `user-desktop` leftover has, and what used to hijack the whole branch.
-      await callSelfMcpTool(ctx, org, "COLLECTION_VIRTUAL_MCP_UPDATE", {
-        id: project.vmcpId,
-        data: {
-          metadata: {
-            sandboxMap: {
-              [user.userId]: {
-                [branch]: {
-                  "agent-sandbox": {
-                    sandboxHandle: "vm_e2e",
-                    previewUrl: null,
-                    createdAt: 1000,
-                  },
-                },
-              },
+      // `local-api` leftover has, and what used to hijack the whole branch.
+      const sandboxMap = {
+        [user.userId]: {
+          [branch]: {
+            "agent-sandbox": {
+              sandboxHandle: "vm_e2e",
+              previewUrl: null,
+              createdAt: 1000,
             },
           },
         },
-      });
+      };
+      const seeded = await db.query(
+        `UPDATE connections
+            SET metadata = jsonb_set(
+              COALESCE(metadata::jsonb, '{}'::jsonb),
+              '{sandboxMap}', $1::jsonb, true
+            )::text
+          WHERE id = $2 AND created_by = $3`,
+        [JSON.stringify(sandboxMap), project.vmcpId, user.userId],
+      );
+      expect(seeded.rowCount).toBe(1);
 
       // The stamp still decides: the CMS session keeps its GitHub answer, and
       // never the 410 the dead cell used to produce.
@@ -896,6 +901,7 @@ test.describe("decofile API", () => {
         ((await threadless.json()) as { headSha?: string }).headSha,
       ).toBeTruthy();
     } finally {
+      await db.end();
       await ctx.dispose();
     }
   });

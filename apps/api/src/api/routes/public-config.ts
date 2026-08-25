@@ -58,7 +58,7 @@ app.get("/", (c) => {
     runtime: {
       // Local/dev mode has no cloud agent-sandbox cluster, so cloud Decopilot
       // can't run there — report it unavailable to drop it from the picker.
-      agentSandbox: !isLocalMode() && !!getSettings().agentSandboxEnabled,
+      agentSandbox: !isLocalMode() && getSettings().agentSandboxEnabled,
     },
   };
 
