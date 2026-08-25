@@ -59,6 +59,17 @@ export class MentionMenuStore {
   private listeners = new Set<() => void>();
   /** The `@` the user dismissed, if any. See `dismiss`. */
   dismissal: Dismissal | null = null;
+  /**
+   * Set once the menu's own input has taken focus.
+   *
+   * From that moment the menu outlives the plugin's match: focus has left the
+   * editor, and the plugin ends its match on the transaction that follows —
+   * which would tear the menu down mid-keystroke, replacing the very input
+   * being typed into. What the menu still needs (the range, the caret rect) is
+   * already snapshotted here, and the document cannot change while the editor
+   * isn't focused, so the snapshot stays true.
+   */
+  latched = false;
 
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -73,6 +84,7 @@ export class MentionMenuStore {
   }
 
   close() {
+    this.latched = false;
     this.set(CLOSED);
   }
 }
@@ -117,10 +129,10 @@ function textAt(doc: Node, from: number, length: number): string {
  * dismissed is what `allow` below consults to keep it shut.
  */
 function dismiss(editor: Editor, store: MentionMenuStore) {
-  const state = MENTION_SUGGESTION_KEY.getState(editor.state) as
-    | { range?: { from: number; to: number } }
-    | undefined;
-  const range = state?.range;
+  // The store's range, not the plugin's: by the time anything is dismissed the
+  // menu has usually had focus, and the plugin's match ended when the editor
+  // lost it. The snapshot is the only record of which `@` this was.
+  const range = store.getSnapshot().range ?? undefined;
   if (range && range.to > range.from) {
     store.dismissal = {
       from: range.from,
@@ -193,7 +205,11 @@ export function mentionSuggestionExtension(store: MentionMenuStore) {
             }
             return false;
           },
-          onExit: () => store.close(),
+          // Ignored once the menu has focus — see `latched`. The menu closes
+          // itself from there: Escape, a pick, or a click elsewhere.
+          onExit: () => {
+            if (!store.latched) store.close();
+          },
         }),
       };
       return [Suggestion(options)];
@@ -229,6 +245,7 @@ function OpenMentionMenu({
   // Controlled, so the field can be seeded with whatever reached the editor
   // before focus landed here — cmdk's input owns its own state otherwise.
   const [query, setQuery] = useState(state.query);
+  const [searchEl, setSearchEl] = useState<HTMLInputElement | null>(null);
 
   // Portalled out of the editor so its overflow can't clip the menu — but
   // only as far as the enclosing dialog, never to `document.body`. A modal
@@ -251,11 +268,16 @@ function OpenMentionMenu({
   const caret = state.rect?.() ?? new DOMRect(0, 0, 0, 0);
   const below = bounds.bottom - caret.bottom;
   const flipUp = below < MENU_MAX_HEIGHT && caret.top - bounds.top > below;
-  // The cap the LIST scrolls within, never the wrapper's: a wrapper that clips
-  // (it has to, for the rounded corners) shorter than the list's own scroll
-  // container just hides the overflow instead of scrolling it.
+  // The cap goes on the LIST, never on the wrapper: the wrapper clips (it has
+  // to, for the rounded corners), so a wrapper shorter than the list's own
+  // scroll container hides the overflow instead of scrolling it. Clamped at
+  // both ends, and measured against the host: unclamped, a caret
+  // low in a tall dialog reports ~600px of room above it and the menu grows to
+  // fill it, which flips its top edge clean out of the dialog's clipping box —
+  // where the overlay, not the menu, is what the pointer finds.
+  const available = (flipUp ? caret.top - bounds.top : below) - 8;
   const listMaxHeight =
-    Math.max(flipUp ? caret.top - 8 : below - 8, MENU_MIN_HEIGHT) -
+    Math.min(MENU_MAX_HEIGHT, Math.max(available, MENU_MIN_HEIGHT)) -
     INPUT_HEIGHT;
   // Positioned against the host, not the viewport: the dialog is
   // `translate`d, and a transformed ancestor is what `position: fixed`
@@ -275,6 +297,25 @@ function OpenMentionMenu({
   const close = () => {
     if (state.editor) dismiss(state.editor, store);
     store.close();
+  };
+
+  /**
+   * Losing focus is usually a dismissal — but not always.
+   *
+   * ProseMirror reclaims focus whenever its view updates, so a keystroke here
+   * that re-renders the list is enough for the editor to take the caret back
+   * mid-word. While the picker is the thing being used, hand it straight back;
+   * only focus that genuinely lands somewhere else closes the menu.
+   */
+  const onSearchBlur = (event: React.FocusEvent<HTMLInputElement>) => {
+    const next = event.relatedTarget;
+    const stolenByEditor =
+      !next || state.editor?.view.dom.contains(next) === true;
+    if (stolenByEditor && store.latched) {
+      searchEl?.focus();
+      return;
+    }
+    close();
   };
 
   const choose = (member: MentionMember) => {
@@ -307,13 +348,16 @@ function OpenMentionMenu({
           // Focus moves here on open, so the query is typed into the search
           // field rather than into the document behind it. Seeded with
           // whatever reached the editor before focus landed.
+          ref={setSearchEl}
           autoFocus
+          // From here the menu owns its own lifetime — see `latched`.
+          onFocus={() => {
+            store.latched = true;
+          }}
           value={query}
           onValueChange={setQuery}
           placeholder={t("markdownEditor.mentionSearch")}
-          // Clicking away is a dismissal — without this the menu outlives the
-          // caret it belongs to.
-          onBlur={close}
+          onBlur={onSearchBlur}
         />
         <CommandList style={{ maxHeight: listMaxHeight }}>
           {/* A cached list is on screen while the refresh runs; the spinner is

@@ -334,19 +334,21 @@ test("inside a modal dialog the picker is still clickable, typable and scrollabl
   mount,
   page,
 }) => {
-  const component = await mount(<TaskCommentsDialogHarness />);
-  const composer = component.getByRole("textbox", {
-    name: "Leave a comment...",
-  });
+  // Addressed through `page`, not the mount root: Radix portals the dialog's
+  // content out of it, so none of this is under the harness's own element.
+  await mount(<TaskCommentsDialogHarness />);
+  const dialog = page.getByRole("dialog");
+  const composer = dialog.getByRole("textbox", { name: "Leave a comment..." });
 
   await composer.click();
   await composer.pressSequentially("@");
   const menu = page.getByTestId("mention-menu");
   await expect(menu).toBeVisible();
 
-  // Rendering is not the bar. A modal Radix dialog puts `pointer-events: none`
-  // on the body, so a menu portalled to the body renders perfectly and is
-  // inert — unclickable, and the wheel scrolls the dialog behind it instead.
+  // Rendering is not the bar. A modal Radix dialog covers everything in an
+  // overlay and puts `pointer-events: none` on the body, so a menu that lands
+  // outside the dialog — or spills outside its clipping box — is inert:
+  // unclickable, with the wheel going to whatever is behind it.
   const search = menu.getByPlaceholder("Search members...");
   await search.click();
   await expect(search).toBeFocused();
@@ -354,19 +356,29 @@ test("inside a modal dialog the picker is still clickable, typable and scrollabl
   await expect(search).toHaveValue("ana");
   await expect(menu.getByText("Ana Silva")).toBeVisible();
 
+  // The menu has to sit INSIDE the dialog that clips it — a taller-than-the-
+  // gap menu flips its top edge out of the dialog, and the overlay is then
+  // what the pointer finds there.
+  const box = (await menu.boundingBox())!;
+  const dialogBox = (await dialog.boundingBox())!;
+  expect(box.y).toBeGreaterThanOrEqual(dialogBox.y);
+  expect(box.y + box.height).toBeLessThanOrEqual(
+    dialogBox.y + dialogBox.height,
+  );
+
   // And the wheel belongs to the list, not to whatever sits behind it.
   await search.fill("");
   const list = menu.locator("[cmdk-list]");
-  const dialogScroller = component.locator(".overflow-y-auto").first();
-  const before = await dialogScroller.evaluate((el) => el.scrollTop);
+  const scroller = dialog.locator(".overflow-y-auto").first();
+  const before = await scroller.evaluate((el) => el.scrollTop);
   await list.hover();
   await page.mouse.wheel(0, 120);
   await expect
     .poll(() => list.evaluate((el) => el.scrollTop))
     .toBeGreaterThan(0);
-  expect(await dialogScroller.evaluate((el) => el.scrollTop)).toBe(before);
+  expect(await scroller.evaluate((el) => el.scrollTop)).toBe(before);
 
   // It still does its job from in here.
   await menu.getByText("Ana Silva").click();
-  await expect(component.getByTestId("mention-chip")).toHaveText("@Ana Silva");
+  await expect(page.getByTestId("mention-chip")).toHaveText("@Ana Silva");
 });
