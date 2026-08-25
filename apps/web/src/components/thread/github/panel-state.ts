@@ -287,16 +287,14 @@ export function selectHeaderButton(
         tooltip: t("thread.headerActions.installingPackagesTooltip"),
         menu: [],
       };
-    // `starting`: any real work publishes now (git needs the checkout, not the dev server); workingTreeDirty is trustworthy mid-boot since the daemon reports it only for user-written paths (BranchStatusMonitor.userTouched), not boot dirt.
-    case "starting":
-      if (
-        !(
-          branch.kind === "ready" &&
-          (branch.workingTreeDirty ||
-            branch.aheadOfBase > 0 ||
-            branch.unpushed > 0)
-        )
-      ) {
+    // `starting` never gates the verdict — publishing is git (needs the checkout, not the dev server). Fall through the moment either signal resolves: real work (workingTreeDirty is user-written-only mid-boot, commits are never boot noise) → git/PR copy, or an authoritative-empty /git/status → "Up to date". Hold the boot pill only while both are still undecided.
+    case "starting": {
+      const hasWork =
+        branch.kind === "ready" &&
+        (branch.workingTreeDirty ||
+          branch.aheadOfBase > 0 ||
+          branch.unpushed > 0);
+      if (!hasWork && !input.noReviewableDiff) {
         return {
           label: t("thread.headerActions.startingApp"),
           disabled: true,
@@ -307,6 +305,7 @@ export function selectHeaderButton(
         };
       }
       break;
+    }
     // running/*-failed/crashed: fall through to git/PR.
   }
 

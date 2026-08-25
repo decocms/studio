@@ -289,13 +289,25 @@ describe("selectHeaderButton", () => {
     expect(r.action).toBe("publish");
   });
 
-  test("lifecycle.starting + clean branch, no work → Starting app…", () => {
+  test("lifecycle.starting + clean branch, git status still resolving → Starting app…", () => {
     const r = selectHeaderButton(
       happyInput({ lifecycle: { phase: "starting" } }),
     );
     expect(r.label).toBe("Starting app…");
     expect(r.disabled).toBe(true);
     expect(r.loading).toBe(true);
+  });
+
+  test("lifecycle.starting + clean branch, git status resolved empty → Up to date (not the boot pill)", () => {
+    const r = selectHeaderButton(
+      happyInput({
+        lifecycle: { phase: "starting" },
+        noReviewableDiff: true,
+      }),
+    );
+    expect(r.label).toBe("Up to date");
+    expect(r.disabled).toBe(true);
+    expect(r.action).toBeUndefined();
   });
 
   test("lifecycle.install-failed + dirty branch → Review & Publish (commit fixes)", () => {
