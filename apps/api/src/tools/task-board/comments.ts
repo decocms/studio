@@ -130,6 +130,14 @@ export const TASK_BOARD_COMMENT_CREATE = defineTool({
       actorId: taskRun ? null : getUserId(ctx)!,
       alsoSubscribe: taskRun ? [] : [getUserId(ctx)!],
     });
+    // Separate from the "commented" fan-out above: that one reaches the task's
+    // followers, this one the people the comment names — who may be neither.
+    await ctx.storage.notifications.notifyMentions({
+      taskBoardItemId: comment.taskBoardItemId,
+      organizationId,
+      actorId: taskRun ? null : getUserId(ctx)!,
+      body: comment.body,
+    });
     // Durable enqueue (a DB write): the DBOS queue mirrors it onto the issue.
     await enqueueJiraCommentPush(ctx, {
       commentId: comment.id,

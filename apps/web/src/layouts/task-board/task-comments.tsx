@@ -6,9 +6,10 @@
  * `useTaskBoardComments`, and the dialog maps a comment's `authorId` to a
  * member before handing it here.
  *
- * No attach affordance and no `@`-mentions: the paperclip belongs with
- * attachment storage, and a mention is only worth typing once mentioning
- * someone notifies them. Both are additions, not omissions to paper over.
+ * No attach affordance: the paperclip belongs with attachment storage. The
+ * composer is a Tiptap field rather than a textarea for one reason — an
+ * `@`-mention needs a chip and a user id, not the name the user happened to
+ * type.
  */
 
 import { Fragment, useRef, useState } from "react";
@@ -35,6 +36,10 @@ import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { getInitials } from "@/lib/get-initials";
 import { formatTimeAgo } from "@/lib/format-time";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
+import {
+  MentionInput,
+  type MentionInputHandle,
+} from "@/components/markdown-editor/mention-input";
 
 export type CommentAuthor = {
   id: string;
@@ -333,41 +338,19 @@ function CommentComposer({
   onSubmit: (body: string) => void;
 }) {
   const t = useT();
-  const ref = useRef<HTMLTextAreaElement>(null);
-  const [value, setValue] = useState("");
+  const ref = useRef<MentionInputHandle>(null);
+  const [empty, setEmpty] = useState(true);
 
-  const submit = () => {
-    const body = value.trim();
-    if (!body) return;
-    onSubmit(body);
-    setValue("");
-    const el = ref.current;
-    if (el) {
-      el.value = "";
-      autoGrow(el);
-    }
-  };
-
-  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      submit();
-    }
-  };
+  const submit = () => ref.current?.submit();
 
   const textarea = (
-    <textarea
+    <MentionInput
       ref={ref}
-      value={value}
-      onChange={(e) => {
-        setValue(e.currentTarget.value);
-        autoGrow(e.currentTarget);
-      }}
-      onKeyDown={onKeyDown}
       placeholder={placeholder}
-      rows={1}
+      onSubmit={onSubmit}
+      onEmptyChange={setEmpty}
       className={cn(
-        "w-full resize-none overflow-hidden border-0 bg-transparent text-sm leading-relaxed text-foreground outline-none placeholder:text-muted-foreground",
+        "w-full [&_.tiptap]:outline-none",
         variant === "root" && "min-h-10",
       )}
     />
@@ -376,7 +359,7 @@ function CommentComposer({
   const actions = (
     <button
       type="button"
-      disabled={!value.trim()}
+      disabled={empty}
       onClick={submit}
       aria-label={t("taskBoard.taskDialog.commentSubmitAriaLabel")}
       // cursor-pointer: the composer around it sets cursor-text, which would
@@ -421,10 +404,4 @@ function CommentComposer({
       {actions}
     </div>
   );
-}
-
-/** Grow a composer to fit its text instead of scrolling inside itself. */
-function autoGrow(el: HTMLTextAreaElement) {
-  el.style.height = "auto";
-  el.style.height = `${el.scrollHeight}px`;
 }

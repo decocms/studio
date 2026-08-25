@@ -20,6 +20,7 @@ import { ImageLightbox } from "./image-lightbox.tsx";
 import { resolveOrgFileBrowsePath } from "./org-file-ref.ts";
 import { OrgFileOpenContext } from "./org-file-open-context.tsx";
 import { useT } from "@/i18n/use-t.ts";
+import { mentionIdFromHref } from "@decocms/shared/mentions";
 // @ts-ignore - correct
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism/index.js";
 
@@ -269,6 +270,15 @@ function MarkdownAnchor({
       ? resolveOrgFileBrowsePath(href, ctx.orgSlug, ctx.threadId)
       : null;
   const label = animate ? animateText(children) : children;
+  // A mention is a link only so the body stays plain markdown — it doesn't
+  // navigate anywhere, so it must not render as something you can click.
+  if (href && mentionIdFromHref(href)) {
+    return (
+      <span className="rounded bg-primary/10 px-1 font-medium text-primary">
+        {label}
+      </span>
+    );
+  }
   if (ctx && browsePath) {
     return (
       <button

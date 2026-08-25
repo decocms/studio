@@ -138,6 +138,13 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       ],
     });
 
+    await ctx.storage.notifications.notifyMentions({
+      taskBoardItemId: item.id,
+      organizationId,
+      actorId: getUserId(ctx)!,
+      body: item.description ?? "",
+    });
+
     // Broadcast the new card so every open board adds it live, no polling.
     emitTaskBoardUpdated(organizationId, item);
     await reactToSuperAgentDelegation(ctx, item);

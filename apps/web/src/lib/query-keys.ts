@@ -25,6 +25,10 @@ export const KEYS = {
 
   // Organization members (scoped by org)
   members: (locator: ProjectLocator) => [locator, "members"] as const,
+  /** The mention picker's own view of the members list — narrowed, and backed
+   *  by a browser-persisted copy, so it can't share `members`' cache entry. */
+  mentionMembers: (locator: ProjectLocator) =>
+    [locator, "mention-members"] as const,
 
   // Organization invitations (scoped by org)
   invitations: (locator: ProjectLocator) => [locator, "invitations"] as const,

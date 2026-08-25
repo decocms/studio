@@ -1,5 +1,6 @@
 export const markdownEditor = {
   "markdownEditor.toolbarAriaLabel": "Text formatting",
+  "markdownEditor.mentionEmpty": "No members found",
   "markdownEditor.bold": "Bold",
   "markdownEditor.italic": "Italic",
   "markdownEditor.strikethrough": "Strikethrough",
