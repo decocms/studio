@@ -461,7 +461,7 @@ export class SandboxDispatchClient implements SandboxClient {
     // Resolved before the pod exists; model credential wins — see `mergeRunEnv`.
     const runEnv = mergeRunEnv(await resolveOrgRunEnv(this.ctx), modelEnv);
 
-    const { provider, kind } = await resolveSandboxProvider(this.ctx, {
+    const { provider } = await resolveSandboxProvider(this.ctx, {
       userId: input.user.id,
       branch: this.branch,
       virtualMcpMetadata: null,
@@ -520,7 +520,6 @@ export class SandboxDispatchClient implements SandboxClient {
           {
             virtualMcpId,
             branch,
-            sandboxProviderKind: kind,
             // One agent loop, no preview, and a memory ceiling of its own.
             purpose: "harness-run",
           },

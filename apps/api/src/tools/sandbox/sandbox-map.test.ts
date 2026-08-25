@@ -51,7 +51,6 @@ describe("readSandboxMap canonical reads", () => {
       sandboxHandle: "h1",
       previewUrl: null,
       createdAt: 1,
-      sandboxProviderKind: "agent-sandbox",
     };
     const meta = {
       sandboxMap: { user1: { main: { "agent-sandbox": inner } } },
@@ -64,7 +63,6 @@ describe("readSandboxMap canonical reads", () => {
       sandboxHandle: "h1",
       previewUrl: null,
       createdAt: 1,
-      sandboxProviderKind: "agent-sandbox",
     };
     const meta = { vmMap: { user1: { main: { "agent-sandbox": inner } } } };
     expect(readSandboxMap(meta)).toEqual({});
@@ -73,26 +71,22 @@ describe("readSandboxMap canonical reads", () => {
 
 describe("resolveVm", () => {
   test("returns null when user is absent", () => {
-    expect(resolveVm({}, "user-1", "main", "agent-sandbox")).toBeNull();
+    expect(resolveVm({}, "user-1", "main")).toBeNull();
   });
 
   test("returns null when branch is absent for that user", () => {
     const sandboxMap = { "user-1": { main: { "agent-sandbox": ENTRY_A } } };
-    expect(
-      resolveVm(sandboxMap, "user-1", "feat/x", "agent-sandbox"),
-    ).toBeNull();
+    expect(resolveVm(sandboxMap, "user-1", "feat/x")).toBeNull();
   });
 
-  test("returns the entry when userId, branch, and kind are all present", () => {
+  test("returns the hosted entry when userId and branch are present", () => {
     const sandboxMap = {
       "user-1": {
         main: { "agent-sandbox": ENTRY_A },
         "feat/x": { "agent-sandbox": ENTRY_B },
       },
     };
-    expect(resolveVm(sandboxMap, "user-1", "feat/x", "agent-sandbox")).toEqual(
-      ENTRY_B,
-    );
+    expect(resolveVm(sandboxMap, "user-1", "feat/x")).toEqual(ENTRY_B);
   });
 
   test("isolates users from each other", () => {
@@ -100,32 +94,23 @@ describe("resolveVm", () => {
       "user-1": { main: { "agent-sandbox": ENTRY_A } },
       "user-2": { main: { "agent-sandbox": ENTRY_B } },
     };
-    expect(resolveVm(sandboxMap, "user-1", "main", "agent-sandbox")).toEqual(
-      ENTRY_A,
-    );
-    expect(resolveVm(sandboxMap, "user-2", "main", "agent-sandbox")).toEqual(
-      ENTRY_B,
-    );
+    expect(resolveVm(sandboxMap, "user-1", "main")).toEqual(ENTRY_A);
+    expect(resolveVm(sandboxMap, "user-2", "main")).toEqual(ENTRY_B);
   });
 
   test("returns null when the kind is absent but another kind exists", () => {
     const sandboxMap = {
-      "user-1": { main: { "user-desktop": ENTRY_A } },
+      "user-1": { main: { "local-api": ENTRY_A } },
     };
-    // looking up "agent-sandbox" when only "user-desktop" exists → null
-    expect(resolveVm(sandboxMap, "user-1", "main", "agent-sandbox")).toBeNull();
+    // looking up "agent-sandbox" when only "local-api" exists → null
+    expect(resolveVm(sandboxMap, "user-1", "main")).toBeNull();
   });
 
-  test("returns the entry for the requested kind when multiple kinds coexist", () => {
+  test("returns the hosted entry when a local sibling coexists", () => {
     const sandboxMap = {
-      "user-1": { main: { "user-desktop": ENTRY_A, "agent-sandbox": ENTRY_B } },
+      "user-1": { main: { "local-api": ENTRY_A, "agent-sandbox": ENTRY_B } },
     };
-    expect(resolveVm(sandboxMap, "user-1", "main", "user-desktop")).toEqual(
-      ENTRY_A,
-    );
-    expect(resolveVm(sandboxMap, "user-1", "main", "agent-sandbox")).toEqual(
-      ENTRY_B,
-    );
+    expect(resolveVm(sandboxMap, "user-1", "main")).toEqual(ENTRY_B);
   });
 });
 
@@ -136,84 +121,62 @@ describe("mergeSandboxMapEntry", () => {
     const current = {
       u: { "thread:t/conn_a": { "agent-sandbox": ENTRY_A } },
     };
-    const next = mergeSandboxMapEntry(
-      current,
-      "u",
-      "thread:t/conn_b",
-      "agent-sandbox",
-      ENTRY_B,
-    );
-    expect(resolveVm(next, "u", "thread:t/conn_a", "agent-sandbox")).toEqual(
-      ENTRY_A,
-    );
-    expect(resolveVm(next, "u", "thread:t/conn_b", "agent-sandbox")).toEqual(
-      ENTRY_B,
-    );
+    const next = mergeSandboxMapEntry(current, "u", "thread:t/conn_b", ENTRY_B);
+    expect(resolveVm(next, "u", "thread:t/conn_a")).toEqual(ENTRY_A);
+    expect(resolveVm(next, "u", "thread:t/conn_b")).toEqual(ENTRY_B);
   });
 
   test("preserves sibling kinds on the same branch", () => {
-    const current = { u: { b: { "user-desktop": ENTRY_A } } };
-    const next = mergeSandboxMapEntry(
-      current,
-      "u",
-      "b",
-      "agent-sandbox",
-      ENTRY_B,
-    );
-    expect(resolveVm(next, "u", "b", "user-desktop")).toEqual(ENTRY_A);
-    expect(resolveVm(next, "u", "b", "agent-sandbox")).toEqual(ENTRY_B);
+    const current = { u: { b: { "local-api": ENTRY_A } } };
+    const next = mergeSandboxMapEntry(current, "u", "b", ENTRY_B);
+    expect(next.u?.b?.["local-api"]).toEqual(ENTRY_A);
+    expect(resolveVm(next, "u", "b")).toEqual(ENTRY_B);
   });
 
   test("does not mutate the input map", () => {
     const current = { u: { b: { "agent-sandbox": ENTRY_A } } };
     const snapshot = JSON.stringify(current);
-    mergeSandboxMapEntry(current, "u", "b", "user-desktop", ENTRY_B);
+    mergeSandboxMapEntry(current, "u", "b", ENTRY_B);
     expect(JSON.stringify(current)).toBe(snapshot);
   });
 
-  test("normalizes a legacy stringified branch cell instead of corrupting it", () => {
+  test("normalizes a malformed stringified branch cell instead of corrupting it", () => {
     // parseBranchMap treats a non-object (stringified) cell as empty, so the
     // merge drops the unreadable cell rather than a raw spread exploding it into
     // character-indexed keys ("0","1",...).
     const current = {
       u: { b: JSON.stringify({ "agent-sandbox": ENTRY_A }) },
     } as unknown as Parameters<typeof mergeSandboxMapEntry>[0];
-    const next = mergeSandboxMapEntry(
-      current,
-      "u",
-      "b",
-      "user-desktop",
-      ENTRY_B,
-    );
-    expect(resolveVm(next, "u", "b", "user-desktop")).toEqual(ENTRY_B);
+    const next = mergeSandboxMapEntry(current, "u", "b", ENTRY_B);
+    expect(resolveVm(next, "u", "b")).toEqual(ENTRY_B);
     expect(next.u?.b).not.toHaveProperty("0");
   });
 });
 
 describe("deleteSandboxMapEntry", () => {
   test("returns null when the entry is absent (no-op write)", () => {
-    expect(deleteSandboxMapEntry({}, "u", "b", "agent-sandbox")).toBeNull();
-    const other = { u: { b: { "user-desktop": ENTRY_A } } };
-    expect(deleteSandboxMapEntry(other, "u", "b", "agent-sandbox")).toBeNull();
+    expect(deleteSandboxMapEntry({}, "u", "b")).toBeNull();
+    const other = { u: { b: { "local-api": ENTRY_A } } };
+    expect(deleteSandboxMapEntry(other, "u", "b")).toBeNull();
   });
 
   test("removes the entry and prunes empty branch + user buckets", () => {
     const current = { u: { b: { "agent-sandbox": ENTRY_A } } };
-    const next = deleteSandboxMapEntry(current, "u", "b", "agent-sandbox");
+    const next = deleteSandboxMapEntry(current, "u", "b");
     expect(next).toEqual({});
   });
 
   test("keeps sibling kinds and sibling branches", () => {
     const current = {
       u: {
-        b: { "agent-sandbox": ENTRY_A, "user-desktop": ENTRY_B },
+        b: { "agent-sandbox": ENTRY_A, "local-api": ENTRY_B },
         other: { "agent-sandbox": ENTRY_A },
       },
     };
-    const next = deleteSandboxMapEntry(current, "u", "b", "agent-sandbox");
-    expect(resolveVm(next!, "u", "b", "user-desktop")).toEqual(ENTRY_B);
-    expect(resolveVm(next!, "u", "other", "agent-sandbox")).toEqual(ENTRY_A);
-    expect(resolveVm(next!, "u", "b", "agent-sandbox")).toBeNull();
+    const next = deleteSandboxMapEntry(current, "u", "b");
+    expect(next?.u?.b?.["local-api"]).toEqual(ENTRY_B);
+    expect(resolveVm(next!, "u", "other")).toEqual(ENTRY_A);
+    expect(resolveVm(next!, "u", "b")).toBeNull();
   });
 });
 
@@ -243,7 +206,6 @@ describe("setSandboxMapEntry", () => {
       sandboxHandle: "new",
       previewUrl: null,
       createdAt: 2,
-      sandboxProviderKind: "agent-sandbox",
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -253,7 +215,6 @@ describe("setSandboxMapEntry", () => {
       "u",
       "u",
       "b",
-      "agent-sandbox",
       newEntry,
     );
 

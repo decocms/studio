@@ -1,26 +1,23 @@
 /**
- * CLUSTER sandbox-fs glue (option-b sandbox decoupling).
+ * Hosted AgentSandbox filesystem glue.
  *
- * Isolates the `@decocms/sandbox` builder + the cluster sandbox-provisioning
+ * Isolates the `@decocms/sandbox` builder + hosted sandbox-provisioning
  * `@/` imports that the portable built-in tools must NOT carry. The harness VM
- * tools consume the flat `SandboxFsHooks` returned here and never see
- * `SandboxProvider` (spec §4.3).
+ * tools consume the flat `SandboxFsHooks` returned here and never depend on
+ * the hosted provider implementation (spec §4.3).
  *
  * ASSEMBLER-GLUE: this module stays `@/`- and `@decocms/sandbox`-coupled and is
- * slated to relocate into the cluster assembler (`harness-deps.ts`) in the
+ * slated to relocate into the hosted assembler (`harness-deps.ts`) in the
  * package-move phase (spec Phase 5). The portable consumer
  * (`built-in-tools/index.ts`) imports only this relative module — no
  * `@decocms/sandbox`.
  */
 
-import {
-  createSandboxFsHooks,
-  type SandboxProvider,
-  type SandboxProviderKind,
-} from "@decocms/sandbox/provider";
+import { createSandboxFsHooks } from "@decocms/sandbox/provider";
+import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import type { StudioContext } from "@/core/studio-context";
 import { mintMcpEndpoint } from "@/mcp-clients/virtual-mcp/mint-endpoint";
-import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
+import { getAgentSandboxProvider } from "@/sandbox/lifecycle";
 import { ensureSandbox } from "@/tools/sandbox/start";
 import { removeSandboxMapEntry } from "@/tools/sandbox/sandbox-map";
 import type { SandboxFsHooks } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/sandbox-fs-hooks-types";
@@ -38,9 +35,9 @@ import type { SandboxFsHooks } from "@/harnesses/lib/decopilot/built-in-tools/vm
  */
 async function syncToolsCatalog(
   ctx: StudioContext,
-  runner: SandboxProvider,
+  runner: AgentSandboxProvider,
   handle: string,
-  vm: { virtualMcpId: string; providerKind: SandboxProviderKind },
+  vm: { virtualMcpId: string },
 ): Promise<void> {
   try {
     const organization = ctx.organization;
@@ -62,28 +59,27 @@ async function syncToolsCatalog(
     );
     if (!res.ok) {
       console.warn(
-        "[cluster-sandbox-fs] tools/sync failed",
+        "[agent-sandbox-fs] tools/sync failed",
         res.status,
         await res.text().catch(() => ""),
       );
     }
   } catch (err) {
-    console.warn("[cluster-sandbox-fs] tools/sync failed", err);
+    console.warn("[agent-sandbox-fs] tools/sync failed", err);
   }
 }
 
 /**
- * Build the cluster flat fs hooks for a (virtualMcp, branch, user) tuple.
+ * Build hosted AgentSandbox fs hooks for a (virtualMcp, branch, user) tuple.
  *
  * Behavior-identical to the block formerly inline in `buildAllTools`: the
- * provider is resolved eagerly (it short-circuits on `ctx.sandboxPreference`
- * populated by dispatch-run, so no DB hit), while the
+ * provider is resolved eagerly, while the
  * sandbox PROVISIONING stays lazy behind the memoized `ensureHandle` closure —
  * `ensureSandbox` only runs on the first VM-tool invocation. The
  * handle-resolution + auto-restart retry layer lives inside
- * `createSandboxFsHooks`, so the VM tools never touch `SandboxProvider`.
+ * `createSandboxFsHooks`, so the VM tools never touch `AgentSandboxProvider`.
  */
-export async function buildClusterSandboxFs(
+export async function buildAgentSandboxFs(
   ctx: StudioContext,
   vm: {
     virtualMcpId: string;
@@ -97,28 +93,12 @@ export async function buildClusterSandboxFs(
     threadId?: string;
   },
 ): Promise<SandboxFsHooks> {
-  // `dispatch-run` already populated `ctx.sandboxPreference` from the resolved
-  // `DispatchTarget`, so the resolver short-circuits on that ctx hint without
-  // reading sandboxMap — no DB hit on the decopilot hot path. The same `kind`
-  // flows into `ensureSandbox` below so `runner` and the provisioned handle come
-  // from the same provider.
-  const { provider: runner, kind: providerKind } = await resolveSandboxProvider(
-    ctx,
-    {
-      userId: vm.userId,
-      branch: vm.branch,
-      virtualMcpMetadata: null,
-    },
-  );
+  const runner = await getAgentSandboxProvider(ctx);
   let cached: Promise<string> | null = null;
   const ensureHandle = () => {
     if (!cached) {
       cached = ensureSandbox(
-        {
-          virtualMcpId: vm.virtualMcpId,
-          branch: vm.branch,
-          sandboxProviderKind: providerKind,
-        },
+        { virtualMcpId: vm.virtualMcpId, branch: vm.branch },
         ctx,
       ).then((entry) => entry.sandboxHandle);
       // Reset on failure so the next tool call retries instead of
@@ -135,7 +115,6 @@ export async function buildClusterSandboxFs(
           .then((handle) =>
             syncToolsCatalog(ctx, runner, handle, {
               virtualMcpId: vm.virtualMcpId,
-              providerKind,
             }),
           )
           .catch(() => {});
@@ -144,16 +123,9 @@ export async function buildClusterSandboxFs(
     return cached;
   };
   // Ephemeral agents have no restart button, so the call layer auto-restarts on
-  // proxy failure. user-desktop sandboxes also auto-restart: the local daemon
-  // can drop/relink under the user at any time, and the iframe + ingress
-  // already render the reconnecting state, so a dead-daemon proxy error should
-  // reap + respawn rather than surface a sticky failure.
-  const canAutoRestart =
-    vm.branch === "ephemeral" || providerKind === "user-desktop";
+  // proxy failure.
+  const canAutoRestart = vm.branch === "ephemeral";
   const invalidateHandle = async (opts?: { force?: boolean }) => {
-    // Capture before clearing — we need the dead handle to flush the captured
-    // runner's cache below.
-    const lastHandlePromise = cached;
     cached = null;
     // `force` (set by the retry layer when the daemon reported the sandbox is
     // provably GONE — 404) reaps + respawns even for non-auto-restart branches:
@@ -169,22 +141,9 @@ export async function buildClusterSandboxFs(
         vm.userId,
         vm.userId,
         vm.branch,
-        providerKind,
       );
     } catch (err) {
-      console.warn("[cluster-sandbox-fs] failed to reap vmMap entry", err);
-    }
-    // Flush the captured runner's in-process cache + state-store row.
-    // `ensureSandbox` constructs its own provider instance for the respawn, so
-    // without this the captured `runner` (used for proxy calls) would keep
-    // serving the dead URL out of its records map on the retry.
-    if (lastHandlePromise && typeof runner.forgetHandle === "function") {
-      try {
-        const lastHandle = await lastHandlePromise;
-        await runner.forgetHandle(lastHandle);
-      } catch (err) {
-        console.warn("[cluster-sandbox-fs] forgetHandle failed", err);
-      }
+      console.warn("[agent-sandbox-fs] failed to reap vmMap entry", err);
     }
   };
   return createSandboxFsHooks(runner, {
@@ -202,7 +161,7 @@ export async function buildClusterSandboxFs(
  * don't carry it as dead weight.
  *
  * Runs `test -d .deco` from the daemon's default bash cwd (the repo root). It
- * reuses `buildClusterSandboxFs`, so the sandbox `ensureSandbox` resolution is
+ * reuses `buildAgentSandboxFs`, so the sandbox `ensureSandbox` resolution is
  * memoized: on an already-running sandbox (the common case for an active coding
  * thread) this is a cheap proxied bash call; on the first turn it provisions
  * the same sandbox the VM file tools will use moments later.
@@ -216,12 +175,12 @@ export async function sandboxIsDecoSite(
   vm: { virtualMcpId: string; branch: string; userId: string },
 ): Promise<boolean> {
   try {
-    const fs = await buildClusterSandboxFs(ctx, vm);
+    const fs = await buildAgentSandboxFs(ctx, vm);
     const { stdout } = await fs.onBash("test -d .deco && echo __DECO_SITE__");
     return stdout.includes("__DECO_SITE__");
   } catch (err) {
     console.warn(
-      "[cluster-sandbox-fs] .deco probe failed; assuming deco site",
+      "[agent-sandbox-fs] .deco probe failed; assuming deco site",
       err,
     );
     return true;

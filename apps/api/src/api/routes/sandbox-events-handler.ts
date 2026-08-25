@@ -9,16 +9,13 @@
 
 import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
-import {
-  resolveSandboxProviderKindFromEnv,
-  type SandboxProviderKind,
-  type SandboxProvider,
-} from "@decocms/sandbox/provider";
+import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import { delay, exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { subscribeLifecycle } from "../../sandbox/lifecycle";
 import type { StudioContext } from "../../core/studio-context";
 import { KyselySandboxProviderStateStore } from "../../storage/sandbox-runner-state";
 import {
+  AGENT_SANDBOX_KIND,
   readSandboxMap,
   removeSandboxMapEntry,
   resolveVm,
@@ -81,7 +78,7 @@ const PROXY_BACKOFF_CAP_MS = 10_000;
 export interface VmEventsHandlerArgs {
   ctx: StudioContext;
   claimName: string;
-  runner: SandboxProvider;
+  runner: AgentSandboxProvider;
   virtualMcpId: string;
   branch: string;
   userId: string;
@@ -100,8 +97,6 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
     projectRef,
     virtualMcpMetadata,
   } = args;
-  const providerKind = resolveSandboxProviderKindFromEnv();
-
   // The agent row is a no-op sandbox store for the synthetic Decopilot agent —
   // its records live on the THREAD (see `setThreadSandboxMapEntry`). Resolve the
   // thread id from the branch so the stale-handle check below covers thread-
@@ -121,7 +116,7 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
     }, HEARTBEAT_MS);
     // Renew immediately as well as on the interval: a stream that reconnects
     // onto a long-lived sandbox is adopting a TTL that is already part-spent.
-    const renew = () => void runner.renewTtl?.(claimName);
+    const renew = () => void runner.renewTtl(claimName);
     renew();
     const ttlRenew = setInterval(renew, TTL_RENEW_MS);
     stream.onAbort(() => {
@@ -137,7 +132,6 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
         readSandboxMap(virtualMcpMetadata),
         userId,
         branch,
-        providerKind,
       );
       let fromThread = false;
       if (!vmEntry && threadId) {
@@ -145,12 +139,9 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
           await getThreadSandboxMap(ctx, threadId),
           userId,
           branch,
-          providerKind,
         );
         fromThread = !!vmEntry;
       }
-      const existingProviderKind: SandboxProviderKind | null =
-        vmEntry?.sandboxProviderKind ?? null;
 
       if (vmEntry?.sandboxHandle === claimName) {
         const stale = await isStaleHandle(runner, claimName);
@@ -163,7 +154,6 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
             branch,
             userId,
             projectRef,
-            sandboxProviderKind: existingProviderKind ?? providerKind,
             threadId: fromThread ? threadId : null,
           });
           await stream.writeSSE({ event: "gone", data: "" }).catch(() => {});
@@ -225,7 +215,7 @@ const HEAD_REF_RESPONSE_MAX_BYTES = 256 * 1024;
  */
 async function recordDaemonHeadRef(args: {
   ctx: StudioContext;
-  runner: SandboxProvider;
+  runner: AgentSandboxProvider;
   claimName: string;
   branch: string;
   threadId: string | null;
@@ -265,7 +255,7 @@ async function recordDaemonHeadRef(args: {
 }
 
 async function isStaleHandle(
-  runner: SandboxProvider,
+  runner: AgentSandboxProvider,
   claimName: string,
 ): Promise<boolean> {
   try {
@@ -283,13 +273,12 @@ async function isStaleHandle(
 
 async function cleanupStaleEntry(args: {
   ctx: StudioContext;
-  runner: SandboxProvider;
+  runner: AgentSandboxProvider;
   claimName: string;
   virtualMcpId: string;
   branch: string;
   userId: string;
   projectRef: string;
-  sandboxProviderKind: SandboxProviderKind;
   /** Set when the stale entry was found on the thread (synthetic agent) — clear
    *  it there instead of / in addition to the agent row. */
   threadId: string | null;
@@ -302,7 +291,6 @@ async function cleanupStaleEntry(args: {
     branch,
     userId,
     projectRef,
-    sandboxProviderKind,
     threadId,
   } = args;
   // Drop the thread's sandboxMap entry first. A dangling `sandboxHandle` left
@@ -311,16 +299,10 @@ async function cleanupStaleEntry(args: {
   // that only stops when the tab closes.
   if (threadId) {
     try {
-      await removeThreadSandboxMapEntry(
-        ctx,
-        threadId,
-        userId,
-        branch,
-        sandboxProviderKind,
-      );
+      await removeThreadSandboxMapEntry(ctx, threadId, userId, branch);
     } catch (err) {
       console.warn(
-        `[vm-events] thread sandboxMap cleanup failed for ${threadId}/${branch}/${sandboxProviderKind}: ${
+        `[vm-events] thread sandboxMap cleanup failed for ${threadId}/${branch}/${AGENT_SANDBOX_KIND}: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
@@ -335,12 +317,11 @@ async function cleanupStaleEntry(args: {
         userId,
         userId,
         branch,
-        sandboxProviderKind,
       );
     }
   } catch (err) {
     console.warn(
-      `[vm-events] sandboxMap cleanup failed for ${virtualMcpId}/${branch}/${sandboxProviderKind}: ${
+      `[vm-events] sandboxMap cleanup failed for ${virtualMcpId}/${branch}/${AGENT_SANDBOX_KIND}: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );
@@ -356,10 +337,10 @@ async function cleanupStaleEntry(args: {
   }
   try {
     const stateStore = new KyselySandboxProviderStateStore(ctx.db);
-    await stateStore.delete({ userId, projectRef }, sandboxProviderKind);
+    await stateStore.delete({ userId, projectRef }, AGENT_SANDBOX_KIND);
   } catch (err) {
     console.warn(
-      `[vm-events] sandbox_runner_state delete failed for ${userId}/${projectRef}/${sandboxProviderKind}: ${
+      `[vm-events] sandbox_runner_state delete failed for ${userId}/${projectRef}/${AGENT_SANDBOX_KIND}: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );
@@ -369,7 +350,7 @@ async function cleanupStaleEntry(args: {
 async function emitLifecycle(args: {
   stream: import("hono/streaming").SSEStreamingApi;
   claimName: string;
-  runner: SandboxProvider;
+  runner: AgentSandboxProvider;
   signal: AbortSignal;
 }): Promise<boolean> {
   const { stream, claimName, runner, signal } = args;
@@ -413,7 +394,7 @@ async function emitLifecycle(args: {
 
 async function proxyDaemonEvents(args: {
   stream: import("hono/streaming").SSEStreamingApi;
-  runner: SandboxProvider;
+  runner: AgentSandboxProvider;
   claimName: string;
   signal: AbortSignal;
 }): Promise<void> {
@@ -440,10 +421,10 @@ async function proxyDaemonEvents(args: {
       }
       // Daemon unreachable past the budget. Don't emit a terminal failure —
       // end the stream so the client's EventSource reconnects (it will pick
-      // up logs / `gone` once the link is back). Latching here froze the
-      // preview across a `deco link` relink. Log once (per ~60s SSE attempt)
-      // so an operator can tell an expected `deco link` outage from a
-      // misconfig/crash without the client seeing a terminal failure.
+      // up logs / `gone` once the daemon is reachable again). Latching here
+      // froze previews across transient daemon restarts. Log once (per ~60s
+      // SSE attempt) so an operator can distinguish an outage from a
+      // misconfiguration/crash without the client seeing a terminal failure.
       console.warn(
         `[vm-events] daemon unreachable past budget for ${claimName}: ${
           err instanceof Error ? err.message : String(err)

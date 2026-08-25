@@ -1,5 +1,5 @@
 import type { GithubRepo } from "@decocms/shared/sdk/types";
-import type { SandboxProvider } from "@decocms/sandbox/provider";
+import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import type { StudioContext } from "../../core/studio-context";
 import { RECONNECT_ERROR } from "../../oauth/token-refresh";
 import { coAuthorFromStudioContext } from "../../lib/co-author-identity";
@@ -38,7 +38,7 @@ export function parseGithubRepoFromMetadata(
  */
 export async function refreshSandboxGitCredentials(
   ctx: StudioContext,
-  runner: SandboxProvider,
+  runner: Pick<AgentSandboxProvider, "proxyDaemonRequest">,
   handle: string,
   githubRepo: GithubRepo,
 ): Promise<void> {

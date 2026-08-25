@@ -349,6 +349,7 @@ export type GithubRepo = z.infer<typeof GithubRepoSchema>;
 /** The active sandbox provider kinds. */
 export type SandboxProviderKind = "agent-sandbox" | "user-desktop";
 export type LegacySandboxProviderKind = SandboxProviderKind | "cluster";
+type SandboxMapOwnerKind = SandboxProviderKind | "local-api";
 
 const sandboxProviderKindSchema = z.enum(["agent-sandbox", "user-desktop"]);
 const legacySandboxProviderKindSchema = z.enum([
@@ -456,17 +457,23 @@ export function parseSandboxRecord(raw: unknown): SandboxRecord {
  */
 export function parseBranchMap(
   raw: unknown,
-): Partial<Record<SandboxProviderKind, SandboxRecord>> {
+): Partial<Record<SandboxMapOwnerKind, SandboxRecord>> {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
   const obj = raw as Record<string, unknown>;
 
-  const out: Partial<Record<SandboxProviderKind, SandboxRecord>> = {};
+  const out: Partial<Record<SandboxMapOwnerKind, SandboxRecord>> = {};
   for (const [k, v] of Object.entries(obj)) {
     if (!v || typeof v !== "object") continue;
-    if (k !== "cluster" && k !== "agent-sandbox" && k !== "user-desktop") {
+    if (
+      k !== "cluster" &&
+      k !== "agent-sandbox" &&
+      k !== "local-api" &&
+      k !== "user-desktop"
+    ) {
       continue;
     }
-    const kind = normalizeSandboxProviderKind(k);
+    const kind: SandboxMapOwnerKind =
+      k === "local-api" ? k : normalizeSandboxProviderKind(k);
     try {
       if (k === "cluster" && out[kind]) {
         continue;
