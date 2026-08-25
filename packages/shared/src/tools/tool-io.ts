@@ -7120,7 +7120,6 @@ export interface StudioToolIO {
     input: {
       virtualMcpId: string;
       branch: string;
-      sandboxProviderKind: "agent-sandbox" | "user-desktop" | "cluster";
       removeWorktree?: boolean | undefined;
     };
     output: { success: boolean };

@@ -6,8 +6,8 @@
  * Sibling of SandboxEventsProvider; reads `events.notFound` + `events.status`
  * for self-heal and previewState.
  *
- * Pure helpers (selectVmEntry, shouldAutoStart, shouldSelfHeal,
- * computeDrawerStatus) are exported so unit tests can exercise the
+ * Pure helpers (shouldAutoStart, shouldSelfHeal, computeDrawerStatus) are
+ * exported so unit tests can exercise the
  * consolidation logic without crossing the no-mocks line.
  */
 
@@ -16,27 +16,19 @@ import type {
   SandboxStartError,
 } from "@/components/sandbox/preview/preview-state";
 import type { DrawerStatus } from "@/components/sandbox/preview/drawer/status-pill";
-import type { SandboxProviderKind } from "@decocms/sandbox/provider";
+import type { SandboxMap, SandboxRecord } from "@decocms/shared/sdk/types";
 import type { ClaimFailureReason, ClaimPhase } from "./sandbox-events-context";
-import {
-  resolveVmEntry,
-  selectVmEntry,
-  type BranchMapEntryLike,
-} from "@decocms/shared/sandbox/select-vm-entry";
 
 // ---------------------------------------------------------------------------
 // Pure helpers (unit-testable)
 // ---------------------------------------------------------------------------
-
-// Re-exported here for existing importers and the co-located unit tests.
-export { resolveVmEntry, selectVmEntry, type BranchMapEntryLike };
 
 export interface ShouldAutoStartArgs {
   executionEnabled: boolean;
   hasActiveGithubRepo: boolean;
   userId: string | null;
   branch: string | null;
-  vmEntry: BranchMapEntryLike | null;
+  vmEntry: SandboxRecord | null;
   userStopped: boolean;
   isPending: boolean;
   attempted: boolean;
@@ -168,20 +160,16 @@ export function overlayThreadSandboxMap(args: {
   };
 }
 
-/** Shared SANDBOX_START arg-builder so every call site (auto-start,
- *  self-heal, user-driven start/retry/resume) scopes provisioning to the
- *  locked provider kind identically — a caller that omits it can get
- *  provisioned on the wrong provider. */
+/** Shared SANDBOX_START arg-builder for auto-start, self-heal, and user-driven
+ * start/retry/resume. Provider selection belongs to the receiving surface. */
 export function buildSandboxStartArgs(
   virtualMcpId: string,
   branch: string | null,
-  sandboxProviderKind: SandboxProviderKind | null,
   /** The session asking. The server refuses to provision for a CMS one. */
   threadId?: string | null,
 ): SandboxStartArgs {
   const args: SandboxStartArgs = { virtualMcpId };
   if (branch) args.branch = branch;
-  if (sandboxProviderKind) args.sandboxProviderKind = sandboxProviderKind;
   if (threadId) args.threadId = threadId;
   return args;
 }
@@ -341,7 +329,7 @@ export function sandboxPreviewKey(
  * change, so a stale claim can never paint another branch's sandbox.
  */
 export function resolvePreviewUrl(args: {
-  vmEntry: BranchMapEntryLike | null;
+  vmEntry: SandboxRecord | null;
   seeded: SeededPreviewUrl | null;
   key: string;
 }): string | null {
@@ -362,15 +350,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import {
-  parseBranchMap,
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
-  useProjectContext,
-} from "@/sdk";
+import { SELF_MCP_ALIAS_ID, useMCPClient, useProjectContext } from "@/sdk";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
-import type { SandboxMap } from "@decocms/shared/sdk/types";
 import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import { useQueryClient } from "@tanstack/react-query";
 import { invalidateVirtualMcpQueries } from "@/lib/query-keys";
@@ -415,7 +397,7 @@ export interface SandboxLifecycleValue {
   branch: string | null;
   previewState: PreviewState;
   status: DrawerStatus;
-  vmEntry: BranchMapEntryLike | null;
+  vmEntry: SandboxRecord | null;
   previewUrl: string | null;
   userStopped: boolean;
   start: () => void;
@@ -452,8 +434,7 @@ export function SandboxLifecycleProvider({
   branch,
   userId,
   hasActiveGithubRepo,
-  sandboxMap,
-  sandboxProviderKind,
+  vmEntry,
   threadId,
   children,
 }: {
@@ -464,11 +445,7 @@ export function SandboxLifecycleProvider({
   branch: string | null;
   userId: string | null;
   hasActiveGithubRepo: boolean;
-  sandboxMap: SandboxMap | undefined;
-  /** Resolved provider kind from the active thread (locked) or live mode pick
-   *  (unlocked). When non-null, entry selection and SANDBOX_START are scoped to
-   *  this kind so the preview never silently shows a different-provider sibling. */
-  sandboxProviderKind: SandboxProviderKind | null;
+  vmEntry: SandboxRecord | null;
   /** Active thread id — the row re-read after a successful start (see
    *  `onStarted` below). */
   threadId: string | null;
@@ -537,21 +514,6 @@ export function SandboxLifecycleProvider({
   }
 
   // Derived values, recomputed each render.
-  // Cast: parseBranchMap returns SandboxRecord where sandboxProviderKind is
-  // optional, but BranchMapEntryLike requires it as string. selectVmEntry
-  // only filters on the value (undefined !== "user-desktop" still works) so
-  // the cast is safe in practice.
-  const branchMap =
-    userId && branch
-      ? (parseBranchMap(sandboxMap?.[userId]?.[branch]) as Record<
-          string,
-          BranchMapEntryLike
-        >)
-      : {};
-  // When a provider kind is known (locked thread or live mode pick), the
-  // matching entry wins; with no entry for that kind (or no kind at all) fall
-  // back to whatever is serving the branch. See resolveVmEntry.
-  const vmEntry = resolveVmEntry(branchMap, sandboxProviderKind);
   const failedPhase = events.phase?.kind === "failed" ? events.phase : null;
   const previewUrl = resolvePreviewUrl({
     vmEntry,
@@ -619,12 +581,7 @@ export function SandboxLifecycleProvider({
   useEffect(() => {
     if (!autoStartEligible || !virtualMcpId) return;
     autoStartAttemptedForBranchRef.current.add(autoStartDedupKey);
-    const args = buildSandboxStartArgs(
-      virtualMcpId,
-      branch,
-      sandboxProviderKind,
-      startThreadId,
-    );
+    const args = buildSandboxStartArgs(virtualMcpId, branch, startThreadId);
     startVmMutate(args, {
       onSuccess: (data) => {
         recordSandboxStart({
@@ -644,7 +601,6 @@ export function SandboxLifecycleProvider({
     autoStartDedupKey,
     branch,
     virtualMcpId,
-    sandboxProviderKind,
     startThreadId,
     startVmMutate,
     setCurrentTaskBranch,
@@ -668,12 +624,7 @@ export function SandboxLifecycleProvider({
     if (!selfHealEligible || !deadVmId || !virtualMcpId) return;
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- record dead handle to dedup repeat 404s
     reprovisionedForVmIdRef.current = deadVmId;
-    const args = buildSandboxStartArgs(
-      virtualMcpId,
-      branch,
-      sandboxProviderKind,
-      startThreadId,
-    );
+    const args = buildSandboxStartArgs(virtualMcpId, branch, startThreadId);
     startVmMutate(args, {
       onSuccess: (data) => {
         recordSandboxStart({
@@ -693,7 +644,6 @@ export function SandboxLifecycleProvider({
     deadVmId,
     virtualMcpId,
     branch,
-    sandboxProviderKind,
     startThreadId,
     startVmMutate,
     setCurrentTaskBranch,
@@ -731,12 +681,7 @@ export function SandboxLifecycleProvider({
       handled: true,
       count: prev.count + 1,
     }));
-    const args = buildSandboxStartArgs(
-      virtualMcpId,
-      branch,
-      sandboxProviderKind,
-      startThreadId,
-    );
+    const args = buildSandboxStartArgs(virtualMcpId, branch, startThreadId);
     startVmMutate(args, {
       onSuccess: (data) => {
         recordSandboxStart({
@@ -756,7 +701,6 @@ export function SandboxLifecycleProvider({
     claimRetryEligible,
     virtualMcpId,
     branch,
-    sandboxProviderKind,
     startThreadId,
     startVmMutate,
     setCurrentTaskBranch,
@@ -766,12 +710,7 @@ export function SandboxLifecycleProvider({
   // User-driven actions.
   const start = () => {
     if (!executionEnabled || !virtualMcpId) return;
-    const args = buildSandboxStartArgs(
-      virtualMcpId,
-      branch,
-      sandboxProviderKind,
-      startThreadId,
-    );
+    const args = buildSandboxStartArgs(virtualMcpId, branch, startThreadId);
     startVmMutate(args, {
       onSuccess: (data) => {
         recordSandboxStart({
@@ -790,8 +729,7 @@ export function SandboxLifecycleProvider({
 
   const stop = async () => {
     if (!executionEnabled || !virtualMcpId || !branch) return;
-    const kindToStop = vmEntry?.sandboxProviderKind;
-    if (!kindToStop) return;
+    if (!vmEntry) return;
     sandboxUserStop.mark(virtualMcpId, branch);
     try {
       await mcpClient.callTool({
@@ -799,7 +737,6 @@ export function SandboxLifecycleProvider({
         arguments: {
           virtualMcpId,
           branch,
-          sandboxProviderKind: kindToStop,
         },
       });
     } catch {

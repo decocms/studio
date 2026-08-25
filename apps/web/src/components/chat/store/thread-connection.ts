@@ -79,12 +79,6 @@ export interface RequestOptions {
   agent?: { id: string };
   branch?: string | null;
   thread_id?: string;
-  /**
-   * Optional pins sent on first message. The server persists them onto the
-   * thread row and ignores them on subsequent messages.
-   */
-  sandboxProviderKind?: "agent-sandbox";
-  harnessId?: "decopilot";
 }
 
 // ─── Status ──────────────────────────────────────────────────────────────────

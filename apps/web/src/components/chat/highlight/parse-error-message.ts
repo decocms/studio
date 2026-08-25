@@ -18,7 +18,7 @@ export function parseErrorMessage(message: string): {
   const isTooLong = trimmed.length > 240;
 
   // Sandbox bring-up failures carry the stable `sandbox failed to start:`
-  // marker (set daemon-side in user-desktop-provider). Classify these BEFORE
+  // marker set by the sandbox runtime. Classify these BEFORE
   // the generic timeout/HTML branches — the underlying cause often contains
   // "timed out", which would otherwise collapse into the vague "took longer
   // than expected" bucket and hide the real reason from the user.

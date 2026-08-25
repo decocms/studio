@@ -77,6 +77,7 @@ import {
 } from "@/lib/agent-capabilities";
 import { DevAgentSetup } from "@/components/dev-agent/dev-agent-setup.tsx";
 import { EnvVarsField } from "@/components/sandbox/runtime-card/env-vars-field";
+import { omitSandboxMap } from "@/lib/omit-sandbox-map";
 import { SubmoduleCredentialsField } from "@/components/sandbox/runtime-card/submodule-credentials-field";
 import { RepoRow } from "@/components/sandbox/runtime-card/repo-row";
 import { RuntimeFields } from "@/components/sandbox/runtime-card/runtime-fields";
@@ -322,7 +323,7 @@ function VirtualMcpDetailViewWithData({
     defaultValues: {
       ...virtualMcp,
       metadata: {
-        ...virtualMcp.metadata,
+        ...omitSandboxMap(virtualMcp.metadata),
         previewServerUrl: resolvePreviewServerUrl(virtualMcp.metadata),
       },
     },
@@ -458,6 +459,7 @@ function VirtualMcpDetailViewWithData({
     const payload = stripIncompleteSubmoduleCredentials(
       stripIncompleteEnvEntries(formData),
     );
+    payload.metadata = omitSandboxMap(payload.metadata);
 
     await actions.update.mutateAsync({
       id: virtualMcp.id,
@@ -1176,6 +1178,7 @@ function VirtualMcpDetailViewWithData({
                     form={form}
                     virtualMcpId={virtualMcp.id}
                     orgSlug={org.slug}
+                    sandboxMap={virtualMcp.metadata.sandboxMap}
                   />
                   <SubmoduleCredentialsField
                     control={form.control}

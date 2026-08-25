@@ -460,7 +460,6 @@ export function ChatInput({
   const hostedRuntimeBlocked = shouldBlockHostedRuntime({
     isDesktopApp,
     harnessId: task?.harness_id,
-    sandboxProviderKind: task?.sandbox_provider_kind,
   });
 
   // tiptapDoc lives here (not in context) so keystrokes don't re-render
