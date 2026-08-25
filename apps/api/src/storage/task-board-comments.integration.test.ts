@@ -5,19 +5,40 @@ import {
   resetTestPgDatabase,
   seedCommonTestPgFixtures,
 } from "../database/test-db-pg";
+import type { StudioContext } from "../core/studio-context";
 import type { StudioDatabase } from "../database";
 import { TaskBoardStorage } from "./task-board";
+import { NotificationStorage } from "./notifications";
+import { TASK_BOARD_COMMENT_UPDATE } from "../tools/task-board/comments";
+import { mentionMarkdown } from "@decocms/shared/mentions";
 
 describe("TaskBoardStorage comments", () => {
   let database: StudioDatabase;
   let storage: TaskBoardStorage;
+  let notifications: NotificationStorage;
   let itemId: string;
+  let ctx: StudioContext;
 
   beforeAll(async () => {
     database = await connectTestPgDatabase();
     await resetTestPgDatabase(database);
     await seedCommonTestPgFixtures(database);
     storage = new TaskBoardStorage(database.db);
+    notifications = new NotificationStorage(database.db);
+    ctx = {
+      timings: {
+        measure: async <T>(_name: string, cb: () => Promise<T>) => await cb(),
+      },
+      auth: { user: { id: "user_1", email: "user_1@test.com", name: "u1" } },
+      organization: { id: "org_test", slug: "org_test", name: "org_test" },
+      storage: { taskBoard: storage, notifications },
+      access: {
+        granted: () => true,
+        check: async () => {},
+        grant: () => {},
+        setToolName: () => {},
+      },
+    } as unknown as StudioContext;
 
     const item = await storage.create({
       organizationId: "org_test",
@@ -108,6 +129,39 @@ describe("TaskBoardStorage comments", () => {
       "user_123",
     );
     expect(deleted).toBe(true);
+  });
+
+  it("notifies a member newly @-mentioned by editing a comment's body", async () => {
+    await database.db
+      .insertInto("member")
+      .values({
+        id: "member_comment_mention",
+        organizationId: "org_test",
+        userId: "user_123",
+        role: "member",
+        createdAt: new Date().toISOString(),
+      })
+      .execute();
+    const comment = await storage.createComment({
+      taskBoardItemId: itemId,
+      organizationId: "org_test",
+      authorId: "user_1",
+      body: "no mentions yet",
+    });
+    expect(comment).not.toBeNull();
+
+    // Before fix: TASK_BOARD_COMMENT_UPDATE never ran notifyMentions.
+    await TASK_BOARD_COMMENT_UPDATE.handler(
+      {
+        id: comment!.id,
+        body: `cc ${mentionMarkdown("user_123", "u123")} please take a look`,
+      },
+      ctx,
+    );
+
+    const unread = await notifications.listUnread("user_123", "org_test");
+    expect(unread.unreadCount).toBe(1);
+    expect(unread.notifications[0]!.type).toBe("mentioned");
   });
 
   it("rejects resolving a reply — resolved is a thread-root-only property", async () => {
