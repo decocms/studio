@@ -47,7 +47,7 @@ function InboxPanel({ onClose }: { onClose: () => void }) {
         )}
       </div>
       {updates.length === 0 ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-10 text-center">
           <Inbox01 size={24} className="text-muted-foreground/50" />
           <p className="text-sm font-medium text-foreground">
             {t("sidebar.inbox.emptyTitle")}
