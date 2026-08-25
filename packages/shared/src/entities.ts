@@ -102,6 +102,14 @@ export type TaskBoardItemStatus =
   | "in_review"
   | "done";
 
+/** What KIND of work a card is — its shape, not its area (that's tags). */
+export type TaskBoardItemType =
+  | "bug"
+  | "feature"
+  | "chore"
+  | "spike"
+  | "security";
+
 export type TaskBoardItemPriority =
   | "none"
   | "low"
@@ -152,6 +160,9 @@ export interface TaskBoardItem {
   description: string | null;
   status: TaskBoardItemStatus;
   priority: TaskBoardItemPriority;
+  /** Null on every card written before the field existed — untyped, not
+   *  guessed. */
+  type: TaskBoardItemType | null;
   assigneeId: string | null;
   assignedBy: string | null;
   /** `owner/name` of the repo (site) this task pertains to. */

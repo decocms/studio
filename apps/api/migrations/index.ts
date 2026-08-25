@@ -174,6 +174,7 @@ import * as migration172taskboarditemkeyseq from "./172-task-board-item-key-seq.
 import * as migration173threadgithubrepoconnectionindex from "./173-thread-github-repo-connection-index.ts";
 import * as migration174threadmessagepartspersistedat from "./174-thread-message-parts-persisted-at.ts";
 import * as migration175taskboardsprints from "./175-task-board-sprints.ts";
+import * as migration176taskboarditemtype from "./176-task-board-item-type.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -379,6 +380,7 @@ const migrations: Record<string, Migration> = {
   "174-thread-message-parts-persisted-at":
     migration174threadmessagepartspersistedat,
   "175-task-board-sprints": migration175taskboardsprints,
+  "176-task-board-item-type": migration176taskboarditemtype,
 };
 
 export default migrations;

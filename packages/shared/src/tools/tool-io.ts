@@ -293,6 +293,14 @@ export interface StudioToolIO {
         | "archived"
         | undefined;
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
+      type?:
+        | "bug"
+        | "feature"
+        | "chore"
+        | "spike"
+        | "security"
+        | null
+        | undefined;
       assigneeId?: string | null | undefined;
       repo?: string | null | undefined;
       dueDate?: string | null | undefined;
@@ -314,6 +322,7 @@ export interface StudioToolIO {
           | "in_review"
           | "archived";
         priority: "none" | "low" | "medium" | "high" | "urgent";
+        type: "bug" | "feature" | "chore" | "spike" | "security" | null;
         assigneeId: string | null;
         assignedBy: string | null;
         repo: string | null;
@@ -377,6 +386,7 @@ export interface StudioToolIO {
           | "in_review"
           | "archived";
         priority: "none" | "low" | "medium" | "high" | "urgent";
+        type: "bug" | "feature" | "chore" | "spike" | "security" | null;
         assigneeId: string | null;
         assignedBy: string | null;
         repo: string | null;
@@ -439,6 +449,14 @@ export interface StudioToolIO {
         | "archived"
         | undefined;
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
+      type?:
+        | "bug"
+        | "feature"
+        | "chore"
+        | "spike"
+        | "security"
+        | null
+        | undefined;
       assigneeId?: string | null | undefined;
       repo?: string | null | undefined;
       dueDate?: string | null | undefined;
@@ -462,6 +480,7 @@ export interface StudioToolIO {
           | "in_review"
           | "archived";
         priority: "none" | "low" | "medium" | "high" | "urgent";
+        type: "bug" | "feature" | "chore" | "spike" | "security" | null;
         assigneeId: string | null;
         assignedBy: string | null;
         repo: string | null;
@@ -603,7 +622,8 @@ export interface StudioToolIO {
           | "review_approved"
           | "review_changes_requested"
           | "merge_conflict_resolution"
-          | "merge_failed";
+          | "merge_failed"
+          | "type_changed";
         actorId: string | null;
         data: Record<string, unknown>;
         occurredAt: string;

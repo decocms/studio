@@ -4,11 +4,16 @@ import {
   Archive,
   ArrowNarrowDown,
   ArrowNarrowUp,
+  Beaker01,
   CheckCircle,
   Circle,
   Equal,
   Eye,
   Loading02,
+  PlusCircle,
+  Shield01,
+  Tool01,
+  Virus,
 } from "@untitledui/icons";
 import type { StudioToolOutput as ToolOutput } from "@decocms/shared/tools/tool-io";
 import { DEFAULT_TAG_COLOR } from "@decocms/shared/task-board";
@@ -24,6 +29,7 @@ export {
 export type TaskBoardItem = ToolOutput<"TASK_BOARD_ITEM_LIST">["items"][number];
 export type TaskBoardItemStatus = TaskBoardItem["status"];
 export type TaskBoardItemPriority = TaskBoardItem["priority"];
+export type TaskBoardItemType = NonNullable<TaskBoardItem["type"]>;
 export type TaskBoardItemThread = TaskBoardItem["threads"][number];
 export type TaskBoardItemTag = TaskBoardItem["tags"][number];
 export type TaskBoardItemPr =
@@ -230,6 +236,33 @@ export const STATUS_CONFIG: Record<
     icon: Archive,
     iconClassName: "text-muted-foreground",
   },
+};
+
+export const TASK_TYPES: TaskBoardItemType[] = [
+  "bug",
+  "feature",
+  "chore",
+  "spike",
+  "security",
+];
+
+/**
+ * A card's kind, as one glyph in the footer.
+ *
+ * Shape carries the meaning, not colour — five distinct silhouettes (organism,
+ * plus, wrench, flask, shield) stay apart at 14px where five hues would not,
+ * and the footer already spends its colour budget on priority, checks and the
+ * due date. The name is in the tooltip.
+ */
+export const TASK_TYPE_CONFIG: Record<
+  TaskBoardItemType,
+  { labelKey: TranslationKey; icon: typeof Circle }
+> = {
+  bug: { labelKey: "taskBoard.config.typeBug", icon: Virus },
+  feature: { labelKey: "taskBoard.config.typeFeature", icon: PlusCircle },
+  chore: { labelKey: "taskBoard.config.typeChore", icon: Tool01 },
+  spike: { labelKey: "taskBoard.config.typeSpike", icon: Beaker01 },
+  security: { labelKey: "taskBoard.config.typeSecurity", icon: Shield01 },
 };
 
 export const PRIORITIES: TaskBoardItemPriority[] = [

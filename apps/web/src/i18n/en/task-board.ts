@@ -291,4 +291,14 @@ export const taskBoard = {
   "taskBoard.subscriptionPaywall.dismissButton": "Close",
   "taskBoard.subscriptionPaywall.checkoutError":
     "Couldn't start checkout: {message}",
+  "taskBoard.config.typeBug": "Bug",
+  "taskBoard.config.typeChore": "Chore",
+  "taskBoard.config.typeFeature": "Feature",
+  "taskBoard.config.typeSecurity": "Security",
+  "taskBoard.config.typeSpike": "Spike",
+  "taskBoard.taskBoard.typeLabel": "Type",
+  "taskBoard.taskBoard.typeNone": "No type",
+  "taskBoard.taskDialog.activityTypeCleared": "cleared the type",
+  "taskBoard.taskDialog.activityTypeFromTo": "changed type from {from} to {to}",
+  "taskBoard.taskDialog.activityTypeSet": "set the type to {to}",
 } as const;

@@ -11,6 +11,21 @@ export const TaskBoardItemStatusSchema = z.enum([
   "archived",
 ]);
 
+/**
+ * What KIND of work a card is — its shape, not its area.
+ *
+ * Areas are tags (`SEO`, `Performance`, `Infra`), a card has many of them and
+ * exactly one shape. Null means untyped: every card predating the field, which
+ * is not the same as "chore" and must not be guessed into one.
+ */
+export const TaskBoardItemTypeSchema = z.enum([
+  "bug",
+  "feature",
+  "chore",
+  "spike",
+  "security",
+]);
+
 export const TaskBoardItemPrioritySchema = z.enum([
   "none",
   "low",
@@ -121,6 +136,10 @@ export const TaskBoardItemSchema = z.object({
   description: z.string().nullable(),
   status: TaskBoardItemStatusSchema,
   priority: TaskBoardItemPrioritySchema,
+  /** What kind of work this is; null on cards written before the field.
+   *  Present on every `TaskBoardItem`, so it MUST be modeled here — see the
+   *  `retryAttempts` note below on Ajv-revalidating clients. */
+  type: TaskBoardItemTypeSchema.nullable(),
   assigneeId: z.string().nullable(),
   assignedBy: z.string().nullable(),
   // `owner/name` of the repo (site) this task pertains to.
@@ -178,6 +197,7 @@ export const TASK_BOARD_ACTIVITY_ACTIONS = [
   "review_changes_requested",
   "merge_conflict_resolution",
   "merge_failed",
+  "type_changed",
 ] as const;
 
 export type TaskBoardActivityAction =

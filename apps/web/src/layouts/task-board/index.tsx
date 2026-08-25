@@ -94,6 +94,8 @@ import { formatTimeAgo } from "@/lib/format-time";
 import {
   agentPulse,
   cardNeedsAttention,
+  TASK_TYPE_CONFIG,
+  type TaskBoardItemType,
   dueDateUrgency,
   insertSortOrder,
   isTaskBlocked,
@@ -232,6 +234,22 @@ function PriorityIcon({ priority }: { priority: TaskBoardItemPriority }) {
   );
 }
 
+/** The card's kind, as one glyph. Shape carries it; the name is on hover. */
+function TaskTypeIcon({ type }: { type: TaskBoardItemType }) {
+  const t = useT();
+  const config = TASK_TYPE_CONFIG[type];
+  const label = t(config.labelKey);
+  return (
+    <span className="flex shrink-0 items-center" title={label}>
+      <config.icon
+        size={14}
+        className="shrink-0 text-muted-foreground"
+        aria-label={label}
+      />
+    </span>
+  );
+}
+
 /**
  * A card's due date, in the footer. Shown whenever the card has one — the
  * footer is the row of fixed facts — but only coloured once it is close enough
@@ -244,10 +262,10 @@ function FooterDueDate({ iso }: { iso: string }) {
   return (
     <span
       className={cn(
-        "flex shrink-0 items-center gap-1 text-[11px] tabular-nums",
-        urgency === "overdue" && "text-destructive",
-        urgency === "soon" && "text-warning",
-        urgency === null && "text-muted-foreground/70",
+        "flex shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] tabular-nums",
+        urgency === "overdue" && "border-destructive/30 text-destructive",
+        urgency === "soon" && "border-warning/30 text-warning",
+        urgency === null && "border-border text-muted-foreground/70",
       )}
     >
       <Calendar size={11} />
@@ -280,7 +298,8 @@ function CardFooter({
   const key = taskKey(org.slug, item.keySeq);
   return (
     <div className="-mx-3 mt-auto flex h-8 shrink-0 items-center justify-between gap-2 border-t border-border px-3 pt-px">
-      <span className="flex min-w-0 items-center gap-2">
+      <span className="flex min-w-0 items-center gap-3">
+        {item.type && <TaskTypeIcon type={item.type} />}
         <span className="shrink-0 text-[11px] font-medium tabular-nums text-muted-foreground/70">
           {key}
         </span>

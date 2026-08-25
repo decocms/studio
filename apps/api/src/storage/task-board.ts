@@ -17,6 +17,7 @@ import type {
   TaskBoardItemPrRef,
   TaskBoardItemStatus,
   TaskBoardItemTagRef,
+  TaskBoardItemType,
   TaskBoardItemThreadRef,
 } from "./types";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
@@ -250,6 +251,7 @@ export class TaskBoardStorage {
     description?: string | null;
     status?: TaskBoardItemStatus;
     priority?: TaskBoardItemPriority;
+    type?: TaskBoardItemType | null;
     assigneeId?: string | null;
     assignedBy?: string | null;
     /** `owner/name` of the repo (site) this task pertains to. */
@@ -282,6 +284,7 @@ export class TaskBoardStorage {
           description: params.description ?? null,
           status,
           priority: params.priority ?? "medium",
+          type: params.type ?? null,
           assignee_id: params.assigneeId ?? null,
           assigned_by: params.assignedBy ?? null,
           repo: params.repo ?? null,
@@ -328,6 +331,7 @@ export class TaskBoardStorage {
       description?: string | null;
       status?: TaskBoardItemStatus;
       priority?: TaskBoardItemPriority;
+      type?: TaskBoardItemType | null;
       assigneeId?: string | null;
       assignedBy?: string | null;
       repo?: string | null;
@@ -346,6 +350,7 @@ export class TaskBoardStorage {
           : {}),
         ...(data.status !== undefined ? { status: data.status } : {}),
         ...(data.priority !== undefined ? { priority: data.priority } : {}),
+        ...(data.type !== undefined ? { type: data.type } : {}),
         ...(data.assigneeId !== undefined
           ? { assignee_id: data.assigneeId }
           : {}),
@@ -2097,6 +2102,7 @@ export class TaskBoardStorage {
     description: string | null;
     status: string;
     priority: string;
+    type?: string | null;
     assignee_id: string | null;
     assigned_by: string | null;
     repo: string | null;
@@ -2117,6 +2123,7 @@ export class TaskBoardStorage {
       description: row.description,
       status: row.status as TaskBoardItemStatus,
       priority: row.priority as TaskBoardItemPriority,
+      type: (row.type ?? null) as TaskBoardItemType | null,
       assigneeId: row.assignee_id,
       assignedBy: row.assigned_by,
       repo: row.repo,

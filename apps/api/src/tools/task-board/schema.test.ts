@@ -34,6 +34,7 @@ describe("TaskBoardItemSchema – proxy round-trip validation", () => {
     description: null,
     status: "todo" as const,
     priority: "high" as const,
+    type: "bug" as const,
     assigneeId: null,
     assignedBy: null,
     repo: null,

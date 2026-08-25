@@ -22,6 +22,7 @@ function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     description: null,
     status: "todo",
     priority: "medium",
+    type: null,
     sprint: null,
     assigneeId: null,
     assignedBy: null,
@@ -65,6 +66,24 @@ describe("diffTaskActivityEntries", () => {
       { action: "status_changed", data: { from: "todo", to: "in_progress" } },
       { action: "priority_changed", data: { from: "medium", to: "high" } },
     ]);
+  });
+
+  it("logs setting a type on a card that had none", () => {
+    expect(
+      diffTaskActivityEntries(item({ type: null }), item({ type: "bug" })),
+    ).toEqual([{ action: "type_changed", data: { from: null, to: "bug" } }]);
+  });
+
+  it("logs clearing a type", () => {
+    expect(
+      diffTaskActivityEntries(item({ type: "spike" }), item({ type: null })),
+    ).toEqual([{ action: "type_changed", data: { from: "spike", to: null } }]);
+  });
+
+  it("does not log a type that did not move", () => {
+    expect(
+      diffTaskActivityEntries(item({ type: "chore" }), item({ type: "chore" })),
+    ).toEqual([]);
   });
 
   it("logs a description change without copying its value", () => {

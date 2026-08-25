@@ -79,6 +79,9 @@ import {
   nextTagColor,
   PRIORITIES,
   PRIORITY_CONFIG,
+  TASK_TYPE_CONFIG,
+  TASK_TYPES,
+  type TaskBoardItemType,
   STATUS_CONFIG,
   STATUSES,
   statusIconClassName,
@@ -151,6 +154,8 @@ type TaskForm = {
   description: string;
   status: TaskBoardItemStatus;
   priority: TaskBoardItemPriority;
+  /** What kind of work this is; null = untyped. */
+  type: TaskBoardItemType | null;
   assigneeId: string | null;
   repo: string | null;
   dueDate: Date | null;
@@ -370,6 +375,7 @@ export function TaskBoardItemDialog({
     description: string | null;
     status: TaskBoardItemStatus;
     priority: TaskBoardItemPriority;
+    type: TaskBoardItemType | null;
     assigneeId: string | null;
     repo: string | null;
     dueDate: string | null;
@@ -408,6 +414,7 @@ export function TaskBoardItemDialog({
     description: item?.description ?? "",
     status: item?.status ?? defaultStatus ?? "triage",
     priority: item?.priority ?? "medium",
+    type: item?.type ?? null,
     assigneeId: item?.assigneeId ?? null,
     repo: item?.repo ?? null,
     dueDate: parseIsoDate(item?.dueDate),
@@ -416,6 +423,7 @@ export function TaskBoardItemDialog({
   });
   const { title, description, status, priority, assigneeId, repo, dueDate } =
     form;
+  const taskType = form.type;
   const sprint = form.sprint;
   const sprintConfig = useSprintConfig();
   const sprintsEnabled = sprintConfig?.enabled === true;
@@ -457,6 +465,7 @@ export function TaskBoardItemDialog({
       description: v.description.trim() || null,
       status: v.status,
       priority: v.priority,
+      type: v.type,
       assigneeId: v.assigneeId,
       repo: v.repo,
       dueDate: v.dueDate ? toEndOfDayIso(v.dueDate) : null,
@@ -847,6 +856,58 @@ export function TaskBoardItemDialog({
                           className={STATUS_CONFIG[s].iconClassName}
                         />
                         {t(STATUS_CONFIG[s].labelKey)}
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    disabled={contentLocked}
+                    title={
+                      contentLocked
+                        ? t("taskBoard.taskDialog.reportsContentLocked")
+                        : undefined
+                    }
+                    className={cn(
+                      PROPERTY_BUTTON,
+                      !taskType && EMPTY_PROPERTY,
+                      contentLocked && "cursor-default opacity-60",
+                    )}
+                  >
+                    {taskType ? (
+                      <>
+                        {(() => {
+                          const Icon = TASK_TYPE_CONFIG[taskType].icon;
+                          return <Icon size={16} />;
+                        })()}
+                        {t(TASK_TYPE_CONFIG[taskType].labelKey)}
+                      </>
+                    ) : (
+                      <>
+                        <DotsHorizontal size={16} />
+                        {t("taskBoard.taskBoard.typeLabel")}
+                      </>
+                    )}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-44">
+                  <DropdownMenuItem onSelect={() => patch({ type: null })}>
+                    <DotsHorizontal size={16} />
+                    {t("taskBoard.taskBoard.typeNone")}
+                  </DropdownMenuItem>
+                  {TASK_TYPES.map((tp) => {
+                    const Icon = TASK_TYPE_CONFIG[tp].icon;
+                    return (
+                      <DropdownMenuItem
+                        key={tp}
+                        onSelect={() => patch({ type: tp })}
+                      >
+                        <Icon size={16} />
+                        {t(TASK_TYPE_CONFIG[tp].labelKey)}
                       </DropdownMenuItem>
                     );
                   })}
@@ -2218,6 +2279,13 @@ function describeActivity(
         ),
         { name: assigneeChip(d.to) },
       );
+    // Type's unset value is null (a card can predate the field), so a change
+    // away from it reads as a set rather than a move.
+    case "type_changed":
+      if (!d.to) return t("taskBoard.taskDialog.activityTypeCleared");
+      return d.from
+        ? t("taskBoard.taskDialog.activityTypeFromTo", { from, to })
+        : t("taskBoard.taskDialog.activityTypeSet", { to });
     // "none" is priority's unset value, so it reads as a set/clear, not a move.
     case "priority_changed":
       if (d.to === "none")

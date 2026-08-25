@@ -10,6 +10,7 @@ import type {
 import {
   SUPER_AGENT_ASSIGNEE_ID,
   TaskBoardItemPrioritySchema,
+  TaskBoardItemTypeSchema,
   TaskBoardItemSchema,
   TaskBoardItemStatusSchema,
 } from "./schema";
@@ -34,12 +35,13 @@ import {
  * links.
  */
 const LOGGED_FIELDS: {
-  field: "status" | "assigneeId" | "priority" | "dueDate" | "title";
+  field: "status" | "assigneeId" | "priority" | "dueDate" | "title" | "type";
   action: TaskBoardActivityAction;
 }[] = [
   { field: "status", action: "status_changed" },
   { field: "assigneeId", action: "assignee_changed" },
   { field: "priority", action: "priority_changed" },
+  { field: "type", action: "type_changed" },
   { field: "dueDate", action: "due_date_changed" },
   { field: "title", action: "title_changed" },
 ];
@@ -146,6 +148,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     description: z.string().nullable().optional(),
     status: TaskBoardItemStatusSchema.optional(),
     priority: TaskBoardItemPrioritySchema.optional(),
+    type: TaskBoardItemTypeSchema.nullish(),
     assigneeId: z.string().nullable().optional(),
     repo: z.string().nullable().optional(),
     dueDate: z.string().datetime().nullable().optional(),
@@ -314,6 +317,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
           description: input.description,
           status: becameSuperAgent ? "todo" : input.status,
           priority: input.priority,
+          type: input.type,
           assigneeId: input.assigneeId,
           // Stamp who delegated only when the assignee actually changes.
           assignedBy: assigneeChanged

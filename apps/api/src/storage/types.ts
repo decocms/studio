@@ -1628,6 +1628,14 @@ export type TaskBoardItemPriority =
   | "high"
   | "urgent";
 
+/** What KIND of work a card is — its shape, not its area (that's tags). */
+export type TaskBoardItemType =
+  | "bug"
+  | "feature"
+  | "chore"
+  | "spike"
+  | "security";
+
 export interface TaskBoardItemTable {
   id: string;
   organization_id: string;
@@ -1642,6 +1650,11 @@ export interface TaskBoardItemTable {
     TaskBoardItemPriority,
     TaskBoardItemPriority | undefined,
     string
+  >;
+  type: ColumnType<
+    TaskBoardItemType | null,
+    TaskBoardItemType | null | undefined,
+    string | null
   >;
   assignee_id: string | null;
   assigned_by: string | null;
@@ -1859,6 +1872,8 @@ export interface TaskBoardItem {
   description: string | null;
   status: TaskBoardItemStatus;
   priority: TaskBoardItemPriority;
+  /** What kind of work this is; null on cards written before the field. */
+  type: TaskBoardItemType | null;
   assigneeId: string | null;
   assignedBy: string | null;
   /** `owner/name` of the repo (site) this task pertains to. Nullable: tasks
