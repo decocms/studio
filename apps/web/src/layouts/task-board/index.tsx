@@ -193,10 +193,10 @@ const CHIP =
  * A label chip, held a step back from full strength.
  *
  * Tags carry arbitrary hex, so at full opacity a saturated one out-shouts the
- * title it is describing. 70% keeps each tag's colour legible as identity while
+ * title it is describing. 80% keeps each tag's colour legible as identity while
  * letting the card read title-first.
  */
-const LABEL = `${CHIP} opacity-70`;
+const LABEL = `${CHIP} opacity-80`;
 
 /** Tags a card shows before collapsing the rest into `+N`. Matches the list
  *  view's existing cap; the full set is in the task dialog. */
