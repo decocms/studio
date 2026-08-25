@@ -96,6 +96,78 @@ describe("getArrayItemLabel", () => {
     );
   });
 
+  test("labels a lazy-wrapped item containing a hidden section by the section name", () => {
+    // Real scenario: lazy wrapper around a multivariate flag (hidden item) containing a section
+    const item = {
+      __resolveType: "website/sections/Rendering/Lazy.tsx",
+      section: {
+        __resolveType: "website/flags/multivariate.ts",
+        variants: [
+          {
+            value: {
+              __resolveType:
+                "site/sections/Content/BannerCarrouselDepartment.tsx",
+            },
+            rule: { __resolveType: "website/matchers/never.ts" },
+          },
+        ],
+      },
+    };
+    expect(getArrayItemLabel(item, 0, undefined)).toBe(
+      "BannerCarrouselDepartment",
+    );
+  });
+
+  test("labels a lazy-wrapped item containing a hidden object by its fields", () => {
+    // Lazy wrapper around a hidden item with a title field
+    const item = {
+      __resolveType: "website/sections/Rendering/Lazy.tsx",
+      section: {
+        __resolveType: "website/flags/multivariate.ts",
+        variants: [
+          {
+            value: {
+              title: "Hidden Banner Title",
+            },
+            rule: { __resolveType: "website/matchers/never.ts" },
+          },
+        ],
+      },
+    };
+    expect(getArrayItemLabel(item, 0, undefined)).toBe("Hidden Banner Title");
+  });
+
+  test("labels a date matcher item by its configured range", () => {
+    // Real farmrio data: a Multi rule's `matchers` child.
+    const item = {
+      __resolveType: "website/matchers/date.ts",
+      start: "2026-08-10T15:00:00Z",
+      end: "2026-08-31T23:59:00Z",
+    };
+    const label = getArrayItemLabel(item, 0, undefined);
+    expect(label).toContain("→");
+    expect(label).not.toBe("Date");
+  });
+
+  test("labels a device matcher item by its selected devices", () => {
+    const item = {
+      __resolveType: "website/matchers/device.ts",
+      mobile: true,
+      tablet: true,
+    };
+    expect(getArrayItemLabel(item, 0, undefined)).toBe("Mobile & Tablet");
+  });
+
+  test("falls back to the matcher type name when unconfigured", () => {
+    const item = { __resolveType: "website/matchers/date.ts" };
+    expect(getArrayItemLabel(item, 0, undefined)).toBe("Date");
+  });
+
+  test("labels a saved matcher block reference by its block key", () => {
+    const item = { __resolveType: "ETC Segment" };
+    expect(getArrayItemLabel(item, 0, undefined)).toBe("ETC Segment");
+  });
+
   // Inline unions carry a per-branch Mustache title, resolved against branch data.
   const matcherUnionSchema: SchemaProperty = {
     type: "inline-union",
@@ -317,6 +389,83 @@ describe("getArrayItemImageSrc", () => {
       image: "{{{image.mobile}}}",
     };
     expect(getArrayItemImageSrc(item, schema)).toBeUndefined();
+  });
+
+  test("unwraps a multivariate image whose variant value is an object", () => {
+    const item = {
+      matcher: ["/produtos/cheirinho"],
+      image: {
+        __resolveType: "site/flags/multivariate/desktopAndMobileImage.ts",
+        variants: [
+          {
+            rule: { __resolveType: "website/matchers/always.ts" },
+            value: {
+              desktop: "https://example.com/desktop.jpg",
+              mobile: "https://example.com/mobile.jpg",
+            },
+          },
+        ],
+      },
+    };
+    const schema: SchemaProperty = {
+      type: "object",
+      image: "{{{image.mobile}}}",
+    };
+    expect(getArrayItemImageSrc(item, schema)).toBe(
+      "https://example.com/mobile.jpg",
+    );
+  });
+
+  test("prefers the always variant over an earlier targeted-rule variant", () => {
+    const item = {
+      matcher: ["/produtos/cheirinho"],
+      image: {
+        __resolveType: "site/flags/multivariate/desktopAndMobileImage.ts",
+        variants: [
+          {
+            rule: { __resolveType: "website/matchers/device.ts" },
+            value: { desktop: "https://example.com/targeted.jpg" },
+          },
+          {
+            rule: { __resolveType: "website/matchers/always.ts" },
+            value: { desktop: "https://example.com/default.jpg" },
+          },
+        ],
+      },
+    };
+    const schema: SchemaProperty = {
+      type: "object",
+      image: "{{{image.desktop}}}",
+    };
+    expect(getArrayItemImageSrc(item, schema)).toBe(
+      "https://example.com/default.jpg",
+    );
+  });
+
+  test("recognizes the legacy $live always matcher as the default variant", () => {
+    const item = {
+      matcher: ["/produtos/cheirinho"],
+      image: {
+        __resolveType: "site/flags/multivariate/desktopAndMobileImage.ts",
+        variants: [
+          {
+            rule: { __resolveType: "website/matchers/device.ts" },
+            value: { desktop: "https://example.com/targeted.jpg" },
+          },
+          {
+            rule: { __resolveType: "$live/matchers/MatchAlways.ts" },
+            value: { desktop: "https://example.com/default.jpg" },
+          },
+        ],
+      },
+    };
+    const schema: SchemaProperty = {
+      type: "object",
+      image: "{{{image.desktop}}}",
+    };
+    expect(getArrayItemImageSrc(item, schema)).toBe(
+      "https://example.com/default.jpg",
+    );
   });
 
   test("defaults to image.mobile when image is a nested object", () => {

@@ -115,5 +115,5 @@ and absence of credentials from git-visible files and artifacts.
 ## Non-goals
 
 - Changing Studio Native's PTY-based coding-agent runtime.
-- Rewriting sandbox providers or hosted run orchestration.
+- Rewriting the hosted sandbox lifecycle or run orchestration.
 - Blocking the initial tool-catalog feature on this larger lifecycle refactor.

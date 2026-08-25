@@ -232,8 +232,6 @@ export function useThreadsPanel({
       await studio.call("SANDBOX_DELETE", {
         virtualMcpId: target.virtualMcpId,
         branch: target.branch,
-        // Desktop-gated path; this is the only possible provider here.
-        sandboxProviderKind: "user-desktop",
         removeWorktree: true,
       });
     } catch {

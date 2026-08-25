@@ -75,7 +75,7 @@ function applyPatch(
  * Upsert a full, authoritative row: insert if missing, else overwrite fields
  * unconditionally — NO recency guard. Used only by `fetchThreadIntoSlot` for a
  * by-id GET result, which is the source of truth for the rich fields
- * (`harness_id`, `sandbox_provider_kind`, `metadata`) that a concurrent
+ * (`harness_id`, `metadata`) that a concurrent
  * `/watch` synthetic drops. `applyPatch`'s `updated_at` guard would let that
  * newer-but-lossy synthetic win; here the full row always wins. The caller is
  * responsible for the tombstone check.
@@ -640,6 +640,14 @@ export class ThreadManagerStore {
 // ─── Module-scoped registry ──────────────────────────────────────────────────
 
 let current: ThreadManagerStore | null = null;
+
+// A hot-replaced module instance starts with `current: null`, orphaning the old instance's live `/watch` subscription — dispose it on HMR teardown.
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    current?.dispose();
+    current = null;
+  });
+}
 
 /** Idempotent: same key → same instance. Different key → dispose + reopen. */
 export function getOrOpenManager(

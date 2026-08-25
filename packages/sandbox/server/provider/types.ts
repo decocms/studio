@@ -1,10 +1,4 @@
-/**
- * Runner-agnostic interface. Callers never branch on kind; runner-specific
- * features (e.g. local-ingress ports) live on concrete classes.
- */
-
-import { z } from "zod";
-import type { ClaimPhase } from "./lifecycle-types";
+/** Shared inputs and outputs for the hosted AgentSandboxProvider. */
 
 export interface SandboxId {
   userId: string;
@@ -12,12 +6,12 @@ export interface SandboxId {
   projectRef: string;
 }
 
-/** Opaque handle; transport (HTTP/kube-exec/ssh) stays inside the runner. */
+/** Opaque handle; transport details stay inside AgentSandboxProvider. */
 export interface Sandbox {
   handle: string;
   workdir: string;
   /**
-   * Same as `runner.getPreviewUrl(handle)`, returned eagerly. Non-null as
+   * Same as `provider.getPreviewUrl(handle)`, returned eagerly. Non-null as
    * long as the sandbox exists — the iframe may still show a connection
    * error if the dev server inside never binds (e.g. repo has no `dev`/
    * `start` script), which is what the UI's booting/ready state tracks.
@@ -25,15 +19,13 @@ export interface Sandbox {
   previewUrl: string | null;
 }
 
-/** When omitted, no dev server is started; runner uses its default image (tool sandboxes). */
+/** When omitted, no dev server is started; the default tool image is used. */
 export interface Workload {
   runtime: "node" | "bun" | "deno";
   packageManager: "npm" | "pnpm" | "yarn" | "bun" | "deno";
   /**
-   * User-pinned dev port. Omit when the user hasn't chosen one — runners
-   * pick a free port (user-desktop: avoids collisions across co-tenant
-   * sandboxes sharing the user's host network; cluster: falls back to its
-   * own default).
+   * User-pinned dev port. Omit when the user hasn't chosen one — the provider
+   * uses its default.
    */
   devPort?: number;
   /** Subdirectory inside the repo where the package manager manifest lives (e.g. `apps/web`). */
@@ -41,8 +33,8 @@ export interface Workload {
 }
 
 /**
- * What a sandbox is for. Runners MAY size, pool, and place the two differently;
- * a runner that treats them identically is still correct.
+ * What a sandbox is for. AgentSandboxProvider may size, pool, and place the two
+ * differently.
  *
  * - `interactive` (default): a person is in the loop — dev server, preview URL,
  *   long-lived, one per (user, project).
@@ -54,8 +46,8 @@ export type SandboxPurpose = "interactive" | "harness-run";
 
 export interface EnsureOptions {
   /**
-   * Defaults to `interactive` when absent. On the agent-sandbox runner this
-   * decides the SandboxTemplate (memory ceiling) and the warm pool, so it has
+   * Defaults to `interactive` when absent. AgentSandboxProvider uses this to
+   * decide the SandboxTemplate (memory ceiling) and the warm pool, so it has
    * to survive into the persisted opts a resurrected claim is rebuilt from.
    */
   purpose?: SandboxPurpose;
@@ -75,8 +67,8 @@ export interface EnsureOptions {
    */
   branch?: string;
   /**
-   * Optional first-provisioning clone. Runners without clone support MUST
-   * ignore (not error). `branch` post-clone: fetch-from-origin-or-create.
+   * Optional first-provisioning clone. `branch` post-clone:
+   * fetch-from-origin-or-create.
    */
   repo?: {
     /**
@@ -85,9 +77,9 @@ export interface EnsureOptions {
      * the credential on the remote so subsequent fetch/pull/push from
      * inside the sandbox work without further plumbing. The embedded token
      * is short-lived (~1h GitHub App token); callers should pass a freshly
-     * minted URL on every ensure. Runners that reuse a running pod
-     * (resume/adopt) forward the new credential to the daemon so it rotates
-     * `origin` in place rather than leaving a stale token.
+     * minted URL on every ensure. Resume/adopt paths forward the new credential
+     * to the daemon so it rotates `origin` in place rather than leaving a stale
+     * token.
      */
     cloneUrl: string;
     /**
@@ -111,7 +103,7 @@ export interface EnsureOptions {
      */
     submoduleCredentials?: { host: string; token: string }[];
   };
-  /** Image override. Non-image runners MUST ignore. */
+  /** Sandbox image override. */
   image?: string;
   workload?: Workload;
   /**
@@ -124,8 +116,8 @@ export interface EnsureOptions {
   /** Frozen for the sandbox's lifetime — changing requires recreate. */
   env?: Record<string, string>;
   /**
-   * Tenant identity for cost attribution. Runners MAY surface these as
-   * platform-native metadata (k8s pod labels) so
+   * Tenant identity for cost attribution, surfaced as platform-native metadata
+   * (k8s pod labels) so
    * downstream metrics pipelines can attribute resource usage to the owning
    * org/user. Optional — callers without an org context (smoke tests, internal
    * tool sandboxes) leave it unset and pods get only platform-level labels.
@@ -134,8 +126,7 @@ export interface EnsureOptions {
    * are charset-restricted, so UUIDs only). The remaining fields are
    * human-readable identity surfaced as k8s *annotations* (no charset limit) so
    * `kubectl describe sandboxclaim` and dashboards can show who owns a sandbox
-   * without a join back to the DB. All optional — runners drop any that are
-   * absent.
+   * without a join back to the DB. All optional — absent values are omitted.
    */
   tenant?: {
     orgId: string;
@@ -146,26 +137,9 @@ export interface EnsureOptions {
     userName?: string;
   };
   /**
-   * Message-offload SSRF allowlist for the spawned daemon. When the cluster
-   * offloads an oversized dispatch body to object storage, the daemon
-   * re-inflates it by fetching a presigned URL — but ONLY if the URL's host is
-   * in this allowlist. The cluster derives these from its OWN trusted S3 config
-   * and pushes them down at spawn so the daemon can fail closed by default
-   * (empty allowlist = every offload fetch rejected). NEVER sourced from a
-   * request frame — that is the SSRF guarantee.
-   *
-   * Only the `user-desktop` runner consumes these (it spawns the daemon with
-   * the matching env). Other runners MUST ignore them (the cluster daemon
-   * shares the cluster's network and reads its own S3 env directly).
-   */
-  offloadAllowedHosts?: string[];
-  /** Permit http:// loopback offload refs (dev MinIO). false in production. */
-  offloadAllowSameHostDev?: boolean;
-  /**
-   * org-fs mount config (a JSON `OrgFsMountConfig`) for the spawned daemon, set
-   * as its `ORGFS_CONFIG` boot env so it mounts the configured volumes
-   * kext-free. Only the `user-desktop` runner consumes it (hosted pods can't
-   * mount — that's the privileged-sidecar path). Absent → no mounting.
+   * org-fs mount config (a JSON `OrgFsMountConfig`) relayed to the hosted
+   * daemon so its privileged sidecar mounts the configured volumes. Absent
+   * means no org-fs mount.
    */
   orgFsConfigJson?: string;
 }
@@ -175,25 +149,6 @@ export interface ProxyRequestInit {
   headers: Headers;
   body: BodyInit | null;
   signal?: AbortSignal;
-}
-
-/**
- * Persisted on `sandboxMap` and `sandbox_runner_state.sandbox_provider_kind`.
- * When widening, keep `SandboxRecord.sandboxProviderKind` in sync.
- */
-export const sandboxProviderKindSchema = z.enum([
-  "agent-sandbox",
-  "user-desktop",
-]);
-
-export type SandboxProviderKind = z.infer<typeof sandboxProviderKindSchema>;
-
-export type LegacySandboxProviderKind = SandboxProviderKind | "cluster";
-
-export function normalizeSandboxProviderKind(
-  kind: LegacySandboxProviderKind,
-): SandboxProviderKind {
-  return kind === "cluster" ? "agent-sandbox" : kind;
 }
 
 /**
@@ -209,132 +164,6 @@ export interface PodTermination {
   exitCode?: number;
   /** The limit that was hit, as k8s spells it (`4Gi`). */
   memoryLimit?: string;
-}
-
-export interface SandboxProvider {
-  readonly kind: SandboxProviderKind;
-
-  ensure(id: SandboxId, opts?: EnsureOptions): Promise<Sandbox>;
-  delete(handle: string): Promise<void>;
-  alive(handle: string): Promise<boolean>;
-
-  /**
-   * Why this sandbox's container last stopped, for a caller that already knows
-   * it stopped. Best-effort and racy against the pod's own deletion — null
-   * means "cannot tell", so callers must degrade to their unqualified message
-   * rather than asserting anything.
-   *
-   * Optional: callers must `?.()`.
-   */
-  lastTermination?(handle: string): Promise<PodTermination | null>;
-
-  /**
-   * Bring this sandbox's shutdown forward to `graceMs` from now, because the
-   * work it was provisioned for is done.
-   *
-   * For a `cloneOnly` sandbox — one agent loop, no dev server, no preview — the
-   * pod is useless the moment its dispatch ends, but it would otherwise sit
-   * idle until the 15-min claim TTL or the housekeeper's idle sweep. That tail
-   * is most of its billed life.
-   *
-   * Deliberately a shutdown-time patch, not a delete: the operator stays the
-   * only thing that tears a claim down (one owner, one code path, same graceful
-   * SIGTERM that lets the daemon push the working tree to git), and the grace
-   * window lets an immediate follow-up turn adopt the still-running pod instead
-   * of paying a cold clone. Never brings shutdown LATER than it already is.
-   *
-   * Optional: callers must `?.()`.
-   */
-  releaseAfter?(handle: string, graceMs: number): Promise<void>;
-
-  /**
-   * Push this sandbox's shutdown back out to a full idle window, because
-   * someone is still watching it.
-   *
-   * The claim TTL is a wall clock that only `ensure()` renews, and nothing on
-   * the preview path calls `ensure()`: preview traffic goes gateway → pod
-   * without passing through Studio, and the housekeeper only ever moves
-   * shutdown earlier. So a sandbox a user was reading — but whose agent was
-   * idle — died mid-session at the TTL and self-healed into a cold reprovision.
-   *
-   * The counterpart to `releaseAfter`, and its mirror image: never brings
-   * shutdown EARLIER than it already is. Truly idle pods are still reaped —
-   * the housekeeper sweeps on daemon idle, which an open tab does not reset.
-   *
-   * Optional: callers must `?.()`.
-   */
-  renewTtl?(handle: string): Promise<void>;
-
-  /**
-   * Drop this provider's in-process cache + persistent state for `handle`
-   * WITHOUT contacting the daemon. Used by the auto-restart path when the
-   * daemon is known-dead — `delete()` would try to reach the link and
-   * either fail or be wasteful. Optional: callers must `?.()`. Providers
-   * that don't keep a per-instance cache (or where the state store is
-   * the sole source of truth) can omit.
-   */
-  forgetHandle?(handle: string): Promise<void>;
-
-  /**
-   * Can the backing infrastructure schedule another sandbox right now?
-   *
-   * `false` means "do not ask for one yet" — the caller parks instead of
-   * claiming a sandbox that cannot be placed. Without it, over-admission is only
-   * discovered by waiting out `waitForSandboxReady` (180s) and failing the run,
-   * which is how one over-subscribed node turned an 8-card auto-fix into 4
-   * failed tasks: their pods sat `Pending` with
-   * `FailedScheduling: Insufficient memory`, and Studio's only limit was a fixed
-   * per-pod number that cannot see a cluster.
-   *
-   * `true` is not a reservation, just "nothing is currently unplaceable". A race
-   * between two admissions is fine: the loser fails and is retried, which is the
-   * pre-existing behavior.
-   *
-   * Optional: a provider that cannot answer omits it and callers admit
-   * immediately, preserving today's behavior exactly.
-   */
-  hasSchedulableCapacity?(): Promise<boolean>;
-
-  /** Null when no workload was requested or the sandbox isn't running. */
-  getPreviewUrl(handle: string): Promise<string | null>;
-
-  /**
-   * Passthrough to the daemon control plane. Path is daemon-internal; each
-   * provider translates it to its own daemon transport. Bearer tokens stay
-   * inside the provider.
-   */
-  proxyDaemonRequest(
-    handle: string,
-    path: string,
-    init: ProxyRequestInit,
-  ): Promise<Response>;
-
-  /**
-   * Repopulate in-process routing state from a claim that already exists in
-   * the cluster (preview gateway traffic can outlive studio's records cache).
-   * Optional — only agent-sandbox implements this today.
-   */
-  adoptLiveClaim?(id: SandboxId, handle: string): Promise<boolean>;
-
-  /**
-   * Stream of phase transitions for the pre-Ready lifecycle. Used by studio's
-   * unified `/api/vm-events` SSE so the UI can show meaningful progress
-   * between SANDBOX_START and the daemon SSE coming online.
-   *
-   * agent-sandbox is the interesting case: K8s scheduling, image pulls, and
-   * node provisioning can each take many seconds, and surfacing them
-   * granularly turns a black hole into a progress bar. The other providers
-   * have no equivalent black hole — once SANDBOX_START's `provider.ensure` returns,
-   * the daemon's HTTP server is already up — so they yield a single `ready`
-   * phase and end the stream immediately.
-   *
-   * Generator closes on a terminal phase (`ready` / `failed`) or on
-   * `signal.abort()`.
-   */
-  watchClaimLifecycle(
-    handle: string,
-    signal?: AbortSignal,
-  ): AsyncGenerator<ClaimPhase, void, unknown>;
 }
 
 export function sandboxIdKey(id: SandboxId): string {

@@ -3,6 +3,7 @@ package dispatch
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -17,6 +18,13 @@ import (
 )
 
 const tombstoneTTL = 60 * time.Second
+
+// The dispatch endpoint always runs the sandbox's installed Claude Code runner.
+const sandboxHarnessID = "claude-code"
+
+// maxDispatchBodyBytes stops an unbounded request body from parking the pod's
+// memory. Current dispatch always sends the complete input inline.
+const maxDispatchBodyBytes = 32 * 1024 * 1024
 
 // Terminal code for a run this pod could not finish (shutdown / dropped
 // connection) as opposed to one that was cancelled on purpose. Studio maps it
@@ -40,10 +48,8 @@ var takeoverTimeout = 10 * time.Second
 var dispatchHeartbeat = 15 * time.Second
 
 type Deps struct {
-	DaemonToken      func() string
-	AppRoot          string
-	AllowedHosts     []string
-	AllowSameHostDev bool
+	DaemonToken func() string
+	AppRoot     string
 	// HarnessRunnerCmd is the argv the harness runs as, one process per run
 	// (HARNESS_RUNNER_CMD env). Empty → every dispatch fails with
 	// unknown_harness.
@@ -74,8 +80,7 @@ type Deps struct {
 }
 
 // RunInfo is what the daemon needs from a dispatched run's input to prepare the
-// workspace. Extracted in one place so both dispatch paths (inline input and
-// offloaded messages) feed the same hook.
+// workspace. Extracted once so every harness receives the same preparation.
 type RunInfo struct {
 	ThreadId string
 	// Mcp is the run's Virtual MCP endpoint; zero URL when the run carries none.
@@ -282,8 +287,13 @@ func (reg *Registry) HandleDispatch(w http.ResponseWriter, r *http.Request, deps
 		jsonError(w, 401, map[string]string{"error": "unauthorized"})
 		return
 	}
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxDispatchBodyBytes))
 	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			jsonError(w, 413, map[string]string{"error": "body_too_large"})
+			return
+		}
 		jsonError(w, 400, map[string]string{"error": "bad_json"})
 		return
 	}
@@ -292,11 +302,7 @@ func (reg *Registry) HandleDispatch(w http.ResponseWriter, r *http.Request, deps
 		jsonError(w, 400, map[string]string{"error": "bad_json"})
 		return
 	}
-	var harnessId, runId string
-	if raw, ok := frame["harnessId"]; !ok || json.Unmarshal(raw, &harnessId) != nil {
-		jsonError(w, 400, map[string]string{"error": "missing_harness_id"})
-		return
-	}
+	var runId string
 	if raw, ok := frame["runId"]; !ok || json.Unmarshal(raw, &runId) != nil {
 		jsonError(w, 400, map[string]string{"error": "missing_run_id"})
 		return
@@ -305,11 +311,6 @@ func (reg *Registry) HandleDispatch(w http.ResponseWriter, r *http.Request, deps
 	input := frame["input"]
 	if input == nil {
 		input = json.RawMessage("null")
-	}
-
-	if ref := ParseMessagesRef(frame); ref != nil {
-		reg.handleOffloadDispatch(w, r, deps, frame, ref, harnessId, runId)
-		return
 	}
 
 	if reason := ValidateHarnessInput(input); reason != "" {
@@ -324,52 +325,10 @@ func (reg *Registry) HandleDispatch(w http.ResponseWriter, r *http.Request, deps
 
 	ctx, cancel := context.WithCancel(r.Context())
 	entry, awaitTakeover := reg.claim(runId, cancel)
-	slog.Info("dispatch received", "harness", harnessId, "run_id", runId)
+	slog.Info("dispatch received", "harness", sandboxHarnessID, "run_id", runId)
 	awaitTakeover()
 
-	reg.runHarness(ctx, w, deps, harnessId, runId, entry, rebaseInput(input, deps.AppRoot))
-}
-
-func (reg *Registry) handleOffloadDispatch(
-	w http.ResponseWriter,
-	r *http.Request,
-	deps Deps,
-	frame map[string]json.RawMessage,
-	ref *MessagesRef,
-	harnessId, runId string,
-) {
-	messages, err := FetchOffloadedMessages(ref.URL, deps.AllowedHosts, deps.AllowSameHostDev, ref.Sha256)
-	if err != nil {
-		slog.Error("dispatch offload fetch failed", "harness", harnessId, "url", ref.URL, "err", err)
-		jsonError(w, 400, map[string]string{"error": "offload_fetch_failed", "detail": err.Error()})
-		return
-	}
-
-	var baseInput map[string]json.RawMessage
-	if raw, ok := frame["input"]; ok {
-		json.Unmarshal(raw, &baseInput)
-	}
-	if baseInput == nil {
-		baseInput = map[string]json.RawMessage{}
-	}
-	baseInput["messages"] = messages
-	merged, _ := json.Marshal(baseInput)
-
-	if reason := ValidateHarnessInput(merged); reason != "" {
-		jsonError(w, 400, map[string]string{"error": "bad_input", "detail": reason})
-		return
-	}
-
-	if reg.tombstoned(runId) {
-		jsonError(w, 410, map[string]string{"error": "tombstoned"})
-		return
-	}
-
-	ctx, cancel := context.WithCancel(r.Context())
-	entry, awaitTakeover := reg.claim(runId, cancel)
-	slog.Info("dispatch received (offload)", "harness", harnessId, "run_id", runId, "bytes", ref.Bytes)
-	awaitTakeover()
-	reg.runHarness(ctx, w, deps, harnessId, runId, entry, rebaseInput(merged, deps.AppRoot))
+	reg.runHarness(ctx, w, deps, runId, entry, rebaseInput(input, deps.AppRoot))
 }
 
 // runHarness runs the harness for one run and streams its frames as this
@@ -386,7 +345,7 @@ func (reg *Registry) runHarness(
 	ctx context.Context,
 	w http.ResponseWriter,
 	deps Deps,
-	harnessId, runId string,
+	runId string,
 	entry *activeRun,
 	input json.RawMessage,
 ) {
@@ -404,17 +363,16 @@ func (reg *Registry) runHarness(
 	writeResultHeaders(w)
 	body := newBodyWriter(w)
 	startedAt := time.Now()
-	stopKeepalive := startKeepalive(ctx, body, harnessId, runId)
+	stopKeepalive := startKeepalive(ctx, body, runId)
 	defer stopKeepalive()
 
-	// Per-run workspace state, before the harness can touch the workspace. Here
-	// rather than in each caller so the offloaded-messages path gets it too.
+	// Per-run workspace state, before the harness can touch the workspace.
 	if deps.BeforeRun != nil {
 		deps.BeforeRun(runInfoOf(input))
 	}
 	// Deferred, not placed after RunHarness: every terminal path below returns
-	// early (crash, cancel, unknown harness), and the run that crashed halfway is
-	// exactly the one whose stray output must still be rescued.
+	// early (crash, cancel, unavailable runner), and the run that crashed
+	// halfway is exactly the one whose stray output must still be rescued.
 	//
 	// Registered AFTER the keepalive's defer, so it runs BEFORE it: `AfterRun`
 	// copies a skill tree and a session transcript over org-fs, and Studio is
@@ -441,7 +399,7 @@ func (reg *Registry) runHarness(
 	// identical in the pod log (both are silence until "dispatch done"), which is
 	// exactly the question you ask this log to answer.
 	seq := 0
-	frames, err := RunHarness(ctx, deps.HarnessRunnerCmd, harnessId, input, runEnv,
+	frames, err := RunHarness(ctx, deps.HarnessRunnerCmd, input, runEnv,
 		func(frame []byte) bool {
 			seq++
 			// A streaming run is working, so it counts as activity: the idle
@@ -449,7 +407,7 @@ func (reg *Registry) runHarness(
 			// longer than the idle TTL reports as untouched since the dispatch
 			// request arrived and gets its pod evicted mid-turn.
 			activity.Bump()
-			slog.Info("dispatch frame", "harness", harnessId, "run_id", runId,
+			slog.Info("dispatch frame", "harness", sandboxHarnessID, "run_id", runId,
 				"seq", seq, "bytes", len(frame),
 				"elapsed_s", int(time.Since(startedAt).Seconds()))
 			return body.write(append(frame, '\n'))
@@ -474,7 +432,7 @@ func (reg *Registry) runHarness(
 		// and forth. `superseded` says "stop, someone else has this."
 		if reg.displaced(runId, entry) {
 			slog.Info("dispatch superseded by takeover",
-				"harness", harnessId, "run_id", runId, "elapsed_s", elapsed)
+				"harness", sandboxHarnessID, "run_id", runId, "elapsed_s", elapsed)
 			body.write(terminalFrame("superseded",
 				"a newer dispatch took over this run"))
 			return
@@ -484,7 +442,7 @@ func (reg *Registry) runHarness(
 		// ASKED FOR. Studio spends no retry on it, which is right: a human said
 		// stop.
 		if reg.tombstoned(runId) {
-			slog.Info("dispatch cancelled", "harness", harnessId, "run_id", runId, "elapsed_s", elapsed)
+			slog.Info("dispatch cancelled", "harness", sandboxHarnessID, "run_id", runId, "elapsed_s", elapsed)
 			body.write(terminalFrame("cancelled", "run cancelled"))
 			return
 		}
@@ -496,18 +454,18 @@ func (reg *Registry) runHarness(
 		// mid-edit. `sandbox_gone` says the pod could not finish, not that the
 		// run should not: the checkout is intact, the shutdown publish pushes it
 		// to the branch, and a replacement pod can pick the turn up.
-		slog.Info("dispatch sandbox gone", "harness", harnessId, "run_id", runId, "elapsed_s", elapsed)
+		slog.Info("dispatch sandbox gone", "harness", sandboxHarnessID, "run_id", runId, "elapsed_s", elapsed)
 		body.write(terminalFrame(sandboxGoneCode,
 			"the sandbox stopped mid-run (pod shutting down or connection dropped)"))
 		return
 	}
 	if err != nil {
-		slog.Error("harness crashed", "harness", harnessId, "run_id", runId,
+		slog.Error("harness crashed", "harness", sandboxHarnessID, "run_id", runId,
 			"elapsed_s", elapsed, "err", err)
 		body.write(terminalFrame("harness_crashed", err.Error()))
 		return
 	}
-	slog.Info("dispatch done", "harness", harnessId, "run_id", runId,
+	slog.Info("dispatch done", "harness", sandboxHarnessID, "run_id", runId,
 		"elapsed_s", elapsed, "frames", frames)
 	body.write(terminalFrame("", ""))
 }
@@ -523,7 +481,7 @@ func (reg *Registry) runHarness(
 func startKeepalive(
 	ctx context.Context,
 	body *bodyWriter,
-	harnessId, runId string,
+	runId string,
 ) func() {
 	ctx, cancel := context.WithCancel(ctx)
 	stopped := make(chan struct{})
@@ -543,7 +501,7 @@ func startKeepalive(
 				// A quiet run is still a live run — see the frame callback's
 				// note on the idle reaper.
 				activity.Bump()
-				slog.Info("dispatch waiting", "harness", harnessId, "run_id", runId,
+				slog.Info("dispatch waiting", "harness", sandboxHarnessID, "run_id", runId,
 					"elapsed_s", int(time.Since(startedAt).Seconds()))
 			}
 		}

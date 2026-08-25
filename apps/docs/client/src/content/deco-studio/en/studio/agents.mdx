@@ -72,20 +72,20 @@ Above the chat input, next to the model picker, is the **runtime picker**. It co
 
 **Cloud**
 
-- **Decopilot** — _"Runs in an agent sandbox."_ The agent executes in a sandbox managed by Studio. This is the default, always available, with nothing to install.
+- **Decopilot** — _"Runs in an agent sandbox."_ Hosted Studio owns the runtime and, whenever a sandbox is needed, uses its managed AgentSandbox; callers do not choose a sandbox provider. This is the default, with nothing to install.
 
-**Local** — run the agent on your own machine. Until a local runtime is connected, these options read **"Desktop not detected"** and stay disabled.
+**Local** — run the agent in the native Studio desktop app. Outside the desktop app, these options read **"Desktop not detected"** and stay disabled.
 
-- **Decopilot** — the Decopilot harness, running on your desktop
 - **Claude Code** — drives the agent with the [Claude Code](https://claude.com/claude-code) CLI
 - **Codex** — drives the agent with the Codex CLI
+- **OpenCode** — drives the agent with the OpenCode CLI
 
 Running locally means the agent's sandbox lives on your machine: it can read and write your local files, use your installed tooling, and run with your own credentials — while Studio still handles the chat, connections, and logging. The cloud sandbox, by contrast, is fully managed and isolated per agent.
 
-To enable the local options, connect a desktop runtime with `deco link`. Studio detects the connection and lights up whichever harnesses it exposes — **Claude Code** and **Codex** appear once their CLI is available on the linked machine.
+To use the local options, open the native Studio app. Its embedded `local-api` detects the supported CLIs on that machine, launches the selected harness in the chat's local worktree, and intercepts sandbox lifecycle and filesystem calls locally. It records that runtime as `local-api`; the hosted API remains fixed to AgentSandbox.
 
 <Callout type="tip">
-  Cloud is the right default for unattended runs and teammates who shouldn't need a local setup. Reach for a local runtime when the agent needs your machine — your files, your credentials, or a coding harness like Claude Code or Codex.
+  Cloud is the right default for unattended runs and teammates who shouldn't need a local setup. Reach for the desktop app when the agent needs your machine — your files, your credentials, or a coding harness like Claude Code, Codex, or OpenCode.
 </Callout>
 
 ## Windows

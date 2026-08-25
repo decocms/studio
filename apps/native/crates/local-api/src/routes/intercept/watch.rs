@@ -429,7 +429,6 @@ mod tests {
             virtual_mcp_id: "vir_local".to_string(),
             trigger_id: None,
             branch: Some("feature/native".to_string()),
-            sandbox_provider_kind: Some("user-desktop".to_string()),
             harness_id: Some("claude-code".to_string()),
             metadata: Some(json!({"kind": "agent"})),
             run_config: None,

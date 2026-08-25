@@ -28,13 +28,10 @@ export interface ConsumeRunProjectionOptions {
  * inside `projectFromJetStreamStep`, streams those chunks through the AI SDK
  * fold, persists step/final parts, and writes the terminal status.
  *
- * unified-control-plane T3: for the hosted topology, the thread gate now
- * calls this step immediately after STARTING (not awaiting) the hosted child
- * — so this consumer is routinely opened BEFORE the child has published its
- * first chunk. This is safe and not new: it is exactly the timing the
- * desktop topology has always used (the gate returns as soon as the work item
- * is durably published to the tunnel, well before the remote daemon streams
- * anything back). `projectFromJetStreamStep` → `createProjectorChunkStream`
+ * The thread gate calls this step immediately after starting (but not awaiting)
+ * the hosted child, so this consumer is routinely opened before the child has
+ * published its first chunk. `projectFromJetStreamStep` →
+ * `createProjectorChunkStream`
  * opens the JetStream consumer with `deliver_policy: DeliverPolicy.All`
  * (`projector-chunk-stream.ts`) — "deliver everything retained on the
  * subject, then keep delivering as new messages arrive" — and

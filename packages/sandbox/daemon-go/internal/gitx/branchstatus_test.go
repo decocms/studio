@@ -2,6 +2,7 @@ package gitx
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -12,8 +13,22 @@ func (nopBroadcaster) Emit(string, any) {}
 
 func write(t *testing.T, repo, name, content string) {
 	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(repo, name)), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(repo, name), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func commitAll(t *testing.T, repo string) {
+	t.Helper()
+	for _, args := range [][]string{{"add", "-A"}, {"commit", "-q", "-m", "snapshot"}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
 	}
 }
 
@@ -53,6 +68,59 @@ func TestBaselineSeparatesBootDirtFromUserWork(t *testing.T) {
 	m.ArmBaseline()
 	if !dirty(t, m) {
 		t.Fatal("first arm wins: a later arm must not swallow the edit")
+	}
+}
+
+// The reported bug: a CMS edit made while the sandbox is still `starting` — before
+// the baseline arms — was snapshotted into the baseline as boot dirt and silently
+// swallowed, so the header read "Up to date" over a real change. A path written
+// through the fs routes (MarkUserTouched) must survive the arm regardless of order.
+func TestUserTouchedEditSurvivesLaterBaselineArm(t *testing.T) {
+	repo := initRepoOnBranch(t, "feature")
+	m := NewBranchStatusMonitor(repo, nopBroadcaster{}, nil)
+
+	// The storefront ships committed blocks, so editing one shows as a modified
+	// tracked path — the shape the header actually sees.
+	write(t, repo, ".deco/blocks/pages-Home.json", `{"__resolveType":"x"}`)
+	commitAll(t, repo)
+
+	// Both made while `starting`, before the baseline arms: boot dirt the dev
+	// server emits directly, and a CMS block edit that came through the fs route.
+	write(t, repo, "boot.gen.json", "{}\n")
+	write(t, repo, ".deco/blocks/pages-Home.json", `{"__resolveType":"y"}`)
+	m.MarkUserTouched(".deco/blocks/pages-Home.json")
+
+	// Arms only once the dev server settles — after both writes above.
+	m.ArmBaseline()
+
+	if !dirty(t, m) {
+		t.Fatal("an edit made before arming must not be swallowed by the baseline")
+	}
+}
+
+// The dev server may never settle — a port-sniffer miss leaves the sandbox stuck
+// in `starting`, so ArmBaseline never runs. A CMS edit made in that window must
+// still read as the user's work: the header (publishing is git, not the dev
+// server) can only free itself from the lifecycle if the daemon reports the edit
+// dirty without waiting on a baseline that isn't coming.
+func TestUserTouchedEditDirtyBeforeBaselineArms(t *testing.T) {
+	repo := initRepoOnBranch(t, "feature")
+	m := NewBranchStatusMonitor(repo, nopBroadcaster{}, nil)
+
+	write(t, repo, ".deco/blocks/pages-Home.json", `{"__resolveType":"x"}`)
+	commitAll(t, repo)
+
+	// Boot dirt alone, still `starting`, baseline never armed: nothing to publish.
+	write(t, repo, "boot.gen.json", "{}\n")
+	if dirty(t, m) {
+		t.Fatal("un-armed boot dirt must not read as the user's work")
+	}
+
+	// A CMS block edit through the fs route, still before any arm.
+	write(t, repo, ".deco/blocks/pages-Home.json", `{"__resolveType":"y"}`)
+	m.MarkUserTouched(".deco/blocks/pages-Home.json")
+	if !dirty(t, m) {
+		t.Fatal("a user edit must be publishable even while the dev server never settles")
 	}
 }
 

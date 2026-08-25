@@ -331,6 +331,24 @@ export function createGitDataClient(params: {
     return { status: res.status, json };
   }
 
+  /** Blob text by sha via the Blob API (base64, up to 100MB). Shared by
+   * `getBlobText` and by `getFileTextAtRef`'s large-file fallback. */
+  async function blobText(blobSha: string): Promise<string> {
+    const { json } = await call<{ content: string; encoding: string }>(
+      "GET",
+      `${repoBase}/git/blobs/${blobSha}`,
+    );
+    if (json.encoding !== "base64") {
+      throw new GitHubApiError(
+        502,
+        "GET",
+        `${repoBase}/git/blobs/${blobSha}`,
+        `unexpected blob encoding ${json.encoding}`,
+      );
+    }
+    return Buffer.from(json.content, "base64").toString("utf-8");
+  }
+
   return {
     owner,
     repo,
@@ -406,26 +424,15 @@ export function createGitDataClient(params: {
       return json.tree;
     },
 
-    async getBlobText(blobSha) {
-      const { json } = await call<{ content: string; encoding: string }>(
-        "GET",
-        `${repoBase}/git/blobs/${blobSha}`,
-      );
-      if (json.encoding !== "base64") {
-        throw new GitHubApiError(
-          502,
-          "GET",
-          `${repoBase}/git/blobs/${blobSha}`,
-          `unexpected blob encoding ${json.encoding}`,
-        );
-      }
-      return Buffer.from(json.content, "base64").toString("utf-8");
+    getBlobText(blobSha) {
+      return blobText(blobSha);
     },
 
     async getFileTextAtRef(ref, filePath) {
       const { status, json } = await call<{
         content?: string;
         encoding?: string;
+        sha?: string;
       }>(
         "GET",
         `${repoBase}/contents/${encodeRefPath(filePath)}?ref=${encodeURIComponent(ref)}`,
@@ -433,6 +440,13 @@ export function createGitDataClient(params: {
         { allow: [404] },
       );
       if (status === 404 || json?.content === undefined) return null;
+      /** Files over the Contents API's 1MB limit come back with
+       * `encoding: "none"` and empty content, but the blob sha is still there —
+       * fetch the blob directly (the Blob API serves up to 100MB). A large
+       * `.deco/meta.gen.json` routinely crosses that line. */
+      if (json.encoding === "none" && json.sha) {
+        return blobText(json.sha);
+      }
       if (json.encoding !== "base64") {
         throw new GitHubApiError(
           502,

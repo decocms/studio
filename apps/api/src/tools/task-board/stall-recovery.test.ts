@@ -18,13 +18,11 @@ const ran = (
   overrides: Partial<{
     messageStorageVersion: number;
     harnessId: string | null;
-    sandboxProviderKind: string | null;
   }> = {},
 ) => ({
   status,
   messageStorageVersion: 2,
   harnessId: "decopilot",
-  sandboxProviderKind: "agent-sandbox",
   ...overrides,
 });
 
@@ -68,28 +66,6 @@ describe("decideStallAction", () => {
     expect(decideStallAction(ran("failed", { harnessId: "claude-code" }))).toBe(
       "nudge",
     );
-  });
-
-  test("claude-code outside an agent-sandbox has no pod to re-prompt into", () => {
-    for (const sandboxProviderKind of [null, "user-desktop"]) {
-      expect(
-        decideStallAction(
-          ran("failed", { harnessId: "claude-code", sandboxProviderKind }),
-        ),
-      ).toBe("none");
-    }
-  });
-
-  test("legacy Decopilot with no sandbox pin remains hosted", () => {
-    expect(
-      decideStallAction(ran("failed", { sandboxProviderKind: null })),
-    ).toBe("nudge");
-  });
-
-  test("retired linked Decopilot rows continue as hosted", () => {
-    expect(
-      decideStallAction(ran("failed", { sandboxProviderKind: "user-desktop" })),
-    ).toBe("nudge");
   });
 });
 

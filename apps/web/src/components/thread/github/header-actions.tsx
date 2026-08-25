@@ -242,6 +242,15 @@ export function HeaderActions({ virtualMcpId }: Props) {
     branch ?? sandboxRouteBranch ?? "",
   );
 
+  /**
+   * Preview URL must come from the sandbox lifecycle — the raw
+   * `vm.metadata.sandboxMap` does not always carry it. Called before the early
+   * returns below: `attachment.status` can flip from "detached" to attached
+   * (a live GitHub reconnect) while this component stays mounted, and a hook
+   * called only on some renders breaks React's hook-order invariant.
+   */
+  const { previewUrl } = useSandboxLifecycle();
+
   /** Detached repo: render a reconnect pill, never a blank header. */
   if (attachment.status === "detached") {
     return (
@@ -253,9 +262,6 @@ export function HeaderActions({ virtualMcpId }: Props) {
     );
   }
   if (!githubRepo) return null;
-
-  /** Preview URL must come from the sandbox lifecycle — the raw `vm.metadata.sandboxMap` does not always carry it. */
-  const { previewUrl } = useSandboxLifecycle();
 
   const button = githubHeadBranch
     ? selectHeaderButton({
@@ -532,7 +538,7 @@ function HeaderButtonRenderer(props: {
         {...(action && !loading ? { icon: actionIcon(action) } : {})}
         {...(tooltip ? { tooltip } : {})}
         items={items}
-        menuAriaLabel={t("thread.cmsActions.moreActionsAriaLabel")}
+        menuAriaLabel={t("thread.headerActions.moreActionsAriaLabel")}
         onClick={action ? () => onAction(action) : undefined}
       />
     </span>

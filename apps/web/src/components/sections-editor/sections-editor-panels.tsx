@@ -1,5 +1,15 @@
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight, Flag01 } from "@untitledui/icons";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@decocms/ui/components/alert-dialog.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Tooltip,
@@ -221,13 +231,44 @@ export function PageHeaderInputs({
   const [name, setName] = useState(initialName);
   const [path, setPath] = useState(initialPath);
   const [prevKey, setPrevKey] = useState(pageKey);
+  // Path change awaiting confirmation; rewriting a live page's path is deliberate.
+  const [pendingPath, setPendingPath] = useState<string | null>(null);
+  // Set on Escape so the ensuing blur doesn't re-prompt.
+  const skipCommitRef = useRef(false);
 
   // Reset local state when navigating to a different page
   if (prevKey !== pageKey) {
     setPrevKey(pageKey);
     setName(initialName);
     setPath(initialPath);
+    setPendingPath(null);
   }
+
+  const commitPath = () => {
+    if (skipCommitRef.current) {
+      skipCommitRef.current = false;
+      return;
+    }
+    const trimmed = path.trim();
+    if (trimmed === initialPath.trim()) {
+      // No real change — normalize the displayed value and move on.
+      setPath(initialPath);
+      return;
+    }
+    setPendingPath(trimmed);
+  };
+
+  const confirmPathChange = () => {
+    if (pendingPath === null) return;
+    setPath(pendingPath);
+    onFieldChange("path", pendingPath);
+    setPendingPath(null);
+  };
+
+  const cancelPathChange = () => {
+    setPath(initialPath);
+    setPendingPath(null);
+  };
 
   return (
     <div className="space-y-1">
@@ -246,13 +287,55 @@ export function PageHeaderInputs({
       <input
         type="text"
         value={path}
-        onChange={(e) => {
-          setPath(e.target.value);
-          onFieldChange("path", e.target.value);
+        onChange={(e) => setPath(e.target.value)}
+        onBlur={commitPath}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            e.currentTarget.blur();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            skipCommitRef.current = true;
+            setPath(initialPath);
+            e.currentTarget.blur();
+          }
         }}
         className="w-full bg-transparent text-xs text-muted-foreground truncate outline-none border-none p-0 focus:ring-0 placeholder:text-muted-foreground"
         placeholder={t("sectionsEditor.sectionsEditorPanels.pathPlaceholder")}
       />
+      <AlertDialog
+        open={pendingPath !== null}
+        onOpenChange={(next) => {
+          if (!next) cancelPathChange();
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("sectionsEditor.sectionsEditorPanels.changePathTitle")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("sectionsEditor.sectionsEditorPanels.changePathDescription", {
+                from: initialPath,
+                to: pendingPath ?? "",
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              {t("sectionsEditor.sectionsEditorPanels.changePathCancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                confirmPathChange();
+              }}
+            >
+              {t("sectionsEditor.sectionsEditorPanels.changePathConfirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

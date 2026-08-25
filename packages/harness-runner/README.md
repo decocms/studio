@@ -11,19 +11,18 @@ Runs coding-agent harnesses inside a sandbox pod, one process per run.
 
 ## Overview
 
-The Go daemon execs this process for each dispatched run, writes a
-`{harnessId, input}` envelope to stdin, and reads NDJSON frames
-(`{chunks, error}`) off stdout as they are produced. stderr is the pod's log.
-The daemon adds the run's terminal `done` frame itself — this process only emits
-what the harness produced.
+The Go daemon execs this process for each dispatched run, writes `{input}` to
+stdin, and reads NDJSON frames (`{chunks, error}`) off stdout as they are
+produced. stderr is the pod's log. The daemon adds the run's terminal `done`
+frame itself — this process only emits what the harness produced.
 
 The wire is defined by `daemon-go/internal/dispatch/runner.go`; the frame shape
-is `harnessRunResultSchema` in `packages/sandbox/dispatch/schemas.ts`. One
-harness is implemented today, `claude-code`, driven by the Claude Agent SDK.
+is `harnessRunResultSchema` in `packages/sandbox/dispatch/schemas.ts`. The runner
+is hard-coded to `claude-code`, driven by the Claude Agent SDK.
 
 ## Responsibilities
 
-- Read the dispatch envelope off stdin and dispatch it to a harness.
+- Read and validate the fixed dispatch envelope from stdin.
 - Run the harness against the checkout the daemon already prepared.
 - Translate SDK messages into AI SDK `UIMessageChunk`s so nothing downstream of
   the daemon needs new part types.
@@ -41,7 +40,7 @@ harness is implemented today, `claude-code`, driven by the Claude Agent SDK.
 Not imported by Studio. The daemon spawns it through `HARNESS_RUNNER_CMD`:
 
 ```bash
-echo '{"harnessId":"claude-code","input":{ ... }}' | bun packages/harness-runner/main.ts
+echo '{"input":{ ... }}' | bun packages/harness-runner/main.ts
 ```
 
 Model access is configured entirely by environment, pushed down as sandbox env

@@ -523,13 +523,7 @@ export class TaskBoardReviewSweeper {
     // A PR merged outside Studio moves no card on its own — see
     // `reconcile-merged.ts`. Runs before the merge retry and before the `owned`
     // gate: a handed-off card whose PR a human merged is exactly the stuck case.
-    if (
-      await advanceToDoneIfMerged(
-        ctx,
-        item,
-        live.map((pr) => pr.merged),
-      )
-    ) {
+    if (await advanceToDoneIfMerged(ctx, item, live)) {
       return true;
     }
 

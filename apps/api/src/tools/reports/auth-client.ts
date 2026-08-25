@@ -174,14 +174,10 @@ export class CommerceDiscoveryClaimError extends Error {
 async function parseClaimErrorCode(
   response: Response,
 ): Promise<CommerceDiscoveryClaimCode> {
-  const text = await response.text().catch(() => "");
-  if (!text) return "unknown";
-  try {
-    const parsed = JSON.parse(text) as { error?: unknown };
-    return isClaimCode(parsed.error) ? parsed.error : "unknown";
-  } catch {
-    return "unknown";
-  }
+  const parsed = (await parseJsonResponse(response)) as
+    | { error?: unknown }
+    | undefined;
+  return isClaimCode(parsed?.error) ? parsed.error : "unknown";
 }
 
 /**

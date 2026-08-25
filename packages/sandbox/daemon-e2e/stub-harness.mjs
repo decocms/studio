@@ -1,7 +1,7 @@
 /**
  * A stub harness for the dispatch conformance tests.
  *
- * Speaks the real harness wire — `{harnessId, input}` as JSON on stdin,
+ * Speaks the real harness wire — `{input}` as JSON on stdin,
  * newline-delimited `{chunks, error}` frames on stdout — without Bun, the Claude
  * Agent SDK or a model provider. `input.harness.stubMode` picks the behaviour
  * under test, so one daemon serves every case:
@@ -45,13 +45,12 @@ if (mode === "hang") {
         {
           type: "text-delta",
           id: "1",
-          // Echoed so the test can prove the envelope and the run env reached
-          // the harness, and that `/repo` was rebased onto the pod's app root.
+          // Echoed so the test can prove the input and run env reached the
+          // harness, and that `/repo` was rebased onto the pod's app root.
           delta: JSON.stringify({
-            harnessId: body.harnessId,
             threadId: body.input?.threadId,
             cwd: body.input?.workspace?.cwd ?? null,
-            apiKey: process.env.ANTHROPIC_API_KEY ?? null,
+            hasExpectedApiKey: process.env.ANTHROPIC_API_KEY === "sk-e2e",
           }),
         },
       ],

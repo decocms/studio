@@ -17,6 +17,9 @@
  *                                      "See full report"; the flow awaits it)
  * It also captures the public report scan contract used by report-auth specs:
  *   POST /api/v2/diagnostics/run { url, email, distinct_id }
+ * And exposes an empty OpenAI-compatible model catalog for UI specs that need
+ * a configured provider without calling a real model vendor:
+ *   GET /v1/models -> { data: [] }
  */
 
 import { createServer } from "node:http";
@@ -34,6 +37,12 @@ const server = createServer((req, res) => {
   if (req.method === "GET" && url.pathname === "/health") {
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/v1/models") {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ data: [] }));
     return;
   }
 

@@ -14,6 +14,7 @@ import {
 import { sandboxGitStatusQueryKey } from "../thread/github/sandbox-git-api";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { KEYS } from "@/lib/query-keys";
+import { useT } from "@/i18n/use-t";
 
 /** Debounce window for form-driven block autosaves (ms). */
 export const AUTOSAVE_DELAY = 700;
@@ -156,6 +157,7 @@ export function useDebouncedSaveBlock(
   opts?: { onSaved?: () => void },
 ) {
   const saveBlock = useSaveBlock(params);
+  const t = useT();
   const pendingRef = useRef<Map<string, SaveData>>(new Map());
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map(),
@@ -171,7 +173,12 @@ export function useDebouncedSaveBlock(
       { blockKey, data: resolved },
       {
         onSuccess: () => opts?.onSaved?.(),
-        onError: (err) => toast.error(`Save failed: ${err.message}`),
+        onError: (err) =>
+          toast.error(
+            t("sectionsEditor.sectionsEditor.saveFailed", {
+              error: err.message,
+            }),
+          ),
       },
     );
   };

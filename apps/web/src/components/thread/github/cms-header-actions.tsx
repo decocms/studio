@@ -52,6 +52,7 @@ import {
   CmsPublishPopover,
   type CmsPublishMode,
 } from "./cms-publish-popover.tsx";
+import { summarizePublishManifest } from "./publish-change-summary.ts";
 import {
   isCmsStateSettling,
   selectCmsHeaderButton,
@@ -159,6 +160,19 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
         headSha: status.headSha ?? "",
       }
     : { kind: "unknown" };
+
+  /**
+   * The publishable change count, derived from the SAME manifest summarizer the
+   * popover uses (the count ignores `lookup`/`diff`, so the manifest alone is
+   * enough here), so with a manifest the header button and the popover agree on
+   * whether there is anything to publish — auto-generated artifacts are excluded
+   * in both. `null` when the manifest is absent (sandbox daemon); the state
+   * machine then falls back to the branch's `aheadOfBase` commit count, which
+   * the popover doesn't, so the two can drift apart in that window alone.
+   */
+  const publishableChangeCount = status?.changedFiles
+    ? summarizePublishManifest({ files: status.changedFiles }).count
+    : null;
 
   const githubHeadBranch =
     (branchMeta.kind === "ready" ? branchMeta.branch : null) ?? branch ?? null;
@@ -359,6 +373,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
           ? String(statusQuery.error)
           : null,
     loading: Boolean(settling),
+    publishableChangeCount,
     t,
   });
 

@@ -45,4 +45,17 @@ export const sidebar = {
   "sidebar.taskGroupsList.typeChats": "Chats",
   "sidebar.taskGroupsList.viewList": "List",
   "sidebar.taskGroupsList.viewStatus": "Status",
+  "sidebar.inbox.title": "Inbox",
+  "sidebar.inbox.markAllRead": "Mark all read",
+  "sidebar.inbox.emptyTitle": "Nothing here yet",
+  "sidebar.inbox.emptyBody":
+    "Updates on the tasks you follow will appear here.",
+  "sidebar.inbox.actionCommented": "New comment",
+  "sidebar.inbox.actionCreated": "Task created",
+  "sidebar.inbox.actionStatusChanged": "Moved to a new column",
+  "sidebar.inbox.actionAssigneeChanged": "Reassigned",
+  "sidebar.inbox.actionReviewRequested": "Sent for review",
+  "sidebar.inbox.actionReviewApproved": "Review approved",
+  "sidebar.inbox.actionReviewChangesRequested": "Changes requested",
+  "sidebar.inbox.actionMergeFailed": "Couldn’t be merged",
 } as const;

@@ -113,7 +113,10 @@ describe("auto-archive sweep", () => {
   it("archives a merged card, logs it, and won't archive it twice", async () => {
     const id = await seed("done", new Date(Date.now() - 3 * DAY_MS), true);
 
-    const first = await archiveMergedForOrg(ctx, ORG, [id], async () => true);
+    const first = await archiveMergedForOrg(ctx, ORG, [id], async () => ({
+      state: "closed" as const,
+      merged: true,
+    }));
     expect(first.archived).toBe(1);
     expect((await taskBoard.getById(id, ORG))?.status).toBe("archived");
 
@@ -131,8 +134,52 @@ describe("auto-archive sweep", () => {
     );
 
     // No longer Done, so a second sweep must leave it alone.
-    const second = await archiveMergedForOrg(ctx, ORG, [id], async () => true);
+    const second = await archiveMergedForOrg(ctx, ORG, [id], async () => ({
+      state: "closed" as const,
+      merged: true,
+    }));
     expect(second.archived).toBe(0);
+  });
+
+  it("archives past an abandoned PR, and waits on a second repo", async () => {
+    const settled = new Date(Date.now() - 3 * DAY_MS);
+    const link = (id: string, prNumber: number, repoName: string) =>
+      taskBoard.linkPr({
+        taskBoardItemId: id,
+        organizationId: ORG,
+        url: `https://github.com/acme/${repoName}/pull/${prNumber}`,
+        prNumber,
+        repoOwner: "acme",
+        repoName,
+      });
+
+    const bounced = await seed("done", settled, false);
+    await link(bounced, 1, "repo");
+    await link(bounced, 2, "repo");
+
+    const twoRepos = await seed("done", settled, false);
+    await link(twoRepos, 3, "repo");
+    await link(twoRepos, 4, "repo-us");
+
+    // PR 1 is the branch a reviewer bounce walked away from; 4 is the second
+    // repo's, still open.
+    const reader = async (
+      _ctx: StudioContext,
+      _orgId: string,
+      pr: { number: number },
+    ) =>
+      pr.number === 1
+        ? { state: "closed" as const, merged: false }
+        : pr.number === 4
+          ? { state: "open" as const, merged: false }
+          : { state: "closed" as const, merged: true };
+
+    expect(
+      (await archiveMergedForOrg(ctx, ORG, [bounced, twoRepos], reader))
+        .archived,
+    ).toBe(1);
+    expect((await taskBoard.getById(bounced, ORG))?.status).toBe("archived");
+    expect((await taskBoard.getById(twoRepos, ORG))?.status).toBe("done");
   });
 
   it("leaves a card alone when GitHub can't confirm the merge", async () => {
@@ -140,11 +187,20 @@ describe("auto-archive sweep", () => {
     const open = await seed("done", new Date(Date.now() - 3 * DAY_MS), true);
 
     expect(
-      (await archiveMergedForOrg(ctx, ORG, [unknown], async () => null))
-        .archived,
+      (
+        await archiveMergedForOrg(ctx, ORG, [unknown], async () => ({
+          state: null,
+          merged: null,
+        }))
+      ).archived,
     ).toBe(0);
     expect(
-      (await archiveMergedForOrg(ctx, ORG, [open], async () => false)).archived,
+      (
+        await archiveMergedForOrg(ctx, ORG, [open], async () => ({
+          state: "open" as const,
+          merged: false,
+        }))
+      ).archived,
     ).toBe(0);
     expect((await taskBoard.getById(unknown, ORG))?.status).toBe("done");
     expect((await taskBoard.getById(open, ORG))?.status).toBe("done");

@@ -134,6 +134,11 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       taskBoardItemId: item.id,
       action: "created",
       actorId: getUserId(ctx)!,
+      // The only place an assignee named at create time gets enrolled.
+      alsoSubscribe: [
+        getUserId(ctx)!,
+        item.assigneeId === SUPER_AGENT_ASSIGNEE_ID ? null : item.assigneeId,
+      ],
     });
 
     // Broadcast the new card so every open board adds it live, no polling.

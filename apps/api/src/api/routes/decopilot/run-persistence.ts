@@ -1,10 +1,9 @@
 /**
  * Canonical run-message persistence factory.
  *
- * Every path that writes an assistant message to `thread_message_parts` — the
- * hosted live path (`dispatch-run`), the relay live path (`link-ingest`), and
- * the durable projector's terminal pass — MUST agree on two things or the same
- * logical message lands twice (or sorts wrong):
+ * The durable projector may replay a run, so every pass must derive the same
+ * identifiers and ordering or the same logical message lands twice (or sorts
+ * wrong):
  *
  *   1. **Row ids / dedup.** Row id is `${runId}:${messageId}:${seq}` with `seq`
  *      a per-message counter that restarts at 0. A fresh {@link PartEmitter}
@@ -24,10 +23,8 @@
  *      own user message even when a queued turn's projection runs after later
  *      turns have already been persisted under the same run (== thread).
  *
- * Before this helper each site re-derived the base inline and they had already
- * drifted (one omitted it entirely, defaulting to `Date.now()` and re-opening
- * the ordering bug for late writes). Routing everyone through here makes that
- * drift unrepresentable.
+ * Keeping this derivation in one helper makes projector redelivery
+ * deterministic.
  */
 
 import type { SqlThreadMessagePartStorage } from "@/storage/thread-message-parts";

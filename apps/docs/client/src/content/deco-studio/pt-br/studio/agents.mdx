@@ -72,20 +72,20 @@ Acima do input do chat, ao lado do model picker, está o **runtime picker**. Ele
 
 **Cloud**
 
-- **Decopilot** — _"Roda em um agent sandbox."_ O agent executa em um sandbox gerenciado pelo Studio. Este é o padrão, sempre disponível, sem nada para instalar.
+- **Decopilot** — _"Roda em um agent sandbox."_ O Studio hosted é dono do runtime e, sempre que uma sandbox é necessária, usa seu AgentSandbox gerenciado; callers não escolhem um provider de sandbox. Este é o padrão, sem nada para instalar.
 
-**Local** — rode o agent na sua própria máquina. Até que um runtime local seja conectado, essas opções exibem **"Desktop not detected"** e ficam desabilitadas.
+**Local** — rode o agent na app nativa do Studio para desktop. Fora da app desktop, essas opções exibem **"Desktop not detected"** e ficam desabilitadas.
 
-- **Decopilot** — o harness do Decopilot, rodando no seu desktop
 - **Claude Code** — conduz o agent com o CLI do [Claude Code](https://claude.com/claude-code)
 - **Codex** — conduz o agent com o CLI do Codex
+- **OpenCode** — conduz o agent com o CLI do OpenCode
 
 Rodar localmente significa que o sandbox do agent vive na sua máquina: ele pode ler e escrever seus arquivos locais, usar suas ferramentas instaladas e rodar com suas próprias credenciais — enquanto o Studio continua tratando o chat, as connections e o logging. O cloud sandbox, por outro lado, é totalmente gerenciado e isolado por agent.
 
-Para habilitar as opções locais, conecte um runtime de desktop com `deco link`. O Studio detecta a connection e acende quaisquer harnesses que ela expõe — **Claude Code** e **Codex** aparecem assim que seu CLI estiver disponível na máquina vinculada.
+Para usar as opções locais, abra a app nativa do Studio. O `local-api` embutido detecta os CLIs compatíveis na máquina, inicia o harness selecionado no worktree local do chat e intercepta localmente as chamadas de lifecycle e filesystem da sandbox. Ele registra esse runtime como `local-api`; a API hosted continua fixa no AgentSandbox.
 
 <Callout type="tip">
-  Cloud é o padrão certo para execuções sem supervisão e para colegas de time que não deveriam precisar de uma configuração local. Recorra a um runtime local quando o agent precisar da sua máquina — seus arquivos, suas credenciais ou um coding harness como Claude Code ou Codex.
+  Cloud é o padrão certo para execuções sem supervisão e para colegas de time que não deveriam precisar de uma configuração local. Recorra à app desktop quando o agent precisar da sua máquina — seus arquivos, suas credenciais ou um coding harness como Claude Code, Codex ou OpenCode.
 </Callout>
 
 ## Um agent é um MCP virtual

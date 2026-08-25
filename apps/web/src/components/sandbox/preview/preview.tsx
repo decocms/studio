@@ -420,7 +420,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const lifecyclePhase = vmEvents.lifecycle.phase;
   const devServerReady = lifecyclePhase === "running";
 
-  const isDesktopSandbox = vmEntry?.sandboxProviderKind === "user-desktop";
+  const isDesktopSandbox = isDesktopApp && !!vmEntry;
   const rawRepoDir = useSandboxRepoDir({
     orgSlug: org.slug,
     virtualMcpId: virtualMcpId ?? "",
@@ -429,8 +429,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     enabled: isDesktopSandbox && devServerReady && !!virtualMcpId && !!branch,
   });
   // Guard the value, not just the query: React Query's staleTime=Infinity cache
-  // can retain a stale repoDir after the provider kind changes from desktop to
-  // agent-sandbox, whose daemon reports a container-internal path ("/app/repo").
+  // can retain a native repoDir when this shared UI is rendered on hosted web,
+  // whose daemon reports a container-internal path ("/app/repo").
   const repoDir = isDesktopSandbox ? rawRepoDir : null;
 
   // Live production URL of the linked site, persisted on the agent's

@@ -161,7 +161,7 @@ export class PartRowBuilder {
         message.role,
         seq,
         kindForPart(part),
-        part,
+        capPartErrorText(part),
       );
       this.partKeyByRowId.set(row.id, key);
       rows.push(row);
@@ -187,7 +187,7 @@ export class PartRowBuilder {
         message.role,
         seq,
         kindForPart(part),
-        part,
+        capPartErrorText(part),
       );
       this.partKeyByRowId.set(row.id, key);
       rows.push(row);
@@ -220,8 +220,8 @@ export class PartRowBuilder {
   }
 
   /**
-   * Commit rows that have been successfully handed off to durable storage or a
-   * desktop batcher. Rows are intentionally not committed during `emit*` so a
+   * Commit rows that have been successfully handed off to durable storage.
+   * Rows are intentionally not committed during `emit*` so a
    * failed handoff can retry and receive the same deterministic rows again.
    */
   acknowledge(rows: ThreadMessagePart[]): void {
@@ -321,7 +321,7 @@ export class PartRowBuilder {
         message.role,
         seq,
         kindForPart(part),
-        part,
+        capPartErrorText(part),
       );
       this.partKeyByRowId.set(row.id, key);
       rows.push(row);
@@ -357,11 +357,44 @@ export class PartRowBuilder {
       const seq = this.seqFor(key);
       const row = this.row(messageId, "assistant", seq, "error", {
         type: "text",
-        text: `Error: ${errorText}`,
+        text: `Error: ${truncateErrorText(errorText)}`,
       });
       this.partKeyByRowId.set(row.id, key);
       rows.push(row);
     }
     return [...rows, ...this.markFinished(messageId, "assistant")];
   }
+}
+
+/**
+ * Cap on persisted error text. Some errors quote their whole input back — an AI
+ * SDK `Type validation failed` embeds the entire message array — and the part is
+ * replayed into the next request, so an untruncated one grows on every retry
+ * until the thread is unloadable and the provider rejects the prompt.
+ */
+const MAX_ERROR_TEXT_LENGTH = 8_000;
+
+function truncateErrorText(errorText: string): string {
+  if (errorText.length <= MAX_ERROR_TEXT_LENGTH) return errorText;
+  const dropped = errorText.length - MAX_ERROR_TEXT_LENGTH;
+  return `${errorText.slice(0, MAX_ERROR_TEXT_LENGTH)}… [truncated ${dropped} characters]`;
+}
+
+/**
+ * Same growth mechanism as {@link truncateErrorText}, on a different part
+ * shape: a tool part's `input-error`/`output-error` state carries its own
+ * `errorText` (often quoting the tool's own oversized input back, e.g. a
+ * schema-validation failure on a large write). It is stored raw and replayed
+ * into every later request the same way an assistant error part is, so an
+ * uncapped one grows the thread on every retry exactly like the case above.
+ */
+function capPartErrorText(part: AnyPart): AnyPart {
+  const errorText = (part as { errorText?: unknown }).errorText;
+  if (
+    typeof errorText !== "string" ||
+    errorText.length <= MAX_ERROR_TEXT_LENGTH
+  ) {
+    return part;
+  }
+  return { ...part, errorText: truncateErrorText(errorText) };
 }

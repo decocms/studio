@@ -47,7 +47,7 @@ import { createReadToolOutputTool } from "@/harnesses/lib/decopilot/built-in-too
 import { type VirtualClient } from "@/harnesses/lib/decopilot/built-in-tools/sandbox";
 import { createVmTools } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/index";
 import type { HtmlArtifactBuffer } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/types";
-import { buildClusterSandboxFs } from "./cluster-sandbox-fs";
+import { buildAgentSandboxFs } from "./agent-sandbox-fs";
 import { createSwappableFs } from "./swappable-fs";
 import { createLoadRepoTool } from "./load-repo";
 import { createSubtaskTool, SubtaskInputSchema } from "./subtask";
@@ -205,7 +205,7 @@ async function buildAllTools(
     objectStorage: ctx.objectStorage,
   });
   if (userId) {
-    // Cluster `interests.write` hook: closes over ctx/storage and forwards the
+    // Hosted `interests.write` hook: closes over ctx/storage and forwards the
     // org/agent/user carried in the InterestsWrite payload. The tool itself no
     // longer touches StudioContext (HarnessDeps conversion).
     tools.update_interests = createUpdateInterestsTool({
@@ -232,8 +232,8 @@ async function buildAllTools(
   // VM file tools — six LLM-visible tools (read/write/edit/grep/glob/bash)
   // always registered when a vmContext is provided. The handle is resolved
   // lazily on the first tool invocation: `ensureSandbox` either reuses
-  // the existing sandboxMap entry (fast path) or provisions a new sandbox via
-  // the env-selected runner. The promise is memoized on the closure so
+  // the existing sandboxMap entry (fast path) or provisions a new hosted
+  // sandbox. The promise is memoized on the closure so
   // parallel first calls (e.g. the model emitting bash + read in one step)
   // share a single provisioning round-trip.
   const vmNeedsApproval =
@@ -243,10 +243,10 @@ async function buildAllTools(
   let vmTools: ToolSet | undefined;
   if (vmContext) {
     // The flat fs hooks (provider resolution + lazy handle + auto-restart retry
-    // layer) are built by the cluster glue so the portable tools never import
+    // layer) are built by the AgentSandbox glue so the portable tools never import
     // `@decocms/sandbox` (spec §4.3). Provisioning stays lazy inside the hooks —
     // `ensureSandbox` runs on the first VM-tool call, not here.
-    const initialFs = await buildClusterSandboxFs(ctx, {
+    const initialFs = await buildAgentSandboxFs(ctx, {
       virtualMcpId: vmContext.virtualMcpId,
       branch: vmContext.branch,
       userId: vmContext.userId,
@@ -285,7 +285,7 @@ async function buildAllTools(
       // tool catalog. Provisioning stays lazy — the next VM-tool call ensures it.
       rebindFs: async (branch) => {
         swappableFs.swap(
-          await buildClusterSandboxFs(ctx, {
+          await buildAgentSandboxFs(ctx, {
             virtualMcpId: vmContext.virtualMcpId,
             branch,
             userId: vmContext.userId,

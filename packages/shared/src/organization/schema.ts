@@ -222,6 +222,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Run the QA Agent and Code Reviewer on a cheaper model than the Super Agent. A review reads a diff and reaches a verdict; it does not need the model that wrote the code. Off by default — turning it on trades some review depth for cost.",
     ),
+  coding_agent_org_mcps: z
+    .boolean()
+    .optional()
+    .describe(
+      "Give a coding-agent run (the claude-code harness in a sandbox) every MCP connection in the org as its own MCP server, on top of the narrow task-run surface it always gets. Off by default: each connection is one more server the agent connects to at session start, and all of their tools land in its context.",
+    ),
   auto_assign_report_tasks_to_super_agent: z
     .boolean()
     .optional()

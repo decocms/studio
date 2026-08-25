@@ -201,7 +201,7 @@ export function MatcherPicker({
           </CommandEmpty>
           <CommandGroup>
             <CommandItem
-              value="always Target all users"
+              value={`${t("sectionsEditor.matcherPicker.alwaysLabel")} ${t("sectionsEditor.matcherPicker.targetAllUsers")}`}
               onSelect={() => handleSelect("")}
               className={cn(
                 "gap-2.5",

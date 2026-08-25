@@ -26,35 +26,16 @@ export function isBatchHarness(harnessId: string | null | undefined): boolean {
  * in persisted native thread rows consumed by shared UI code, but the hosted AI
  * SDK dispatcher has no wire contract for them.
  *
- * Gate on both persisted pins. A hosted harness on a null or `agent-sandbox`
- * sandbox is viewable; so is Decopilot's retired `user-desktop` sandbox, the one
- * readable legacy tuple. Unknown sandboxes and every non-hosted harness are
- * unavailable on hosted web — including `claude-code` pinned to `user-desktop`,
- * which is the native desktop coding agent rather than the sandbox-hosted one.
+ * Gate on the persisted harness. An unpinned thread is available; once pinned,
+ * hosted web accepts only harnesses the hosted dispatcher can run.
  */
 export function shouldBlockHostedRuntime({
   isDesktopApp,
   harnessId,
-  sandboxProviderKind,
 }: {
   isDesktopApp: boolean;
   harnessId: string | null | undefined;
-  sandboxProviderKind: string | null | undefined;
 }): boolean {
   if (isDesktopApp) return false;
-  if (
-    harnessId !== null &&
-    harnessId !== undefined &&
-    !HOSTED_HARNESS_IDS.has(harnessId)
-  ) {
-    return true;
-  }
-  if (
-    sandboxProviderKind === null ||
-    sandboxProviderKind === undefined ||
-    sandboxProviderKind === "agent-sandbox"
-  ) {
-    return false;
-  }
-  return !(harnessId === "decopilot" && sandboxProviderKind === "user-desktop");
+  return harnessId != null && !HOSTED_HARNESS_IDS.has(harnessId);
 }

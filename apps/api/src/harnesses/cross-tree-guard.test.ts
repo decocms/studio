@@ -8,20 +8,13 @@ import { Glob } from "bun";
 // ../../api/routes/decopilot/*, ../../ai-providers/*, or ../../shared/*").
 //
 // `core`/`storage`/`tools` are intentionally NOT in the pattern: the
-// cluster-side DI assemblers (`in-process-sandbox-client.ts`,
-// `decopilot/harness-deps.ts`, `decopilot/index.ts`) legitimately keep
-// `StudioContext`/`HarnessContext` type reaches (`../core/studio-context`,
-// `../../core/harness-context`) — that DI surface is rewritten to
-// harness-lib specifiers when the package moved, and stays that way.
+// cluster-side DI assembler (`decopilot/harness-deps.ts`) legitimately keeps
+// its `StudioContext` reach. That cluster file is outside the portable lib
+// subtree guarded by the lint rule.
 //
 // Excludes:
 //  - *.integration.test.ts (DB-backed; stays studio-side, not packaged)
-//  - local-dispatch.ts / index.ts (studio-only, folded into InProcessSandboxClient)
-const EXCLUDED = new Set([
-  "local-dispatch.ts",
-  "local-dispatch.test.ts",
-  "index.ts", // top-level studio barrel
-]);
+//  - index.ts (the top-level Studio barrel)
 const CROSS_TREE =
   /from\s+["'](?:\.\.\/)+(?:api\/routes\/decopilot|ai-providers|shared)\//;
 
@@ -32,7 +25,7 @@ describe("harness tree is cross-tree-free", () => {
     for await (const rel of new Glob("**/*.ts").scan(root)) {
       if (rel.endsWith(".integration.test.ts")) continue;
       const base = rel.split("/").pop()!;
-      if (rel === base && EXCLUDED.has(base)) continue;
+      if (rel === base && base === "index.ts") continue;
       const src = await Bun.file(root + rel).text();
       if (CROSS_TREE.test(src)) offenders.push(rel);
     }
@@ -46,20 +39,14 @@ describe("harness tree is cross-tree-free", () => {
 // `@decocms/sandbox` in the package DAG, so a `@decocms/sandbox` import here is
 // not a layering violation — but we still keep that surface explicit and small.
 // Only the dispatch/fs glue modules may bridge into sandbox:
-//  - `in-process-sandbox-client.ts` implements the `SandboxClient` dispatch
-//    contract (`@decocms/sandbox/dispatch`) for in-process cluster dispatch.
-//  - `sandbox-dispatch-client.ts` implements the SAME contract for harnesses
-//    that run inside the sandbox (claude-code): it needs the provider to
-//    provision the pod and proxy the daemon request. Its sibling by design —
-//    one `SandboxClient` impl per execution location.
-//  - `cluster-sandbox-fs.ts` constructs the cluster `SandboxProvider` + fs hooks.
+//  - `sandbox-dispatch-client.ts` runs claude-code inside the sandbox and needs
+//    the provider to provision the pod and proxy the daemon request.
+//  - `agent-sandbox-fs.ts` constructs the hosted provider + fs hooks.
 // Every other production file consumes the harness-owned flat `SandboxFsHooks`
-// via DI and stays sandbox-free. (`desktop-sandbox-fs.ts` relocated into
-// `@decocms/sandbox/dispatch` with the desktop subtree in the package-move slice.)
+// via DI and stays sandbox-free.
 const SANDBOX_GLUE = new Set([
-  "in-process-sandbox-client.ts",
   "sandbox-dispatch-client.ts",
-  "decopilot/built-in-tools/cluster-sandbox-fs.ts",
+  "decopilot/built-in-tools/agent-sandbox-fs.ts",
 ]);
 const SANDBOX_IMPORT = /from\s+["']@decocms\/sandbox/;
 

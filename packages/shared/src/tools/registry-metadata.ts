@@ -267,6 +267,10 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_DISMISSED_LIST",
   "TASK_BOARD_DISMISSED_RESTORE",
   "TASK_ADD_REPO",
+  "NOTIFICATION_LIST",
+  "NOTIFICATION_MARK_READ",
+  "NOTIFICATION_SUBSCRIPTION_SET",
+  "NOTIFICATION_SUBSCRIPTION_LIST",
 ] as const;
 
 /**
@@ -1220,6 +1224,26 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     dangerous: true,
   },
   {
+    name: "NOTIFICATION_LIST",
+    description: "List your unread notifications in this organization",
+    category: "Task Board",
+  },
+  {
+    name: "NOTIFICATION_MARK_READ",
+    description: "Mark your notifications read",
+    category: "Task Board",
+  },
+  {
+    name: "NOTIFICATION_SUBSCRIPTION_SET",
+    description: "Follow or unfollow a task board item",
+    category: "Task Board",
+  },
+  {
+    name: "NOTIFICATION_SUBSCRIPTION_LIST",
+    description: "List the users following a task board item",
+    category: "Task Board",
+  },
+  {
     name: "TASK_BOARD_ACTIVITY_LIST",
     description: "List a task board item's change history",
     category: "Task Board",
@@ -1378,6 +1402,10 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_COMMENT_DELETE",
       "TASK_BOARD_DISMISSED_LIST",
       "TASK_BOARD_DISMISSED_RESTORE",
+      "NOTIFICATION_LIST",
+      "NOTIFICATION_MARK_READ",
+      "NOTIFICATION_SUBSCRIPTION_SET",
+      "NOTIFICATION_SUBSCRIPTION_LIST",
     ],
   },
   // Organization

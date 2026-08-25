@@ -16,6 +16,7 @@ import type { OAuthConfig } from "../tools/connection/schema";
 import type { TaskBoardActivityAction } from "../tools/task-board/schema";
 import type { ChatMessage } from "../api/routes/decopilot/types";
 import type { ProviderId, ThreadStatus } from "@decocms/shared/sdk";
+import type { NotificationType } from "@decocms/shared/notification-types";
 import type {
   OrgFlags,
   SprintConfig,
@@ -953,7 +954,7 @@ export interface ThreadTable {
   virtual_mcp_id: string;
   /** Git branch this thread is pinned to (GitHub-linked virtualmcps only) */
   branch: string | null;
-  /** Sandbox provider kind pinned on first message (e.g. "agent-sandbox", "user-desktop") */
+  /** Dormant legacy column retained in the physical schema; runtime code ignores it. */
   sandbox_provider_kind: string | null;
   /** Harness id pinned on first message (e.g. "claude-code", "codex", "decopilot") */
   harness_id: string | null;
@@ -971,15 +972,6 @@ export interface ThreadTable {
   >;
   /** Single-writer fence for the active run; null when none minted (Phase A). */
   run_fence_token: ColumnType<string | null, string | null, string | null>;
-  /**
-   * @deprecated Per-thread transport selector. No longer read for routing —
-   * the thread gate uses the active link publisher whenever NATS and the link
-   * dispatch runtime are available (see thread-gate-workflow.ts). The writer
-   * (`setLinkTransport`) was removed with the cluster reverse-WS cleanup.
-   * Column retained (nullable) for backward compatibility; no drop migration.
-   * New code MUST NOT read or write it.
-   */
-  link_transport: ColumnType<string | null, string | null, string | null>;
   /**
    * Durable cancel flag (Phase C). Set by the cancel endpoint; the ingest
    * backstop rejects with 409 when non-null, regardless of fence state.
@@ -1040,8 +1032,6 @@ export interface Thread {
   virtual_mcp_id: string;
   /** Git branch this thread is pinned to (GitHub-linked virtualmcps only) */
   branch: string | null;
-  /** Sandbox provider kind pinned on first message (e.g. "agent-sandbox", "user-desktop") */
-  sandbox_provider_kind: string | null;
   /** Harness id pinned on first message (e.g. "claude-code", "codex", "decopilot") */
   harness_id: string | null;
   metadata: ThreadMetadata;
@@ -1052,12 +1042,6 @@ export interface Thread {
    * Pinned on the thread row; read path forks on this value.
    */
   message_storage_version: number;
-  /**
-   * @deprecated No longer used for routing (see the `threads` table column
-   * doc). Surfaced on the read path for backward compatibility only; nothing
-   * writes it. New code MUST NOT depend on it.
-   */
-  link_transport: string | null;
 }
 
 /**
@@ -2085,6 +2069,43 @@ export interface TaskBoardCommentJiraLinkTable {
  * NOTE: This uses *Table types with ColumnType for proper Kysely type mapping
  * NOTE: Organizations, teams, members, and roles are managed by Better Auth organization plugin
  */
+/** Who follows a task. No row = never involved; `subscribed = false` = muted on
+ *  purpose, which auto-subscribe must never overwrite. */
+export interface NotificationSubscriptionTable {
+  id: string;
+  user_id: string;
+  task_board_item_id: string;
+  subscribed: ColumnType<boolean, boolean | undefined, boolean>;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** One row per recipient per event. Immutable except for the two timestamps,
+ *  each of which is the record of its own event. */
+export interface NotificationTable {
+  id: string;
+  user_id: string;
+  /** Its own column, never a join: tenancy must stay one indexable equality. */
+  organization_id: string;
+  task_board_item_id: string;
+  type: NotificationType;
+  /** Null = the agent/system did it, or the actor's account was deleted. */
+  actor_id: string | null;
+  /** Everything the inbox row renders — see `NotificationDataSchema`. */
+  data: ColumnType<Record<string, unknown>, string, string>;
+  read_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
+  emailed_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
 export interface Database extends PrivateRegistryDatabase {
   // Core tables (all within organization scope)
   users: UserTable; // System users
@@ -2187,6 +2208,10 @@ export interface Database extends PrivateRegistryDatabase {
   org_jira_integrations: OrgJiraIntegrationTable;
   task_board_item_jira_links: TaskBoardItemJiraLinkTable;
   task_board_comment_jira_links: TaskBoardCommentJiraLinkTable;
+
+  // Follow/inbox for the task board
+  notification_subscriptions: NotificationSubscriptionTable;
+  notifications: NotificationTable;
 
   sandbox_runner_state: SandboxProviderStateTable;
 }

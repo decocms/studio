@@ -27,6 +27,7 @@ import { usePanelActions } from "@/layouts/shell-layout";
 import { resolveAppNavigateTarget } from "@/routes/project-app-navigate.ts";
 import { ConnectSourceDialog } from "@/routes/commerce-onboarding/connect-source-dialog.tsx";
 import { useState } from "react";
+import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 
 const EMPTY_TOOL_INPUT: Record<string, unknown> = {};
 
@@ -148,15 +149,14 @@ export function AppViewContent({
 }) {
   const { org } = useProjectContext();
   const lifecycle = useSandboxLifecycle();
-  // A dev view (`dev_<id>`) against a user-desktop sandbox renders against the
+  const isDesktopApp = useIsDesktopApp();
+  // A dev view (`dev_<id>`) against a local-api sandbox renders against the
   // loopback dev server, which the cloud proxy can't reach. The browser is
   // co-located with the daemon, so connect directly to the previewUrl (deco dev
   // server CORS is `*`). Gated on a dev connection id, so regular connection UIs
   // and agent-sandbox dev views (public previewUrl) keep the cloud route.
   const devMcpUrl =
-    parseDevConnectionId(connectionId) &&
-    lifecycle.vmEntry?.sandboxProviderKind === "user-desktop" &&
-    lifecycle.previewUrl
+    parseDevConnectionId(connectionId) && isDesktopApp && lifecycle.previewUrl
       ? `${lifecycle.previewUrl.replace(/\/+$/, "")}/api/mcp`
       : undefined;
   const client = useMCPClient({

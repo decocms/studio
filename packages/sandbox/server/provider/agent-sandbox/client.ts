@@ -832,21 +832,6 @@ export async function deleteHttpRoute(
   );
 }
 
-export async function getHttpRoute(
-  kc: KubeConfig,
-  namespace: string,
-  routeName: string,
-): Promise<HttpRoute | undefined> {
-  const found = await callSwallowing404<HttpRoute>(
-    kc,
-    { method: "GET", path: httpRoutePath(namespace, routeName) },
-    "getHttpRoute",
-    `Failed to get HTTPRoute: ${routeName}`,
-    "json",
-  );
-  return found ?? undefined;
-}
-
 export const HTTPROUTE_CONSTANTS = {
   API_GROUP: HTTPROUTE_API_GROUP,
   API_VERSION: HTTPROUTE_API_VERSION,

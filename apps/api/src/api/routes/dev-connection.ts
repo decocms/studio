@@ -27,6 +27,7 @@ import {
   getDevConnectionId,
   parseBranchMap,
   type SandboxMap,
+  type SandboxRecord,
 } from "@decocms/shared/sdk";
 import type { StudioContext } from "../../core/studio-context";
 import type { ConnectionEntity } from "../../tools/connection/schema";
@@ -35,11 +36,10 @@ import {
   SecretNotFoundError,
 } from "../../storage/secrets";
 import { readValidatedRuntimeEnv } from "../../tools/sandbox/helpers";
-import { readSandboxMap } from "../../tools/sandbox/sandbox-map";
 import {
-  type BranchMapEntryLike,
-  selectVmEntry,
-} from "@decocms/shared/sandbox/select-vm-entry";
+  AGENT_SANDBOX_KIND,
+  readSandboxMap,
+} from "../../tools/sandbox/sandbox-map";
 
 /** Env var the dev MCP app gates `/mcp` behind (matches the prod connection). */
 const MCP_AUTH_TOKEN_KEY = "MCP_AUTH_TOKEN";
@@ -179,10 +179,8 @@ export async function resolveDevConnection(
 function pickEntryForBranch(
   userMap: SandboxMap[string],
   branch: string,
-): { branch: string; entry: BranchMapEntryLike } | null {
-  const entry = selectVmEntry(
-    parseBranchMap(userMap[branch]) as Record<string, BranchMapEntryLike>,
-  );
+): { branch: string; entry: SandboxRecord } | null {
+  const entry = parseBranchMap(userMap[branch])[AGENT_SANDBOX_KIND] ?? null;
   return entry ? { branch, entry } : null;
 }
 
@@ -193,12 +191,10 @@ function pickEntryForBranch(
  */
 function pickMostRecentEntry(
   userMap: SandboxMap[string],
-): { branch: string; entry: BranchMapEntryLike } | null {
-  let best: { branch: string; entry: BranchMapEntryLike } | null = null;
+): { branch: string; entry: SandboxRecord } | null {
+  let best: { branch: string; entry: SandboxRecord } | null = null;
   for (const [branch, raw] of Object.entries(userMap)) {
-    const entry = selectVmEntry(
-      parseBranchMap(raw) as Record<string, BranchMapEntryLike>,
-    );
+    const entry = parseBranchMap(raw)[AGENT_SANDBOX_KIND] ?? null;
     if (!entry) continue;
     if (!best || (entry.createdAt ?? 0) > (best.entry.createdAt ?? 0)) {
       best = { branch, entry };

@@ -20,6 +20,13 @@ type toolsSyncBody struct {
 	ExpiresAt *float64          `json:"expiresAt"`
 }
 
+// maxToolsSyncBodyBytes bounds the /tools/sync request body: a URL plus a
+// handful of headers, never a file transfer, so 1MB is generous headroom.
+// Without a limit, json.Decoder streams an unbounded body into memory and
+// could crash the daemon, tearing down the sandbox pod on the next missed
+// health probe.
+const maxToolsSyncBodyBytes = 1024 * 1024
+
 // ToolsSync handles POST /_sandbox/tools/sync — body `{ url, headers,
 // expiresAt? }` (the run's Virtual MCP endpoint). Writes the endpoint file,
 // then lists the endpoint's tools and writes a JSON Schema catalog under
@@ -29,7 +36,7 @@ type toolsSyncBody struct {
 func ToolsSync(deps ToolsDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body toolsSyncBody
-		raw := json.NewDecoder(r.Body)
+		raw := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxToolsSyncBodyBytes))
 		if err := raw.Decode(&body); err != nil {
 			httpx.Error(w, 400, "invalid JSON body")
 			return

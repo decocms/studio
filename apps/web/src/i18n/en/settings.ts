@@ -479,6 +479,12 @@ export const settings = {
   "settings.review.autoAssignReportTasksDescription":
     "Tasks created from a report are delegated to the Super Agent automatically instead of landing unassigned.",
   "settings.review.updateError": "Couldn't update the setting",
+  "settings.agentTools.title": "Agent tools",
+  "settings.agentTools.description":
+    "What a coding-agent run reaches beyond the repository it is working in.",
+  "settings.agentTools.orgMcpsTitle": "Give runs this org's MCP connections",
+  "settings.agentTools.orgMcpsDescription":
+    "Every MCP you have connected becomes available to the Super Agent and the reviewers, on top of the task tools they always get. Tools load only when the agent looks for one, so connecting more does not crowd its context.",
   "settings.sprints.title": "Sprints",
   "settings.sprints.description":
     "Plan tasks into fixed-length sprints. Sprints are counted from a start day, so there is nothing to open or close.",

@@ -31,6 +31,10 @@ import {
   setTaskBoardArchiveSweepRuntime,
 } from "@/tools/task-board/dbos-archive-sweep";
 import {
+  registerNotificationDigestWorkflow,
+  setNotificationDigestRuntime,
+} from "@/notifications/dbos-digest";
+import {
   registerTaskBoardMergedTagSweepWorkflow,
   setTaskBoardMergedTagSweepRuntime,
 } from "@/tools/task-board/dbos-tag-merged-sweep";
@@ -71,14 +75,14 @@ import {
 } from "../observability";
 import { posthog } from "../posthog";
 import authRoutes from "./routes/auth";
-import desktopSessionBridgeRoutes from "./routes/desktop-session-bridge";
+import desktopAuthRoutes from "./routes/desktop-auth";
 import {
   ADMIN_API_PREFIX,
   createAdminRoutes,
   fenceRawAdminSurface,
 } from "./routes/admin";
 import { createSsoRoutes } from "./routes/org-sso";
-import { createDecopilotRoutes } from "./routes/decopilot";
+import { createDecopilotRoutes } from "./routes/decopilot/routes";
 import { createDownstreamTokenRoutes } from "./routes/downstream-token";
 import {
   DownstreamTokenStorage,
@@ -99,6 +103,7 @@ import {
 import { createDecoAppsRoutes } from "./routes/deco-apps";
 import { createVirtualMcpRoutes } from "./routes/virtual-mcp";
 import {
+  assertOriginEndpointIsSafe,
   createLegacyWellKnownProtectedResourceRoutes,
   createWellKnownAuthServerRoutes,
   fetchAuthorizationServerMetadata,
@@ -520,6 +525,9 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
   if (!originEndpointUrl) {
     return c.json({ error: `Unknown OAuth endpoint: ${endpoint}` }, 404);
   }
+
+  const endpointGuardError = assertOriginEndpointIsSafe(originEndpointUrl);
+  if (endpointGuardError) return endpointGuardError;
 
   // Build URL with query string
   const targetUrl = new URL(originEndpointUrl);
@@ -998,7 +1006,6 @@ export async function createApp(options: CreateAppOptions = {}) {
     cancelBroadcast = {
       start: async () => {},
       broadcast: () => {},
-      publishControlFrame: () => {},
       stop: async () => {},
     };
     streamBuffer = {
@@ -1039,9 +1046,8 @@ export async function createApp(options: CreateAppOptions = {}) {
   } else {
     // Production/dev mode: connect to NATS (required)
     natsProvider = createNatsConnectionProvider();
-    // Optional cluster creds: local dev runs NATS in operator mode (anonymous
-    // connect is impossible there), so ensure-services persists a cluster creds
-    // file and points NATS_CREDS at it. Absent (production) → anonymous connect.
+    // External NATS deployments may require a credentials file. Managed local
+    // NATS accepts the loopback connection without one.
     const credsPath = getSettings().natsCredsPath;
     let creds: string | undefined;
     if (credsPath) {
@@ -1390,12 +1396,10 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Auth routes (API key management via web UI)
   app.route("/api/auth/custom", authRoutes);
-  // POST /api/auth/desktop/session-from-oauth — mints a real Better Auth
-  // session from a valid MCP OAuth bearer, for the desktop app's
-  // system-browser (Google/GitHub/SAML) login path. Mounted BEFORE the
-  // `/api/auth/*` catchall (`auth.handler`) so it never reaches it. See
-  // `./routes/desktop-session-bridge.ts`'s module doc for why this exists.
-  app.route("/api/auth/desktop", desktopSessionBridgeRoutes);
+  // Native desktop authentication: a bearer-only identity probe plus the
+  // bearer-to-session bridge used by system-browser login. Mounted before the
+  // `/api/auth/*` Better Auth catchall so these explicit routes win.
+  app.route("/api/auth/desktop", desktopAuthRoutes);
 
   // Fence off the raw Better Auth admin plugin (/api/auth/admin/*) from
   // external callers — see fenceRawAdminSurface's doc in routes/admin.ts for
@@ -1422,9 +1426,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   // owns, NOT `use("*", ...)`. Because this sub-app is mounted at `/`, a
   // wildcard middleware fires for every request to the root app — and the
   // suppression logic in `log-deprecated-route.ts` can't reliably tell
-  // root-app handlers (e.g. `/api/links/heartbeat`) apart from this
-  // sub-app's handlers via basePath alone. Pinning the middleware to the
-  // actual deprecated patterns avoids the false-positive entirely.
+  // unrelated root-app handlers apart from this sub-app's handlers via
+  // basePath alone. Pinning the middleware to the actual deprecated patterns
+  // avoids the false-positive entirely.
   legacyWellKnownProtectedResource.use(
     "/.well-known/oauth-protected-resource/mcp/:connectionId",
     logDeprecatedRoute,
@@ -1538,6 +1542,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Hourly auto-archive of settled Done cards, one org leg per candidate org.
   setTaskBoardArchiveSweepRuntime({ db: database.db });
 
+  // Every 5 minutes: email what's still unread, then prune the 30-day window.
+  setNotificationDigestRuntime({ db: database.db });
+
   // Hourly `merged` tagging of Done cards whose PRs landed.
   setTaskBoardMergedTagSweepRuntime({ db: database.db });
 
@@ -1566,11 +1573,10 @@ export async function createApp(options: CreateAppOptions = {}) {
     studioContextFactory: automationContextFactory,
   });
 
-  // The per-thread gate now STARTS the run (hosted: fire-and-forget enqueue of
-  // the hosted-harness child; desktop: publish the work item) and lets the
-  // consume step write terminal status. It no longer runs the agent loop itself,
-  // so it no longer needs a `dispatchRunFn` or a status-poll cap. Wiring happens
-  // before `DBOS.launch()` for the same reasons as automations.
+  // The per-thread gate starts the hosted run and lets the consume step write
+  // terminal status. It no longer runs the agent loop itself, so it no longer
+  // needs a `dispatchRunFn` or a status-poll cap. Wiring happens before
+  // `DBOS.launch()` for the same reasons as automations.
   setThreadGateRuntime({
     studioContextFactory: automationContextFactory,
     deps: {
@@ -1586,7 +1592,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // onto HOSTED_HARNESS_QUEUE instead of running inline. Wired here before
   // `DBOS.launch()` (it only sets a module-level pointer, no DBOS API calls),
   // mirroring the thread-gate runtime. The gate immediately proceeds to its
-  // consume step, which writes terminal status for both hosted and desktop runs.
+  // consume step, which writes terminal status for hosted runs.
   setHostedHarnessRuntime({
     dispatchRunFn: dispatchRunAndWait,
     studioContextFactory: automationContextFactory,
@@ -1668,8 +1674,8 @@ export async function createApp(options: CreateAppOptions = {}) {
         orgId,
       );
       // Push the terminal status to the org SSE so the sidebar chip updates
-      // live. user-desktop runs finalize here (not via the run-reactor), so
-      // without this the chip stays "running" until a refetch. `flipped` is
+      // live. Projected runs finalize here rather than through the live
+      // reactor, so without this the chip stays "running" until a refetch. `flipped` is
       // null on a no-op (already terminal) → no double-publish.
       emitTerminalThreadStatus(sseHub, orgId, runId, flipped);
       if (flipped) {
@@ -1809,6 +1815,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerOrgRepoSyncWorkflow();
   registerJiraSyncWorkflow();
   registerTaskBoardArchiveSweepWorkflow();
+  registerNotificationDigestWorkflow();
   registerTaskBoardMergedTagSweepWorkflow();
   registerTaskBoardGithubReadWorkflow();
 

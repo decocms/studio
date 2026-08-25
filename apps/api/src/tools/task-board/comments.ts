@@ -123,6 +123,13 @@ export const TASK_BOARD_COMMENT_CREATE = defineTool({
       body,
     });
     if (!comment) throw new Error("Task board item not found");
+    // Not an activity action, hence its own fan-out. The agent has no inbox.
+    await ctx.storage.notifications.notify({
+      taskBoardItemId: comment.taskBoardItemId,
+      type: "commented",
+      actorId: taskRun ? null : getUserId(ctx)!,
+      alsoSubscribe: taskRun ? [] : [getUserId(ctx)!],
+    });
     // Durable enqueue (a DB write): the DBOS queue mirrors it onto the issue.
     await enqueueJiraCommentPush(ctx, {
       commentId: comment.id,

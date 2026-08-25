@@ -54,7 +54,7 @@ function estimatePayloadBytes(value: unknown, budget: number): number {
 // A part whose payload carries either — e.g. a tool result that inlined raw
 // binary such as a PNG (full of NUL bytes) — fails the INSERT and, because the
 // projection step is the sole writer of terminal thread status, strands the
-// whole run `in_progress` forever. Content arriving from the harness/desktop is
+// whole run `in_progress` forever. Content arriving from a harness is
 // untrusted, so sanitize it here at the storage boundary rather than trusting
 // every producer. Clean strings are returned unchanged, so ids derived from the
 // serialized payload stay stable.

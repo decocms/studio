@@ -2,13 +2,14 @@
  * Lock-aware submit-settings resolver.
  *
  * Once a thread row carries a non-null `harness_id`, the thread is "locked":
- * its harness, sandbox provider, and branch are immutable for the life of the
- * thread. The UI may still display the current global picker selection, but
- * the submit payload must NOT include those three fields — the server reads
- * them from the thread row.
+ * its harness and branch are immutable for the life of the thread. The UI may
+ * still display the current global picker selection, but
+ * the submit payload must NOT override the branch — the server reads it from
+ * the thread row. Harness selection belongs to the receiving app surface and
+ * is never a chat-submit option.
  *
- * For unlocked threads (no row yet, or a legacy row with `harness_id IS
- * NULL`), hosted web explicitly pins Decopilot on the managed agent sandbox.
+ * For unlocked threads (no row yet, or `harness_id IS NULL`), hosted web sends
+ * the selected branch and the server pins Decopilot.
  *
  * Pure function, no I/O. See spec:
  * docs/superpowers/specs/2026-06-03-lock-thread-harness-and-branch-design.md
@@ -16,7 +17,6 @@
 
 export interface ResolveSubmitSettingsThread {
   harness_id?: string | null;
-  sandbox_provider_kind?: string | null;
   branch?: string | null;
 }
 
@@ -25,8 +25,6 @@ export interface ResolveSubmitSettingsGlobals {
 }
 
 export interface ResolveSubmitSettingsResult {
-  harnessId?: "decopilot";
-  sandboxProviderKind?: "agent-sandbox";
   branch?: string | null;
 }
 
@@ -38,8 +36,6 @@ export function resolveSubmitSettings(args: {
     return {};
   }
   return {
-    harnessId: "decopilot",
-    sandboxProviderKind: "agent-sandbox",
     branch: args.globals.branch ?? null,
   };
 }

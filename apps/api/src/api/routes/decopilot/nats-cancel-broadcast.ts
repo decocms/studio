@@ -11,58 +11,48 @@
 
 import type { NatsConnection, Subscription } from "@nats-io/nats-core";
 import type { CancelBroadcast } from "./cancel-broadcast";
-import type { ControlFrame } from "./control-frames";
 
-const CANCEL_SUBJECTS = [
-  "studio.decopilot.cancel",
-  "mesh.decopilot.cancel",
-] as const;
+const CANCEL_SUBJECT = "studio.decopilot.cancel";
 
 export interface NatsCancelBroadcastOptions {
   getConnection: () => NatsConnection | null;
 }
 
 export class NatsCancelBroadcast implements CancelBroadcast {
-  private subscriptions: Subscription[] = [];
+  private subscription: Subscription | null = null;
   private onCancel: ((taskId: string) => void) | null = null;
   private readonly encoder = new TextEncoder();
   private readonly originId = crypto.randomUUID();
-  private readonly seenMessageIds = new Set<string>();
 
   constructor(private readonly options: NatsCancelBroadcastOptions) {}
 
   async start(onCancel?: (taskId: string) => void): Promise<void> {
     if (onCancel) this.onCancel = onCancel;
 
-    if (this.subscriptions.length > 0) return;
+    if (this.subscription) return;
     if (!this.onCancel) return;
 
     const nc = this.options.getConnection();
     if (!nc) return; // NATS not ready — local cancel only
 
     const decoder = new TextDecoder();
-    this.subscriptions = CANCEL_SUBJECTS.map((subject) =>
-      nc.subscribe(subject),
-    );
+    const subscription = nc.subscribe(CANCEL_SUBJECT);
+    this.subscription = subscription;
 
-    for (const subscription of this.subscriptions) {
-      (async () => {
-        for await (const msg of subscription) {
-          try {
-            const parsed = JSON.parse(decoder.decode(msg.data)) as {
-              taskId: string;
-              originId?: string;
-              messageId?: string;
-            };
-            if (parsed.originId === this.originId) continue;
-            if (parsed.messageId && this.hasSeen(parsed.messageId)) continue;
-            this.onCancel?.(parsed.taskId);
-          } catch {
-            // Ignore malformed messages
-          }
+    (async () => {
+      for await (const msg of subscription) {
+        try {
+          const parsed = JSON.parse(decoder.decode(msg.data)) as {
+            taskId: string;
+            originId?: string;
+          };
+          if (parsed.originId === this.originId) continue;
+          this.onCancel?.(parsed.taskId);
+        } catch {
+          // Ignore malformed messages
         }
-      })().catch(console.error);
-    }
+      }
+    })().catch(console.error);
   }
 
   broadcast(taskId: string): void {
@@ -82,36 +72,17 @@ export class NatsCancelBroadcast implements CancelBroadcast {
         JSON.stringify({
           taskId,
           originId: this.originId,
-          messageId: crypto.randomUUID(),
         }),
       );
-      for (const subject of CANCEL_SUBJECTS) nc.publish(subject, encoded);
+      nc.publish(CANCEL_SUBJECT, encoded);
     } catch (err) {
       console.warn("[NatsCancelBroadcast] Publish failed (non-critical):", err);
     }
   }
 
-  publishControlFrame(_userSub: string, _frame: ControlFrame): void {
-    // Control frames are delivered through the tunnel publisher installed by
-    // app wiring. The NATS broadcaster only handles cross-pod cancel fan-out.
-  }
-
   async stop(): Promise<void> {
-    for (const subscription of this.subscriptions) {
-      subscription.unsubscribe();
-    }
-    this.subscriptions = [];
-    this.seenMessageIds.clear();
+    this.subscription?.unsubscribe();
+    this.subscription = null;
     this.onCancel = null;
-  }
-
-  private hasSeen(messageId: string): boolean {
-    if (this.seenMessageIds.has(messageId)) return true;
-    this.seenMessageIds.add(messageId);
-    if (this.seenMessageIds.size > 1_000) {
-      const oldest = this.seenMessageIds.values().next().value;
-      if (oldest) this.seenMessageIds.delete(oldest);
-    }
-    return false;
   }
 }

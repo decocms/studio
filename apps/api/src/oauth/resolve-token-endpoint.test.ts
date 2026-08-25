@@ -46,6 +46,22 @@ describe("resolveOriginTokenEndpoint", () => {
     expect(result).toBeNull();
   });
 
+  it("rejects a private/internal token_endpoint instead of handing it back", async () => {
+    installFetch(
+      () =>
+        new Response(
+          JSON.stringify({ token_endpoint: "http://169.254.169.254/token" }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    );
+
+    const result = await resolveOriginTokenEndpoint("https://mcp.example.com");
+    expect(result).toBeNull();
+  });
+
   it("rejects a non-string token_endpoint instead of handing it back", async () => {
     installFetch(
       () =>

@@ -14,13 +14,8 @@ import {
   type RawMsg,
 } from "@/harnesses/lib/run-stream-codec";
 
-/** Back-compat alias — the shared `RawMsg` is the old `ProjectorStreamMessage`. */
-export type ProjectorStreamMessage = RawMsg;
-
 export interface ProjectorChunkStreamOptions {
-  messages:
-    | AsyncIterable<ProjectorStreamMessage>
-    | Iterable<ProjectorStreamMessage>;
+  messages: AsyncIterable<RawMsg> | Iterable<RawMsg>;
   runId: string;
   fenceToken: string;
   /** Omit for no idle enforcement (live tail). The projector's production
@@ -72,7 +67,7 @@ export async function createProjectorChunkStream(
     deliver_policy: DeliverPolicy.All,
   });
   const sub = await consumer.consume();
-  async function* messages(): AsyncIterable<ProjectorStreamMessage> {
+  async function* messages(): AsyncIterable<RawMsg> {
     try {
       for await (const msg of sub) {
         yield { subject: msg.subject, data: msg.data, headers: msg.headers };

@@ -26,6 +26,7 @@
 import { randomUUID } from "node:crypto";
 import { signUpViaApi } from "../fixtures/auth-api";
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
+import { connectDevDb } from "../fixtures/db";
 import {
   createFastPreviewProject,
   type FastPreviewProject,
@@ -794,6 +795,7 @@ test.describe("decofile API", () => {
     playwright,
   }) => {
     const ctx = await newApiContext(playwright);
+    const db = await connectDevDb();
     try {
       const user = await signUpViaApi(ctx);
       const org = user.orgSlug;
@@ -860,25 +862,28 @@ test.describe("decofile API", () => {
       ).toBeUndefined();
 
       // Record a DEAD sandbox for (user, branch) — the shape a July
-      // `user-desktop` leftover has, and what used to hijack the whole branch.
-      await callSelfMcpTool(ctx, org, "COLLECTION_VIRTUAL_MCP_UPDATE", {
-        id: project.vmcpId,
-        data: {
-          metadata: {
-            sandboxMap: {
-              [user.userId]: {
-                [branch]: {
-                  "agent-sandbox": {
-                    sandboxHandle: "vm_e2e",
-                    previewUrl: null,
-                    createdAt: 1000,
-                  },
-                },
-              },
+      // `local-api` leftover has, and what used to hijack the whole branch.
+      const sandboxMap = {
+        [user.userId]: {
+          [branch]: {
+            "agent-sandbox": {
+              sandboxHandle: "vm_e2e",
+              previewUrl: null,
+              createdAt: 1000,
             },
           },
         },
-      });
+      };
+      const seeded = await db.query(
+        `UPDATE connections
+            SET metadata = jsonb_set(
+              COALESCE(metadata::jsonb, '{}'::jsonb),
+              '{sandboxMap}', $1::jsonb, true
+            )::text
+          WHERE id = $2 AND created_by = $3`,
+        [JSON.stringify(sandboxMap), project.vmcpId, user.userId],
+      );
+      expect(seeded.rowCount).toBe(1);
 
       // The stamp still decides: the CMS session keeps its GitHub answer, and
       // never the 410 the dead cell used to produce.
@@ -896,6 +901,7 @@ test.describe("decofile API", () => {
         ((await threadless.json()) as { headSha?: string }).headSha,
       ).toBeTruthy();
     } finally {
+      await db.end();
       await ctx.dispose();
     }
   });
@@ -935,6 +941,68 @@ test.describe("decofile API", () => {
         },
       ).catch((error: unknown) => error);
       expect(String(refused)).toMatch(/CMS session/i);
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
+  test("GET /meta serves committed meta.gen.json, falls back to default branch, 404 when absent", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const user = await signUpViaApi(ctx);
+      const owner = uniqueOwner();
+      const project = await createFastPreviewProject(ctx, user.orgSlug, {
+        owner,
+        repo: "site",
+      });
+      const meta = { schema: { root: "site/mod.ts" } };
+      await seedStubRepo(ctx, {
+        owner,
+        repo: "site",
+        defaultBranch: "main",
+        branches: {
+          // Default branch commits the artifact; a feature branch does not.
+          main: {
+            files: { ".deco/meta.gen.json": `${JSON.stringify(meta)}\n` },
+          },
+          feature: { files: { ".deco/blocks/Hero.json": '{"n":1}\n' } },
+        },
+      });
+
+      const metaUrl = (branch: string) =>
+        `/api/${project.org}/decofile/${project.vmcpId}/${branch}/meta`;
+
+      // Branch that commits it: served straight back, parsed as JSON.
+      const onMain = await ctx.get(metaUrl("main"));
+      expect(onMain.status()).toBe(200);
+      expect(onMain.headers()["content-type"]).toContain("application/json");
+      expect(await onMain.json()).toEqual(meta);
+
+      // A branch without it falls back to the default branch's committed copy.
+      const onFeature = await ctx.get(metaUrl("feature"));
+      expect(onFeature.status()).toBe(200);
+      expect(await onFeature.json()).toEqual(meta);
+
+      // Neither branch nor default commits it: 404 (client falls to production).
+      const bare = uniqueOwner();
+      const bareProject = await createFastPreviewProject(ctx, user.orgSlug, {
+        owner: bare,
+        repo: "site",
+      });
+      await seedStubRepo(ctx, {
+        owner: bare,
+        repo: "site",
+        defaultBranch: "main",
+        branches: {
+          main: { files: { ".deco/blocks/Hero.json": '{"n":1}\n' } },
+        },
+      });
+      const missing = await ctx.get(
+        `/api/${bareProject.org}/decofile/${bareProject.vmcpId}/main/meta`,
+      );
+      expect(missing.status()).toBe(404);
     } finally {
       await ctx.dispose();
     }

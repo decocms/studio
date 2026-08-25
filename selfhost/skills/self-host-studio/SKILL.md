@@ -106,7 +106,7 @@ detected environment, then walk these. Record answers into a values file you'll
    - a **shared sentinel token**: the SAME value in `sandbox-env.sentinel.token`
      and Studio's `STUDIO_SANDBOX_SENTINEL_TOKEN` (generate one: `openssl rand -hex 32`).
      Missing → Studio cold-provisions and the template rejects `DAEMON_TOKEN`.
-   - `STUDIO_SANDBOX_PROVIDER=agent-sandbox`, `STUDIO_ENV=<env>`,
+   - `STUDIO_AGENT_SANDBOX_ENABLED=true`, `STUDIO_ENV=<env>`,
      `STUDIO_SANDBOX_TEMPLATE_NAME=studio-sandbox-<env>`.
    All three live in ONE artifact, so the values file is the only place the
    handshake has to be right.
@@ -289,7 +289,7 @@ For a standalone/prod install, wire Studio with:
 ```yaml
 configMap:
   meshConfig:
-    STUDIO_SANDBOX_PROVIDER: "agent-sandbox"          # or "user-desktop" (laptop via NATS link)
+    STUDIO_AGENT_SANDBOX_ENABLED: "true"
     STUDIO_ENV: "<envName>"
     STUDIO_SANDBOX_TEMPLATE_NAME: "studio-sandbox-<envName>"
 ```

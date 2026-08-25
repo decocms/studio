@@ -2,8 +2,8 @@ import { describe, expect, it } from "bun:test";
 import { isRetryableSandboxStartError } from "./use-sandbox-start";
 
 // Pins the retry predicate to the exact "retry shortly" marker the server
-// appends to transient lifecycle/lock errors (apps/api/src/storage/
-// agent-sandbox-sessions.ts + *-runner-state.ts). If that contract drifts,
+// appends to transient lifecycle/lock errors in the lifecycle and runner-state
+// stores. If that contract drifts,
 // this fails instead of silently reverting to surfacing the error.
 describe("isRetryableSandboxStartError", () => {
   it("retries the server's transient lifecycle/lock errors", () => {

@@ -16,7 +16,6 @@ import type { Kysely } from "kysely";
 import type { CredentialVault } from "../encryption/credential-vault";
 import type { Database, Permission } from "../storage/types";
 import type { AccessControl } from "./access-control";
-import type { HarnessContext } from "./harness-context";
 export type { BetterAuthInstance } from "@/auth";
 // Re-export for consumers
 export type { AccessControl, CredentialVault };
@@ -309,6 +308,7 @@ import { OrgSiteStorage } from "@/storage/org-sites";
 import { OrgRepoSyncStorage } from "@/storage/org-repo-syncs";
 import { JiraIntegrationStorage } from "@/storage/jira-integrations";
 import type { TaskBoardStorage } from "@/storage/task-board";
+import type { NotificationStorage } from "@/storage/notifications";
 import type { OrgFsEntryStorage } from "@/storage/org-fs";
 import type { OrgFs } from "@/file-storage/org-fs";
 import type { KVStorage } from "@/storage/kv";
@@ -352,6 +352,7 @@ export interface StudioStorage {
   orgRepoSyncs: OrgRepoSyncStorage;
   jiraIntegrations: JiraIntegrationStorage;
   taskBoard: TaskBoardStorage;
+  notifications: NotificationStorage;
   orgFsEntries: OrgFsEntryStorage;
   oauthPkceStates: OAuthPkceStateStorage;
   claudeSubscriptions: ClaudeSubscriptionStorage;
@@ -383,7 +384,7 @@ export interface Timings {
  * This provides access to all necessary services without coupling
  * to implementation details.
  */
-export interface StudioContext extends HarnessContext {
+export interface StudioContext {
   // Connection ID (from url)
   connectionId?: string;
 
@@ -461,17 +462,6 @@ export interface StudioContext extends HarnessContext {
     orgId: string,
     userId: string,
   ) => Promise<FireAutomationOutcome>;
-
-  /**
-   * Sandbox dispatch preference for the in-flight run, populated by
-   * `prepareRun` from the resolved `DispatchTarget`:
-   *   - `"agent-sandbox"` — force hosted sandbox provider behavior for this run.
-   *   - `"cluster-default"` — legacy/env-default hint: use whichever sandbox
-   *     kind `STUDIO_SANDBOX_PROVIDER` resolves to.
-   *   - `"user-desktop"` — use the user's link daemon for sandbox provider
-   *     behavior.
-   */
-  sandboxPreference?: "agent-sandbox" | "cluster-default" | "user-desktop";
 }
 
 // ============================================================================

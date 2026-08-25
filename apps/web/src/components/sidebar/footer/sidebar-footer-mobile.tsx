@@ -10,6 +10,7 @@ import { useProjectContext } from "@/sdk";
 import { useNavigate } from "@tanstack/react-router";
 import { useT } from "@/i18n/use-t.ts";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
+import { InboxIconButton } from "./inbox";
 
 export function SidebarAccountFooterMobile() {
   const t = useT();
@@ -27,6 +28,7 @@ export function SidebarAccountFooterMobile() {
             </SidebarMenuItem>
           </SidebarMenu>
         </div>
+        <InboxIconButton />
         <ToolbarIconButton
           aria-label={t("sidebar.sidebarFooterMobile.settings")}
           onClick={() => {
