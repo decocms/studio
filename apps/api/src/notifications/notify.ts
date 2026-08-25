@@ -14,6 +14,7 @@ import {
   type NotificationType,
 } from "@decocms/shared/notification-types";
 import { sseHub } from "@/event-bus/sse-hub";
+import { enqueueUserDigest } from "./dbos-digest";
 import type { Database } from "@/storage/types";
 import { NotificationDataSchema } from "./schema";
 
@@ -119,6 +120,8 @@ export async function notify(params: NotifyParams): Promise<void> {
     // refetch can race the row. Move the emit to an after-commit hook if the
     // inbox is ever seen missing an event it was told about.
     for (const userId of notified) {
+      // Debounced onto the end of this recipient's 30s window.
+      enqueueUserDigest(userId);
       sseHub.emit(subject.organization_id, {
         id: crypto.randomUUID(),
         type: NOTIFICATION_CREATED_EVENT,

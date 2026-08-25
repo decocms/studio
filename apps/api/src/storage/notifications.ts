@@ -27,19 +27,6 @@ export interface Notification {
 
 const iso = (v: Date | string) => (v instanceof Date ? v.toISOString() : v);
 
-/** `${createdAt}|${id}`; anything else pages from the top rather than throwing. */
-function parseCursor(
-  cursor: string | undefined,
-): { createdAt: Date; id: string } | null {
-  if (!cursor) return null;
-  const sep = cursor.lastIndexOf("|");
-  if (sep <= 0) return null;
-  const createdAt = new Date(cursor.slice(0, sep));
-  const id = cursor.slice(sep + 1);
-  if (Number.isNaN(createdAt.getTime()) || !id) return null;
-  return { createdAt, id };
-}
-
 export class NotificationStorage {
   constructor(private db: Kysely<Database>) {}
 
@@ -47,9 +34,14 @@ export class NotificationStorage {
    * One page of the user's unread notifications in this org, newest first.
    *
    * Keyset, not offset: rows leave the set as they are read, so an offset would
-   * skip rows between pages. `cursor` is the opaque `${createdAt}|${id}` of the
-   * last row of the previous page — `id` breaks the tie when two rows share a
-   * timestamp, which a burst on one task produces routinely.
+   * skip rows between pages. The cursor is the previous page's last row id, and
+   * the `(created_at, id)` comparison against it resolves ENTIRELY in SQL — a
+   * timestamp round-tripped through a JS `Date` truncates Postgres microseconds
+   * to milliseconds, which silently drops rows sharing a millisecond, and a
+   * burst on one task produces those routinely. `id` breaks the remaining tie.
+   *
+   * A cursor whose row is gone (read in another tab, task deleted) pages from
+   * the top rather than returning an empty page that reads as "no more".
    */
   async listUnread(
     userId: string,
@@ -61,7 +53,7 @@ export class NotificationStorage {
     nextCursor: string | null;
   }> {
     const limit = Math.min(opts.limit ?? PAGE_SIZE, MAX_PAGE_SIZE);
-    const after = parseCursor(opts.cursor);
+    const after = opts.cursor ? await this.anchorExists(opts.cursor) : false;
 
     let listQuery = this.db
       .selectFrom("notifications")
@@ -74,7 +66,8 @@ export class NotificationStorage {
       .limit(limit + 1);
     if (after) {
       listQuery = listQuery.where(
-        sql<boolean>`(created_at, id) < (${after.createdAt}, ${after.id})`,
+        sql<boolean>`(created_at, id) <
+          (SELECT created_at, id FROM notifications WHERE id = ${opts.cursor})`,
       );
     }
     const page = await listQuery.execute();
@@ -90,10 +83,7 @@ export class NotificationStorage {
 
     const last = rows[rows.length - 1];
     return {
-      nextCursor:
-        page.length > limit && last
-          ? `${iso(last.created_at)}|${last.id}`
-          : null,
+      nextCursor: page.length > limit && last ? last.id : null,
       notifications: rows.map((row) => ({
         id: row.id,
         taskBoardItemId: row.task_board_item_id,
@@ -103,6 +93,16 @@ export class NotificationStorage {
       })),
       unreadCount: Number(count?.count ?? 0),
     };
+  }
+
+  /** Whether a cursor still points at a row — see `listUnread`. */
+  private async anchorExists(id: string): Promise<boolean> {
+    const row = await this.db
+      .selectFrom("notifications")
+      .select("id")
+      .where("id", "=", id)
+      .executeTakeFirst();
+    return !!row;
   }
 
   /** Idempotent. Omitted `ids` means every unread row of this user in this org. */

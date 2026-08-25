@@ -72,5 +72,14 @@
  * `DBOSUnexpectedStepError`; those instances strand instead, by design. The
  * one already past its Jira POST is still not re-mirrored by the pull, which
  * cuts the echo by author account as well as by comment link (`sync.ts`).
+ *
+ * Version 9 turns the notification digest event-triggered:
+ * `notificationDigestWorkflow` keeps its name but is now the safety-net sweep
+ * (`loadOrphanedNotifications`, and a `claimForEmail` step before each send in
+ * place of the old `stampEmailed` after it), and the new per-recipient
+ * `notificationUserDigestWorkflow` carries the normal path. Steps were added,
+ * removed and reordered, so a v8 digest instance replayed against v9 diverges.
+ * Cheap to strand: the workflow was a five-minute tick that finishes in
+ * milliseconds and holds nothing a user is waiting on.
  */
-export const DBOS_WORKFLOW_VERSION = "8";
+export const DBOS_WORKFLOW_VERSION = "9";
