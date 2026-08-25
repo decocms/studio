@@ -7,13 +7,18 @@
  */
 import { meter } from "@/observability";
 
-const poisonRunsCounter = meter.createCounter(
-  "decopilot.projector.poison_runs",
-  {
+// Lazy: `meter` is a NoopMeter until initObservability() runs post-import.
+const lazyInstrument = <T>(make: () => T): (() => T) => {
+  let v: T | undefined;
+  return () => (v ??= make());
+};
+
+const poisonRunsCounter = lazyInstrument(() =>
+  meter.createCounter("decopilot.projector.poison_runs", {
     description:
       "Number of decopilot runs that exhausted retries and were sent to the DLQ",
     unit: "{runs}",
-  },
+  }),
 );
 
 /**
@@ -34,5 +39,5 @@ export function computeLagMs(publishedAtMs: number, nowMs: number): number {
  */
 export function recordPoison(runId: string, orgId?: string): void {
   void runId;
-  poisonRunsCounter.add(1, { "org.id": orgId ?? "unknown" });
+  poisonRunsCounter().add(1, { "org.id": orgId ?? "unknown" });
 }
