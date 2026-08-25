@@ -70,9 +70,11 @@ describe("serializeChunk", () => {
     expect(msgs[0].headers).toBeUndefined();
   });
 
-  test("oversized (> MAX_CHUNKED_BYTES) → [] (no throw)", () => {
+  test("oversized (> MAX_CHUNKED_BYTES) fails loudly", () => {
     const huge = { d: "z".repeat(33 * 1024 * 1024) };
-    expect(serializeChunk(huge, { runId: "r" })).toEqual([]);
+    expect(() => serializeChunk(huge, { runId: "r" })).toThrow(
+      /stream chunk is .* maximum is/,
+    );
   });
 });
 
@@ -115,9 +117,6 @@ describe("parseRunStreamMsgId", () => {
       fenceToken: "f",
       finalSeq: 9,
     });
-  });
-  test("ckpt transition guard → null", () => {
-    expect(parseRunStreamMsgId("r:f:ckpt:7")).toBeNull();
   });
 });
 
@@ -200,20 +199,6 @@ test("decodeMessage: malformed / foreign → null", () => {
   const enc = (s: string) => new TextEncoder().encode(s);
   expect(decodeMessage(rawFrom({ data: enc("not json") }))).toBeNull();
   expect(decodeMessage(rawFrom({ data: enc('{"x":1}') }))).toBeNull(); // neither {p} nor {done}
-});
-
-test("decodeMessage: ckpt msgId on a {p} envelope → chunk with seq null", () => {
-  // The envelope decides chunk-ness; the msgId only supplies seq/runId/fence.
-  // A leftover ckpt msgId parses to null, so seq is null but it is still a chunk.
-  const enc = (s: string) => new TextEncoder().encode(s);
-  const ev = decodeMessage(
-    rawFrom({
-      data: enc('{"p":{"type":"text-delta","id":"t","delta":"x"}}'),
-      msgId: "r:f:ckpt:7",
-    }),
-  );
-  expect(ev?.kind).toBe("chunk");
-  expect(ev?.kind === "chunk" && ev.seq).toBeNull();
 });
 
 test("done envelope decodes with finalSeq cross-check fields", () => {

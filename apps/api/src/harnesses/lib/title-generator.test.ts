@@ -94,6 +94,7 @@ function makeSucceedingModel(title: string): LanguageModelV3 {
 describe("genTitle model fallback chain", () => {
   test("rotates to the next model when the first keeps failing", async () => {
     const handle = genTitle({
+      abortSignal: new AbortController().signal,
       models: [
         () => makeFailingModel(new Error("first boom")),
         () => makeSucceedingModel("Second model title"),
@@ -106,6 +107,7 @@ describe("genTitle model fallback chain", () => {
 
   test("a factory that throws at build time fails only its attempt, then rotates", async () => {
     const handle = genTitle({
+      abortSignal: new AbortController().signal,
       models: [
         () => {
           throw new Error("provider has no aiSdk"); // unbuildable slot
@@ -120,6 +122,7 @@ describe("genTitle model fallback chain", () => {
 
   test("empty model list falls back to clamped user message (never a broken title)", async () => {
     const handle = genTitle({
+      abortSignal: new AbortController().signal,
       models: [],
       userMessage: "Fix the login button on mobile devices please",
     });
@@ -131,6 +134,7 @@ describe("genTitle model fallback chain", () => {
 describe("genTitle fallback", () => {
   test("self-timeout (slow/hung model) falls back to clamped user message, not null", async () => {
     const handle = genTitle({
+      abortSignal: new AbortController().signal,
       models: [() => makeHangingModel()],
       userMessage: "Build a complex dashboard app",
       timeoutMs: 10, // tiny self-timeout; no parent abort, no finish()
@@ -146,6 +150,7 @@ describe("genTitle fallback", () => {
     // black-holes the request would leave the promise pending forever and hang
     // the parent run's drain loop. The settlement latch must resolve it anyway.
     const handle = genTitle({
+      abortSignal: new AbortController().signal,
       models: [() => makeUnabortableModel()],
       userMessage: "Ship the unabortable fix",
       timeoutMs: 10,
@@ -213,21 +218,6 @@ describe("genTitle fallback", () => {
     handle.finish();
     const result = await handle.promise;
     expect(result).toBe("New chat");
-  });
-
-  test("missing abortSignal does not throw and still produces a fallback", async () => {
-    // Repro for the desktop/pull crash: the serialized wire input cannot carry
-    // a (non-serializable) AbortSignal, so genTitle may be called with
-    // `abortSignal: undefined`. It must degrade to "no parent abort wiring"
-    // instead of throwing `addEventListener of undefined`.
-    const handle = genTitle({
-      abortSignal: undefined,
-      models: [() => makeFailingModel(new Error("boom"))],
-      userMessage: "Fix the login button on mobile devices please",
-    });
-    handle.finish();
-    const result = await handle.promise;
-    expect(result).toBe("Fix the login button on mobile d");
   });
 
   test("parent abort resolves to null (no fallback emitted)", async () => {

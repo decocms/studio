@@ -69,16 +69,15 @@ const publishErrorsCounter = lazyInstrument(() =>
   }),
 );
 
-// encode_ms + published_chunks live in ./stream-metrics so the link-daemon's
-// direct-nats-publisher (the path agent-sandbox runs actually take) feeds the
-// same instruments instead of double-registering them.
+// encode_ms + published_chunks live in ./stream-metrics so instrumentation is
+// defined once instead of being registered by each buffer instance.
 
 // 30 min — projector-lag SLA: the stream is the sole path to the DB (Phase C),
 // so retention must outlast a projector outage long enough to catch up. Tune later.
-const MAX_AGE_NS = 24 * 60 * 60 * 1_000_000_000; // 24h — outlasts day-long desktop runs
+const MAX_AGE_NS = 24 * 60 * 60 * 1_000_000_000; // 24h — outlasts day-long runs
 // Time-based Nats-Msg-Id dedup window (spec §10.2): a republished chunk within
-// this window is dropped by JetStream, so an at-least-once producer (outbox
-// retry) can't double-write the same UI part.
+// this window is dropped by JetStream, so a producer retry can't double-write
+// the same UI part.
 const DUPLICATE_WINDOW_NS = 2 * 60 * 1_000_000_000; // 2 min
 const MAX_BYTES = 4 * 1024 * 1024 * 1024; // 4GB stream cap
 const MAX_MSGS_PER_SUBJECT = 500_000; // headroom for multi-hour non-stop streams
@@ -357,12 +356,6 @@ export class NatsStreamBuffer implements StreamBuffer {
         encodeMs,
         msgs.reduce((n, m) => n + m.data.length, 0),
       );
-      if (msgs.length === 0) {
-        console.warn(
-          `[Decopilot] dropping oversized stream chunk for thread ${taskId}`,
-        );
-        return;
-      }
       for (const m of msgs) {
         tracker.publish(
           js,
@@ -448,15 +441,6 @@ export class NatsStreamBuffer implements StreamBuffer {
     // recorded on this path or they stay flat zero while streaming works.
     encodeMsHistogram().record(performance.now() - t0);
     publishedChunksCounter().add(1);
-    if (msgs.length === 0) {
-      console.warn(
-        `[Decopilot] dropping oversized raw chunk for thread ${taskId} (> MAX_CHUNKED_BYTES)`,
-      );
-      // Dropped, but the publish "succeeded" as far as the ack cursor is
-      // concerned — refusing to advance would wedge the run on a pathological
-      // chunk (loud-fail is the daemon-outbox cap's job, not ingest's).
-      return true;
-    }
     for (const m of msgs) {
       await js.publish(m.subject, m.data, {
         ...(m.headers ? { headers: toMsgHdrs(m.headers) } : {}),

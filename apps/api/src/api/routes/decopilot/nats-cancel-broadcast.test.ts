@@ -42,7 +42,7 @@ describe("NatsCancelBroadcast", () => {
 
     await broadcast.start(() => {});
     // @ts-expect-error - nc.subscribe is not typed correctly
-    expect(nc.subscribe).toHaveBeenCalledTimes(2);
+    expect(nc.subscribe).toHaveBeenCalledTimes(1);
     await broadcast.stop();
   });
 
@@ -55,11 +55,8 @@ describe("NatsCancelBroadcast", () => {
     broadcast.broadcast("thread-1");
 
     expect(cancelled).toEqual(["thread-1"]);
-    expect(published).toHaveLength(2);
-    expect(published.map(({ subject }) => subject)).toEqual([
-      "studio.decopilot.cancel",
-      "mesh.decopilot.cancel",
-    ]);
+    expect(published).toHaveLength(1);
+    expect(published[0]?.subject).toBe("studio.decopilot.cancel");
     const payload = JSON.parse(
       new TextDecoder().decode(published[0]?.data ?? new Uint8Array()),
     );
@@ -91,25 +88,6 @@ describe("NatsCancelBroadcast", () => {
     await broadcast.stop();
 
     expect(cancelled).toContain("t-abc");
-  });
-
-  it("deduplicates messages received through both compatibility subjects", async () => {
-    const encoder = new TextEncoder();
-    const msg = {
-      data: encoder.encode(
-        JSON.stringify({ taskId: "t-abc", messageId: "message-1" }),
-      ),
-    };
-    const sub = createMockSubscription([msg]);
-    const { nc } = createMockNatsConnection(sub);
-    const broadcast = new NatsCancelBroadcast({ getConnection: () => nc });
-    const cancelled: string[] = [];
-
-    await broadcast.start((id) => cancelled.push(id));
-    await sleep(50);
-    await broadcast.stop();
-
-    expect(cancelled).toEqual(["t-abc"]);
   });
 
   it("subscription handler ignores malformed messages", async () => {
