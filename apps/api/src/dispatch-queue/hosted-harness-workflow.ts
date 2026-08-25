@@ -77,8 +77,8 @@ import {
 } from "@/harnesses/lib/liveness-heartbeat";
 import { publishRunStatusStage } from "@/api/routes/decopilot/run-status-stage";
 import type {
+  ClaimedDispatchRunInput,
   DispatchRunDeps,
-  DispatchRunRuntimeInput,
   DispatchRunInput,
   DurableDispatchRunInput,
 } from "@/api/routes/decopilot/dispatch-run";
@@ -119,8 +119,11 @@ export type SerializableDispatchRunInput =
   | Omit<DispatchRunInput, "abortSignal">
   | Omit<DurableDispatchRunInput, "abortSignal">;
 
+export type ClaimedSerializableDispatchRunInput =
+  SerializableDispatchRunInput & { runFenceToken: string };
+
 export type DispatchRunAndWaitFn = (
-  input: DispatchRunRuntimeInput,
+  input: ClaimedDispatchRunInput,
   ctx: StudioContext,
   deps: DispatchRunDeps,
 ) => Promise<{ taskId: string }>;
@@ -145,7 +148,7 @@ export interface HostedHarnessInput {
   /** Stable thread identifier — the queue partition key. */
   threadId: string;
   /** Dispatch input minus the non-serializable abort signal. */
-  request: SerializableDispatchRunInput;
+  request: ClaimedSerializableDispatchRunInput;
 }
 
 export interface HostedHarnessRuntime {
