@@ -99,23 +99,38 @@ async function refreshAndStoreOnce(
     // must not nuke the user's auth — that turns every blip in the upstream
     // OAuth server into a forced manual reconnect.
     if (result.permanent === true) {
-      await tokenStorage.delete(token.connectionId);
+      // Don't let a storage blip surface as an uncaught rejection to callers.
+      await tokenStorage.delete(token.connectionId).catch((error) => {
+        console.warn("[TokenRefresh] failed to delete dead token row", {
+          connectionId: token.connectionId,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      });
     }
     return { accessToken: null, permanent: result.permanent === true };
   }
-  await tokenStorage.upsert({
-    connectionId: token.connectionId,
-    accessToken: result.accessToken,
-    refreshToken: result.refreshToken ?? token.refreshToken,
-    scope: result.scope ?? token.scope,
-    expiresAt:
-      result.expiresIn === undefined
-        ? null
-        : new Date(Date.now() + result.expiresIn * 1000),
-    clientId: token.clientId,
-    clientSecret: token.clientSecret,
-    tokenEndpoint: token.tokenEndpoint,
-  });
+  try {
+    await tokenStorage.upsert({
+      connectionId: token.connectionId,
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken ?? token.refreshToken,
+      scope: result.scope ?? token.scope,
+      expiresAt:
+        result.expiresIn === undefined
+          ? null
+          : new Date(Date.now() + result.expiresIn * 1000),
+      clientId: token.clientId,
+      clientSecret: token.clientSecret,
+      tokenEndpoint: token.tokenEndpoint,
+    });
+  } catch (error) {
+    // Persisting the refreshed token failed — report a transient failure.
+    console.warn("[TokenRefresh] failed to persist refreshed token", {
+      connectionId: token.connectionId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return { accessToken: null, permanent: false };
+  }
   return { accessToken: result.accessToken, permanent: false };
 }
 
