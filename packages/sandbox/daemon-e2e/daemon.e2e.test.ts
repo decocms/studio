@@ -912,7 +912,7 @@ describe("daemon e2e: auth on mutating routes", () => {
     {
       name: "dispatch",
       path: "/_sandbox/dispatch",
-      body: toBody({ harnessId: "x", input: {} }),
+      body: toBody({ input: {} }),
     },
   ];
 

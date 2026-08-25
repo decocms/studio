@@ -24,7 +24,7 @@ func TestKeepaliveWritesWhitespaceWhileQuiet(t *testing.T) {
 	dispatchHeartbeat = 5 * time.Millisecond
 	defer func() { dispatchHeartbeat = restore }()
 
-	stop := startKeepalive(context.Background(), body, "claude-code", "run-1")
+	stop := startKeepalive(context.Background(), body, "run-1")
 	time.Sleep(60 * time.Millisecond)
 	stop()
 	body.write(terminalFrame("harness_crashed", "boom"))
@@ -147,7 +147,6 @@ func TestRebaseWorkspaceCwd(t *testing.T) {
 func TestDispatchIgnoresRetiredMessagesRef(t *testing.T) {
 	const token = "tkn"
 	body := `{
-		"harnessId": "claude-code",
 		"runId": "run-legacy-ref",
 		"messagesRef": {
 			"url": "https://not-allowed.invalid/messages",
@@ -328,7 +327,7 @@ func TestKeepaliveCountsAsActivity(t *testing.T) {
 	defer func() { dispatchHeartbeat = restore }()
 
 	activity.Bump()
-	stop := startKeepalive(context.Background(), newBodyWriter(httptest.NewRecorder()), "claude-code", "run-1")
+	stop := startKeepalive(context.Background(), newBodyWriter(httptest.NewRecorder()), "run-1")
 	time.Sleep(200 * time.Millisecond)
 	stop()
 

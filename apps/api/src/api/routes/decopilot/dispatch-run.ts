@@ -1398,7 +1398,6 @@ async function prepareRun(
         const rawHarnessChunks = sandboxHosted
           ? new SandboxDispatchClient({
               ctx,
-              harnessId,
               virtualMcpId: effectiveVirtualMcp.id,
               // Tell the harness it is picking up an interrupted turn: its own
               // context is gone, but the work is in the checkout and in git.
