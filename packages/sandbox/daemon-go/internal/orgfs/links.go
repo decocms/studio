@@ -8,7 +8,7 @@ package orgfs
 // even when the mount failed, and linking into that strands the user's files on
 // ephemeral disk. Fails open — org-fs is additive and must never break a call.
 //
-// Mounting itself (rclone/WebDAV) is desktop-only and stays in the TS bundle.
+// Mounting itself (rclone/WebDAV) runs in the hosted pod's sidecar.
 
 import (
 	"encoding/json"

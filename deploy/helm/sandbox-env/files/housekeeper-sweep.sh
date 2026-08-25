@@ -15,12 +15,7 @@ set -eu
 : "${RUN_ID:?must be set}"
 
 DAEMON_PORT=9000
-# Canonical path served by the daemon after T11; old daemons that haven't
-# auto-updated still serve the legacy path. Probe the new one first and
-# fall back if the daemon returns 404 (unknown route). Remove the legacy
-# probe once all sandboxes have rotated to the post-rename daemon image.
 IDLE_PATH="/_sandbox/idle"
-LEGACY_IDLE_PATH="/_decopilot_vm/idle"
 
 # A transient optimistic-concurrency conflict on the SandboxClaim status write
 # surfaces as Ready=False/reason=ReconcilerError for ~1s before the operator
@@ -80,42 +75,24 @@ regarding:
 YAML
 }
 
-# Probe /_sandbox/idle (falling back to the legacy /_decopilot_vm/idle for
-# old daemons). Echoes one of:
+# Probe /_sandbox/idle. Echoes one of:
 #   <digits>          idleMs (success)
 #   __unreachable__   connect/timeout
 #   __not_found__     HTTP 404
 #   __server_error__  HTTP 5xx
 #   __bad_shape__     HTTP 200 but no parseable idleMs
 #   __unclaimed__     HTTP 200 but claimed=false (warm-pool pod awaiting first workload)
-probe_daemon_at() {
-  ip="$1"; path="$2"; body="$3"
-  curl -s -o "$body" \
-       --max-time "$PROBE_TIMEOUT_SEC" \
-       --retry 1 --retry-all-errors --retry-delay 1 \
-       -w '%{http_code}' \
-       "http://${ip}:${DAEMON_PORT}${path}" 2>/dev/null
-}
-
 probe_daemon() {
   ip="$1"
   body=$(mktemp)
-  # Try canonical path; if the daemon returns 404 (unknown route), the pod
-  # is running a pre-T11 daemon image — fall through to the legacy path.
-  # Any other status (success, 5xx, transport failure) is authoritative on
-  # the canonical attempt and short-circuits without a legacy probe.
-  if ! code=$(probe_daemon_at "$ip" "$IDLE_PATH" "$body"); then
-    if ! code=$(probe_daemon_at "$ip" "$LEGACY_IDLE_PATH" "$body"); then
-      rm -f "$body"
-      echo "__unreachable__"
-      return
-    fi
-  elif [ "$code" = "404" ]; then
-    if ! code=$(probe_daemon_at "$ip" "$LEGACY_IDLE_PATH" "$body"); then
-      rm -f "$body"
-      echo "__unreachable__"
-      return
-    fi
+  if ! code=$(curl -s -o "$body" \
+       --max-time "$PROBE_TIMEOUT_SEC" \
+       --retry 1 --retry-all-errors --retry-delay 1 \
+       -w '%{http_code}' \
+       "http://${ip}:${DAEMON_PORT}${IDLE_PATH}" 2>/dev/null); then
+    rm -f "$body"
+    echo "__unreachable__"
+    return
   fi
   case "$code" in
     2*)

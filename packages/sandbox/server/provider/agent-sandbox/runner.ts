@@ -943,9 +943,7 @@ export class AgentSandboxProvider {
    * Unauthenticated by design — preview URLs are open the same way Vercel
    * preview URLs are; the *handle* is the secret.
    *
-   * `/_sandbox/*` access policy at the edge (legacy `/_decopilot_vm/*`
-   * dual-served by the daemon is also matched here for the duration of
-   * the rename rollout):
+   * `/_sandbox/*` access policy at the edge:
    *   - **GET** is allowed through. The daemon's `/events` SSE and `/scripts`
    *     are intentionally unauthenticated and CORS-enabled (`Allow-Origin: *`)
    *     because the studio UI consumes them cross-origin from the preview
@@ -981,9 +979,7 @@ export class AgentSandboxProvider {
       const reqUrl = new URL(request.url);
       const isAdminPath =
         reqUrl.pathname === "/_sandbox" ||
-        reqUrl.pathname.startsWith("/_sandbox/") ||
-        reqUrl.pathname === "/_decopilot_vm" ||
-        reqUrl.pathname.startsWith("/_decopilot_vm/");
+        reqUrl.pathname.startsWith("/_sandbox/");
       if (isAdminPath && request.method !== "GET") {
         status = 404;
         return jsonResponse(404, { error: "not found" });

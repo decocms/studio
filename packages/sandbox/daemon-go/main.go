@@ -38,10 +38,7 @@ import (
 	"github.com/decocms/studio/sandbox-daemon/internal/worktree"
 )
 
-const (
-	sandboxPrefix       = "/_sandbox"
-	legacySandboxPrefix = "/_decopilot_vm"
-)
+const sandboxPrefix = "/_sandbox"
 
 func randomUUID() string {
 	b := make([]byte, 16)
@@ -52,15 +49,8 @@ func randomUUID() string {
 	return fmt.Sprintf("%s-%s-%s-%s-%s", s[0:8], s[8:12], s[12:16], s[16:20], s[20:32])
 }
 
-var sandboxPrefixes = []string{sandboxPrefix, legacySandboxPrefix}
-
 func isSandboxPath(pathname string) bool {
-	for _, p := range sandboxPrefixes {
-		if pathname == p || strings.HasPrefix(pathname, p+"/") {
-			return true
-		}
-	}
-	return false
+	return pathname == sandboxPrefix || strings.HasPrefix(pathname, sandboxPrefix+"/")
 }
 
 // Zero for the boot-to-serving measurement. A package var so it is stamped at
@@ -484,9 +474,7 @@ func (d *daemon) treeGuarded(fn http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// registerSandboxRoutes mounts the daemon's own API under one prefix. Called
-// once per prefix: /_sandbox is canonical, /_decopilot_vm is served for one
-// release window.
+// registerSandboxRoutes mounts the daemon's own API under /_sandbox.
 func (d *daemon) registerSandboxRoutes(mux *http.ServeMux, pre string, h sandboxHandlers) {
 	// Unauthenticated: liveness, the event stream, script discovery, the draft
 	// decofile pull, preflight.
@@ -554,7 +542,7 @@ func (d *daemon) registerSandboxRoutes(mux *http.ServeMux, pre string, h sandbox
 func (d *daemon) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p := r.URL.Path
 
-	if p != "/health" && p != sandboxPrefix+"/idle" && p != legacySandboxPrefix+"/idle" {
+	if p != "/health" && p != sandboxPrefix+"/idle" {
 		activity.Bump()
 		d.mu.Lock()
 		if !d.firstWorkLogged {
@@ -928,19 +916,6 @@ func main() {
 		StatusPath: os.Getenv("ORGFS_SIDECAR_STATUS_PATH"),
 		ConfigPath: os.Getenv("ORGFS_SIDECAR_CONFIG_PATH"),
 	}
-	// Desktop mounts from the boot env rather than a relayed config, so seed the
-	// prefetch credential from it too.
-	if c := orgfs.ParseConfig([]byte(os.Getenv("ORGFS_CONFIG"))); c != nil {
-		d.orgFsLinks.SetAPIConfig(orgfs.APIConfig{
-			BaseUrl: c.BaseUrl, OrgSlug: c.OrgSlug, Token: c.Token,
-		})
-	}
-	// Fail loud rather than silently unmounted: ORGFS_CONFIG is the desktop's
-	// "mount them yourself" env, which only the TS bundle implements.
-	if os.Getenv("ORGFS_CONFIG") != "" && d.orgFsLinks.StatusPath == "" {
-		slog.Warn("ORGFS_CONFIG is set but this daemon does not mount org volumes " +
-			"(cluster sidecar path only) — org files will not appear in the workspace")
-	}
 	// The golden cache's remote tier needs `zstd` in the image; without it every
 	// restore and publish fails into a normal install, silently apart from this.
 	if setup.RemoteEnabled() {
@@ -1162,9 +1137,7 @@ func main() {
 	}
 
 	d.mux = http.NewServeMux()
-	for _, pre := range sandboxPrefixes {
-		d.registerSandboxRoutes(d.mux, pre, h)
-	}
+	d.registerSandboxRoutes(d.mux, sandboxPrefix, h)
 
 	if diskCfg, ok := config.ReadDiskConfig(repoDir); ok {
 		d.store.Hydrate(diskCfg)
