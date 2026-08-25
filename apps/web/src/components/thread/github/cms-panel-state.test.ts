@@ -56,6 +56,8 @@ function input(
     statusError: null,
     syncing: false,
     statusRetrying: false,
+    // Manifest-less fallback by default; manifest cases opt in explicitly.
+    publishableChangeCount: null,
     t: mockT,
     ...over,
   };
@@ -798,6 +800,79 @@ describe("uncommitted work", () => {
       input({
         branch: ready({ headSha: "merged-sha", workingTreeDirty: true }),
         pr: pr({ state: "closed", merged: true, headSha: "merged-sha" }),
+      }),
+    );
+    expect(r.label).toBe(threadEn["thread.cmsActions.reviewAndPublish"]);
+    expect(r.action).toBe("publish");
+  });
+});
+
+describe("publish manifest gates the draft state", () => {
+  /** The bug: commits ahead of base whose only diff is regenerated artifacts
+   *  the popover drops. The header must agree with the popover's empty list. */
+  test("ahead of base but zero publishable changes → Up to date", () => {
+    const r = selectCmsHeaderButton(
+      input({
+        branch: ready({ aheadOfBase: 2 }),
+        publishableChangeCount: 0,
+      }),
+    );
+    expect(r.label).toBe(threadEn["thread.headerActions.upToDate"]);
+    expect(r.disabled).toBe(true);
+    expect(r.action).toBeUndefined();
+  });
+
+  test("a positive manifest count → Review & Publish", () => {
+    const r = selectCmsHeaderButton(
+      input({
+        branch: ready({ aheadOfBase: 2 }),
+        publishableChangeCount: 3,
+      }),
+    );
+    expect(r.label).toBe(threadEn["thread.cmsActions.reviewAndPublish"]);
+    expect(r.action).toBe("publish");
+  });
+
+  /** An uncommitted edit is publishable even when the base…head manifest is
+   *  empty — the backend that leaves each save in the working tree. */
+  test("a dirty tree publishes even at manifest count 0", () => {
+    const r = selectCmsHeaderButton(
+      input({
+        branch: ready({ aheadOfBase: 0, workingTreeDirty: true }),
+        publishableChangeCount: 0,
+      }),
+    );
+    expect(r.label).toBe(threadEn["thread.cmsActions.reviewAndPublish"]);
+    expect(r.action).toBe("publish");
+  });
+
+  /** No manifest (sandbox daemon): the coarse commit count is all there is. */
+  test("null count falls back to aheadOfBase", () => {
+    const publishable = selectCmsHeaderButton(
+      input({
+        branch: ready({ aheadOfBase: 2 }),
+        publishableChangeCount: null,
+      }),
+    );
+    expect(publishable.action).toBe("publish");
+    const clean = selectCmsHeaderButton(
+      input({
+        branch: ready({ aheadOfBase: 0 }),
+        publishableChangeCount: null,
+      }),
+    );
+    expect(clean.label).toBe(threadEn["thread.headerActions.upToDate"]);
+  });
+
+  /** An open PR is publishable on its own terms; the draft-state count gate
+   *  never runs for it. */
+  test("an open PR still publishes at manifest count 0", () => {
+    const r = selectCmsHeaderButton(
+      input({
+        branch: ready({ aheadOfBase: 2 }),
+        pr: pr(),
+        reviews: reviews(),
+        publishableChangeCount: 0,
       }),
     );
     expect(r.label).toBe(threadEn["thread.cmsActions.reviewAndPublish"]);
