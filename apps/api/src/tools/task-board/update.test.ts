@@ -22,7 +22,7 @@ function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     description: null,
     status: "todo",
     priority: "medium",
-    type: null,
+    type: "chore",
     sprint: null,
     assigneeId: null,
     assignedBy: null,
@@ -68,16 +68,20 @@ describe("diffTaskActivityEntries", () => {
     ]);
   });
 
-  it("logs setting a type on a card that had none", () => {
+  // Type is mandatory, so every change is a move between two types — there is
+  // no "set from nothing" or "clear" any more.
+  it("logs a type change as a move between two types", () => {
     expect(
-      diffTaskActivityEntries(item({ type: null }), item({ type: "bug" })),
-    ).toEqual([{ action: "type_changed", data: { from: null, to: "bug" } }]);
+      diffTaskActivityEntries(item({ type: "chore" }), item({ type: "bug" })),
+    ).toEqual([{ action: "type_changed", data: { from: "chore", to: "bug" } }]);
   });
 
-  it("logs clearing a type", () => {
+  it("logs a move off the default like any other", () => {
     expect(
-      diffTaskActivityEntries(item({ type: "spike" }), item({ type: null })),
-    ).toEqual([{ action: "type_changed", data: { from: "spike", to: null } }]);
+      diffTaskActivityEntries(item({ type: "chore" }), item({ type: "spike" })),
+    ).toEqual([
+      { action: "type_changed", data: { from: "chore", to: "spike" } },
+    ]);
   });
 
   it("does not log a type that did not move", () => {

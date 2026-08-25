@@ -160,9 +160,8 @@ export interface TaskBoardItem {
   description: string | null;
   status: TaskBoardItemStatus;
   priority: TaskBoardItemPriority;
-  /** Null on every card written before the field existed — untyped, not
-   *  guessed. */
-  type: TaskBoardItemType | null;
+  /** What kind of work this is. Required; defaults to `chore`. */
+  type: TaskBoardItemType;
   assigneeId: string | null;
   assignedBy: string | null;
   /** `owner/name` of the repo (site) this task pertains to. */

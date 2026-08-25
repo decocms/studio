@@ -21,7 +21,7 @@ function item(id: string, sortOrder: number): TaskBoardItem {
     description: null,
     status: "todo",
     priority: "none",
-    type: null,
+    type: "chore",
     sprint: null,
     assigneeId: null,
     assignedBy: null,

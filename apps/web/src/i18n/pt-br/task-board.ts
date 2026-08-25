@@ -308,8 +308,6 @@ export const taskBoard = {
   "taskBoard.config.typeSecurity": "Segurança",
   "taskBoard.config.typeSpike": "Spike",
   "taskBoard.taskBoard.typeLabel": "Tipo",
-  "taskBoard.taskBoard.typeNone": "Sem tipo",
-  "taskBoard.taskDialog.activityTypeCleared": "removeu o tipo",
   "taskBoard.taskDialog.activityTypeFromTo": "mudou o tipo de {from} para {to}",
   "taskBoard.taskDialog.activityTypeSet": "definiu o tipo como {to}",
 } satisfies Record<keyof typeof taskBoardEn, string>;

@@ -21,6 +21,7 @@ import type {
   TaskBoardItemThreadRef,
 } from "./types";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
+import { DEFAULT_TASK_TYPE } from "@decocms/shared/task-board";
 import {
   type ReviewCycleActivity,
   REVIEWER_KINDS,
@@ -251,7 +252,7 @@ export class TaskBoardStorage {
     description?: string | null;
     status?: TaskBoardItemStatus;
     priority?: TaskBoardItemPriority;
-    type?: TaskBoardItemType | null;
+    type?: TaskBoardItemType;
     assigneeId?: string | null;
     assignedBy?: string | null;
     /** `owner/name` of the repo (site) this task pertains to. */
@@ -284,7 +285,7 @@ export class TaskBoardStorage {
           description: params.description ?? null,
           status,
           priority: params.priority ?? "medium",
-          type: params.type ?? null,
+          type: params.type ?? DEFAULT_TASK_TYPE,
           assignee_id: params.assigneeId ?? null,
           assigned_by: params.assignedBy ?? null,
           repo: params.repo ?? null,
@@ -331,7 +332,7 @@ export class TaskBoardStorage {
       description?: string | null;
       status?: TaskBoardItemStatus;
       priority?: TaskBoardItemPriority;
-      type?: TaskBoardItemType | null;
+      type?: TaskBoardItemType;
       assigneeId?: string | null;
       assignedBy?: string | null;
       repo?: string | null;
@@ -2102,7 +2103,7 @@ export class TaskBoardStorage {
     description: string | null;
     status: string;
     priority: string;
-    type?: string | null;
+    type?: string;
     assignee_id: string | null;
     assigned_by: string | null;
     repo: string | null;
@@ -2123,7 +2124,7 @@ export class TaskBoardStorage {
       description: row.description,
       status: row.status as TaskBoardItemStatus,
       priority: row.priority as TaskBoardItemPriority,
-      type: (row.type ?? null) as TaskBoardItemType | null,
+      type: (row.type ?? DEFAULT_TASK_TYPE) as TaskBoardItemType,
       assigneeId: row.assignee_id,
       assignedBy: row.assigned_by,
       repo: row.repo,

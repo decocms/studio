@@ -15,8 +15,8 @@ export const TaskBoardItemStatusSchema = z.enum([
  * What KIND of work a card is — its shape, not its area.
  *
  * Areas are tags (`SEO`, `Performance`, `Infra`), a card has many of them and
- * exactly one shape. Null means untyped: every card predating the field, which
- * is not the same as "chore" and must not be guessed into one.
+ * exactly one shape. Required — a card always has a type, defaulting to
+ * `chore`, the value that asserts the least about work nobody classified.
  */
 export const TaskBoardItemTypeSchema = z.enum([
   "bug",
@@ -136,10 +136,10 @@ export const TaskBoardItemSchema = z.object({
   description: z.string().nullable(),
   status: TaskBoardItemStatusSchema,
   priority: TaskBoardItemPrioritySchema,
-  /** What kind of work this is; null on cards written before the field.
-   *  Present on every `TaskBoardItem`, so it MUST be modeled here — see the
-   *  `retryAttempts` note below on Ajv-revalidating clients. */
-  type: TaskBoardItemTypeSchema.nullable(),
+  /** What kind of work this is. Present on every `TaskBoardItem`, so it MUST
+   *  be modeled here — see the `retryAttempts` note below on Ajv-revalidating
+   *  clients. */
+  type: TaskBoardItemTypeSchema,
   assigneeId: z.string().nullable(),
   assignedBy: z.string().nullable(),
   // `owner/name` of the repo (site) this task pertains to.

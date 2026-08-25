@@ -1651,11 +1651,7 @@ export interface TaskBoardItemTable {
     TaskBoardItemPriority | undefined,
     string
   >;
-  type: ColumnType<
-    TaskBoardItemType | null,
-    TaskBoardItemType | null | undefined,
-    string | null
-  >;
+  type: ColumnType<TaskBoardItemType, TaskBoardItemType | undefined, string>;
   assignee_id: string | null;
   assigned_by: string | null;
   repo: string | null;
@@ -1872,8 +1868,8 @@ export interface TaskBoardItem {
   description: string | null;
   status: TaskBoardItemStatus;
   priority: TaskBoardItemPriority;
-  /** What kind of work this is; null on cards written before the field. */
-  type: TaskBoardItemType | null;
+  /** What kind of work this is. Required; defaults to `chore`. */
+  type: TaskBoardItemType;
   assigneeId: string | null;
   assignedBy: string | null;
   /** `owner/name` of the repo (site) this task pertains to. Nullable: tasks

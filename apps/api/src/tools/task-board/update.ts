@@ -148,7 +148,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     description: z.string().nullable().optional(),
     status: TaskBoardItemStatusSchema.optional(),
     priority: TaskBoardItemPrioritySchema.optional(),
-    type: TaskBoardItemTypeSchema.nullish(),
+    type: TaskBoardItemTypeSchema.optional(),
     assigneeId: z.string().nullable().optional(),
     repo: z.string().nullable().optional(),
     dueDate: z.string().datetime().nullable().optional(),

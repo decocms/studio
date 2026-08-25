@@ -293,14 +293,7 @@ export interface StudioToolIO {
         | "archived"
         | undefined;
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
-      type?:
-        | "bug"
-        | "feature"
-        | "chore"
-        | "spike"
-        | "security"
-        | null
-        | undefined;
+      type?: "bug" | "feature" | "chore" | "spike" | "security" | undefined;
       assigneeId?: string | null | undefined;
       repo?: string | null | undefined;
       dueDate?: string | null | undefined;
@@ -322,7 +315,7 @@ export interface StudioToolIO {
           | "in_review"
           | "archived";
         priority: "none" | "low" | "medium" | "high" | "urgent";
-        type: "bug" | "feature" | "chore" | "spike" | "security" | null;
+        type: "bug" | "feature" | "chore" | "spike" | "security";
         assigneeId: string | null;
         assignedBy: string | null;
         repo: string | null;
@@ -386,7 +379,7 @@ export interface StudioToolIO {
           | "in_review"
           | "archived";
         priority: "none" | "low" | "medium" | "high" | "urgent";
-        type: "bug" | "feature" | "chore" | "spike" | "security" | null;
+        type: "bug" | "feature" | "chore" | "spike" | "security";
         assigneeId: string | null;
         assignedBy: string | null;
         repo: string | null;
@@ -449,14 +442,7 @@ export interface StudioToolIO {
         | "archived"
         | undefined;
       priority?: "none" | "low" | "medium" | "high" | "urgent" | undefined;
-      type?:
-        | "bug"
-        | "feature"
-        | "chore"
-        | "spike"
-        | "security"
-        | null
-        | undefined;
+      type?: "bug" | "feature" | "chore" | "spike" | "security" | undefined;
       assigneeId?: string | null | undefined;
       repo?: string | null | undefined;
       dueDate?: string | null | undefined;
@@ -480,7 +466,7 @@ export interface StudioToolIO {
           | "in_review"
           | "archived";
         priority: "none" | "low" | "medium" | "high" | "urgent";
-        type: "bug" | "feature" | "chore" | "spike" | "security" | null;
+        type: "bug" | "feature" | "chore" | "spike" | "security";
         assigneeId: string | null;
         assignedBy: string | null;
         repo: string | null;

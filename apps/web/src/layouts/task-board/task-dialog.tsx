@@ -82,6 +82,7 @@ import {
   TASK_TYPE_CONFIG,
   TASK_TYPES,
   type TaskBoardItemType,
+  DEFAULT_TASK_TYPE,
   STATUS_CONFIG,
   STATUSES,
   statusIconClassName,
@@ -154,8 +155,8 @@ type TaskForm = {
   description: string;
   status: TaskBoardItemStatus;
   priority: TaskBoardItemPriority;
-  /** What kind of work this is; null = untyped. */
-  type: TaskBoardItemType | null;
+  /** What kind of work this is. Always set — defaults to `chore`. */
+  type: TaskBoardItemType;
   assigneeId: string | null;
   repo: string | null;
   dueDate: Date | null;
@@ -375,7 +376,7 @@ export function TaskBoardItemDialog({
     description: string | null;
     status: TaskBoardItemStatus;
     priority: TaskBoardItemPriority;
-    type: TaskBoardItemType | null;
+    type: TaskBoardItemType;
     assigneeId: string | null;
     repo: string | null;
     dueDate: string | null;
@@ -414,7 +415,7 @@ export function TaskBoardItemDialog({
     description: item?.description ?? "",
     status: item?.status ?? defaultStatus ?? "triage",
     priority: item?.priority ?? "medium",
-    type: item?.type ?? null,
+    type: item?.type ?? DEFAULT_TASK_TYPE,
     assigneeId: item?.assigneeId ?? null,
     repo: item?.repo ?? null,
     dueDate: parseIsoDate(item?.dueDate),
@@ -874,31 +875,17 @@ export function TaskBoardItemDialog({
                     }
                     className={cn(
                       PROPERTY_BUTTON,
-                      !taskType && EMPTY_PROPERTY,
                       contentLocked && "cursor-default opacity-60",
                     )}
                   >
-                    {taskType ? (
-                      <>
-                        {(() => {
-                          const Icon = TASK_TYPE_CONFIG[taskType].icon;
-                          return <Icon size={16} />;
-                        })()}
-                        {t(TASK_TYPE_CONFIG[taskType].labelKey)}
-                      </>
-                    ) : (
-                      <>
-                        <DotsHorizontal size={16} />
-                        {t("taskBoard.taskBoard.typeLabel")}
-                      </>
-                    )}
+                    {(() => {
+                      const Icon = TASK_TYPE_CONFIG[taskType].icon;
+                      return <Icon size={16} />;
+                    })()}
+                    {t(TASK_TYPE_CONFIG[taskType].labelKey)}
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-44">
-                  <DropdownMenuItem onSelect={() => patch({ type: null })}>
-                    <DotsHorizontal size={16} />
-                    {t("taskBoard.taskBoard.typeNone")}
-                  </DropdownMenuItem>
                   {TASK_TYPES.map((tp) => {
                     const Icon = TASK_TYPE_CONFIG[tp].icon;
                     return (
@@ -2279,10 +2266,9 @@ function describeActivity(
         ),
         { name: assigneeChip(d.to) },
       );
-    // Type's unset value is null (a card can predate the field), so a change
-    // away from it reads as a set rather than a move.
+    // Type is mandatory, so this is always a move between two types. Entries
+    // written before it became mandatory can still carry a null `from`.
     case "type_changed":
-      if (!d.to) return t("taskBoard.taskDialog.activityTypeCleared");
       return d.from
         ? t("taskBoard.taskDialog.activityTypeFromTo", { from, to })
         : t("taskBoard.taskDialog.activityTypeSet", { to });

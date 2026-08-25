@@ -22,6 +22,7 @@ import { sprintRange, type SprintConfig } from "@decocms/shared/sprints";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 
 export {
+  DEFAULT_TASK_TYPE,
   SUPER_AGENT_ASSIGNEE_ID,
   nextTagColor,
 } from "@decocms/shared/task-board";
