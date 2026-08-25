@@ -705,6 +705,22 @@ async function fetchMetadataWithRetry(
   }
 }
 
+/**
+ * Validates an OAuth endpoint URL taken from origin-controlled auth-server
+ * metadata (authorization/token/registration_endpoint) before the proxy
+ * fetches or redirects to it server-side — same guard as `authServerUrl`
+ * above, applied one hop further downstream.
+ */
+export function assertOriginEndpointIsSafe(url: string): Response | null {
+  if (!isPrivateUrl(url)) return null;
+  return new Response(
+    JSON.stringify({
+      error: "URLs targeting private networks are not allowed",
+    }),
+    { status: 502, headers: { "Content-Type": "application/json" } },
+  );
+}
+
 export async function fetchAuthorizationServerMetadata(
   authServerUrl: string,
 ): Promise<Response> {

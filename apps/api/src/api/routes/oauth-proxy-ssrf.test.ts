@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { fetchAuthorizationServerMetadata } from "./oauth-proxy";
+import {
+  assertOriginEndpointIsSafe,
+  fetchAuthorizationServerMetadata,
+} from "./oauth-proxy";
 
 /**
  * `authServerUrl` comes from the origin's own protected-resource-metadata
@@ -22,5 +25,33 @@ describe("fetchAuthorizationServerMetadata SSRF guard", () => {
       "http://localhost:9999/",
     );
     expect(response.status).toBe(502);
+  });
+});
+
+/**
+ * `authorization_endpoint` / `token_endpoint` / `registration_endpoint`
+ * come from the same origin-controlled auth-server metadata document — a
+ * malicious/compromised MCP server can point one of these at an internal
+ * address and get the proxy to fetch or redirect there server-side,
+ * forwarding the caller's Authorization header along with it.
+ */
+describe("assertOriginEndpointIsSafe SSRF guard", () => {
+  test("refuses a private/internal endpoint URL", () => {
+    const response = assertOriginEndpointIsSafe(
+      "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+    );
+    expect(response?.status).toBe(502);
+  });
+
+  test("refuses localhost", () => {
+    const response = assertOriginEndpointIsSafe("http://localhost:9999/token");
+    expect(response?.status).toBe(502);
+  });
+
+  test("allows a public endpoint URL", () => {
+    const response = assertOriginEndpointIsSafe(
+      "https://auth.example.com/token",
+    );
+    expect(response).toBeNull();
   });
 });
