@@ -4,21 +4,18 @@ import {
   Archive,
   ArrowNarrowDown,
   ArrowNarrowUp,
-  Beaker01,
   CheckCircle,
   Circle,
   Equal,
   Eye,
   Loading02,
-  PlusCircle,
-  Shield01,
-  Tool01,
-  Virus,
 } from "@untitledui/icons";
+import { Bug, CirclePlus, FlaskConical, Shield, Wrench } from "lucide-react";
 import type { StudioToolOutput as ToolOutput } from "@decocms/shared/tools/tool-io";
 import { DEFAULT_TAG_COLOR } from "@decocms/shared/task-board";
 import { isResolvedRunFailure } from "@decocms/shared/entities";
 import { sprintRange, type SprintConfig } from "@decocms/shared/sprints";
+import type { ComponentType } from "react";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 
 export {
@@ -247,23 +244,35 @@ export const TASK_TYPES: TaskBoardItemType[] = [
   "security",
 ];
 
+/** The props both icon sets on this board agree on. */
+type TaskTypeIconComponent = ComponentType<{
+  size?: number;
+  className?: string;
+  "aria-label"?: string;
+}>;
+
 /**
  * A card's kind, as one glyph in the footer.
  *
- * Shape carries the meaning, not colour — five distinct silhouettes (organism,
- * plus, wrench, flask, shield) stay apart at 14px where five hues would not,
- * and the footer already spends its colour budget on priority, checks and the
- * due date. The name is in the tooltip.
+ * Shape carries the meaning, not colour — five distinct silhouettes (insect,
+ * plus-badge, wrench, flask, shield) stay apart at 14px where five hues would
+ * not, and the footer already spends its colour budget on priority, checks and
+ * the due date. The name is in the tooltip.
+ *
+ * These come from `lucide-react` rather than the board's usual
+ * `@untitledui/icons` for one reason: untitled has no bug, and a type set whose
+ * Bug isn't a bug fails at the only job these glyphs have. Both draw 24px
+ * line icons at the same weight, so they sit together without seaming.
  */
 export const TASK_TYPE_CONFIG: Record<
   TaskBoardItemType,
-  { labelKey: TranslationKey; icon: typeof Circle }
+  { labelKey: TranslationKey; icon: TaskTypeIconComponent }
 > = {
-  bug: { labelKey: "taskBoard.config.typeBug", icon: Virus },
-  feature: { labelKey: "taskBoard.config.typeFeature", icon: PlusCircle },
-  chore: { labelKey: "taskBoard.config.typeChore", icon: Tool01 },
-  spike: { labelKey: "taskBoard.config.typeSpike", icon: Beaker01 },
-  security: { labelKey: "taskBoard.config.typeSecurity", icon: Shield01 },
+  bug: { labelKey: "taskBoard.config.typeBug", icon: Bug },
+  feature: { labelKey: "taskBoard.config.typeFeature", icon: CirclePlus },
+  chore: { labelKey: "taskBoard.config.typeChore", icon: Wrench },
+  spike: { labelKey: "taskBoard.config.typeSpike", icon: FlaskConical },
+  security: { labelKey: "taskBoard.config.typeSecurity", icon: Shield },
 };
 
 export const PRIORITIES: TaskBoardItemPriority[] = [
