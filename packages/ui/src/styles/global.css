@@ -568,4 +568,15 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+
+  /*
+   * Spinners keep turning. The rule above is for decoration, and a spinner is
+   * not decoration — it is the only thing distinguishing "still working" from
+   * "stuck", so freezing it removes information rather than motion. WCAG 2.3.3
+   * exempts motion that is essential to the content. Slowed, not stopped.
+   */
+  .animate-spin {
+    animation-duration: 1.5s !important;
+    animation-iteration-count: infinite !important;
+  }
 }
