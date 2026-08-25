@@ -1,25 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import type { SandboxProvider } from "./types";
 import { createSandboxFsHooks, opDeadlineMs } from "./sandbox-fs-hooks";
 
+type SandboxFsProvider = Parameters<typeof createSandboxFsHooks>[0];
+
 /**
- * A minimal fake `SandboxProvider` that only implements `proxyDaemonRequest`
- * (the sole surface the fs hooks build on). `captured` records the last
- * `(path, body)` so tests can assert the wire translation, and `response`
- * lets each test choose the daemon's JSON reply.
+ * A minimal fake of the two AgentSandboxProvider capabilities used by the fs
+ * hooks. `captured` records the last `(path, body)` so tests can assert the
+ * wire translation, and `response` lets each test choose the daemon's reply.
  */
 function fakeProvider(
   captured: { path?: string; body?: unknown },
   response: unknown,
   init?: { status?: number },
-): SandboxProvider {
+): SandboxFsProvider {
   return {
-    kind: "agent-sandbox",
-    proxyDaemonRequest: async (
-      _handle: string,
-      path: string,
-      reqInit: { body: BodyInit | null },
-    ) => {
+    proxyDaemonRequest: async (_handle, path, reqInit) => {
       captured.path = path;
       captured.body = reqInit.body ? JSON.parse(reqInit.body as string) : null;
       return new Response(JSON.stringify(response), {
@@ -27,7 +22,8 @@ function fakeProvider(
         headers: { "content-type": "application/json" },
       });
     },
-  } as unknown as SandboxProvider;
+    renewTtl: async () => {},
+  };
 }
 
 const lifecycle = {
@@ -39,17 +35,16 @@ const lifecycle = {
 describe("claim TTL renewal", () => {
   test("renews on the first op, then throttles", async () => {
     const renewed: string[] = [];
-    const provider = {
-      kind: "agent-sandbox",
+    const provider: SandboxFsProvider = {
       proxyDaemonRequest: async () =>
         new Response(JSON.stringify({ ok: true, bytesWritten: 1 }), {
           status: 200,
           headers: { "content-type": "application/json" },
         }),
-      renewTtl: async (handle: string) => {
+      renewTtl: async (handle) => {
         renewed.push(handle);
       },
-    } as unknown as SandboxProvider;
+    };
 
     const hooks = createSandboxFsHooks(provider, lifecycle);
     // Without this a hosted-harness run holds no claim at all and the operator
@@ -58,16 +53,6 @@ describe("claim TTL renewal", () => {
     await hooks.onWrite("/app/b.ts", "b");
     await hooks.onWrite("/app/c.ts", "c");
     expect(renewed).toEqual(["handle-1"]);
-  });
-
-  test("is inert for a provider that has no renewTtl", async () => {
-    const captured: { path?: string; body?: unknown } = {};
-    const hooks = createSandboxFsHooks(
-      fakeProvider(captured, { ok: true, bytesWritten: 1 }),
-      lifecycle,
-    );
-    await hooks.onWrite("/app/a.ts", "a");
-    expect(captured.path).toBe("/_sandbox/write");
   });
 });
 
@@ -174,20 +159,16 @@ describe("createSandboxFsHooks", () => {
     // deliverable written there dies with the pod (silently: the write reports
     // success, the Library shows "no longer available").
     let sawThreadHeader: string | null = null;
-    const provider = {
-      kind: "agent-sandbox",
-      proxyDaemonRequest: async (
-        _handle: string,
-        _path: string,
-        init: { headers: Headers },
-      ) => {
+    const provider: SandboxFsProvider = {
+      proxyDaemonRequest: async (_handle, _path, init) => {
         sawThreadHeader = init.headers.get("x-thread-id");
         return new Response(JSON.stringify({ ok: true, bytesWritten: 2 }), {
           status: 200,
           headers: { "content-type": "application/json" },
         });
       },
-    } as unknown as SandboxProvider;
+      renewTtl: async () => {},
+    };
     const hooks = createSandboxFsHooks(provider, {
       ...lifecycle,
       threadId: "thread-42",
@@ -208,10 +189,10 @@ describe("createSandboxFsHooks", () => {
     // wedge into a tool error the model can react to. It must NOT be treated
     // as daemon-unreachable — that path reaps + re-provisions the sandbox.
     let invalidated = 0;
-    const provider = {
-      kind: "agent-sandbox",
+    const provider: SandboxFsProvider = {
       proxyDaemonRequest: () => new Promise<Response>(() => {}), // never settles
-    } as unknown as SandboxProvider;
+      renewTtl: async () => {},
+    };
     const hooks = createSandboxFsHooks(provider, {
       ensureHandle: async () => "h",
       invalidateHandle: async () => {
@@ -238,17 +219,13 @@ describe("createSandboxFsHooks", () => {
   test("cancelling the run aborts the in-flight op — no timeout wait, no restart retry", async () => {
     let invalidated = 0;
     let sawSignal: AbortSignal | undefined;
-    const provider = {
-      kind: "agent-sandbox",
-      proxyDaemonRequest: (
-        _handle: string,
-        _path: string,
-        init: { signal?: AbortSignal },
-      ) => {
+    const provider: SandboxFsProvider = {
+      proxyDaemonRequest: (_handle, _path, init) => {
         sawSignal = init.signal;
         return new Promise<Response>(() => {}); // never settles on its own
       },
-    } as unknown as SandboxProvider;
+      renewTtl: async () => {},
+    };
     const hooks = createSandboxFsHooks(provider, {
       ensureHandle: async () => "h",
       invalidateHandle: async () => {
@@ -275,8 +252,7 @@ describe("createSandboxFsHooks", () => {
   test("retries once on daemon-unreachable when canAutoRestart is true", async () => {
     let attempts = 0;
     let invalidated = 0;
-    const provider = {
-      kind: "agent-sandbox",
+    const provider: SandboxFsProvider = {
       proxyDaemonRequest: async () => {
         attempts++;
         if (attempts === 1) throw new Error("connection refused");
@@ -285,7 +261,8 @@ describe("createSandboxFsHooks", () => {
           { status: 200, headers: { "content-type": "application/json" } },
         );
       },
-    } as unknown as SandboxProvider;
+      renewTtl: async () => {},
+    };
     const hooks = createSandboxFsHooks(provider, {
       ensureHandle: async () => "h",
       invalidateHandle: async () => {
@@ -306,8 +283,7 @@ describe("createSandboxFsHooks", () => {
     // so the map entry is reaped, not just the memoised handle cleared.
     let attempts = 0;
     let forced: boolean | undefined;
-    const provider = {
-      kind: "agent-sandbox",
+    const provider: SandboxFsProvider = {
       proxyDaemonRequest: async () => {
         attempts++;
         if (attempts === 1) {
@@ -321,7 +297,8 @@ describe("createSandboxFsHooks", () => {
           { status: 200, headers: { "content-type": "application/json" } },
         );
       },
-    } as unknown as SandboxProvider;
+      renewTtl: async () => {},
+    };
     const hooks = createSandboxFsHooks(provider, {
       ensureHandle: async () => "h",
       invalidateHandle: async (opts) => {
@@ -341,13 +318,13 @@ describe("createSandboxFsHooks", () => {
     // conservative branch surfaces the sticky failure without a retry.
     let attempts = 0;
     let invalidated = 0;
-    const provider = {
-      kind: "agent-sandbox",
+    const provider: SandboxFsProvider = {
       proxyDaemonRequest: async () => {
         attempts++;
         throw new Error("connection refused");
       },
-    } as unknown as SandboxProvider;
+      renewTtl: async () => {},
+    };
     const hooks = createSandboxFsHooks(provider, {
       ensureHandle: async () => "h",
       invalidateHandle: async () => {

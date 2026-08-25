@@ -181,7 +181,7 @@ export async function postSetupStep(
  * `OrgFsMountConfig`) for the pod's privileged sidecar. Separate from
  * `/config` on purpose: an orgFs-only TenantConfig patch classifies as no-op
  * and would be dropped by the daemon's config store. Returns whether the
- * daemon actually relayed it (false = no sidecar configured; desktop pods).
+ * daemon actually relayed it (false = no sidecar configured).
  */
 export async function postOrgFsConfig(
   daemonUrl: string,

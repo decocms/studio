@@ -5,10 +5,6 @@ import type {
   ClaimPhase,
   AgentSandboxProvider,
 } from "@decocms/sandbox/provider/agent-sandbox";
-import type {
-  SandboxProvider,
-  SandboxProviderKind,
-} from "@decocms/sandbox/provider";
 import { getDb } from "@/database";
 import type { Kysely } from "kysely";
 import { meter } from "@/observability";
@@ -223,18 +219,6 @@ export function getAgentSandboxProviderForTeardown(
   ctx: StudioContext,
 ): Promise<AgentSandboxProvider> {
   return resolveOnce(() => instantiate(ctx.db));
-}
-
-/**
- * Compatibility bridge for callers migrated later in this stack. Every kind
- * now resolves to the one hosted provider; the generic resolver is removed
- * once those callers are gone.
- */
-export function getSandboxProviderByKind(
-  ctx: StudioContext,
-  _kind: SandboxProviderKind,
-): Promise<SandboxProvider> {
-  return getAgentSandboxProvider(ctx);
 }
 
 /**

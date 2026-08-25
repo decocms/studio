@@ -39,10 +39,8 @@ import {
   SANDBOX_GONE_TERMINAL_CODE,
   SANDBOX_UNREACHABLE_PREFIX,
 } from "@decocms/sandbox/dispatch/error-codes";
-import type {
-  PodTermination,
-  SandboxProvider,
-} from "@decocms/sandbox/provider";
+import type { PodTermination } from "@decocms/sandbox/provider";
+import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import { isTransientStreamError } from "@/harnesses/decopilot/built-in-tools/subtask";
 import type { HarnessId, HarnessStreamInput } from "@/harnesses/lib/types";
 import {
@@ -68,7 +66,7 @@ import type { Permission } from "@/storage/types";
 import { connectionGrantsFor, rolesOf } from "@/harnesses/org-mcp-grants";
 import { REVIEW_RUN_TOOL_NAMES } from "@/tools/task-board/task-run-context";
 import { getPublicUrl } from "@/core/server-constants";
-import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
+import { getAgentSandboxProvider } from "@/sandbox/lifecycle";
 import { getSettings } from "@/settings";
 import { ensureSandbox } from "@/tools/sandbox/start";
 import {
@@ -460,11 +458,7 @@ export class SandboxDispatchClient {
     // Resolved before the pod exists; model credential wins — see `mergeRunEnv`.
     const runEnv = mergeRunEnv(await resolveOrgRunEnv(this.ctx), modelEnv);
 
-    const { provider } = await resolveSandboxProvider(this.ctx, {
-      userId: input.user.id,
-      branch: this.branch,
-      virtualMcpMetadata: null,
-    });
+    const provider = await getAgentSandboxProvider(this.ctx);
     const wireInput = {
       ...input,
       // Hosted Decopilot's in-process client ignores `mcp` and gets the
@@ -553,9 +547,7 @@ export class SandboxDispatchClient {
         describeTermination: async (handle) =>
           handle === null
             ? null
-            : describeTermination(
-                (await provider.lastTermination?.(handle)) ?? null,
-              ),
+            : describeTermination(await provider.lastTermination(handle)),
       });
     } finally {
       // The run is over — cleanly, failed, or aborted. This pod is `cloneOnly`:
@@ -569,7 +561,7 @@ export class SandboxDispatchClient {
       // short a sandbox another turn just extended.
       if (lastHandle && getSettings().sandboxReleaseOnRunEndEnabled) {
         await provider
-          .releaseAfter?.(lastHandle, getSettings().sandboxReleaseGraceMs)
+          .releaseAfter(lastHandle, getSettings().sandboxReleaseGraceMs)
           .catch(() => {});
       }
     }
@@ -735,7 +727,7 @@ const PUSH_ENV_TIMEOUT_MS = 30_000;
  * the request body in an error message.
  */
 export async function pushSandboxEnv(
-  provider: SandboxProvider,
+  provider: Pick<AgentSandboxProvider, "proxyDaemonRequest">,
   handle: string,
   env: Record<string, string | null>,
 ): Promise<void> {
@@ -787,13 +779,12 @@ const TTL_RENEW_MS = 5 * 60_000;
  * protecting.
  */
 function renewWhileStreaming(
-  provider: SandboxProvider,
+  provider: Pick<AgentSandboxProvider, "renewTtl">,
   handle: string,
 ): () => void {
-  if (!provider.renewTtl) return () => {};
   const renew = () =>
     void provider
-      .renewTtl?.(handle)
+      .renewTtl(handle)
       .catch((err) =>
         console.warn(
           `[sandbox-dispatch] TTL renew failed for ${handle}: ${err instanceof Error ? err.message : String(err)}`,
@@ -809,7 +800,7 @@ function renewWhileStreaming(
 }
 
 async function* dispatchToDaemon(args: {
-  provider: SandboxProvider;
+  provider: Pick<AgentSandboxProvider, "proxyDaemonRequest" | "renewTtl">;
   handle: string;
   harnessId: HarnessId;
   runId: string;
@@ -998,9 +989,8 @@ export async function* ndjsonLines(
         .then(() => "silent" as const)
         .catch(() => "read-won" as const);
       const step = await Promise.race([next, timeout]).catch((err: unknown) => {
-        // The body's socket broke mid-run. This is the port-forward
-        // WebSocket to the pod (`AgentSandboxRunner.openForwarder`), and the
-        // API server hanging it up is not the harness failing — the checkout
+        // The body's socket broke mid-run. The API server hanging up its
+        // port-forward to the pod is not the harness failing — the checkout
         // is intact and the turn is continuable, exactly like the silence
         // timeout below. Without this the read rejection travels as a plain
         // Error, `dispatchWithContinuation` refuses to retry it, and a

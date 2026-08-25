@@ -337,7 +337,7 @@ async function cleanupStaleEntry(args: {
   }
   try {
     const stateStore = new KyselySandboxProviderStateStore(ctx.db);
-    await stateStore.delete({ userId, projectRef }, AGENT_SANDBOX_KIND);
+    await stateStore.delete({ userId, projectRef });
   } catch (err) {
     console.warn(
       `[vm-events] sandbox_runner_state delete failed for ${userId}/${projectRef}/${AGENT_SANDBOX_KIND}: ${

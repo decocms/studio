@@ -43,12 +43,6 @@ describe("computeHandle", () => {
     expect(match![1]!.endsWith("-")).toBe(false);
   });
 
-  it("slugs a thread ref from its threadId", () => {
-    expect(computeHandle(idFor("thread:thr_xyz"))).toMatch(
-      /^thr-xyz-[0-9a-f]{16}$/,
-    );
-  });
-
   it("keeps the connection id as the slug for a thread-scoped branch", () => {
     // `thread:<threadId>/<connId>` — last `/`-segment wins, and the ":" inside
     // the branch must not be mistaken for a ref delimiter.

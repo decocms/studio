@@ -65,7 +65,6 @@ import type {
   ProxyRequestInit,
   Sandbox,
   SandboxId,
-  SandboxProvider,
   Workload,
 } from "../types";
 import {
@@ -105,9 +104,8 @@ import {
   type TenantPool,
 } from "./tenant-pools";
 import { refreshCredentialsByConnection } from "./credential-refresh";
-import type { ClaimPhase } from "../lifecycle-types";
+import type { ClaimPhase } from "./lifecycle-types";
 
-const RUNNER_KIND = "agent-sandbox" as const;
 const LOG_LABEL = "AgentSandboxProvider";
 
 /**
@@ -200,10 +198,10 @@ const CREDENTIAL_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 const CREDENTIAL_REFRESH_BUFFER_MS = 30 * 60 * 1000;
 
 /**
- * Handle shape: `<slug>-<hash5>` when a branch is supplied, `<hash5>`
+ * Handle shape: `<slug>-<hash16>` when a branch is supplied, `s-<hash16>`
  * otherwise — the shared default from `composeBranchHandle` (re-exported
  * as `computeHandle`). With
- * slug(≤24) + 1 + hash(5) = 30 chars max — well under K8s's 63-char DNS
+ * slug(≤24) + 1 + hash(16) = 41 chars max — well under K8s's 63-char DNS
  * label cap.
  */
 
@@ -473,9 +471,7 @@ export interface AgentSandboxProviderOptions {
   ) => Promise<string | null>;
 }
 
-export class AgentSandboxProvider implements SandboxProvider {
-  readonly kind = RUNNER_KIND;
-
+export class AgentSandboxProvider {
   private readonly records = new Map<string, K8sRecord>();
   private readonly inflight = new Inflight<string, Sandbox>();
   /** See `ActiveGaugeTracker` doc — decides which teardown owes a gauge decrement. */
@@ -599,7 +595,7 @@ export class AgentSandboxProvider implements SandboxProvider {
     });
   }
 
-  // ---- SandboxProvider surface ------------------------------------------------
+  // ---- Public lifecycle surface ---------------------------------------------
 
   async ensure(id: SandboxId, opts: EnsureOptions = {}): Promise<Sandbox> {
     // Identity comes from `id` alone — slug and hash both derive from
@@ -620,7 +616,7 @@ export class AgentSandboxProvider implements SandboxProvider {
       );
     }
     return this.inflight.run(handle, () =>
-      withSandboxLock(this.stateStore, id, RUNNER_KIND, (ops) =>
+      withSandboxLock(this.stateStore, id, (ops) =>
         this.ensureLocked(id, handle, opts, ops),
       ),
     );
@@ -644,14 +640,14 @@ export class AgentSandboxProvider implements SandboxProvider {
     });
     await deleteSandboxClaim(this.kubeConfig, this.namespace, handle);
     if (this.stateStore) {
-      if (rec) await this.stateStore.delete(rec.id, RUNNER_KIND);
-      else await this.stateStore.deleteByHandle(RUNNER_KIND, handle);
+      if (rec) await this.stateStore.delete(rec.id);
+      else await this.stateStore.deleteByHandle(handle);
     }
   }
 
   /**
-   * See `SandboxProvider.lastTermination`. Reads the kubelet's own verdict on
-   * the pod behind `handle` — the only place an OOM kill is recorded.
+   * Reads the kubelet's own verdict on the pod behind `handle` — the only place
+   * an OOM kill is recorded.
    */
   lastTermination(handle: string): Promise<PodTermination | null> {
     return readPodTermination(
@@ -720,7 +716,7 @@ export class AgentSandboxProvider implements SandboxProvider {
 
     // rehydrate failed (port-forward is pod-local); route via in-cluster Service instead.
     if (!rec && this.previewUrlPattern && this.stateStore) {
-      const row = await this.stateStore.getByHandle(RUNNER_KIND, handle);
+      const row = await this.stateStore.getByHandle(handle);
       const state = row?.state as Partial<PersistedK8sState> | undefined;
       const token = state?.token;
       if (row && token) {
@@ -850,7 +846,7 @@ export class AgentSandboxProvider implements SandboxProvider {
         if (cached) return this.toSandbox(cached);
         const adopted = await this.adopt(id, handle, existing);
         if (!adopted) throw new Error(`cannot adopt live claim ${handle}`);
-        return withSandboxLock(this.stateStore, id, RUNNER_KIND, (ops) =>
+        return withSandboxLock(this.stateStore, id, (ops) =>
           this.finish(
             adopted,
             ops,
@@ -932,7 +928,7 @@ export class AgentSandboxProvider implements SandboxProvider {
     if (cached) return cached.adoptedSandboxName;
     if (this.stateStore) {
       const persisted = await this.stateStore
-        .getByHandle(RUNNER_KIND, handle)
+        .getByHandle(handle)
         .catch(() => null);
       const adoptedName = (
         persisted?.state as Partial<PersistedK8sState> | undefined
@@ -1116,7 +1112,7 @@ export class AgentSandboxProvider implements SandboxProvider {
 
     // 1. State-store resume.
     if (ops) {
-      const persisted = await ops.get(id, RUNNER_KIND);
+      const persisted = await ops.get(id);
       if (persisted) {
         const rec = await this.rehydrate(id, handle, persisted);
         if (rec) {
@@ -1139,7 +1135,7 @@ export class AgentSandboxProvider implements SandboxProvider {
             "resume",
           );
         }
-        await ops.delete(id, RUNNER_KIND);
+        await ops.delete(id);
       }
     }
     // 2. Cluster-side adopt: state store empty but a claim with our
@@ -2225,7 +2221,7 @@ export class AgentSandboxProvider implements SandboxProvider {
       // reactive-401 paths don't persist via finish). Non-fatal on failure —
       // worst case is a redundant re-bootstrap next time.
       await this.stateStore
-        ?.put(id, RUNNER_KIND, {
+        ?.put(id, {
           handle,
           state: { ...state, daemonBootId: live.bootId },
         })
@@ -2369,7 +2365,7 @@ export class AgentSandboxProvider implements SandboxProvider {
     const cached = this.records.get(handle);
     if (cached) return cached;
     if (!this.stateStore) return null;
-    const persisted = await this.stateStore.getByHandle(RUNNER_KIND, handle);
+    const persisted = await this.stateStore.getByHandle(handle);
     if (!persisted) return null;
     const rec = await this.rehydrate(persisted.id, handle, persisted);
     if (rec) this.records.set(handle, rec);
@@ -2392,7 +2388,7 @@ export class AgentSandboxProvider implements SandboxProvider {
    */
   private async resurrectByHandle(handle: string): Promise<K8sRecord | null> {
     if (!this.stateStore) return null;
-    const row = await this.stateStore.getByHandle(RUNNER_KIND, handle);
+    const row = await this.stateStore.getByHandle(handle);
     if (!row) return null;
     const persistedOpts = (row.state as Partial<PersistedK8sState>).ensureOpts;
     if (!persistedOpts) return null;
@@ -2500,7 +2496,7 @@ export class AgentSandboxProvider implements SandboxProvider {
       tenant: rec.tenant,
       ...(rec.ensureOpts ? { ensureOpts: rec.ensureOpts } : {}),
     };
-    await ops.put(rec.id, RUNNER_KIND, { handle: rec.handle, state });
+    await ops.put(rec.id, { handle: rec.handle, state });
   }
 
   // ---- TTL helpers ----------------------------------------------------------
@@ -2509,7 +2505,7 @@ export class AgentSandboxProvider implements SandboxProvider {
     return new Date(Date.now() + this.idleTtlMs).toISOString();
   }
 
-  /** See `SandboxProvider.releaseAfter`. */
+  /** Bring this sandbox's shutdown forward after its current work settles. */
   async releaseAfter(handle: string, graceMs: number): Promise<void> {
     const claim = await getSandboxClaim(
       this.kubeConfig,
@@ -2538,7 +2534,7 @@ export class AgentSandboxProvider implements SandboxProvider {
     );
   }
 
-  /** See `SandboxProvider.renewTtl`. */
+  /** Push this sandbox's shutdown back to a full idle window. */
   async renewTtl(handle: string): Promise<void> {
     const claim = await getSandboxClaim(
       this.kubeConfig,
@@ -3040,11 +3036,6 @@ function readClaimTenant(claim: SandboxResource): RunnerTenant | null {
 }
 
 /**
- * Convert tenant struct to OTel attribute keys. `runner_kind` is constant for
- * a given runner instance but included on every attrs set so downstream
- * dashboards can pivot across runners without re-aggregating.
- */
-/**
  * The shutdownTime to patch so a claim dies at `target`, or null to leave it
  * alone. Only ever moves shutdown EARLIER.
  *
@@ -3084,6 +3075,11 @@ export function laterShutdown(
   return target.toISOString();
 }
 
+/**
+ * Convert tenant identity to OTel attributes. `runner_kind` remains a stable
+ * telemetry dimension for existing dashboards even though this package now
+ * has one hosted provider.
+ */
 function tenantAttrs(tenant: RunnerTenant | null): {
   org_id: string;
   user_id: string;
@@ -3092,7 +3088,7 @@ function tenantAttrs(tenant: RunnerTenant | null): {
   return {
     org_id: tenant?.orgId ?? "",
     user_id: tenant?.userId ?? "",
-    runner_kind: RUNNER_KIND,
+    runner_kind: "agent-sandbox",
   };
 }
 

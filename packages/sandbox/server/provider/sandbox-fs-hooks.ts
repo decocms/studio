@@ -4,9 +4,10 @@
  *
  * Builds the flat filesystem hooks (`onRead`/`onWrite`/`onEdit`/`onBash`/
  * `onGlob`/`onGrep`) that the harness consumes through `HarnessDeps` (§5.1) over
- * a `SandboxProvider.proxyDaemonRequest`. The harness calls `deps.onRead(...)`
- * and never sees `SandboxProvider` — the lifecycle (handle resolution, daemon
- * reachability, auto-restart) is hidden behind these closures.
+ * an `AgentSandboxProvider.proxyDaemonRequest`. The harness calls
+ * `deps.onRead(...)` and never sees the provider — the lifecycle (handle
+ * resolution, daemon reachability, auto-restart) is hidden behind these
+ * closures.
  *
  * The `DaemonUnreachableError` sentinel, the `daemonRequest` proxy wrapper, and
  * the call-level retry layer are moved verbatim from
@@ -17,12 +18,17 @@
  *
  * The hook payload shapes mirror `HarnessDeps`'s `EditOp`/`BashOpts`/
  * `BashResult`/`GrepOpts`/`GrepHit` (`apps/api/src/harnesses/lib/harness-deps.ts`) so
- * the cluster bag can wire `deps.onRead = hooks.onRead`, etc. They are declared
- * locally here because packages may not import an `apps/*` tree
+ * hosted harness wiring can set `deps.onRead = hooks.onRead`, etc. They are
+ * declared locally here because packages may not import an `apps/*` tree
  * (ban-cross-tree-imports).
  */
 
-import type { SandboxProvider } from "./types";
+import type { AgentSandboxProvider } from "./agent-sandbox/runner";
+
+type SandboxFsProvider = Pick<
+  AgentSandboxProvider,
+  "proxyDaemonRequest" | "renewTtl"
+>;
 
 export interface SandboxFsEdit {
   oldText: string;
@@ -210,7 +216,7 @@ class DaemonUnreachableError extends Error {
 }
 
 async function daemonRequest(
-  runner: SandboxProvider,
+  provider: SandboxFsProvider,
   handle: string,
   path: string,
   body: Record<string, unknown> | null,
@@ -240,7 +246,7 @@ async function daemonRequest(
       body: null,
       signal: reqSignal,
     };
-    // GET/HEAD must not carry a body; the runners' proxy strips it anyway,
+    // GET/HEAD must not carry a body; the provider proxy strips it anyway,
     // but constructing it is wasteful and obscures intent.
     if (method !== "GET" && body !== null) {
       init.body = JSON.stringify(body);
@@ -250,7 +256,7 @@ async function daemonRequest(
     ({ res, rawText } = await abortable(
       reqSignal,
       (async () => {
-        const r = await runner.proxyDaemonRequest(handle, path, init);
+        const r = await provider.proxyDaemonRequest(handle, path, init);
         return { res: r, rawText: await r.text() };
       })(),
     ));
@@ -272,8 +278,7 @@ async function daemonRequest(
     json = JSON.parse(rawText);
   } catch {
     console.error(
-      "[sandbox-fs-hooks] Failed to parse JSON response runner=%s path=%s status=%d rawText=%s",
-      runner.kind,
+      "[sandbox-fs-hooks] Failed to parse JSON response provider=agent-sandbox path=%s status=%d rawText=%s",
       path,
       res.status,
       rawText.slice(0, 2000),
@@ -290,8 +295,7 @@ async function daemonRequest(
   }
   if (!res.ok) {
     console.error(
-      "[sandbox-fs-hooks] Non-OK response runner=%s path=%s status=%d body=%s",
-      runner.kind,
+      "[sandbox-fs-hooks] Non-OK response provider=agent-sandbox path=%s status=%d body=%s",
       path,
       res.status,
       rawText.slice(0, 2000),
@@ -337,12 +341,12 @@ function parseGrepResults(results: string): SandboxFsGrepHit[] {
 }
 
 /**
- * Build the flat fs hooks over `provider.proxyDaemonRequest`. Typing `provider`
- * as `SandboxProvider` enforces the §4.3 invariant (the harness depends on this
- * package's provider surface, never the other way round).
+ * Build the flat fs hooks over the two AgentSandboxProvider capabilities they
+ * need. Keeping this as a narrow Pick prevents filesystem helpers from growing
+ * an implicit dependency on the full provisioning surface.
  */
 export function createSandboxFsHooks(
-  provider: SandboxProvider,
+  provider: SandboxFsProvider,
   lifecycle: SandboxFsHooksLifecycle,
 ): SandboxFsHooks {
   const { ensureHandle, invalidateHandle, canAutoRestart } = lifecycle;
@@ -362,7 +366,6 @@ export function createSandboxFsHooks(
   // run that stops touching the sandbox correctly stops holding it.
   let lastRenewAt = 0;
   const renewTtl = (handle: string): void => {
-    if (!provider.renewTtl) return;
     const now = Date.now();
     if (now - lastRenewAt < TTL_RENEW_MS) return;
     lastRenewAt = now;
