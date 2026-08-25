@@ -21,7 +21,10 @@ export const MEMBER_TAGS_SET = defineTool({
   },
   inputSchema: z.object({
     memberId: z.string().describe("Member ID"),
-    tagIds: z.array(z.string()).describe("Array of tag IDs to assign"),
+    tagIds: z
+      .array(z.string())
+      .max(1000)
+      .describe("Array of tag IDs to assign"),
   }),
 
   outputSchema: z.object({
