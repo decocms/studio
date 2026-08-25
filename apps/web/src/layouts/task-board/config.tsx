@@ -10,7 +10,7 @@ import {
   Eye,
   Loading02,
 } from "@untitledui/icons";
-import { Bug, CirclePlus, FlaskConical, Shield, Wrench } from "lucide-react";
+import { Bug, CirclePlus, Lightbulb, Shield, Wrench } from "lucide-react";
 import type { StudioToolOutput as ToolOutput } from "@decocms/shared/tools/tool-io";
 import { DEFAULT_TAG_COLOR } from "@decocms/shared/task-board";
 import { isResolvedRunFailure } from "@decocms/shared/entities";
@@ -256,10 +256,8 @@ type TaskTypeIconComponent = ComponentType<{
 /**
  * A card's kind, as one glyph in the footer.
  *
- * Shape carries the meaning, not colour — five distinct silhouettes (insect,
- * plus-badge, wrench, flask, shield) stay apart at 14px where five hues would
- * not, and the footer already spends its colour budget on priority, checks and
- * the due date. The name is in the tooltip.
+ * Five distinct silhouettes — insect, plus-badge, wrench, bulb, shield — each
+ * in its own hue, except chore. The name is in the tooltip.
  *
  * These come from `lucide-react` rather than the board's usual
  * `@untitledui/icons` for one reason: untitled has no bug, and a type set whose
@@ -294,13 +292,15 @@ export const TASK_TYPE_CONFIG: Record<
   },
   spike: {
     labelKey: "taskBoard.config.typeSpike",
-    icon: FlaskConical,
-    iconClassName: "text-purple-500",
+    icon: Lightbulb,
+    iconClassName: "text-yellow-500",
   },
+  // Purple, vacated by spike: security can't take amber without reading as the
+  // High priority arrow two glyphs to its right, and red is the bug's.
   security: {
     labelKey: "taskBoard.config.typeSecurity",
     icon: Shield,
-    iconClassName: "text-warning",
+    iconClassName: "text-purple-500",
   },
 };
 
