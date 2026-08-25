@@ -26,8 +26,8 @@ describe("cli-store dev mode services", () => {
   });
 
   test("tracks only the services dev actually spawns", () => {
-    // The ToxiProxy and Sandbox rows went away with the desktop link daemon —
-    // dev no longer spawns a local sandbox provider to route through.
+    // Dev owns the infrastructure and app processes below; hosted sandboxes
+    // are provisioned remotely and are not local TUI services.
     setDevMode();
     expect(getCliState().services.map((s) => s.name)).toEqual([
       "Postgres",

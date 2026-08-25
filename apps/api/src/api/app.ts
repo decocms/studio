@@ -1046,9 +1046,8 @@ export async function createApp(options: CreateAppOptions = {}) {
   } else {
     // Production/dev mode: connect to NATS (required)
     natsProvider = createNatsConnectionProvider();
-    // Optional cluster creds: local dev runs NATS in operator mode (anonymous
-    // connect is impossible there), so ensure-services persists a cluster creds
-    // file and points NATS_CREDS at it. Absent (production) → anonymous connect.
+    // External NATS deployments may require a credentials file. Managed local
+    // NATS accepts the loopback connection without one.
     const credsPath = getSettings().natsCredsPath;
     let creds: string | undefined;
     if (credsPath) {

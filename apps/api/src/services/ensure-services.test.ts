@@ -1,5 +1,26 @@
 import { describe, expect, it } from "bun:test";
-import { minioArtifactName, minioDownloadUrl } from "./ensure-services";
+import {
+  managedNatsCommand,
+  minioArtifactName,
+  minioDownloadUrl,
+} from "./ensure-services";
+
+describe("managedNatsCommand", () => {
+  it("runs JetStream on an explicit loopback port and bounded store", () => {
+    expect(
+      managedNatsCommand("/bin/nats-server", 14222, "/tmp/nats-data"),
+    ).toEqual([
+      "/bin/nats-server",
+      "-js",
+      "-a",
+      "127.0.0.1",
+      "-p",
+      "14222",
+      "-sd",
+      "/tmp/nats-data",
+    ]);
+  });
+});
 
 describe("minioArtifactName", () => {
   it("returns the bare executable on unix platforms", () => {
