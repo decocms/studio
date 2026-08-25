@@ -5,10 +5,11 @@
  * tiny store rather than a portal rendered from inside the plugin — one
  * component tree, one place the menu's state can be read.
  *
- * cmdk provides the list, its scroll and the scroll-into-view; the search
- * itself does NOT come from a `CommandInput`. The query is what the user
- * already typed after the `@`, in the editor — a second input under the caret
- * would be a second place to type the same thing.
+ * The menu is a plain shadcn `Command`, doing its whole job: its own search
+ * input, its own filtering, its own arrow-key selection and scrolling. Opening
+ * it moves focus into that input, so while the picker is up the keystrokes are
+ * cmdk's and the editor sees none of them. Nothing here re-implements a
+ * listbox.
  */
 
 import { useState, useSyncExternalStore } from "react";
@@ -23,6 +24,8 @@ import { createPortal } from "react-dom";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import {
   Command,
+  CommandEmpty,
+  CommandInput,
   CommandItem,
   CommandList,
 } from "@decocms/ui/components/command.tsx";
@@ -47,15 +50,12 @@ const CLOSED: MenuState = { query: "", range: null, rect: null, editor: null };
 
 /**
  * The bridge between the plugin and the menu. A store rather than React state
- * because the plugin's callbacks fire outside React's tree and must reach the
- * menu synchronously — `onKeyDown` has to answer "did the menu handle this
- * key?" before ProseMirror moves on.
+ * because the plugin's callbacks fire outside React's tree, and the menu has
+ * to see an open/close the moment it happens.
  */
 export class MentionMenuStore {
   private state: MenuState = CLOSED;
   private listeners = new Set<() => void>();
-  /** Set by the menu while it's open — arrow keys and Enter belong to it. */
-  onKey: ((event: KeyboardEvent) => boolean) | null = null;
 
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -70,7 +70,6 @@ export class MentionMenuStore {
   }
 
   close() {
-    this.onKey = null;
     this.set(CLOSED);
   }
 }
@@ -137,13 +136,15 @@ export function mentionSuggestionExtension(store: MentionMenuStore) {
               editor: props.editor,
             });
           },
+          // The menu's input holds focus while it's open, so these keys only
+          // arrive in the gap before that lands — or if focusing failed.
           onKeyDown: ({ event, view }) => {
             if (event.key === "Escape") {
               exitSuggestion(view, MENTION_SUGGESTION_KEY);
               store.close();
               return true;
             }
-            return store.onKey?.(event) ?? false;
+            return false;
           },
           onExit: () => store.close(),
         }),
@@ -154,17 +155,10 @@ export function mentionSuggestionExtension(store: MentionMenuStore) {
 }
 
 const MENU_WIDTH = 256;
+/** `CommandInput`'s own fixed height — the list gets what's left. */
+const INPUT_HEIGHT = 40;
 const MENU_MAX_HEIGHT = 280;
 const MENU_MIN_HEIGHT = 140;
-
-function matches(member: MentionMember, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  return (
-    member.name.toLowerCase().includes(q) ||
-    member.email.toLowerCase().includes(q)
-  );
-}
 
 /**
  * The menu. Renders nothing until the plugin opens it, so the members fetch
@@ -185,12 +179,9 @@ function OpenMentionMenu({
 }) {
   const t = useT();
   const { members, loading } = useMentionMembers(true);
-  const [active, setActive] = useState(0);
-
-  const filtered = members.filter((m) => matches(m, state.query));
-  // The query narrows as you type, so the previous index can fall off the end.
-  const index = Math.min(active, Math.max(filtered.length - 1, 0));
-  const selected = filtered[index];
+  // Controlled, so the field can be seeded with whatever reached the editor
+  // before focus landed here — cmdk's input owns its own state otherwise.
+  const [query, setQuery] = useState(state.query);
 
   // Fixed to the caret's own rect, in a body portal so the editor's overflow
   // can't clip it. Full floating-ui placement would buy collision detection
@@ -199,74 +190,85 @@ function OpenMentionMenu({
   const caret = state.rect?.() ?? new DOMRect(0, 0, 0, 0);
   const below = window.innerHeight - caret.bottom;
   const flipUp = below < MENU_MAX_HEIGHT && caret.top > below;
+  // The cap the LIST scrolls within, never the wrapper's: a wrapper that clips
+  // (it has to, for the rounded corners) shorter than the list's own scroll
+  // container just hides the overflow instead of scrolling it.
+  const listMaxHeight =
+    Math.max(flipUp ? caret.top - 8 : below - 8, MENU_MIN_HEIGHT) -
+    INPUT_HEIGHT;
   const style: React.CSSProperties = {
     position: "fixed",
+    width: MENU_WIDTH,
     left: Math.min(caret.left, window.innerWidth - MENU_WIDTH - 8),
-    maxHeight: Math.max(flipUp ? caret.top - 8 : below - 8, MENU_MIN_HEIGHT),
     ...(flipUp
       ? { bottom: window.innerHeight - caret.top + 6 }
       : { top: caret.bottom + 6 }),
   };
 
-  const choose = (member: MentionMember | undefined) => {
-    if (!member || !state.editor || !state.range) return;
+  /** End the match and put the menu away. Focus is the caller's business. */
+  const close = () => {
+    if (state.editor) dismiss(state.editor);
+    store.close();
+  };
+
+  const choose = (member: MentionMember) => {
+    if (!state.editor || !state.range) return;
     insert(state.editor, state.range, member);
     store.close();
   };
 
-  // Registered on every render so it closes over the current list — the plugin
-  // asks this synchronously while the keystroke is still cancellable.
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- plain field on a store, not a ref read during render
-  store.onKey = (event: KeyboardEvent) => {
-    if (event.key === "ArrowDown") {
-      setActive((i) => (filtered.length ? (i + 1) % filtered.length : 0));
-      return true;
-    }
-    if (event.key === "ArrowUp") {
-      setActive((i) =>
-        filtered.length ? (i - 1 + filtered.length) % filtered.length : 0,
-      );
-      return true;
-    }
-    if (event.key === "Enter" || event.key === "Tab") {
-      // Nothing to pick yet: let the key do its normal job rather than
-      // swallowing an Enter that was meant to send or break the line.
-      if (!selected) return false;
-      choose(selected);
-      return true;
-    }
-    return false;
-  };
-
   return createPortal(
     <div
-      style={{ ...style, width: MENU_WIDTH }}
+      style={style}
       data-testid="mention-menu"
       className="z-50 overflow-hidden rounded-lg border border-border bg-popover shadow-md"
     >
-      <Command shouldFilter={false} value={selected?.id ?? ""}>
-        <CommandList>
-          {/* A cached list is on screen while the refresh runs; the spinner
-              is only for the first ever open, with nothing to show. Not
-              `CommandEmpty`, which keys off cmdk's own filtering — and the
-              filtering here is ours (`shouldFilter={false}`). */}
-          {loading && (
+      <Command
+        // cmdk filters, selects and scrolls; `members` is just the source.
+        // The one thing it can't know is that Escape has to hand focus back
+        // to the editor and end the plugin's match, not merely hide a list.
+        onKeyDown={(e) => {
+          if (e.key !== "Escape") return;
+          e.preventDefault();
+          close();
+          // Escape means "back to what I was writing", so the caret goes back
+          // with it. A click elsewhere (below) doesn't — that focus is the
+          // user's own choice, and stealing it back would fight the click.
+          state.editor?.commands.focus();
+        }}
+      >
+        <CommandInput
+          // Focus moves here on open, so the query is typed into the search
+          // field rather than into the document behind it. Seeded with
+          // whatever reached the editor before focus landed.
+          autoFocus
+          value={query}
+          onValueChange={setQuery}
+          placeholder={t("markdownEditor.mentionSearch")}
+          // Clicking away is a dismissal — without this the menu outlives the
+          // caret it belongs to.
+          onBlur={close}
+        />
+        <CommandList style={{ maxHeight: listMaxHeight }}>
+          {/* A cached list is on screen while the refresh runs; the spinner is
+              only for the first ever open, with nothing to show. */}
+          {loading ? (
             <div className="flex items-center justify-center py-6">
               <Spinner size="sm" />
             </div>
+          ) : (
+            <CommandEmpty>{t("markdownEditor.mentionEmpty")}</CommandEmpty>
           )}
-          {!loading && filtered.length === 0 && (
-            <div className="px-4 py-4 text-center text-sm text-muted-foreground">
-              {t("markdownEditor.mentionEmpty")}
-            </div>
-          )}
-          {filtered.map((member) => (
+          {members.map((member) => (
             <CommandItem
               key={member.id}
-              value={member.id}
+              // What cmdk searches on — the name AND the email, so either
+              // finds a teammate. `onSelect` closes over the member itself,
+              // so the id never has to survive this string.
+              value={`${member.name} ${member.email}`}
               onSelect={() => choose(member)}
-              // The caret stays in the editor; a mousedown here would blur it
-              // and close the suggestion before the click lands.
+              // The input is what holds focus; a mousedown here would blur it
+              // and fire the dismissal above before the click ever lands.
               onMouseDown={(e) => e.preventDefault()}
               className="gap-2"
             >
