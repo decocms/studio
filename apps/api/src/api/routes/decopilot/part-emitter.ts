@@ -31,8 +31,8 @@
  * step N and `output-available` (emitted) at step N+1 lands at one stable id,
  * and re-emits across retries/resumes hit `ON CONFLICT (id) DO NOTHING`. The
  * `messageId` segment is what keeps parts of DIFFERENT messages disjoint even
- * when seq collides — e.g. the user message and assistant message of one pull
- * turn both start at seq 0 under the same `runId == threadId`. Because
+ * when seq collides — e.g. independently built user and assistant messages both
+ * start at seq 0 under the same `runId == threadId`. Because
  * `messageId` is
  * globally unique, the `id` primary key alone guarantees row uniqueness; there
  * is no longer a UNIQUE `(run_id, seq)` index (dropped in migration 106).

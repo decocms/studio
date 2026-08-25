@@ -397,8 +397,8 @@ describe("RunRegistry (in-memory state machine)", () => {
     });
 
     it("evicts but never fails a run the DB already shows terminal (projector completed it out-of-band)", async () => {
-      // Desktop/link runs are completed by the durable projector out-of-band;
-      // their in-memory registry entry lingers as "running" with no progress, so
+      // Projected runs complete out-of-band; their in-memory registry entry
+      // lingers as "running" with no progress, so
       // the idle reaper would otherwise FORCE_FAIL and overwrite `completed`.
       let now = new Date("2024-01-01T00:00:00Z");
       const failWrites: unknown[] = [];

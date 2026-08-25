@@ -161,7 +161,7 @@ describe("projectChunks", () => {
   // would not be the LAST observable event.
   test("characterize: in-band error chunk → onError fires, finishReason is undefined (D)", async () => {
     // A harness-error stream: partial text then an in-band error chunk, no
-    // {type:"finish"} follows (matches link-ingest error event shape).
+    // {type:"finish"} follows (the harness terminated on the error event).
     const errorStream = (async function* (): AsyncGenerator<UIMessageChunk> {
       yield { type: "start" } as UIMessageChunk;
       yield { type: "text-start", id: "t" } as UIMessageChunk;

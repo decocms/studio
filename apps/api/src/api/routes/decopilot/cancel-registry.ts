@@ -23,7 +23,7 @@ export function setCancelBroadcast(next: CancelBroadcast): void {
 
 /**
  * Ask every pod to abort the run on `threadId`. No-op when no broadcaster is
- * registered (unit tests, the desktop path) — callers treat cancel as
+ * registered (unit tests or early startup) — callers treat cancel as
  * best-effort, never as a precondition.
  */
 export function broadcastRunCancel(threadId: string): void {

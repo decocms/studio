@@ -33,23 +33,17 @@
  * test exercises the actual cross-pod path. Over a few CI runs we get
  * coverage of all three.
  *
- * ── unified-control-plane T9 extension ────────────────────────────────
- * This cluster's `docker-compose.yml` pins every Studio pod to
- * `STUDIO_SANDBOX_PROVIDER=agent-sandbox` (see that file's comment on the
- * the first service), so `resolveDispatchTarget` short-circuits every
- * dispatch in this suite to HOSTED execution — this test already drives a
- * hosted streaming turn through the (now v4) gate: dispatch →
+ * This suite configures hosted execution, so the test drives a streaming turn
+ * through the gate: dispatch →
  * `hostedHarnessWorkflow` (detached, not awaited) → `consumeRunProjection`
- * live-tailing the subject, identically to desktop. That makes this the
- * multi-pod suite's existing streaming-turn scenario the T9 proof
- * obligations ask to extend, rather than write a parallel one: chunks
+ * live-tailing the subject. It verifies that chunks are
  * observed on `/stream` while `in_progress` (below, right after chunk-1 is
  * confirmed on both survivor pods — the run cannot have reached a terminal
  * status yet, since mock-ai hasn't sent chunks 2-5 or its `stop` frame),
  * terminal `completed`, and parts persisted exactly once (a part count
  * that's stable across two reads taken a beat apart — the exact count mock-ai's
  * chunk-to-part folding produces isn't a stable contract to pin at this
- * granularity; see `projector-parity.test.ts` for that level of detail).
+ * granularity).
  */
 
 import { describe, expect, test } from "bun:test";

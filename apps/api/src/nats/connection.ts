@@ -3,7 +3,7 @@
  *
  * Manages a single NATS connection shared by all NATS implementations:
  * - NatsCancelBroadcast (decopilot cancel)
- * - NatsStreamBuffer (decopilot JetStream relay)
+ * - NatsStreamBuffer (Decopilot run streaming)
  * - NatsNotifyStrategy (event bus wake-up)
  * - NatsSSEBroadcast (cross-pod SSE fan-out)
  *
