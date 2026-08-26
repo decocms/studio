@@ -80,6 +80,20 @@ const MAX_AGE_NS = 24 * 60 * 60 * 1_000_000_000; // 24h — outlasts day-long ru
 // the same UI part.
 const DUPLICATE_WINDOW_NS = 2 * 60 * 1_000_000_000; // 2 min
 const MAX_BYTES = 4 * 1024 * 1024 * 1024; // 4GB stream cap
+/**
+ * RAFT replicas for `DECOPILOT_STREAMS`. At 1 the stream has no failover: the
+ * node holding it going down takes every live run's stream with it, which is
+ * how one NATS pod restart darkened chat cluster-wide on 2026-08-26. 3 matches
+ * the cluster size so a single node loss keeps quorum.
+ *
+ * Env-overridable for rollback without a deploy — `init()` applies the value
+ * through `streams.update`, and JetStream scales replicas online, so setting
+ * `DECOPILOT_STREAM_REPLICAS=1` reverts on the next pod start.
+ */
+const STREAM_REPLICAS = Math.max(
+  1,
+  Number(process.env.DECOPILOT_STREAM_REPLICAS ?? 3) || 3,
+);
 const MAX_MSGS_PER_SUBJECT = 500_000; // headroom for multi-hour non-stop streams
 
 /**
@@ -98,7 +112,7 @@ export function decopilotStreamConfig() {
     discard: DiscardPolicy.Old,
     retention: RetentionPolicy.Limits,
     duplicate_window: DUPLICATE_WINDOW_NS, // time-based Nats-Msg-Id dedup (spec §10.2)
-    num_replicas: 1,
+    num_replicas: STREAM_REPLICAS,
   };
 }
 
