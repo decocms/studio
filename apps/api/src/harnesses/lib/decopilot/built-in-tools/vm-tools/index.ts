@@ -3,7 +3,7 @@
  *
  * Registers the six LLM-visible file tools (read/write/edit/grep/glob/bash)
  * on top of the injected `SandboxFsHooks`.
- * The hooks speak the unified `/_sandbox/*` surface with plain JSON bodies and
+ * The hooks speak the `/_sandbox/*` surface with plain JSON bodies and
  * own the handle resolution + auto-restart retry layer, so this module never
  * imports the sandbox-provider package directly (cycle-break, spec §4.3).
  */
@@ -42,16 +42,13 @@ export function createVmTools(params: VmToolsParams) {
   } = params;
   const approvalFor = (mutating: boolean) => (mutating ? needsApproval : false);
 
-  // Proxy an arbitrary `/_sandbox/*` route through the fs hooks' retry layer.
-  // Used by the tools whose daemon surface the typed flat ops don't model
-  // (image-read, html-buffer write/edit). `signal` is the run's abort signal
-  // (ToolCallOptions.abortSignal) so cancelling the run aborts the daemon call.
+  // Proxy a `/_sandbox/*` route through the hooks' retry layer. `signal` is the
+  // run's abort signal so cancelling the run aborts the daemon call.
   const call = (
     daemonPath: string,
     input: Record<string, unknown>,
     signal?: AbortSignal,
-    method: "POST" | "PUT" = "POST",
-  ): Promise<unknown> => fs.onProxy(daemonPath, input, method, signal);
+  ): Promise<unknown> => fs.onProxy(daemonPath, input, signal);
 
   const read = tool({
     needsApproval: approvalFor(TOOL_APPROVAL.read),

@@ -49,15 +49,24 @@ describe("claim TTL renewal", () => {
     const hooks = createSandboxFsHooks(provider, lifecycle);
     // Without this a hosted-harness run holds no claim at all and the operator
     // reaps the pod 15 minutes in, mid-run (prod thread 38147122, 2026-08-16).
-    await hooks.onWrite("/app/a.ts", "a");
-    await hooks.onWrite("/app/b.ts", "b");
-    await hooks.onWrite("/app/c.ts", "c");
+    await hooks.onProxy("/_sandbox/write", {
+      path: "/app/a.ts",
+      content: "a",
+    });
+    await hooks.onProxy("/_sandbox/write", {
+      path: "/app/b.ts",
+      content: "b",
+    });
+    await hooks.onProxy("/_sandbox/write", {
+      path: "/app/c.ts",
+      content: "c",
+    });
     expect(renewed).toEqual(["handle-1"]);
   });
 });
 
 describe("createSandboxFsHooks", () => {
-  test("onRead proxies /_sandbox/read and returns content", async () => {
+  test("onProxy forwards the daemon path and body", async () => {
     const captured: { path?: string; body?: unknown } = {};
     const hooks = createSandboxFsHooks(
       fakeProvider(captured, {
@@ -67,38 +76,13 @@ describe("createSandboxFsHooks", () => {
       }),
       lifecycle,
     );
-    const out = await hooks.onRead("/app/x.ts");
+    const out = await hooks.onProxy("/_sandbox/read", { path: "/app/x.ts" });
     expect(captured.path).toBe("/_sandbox/read");
     expect(captured.body).toEqual({ path: "/app/x.ts" });
-    expect(out).toBe("file body");
-  });
-
-  test("onWrite proxies /_sandbox/write with path + content", async () => {
-    const captured: { path?: string; body?: unknown } = {};
-    const hooks = createSandboxFsHooks(
-      fakeProvider(captured, { ok: true, bytesWritten: 2 }),
-      lifecycle,
-    );
-    await hooks.onWrite("/app/y.ts", "hi");
-    expect(captured.path).toBe("/_sandbox/write");
-    expect(captured.body).toEqual({ path: "/app/y.ts", content: "hi" });
-  });
-
-  test("onEdit maps edits to the daemon's snake_case edit surface", async () => {
-    const captured: { path?: string; body?: unknown } = {};
-    const hooks = createSandboxFsHooks(
-      fakeProvider(captured, { ok: true, replacements: 1, content: "new" }),
-      lifecycle,
-    );
-    await hooks.onEdit("/app/z.ts", [
-      { oldText: "a", newText: "b", replaceAll: true },
-    ]);
-    expect(captured.path).toBe("/_sandbox/edit");
-    expect(captured.body).toEqual({
-      path: "/app/z.ts",
-      old_string: "a",
-      new_string: "b",
-      replace_all: true,
+    expect(out).toEqual({
+      kind: "text",
+      content: "file body",
+      lineCount: 1,
     });
   });
 
@@ -116,40 +100,6 @@ describe("createSandboxFsHooks", () => {
       timeout: 1000,
     });
     expect(r).toEqual({ stdout: "ok", stderr: "", exitCode: 0 });
-  });
-
-  test("onGlob proxies /_sandbox/glob and returns the files list", async () => {
-    const captured: { path?: string; body?: unknown } = {};
-    const hooks = createSandboxFsHooks(
-      fakeProvider(captured, { files: ["a.ts", "b.ts"] }),
-      lifecycle,
-    );
-    const files = await hooks.onGlob("**/*.ts");
-    expect(captured.path).toBe("/_sandbox/glob");
-    expect(captured.body).toEqual({ pattern: "**/*.ts" });
-    expect(files).toEqual(["a.ts", "b.ts"]);
-  });
-
-  test("onGrep proxies /_sandbox/grep and parses results into hits", async () => {
-    const captured: { path?: string; body?: unknown } = {};
-    const hooks = createSandboxFsHooks(
-      fakeProvider(captured, {
-        results: "a.ts:3:hello\nb.ts:7:hello",
-        matchCount: 2,
-      }),
-      lifecycle,
-    );
-    const hits = await hooks.onGrep("hello", { glob: "*.ts" });
-    expect(captured.path).toBe("/_sandbox/grep");
-    expect(captured.body).toEqual({
-      pattern: "hello",
-      glob: "*.ts",
-      output_mode: "content",
-    });
-    expect(hits).toEqual([
-      { file: "a.ts", line: 3, text: "hello" },
-      { file: "b.ts", line: 7, text: "hello" },
-    ]);
   });
 
   test("stamps x-thread-id on every daemon call when the lifecycle carries a threadId", async () => {
@@ -173,12 +123,18 @@ describe("createSandboxFsHooks", () => {
       ...lifecycle,
       threadId: "thread-42",
     });
-    await hooks.onWrite("org/output/plan.md", "hi");
+    await hooks.onProxy("/_sandbox/write", {
+      path: "org/output/plan.md",
+      content: "hi",
+    });
     expect(sawThreadHeader).toBe("thread-42" as never);
 
     // Without a threadId (e.g. a threadless probe) the header is absent.
     const bare = createSandboxFsHooks(provider, lifecycle);
-    await bare.onWrite("org/output/plan.md", "hi");
+    await bare.onProxy("/_sandbox/write", {
+      path: "org/output/plan.md",
+      content: "hi",
+    });
     expect(sawThreadHeader).toBe(null);
   });
 
@@ -201,12 +157,14 @@ describe("createSandboxFsHooks", () => {
       canAutoRestart: true,
       opTimeoutMs: 30,
     });
-    await expect(hooks.onRead("/app/x.ts")).rejects.toThrow(/timed out after/);
+    await expect(
+      hooks.onProxy("/_sandbox/read", { path: "/app/x.ts" }),
+    ).rejects.toThrow(/timed out after/);
     expect(invalidated).toBe(0);
   });
 
   test("op deadline follows the op's own budget: 45s default, budget+grace, clamped at the daemon cap", () => {
-    // No budget (read/write/edit/grep/glob): daemon default 30s + 15s grace.
+    // No budget: daemon default 30s + 15s grace.
     expect(opDeadlineMs({ path: "/x" })).toBe(45_000);
     // Bash with an explicit budget: budget + grace.
     expect(opDeadlineMs({ command: "x", timeout: 60_000 })).toBe(75_000);
@@ -238,7 +196,6 @@ describe("createSandboxFsHooks", () => {
     const pending = hooks.onProxy(
       "/_sandbox/bash",
       { command: "sleep 999" },
-      "POST",
       runAbort.signal,
     );
     runAbort.abort(new Error("run cancelled"));
@@ -270,8 +227,8 @@ describe("createSandboxFsHooks", () => {
       },
       canAutoRestart: true,
     });
-    const out = await hooks.onRead("/app/x.ts");
-    expect(out).toBe("ok");
+    const out = await hooks.onProxy("/_sandbox/read", { path: "/app/x.ts" });
+    expect(out).toEqual({ kind: "text", content: "ok", lineCount: 1 });
     expect(attempts).toBe(2);
     expect(invalidated).toBe(1);
   });
@@ -306,8 +263,12 @@ describe("createSandboxFsHooks", () => {
       },
       canAutoRestart: false,
     });
-    const out = await hooks.onRead("/app/x.ts");
-    expect(out).toBe("recovered");
+    const out = await hooks.onProxy("/_sandbox/read", { path: "/app/x.ts" });
+    expect(out).toEqual({
+      kind: "text",
+      content: "recovered",
+      lineCount: 1,
+    });
     expect(attempts).toBe(2);
     expect(forced).toBe(true);
   });
@@ -332,7 +293,9 @@ describe("createSandboxFsHooks", () => {
       },
       canAutoRestart: false,
     });
-    await expect(hooks.onRead("/app/x.ts")).rejects.toThrow(/not running/);
+    await expect(
+      hooks.onProxy("/_sandbox/read", { path: "/app/x.ts" }),
+    ).rejects.toThrow(/not running/);
     expect(attempts).toBe(1);
     expect(invalidated).toBe(0);
   });

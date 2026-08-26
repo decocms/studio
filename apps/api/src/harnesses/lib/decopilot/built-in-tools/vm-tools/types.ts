@@ -22,11 +22,9 @@ export interface HtmlArtifactBuffer {
 
 export interface VmToolsParams {
   /**
-   * Flat sandbox filesystem hooks (read/write/edit/bash/glob/grep + the
-   * `onProxy` escape hatch). Handle resolution, daemon-reachability detection,
-   * and auto-restart retry all live inside these closures (built by
-   * `createSandboxFsHooks`), so the tools stay independent of sandbox
-   * lifecycle and transport details.
+   * Narrow daemon hooks. Handle resolution, daemon-reachability detection, and
+   * auto-restart retry live inside these closures, so the tools stay
+   * independent of sandbox lifecycle and transport details.
    */
   readonly fs: SandboxFsHooks;
   /** Optional HTML-artifact fast-path mirror (hosted-only; see `HtmlArtifactBuffer`). */
