@@ -9,10 +9,8 @@
  */
 import { useState } from "react";
 import {
-  BookClosed,
   ChevronDown,
   ChevronRight,
-  Lightbulb01,
   Loading02,
   Stars02,
 } from "@untitledui/icons";
@@ -21,6 +19,11 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@decocms/ui/components/popover.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
@@ -29,22 +32,31 @@ import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import { MarkdownEditor } from "@/components/markdown-editor";
 import type { MarkdownMentions } from "@/components/markdown-editor";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
+import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
 import { extractPages } from "@/components/sections-editor/page-list";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
-import { GenerateScreen } from "./generate";
-import { ThemesScreen } from "./themes";
+import { RecordEditor } from "./record-editor";
+import { CategoryEditor } from "./category-editor";
 import {
+  type BlogKind,
   BRAND_BLOCK_KEY,
   type BrandRule,
+  buildBlogBlock,
+  dedupeSuggestedThemes,
   defaultFormatSections,
+  emptyBlogPayload,
   FORMATS_BLOCK_KEY,
+  generateBlogKey,
   mentionableSections,
   filledBrandRules,
+  newPillarKey,
   normalizeBrandRules,
   normalizeTitleKey,
   postStructures,
+  scanBlogEntries,
+  scanPillars,
   selectBrandEvidenceBlocks,
   unknownCitations,
 } from "./blog-data";
@@ -72,31 +84,10 @@ const CONTEXT_SECTIONS = [
 
 type ContextSection = (typeof CONTEXT_SECTIONS)[number]["id"];
 
-const NAV = [
-  {
-    id: "generate",
-    icon: Stars02,
-    label: "sandbox.collectionsSidebar.generate",
-  },
-  {
-    id: "themes",
-    icon: Lightbulb01,
-    label: "sandbox.collectionsSidebar.themes",
-  },
-  {
-    id: "library",
-    icon: BookClosed,
-    label: "sandbox.collectionsSidebar.library",
-  },
-] as const satisfies ReadonlyArray<{
-  id: string;
-  icon: unknown;
-  label: TranslationKey;
-}>;
+/** The tabs of the Context screen. */
+type ContextTab = "brand" | "formats" | "pillars" | "authors" | "categories";
 
-type NavId = (typeof NAV)[number]["id"];
-
-/** Steps the extract goes through, in order. See `phase` in LibraryScreen. */
+/** Steps the extract goes through, in order. See `phase` in BlogContext. */
 type ExtractPhase = Extract<TranslationKey, `sandbox.blogBrand.phase${string}`>;
 const PHASE_READING = "sandbox.blogBrand.phaseReading" satisfies ExtractPhase;
 
@@ -104,6 +95,11 @@ const PHASE_READING = "sandbox.blogBrand.phaseReading" satisfies ExtractPhase;
 type FormatPhase = Extract<TranslationKey, `sandbox.formats.phase${string}`>;
 const FORMAT_PHASE_READING =
   "sandbox.formats.phaseReading" satisfies FormatPhase;
+
+/** Steps the pillar suggestion goes through, in order. */
+type PillarPhase = Extract<TranslationKey, `sandbox.pillars.phase${string}`>;
+const PILLAR_PHASE_READING =
+  "sandbox.pillars.phaseReading" satisfies PillarPhase;
 
 function strList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v) => typeof v === "string") : [];
@@ -127,62 +123,30 @@ function starterFormat(
   };
 }
 
-export function AutonomousContent(props: {
-  orgSlug: string;
-  virtualMcpId: string;
-  branch: string;
-  decofile: Record<string, unknown>;
-  meta: LiveMeta;
-}) {
-  const t = useT();
-  const [screen, setScreen] = useState<NavId>("generate");
-
-  return (
-    <div className="flex h-full">
-      <nav className="w-[176px] shrink-0 space-y-0.5 border-r p-1.5">
-        {NAV.map(({ id, icon: Icon, label }) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setScreen(id)}
-            className={cn(
-              "flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors",
-              screen === id
-                ? "bg-accent text-accent-foreground"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground",
-            )}
-          >
-            <Icon size={16} className="shrink-0" />
-            <span className="flex-1 truncate">{t(label)}</span>
-          </button>
-        ))}
-      </nav>
-
-      <div className="min-w-0 flex-1">
-        {screen === "library" ? (
-          <LibraryScreen {...props} />
-        ) : screen === "themes" ? (
-          <ThemesScreen {...props} />
-        ) : (
-          <GenerateScreen {...props} />
-        )}
-      </div>
-    </div>
-  );
-}
-
-function LibraryScreen({
+/**
+ * The blog's editorial Context: Brand, Formats, Content pillars, plus the
+ * Authors and Categories reference data — each persisted to the site's own
+ * `.deco/blocks/`. Replaces the old "Autonomous content" shell; generation now
+ * lives on the Posts board, and themes are reconceived as pillars here.
+ */
+export function BlogContext({
   orgSlug,
   virtualMcpId,
   branch,
   decofile,
   meta,
+  onOpenPost,
+  onManageCategoryPosts,
 }: {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
   decofile: Record<string, unknown>;
   meta: LiveMeta;
+  /** Open a post in the Posts area (from a category's post links). */
+  onOpenPost?: (key: string) => void;
+  /** Jump to the Posts area to manage a category's posts. */
+  onManageCategoryPosts?: (slug: string) => void;
 }) {
   const block = decofile[BRAND_BLOCK_KEY] as
     | Record<string, unknown>
@@ -234,7 +198,7 @@ function LibraryScreen({
   const [phase, setPhase] = useState<ExtractPhase>(PHASE_READING);
   /** Bumped to remount the markdown editors: they read `defaultValue` once. */
   const [editorRevision, setEditorRevision] = useState(0);
-  const [tab, setTab] = useState<"context" | "formats">("context");
+  const [tab, setTab] = useState<ContextTab>("brand");
   const [section, setSection] = useState<ContextSection>("basics");
 
   /** The site's own content, ranked by how much it reveals about the voice. */
@@ -504,10 +468,10 @@ function LibraryScreen({
       <div className="flex shrink-0 items-start justify-between gap-4 px-8 pt-6">
         <div className="space-y-1">
           <h2 className="text-lg font-semibold">
-            {t("sandbox.library.title")}
+            {t("sandbox.blogContext.title")}
           </h2>
           <p className="text-sm text-muted-foreground">
-            {t("sandbox.library.subtitle")}
+            {t("sandbox.blogContext.subtitle")}
           </p>
         </div>
         <SaveStatus isPending={save.isPending} isError={save.isError} />
@@ -516,20 +480,35 @@ function LibraryScreen({
       {/* Tab row doubles as the action bar — the extract fills every section. */}
       <div className="flex shrink-0 items-center justify-between gap-4 border-b px-8">
         <div className="flex gap-1">
-          <TabButton
-            active={tab === "context"}
-            onClick={() => setTab("context")}
-          >
-            {t("sandbox.library.tabContext")}
+          <TabButton active={tab === "brand"} onClick={() => setTab("brand")}>
+            {t("sandbox.blogContext.tabBrand")}
           </TabButton>
           <TabButton
             active={tab === "formats"}
             onClick={() => setTab("formats")}
           >
-            {t("sandbox.library.tabFormats")}
+            {t("sandbox.blogContext.tabFormats")}
+          </TabButton>
+          <TabButton
+            active={tab === "pillars"}
+            onClick={() => setTab("pillars")}
+          >
+            {t("sandbox.blogContext.tabPillars")}
+          </TabButton>
+          <TabButton
+            active={tab === "authors"}
+            onClick={() => setTab("authors")}
+          >
+            {t("sandbox.blogContext.tabAuthors")}
+          </TabButton>
+          <TabButton
+            active={tab === "categories"}
+            onClick={() => setTab("categories")}
+          >
+            {t("sandbox.blogContext.tabCategories")}
           </TabButton>
         </div>
-        {tab === "context" && (
+        {tab === "brand" && (
           <div className="flex min-w-0 items-center gap-3">
             {isExtracting && (
               <span
@@ -606,7 +585,62 @@ function LibraryScreen({
       </div>
 
       <div className="min-w-0 flex-1 overflow-y-auto">
-        {tab === "formats" ? (
+        {tab === "authors" ? (
+          <EntityPanel
+            kind="authors"
+            orgSlug={orgSlug}
+            virtualMcpId={virtualMcpId}
+            branch={branch}
+            decofile={decofile}
+            hint={t("sandbox.blogContext.authorsHint")}
+            addLabel={t("sandbox.blogContext.addAuthor")}
+            emptyLabel={t("sandbox.blogContext.authorsEmpty")}
+            renderEditor={(key) => (
+              <RecordEditor
+                key={`author:${key}`}
+                orgSlug={orgSlug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                kind="authors"
+                blockKey={key}
+                block={decofile[key] as Record<string, unknown>}
+              />
+            )}
+          />
+        ) : tab === "categories" ? (
+          <EntityPanel
+            kind="categories"
+            orgSlug={orgSlug}
+            virtualMcpId={virtualMcpId}
+            branch={branch}
+            decofile={decofile}
+            hint={t("sandbox.blogContext.categoriesHint")}
+            addLabel={t("sandbox.blogContext.addCategory")}
+            emptyLabel={t("sandbox.blogContext.categoriesEmpty")}
+            renderEditor={(key) => (
+              <CategoryEditor
+                key={`category:${key}`}
+                orgSlug={orgSlug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                blockKey={key}
+                block={decofile[key] as Record<string, unknown>}
+                decofile={decofile}
+                meta={meta}
+                onManagePosts={(slug) => onManageCategoryPosts?.(slug)}
+                onOpenPost={(postKey) => onOpenPost?.(postKey)}
+              />
+            )}
+          />
+        ) : tab === "pillars" ? (
+          <PillarsPanel
+            orgSlug={orgSlug}
+            virtualMcpId={virtualMcpId}
+            branch={branch}
+            decofile={decofile}
+            hasAi={hasAi}
+          />
+        ) : tab === "formats" ? (
           <div className="min-w-0 max-w-3xl space-y-3 px-8 py-6">
             <p className="text-xs text-muted-foreground">
               {t("sandbox.formats.hint")}
@@ -849,6 +883,388 @@ function RuleList({
           setOpenIndex(rules.length);
         }}
       />
+    </div>
+  );
+}
+
+/**
+ * The pillars tab: the editorial queue of recurring territories. One block per
+ * pillar under `blog-manager/pillars/` (reads the legacy themes prefix too), so
+ * appending suggestions can't clobber the one being edited.
+ */
+function PillarsPanel({
+  orgSlug,
+  virtualMcpId,
+  branch,
+  decofile,
+  hasAi,
+}: {
+  orgSlug: string;
+  virtualMcpId: string;
+  branch: string;
+  decofile: Record<string, unknown>;
+  hasAi: boolean;
+}) {
+  const t = useT();
+  const studio = useStudioTools();
+  const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
+
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const [guidance, setGuidance] = useState("");
+  const [askOpen, setAskOpen] = useState(false);
+  const [isSuggesting, setIsSuggesting] = useState(false);
+  const [phase, setPhase] = useState<PillarPhase>(PILLAR_PHASE_READING);
+
+  const pillars = scanPillars(decofile);
+  const brand = (decofile[BRAND_BLOCK_KEY] as Record<string, unknown>) ?? {};
+  const hasBrand = Boolean(str(brand.companyName) || str(brand.description));
+
+  const addPillar = () => {
+    const blockKey = newPillarKey();
+    save.mutate({
+      blockKey,
+      data: { title: "", body: "", createdAt: new Date().toISOString() },
+    });
+    setOpenKey(blockKey);
+  };
+
+  const suggest = async () => {
+    setIsSuggesting(true);
+    setPhase(PILLAR_PHASE_READING);
+    const timer = setTimeout(
+      () => setPhase("sandbox.pillars.phaseWriting"),
+      4_000,
+    );
+    try {
+      const result = await studio.call("BLOG_PILLAR_SUGGEST", {
+        brand: {
+          companyName: str(brand.companyName),
+          description: str(brand.description),
+          language: str(brand.language),
+          tone: str(brand.tone),
+          targetAudience: str(brand.targetAudience),
+          values: filledBrandRules(normalizeBrandRules(brand.values)),
+          dos: filledBrandRules(normalizeBrandRules(brand.dos)),
+          avoid: filledBrandRules(normalizeBrandRules(brand.avoid)),
+        },
+        existingPillars: pillars.map((p) => p.title).filter(Boolean),
+        guidance: guidance.trim() || undefined,
+      });
+
+      const fresh = dedupeSuggestedThemes(
+        pillars.map((p) => p.title),
+        result.pillars,
+      );
+      if (fresh.length === 0) {
+        toast.info(t("sandbox.pillars.noNew"));
+        return;
+      }
+
+      const now = Date.now();
+      let created = 0;
+      // One at a time — parallel writes race the fast-preview decofile cache.
+      for (const [index, pillar] of fresh.entries()) {
+        try {
+          await save.mutateAsync({
+            blockKey: newPillarKey(),
+            data: {
+              title: pillar.title,
+              body: pillar.body,
+              createdAt: new Date(now - index).toISOString(),
+            },
+          });
+          created++;
+        } catch (err) {
+          console.warn("[pillars] could not save a suggested pillar", err);
+        }
+      }
+
+      if (created === 0) {
+        toast.error(t("sandbox.pillars.suggestFailed"));
+        return;
+      }
+      toast.success(t("sandbox.pillars.suggested", { count: String(created) }));
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : t("sandbox.pillars.suggestFailed"),
+      );
+    } finally {
+      clearTimeout(timer);
+      setIsSuggesting(false);
+    }
+  };
+
+  return (
+    <div className="flex h-full min-w-0 flex-col">
+      <div className="flex items-start justify-between gap-3 px-8 pb-3 pt-4">
+        <p className="max-w-xl text-xs text-muted-foreground">
+          {t("sandbox.pillars.hint")}
+        </p>
+        <div className="flex shrink-0 items-center gap-3">
+          {isSuggesting && (
+            <span
+              className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground"
+              aria-live="polite"
+              role="status"
+            >
+              <Loading02 size={12} className="shrink-0 animate-spin" />
+              <span className="truncate">{t(phase)}</span>
+            </span>
+          )}
+          <Popover open={askOpen} onOpenChange={setAskOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                disabled={isSuggesting || !hasBrand || !hasAi}
+                title={
+                  !hasAi
+                    ? t("sandbox.autonomous.noAiProvider")
+                    : hasBrand
+                      ? t("sandbox.pillars.suggestHint")
+                      : t("sandbox.pillars.suggestNoBrand")
+                }
+              >
+                <Stars02 size={14} />
+                {t("sandbox.pillars.suggest")}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-80 space-y-3">
+              <div className="space-y-1">
+                <Label htmlFor="pillar-guidance">
+                  {t("sandbox.pillars.guidanceLabel")}
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {t("sandbox.pillars.guidanceHint")}
+                </p>
+              </div>
+              <Input
+                id="pillar-guidance"
+                value={guidance}
+                onChange={(e) => setGuidance(e.target.value)}
+                placeholder={t("sandbox.pillars.guidancePlaceholder")}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter") return;
+                  e.preventDefault();
+                  setAskOpen(false);
+                  void suggest();
+                }}
+                className="h-9"
+              />
+              <Button
+                type="button"
+                size="sm"
+                className="w-full"
+                onClick={() => {
+                  setAskOpen(false);
+                  void suggest();
+                }}
+              >
+                <Stars02 size={14} />
+                {t("sandbox.pillars.suggest")}
+              </Button>
+            </PopoverContent>
+          </Popover>
+          <SaveStatus
+            isPending={save.isPending || deleteBlock.isPending}
+            isError={save.isError || deleteBlock.isError}
+          />
+        </div>
+      </div>
+
+      <div className="min-w-0 flex-1 space-y-3 overflow-y-auto px-8 pb-6">
+        {pillars.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {t("sandbox.pillars.empty")}
+          </p>
+        ) : (
+          <ul className="divide-y overflow-hidden rounded-lg border">
+            {pillars.map((pillar) => (
+              <PillarRow
+                key={pillar.key}
+                blockKey={pillar.key}
+                block={decofile[pillar.key] as Record<string, unknown>}
+                open={openKey === pillar.key}
+                onToggle={() =>
+                  setOpenKey((open) =>
+                    open === pillar.key ? null : pillar.key,
+                  )
+                }
+                onRemove={() => {
+                  deleteBlock.mutate({ blockKey: pillar.key });
+                  setOpenKey((open) => (open === pillar.key ? null : open));
+                }}
+                onSave={(data) => save.mutate({ blockKey: pillar.key, data })}
+              />
+            ))}
+          </ul>
+        )}
+        <AddButton label={t("sandbox.pillars.add")} onClick={addPillar} />
+      </div>
+    </div>
+  );
+}
+
+/** One pillar, collapsed to its title until clicked. Owns its own draft. */
+function PillarRow({
+  blockKey,
+  block,
+  open,
+  onToggle,
+  onRemove,
+  onSave,
+}: {
+  blockKey: string;
+  block: Record<string, unknown>;
+  open: boolean;
+  onToggle: () => void;
+  onRemove: () => void;
+  onSave: (data: Record<string, unknown>) => void;
+}) {
+  const t = useT();
+  const [draft, setDraft] = useAutosave(block, onSave);
+  const title = str(draft.title);
+
+  return (
+    <li className="group/item bg-card">
+      <div className="flex items-center gap-1 pr-2">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={open}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors hover:bg-muted/50"
+        >
+          {open ? (
+            <ChevronDown size={14} className="shrink-0" />
+          ) : (
+            <ChevronRight
+              size={14}
+              className="shrink-0 text-muted-foreground"
+            />
+          )}
+          <span className={cn("truncate", !title && "text-muted-foreground")}>
+            {title || t("sandbox.pillars.untitled")}
+          </span>
+        </button>
+        <RemoveButton label={t("sandbox.pillars.remove")} onClick={onRemove} />
+      </div>
+      {open && (
+        <div className="space-y-3 border-t bg-background px-3 py-3">
+          <Input
+            value={title}
+            placeholder={t("sandbox.pillars.namePlaceholder")}
+            onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+            className="h-9 font-medium"
+          />
+          <MarkdownEditor
+            key={blockKey}
+            defaultValue={str(draft.body)}
+            placeholder={t("sandbox.pillars.bodyPlaceholder")}
+            attachments={false}
+            onChange={(markdown) => setDraft({ ...draft, body: markdown })}
+          />
+        </div>
+      )}
+    </li>
+  );
+}
+
+/**
+ * Master-detail for a blog reference collection (authors / categories): a list
+ * on the left with add/remove, the existing editor on the right. Lets Authors
+ * and Categories live inside Context instead of their own sidebar rows.
+ */
+function EntityPanel({
+  kind,
+  orgSlug,
+  virtualMcpId,
+  branch,
+  decofile,
+  hint,
+  addLabel,
+  emptyLabel,
+  renderEditor,
+}: {
+  kind: BlogKind;
+  orgSlug: string;
+  virtualMcpId: string;
+  branch: string;
+  decofile: Record<string, unknown>;
+  hint: string;
+  addLabel: string;
+  emptyLabel: string;
+  renderEditor: (key: string) => React.ReactNode;
+}) {
+  const t = useT();
+  const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  const del = useDeleteBlock({ orgSlug, virtualMcpId, branch });
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const entries = scanBlogEntries(decofile)[kind];
+
+  const add = () => {
+    const key = generateBlogKey(decofile, kind);
+    save.mutate({
+      blockKey: key,
+      data: buildBlogBlock(key, kind, emptyBlogPayload(kind)),
+    });
+    setOpenKey(key);
+  };
+
+  return (
+    <div className="min-w-0 max-w-3xl space-y-3 px-8 py-6">
+      <p className="text-xs text-muted-foreground">{hint}</p>
+      {entries.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{emptyLabel}</p>
+      ) : (
+        <ul className="divide-y overflow-hidden rounded-lg border">
+          {entries.map((entry) => {
+            const open = openKey === entry.key;
+            return (
+              <li key={entry.key} className="group/item bg-card">
+                <div className="flex items-center gap-1 pr-2">
+                  <button
+                    type="button"
+                    onClick={() => setOpenKey(open ? null : entry.key)}
+                    aria-expanded={open}
+                    className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors hover:bg-muted/50"
+                  >
+                    {open ? (
+                      <ChevronDown size={14} className="shrink-0" />
+                    ) : (
+                      <ChevronRight
+                        size={14}
+                        className="shrink-0 text-muted-foreground"
+                      />
+                    )}
+                    <span className="truncate">{entry.label}</span>
+                    {entry.subtitle && (
+                      <span className="truncate text-xs text-muted-foreground">
+                        {entry.subtitle}
+                      </span>
+                    )}
+                  </button>
+                  <RemoveButton
+                    label={t("sandbox.blogContext.removeEntry")}
+                    onClick={() => {
+                      del.mutate({ blockKey: entry.key });
+                      if (open) setOpenKey(null);
+                    }}
+                  />
+                </div>
+                {open && (
+                  <div className="border-t bg-background px-4 py-4">
+                    {renderEditor(entry.key)}
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <AddButton label={addLabel} onClick={add} />
     </div>
   );
 }

@@ -45,9 +45,11 @@ const POST_SORT_SHORT_KEYS: Record<PostSort, TranslationKey> = {
 };
 
 const POST_STATUS_LABEL_KEYS: Record<PostStatusFilter, TranslationKey> = {
-  published: "sandbox.postToolbar.statusPublished",
+  idea: "sandbox.postToolbar.statusIdea",
+  generating: "sandbox.postToolbar.statusGenerating",
+  in_review: "sandbox.postToolbar.statusInReview",
   scheduled: "sandbox.postToolbar.statusScheduled",
-  draft: "sandbox.postToolbar.statusDraft",
+  published: "sandbox.postToolbar.statusPublished",
 };
 
 const STATUS_PREFIX = "status:";

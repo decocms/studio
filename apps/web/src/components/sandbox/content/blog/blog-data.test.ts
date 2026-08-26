@@ -25,6 +25,19 @@ import {
   newThemeKey,
   scanThemes,
   THEME_KEY_PREFIX,
+  scanPillars,
+  newPillarKey,
+  PILLAR_KEY_PREFIX,
+  PLANNING_POST_KEY_PREFIX,
+  emptyIdeaPayload,
+  planningMeta,
+  buildPlanningPostBlock,
+  listPlanningPosts,
+  listAllPostsWithMeta,
+  movePostToStatus,
+  planningPostKey,
+  livePostKey,
+  postIdOfKey,
   buildGeneratedPostPayload,
   buildPostSections,
   citedSections,
@@ -252,7 +265,7 @@ describe("listPostsWithMeta", () => {
       ),
     ).toEqual({
       Live: "published",
-      Draft: "draft",
+      Draft: "in_review",
       Legacy: "published",
       Planned: "scheduled",
     });
@@ -282,6 +295,7 @@ describe("listPostsWithMeta", () => {
         missing: ["Excerpt", "Cover image"],
         // no `status` on this fixture — posts predating the field are published
         status: "published",
+        form: "live",
       },
     ]);
   });
@@ -413,19 +427,18 @@ describe("blocksPostStatus", () => {
     expect(blocksPostStatus({ status: "draft" }, "published")).toBe(true);
   });
 
-  test("never blocks scheduling — a schedule is a plan, not a release", () => {
-    expect(blocksPostStatus({ status: "draft" }, "scheduled")).toBe(false);
-    expect(blocksPostStatus({ status: "published" }, "scheduled")).toBe(false);
+  test("blocks scheduling an incomplete post — a live date needs a live post", () => {
+    expect(blocksPostStatus({ status: "in_review" }, "scheduled")).toBe(true);
+    expect(blocksPostStatus({ status: "published" }, "scheduled")).toBe(true);
   });
 
-  test("lets an incomplete post be re-scheduled after scheduling was turned off", () => {
-    const off = setPostStatus({ title: "Untitled post" }, "draft", new Date());
-    expect(blocksPostStatus(off, "scheduled")).toBe(false);
+  test("lets a complete post be scheduled", () => {
+    expect(blocksPostStatus({ ...COMPLETE_POST }, "scheduled")).toBe(false);
   });
 
-  test("never blocks dropping to draft", () => {
-    expect(blocksPostStatus({ status: "published" }, "draft")).toBe(false);
-    expect(blocksPostStatus({ status: "scheduled" }, "draft")).toBe(false);
+  test("never blocks pulling a post back to review", () => {
+    expect(blocksPostStatus({ status: "published" }, "in_review")).toBe(false);
+    expect(blocksPostStatus({ status: "scheduled" }, "in_review")).toBe(false);
   });
 
   test("does not block the state the post is already in", () => {
@@ -447,21 +460,26 @@ describe("postStatus", () => {
     expect(postStatus({ status: 1 })).toBe("published");
   });
 
-  test("is case- and whitespace-sensitive: only exact values match", () => {
-    expect(postStatus({ status: "Published" })).toBe("draft");
-    expect(postStatus({ status: " published " })).toBe("draft");
-    expect(postStatus({ status: " scheduled " })).toBe("draft");
+  test("is case- and whitespace-sensitive: an inexact value is unrecognized", () => {
+    expect(postStatus({ status: "Published" })).toBe("in_review");
+    expect(postStatus({ status: " published " })).toBe("in_review");
+    expect(postStatus({ status: " scheduled " })).toBe("in_review");
   });
 
-  test("reads the three editable states", () => {
-    expect(postStatus({ status: "published" })).toBe("published");
+  test("reads the five lifecycle states", () => {
+    expect(postStatus({ status: "idea" })).toBe("idea");
+    expect(postStatus({ status: "generating" })).toBe("generating");
+    expect(postStatus({ status: "in_review" })).toBe("in_review");
     expect(postStatus({ status: "scheduled" })).toBe("scheduled");
-    expect(postStatus({ status: "draft" })).toBe("draft");
+    expect(postStatus({ status: "published" })).toBe("published");
   });
 
-  test("reads states the CMS doesn't edit as draft", () => {
-    expect(postStatus({ status: "generating" })).toBe("draft");
-    expect(postStatus({ status: "awaiting_review" })).toBe("draft");
+  test("reads the legacy draft value as in_review", () => {
+    expect(postStatus({ status: "draft" })).toBe("in_review");
+  });
+
+  test("reads an unrecognized status as in_review, never live", () => {
+    expect(postStatus({ status: "awaiting_review" })).toBe("in_review");
   });
 
   test("reads scheduled from the status alone, with no datetime", () => {
@@ -514,13 +532,13 @@ describe("setPostStatus", () => {
     expect(new Date(next.scheduledDatetime as string).getDate()).toBe(22);
   });
 
-  test("clears the instant when leaving scheduled for draft", () => {
+  test("clears the instant when leaving scheduled for review", () => {
     const next = setPostStatus(
       { status: "scheduled", scheduledDatetime: new Date().toISOString() },
-      "draft",
+      "in_review",
       now,
     );
-    expect(next.status).toBe("draft");
+    expect(next.status).toBe("in_review");
     expect(next.scheduledDatetime).toBe("");
   });
 
@@ -538,6 +556,163 @@ describe("setPostStatus", () => {
     const payload = { status: "draft", title: "Hello" };
     setPostStatus(payload, "scheduled", now);
     expect(payload).toEqual({ status: "draft", title: "Hello" });
+  });
+});
+
+describe("scanPillars", () => {
+  test("reads pillars newest-first with their formats", () => {
+    const pillars = scanPillars({
+      [`${PILLAR_KEY_PREFIX}a`]: {
+        title: "Product updates",
+        body: "What shipped.",
+        createdAt: "2026-01-01",
+        formats: ["Changelog", "Deep dive"],
+      },
+      [`${PILLAR_KEY_PREFIX}b`]: {
+        title: "Customer cases",
+        body: "How they win.",
+        createdAt: "2026-02-01",
+        formats: [],
+      },
+    });
+    expect(pillars.map((p) => p.title)).toEqual([
+      "Customer cases",
+      "Product updates",
+    ]);
+    expect(pillars[1]?.formats).toEqual(["Changelog", "Deep dive"]);
+  });
+
+  test("unions legacy themes blocks so old sites need no migration", () => {
+    const pillars = scanPillars({
+      [`${PILLAR_KEY_PREFIX}a`]: { title: "New pillar", createdAt: "2026-02" },
+      [`${THEME_KEY_PREFIX}b`]: { title: "Old theme", createdAt: "2026-01" },
+    });
+    expect(pillars.map((p) => p.title)).toEqual(["New pillar", "Old theme"]);
+  });
+
+  test("ignores non-object and unrelated blocks", () => {
+    expect(scanPillars({ [`${PILLAR_KEY_PREFIX}x`]: "corrupt" })).toEqual([]);
+    expect(scanPillars({ "blog-manager-brand": { title: "nope" } })).toEqual(
+      [],
+    );
+  });
+});
+
+describe("newPillarKey", () => {
+  test("is under the pillars prefix and unique", () => {
+    const a = newPillarKey();
+    const b = newPillarKey();
+    expect(a.startsWith(PILLAR_KEY_PREFIX)).toBe(true);
+    expect(a).not.toBe(b);
+  });
+});
+
+describe("emptyIdeaPayload / planningMeta", () => {
+  const now = new Date(2026, 7, 21, 15, 30);
+
+  test("captures an idea as a briefing with no body", () => {
+    const payload = emptyIdeaPayload({
+      title: "How to read a label",
+      planning: { pillarKey: "p1", brief: "Angle." },
+      now,
+    });
+    expect(payload.status).toBe("idea");
+    expect(payload.sections).toEqual([]);
+    expect(postStatus(payload)).toBe("idea");
+    expect(planningMeta(payload).brief).toBe("Angle.");
+    expect(planningMeta(payload).pillarKey).toBe("p1");
+  });
+
+  test("planningMeta tolerates a missing planning object", () => {
+    expect(planningMeta({})).toEqual({});
+  });
+});
+
+describe("listPlanningPosts / listAllPostsWithMeta", () => {
+  test("planning posts are read by prefix and excluded from the live list", () => {
+    const decofile = {
+      [`${PLANNING_POST_KEY_PREFIX}1`]: buildPlanningPostBlock(
+        `${PLANNING_POST_KEY_PREFIX}1`,
+        { title: "An idea", status: "idea" },
+      ),
+      ...decofileWithPosts({
+        "collections/blog/posts/2": { title: "Live", status: "published" },
+      }),
+    };
+    expect(listPlanningPosts(decofile).map((p) => p.payload.title)).toEqual([
+      "An idea",
+    ]);
+    // The live-only list never sees planning posts.
+    expect(listPostsWithMeta(decofile).map((p) => p.title)).toEqual(["Live"]);
+    const all = listAllPostsWithMeta(decofile);
+    expect(
+      Object.fromEntries(all.map((p) => [p.title, [p.status, p.form]])),
+    ).toEqual({
+      "An idea": ["idea", "planning"],
+      Live: ["published", "live"],
+    });
+  });
+});
+
+describe("movePostToStatus", () => {
+  const now = new Date(2026, 7, 21, 15, 30);
+  const complete = {
+    title: "Hello",
+    slug: "hello",
+    categories: ["news"],
+    excerpt: "A short summary.",
+    image: "https://cdn/cover.jpg",
+  };
+
+  test("promotes a planning post to a live block, preserving id and slug", () => {
+    const key = planningPostKey("abc123");
+    const move = movePostToStatus(
+      { key, payload: { ...complete, status: "in_review" } },
+      "scheduled",
+      now,
+    );
+    const targetKey = livePostKey("abc123");
+    expect(move.deletes).toEqual([key]);
+    const block = move.writes[targetKey] as Record<string, unknown>;
+    expect(block.__resolveType).toBe("blog/loaders/Blogpost.ts");
+    const post = block.post as Record<string, unknown>;
+    expect(post.slug).toBe("hello");
+    expect(post.status).toBe("scheduled");
+    expect(typeof post.scheduledDatetime).toBe("string");
+  });
+
+  test("demotes a live post back to a planning block with no resolveType", () => {
+    const key = livePostKey("abc123");
+    const move = movePostToStatus(
+      { key, payload: { ...complete, status: "scheduled" } },
+      "in_review",
+      now,
+    );
+    const targetKey = planningPostKey("abc123");
+    expect(move.deletes).toEqual([key]);
+    const block = move.writes[targetKey] as Record<string, unknown>;
+    expect("__resolveType" in block).toBe(false);
+    const post = block.post as Record<string, unknown>;
+    expect(post.status).toBe("in_review");
+    expect(post.scheduledDatetime).toBe("");
+  });
+
+  test("a within-planning move rewrites in place with nothing to delete", () => {
+    const key = planningPostKey("abc123");
+    const move = movePostToStatus(
+      { key, payload: { title: "T", status: "idea" } },
+      "in_review",
+      now,
+    );
+    expect(move.deletes).toEqual([]);
+    expect(Object.keys(move.writes)).toEqual([key]);
+  });
+});
+
+describe("postIdOfKey", () => {
+  test("reads the shared id from either form's key", () => {
+    expect(postIdOfKey(planningPostKey("xyz"))).toBe("xyz");
+    expect(postIdOfKey(livePostKey("xyz"))).toBe("xyz");
   });
 });
 

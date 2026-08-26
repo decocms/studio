@@ -93,6 +93,7 @@ import {
   addCategoryToPost,
   BLOG_KINDS,
   BLOG_SINGULAR,
+  blocksPostStatus,
   buildBlogBlock,
   emptyBlogPayload,
   generateBlogKey,
@@ -100,6 +101,7 @@ import {
   isBlogKind,
   listBlogPayloads,
   listPostsWithMeta,
+  movePostToStatus,
   type PostStatus,
   removeCategoryFromPost,
   replaceCategoryOnPost,
@@ -111,6 +113,11 @@ import {
   scheduledPostPayload,
 } from "./blog/post-calendar-data";
 import { useBlogSupport } from "./blog/use-blog-support";
+import {
+  PostsWorkspace,
+  type PostsGroupBy,
+  type PostsView,
+} from "./blog/posts-workspace";
 import { PageJsonDialog } from "@/components/sections-editor/page-json-dialog";
 import { RunnableBlocksBrowser } from "./runnable-blocks-browser";
 import { countAvailableRunnables } from "./runnable-catalog";
@@ -136,9 +143,9 @@ const RecordEditor = lazy(() =>
   import("./blog/record-editor").then((m) => ({ default: m.RecordEditor })),
 );
 
-const AutonomousContent = lazy(() =>
-  import("./blog/autonomous").then((m) => ({
-    default: m.AutonomousContent,
+const BlogContext = lazy(() =>
+  import("./blog/context").then((m) => ({
+    default: m.BlogContext,
   })),
 );
 
@@ -189,7 +196,7 @@ export type CollectionId =
   | "loaders"
   | "actions"
   | "redirects"
-  | "autonomous"
+  | "context"
   | BlogKind;
 
 export type CollectionCounts = Record<
@@ -383,6 +390,9 @@ function ContentBrowserReady({
     }
   }
   const [searchQuery, setSearchQuery] = useState("");
+  // Posts workspace view + grouping — lifted so they survive opening a post.
+  const [postsView, setPostsView] = useState<PostsView>("board");
+  const [postsGroupBy, setPostsGroupBy] = useState<PostsGroupBy>("status");
   // Posts-only filter/sort + bulk selection state.
   const [postCategoryFilter, setPostCategoryFilter] = useState<string | null>(
     null,
@@ -868,6 +878,34 @@ function ContentBrowserReady({
     }
   };
 
+  /**
+   * Board / editor status change: promote or demote the post across the
+   * planning↔live block boundary and follow the selection to the new key, so
+   * an idea scheduled from the editor becomes a real site-rendered post.
+   */
+  const handleMovePostStatus = async (key: string, next: PostStatus) => {
+    const source = decofile[key] as Record<string, unknown> | undefined;
+    if (!source) return;
+    const payload = getBlogPayload(source, "posts");
+    if (blocksPostStatus(payload, next)) {
+      toast.error("Finish the required fields before scheduling.");
+      return;
+    }
+    const move = movePostToStatus({ key, payload }, next, new Date());
+    try {
+      for (const [k, data] of Object.entries(move.writes)) {
+        await saveBlock.mutateAsync({ blockKey: k, data });
+      }
+      for (const k of move.deletes) {
+        await deleteBlock.mutateAsync({ blockKey: k });
+      }
+      const targetKey = Object.keys(move.writes)[0];
+      if (targetKey) setSelection({ collection: "posts", key: targetKey });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not update");
+    }
+  };
+
   const handleDuplicateBlog = async (entry: BlogEntry) => {
     const source = decofile[entry.key] as Record<string, unknown> | undefined;
     if (!source) {
@@ -1064,9 +1102,10 @@ function ContentBrowserReady({
       />
       {activeCollection !== "seo" &&
         activeCollection !== "site" &&
-        activeCollection !== "autonomous" &&
+        activeCollection !== "context" &&
         activeCollection !== "calendar" &&
         activeCollection !== "post-schedule" &&
+        activeCollection !== "posts" &&
         activeCollection !== "loaders" &&
         activeCollection !== "actions" && (
           <ItemList
@@ -1223,13 +1262,25 @@ function ContentBrowserReady({
                   description="This project doesn't have a site app block (site/apps/site.ts)."
                 />
               )
-            ) : activeCollection === "autonomous" ? (
-              <AutonomousContent
+            ) : activeCollection === "context" ? (
+              <BlogContext
                 orgSlug={orgSlug}
                 virtualMcpId={virtualMcpId}
                 branch={branch}
                 decofile={decofile}
                 meta={meta}
+                onOpenPost={(key) => {
+                  setActiveCollection("posts");
+                  setPrevCollection("posts");
+                  setSelection({ collection: "posts", key });
+                  setOpenPageSeoKey(null);
+                }}
+                onManageCategoryPosts={() => {
+                  setActiveCollection("posts");
+                  setPrevCollection("posts");
+                  setSelection(null);
+                  setOpenPageSeoKey(null);
+                }}
               />
             ) : activeCollection === "seo" ? (
               <SeoEditor
@@ -1258,6 +1309,47 @@ function ContentBrowserReady({
                 isCreating={saveBlock.isPending}
                 onCreateAvailable={handleCreateAvailableSection}
                 onSaveReferencedBlock={saveReferencedBlock}
+              />
+            ) : activeCollection === "posts" ? (
+              <PostsWorkspace
+                orgSlug={orgSlug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                decofile={decofile}
+                view={postsView}
+                groupBy={postsGroupBy}
+                selectedKey={
+                  selection?.collection === "posts" ? selection.key : null
+                }
+                onViewChange={(next) => {
+                  setPostsView(next);
+                  setSelection(null);
+                }}
+                onGroupByChange={setPostsGroupBy}
+                onClose={() => setSelection(null)}
+                onOpen={(key) => {
+                  setSelection({ collection: "posts", key });
+                  setOpenPageSeoKey(null);
+                }}
+                renderDetail={(key, controls) => (
+                  <PostEditor
+                    key={`post:${key}`}
+                    orgSlug={orgSlug}
+                    virtualMcpId={virtualMcpId}
+                    branch={branch}
+                    blockKey={key}
+                    block={decofile[key] as Record<string, unknown>}
+                    decofile={decofile}
+                    meta={meta}
+                    previewBaseUrl={sitePreviewUrl}
+                    onMoveStatus={(next) =>
+                      void handleMovePostStatus(key, next)
+                    }
+                    onClose={controls?.onClose}
+                    expanded={controls?.expanded}
+                    onToggleExpand={controls?.onToggleExpand}
+                  />
+                )}
               />
             ) : bulkPanelOpen ? (
               // Posts selection mode: the bulk "Update category" panel takes
@@ -1296,18 +1388,6 @@ function ContentBrowserReady({
                         )
                       : undefined,
                   )}
-                />
-              ) : selection.collection === "posts" ? (
-                <PostEditor
-                  key={`post:${selection.key}`}
-                  orgSlug={orgSlug}
-                  virtualMcpId={virtualMcpId}
-                  branch={branch}
-                  blockKey={selection.key}
-                  block={decofile[selection.key] as Record<string, unknown>}
-                  decofile={decofile}
-                  meta={meta}
-                  previewBaseUrl={sitePreviewUrl}
                 />
               ) : selection.collection === "categories" ? (
                 <CategoryEditor
@@ -1642,9 +1722,11 @@ function ItemList({
   const categoryCounts = new Map<string, number>();
   const authorCounts = new Map<string, number>();
   const statusCounts = {
-    published: 0,
+    idea: 0,
+    generating: 0,
+    in_review: 0,
     scheduled: 0,
-    draft: 0,
+    published: 0,
   } satisfies Record<PostStatusFilter, number>;
   for (const p of postsWithMeta) statusCounts[p.status]++;
   for (const p of postsWithMeta) {
