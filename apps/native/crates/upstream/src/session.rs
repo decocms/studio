@@ -55,7 +55,7 @@ use crate::tokens::{
 };
 
 /// `GET /api/auth/desktop/me` is the canonical desktop bearer probe. It has
-/// no link-presence or organization semantics: a valid desktop OAuth bearer
+/// no organization semantics: a valid desktop OAuth bearer
 /// returns `200`, while an unrecognized bearer returns `401`. Keeping the
 /// probe outside an org-scoped `/api/:org/...` route matters because an
 /// authenticated non-member can legitimately receive `403` there; that is

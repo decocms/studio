@@ -77,15 +77,15 @@ describe("ban-e2e-app-imports", () => {
     expect(await lint(f)).toEqual([]);
   });
 
-  test("bans packages dropped from the allowlist with the link removal", async () => {
+  test("bans packages outside the allowlist", async () => {
     const f = fixture(
-      "packages/e2e/fixtures/dropped.ts",
-      `import { jetstream } from "@nats-io/jetstream";\n` +
-        `import { encodeSubjectToken } from "@decocms/tunnel/subject";\n` +
-        `import type { Capability } from "@decocms/sandbox/dispatch";\n` +
-        `import { DEFAULT_THREAD_TITLE } from "@decocms/harness/decopilot/prompt-constants";\n` +
-        `export const all = [jetstream, encodeSubjectToken, DEFAULT_THREAD_TITLE];\n` +
-        `export type C = Capability;\n`,
+      "packages/e2e/fixtures/unlisted.ts",
+      `import { first } from "unlisted-runtime";\n` +
+        `import { second } from "@example/unlisted-runtime";\n` +
+        `import type { Third } from "@decocms/unlisted-contract";\n` +
+        `import { fourth } from "@vendor/unlisted-helper";\n` +
+        `export const all = [first, second, fourth];\n` +
+        `export type T = Third;\n`,
     );
     const msgs = await lint(f);
     expect(msgs.length).toBe(4);
@@ -105,7 +105,7 @@ describe("ban-e2e-app-imports", () => {
   test("bans an @/ app path alias", async () => {
     const f = fixture(
       "packages/e2e/fixtures/alias.ts",
-      `import { workItemSchema } from "@/links/link-work-item";\nexport const w = workItemSchema;\n`,
+      `import { privateValue } from "@/internal/private-module";\nexport const value = privateValue;\n`,
     );
     const msgs = await lint(f);
     expect(msgs.length).toBe(1);
