@@ -5,6 +5,7 @@ import {
   enabledReviewerKinds,
   isReviewerThreadTitle,
   PR_DIFF_RECIPE,
+  NO_VISUAL_SURFACE,
   REVIEWER_LABEL,
   reviewCycleStart,
   SHALLOW_CHECKOUT_NOTE,
@@ -98,9 +99,10 @@ const REVIEWER_FOCUS: Record<ReviewerKind, string> = {
     "exercised, and anything you could not verify and why.\n" +
     "That comment must ALWAYS carry the visual change: embed the before/after " +
     "screenshots in it whenever the change has any visual surface. If it has " +
-    "none, say so explicitly in the comment and name why (backend-only, config, " +
-    "test-only) — silence about screenshots is not an acceptable answer either " +
-    "way.",
+    `none, write the exact words \`${NO_VISUAL_SURFACE}\` in the comment and ` +
+    "name why (backend-only, config, test-only) — that literal is what a " +
+    "machine check looks for, so no paraphrase of it counts, and silence about " +
+    "screenshots is not an acceptable answer either way.",
   code_review:
     "You are the Code Reviewer. Review the code changes for correctness, " +
     "security, and quality. FIRST look for a review skill/command appropriate " +

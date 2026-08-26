@@ -194,9 +194,7 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
 
     // The reviewer's record on the card is not optional — if this run posted
     // none (or QA posted no screenshots), ask it for one on its own thread,
-    // once. Best-effort and BEFORE the branches below: a follow-up dispatch
-    // failure must never fail an otherwise-good verdict, and the thread gate
-    // queues the run behind this one either way.
+    // once. Best-effort — a dispatch failure must not fail a good verdict.
     const runThreadId = taskRunContextStore.getStore()?.threadId;
     if (runThreadId) {
       await ensureReviewerCommented(ctx, item, reviewer, runThreadId).catch(

@@ -15,30 +15,29 @@
  * Code session — and everything it just verified — is still in context; it asks
  * for the comment and nothing else.
  *
- * At most once, ever: the message id and the run `workflowID` are both derived
- * from the reviewer's thread id, so the persisted turn is idempotent and DBOS
- * collapses a second enqueue. A reviewer that ignores the follow-up too is left
- * alone — the existing hand-to-human paths own a reviewer that won't cooperate.
+ * At most one DISPATCH, ever: the message id and the run `workflowID` are both
+ * derived from the reviewer's thread id, so the persisted turn is idempotent and
+ * DBOS collapses a second enqueue. Nothing retries the run itself if it fails;
+ * the gap is logged when detected, and the existing hand-to-human paths own a
+ * reviewer that won't cooperate.
  */
 
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
-import { REVIEWER_LABEL, type ReviewerKind } from "@decocms/shared/task-board";
+import {
+  NO_VISUAL_SURFACE,
+  REVIEWER_LABEL,
+  type ReviewerKind,
+} from "@decocms/shared/task-board";
 import { nudgeThreadTurn } from "./nudge-thread";
 import { REVIEWER_DISALLOWED_TOOLS } from "./enqueue-reviewer";
 
 /** What the reviewer still owes the card. Null = nothing. */
 export type ReviewerCommentGap = "missing" | "no_screenshots";
 
-/** A markdown image — what an embedded screenshot looks like in a comment body,
- *  before and after `embedOrgOutputImages` rewrites its URL. */
-const MARKDOWN_IMAGE_RE = /!\[[^\]]*\]\([^)\s]+\)/;
-
-/** The reviewer explicitly saying the change has no visual surface — the
- *  alternative the QA prompt offers to screenshots, and what stops a nudge for
- *  a backend-only PR that was correctly reviewed. */
-const NO_VISUAL_CHANGE_RE =
-  /\b(no|not?|zero)\s+(\w+\s+){0,2}visual\b|\bnon-visual\b|\bno (ui|screenshot)s?\b/i;
+/** A comment short enough to be a progress note ("starting review, loading the
+ *  PR") rather than the record the card needs. */
+const MIN_RECORD_LENGTH = 80;
 
 /**
  * What this reviewer's run failed to record on the card. Pure — unit-tested.
@@ -52,11 +51,14 @@ export function reviewerCommentGap(
   threadId: string,
   kind: ReviewerKind,
 ): ReviewerCommentGap | null {
-  const own = comments.filter((c) => c.threadId === threadId);
+  const own = comments.filter(
+    (c) => c.threadId === threadId && c.body.trim().length >= MIN_RECORD_LENGTH,
+  );
   if (own.length === 0) return "missing";
   if (kind !== "qa") return null;
-  const shown = own.some((c) => MARKDOWN_IMAGE_RE.test(c.body));
-  const justified = own.some((c) => NO_VISUAL_CHANGE_RE.test(c.body));
+  // `![` opens a markdown image either side of `embedOrgOutputImages`.
+  const shown = own.some((c) => c.body.includes("!["));
+  const justified = own.some((c) => c.body.includes(NO_VISUAL_SURFACE));
   return shown || justified ? null : "no_screenshots";
 }
 
@@ -64,12 +66,14 @@ function followUpPrompt(kind: ReviewerKind, gap: ReviewerCommentGap): string {
   const lines = [
     gap === "missing"
       ? `You recorded your ${REVIEWER_LABEL[kind]} verdict but posted NO comment on the task. The verdict alone tells the humans reading the board nothing about what you checked.`
-      : `Your ${REVIEWER_LABEL[kind]} comment carries no screenshots and does not say the change has no visual surface. One of the two is required.`,
+      : `Your ${REVIEWER_LABEL[kind]} comment carries no screenshots and does not declare the change free of any visual surface. One of the two is required.`,
     "",
     "Do exactly ONE thing in this run and then stop:",
     gap === "missing"
       ? "- Post a comment with `TASK_BOARD_COMMENT_CREATE` recording the review you just did — the scenarios / criteria you checked with a pass/fail on each, the exact URL(s) and viewport where applicable, and anything you could not verify and why. Do NOT re-run the review; write down what you already found."
-      : "- Post a comment with `TASK_BOARD_COMMENT_CREATE` carrying the before/after screenshots you captured, embedded as markdown images referencing their `org/output/...` path, each pair in a two-column table. If the change genuinely has NO visual surface, say so explicitly instead — one sentence naming why (backend-only, config, test-only).",
+      : "- Post a comment with `TASK_BOARD_COMMENT_CREATE` carrying the before/after screenshots you captured, embedded as markdown images referencing their `org/output/...` path, each pair in a two-column table. If the change genuinely has none, write the exact words `" +
+        NO_VISUAL_SURFACE +
+        "` in the comment instead, followed by one sentence naming why (backend-only, config, test-only).",
     "- Do NOT call `TASK_BOARD_REVIEW_DECISION` again; your verdict is already recorded.",
     "- Do NOT change any code.",
     "- If you have already posted such a comment, do nothing and say so.",
@@ -118,7 +122,7 @@ export async function ensureReviewerCommented(
     // A verdict already landed; this is the last thing between the card and a
     // human being able to read what happened.
     runClass: "reviewer",
-    // Still a review run: it writes a comment, not code.
+    // No reviewer `instructions` on purpose: they would ask for a second review.
     agent: { disallowedTools: REVIEWER_DISALLOWED_TOOLS[kind] },
   });
 }
