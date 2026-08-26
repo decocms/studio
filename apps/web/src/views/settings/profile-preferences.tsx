@@ -293,6 +293,34 @@ function PreferencesSection() {
           }
         />
         <SettingsCardItem
+          title={t("settings.preferences.projectSettingsGear")}
+          description={t("settings.preferences.projectSettingsGearDescription")}
+          onClick={() => {
+            track("preferences_project_settings_gear_toggled", {
+              enabled: !preferences.showProjectSettingsGear,
+            });
+            setPreferences((prev) => ({
+              ...prev,
+              showProjectSettingsGear: !prev.showProjectSettingsGear,
+            }));
+          }}
+          action={
+            <Switch
+              aria-label={t("settings.preferences.projectSettingsGear")}
+              checked={preferences.showProjectSettingsGear}
+              onCheckedChange={(checked) => {
+                track("preferences_project_settings_gear_toggled", {
+                  enabled: checked,
+                });
+                setPreferences((prev) => ({
+                  ...prev,
+                  showProjectSettingsGear: checked,
+                }));
+              }}
+            />
+          }
+        />
+        <SettingsCardItem
           title={t("settings.preferences.toolApproval")}
           description={t("settings.preferences.toolApprovalDescription")}
           action={
