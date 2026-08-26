@@ -34,7 +34,7 @@ export type ReadAccess =
 const DEFAULT_CHANGES_LIMIT = 500;
 const LIST_PAGE_SIZE = 1000;
 
-/** Per-file ceiling — matches the sandbox transfer cap (`MAX_TRANSFER_BYTES`). */
+/** Per-file ceiling for org-fs objects. */
 const DEFAULT_MAX_FILE_BYTES = 500 * 1024 * 1024;
 /** Per-volume soft quota; writes that would exceed it are rejected. */
 const DEFAULT_VOLUME_QUOTA_BYTES = 10 * 1024 * 1024 * 1024;

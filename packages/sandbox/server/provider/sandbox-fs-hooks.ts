@@ -74,11 +74,9 @@ export interface SandboxFsHooks {
    * parsed JSON body, sharing the same handle-resolution + auto-restart retry
    * layer as the flat ops above. The richer LLM-visible read/write/edit/grep/
    * glob/bash *tools* in the harness use this to preserve behavior that the flat
-   * ops intentionally drop (the image-read branch, the html-buffer preview
-   * shapes of write/edit, and the `write_from_url`/`upload_to_url` transfer
-   * routes behind `copy_to_sandbox`/`share_with_user`). New harness code should
-   * prefer the typed flat ops; this exists only to cover the daemon surfaces
-   * those ops don't model.
+   * ops intentionally drop (the image-read branch and the html-buffer preview
+   * shapes of write/edit). New harness code should prefer the typed flat ops;
+   * this exists only to cover the daemon surfaces those ops don't model.
    *
    * `signal` is the run's abort signal (AI-SDK `ToolCallOptions.abortSignal`):
    * cancelling the run aborts the in-flight daemon request instead of leaving

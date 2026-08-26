@@ -161,8 +161,6 @@ bun run lint
 - Treat every dispatch frame, route parameter, filesystem path, and proxy target
   as untrusted input. Parse protocol objects with the exported schemas and keep
   path containment checks at filesystem boundaries.
-- Remote file-transfer destinations must match the allowlist derived from trusted
-  server configuration. An empty or invalid allowlist fails closed.
 - Side-effecting work must not be retried unless the operation is idempotent or
   protected by a claim/fence.
 
