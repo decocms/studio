@@ -28,7 +28,7 @@ export const admin = {
   "admin.orgs.organization": "Organization",
   "admin.orgs.searchPlaceholder": "Search organizations by name or slug...",
   "admin.prompts.description":
-    "These prompts are hardcoded in {repo}. Edits here are read from and committed back to {branch} as a pull request, using your own GitHub connection.",
+    "These prompts are hardcoded in {repo}. Edits here are read from {branch} and committed back as a pull request, using the GitHub connection of your {org} organization.",
   "admin.prompts.failedToLoadDescription":
     "Check that GitHub is connected in your active organization, then try again.",
   "admin.prompts.failedToLoadTitle": "Failed to load prompts",

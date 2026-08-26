@@ -31,7 +31,7 @@ export const admin = {
   "admin.orgs.organization": "Organização",
   "admin.orgs.searchPlaceholder": "Procure organizações por nome ou slug...",
   "admin.prompts.description":
-    "Estes prompts são fixos no código em {repo}. As edições aqui são lidas de {branch} e enviadas de volta como um pull request, usando sua própria conexão do GitHub.",
+    "Estes prompts são fixos no código em {repo}. As edições aqui são lidas de {branch} e enviadas de volta como um pull request, usando a conexão do GitHub da sua organização {org}.",
   "admin.prompts.failedToLoadDescription":
     "Verifique se o GitHub está conectado na sua organização ativa e tente novamente.",
   "admin.prompts.failedToLoadTitle": "Falha ao carregar os prompts",

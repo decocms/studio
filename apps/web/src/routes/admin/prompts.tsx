@@ -25,6 +25,8 @@ interface AdminPromptsResponse {
   repo: string;
   branch: string;
   baseSha: string;
+  /** Slug of the org whose GitHub connection authors the PR. */
+  org: string;
   prompts: AdminPrompt[];
 }
 
@@ -36,7 +38,7 @@ export default function AdminPromptsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
 
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: KEYS.deploymentAdminPrompts(),
     queryFn: () => adminFetch<AdminPromptsResponse>("/api/_admin/prompts"),
   });
@@ -94,7 +96,14 @@ export default function AdminPromptsPage() {
     return (
       <EmptyState
         title={t("admin.prompts.failedToLoadTitle")}
-        description={t("admin.prompts.failedToLoadDescription")}
+        // The server's own message names the actual cause (no GitHub
+        // connection, a moved file, a rate limit); a canned string here sent
+        // the first person who hit this off debugging the wrong thing.
+        description={
+          error instanceof Error && error.message
+            ? error.message
+            : t("admin.prompts.failedToLoadDescription")
+        }
         actions={
           <Button variant="outline" size="sm" onClick={() => refetch()}>
             {t("admin.prompts.retry")}
@@ -115,6 +124,7 @@ export default function AdminPromptsPage() {
               {t("admin.prompts.description", {
                 repo: data?.repo ?? "",
                 branch: data?.branch ?? "",
+                org: data?.org ?? "",
               })}
             </p>
 
