@@ -44,7 +44,6 @@ const integrationSchema = z.object({
   boardId: z.string().nullable(),
   boardName: z.string().nullable(),
   statusMapping: statusMappingSchema,
-  jqlFilter: z.string().nullable(),
   autoDelegate: z.boolean(),
   webhookSecret: z.string(),
   enabled: z.boolean(),
@@ -73,7 +72,6 @@ function toOutput(
     boardId: integration.boardId,
     boardName: integration.boardName,
     statusMapping: integration.statusMapping,
-    jqlFilter: integration.jqlFilter,
     autoDelegate: integration.autoDelegate,
     webhookSecret: integration.webhookSecret,
     enabled: integration.enabled,
@@ -141,13 +139,6 @@ export const JIRA_INTEGRATION_UPSERT = defineTool({
       .optional()
       .describe("Display name of that board"),
     statusMapping: statusMappingSchema.optional(),
-    jqlFilter: z
-      .string()
-      .nullable()
-      .optional()
-      .describe(
-        "Extra JQL ANDed into the pull, narrowing the board's own saved filter (null clears it)",
-      ),
     autoDelegate: z
       .boolean()
       .optional()
@@ -217,10 +208,6 @@ export const JIRA_INTEGRATION_UPSERT = defineTool({
           ? input.boardName
           : (existing?.boardName ?? null),
       statusMapping,
-      jqlFilter:
-        input.jqlFilter !== undefined
-          ? input.jqlFilter
-          : (existing?.jqlFilter ?? null),
       autoDelegate: input.autoDelegate ?? existing?.autoDelegate ?? false,
       enabled,
       createdBy: existing?.createdBy ?? userId,

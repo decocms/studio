@@ -50,14 +50,6 @@ export const settings = {
   "settings.jira.mappingDescription":
     "Mapeie as colunas do board pras lanes deste quadro. Colunas marcadas como “Não sincronizar” nunca aparecem aqui.",
   "settings.jira.dontSync": "Não sincronizar",
-  "settings.jira.jqlLabel": "Filtro JQL (opcional)",
-  "settings.jira.jqlDescription":
-    "JQL extra pra restringir o que sincroniza, em cima do filtro salvo do próprio board. Epics e sub-tasks são sempre excluídos.",
-  "settings.jira.jqlPlaceholder":
-    "ex.: labels = storefront AND component = Checkout",
-  "settings.jira.jqlSave": "Salvar filtro",
-  "settings.jira.jqlSaved":
-    "Filtro salvo — vale a partir da próxima sincronização",
   "settings.jira.columnsFailed":
     "Não foi possível carregar as colunas do board",
   "settings.jira.autoDelegateLabel": "Delegar automaticamente pro agente",

@@ -2023,13 +2023,6 @@ export interface OrgJiraIntegrationTable {
    *  no lane are skipped by the sync. Read through `normalizeStatusMapping`,
    *  which also accepts the pre-array shape (migration 205). */
   status_mapping: ColumnType<JiraStatusMapping, string | undefined, string>;
-  /** Optional extra JQL ANDed into the pull (labels, sprints, …) — the
-   *  tenant's way to match their board's saved filter. */
-  jql_filter: ColumnType<
-    string | null,
-    string | null | undefined,
-    string | null
-  >;
   /** Issue lands in a To Do-mapped column → assign the Super Agent. */
   auto_delegate: ColumnType<boolean, boolean | undefined, boolean>;
   /** Capability URL segment for `/api/_jira/webhook/<secret>` — DB-generated,
@@ -2056,7 +2049,6 @@ export interface OrgJiraIntegration {
   boardId: string | null;
   boardName: string | null;
   statusMapping: JiraStatusMapping;
-  jqlFilter: string | null;
   autoDelegate: boolean;
   webhookSecret: string;
   enabled: boolean;

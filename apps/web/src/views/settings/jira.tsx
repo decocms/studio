@@ -473,47 +473,6 @@ function MappingRow({ integration }: { integration: JiraIntegration }) {
   );
 }
 
-function JqlRow({ integration }: { integration: JiraIntegration }) {
-  const t = useT();
-  const upsert = useUpsertJiraIntegration();
-  const [value, setValue] = useState(integration.jqlFilter ?? "");
-  const dirty = value.trim() !== (integration.jqlFilter ?? "");
-
-  return (
-    <SettingsCardItem
-      title={t("settings.jira.jqlLabel")}
-      description={t("settings.jira.jqlDescription")}
-    >
-      <div className="flex items-center gap-2 mt-3">
-        <Input
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder={t("settings.jira.jqlPlaceholder")}
-          className="font-mono text-xs"
-        />
-        <Button
-          variant="outline"
-          size="sm"
-          className="shrink-0"
-          disabled={!dirty || upsert.isPending}
-          onClick={() =>
-            upsert.mutate(
-              { jqlFilter: value.trim() === "" ? null : value.trim() },
-              {
-                onSuccess: () => toast.success(t("settings.jira.jqlSaved")),
-                onError: (err) =>
-                  toast.error(errorMessage(err, t("settings.jira.saveFailed"))),
-              },
-            )
-          }
-        >
-          {t("settings.jira.jqlSave")}
-        </Button>
-      </div>
-    </SettingsCardItem>
-  );
-}
-
 function AutoDelegateRow({ integration }: { integration: JiraIntegration }) {
   const t = useT();
   const upsert = useUpsertJiraIntegration();
@@ -675,7 +634,6 @@ function JiraContent() {
       <ConnectionRow integration={data} />
       <BoardRow integration={data} />
       {data.boardId && <MappingRow integration={data} />}
-      {data.boardId && <JqlRow integration={data} />}
       {data.boardId && <AutoDelegateRow integration={data} />}
       <SyncRow integration={data} />
       <WebhookRow integration={data} />

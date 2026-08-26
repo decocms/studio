@@ -4890,7 +4890,6 @@ export interface StudioToolIO {
             string[]
           >
         >;
-        jqlFilter: string | null;
         autoDelegate: boolean;
         webhookSecret: string;
         enabled: boolean;
@@ -4920,7 +4919,6 @@ export interface StudioToolIO {
             >
           >
         | undefined;
-      jqlFilter?: string | null | undefined;
       autoDelegate?: boolean | undefined;
       enabled?: boolean | undefined;
     };
@@ -4942,7 +4940,6 @@ export interface StudioToolIO {
             string[]
           >
         >;
-        jqlFilter: string | null;
         autoDelegate: boolean;
         webhookSecret: string;
         enabled: boolean;

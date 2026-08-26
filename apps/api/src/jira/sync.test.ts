@@ -22,7 +22,6 @@ function integration(
     boardId: "1610",
     boardName: "Board",
     statusMapping: { triage: ["BACKLOG"] },
-    jqlFilter: null,
     autoDelegate: false,
     webhookSecret: "secret",
     enabled: true,
@@ -40,6 +39,18 @@ describe("buildJql", () => {
     // `a OR b AND issuetype IN …` would bind as `a OR (b AND …)`.
     expect(buildJql(integration(), "project = OS OR project = WEB", NOW)).toBe(
       "(project = OS OR project = WEB) AND issuetype IN standardIssueTypes() ORDER BY updated ASC",
+    );
+  });
+
+  it("is the scope, the issue-type cut and the watermark — nothing else", () => {
+    expect(
+      buildJql(
+        integration({ lastSyncedAt: "2026-03-02T11:00:00.000Z" }),
+        "project = OS",
+        NOW,
+      ),
+    ).toBe(
+      "(project = OS) AND issuetype IN standardIssueTypes() AND updated >= -65m ORDER BY updated ASC",
     );
   });
 
@@ -81,23 +92,5 @@ describe("buildJql", () => {
         NOW,
       ),
     ).toContain("updated >= -5m");
-  });
-
-  it("ANDs the tenant's extra filter, parenthesized", () => {
-    expect(
-      buildJql(
-        integration({ jqlFilter: "labels = web OR labels = seo" }),
-        "project = OS",
-        NOW,
-      ),
-    ).toContain("AND (labels = web OR labels = seo)");
-  });
-
-  it("ignores a whitespace-only extra filter instead of ANDing an empty group", () => {
-    expect(
-      buildJql(integration({ jqlFilter: "   " }), "project = OS", NOW),
-    ).toBe(
-      "(project = OS) AND issuetype IN standardIssueTypes() ORDER BY updated ASC",
-    );
   });
 });

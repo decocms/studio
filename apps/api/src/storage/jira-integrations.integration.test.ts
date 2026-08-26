@@ -39,7 +39,6 @@ describe("jira integration status mapping", () => {
       boardId: "1",
       boardName: "Board",
       statusMapping,
-      jqlFilter: null,
       autoDelegate: false,
       enabled: false,
       createdBy: USER,

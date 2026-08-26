@@ -130,9 +130,6 @@ export function buildJql(
     `(${scopeJql})`,
     // Subtasks are rows on their parent's card, not cards.
     "issuetype IN standardIssueTypes()",
-    ...(integration.jqlFilter?.trim()
-      ? [`(${integration.jqlFilter.trim()})`]
-      : []),
     ...(since !== null ? [`updated >= -${since}m`] : []),
   ].join(" AND ");
   return `${conditions} ORDER BY updated ASC`;

@@ -48,13 +48,6 @@ export const settings = {
   "settings.jira.mappingDescription":
     "Map the board's columns onto this board's lanes. Columns marked “Don't sync” never appear here.",
   "settings.jira.dontSync": "Don't sync",
-  "settings.jira.jqlLabel": "JQL filter (optional)",
-  "settings.jira.jqlDescription":
-    "Extra JQL to narrow what syncs, on top of the board's own saved filter. Epics and sub-tasks are always excluded.",
-  "settings.jira.jqlPlaceholder":
-    "e.g. labels = storefront AND component = Checkout",
-  "settings.jira.jqlSave": "Save filter",
-  "settings.jira.jqlSaved": "Filter saved — it applies from the next sync",
   "settings.jira.columnsFailed": "Could not load the board's columns",
   "settings.jira.autoDelegateLabel": "Auto-delegate to the agent",
   "settings.jira.autoDelegateDescription":

@@ -27,7 +27,6 @@ type Row = {
   board_id: string | null;
   board_name: string | null;
   status_mapping: unknown;
-  jql_filter: string | null;
   auto_delegate: boolean;
   webhook_secret: string;
   enabled: boolean;
@@ -69,7 +68,6 @@ export class JiraIntegrationStorage {
           ? JSON.parse(row.status_mapping)
           : row.status_mapping,
       ),
-      jqlFilter: row.jql_filter,
       autoDelegate: row.auto_delegate,
       webhookSecret: row.webhook_secret,
       enabled: row.enabled,
@@ -99,7 +97,6 @@ export class JiraIntegrationStorage {
     boardId: string | null;
     boardName: string | null;
     statusMapping: JiraStatusMapping;
-    jqlFilter: string | null;
     autoDelegate: boolean;
     enabled: boolean;
     createdBy: string;
@@ -115,7 +112,6 @@ export class JiraIntegrationStorage {
         board_id: params.boardId,
         board_name: params.boardName,
         status_mapping: JSON.stringify(params.statusMapping),
-        jql_filter: params.jqlFilter,
         auto_delegate: params.autoDelegate,
         enabled: params.enabled,
         created_by: params.createdBy,
@@ -128,7 +124,6 @@ export class JiraIntegrationStorage {
           board_id: params.boardId,
           board_name: params.boardName,
           status_mapping: JSON.stringify(params.statusMapping),
-          jql_filter: params.jqlFilter,
           auto_delegate: params.autoDelegate,
           enabled: params.enabled,
           updated_at: new Date(),
