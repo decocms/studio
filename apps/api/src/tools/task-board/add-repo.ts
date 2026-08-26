@@ -239,31 +239,30 @@ async function secondaryRepoConfigs(
   { cloneUrl: string; repoName: string; submoduleCredentials: never[] }[]
 > {
   const dirNames = secondaryRepoDirNames(repos);
-  const out: {
-    cloneUrl: string;
-    repoName: string;
-    submoduleCredentials: never[];
-  }[] = [];
-  for (const [i, repo] of repos.entries()) {
-    if (!repo.connectionId) continue;
-    try {
-      const { cloneUrl } = await buildCloneInfo(
-        repo.connectionId,
-        repo.owner,
-        repo.name,
-        ctx.db,
-        ctx.vault,
-        { bufferMs: CLONE_TOKEN_MIN_TTL_MS },
-      );
-      out.push({ cloneUrl, repoName: dirNames[i]!, submoduleCredentials: [] });
-    } catch (err) {
-      console.warn(
-        `[TASK_ADD_REPO] skipping secondary ${repo.owner}/${repo.name}:`,
-        err instanceof Error ? err.message : err,
-      );
-    }
-  }
-  return out;
+  // Independent per-repo credential mints — run concurrently, not in series.
+  const settled = await Promise.all(
+    repos.map(async (repo, i) => {
+      if (!repo.connectionId) return null;
+      try {
+        const { cloneUrl } = await buildCloneInfo(
+          repo.connectionId,
+          repo.owner,
+          repo.name,
+          ctx.db,
+          ctx.vault,
+          { bufferMs: CLONE_TOKEN_MIN_TTL_MS },
+        );
+        return { cloneUrl, repoName: dirNames[i]!, submoduleCredentials: [] };
+      } catch (err) {
+        console.warn(
+          `[TASK_ADD_REPO] skipping secondary ${repo.owner}/${repo.name}:`,
+          err instanceof Error ? err.message : err,
+        );
+        return null;
+      }
+    }),
+  );
+  return settled.filter((entry) => entry !== null);
 }
 
 export const TASK_ADD_REPO = defineTool({
