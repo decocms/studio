@@ -129,6 +129,17 @@ const MAX_TOTAL_DISPATCH_ATTEMPTS = 5;
 const DAEMON_SILENCE_TIMEOUT_MS = 90_000;
 
 /**
+ * Ceiling on one buffered-but-unterminated NDJSON line, in UTF-16 code units
+ * (~bytes for the JSON this stream carries). The daemon writes one frame per
+ * `Write` + trailing `\n` with no per-frame size cap of its own, so a run that
+ * emits one huge tool output (a giant file cat, an unbounded log dump) as a
+ * single frame would otherwise make `ndjsonLines` grow `buffer` without limit
+ * until the newline finally arrives — a slow memory exhaustion on the API pod
+ * shared by every concurrent sandbox run, not just the offending one.
+ */
+const MAX_NDJSON_LINE_CHARS = 64 * 1024 * 1024; // 64MB
+
+/**
  * The sandbox, not the harness, is what failed — so the turn can be continued
  * on a replacement pod. A harness that crashes reports through its own terminal
  * frame instead, and that is a real terminal we must not paper over by re-running
@@ -1069,6 +1080,11 @@ export async function* ndjsonLines(
       if (step.done) break;
       buffer += decoder.decode(step.value, { stream: true });
       yield* drain(true);
+      if (buffer.length > MAX_NDJSON_LINE_CHARS) {
+        throw new Error(
+          `sandbox dispatch produced a line over ${MAX_NDJSON_LINE_CHARS} chars without a newline — refusing to buffer it further`,
+        );
+      }
     }
     // Flush a multi-byte character `{ stream: true }` held back mid-sequence.
     buffer += decoder.decode();
