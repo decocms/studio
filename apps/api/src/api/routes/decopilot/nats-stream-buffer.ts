@@ -32,6 +32,7 @@ import {
   type NatsConnection,
 } from "@nats-io/nats-core";
 import { retry } from "@decocms/shared/std";
+import { isTransientJsApiError } from "./transient-js-error";
 import { DECOPILOT_STREAM_NAME } from "./projector-stream-messages";
 import type { StreamBuffer } from "./stream-buffer";
 import { natsChunkSource } from "./nats-chunk-source";
@@ -226,19 +227,6 @@ export interface NatsStreamBufferOptions {
    * free function introspects the real connection and can't run on a stub).
    */
   getJetStreamManager?: () => Promise<JetStreamManager>;
-}
-
-/**
- * A JetStream management round-trip that failed transiently (server briefly
- * slow / mid-election / no responders yet) rather than because the request is
- * semantically wrong. Only these are worth retrying — a bad stream config would
- * fail identically every attempt.
- */
-function isTransientJsApiError(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  if (err.name === "TimeoutError") return true;
-  // "not enabled" reads like config but is what a leaderless cluster reports.
-  return /timeout|no responders|503|not enabled/i.test(err.message);
 }
 
 export class NatsStreamBuffer implements StreamBuffer {
