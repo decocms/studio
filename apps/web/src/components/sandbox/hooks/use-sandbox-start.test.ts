@@ -20,7 +20,7 @@ describe("isRetryableSandboxStartError", () => {
     for (const message of [
       "Sandbox start was superseded by a stop",
       "Sandbox did not become ready within 180 seconds",
-      "tunnel_no_first_frame: no response frame arrived before firstFrameTimeoutMs",
+      "sandbox boot failed: repository clone was denied",
       "Virtual MCP not found",
     ]) {
       expect(isRetryableSandboxStartError(new Error(message))).toBe(false);

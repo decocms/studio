@@ -6,7 +6,7 @@ import {
 } from "./ensure-services";
 
 describe("managedNatsCommand", () => {
-  it("runs JetStream on an explicit loopback port and bounded store", () => {
+  it("runs credential-free JetStream on a loopback port and bounded store", () => {
     expect(
       managedNatsCommand("/bin/nats-server", 14222, "/tmp/nats-data"),
     ).toEqual([

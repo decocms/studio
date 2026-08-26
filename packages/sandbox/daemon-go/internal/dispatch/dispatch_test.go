@@ -141,56 +141,6 @@ func TestRebaseWorkspaceCwd(t *testing.T) {
 	}
 }
 
-// `messagesRef` belonged to the retired relay/offload protocol. A direct
-// dispatch may carry an unknown top-level field during a rolling deployment,
-// but the daemon must never fetch it or replace the inline input with it.
-func TestDispatchIgnoresRetiredMessagesRef(t *testing.T) {
-	const token = "tkn"
-	body := `{
-		"runId": "run-legacy-ref",
-		"messagesRef": {
-			"url": "https://not-allowed.invalid/messages",
-			"bytes": 10,
-			"sha256": "retired"
-		},
-		"input": {
-			"threadId": "t1",
-			"userMessage": {"role": "user"},
-			"harness": {},
-			"workspace": {"cwd": null},
-			"models": {"thinking": {"id": "m", "title": "M", "credentialId": "c"}},
-			"mcp": {"url": "https://example.com/mcp", "headers": {}, "expiresAt": 123},
-			"mode": "default",
-			"temperature": 0.5,
-			"toolApprovalLevel": "auto",
-			"user": {"id": "u", "email": "u@example.com"},
-			"organizationId": "org",
-			"agent": {"id": "a"}
-		}
-	}`
-	req := httptest.NewRequest("POST", "/dispatch", strings.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+token)
-	rec := httptest.NewRecorder()
-	NewRegistry().HandleDispatch(rec, req, Deps{
-		DaemonToken: func() string { return token },
-	})
-
-	if rec.Code != 200 {
-		t.Fatalf("legacy messagesRef changed direct dispatch status: got %d body=%q", rec.Code, rec.Body.String())
-	}
-	var result struct {
-		Error *struct {
-			Code string `json:"code"`
-		} `json:"error"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
-		t.Fatalf("direct dispatch result is not JSON: %v", err)
-	}
-	if result.Error == nil || result.Error.Code != "unknown_harness" {
-		t.Fatalf("inline input did not reach the direct runner gate: %q", rec.Body.String())
-	}
-}
-
 // A dispatch for a run that is ALREADY in flight is what Studio sends when the
 // pod that owned the run died and another one picked the work up. It must stop
 // the run it displaces and wait for it to exit — two harnesses editing one

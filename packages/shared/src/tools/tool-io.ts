@@ -127,15 +127,12 @@ export interface StudioToolIO {
             auto_merge?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
+            coding_agents_claude_code?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
           }
         | null
         | undefined;
       main_agent_id?: string | null | undefined;
-      sprint_config?:
-        | { enabled: boolean; weeks: number; startDate: string }
-        | null
-        | undefined;
       createdAt?: string | undefined;
       updatedAt?: string | undefined;
     };
@@ -200,13 +197,11 @@ export interface StudioToolIO {
             auto_merge?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
+            coding_agents_claude_code?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
           }
         | undefined;
       main_agent_id?: string | null | undefined;
-      sprint_config?:
-        | { enabled: boolean; weeks: number; startDate: string }
-        | undefined;
     };
     output: {
       organizationId: string;
@@ -272,15 +267,12 @@ export interface StudioToolIO {
             auto_merge?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
+            coding_agents_claude_code?: boolean | undefined;
             auto_assign_report_tasks_to_super_agent?: boolean | undefined;
           }
         | null
         | undefined;
       main_agent_id?: string | null | undefined;
-      sprint_config?:
-        | { enabled: boolean; weeks: number; startDate: string }
-        | null
-        | undefined;
     };
   };
   NOTIFICATION_LIST: {
@@ -292,6 +284,7 @@ export interface StudioToolIO {
         type:
           | "created"
           | "commented"
+          | "mentioned"
           | "status_changed"
           | "assignee_changed"
           | "review_requested"
@@ -337,7 +330,6 @@ export interface StudioToolIO {
       assigneeId?: string | null | undefined;
       repo?: string | null | undefined;
       dueDate?: string | null | undefined;
-      sprint?: number | null | undefined;
       tagIds?: string[] | undefined;
       prUrl?: string | null | undefined;
     };
@@ -360,7 +352,7 @@ export interface StudioToolIO {
         assignedBy: string | null;
         repo: string | null;
         dueDate: string | null;
-        sprint: number | null;
+        sprintId: string | null;
         sortOrder: number;
         keySeq: number | null;
         retryAttempts: number;
@@ -424,7 +416,7 @@ export interface StudioToolIO {
         assignedBy: string | null;
         repo: string | null;
         dueDate: string | null;
-        sprint: number | null;
+        sprintId: string | null;
         sortOrder: number;
         keySeq: number | null;
         retryAttempts: number;
@@ -466,6 +458,13 @@ export interface StudioToolIO {
         updatedAt: string;
       }[];
       repos: string[];
+      sprints: {
+        id: string;
+        name: string;
+        state: "active" | "future" | "closed";
+        startsAt: string | null;
+        endsAt: string | null;
+      }[];
     };
   };
   TASK_BOARD_ITEM_UPDATE: {
@@ -486,7 +485,6 @@ export interface StudioToolIO {
       assigneeId?: string | null | undefined;
       repo?: string | null | undefined;
       dueDate?: string | null | undefined;
-      sprint?: number | null | undefined;
       sortOrder?: number | undefined;
       tagIds?: string[] | undefined;
       linkThreadId?: string | undefined;
@@ -511,7 +509,7 @@ export interface StudioToolIO {
         assignedBy: string | null;
         repo: string | null;
         dueDate: string | null;
-        sprint: number | null;
+        sprintId: string | null;
         sortOrder: number;
         keySeq: number | null;
         retryAttempts: number;
@@ -569,7 +567,7 @@ export interface StudioToolIO {
         createdAt: string;
         title: string | null;
         body: string | null;
-        state: "open" | "closed" | null;
+        state: "closed" | "open" | null;
         draft: boolean | null;
         merged: boolean | null;
         mergeable: boolean | null;
@@ -4895,7 +4893,6 @@ export interface StudioToolIO {
             string[]
           >
         >;
-        jqlFilter: string | null;
         autoDelegate: boolean;
         webhookSecret: string;
         enabled: boolean;
@@ -4925,7 +4922,6 @@ export interface StudioToolIO {
             >
           >
         | undefined;
-      jqlFilter?: string | null | undefined;
       autoDelegate?: boolean | undefined;
       enabled?: boolean | undefined;
     };
@@ -4947,7 +4943,6 @@ export interface StudioToolIO {
             string[]
           >
         >;
-        jqlFilter: string | null;
         autoDelegate: boolean;
         webhookSecret: string;
         enabled: boolean;
@@ -4986,6 +4981,8 @@ export interface StudioToolIO {
             updated: number;
             unchanged: number;
             skipped: number;
+            archived: number;
+            unmappedStatuses: string[];
           }
         | { error: string };
     };
@@ -7117,7 +7114,7 @@ export interface StudioToolIO {
         number: number;
         title: string;
         body: string;
-        state: "open" | "closed";
+        state: "closed" | "open";
         merged: boolean;
         mergedAt: string | null;
         base: string;

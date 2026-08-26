@@ -119,8 +119,6 @@ pub fn build(
         .route("/edit", post(routes::fs::edit))
         .route("/grep", post(routes::fs::grep))
         .route("/glob", post(routes::fs::glob))
-        .route("/write_from_url", post(routes::fs::write_from_url))
-        .route("/upload_to_url", post(routes::fs::upload_to_url))
         .route("/tools/sync", post(routes::fs::tools_sync))
         .route("/bash", post(routes::bash::bash))
         .route("/tasks", get(routes::tasks::list))

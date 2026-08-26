@@ -2,16 +2,10 @@ import { expect, test } from "bun:test";
 import type { SandboxFsHooks } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/sandbox-fs-hooks-types";
 import { createSwappableFs } from "./swappable-fs";
 
-/** A stub fs whose every hook resolves a value tagged with `label`, so a test
- *  can tell which backing fs a call was routed to. */
+/** A stub whose hooks return `label` so tests can identify their target. */
 function stubFs(label: string): SandboxFsHooks {
   return {
-    onRead: async () => label,
-    onWrite: async () => {},
-    onEdit: async () => {},
     onBash: async () => ({ stdout: label, stderr: "", exitCode: 0 }),
-    onGlob: async () => [label],
-    onGrep: async () => [{ file: label, line: 1, text: label }],
     onProxy: async () => ({ label }),
   };
 }
@@ -19,7 +13,9 @@ function stubFs(label: string): SandboxFsHooks {
 test("forwards calls to the initial fs before any swap", async () => {
   const { fs } = createSwappableFs(stubFs("old"));
   expect((await fs.onBash("ls")).stdout).toBe("old");
-  expect(await fs.onRead("/x")).toBe("old");
+  expect(await fs.onProxy("/_sandbox/read", { path: "/x" })).toEqual({
+    label: "old",
+  });
 });
 
 test("swap re-points subsequent calls at the new fs", async () => {
@@ -32,5 +28,7 @@ test("swap re-points subsequent calls at the new fs", async () => {
   // The captured method reference now routes to the swapped-in fs — this is the
   // property that makes load_repo usable in the same turn.
   expect((await bash("ls")).stdout).toBe("new");
-  expect(await fs.onGlob("**/*")).toEqual(["new"]);
+  expect(await fs.onProxy("/_sandbox/glob", { pattern: "**/*" })).toEqual({
+    label: "new",
+  });
 });

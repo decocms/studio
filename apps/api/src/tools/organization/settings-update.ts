@@ -7,7 +7,6 @@ import {
   SimpleModeConfigSchema,
   DefaultHomeAgentsConfigSchema,
   OrgFlagsSchema,
-  SprintConfigSchema,
 } from "@decocms/shared/organization/schema";
 
 export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
@@ -43,9 +42,6 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
       .describe(
         "Virtual MCP id the org lands on instead of the Super Agent. Pass null to clear.",
       ),
-    sprint_config: SprintConfigSchema.optional().describe(
-      "Task board sprint cadence. Replaced whole (not merged), so pass all three fields.",
-    ),
   }),
 
   outputSchema: z.object({
@@ -57,7 +53,6 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
     default_home_agents: DefaultHomeAgentsConfigSchema.nullable().optional(),
     flags: OrgFlagsSchema.nullable().optional(),
     main_agent_id: z.string().nullable().optional(),
-    sprint_config: SprintConfigSchema.nullable().optional(),
     createdAt: z.string().datetime().describe("ISO 8601 timestamp"),
     updatedAt: z.string().datetime().describe("ISO 8601 timestamp"),
   }),
@@ -85,7 +80,6 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
         default_home_agents: input.default_home_agents,
         flags: input.flags,
         main_agent_id: input.main_agent_id,
-        sprint_config: input.sprint_config,
       },
     );
 

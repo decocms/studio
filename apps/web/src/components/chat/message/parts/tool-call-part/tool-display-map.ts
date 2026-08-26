@@ -4,7 +4,6 @@ import {
   Code01,
   Code02,
   Database01,
-  Download01,
   Edit01,
   Edit02,
   File06,
@@ -15,7 +14,6 @@ import {
   Server01,
   TerminalSquare,
   Tool01,
-  Upload01,
 } from "@untitledui/icons";
 
 export interface ToolDisplay {
@@ -51,8 +49,6 @@ export const TOOL_DISPLAY_MAP: Record<string, ToolDisplay> = {
 
   // Sandbox / code execution tools
   sandbox: { icon: Code02, label: "Run Code" },
-  copy_to_sandbox: { icon: Download01, label: "Load File" },
-  share_with_user: { icon: Upload01, label: "Share with User" },
 
   // Browser / web tools
   take_screenshot: { icon: Monitor01, label: "Take Screenshot" },

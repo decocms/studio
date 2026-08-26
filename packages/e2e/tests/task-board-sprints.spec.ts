@@ -5,20 +5,28 @@ import { expect, test } from "../fixtures/test";
 interface TaskBoardItem {
   id: string;
   title: string;
-  sprint: number | null;
+  sprintId: string | null;
 }
-interface SprintConfig {
-  enabled: boolean;
-  weeks: number;
-  startDate: string;
+interface Sprint {
+  id: string;
+  name: string;
+  state: "active" | "future" | "closed";
+  startsAt: string | null;
+  endsAt: string | null;
 }
-interface OrgSettings {
-  organizationId: string;
-  sprint_config: SprintConfig | null;
+interface BoardList {
+  items: TaskBoardItem[];
+  sprints: Sprint[];
 }
 
+/**
+ * Sprints are mirrored from the tracker the board syncs with, never authored
+ * here — so what this tier can assert is the shape of that contract and the
+ * fact that nothing in Studio can write a card into a sprint. An org with no
+ * Jira connected has no sprints, which is exactly the state under test.
+ */
 test.describe("task board sprints", () => {
-  test("a task's sprint persists through create, update and list", async ({
+  test("the board read carries a sprint list, and every card names its sprint", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
@@ -26,48 +34,50 @@ test.describe("task board sprints", () => {
     const call = <T>(name: string, args: unknown) =>
       callSelfMcpTool<T>(request, orgSlug, name, args);
 
-    const { item: planned } = await call<{ item: TaskBoardItem }>(
-      "TASK_BOARD_ITEM_CREATE",
-      { title: "Planned into sprint 2", sprint: 2 },
-    );
-    expect(planned.sprint).toBe(2);
-
-    // No sprint passed = backlog, which is every existing card's state.
-    const { item: backlog } = await call<{ item: TaskBoardItem }>(
+    const { item } = await call<{ item: TaskBoardItem }>(
       "TASK_BOARD_ITEM_CREATE",
       { title: "Backlog task" },
     );
-    expect(backlog.sprint).toBe(null);
+    expect(item.sprintId).toBe(null);
 
-    const { item: moved } = await call<{ item: TaskBoardItem }>(
-      "TASK_BOARD_ITEM_UPDATE",
-      { id: backlog.id, sprint: 5 },
-    );
-    expect(moved.sprint).toBe(5);
-
-    // Explicit null moves it back to the backlog; an omitted sprint must not.
-    const { item: renamed } = await call<{ item: TaskBoardItem }>(
-      "TASK_BOARD_ITEM_UPDATE",
-      { id: backlog.id, title: "Backlog task, renamed" },
-    );
-    expect(renamed.sprint).toBe(5);
-    const { item: cleared } = await call<{ item: TaskBoardItem }>(
-      "TASK_BOARD_ITEM_UPDATE",
-      { id: backlog.id, sprint: null },
-    );
-    expect(cleared.sprint).toBe(null);
-
-    // The board read is what the UI filters on, so assert it carries the column.
-    const { items } = await call<{ items: TaskBoardItem[] }>(
-      "TASK_BOARD_ITEM_LIST",
-      {},
-    );
-    const byId = new Map(items.map((i) => [i.id, i]));
-    expect(byId.get(planned.id)?.sprint).toBe(2);
-    expect(byId.get(backlog.id)?.sprint).toBe(null);
+    const board = await call<BoardList>("TASK_BOARD_ITEM_LIST", {});
+    // The filter's option set ships with the items, so it is always present.
+    expect(Array.isArray(board.sprints)).toBe(true);
+    expect(board.sprints).toEqual([]);
+    const listed = board.items.find((i) => i.id === item.id);
+    expect(listed).toBeDefined();
+    expect(listed?.sprintId).toBe(null);
   });
 
-  test("the sprint cadence round-trips and is replaced whole", async ({
+  /** Both the old input name and the column's own: accepting either would let a
+   *  card point at a sprint the tracker never put it in. */
+  test("a card's sprint cannot be set from Studio, however it is spelled", async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug } = authedPage;
+    const request = page.context().request;
+    const call = <T>(name: string, args: unknown) =>
+      callSelfMcpTool<T>(request, orgSlug, name, args);
+
+    const { item: created } = await call<{ item: TaskBoardItem }>(
+      "TASK_BOARD_ITEM_CREATE",
+      { title: "Tries to plan itself", sprint: 2, sprintId: "sprint_made_up" },
+    );
+    expect(created.sprintId).toBe(null);
+
+    const { item: updated } = await call<{ item: TaskBoardItem }>(
+      "TASK_BOARD_ITEM_UPDATE",
+      { id: created.id, sprint: 5, sprintId: "sprint_made_up" },
+    );
+    expect(updated.sprintId).toBe(null);
+
+    const board = await call<BoardList>("TASK_BOARD_ITEM_LIST", {});
+    expect(board.items.find((i) => i.id === created.id)?.sprintId).toBe(null);
+  });
+
+  /** The cadence write used to replace a stored `sprint_config` whole. There is
+   *  nothing left for it to replace, and it must still succeed. */
+  test("org settings no longer carry a sprint cadence", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
@@ -76,37 +86,20 @@ test.describe("task board sprints", () => {
       callSelfMcpTool<T>(request, orgSlug, name, args);
     const orgId = await findOrgId(request, orgSlug);
 
-    const before = await call<OrgSettings>("ORGANIZATION_SETTINGS_GET", {});
-    expect(before.sprint_config ?? null).toBe(null);
+    const settings = await call<Record<string, unknown>>(
+      "ORGANIZATION_SETTINGS_GET",
+      {},
+    );
+    expect("sprint_config" in settings).toBe(false);
 
     await call("ORGANIZATION_SETTINGS_UPDATE", {
       organizationId: orgId,
       sprint_config: { enabled: true, weeks: 2, startDate: "2026-01-05" },
     });
-    const enabled = await call<OrgSettings>("ORGANIZATION_SETTINGS_GET", {});
-    expect(enabled.sprint_config).toEqual({
-      enabled: true,
-      weeks: 2,
-      startDate: "2026-01-05",
-    });
-
-    // Writing another setting must not disturb the cadence.
-    await call("ORGANIZATION_SETTINGS_UPDATE", {
-      organizationId: orgId,
-      flags: { auto_merge: false },
-    });
-    const untouched = await call<OrgSettings>("ORGANIZATION_SETTINGS_GET", {});
-    expect(untouched.sprint_config?.weeks).toBe(2);
-
-    await call("ORGANIZATION_SETTINGS_UPDATE", {
-      organizationId: orgId,
-      sprint_config: { enabled: false, weeks: 3, startDate: "2026-02-02" },
-    });
-    const off = await call<OrgSettings>("ORGANIZATION_SETTINGS_GET", {});
-    expect(off.sprint_config).toEqual({
-      enabled: false,
-      weeks: 3,
-      startDate: "2026-02-02",
-    });
+    const after = await call<Record<string, unknown>>(
+      "ORGANIZATION_SETTINGS_GET",
+      {},
+    );
+    expect("sprint_config" in after).toBe(false);
   });
 });

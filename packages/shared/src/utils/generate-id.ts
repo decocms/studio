@@ -27,7 +27,8 @@ type IdPrefixes =
   | "act"
   | "cmt"
   | "nsub"
-  | "notif";
+  | "notif"
+  | "sprint";
 
 export function generatePrefixedId(prefix: IdPrefixes) {
   return `${prefix}_${nanoid()}`;
