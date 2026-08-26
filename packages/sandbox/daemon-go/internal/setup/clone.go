@@ -208,6 +208,27 @@ func SweepSubmoduleCredentials(tmpDir string) {
 	if err := os.Remove(SubmoduleCredentialsPath(tmpDir)); err != nil && !os.IsNotExist(err) {
 		slog.Warn("could not remove leftover submodule credentials file", "error", err.Error())
 	}
+	// Secondary checkouts each get their own tmp dir under here, so their
+	// credentials files are stranded by the same kills and need the same sweep.
+	if err := os.RemoveAll(SecondaryCloneTmpRoot(tmpDir)); err != nil {
+		slog.Warn("could not remove leftover secondary clone tmp dirs", "error", err.Error())
+	}
+}
+
+// SecondaryCloneTmpRoot parents the per-secondary tmp dirs.
+//
+// One dir each, not the shared one: `SubmoduleCredentialsPath` is a single
+// fixed name per tmp dir, so concurrent clones sharing one would write each
+// other's PATs into the same file and delete it out from under each other
+// mid-fetch. Rooted here so the boot sweep can clear the lot.
+func SecondaryCloneTmpRoot(tmpDir string) string {
+	return filepath.Join(tmpDir, "secondary-clones")
+}
+
+// SecondaryCloneTmpDir is one secondary's private tmp dir. `name` is already
+// bounded by config validation and `paths.SecondaryRepoDir`.
+func SecondaryCloneTmpDir(tmpDir, name string) string {
+	return filepath.Join(SecondaryCloneTmpRoot(tmpDir), name)
 }
 
 // submoduleHostRe mirrors SUBMODULE_HOST_RE in

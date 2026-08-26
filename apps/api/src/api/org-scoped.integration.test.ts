@@ -724,29 +724,6 @@ describe("org-scoped API coexistence", () => {
     }
   });
 
-  it("does not mount the link chunk ingest route", async () => {
-    const res = await app.fetch(
-      new Request("http://localhost/api/org_1/links/runs/run_1/chunks", {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer test-key",
-          "content-type": "application/x-ndjson",
-        },
-        body: "{}\n",
-      }),
-    );
-    expect(res.status).toBe(404);
-    // org_1 is a seeded, admitted slug, so resolveOrgFromPath passes. With the
-    // route REMOVED the request falls through to the app-level `notFound`
-    // handler, which answers `{error:"Not Found", path}`. If the route were
-    // still mounted, validateRunAccess would answer `{error:"not found"}`
-    // (lowercase, no `path`). Asserting the global-handler shape is the real
-    // guard that the route is gone — not merely that run_1 is unseeded.
-    const body = (await res.json()) as { error?: string; path?: string };
-    expect(body.error).toBe("Not Found");
-    expect(body.path).toBe("/api/org_1/links/runs/run_1/chunks");
-  });
-
   it("DCR with non-JSON content type passes through byte-for-byte", async () => {
     // RFC 7591 mandates JSON, but a misbehaving client could POST /register
     // with a different content type. The metadata-injection branch is gated on

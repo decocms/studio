@@ -215,7 +215,7 @@ the root — `{"dir":""}` returns `file does not exist`. Freshness is two-layere
 refresh.
 
 **The boot sweep is overdue, not theoretical.** This machine currently has
-**21 ghost NFS mounts** under the old TS link daemon's sandbox dirs with **no
+**21 ghost NFS mounts** under legacy sandbox directories with **no
 rclone process alive** to back them. Sweep by parsing `mount` for `nfs` entries
 whose *mountpoint* is under `<appRoot>/orgs/` and `umount -f` each — keyed on
 mountpoint, never the source, because rclone derives the export name from
@@ -357,9 +357,8 @@ both dialects compile and unit-test on either host.
   which reintroduces exactly the dependency macOS `nfsmount` avoids. Linux is
   no longer a non-goal: it mounts through rclone's own FUSE support, which
   needs no driver install beyond `fuse3`, and is described below.
-- **The link-daemon transport layer** (tunnel, outbox, NATS control plane,
-  local ingress, machine-id) — architecturally obsolete: the webview talks to
-  localhost, so there is no cluster→machine hop to maintain.
+- **Cluster-to-machine transport** — unnecessary because the webview talks to
+  localhost, so there is no remote hop to maintain.
 
 ## Risks
 

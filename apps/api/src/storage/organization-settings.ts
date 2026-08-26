@@ -46,9 +46,6 @@ export class OrganizationSettingsStorage
       >(record.default_home_agents),
       flags: parseJsonColumn<OrganizationSettings["flags"]>(record.flags),
       main_agent_id: record.main_agent_id ?? null,
-      sprint_config: parseJsonColumn<OrganizationSettings["sprint_config"]>(
-        record.sprint_config,
-      ),
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };
@@ -66,7 +63,6 @@ export class OrganizationSettingsStorage
         | "default_home_agents"
         | "flags"
         | "main_agent_id"
-        | "sprint_config"
       >
     >,
   ): Promise<OrganizationSettings> {
@@ -87,9 +83,6 @@ export class OrganizationSettingsStorage
       ? JSON.stringify(data.default_home_agents)
       : null;
     const flagsJson = data?.flags ? JSON.stringify(data.flags) : null;
-    const sprintConfigJson = data?.sprint_config
-      ? JSON.stringify(data.sprint_config)
-      : null;
     await this.db
       .insertInto("organization_settings")
       .values({
@@ -101,7 +94,6 @@ export class OrganizationSettingsStorage
         default_home_agents: defaultHomeAgentsJson,
         flags: flagsJson,
         main_agent_id: data?.main_agent_id ?? null,
-        sprint_config: sprintConfigJson,
         createdAt: now,
         updatedAt: now,
       })
@@ -123,8 +115,6 @@ export class OrganizationSettingsStorage
           // Nullable id: explicit `null` clears the main agent; `undefined`
           // (field absent) skips the column so partial updates don't wipe it.
           main_agent_id: data?.main_agent_id,
-          // Replaced whole, not merged — the three fields are always written together.
-          sprint_config: sprintConfigJson ? sprintConfigJson : undefined,
           updatedAt: now,
         }),
       )
@@ -142,7 +132,6 @@ export class OrganizationSettingsStorage
         default_home_agents: data?.default_home_agents ?? null,
         flags: data?.flags ?? null,
         main_agent_id: data?.main_agent_id ?? null,
-        sprint_config: data?.sprint_config ?? null,
         createdAt: now,
         updatedAt: now,
       };

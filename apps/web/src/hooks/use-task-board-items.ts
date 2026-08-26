@@ -8,11 +8,47 @@ import type {
 } from "@decocms/shared/tools/tool-io";
 import { useTaskBoardEvents } from "@/hooks/use-task-board-events";
 import { useDecopilotEvents } from "@/hooks/use-decopilot-events";
+import type { Sprint } from "@decocms/shared/sprints";
 import { useT } from "@/i18n/use-t";
 import { track } from "@/lib/posthog-client";
 import { toast } from "sonner";
 
 type TaskBoardItem = ToolOutput<"TASK_BOARD_ITEM_LIST">["items"][number];
+
+/**
+ * What the board caches: the cards AND the sprints they can belong to.
+ *
+ * Both come from one `TASK_BOARD_ITEM_LIST` call, and a card carries only its
+ * `sprintId` — caching the items alone would mean a second round trip (or a
+ * second tool) just to turn that id into a name.
+ */
+type TaskBoardData = {
+  items: TaskBoardItem[];
+  sprints: ToolOutput<"TASK_BOARD_ITEM_LIST">["sprints"];
+};
+
+/**
+ * The board's sprints, indexed by id, read from the same cached list the board
+ * loads — so a card can name its sprint without the sprint being threaded down
+ * through every lane and row.
+ *
+ * Shares `useTaskBoardItems`' query key and fetcher (as `useTaskForThread`
+ * does) rather than calling `useTaskBoardItems` itself: that hook also
+ * subscribes to the board's SSE streams, and one subscription per rendered card
+ * is not what a lookup should cost.
+ */
+export function useBoardSprintIndex(): Map<string, Sprint> {
+  const { locator } = useProjectContext();
+  const studio = useStudioTools();
+  const { data } = useQuery({
+    queryKey: KEYS.taskBoardItems(locator),
+    queryFn: async (): Promise<TaskBoardData> => {
+      const { items, sprints } = await studio.call("TASK_BOARD_ITEM_LIST", {});
+      return { items, sprints };
+    },
+  });
+  return new Map((data?.sprints ?? []).map((sprint) => [sprint.id, sprint]));
+}
 
 export function useTaskBoardItems() {
   const { org, locator } = useProjectContext();
@@ -22,7 +58,10 @@ export function useTaskBoardItems() {
 
   const query = useQuery({
     queryKey,
-    queryFn: async () => (await studio.call("TASK_BOARD_ITEM_LIST", {})).items,
+    queryFn: async (): Promise<TaskBoardData> => {
+      const { items, sprints } = await studio.call("TASK_BOARD_ITEM_LIST", {});
+      return { items, sprints };
+    },
     // Backstop for a stream that died without an error; paused when unfocused.
     refetchInterval: 60_000,
   });
@@ -32,11 +71,14 @@ export function useTaskBoardItems() {
   useTaskBoardEvents({
     orgSlug: org.slug,
     onUpdate: (item) => {
-      queryClient.setQueryData<TaskBoardItem[]>(queryKey, (prev) => {
-        const next = prev ?? [];
-        return next.some((t) => t.id === item.id)
-          ? next.map((t) => (t.id === item.id ? item : t))
-          : [item, ...next];
+      queryClient.setQueryData<TaskBoardData>(queryKey, (prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          items: prev.items.some((t) => t.id === item.id)
+            ? prev.items.map((t) => (t.id === item.id ? item : t))
+            : [item, ...prev.items],
+        };
       });
       // Every pushed item change also appends to its timeline — refetch the
       // activity feed so a task dialog left open during a live transition
@@ -51,8 +93,8 @@ export function useTaskBoardItems() {
     },
     // Live deletes: drop the removed card so it clears on every open board.
     onDelete: (id) => {
-      queryClient.setQueryData<TaskBoardItem[]>(queryKey, (prev) =>
-        prev?.filter((t) => t.id !== id),
+      queryClient.setQueryData<TaskBoardData>(queryKey, (prev) =>
+        prev ? { ...prev, items: prev.items.filter((t) => t.id !== id) } : prev,
       );
     },
   });
@@ -67,23 +109,29 @@ export function useTaskBoardItems() {
     onTaskStatus: (event) => {
       const threadId = event.subject;
       const status = event.data.status;
-      queryClient.setQueryData<TaskBoardItem[]>(queryKey, (prev) =>
-        prev?.map((item) =>
-          item.threads.some((t) => t.threadId === threadId)
-            ? {
-                ...item,
-                threads: item.threads.map((t) =>
-                  t.threadId === threadId ? { ...t, status } : t,
-                ),
-              }
-            : item,
-        ),
+      queryClient.setQueryData<TaskBoardData>(queryKey, (prev) =>
+        prev
+          ? {
+              ...prev,
+              items: prev.items.map((item) =>
+                item.threads.some((t) => t.threadId === threadId)
+                  ? {
+                      ...item,
+                      threads: item.threads.map((t) =>
+                        t.threadId === threadId ? { ...t, status } : t,
+                      ),
+                    }
+                  : item,
+              ),
+            }
+          : prev,
       );
     },
   });
 
   return {
-    items: query.data ?? [],
+    items: query.data?.items ?? [],
+    sprints: query.data?.sprints ?? [],
     isLoading: query.isLoading,
     error: query.error,
   };
@@ -109,11 +157,16 @@ export function useTaskBoardItemActions() {
       studio.call("TASK_BOARD_ITEM_UPDATE", input),
     onMutate: async (input) => {
       await queryClient.cancelQueries({ queryKey });
-      const previous = queryClient.getQueryData<TaskBoardItem[]>(queryKey);
-      queryClient.setQueryData<TaskBoardItem[]>(queryKey, (prev) =>
-        prev?.map((item) =>
-          item.id === input.id ? { ...item, ...input } : item,
-        ),
+      const previous = queryClient.getQueryData<TaskBoardData>(queryKey);
+      queryClient.setQueryData<TaskBoardData>(queryKey, (prev) =>
+        prev
+          ? {
+              ...prev,
+              items: prev.items.map((item) =>
+                item.id === input.id ? { ...item, ...input } : item,
+              ),
+            }
+          : prev,
       );
       return { previous };
     },

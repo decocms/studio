@@ -307,6 +307,7 @@ import { OrgFileConfigStorage } from "@/storage/org-file-configs";
 import { OrgSiteStorage } from "@/storage/org-sites";
 import { OrgRepoSyncStorage } from "@/storage/org-repo-syncs";
 import { JiraIntegrationStorage } from "@/storage/jira-integrations";
+import { SprintStorage } from "@/storage/sprints";
 import type { TaskBoardStorage } from "@/storage/task-board";
 import type { NotificationStorage } from "@/storage/notifications";
 import type { OrgFsEntryStorage } from "@/storage/org-fs";
@@ -352,6 +353,7 @@ export interface StudioStorage {
   orgRepoSyncs: OrgRepoSyncStorage;
   jiraIntegrations: JiraIntegrationStorage;
   taskBoard: TaskBoardStorage;
+  sprints: SprintStorage;
   notifications: NotificationStorage;
   orgFsEntries: OrgFsEntryStorage;
   oauthPkceStates: OAuthPkceStateStorage;

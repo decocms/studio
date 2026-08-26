@@ -4,8 +4,7 @@ import { createVmTools } from "./index";
 
 /**
  * Build a `SandboxFsHooks` stub whose `onProxy` records the last daemon path
- * and returns a canned response keyed by path. The richer fs ops delegate to
- * the same recorder so a single fixture covers every vm tool.
+ * and returns a canned response keyed by path.
  */
 function fakeFs(
   respond: (path: string, body: Record<string, unknown>) => unknown,
@@ -20,23 +19,12 @@ function fakeFs(
   };
   const fs: SandboxFsHooks = {
     onProxy,
-    onRead: async (path) =>
-      ((await onProxy("/_sandbox/read", { path })) as { content: string })
-        .content,
-    onWrite: async (path, content) => {
-      await onProxy("/_sandbox/write", { path, content });
-    },
-    onEdit: async () => {},
     onBash: async (command) =>
       (await onProxy("/_sandbox/bash", { command })) as {
         stdout: string;
         stderr: string;
         exitCode: number;
       },
-    onGlob: async (pattern) =>
-      ((await onProxy("/_sandbox/glob", { pattern })) as { files: string[] })
-        .files,
-    onGrep: async () => [],
   };
   return { fs, calls };
 }
@@ -53,9 +41,6 @@ describe("createVmTools", () => {
       toolOutputMap: new Map(),
       needsApproval: false,
       pendingImages: [],
-      ctx: { baseUrl: "https://x", objectStorage: null, organization: null },
-      threadId: "t1",
-      virtualMcpId: "agent-1",
     });
     const out = (await tools.read.execute!({ path: "/app/x.ts" }, {
       toolCallId: "tc1",
@@ -77,9 +62,6 @@ describe("createVmTools", () => {
       toolOutputMap: new Map(),
       needsApproval: false,
       pendingImages: pendingImages as never,
-      ctx: { baseUrl: "https://x", objectStorage: null, organization: null },
-      threadId: "t1",
-      virtualMcpId: "agent-1",
     });
     const out = (await tools.read.execute!({ path: "/app/pic.png" }, {
       toolCallId: "tc2",

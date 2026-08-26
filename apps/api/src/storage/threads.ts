@@ -8,6 +8,7 @@
 import { sql, type Kysely } from "kysely";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
+import type { GithubRepo } from "@decocms/shared/sdk";
 import { DEFAULT_THREAD_TITLE } from "@/api/routes/decopilot/constants";
 import type {
   ThreadCreateData,
@@ -93,6 +94,10 @@ export class OrgScopedThreadStorage {
 
   update(id: string, data: ThreadUpdateData): Promise<Thread> {
     return this.inner.update(id, this.requireOrg(), data);
+  }
+
+  appendThreadGithubRepo(id: string, repo: GithubRepo): Promise<GithubRepo[]> {
+    return this.inner.appendThreadGithubRepo(id, this.requireOrg(), repo);
   }
 
   pinRuntimeIfUnset(
@@ -434,6 +439,54 @@ export class SqlThreadStorage implements ThreadStoragePort {
     }
 
     return thread;
+  }
+
+  /**
+   * Append a repo to `metadata.githubRepos`, in SQL, returning the whole list.
+   *
+   * The append happens inside one UPDATE rather than as a read in JS followed
+   * by a write: the model can fire two `TASK_ADD_REPO` calls at once, and a
+   * read-modify-write loses the slower one — with the pod already holding the
+   * checkout the lost entry describes, so nothing looks wrong until the pod is
+   * recreated without it.
+   *
+   * Keyed on `owner/name`, so re-adding a repo the thread already has is a
+   * no-op instead of a duplicate directory.
+   */
+  async appendThreadGithubRepo(
+    id: string,
+    organizationId: string,
+    repo: GithubRepo,
+  ): Promise<GithubRepo[]> {
+    const key = `${repo.owner}/${repo.name}`.toLowerCase();
+    const row = await this.db
+      .updateTable("threads")
+      .set({
+        metadata: sql`
+          jsonb_set(
+            coalesce(metadata, '{}'::jsonb),
+            '{githubRepos}',
+            coalesce(
+              (
+                SELECT jsonb_agg(entry)
+                  FROM jsonb_array_elements(
+                         coalesce(metadata->'githubRepos', '[]'::jsonb)
+                       ) AS entry
+                 WHERE lower(
+                         (entry->>'owner') || '/' || (entry->>'name')
+                       ) <> ${key}
+              ),
+              '[]'::jsonb
+            ) || ${JSON.stringify([repo])}::jsonb
+          )
+        `,
+        updated_at: new Date(),
+      })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .returning(sql<GithubRepo[]>`metadata->'githubRepos'`.as("repos"))
+      .executeTakeFirst();
+    return row?.repos ?? [];
   }
 
   async pinRuntimeIfUnset(

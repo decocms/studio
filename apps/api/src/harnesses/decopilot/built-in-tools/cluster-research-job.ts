@@ -1,9 +1,7 @@
 /**
- * Cluster `researchJob` hook (spec §6).
+ * Cluster research-job implementation.
  *
- * API-OWNED: this closes over `StudioContext` + a `StudioProvider`, so it
- * cannot move into the portable harness. It is the `deps.researchJob`
- * implementation the cluster wires into `HarnessDeps`; the portable
+ * This closes over `StudioContext` and a `StudioProvider`; the portable
  * `web_search` tool only drives the async generator it returns.
  *
  * Two execution paths, selected per the provider's `asyncResearch` capability:
@@ -39,7 +37,7 @@ import { toStudioStorageUri } from "@/harnesses/lib/decopilot/studio-storage-uri
 import type {
   ResearchParams,
   ResearchResult,
-} from "@/harnesses/lib/harness-deps";
+} from "@/harnesses/lib/decopilot/built-in-tools/web-search";
 import { createOutputPreview } from "@/harnesses/lib/decopilot/built-in-tools/read-tool-output";
 import { LARGE_RESULT_TOKEN_THRESHOLD } from "@/harnesses/lib/decopilot/built-in-tools/constants";
 

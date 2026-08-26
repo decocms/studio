@@ -44,6 +44,53 @@ export interface Workload {
  */
 export type SandboxPurpose = "interactive" | "harness-run";
 
+/**
+ * One repository a sandbox checks out. Shared by the primary (`repo`) and the
+ * extra checkouts (`extraRepos`), which the daemon treats identically apart
+ * from where they land.
+ */
+export interface EnsureRepo {
+  /**
+   * Clone URL. May embed an OAuth credential via userinfo (e.g.
+   * `https://x-access-token:TOKEN@github.com/...`) — `git clone` stores
+   * the credential on the remote so subsequent fetch/pull/push from
+   * inside the sandbox work without further plumbing. The embedded token
+   * is short-lived (~1h GitHub App token); callers should pass a freshly
+   * minted URL on every ensure. Resume/adopt paths forward the new credential
+   * to the daemon so it rotates `origin` in place rather than leaving a stale
+   * token.
+   */
+  cloneUrl: string;
+  /**
+   * GitHub connection backing `cloneUrl`. Persisted so the runner can
+   * re-mint a fresh credential on autonomous recovery (pod recreation
+   * under a live claim) instead of replaying the stale token baked into
+   * `cloneUrl` at first provision. Absent for anonymous/public clones.
+   */
+  connectionId?: string;
+  userName: string;
+  userEmail: string;
+  branch?: string;
+  /** Human-readable label for logs/UI; no functional effect. */
+  displayName?: string;
+  /**
+   * Resolved per-host PATs for fetching private git submodules whose remotes
+   * the main clone's per-repo token can't reach. Delivered to the daemon on
+   * the git-only config channel (never the env bag). Absent/empty → submodules
+   * are only fetched if public. Like `cloneUrl`, these are resolved fresh on
+   * every ensure.
+   */
+  submoduleCredentials?: { host: string; token: string }[];
+  /**
+   * Directory name, for a secondary checkout only. The caller sets it through
+   * `secondaryRepoDirNames`; nothing derives it here. `TASK_ADD_REPO` names the
+   * same repo mid-run and a pod re-provision names it again, and two rules
+   * would move a checkout across a restart, breaking the paths the agent had
+   * been using.
+   */
+  directoryName?: string;
+}
+
 export interface EnsureOptions {
   /**
    * Defaults to `interactive` when absent. AgentSandboxProvider uses this to
@@ -70,39 +117,13 @@ export interface EnsureOptions {
    * Optional first-provisioning clone. `branch` post-clone:
    * fetch-from-origin-or-create.
    */
-  repo?: {
-    /**
-     * Clone URL. May embed an OAuth credential via userinfo (e.g.
-     * `https://x-access-token:TOKEN@github.com/...`) — `git clone` stores
-     * the credential on the remote so subsequent fetch/pull/push from
-     * inside the sandbox work without further plumbing. The embedded token
-     * is short-lived (~1h GitHub App token); callers should pass a freshly
-     * minted URL on every ensure. Resume/adopt paths forward the new credential
-     * to the daemon so it rotates `origin` in place rather than leaving a stale
-     * token.
-     */
-    cloneUrl: string;
-    /**
-     * GitHub connection backing `cloneUrl`. Persisted so the runner can
-     * re-mint a fresh credential on autonomous recovery (pod recreation
-     * under a live claim) instead of replaying the stale token baked into
-     * `cloneUrl` at first provision. Absent for anonymous/public clones.
-     */
-    connectionId?: string;
-    userName: string;
-    userEmail: string;
-    branch?: string;
-    /** Human-readable label for logs/UI; no functional effect. */
-    displayName?: string;
-    /**
-     * Resolved per-host PATs for fetching private git submodules whose remotes
-     * the main clone's per-repo token can't reach. Delivered to the daemon on
-     * the git-only config channel (never the env bag). Absent/empty → submodules
-     * are only fetched if public. Like `cloneUrl`, these are resolved fresh on
-     * every ensure.
-     */
-    submoduleCredentials?: { host: string; token: string }[];
-  };
+  repo?: EnsureRepo;
+  /**
+   * Extra repositories to check out beside `repo`, for an org whose work spans
+   * several. Each needs a `displayName` — it names the directory. Ignored when
+   * `repo` is absent: there is no primary to sit beside.
+   */
+  extraRepos?: EnsureRepo[];
   /** Sandbox image override. */
   image?: string;
   workload?: Workload;

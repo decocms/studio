@@ -22,6 +22,7 @@ import {
 } from "../database/test-db-pg";
 import { CredentialVault } from "../encryption/credential-vault";
 import { JiraIntegrationStorage } from "./jira-integrations";
+import { TaskBoardStorage } from "./task-board";
 
 const ORG = "org_jira_map_1";
 const USER = "user_jm1";
@@ -39,7 +40,6 @@ describe("jira integration status mapping", () => {
       boardId: "1",
       boardName: "Board",
       statusMapping,
-      jqlFilter: null,
       autoDelegate: false,
       enabled: false,
       createdBy: USER,
@@ -111,5 +111,83 @@ describe("jira integration status mapping", () => {
   it("reads an empty mapping as empty rather than throwing", async () => {
     await write({});
     expect((await storage.getByOrg(ORG))?.statusMapping).toEqual({});
+  });
+});
+
+/**
+ * The reconciliation sweep's input. Real Postgres because the whole point is
+ * the join against the card's lane: an already-archived card must not come
+ * back, or every tick would re-archive it and re-append to its timeline.
+ */
+describe("linked issues still on the board", () => {
+  let database: StudioDatabase;
+  let storage: JiraIntegrationStorage;
+  let taskBoard: TaskBoardStorage;
+  const ORG_R = "org_jira_rec_1";
+  const USER_R = "user_jr1";
+
+  beforeAll(async () => {
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
+    const now = new Date().toISOString();
+    await database.db
+      .insertInto("organization")
+      .values({
+        id: ORG_R,
+        name: ORG_R,
+        slug: "org-jira-rec-1",
+        createdAt: now,
+      })
+      .execute();
+    await sql`
+      INSERT INTO "user" (id, email, "emailVerified", name, "createdAt", "updatedAt")
+      VALUES (${USER_R}, ${"jr1@rec.test"}, false, ${USER_R}, ${now}, ${now})
+    `.execute(database.db);
+    storage = new JiraIntegrationStorage(
+      database.db,
+      new CredentialVault("0".repeat(64)),
+    );
+    taskBoard = new TaskBoardStorage(database.db);
+  });
+
+  afterAll(async () => {
+    await closeTestPgDatabase(database);
+  });
+
+  async function linkedCard(issueId: string, status: "todo" | "archived") {
+    const item = await taskBoard.create({
+      organizationId: ORG_R,
+      title: `card for ${issueId}`,
+      status,
+      by: USER_R,
+    });
+    await storage.createLink({
+      itemId: item.id,
+      organizationId: ORG_R,
+      jiraIssueId: issueId,
+      jiraIssueKey: `OS-${issueId}`,
+      jiraUpdatedAt: new Date(),
+      jiraStatus: "BACKLOG",
+    });
+    return item;
+  }
+
+  it("lists live cards and leaves archived ones out", async () => {
+    const live = await linkedCard("9001", "todo");
+    await linkedCard("9002", "archived");
+
+    const listed = await storage.listLinkedIssuesOnBoard(ORG_R);
+    expect(listed.map((l) => l.jiraIssueId)).toEqual(["9001"]);
+    expect(listed[0]).toEqual({
+      itemId: live.id,
+      jiraIssueId: "9001",
+      jiraIssueKey: "OS-9001",
+    });
+  });
+
+  it("is scoped to the org, so one tenant's sweep cannot reach another's", async () => {
+    expect(await storage.listLinkedIssuesOnBoard("org_someone_else")).toEqual(
+      [],
+    );
   });
 });

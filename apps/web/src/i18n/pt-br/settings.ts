@@ -41,7 +41,7 @@ export const settings = {
   "settings.jira.cancel": "Cancelar",
   "settings.jira.boardLabel": "Board do Jira",
   "settings.jira.boardDescription":
-    "Os cards visíveis do board são espelhados — a aba Backlog, epics e sub-tasks não.",
+    "Tudo o que o board abrange é espelhado, incluindo o backlog. Epics e sub-tasks não, e os cards mostram em qual sprint estão.",
   "settings.jira.boardPlaceholder": "Selecione um board",
   "settings.jira.boardSearchPlaceholder": "Buscar boards…",
   "settings.jira.noBoardsMatch": "Nenhum board corresponde à busca",
@@ -50,14 +50,6 @@ export const settings = {
   "settings.jira.mappingDescription":
     "Mapeie as colunas do board pras lanes deste quadro. Colunas marcadas como “Não sincronizar” nunca aparecem aqui.",
   "settings.jira.dontSync": "Não sincronizar",
-  "settings.jira.jqlLabel": "Filtro JQL (opcional)",
-  "settings.jira.jqlDescription":
-    "JQL extra pra restringir o que sincroniza — útil pra casar com o filtro salvo do seu board no Jira. Epics e sub-tasks são sempre excluídos.",
-  "settings.jira.jqlPlaceholder":
-    "ex.: labels = storefront AND sprint in openSprints()",
-  "settings.jira.jqlSave": "Salvar filtro",
-  "settings.jira.jqlSaved":
-    "Filtro salvo — vale a partir da próxima sincronização",
   "settings.jira.columnsFailed":
     "Não foi possível carregar as colunas do board",
   "settings.jira.autoDelegateLabel": "Delegar automaticamente pro agente",
@@ -71,7 +63,9 @@ export const settings = {
   "settings.jira.syncNow": "Sincronizar agora",
   "settings.jira.syncing": "Sincronizando…",
   "settings.jira.syncDone":
-    "Sincronizado: {created} criados, {updated} atualizados",
+    "Sincronizado: {created} criados, {updated} atualizados, {archived} arquivados",
+  "settings.jira.unmappedWarning":
+    "Ainda sem mapeamento: {columns}. Issue que entra numa dessas colunas \u00e9 ignorada, e o card fica parado na lane que tinha antes \u2014 escolha uma lane, ou \u201cN\u00e3o sincronizar\u201d pra dizer que \u00e9 de prop\u00f3sito.",
   "settings.jira.syncFailed": "Falha na sincronização",
   "settings.jira.saveFailed":
     "Não foi possível salvar as configurações do Jira",
@@ -146,6 +140,9 @@ export const settings = {
   "settings.preferences.soundsDescription":
     "Reproduza sons para ações de agentes e notificações.",
   "settings.preferences.soundsPreview": "Ouvir som de notificação",
+  "settings.preferences.projectSettingsGear": "Atalho de configurações",
+  "settings.preferences.projectSettingsGearDescription":
+    "Mostrar um atalho de configurações ao passar o mouse sobre um projeto na barra lateral.",
   "settings.preferences.toolApproval": "Aprovação de ferramentas",
   "settings.preferences.toolApprovalDescription":
     "Controle como as ferramentas são aprovadas antes da execução.",

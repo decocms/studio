@@ -22,6 +22,7 @@ export const sidebar = {
     "Selecione um agente existente",
   "sidebar.navDestinations.home": "Início",
   "sidebar.navDestinations.library": "Biblioteca",
+  "sidebar.navDestinations.projectSettings": "Configurações de {name}",
   "sidebar.navDestinations.reports": "Relatórios",
   "sidebar.navDestinations.tasks": "Tarefas",
   "sidebar.navigationMobile.closeSidebar": "Fechar barra lateral",

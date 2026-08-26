@@ -13,11 +13,14 @@ export function useTaskForThread(threadId: string | undefined): string | null {
   const studio = useStudioTools();
   const { data } = useQuery({
     queryKey: KEYS.taskBoardItems(locator),
-    queryFn: async () => (await studio.call("TASK_BOARD_ITEM_LIST", {})).items,
+    queryFn: async () => {
+      const { items, sprints } = await studio.call("TASK_BOARD_ITEM_LIST", {});
+      return { items, sprints };
+    },
   });
   if (!threadId || !data) return null;
   return (
-    data.find((item) => item.threads.some((t) => t.threadId === threadId))
+    data.items.find((item) => item.threads.some((t) => t.threadId === threadId))
       ?.id ?? null
   );
 }

@@ -12,9 +12,9 @@
 
 import { tool, zodSchema, type UIMessageStreamWriter } from "ai";
 import { z } from "zod";
-import type { ObjectStorageHooks } from "../../harness-deps";
 import { estimateJsonTokens, offloadLargeResult } from "./read-tool-output";
 import { LARGE_RESULT_TOKEN_THRESHOLD } from "./constants";
+import type { PortableMediaObjectStorage } from "./portable-media-tools";
 import {
   browserlessFetch,
   BROWSERLESS_ERROR_BODY_MAX_CHARS,
@@ -30,11 +30,9 @@ export type ScrapeUrlInput = z.infer<typeof ScrapeUrlInputSchema>;
 export function createScrapeUrlTool(
   writer: UIMessageStreamWriter,
   params: {
-    // baseUrl + token come from `deps.browserless`; presence of the hook is
-    // the gate (the cluster only builds this tool when BROWSERLESS_TOKEN is
-    // set). The tool no longer reads `process.env` (HarnessDeps conversion).
+    // The cluster only builds this tool when Browserless is configured.
     browserless: { baseUrl: string; token: string };
-    objectStorage: ObjectStorageHooks;
+    objectStorage: Pick<PortableMediaObjectStorage, "put">;
     toolOutputMap: Map<string, string>;
   },
 ) {

@@ -11,6 +11,11 @@ var validRuntimes = map[string]bool{"node": true, "bun": true, "deno": true}
 var validPms = map[string]bool{"npm": true, "pnpm": true, "yarn": true, "bun": true, "deno": true}
 
 var branchRe = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
+
+// repoNameRe bounds a secondary checkout's directory name: no slash, and it
+// must open on an alphanumeric. That rules out `.`, `..` and `.git`, so the
+// name can neither climb out of the secondary root nor land on a git dir.
+var repoNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 var envKeyRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 const envValueMax = 32 * 1024
@@ -74,6 +79,21 @@ func validateGit(git *GitConfig) string {
 		b := *git.Repository.Branch
 		if !IsSyntheticBranch(b) && (!branchRe.MatchString(b) || strings.HasPrefix(b, "-")) {
 			return fmt.Sprintf("git.repository.branch invalid: %s", b)
+		}
+	}
+	for i, repo := range git.Repositories {
+		if repo.CloneUrl == nil || *repo.CloneUrl == "" {
+			return fmt.Sprintf("git.repositories[%d].cloneUrl is required", i)
+		}
+		// The name becomes a directory, so it is a path input from off-pod.
+		if repo.RepoName == nil || !repoNameRe.MatchString(*repo.RepoName) {
+			return fmt.Sprintf("git.repositories[%d].repoName invalid", i)
+		}
+		if repo.Branch != nil {
+			b := *repo.Branch
+			if !IsSyntheticBranch(b) && (!branchRe.MatchString(b) || strings.HasPrefix(b, "-")) {
+				return fmt.Sprintf("git.repositories[%d].branch invalid: %s", i, b)
+			}
 		}
 	}
 	if git.Identity != nil {

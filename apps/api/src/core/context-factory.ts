@@ -510,6 +510,7 @@ import { OrgFileConfigStorage } from "@/storage/org-file-configs";
 import { OrgSiteStorage } from "@/storage/org-sites";
 import { OrgRepoSyncStorage } from "@/storage/org-repo-syncs";
 import { JiraIntegrationStorage } from "@/storage/jira-integrations";
+import { SprintStorage } from "@/storage/sprints";
 import { TaskBoardStorage } from "@/storage/task-board";
 import { NotificationStorage } from "@/storage/notifications";
 import { OrgFsEntryStorage } from "@/storage/org-fs";
@@ -1403,6 +1404,7 @@ export async function createStudioContextFactory(
     orgRepoSyncs: new OrgRepoSyncStorage(config.db),
     jiraIntegrations: new JiraIntegrationStorage(config.db, vault),
     taskBoard: new TaskBoardStorage(config.db),
+    sprints: new SprintStorage(config.db),
     notifications: new NotificationStorage(config.db),
     orgFsEntries: new OrgFsEntryStorage(config.db),
     oauthPkceStates: new OAuthPkceStateStorage(config.db),

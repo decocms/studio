@@ -2,7 +2,7 @@
 # inside the cluster. The runner (packages/sandbox/server/provider/agent-sandbox/) needs:
 #   - sandboxclaims CRUD/patch (per-tenant claim lifecycle, idle TTL refresh)
 #   - sandboxes get/list/watch (waitForSandboxReady streams `?watch=true`)
-#   - pods/portforward create (kubectl-style tunnel to the daemon container)
+#   - pods/portforward create (kubectl-style port-forward to the daemon container)
 #   - sandboxwarmpools get (tenant pool reconciler: pool selector → its pods)
 # Pods get covers portforward error paths and the tenant-pool reconciler's
 # re-read of a pod's labels before it touches that pod's working tree.

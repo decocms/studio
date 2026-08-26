@@ -33,6 +33,7 @@ import type {
 } from "./types";
 import type { UserModelPreferences } from "@decocms/shared/organization/schema";
 import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
+import type { GithubRepo } from "@decocms/shared/sdk";
 
 export type ThreadUpdateData = Omit<Partial<Thread>, "harness_id"> & {
   /**
@@ -76,6 +77,12 @@ export interface ThreadStoragePort {
    * predicate is the lock: concurrent native and hosted starts cannot
    * overwrite whichever runtime won first.
    */
+  appendThreadGithubRepo(
+    id: string,
+    organizationId: string,
+    repo: GithubRepo,
+  ): Promise<GithubRepo[]>;
+
   pinRuntimeIfUnset(
     id: string,
     organizationId: string,
@@ -339,7 +346,6 @@ export interface OrganizationSettingsStoragePort {
         | "default_home_agents"
         | "flags"
         | "main_agent_id"
-        | "sprint_config"
       >
     >,
   ): Promise<OrganizationSettings>;

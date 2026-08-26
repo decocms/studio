@@ -39,7 +39,7 @@ export const settings = {
   "settings.jira.cancel": "Cancel",
   "settings.jira.boardLabel": "Jira board",
   "settings.jira.boardDescription":
-    "The board's visible cards are mirrored — its Backlog tab, epics and sub-tasks are not.",
+    "Everything the board covers is mirrored, its backlog included. Epics and sub-tasks are not, and cards show which sprint they are in.",
   "settings.jira.boardPlaceholder": "Select a board",
   "settings.jira.boardSearchPlaceholder": "Search boards…",
   "settings.jira.noBoardsMatch": "No board matches that search",
@@ -48,13 +48,6 @@ export const settings = {
   "settings.jira.mappingDescription":
     "Map the board's columns onto this board's lanes. Columns marked “Don't sync” never appear here.",
   "settings.jira.dontSync": "Don't sync",
-  "settings.jira.jqlLabel": "JQL filter (optional)",
-  "settings.jira.jqlDescription":
-    "Extra JQL to narrow what syncs — useful to match your Jira board's saved filter. Epics and sub-tasks are always excluded.",
-  "settings.jira.jqlPlaceholder":
-    "e.g. labels = storefront AND sprint in openSprints()",
-  "settings.jira.jqlSave": "Save filter",
-  "settings.jira.jqlSaved": "Filter saved — it applies from the next sync",
   "settings.jira.columnsFailed": "Could not load the board's columns",
   "settings.jira.autoDelegateLabel": "Auto-delegate to the agent",
   "settings.jira.autoDelegateDescription":
@@ -66,7 +59,10 @@ export const settings = {
   "settings.jira.waitingFirstSync": "Waiting for the first sync",
   "settings.jira.syncNow": "Sync now",
   "settings.jira.syncing": "Syncing…",
-  "settings.jira.syncDone": "Synced: {created} created, {updated} updated",
+  "settings.jira.syncDone":
+    "Synced: {created} created, {updated} updated, {archived} archived",
+  "settings.jira.unmappedWarning":
+    "Not mapped yet: {columns}. An issue moving into one of these columns is skipped, and its card stays in whatever lane it last had — pick a lane, or \u201cDon't sync\u201d to say so on purpose.",
   "settings.jira.syncFailed": "Sync failed",
   "settings.jira.saveFailed": "Could not save the Jira settings",
   "settings.jira.createTokenLink": "Create an API token",
@@ -140,6 +136,9 @@ export const settings = {
   "settings.preferences.soundsDescription":
     "Play sounds for agent actions and notifications.",
   "settings.preferences.soundsPreview": "Preview notification sound",
+  "settings.preferences.projectSettingsGear": "Project settings shortcut",
+  "settings.preferences.projectSettingsGearDescription":
+    "Reveal a settings shortcut when you hover a project in the sidebar.",
   "settings.preferences.toolApproval": "Tool Approval",
   "settings.preferences.toolApprovalDescription":
     "Control how tools are approved before execution.",
