@@ -25,4 +25,12 @@ describe("decofile patchBodySchema", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  test("rejects a delete key over the key-length cap", () => {
+    // Before the fix: only the block value was size-capped, not the key.
+    const result = patchBodySchema.safeParse({
+      delete: ["x".repeat(2000)],
+    });
+    expect(result.success).toBe(false);
+  });
 });
