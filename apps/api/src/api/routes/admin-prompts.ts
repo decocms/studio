@@ -32,20 +32,6 @@ import {
 const PROMPT_REPO = { owner: "decocms", repo: "studio" } as const;
 
 /**
- * The branch the editor reads and targets. Defaults to the repo's default
- * branch, which is what a deployment wants.
- *
- * The override exists because the markers this whole surface addresses only
- * reach the default branch once the PR adding them merges — without it the
- * feature cannot be exercised before that, which is exactly when you want to.
- * Read per call so a long-lived dev server and its env agree.
- */
-function promptBranch(gh: GitDataClient): Promise<string> {
-  const override = process.env.ADMIN_PROMPTS_BRANCH?.trim();
-  return override ? Promise.resolve(override) : gh.getDefaultBranch();
-}
-
-/**
  * The editable prompts, each addressed by the marker pair that fences it in its
  * source file (see `admin-prompt-region.ts`). Two entries share
  * `enqueue-reviewer.ts`: QA and Code Review are one builder with a per-reviewer
@@ -187,7 +173,7 @@ export function createAdminPromptRoutes(): Hono<Env> {
 
   app.get("/prompts", async (c) => {
     const { gh, org } = await clientForActor(c.get("studioContext"));
-    const branch = await promptBranch(gh);
+    const branch = await gh.getDefaultBranch();
     // Pin the read to the commit, not the branch: the sha goes back to the
     // client and is what a save is written against, so a push landing between
     // the two can be reported as a conflict instead of silently reverted.
@@ -235,7 +221,7 @@ export function createAdminPromptRoutes(): Hono<Env> {
     }
 
     const { gh } = await clientForActor(c.get("studioContext"));
-    const base = await promptBranch(gh);
+    const base = await gh.getDefaultBranch();
     const baseSha = await gh.getHeadSha(base);
     if (typeof body.baseSha === "string" && body.baseSha !== baseSha) {
       // The editor loaded an older HEAD; committing its text would revert
