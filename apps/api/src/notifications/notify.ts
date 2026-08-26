@@ -26,6 +26,14 @@ export interface NotifyParams {
   actorId: string | null;
   /** Users this event enrolls. A muted subscription stays muted. */
   alsoSubscribe?: (string | null | undefined)[];
+  /**
+   * Addressed recipients, replacing the subscriber lookup entirely.
+   *
+   * A mention is aimed at the people named in it, so it must reach them even
+   * with the task muted, and must NOT reach the other followers — the opposite
+   * of every subscription-driven event. Still excludes the actor.
+   */
+  recipients?: (string | null | undefined)[];
 }
 
 /** The task's org and title, which `recordActivity` doesn't carry. */
@@ -76,16 +84,19 @@ export async function notify(params: NotifyParams): Promise<void> {
           .execute();
       }
 
-      const subscribers = await tx
-        .selectFrom("notification_subscriptions")
-        .select("user_id")
-        .where("task_board_item_id", "=", taskBoardItemId)
-        .where("subscribed", "=", true)
-        .execute();
+      const addressed = params.recipients;
+      const candidates = addressed
+        ? [...new Set(addressed.filter((id): id is string => !!id))]
+        : (
+            await tx
+              .selectFrom("notification_subscriptions")
+              .select("user_id")
+              .where("task_board_item_id", "=", taskBoardItemId)
+              .where("subscribed", "=", true)
+              .execute()
+          ).map((row) => row.user_id);
 
-      const recipients = subscribers
-        .map((row) => row.user_id)
-        .filter((userId) => userId !== actorId);
+      const recipients = candidates.filter((userId) => userId !== actorId);
       if (recipients.length === 0) return;
       notified = recipients;
 

@@ -19,6 +19,10 @@ import { TaskBoardStorage } from "@/storage/task-board";
 import { CredentialVault } from "@/encryption/credential-vault";
 import type { StudioContext } from "@/core/studio-context";
 import { JIRA_PUSH_QUEUE } from "@/dispatch-queue/queue-names";
+import {
+  planStatusPush,
+  statusPushNoop,
+} from "@decocms/shared/jira-status-mapping";
 import { JiraClient } from "./client";
 import {
   attachImage,
@@ -317,7 +321,9 @@ interface StatusTransitionPlan {
 /** Step 1: plan the transition. Null = nothing to do — integration off, card
  *  unlinked, no Jira status mapped to this lane, already there, or the
  *  issue's workflow offers no transition to it (logged, not an error: the
- *  tenant's Jira workflow is theirs to shape). */
+ *  tenant's Jira workflow is theirs to shape). Which of a lane's statuses the
+ *  card lands in is {@link planStatusPush}'s call, and the reason the mapping
+ *  is ordered. */
 async function resolveStatusTransition(
   params: JiraStatusPushParams,
 ): Promise<StatusTransitionPlan | null> {
@@ -338,31 +344,40 @@ async function resolveStatusTransition(
     params.organizationId,
   );
   if (!item) return null;
-  const targets = Object.entries(integration.statusMapping)
-    .filter(([, lane]) => lane === item.status)
-    .map(([name]) => name);
-  if (targets.length === 0) return null;
-  if (link.jiraStatus && targets.includes(link.jiraStatus)) return null;
+  // Settles the common cases without paying for a `listTransitions` call.
+  if (statusPushNoop(integration.statusMapping, item.status, link.jiraStatus)) {
+    return null;
+  }
+
   const client = new JiraClient(
     integration.siteUrl,
     integration.email,
     integration.apiToken,
   );
   const transitions = await client.listTransitions(link.jiraIssueId);
-  for (const target of targets) {
-    const transition = transitions.find((t) => t.to.name === target);
-    if (transition) {
-      return {
-        jiraIssueId: link.jiraIssueId,
-        transitionId: transition.id,
-        targetName: target,
-      };
+  const plan = planStatusPush({
+    mapping: integration.statusMapping,
+    lane: item.status,
+    currentJiraStatus: link.jiraStatus,
+    availableTransitions: transitions.map((t) => t.to.name),
+  });
+  if (plan.kind !== "transition") {
+    if (plan.kind === "unreachable") {
+      console.warn(
+        `[jira] ${link.jiraIssueKey} is ${item.status} on the board, but its ` +
+          `workflow offers no transition to ${plan.targets.join(" / ")} — ` +
+          `the card will not move on the Jira board`,
+      );
     }
+    return null;
   }
-  console.warn(
-    `[jira] no transition to ${targets.join("/")} available for ${link.jiraIssueKey}`,
-  );
-  return null;
+  const transition = transitions.find((t) => t.to.name === plan.targetName);
+  if (!transition) return null;
+  return {
+    jiraIssueId: link.jiraIssueId,
+    transitionId: transition.id,
+    targetName: plan.targetName,
+  };
 }
 
 /** Step 2: execute it. Re-checks the link first so a retry after a

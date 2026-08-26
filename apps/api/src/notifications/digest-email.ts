@@ -22,6 +22,7 @@ export interface DigestRow {
 const VERB: Record<NotificationType, string> = {
   created: "created",
   commented: "commented on",
+  mentioned: "mentioned you on",
   status_changed: "moved",
   assignee_changed: "reassigned",
   review_requested: "requested review on",

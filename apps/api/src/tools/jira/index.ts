@@ -20,10 +20,14 @@ import { syncJiraIntegrationSafe } from "@/jira/sync";
 import type { OrgJiraIntegration } from "@/storage/types";
 import { TaskBoardItemStatusSchema } from "../task-board/schema";
 
+// `partialRecord`, not `record`: a `z.record` over an enum demands EVERY lane
+// be present, so an org mapping three of its columns would fail validation.
 const statusMappingSchema = z
-  .record(z.string(), TaskBoardItemStatusSchema)
+  .partialRecord(TaskBoardItemStatusSchema, z.array(z.string()))
   .describe(
-    "Jira status name → board status. Issues in unmapped Jira statuses are not synced.",
+    "Board status → its Jira status names, in board order. Several Jira " +
+      "statuses may share a lane; the first is where a card entering that lane " +
+      "is pushed. Issues whose Jira status names no lane are not synced.",
   );
 
 /** The API token never leaves the server — outputs carry the rest.

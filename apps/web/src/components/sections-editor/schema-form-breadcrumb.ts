@@ -551,12 +551,14 @@ function resolveActiveFieldKeyInScope(
   if (breadcrumbPath.length === 0) return null;
   const head = crumbLabel(breadcrumbPath[0]!);
 
-  // Structural fast-path: an item crumb records the array's own key at drill-in, so a drill-down field it names resolves by exact key match — no label/title/arrayLabel guessing. Label matching below stays the fallback for older/context crumbs.
-  for (const key of keys) {
-    const schema = properties[key];
-    if (!schema || !isArrayDrillDownField(schema, objValue[key])) continue;
-    if (breadcrumbPath.some((crumb) => crumbFieldKey(crumb) === key))
-      return key;
+  // Structural fast-path: an item crumb records the array's own key at drill-in, so a drill-down field it names resolves by exact key match — no label/title/arrayLabel guessing. Only the OUTERMOST crumb owns this scope; a deeper crumb (a nested array with the SAME key name, e.g. `tabs[].cards` vs a top-level `cards`) belongs to a nested scope and must not hijack the match. Label matching below stays the fallback for older/context crumbs.
+  const headFieldKey = crumbFieldKey(breadcrumbPath[0]!);
+  if (headFieldKey != null) {
+    for (const key of keys) {
+      const schema = properties[key];
+      if (!schema || !isArrayDrillDownField(schema, objValue[key])) continue;
+      if (key === headFieldKey) return key;
+    }
   }
 
   for (const key of keys) {

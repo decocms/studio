@@ -23,6 +23,8 @@ function summarize(
   switch (update.action) {
     case "commented":
       return t("sidebar.inbox.actionCommented");
+    case "mentioned":
+      return t("sidebar.inbox.actionMentioned");
     case "created":
       return t("sidebar.inbox.actionCreated");
     case "status_changed":

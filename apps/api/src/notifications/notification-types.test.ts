@@ -8,7 +8,7 @@
 
 import { expect, test } from "bun:test";
 import { NOTIFICATION_TYPES } from "@decocms/shared/notification-types";
-import { TYPES as MIGRATION_TYPES } from "../../migrations/177-notifications";
+import { TYPES as MIGRATION_TYPES } from "../../migrations/179-notification-mentioned";
 import { TASK_BOARD_ACTIVITY_ACTIONS } from "../tools/task-board/schema";
 import { COALESCED_ACTIONS } from "../storage/task-board";
 
@@ -16,10 +16,10 @@ test("the DB CHECK constraint allows exactly the types TypeScript declares", () 
   expect([...MIGRATION_TYPES].sort()).toEqual([...NOTIFICATION_TYPES].sort());
 });
 
-test("every type but `commented` is an activity action, so fan-out passes it through", () => {
+test("every type but `commented`/`mentioned` is an activity action, so fan-out passes it through", () => {
   const actions = new Set<string>(TASK_BOARD_ACTIVITY_ACTIONS);
   for (const type of NOTIFICATION_TYPES) {
-    if (type === "commented") continue;
+    if (type === "commented" || type === "mentioned") continue;
     expect(actions.has(type)).toBe(true);
   }
 });

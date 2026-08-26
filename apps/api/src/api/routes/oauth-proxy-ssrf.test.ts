@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   assertOriginEndpointIsSafe,
   fetchAuthorizationServerMetadata,
+  fetchProtectedResourceMetadata,
 } from "./oauth-proxy";
 
 /**
@@ -35,6 +36,43 @@ describe("fetchAuthorizationServerMetadata SSRF guard", () => {
  * address and get the proxy to fetch or redirect there server-side,
  * forwarding the caller's Authorization header along with it.
  */
+/**
+ * `isPrivateUrl` only vets the URL we're about to fetch — a compromised MCP
+ * server can 3xx-redirect the metadata fetch anywhere it likes, and fetch
+ * follows redirects by default, bypassing that check entirely.
+ */
+describe("fetchProtectedResourceMetadata redirect SSRF guard", () => {
+  test("never follows a redirect to another server", async () => {
+    let canaryHit = false;
+    const canary = Bun.serve({
+      port: 0,
+      fetch() {
+        canaryHit = true;
+        return Response.json({});
+      },
+    });
+    const origin = Bun.serve({
+      port: 0,
+      fetch() {
+        return new Response(null, {
+          status: 302,
+          headers: { Location: `http://localhost:${canary.port}/` },
+        });
+      },
+    });
+
+    try {
+      await expect(
+        fetchProtectedResourceMetadata(`http://localhost:${origin.port}`),
+      ).rejects.toThrow(/redirect/i);
+      expect(canaryHit).toBe(false);
+    } finally {
+      origin.stop(true);
+      canary.stop(true);
+    }
+  });
+});
+
 describe("assertOriginEndpointIsSafe SSRF guard", () => {
   test("refuses a private/internal endpoint URL", () => {
     const response = assertOriginEndpointIsSafe(

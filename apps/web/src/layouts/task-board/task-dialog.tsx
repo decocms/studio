@@ -759,7 +759,7 @@ export function TaskBoardItemDialog({
                   onFocusCapture={() => setDescriptionExpanded(true)}
                   onBlurCapture={flush}
                 >
-                  <div ref={measureDescription}>
+                  <div ref={measureDescription} data-testid="task-description">
                     {/* Markdown in, markdown out — the value also becomes
                         prompt context for the agent, and plain-text
                         descriptions written before this editor existed still

@@ -44,7 +44,7 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       .describe(
         "Sprint to plan this task into (1-based, counted from the org's sprint cadence). Omit or null to leave it in the backlog.",
       ),
-    tagIds: z.array(z.string()).optional(),
+    tagIds: z.array(z.string()).max(1000).optional(),
     prUrl: z
       .string()
       .nullable()
@@ -139,6 +139,13 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
         getUserId(ctx)!,
         item.assigneeId === SUPER_AGENT_ASSIGNEE_ID ? null : item.assigneeId,
       ],
+    });
+
+    await ctx.storage.notifications.notifyMentions({
+      taskBoardItemId: item.id,
+      organizationId,
+      actorId: getUserId(ctx)!,
+      body: item.description ?? "",
     });
 
     // Broadcast the new card so every open board adds it live, no polling.

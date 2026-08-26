@@ -21,6 +21,7 @@ import type {
 } from "@/storage/types";
 import { reactToSuperAgentDelegation } from "@/tools/task-board/enqueue-super-agent";
 import { emitTaskBoardUpdated } from "@/tools/task-board/run-reactions";
+import { laneIndex } from "@decocms/shared/jira-status-mapping";
 import {
   collectMentionAccountIds,
   jiraBodyToText,
@@ -246,8 +247,9 @@ async function runSync(
   if (!boardId) {
     throw new Error("No Jira board selected");
   }
-  const mapping = integration.statusMapping;
-  if (Object.keys(mapping).length === 0) {
+  // One reverse index for the whole sync rather than a scan per issue.
+  const laneOf = laneIndex(integration.statusMapping);
+  if (laneOf.size === 0) {
     throw new Error("No status mapping configured");
   }
 
@@ -303,8 +305,9 @@ async function runSync(
         throw new Error(`Unparseable updated on ${issue.key}`);
       }
 
-      const status: TaskBoardItemStatus | undefined =
-        mapping[issue.fields.status.name];
+      const status = laneOf.get(issue.fields.status.name) as
+        | TaskBoardItemStatus
+        | undefined;
       if (!status || !isCardIssue(issue) || backlogIds.has(issue.id)) {
         counts.skipped++;
         watermark = issueUpdated;

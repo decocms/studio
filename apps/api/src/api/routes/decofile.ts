@@ -66,7 +66,16 @@ function isValidBranch(branch: string): boolean {
   );
 }
 
-const patchBodySchema = z
+// Bounds the tree write GitHub does for one commit.
+const MAX_PATCH_KEYS = 500;
+
+// Bounds one block's own size — a block count cap alone still lets one oversized value through.
+const MAX_BLOCK_BYTES = 256 * 1024;
+
+// Bounds one block key's length — a key becomes a GitHub tree path.
+const MAX_BLOCK_KEY_LENGTH = 1024;
+
+export const patchBodySchema = z
   .object({
     set: z.record(z.string(), z.unknown()).optional(),
     delete: z.array(z.string()).optional(),
@@ -74,6 +83,28 @@ const patchBodySchema = z
   .refine(
     (b) => Object.keys(b.set ?? {}).length > 0 || (b.delete?.length ?? 0) > 0,
     { message: "Patch must set or delete at least one block" },
+  )
+  .refine(
+    (b) =>
+      Object.keys(b.set ?? {}).length + (b.delete?.length ?? 0) <=
+      MAX_PATCH_KEYS,
+    { message: `Patch cannot touch more than ${MAX_PATCH_KEYS} blocks` },
+  )
+  .refine(
+    (b) =>
+      Object.values(b.set ?? {}).every(
+        (value) => JSON.stringify(value).length <= MAX_BLOCK_BYTES,
+      ),
+    { message: `Each block must be at most ${MAX_BLOCK_BYTES} bytes` },
+  )
+  .refine(
+    (b) =>
+      [...Object.keys(b.set ?? {}), ...(b.delete ?? [])].every(
+        (key) => key.length <= MAX_BLOCK_KEY_LENGTH,
+      ),
+    {
+      message: `Each block key must be at most ${MAX_BLOCK_KEY_LENGTH} characters`,
+    },
   );
 
 /**

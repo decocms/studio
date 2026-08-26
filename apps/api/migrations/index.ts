@@ -176,8 +176,10 @@ import * as migration174threadmessagepartspersistedat from "./174-thread-message
 import * as migration175taskboardsprints from "./175-task-board-sprints.ts";
 import * as migration176taskboarddonesweepindex from "./176-task-board-done-sweep-index.ts";
 import * as migration177notifications from "./177-notifications.ts";
-import * as migration178taskboarditemtype from "./178-task-board-item-type.ts";
-import * as migration179taskboarditemtyperequired from "./179-task-board-item-type-required.ts";
+import * as migration178jirastatusmappingarray from "./178-jira-status-mapping-array.ts";
+import * as migration179notificationmentioned from "./179-notification-mentioned.ts";
+import * as migration180taskboarditemtype from "./180-task-board-item-type.ts";
+import * as migration181taskboarditemtyperequired from "./181-task-board-item-type-required.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -385,8 +387,10 @@ const migrations: Record<string, Migration> = {
   "175-task-board-sprints": migration175taskboardsprints,
   "176-task-board-done-sweep-index": migration176taskboarddonesweepindex,
   "177-notifications": migration177notifications,
-  "178-task-board-item-type": migration178taskboarditemtype,
-  "179-task-board-item-type-required": migration179taskboarditemtyperequired,
+  "178-jira-status-mapping-array": migration178jirastatusmappingarray,
+  "179-notification-mentioned": migration179notificationmentioned,
+  "180-task-board-item-type": migration180taskboarditemtype,
+  "181-task-board-item-type-required": migration181taskboarditemtyperequired,
 };
 
 export default migrations;

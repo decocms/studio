@@ -184,7 +184,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     /** New drag-to-reorder position within its lane (ascending). */
     sortOrder: z.number().optional(),
     /** Replaces the task's tags with this exact set (org tag ids). */
-    tagIds: z.array(z.string()).optional(),
+    tagIds: z.array(z.string()).max(1000).optional(),
     /** Link an existing chat thread to this task (many-to-many, idempotent). */
     linkThreadId: z.string().optional(),
     prUrl: z
@@ -391,6 +391,18 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
           })),
         );
       }
+    }
+
+    // Only the mentions this edit ADDED — the body is resent whole, so the
+    // previous description is what keeps a typo fix from re-pinging everyone.
+    if (previous && item.description !== previous.description) {
+      await ctx.storage.notifications.notifyMentions({
+        taskBoardItemId: item.id,
+        organizationId,
+        actorId: getUserId(ctx)!,
+        body: item.description ?? "",
+        previousBody: previous.description,
+      });
     }
 
     // Broadcast EVERY change so open boards reflect it live. Not just the
