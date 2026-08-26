@@ -30,10 +30,12 @@ export function secondaryRepoDirNames(repos: SecondaryRepoRef[]): string[] {
       .filter((name, i, all) => all.indexOf(name) !== i),
   );
   const useOwner = repos.map((r) => shared.has(r.name.toLowerCase()));
-  const candidateOf = (i: number) =>
-    sanitize(
-      useOwner[i] ? `${repos[i].owner}-${repos[i].name}` : repos[i].name,
+  const candidateOf = (i: number) => {
+    const r = repos[i]!;
+    return sanitize(
+      useOwner[i] ? `${r.owner}-${r.name}` : r.name,
     ).toLowerCase();
+  };
 
   // An owner-qualified name can itself collide with a sibling's bare name; escalate the losing side until stable, bounded by repos.length.
   for (let pass = 0; pass < repos.length; pass++) {
