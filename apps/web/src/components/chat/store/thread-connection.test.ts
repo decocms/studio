@@ -905,6 +905,38 @@ describe("applyLocalMessage", () => {
     expect(conn.messages.get().map((m) => m.id)).toEqual(["flip-1"]);
   });
 
+  test("a server-dispatched message keeps its metadata.created_at, so it sorts before the reply it triggered", async () => {
+    globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-apply-local-metadata-ts", {
+      client: null,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    // A task-board run replays: the assistant chunks land first, then the
+    // mirrored user-message chunk. Its timestamp lives in `metadata`.
+    conn.messages.set([
+      {
+        id: "reply",
+        role: "assistant",
+        parts: [{ type: "text", text: "on it" }],
+        created_at: "2026-01-01T00:00:05.000Z",
+      } as UIMessage,
+    ]);
+
+    conn.applyLocalMessage({
+      id: "dispatched",
+      role: "user",
+      parts: [{ type: "text", text: "You've been assigned this task." }],
+      metadata: { created_at: "2026-01-01T00:00:01.000Z" },
+    } as UIMessage);
+
+    expect(conn.messages.get().map((m) => m.id)).toEqual([
+      "dispatched",
+      "reply",
+    ]);
+  });
+
   test("dedupes by id when the row is already in the body (refetch raced the flip)", async () => {
     globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
 
