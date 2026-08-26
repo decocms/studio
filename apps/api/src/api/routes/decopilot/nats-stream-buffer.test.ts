@@ -361,6 +361,54 @@ describe("NatsStreamBuffer", () => {
       expect(result).toBeNull();
     });
 
+    it("retries a leaderless stream when opening the tail consumer", async () => {
+      const { sub, end } = createControlledSubscription();
+      let attempts = 0;
+      let failures = 2;
+      const mockJs = {
+        consumers: {
+          get: async () => {
+            attempts++;
+            if (failures-- > 0) throw new Error("stream is offline");
+            return { consume: () => Promise.resolve(sub) };
+          },
+        },
+      };
+      const buffer = new NatsStreamBuffer({
+        getConnection: () => ({}) as never,
+        getJetStream: () => mockJs as never,
+      });
+      (buffer as unknown as { js: unknown }).js = mockJs;
+
+      const stream = await buffer.createTailStream("task-1");
+      end();
+
+      expect(attempts).toBe(3);
+      expect(stream).not.toBeNull();
+    });
+
+    it("does not retry a permanent consumer-open error", async () => {
+      let attempts = 0;
+      const mockJs = {
+        consumers: {
+          get: async () => {
+            attempts++;
+            throw new Error("stream not found");
+          },
+        },
+      };
+      const buffer = new NatsStreamBuffer({
+        getConnection: () => ({}) as never,
+        getJetStream: () => mockJs as never,
+      });
+      (buffer as unknown as { js: unknown }).js = mockJs;
+
+      const result = await buffer.createTailStream("task-1");
+
+      expect(attempts).toBe(1);
+      expect(result).toBeNull();
+    });
+
     it("yields buffered chunks and closes when the subscription ends", async () => {
       const { sub, push, end } = createControlledSubscription();
       const buffer = bufferWith(() => Promise.resolve(sub));
