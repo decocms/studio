@@ -505,6 +505,10 @@ export const settings = {
     "Dar aos runs as conex\u00f5es MCP desta organiza\u00e7\u00e3o",
   "settings.agentTools.orgMcpsDescription":
     "Cada MCP conectado fica dispon\u00edvel para o Super Agent e para os revisores, al\u00e9m das ferramentas de tarefa que eles sempre recebem. As ferramentas carregam s\u00f3 quando o agente procura por uma, ent\u00e3o conectar mais n\u00e3o ocupa o contexto dele.",
+  "settings.agentTools.codingAgentsClaudeCodeTitle":
+    "Rodar chats de Code Agent com o Claude Code",
+  "settings.agentTools.codingAgentsClaudeCodeDescription":
+    "Chats em um agente importado de um reposit\u00f3rio do GitHub rodam dentro do sandbox desse agente, ao lado do checkout, em vez de rodarem no Decopilot. As respostas chegam de turno inteiro, e n\u00e3o palavra por palavra. S\u00f3 vale para chats novos \u2014 um chat existente mant\u00e9m o runtime em que come\u00e7ou.",
   "settings.sprints.title": "Sprints",
   "settings.sprints.description":
     "Planeje tarefas em sprints de dura\u00e7\u00e3o fixa. As sprints s\u00e3o contadas a partir de um dia inicial, ent\u00e3o n\u00e3o h\u00e1 nada para abrir ou fechar.",

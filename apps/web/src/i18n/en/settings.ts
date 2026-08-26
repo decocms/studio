@@ -485,6 +485,10 @@ export const settings = {
   "settings.agentTools.orgMcpsTitle": "Give runs this org's MCP connections",
   "settings.agentTools.orgMcpsDescription":
     "Every MCP you have connected becomes available to the Super Agent and the reviewers, on top of the task tools they always get. Tools load only when the agent looks for one, so connecting more does not crowd its context.",
+  "settings.agentTools.codingAgentsClaudeCodeTitle":
+    "Run Code Agent chats with Claude Code",
+  "settings.agentTools.codingAgentsClaudeCodeDescription":
+    "Chats on an agent imported from a GitHub repo run inside that agent's sandbox, next to the checkout, instead of on Decopilot. Replies arrive a whole turn at a time rather than word by word. Only new chats are affected — an existing chat keeps the runtime it started on.",
   "settings.sprints.title": "Sprints",
   "settings.sprints.description":
     "Plan tasks into fixed-length sprints. Sprints are counted from a start day, so there is nothing to open or close.",
