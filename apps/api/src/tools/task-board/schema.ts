@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { SPRINT_STATES } from "@decocms/shared/sprints";
+
 export { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 
 /** No real task description is this long — caps the row a single write can write. */
@@ -21,6 +23,22 @@ export const TaskBoardItemStatusSchema = z.enum([
   "done",
   "archived",
 ]);
+
+/**
+ * A sprint cards can belong to — mirrored from the tracker the board syncs
+ * with (today Jira), never authored here.
+ *
+ * Shipped alongside the items in `TASK_BOARD_ITEM_LIST` rather than as its own
+ * tool: it is the sprint filter's option set, the same way `repos` is the repo
+ * filter's, and both are needed exactly when the board loads.
+ */
+export const SprintSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  state: z.enum(SPRINT_STATES),
+  startsAt: z.string().nullable(),
+  endsAt: z.string().nullable(),
+});
 
 /**
  * What KIND of work a card is — its shape, not its area.
@@ -156,9 +174,9 @@ export const TaskBoardItemSchema = z.object({
   // `owner/name` of the repo (site) this task pertains to.
   repo: z.string().nullable(),
   dueDate: z.string().datetime().nullable(),
-  /** Sprint this card is planned into, counted 1-based from the org's
-   *  `sprint_config` cadence. Null = backlog, or sprints never configured. */
-  sprint: z.number().int().nullable(),
+  /** The sprint this card belongs to — an id from `TASK_BOARD_ITEM_LIST`'s
+   *  `sprints`. Null = backlog. Mirrored from the tracker, not writable here. */
+  sprintId: z.string().nullable(),
   // Manual drag-to-reorder position within a lane, ascending.
   sortOrder: z.number(),
   // Per-org sequence behind the card's human key (`DECO-01`); null pre-backfill.

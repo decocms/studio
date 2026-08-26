@@ -38,7 +38,6 @@ import {
 } from "@decocms/ui/components/select.tsx";
 import { Page } from "@/components/page";
 import { JiraIcon } from "@/components/icons/jira-icon";
-import { SprintSettings } from "@/components/settings/sprint-settings";
 import {
   AgentToolsSettings,
   ReviewSettings,
@@ -278,8 +277,21 @@ function ColumnMappingRows({ integration }: { integration: JiraIntegration }) {
     );
   }
 
+  /** An unmapped column is not "Don't sync" — nobody chose it. Work moving
+   *  into one freezes its card in whatever lane it last had, silently. */
+  const unmapped = (columns.data ?? []).filter(
+    (column) => !laneOfColumn(mapping, column),
+  );
+
   return (
     <div className="flex flex-col mt-3">
+      {unmapped.length > 0 && (
+        <p className="mb-2 rounded-md bg-warning/10 px-3 py-2 text-xs text-warning-foreground">
+          {t("settings.jira.unmappedWarning", {
+            columns: unmapped.map((column) => column.name).join(", "),
+          })}
+        </p>
+      )}
       {(columns.data ?? []).map((column) => (
         <div
           key={column.name}
@@ -474,47 +486,6 @@ function MappingRow({ integration }: { integration: JiraIntegration }) {
   );
 }
 
-function JqlRow({ integration }: { integration: JiraIntegration }) {
-  const t = useT();
-  const upsert = useUpsertJiraIntegration();
-  const [value, setValue] = useState(integration.jqlFilter ?? "");
-  const dirty = value.trim() !== (integration.jqlFilter ?? "");
-
-  return (
-    <SettingsCardItem
-      title={t("settings.jira.jqlLabel")}
-      description={t("settings.jira.jqlDescription")}
-    >
-      <div className="flex items-center gap-2 mt-3">
-        <Input
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder={t("settings.jira.jqlPlaceholder")}
-          className="font-mono text-xs"
-        />
-        <Button
-          variant="outline"
-          size="sm"
-          className="shrink-0"
-          disabled={!dirty || upsert.isPending}
-          onClick={() =>
-            upsert.mutate(
-              { jqlFilter: value.trim() === "" ? null : value.trim() },
-              {
-                onSuccess: () => toast.success(t("settings.jira.jqlSaved")),
-                onError: (err) =>
-                  toast.error(errorMessage(err, t("settings.jira.saveFailed"))),
-              },
-            )
-          }
-        >
-          {t("settings.jira.jqlSave")}
-        </Button>
-      </div>
-    </SettingsCardItem>
-  );
-}
-
 function AutoDelegateRow({ integration }: { integration: JiraIntegration }) {
   const t = useT();
   const upsert = useUpsertJiraIntegration();
@@ -567,6 +538,7 @@ function SyncRow({ integration }: { integration: JiraIntegration }) {
                       t("settings.jira.syncDone", {
                         created: String(result.created),
                         updated: String(result.updated),
+                        archived: String(result.archived),
                       }),
                     );
                   }
@@ -676,7 +648,6 @@ function JiraContent() {
       <ConnectionRow integration={data} />
       <BoardRow integration={data} />
       {data.boardId && <MappingRow integration={data} />}
-      {data.boardId && <JqlRow integration={data} />}
       {data.boardId && <AutoDelegateRow integration={data} />}
       <SyncRow integration={data} />
       <WebhookRow integration={data} />
@@ -693,7 +664,6 @@ export function OrgTasksSettingsPage() {
           <SettingsPage>
             <Page.Title>{t("settings.nav.tasks")}</Page.Title>
             <ReviewSettings />
-            <SprintSettings />
             <AgentToolsSettings />
             <SettingsSection
               title={

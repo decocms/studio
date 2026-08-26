@@ -54,9 +54,9 @@ import {
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { getInitials } from "@/lib/get-initials";
-import { sprintNumberAt, type SprintConfig } from "@decocms/shared/sprints";
 import {
   formatSprintDates,
+  type Sprint,
   PRIORITIES,
   PRIORITY_CONFIG,
   SUPER_AGENT_ASSIGNEE_ID,
@@ -73,8 +73,9 @@ const UNASSIGNED_FILTER = "__unassigned__";
 /** Sentinel repo filter matching tasks with no associated repo. */
 const NO_REPO_FILTER = "__no_repo__";
 
-/** Sentinel sprint filter matching tasks planned into no sprint (the backlog). */
-export const BACKLOG_FILTER = "backlog";
+/** Sentinel sprint filter matching cards in no sprint (the backlog). Shares the
+ *  namespace with sprint ids, which are `sprint_`-prefixed, so it can't collide. */
+const BACKLOG_FILTER = "backlog";
 
 /** Radix `RadioGroup` needs a string value — this stands in for `null` (any). */
 const ANY_FILTER = "__any__";
@@ -90,8 +91,8 @@ export type TaskFilters = {
   tags: string[];
   /** `owner/name` | NO_REPO_FILTER | null (any repo) */
   repo: string | null;
-  /** Sprint number | BACKLOG_FILTER (no sprint) | null (any sprint) */
-  sprint: number | typeof BACKLOG_FILTER | null;
+  /** Sprint id | BACKLOG_FILTER (no sprint) | null (any sprint) */
+  sprint: string | null;
   /** Free-text match against title/description, empty string = no filter. */
   search: string;
 };
@@ -105,6 +106,23 @@ export const EMPTY_FILTERS: TaskFilters = {
   sprint: null,
   search: "",
 };
+
+/**
+ * Drop a sprint filter naming a sprint this board does not have.
+ *
+ * The value comes from the URL, which outlives the sprint it names — a shared
+ * link, a bookmark, a sprint deleted in Jira. Left in place it hides every card
+ * while its chip reads exactly like "no sprint filter", so the board looks
+ * empty for no stated reason. Call it only once the sprints have loaded, or an
+ * in-flight read would drop a filter that is about to be valid.
+ */
+export function resolveSprintFilter(
+  value: string | null,
+  sprints: readonly Sprint[],
+): string | null {
+  if (value === null || value === BACKLOG_FILTER) return value;
+  return sprints.some((sprint) => sprint.id === value) ? value : null;
+}
 
 function hasActiveFilters(f: TaskFilters): boolean {
   return (
@@ -196,8 +214,8 @@ export function taskMatchesFilters(
   }
   if (f.sprint !== null) {
     if (f.sprint === BACKLOG_FILTER) {
-      if (item.sprint != null) return false;
-    } else if (item.sprint !== f.sprint) {
+      if (item.sprintId != null) return false;
+    } else if (item.sprintId !== f.sprint) {
       return false;
     }
   }
@@ -631,28 +649,24 @@ function RepoFilter({
 function SprintFilter({
   value,
   sprints,
-  sprintConfig,
   onChange,
   block,
 }: {
-  value: number | typeof BACKLOG_FILTER | null;
-  /** Sprint numbers to offer, ascending (see `sprintOptions`). */
-  sprints: number[];
-  /** The cadence behind each option's dates; null once sprints are off. */
-  sprintConfig: SprintConfig | null;
-  onChange: (next: number | typeof BACKLOG_FILTER | null) => void;
+  value: string | null;
+  /** Sprints to offer, in reading order (running → next → past). */
+  sprints: Sprint[];
+  onChange: (next: string | null) => void;
   block?: boolean;
 }) {
   const t = useT();
-  const currentSprint = sprintConfig
-    ? sprintNumberAt(sprintConfig, new Date())
-    : null;
+  const selected = sprints.find((sprint) => sprint.id === value);
   const label =
     value === null
       ? t("taskBoard.taskFilters.sprintLabel")
       : value === BACKLOG_FILTER
         ? t("taskBoard.taskFilters.sprintBacklog")
-        : t("taskBoard.taskFilters.sprintNumber", { number: String(value) });
+        : // A filter can outlive its sprint (a stored URL, a deleted sprint).
+          (selected?.name ?? t("taskBoard.taskFilters.sprintLabel"));
   const triggerClass = chipClass(value !== null, block);
   const chevronClass = cn("shrink-0 opacity-60", block && "ml-auto");
   return (
@@ -669,16 +683,8 @@ function SprintFilter({
         className="max-h-80 w-72 overflow-y-auto"
       >
         <DropdownMenuRadioGroup
-          value={value === null ? ANY_FILTER : String(value)}
-          onValueChange={(next) =>
-            onChange(
-              next === ANY_FILTER
-                ? null
-                : next === BACKLOG_FILTER
-                  ? BACKLOG_FILTER
-                  : Number(next),
-            )
-          }
+          value={value === null ? ANY_FILTER : value}
+          onValueChange={(next) => onChange(next === ANY_FILTER ? null : next)}
         >
           <DropdownMenuRadioItem value={ANY_FILTER}>
             {t("taskBoard.taskFilters.sprintAnySprint")}
@@ -686,19 +692,13 @@ function SprintFilter({
           <DropdownMenuRadioItem value={BACKLOG_FILTER}>
             {t("taskBoard.taskFilters.sprintBacklog")}
           </DropdownMenuRadioItem>
-          {sprints.map((n) => (
-            <DropdownMenuRadioItem key={n} value={String(n)}>
-              <span className="truncate">
-                {sprintConfig ? formatSprintDates(sprintConfig, n) : null}
-              </span>
+          {sprints.map((sprint) => (
+            <DropdownMenuRadioItem key={sprint.id} value={sprint.id}>
+              <span className="truncate">{sprint.name}</span>
               <span className="ml-auto shrink-0 text-muted-foreground">
-                {n === currentSprint
-                  ? t("taskBoard.taskFilters.sprintNumberCurrent", {
-                      number: String(n),
-                    })
-                  : t("taskBoard.taskFilters.sprintNumber", {
-                      number: String(n),
-                    })}
+                {sprint.state === "active"
+                  ? t("taskBoard.taskFilters.sprintCurrent")
+                  : formatSprintDates(sprint)}
               </span>
             </DropdownMenuRadioItem>
           ))}
@@ -791,7 +791,6 @@ function FilterControls({
   tags,
   repos,
   sprints,
-  sprintConfig,
   onChange,
   block,
 }: {
@@ -799,8 +798,7 @@ function FilterControls({
   members: Member[];
   tags: OrgTag[];
   repos: string[];
-  sprints: number[];
-  sprintConfig: SprintConfig | null;
+  sprints: Sprint[];
   onChange: (next: TaskFilters) => void;
   block?: boolean;
 }) {
@@ -845,14 +843,13 @@ function FilterControls({
         />
       )}
       {/* Same reasoning as the repo control: an active sprint filter keeps its
-          chip visible even after the org switches sprints off, so the hidden
+          chip visible even when the board mirrors no sprints, so the hidden
           cards can be brought back. */}
       {(sprints.length > 0 || filters.sprint !== null) && (
         <SprintFilter
           block={block}
           value={filters.sprint}
           sprints={sprints}
-          sprintConfig={sprintConfig}
           onChange={(sprint) => onChange({ ...filters, sprint })}
         />
       )}
@@ -867,15 +864,13 @@ export function TaskFiltersBar({
   tags,
   repos,
   sprints,
-  sprintConfig,
   onChange,
 }: {
   filters: TaskFilters;
   members: Member[];
   tags: OrgTag[];
   repos: string[];
-  sprints: number[];
-  sprintConfig: SprintConfig | null;
+  sprints: Sprint[];
   onChange: (next: TaskFilters) => void;
 }) {
   const t = useT();
@@ -891,7 +886,6 @@ export function TaskFiltersBar({
         tags={tags}
         repos={repos}
         sprints={sprints}
-        sprintConfig={sprintConfig}
         onChange={onChange}
       />
       {hasActiveFilters(filters) && (
@@ -918,15 +912,13 @@ export function TaskFiltersDrawer({
   tags,
   repos,
   sprints,
-  sprintConfig,
   onChange,
 }: {
   filters: TaskFilters;
   members: Member[];
   tags: OrgTag[];
   repos: string[];
-  sprints: number[];
-  sprintConfig: SprintConfig | null;
+  sprints: Sprint[];
   onChange: (next: TaskFilters) => void;
 }) {
   const t = useT();
@@ -958,7 +950,6 @@ export function TaskFiltersDrawer({
             tags={tags}
             repos={repos}
             sprints={sprints}
-            sprintConfig={sprintConfig}
             onChange={onChange}
           />
         </div>
