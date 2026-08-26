@@ -71,14 +71,16 @@ describe("buildJql", () => {
     expect(jql).toContain("updated >= -65m");
   });
 
-  it("still overlaps when the watermark is in the future (clock skew)", () => {
-    const jql = buildJql(
-      integration({ lastSyncedAt: "2026-03-02T12:30:00.000Z" }),
-      "project = OS",
-      NOW,
-    );
-    expect(jql).toContain("updated >= -");
-    expect(jql).not.toContain("-0m");
+  /** The watermark is Jira's `updated` on Jira's clock, so it can sit ahead of
+   *  ours — and `updated >= --25m` is a JQL 400 on every tick until they meet. */
+  it("clamps a watermark in the future to the overlap window", () => {
+    expect(
+      buildJql(
+        integration({ lastSyncedAt: "2026-03-02T12:30:00.000Z" }),
+        "project = OS",
+        NOW,
+      ),
+    ).toContain("updated >= -5m");
   });
 
   it("ANDs the tenant's extra filter, parenthesized", () => {

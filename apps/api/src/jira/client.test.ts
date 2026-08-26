@@ -750,11 +750,27 @@ describe("JiraClient issue reads", () => {
     );
   });
 
-  it("narrows to the board's project when its filter is not readable", async () => {
+  it("refuses to widen scope when the board's filter is unreadable", async () => {
+    // Falling back to the project here would put issues that are NOT on this
+    // board — another team's, in a shared project — on the customer's board.
     await withRoutes(
       [
         [/board\/1610\/configuration/, { filter: { id: "77" } }],
         [/filter\/77/, () => new Response("Forbidden", { status: 403 })],
+        [/board\/1610$/, { location: { projectKey: "OS" } }],
+      ],
+      async () => {
+        await expect(client().getBoardScopeJql("1610")).rejects.toThrow(
+          "cannot read",
+        );
+      },
+    );
+  });
+
+  it("scopes by project only when the board has no filter at all", async () => {
+    await withRoutes(
+      [
+        [/board\/1610\/configuration/, { filter: null }],
         [/board\/1610$/, { location: { projectKey: "OS" } }],
       ],
       async () => {
@@ -839,7 +855,7 @@ describe("JiraClient issue reads", () => {
   it("syncs without sprints when the site has no Sprint field", async () => {
     await withRoutes(
       [
-        [/rest\/api\/3\/field/, () => new Response("nope", { status: 403 })],
+        [/rest\/api\/3\/field/, [{ id: "summary" }]],
         [
           /search\/jql/,
           {
@@ -864,6 +880,105 @@ describe("JiraClient issue reads", () => {
         const page = await client().searchIssues({ jql: "x" });
         expect(page.issues[0]?.sprints).toEqual([]);
         expect(calls.at(-1)).not.toContain("customfield");
+      },
+    );
+  });
+
+  it("fails the read rather than reporting every card as sprintless", async () => {
+    // Swallowing this would clear the sprint of every card the run touches.
+    await withRoutes(
+      [[/rest\/api\/3\/field/, () => new Response("nope", { status: 403 })]],
+      async () => {
+        await expect(client().searchIssues({ jql: "x" })).rejects.toThrow(
+          "403",
+        );
+      },
+    );
+  });
+
+  it("reads whichever project's Sprint field the issue actually carries", async () => {
+    const sprintField = (id: string) => ({
+      id,
+      schema: { custom: "com.pyxis.greenhopper.jira:gh-sprint" },
+    });
+    await withRoutes(
+      [
+        [
+          /rest\/api\/3\/field/,
+          [sprintField("customfield_10020"), sprintField("customfield_10105")],
+        ],
+        [
+          /search\/jql/,
+          {
+            issues: [
+              {
+                id: "1",
+                key: "OS-1",
+                fields: {
+                  summary: "s",
+                  status: { name: "BACKLOG" },
+                  priority: null,
+                  issuetype: null,
+                  updated: "2026-03-02T00:00:00.000Z",
+                  description: null,
+                  customfield_10020: null,
+                  customfield_10105: [
+                    { id: 9, name: "Sprint 9", state: "active" },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      ],
+      async (calls) => {
+        const page = await client().searchIssues({ jql: "x" });
+        expect(page.issues[0]?.sprints.map((s) => s.name)).toEqual([
+          "Sprint 9",
+        ]);
+        expect(calls.at(-1)).toContain("customfield_10105");
+      },
+    );
+  });
+
+  it("mirrors the board's own sprints, so a closed one stops reading as current", async () => {
+    await withRoutes(
+      [
+        [
+          /board\/1610\/sprint/,
+          {
+            values: [
+              { id: 11, name: "Sprint 11", state: "closed" },
+              { id: 12, name: "Sprint 12", state: "active" },
+            ],
+            isLast: true,
+          },
+        ],
+      ],
+      async () => {
+        expect(
+          (await client().listBoardSprints("1610")).map((s) => [
+            s.name,
+            s.state,
+          ]),
+        ).toEqual([
+          ["Sprint 11", "closed"],
+          ["Sprint 12", "active"],
+        ]);
+      },
+    );
+  });
+
+  it("treats a board with no sprint support as having none, not as an error", async () => {
+    await withRoutes(
+      [
+        [
+          /board\/1610\/sprint/,
+          () => new Response("not a scrum board", { status: 400 }),
+        ],
+      ],
+      async () => {
+        expect(await client().listBoardSprints("1610")).toEqual([]);
       },
     );
   });

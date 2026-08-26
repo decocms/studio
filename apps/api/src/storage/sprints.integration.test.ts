@@ -79,6 +79,45 @@ describe("sprint mirror", () => {
     expect(mirrored?.state).toBe("closed");
   });
 
+  /** The board's whole sprint list lands in one statement on every tick, which
+   *  is what keeps a sprint that closed in Jira from reading as the running one
+   *  forever — no issue in it has to change for that to be noticed. */
+  it("mirrors a board's sprints in one write, refreshing what Jira owns", async () => {
+    const board = [
+      jiraSprint({ jiraSprintId: "31", name: "S31", state: "active" as const }),
+      jiraSprint({ jiraSprintId: "32", name: "S32", state: "future" as const }),
+    ];
+    const first = await sprints.upsertManyFromJira(ORG, board);
+    expect([...first.keys()].sort()).toEqual(["31", "32"]);
+
+    const second = await sprints.upsertManyFromJira(ORG, [
+      { ...board[0]!, state: "closed" as const, name: "S31 (done)" },
+      board[1]!,
+    ]);
+    expect(second.get("31")).toBe(first.get("31"));
+    const mirrored = await sprints.listByOrg(ORG);
+    const refreshed = mirrored.find((s) => s.id === first.get("31"));
+    expect(refreshed?.state).toBe("closed");
+    expect(refreshed?.name).toBe("S31 (done)");
+  });
+
+  it("survives a board listing the same sprint twice", async () => {
+    // Postgres refuses an ON CONFLICT DO UPDATE that touches one row twice.
+    const twice = [
+      jiraSprint({ jiraSprintId: "41", name: "S41" }),
+      jiraSprint({ jiraSprintId: "41", name: "S41 again" }),
+    ];
+    const ids = await sprints.upsertManyFromJira(ORG, twice);
+    expect(ids.size).toBe(1);
+    expect(
+      (await sprints.listByOrg(ORG)).filter((s) => s.name.startsWith("S41")),
+    ).toHaveLength(1);
+  });
+
+  it("writes nothing for a board with no sprints", async () => {
+    expect((await sprints.upsertManyFromJira(ORG, [])).size).toBe(0);
+  });
+
   it("keeps two orgs mirroring the same Jira sprint id apart", async () => {
     const mine = await sprints.upsertFromJira(ORG, jiraSprint());
     const theirs = await sprints.upsertFromJira(OTHER_ORG, jiraSprint());

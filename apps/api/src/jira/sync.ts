@@ -56,6 +56,10 @@ const MAX_ISSUES_PER_RUN = 500;
  *  re-fetched issues no-op via the link's `jira_updated_at`. */
 const WATERMARK_OVERLAP_MINUTES = 5;
 
+/** Search pages one run will walk. `MAX_ISSUES_PER_RUN` alone cannot bound the
+ *  loop: an empty page carrying a token consumes no issue budget. */
+const MAX_PAGES_PER_RUN = 25;
+
 const MAX_DESCRIPTION_CHARS = 10_000;
 
 /** Jira's default priority scheme → board priority. Unknown names → medium. */
@@ -104,6 +108,10 @@ export async function syncJiraIntegrationSafe(
  *
  * Exported for tests — this string decides which of a customer's issues exist
  * on their board, and the ordering is what makes the watermark meaningful.
+ *
+ * The elapsed window is clamped at 0: the watermark is Jira's `updated`, on
+ * Jira's clock, so it can sit ahead of ours, and a negative window emits
+ * `updated >= --25m` — a JQL 400 on every tick until the clocks converge.
  */
 export function buildJql(
   integration: OrgJiraIntegration,
@@ -111,11 +119,13 @@ export function buildJql(
   now: Date,
 ): string {
   // Relative-minutes JQL sidesteps JQL's the-user's-timezone date parsing.
-  const since = integration.lastSyncedAt
+  const elapsed = integration.lastSyncedAt
     ? Math.ceil(
         (now.getTime() - new Date(integration.lastSyncedAt).getTime()) / 60_000,
-      ) + WATERMARK_OVERLAP_MINUTES
+      )
     : null;
+  const since =
+    elapsed === null ? null : Math.max(0, elapsed) + WATERMARK_OVERLAP_MINUTES;
   const conditions = [
     `(${scopeJql})`,
     // Subtasks are rows on their parent's card, not cards.
@@ -265,11 +275,17 @@ async function pullComments(
 }
 
 /**
- * Jira sprint → local sprint id, upserting the first time a run sees one.
+ * Jira sprint id → local sprint id.
  *
- * Per-run memo, not a long-lived cache: a sprint's name and state are Jira's,
- * so every run has to re-read them at least once, and a run that touches 500
- * issues of one sprint must not write the row 500 times.
+ * Seeded from the BOARD's sprints, in one write, before any issue is read —
+ * that is what keeps a sprint's name and state current when no issue in it
+ * changed, and it means the sprint filter offers the board's sprints even on a
+ * tick that imports nothing. Deriving the mirror from issues alone left a
+ * sprint that finished in Jira reading as the running one indefinitely.
+ *
+ * `localIdFor` still upserts on a miss: an issue can carry a sprint from
+ * another board (a shared project, a moved issue), and a card must not lose
+ * its sprint just because this board never heard of it.
  */
 class JiraSprintMirror {
   private readonly ids = new Map<string, string>();
@@ -279,23 +295,36 @@ class JiraSprintMirror {
     private readonly organizationId: string,
   ) {}
 
+  async seed(refs: readonly JiraSprintRef[]): Promise<void> {
+    if (refs.length === 0) return;
+    const mirrored = await this.ctx.storage.sprints.upsertManyFromJira(
+      this.organizationId,
+      refs.map(toUpsert),
+    );
+    for (const [jiraId, localId] of mirrored) this.ids.set(jiraId, localId);
+  }
+
   async localIdFor(ref: JiraSprintRef | null): Promise<string | null> {
     if (!ref) return null;
     const known = this.ids.get(ref.id);
     if (known) return known;
     const id = await this.ctx.storage.sprints.upsertFromJira(
       this.organizationId,
-      {
-        jiraSprintId: ref.id,
-        name: ref.name,
-        state: ref.state,
-        startsAt: ref.startsAt,
-        endsAt: ref.endsAt,
-      },
+      toUpsert(ref),
     );
     this.ids.set(ref.id, id);
     return id;
   }
+}
+
+function toUpsert(ref: JiraSprintRef) {
+  return {
+    jiraSprintId: ref.id,
+    name: ref.name,
+    state: ref.state,
+    startsAt: ref.startsAt,
+    endsAt: ref.endsAt,
+  };
 }
 
 async function runSync(
@@ -330,6 +359,7 @@ async function runSync(
     runStartedAt,
   );
   const sprints = new JiraSprintMirror(ctx, orgId);
+  await sprints.seed(await client.listBoardSprints(boardId));
   const counts: JiraSyncCounts = {
     created: 0,
     updated: 0,
@@ -339,11 +369,17 @@ async function runSync(
   let watermark: Date | undefined;
   let nextPageToken: string | undefined;
   let processed = 0;
+  let pages = 0;
 
-  while (processed < MAX_ISSUES_PER_RUN) {
+  while (processed < MAX_ISSUES_PER_RUN && pages < MAX_PAGES_PER_RUN) {
+    pages++;
     const page = await client.searchIssues({ jql, nextPageToken });
-    if (page.issues.length === 0) break;
+    // Read before the empty check — an empty page can still carry a token.
     nextPageToken = page.nextPageToken ?? undefined;
+    if (page.issues.length === 0) {
+      if (!nextPageToken) break;
+      continue;
+    }
 
     const links = await ctx.storage.jiraIntegrations.getLinksByIssueIds(
       orgId,

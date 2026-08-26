@@ -17,7 +17,7 @@
 import { retry } from "@decocms/shared/std";
 import { type AdfMedia, markdownToAdf } from "./markdown-adf";
 import {
-  findSprintFieldId,
+  findSprintFieldIds,
   type JiraSprintRef,
   parseSprintRefs,
   stripOrderBy,
@@ -98,6 +98,13 @@ const ISSUE_FIELDS =
 
 /** Issues per search page. Jira's own ceiling for a fields-bearing search. */
 const SEARCH_PAGE_SIZE = 100;
+
+/** Sprint fields asked for per search. One per team-managed project, so a big
+ *  site has many; past this the URL grows for fields no synced board uses. */
+const MAX_SPRINT_FIELDS = 20;
+
+/** Sprints read off one board — bounds a decade of history on a busy board. */
+const MAX_BOARD_SPRINTS = 500;
 
 /** A non-2xx answer from Jira, carrying the status so a caller can react to a
  *  specific one (a 400 means the request body was refused, not the request). */
@@ -337,9 +344,12 @@ export class JiraClient {
    * described by its filter, and pulling its whole project instead would put
    * another team's issues on the customer's board.
    *
-   * Falls back to the board's project when the filter is unreadable — a filter
-   * can be shared with fewer people than the board it drives, and answering 403
-   * there should narrow the pull, not stop the sync.
+   * Which is why an unreadable filter FAILS rather than falling back to the
+   * project — a filter can be shared with fewer people than the board it
+   * drives, and the safe answer to "I can't see the scope" is to stop, not to
+   * guess a wider one. The tenant sees it in `last_sync_error` and shares the
+   * filter. Only a board with no filter at all (`/configuration` says so) is
+   * scoped by its project, because then nothing narrower exists.
    */
   async getBoardScopeJql(boardId: string): Promise<string> {
     const id = assertBoardId(boardId);
@@ -348,18 +358,19 @@ export class JiraClient {
     );
     const filterId = config.filter?.id;
     if (filterId && /^\d+$/.test(String(filterId))) {
+      let jql: string;
       try {
         const filter = await this.request<{ jql?: string }>(
           `/rest/api/3/filter/${filterId}`,
         );
-        const jql = stripOrderBy(filter.jql ?? "");
-        if (jql) return jql;
-      } catch (err) {
-        console.warn(
-          `[jira] board ${id}'s filter ${filterId} is unreadable, falling back to its project:`,
-          err instanceof Error ? err.message : err,
+        jql = stripOrderBy(filter.jql ?? "");
+      } catch (cause) {
+        throw new Error(
+          `Jira board ${id} is driven by filter ${filterId}, which these credentials cannot read — share that filter with the integration's account (syncing the board's project instead would pull in issues that are not on this board)`,
+          { cause },
         );
       }
+      if (jql) return jql;
     }
     const board = await this.request<{
       location?: { projectKey?: string } | null;
@@ -367,35 +378,73 @@ export class JiraClient {
     const projectKey = board.location?.projectKey;
     if (!projectKey) {
       throw new Error(
-        `Jira board ${id} exposes neither a readable filter nor a project — nothing to sync`,
+        `Jira board ${id} exposes neither a filter nor a project — nothing to sync`,
       );
     }
     return `project = ${JSON.stringify(projectKey)}`;
   }
 
   /**
-   * The site's Sprint custom-field id, resolved once per client.
+   * Every Sprint custom field on the site, resolved once per client.
    *
-   * Cached as a promise so a page of issues resolving it concurrently costs one
-   * request, and cached even when it comes back null: a site without Jira
-   * Software has no sprint field and must not pay a lookup per sync.
+   * Plural because Sprint is per-project on Cloud: each team-managed project
+   * gets its own, so picking one and reading it off every issue would report
+   * "no sprint" for every card on a board driven by a different project's
+   * field. All of them are requested and whichever the issue carries wins.
+   *
+   * Cached as a promise so concurrent callers cost one request. NOT
+   * error-swallowing: an empty list means "this site has no sprints", and
+   * pretending a failed lookup means the same thing would clear the sprint of
+   * every card the run touches.
    */
-  private sprintFieldPromise: Promise<string | null> | null = null;
+  private sprintFieldsPromise: Promise<string[]> | null = null;
 
-  sprintFieldId(): Promise<string | null> {
-    this.sprintFieldPromise ??= this.request<
+  sprintFieldIds(): Promise<string[]> {
+    this.sprintFieldsPromise ??= this.request<
       Array<{ id: string; schema?: { custom?: string } | null }>
-    >("/rest/api/3/field")
-      .then(findSprintFieldId)
-      .catch((err) => {
-        // Sprints are additive: a board still mirrors without them.
+    >("/rest/api/3/field").then((fields) => {
+      const ids = findSprintFieldIds(fields);
+      if (ids.length > MAX_SPRINT_FIELDS) {
         console.warn(
-          "[jira] could not resolve the Sprint field, cards will sync without sprints:",
-          err instanceof Error ? err.message : err,
+          `[jira] site has ${ids.length} Sprint fields; reading the first ${MAX_SPRINT_FIELDS}, so cards driven by the rest will sync without a sprint`,
         );
-        return null;
-      });
-    return this.sprintFieldPromise;
+      }
+      return ids.slice(0, MAX_SPRINT_FIELDS);
+    });
+    return this.sprintFieldsPromise;
+  }
+
+  /**
+   * Every sprint the board knows about, so a sprint that closed in Jira reads
+   * as closed here even when no issue in it changed.
+   *
+   * Deriving the mirror from the issues alone cannot do that: a sprint's state
+   * would only refresh when one of its issues happened to land in the
+   * watermark window, leaving a finished sprint labelled "current" forever.
+   *
+   * Empty for a board with no sprint support — Jira answers 400 to
+   * `/board/{id}/sprint` on a Kanban board, which is an answer, not a failure.
+   */
+  async listBoardSprints(boardId: string): Promise<JiraSprintRef[]> {
+    const id = assertBoardId(boardId);
+    const sprints: JiraSprintRef[] = [];
+    let startAt = 0;
+    while (sprints.length < MAX_BOARD_SPRINTS) {
+      let page: { values?: unknown[]; isLast?: boolean };
+      try {
+        page = await this.request<{ values?: unknown[]; isLast?: boolean }>(
+          `/rest/agile/1.0/board/${id}/sprint?startAt=${startAt}&maxResults=50`,
+        );
+      } catch (err) {
+        if (err instanceof JiraRequestError && err.status === 400) return [];
+        throw err;
+      }
+      const values = page.values ?? [];
+      sprints.push(...parseSprintRefs(values));
+      startAt += values.length;
+      if (page.isLast !== false || values.length === 0) break;
+    }
+    return sprints;
   }
 
   /**
@@ -410,11 +459,11 @@ export class JiraClient {
     jql: string;
     nextPageToken?: string;
   }): Promise<{ issues: JiraIssue[]; nextPageToken: string | null }> {
-    const sprintField = await this.sprintFieldId();
+    const sprintFields = await this.sprintFieldIds();
     const query = new URLSearchParams({
       jql: params.jql,
       maxResults: String(SEARCH_PAGE_SIZE),
-      fields: sprintField ? `${ISSUE_FIELDS},${sprintField}` : ISSUE_FIELDS,
+      fields: [ISSUE_FIELDS, ...sprintFields].join(","),
     });
     if (params.nextPageToken) query.set("nextPageToken", params.nextPageToken);
     const page = await this.request<{
@@ -428,7 +477,12 @@ export class JiraClient {
     return {
       issues: (page.issues ?? []).map((issue) => ({
         ...issue,
-        sprints: sprintField ? parseSprintRefs(issue.fields[sprintField]) : [],
+        // First field that carries any sprint: only the issue's own project's
+        // Sprint field is populated, the rest come back null.
+        sprints:
+          sprintFields
+            .map((field) => parseSprintRefs(issue.fields[field]))
+            .find((refs) => refs.length > 0) ?? [],
       })),
       nextPageToken: page.nextPageToken ?? null,
     };

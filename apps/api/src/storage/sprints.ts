@@ -61,6 +61,56 @@ export class SprintStorage {
   }
 
   /**
+   * Mirror a whole board's sprints in one statement, returning Jira sprint id
+   * → local id.
+   *
+   * One statement rather than one per sprint: this runs on every sync tick to
+   * keep names and states current, and a board with years of history would
+   * otherwise cost hundreds of round trips per tick to change nothing.
+   *
+   * Deduped by `jiraSprintId` first — Postgres refuses an `ON CONFLICT DO
+   * UPDATE` that would touch the same row twice in one statement.
+   */
+  async upsertManyFromJira(
+    organizationId: string,
+    sprints: readonly JiraSprintUpsert[],
+  ): Promise<Map<string, string>> {
+    const unique = new Map(
+      sprints.map((sprint) => [sprint.jiraSprintId, sprint]),
+    );
+    if (unique.size === 0) return new Map();
+    const rows = await this.db
+      .insertInto("task_board_sprints")
+      .values(
+        [...unique.values()].map((sprint) => ({
+          id: generatePrefixedId("sprint"),
+          organization_id: organizationId,
+          name: sprint.name,
+          state: sprint.state,
+          starts_at: sprint.startsAt,
+          ends_at: sprint.endsAt,
+          jira_sprint_id: sprint.jiraSprintId,
+        })),
+      )
+      .onConflict((oc) =>
+        oc.columns(["organization_id", "jira_sprint_id"]).doUpdateSet((eb) => ({
+          name: eb.ref("excluded.name"),
+          state: eb.ref("excluded.state"),
+          starts_at: eb.ref("excluded.starts_at"),
+          ends_at: eb.ref("excluded.ends_at"),
+          updated_at: new Date(),
+        })),
+      )
+      .returning(["id", "jira_sprint_id"])
+      .execute();
+    return new Map(
+      rows.flatMap((row) =>
+        row.jira_sprint_id ? [[row.jira_sprint_id, row.id] as const] : [],
+      ),
+    );
+  }
+
+  /**
    * Mirror one Jira sprint, returning its local id.
    *
    * `name`/`state`/dates are Jira-owned, so the conflict branch overwrites all

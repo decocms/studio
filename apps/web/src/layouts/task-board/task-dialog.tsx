@@ -176,8 +176,6 @@ const DESCRIPTION_MAX_HEIGHT = 560;
  *  sentence is one write, short enough that a distracted tab keeps the text. */
 const AUTOSAVE_DELAY_MS = 2000;
 
-/** Radix `RadioGroup` needs a string value — this stands in for the backlog. */
-
 const DUE_DATE_FMT = new Intl.DateTimeFormat(undefined, {
   month: "short",
   day: "numeric",

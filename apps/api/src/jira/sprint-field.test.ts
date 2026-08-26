@@ -1,16 +1,16 @@
 import { describe, expect, it } from "bun:test";
 import {
-  findSprintFieldId,
+  findSprintFieldIds,
   parseSprintRefs,
   pickIssueSprint,
   stripOrderBy,
 } from "./sprint-field";
 
-describe("findSprintFieldId", () => {
+describe("findSprintFieldIds", () => {
   it("finds Sprint by its schema, not by its name", () => {
     // A team can rename the field, and any custom field can be called "Sprint".
     expect(
-      findSprintFieldId([
+      findSprintFieldIds([
         { id: "customfield_10010", schema: { custom: "…:gh-lexo-rank" } },
         { id: "customfield_10020", schema: { custom: "…" } },
         {
@@ -18,12 +18,28 @@ describe("findSprintFieldId", () => {
           schema: { custom: "com.pyxis.greenhopper.jira:gh-sprint" },
         },
       ]),
-    ).toBe("customfield_10030");
+    ).toEqual(["customfield_10030"]);
   });
 
-  it("is null on a site with no Agile fields", () => {
-    expect(findSprintFieldId([{ id: "summary" }])).toBe(null);
-    expect(findSprintFieldId([])).toBe(null);
+  /** Cloud gives every team-managed project its own Sprint field, so taking
+   *  only the first reports "no sprint" for every card driven by another. */
+  it("returns every Sprint field, not just the first", () => {
+    const sprintField = (id: string) => ({
+      id,
+      schema: { custom: "com.pyxis.greenhopper.jira:gh-sprint" },
+    });
+    expect(
+      findSprintFieldIds([
+        sprintField("customfield_10020"),
+        { id: "summary" },
+        sprintField("customfield_10105"),
+      ]),
+    ).toEqual(["customfield_10020", "customfield_10105"]);
+  });
+
+  it("is empty on a site with no Agile fields", () => {
+    expect(findSprintFieldIds([{ id: "summary" }])).toEqual([]);
+    expect(findSprintFieldIds([])).toEqual([]);
   });
 });
 

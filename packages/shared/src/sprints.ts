@@ -35,9 +35,6 @@ export interface Sprint {
   endsAt: string | null;
 }
 
-/** Sentinel the sprint filter uses for "in no sprint" (the backlog). */
-export const SPRINT_BACKLOG = "backlog" as const;
-
 const STATE_RANK: Record<SprintState, number> = {
   active: 0,
   future: 1,
@@ -69,11 +66,4 @@ export function compareSprints(a: Sprint, b: Sprint): number {
     return a.state === "closed" ? bStart - aStart : aStart - bStart;
   }
   return a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
-}
-
-/** The sprint a board should land on by default: the running one, else the
- *  next scheduled one, else nothing (a board of pure history filters to all). */
-export function defaultSprint(sprints: readonly Sprint[]): Sprint | null {
-  const ordered = [...sprints].sort(compareSprints);
-  return ordered.find((sprint) => sprint.state !== "closed") ?? null;
 }

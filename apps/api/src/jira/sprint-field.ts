@@ -29,15 +29,19 @@ export interface JiraFieldDescriptor {
   schema?: { custom?: string } | null;
 }
 
-/** The site's Sprint field id, or null when the site has no Agile fields (a
- *  Jira without Jira Software — sprints simply don't exist there). */
-export function findSprintFieldId(
+/**
+ * Every Sprint field on the site, in the order Jira lists them.
+ *
+ * Plural, not one: Cloud gives each team-managed project its OWN Sprint field,
+ * so the first match is only the right field for issues of one project. Empty
+ * on a Jira without Jira Software, where sprints don't exist at all.
+ */
+export function findSprintFieldIds(
   fields: readonly JiraFieldDescriptor[],
-): string | null {
-  return (
-    fields.find((field) => field.schema?.custom === SPRINT_FIELD_SCHEMA)?.id ??
-    null
-  );
+): string[] {
+  return fields
+    .filter((field) => field.schema?.custom === SPRINT_FIELD_SCHEMA)
+    .map((field) => field.id);
 }
 
 function parseDate(value: unknown): Date | null {

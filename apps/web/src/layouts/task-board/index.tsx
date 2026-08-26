@@ -149,6 +149,7 @@ import { track } from "@/lib/posthog-client";
 import { useStudioTools } from "@/lib/studio-tools";
 import {
   EMPTY_FILTERS,
+  resolveSprintFilter,
   TaskFiltersBar,
   TaskFiltersDrawer,
   taskMatchesFilters,
@@ -901,7 +902,20 @@ export function TaskBoardPage() {
   const memberByUserId = new Map(members.map((m) => [m.userId, m]));
 
   // Filters + layout live in the URL, so a refresh or a shared link keeps them.
-  const { filters, setFilters, layout, setLayout } = useBoardSearch();
+  const {
+    filters: urlFilters,
+    setFilters,
+    layout,
+    setLayout,
+  } = useBoardSearch();
+  // A URL outlives the sprint it names, so an unknown one is dropped rather
+  // than left hiding every card behind a chip that reads like "no filter".
+  const filters = isLoading
+    ? urlFilters
+    : {
+        ...urlFilters,
+        sprint: resolveSprintFilter(urlFilters.sprint, sprints),
+      };
   const [preferences] = usePreferences();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const toggleSelect = (id: string) =>

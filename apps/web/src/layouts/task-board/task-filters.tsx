@@ -107,6 +107,23 @@ export const EMPTY_FILTERS: TaskFilters = {
   search: "",
 };
 
+/**
+ * Drop a sprint filter naming a sprint this board does not have.
+ *
+ * The value comes from the URL, which outlives the sprint it names — a shared
+ * link, a bookmark, a sprint deleted in Jira. Left in place it hides every card
+ * while its chip reads exactly like "no sprint filter", so the board looks
+ * empty for no stated reason. Call it only once the sprints have loaded, or an
+ * in-flight read would drop a filter that is about to be valid.
+ */
+export function resolveSprintFilter(
+  value: string | null,
+  sprints: readonly Sprint[],
+): string | null {
+  if (value === null || value === BACKLOG_FILTER) return value;
+  return sprints.some((sprint) => sprint.id === value) ? value : null;
+}
+
 function hasActiveFilters(f: TaskFilters): boolean {
   return (
     f.assignee !== null ||

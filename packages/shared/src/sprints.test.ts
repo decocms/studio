@@ -1,7 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
   compareSprints,
-  defaultSprint,
   isSprintState,
   type Sprint,
   type SprintState,
@@ -69,32 +68,6 @@ describe("compareSprints", () => {
       name: "B",
     };
     expect(sorted([b, a])).toEqual(["b", "a"]);
-  });
-});
-
-describe("defaultSprint", () => {
-  it("picks the running sprint over an earlier upcoming one", () => {
-    const active = sprint("active", "active", "2026-03-01T00:00:00.000Z");
-    expect(
-      defaultSprint([
-        sprint("future", "future", "2026-01-01T00:00:00.000Z"),
-        active,
-      ])?.id,
-    ).toBe("active");
-  });
-
-  it("falls back to the soonest upcoming sprint when none is running", () => {
-    expect(
-      defaultSprint([
-        sprint("later", "future", "2026-05-01T00:00:00.000Z"),
-        sprint("sooner", "future", "2026-04-01T00:00:00.000Z"),
-      ])?.id,
-    ).toBe("sooner");
-  });
-
-  it("is null for a board with nothing but history", () => {
-    expect(defaultSprint([sprint("done", "closed")])).toBe(null);
-    expect(defaultSprint([])).toBe(null);
   });
 });
 
