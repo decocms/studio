@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { NO_VISUAL_SURFACE } from "@decocms/shared/task-board";
-import { reviewerCommentGap } from "./reviewer-comment";
+import { reviewerCommentGap, verdictCommentBody } from "./reviewer-comment";
 
 const THREAD = "thrd_qa";
 /** Long enough to clear the progress-note floor. */
@@ -68,5 +68,19 @@ describe("reviewerCommentGap", () => {
     expect(
       reviewerCommentGap([{ threadId: THREAD, body }], THREAD, "qa"),
     ).toBeNull();
+  });
+});
+
+describe("verdictCommentBody", () => {
+  it("heads the reviewer's own notes with who said what", () => {
+    // The Code Reviewer's ~2,000-character review lives in the verdict notes,
+    // where the timeline truncates it to one line; this is what gets mirrored
+    // into the comment feed instead of paying for a second run to retype it.
+    expect(verdictCommentBody("code_review", "approve", "  LGTM\n")).toBe(
+      "**Code Reviewer** approved:\n\nLGTM",
+    );
+    expect(verdictCommentBody("qa", "request_changes", "preview 503s")).toBe(
+      "**QA Agent** requested changes:\n\npreview 503s",
+    );
   });
 });

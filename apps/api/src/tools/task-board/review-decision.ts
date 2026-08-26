@@ -192,14 +192,19 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
           currentCycleAt,
         ));
 
-    // The reviewer's record on the card is not optional — if this run posted
-    // none (or QA posted no screenshots), ask it for one on its own thread,
-    // once. Best-effort — a dispatch failure must not fail a good verdict.
+    // The reviewer's record on the card is not optional. A run that posted no
+    // comment gets its verdict notes mirrored into one (free — see
+    // `reviewer-comment.ts`); QA that showed no visual evidence gets one
+    // follow-up turn on its own thread. Best-effort: neither may fail an
+    // otherwise-good verdict, and the thread gate queues any follow-up run
+    // behind this one either way.
     const runThreadId = taskRunContextStore.getStore()?.threadId;
     if (runThreadId) {
-      await ensureReviewerCommented(ctx, item, reviewer, runThreadId).catch(
-        (err) =>
-          console.error("[task-board] reviewer comment follow-up failed", err),
+      await ensureReviewerCommented(ctx, item, reviewer, runThreadId, {
+        decision,
+        notes,
+      }).catch((err) =>
+        console.error("[task-board] reviewer comment record failed", err),
       );
     }
 
