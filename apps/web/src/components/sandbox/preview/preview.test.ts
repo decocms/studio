@@ -21,9 +21,9 @@ describe("withDecoFBT", () => {
     expect(withDecoFBT(null)).toBe(null);
   });
 
-  it("sets __decoFBT=0 on a well-formed URL", () => {
+  it("sets __decoFBT=0 and __deco_ssr=1 on a well-formed URL", () => {
     expect(withDecoFBT("https://example.com/foo")).toBe(
-      "https://example.com/foo?__decoFBT=0",
+      "https://example.com/foo?__decoFBT=0&__deco_ssr=1",
     );
   });
 
