@@ -633,6 +633,7 @@ export const KEYS = {
     ["deployment-admin", "orgs", search] as const,
   // Prefix key: invalidates every orgs query regardless of the search term.
   deploymentAdminOrgsList: () => ["deployment-admin", "orgs"] as const,
+  deploymentAdminPrompts: () => ["deployment-admin", "prompts"] as const,
 
   // Brand context (scoped by organization)
   defaultBrand: (organizationId: string) =>

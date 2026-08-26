@@ -5,6 +5,7 @@ export const admin = {
     "Verify your email address to access the admin dashboard.",
   "admin.layout.goHome": "Go home",
   "admin.layout.organizationsTab": "Organizations",
+  "admin.layout.promptsTab": "Agent prompts",
   "admin.layout.restrictedToDashboard":
     "This dashboard is restricted to deployment admins.",
   "admin.layout.usersTab": "Users",
@@ -26,6 +27,22 @@ export const admin = {
   "admin.orgs.noOrgsYet": "No organizations exist yet.",
   "admin.orgs.organization": "Organization",
   "admin.orgs.searchPlaceholder": "Search organizations by name or slug...",
+  "admin.prompts.description":
+    "These prompts are hardcoded in {repo}. Edits here are read from and committed back to {branch} as a pull request, using your own GitHub connection.",
+  "admin.prompts.failedToLoadDescription":
+    "Check that GitHub is connected in your active organization, then try again.",
+  "admin.prompts.failedToLoadTitle": "Failed to load prompts",
+  "admin.prompts.markerMissing":
+    'The prompt-region markers for "{id}" are missing from this file — fix the markers in the repo before editing here.',
+  "admin.prompts.openPr": "Open pull request ({count})",
+  "admin.prompts.opening": "Opening...",
+  "admin.prompts.prFailed": "Failed to open the pull request",
+  "admin.prompts.prOpened": "Pull request #{number} opened",
+  "admin.prompts.prTitleLabel": "Pull request title",
+  "admin.prompts.prTitlePlaceholder":
+    "chore(prompts): tighten the QA Agent persona",
+  "admin.prompts.retry": "Try again",
+  "admin.prompts.viewPr": "View",
   "admin.users.columnCreated": "Created",
   "admin.users.columnEmail": "Email",
   "admin.users.columnUser": "User",

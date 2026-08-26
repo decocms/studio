@@ -179,6 +179,7 @@ export function buildClaudeCodeTaskPrompt(
   repo: TaskRepo | null,
   opts?: SuperAgentPromptOpts & { repoChoices?: TaskRepoChoiceOption[] },
 ): string {
+  // prompt-region:start super-agent-sandbox
   const lines: string[] = [
     "You've been assigned this task. Complete it and finish with a pull request if it makes sense (like a coding task) or is explicitly requested.",
     "",
@@ -278,4 +279,5 @@ export function buildClaudeCodeTaskPrompt(
     `(task id: ${task.id})`,
   );
   return lines.join("\n");
+  // prompt-region:end super-agent-sandbox
 }
