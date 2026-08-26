@@ -114,6 +114,13 @@ export const REVIEWER_LABEL: Record<ReviewerKind, string> = {
   code_review: "Code Reviewer",
 };
 
+/** What the QA Agent writes verbatim when a change has no visual surface at
+ *  all — the one alternative to embedding before/after screenshots in its task
+ *  comment. A sentinel rather than a phrasing heuristic: "no visual
+ *  regressions" is what a UI run that FORGOT its screenshots writes, and
+ *  anything loose enough to accept a real justification accepts that too. */
+export const NO_VISUAL_SURFACE = "NO VISUAL SURFACE";
+
 /** The org-settings flag that gates each reviewer. */
 export const REVIEWER_FLAG: Record<
   ReviewerKind,

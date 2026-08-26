@@ -1776,6 +1776,8 @@ export interface TaskBoardCommentTable {
   task_board_item_id: string;
   parent_id: string | null;
   author_id: string;
+  /** The agent run that wrote it (migration 187); null for a human's comment. */
+  thread_id: string | null;
   body: string;
   resolved: ColumnType<boolean, boolean | undefined, boolean>;
   created_at: ColumnType<Date, Date | string | undefined, never>;

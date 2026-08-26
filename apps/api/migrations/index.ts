@@ -185,6 +185,7 @@ import * as migration183dropjirajqlfilter from "./183-drop-jira-jql-filter.ts";
 import * as migration184jirarescanafterscopechange from "./184-jira-rescan-after-scope-change.ts";
 import * as migration185jirarescanexistingcards from "./185-jira-rescan-existing-cards.ts";
 import * as migration186jirarescanpendingflag from "./186-jira-rescan-pending-flag.ts";
+import * as migration187taskboardcommentthread from "./187-task-board-comment-thread.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -401,6 +402,7 @@ const migrations: Record<string, Migration> = {
   "184-jira-rescan-after-scope-change": migration184jirarescanafterscopechange,
   "185-jira-rescan-existing-cards": migration185jirarescanexistingcards,
   "186-jira-rescan-pending-flag": migration186jirarescanpendingflag,
+  "187-task-board-comment-thread": migration187taskboardcommentthread,
 };
 
 export default migrations;

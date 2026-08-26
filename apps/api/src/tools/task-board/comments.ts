@@ -123,6 +123,9 @@ export const TASK_BOARD_COMMENT_CREATE = defineTool({
       // Same id the board already uses for the agent as an assignee, so the UI
       // renders it as the agent without a second concept.
       authorId: taskRun ? SUPER_AGENT_ASSIGNEE_ID : getUserId(ctx)!,
+      // Which run wrote it — the only way to tell one agent's comments from
+      // another's, since they all share the author id above.
+      threadId: taskRun?.threadId ?? null,
       body,
     });
     if (!comment) throw new Error("Task board item not found");

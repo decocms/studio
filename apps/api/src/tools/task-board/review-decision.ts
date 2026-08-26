@@ -27,6 +27,8 @@ import { fetchPrConflict, pickActivePr } from "./prs-get";
 import { verifyReviewToken } from "./review-token";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
 import { TaskQuotaError } from "@/billing/task-quota";
+import { ensureReviewerCommented } from "./reviewer-comment";
+import { taskRunContextStore } from "./task-run-context";
 
 /**
  * True when a resolved LEGACY reviewToken claim actually belongs to THIS
@@ -189,6 +191,22 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
           reviewer,
           currentCycleAt,
         ));
+
+    // The reviewer's record on the card is not optional. A run that posted no
+    // comment gets its verdict notes mirrored into one (free — see
+    // `reviewer-comment.ts`); QA that showed no visual evidence gets one
+    // follow-up turn on its own thread. Best-effort: neither may fail an
+    // otherwise-good verdict, and the thread gate queues any follow-up run
+    // behind this one either way.
+    const runThreadId = taskRunContextStore.getStore()?.threadId;
+    if (runThreadId) {
+      await ensureReviewerCommented(ctx, item, reviewer, runThreadId, {
+        decision,
+        notes,
+      }).catch((err) =>
+        console.error("[task-board] reviewer comment record failed", err),
+      );
+    }
 
     if (decision === "request_changes") {
       // Break a runaway review loop BEFORE bouncing. A reviewer that keeps
