@@ -27,6 +27,8 @@ import { fetchPrConflict, pickActivePr } from "./prs-get";
 import { verifyReviewToken } from "./review-token";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
 import { TaskQuotaError } from "@/billing/task-quota";
+import { ensureReviewerCommented } from "./reviewer-comment";
+import { taskRunContextStore } from "./task-run-context";
 
 /**
  * True when a resolved LEGACY reviewToken claim actually belongs to THIS
@@ -189,6 +191,19 @@ export const TASK_BOARD_REVIEW_DECISION = defineTool({
           reviewer,
           currentCycleAt,
         ));
+
+    // The reviewer's record on the card is not optional — if this run posted
+    // none (or QA posted no screenshots), ask it for one on its own thread,
+    // once. Best-effort and BEFORE the branches below: a follow-up dispatch
+    // failure must never fail an otherwise-good verdict, and the thread gate
+    // queues the run behind this one either way.
+    const runThreadId = taskRunContextStore.getStore()?.threadId;
+    if (runThreadId) {
+      await ensureReviewerCommented(ctx, item, reviewer, runThreadId).catch(
+        (err) =>
+          console.error("[task-board] reviewer comment follow-up failed", err),
+      );
+    }
 
     if (decision === "request_changes") {
       // Break a runaway review loop BEFORE bouncing. A reviewer that keeps

@@ -47,6 +47,10 @@ export interface TaskBoardComment {
   taskBoardItemId: string;
   parentId: string | null;
   authorId: string;
+  /** The agent run that wrote it; null for a human's comment. It is what tells
+   *  one agent's comments from another's — every agent comment shares the same
+   *  synthetic author id. */
+  threadId: string | null;
   body: string;
   resolved: boolean;
   createdAt: string;
@@ -66,6 +70,7 @@ function commentFromDbRow(row: {
   task_board_item_id: string;
   parent_id: string | null;
   author_id: string;
+  thread_id: string | null;
   body: string;
   resolved: boolean;
   created_at: Date | string;
@@ -77,6 +82,7 @@ function commentFromDbRow(row: {
     taskBoardItemId: row.task_board_item_id,
     parentId: row.parent_id,
     authorId: row.author_id,
+    threadId: row.thread_id,
     body: row.body,
     resolved: row.resolved,
     createdAt: iso(row.created_at),
@@ -2023,6 +2029,8 @@ export class TaskBoardStorage {
     organizationId: string;
     parentId?: string | null;
     authorId: string;
+    /** The agent run writing it, when one is. */
+    threadId?: string | null;
     body: string;
   }): Promise<TaskBoardComment | null> {
     const task = await this.db
@@ -2054,6 +2062,7 @@ export class TaskBoardStorage {
         task_board_item_id: params.taskBoardItemId,
         parent_id: parentId,
         author_id: params.authorId,
+        thread_id: params.threadId ?? null,
         body: params.body,
       })
       .returningAll()

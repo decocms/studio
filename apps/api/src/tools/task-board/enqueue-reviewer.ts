@@ -91,17 +91,28 @@ const REVIEWER_FOCUS: Record<ReviewerKind, string> = {
     "exercise the change, do NOT approve: request changes stating what is blocking " +
     "and what is needed to unblock. An unverified preview is not a pass.\n" +
     "RECORD your QA pass as a task comment BEFORE the decision — a durable record, " +
-    "separate from the short decision summary. Structure it: the acceptance " +
-    "criteria / scenarios you checked with a pass/fail on each, a before→after " +
-    "pointer to the screenshots, the exact URL(s) and viewport you exercised, and " +
-    "anything you could not verify and why.",
+    "separate from the short decision summary, and REQUIRED: a verdict with no " +
+    "comment is an incomplete run and you will be asked for one. Structure it: " +
+    "the acceptance criteria / scenarios you checked with a pass/fail on each, a " +
+    "before→after pointer to the screenshots, the exact URL(s) and viewport you " +
+    "exercised, and anything you could not verify and why.\n" +
+    "That comment must ALWAYS carry the visual change: embed the before/after " +
+    "screenshots in it whenever the change has any visual surface. If it has " +
+    "none, say so explicitly in the comment and name why (backend-only, config, " +
+    "test-only) — silence about screenshots is not an acceptable answer either " +
+    "way.",
   code_review:
     "You are the Code Reviewer. Review the code changes for correctness, " +
     "security, and quality. FIRST look for a review skill/command appropriate " +
     "to this repository's stack (e.g. a `/review`, `code-review`, or " +
     "`security-review` skill, or the repo's CONTRIBUTING/review guidelines) and " +
     "use it. Read the diff critically and flag concrete issues with file/line " +
-    "references.",
+    "references.\n" +
+    "RECORD your review as a task comment BEFORE the decision — REQUIRED, and " +
+    "separate from the short decision summary: what you read, the concrete " +
+    "issues with file/line references, and what you deliberately did not review. " +
+    "A verdict with no comment is an incomplete run and you will be asked for " +
+    "one.",
 };
 
 /**
@@ -549,6 +560,11 @@ async function enqueueReviewerForTask(
             : `- Record what you validated with \`${commentTool}\` (scenarios + pass/fail, a before→after pointer to the attached shots, the exact URL + viewport, and anything you couldn't verify) BEFORE your decision.`,
         ]
       : []),
+    ...(kind === "qa"
+      ? []
+      : [
+          `- Record your review with \`${commentTool}\` (what you read, the concrete issues with file/line references, what you did not review) BEFORE your decision. This is required — a verdict with no comment gets you a follow-up asking for one.`,
+        ]),
     `- End the run by calling \`${decisionTool}\` exactly once with the task id, ` +
       `reviewer "${kind}", the reviewToken below, and your decision:`,
     "  - `approve` when it's good to ship. Include a short summary of what you verified.",
