@@ -597,7 +597,7 @@ export const sandbox = {
   "sandbox.cmsSettings.contentEditing.manual": "Ativado",
   "sandbox.cmsSettings.contentEditing.manualDescription":
     "Quem edita abre o CMS pelo preview quando precisa.",
-  "sandbox.cmsSettings.contentEditing.auto": "Abrir automaticamente",
+  "sandbox.cmsSettings.contentEditing.auto": "Automático",
   "sandbox.cmsSettings.contentEditing.autoDescription":
     "O preview abre o CMS assim que for possível editar o conteúdo.",
   "sandbox.cmsSettings.contentEditing.off": "Desativado",

@@ -56,7 +56,7 @@ describe("ContentEditingField", () => {
 
   test("shows the selected mode in the trigger, and only its label", () => {
     expect(renderField(<CmsHarness cms="off" />).trigger).toBe("Disabled");
-    expect(renderField(<CmsHarness cms="auto" />).trigger).toBe("Auto open");
+    expect(renderField(<CmsHarness cms="auto" />).trigger).toBe("Auto");
     // Absent mode reads as `manual` — same fallback every other reader uses.
     expect(renderField(<CmsHarness cms={null} />).trigger).toBe("Enabled");
   });
