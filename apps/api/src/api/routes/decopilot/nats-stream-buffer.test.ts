@@ -95,6 +95,10 @@ test("decopilot stream is file-backed with a dedup window and SLA retention", ()
   expect(c.max_bytes).toBeGreaterThanOrEqual(4 * 1024 * 1024 * 1024); // >= 4GB
 });
 
+test("decopilot stream is replicated so one node loss keeps the run streaming", () => {
+  expect(decopilotStreamConfig().num_replicas).toBe(3);
+});
+
 describe("NatsStreamBuffer", () => {
   it("purge is a no-op when jsm is not initialized (no throw)", () => {
     const buffer = new NatsStreamBuffer({
