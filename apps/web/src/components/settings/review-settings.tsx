@@ -86,6 +86,20 @@ export function AgentToolsSettings() {
           titleKey="settings.agentTools.orgMcpsTitle"
           descriptionKey="settings.agentTools.orgMcpsDescription"
         />
+      </SettingsCard>
+    </SettingsSection>
+  );
+}
+
+/**
+ * Which coding agent backs Code Agent chats. Lives on General, not the board
+ * settings: it's about the org's agents, not about how tasks get reviewed.
+ */
+export function CodeAgentsSettings() {
+  const t = useT();
+  return (
+    <SettingsSection title={t("sidebar.agentsSection.codeAgents")}>
+      <SettingsCard>
         <FlagToggle
           flag="coding_agents_claude_code"
           icon={<Terminal size={16} />}
