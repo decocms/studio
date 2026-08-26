@@ -796,7 +796,13 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         existingThread?.status !== "in_progress" &&
         shouldPublishRunStatus(pinnedHarness)
       ) {
-        await publishRunStatusStage(streamBuffer, taskId, "waiting-runner");
+        await publishRunStatusStage({
+          streamBuffer,
+          organizationId: input.organizationId,
+          harnessId: pinnedHarness,
+          taskId,
+          stage: "waiting-runner",
+        });
       }
       await enqueueThreadRun(
         {

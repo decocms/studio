@@ -69,6 +69,7 @@ import { getPublicUrl } from "@/core/server-constants";
 import { getAgentSandboxProvider } from "@/sandbox/lifecycle";
 import { getSettings } from "@/settings";
 import { ensureSandbox } from "@/tools/sandbox/start";
+import { publishRunStatusStage } from "@/api/routes/decopilot/run-status-stage";
 import {
   getThreadGithubRepo,
   syntheticBranchToGitRef,
@@ -492,6 +493,7 @@ export class SandboxDispatchClient {
     // `Registry.claim`).
     const runId = input.threadId;
     const { ctx, virtualMcpId, branch, interactive } = this;
+    const organizationId = organization.id;
     const credentialProviderId = this.credential.providerId;
 
     // Provisioning is re-done per attempt on purpose. On the continuation path
@@ -508,6 +510,16 @@ export class SandboxDispatchClient {
       resume: { reason: string } | null,
     ): AsyncIterable<UIMessageChunk> =>
       (async function* () {
+        // The longest silence in the run: pod boot, clone, and (interactive)
+        // install. The chat has no per-thread stream here, so this rides
+        // the org `/watch`.
+        await publishRunStatusStage({
+          streamBuffer: undefined,
+          organizationId,
+          harnessId: SANDBOX_HOSTED_HARNESS,
+          taskId: runId,
+          stage: "starting-sandbox",
+        });
         const sandbox = await ensureSandbox(
           {
             virtualMcpId,

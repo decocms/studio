@@ -2136,8 +2136,11 @@ describe("batch mode", () => {
         },
       } as never,
       unsubscribe,
-      fire: (type: string, subject: string) =>
-        handler?.({ type, data: JSON.stringify({ subject }) } as MessageEvent),
+      fire: (type: string, subject: string, data?: Record<string, unknown>) =>
+        handler?.({
+          type,
+          data: JSON.stringify({ subject, ...(data ? { data } : {}) }),
+        } as MessageEvent),
     };
   }
 
@@ -2185,6 +2188,49 @@ describe("batch mode", () => {
     await new Promise((r) => setTimeout(r, 20));
 
     expect(conn.messages.get().map((m) => m.id)).toEqual(["m-1", "m-2"]);
+  });
+
+  test("shows a run-status stage without refetching the transcript", async () => {
+    globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
+    const stub = makeSSEStub();
+    const c = makePagingClient([[row("m-1", "2026-01-01T00:00:00Z")]]);
+
+    const conn = getOrOpenStream("acme", "t-batch-stage", {
+      client: c.client,
+      batch: true,
+      sse: stub.sse,
+    });
+    await conn.ready;
+    const callsAfterLoad = c.calls();
+
+    stub.fire("decopilot.run.status", "t-batch-stage", {
+      stage: "starting-sandbox",
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(conn.runStatusStage.get()).toBe("starting-sandbox");
+    // A stage means there is nothing new to read yet.
+    expect(c.calls()).toBe(callsAfterLoad);
+  });
+
+  test("drops a run-status stage this client cannot render", async () => {
+    globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
+    const stub = makeSSEStub();
+    const c = makePagingClient([[row("m-1", "2026-01-01T00:00:00Z")]]);
+
+    const conn = getOrOpenStream("acme", "t-batch-stage-2", {
+      client: c.client,
+      batch: true,
+      sse: stub.sse,
+    });
+    await conn.ready;
+
+    stub.fire("decopilot.run.status", "t-batch-stage-2", {
+      stage: "stage-from-a-newer-server",
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(conn.runStatusStage.get()).toBeNull();
   });
 
   test("ignores events for other threads and other event types", async () => {

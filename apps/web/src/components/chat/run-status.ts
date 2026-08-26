@@ -10,6 +10,10 @@ export const RUN_STATUS_STAGE_ORDER = [
   "preparing-tools",
   "starting-assistant",
   "analyzing-scope",
+  // Sandbox-hosted runs only, and last of the pre-content stages: the pod boots
+  // after the run is prepared, and the ranking here is what keeps the display
+  // monotonic.
+  "starting-sandbox",
   "choosing-next-steps",
 ] as const;
 
@@ -60,6 +64,10 @@ const RUN_STATUS_I18N_KEYS: Record<
     label: "chat.runStatus.analyzingScopeLabel",
     detail: "chat.runStatus.analyzingScopeDetail",
   },
+  "starting-sandbox": {
+    label: "chat.runStatus.startingSandboxLabel",
+    detail: "chat.runStatus.startingSandboxDetail",
+  },
   "choosing-next-steps": {
     label: "chat.runStatus.choosingNextStepsLabel",
     detail: "chat.runStatus.choosingNextStepsDetail",
@@ -86,6 +94,11 @@ function isRunStatusStage(value: unknown): value is RunStatusStage {
   );
 }
 
+/** A stage name off the wire, or null when this client cannot render it. */
+export function parseRunStatusStage(value: unknown): RunStatusStage | null {
+  return isRunStatusStage(value) ? value : null;
+}
+
 export function parseRunStatusStageChunk(
   chunk: unknown,
 ): RunStatusStage | null {
@@ -95,8 +108,7 @@ export function parseRunStatusStageChunk(
     data?: { stage?: unknown };
   };
   if (record.type !== "data-run-status") return null;
-  const stage = record.data?.stage;
-  return isRunStatusStage(stage) ? stage : null;
+  return parseRunStatusStage(record.data?.stage);
 }
 
 export function isRunStatusControlChunk(chunk: unknown): boolean {

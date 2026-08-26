@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { translate } from "@/i18n/use-t.ts";
 import {
   advanceRunStatusStage,
+  parseRunStatusStage,
   getRunStatusCopy,
   isRunStatusControlChunk,
   parseRunStatusStageChunk,
@@ -93,5 +94,19 @@ describe("advanceRunStatusStage", () => {
     expect(advanceRunStatusStage("preparing-tools", "preparing-tools")).toBe(
       "preparing-tools",
     );
+  });
+});
+
+describe("starting-sandbox", () => {
+  test("ranks after the prepare stages so a booting pod is not hidden", () => {
+    expect(advanceRunStatusStage("analyzing-scope", "starting-sandbox")).toBe(
+      "starting-sandbox",
+    );
+  });
+
+  test("parses off the wire, and unknown stages do not", () => {
+    expect(parseRunStatusStage("starting-sandbox")).toBe("starting-sandbox");
+    expect(parseRunStatusStage("not-a-stage")).toBeNull();
+    expect(parseRunStatusStage(undefined)).toBeNull();
   });
 });

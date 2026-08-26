@@ -883,11 +883,13 @@ async function prepareRun(
       throw new Error("dispatchRunAndWait: taskId is required");
     }
     if (publishRunStatus) {
-      await publishRunStatusStage(
+      await publishRunStatusStage({
         streamBuffer,
-        input.taskId,
-        PREPARE_RUN_STATUS_STAGES[0],
-      );
+        organizationId: input.organizationId,
+        harnessId,
+        taskId: input.taskId,
+        stage: PREPARE_RUN_STATUS_STAGES[0],
+      });
     }
 
     // 2. Load entities, create/load memory, and resolve Decopilot model
@@ -945,11 +947,13 @@ async function prepareRun(
       ),
     ]);
     if (publishRunStatus) {
-      await publishRunStatusStage(
+      await publishRunStatusStage({
         streamBuffer,
-        input.taskId,
-        PREPARE_RUN_STATUS_STAGES[1],
-      );
+        organizationId: input.organizationId,
+        harnessId,
+        taskId: input.taskId,
+        stage: PREPARE_RUN_STATUS_STAGES[1],
+      });
     }
 
     const modelSources: DecopilotSecretModelSources | undefined = thinkingSource
@@ -1353,11 +1357,13 @@ async function prepareRun(
     // Decopilot runs its loop here. Hosted coding-agent harnesses take the
     // sandbox dispatch path below instead.
     if (publishRunStatus) {
-      await publishRunStatusStage(
+      await publishRunStatusStage({
         streamBuffer,
-        input.taskId,
-        PREPARE_RUN_STATUS_STAGES[2],
-      );
+        organizationId: input.organizationId,
+        harnessId,
+        taskId: input.taskId,
+        stage: PREPARE_RUN_STATUS_STAGES[2],
+      });
     }
     // The dispatching user's own Claude subscription, when they linked one and
     // it has not expired. It outranks the org's thinking-slot key for a
@@ -1389,11 +1395,13 @@ async function prepareRun(
         // consumeHarnessStream consumes verbatim: Decopilot's comes from an
         // in-process call, claude-code's from the sandbox daemon over HTTP.
         if (publishRunStatus) {
-          await publishRunStatusStage(
+          await publishRunStatusStage({
             streamBuffer,
-            mem.thread.id,
-            PREPARE_RUN_STATUS_STAGES[3],
-          );
+            organizationId: input.organizationId,
+            harnessId,
+            taskId: mem.thread.id,
+            stage: PREPARE_RUN_STATUS_STAGES[3],
+          });
         }
         const rawHarnessChunks = sandboxHosted
           ? new SandboxDispatchClient({

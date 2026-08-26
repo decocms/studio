@@ -174,7 +174,13 @@ async function dispatchRunAndWaitStep(
   const { request } = ctx;
   const taskId = request.taskId ?? ctx.threadId;
   if (shouldPublishRunStatus(request.harnessId)) {
-    await publishRunStatusStage(rt.deps.streamBuffer, taskId, "starting-run");
+    await publishRunStatusStage({
+      streamBuffer: rt.deps.streamBuffer,
+      organizationId: request.organizationId,
+      harnessId: request.harnessId,
+      taskId,
+      stage: "starting-run",
+    });
   }
 
   const studioCtx = await rt.studioContextFactory(

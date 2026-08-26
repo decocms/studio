@@ -61,6 +61,7 @@ import type { ChatMode } from "../types";
 import { toast } from "sonner";
 import {
   advanceRunStatusStage,
+  parseRunStatusStage,
   isRunStatusControlChunk,
   parseRunStatusStageChunk,
   type RunStatusStage,
@@ -413,17 +414,29 @@ export class ThreadConnection {
   private handleWatchEvent(e: MessageEvent): void {
     if (
       e.type !== DECOPILOT_EVENTS.STEP &&
-      e.type !== DECOPILOT_EVENTS.THREAD_STATUS
+      e.type !== DECOPILOT_EVENTS.THREAD_STATUS &&
+      e.type !== DECOPILOT_EVENTS.RUN_STATUS
     ) {
       return;
     }
-    let parsed: { subject?: unknown; data?: { status?: unknown } };
+    let parsed: {
+      subject?: unknown;
+      data?: { status?: unknown; stage?: unknown };
+    };
     try {
       parsed = JSON.parse(e.data);
     } catch {
       return;
     }
     if (parsed.subject !== this.threadId) return;
+
+    // A stage is progress, not content: report it and stop. Refetching on one
+    // would poll the transcript for parts that by definition do not exist yet.
+    if (e.type === DECOPILOT_EVENTS.RUN_STATUS) {
+      const stage = parseRunStatusStage(parsed.data?.stage);
+      if (stage) this.setRunStatusStage(stage);
+      return;
+    }
     const refetched = this.refetchLatestPage();
 
     if (
