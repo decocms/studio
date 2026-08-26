@@ -9,6 +9,7 @@ import type {
 } from "@/storage/types";
 import {
   MAX_TASK_DESCRIPTION_LENGTH,
+  MAX_TASK_TITLE_LENGTH,
   SUPER_AGENT_ASSIGNEE_ID,
   TaskBoardItemPrioritySchema,
   TaskBoardItemTypeSchema,
@@ -172,7 +173,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
   },
   inputSchema: z.object({
     id: z.string(),
-    title: z.string().min(1).optional(),
+    title: z.string().min(1).max(MAX_TASK_TITLE_LENGTH).optional(),
     description: z
       .string()
       .max(MAX_TASK_DESCRIPTION_LENGTH)

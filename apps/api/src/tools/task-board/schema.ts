@@ -5,6 +5,10 @@ export { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 /** No real task description is this long — caps the row a single write can write. */
 export const MAX_TASK_DESCRIPTION_LENGTH = 50_000;
 
+/** No real task title is this long — same reasoning as MAX_TASK_DESCRIPTION_LENGTH,
+ *  a title is a one-line label, not a place for the description's content. */
+export const MAX_TASK_TITLE_LENGTH = 500;
+
 export const TaskBoardItemStatusSchema = z.enum([
   "triage",
   "todo",

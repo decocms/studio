@@ -4,6 +4,7 @@ import { MAX_SPRINT } from "@decocms/shared/sprints";
 import { getUserId, requireAuth } from "@/core/studio-context";
 import {
   MAX_TASK_DESCRIPTION_LENGTH,
+  MAX_TASK_TITLE_LENGTH,
   SUPER_AGENT_ASSIGNEE_ID,
   TaskBoardItemPrioritySchema,
   TaskBoardItemTypeSchema,
@@ -27,7 +28,7 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     openWorldHint: false,
   },
   inputSchema: z.object({
-    title: z.string().min(1),
+    title: z.string().min(1).max(MAX_TASK_TITLE_LENGTH),
     description: z
       .string()
       .max(MAX_TASK_DESCRIPTION_LENGTH)
