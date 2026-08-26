@@ -4,6 +4,7 @@ import { MAX_SPRINT } from "@decocms/shared/sprints";
 import { getUserId, requireAuth } from "@/core/studio-context";
 import {
   MAX_TASK_DESCRIPTION_LENGTH,
+  MAX_TASK_REPO_LENGTH,
   MAX_TASK_TITLE_LENGTH,
   SUPER_AGENT_ASSIGNEE_ID,
   TaskBoardItemPrioritySchema,
@@ -38,7 +39,7 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     priority: TaskBoardItemPrioritySchema.optional(),
     type: TaskBoardItemTypeSchema.optional(),
     assigneeId: z.string().nullable().optional(),
-    repo: z.string().nullable().optional(),
+    repo: z.string().max(MAX_TASK_REPO_LENGTH).nullable().optional(),
     dueDate: z.string().datetime().nullable().optional(),
     sprint: z
       .number()
