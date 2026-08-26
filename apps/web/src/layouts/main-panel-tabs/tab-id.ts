@@ -95,9 +95,9 @@ export function parseDeckTabId(
 }
 
 export interface FileTabParsed {
-  /** Thread-output key: an S3 key ("model-outputs/<threadId>/x.pdf") or an
-   *  org-fs ref ("org-fs:outputs/<threadId>/x.pdf") — same shape the
-   *  thread-outputs endpoint returns. */
+  /** Thread-output key: an org-fs ref
+   *  (`org-fs:outputs/<threadId>/x.pdf`) — the same shape returned by the
+   *  thread-outputs endpoint. */
   key: string;
 }
 
