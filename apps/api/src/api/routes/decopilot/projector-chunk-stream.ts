@@ -1,6 +1,8 @@
 import type { UIMessageChunk } from "ai";
 import { DeliverPolicy, type JetStreamClient } from "@nats-io/jetstream";
+import { retry } from "@decocms/shared/std";
 import { DECOPILOT_STREAM_NAME } from "./projector-stream-messages";
+import { isTransientJsApiError } from "./transient-js-error";
 import {
   assertContiguousAndDedup,
   fenceFilter,
@@ -59,14 +61,35 @@ export function createProjectorChunkStreamFromMessages(
   return projectorChunkStream(events);
 }
 
+/**
+ * Open the run's subject as an ordered consumer and fold it into UI chunks.
+ *
+ * The open round-trips to the stream's RAFT leader, so a NATS roll or election
+ * makes it throw `stream is offline` for a few seconds. Its only caller is the
+ * thread gate's `consumeRunProjection` step, which allows no retries, so an
+ * un-retried throw fails the entire run before a single chunk is projected —
+ * leaving an empty thread stamped `failed` (prod 2026-08-26). The transient
+ * window is retried here; a permanent error still surfaces on attempt one.
+ */
 export async function createProjectorChunkStream(
   options: JetStreamProjectorChunkStreamOptions,
 ): Promise<ReadableStream<UIMessageChunk>> {
-  const consumer = await options.js.consumers.get(DECOPILOT_STREAM_NAME, {
-    filter_subjects: streamSubject(options.runId),
-    deliver_policy: DeliverPolicy.All,
-  });
-  const sub = await consumer.consume();
+  const sub = await retry(
+    async () => {
+      const consumer = await options.js.consumers.get(DECOPILOT_STREAM_NAME, {
+        filter_subjects: streamSubject(options.runId),
+        deliver_policy: DeliverPolicy.All,
+      });
+      return consumer.consume();
+    },
+    {
+      maxAttempts: 6,
+      minTimeout: 250,
+      maxTimeout: 5000,
+      jitter: 0.5,
+      isRetriable: isTransientJsApiError,
+    },
+  );
   async function* messages(): AsyncIterable<RawMsg> {
     try {
       for await (const msg of sub) {
