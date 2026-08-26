@@ -76,6 +76,18 @@ export const VirtualMcpUILayoutTabSchema = z.object({
 export type VirtualMcpUILayoutTab = z.infer<typeof VirtualMcpUILayoutTabSchema>;
 
 /**
+ * How an agent offers content editing:
+ * - `off` — no CMS. The Content tab and the Preview toolbar's CMS toggle, the
+ *   two entry points, are not rendered. A UI gate only: the decofile stays
+ *   readable and the agent still edits content through its tools.
+ * - `manual` — the default. Editors open the CMS from Preview when they want it.
+ * - `auto` — Preview opens the CMS as soon as its metadata is ready to render.
+ */
+export const CmsModeSchema = z.enum(["off", "manual", "auto"]);
+
+export type CmsMode = z.infer<typeof CmsModeSchema>;
+
+/**
  * Layout-specific settings stored under `metadata.ui.layout`. Controls which
  * main view opens by default and which additional right-panel tabs are
  * permanently available for the agent.
@@ -97,16 +109,57 @@ export const VirtualMcpUILayoutSchema = z.object({
    */
   chatDefaultOpen: z.boolean().nullable().optional(),
   /**
-   * When true, the CMS (Blocks) panel auto-opens in the Preview as soon as its
-   * metadata is ready to render content. Off by default: absent / null / false
-   * → Preview stays on the site until the user opens the CMS manually. Only
-   * relevant for agents with a preview.
+   * @deprecated Superseded by `cms`. Still read as the fallback for agents
+   * configured before the tri-state existed — see `resolveCmsMode`. Writers
+   * set `cms` and null this out.
    */
   cmsDefaultOpen: z.boolean().nullable().optional(),
+  cms: CmsModeSchema.nullable()
+    .optional()
+    .describe(
+      "How this agent offers content editing. Absent falls back to cmsDefaultOpen.",
+    ),
   tabs: z.array(VirtualMcpUILayoutTabSchema).optional(),
 });
 
 export type VirtualMcpUILayout = z.infer<typeof VirtualMcpUILayoutSchema>;
+
+/**
+ * The CMS mode for an agent, resolving the legacy `cmsDefaultOpen` boolean the
+ * tri-state replaced. Every reader goes through this: `layout.cms` alone is
+ * wrong for agents configured before the enum, and reading both at a call site
+ * is how the two drift apart.
+ */
+export function resolveCmsMode(
+  layout:
+    | { cms?: CmsMode | null; cmsDefaultOpen?: boolean | null }
+    | null
+    | undefined,
+): CmsMode {
+  if (layout?.cms) return layout.cms;
+  return layout?.cmsDefaultOpen ? "auto" : "manual";
+}
+
+/**
+ * The layout that writing `mode` produces. Two settings can't survive the
+ * write: `cmsDefaultOpen`, which the mode supersedes, and a `defaultMainView`
+ * of Content, which `off` takes off the tab bar — an agent left pointing at it
+ * would land on a view with no way back to it. Every writer goes through this
+ * so the three can't drift.
+ */
+export function withCmsMode(
+  layout: VirtualMcpUILayout | null | undefined,
+  mode: CmsMode,
+): VirtualMcpUILayout {
+  const dropsContentView =
+    mode === "off" && layout?.defaultMainView?.type === "content";
+  return {
+    ...layout,
+    cms: mode,
+    cmsDefaultOpen: null,
+    ...(dropsContentView ? { defaultMainView: { type: "preview" } } : {}),
+  };
+}
 
 /**
  * Tile UI declared by a home agent. When present, the `/$org` home page

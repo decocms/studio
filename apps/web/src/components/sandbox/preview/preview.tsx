@@ -12,6 +12,7 @@ import { resolvePreviewDisplay } from "./preview-display";
 import { useIframeLoadRecovery } from "./preview-iframe-recovery";
 import { buildPreviewLabel } from "./preview-label";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
+import { resolveCmsMode } from "@decocms/shared/sdk/types";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { useT } from "@/i18n/use-t.ts";
@@ -654,14 +655,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const previewState = lifecycle.previewState;
   const userStopped = lifecycle.userStopped;
 
-  // Per-agent "Open CMS" Layout setting, read off the entity already in
-  // context (same source as previewServerUrl above). Off by default (absent /
-  // null → false): Preview stays on the site until the user opens the CMS
-  // manually, unless an agent opts in to auto-open.
-  const cmsDefaultOpen =
-    (inset?.entity?.id === virtualMcpId
-      ? inset.entity.metadata?.ui?.layout?.cmsDefaultOpen
-      : null) ?? false;
+  // Per-agent CMS mode, off the entity already in context (same source as
+  // previewServerUrl above). `manual` unless the agent says otherwise.
+  const cmsMode = resolveCmsMode(
+    inset?.entity?.id === virtualMcpId
+      ? (inset.entity.metadata?.ui?.layout ?? null)
+      : null,
+  );
 
   // Fast Preview (gated by the CMS switch): render the site's REAL page on
   // `previewServerUrl`, carrying a `?__draft=` pointer the site's framework
@@ -1122,7 +1122,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // headless `<CmsAutoOpen>` below, mounted only while `shouldAutoOpenCms`
   // holds; `onOpen` latches so it fires exactly once.
   const autoOpenCms = shouldAutoOpenCms({
-    cmsDefaultOpen,
+    autoOpen: cmsMode === "auto",
     blocksReady,
     autoOpenResolved: blocksAutoOpenResolved,
     editingMode,
@@ -1363,25 +1363,29 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     blocksState,
   });
 
-  const cmsToggle = cmsControlsVisible ? (
-    <HeaderTabButton
-      title={t("sandbox.preview.cms")}
-      tooltip={
-        blocksActive
-          ? t("sandbox.preview.exitEditor")
-          : t("sandbox.preview.editContent")
-      }
-      // Distinctive icon — sheds its label with the system tabs at 768px,
-      // well before this group hides at 384px, so the group stays narrow
-      // through the widths where it is most cramped.
-      labelCollapse="sooner"
-      icon={{ kind: "component", Component: PuzzlePiece01 }}
-      active={blocksActive}
-      onClick={() => toggleEditingMode("blocks")}
-      testId="preview-blocks-toggle"
-      dataTour={TOUR_ANCHORS.edit}
-    />
-  ) : null;
+  // The agent's CMS mode is the per-agent switch layered on that capability
+  // gate; the rest of the toolbar is preview navigation, not editing, so it
+  // stays whatever the mode says.
+  const cmsToggle =
+    cmsControlsVisible && cmsMode !== "off" ? (
+      <HeaderTabButton
+        title={t("sandbox.preview.cms")}
+        tooltip={
+          blocksActive
+            ? t("sandbox.preview.exitEditor")
+            : t("sandbox.preview.editContent")
+        }
+        // Distinctive icon — sheds its label with the system tabs at 768px,
+        // well before this group hides at 384px, so the group stays narrow
+        // through the widths where it is most cramped.
+        labelCollapse="sooner"
+        icon={{ kind: "component", Component: PuzzlePiece01 }}
+        active={blocksActive}
+        onClick={() => toggleEditingMode("blocks")}
+        testId="preview-blocks-toggle"
+        dataTour={TOUR_ANCHORS.edit}
+      />
+    ) : null;
 
   // The view controls proper: refresh · page selector · open-in-new. Kept as a
   // unit so both layouts can place it as one block — inline after the Edit

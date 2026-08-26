@@ -567,7 +567,18 @@ export const sandbox = {
     "New chats start as CMS sessions, previewed on your preview server instead of a sandbox. Existing chats keep the mode they were created with.",
   "sandbox.cmsSettings.fastPreview.needsPreviewServerUrl":
     "Set a preview server above to enable Fast Preview.",
-  "sandbox.cmsSettings.editing.title": "Editing",
+  "sandbox.cmsSettings.contentEditing.title": "Content editing",
+  "sandbox.cmsSettings.contentEditing.description":
+    "Whether this agent offers a CMS, and where the preview lands when it does.",
+  "sandbox.cmsSettings.contentEditing.manual": "Enabled",
+  "sandbox.cmsSettings.contentEditing.manualDescription":
+    "Editors open the CMS from the preview when they need it.",
+  "sandbox.cmsSettings.contentEditing.auto": "Auto",
+  "sandbox.cmsSettings.contentEditing.autoDescription":
+    "The preview opens the CMS as soon as it can edit content.",
+  "sandbox.cmsSettings.contentEditing.off": "Disabled",
+  "sandbox.cmsSettings.contentEditing.offDescription":
+    "No CMS button in the preview and no Content tab. The site still previews, and the agent can still edit content.",
   "sandbox.cmsUnavailable.title": "This chat can't preview your site",
   "sandbox.cmsUnavailable.noPreviewServer":
     "It's a CMS session, but this project has no preview server configured.",
@@ -575,8 +586,6 @@ export const sandbox = {
     "It's a CMS session, but this project has no GitHub repository to save to.",
   "sandbox.cmsUnavailable.startCodingSession":
     "Continue this branch in a coding session",
-  "sandbox.cmsSettings.editing.description":
-    "Customize the content-editing experience in the blocks form.",
   "sandbox.previewServerUrlField.description":
     "Your live server's address, used to preview content. Required for Fast Preview.",
   "sandbox.previewServerUrlField.label": "Preview server",
