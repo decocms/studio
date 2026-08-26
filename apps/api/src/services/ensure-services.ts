@@ -64,11 +64,6 @@ interface StateFile {
   pid: number;
   port: number;
   startedAt: string;
-  /**
-   * Legacy operator-mode NATS state. Its presence forces a one-time restart
-   * into the current loopback-only JetStream configuration.
-   */
-  wsPort?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -624,40 +619,27 @@ async function ensureNats(home: string): Promise<ServiceInfo> {
     owner: "none",
   };
 
-  // Check state.json for an existing managed instance
-  const existing = readState(home, "nats");
-  if (existing !== null) {
-    if (isOwnedProcess(existing.pid, "nats-server")) {
-      // Older Studio versions wrote `wsPort` while running operator/JWT mode.
-      // That server rejects the new credential-free local connection, so
-      // restart it once instead of reusing an incompatible process.
-      if (existing.wsPort === undefined) {
-        // Operator/JWT keys from an older Studio release are no longer used.
-        // Remove the dormant secrets even when the current plain server is
-        // already healthy.
-        rmSync(join(servicesDir(home), "nats", "jwt"), {
-          recursive: true,
-          force: true,
-        });
-        info.state = "running";
-        info.pid = existing.pid;
-        info.port = existing.port;
-        info.owner = "managed";
-        return info;
-      }
-      await stopNats(home);
-    } else {
-      // Dead process — clean up stale state
-      await removeState(home, "nats");
-    }
-  }
-
   // Retired operator/account seeds are sensitive and have no remaining
   // consumer. The path is an exact app-managed subdirectory, never user input.
   rmSync(join(servicesDir(home), "nats", "jwt"), {
     recursive: true,
     force: true,
   });
+
+  // Check state.json for an existing managed instance
+  const existing = readState(home, "nats");
+  if (existing !== null) {
+    if (isOwnedProcess(existing.pid, "nats-server")) {
+      info.state = "running";
+      info.pid = existing.pid;
+      info.port = existing.port;
+      info.owner = "managed";
+      return info;
+    } else {
+      // Dead process — clean up stale state
+      await removeState(home, "nats");
+    }
+  }
 
   // Allocate one dynamic loopback port for Studio's local connection.
   const port = await findAvailablePort();
