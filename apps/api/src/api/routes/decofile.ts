@@ -24,6 +24,7 @@ import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-ur
 import type { GithubRepo } from "@decocms/shared/sdk/types";
 import { assertSafeDecoBlockKey } from "@decocms/shared/decofile";
 import { Hono, type Context } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { createMiddleware } from "hono/factory";
 import { z } from "zod";
 import { coAuthorFromStudioContext } from "@/lib/co-author-identity";
@@ -74,6 +75,14 @@ const MAX_BLOCK_BYTES = 256 * 1024;
 
 // Bounds one block key's length — a key becomes a GitHub tree path.
 const MAX_BLOCK_KEY_LENGTH = 1024;
+
+// Bounds the raw request body, before it's parsed into memory.
+const MAX_PATCH_BODY_BYTES = 8 * 1024 * 1024;
+
+export const patchBodyLimit = bodyLimit({
+  maxSize: MAX_PATCH_BODY_BYTES,
+  onError: (c) => c.json({ error: "Payload too large" }, 413),
+});
 
 export const patchBodySchema = z
   .object({
@@ -310,7 +319,7 @@ export function createDecofileRoutes() {
     }
   });
 
-  app.patch("/:virtualMcpId/:branch", async (c) => {
+  app.patch("/:virtualMcpId/:branch", patchBodyLimit, async (c) => {
     const scope = c.get("decofileScope");
     const ctx = c.var.studioContext;
 
