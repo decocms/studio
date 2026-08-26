@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { OrgJiraIntegration } from "@/storage/types";
-import { buildJql, vanishedLinks } from "./sync";
+import { buildJql, isUnchanged, vanishedLinks } from "./sync";
 
 /**
  * The pull's query. Worth pinning because it is the whole definition of which
@@ -127,5 +127,36 @@ describe("vanishedLinks", () => {
 
   it("has nothing to do on a board with no linked cards", () => {
     expect(vanishedLinks(new Set(["1"]), [])).toEqual([]);
+  });
+});
+
+/**
+ * The "nothing to do" shortcut. It fires BEFORE any field is written, which is
+ * why a rescan must not take it: migration 184 cleared the watermark to re-read
+ * a widened scope, and the run created the 50 cards it was missing while
+ * leaving 274 existing ones with the `sprint_id` they never had — 253 issues
+ * that Jira has in a sprint read as backlog on the board.
+ */
+describe("isUnchanged", () => {
+  const seen = "2026-03-02T12:00:00.000Z";
+
+  it("skips an issue no newer than what the link recorded", () => {
+    expect(isUnchanged(seen, new Date(seen), false)).toBe(true);
+    expect(isUnchanged(seen, new Date("2026-03-02T11:00:00.000Z"), false)).toBe(
+      true,
+    );
+  });
+
+  it("processes an issue that moved on", () => {
+    expect(isUnchanged(seen, new Date("2026-03-02T12:00:01.000Z"), false)).toBe(
+      false,
+    );
+  });
+
+  it("never skips on a rescan, however old the issue looks", () => {
+    expect(isUnchanged(seen, new Date(seen), true)).toBe(false);
+    expect(isUnchanged(seen, new Date("2020-01-01T00:00:00.000Z"), true)).toBe(
+      false,
+    );
   });
 });
