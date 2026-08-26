@@ -44,6 +44,10 @@ import {
 } from "@/tools/sandbox/thread-repo";
 import { retry, sleep } from "@decocms/shared/std";
 import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
+import {
+  secondaryRepoDirNames,
+  secondaryRepoDirName,
+} from "@decocms/shared/secondary-repo-dirs";
 import { requireTaskRunContext } from "./task-run-context";
 
 /**
@@ -191,12 +195,13 @@ async function secondaryRepoConfigs(
 ): Promise<
   { cloneUrl: string; repoName: string; submoduleCredentials: never[] }[]
 > {
+  const dirNames = secondaryRepoDirNames(repos);
   const out: {
     cloneUrl: string;
     repoName: string;
     submoduleCredentials: never[];
   }[] = [];
-  for (const repo of repos) {
+  for (const [i, repo] of repos.entries()) {
     if (!repo.connectionId) continue;
     try {
       const { cloneUrl } = await buildCloneInfo(
@@ -207,7 +212,7 @@ async function secondaryRepoConfigs(
         ctx.vault,
         { bufferMs: CLONE_TOKEN_MIN_TTL_MS },
       );
-      out.push({ cloneUrl, repoName: repo.name, submoduleCredentials: [] });
+      out.push({ cloneUrl, repoName: dirNames[i]!, submoduleCredentials: [] });
     } catch (err) {
       console.warn(
         `[TASK_ADD_REPO] skipping secondary ${repo.owner}/${repo.name}:`,
@@ -429,6 +434,24 @@ export const TASK_ADD_REPO = defineTool({
         console.warn("[TASK_ADD_REPO] explicit clone kick failed", err);
       });
 
+    // Bash lands in the daemon's own repo dir, which is the PRIMARY. Probing
+    // there for a secondary reports the primary's checkout as this call's
+    // success, immediately and with the wrong file listing, so a secondary has
+    // to be waited for where it actually lands. `$PWD`'s parent rather than a
+    // literal `/app`, so the layout stays the daemon's to define.
+    // Named against the whole accumulated list, the same way provisioning names
+    // it, so the directory survives a pod restart.
+    const secondaryDirName = isPrimary
+      ? null
+      : secondaryRepoDirName(secondaries, {
+          owner: repo.owner,
+          name: repo.repo,
+        });
+    const checkoutDir =
+      isPrimary || !secondaryDirName
+        ? "."
+        : `"$(dirname "$PWD")/repos/${secondaryDirName}"`;
+
     // Wait for the checkout: the whole point is that the model can read files on
     // the next tool call instead of polling an empty directory itself.
     const deadline = Date.now() + CLONE_TIMEOUT_MS;
@@ -443,7 +466,7 @@ export const TASK_ADD_REPO = defineTool({
         provider,
         record.sandboxHandle,
         threadId,
-        "if git rev-parse HEAD >/dev/null 2>&1; then echo __CLONED__; fi; ls -A 2>/dev/null",
+        `cd ${checkoutDir} 2>/dev/null || exit 1; if git rev-parse HEAD >/dev/null 2>&1; then echo __CLONED__; fi; ls -A 2>/dev/null`,
       ).catch(() => null);
       if (!probe) {
         if (++failures >= CLONE_MAX_CONSECUTIVE_FAILURES) break;
@@ -478,7 +501,9 @@ export const TASK_ADD_REPO = defineTool({
       cloned,
       files: listing,
       message: cloned
-        ? `${repo.owner}/${repo.repo} is checked out at your working directory on branch ${gitRef}. \`git\` and \`gh\` are authenticated. Start working.`
+        ? isPrimary
+          ? `${repo.owner}/${repo.repo} is checked out at your working directory on branch ${gitRef}. \`git\` and \`gh\` are authenticated. Start working.`
+          : `${repo.owner}/${repo.repo} is checked out at ../repos/${secondaryDirName}, beside your working directory, on its default branch. \`git\` and \`gh\` are authenticated there too. Your first checkout is untouched — commit and open a pull request in each repository you change.`
         : `The clone of ${repo.owner}/${repo.repo} did not finish within ${Math.round(
             CLONE_TIMEOUT_MS / 1000,
           )}s. It may still be in progress — check your working directory before calling this again.`,

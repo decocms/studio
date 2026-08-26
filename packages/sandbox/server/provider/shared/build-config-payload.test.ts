@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { buildConfigPayload, extraRepoDirNames } from "./build-config-payload";
+import { buildConfigPayload } from "./build-config-payload";
 
 describe("buildConfigPayload", () => {
   it("maps tenant identity to operator", () => {
@@ -150,51 +150,5 @@ describe("buildConfigPayload", () => {
     });
 
     expect(payload?.git?.repository.submoduleCredentials).toEqual([]);
-  });
-});
-
-const url = (path: string) =>
-  `https://x-access-token:tok@github.com/${path}.git`;
-
-describe("extraRepoDirNames", () => {
-  it("uses the repo's own name, never the owner/name label", () => {
-    expect(extraRepoDirNames([url("acme/storefront")])).toEqual(["storefront"]);
-  });
-
-  it("disambiguates a colliding name across owners", () => {
-    expect(
-      extraRepoDirNames([url("acme/checkout"), url("other/checkout")]),
-    ).toEqual(["acme-checkout", "other-checkout"]);
-  });
-
-  it("leaves a non-colliding neighbour alone", () => {
-    expect(
-      extraRepoDirNames([
-        url("acme/checkout"),
-        url("other/checkout"),
-        url("acme/storefront"),
-      ]),
-    ).toEqual(["acme-checkout", "other-checkout", "storefront"]);
-  });
-
-  it("keeps one name per input, in order", () => {
-    const urls = [url("a/one"), url("b/two"), url("c/three")];
-    expect(extraRepoDirNames(urls)).toEqual(["one", "two", "three"]);
-  });
-
-  // Matches the daemon's `repoNameRe`, which rejects separators and dot-opens.
-  it("produces names the daemon accepts", () => {
-    const names = extraRepoDirNames([
-      url("acme/.hidden"),
-      url("acme/weird name!"),
-      "not-a-url",
-    ]);
-    for (const name of names) {
-      expect(name).toMatch(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
-    }
-  });
-
-  it("has nothing to name for no extras", () => {
-    expect(extraRepoDirNames([])).toEqual([]);
   });
 });

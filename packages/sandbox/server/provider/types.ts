@@ -81,6 +81,14 @@ export interface EnsureRepo {
    * every ensure.
    */
   submoduleCredentials?: { host: string; token: string }[];
+  /**
+   * Directory name, for a secondary checkout only. The caller sets it through
+   * `secondaryRepoDirNames`; nothing derives it here. `TASK_ADD_REPO` names the
+   * same repo mid-run and a pod re-provision names it again, and two rules
+   * would move a checkout across a restart, breaking the paths the agent had
+   * been using.
+   */
+  directoryName?: string;
 }
 
 export interface EnsureOptions {

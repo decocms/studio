@@ -18,6 +18,7 @@ import {
 } from "@decocms/sandbox/provider";
 import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import type { EnsureRepo } from "@decocms/sandbox/provider";
+import { secondaryRepoDirNames } from "@decocms/shared/secondary-repo-dirs";
 import { sleep } from "@decocms/shared/std";
 import { defineTool } from "../../core/define-tool";
 import {
@@ -358,9 +359,12 @@ async function buildExtraRepoOpts(args: {
   const primaryKey = args.primary
     ? `${args.primary.owner}/${args.primary.name}`.toLowerCase()
     : null;
+  const secondaries = args.repos.filter(
+    (r) => `${r.owner}/${r.name}`.toLowerCase() !== primaryKey,
+  );
+  const dirNames = secondaryRepoDirNames(secondaries);
   const out: EnsureRepo[] = [];
-  for (const repo of args.repos) {
-    if (`${repo.owner}/${repo.name}`.toLowerCase() === primaryKey) continue;
+  for (const [i, repo] of secondaries.entries()) {
     if (!repo.connectionId) continue;
     try {
       const { cloneUrl } = await buildCloneInfo(
@@ -376,6 +380,7 @@ async function buildExtraRepoOpts(args: {
         userName: args.gitUserName,
         userEmail: args.gitUserEmail,
         displayName: `${repo.owner}/${repo.name}`,
+        directoryName: dirNames[i]!,
         submoduleCredentials: [],
       });
     } catch (err) {
