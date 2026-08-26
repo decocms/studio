@@ -32,6 +32,7 @@ import {
   fieldDisplayLabel,
   isArrayDrillDownField,
   prependCrumbIfAbsent,
+  recordContainerOwner,
   siblingsNeedingAncestorCrumb,
   resolveActiveFieldKey,
   siblingFieldLabel,
@@ -636,10 +637,14 @@ export function SchemaForm({
         const needsAncestorCrumb =
           collidesWithSibling ||
           (consumedPrefix.length === 0 && ancestorCrumbSiblings.has(key));
+        // A block-ref container records ownership structurally on the item crumb (invisible, no back-through stop); object siblings keep the visible label crumb.
         const fieldOnBreadcrumbChangeForKey =
           needsAncestorCrumb && fieldOnBreadcrumbChange
-            ? (next: Crumb[]) =>
-                fieldOnBreadcrumbChange(prependCrumbIfAbsent(label, next))
+            ? propSchema.type === "block-ref"
+              ? (next: Crumb[]) =>
+                  fieldOnBreadcrumbChange(recordContainerOwner(key, next))
+              : (next: Crumb[]) =>
+                  fieldOnBreadcrumbChange(prependCrumbIfAbsent(label, next))
             : fieldOnBreadcrumbChange;
 
         return renderField({
