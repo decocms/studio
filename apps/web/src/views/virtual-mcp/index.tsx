@@ -32,8 +32,6 @@ import {
 } from "@decocms/ui/components/dialog.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Card, CardContent } from "@decocms/ui/components/card.tsx";
-import { Label } from "@decocms/ui/components/label.tsx";
-import { Switch } from "@decocms/ui/components/switch.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import {
   Tooltip,
@@ -86,6 +84,7 @@ import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-ur
 import { FieldDescriptionTooltipsField } from "@/components/sandbox/runtime-card/field-description-tooltips-field";
 import { FastPreviewField } from "@/components/sandbox/runtime-card/fast-preview-field";
 import { PublishPolicyField } from "./publish-policy-field";
+import { ContentEditingField } from "./content-editing-field";
 
 type DialogState = {
   shareDialogOpen: boolean;
@@ -335,17 +334,10 @@ function VirtualMcpDetailViewWithData({
   // GitHub repo connected (real auth) — instructions become read-only
   const hasGithubRepo = agentHasConnectedGithub(virtualMcp);
 
-  // Gates the "Open CMS" toggle — same condition LayoutTabContent uses to
+  // Gates the Content editing block — same condition LayoutTabContent uses to
   // gate Preview/Content as a main-view option (a Start Website template or a
   // connected GitHub repo).
   const hasClonableSource = agentHasClonableSource(virtualMcp?.metadata);
-  const layoutMeta = form.watch("metadata.ui.layout") ?? null;
-  // Off by default (absent / null → false): the CMS auto-opens in Preview only
-  // when an agent explicitly opts in via this toggle.
-  const cmsDefaultOpen = layoutMeta?.cmsDefaultOpen ?? false;
-  // On, the two entry points — the Content tab and Preview's CMS toggle — go
-  // away, which also makes "Open CMS" moot (hidden below).
-  const cmsDisabled = layoutMeta?.cmsDisabled ?? false;
 
   // Repo info for the Runtime card (display-only — loose check is intentional)
   const githubRepoForRuntimeCard = getActiveGithubRepo(virtualMcp);
@@ -1086,6 +1078,28 @@ function VirtualMcpDetailViewWithData({
                 </h2>
               </div>
               <Card className="p-6 gap-5">
+                {/* Content editing — whether this agent has a CMS at all, and
+                    where the preview lands when it does. Reads first: the rest
+                    of the card configures what this turns on. */}
+                {hasClonableSource && (
+                  <>
+                    <CardContent className="p-0 space-y-5">
+                      <div className="flex flex-col gap-1">
+                        <h3 className="text-sm font-medium text-foreground">
+                          {t("sandbox.cmsSettings.contentEditing.title")}
+                        </h3>
+                        <p className="text-sm text-muted-foreground">
+                          {t("sandbox.cmsSettings.contentEditing.description")}
+                        </p>
+                      </div>
+                      <ContentEditingField
+                        control={form.control}
+                        onCommit={flushAndSave}
+                      />
+                    </CardContent>
+                    <div className="border-t border-border -mx-6" />
+                  </>
+                )}
                 {/* Preview — preview URL + the Fast Preview switch it gates
                     (a URL is required for Fast Preview to take effect). */}
                 <CardContent className="p-0 space-y-5">
@@ -1136,54 +1150,6 @@ function VirtualMcpDetailViewWithData({
                       {t("sandbox.cmsSettings.editing.description")}
                     </p>
                   </div>
-                  {hasClonableSource && (
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="space-y-0.5 min-w-0">
-                        <Label className="font-normal text-foreground">
-                          {t("sandbox.cmsSettings.disableCms.label")}
-                        </Label>
-                        <p className="text-xs text-muted-foreground">
-                          {t("sandbox.cmsSettings.disableCms.description")}
-                        </p>
-                      </div>
-                      <Switch
-                        className="shrink-0"
-                        checked={cmsDisabled}
-                        onCheckedChange={(checked) => {
-                          form.setValue(
-                            "metadata.ui.layout",
-                            { ...layoutMeta, cmsDisabled: checked },
-                            { shouldDirty: true },
-                          );
-                          flushAndSave();
-                        }}
-                      />
-                    </div>
-                  )}
-                  {hasClonableSource && !cmsDisabled && (
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="space-y-0.5 min-w-0">
-                        <Label className="font-normal text-foreground">
-                          {t("virtualMcp.layoutTabContent.openCms")}
-                        </Label>
-                        <p className="text-xs text-muted-foreground">
-                          {t("virtualMcp.layoutTabContent.openCmsDescription")}
-                        </p>
-                      </div>
-                      <Switch
-                        className="shrink-0"
-                        checked={cmsDefaultOpen}
-                        onCheckedChange={(checked) => {
-                          form.setValue(
-                            "metadata.ui.layout",
-                            { ...layoutMeta, cmsDefaultOpen: checked },
-                            { shouldDirty: true },
-                          );
-                          flushAndSave();
-                        }}
-                      />
-                    </div>
-                  )}
                   <FieldDescriptionTooltipsField control={form.control} />
                 </CardContent>
               </Card>

@@ -568,9 +568,18 @@ export const sandbox = {
   "sandbox.cmsSettings.fastPreview.needsPreviewServerUrl":
     "Set a preview server above to enable Fast Preview.",
   "sandbox.cmsSettings.editing.title": "Editing",
-  "sandbox.cmsSettings.disableCms.label": "Disable CMS",
-  "sandbox.cmsSettings.disableCms.description":
-    "Hide the Content tab and the CMS button in Preview. The site still previews normally, and the agent can still edit content.",
+  "sandbox.cmsSettings.contentEditing.title": "Content editing",
+  "sandbox.cmsSettings.contentEditing.description":
+    "Whether this agent offers a CMS, and where the preview lands when it does.",
+  "sandbox.cmsSettings.contentEditing.manual": "On demand",
+  "sandbox.cmsSettings.contentEditing.manualDescription":
+    "Editors open the CMS from the preview when they need it.",
+  "sandbox.cmsSettings.contentEditing.auto": "Always open",
+  "sandbox.cmsSettings.contentEditing.autoDescription":
+    "The preview opens the CMS as soon as it can edit content.",
+  "sandbox.cmsSettings.contentEditing.off": "Off",
+  "sandbox.cmsSettings.contentEditing.offDescription":
+    "No CMS button in the preview and no Content tab. The site still previews, and the agent can still edit content.",
   "sandbox.cmsUnavailable.title": "This chat can't preview your site",
   "sandbox.cmsUnavailable.noPreviewServer":
     "It's a CMS session, but this project has no preview server configured.",

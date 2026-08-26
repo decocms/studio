@@ -2018,7 +2018,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cmsDisabled?: boolean | null | undefined;
+                      cms?: "off" | "auto" | "manual" | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2226,7 +2226,7 @@ export interface StudioToolIO {
                             | undefined;
                           chatDefaultOpen?: boolean | null | undefined;
                           cmsDefaultOpen?: boolean | null | undefined;
-                          cmsDisabled?: boolean | null | undefined;
+                          cms?: "off" | "auto" | "manual" | null | undefined;
                           tabs?:
                             | {
                                 id: string;
@@ -2377,7 +2377,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cmsDisabled?: boolean | null | undefined;
+                      cms?: "off" | "auto" | "manual" | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2565,7 +2565,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cmsDisabled?: boolean | null | undefined;
+                      cms?: "off" | "auto" | "manual" | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2744,7 +2744,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cmsDisabled?: boolean | null | undefined;
+                      cms?: "off" | "auto" | "manual" | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -2917,7 +2917,7 @@ export interface StudioToolIO {
                             | undefined;
                           chatDefaultOpen?: boolean | null | undefined;
                           cmsDefaultOpen?: boolean | null | undefined;
-                          cmsDisabled?: boolean | null | undefined;
+                          cms?: "off" | "auto" | "manual" | null | undefined;
                           tabs?:
                             | {
                                 id: string;
@@ -3076,7 +3076,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cmsDisabled?: boolean | null | undefined;
+                      cms?: "off" | "auto" | "manual" | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -3253,7 +3253,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cmsDisabled?: boolean | null | undefined;
+                      cms?: "off" | "auto" | "manual" | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -4287,7 +4287,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cmsDisabled?: boolean | null | undefined;
+                      cms?: "off" | "auto" | "manual" | null | undefined;
                       tabs?:
                         | {
                             id: string;
@@ -6712,7 +6712,7 @@ export interface StudioToolIO {
               | "remove_private"
               | "remove_all"
               | undefined;
-            schedule?: "cron" | "manual" | undefined;
+            schedule?: "manual" | "cron" | undefined;
             cronExpression?: string | undefined;
             scheduleEventId?: string | undefined;
             perMcpTimeoutMs?: number | undefined;
@@ -6740,7 +6740,7 @@ export interface StudioToolIO {
             | "remove_public"
             | "remove_private"
             | "remove_all";
-          schedule: "cron" | "manual";
+          schedule: "manual" | "cron";
           perMcpTimeoutMs: number;
           perToolTimeoutMs: number;
           maxAgentSteps: number;
@@ -6791,7 +6791,7 @@ export interface StudioToolIO {
             | "remove_public"
             | "remove_private"
             | "remove_all";
-          schedule: "cron" | "manual";
+          schedule: "manual" | "cron";
           perMcpTimeoutMs: number;
           perToolTimeoutMs: number;
           maxAgentSteps: number;
@@ -6833,7 +6833,7 @@ export interface StudioToolIO {
             | "remove_public"
             | "remove_private"
             | "remove_all";
-          schedule: "cron" | "manual";
+          schedule: "manual" | "cron";
           perMcpTimeoutMs: number;
           perToolTimeoutMs: number;
           maxAgentSteps: number;
@@ -6874,7 +6874,7 @@ export interface StudioToolIO {
             | "remove_public"
             | "remove_private"
             | "remove_all";
-          schedule: "cron" | "manual";
+          schedule: "manual" | "cron";
           perMcpTimeoutMs: number;
           perToolTimeoutMs: number;
           maxAgentSteps: number;

@@ -12,6 +12,7 @@ import { resolvePreviewDisplay } from "./preview-display";
 import { useIframeLoadRecovery } from "./preview-iframe-recovery";
 import { buildPreviewLabel } from "./preview-label";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
+import { resolveCmsMode } from "@decocms/shared/sdk/types";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { useT } from "@/i18n/use-t.ts";
@@ -654,16 +655,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const previewState = lifecycle.previewState;
   const userStopped = lifecycle.userStopped;
 
-  // Per-agent CMS settings, off the entity already in context (same source as
-  // previewServerUrl above). Both default off.
-  const entityLayout =
+  // Per-agent CMS mode, off the entity already in context (same source as
+  // previewServerUrl above). `manual` unless the agent says otherwise.
+  const cmsMode = resolveCmsMode(
     inset?.entity?.id === virtualMcpId
       ? (inset.entity.metadata?.ui?.layout ?? null)
-      : null;
-  const cmsDisabled = entityLayout?.cmsDisabled ?? false;
-  // Auto-open would strand the user in a panel whose only close button is gone.
-  const cmsDefaultOpen =
-    !cmsDisabled && (entityLayout?.cmsDefaultOpen ?? false);
+      : null,
+  );
 
   // Fast Preview (gated by the CMS switch): render the site's REAL page on
   // `previewServerUrl`, carrying a `?__draft=` pointer the site's framework
@@ -1124,7 +1122,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // headless `<CmsAutoOpen>` below, mounted only while `shouldAutoOpenCms`
   // holds; `onOpen` latches so it fires exactly once.
   const autoOpenCms = shouldAutoOpenCms({
-    cmsDefaultOpen,
+    autoOpen: cmsMode === "auto",
     blocksReady,
     autoOpenResolved: blocksAutoOpenResolved,
     editingMode,
@@ -1365,10 +1363,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     blocksState,
   });
 
-  // `cmsDisabled` is the per-agent switch layered on that capability gate; the
-  // rest of the toolbar is preview navigation, not editing, so it stays.
+  // The agent's CMS mode is the per-agent switch layered on that capability
+  // gate; the rest of the toolbar is preview navigation, not editing, so it
+  // stays whatever the mode says.
   const cmsToggle =
-    cmsControlsVisible && !cmsDisabled ? (
+    cmsControlsVisible && cmsMode !== "off" ? (
       <HeaderTabButton
         title={t("sandbox.preview.cms")}
         tooltip={

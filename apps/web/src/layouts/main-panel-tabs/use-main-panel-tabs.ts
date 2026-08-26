@@ -63,6 +63,7 @@ import { useCapability } from "@/hooks/use-capability";
 import { useFileConfigsQuery } from "@/hooks/use-file-configs";
 import { matchSiteSlugConfig } from "@/components/file-picker/match-site-slug-config";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
+import { resolveCmsMode, type CmsMode } from "@decocms/shared/sdk/types";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { useNavV2, useReportsOnly } from "@/hooks/use-organization-settings";
 import { useT } from "@/i18n/use-t.ts";
@@ -145,7 +146,8 @@ export function useMainPanelTabs(ctx: {
               id?: string;
               toolName?: string;
             } | null;
-            cmsDisabled?: boolean | null;
+            cms?: CmsMode | null;
+            cmsDefaultOpen?: boolean | null;
           };
         };
       } | null
@@ -258,16 +260,14 @@ export function useMainPanelTabs(ctx: {
     decofileFetchParams,
     { fetchEnabled: devServerReady },
   );
-  // Per-agent "Disable CMS" (Settings › CMS) — same switch that hides the
-  // Preview toolbar's CMS toggle. Off by default.
-  const cmsDisabled = entityLayout?.cmsDisabled ?? false;
-  const showContentTab = !cmsDisabled && hasEditableDecoContent(decofile, meta);
+  // The agent's CMS mode (Settings › CMS) — the same setting that gates the
+  // Preview toolbar's CMS toggle. `off` takes the Content tab with it.
+  const cmsOff = resolveCmsMode(entityLayout) === "off";
+  const showContentTab = !cmsOff && hasEditableDecoContent(decofile, meta);
   // Don't bounce a deep-linked `?main=content` before the first load resolves —
   // unless the CMS is off, where the answer can't change.
   const contentTabPending =
-    !cmsDisabled &&
-    !!decofileFetchParams &&
-    (decofileIsPending || metaIsPending);
+    !cmsOff && !!decofileFetchParams && (decofileIsPending || metaIsPending);
 
   /**
    * Assets is a per-site tab: it shows whenever an S3 bucket is associated to
@@ -373,7 +373,7 @@ export function useMainPanelTabs(ctx: {
   // before its runtime data is ready (e.g. Content while the repo is still
   // cloning) — otherwise the bar would drop the tab the user chose to land on.
   const contentIsDefaultMain =
-    !cmsDisabled && effectiveDefaultMainView?.type === "content";
+    !cmsOff && effectiveDefaultMainView?.type === "content";
   if (hasClonableSource && (showContentTab || contentIsDefaultMain)) {
     systemTabs.push({
       id: "content",

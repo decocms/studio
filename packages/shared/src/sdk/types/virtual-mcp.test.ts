@@ -8,7 +8,40 @@ import {
   SandboxRecordSchema,
   parseBranchMap,
   normalizeSandboxMap,
+  resolveCmsMode,
 } from "./virtual-mcp";
+
+describe("resolveCmsMode", () => {
+  it("defaults to manual for an agent that never configured a CMS", () => {
+    expect(resolveCmsMode(null)).toBe("manual");
+    expect(resolveCmsMode(undefined)).toBe("manual");
+    expect(resolveCmsMode({})).toBe("manual");
+  });
+
+  it("reads the legacy cmsDefaultOpen boolean the enum replaced", () => {
+    expect(resolveCmsMode({ cmsDefaultOpen: true })).toBe("auto");
+    expect(resolveCmsMode({ cmsDefaultOpen: false })).toBe("manual");
+    expect(resolveCmsMode({ cmsDefaultOpen: null })).toBe("manual");
+  });
+
+  it("lets an explicit mode win over the legacy boolean", () => {
+    expect(resolveCmsMode({ cms: "off", cmsDefaultOpen: true })).toBe("off");
+    expect(resolveCmsMode({ cms: "manual", cmsDefaultOpen: true })).toBe(
+      "manual",
+    );
+    expect(resolveCmsMode({ cms: "auto", cmsDefaultOpen: false })).toBe("auto");
+  });
+
+  it("round-trips every mode through the layout schema", () => {
+    for (const cms of ["off", "manual", "auto"] as const) {
+      expect(resolveCmsMode(VirtualMcpUILayoutSchema.parse({ cms }))).toBe(cms);
+    }
+  });
+
+  it("rejects a mode outside the enum", () => {
+    expect(() => VirtualMcpUILayoutSchema.parse({ cms: "hidden" })).toThrow();
+  });
+});
 
 describe("VirtualMcpUILayoutSchema tabs", () => {
   it("parses a tabs array with ext-app view", () => {

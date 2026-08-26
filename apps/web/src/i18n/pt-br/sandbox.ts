@@ -592,9 +592,18 @@ export const sandbox = {
   "sandbox.cmsSettings.fastPreview.needsPreviewServerUrl":
     "Defina um servidor de preview acima para ativar o Preview Rápido.",
   "sandbox.cmsSettings.editing.title": "Edição",
-  "sandbox.cmsSettings.disableCms.label": "Desativar CMS",
-  "sandbox.cmsSettings.disableCms.description":
-    "Oculta a aba Conteúdo e o botão CMS no Preview. O site continua sendo pré-visualizado normalmente, e o agente ainda pode editar o conteúdo.",
+  "sandbox.cmsSettings.contentEditing.title": "Edição de conteúdo",
+  "sandbox.cmsSettings.contentEditing.description":
+    "Se este agente oferece um CMS e onde o preview abre quando oferece.",
+  "sandbox.cmsSettings.contentEditing.manual": "Sob demanda",
+  "sandbox.cmsSettings.contentEditing.manualDescription":
+    "Quem edita abre o CMS pelo preview quando precisa.",
+  "sandbox.cmsSettings.contentEditing.auto": "Sempre aberto",
+  "sandbox.cmsSettings.contentEditing.autoDescription":
+    "O preview abre o CMS assim que for possível editar o conteúdo.",
+  "sandbox.cmsSettings.contentEditing.off": "Desligado",
+  "sandbox.cmsSettings.contentEditing.offDescription":
+    "Sem botão CMS no preview e sem aba Conteúdo. O site continua sendo pré-visualizado, e o agente ainda pode editar o conteúdo.",
   "sandbox.cmsUnavailable.title":
     "Este chat não consegue pré-visualizar seu site",
   "sandbox.cmsUnavailable.noPreviewServer":
