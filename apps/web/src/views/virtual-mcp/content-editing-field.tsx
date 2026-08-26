@@ -10,6 +10,7 @@ import {
 } from "@decocms/ui/components/radio-group.tsx";
 import {
   resolveCmsMode,
+  withCmsMode,
   type CmsMode,
   type VirtualMcpUILayout,
 } from "@decocms/shared/sdk/types";
@@ -57,8 +58,8 @@ export function ContentEditingField<T extends FieldValues>({
   }>;
   return (
     <Controller
-      /* The whole layout object, not the leaf: writing the mode also clears the
-         `cmsDefaultOpen` it supersedes, so the two can never disagree. */
+      /* The whole layout object, not the leaf: `withCmsMode` also clears the
+         settings the new mode invalidates. */
       name={"metadata.ui.layout" as FieldPath<T>}
       control={control}
       render={({ field }) => {
@@ -67,11 +68,7 @@ export function ContentEditingField<T extends FieldValues>({
           <RadioGroup
             value={resolveCmsMode(layout)}
             onValueChange={(value) => {
-              field.onChange({
-                ...layout,
-                cms: value as CmsMode,
-                cmsDefaultOpen: null,
-              });
+              field.onChange(withCmsMode(layout, value as CmsMode));
               onCommit();
             }}
             className="gap-4"

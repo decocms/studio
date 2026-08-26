@@ -141,6 +141,27 @@ export function resolveCmsMode(
 }
 
 /**
+ * The layout that writing `mode` produces. Two settings can't survive the
+ * write: `cmsDefaultOpen`, which the mode supersedes, and a `defaultMainView`
+ * of Content, which `off` takes off the tab bar — an agent left pointing at it
+ * would land on a view with no way back to it. Every writer goes through this
+ * so the three can't drift.
+ */
+export function withCmsMode(
+  layout: VirtualMcpUILayout | null | undefined,
+  mode: CmsMode,
+): VirtualMcpUILayout {
+  const dropsContentView =
+    mode === "off" && layout?.defaultMainView?.type === "content";
+  return {
+    ...layout,
+    cms: mode,
+    cmsDefaultOpen: null,
+    ...(dropsContentView ? { defaultMainView: { type: "preview" } } : {}),
+  };
+}
+
+/**
  * Tile UI declared by a home agent. When present, the `/$org` home page
  * renders the resource as an iframe inside the agent's tile (same MCP UI
  * iframe pattern used for tool results in chat).

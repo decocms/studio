@@ -24,6 +24,7 @@ export {
   CmsModeSchema,
   type CmsMode,
   resolveCmsMode,
+  withCmsMode,
   type VirtualMCPEntity,
   type VirtualMCPCreateData,
   type VirtualMCPUpdateData,
