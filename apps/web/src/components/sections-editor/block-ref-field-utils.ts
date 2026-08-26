@@ -1,7 +1,9 @@
 import { labelFromResolveType } from "./section-types";
 import { isLazyResolveType } from "./section-lazy";
 import {
+  embeddedUnionBlockId,
   isSavedBlockResolveType,
+  parseSavedBlockSchemaTitle,
   unionRefMatchesValue,
 } from "./block-type-utils";
 import {
@@ -38,6 +40,26 @@ function isMultivariateFlagResolveType(resolveType: string): boolean {
 
 function titleFromResolveType(resolveType: string): string {
   return labelFromResolveType(resolveType);
+}
+
+/**
+ * Human label for a block-ref option in the selector. Saved-block references
+ * carry a `#<module>@<name>` title whose `<name>` is the user-given block name
+ * and may contain "/" (e.g. "Estampas / Flags"). Splitting the title/resolveType
+ * on "/" truncates such names (→ " Flags"), making the option unfindable by
+ * typing. Prefer the parsed block name, then the module title, then the
+ * path-derived label.
+ */
+export function blockRefOptionLabel(ref: BlockRefOption): string {
+  const savedName = ref.title
+    ? parseSavedBlockSchemaTitle(ref.title)?.blockId
+    : undefined;
+  if (savedName) return savedName;
+  if (ref.title && !ref.title.includes("/")) return ref.title;
+  return (
+    embeddedUnionBlockId(ref.resolveType) ??
+    labelFromResolveType(ref.resolveType)
+  );
 }
 
 /** Ensure saved blocks and concrete module types appear in the anyOf selector. */
