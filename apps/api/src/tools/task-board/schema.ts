@@ -2,6 +2,9 @@ import { z } from "zod";
 
 export { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 
+/** No real task description is this long — caps the row a single write can write. */
+export const MAX_TASK_DESCRIPTION_LENGTH = 50_000;
+
 export const TaskBoardItemStatusSchema = z.enum([
   "triage",
   "todo",
