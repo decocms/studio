@@ -105,16 +105,26 @@ function SelectLabel({
 function SelectItem({
   className,
   children,
+  description,
   hideCheck = false,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Item> & {
   hideCheck?: boolean;
+  /**
+   * Secondary line under the option, for choices that need explaining while
+   * you pick. Rendered outside `ItemText` — the trigger clones that, so a
+   * description written as a child would show up in the closed select. Sits in
+   * a div, not a span: the item styles the last span child as a horizontal
+   * flex row.
+   */
+  description?: React.ReactNode;
 }) {
   return (
     <SelectPrimitive.Item
       data-slot="select-item"
       className={cn(
         "focus:bg-accent focus:text-accent-foreground [&_svg:not([class*='text-'])]:text-muted-foreground relative flex w-full cursor-default items-center gap-2 rounded-lg py-1.5 pr-8 pl-2 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
+        description && "items-start py-2",
         className,
       )}
       {...props}
@@ -126,7 +136,16 @@ function SelectItem({
           </SelectPrimitive.ItemIndicator>
         </span>
       )}
-      <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+      {description ? (
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+          <span className="text-xs text-muted-foreground whitespace-normal">
+            {description}
+          </span>
+        </div>
+      ) : (
+        <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+      )}
     </SelectPrimitive.Item>
   );
 }
