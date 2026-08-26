@@ -140,6 +140,9 @@ export const settings = {
   "settings.preferences.soundsDescription":
     "Reproduza sons para ações de agentes e notificações.",
   "settings.preferences.soundsPreview": "Ouvir som de notificação",
+  "settings.preferences.projectSettingsGear": "Atalho de configurações",
+  "settings.preferences.projectSettingsGearDescription":
+    "Mostrar um atalho de configurações ao passar o mouse sobre um projeto na barra lateral.",
   "settings.preferences.toolApproval": "Aprovação de ferramentas",
   "settings.preferences.toolApprovalDescription":
     "Controle como as ferramentas são aprovadas antes da execução.",

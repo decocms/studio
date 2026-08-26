@@ -136,6 +136,9 @@ export const settings = {
   "settings.preferences.soundsDescription":
     "Play sounds for agent actions and notifications.",
   "settings.preferences.soundsPreview": "Preview notification sound",
+  "settings.preferences.projectSettingsGear": "Project settings shortcut",
+  "settings.preferences.projectSettingsGearDescription":
+    "Reveal a settings shortcut when you hover a project in the sidebar.",
   "settings.preferences.toolApproval": "Tool Approval",
   "settings.preferences.toolApprovalDescription":
     "Control how tools are approved before execution.",

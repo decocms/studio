@@ -19,6 +19,7 @@ export const sidebar = {
   "sidebar.agentsSection.selectAnExistingAgent": "Select an existing agent",
   "sidebar.navDestinations.home": "Home",
   "sidebar.navDestinations.library": "Library",
+  "sidebar.navDestinations.projectSettings": "{name} settings",
   "sidebar.navDestinations.reports": "Reports",
   "sidebar.navDestinations.tasks": "Tasks",
   "sidebar.navigationMobile.closeSidebar": "Close sidebar",
