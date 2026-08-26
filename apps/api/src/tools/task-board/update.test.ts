@@ -12,6 +12,7 @@ import {
   closesOwnReview,
   delegatesToSuperAgent,
   diffTaskActivityEntries,
+  updatesAnyField,
 } from "./update";
 
 function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
@@ -120,6 +121,42 @@ describe("diffTaskActivityEntries", () => {
     const previous = item({ sortOrder: 0 });
     const next = item({ sortOrder: 5 });
     expect(diffTaskActivityEntries(previous, next)).toEqual([]);
+  });
+});
+
+describe("updatesAnyField", () => {
+  // The board's type picker sends this and nothing else; it used to skip the write and still answer 200.
+  it("counts a type-only update", () => {
+    expect(updatesAnyField({ type: "bug" })).toBe(true);
+  });
+
+  it("counts every field that reaches a write, one at a time", () => {
+    const oneOf = [
+      { title: "t" },
+      { description: "d" },
+      { status: "todo" },
+      { priority: "high" },
+      { type: "bug" },
+      { assigneeId: "user_1" },
+      { repo: "owner/name" },
+      { dueDate: "2026-01-01T00:00:00.000Z" },
+      { sprint: 1 },
+      { sortOrder: 5 },
+      { tagIds: [] },
+    ];
+    for (const input of oneOf) {
+      expect(updatesAnyField(input)).toBe(true);
+    }
+  });
+
+  it("counts a field explicitly cleared to null", () => {
+    expect(updatesAnyField({ assigneeId: null })).toBe(true);
+    expect(updatesAnyField({ dueDate: null })).toBe(true);
+  });
+
+  it("does not count a link-only update, which must not bump updated_at", () => {
+    expect(updatesAnyField({})).toBe(false);
+    expect(updatesAnyField({ title: undefined, type: undefined })).toBe(false);
   });
 });
 
