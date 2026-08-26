@@ -132,8 +132,8 @@ export interface AssembleDecopilotToolsExtras {
    *  background jobs instead of holding the turn open. Omitted on desktop. */
   backgroundDispatcher?: BackgroundDispatcher | null;
   /**
-   * Portable MCP-client seam (HarnessDeps `mcpForAgent`). Generalizes the
-   * cluster's in-process `createVirtualClientFrom(virtualMcp, ctx, superUser,
+   * Portable MCP-client seam. Generalizes the cluster's in-process
+   * `createVirtualClientFrom(virtualMcp, ctx, superUser,
    * { listTimeoutMs })` so the daemon/desktop can swap in an HTTP `Client` at
    * the agent's `mcp.url`. The cluster impl
    * (supplied by `index.ts`) loads the Virtual MCP by id and returns a live

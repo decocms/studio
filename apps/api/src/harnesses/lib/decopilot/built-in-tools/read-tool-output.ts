@@ -1,7 +1,7 @@
 import { tool, zodSchema } from "ai";
 import { z } from "zod";
-import type { ObjectStorageHooks } from "../../harness-deps";
 import { toStudioStorageUri } from "../studio-storage-uri";
+import type { PortableMediaObjectStorage } from "./portable-media-tools";
 
 export interface ReadToolOutputParams {
   readonly toolOutputMap: Map<string, string>;
@@ -164,7 +164,7 @@ export function estimateJsonTokens(value: unknown): number {
  * log ("scrape-url", "inspect-page").
  */
 export async function offloadLargeResult(
-  objectStorage: ObjectStorageHooks,
+  objectStorage: Pick<PortableMediaObjectStorage, "put">,
   key: string,
   text: string,
   contentType: string,

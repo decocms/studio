@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import type { InterestsWrite } from "../../harness-deps";
-import { createUpdateInterestsTool } from "./update-interests";
+import {
+  createUpdateInterestsTool,
+  type InterestsWrite,
+} from "./update-interests";
 
 describe("createUpdateInterestsTool", () => {
   test("writes the full list through deps.interests.write", async () => {
