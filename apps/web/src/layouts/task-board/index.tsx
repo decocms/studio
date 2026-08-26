@@ -97,6 +97,7 @@ import { useConnectApp } from "@/hooks/use-connect-app";
 import { useMembers } from "@/hooks/use-members";
 import {
   useTaskBoardItemActions,
+  useBoardSprintIndex,
   useTaskBoardItems,
 } from "@/hooks/use-task-board-items";
 import { formatTimeAgo } from "@/lib/format-time";
@@ -123,12 +124,11 @@ import {
   type TaskBoardItemPriority,
   type TaskBoardItemStatus,
   type TaskBoardItemTag,
-  visibleSprint,
   type Member,
 } from "./config";
 import { useTags } from "@/hooks/use-tags";
-import { useOrgFlag, useSprintConfig } from "@/hooks/use-organization-settings";
-import { sprintOptions } from "@decocms/shared/sprints";
+import { useOrgFlag } from "@/hooks/use-organization-settings";
+import type { Sprint } from "@decocms/shared/sprints";
 import { usePreferences } from "@/hooks/use-preferences";
 import { TaskBoardItemDialog, toEndOfDayIso } from "./task-dialog";
 import { AssigneePickerContent } from "./assignee-picker";
@@ -551,23 +551,20 @@ function DueDatePill({ iso }: { iso: string }) {
   );
 }
 
-/**
- * Whether the board is running sprints. Reads the cadence itself (one shared,
- * cached query) rather than threading a prop down every lane and row.
- */
-function useSprintsEnabled(): boolean {
-  return useSprintConfig()?.enabled === true;
-}
-
-/** Which sprint a card is planned into. Gated by {@link visibleSprint}. */
-function SprintPill({ sprint }: { sprint: number }) {
-  const t = useT();
+/** The sprint a card belongs to, named the way its tracker names it. */
+function SprintPill({ sprint }: { sprint: Sprint }) {
   return (
     <span className={PILL}>
       <Repeat04 size={FOOTER_GLYPH} />
-      {t("taskBoard.taskBoard.sprintPill", { number: String(sprint) })}
+      {sprint.name}
     </span>
   );
+}
+
+/** The sprint of the card being rendered, or null when it's in the backlog. */
+function useCardSprint(item: TaskBoardItem): Sprint | null {
+  const sprints = useBoardSprintIndex();
+  return item.sprintId ? (sprints.get(item.sprintId) ?? null) : null;
 }
 
 /** A tag wears its own color as a border, Jira-style — the color is the identity, no separate dot needed. */
@@ -818,7 +815,7 @@ function AssigneeDisplay({
 
 export function TaskBoardPage() {
   const t = useT();
-  const { items, isLoading } = useTaskBoardItems();
+  const { items, sprints, isLoading } = useTaskBoardItems();
   const { data: orgTags = [] } = useTags();
   const actions = useTaskBoardItemActions();
   // Handing a task to the Super Agent makes it open a PR — so it needs at
@@ -837,9 +834,6 @@ export function TaskBoardPage() {
   );
   // Repo filter options: distinct `owner/name` repos the org can reach.
   const repos = listRepoScopeLabels(githubConnections);
-  // Off (or unconfigured) keeps the sprint property and filter off the board.
-  const sprintConfig = useSprintConfig();
-  const sprintsEnabled = sprintConfig?.enabled === true;
   const [connectGithubOpen, setConnectGithubOpen] = useState(false);
   // Connecting only grants a broad org-level GitHub connection — Auto-fix
   // still needs a repo imported (see `hasRepo`), so once connected we chain
@@ -1012,16 +1006,6 @@ export function TaskBoardPage() {
     setTaskId(newId, agentId);
   };
 
-  // Null while sprints are off, which is what hides the filter control.
-  const activeSprintConfig = sprintsEnabled ? sprintConfig : null;
-  const sprintNumbers = activeSprintConfig
-    ? sprintOptions(
-        activeSprintConfig,
-        new Date(),
-        items.map((item) => item.sprint),
-      )
-    : [];
-
   const visibleItems = items.filter((item) =>
     taskMatchesFilters(item, filters),
   );
@@ -1115,8 +1099,7 @@ export function TaskBoardPage() {
                   members={members}
                   tags={orgTags}
                   repos={repos}
-                  sprints={sprintNumbers}
-                  sprintConfig={activeSprintConfig}
+                  sprints={sprints}
                   onChange={handleFiltersChange}
                 />
               </div>
@@ -1126,8 +1109,7 @@ export function TaskBoardPage() {
                   members={members}
                   tags={orgTags}
                   repos={repos}
-                  sprints={sprintNumbers}
-                  sprintConfig={activeSprintConfig}
+                  sprints={sprints}
                   onChange={handleFiltersChange}
                 />
               </div>
@@ -1319,7 +1301,6 @@ export function TaskBoardPage() {
                   priority: activeItem.priority,
                   repo: activeItem.repo,
                   dueDate: activeItem.dueDate,
-                  sprint: activeItem.sprint,
                   tagIds: activeItem.tags.map((tag) => tag.id),
                 });
                 toast.success(t("taskBoard.taskDialog.cloneSuccess"));
@@ -2490,7 +2471,7 @@ function TaskCard({
   onDueDateChange?: (iso: string) => void;
 }) {
   const t = useT();
-  const sprint = visibleSprint(item.sprint, useSprintsEnabled());
+  const sprint = useCardSprint(item);
   const checks = useCardChecks(item);
   const runState = agentRunState(item);
   // A state of the card, not a label on it — hence the colour, not a chip.
@@ -2605,7 +2586,7 @@ function ListRow({
   onOpen: () => void;
 }) {
   const StatusIcon = STATUS_CONFIG[item.status].icon;
-  const sprint = visibleSprint(item.sprint, useSprintsEnabled());
+  const sprint = useCardSprint(item);
   return (
     <button
       type="button"

@@ -1,135 +1,79 @@
 /**
- * Sprint math. Sprints are derived from the org's cadence
- * ({@link SprintConfig}) rather than stored as rows: sprint N is the Nth
- * `weeks`-long window starting at `startDate`, so a task only ever carries a
- * sprint NUMBER and changing the cadence re-dates windows instead of rewriting
- * cards. Note it re-dates ALL of them, closed sprints included.
+ * Sprints, as entities mirrored from the tracker the board syncs with (today
+ * Jira, via `apps/api/src/jira/sync.ts`).
  *
- * All day math is UTC. `startDate` is a calendar day, not an instant — reading
- * it in the viewer's zone would slide sprint boundaries by a day for anyone
- * west of UTC and make the same card read as two different sprints.
+ * This replaced a cadence model — sprint N = the Nth `weeks`-long window since
+ * a start date, with cards carrying only the number. A real team's sprints slip,
+ * get renamed, and run for different lengths, so a window could not name the
+ * same sprint their board did. A sprint now carries its own name, state and
+ * dates, and a card points at one.
+ *
+ * `state` is the tracker's, never derived from today's date: a sprint started
+ * three days late is still the active one, and the board has to agree with what
+ * Jira shows.
  */
 
-import { parseCalendarDay, type SprintConfig } from "./organization/schema";
+/** Jira's sprint states, and ours. */
+export const SPRINT_STATES = ["active", "future", "closed"] as const;
 
-export type { SprintConfig };
+export type SprintState = (typeof SPRINT_STATES)[number];
 
-const DAY_MS = 86_400_000;
-
-/** Cadence a board gets when sprints are switched on without one stored. */
-export const DEFAULT_SPRINT_WEEKS = 2;
-
-/** Selectable cadences, in weeks. */
-export const SPRINT_WEEK_OPTIONS = [1, 2, 3, 4] as const;
-
-/**
- * How far ahead a sprint picker offers, in WEEKS rather than in sprints — a
- * team planning a quarter out needs the same calendar reach whether their
- * sprints are one week or four.
- */
-export const SPRINT_HORIZON_WEEKS = 20;
-
-/** How many past sprints a picker offers, on top of any already in use. */
-export const SPRINT_PAST_COUNT = 2;
-
-/**
- * Highest sprint a card can be planned into. Not a product ceiling — past this
- * a window's days leave the range `YYYY-MM-DD` can express, and rendering one
- * gets a truncated expanded-year string or a thrown `RangeError`.
- */
-export const MAX_SPRINT = 10_000;
-
-/** Last instant `toDayString` can express — `toISOString` widens the year past
- *  9999, so `YYYY-MM-DD` stops being a slice of it. */
-const MAX_DAY_MS = Date.UTC(9999, 11, 31);
-
-/** `YYYY-MM-DD` of an instant, in UTC. */
-export function toDayString(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-/**
- * The Monday of `date`'s week, in UTC — the default `startDate` when a team
- * turns sprints on, so sprint 1 covers the week they started rather than
- * beginning mid-week.
- */
-export function mondayOfWeek(date: Date): string {
-  const ms = Date.UTC(
-    date.getUTCFullYear(),
-    date.getUTCMonth(),
-    date.getUTCDate(),
+export function isSprintState(value: unknown): value is SprintState {
+  return (
+    typeof value === "string" &&
+    (SPRINT_STATES as readonly string[]).includes(value)
   );
-  // getUTCDay: 0 = Sunday, so Sunday walks back six days, not zero.
-  const weekday = new Date(ms).getUTCDay();
-  const back = weekday === 0 ? 6 : weekday - 1;
-  return toDayString(new Date(ms - back * DAY_MS));
+}
+
+/** A sprint as every surface reads it (tool output, board, filter). */
+export interface Sprint {
+  id: string;
+  name: string;
+  state: SprintState;
+  /** ISO instants, or null — a future sprint often has no dates yet. */
+  startsAt: string | null;
+  endsAt: string | null;
+}
+
+/** Sentinel the sprint filter uses for "in no sprint" (the backlog). */
+export const SPRINT_BACKLOG = "backlog" as const;
+
+const STATE_RANK: Record<SprintState, number> = {
+  active: 0,
+  future: 1,
+  closed: 2,
+};
+
+function startTime(sprint: Sprint): number | null {
+  if (!sprint.startsAt) return null;
+  const ms = Date.parse(sprint.startsAt);
+  return Number.isNaN(ms) ? null : ms;
 }
 
 /**
- * Which sprint `date` falls in, 1-based. Null when the cadence is unusable: a
- * `startDate` that is not a real calendar day, or a non-positive `weeks` (which
- * would divide the calendar into windows of zero length).
+ * Reading order for a sprint list: what's running, then what's next (soonest
+ * first), then history (most recent first) — Jira's own backlog ordering.
  *
- * Dates before `startDate` clamp to sprint 1 rather than going negative: a
- * "sprint 0" or "sprint -3" is not a thing a team can plan into.
+ * Dateless sprints sort last within their group rather than first: a future
+ * sprint nobody has scheduled yet is the least interesting thing in the list,
+ * and `null` compared as 0 would put it before the Unix epoch.
  */
-export function sprintNumberAt(
-  config: SprintConfig,
-  date: Date,
-): number | null {
-  const start = parseCalendarDay(config.startDate);
-  if (start === null || config.weeks < 1) return null;
-  const windowMs = config.weeks * 7 * DAY_MS;
-  const elapsed = date.getTime() - start;
-  if (elapsed < 0) return 1;
-  return Math.floor(elapsed / windowMs) + 1;
+export function compareSprints(a: Sprint, b: Sprint): number {
+  const byState = STATE_RANK[a.state] - STATE_RANK[b.state];
+  if (byState !== 0) return byState;
+  const aStart = startTime(a);
+  const bStart = startTime(b);
+  if (aStart === null || bStart === null) {
+    if (aStart !== bStart) return aStart === null ? 1 : -1;
+  } else if (aStart !== bStart) {
+    return a.state === "closed" ? bStart - aStart : aStart - bStart;
+  }
+  return a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
 }
 
-/**
- * First and last day (`YYYY-MM-DD`, inclusive) of sprint `n`, or null when `n`
- * lands outside the calendar a day string can name. Callers render into a date
- * formatter, so an unrenderable window has to come back as "no range" rather
- * than as a truncated string or a throw from {@link toDayString}.
- */
-export function sprintRange(
-  config: SprintConfig,
-  n: number,
-): { start: string; end: string } | null {
-  const start = parseCalendarDay(config.startDate);
-  if (start === null || config.weeks < 1 || n < 1) return null;
-  const windowMs = config.weeks * 7 * DAY_MS;
-  const from = start + (n - 1) * windowMs;
-  const to = from + windowMs - DAY_MS;
-  if (to > MAX_DAY_MS) return null;
-  return { start: toDayString(new Date(from)), end: toDayString(new Date(to)) };
-}
-
-/**
- * The sprint numbers a picker offers: a window around the current sprint, plus
- * every sprint already in use on the board (a card parked in a long-past
- * sprint must stay selectable, and re-openable, after the board has moved on).
- *
- * Ascending, deduped, never below 1. The default forward reach is
- * {@link SPRINT_HORIZON_WEEKS} of calendar, so a shorter cadence offers
- * proportionally more sprints.
- */
-export function sprintOptions(
-  config: SprintConfig,
-  now: Date,
-  assigned: readonly (number | null | undefined)[] = [],
-  { past = SPRINT_PAST_COUNT, future }: { past?: number; future?: number } = {},
-): number[] {
-  const ahead =
-    future ?? Math.ceil(SPRINT_HORIZON_WEEKS / Math.max(1, config.weeks));
-  const current = sprintNumberAt(config, now);
-  const numbers = new Set<number>();
-  if (current !== null) {
-    for (let n = current - past; n <= current + ahead; n++) {
-      if (n >= 1) numbers.add(n);
-    }
-  }
-  for (const n of assigned) {
-    if (typeof n === "number" && n >= 1) numbers.add(n);
-  }
-  return [...numbers].sort((a, b) => a - b);
+/** The sprint a board should land on by default: the running one, else the
+ *  next scheduled one, else nothing (a board of pure history filters to all). */
+export function defaultSprint(sprints: readonly Sprint[]): Sprint | null {
+  const ordered = [...sprints].sort(compareSprints);
+  return ordered.find((sprint) => sprint.state !== "closed") ?? null;
 }

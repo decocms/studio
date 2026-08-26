@@ -39,7 +39,7 @@ export const settings = {
   "settings.jira.cancel": "Cancel",
   "settings.jira.boardLabel": "Jira board",
   "settings.jira.boardDescription":
-    "The board's visible cards are mirrored — its Backlog tab, epics and sub-tasks are not.",
+    "Everything the board covers is mirrored, its backlog included. Epics and sub-tasks are not, and cards show which sprint they are in.",
   "settings.jira.boardPlaceholder": "Select a board",
   "settings.jira.boardSearchPlaceholder": "Search boards…",
   "settings.jira.noBoardsMatch": "No board matches that search",
@@ -50,9 +50,9 @@ export const settings = {
   "settings.jira.dontSync": "Don't sync",
   "settings.jira.jqlLabel": "JQL filter (optional)",
   "settings.jira.jqlDescription":
-    "Extra JQL to narrow what syncs — useful to match your Jira board's saved filter. Epics and sub-tasks are always excluded.",
+    "Extra JQL to narrow what syncs, on top of the board's own saved filter. Epics and sub-tasks are always excluded.",
   "settings.jira.jqlPlaceholder":
-    "e.g. labels = storefront AND sprint in openSprints()",
+    "e.g. labels = storefront AND component = Checkout",
   "settings.jira.jqlSave": "Save filter",
   "settings.jira.jqlSaved": "Filter saved — it applies from the next sync",
   "settings.jira.columnsFailed": "Could not load the board's columns",
@@ -485,21 +485,6 @@ export const settings = {
   "settings.agentTools.orgMcpsTitle": "Give runs this org's MCP connections",
   "settings.agentTools.orgMcpsDescription":
     "Every MCP you have connected becomes available to the Super Agent and the reviewers, on top of the task tools they always get. Tools load only when the agent looks for one, so connecting more does not crowd its context.",
-  "settings.sprints.title": "Sprints",
-  "settings.sprints.description":
-    "Plan tasks into fixed-length sprints. Sprints are counted from a start day, so there is nothing to open or close.",
-  "settings.sprints.enabledTitle": "Enable sprints",
-  "settings.sprints.enabledDescription":
-    "Adds a sprint property to every task and a sprint filter to the board.",
-  "settings.sprints.cadenceTitle": "Cadence",
-  "settings.sprints.cadenceDescription":
-    "How long a sprint lasts, and the day sprint 1 started.",
-  "settings.sprints.cadenceCurrent":
-    "Sprint {number} is running now ({start} to {end}).",
-  "settings.sprints.weeksValue": "{count} weeks",
-  "settings.sprints.weeksValueOne": "1 week",
-  "settings.sprints.startDateLabel": "Sprint 1 start day",
-  "settings.sprints.updateError": "Couldn't update the sprint settings",
   "settings.orgRoleDetail.addMember": "Add Member",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Add members to grant them the configured permissions.",

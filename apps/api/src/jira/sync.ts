@@ -1,5 +1,15 @@
 /**
- * Jira → task board pull sync (one integration = one org, one project).
+ * Jira → task board pull sync (one integration = one org, one board).
+ *
+ * Scope is the board's saved filter — everything the board is about, INCLUDING
+ * its Backlog tab. It used to be `/board/{id}/issue` minus
+ * `/board/{id}/backlog`, i.e. only the cards visible in the board's columns,
+ * which meant an issue filed and left in the backlog never reached the task
+ * board at all (and, because a skipped issue still advances the watermark,
+ * never would until someone touched it again). Which sprint an issue is in is
+ * now data on the card — {@link TaskBoardItem.sprintId}, mirrored into
+ * `task_board_sprints` — so the board can be read one sprint at a time the way
+ * Jira's is, without membership deciding whether a card exists.
  *
  * Incremental by watermark: each run pulls issues `updated` since
  * `last_synced_at` (with overlap), ordered ascending, capped per run — a
@@ -8,7 +18,10 @@
  * in the tenant's `status_mapping` are skipped entirely; mapped issues are
  * created as board cards or updated in place via `task_board_item_jira_links`.
  *
- * Issue fields are pull-only (writes are the future push phase); comments are 2-way — comments.ts pushes, `pullComments` here imports. A card deleted on the board reappears only when its issue is next updated in Jira.
+ * Issue fields are pull-only (creation is pushed the other way — see
+ * `jiraIssueCreateWorkflow`); comments are 2-way — comments.ts pushes,
+ * `pullComments` here imports. A card deleted on the board reappears only when
+ * its issue is next updated in Jira.
  */
 
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
@@ -29,6 +42,7 @@ import {
   JiraUserDirectory,
   type JiraIssue,
 } from "./client";
+import { type JiraSprintRef, pickIssueSprint } from "./sprint-field";
 
 /** `created_by`/`updated_by` on synced cards. Deliberately NOT "system" —
  *  that marks reports-owned cards and locks their title/description. */
@@ -84,15 +98,27 @@ export async function syncJiraIntegrationSafe(
   }
 }
 
-function buildJql(integration: OrgJiraIntegration): string {
+/**
+ * The pull's query: the board's scope, narrowed by the tenant's extra filter
+ * and by the watermark, ordered so a truncated run resumes cleanly.
+ *
+ * Exported for tests — this string decides which of a customer's issues exist
+ * on their board, and the ordering is what makes the watermark meaningful.
+ */
+export function buildJql(
+  integration: OrgJiraIntegration,
+  scopeJql: string,
+  now: Date,
+): string {
   // Relative-minutes JQL sidesteps JQL's the-user's-timezone date parsing.
   const since = integration.lastSyncedAt
     ? Math.ceil(
-        (Date.now() - new Date(integration.lastSyncedAt).getTime()) / 60_000,
+        (now.getTime() - new Date(integration.lastSyncedAt).getTime()) / 60_000,
       ) + WATERMARK_OVERLAP_MINUTES
     : null;
   const conditions = [
-    // Scope comes from the board itself; this only kills subtasks server-side.
+    `(${scopeJql})`,
+    // Subtasks are rows on their parent's card, not cards.
     "issuetype IN standardIssueTypes()",
     ...(integration.jqlFilter?.trim()
       ? [`(${integration.jqlFilter.trim()})`]
@@ -238,6 +264,40 @@ async function pullComments(
   }
 }
 
+/**
+ * Jira sprint → local sprint id, upserting the first time a run sees one.
+ *
+ * Per-run memo, not a long-lived cache: a sprint's name and state are Jira's,
+ * so every run has to re-read them at least once, and a run that touches 500
+ * issues of one sprint must not write the row 500 times.
+ */
+class JiraSprintMirror {
+  private readonly ids = new Map<string, string>();
+
+  constructor(
+    private readonly ctx: StudioContext,
+    private readonly organizationId: string,
+  ) {}
+
+  async localIdFor(ref: JiraSprintRef | null): Promise<string | null> {
+    if (!ref) return null;
+    const known = this.ids.get(ref.id);
+    if (known) return known;
+    const id = await this.ctx.storage.sprints.upsertFromJira(
+      this.organizationId,
+      {
+        jiraSprintId: ref.id,
+        name: ref.name,
+        state: ref.state,
+        startsAt: ref.startsAt,
+        endsAt: ref.endsAt,
+      },
+    );
+    this.ids.set(ref.id, id);
+    return id;
+  }
+}
+
 async function runSync(
   ctx: StudioContext,
   integration: OrgJiraIntegration,
@@ -263,9 +323,13 @@ async function runSync(
   // The integration account's own comments are echoes of our pushes.
   const { accountId: integrationAccountId } = await client.myself();
   const users = new JiraUserDirectory(client);
-  // Backlog-tab issues have normal statuses but are not visible board cards.
-  const backlogIds = await client.listBacklogIssueIds(boardId);
-  const jql = buildJql(integration);
+  const runStartedAt = new Date();
+  const jql = buildJql(
+    integration,
+    await client.getBoardScopeJql(boardId),
+    runStartedAt,
+  );
+  const sprints = new JiraSprintMirror(ctx, orgId);
   const counts: JiraSyncCounts = {
     created: 0,
     updated: 0,
@@ -273,14 +337,13 @@ async function runSync(
     skipped: 0,
   };
   let watermark: Date | undefined;
-  let startAt = 0;
+  let nextPageToken: string | undefined;
   let processed = 0;
-  const runStartedAt = new Date();
 
   while (processed < MAX_ISSUES_PER_RUN) {
-    const page = await client.listBoardIssues({ boardId, jql, startAt });
+    const page = await client.searchIssues({ jql, nextPageToken });
     if (page.issues.length === 0) break;
-    startAt += page.issues.length;
+    nextPageToken = page.nextPageToken ?? undefined;
 
     const links = await ctx.storage.jiraIntegrations.getLinksByIssueIds(
       orgId,
@@ -308,7 +371,7 @@ async function runSync(
       const status = laneOf.get(issue.fields.status.name) as
         | TaskBoardItemStatus
         | undefined;
-      if (!status || !isCardIssue(issue) || backlogIds.has(issue.id)) {
+      if (!status || !isCardIssue(issue)) {
         counts.skipped++;
         watermark = issueUpdated;
         continue;
@@ -326,6 +389,7 @@ async function runSync(
         title: issue.fields.summary,
         description: await cardDescription(integration.siteUrl, issue, users),
         priority: mapPriority(issue),
+        sprintId: await sprints.localIdFor(pickIssueSprint(issue.sprints)),
       };
 
       if (link) {
@@ -421,7 +485,7 @@ async function runSync(
       watermark = issueUpdated;
     }
 
-    if (startAt >= page.total) break;
+    if (!nextPageToken) break;
   }
 
   // A run that legitimately saw nothing still has to set the watermark, or

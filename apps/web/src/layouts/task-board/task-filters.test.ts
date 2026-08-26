@@ -30,22 +30,28 @@ function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
 describe("taskMatchesFilters — sprint", () => {
   test("a sprint filter keeps only that sprint", () => {
     expect(
-      taskMatchesFilters(item({ sprint: 3 }), { ...EMPTY_FILTERS, sprint: 3 }),
+      taskMatchesFilters(item({ sprintId: "sprint_a" }), {
+        ...EMPTY_FILTERS,
+        sprint: "sprint_a",
+      }),
     ).toBe(true);
     expect(
-      taskMatchesFilters(item({ sprint: 4 }), { ...EMPTY_FILTERS, sprint: 3 }),
+      taskMatchesFilters(item({ sprintId: "sprint_b" }), {
+        ...EMPTY_FILTERS,
+        sprint: "sprint_a",
+      }),
     ).toBe(false);
   });
 
   test("the backlog filter keeps only tasks with no sprint", () => {
     expect(
-      taskMatchesFilters(item({ sprint: null }), {
+      taskMatchesFilters(item({ sprintId: null }), {
         ...EMPTY_FILTERS,
         sprint: "backlog",
       }),
     ).toBe(true);
     expect(
-      taskMatchesFilters(item({ sprint: 1 }), {
+      taskMatchesFilters(item({ sprintId: "sprint_a" }), {
         ...EMPTY_FILTERS,
         sprint: "backlog",
       }),
@@ -53,8 +59,10 @@ describe("taskMatchesFilters — sprint", () => {
   });
 
   test("no sprint filter keeps both planned and backlog tasks", () => {
-    expect(taskMatchesFilters(item({ sprint: 7 }), EMPTY_FILTERS)).toBe(true);
-    expect(taskMatchesFilters(item({ sprint: null }), EMPTY_FILTERS)).toBe(
+    expect(
+      taskMatchesFilters(item({ sprintId: "sprint_a" }), EMPTY_FILTERS),
+    ).toBe(true);
+    expect(taskMatchesFilters(item({ sprintId: null }), EMPTY_FILTERS)).toBe(
       true,
     );
   });

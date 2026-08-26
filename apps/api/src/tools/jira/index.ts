@@ -2,9 +2,13 @@
  * JIRA_* — per-org Jira Cloud integration (pull sync into the task board).
  *
  * One integration per org: site + Basic-auth credentials (API token, vault-
- * encrypted), one project, and a per-tenant status mapping (Jira status name
- * → board status). The jira-sync cron (dbos-jira-sync.ts) pulls mapped issues
- * every ~10 minutes; `_SYNC_RUN` pulls on demand. Nothing is written to Jira.
+ * encrypted), one board, and a per-tenant status mapping (board lane → its
+ * Jira status names). The jira-sync cron (dbos-jira-sync.ts) pulls every ~10
+ * minutes; `_SYNC_RUN` pulls on demand.
+ *
+ * The pull's scope is the board's own saved filter, so an issue sitting in the
+ * board's Backlog tab is a card here too — which sprint it belongs to is
+ * mirrored onto the card instead of deciding whether the card exists.
  */
 
 import { z } from "zod";
@@ -142,7 +146,7 @@ export const JIRA_INTEGRATION_UPSERT = defineTool({
       .nullable()
       .optional()
       .describe(
-        "Extra JQL ANDed into the pull, e.g. to match the Jira board's saved filter (null clears it)",
+        "Extra JQL ANDed into the pull, narrowing the board's own saved filter (null clears it)",
       ),
     autoDelegate: z
       .boolean()
@@ -302,7 +306,8 @@ export const JIRA_SYNC_RUN = defineTool({
   description:
     "Pull from Jira into the task board right now (the 'I just changed " +
     "something in Jira' button). Returns created/updated/unchanged/skipped " +
-    "counts, or the error that was recorded on the integration.",
+    "counts (skipped = an issue whose Jira status maps to no lane, or an epic), " +
+    "or the error that was recorded on the integration.",
   inputSchema: z.object({}),
   outputSchema: z.object({ result: syncResultSchema }),
   handler: async (_input, ctx) => {

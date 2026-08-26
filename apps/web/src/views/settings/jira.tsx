@@ -38,7 +38,6 @@ import {
 } from "@decocms/ui/components/select.tsx";
 import { Page } from "@/components/page";
 import { JiraIcon } from "@/components/icons/jira-icon";
-import { SprintSettings } from "@/components/settings/sprint-settings";
 import {
   AgentToolsSettings,
   ReviewSettings,
@@ -693,7 +692,6 @@ export function OrgTasksSettingsPage() {
           <SettingsPage>
             <Page.Title>{t("settings.nav.tasks")}</Page.Title>
             <ReviewSettings />
-            <SprintSettings />
             <AgentToolsSettings />
             <SettingsSection
               title={

@@ -704,3 +704,189 @@ describe("JiraClient.addAttachment", () => {
     }
   });
 });
+
+/**
+ * The pull's scope and paging. These decide WHICH of a customer's issues exist
+ * on their board at all — the reason the sync stopped reading
+ * `/board/{id}/issue` (which hides the board's Backlog tab) in the first place.
+ */
+describe("JiraClient issue reads", () => {
+  const client = () =>
+    new JiraClient("https://acme.atlassian.net", "e@acme.com", "tok");
+
+  async function withRoutes<T>(
+    routes: Array<[RegExp, unknown | (() => Response)]>,
+    body: (calls: string[]) => Promise<T>,
+  ): Promise<T> {
+    const originalFetch = globalThis.fetch;
+    const calls: string[] = [];
+    globalThis.fetch = mock(async (input: unknown) => {
+      const url = String(input);
+      calls.push(url);
+      for (const [pattern, value] of routes) {
+        if (!pattern.test(url)) continue;
+        return typeof value === "function"
+          ? (value as () => Response)()
+          : new Response(JSON.stringify(value), { status: 200 });
+      }
+      return new Response("not stubbed", { status: 404 });
+    }) as unknown as typeof fetch;
+    try {
+      return await body(calls);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  it("scopes the pull to the board's saved filter, ordering trimmed", async () => {
+    await withRoutes(
+      [
+        [/board\/1610\/configuration/, { filter: { id: "77" } }],
+        [/filter\/77/, { jql: 'project = "OS" ORDER BY Rank ASC' }],
+      ],
+      async () => {
+        expect(await client().getBoardScopeJql("1610")).toBe('project = "OS"');
+      },
+    );
+  });
+
+  it("narrows to the board's project when its filter is not readable", async () => {
+    await withRoutes(
+      [
+        [/board\/1610\/configuration/, { filter: { id: "77" } }],
+        [/filter\/77/, () => new Response("Forbidden", { status: 403 })],
+        [/board\/1610$/, { location: { projectKey: "OS" } }],
+      ],
+      async () => {
+        expect(await client().getBoardScopeJql("1610")).toBe('project = "OS"');
+      },
+    );
+  });
+
+  it("refuses to sync a board that exposes neither, rather than pulling everything", async () => {
+    await withRoutes(
+      [
+        [/board\/1610\/configuration/, {}],
+        [/board\/1610$/, { location: {} }],
+      ],
+      async () => {
+        await expect(client().getBoardScopeJql("1610")).rejects.toThrow(
+          "nothing to sync",
+        );
+      },
+    );
+  });
+
+  it("asks for the site's Sprint field and attaches what it finds", async () => {
+    await withRoutes(
+      [
+        [
+          /rest\/api\/3\/field/,
+          [
+            {
+              id: "customfield_10020",
+              schema: { custom: "com.pyxis.greenhopper.jira:gh-sprint" },
+            },
+          ],
+        ],
+        [
+          /search\/jql/,
+          {
+            issues: [
+              {
+                id: "1",
+                key: "OS-1",
+                fields: {
+                  summary: "s",
+                  status: { name: "BACKLOG" },
+                  priority: null,
+                  issuetype: null,
+                  updated: "2026-03-02T00:00:00.000Z",
+                  description: null,
+                  customfield_10020: [
+                    { id: 5, name: "Sprint 5", state: "active" },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      ],
+      async (calls) => {
+        const page = await client().searchIssues({ jql: "project = OS" });
+        expect(page.issues[0]?.sprints.map((s) => s.id)).toEqual(["5"]);
+        expect(calls.at(-1)).toContain("customfield_10020");
+      },
+    );
+  });
+
+  it("resolves the Sprint field once per client, even across pages", async () => {
+    await withRoutes(
+      [
+        [/rest\/api\/3\/field/, []],
+        [/search\/jql/, { issues: [] }],
+      ],
+      async (calls) => {
+        const shared = client();
+        for (let i = 0; i < 3; i++) await shared.searchIssues({ jql: "x" });
+        expect(
+          calls.filter((url) => /rest\/api\/3\/field/.test(url)),
+        ).toHaveLength(1);
+      },
+    );
+  });
+
+  it("syncs without sprints when the site has no Sprint field", async () => {
+    await withRoutes(
+      [
+        [/rest\/api\/3\/field/, () => new Response("nope", { status: 403 })],
+        [
+          /search\/jql/,
+          {
+            issues: [
+              {
+                id: "1",
+                key: "OS-1",
+                fields: {
+                  summary: "s",
+                  status: { name: "BACKLOG" },
+                  priority: null,
+                  issuetype: null,
+                  updated: "2026-03-02T00:00:00.000Z",
+                  description: null,
+                },
+              },
+            ],
+          },
+        ],
+      ],
+      async (calls) => {
+        const page = await client().searchIssues({ jql: "x" });
+        expect(page.issues[0]?.sprints).toEqual([]);
+        expect(calls.at(-1)).not.toContain("customfield");
+      },
+    );
+  });
+
+  it("walks pages by token, and reports the end of the walk as null", async () => {
+    await withRoutes(
+      [
+        [/rest\/api\/3\/field/, []],
+        [
+          /search\/jql/,
+          () =>
+            new Response(
+              JSON.stringify({ issues: [], nextPageToken: "tok-2" }),
+              { status: 200 },
+            ),
+        ],
+      ],
+      async (calls) => {
+        const first = await client().searchIssues({ jql: "x" });
+        expect(first.nextPageToken).toBe("tok-2");
+        await client().searchIssues({ jql: "x", nextPageToken: "tok-2" });
+        expect(calls.at(-1)).toContain("nextPageToken=tok-2");
+      },
+    );
+  });
+});

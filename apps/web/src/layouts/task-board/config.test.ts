@@ -9,7 +9,6 @@ import {
   isTaskHandedToHuman,
   runSortOrders,
   statusIconClassName,
-  visibleSprint,
 } from "./config";
 import type { TaskBoardItem } from "./config";
 
@@ -22,7 +21,7 @@ function item(id: string, sortOrder: number): TaskBoardItem {
     status: "todo",
     priority: "none",
     type: "chore",
-    sprint: null,
+    sprintId: null,
     assigneeId: null,
     assignedBy: null,
     repo: null,
@@ -138,37 +137,36 @@ describe("isTaskHandedToHuman", () => {
 });
 
 describe("formatSprintDates", () => {
-  const config = { enabled: true, weeks: 2, startDate: "2026-01-05" };
+  const sprint = {
+    id: "sprint_1",
+    name: "Sprint 12",
+    state: "active" as const,
+    startsAt: "2026-01-05T00:00:00.000Z",
+    endsAt: "2026-01-18T00:00:00.000Z",
+  };
 
   test("spans the sprint's own days, read in UTC", () => {
     // Day numbers, not the whole string: month names follow the test locale.
-    const label = formatSprintDates(config, 1);
+    const label = formatSprintDates(sprint);
     expect(label).toContain("5");
     expect(label).toContain("18");
   });
 
-  test("is null when the cadence can't be read", () => {
-    expect(formatSprintDates({ ...config, startDate: "nope" }, 1)).toBe(null);
-  });
-});
-
-/**
- * A card keeps its sprint number when an org switches sprints off, so the gate
- * has to be asked once and used for both the pill and the row holding it —
- * asking twice left the row reserving an empty slot.
- */
-describe("visibleSprint", () => {
-  test("shows the card's sprint while the board runs sprints", () => {
-    expect(visibleSprint(3, true)).toBe(3);
+  test("renders the one date it has when the other is missing", () => {
+    expect(formatSprintDates({ ...sprint, endsAt: null })).toContain("5");
+    expect(formatSprintDates({ ...sprint, startsAt: null })).toContain("18");
   });
 
-  test("hides a kept sprint once sprints are off, reserving no slot", () => {
-    expect(visibleSprint(3, false)).toBe(null);
+  test("is null for a sprint nobody has scheduled", () => {
+    expect(formatSprintDates({ ...sprint, startsAt: null, endsAt: null })).toBe(
+      null,
+    );
   });
 
-  test("a backlog card has nothing to show either way", () => {
-    expect(visibleSprint(null, true)).toBe(null);
-    expect(visibleSprint(null, false)).toBe(null);
+  test("is null rather than `Invalid Date` for an unparseable date", () => {
+    expect(
+      formatSprintDates({ ...sprint, startsAt: "nope", endsAt: null }),
+    ).toBe(null);
   });
 });
 

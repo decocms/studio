@@ -9,7 +9,7 @@ const filters: TaskFilters = {
   due: "today",
   tags: ["tag-1", "tag-2"],
   repo: "acme/site",
-  sprint: 4,
+  sprint: "sprint_abc",
 };
 
 describe("board search params", () => {

@@ -1,14 +1,27 @@
 /**
  * Thin Jira Cloud client (Basic auth: email + API token).
  *
- * Deliberately not an SDK: the integration needs six endpoints. The sync is
- * board-centric, so issue reads go through the Agile API — a board's visible
- * cards are `/board/{id}/issue` minus `/board/{id}/backlog`, a membership
- * that no JQL over the project can express.
+ * Deliberately not an SDK: the integration needs a handful of endpoints.
+ *
+ * Issue reads go through JQL search over the board's SAVED FILTER
+ * ({@link JiraClient.getBoardScopeJql}), not through the Agile API's
+ * `/board/{id}/issue`. That endpoint answers "what is on the board", which
+ * silently excludes whatever sits in the board's Backlog tab — so an issue a
+ * team files and leaves in the backlog (the normal way work arrives) was
+ * invisible to the sync, and the watermark moved straight past it. The filter
+ * is the board's own definition of its scope, backlog included; which sprint an
+ * issue is in is data on the issue, and belongs on the card rather than
+ * deciding whether the card exists.
  */
 
 import { retry } from "@decocms/shared/std";
 import { type AdfMedia, markdownToAdf } from "./markdown-adf";
+import {
+  findSprintFieldId,
+  type JiraSprintRef,
+  parseSprintRefs,
+  stripOrderBy,
+} from "./sprint-field";
 import {
   collectWikiMentionAccountIds,
   escapeMentionName,
@@ -50,21 +63,26 @@ export interface JiraBoardColumn {
   statuses: string[];
 }
 
+export interface JiraIssueFields {
+  summary: string;
+  status: { name: string };
+  priority: { name: string } | null;
+  issuetype: { name: string; hierarchyLevel?: number } | null;
+  /** ISO-ish timestamp, e.g. "2026-08-18T11:15:00.000-0300". */
+  updated: string;
+  /** Atlassian Document Format tree, or null. */
+  description: unknown;
+  /** Embedded comment page — may be partial; check `total`. */
+  comment?: { comments: JiraComment[]; total: number } | null;
+}
+
 export interface JiraIssue {
   id: string;
   key: string;
-  fields: {
-    summary: string;
-    status: { name: string };
-    priority: { name: string } | null;
-    issuetype: { name: string; hierarchyLevel?: number } | null;
-    /** ISO-ish timestamp, e.g. "2026-08-18T11:15:00.000-0300". */
-    updated: string;
-    /** Atlassian Document Format tree, or null. */
-    description: unknown;
-    /** Embedded comment page — may be partial; check `total`. */
-    comment?: { comments: JiraComment[]; total: number } | null;
-  };
+  fields: JiraIssueFields;
+  /** Sprints this issue is in, oldest first — parsed out of the site's Sprint
+   *  custom field. Empty when the site has no sprints, or the issue is in none. */
+  sprints: JiraSprintRef[];
 }
 
 export interface JiraComment {
@@ -77,6 +95,9 @@ export interface JiraComment {
 
 const ISSUE_FIELDS =
   "summary,status,priority,issuetype,updated,description,comment";
+
+/** Issues per search page. Jira's own ceiling for a fields-bearing search. */
+const SEARCH_PAGE_SIZE = 100;
 
 /** A non-2xx answer from Jira, carrying the status so a caller can react to a
  *  specific one (a 400 means the request body was refused, not the request). */
@@ -307,42 +328,110 @@ export class JiraClient {
     return columns;
   }
 
-  /** One page of the board's issues (backlog included — subtract it via
-   *  `listBacklogIssueIds`), optionally narrowed by JQL. */
-  async listBoardIssues(params: {
-    boardId: string;
-    jql: string;
-    startAt: number;
-  }): Promise<{ issues: JiraIssue[]; total: number }> {
-    const query = new URLSearchParams({
-      startAt: String(params.startAt),
-      maxResults: "100",
-      jql: params.jql,
-      fields: ISSUE_FIELDS,
-    });
-    const page = await this.request<{ issues?: JiraIssue[]; total: number }>(
-      `/rest/agile/1.0/board/${assertBoardId(params.boardId)}/issue?${query}`,
+  /**
+   * The JQL that defines what a board covers — its saved filter's own query,
+   * with any `ORDER BY` trimmed so the caller can AND onto it.
+   *
+   * The filter, not `project = <the board's project>`: a board scoped to one
+   * team inside a shared project, or spanning several projects, is only
+   * described by its filter, and pulling its whole project instead would put
+   * another team's issues on the customer's board.
+   *
+   * Falls back to the board's project when the filter is unreadable — a filter
+   * can be shared with fewer people than the board it drives, and answering 403
+   * there should narrow the pull, not stop the sync.
+   */
+  async getBoardScopeJql(boardId: string): Promise<string> {
+    const id = assertBoardId(boardId);
+    const config = await this.request<{ filter?: { id?: string } | null }>(
+      `/rest/agile/1.0/board/${id}/configuration`,
     );
-    return { issues: page.issues ?? [], total: page.total };
+    const filterId = config.filter?.id;
+    if (filterId && /^\d+$/.test(String(filterId))) {
+      try {
+        const filter = await this.request<{ jql?: string }>(
+          `/rest/api/3/filter/${filterId}`,
+        );
+        const jql = stripOrderBy(filter.jql ?? "");
+        if (jql) return jql;
+      } catch (err) {
+        console.warn(
+          `[jira] board ${id}'s filter ${filterId} is unreadable, falling back to its project:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+    const board = await this.request<{
+      location?: { projectKey?: string } | null;
+    }>(`/rest/agile/1.0/board/${id}`);
+    const projectKey = board.location?.projectKey;
+    if (!projectKey) {
+      throw new Error(
+        `Jira board ${id} exposes neither a readable filter nor a project — nothing to sync`,
+      );
+    }
+    return `project = ${JSON.stringify(projectKey)}`;
   }
 
-  /** Ids of issues sitting in the board's Backlog tab — they have normal
-   *  statuses but are NOT visible board cards. */
-  async listBacklogIssueIds(boardId: string): Promise<Set<string>> {
-    const ids = new Set<string>();
-    let startAt = 0;
-    while (ids.size < 5_000) {
-      const page = await this.request<{
-        issues?: Array<{ id: string }>;
-        total: number;
-      }>(
-        `/rest/agile/1.0/board/${assertBoardId(boardId)}/backlog?startAt=${startAt}&maxResults=100&fields=id`,
-      );
-      for (const issue of page.issues ?? []) ids.add(issue.id);
-      startAt += page.issues?.length ?? 0;
-      if (startAt >= page.total || (page.issues?.length ?? 0) === 0) break;
-    }
-    return ids;
+  /**
+   * The site's Sprint custom-field id, resolved once per client.
+   *
+   * Cached as a promise so a page of issues resolving it concurrently costs one
+   * request, and cached even when it comes back null: a site without Jira
+   * Software has no sprint field and must not pay a lookup per sync.
+   */
+  private sprintFieldPromise: Promise<string | null> | null = null;
+
+  sprintFieldId(): Promise<string | null> {
+    this.sprintFieldPromise ??= this.request<
+      Array<{ id: string; schema?: { custom?: string } | null }>
+    >("/rest/api/3/field")
+      .then(findSprintFieldId)
+      .catch((err) => {
+        // Sprints are additive: a board still mirrors without them.
+        console.warn(
+          "[jira] could not resolve the Sprint field, cards will sync without sprints:",
+          err instanceof Error ? err.message : err,
+        );
+        return null;
+      });
+    return this.sprintFieldPromise;
+  }
+
+  /**
+   * One page of a JQL search, newest pagination (`nextPageToken`).
+   *
+   * `/rest/api/3/search/jql` has no `total` and no `startAt` — it walks a
+   * cursor, which is also what makes it safe under a query ordered by `updated`
+   * while issues are being updated: an offset would skip or repeat rows as the
+   * result set shifts under it.
+   */
+  async searchIssues(params: {
+    jql: string;
+    nextPageToken?: string;
+  }): Promise<{ issues: JiraIssue[]; nextPageToken: string | null }> {
+    const sprintField = await this.sprintFieldId();
+    const query = new URLSearchParams({
+      jql: params.jql,
+      maxResults: String(SEARCH_PAGE_SIZE),
+      fields: sprintField ? `${ISSUE_FIELDS},${sprintField}` : ISSUE_FIELDS,
+    });
+    if (params.nextPageToken) query.set("nextPageToken", params.nextPageToken);
+    const page = await this.request<{
+      issues?: Array<{
+        id: string;
+        key: string;
+        fields: JiraIssueFields & Record<string, unknown>;
+      }>;
+      nextPageToken?: string | null;
+    }>(`/rest/api/3/search/jql?${query}`);
+    return {
+      issues: (page.issues ?? []).map((issue) => ({
+        ...issue,
+        sprints: sprintField ? parseSprintRefs(issue.fields[sprintField]) : [],
+      })),
+      nextPageToken: page.nextPageToken ?? null,
+    };
   }
 
   /** Transitions available from the issue's CURRENT status — Jira never sets

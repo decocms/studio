@@ -41,7 +41,7 @@ export const settings = {
   "settings.jira.cancel": "Cancelar",
   "settings.jira.boardLabel": "Board do Jira",
   "settings.jira.boardDescription":
-    "Os cards visíveis do board são espelhados — a aba Backlog, epics e sub-tasks não.",
+    "Tudo o que o board abrange é espelhado, incluindo o backlog. Epics e sub-tasks não, e os cards mostram em qual sprint estão.",
   "settings.jira.boardPlaceholder": "Selecione um board",
   "settings.jira.boardSearchPlaceholder": "Buscar boards…",
   "settings.jira.noBoardsMatch": "Nenhum board corresponde à busca",
@@ -52,9 +52,9 @@ export const settings = {
   "settings.jira.dontSync": "Não sincronizar",
   "settings.jira.jqlLabel": "Filtro JQL (opcional)",
   "settings.jira.jqlDescription":
-    "JQL extra pra restringir o que sincroniza — útil pra casar com o filtro salvo do seu board no Jira. Epics e sub-tasks são sempre excluídos.",
+    "JQL extra pra restringir o que sincroniza, em cima do filtro salvo do próprio board. Epics e sub-tasks são sempre excluídos.",
   "settings.jira.jqlPlaceholder":
-    "ex.: labels = storefront AND sprint in openSprints()",
+    "ex.: labels = storefront AND component = Checkout",
   "settings.jira.jqlSave": "Salvar filtro",
   "settings.jira.jqlSaved":
     "Filtro salvo — vale a partir da próxima sincronização",
@@ -505,22 +505,6 @@ export const settings = {
     "Dar aos runs as conex\u00f5es MCP desta organiza\u00e7\u00e3o",
   "settings.agentTools.orgMcpsDescription":
     "Cada MCP conectado fica dispon\u00edvel para o Super Agent e para os revisores, al\u00e9m das ferramentas de tarefa que eles sempre recebem. As ferramentas carregam s\u00f3 quando o agente procura por uma, ent\u00e3o conectar mais n\u00e3o ocupa o contexto dele.",
-  "settings.sprints.title": "Sprints",
-  "settings.sprints.description":
-    "Planeje tarefas em sprints de dura\u00e7\u00e3o fixa. As sprints s\u00e3o contadas a partir de um dia inicial, ent\u00e3o n\u00e3o h\u00e1 nada para abrir ou fechar.",
-  "settings.sprints.enabledTitle": "Ativar sprints",
-  "settings.sprints.enabledDescription":
-    "Adiciona uma propriedade de sprint em cada tarefa e um filtro de sprint no board.",
-  "settings.sprints.cadenceTitle": "Cad\u00eancia",
-  "settings.sprints.cadenceDescription":
-    "Quanto tempo dura uma sprint e o dia em que a sprint 1 come\u00e7ou.",
-  "settings.sprints.cadenceCurrent":
-    "A sprint {number} est\u00e1 em andamento ({start} a {end}).",
-  "settings.sprints.weeksValue": "{count} semanas",
-  "settings.sprints.weeksValueOne": "1 semana",
-  "settings.sprints.startDateLabel": "Dia inicial da sprint 1",
-  "settings.sprints.updateError":
-    "N\u00e3o foi poss\u00edvel atualizar as configura\u00e7\u00f5es de sprint",
   "settings.orgRoleDetail.addMember": "Adicionar Membro",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Adicione membros para conceder as permiss\u00f5es configuradas.",

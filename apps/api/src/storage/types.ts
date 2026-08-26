@@ -19,9 +19,9 @@ import type { ProviderId, ThreadStatus } from "@decocms/shared/sdk";
 import type { NotificationType } from "@decocms/shared/notification-types";
 import type {
   OrgFlags,
-  SprintConfig,
   UserModelPreferences,
 } from "@decocms/shared/organization/schema";
+import type { SprintState } from "@decocms/shared/sprints";
 import type { ThreadMetadata } from "@decocms/shared/entities";
 import type { ReviewerKind } from "@decocms/shared/task-board";
 import type { PrivateRegistryDatabase } from "./registry/types";
@@ -190,8 +190,6 @@ export interface OrganizationSettingsTable {
   flags: JsonObject<OrgFlags> | null;
   // Virtual MCP id the org lands on (`/$org`) instead of the Super Agent.
   main_agent_id: string | null;
-  // Task board sprint cadence — see SprintConfigSchema. Null = never configured.
-  sprint_config: JsonObject<SprintConfig> | null;
   createdAt: ColumnType<Date, Date | string, never>;
   updatedAt: ColumnType<Date, Date | string, Date | string>;
 }
@@ -205,7 +203,6 @@ export interface OrganizationSettings {
   default_home_agents: DefaultHomeAgentsConfig | null;
   flags: OrgFlags | null;
   main_agent_id: string | null;
-  sprint_config: SprintConfig | null;
   createdAt: Date | string;
   updatedAt: Date | string;
 }
@@ -1662,10 +1659,14 @@ export interface TaskBoardItemTable {
     Date | string | null | undefined,
     Date | string | null
   >;
-  /** Which sprint this card is planned into (1-based, counted from the org's
-   *  `sprint_config` cadence). Null = backlog, i.e. not planned into one — and
-   *  the state of every card on a board that never turned sprints on. */
-  sprint: ColumnType<number | null, number | null | undefined, number | null>;
+  /** The sprint this card belongs to (`task_board_sprints.id`). Null =
+   *  backlog, which is every card on a board that mirrors no Jira sprints.
+   *  Pull-owned: the Jira sync writes it, nothing else does. */
+  sprint_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sort_order: ColumnType<number, number | undefined, number>;
   /** Per-org sequence behind the card's human key (`DECO-01`), assigned once at
@@ -1698,6 +1699,40 @@ export interface TaskBoardItemTable {
   created_by: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_by: string;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/**
+ * A sprint a card can belong to — an entity, not a window over a cadence (see
+ * `migrations/182-task-board-sprints-entities.ts`).
+ *
+ * `jira_sprint_id` is the mirror's identity: UNIQUE per org, so the pull
+ * upserts on it and a renamed Jira sprint updates in place instead of
+ * splitting in two. Null means a sprint this board owns — nothing writes those
+ * yet.
+ */
+export interface TaskBoardSprintTable {
+  id: string;
+  organization_id: string;
+  name: string;
+  /** Jira's own vocabulary; the board renders `active` differently. */
+  state: ColumnType<SprintState, SprintState | undefined, SprintState>;
+  starts_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
+  ends_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
+  jira_sprint_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
@@ -1861,8 +1896,8 @@ export interface TaskBoardItem {
    *  created org-wide (no site context) carry none. */
   repo: string | null;
   dueDate: string | null;
-  /** Sprint this card is planned into (1-based); null = backlog. */
-  sprint: number | null;
+  /** Sprint this card belongs to (`TaskBoardSprint.id`); null = backlog. */
+  sprintId: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;
   /** Per-org sequence behind the card's human key (`DECO-01`), never null. */
@@ -1979,7 +2014,8 @@ export interface OrgJiraIntegrationTable {
   email: string;
   /** Vault-encrypted Jira API token (Basic auth pairs it with `email`). */
   api_token: string;
-  /** Agile board the sync mirrors (its columns minus its Backlog tab). */
+  /** Agile board the sync mirrors: its saved filter is the pull's scope (the
+   *  board's Backlog tab included) and its columns are the mapping UI's names. */
   board_id: string | null;
   board_name: string | null;
   /** { "<board status>": ["<jira status name>", …] } — the per-tenant mapping,
@@ -2195,6 +2231,7 @@ export interface Database extends PrivateRegistryDatabase {
   org_sites: OrgSiteTable;
   org_repo_sync: OrgRepoSyncTable;
   task_board_items: TaskBoardItemTable;
+  task_board_sprints: TaskBoardSprintTable;
   task_board_item_threads: TaskBoardItemThreadTable;
   task_board_activity: TaskBoardActivityTable;
   task_board_item_prs: TaskBoardItemPrTable;

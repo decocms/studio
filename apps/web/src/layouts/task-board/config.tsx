@@ -18,7 +18,7 @@ import { Bug } from "lucide-react";
 import type { StudioToolOutput as ToolOutput } from "@decocms/shared/tools/tool-io";
 import { DEFAULT_TAG_COLOR } from "@decocms/shared/task-board";
 import { isResolvedRunFailure } from "@decocms/shared/entities";
-import { sprintRange, type SprintConfig } from "@decocms/shared/sprints";
+import type { Sprint } from "@decocms/shared/sprints";
 import type { ComponentType } from "react";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 
@@ -29,6 +29,7 @@ export {
 } from "@decocms/shared/task-board";
 
 export type TaskBoardItem = ToolOutput<"TASK_BOARD_ITEM_LIST">["items"][number];
+export type { Sprint };
 export type TaskBoardItemStatus = TaskBoardItem["status"];
 export type TaskBoardItemPriority = TaskBoardItem["priority"];
 export type TaskBoardItemType = NonNullable<TaskBoardItem["type"]>;
@@ -41,38 +42,26 @@ export type TaskBoardItemPr =
  *  snapshot is drawn from). */
 export type OrgTag = ToolOutput<"TAGS_LIST">["tags"][number];
 
-/** UTC, matching how `sprintRange` counts days — a local-zone read of the same
- *  boundary shows the day before for anyone west of UTC. */
+/** UTC: a sprint's dates are calendar days in Jira, so rendering them in the
+ *  viewer's zone shows the day before for anyone west of UTC. */
 const SPRINT_DATE_FMT = new Intl.DateTimeFormat(undefined, {
   month: "short",
   day: "numeric",
   timeZone: "UTC",
 });
 
-/**
- * The sprint a card should show, or null when the board isn't running sprints.
- *
- * One gate for both the pill and the row that holds it: asking the question
- * twice is what left a card that kept a sprint from before the toggle went off
- * reserving an empty pill slot.
- */
-export function visibleSprint(
-  sprint: number | null,
-  sprintsEnabled: boolean,
-): number | null {
-  return sprintsEnabled ? sprint : null;
-}
-
-/** A sprint's span as `Jan 5 – Jan 18`, or null when the cadence is unusable. */
-export function formatSprintDates(
-  config: SprintConfig,
-  sprint: number,
-): string | null {
-  const range = sprintRange(config, sprint);
-  if (!range) return null;
-  const day = (value: string) =>
-    SPRINT_DATE_FMT.format(new Date(`${value}T00:00:00.000Z`));
-  return `${day(range.start)} – ${day(range.end)}`;
+/** A sprint's span as `Jan 5 – Jan 18`, or null when it carries no dates (a
+ *  planned sprint nobody has scheduled yet). */
+export function formatSprintDates(sprint: Sprint): string | null {
+  const day = (value: string | null) => {
+    if (!value) return null;
+    const ms = Date.parse(value);
+    return Number.isNaN(ms) ? null : SPRINT_DATE_FMT.format(new Date(ms));
+  };
+  const start = day(sprint.startsAt);
+  const end = day(sprint.endsAt);
+  if (!start && !end) return null;
+  return start && end ? `${start} – ${end}` : (start ?? end);
 }
 
 /**
