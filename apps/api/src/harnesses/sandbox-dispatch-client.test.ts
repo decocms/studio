@@ -10,6 +10,7 @@ import {
   harnessRunsInSandbox,
   isRunSuperseded,
   isStudioOwnedConnection,
+  selectRunConnections,
   isUnreachableStatus,
   ndjsonLines,
   pushSandboxEnv,
@@ -57,6 +58,49 @@ describe("isStudioOwnedConnection", () => {
 
   test("does not exclude a real user-configured connection", () => {
     expect(isStudioOwnedConnection(orgId, "conn_abc123")).toBe(false);
+  });
+});
+
+describe("selectRunConnections", () => {
+  const organizationId = "org_1";
+  const connections = [
+    { id: "conn_github", status: "active" },
+    { id: "conn_vtex", status: "active" },
+    { id: "conn_broken", status: "error" },
+    { id: WellKnownOrgMCPId.SELF(organizationId), status: "active" },
+  ];
+
+  test("mounts the agent's own connections without the org-wide flag", () => {
+    expect(
+      selectRunConnections({
+        organizationId,
+        orgWide: false,
+        ownIds: new Set(["conn_github", "conn_broken"]),
+        connections,
+      }).map((c) => c.id),
+    ).toEqual(["conn_github"]);
+  });
+
+  test("mounts nothing when the agent aggregates nothing and the org opted out", () => {
+    expect(
+      selectRunConnections({
+        organizationId,
+        orgWide: false,
+        ownIds: new Set<string>(),
+        connections,
+      }),
+    ).toEqual([]);
+  });
+
+  test("the org-wide flag adds the rest, minus Studio's own and erroring ones", () => {
+    expect(
+      selectRunConnections({
+        organizationId,
+        orgWide: true,
+        ownIds: new Set<string>(),
+        connections,
+      }).map((c) => c.id),
+    ).toEqual(["conn_github", "conn_vtex"]);
   });
 });
 
