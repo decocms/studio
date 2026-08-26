@@ -4,10 +4,14 @@ import {
   type FieldPath,
   type FieldValues,
 } from "react-hook-form";
+import { Label } from "@decocms/ui/components/label.tsx";
 import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from "@decocms/ui/components/toggle-group.tsx";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@decocms/ui/components/select.tsx";
 import {
   CmsModeSchema,
   resolveCmsMode,
@@ -18,11 +22,13 @@ import {
 import { useT } from "@/i18n/use-t.ts";
 
 /**
- * The CMS mode control (`metadata.ui.layout.cms`): whether this agent offers
+ * The CMS mode select (`metadata.ui.layout.cms`): whether this agent offers
  * content editing at all, and where the preview lands when it does. `off` hides
  * both entry points — the Content tab and the Preview toolbar's CMS toggle.
- * Ordered by how much CMS each mode gives, so the three read as one scale.
- * Only meaningful for agents with a clonable source — the caller gates on it.
+ * Ordered by how much CMS each mode gives, so the three read as one scale. The
+ * selected mode's description sits under the label, since a select shows one
+ * option at a time. Only meaningful for agents with a clonable source — the
+ * caller gates on it.
  */
 export interface ContentEditingFieldProps<T extends FieldValues> {
   control: Control<T>;
@@ -66,34 +72,41 @@ export function ContentEditingField<T extends FieldValues>({
         const layout = (field.value ?? null) as VirtualMcpUILayout | null;
         const mode = resolveCmsMode(layout);
         return (
-          <div className="flex flex-col gap-2">
-            <ToggleGroup
-              type="single"
-              variant="outline"
-              size="sm"
+          <div className="flex items-center justify-between gap-4">
+            <div className="space-y-0.5 min-w-0">
+              <Label
+                htmlFor="content-editing-mode"
+                className="font-normal text-foreground"
+              >
+                {t("sandbox.cmsSettings.contentEditing.title")}
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                {options.find((option) => option.value === mode)?.description}
+              </p>
+            </div>
+            <Select
               value={mode}
-              aria-label={t("sandbox.cmsSettings.contentEditing.title")}
               onValueChange={(next) => {
-                // Radix yields "" when the active item is clicked again.
                 const parsed = CmsModeSchema.safeParse(next);
                 if (!parsed.success) return;
                 field.onChange(withCmsMode(layout, parsed.data));
                 onCommit();
               }}
             >
-              {options.map((option) => (
-                <ToggleGroupItem
-                  key={option.value}
-                  value={option.value}
-                  className="h-8 px-3 text-sm"
-                >
-                  {option.label}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-            <p className="text-xs text-muted-foreground">
-              {options.find((option) => option.value === mode)?.description}
-            </p>
+              <SelectTrigger
+                id="content-editing-mode"
+                className="w-44 shrink-0 text-sm"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {options.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         );
       }}

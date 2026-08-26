@@ -1091,14 +1091,6 @@ function VirtualMcpDetailViewWithData({
                 {hasClonableSource && (
                   <>
                     <CardContent className="p-0 space-y-5">
-                      <div className="flex flex-col gap-1">
-                        <h3 className="text-sm font-medium text-foreground">
-                          {t("sandbox.cmsSettings.contentEditing.title")}
-                        </h3>
-                        <p className="text-sm text-muted-foreground">
-                          {t("sandbox.cmsSettings.contentEditing.description")}
-                        </p>
-                      </div>
                       <ContentEditingField
                         control={form.control}
                         onCommit={flushAndSave}
@@ -1139,14 +1131,6 @@ function VirtualMcpDetailViewWithData({
                       <>
                         <div className="border-t border-border -mx-6" />
                         <CardContent className="p-0 space-y-5">
-                          <div className="flex flex-col gap-1">
-                            <h3 className="text-sm font-medium text-foreground">
-                              {t("virtualMcp.virtualMcp.publishing")}
-                            </h3>
-                            <p className="text-sm text-muted-foreground">
-                              {t("virtualMcp.virtualMcp.publishingDescription")}
-                            </p>
-                          </div>
                           <PublishPolicyField
                             control={form.control}
                             onCommit={flushAndSave}
